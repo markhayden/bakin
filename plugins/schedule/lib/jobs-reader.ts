@@ -1,39 +1,44 @@
 /**
- * Reads OpenClaw cron jobs and merges with Bakin sidecar metadata.
+ * Reads runtime cron jobs and merges them with Bakin sidecar metadata.
  */
-import { readFileSync, existsSync } from 'fs'
+import type { AgentRuntimeAdapter, CronJob, RuntimeMetadata } from '@bakin/core/adapters/runtime'
 import { createLogger } from '../../../src/core/logger'
-import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import { getMainAgentId } from '../../../src/core/main-agent'
 import { readSidecar, writeSidecar, withDefaults } from './sidecar'
 import { cronToHuman } from './cron-parser'
-import type { OpenClawJob, OpenClawJobsFile, MergedJob, BakinJobMeta } from '../types'
+import type { RuntimeCronJobSnapshot, MergedJob, BakinJobMeta } from '../types'
 
 const log = createLogger('schedule:jobs')
 
-const OPENCLAW_JOBS_PATH = getOpenClawPath('cron', 'jobs.json')
+type RuntimeCronReader = Pick<AgentRuntimeAdapter['cron'], 'list'>
 
-/** Read raw OpenClaw jobs from disk. */
-export function readOpenClawJobs(jobsPath?: string): OpenClawJob[] {
-  const path = jobsPath ?? OPENCLAW_JOBS_PATH
-  if (!existsSync(path)) {
-    log.debug('OpenClaw jobs.json not found', { path })
-    return []
-  }
-  try {
-    const raw = readFileSync(path, 'utf-8')
-    const data = JSON.parse(raw) as OpenClawJobsFile
-    return data.jobs ?? []
-  } catch (err) {
-    log.warn('Failed to read OpenClaw jobs', err)
-    return []
+/** Normalize a runtime cron job into the schedule plugin's merged-view input. */
+export function runtimeCronToScheduleJob(job: CronJob): RuntimeCronJobSnapshot {
+  const tz = metadataString(job.metadata, 'tz')
+  const scheduleType = metadataScheduleType(job.metadata)
+  return {
+    id: job.id,
+    name: job.name,
+    schedule: {
+      kind: scheduleType,
+      type: scheduleType,
+      expr: job.schedule,
+      value: job.schedule,
+      tz,
+    },
+    enabled: job.enabled,
+    delivery: metadataString(job.metadata, 'webhookUrl')
+      ? { mode: 'webhook', url: metadataString(job.metadata, 'webhookUrl') }
+      : undefined,
+    payload: { message: job.command },
+    createdAt: metadataString(job.metadata, 'createdAt'),
+    updatedAt: metadataString(job.metadata, 'updatedAt'),
   }
 }
 
-/** Extract best-effort context from an orphaned OpenClaw job's payload. */
-function extractOrphanContext(job: OpenClawJob): { prompt?: string } {
+/** Extract best-effort context from an orphaned runtime cron job payload. */
+function extractOrphanContext(job: RuntimeCronJobSnapshot): { prompt?: string } {
   if (!job.payload) return {}
-  // OpenClaw stores the message in payload.message
   const msg = job.payload.message
   if (typeof msg === 'string' && msg.length > 0) {
     // If it starts with bakin:schedule:, it's a Bakin job that lost its sidecar
@@ -47,11 +52,10 @@ function extractOrphanContext(job: OpenClawJob): { prompt?: string } {
   return {}
 }
 
-/** Merge a single OpenClaw job with its sidecar entry (if any). */
-export function mergeJob(job: OpenClawJob, sidecar: BakinJobMeta | undefined): MergedJob {
+/** Merge a single runtime cron job with its sidecar entry, if any. */
+export function mergeJob(job: RuntimeCronJobSnapshot, sidecar: BakinJobMeta | undefined): MergedJob {
   const meta = sidecar ? withDefaults(sidecar) : null
 
-  // Normalise OpenClaw field names: kind→type, expr→value
   const schedType = job.schedule.type ?? job.schedule.kind ?? 'cron'
   const schedValue = job.schedule.value ?? job.schedule.expr ?? ''
   const normalised = { type: schedType, value: schedValue, tz: job.schedule.tz }
@@ -60,7 +64,7 @@ export function mergeJob(job: OpenClawJob, sidecar: BakinJobMeta | undefined): M
   const orphanContext = !meta ? extractOrphanContext(job) : {}
 
   return {
-    // OpenClaw fields (normalised)
+    // Runtime cron fields (normalised)
     id: job.id,
     name: job.name,
     schedule: normalised,
@@ -101,14 +105,14 @@ export function mergeJob(job: OpenClawJob, sidecar: BakinJobMeta | undefined): M
 }
 
 /** Read all jobs merged with sidecar metadata. */
-export function readMergedJobs(jobsPath?: string): MergedJob[] {
-  const openclawJobs = readOpenClawJobs(jobsPath)
+export async function readMergedJobs(cron: RuntimeCronReader): Promise<MergedJob[]> {
+  const runtimeJobs = (await cron.list()).map(runtimeCronToScheduleJob)
   const sidecar = readSidecar()
 
-  const merged = openclawJobs.map(job => mergeJob(job, sidecar.jobs[job.id]))
+  const merged = runtimeJobs.map(job => mergeJob(job, sidecar.jobs[job.id]))
 
-  // Clean up stale sidecar entries (jobs deleted from OpenClaw)
-  const activeIds = new Set(openclawJobs.map(j => j.id))
+  // Clean up stale sidecar entries for cron jobs deleted from the runtime.
+  const activeIds = new Set(runtimeJobs.map(j => j.id))
   let dirty = false
   for (const jobId of Object.keys(sidecar.jobs)) {
     if (!activeIds.has(jobId)) {
@@ -122,4 +126,14 @@ export function readMergedJobs(jobsPath?: string): MergedJob[] {
   }
 
   return merged
+}
+
+function metadataString(metadata: RuntimeMetadata | undefined, key: string): string | undefined {
+  const value = metadata?.[key]
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function metadataScheduleType(metadata: RuntimeMetadata | undefined): RuntimeCronJobSnapshot['schedule']['type'] {
+  const value = metadataString(metadata, 'scheduleType')
+  return value === 'every' || value === 'at' ? value : 'cron'
 }

@@ -1,5 +1,5 @@
 /**
- * Schedule sidecar — Bakin-owned metadata for OpenClaw cron jobs.
+ * Schedule sidecar - Bakin-owned metadata for runtime cron jobs.
  * Stored at ~/.bakin/schedule/sidecar.json.
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'

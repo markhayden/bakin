@@ -3,7 +3,7 @@
   "name": "Schedule",
   "version": "1.0.0",
   "bakin": ">=1.0.0",
-  "description": "Cron job scheduling with OpenClaw bridge and task creation",
+  "description": "Cron job scheduling through the runtime adapter with task creation",
   "entry": {
     "server": "index.ts"
   },
