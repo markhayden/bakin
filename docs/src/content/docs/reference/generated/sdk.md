@@ -59,7 +59,7 @@ Source: `packages/sdk/src/hooks/index.ts`
 | `export { useContentStore } from '@/hooks/use-content-store'` |
 | `export { useDebug } from '@/hooks/use-debug'` |
 | `export { useFormGuard } from '@/hooks/use-form-guard'` |
-| `export { useGatewayStatus } from '@/hooks/use-gateway-status'` |
+| `export { useRuntimeStatus } from '@/hooks/use-runtime-status'` |
 | `export { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'` |
 | `export { useScheduleJobs, useRunHistory } from '@/hooks/use-schedule'` |
 | `export type { ScheduleJob, RunEntry } from '@/hooks/use-schedule'` |
