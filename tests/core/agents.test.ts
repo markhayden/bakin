@@ -9,17 +9,28 @@ const mockColumns: Record<string, typeof mockTasks> = {
   backlog: [], inProgress: [], todo: [], review: [], done: [], archived: [], blocked: [],
 }
 
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
+const mockRuntimeSend = mock((...args: unknown[]) => {
+  void args
+  return Promise.resolve({ id: 'runtime-msg', content: 'agent reply' })
+})
+
+mock.module('@/core/runtime-registry', () => ({
+  getRuntimeAdapter: () => ({
+    agents: {
+      get: mock(async (agentId: string) => ({ id: agentId, name: agentId, status: 'active' })),
+      list: mock(async () => []),
+    },
+    messaging: {
+      send: (...args: unknown[]) => mockRuntimeSend(...args),
+    },
+  }),
 }))
 
 mock.module('@bakin/tasks/lib/flow-store', () => ({
   readTaskboard: () => ({ columns: mockColumns }),
 }))
 
-import { getAgentTasks } from '@/core/agents'
+import { getAgentTasks, sendMessageToAgent } from '@/core/agents'
 
 describe('agents', () => {
   let tempDir: string
@@ -34,6 +45,7 @@ describe('agents', () => {
     for (const key of Object.keys(mockColumns)) {
       mockColumns[key] = []
     }
+    mockRuntimeSend.mockClear()
   })
 
   afterEach(() => {
@@ -69,6 +81,18 @@ describe('agents', () => {
 
       const tasks = getAgentTasks('main', contentDir)
       expect(tasks).toHaveLength(0)
+    })
+  })
+
+  describe('sendMessageToAgent', () => {
+    it('sends through runtime messaging', async () => {
+      const result = await sendMessageToAgent('pixel', 'Status?')
+
+      expect(result).toEqual({ ok: true, reply: 'agent reply' })
+      expect(mockRuntimeSend).toHaveBeenCalledWith({
+        agentId: 'pixel',
+        content: 'Status?',
+      })
     })
   })
 })
