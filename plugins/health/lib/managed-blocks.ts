@@ -33,6 +33,7 @@ import { getHookRegistry } from '../../../src/lib/plugin-registry'
 import { getAgentIds } from '../../../packages/core/src/openclaw-config'
 import { getOpenClawPath } from '../../../packages/core/src/openclaw-home'
 import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
+import type { AgentRuntimeAdapter, RuntimeAgent } from '../../../packages/core/src/adapters/runtime'
 
 const log = createLogger('managed-blocks')
 
@@ -168,10 +169,29 @@ export async function resolveOrchestratorRulesForAgent(agentId: string, agentNam
 
 // ─── Generic managed-block helper ─────────────────────────────────────────
 
+interface ManagedBlockContext {
+  mainAgentId: string
+  mainAgentName: string
+}
+
 interface ManagedBlockDef {
   blockId: string
-  contentFn: (agentId: string) => string
+  contentFn: (agentId: string, context: ManagedBlockContext) => string
   agentFilter?: (agentId: string) => boolean // defaults to all non-main-agent
+}
+
+function defaultManagedBlockContext(): ManagedBlockContext {
+  return { mainAgentId: getMainAgentId(), mainAgentName: getMainAgentName() }
+}
+
+function runtimeManagedBlockContext(agents: RuntimeAgent[]): ManagedBlockContext {
+  const main = agents.find((agent) => agent.id === 'main')
+    ?? agents.find((agent) => agent.role?.toLowerCase() === 'orchestrator')
+    ?? agents[0]
+  return {
+    mainAgentId: main?.id ?? 'main',
+    mainAgentName: main?.name ?? 'Main',
+  }
 }
 
 /**
@@ -188,14 +208,13 @@ interface ManagedBlockDef {
  *   {content}
  *   <!-- bakin:{blockId}:end -->
  */
-function checkManagedBlock(def: ManagedBlockDef, autoFix: boolean): HealthCheckResult[] {
+function checkManagedBlock(def: ManagedBlockDef, autoFix: boolean, context = defaultManagedBlockContext()): HealthCheckResult[] {
   const results: HealthCheckResult[] = []
   const openclawBase = getOpenClawPath()
   const checkName = `agent-${def.blockId}`
 
-  const mainId = getMainAgentId()
   for (const agentId of getAgentIds()) {
-    if (agentId === mainId) continue
+    if (agentId === context.mainAgentId) continue
     if (def.agentFilter && !def.agentFilter(agentId)) continue
 
     const agentsPath = join(openclawBase, 'workspaces', agentId, 'AGENTS.md')
@@ -206,7 +225,7 @@ function checkManagedBlock(def: ManagedBlockDef, autoFix: boolean): HealthCheckR
     }
 
     const current = readFileSync(agentsPath, 'utf-8')
-    const expectedBody = def.contentFn(agentId).trim()
+    const expectedBody = def.contentFn(agentId, context).trim()
     const state = getBlockState(current, def.blockId)
 
     if (state === 'orphan-start' || state === 'orphan-end') {
@@ -245,6 +264,63 @@ function checkManagedBlock(def: ManagedBlockDef, autoFix: boolean): HealthCheckR
   // Suppress lint warning for unused log import on hot paths — kept for
   // future debugging when block edits behave unexpectedly.
   void log
+
+  return results
+}
+
+async function checkManagedBlockRuntime(
+  runtime: AgentRuntimeAdapter,
+  def: ManagedBlockDef,
+  autoFix: boolean,
+  agents: RuntimeAgent[],
+  context: ManagedBlockContext,
+): Promise<HealthCheckResult[]> {
+  const results: HealthCheckResult[] = []
+  const checkName = `agent-${def.blockId}`
+
+  for (const agent of agents) {
+    const agentId = agent.id
+    if (agentId === context.mainAgentId) continue
+    if (def.agentFilter && !def.agentFilter(agentId)) continue
+
+    const file = await runtime.agents.readWorkspaceFile(agentId, 'AGENTS.md')
+    if (!file) {
+      results.push(warn(checkName, `AGENTS.md not found for ${agentId} — cannot verify ${def.blockId}`))
+      continue
+    }
+
+    const current = file.content
+    const expectedBody = def.contentFn(agentId, context).trim()
+    const state = getBlockState(current, def.blockId)
+
+    if (state === 'orphan-start' || state === 'orphan-end') {
+      results.push(error(
+        checkName,
+        `${def.blockId} block has malformed markers (${state}) in ${agentId}/AGENTS.md`,
+      ))
+      continue
+    }
+
+    if (state === 'absent') {
+      if (!autoFix) {
+        results.push(warn(checkName, `${def.blockId} block missing from ${agentId}/AGENTS.md`, true))
+        continue
+      }
+      await runtime.agents.writeWorkspaceFile(agentId, { path: 'AGENTS.md', content: injectBlock(current, def.blockId, expectedBody) })
+      results.push(fixed(checkName, `Added ${def.blockId} block to ${agentId}/AGENTS.md`))
+      continue
+    }
+
+    const currentBody = extractBlock(current, def.blockId) ?? ''
+    if (currentBody === expectedBody) {
+      results.push(ok(checkName, `${def.blockId} in ${agentId}/AGENTS.md is up to date`))
+    } else if (autoFix) {
+      await runtime.agents.writeWorkspaceFile(agentId, { path: 'AGENTS.md', content: injectBlock(current, def.blockId, expectedBody) })
+      results.push(fixed(checkName, `Updated ${def.blockId} block in ${agentId}/AGENTS.md`))
+    } else {
+      results.push(warn(checkName, `${def.blockId} block is outdated in ${agentId}/AGENTS.md`, true))
+    }
+  }
 
   return results
 }
@@ -342,7 +418,7 @@ Then exit — you will be automatically re-dispatched when their task completes.
 
   {
     blockId: 'workflow-rules',
-    contentFn: (agentId: string) => `## Bakin Workflow Rules
+    contentFn: (agentId: string, context: ManagedBlockContext) => `## Bakin Workflow Rules
 
 > Auto-managed by \`bakin doctor\`. Do not edit this block manually.
 
@@ -352,7 +428,7 @@ When Bakin dispatches a workflow step to you, the dispatch message contains ever
 
 2. **Submit output ONLY via mcporter:** \`mcporter call bakin-${agentId}.bakin_exec_submit_step taskId=<id> stepId=<step> --args '<json>'\`. Conversational output does NOT complete the step.
 
-3. **Do NOT move the task, create subtasks, or message ${getMainAgentName()}** for workflow tasks — the workflow engine handles all coordination.
+3. **Do NOT move the task, create subtasks, or message ${context.mainAgentName}** for workflow tasks — the workflow engine handles all coordination.
 
 4. **Address rejection feedback specifically.** If re-dispatched with "REVISION REQUIRED", read the feedback and produce genuinely revised output. The server rejects near-duplicate resubmissions.
 
@@ -419,6 +495,25 @@ export function applyAllManagedBlocks(autoFix: boolean): HealthCheckResult[] {
   const results: HealthCheckResult[] = []
   for (const block of MANAGED_BLOCKS) {
     results.push(...checkManagedBlock(block, autoFix))
+  }
+  return results
+}
+
+export async function applyAllManagedBlocksForRuntime(
+  runtime: AgentRuntimeAdapter,
+  autoFix: boolean,
+): Promise<HealthCheckResult[]> {
+  let agents: RuntimeAgent[]
+  try {
+    agents = await runtime.agents.list()
+  } catch (err) {
+    return [error('agent-managed-blocks', `Failed to list runtime agents: ${err instanceof Error ? err.message : String(err)}`)]
+  }
+
+  const context = runtimeManagedBlockContext(agents)
+  const results: HealthCheckResult[] = []
+  for (const block of MANAGED_BLOCKS) {
+    results.push(...await checkManagedBlockRuntime(runtime, block, autoFix, agents, context))
   }
   return results
 }
