@@ -48,7 +48,7 @@ export async function get(_req: Request): Promise<Response> {
     } catch { /* file read error */ }
   }
 
-  // 2. Pull task log entries from flow_runs (SQLite)
+  // 2. Pull task log entries from the task board
   try {
     const board = await getHookRegistry().invoke<TaskBoard>('tasks.readTaskboard', {})
     if (!board) throw new Error('tasks.readTaskboard hook returned nothing')
