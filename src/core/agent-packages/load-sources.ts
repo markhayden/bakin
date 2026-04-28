@@ -270,7 +270,7 @@ export function loadAgentPackageSources(contentDir: string = getContentDir()): L
 
   for (const [packageId, entry] of Object.entries(lockfile.packages)) {
     // Only kinds that contribute workflows/workflow-skills get scanned.
-    // skill-packs ship OpenClaw skills (filesystem) but no workflow content;
+    // skill-packs ship runtime skills (filesystem) but no workflow content;
     // knowledge-packs ship knowledge files (search-indexed elsewhere).
     if (entry.kind !== 'agent' && entry.kind !== 'workflow-pack') continue
     try {

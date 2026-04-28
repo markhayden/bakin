@@ -2,7 +2,7 @@
  * plugin-assets onboarding component (S-B in the workflows-plugin spec).
  *
  * Plugins ship runtime skill packages at
- * `defaults/openclaw-skills/{name}/SKILL.md` (+ optional `scripts/`,
+ * `defaults/runtime-skills/{name}/SKILL.md` (+ optional `scripts/`,
  * other sibling files). This component installs them through the configured
  * runtime adapter so agents can invoke them.
  *
@@ -76,7 +76,7 @@ function sha256OfFile(path: string): string {
 }
 
 /**
- * Walk a plugin's `defaults/openclaw-skills/*` directories and return
+ * Walk a plugin's `defaults/runtime-skills/*` directories and return
  * one entry per skill that has a `SKILL.md`. Skills are 1 directory deep.
  *
  * Exported so install + upgrade flows can record `installedSkills` into
@@ -85,7 +85,7 @@ function sha256OfFile(path: string): string {
  * doesn't have to trust on-disk `.installedBy` markers blindly.
  */
 export function findSkillsForPlugin(plugin: PluginEntry): Array<{ name: string; sourceDir: string }> {
-  const skillsRoot = join(plugin.path, 'defaults', 'openclaw-skills')
+  const skillsRoot = join(plugin.path, 'defaults', 'runtime-skills')
   if (!existsSync(skillsRoot)) return []
   const entries = readdirSync(skillsRoot, { withFileTypes: true })
   const skills: Array<{ name: string; sourceDir: string }> = []
@@ -275,7 +275,7 @@ async function check(): Promise<CheckResult> {
     return {
       name: 'plugin-assets',
       status: 'ok',
-      message: '0 plugin assets to install (no plugin ships defaults/openclaw-skills/)',
+      message: '0 plugin assets to install (no plugin ships defaults/runtime-skills/)',
       details: { totalAvailable: 0 },
     }
   }
@@ -338,7 +338,7 @@ export const pluginAssetsComponent: OnboardingComponent = {
 
 /**
  * Reconcile the lockfile's per-plugin `installedSkills` field with what's
- * actually in `defaults/openclaw-skills/` for each plugin entry. Best-
+ * actually in `defaults/runtime-skills/` for each plugin entry. Best-
  * effort — failures are logged but never throw. Called from
  * `installPluginAssets` so the onboarding-driven install path keeps the
  * lockfile in sync with what was projected to the runtime skill store.

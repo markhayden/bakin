@@ -95,7 +95,7 @@ export async function snapshotUninstall(input: SnapshotInput): Promise<SnapshotR
     }
 
     for (const skill of input.removedSkills ?? []) {
-      const skillRoot = join(stagingDir, 'openclaw-skills', skill.name)
+      const skillRoot = join(stagingDir, 'runtime-skills', skill.name)
       for (const [rel, content] of Object.entries(skill.files)) {
         if (!isSafeSnapshotRel(rel)) continue
         const dest = join(skillRoot, rel)
@@ -107,8 +107,8 @@ export async function snapshotUninstall(input: SnapshotInput): Promise<SnapshotR
 
     for (const dir of input.removedSkillDirs ?? []) {
       if (!existsSync(dir)) continue
-      const dest = join(stagingDir, 'openclaw-skills', basename(dir))
-      mkdirSync(join(stagingDir, 'openclaw-skills'), { recursive: true })
+      const dest = join(stagingDir, 'runtime-skills', basename(dir))
+      mkdirSync(join(stagingDir, 'runtime-skills'), { recursive: true })
       cpSync(dir, dest, { recursive: true, dereference: false })
       captured.push(dir)
     }
@@ -120,7 +120,7 @@ export async function snapshotUninstall(input: SnapshotInput): Promise<SnapshotR
     } else {
       // Tar the staging dir contents (not the staging dir itself) so the
       // tarball has clean top-level entries: plugins/, plugin-settings/,
-      // openclaw-skills/. `-C <staging>` enters the staging dir; `.` then
+      // runtime-skills/. `-C <staging>` enters the staging dir; `.` then
       // archives its contents.
       await spawnTar(['-czf', tmpPath, '-C', stagingDir, '.'])
     }

@@ -33,7 +33,7 @@ Companion to `.claude/specs/plugin-lifecycle.md`. Read the spec first for the *w
 | 5 | `src/lib/plugin-registry.ts` | Add `isCorePlugin(id)` predicate + `corePluginIds` Set. Populate during init. Wire `register` to capture `pluginId` for hook tracking. Wire activation log (#142 layer 1). | ~40 line addition; one new export. |
 | 6 | `scripts/lib/registry.ts` | Add `removeExecToolsByPlugin(pluginId): number` — filters by `bakin_exec_<pluginId>_*` name prefix. | +15 lines. |
 | 7 | `src/core/search-registry.ts` | Add `purgeContentType(name): Promise<number>` — atomic delete of all rows in `bakin_<name>` table; no-op if antfly disabled. | ~30 line addition. |
-| 8 | `src/core/onboarding/plugin-assets.ts` | Add `removePluginAssets(pluginId): Promise<{ removed, kept }>` — walks `~/.openclaw/skills/`, removes dirs whose `.installedBy.pluginId` matches and `.userEdited` is absent. | ~50 line addition. |
+| 8 | `src/core/onboarding/plugin-assets.ts` | Add `removePluginAssets(pluginId): Promise<{ removed, kept }>` — uses the runtime adapter to remove skills whose `.installedBy.pluginId` matches and `.userEdited` is absent. | ~50 line addition. |
 | 9 | `src/core/plugins/uninstall-snapshot.ts` | **New.** `snapshotUninstall({ pluginId, pluginDir, settingsFile, removedSkillDirs })` — builds `<id>-<ISO>.tar.gz` atomically into `~/.bakin/.uninstalled/`. | ~80 lines. |
 | 10 | `src/core/plugins/install.ts` | **New.** Extracted install flow (Zod manifest validation, lockfile write, consent prompt orchestration). Re-used by both `/api/plugins/install` and the (future) hot-reload path. | ~150 lines. |
 | 11 | `src/core/plugins/upgrade.ts` | **New.** `upgradePlugin(id, opts)` — git fetch / fast-forward + local re-cpSync, no-op detection, lockfile update, consent prompt for widened permissions. | ~200 lines. |
@@ -467,7 +467,7 @@ bunx tsc --noEmit -p tsconfig.app.json
 
 `src/core/onboarding/plugin-assets.ts`:
 - Add `removePluginAssets(pluginId: string): Promise<{ removed: number; kept: number; removedDirs: string[] }>` per spec §3.6
-- Walks `~/.openclaw/skills/`, reads each `.installedBy`, filters by `pluginId`, checks for `.userEdited` sentinel, removes or keeps accordingly
+- Uses the runtime adapter skill API, reads each `.installedBy`, filters by `pluginId`, checks for `.userEdited` sentinel, removes or keeps accordingly
 
 `src/core/plugins/uninstall-snapshot.ts` (new):
 - Implements `snapshotUninstall` per spec §3.7
@@ -518,7 +518,7 @@ bunx tsc --noEmit -p tsconfig.app.json
 - [ ] Tarball lands at `~/.bakin/.uninstalled/<id>-<ISO>.tar.gz` and contains plugin dir + settings + filtered skills
 - [ ] Plugin dir gone from `~/.bakin/plugins/`
 - [ ] Settings JSON gone from `~/.bakin/plugin-settings/`
-- [ ] OpenClaw skills owned by plugin are gone (except `.userEdited` ones — assert kept count)
+- [ ] runtime skills owned by plugin are gone (except `.userEdited` ones — assert kept count)
 - [ ] Lockfile entry gone
 - [ ] Hook handlers, exec tools, workflow nodes, channels, health checks, search content types all unregistered (assert via post-state inspection)
 - [ ] `onUninstall` throwing does NOT block any cleanup step
@@ -673,7 +673,7 @@ Key infrastructure:
 - `tests/fixtures/plugins/hermetic-git.ts` — git helpers using `execFileSync('git', [...], { cwd })`. Skip with clear message if `git` not on PATH (`which git` fails)
 - `tests/fixtures/plugins/fixture-plugins/minimal/` — `bakin-plugin.json` (`{ id: 'fixture-minimal', name: 'Minimal', version: '0.1.0', entry: { server: 'index.ts' }, permissions: [] }`) + `index.ts` (`export default { activate() {} } as BakinPlugin`)
 - `tests/fixtures/plugins/fixture-plugins/with-permissions/` — same shape, `permissions: ['storage.write', 'events.emit']`
-- `tests/fixtures/plugins/fixture-plugins/with-skills/` — same shape, plus `defaults/openclaw-skills/example/SKILL.md`
+- `tests/fixtures/plugins/fixture-plugins/with-skills/` — same shape, plus `defaults/runtime-skills/example/SKILL.md`
 
 Each test file follows CLAUDE.md isolation:
 - Mock `getContentDir` (both paths) → temp dir

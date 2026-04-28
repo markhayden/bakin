@@ -13,14 +13,14 @@ Two registries make plugin-shipped workflows possible without breaking the exist
 
 The workflows surface uses the word "skill" in two different places. They are unrelated systems:
 
-| | S-A — Workflow step skills | S-B — OpenClaw runtime skills |
+| | S-A — Workflow step skills | S-B — runtime skills |
 |---|---|---|
-| **Where it lives** | In-memory `pluginSkills` map + `~/.bakin/workflows/skills/*.md` | `~/.openclaw/skills/{name}/SKILL.md` (+ `scripts/`) |
-| **Who reads it** | Bakin's workflow runtime (injects body into agent prompt) | OpenClaw agents at runtime |
-| **How it ships** | `defaults/workflow-skills/*.md` → auto-registered by plugin loader at activation (`ctx.registerSkill`) | `defaults/openclaw-skills/{name}/` → installed to disk by `bakin install plugin-assets` |
+| **Where it lives** | In-memory `pluginSkills` map + `~/.bakin/workflows/skills/*.md` | Runtime adapter skill store (+ `scripts/`) |
+| **Who reads it** | Bakin's workflow runtime (injects body into agent prompt) | Runtime agents |
+| **How it ships** | `defaults/workflow-skills/*.md` → auto-registered by plugin loader at activation (`ctx.registerSkill`) | `defaults/runtime-skills/{name}/` → installed to disk by `bakin install plugin-assets` |
 | **Drift detection** | None — rebuilt every server boot | `.installedBy` JSON marker (sha256), `.userEdited` sentinel, `bakin doctor` surface |
 
-**Rule of thumb:** if it's a workflow `step.skill: write-copy`, it's S-A. If it's something an agent invokes via `/skill foo` inside OpenClaw, it's S-B.
+**Rule of thumb:** if it's a workflow `step.skill: write-copy`, it's S-A. If it's something an agent invokes through the runtime skill mechanism, it's S-B.
 
 ## Plugin Authoring Contract
 
@@ -31,7 +31,7 @@ plugins/<id>/
   defaults/
     workflows/             # *.yaml — registered via ctx.registerWorkflow at activate()
     workflow-skills/       # *.md   — auto-registered via ctx.registerSkill at load (S-A, in-memory)
-    openclaw-skills/       # {name}/SKILL.md (+ scripts/) — installed by `bakin install plugin-assets` (S-B, on disk)
+    runtime-skills/       # {name}/SKILL.md (+ scripts/) — installed by `bakin install plugin-assets` (S-B, on disk)
 ```
 
 None of the three are required. A plugin can ship any subset.
@@ -42,9 +42,9 @@ None of the three are required. A plugin can ship any subset.
 |-----------|--------|---------|
 | `defaults/workflows/` | `plugins/workflows/lib/load-defaults.ts` (called from the workflows plugin's `activate()`) | Server boot, every startup |
 | `defaults/workflow-skills/` | `src/lib/plugin-skill-loader.ts` (invoked by `src/lib/plugin-registry.ts` after every `activate()`) | Server boot, every startup, generic across all plugins |
-| `defaults/openclaw-skills/` | `src/core/onboarding/plugin-assets.ts` (`scanPluginAssets` + `installPluginAssets`) | `bakin install plugin-assets` (manual), or surfaced by `bakin doctor` |
+| `defaults/runtime-skills/` | `src/core/onboarding/plugin-assets.ts` (`scanPluginAssets` + `installPluginAssets`) | `bakin install plugin-assets` (manual), or surfaced by `bakin doctor` |
 
-The first two paths are in-memory only — every reboot rebuilds them from disk. The third writes to the OpenClaw home and needs explicit drift management.
+The first two paths are in-memory only — every reboot rebuilds them from disk. The third writes to the runtime skill store and needs explicit drift management.
 
 ## Source Registry
 
@@ -167,7 +167,7 @@ When a definition has no `layout.positions`, the editor runs `layoutNodes` from 
 ## Plugin-Assets Install Pipeline (S-B)
 
 ```
-~/.openclaw/skills/{name}/
+runtime skill store:
   SKILL.md
   scripts/...
   .installedBy        ← {"pluginId": "<id>", "sha256": "<hex>"}
@@ -182,7 +182,7 @@ installPluginAssets(plugins) → InstallReport // {installed, unchanged, skipped
 pluginAssetsComponent: OnboardingComponent   // .check() + .install() following the standard interface
 ```
 
-`discoverPlugins()` reads `bakin.config.ts` (built-in plugins) and walks `~/.bakin/plugins/{id}/bakin-plugin.json` (user plugins). Every OpenClaw path resolves through `getOpenClawPath()` from `packages/core/src/openclaw-home.ts` — the installer never hardcodes `~/.openclaw/`.
+`discoverPlugins()` reads `bakin.config.ts` (built-in plugins) and walks `~/.bakin/plugins/{id}/bakin-plugin.json` (user plugins). Runtime skill projection goes through the active runtime adapter; the installer never reaches provider storage directly.
 
 Drift rules:
 - **Missing** — no `SKILL.md` at the install path → `install` will copy.
@@ -210,7 +210,7 @@ Both are wired through `cmdOnboardingInstallSingle` / `cmdOnboardingCheckSingle`
 Same non-negotiable rules as the rest of the codebase:
 
 - Every test mocks `getContentDir` to a temp dir.
-- Every test that touches OpenClaw paths mocks `@bakin/core/openclaw-home` (`getOpenClawHome`, `getOpenClawPath`).
+- Every test that needs runtime skill storage mocks the runtime adapter.
 - The plugin-assets tests use a synthetic in-memory plugin under a temp dir — no checked-in fixture plugin.
 - Source-registry tests call `clearSourceRegistry()` in `beforeEach`/`afterEach` so global state stays clean across cases.
 

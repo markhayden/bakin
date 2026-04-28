@@ -133,8 +133,8 @@ const PluginLockEntrySchema = z.object({
    */
   lastSourceTreeSha: z.string().optional(),
   /**
-   * OpenClaw skill names (one segment, no slashes) this plugin installed
-   * via `defaults/openclaw-skills/<name>/SKILL.md` at install/upgrade
+   * Runtime skill names (one segment, no slashes) this plugin installed
+   * via `defaults/runtime-skills/<name>/SKILL.md` at install/upgrade
    * time. The remove flow uses this as the authoritative allowlist when
    * deciding which runtime skill entries to delete — defeats the
    * fake-`.installedBy` scorched-earth attack (security HIGH #2).

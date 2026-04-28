@@ -1,13 +1,13 @@
 /**
  * Tests for the plugin-assets onboarding component.
  *
- * The component installs OpenClaw runtime skills (S-B in the spec) that
- * plugins ship at `defaults/openclaw-skills/{name}/SKILL.md`. The
- * component is the only piece that touches `~/.openclaw/skills/` —
+ * The component installs runtime skills (S-B in the spec) that
+ * plugins ship at `defaults/runtime-skills/{name}/SKILL.md`. The
+ * component is the only piece that touches the runtime skill store -
  * everything else stays in plugin source on disk.
  *
- * All filesystem ops are confined to a temp dir; `getOpenClawHome` is
- * mocked so the component never touches the production OpenClaw home.
+ * All filesystem ops are confined to a temp dir; the runtime adapter is
+ * mocked so the component never touches the production runtime skill store.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
@@ -16,7 +16,7 @@ import { tmpdir } from 'os'
 import type { AgentRuntimeAdapter, RuntimeSkill } from '@bakin/core/adapters/runtime'
 
 const testDir = join(tmpdir(), `bakin-test-plugin-assets-${Date.now()}`)
-const openclawHome = join(testDir, 'openclaw')
+const runtimeSkillHome = join(testDir, 'runtime-skills-home')
 const bakinHome = join(testDir, 'bakin')
 
 mock.module('@bakin/core/main-agent', () => ({
@@ -36,10 +36,6 @@ mock.module('@/core/content-dir', () => ({
 mock.module('@bakin/core/content-dir', () => ({
   getContentDir: () => bakinHome,
   getBakinPaths: () => ({ workflows: join(bakinHome, 'workflows') }),
-}))
-mock.module('@bakin/core/openclaw-home', () => ({
-  getOpenClawHome: () => openclawHome,
-  getOpenClawPath: (...parts: string[]) => join(openclawHome, ...parts),
 }))
 mock.module('@/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
@@ -77,7 +73,7 @@ Write a cold outreach email to a SaaS founder. Personalize harder.
 
 function makePluginWithSkill(pluginId: string, skillName: string, body: string): string {
   const pluginDir = join(testDir, 'plugins', pluginId)
-  const skillDir = join(pluginDir, 'defaults', 'openclaw-skills', skillName)
+  const skillDir = join(pluginDir, 'defaults', 'runtime-skills', skillName)
   mkdirSync(skillDir, { recursive: true })
   writeFileSync(join(skillDir, 'SKILL.md'), body)
   return pluginDir
@@ -107,7 +103,7 @@ function readMarker(skillDir: string): unknown {
 }
 
 function installRuntimeMock(): void {
-  const skillRoot = join(openclawHome, 'skills')
+  const skillRoot = join(runtimeSkillHome, 'skills')
   const skillDir = (name: string) => join(skillRoot, name)
   ;(globalThis as TestGlobal).__bakinFallbackRuntimeAdapter = {
     skills: {
@@ -148,7 +144,7 @@ function installRuntimeMock(): void {
 
 describe('plugin-assets onboarding component', () => {
   beforeEach(() => {
-    mkdirSync(openclawHome, { recursive: true })
+    mkdirSync(runtimeSkillHome, { recursive: true })
     mkdirSync(bakinHome, { recursive: true })
     installRuntimeMock()
   })
@@ -157,7 +153,7 @@ describe('plugin-assets onboarding component', () => {
   })
 
   describe('scanPluginAssets', () => {
-    it('returns empty drift when no plugin ships defaults/openclaw-skills/', async () => {
+    it('returns empty drift when no plugin ships defaults/runtime-skills/', async () => {
       const pluginDir = join(testDir, 'plugins', 'noop')
       mkdirSync(pluginDir, { recursive: true })
 
@@ -170,7 +166,7 @@ describe('plugin-assets onboarding component', () => {
       expect(report.userEdited).toEqual([])
     })
 
-    it('reports a skill as missing when not yet on disk in OpenClaw', async () => {
+    it('reports a skill as missing when not yet in the runtime skill store', async () => {
       const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
 
       const report = await scanPluginAssets([{ id: 'sdr', path: pluginDir }])
@@ -195,7 +191,7 @@ describe('plugin-assets onboarding component', () => {
       await installPluginAssets([{ id: 'sdr', path: pluginDir }])
 
       // Plugin author updates their skill
-      writeFileSync(join(pluginDir, 'defaults', 'openclaw-skills', 'cold-email', 'SKILL.md'), SKILL_BODY_V2)
+      writeFileSync(join(pluginDir, 'defaults', 'runtime-skills', 'cold-email', 'SKILL.md'), SKILL_BODY_V2)
 
       const report = await scanPluginAssets([{ id: 'sdr', path: pluginDir }])
 
@@ -207,7 +203,7 @@ describe('plugin-assets onboarding component', () => {
       const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
       await installPluginAssets([{ id: 'sdr', path: pluginDir }])
 
-      writeFileSync(join(openclawHome, 'skills', 'cold-email', '.userEdited'), '')
+      writeFileSync(join(runtimeSkillHome, 'skills', 'cold-email', '.userEdited'), '')
 
       const report = await scanPluginAssets([{ id: 'sdr', path: pluginDir }])
 
@@ -218,12 +214,12 @@ describe('plugin-assets onboarding component', () => {
   })
 
   describe('installPluginAssets', () => {
-    it('copies SKILL.md to ~/.openclaw/skills/{name}/SKILL.md', async () => {
+    it('copies SKILL.md to the runtime skill store', async () => {
       const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
 
       const result = await installPluginAssets([{ id: 'sdr', path: pluginDir }])
 
-      const installedPath = join(openclawHome, 'skills', 'cold-email', 'SKILL.md')
+      const installedPath = join(runtimeSkillHome, 'skills', 'cold-email', 'SKILL.md')
       expect(existsSync(installedPath)).toBe(true)
       expect(readFileSync(installedPath, 'utf-8')).toBe(SKILL_BODY)
       expect(result.installed.length).toBe(1)
@@ -235,7 +231,7 @@ describe('plugin-assets onboarding component', () => {
 
       await installPluginAssets([{ id: 'sdr', path: pluginDir }])
 
-      const markerPath = join(openclawHome, 'skills', 'cold-email', '.installedBy')
+      const markerPath = join(runtimeSkillHome, 'skills', 'cold-email', '.installedBy')
       expect(existsSync(markerPath)).toBe(true)
       const marker = JSON.parse(readFileSync(markerPath, 'utf-8'))
       expect(marker.pluginId).toBe('sdr')
@@ -257,10 +253,10 @@ describe('plugin-assets onboarding component', () => {
       const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
       await installPluginAssets([{ id: 'sdr', path: pluginDir }])
 
-      writeFileSync(join(pluginDir, 'defaults', 'openclaw-skills', 'cold-email', 'SKILL.md'), SKILL_BODY_V2)
+      writeFileSync(join(pluginDir, 'defaults', 'runtime-skills', 'cold-email', 'SKILL.md'), SKILL_BODY_V2)
       const result = await installPluginAssets([{ id: 'sdr', path: pluginDir }])
 
-      const installedPath = join(openclawHome, 'skills', 'cold-email', 'SKILL.md')
+      const installedPath = join(runtimeSkillHome, 'skills', 'cold-email', 'SKILL.md')
       expect(readFileSync(installedPath, 'utf-8')).toBe(SKILL_BODY_V2)
       expect(result.installed.length).toBe(1)
     })
@@ -268,27 +264,27 @@ describe('plugin-assets onboarding component', () => {
     it('skips skills with .userEdited sentinel and records them in skipped', async () => {
       const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
       await installPluginAssets([{ id: 'sdr', path: pluginDir }])
-      writeFileSync(join(openclawHome, 'skills', 'cold-email', '.userEdited'), '')
+      writeFileSync(join(runtimeSkillHome, 'skills', 'cold-email', '.userEdited'), '')
 
-      writeFileSync(join(pluginDir, 'defaults', 'openclaw-skills', 'cold-email', 'SKILL.md'), SKILL_BODY_V2)
+      writeFileSync(join(pluginDir, 'defaults', 'runtime-skills', 'cold-email', 'SKILL.md'), SKILL_BODY_V2)
       const result = await installPluginAssets([{ id: 'sdr', path: pluginDir }])
 
       expect(result.skipped).toEqual([
         { pluginId: 'sdr', name: 'cold-email', reason: 'userEdited' },
       ])
-      const installedPath = join(openclawHome, 'skills', 'cold-email', 'SKILL.md')
+      const installedPath = join(runtimeSkillHome, 'skills', 'cold-email', 'SKILL.md')
       expect(readFileSync(installedPath, 'utf-8')).toBe(SKILL_BODY)
     })
 
     it('copies sibling files in the skill directory (e.g. scripts/)', async () => {
       const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
-      const scriptsDir = join(pluginDir, 'defaults', 'openclaw-skills', 'cold-email', 'scripts')
+      const scriptsDir = join(pluginDir, 'defaults', 'runtime-skills', 'cold-email', 'scripts')
       mkdirSync(scriptsDir, { recursive: true })
       writeFileSync(join(scriptsDir, 'helper.sh'), '#!/bin/sh\necho hi\n')
 
       await installPluginAssets([{ id: 'sdr', path: pluginDir }])
 
-      const installedScript = join(openclawHome, 'skills', 'cold-email', 'scripts', 'helper.sh')
+      const installedScript = join(runtimeSkillHome, 'skills', 'cold-email', 'scripts', 'helper.sh')
       expect(existsSync(installedScript)).toBe(true)
       expect(readFileSync(installedScript, 'utf-8')).toContain('echo hi')
     })
@@ -296,7 +292,7 @@ describe('plugin-assets onboarding component', () => {
     it('reconciles installedSkills into the lockfile entry (C25 — was silently dead in tests)', async () => {
       // Seed a lockfile entry as if `bakin plugins install sdr` already ran.
       // installPluginAssets should then update its installedSkills to match
-      // what's on disk in defaults/openclaw-skills/.
+      // what's on disk in defaults/runtime-skills/.
       const { addPlugin, readPluginLockfile, writePluginLockfile } =
         await import('../../../packages/core/src/plugins/lockfile')
       const pluginDir = makePluginWithSkill('sdr', 'cold-email', SKILL_BODY)
