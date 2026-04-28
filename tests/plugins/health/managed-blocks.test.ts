@@ -79,7 +79,8 @@ mock.module('@bakin/core/openclaw-config', () => ({
     ].find((a) => a.id === id) ?? null,
 }))
 
-import { applyAllManagedBlocks } from '../../../plugins/health/lib/managed-blocks'
+import { applyAllManagedBlocks, applyAllManagedBlocksForRuntime } from '../../../plugins/health/lib/managed-blocks'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -251,5 +252,32 @@ describe('applyAllManagedBlocks — missing AGENTS.md', () => {
     const results = applyAllManagedBlocks(true)
     expect(results.some((r) => r.status === 'warn' && r.message.includes('AGENTS.md not found'))).toBe(true)
     expect(existsSync(agentsMdPath('pixel'))).toBe(false)
+  })
+})
+
+describe('applyAllManagedBlocksForRuntime', () => {
+  it('uses runtime agents and workspace files instead of OpenClaw paths', async () => {
+    const files = new Map<string, string>([
+      ['main:AGENTS.md', '# Main\n'],
+      ['pixel:AGENTS.md', '# Pixel\n'],
+    ])
+    const runtime = createMockRuntimeAdapter()
+    runtime.agents.list = async () => [
+      { id: 'main', name: 'Main', role: 'Orchestrator', status: 'active' },
+      { id: 'pixel', name: 'Pixel', role: 'Image', status: 'active' },
+    ]
+    runtime.agents.readWorkspaceFile = async (agentId, path) => {
+      const content = files.get(`${agentId}:${path}`)
+      return content === undefined ? null : { path, content }
+    }
+    runtime.agents.writeWorkspaceFile = async (agentId, file) => {
+      files.set(`${agentId}:${file.path}`, file.content)
+    }
+
+    const results = await applyAllManagedBlocksForRuntime(runtime, true)
+
+    expect(results.some((r) => r.status === 'fixed')).toBe(true)
+    expect(files.get('pixel:AGENTS.md')).toContain('<!-- bakin:mission-control:start -->')
+    expect(files.get('main:AGENTS.md')).toBe('# Main\n')
   })
 })

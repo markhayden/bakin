@@ -25,7 +25,7 @@ import { checkAntfly } from './lib/system-checks/antfly'
 import { checkOrchestratorRules } from './lib/system-checks/orchestrator-rules'
 import { checkAndSyncSkill } from './lib/system-checks/sync-skill'
 import { checkPluginAssets } from './lib/system-checks/plugin-assets'
-import { applyAllManagedBlocks } from './lib/managed-blocks'
+import { applyAllManagedBlocksForRuntime } from './lib/managed-blocks'
 // Registry accessors live on globalThis because Next.js API routes get
 // separate webpack-compiled module instances with empty Maps. The custom
 // server (server.ts) registers the real accessors after plugin init.
@@ -335,7 +335,7 @@ const healthPlugin: BakinPlugin = {
       id: 'managed-blocks',
       name: 'Per-agent managed blocks in AGENTS.md',
       autoFix: true,
-      run: () => Promise.resolve(applyAllManagedBlocks(getSettings().doctor.autoFixSkill)),
+      run: () => applyAllManagedBlocksForRuntime(ctx.runtime, getSettings().doctor.autoFixSkill),
     })
   },
 
