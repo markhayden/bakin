@@ -13,7 +13,7 @@ export interface AssetScoreInfo {
 interface AssetsGridProps {
   assets: AssetMeta[]
   onSelect: (asset: AssetMeta) => void
-  onDelete: (path: string) => void
+  onDelete: (filename: string) => void
   /** When present, show search relevance score on each card (keyed by asset path) */
   scores?: Map<string, AssetScoreInfo>
 }
