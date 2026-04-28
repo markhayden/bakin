@@ -7,11 +7,6 @@ import { tmpdir } from 'os'
 // watchdog receives its contentDir via `start()`, but any transitive import
 // must be prevented from reading/writing ~/.bakin/.
 const contentDirMockPath = join(tmpdir(), `bakin-watchdog-test-${Date.now()}`)
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
 
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => contentDirMockPath,
@@ -56,10 +51,29 @@ mock.module('../../src/core/sse', () => ({
   broadcast: mock(),
 }))
 
-mock.module('../../src/core/openclaw-client', () => ({
-  sendChannelMessage: mock().mockResolvedValue(undefined),
-  sendMessage: mock().mockResolvedValue(undefined),
-  getAgentLastReply: mock().mockReturnValue(null),
+const mockAgentLastReply = mock((_agentId: string) => null as number | null)
+const mockRuntimeSend = mock((...args: unknown[]) => {
+  void args
+  return Promise.resolve({ id: 'runtime-msg' })
+})
+const mockRuntimeChannelSend = mock((...args: unknown[]) => {
+  void args
+  return Promise.resolve({ deliveries: [] })
+})
+
+mock.module('../../src/core/runtime-registry', () => ({
+  getAgentLastReply: (agentId: string) => mockAgentLastReply(agentId),
+  getRuntimeAdapter: () => ({
+    agents: {
+      list: mock(async () => [{ id: 'main', name: 'Main', status: 'active' }]),
+    },
+    messaging: {
+      send: (...args: unknown[]) => mockRuntimeSend(...args),
+    },
+    channels: {
+      sendMessage: (...args: unknown[]) => mockRuntimeChannelSend(...args),
+    },
+  }),
 }))
 
 mock.module('../../src/lib/plugin-registry', () => ({
@@ -89,8 +103,9 @@ describe('watchdog', () => {
     mock.clearAllMocks()
     // Default: no recorded gateway reply for any agent (forces watchdog
     // to fall back to the heartbeat-file path). Individual tests override.
-    const openclaw = await import('../../src/core/openclaw-client')
-    vi.mocked(openclaw.getAgentLastReply).mockReturnValue(null)
+    mockAgentLastReply.mockReturnValue(null)
+    mockRuntimeSend.mockResolvedValue({ id: 'runtime-msg' })
+    mockRuntimeChannelSend.mockResolvedValue({ deliveries: [] })
   })
 
   afterEach(() => {
@@ -106,11 +121,11 @@ describe('watchdog', () => {
 
   describe('start and stop', () => {
     it('starts without throwing', () => {
-      expect(() => start(tempDir, 3737)).not.toThrow()
+      expect(() => start(tempDir)).not.toThrow()
     })
 
     it('stop is idempotent', () => {
-      start(tempDir, 3737)
+      start(tempDir)
       stop()
       expect(() => stop()).not.toThrow()
     })
@@ -125,7 +140,7 @@ describe('watchdog', () => {
       const hookRegistry = getHookRegistry()
       vi.mocked(hookRegistry.invoke).mockResolvedValue(undefined)
 
-      start(tempDir, 3737)
+      start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
 
       expect(vi.mocked(broadcast)).not.toHaveBeenCalled()
@@ -137,7 +152,7 @@ describe('watchdog', () => {
         columns: { todo: [], inProgress: [], done: [] },
       })
 
-      start(tempDir, 3737)
+      start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
 
       expect(vi.mocked(broadcast)).not.toHaveBeenCalled()
@@ -169,7 +184,7 @@ describe('watchdog', () => {
         JSON.stringify({ timestamp: new Date().toISOString() }),
       )
 
-      start(tempDir, 3737)
+      start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
 
       expect(vi.mocked(broadcast)).toHaveBeenCalledWith(
@@ -205,7 +220,7 @@ describe('watchdog', () => {
       // Agent heartbeat is stale (no heartbeat file)
       vi.mocked(isStale).mockReturnValue(true)
 
-      start(tempDir, 3737)
+      start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
 
       // Should have called moveTask to recover
@@ -249,10 +264,9 @@ describe('watchdog', () => {
       // Heartbeat file is stale...
       vi.mocked(isStale).mockReturnValue(true)
       // ...but the gateway just replied successfully, so the agent is alive.
-      const openclaw = await import('../../src/core/openclaw-client')
-      vi.mocked(openclaw.getAgentLastReply).mockReturnValue(Date.now())
+      mockAgentLastReply.mockReturnValue(Date.now())
 
-      start(tempDir, 3737)
+      start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
 
       // No recovery should fire — the task is stuck but the agent is online,
@@ -291,7 +305,7 @@ describe('watchdog', () => {
 
       vi.mocked(isStale).mockReturnValue(true)
 
-      start(tempDir, 3737)
+      start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
 
       expect(invokeMock).toHaveBeenCalledWith('tasks.blockTask', expect.objectContaining({
@@ -341,7 +355,7 @@ describe('watchdog', () => {
       // Heartbeat stale — so absent the guard this would auto-recover.
       vi.mocked(isStale).mockReturnValue(true)
 
-      start(tempDir, 3737)
+      start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
 
       // Guard must block both branches of the recovery decision.
@@ -390,7 +404,7 @@ describe('watchdog', () => {
         },
       })
 
-      start(tempDir, 3737)
+      start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
 
       expect(vi.mocked(broadcast)).toHaveBeenCalledWith(
@@ -402,6 +416,10 @@ describe('watchdog', () => {
         'watchdog',
         expect.objectContaining({ id: 'task-bp' }),
       )
+      expect(mockRuntimeSend).toHaveBeenCalledWith(expect.objectContaining({
+        agentId: 'main',
+        content: expect.stringContaining('Possible rule bypass'),
+      }))
     })
 
     it('ignores watchdog own log entries', async () => {
@@ -423,7 +441,7 @@ describe('watchdog', () => {
         },
       })
 
-      start(tempDir, 3737)
+      start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
 
       expect(vi.mocked(appendAudit)).not.toHaveBeenCalledWith(
