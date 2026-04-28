@@ -167,7 +167,7 @@ describe('recentRoute — default behavior', () => {
     expect(res.status).toBe(200)
     expect(Array.isArray(body.results)).toBe(true)
     expect(body.aggregations).toBeDefined()
-    expect(body.meta.source).toBe('antfly')
+    expect(body.meta.source).toBe('search')
   })
 })
 

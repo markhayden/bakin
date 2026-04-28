@@ -3,7 +3,7 @@
  *
  *   GET /checkpoints?agent=<id>[&sessionId=<id>][&limit=<n>&offset=<n>]
  *         → list compaction checkpoints for an agent (optionally scoped
- *           to one session), Antfly-backed.
+ *           to one session), search-backed.
  *   GET /checkpoints/:agent/:sessionId/:checkpointId
  *         → one checkpoint detail.
  *

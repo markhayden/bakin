@@ -1,9 +1,9 @@
 /**
  * Brainstorm session search indexer.
  *
- * Builds Antfly search documents for planning sessions stored as JSON
+ * Builds search documents for planning sessions stored as JSON
  * under `~/.bakin/messaging/sessions/*.json`. Per spec §5.1d, only
- * brainstorm sessions get Antfly search — calendar items are out of
+ * brainstorm sessions get indexed search — calendar items are out of
  * scope for this content type and get a local substring filter instead.
  *
  * Perf note (spec §6 R5 / A8): concatenating every message body plus

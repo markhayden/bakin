@@ -51,7 +51,7 @@ function makeCtx(results: SearchResult[] = []): PluginContext {
       transform: mock(async () => {}),
       query: mock(async (p) => ({
         results,
-        meta: { query: p.q, total: results.length, took_ms: 0, source: 'antfly' },
+        meta: { query: p.q, total: results.length, took_ms: 0, source: 'search' },
       } satisfies SearchResponse)),
     },
     hooks: { register: mock(() => () => {}), has: mock(() => false), invoke: mock(async () => undefined) },

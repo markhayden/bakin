@@ -87,7 +87,7 @@ const crossTableSearchMock = mock(async (q: string, opts?: { table?: string; lim
       aggregations: opts.facets?.length
         ? Object.fromEntries(opts.facets.map(f => [f, [{ value: 'todo', count: 3 }]]))
         : undefined,
-      meta: { query: q, total: 1, took_ms: 5, source: 'antfly' as const },
+      meta: { query: q, total: 1, took_ms: 5, source: 'search' as const },
     }
   }
   // Cross-plugin
@@ -96,7 +96,7 @@ const crossTableSearchMock = mock(async (q: string, opts?: { table?: string; lim
       { id: 'doc-1', title: `match for ${q}`, _table: 'bakin_tasks', _score: 0.9 },
       { id: 'doc-2', title: `also for ${q}`, _table: 'bakin_assets', _score: 0.7 },
     ],
-    meta: { query: q, total: 2, took_ms: 12, source: 'antfly' as const },
+    meta: { query: q, total: 2, took_ms: 12, source: 'search' as const },
   }
 })
 

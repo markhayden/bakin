@@ -62,7 +62,7 @@ function makeCtx(perTierTotal: Record<string, number>): PluginContext {
         const total = perTierTotal[tier] ?? 0
         return {
           results: [],
-          meta: { query: p.q, total, took_ms: 0, source: 'antfly' },
+          meta: { query: p.q, total, took_ms: 0, source: 'search' },
         } satisfies SearchResponse
       }),
     },
@@ -114,7 +114,7 @@ describe('memory_status', () => {
       if (p.filters?.tier === 'turn') throw new Error('boom')
       const tier = p.filters?.tier ?? ''
       const total = tier === 'audit' ? 10 : 0
-      return { results: [], meta: { query: p.q, total, took_ms: 0, source: 'antfly' } } satisfies SearchResponse
+      return { results: [], meta: { query: p.q, total, took_ms: 0, source: 'search' } } satisfies SearchResponse
     })
     const res = await createMemoryStatusTool(ctx).handler({}, 'system')
     expect(res.ok).toBe(true)

@@ -3,7 +3,7 @@
  *
  * Shared functions that both REST route handlers and MCP tool handlers call.
  * Each function wraps core task mutations with their required side effects:
- * SSE broadcast, audit logging, continuation triggers, Antfly indexing, etc.
+ * SSE broadcast, audit logging, continuation triggers, search indexing, etc.
  *
  * This prevents logic duplication and drift between the REST and MCP paths.
  */
@@ -73,7 +73,7 @@ export async function logProgress(
 
 /**
  * Move a task between columns with all side effects.
- * Includes: audit, workflow done-guard, continuation trigger, Antfly indexing.
+ * Includes: audit, workflow done-guard, continuation trigger, search indexing.
  */
 export async function moveTaskWithEffects(
   taskId: string,

@@ -24,7 +24,7 @@ interface AssetFiltersProps {
   view: string
   onViewChange: (view: string) => void
   onAdd?: () => void
-  /** Aggregation counts from Antfly search (type → count) */
+  /** Aggregation counts from search (type → count) */
   typeCounts?: Record<string, number>
 }
 

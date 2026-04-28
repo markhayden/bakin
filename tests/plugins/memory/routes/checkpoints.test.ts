@@ -126,7 +126,7 @@ describe('checkpointsListRoute — handler', () => {
       results: [
         { id: 'checkpoint:abcd', table: 'bakin_memory', score: 0.9, fields: { title: 'cp' } },
       ],
-      meta: { query: '', total: 1, took_ms: 1, source: 'antfly' },
+      meta: { query: '', total: 1, took_ms: 1, source: 'search' },
     })
     const res = await checkpointsListRoute.handler(
       req('/checkpoints', { agent: 'main' }),
@@ -211,7 +211,7 @@ describe('checkpointDetailRoute — handler', () => {
           },
         },
       ],
-      meta: { query: '', total: 2, took_ms: 1, source: 'antfly' },
+      meta: { query: '', total: 2, took_ms: 1, source: 'search' },
     })
     const res = await checkpointDetailRoute.handler(
       req('/checkpoints/main/sess-1/cp-a', {
@@ -241,7 +241,7 @@ describe('checkpointDetailRoute — handler', () => {
           },
         },
       ],
-      meta: { query: '', total: 1, took_ms: 1, source: 'antfly' },
+      meta: { query: '', total: 1, took_ms: 1, source: 'search' },
     })
     const res = await checkpointDetailRoute.handler(
       req('/checkpoints/main/sess-1/cp-a', {
@@ -260,7 +260,7 @@ describe('checkpointDetailRoute — handler', () => {
       results: [
         { id: 'checkpoint:bad', table: 'bakin_memory', score: 0.3, fields: { meta: '{not json' } },
       ],
-      meta: { query: '', total: 1, took_ms: 1, source: 'antfly' },
+      meta: { query: '', total: 1, took_ms: 1, source: 'search' },
     })
     const res = await checkpointDetailRoute.handler(
       req('/checkpoints/main/sess-1/cp-a', {

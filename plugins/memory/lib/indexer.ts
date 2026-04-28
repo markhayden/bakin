@@ -1,5 +1,5 @@
 /**
- * MemoryIndexer — writes rows into the `bakin_memory` Antfly table.
+ * MemoryIndexer — writes rows into the `bakin_memory` search table.
  *
  * Owns the table's entire write path across all tiers. Per-tier logic grows
  * commit by commit: C3 audit, C4 durable, C5 daily-notes, C6 session+turn,

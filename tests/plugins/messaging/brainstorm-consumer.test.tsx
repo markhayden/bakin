@@ -5,7 +5,7 @@
  *
  * Covers the C13 wiring: BrainstormView consumes `useSearch({ plugin:
  * 'messaging' })` and feeds `searchResults` into `SessionList`, which
- * filters its locally-fetched sessions by Antfly hits (stripping the
+ * filters its locally-fetched sessions by search hits (stripping the
  * `brainstorm-` key prefix) and falls back to a local title/agentId
  * substring filter when the hook returns nothing.
  */
@@ -243,7 +243,7 @@ describe('BrainstormView (search consumer)', () => {
     })
   })
 
-  it('filters session list to Antfly hits when results are non-empty (strips brainstorm- prefix)', async () => {
+  it('filters session list to search hits when results are non-empty (strips brainstorm- prefix)', async () => {
     hookState.results = [
       { id: 'brainstorm-sess-recipes', table: 'bakin_messaging_brainstorm', score: 0.95, fields: {} },
     ]
@@ -263,7 +263,7 @@ describe('BrainstormView (search consumer)', () => {
   })
 
   it('falls back to local title/agentId substring when searchHook.results is empty', async () => {
-    hookState.results = [] // Antfly returned nothing
+    hookState.results = [] // Search returned nothing
     render(<BrainstormView />)
     await waitFor(() => {
       expect(screen.getByText('Outdoor sprint')).toBeDefined()

@@ -2,7 +2,7 @@
  * Memory plugin — server entry point (v2 rebuild, C2).
  *
  * Read-only observability over every OpenClaw memory tier plus Bakin's own
- * audit log, surfaced through a single `bakin_memory` Antfly table. Per-tier
+ * audit log, surfaced through a single `bakin_memory` search table. Per-tier
  * routes, UI, and indexer logic land in subsequent commits (C3–C8).
  *
  * This file deliberately stays small: it (a) registers the `bakin_memory`
@@ -282,7 +282,7 @@ const memoryPlugin: BakinPlugin = {
     // ─── Health check (migrated out of core/doctor.ts per #139 C5) ──────
     ctx.registerHealthCheck({
       id: 'search-tables',
-      name: 'Antfly search-table stats',
+      name: 'Search table stats',
       run: () => checkSearchTables(),
     })
 

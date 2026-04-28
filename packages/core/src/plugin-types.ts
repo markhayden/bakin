@@ -339,12 +339,12 @@ export interface PluginContext {
   activity: ActivityAPI
   /** Cross-plugin hook registration */
   hooks: HookAPI
-  /** Antfly-backed search — register content types, index, query */
+  /** Adapter-backed search — register content types, index, query */
   search: SearchAPI
 }
 
 // ---------------------------------------------------------------------------
-// Search API (Antfly-backed vector + full-text search)
+// Search API (adapter-backed vector + full-text search)
 // ---------------------------------------------------------------------------
 
 /** Field type for search content type schemas */
@@ -360,7 +360,7 @@ export interface SearchSchemaField {
  * and optional chunker config.
  */
 export interface SearchIndexDefinition {
-  /** Index name as stored in Antfly. Must be stable across restarts. */
+  /** Index name as stored by the search adapter. Must be stable across restarts. */
   name: string
   /** Ref into settings.antfly.embedders — 'default', 'visual', or custom. */
   embedderRef: string
@@ -399,12 +399,9 @@ export interface SearchContentTypeDefinition {
   facets?: string[]
   /**
    * Document field to use as input for the cross-encoder reranker. When
-   * set, queries against this content type attach Antfly's reranker
-   * (configured in settings.antfly.search.reranker) and score the
-   * query-document pair using the value at this field. When unset,
-   * queries skip reranking for this content type — Antfly requires a
-   * `field` or `template` in the reranker config, and passing an
-   * unconfigured reranker produces a 400 from the server.
+   * set, queries against this content type attach the configured reranker
+   * and score the query-document pair using the value at this field.
+   * When unset, queries skip reranking for this content type.
    */
   rerankField?: string
   /** TTL duration (Go format: '24h', '7d', '30d') */
@@ -449,16 +446,16 @@ export interface SearchQueryParams {
    */
   rerank?: boolean
   /**
-   * Raw Antfly aggregations passed through unchanged to QueryRequest.
+   * Raw adapter-specific aggregations passed through unchanged to the query layer.
    * Use for date histograms, range buckets, stats aggregations, or any
    * other shape beyond the term-facet convenience in `facets`. Merged
    * with facet-derived aggregations (these win on key collision).
-   * See Antfly API docs for the aggregation schema.
+   * See the active search adapter docs for the aggregation schema.
    */
   aggregations?: Record<string, unknown>
   /**
-   * Search strategy override. Defaults to the site-wide strategy from
-   * `antfly.search.strategy`. Pass 'full_text_only' for filter-driven
+   * Search strategy override. Defaults to the site-wide search strategy.
+   * Pass 'full_text_only' for filter-driven
    * counts or ID lookups — semantic search rejects `limit: 0` queries
    * with the "semantic search requires topk limit to be positive" error.
    */
@@ -484,7 +481,7 @@ export interface SearchResponse {
    */
   aggregations?: Record<string, Array<{ value: string; count: number }>>
   /**
-   * Raw aggregation response from Antfly, unmodified. Populated whenever
+   * Raw aggregation response from the search adapter, unmodified. Populated whenever
    * the underlying query returned aggregations — use this for non-term
    * shapes like date_histogram, range, stats, etc.
    */
@@ -493,7 +490,7 @@ export interface SearchResponse {
     query: string
     total: number
     took_ms: number
-    source: 'antfly' | 'fallback'
+    source: 'search' | 'fallback'
   }
 }
 
@@ -583,7 +580,7 @@ export interface FileBackedContentTypeDefinition extends SearchContentTypeDefini
 export interface SearchAPI {
   /**
    * Register a content type this plugin will index.
-   * Must be called during activate(). Creates the Antfly table if needed.
+   * Must be called during activate(). Creates the search table if needed.
    *
    * Prefer `registerFileBackedContentType` when the source of truth is
    * a file under `~/.bakin/` — it wires up watcher hooks and startup

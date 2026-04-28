@@ -19,7 +19,7 @@ interface FacetFilterProps {
   onChange: (selected: string[]) => void
   /** Show search input when options exceed this count (default: 6) */
   searchThreshold?: number
-  /** Optional aggregation counts from Antfly search (value → count) */
+  /** Optional aggregation counts from search (value → count) */
   counts?: Record<string, number>
 }
 
