@@ -22,11 +22,13 @@
 import { selectRuntimeMainAgent, type AgentRuntimeAdapter, type RuntimeAgent } from '@bakin/core/adapters/runtime'
 import { createLogger } from '../logger'
 import { createAppServices, maybeGetAppServices } from '../app-services'
+import { DEFAULT_RUNTIME_ADAPTER_SUPPORT } from '../runtime-adapter-factory'
+import { readAllowedRuntimeConfigRaw } from '../runtime-config-raw'
 import type { CheckResult, InstallResult, OnboardingComponent } from './types'
 
 const log = createLogger('onboarding:runtime')
 
-const SETUP_URL = 'https://openclaw.ai/'
+const SETUP_URL = DEFAULT_RUNTIME_ADAPTER_SUPPORT.setupUrl
 const SETUP_MESSAGE = `A runtime adapter is required. Configure the active runtime adapter and rerun onboarding. Current runtime adapter setup docs: ${SETUP_URL}`
 
 interface RuntimeConfigForIntegrity {
@@ -176,7 +178,11 @@ async function check(): Promise<CheckResult> {
 
   let config: RuntimeConfigForIntegrity | null
   try {
-    config = await runtime.config.raw<RuntimeConfigForIntegrity | null>('*', 'onboarding.runtime.integrity')
+    config = await readAllowedRuntimeConfigRaw<RuntimeConfigForIntegrity>(
+      runtime,
+      '*',
+      'onboarding.runtime.integrity'
+    )
   } catch (err) {
     return {
       name: 'runtime',
