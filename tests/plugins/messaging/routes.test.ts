@@ -24,12 +24,6 @@ process.env.OPENCLAW_HOME = testDir + '-openclaw'
 // Mocks — must be before any plugin imports
 // ---------------------------------------------------------------------------
 
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
-
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ messaging: testDir }),
@@ -331,11 +325,8 @@ describe('Calendar routes', () => {
 
     it('approves a review item to published (mocking execFile)', async () => {
       seedItems([makeItem({ id: 'appr-2', status: 'review', draft: { caption: 'Hello!' } })])
-
-      // Mock child_process.execFile used for Discord posting
-      mock.module('child_process', () => ({
-        execFile: mock((_cmd: string, _args: string[], cb: Function) => cb(null, '', '')),
-      }))
+      const sendMessage = mock(async () => ({ deliveries: [] }))
+      plugin.ctx.runtime.channels.sendMessage = sendMessage
 
       const route = findRoute(plugin.routes, 'POST', '/:itemId/approve')!
       const { status, body } = await callRoute(route, plugin.ctx, {
@@ -345,6 +336,13 @@ describe('Calendar routes', () => {
       expect(status).toBe(200)
       expect(body.ok).toBe(true)
       expect((body.item as CalendarItem).status).toBe('published')
+      expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+        channels: ['discord'],
+        message: expect.objectContaining({
+          body: 'Hello!',
+          metadata: { target: 'channel:1483917792745885768' },
+        }),
+      }))
     })
 
     it('returns 404 for non-existent item', async () => {
