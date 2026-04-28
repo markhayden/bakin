@@ -28,11 +28,11 @@ export async function handleUpload(req: Request, ctx: PluginContext): Promise<Re
   const maxFileSizeBytes = maxFileSizeMB * 1024 * 1024
 
   // Extract and validate form fields
-  const rawTaskId = String(formData.get('taskId') || '').trim() || '_unlinked'
-  if (rawTaskId !== '_unlinked' && (rawTaskId.includes('/') || rawTaskId.includes('\\') || rawTaskId.includes('..'))) {
+  const rawTaskId = String(formData.get('taskId') || '').trim()
+  if (rawTaskId && (rawTaskId.includes('/') || rawTaskId.includes('\\') || rawTaskId.includes('..'))) {
     return Response.json({ error: 'Invalid taskId' }, { status: 400 })
   }
-  const taskId = rawTaskId
+  const taskId = rawTaskId || null
   const description = (formData.get('description') as string) || undefined
   const tagsRaw = formData.get('tags') as string
   const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : undefined
@@ -101,7 +101,7 @@ export async function handleUpload(req: Request, ctx: PluginContext): Promise<Re
       try { unlinkSync(tmpPath) } catch { /* best-effort */ }
 
       if (result.ok) {
-        ctx.activity.log('user', `Uploaded "${file.name}"`, { taskId: taskId !== '_unlinked' ? taskId : undefined })
+        ctx.activity.log('user', `Uploaded "${file.name}"`, taskId ? { taskId } : {})
         ctx.activity.audit('uploaded', 'user', { path: result.path, source, taskId })
       }
     }
