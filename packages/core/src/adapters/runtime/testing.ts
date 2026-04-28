@@ -93,6 +93,11 @@ export function createMockRuntimeAdapter(
       listTiers: async () => [],
       listEntries: async () => [],
       getEntry: async () => null,
+      statEntry: async () => null,
+      readEntryRange: async () => null,
+      resolvePath: async () => null,
+      watchPaths: async () => [],
+      search: async () => ({ results: [] }),
     },
 
     tasks: {

@@ -97,11 +97,19 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
     })
   }
 
+  const runtime = createMockRuntimeAdapter()
+  runtime.memory.watchPaths = async () => [
+    '/mock/openclaw/agents/*/sessions/sessions.json',
+    '/mock/openclaw/agents/*/sessions/*.jsonl',
+    '/mock/openclaw/workspace/*.md',
+    '/mock/openclaw/workspace/memory/**/*',
+  ]
+
   const ctx: PluginContext = {
     storage,
     events,
     pluginId,
-    runtime: createMockRuntimeAdapter(),
+    runtime,
     tasks: createMockBakinTaskStore(),
     registerNav: vi.fn(),
     registerRoute: (route) => routes.push(route),

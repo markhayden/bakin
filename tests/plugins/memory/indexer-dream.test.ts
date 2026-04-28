@@ -83,52 +83,6 @@ const {
   } | null>(),
 }))()
 
-mock.module('../../../plugins/memory/lib/openclaw-adapter', () => ({
-  listAgentIds: mockListAgentIds,
-  // Dream helpers — the new surface this commit adds.
-  listPhaseDocs: mockListPhaseDocs,
-  listDreamSignalFiles: mockListDreamSignalFiles,
-  readPhaseDoc: mockReadPhaseDoc,
-  readDreamSignal: mockReadDreamSignal,
-  matchPhaseDocPath: mockMatchPhaseDocPath,
-  matchDreamSignalPath: mockMatchDreamSignalPath,
-  // Other tiers — stubbed so fallthrough matchers don't blow up.
-  readDurableFile: mock(() => null),
-  durableFilePath: mock(() => ''),
-  matchDurablePath: mock(() => null),
-  CANONICAL_DURABLE_FILES: [] as const,
-  listDailyNotes: mock(() => []),
-  readDailyNote: mock(() => null),
-  dailyNotePath: mock(() => ''),
-  dailyNoteMtime: mock(() => null),
-  dailyNoteSize: mock(() => 0),
-  matchDailyNotePath: mock(() => null),
-  readSessionStore: mock(() => null),
-  sessionStorePath: mock(() => ''),
-  matchSessionStorePath: mock(() => null),
-  listSessionJsonlFiles: mock(() => []),
-  sessionJsonlPath: mock(() => ''),
-  sessionJsonlStat: mock(() => null),
-  matchSessionJsonlPath: mock(() => null),
-  listCheckpointJsonlFiles: mock(() => []),
-  readCheckpoint: mock(() => null),
-  checkpointJsonlPath: mock(() => ''),
-  checkpointJsonlStat: mock(() => null),
-  matchCheckpointJsonlPath: mock(() => null),
-  // skills (tier=durable, kind=skill) — stubs so handleWatcherEvent fallthrough doesn't blow up.
-  DURABLE_KIND_BY_BASENAME: {} as Record<string, string>,
-  durableKindForBasename: mock(() => undefined),
-  listAgentSkills: mock(() => []),
-  readAgentSkill: mock(() => null),
-  skillFilePath: mock(() => ''),
-  skillFileMtime: mock(() => null),
-  matchSkillPath: mock(() => null),
-}))
-
-mock.module('../../../plugins/memory/lib/openclaw-gateway', () => ({
-  gatewayCall: mock(() => Promise.reject(new Error('gateway unused'))),
-}))
-
 import { MemoryIndexer } from '../../../plugins/memory/lib/indexer'
 import type { PluginContext } from '../../../src/lib/plugin-types'
 
@@ -150,6 +104,84 @@ function makeCtx(): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: mock(),
     activity: { log: mock(), audit: mock() },
+    runtime: {
+      agents: {
+        list: mock(async () => mockListAgentIds().map((id) => ({ id, name: id }))),
+      },
+      memory: {
+        listTiers: mock(async () => [
+          { id: 'dream-phase-tier', label: 'Dream phases', metadata: { sourceKind: 'dream_phase' } },
+          { id: 'dream-signal-tier', label: 'Dream signals', metadata: { sourceKind: 'dream_signal' } },
+        ]),
+        listEntries: mock(async (tierId: string, opts?: { agentId?: string }) => {
+          if (tierId === 'dream-phase-tier') {
+            return mockListPhaseDocs(opts?.agentId ?? '').map((file) => ({
+              id: `${file.phase}/${file.filename}`,
+              tierId,
+              agentId: file.agent,
+              path: file.path,
+              content: '',
+              metadata: {
+                sourceKind: 'dream_phase',
+                phase: file.phase,
+                filename: file.filename,
+                mtimeMs: file.mtimeMs,
+              },
+            }))
+          }
+          return mockListDreamSignalFiles(opts?.agentId ?? '').map((file) => ({
+            id: file.relPath,
+            tierId,
+            agentId: file.agent,
+            path: file.path,
+            content: '',
+            metadata: {
+              sourceKind: 'dream_signal',
+              relPath: file.relPath,
+              mtimeMs: file.mtimeMs,
+            },
+          }))
+        }),
+        getEntry: mock(async (tierId: string, id: string, opts?: { agentId?: string }) => {
+          if (!opts?.agentId) return null
+          if (tierId === 'dream-phase-tier') {
+            const slash = id.indexOf('/')
+            const phase = id.slice(0, slash)
+            const filename = id.slice(slash + 1)
+            const content = mockReadPhaseDoc(opts.agentId, phase, filename)
+            return content === null
+              ? null
+              : { id, tierId, agentId: opts.agentId, path: `/fake/${opts.agentId}/memory/dreaming/${id}`, content }
+          }
+          const content = mockReadDreamSignal(opts.agentId, id)
+          return content === null
+            ? null
+            : { id, tierId, agentId: opts.agentId, path: `/fake/${opts.agentId}/memory/.dreams/${id}`, content }
+        }),
+        resolvePath: mock(async (path: string) => {
+          const phase = mockMatchPhaseDocPath(path)
+          if (phase) {
+            return {
+              tierId: 'dream-phase-tier',
+              id: `${phase.phase}/${phase.filename}`,
+              agentId: phase.agent,
+              path,
+              metadata: { sourceKind: 'dream_phase', phase: phase.phase, filename: phase.filename },
+            }
+          }
+          const signal = mockMatchDreamSignalPath(path)
+          return signal
+            ? {
+                tierId: 'dream-signal-tier',
+                id: signal.relPath,
+                agentId: signal.agent,
+                path,
+                metadata: { sourceKind: 'dream_signal', relPath: signal.relPath },
+              }
+            : null
+        }),
+      },
+    },
     search: {
       registerContentType: mock(),
       registerFileBackedContentType: mock(),

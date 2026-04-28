@@ -10,6 +10,7 @@ import type {
   CreateRuntimeAgentInput,
   RuntimeAgent,
   RuntimeMetadata,
+  RuntimeMemorySearchResult,
   RuntimeSkill,
   WorkspaceFile,
 } from '@bakin/core/adapters/runtime'
@@ -24,6 +25,15 @@ import {
 import { tryGetMainAgentId } from '@bakin/core/main-agent'
 import * as vault from '@bakin/core/vault'
 import type { OpenClawRuntimeAdapterOptions } from './index'
+import {
+  getOpenClawMemoryEntry,
+  getOpenClawMemoryWatchPaths,
+  listOpenClawMemoryEntries,
+  listOpenClawMemoryTiers,
+  readOpenClawMemoryEntryRange,
+  resolveOpenClawMemoryPath,
+  statOpenClawMemoryEntry,
+} from './memory'
 
 interface OpenClawSettings {
   binaryPath: string
@@ -382,48 +392,27 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   memory = {
-    listTiers: async () => [{
-      id: 'workspace-memory',
-      label: 'Workspace memory',
-      description: 'Markdown memory files stored in the runtime workspace.',
-    }],
-    listEntries: async (tierId: string, opts?: { agentId?: string }) => {
-      if (tierId !== 'workspace-memory' || !opts?.agentId) return []
-      const root = join(getWorkspacePath(opts.agentId), 'memory')
-      try {
-        return readdirSync(root, { withFileTypes: true })
-          .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
-          .map((entry) => {
-            const file = join(root, entry.name)
-            return {
-              id: entry.name,
-              tierId,
-              agentId: opts.agentId,
-              path: entry.name,
-              content: '',
-              updatedAt: statSync(file).mtime.toISOString(),
-            }
-          })
-          .sort((a, b) => b.id.localeCompare(a.id))
-      } catch {
-        return []
-      }
-    },
-    getEntry: async (tierId: string, id: string, opts?: { agentId?: string }) => {
-      if (tierId !== 'workspace-memory' || !opts?.agentId || !isSafeWorkspaceFile(`memory/${id}`)) return null
-      const file = join(getWorkspacePath(opts.agentId), 'memory', id)
-      try {
-        return {
-          id,
-          tierId,
-          agentId: opts.agentId,
-          path: id,
-          content: readFileSync(file, 'utf-8'),
-          updatedAt: statSync(file).mtime.toISOString(),
-        }
-      } catch {
-        return null
-      }
+    listTiers: async () => listOpenClawMemoryTiers(),
+    listEntries: async (tierId: string, opts?: { agentId?: string }) => listOpenClawMemoryEntries(tierId, opts),
+    getEntry: async (tierId: string, id: string, opts?: { agentId?: string }) => getOpenClawMemoryEntry(tierId, id, opts),
+    statEntry: async (tierId: string, id: string, opts?: { agentId?: string }) => statOpenClawMemoryEntry(tierId, id, opts),
+    readEntryRange: async (
+      tierId: string,
+      id: string,
+      opts?: { agentId?: string; offset?: number; length?: number },
+    ) => readOpenClawMemoryEntryRange(tierId, id, opts),
+    resolvePath: async (path: string) => resolveOpenClawMemoryPath(path),
+    watchPaths: async () => getOpenClawMemoryWatchPaths(),
+    search: async (query: string, opts?: { agentId?: string; limit?: number }): Promise<RuntimeMemorySearchResult> => {
+      const trimmed = query.trim()
+      if (!trimmed) return { results: [] }
+      const args = ['memory', 'search', '--query', trimmed, '--json']
+      if (opts?.agentId) args.push('--agent', opts.agentId)
+      if (typeof opts?.limit === 'number') args.push('--limit', String(opts.limit))
+      const stdout = await this.exec(args)
+      const parsed = parseJsonObject(stdout)
+      const results = Array.isArray(parsed?.results) ? parsed.results : []
+      return { results, metadata: parsed ?? undefined }
     },
   }
 
@@ -791,6 +780,17 @@ function parseStreamFrame(frame: string): ChatChunk | null {
     return content ? { type: 'text', content } : null
   } catch {
     return data ? { type: 'text', content: data } : null
+  }
+}
+
+function parseJsonObject(raw: string): Record<string, unknown> | null {
+  const trimmed = raw.trim()
+  if (!trimmed) return null
+  try {
+    const parsed = JSON.parse(trimmed)
+    return isPlainObject(parsed) ? parsed : null
+  } catch {
+    return null
   }
 }
 

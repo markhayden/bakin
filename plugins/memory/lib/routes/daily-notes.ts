@@ -10,8 +10,7 @@
  * both substrates in one response so the UI can show a diff.
  */
 import type { APIRoute, PluginContext, SearchQueryParams } from '../../../../src/lib/plugin-types'
-import { listDailyNotes, readDailyNote } from '../openclaw-adapter'
-import { memorySearch } from '../openclaw-cli'
+import { getRuntimeMemoryEntry, listRuntimeMemoryEntries } from '../runtime-memory'
 
 const DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})([-.].*)?\.md$/
 
@@ -21,12 +20,13 @@ export const dailyNotesListRoute: APIRoute = {
   path: '/daily-notes',
   method: 'GET',
   description: 'List daily notes for an agent (sorted by date desc)',
-  handler: async (req: Request, _ctx: PluginContext) => {
+  handler: async (req: Request, ctx: PluginContext) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
     if (!agent) return Response.json({ error: 'agent required' }, { status: 400 })
 
-    const files = listDailyNotes(agent)
+    const files = (await listRuntimeMemoryEntries(ctx, 'daily_note', agent))
+      .map((entry) => entry.path?.split('/').pop() ?? entry.id)
       .map((name) => {
         const m = DATE_PREFIX_RE.exec(name)
         return m ? { name, date: m[1] } : null
@@ -44,16 +44,16 @@ export const dailyNotesDetailRoute: APIRoute = {
   path: '/daily-notes/:agent/:filename',
   method: 'GET',
   description: 'Read one daily note',
-  handler: async (req: Request, _ctx: PluginContext) => {
+  handler: async (req: Request, ctx: PluginContext) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
     const filename = url.searchParams.get('filename')
     if (!agent || !filename) return Response.json({ error: 'agent and filename required' }, { status: 400 })
 
-    const content = readDailyNote(agent, filename)
-    if (content === null) return Response.json({ error: 'not found' }, { status: 404 })
+    const entry = await getRuntimeMemoryEntry(ctx, 'daily_note', filename, agent)
+    if (!entry) return Response.json({ error: 'not found' }, { status: 404 })
 
-    return Response.json({ agent, file: filename, content })
+    return Response.json({ agent, file: filename, content: entry.content })
   },
 }
 
@@ -95,7 +95,7 @@ export const dailyNotesCompareSearchRoute: APIRoute = {
     let lancedbStatus: 'ok' | 'no_index_or_no_match' | 'error' = 'ok'
     let lancedbError: string | undefined
     try {
-      const cliRes = await memorySearch(query, { agent, limit })
+      const cliRes = await ctx.runtime.memory.search(query, { agentId: agent, limit })
       const hits = cliRes.results ?? []
       if (hits.length === 0) {
         lancedbStatus = 'no_index_or_no_match'

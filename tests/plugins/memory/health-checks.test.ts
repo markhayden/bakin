@@ -62,15 +62,6 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-let mockAntflyAvailable = true
-let mockAntflyInitThrows: Error | null = null
-mock.module('../../../src/core/antfly', () => ({
-  initialize: async () => {
-    if (mockAntflyInitThrows) throw mockAntflyInitThrows
-  },
-  available: () => mockAntflyAvailable,
-}))
-
 interface MockTable {
   table: string
   pluginId: string
@@ -78,8 +69,12 @@ interface MockTable {
   stats?: Record<string, unknown> | null
 }
 let mockHealth: { enabled: boolean; tables: MockTable[] } = { enabled: true, tables: [] }
+let mockSearchHealthThrows: Error | null = null
 mock.module('../../../src/core/search-registry', () => ({
-  getSearchHealth: async () => mockHealth,
+  getSearchHealth: async () => {
+    if (mockSearchHealthThrows) throw mockSearchHealthThrows
+    return mockHealth
+  },
   // The plugin-registration smoke test imports the full memory plugin,
   // whose activate() chain reaches `ensureRegisteredTables` via
   // memory-migration. Stub it as a no-op so activate() doesn't throw.
@@ -108,13 +103,6 @@ mock.module('../../../plugins/memory/lib/ttl-prune', () => ({
   stopTtlTimer: () => {},
 }))
 
-// openclaw-gateway — opens a WS in production. No-ops in tests.
-mock.module('../../../plugins/memory/lib/openclaw-gateway', () => ({
-  gatewaySubscribe: () => ({ close: () => {} }),
-  gatewayCall: async () => null,
-  __resetGatewayClientForTests: () => {},
-}))
-
 // Indexer constructor — only called inside the plugin smoke. Stub it.
 mock.module('../../../plugins/memory/lib/indexer', () => ({
   MemoryIndexer: class { backfill = async () => {}; sync = async () => {}; remove = async () => {} },
@@ -126,8 +114,7 @@ beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
   mockAntflyEnabled = true
-  mockAntflyAvailable = true
-  mockAntflyInitThrows = null
+  mockSearchHealthThrows = null
   mockHealth = { enabled: true, tables: [] }
 })
 
@@ -144,10 +131,11 @@ describe('checkSearchTables — quiescent paths', () => {
     expect(results).toEqual([])
   })
 
-  it('returns no rows when antfly is enabled but unavailable (other check surfaces it)', async () => {
-    mockAntflyAvailable = false
+  it('warns when search is enabled but no content types are registered', async () => {
     const results = await checkSearchTables()
-    expect(results).toEqual([])
+    expect(results).toHaveLength(1)
+    expect(results[0].status).toBe('warn')
+    expect(results[0].message).toMatch(/no content types registered/)
   })
 
   it('returns no rows when search-registry reports the search subsystem disabled', async () => {
@@ -240,8 +228,8 @@ describe('checkSearchTables — per-table branches', () => {
 // ─── Failure path ─────────────────────────────────────────────────────────
 
 describe('checkSearchTables — failure path', () => {
-  it('returns an error row when the antfly initialize call throws', async () => {
-    mockAntflyInitThrows = new Error('connection refused')
+  it('returns an error row when search health throws', async () => {
+    mockSearchHealthThrows = new Error('connection refused')
     const results = await checkSearchTables()
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('error')
@@ -267,6 +255,7 @@ describe('plugin registration', () => {
       getSettings: () => ({ backfillDays: 0, skipSessionOverBytes: 0, skipResetBackups: false }),
       updateSettings: noop,
       activity: { log: noop, audit: noop },
+      runtime: { memory: { watchPaths: async () => [] } },
       hooks: { register: () => () => {}, has: () => false, invoke: noopAsync },
       search: {
         registerContentType: noop, registerFileBackedContentType: noop,

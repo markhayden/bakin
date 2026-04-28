@@ -12,6 +12,7 @@
 import { closeSync, existsSync, openSync, readSync, statSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '@bakin/core/content-dir'
+import type { RuntimeMemoryEntry } from '@bakin/core/adapters/runtime'
 import type { PluginContext } from '../../../src/lib/plugin-types'
 import { createLogger } from '../../../src/core/logger'
 import type { MemoryRow, MemoryTier } from './types'
@@ -30,39 +31,16 @@ import {
 } from './tier-parsers/dream-parser'
 import {
   CANONICAL_DURABLE_FILES,
-  checkpointJsonlStat,
-  dailyNotePath,
-  dailyNoteMtime,
-  dailyNoteSize,
-  durableFilePath,
-  listAgentIds,
-  listAgentSkills,
-  listCheckpointJsonlFiles,
-  listDailyNotes,
-  listDreamSignalFiles,
-  listPhaseDocs,
-  listSessionJsonlFiles,
-  matchCheckpointJsonlPath,
-  matchDailyNotePath,
-  matchDreamSignalPath,
-  matchDurablePath,
-  matchPhaseDocPath,
-  matchSessionJsonlPath,
-  matchSessionStorePath,
-  matchSkillPath,
-  readAgentSkill,
-  readCheckpoint,
-  readDailyNote,
-  readDreamSignal,
-  readDurableFile,
-  readPhaseDoc,
-  readSessionStore,
-  sessionJsonlStat,
-  sessionStorePath,
-  skillFilePath,
-  skillFileMtime,
-} from './openclaw-adapter'
-import { gatewayCall } from './openclaw-gateway'
+} from './durable-kinds'
+import {
+  entryMtimeMs,
+  entrySizeBytes,
+  getRuntimeMemoryEntry,
+  listRuntimeMemoryEntries,
+  metadataBoolean,
+  metadataString,
+  resolvedSourceKind,
+} from './runtime-memory'
 import { getOffset, setOffset } from './offsets'
 
 const DEFAULT_SKIP_SESSION_BYTES = 10 * 1024 * 1024
@@ -95,7 +73,7 @@ export class MemoryIndexer {
     }
   }
 
-  async indexTier(tier: MemoryTier, _agent?: string): Promise<void> {
+  async indexTier(tier: MemoryTier): Promise<void> {
     if (tier === 'audit') {
       await this.indexAuditTier()
       return
@@ -137,89 +115,75 @@ export class MemoryIndexer {
       return
     }
 
-    const durable = matchDurablePath(path)
-    if (durable) {
-      if (kind === 'unlink') {
-        await this.removeDurableFile(durable.agent, durable.basename)
-      } else {
-        await this.indexDurableFile(durable.agent, durable.basename)
-      }
+    const match = await this.ctx.runtime.memory.resolvePath(path)
+    if (!match?.agentId) return
+    const sourceKind = resolvedSourceKind(match)
+    if (!sourceKind) return
+
+    if (sourceKind === 'durable') {
+      const basename = metadataString(match, 'basename') ?? match.id
+      if (kind === 'unlink') await this.removeDurableFile(match.agentId, basename)
+      else await this.indexDurableFile(match.agentId, basename)
       return
     }
 
-    const skill = matchSkillPath(path)
-    if (skill) {
-      if (kind === 'unlink') {
-        await this.removeSkillFile(skill.agent, skill.skillName)
-      } else {
-        await this.indexSkillFile(skill.agent, skill.skillName)
-      }
+    if (sourceKind === 'skill') {
+      const skillName = metadataString(match, 'skillName') ?? match.id
+      if (kind === 'unlink') await this.removeSkillFile(match.agentId, skillName)
+      else await this.indexSkillFile(match.agentId, skillName)
       return
     }
 
-    const daily = matchDailyNotePath(path)
-    if (daily) {
-      if (kind === 'unlink') {
-        await this.removeDailyNote(daily.agent, daily.filename)
-      } else {
-        await this.indexDailyNote(daily.agent, daily.filename)
-      }
+    if (sourceKind === 'daily_note') {
+      const filename = metadataString(match, 'filename') ?? match.id
+      if (kind === 'unlink') await this.removeDailyNote(match.agentId, filename)
+      else await this.indexDailyNote(match.agentId, filename)
       return
     }
 
-    const sessionStore = matchSessionStorePath(path)
-    if (sessionStore) {
-      if (kind !== 'unlink') await this.indexSessionsForAgent(sessionStore.agent)
+    if (sourceKind === 'session_store') {
+      if (kind !== 'unlink') await this.indexSessionsForAgent(match.agentId)
       return
     }
 
-    const sessionJsonl = matchSessionJsonlPath(path)
-    if (sessionJsonl) {
-      if (sessionJsonl.isReset) return
+    if (sourceKind === 'session_jsonl') {
+      if (metadataBoolean(match, 'isReset')) return
       if (kind === 'unlink') {
         setOffset(path, 0)
         return
       }
-      const stat = sessionJsonlStat(path)
+      const stat = await this.ctx.runtime.memory.statEntry(match.tierId, match.id, { agentId: match.agentId })
       if (!stat) return
-      await this.indexSessionJsonl(sessionJsonl.agent, sessionJsonl.sessionId, path, stat.size)
+      await this.indexSessionJsonl(match.agentId, match.id, match.tierId, match.path, stat.size)
       return
     }
 
-    const checkpoint = matchCheckpointJsonlPath(path)
-    if (checkpoint) {
+    if (sourceKind === 'checkpoint') {
+      const sessionId = metadataString(match, 'sessionId')
+      const checkpointId = metadataString(match, 'checkpointId')
+      const filename = metadataString(match, 'filename') ?? match.id
+      if (!sessionId || !checkpointId) return
       if (kind === 'unlink') {
-        await this.removeCheckpointFile(checkpoint.agent, checkpoint.sessionId, checkpoint.checkpointId)
+        await this.removeCheckpointFile(match.agentId, sessionId, checkpointId)
       } else {
-        await this.indexCheckpointFile(
-          checkpoint.agent,
-          checkpoint.sessionId,
-          checkpoint.checkpointId,
-          checkpoint.filename,
-          path,
-        )
+        await this.indexCheckpointFile(match.agentId, sessionId, checkpointId, filename)
       }
       return
     }
 
-    const phaseDoc = matchPhaseDocPath(path)
-    if (phaseDoc) {
-      if (kind === 'unlink') {
-        await this.removePhaseDoc(phaseDoc.agent, phaseDoc.phase, phaseDoc.filename)
-      } else {
-        await this.indexPhaseDoc(phaseDoc.agent, phaseDoc.phase, phaseDoc.filename, path)
-      }
+    if (sourceKind === 'dream_phase') {
+      const phase = metadataString(match, 'phase')
+      const filename = metadataString(match, 'filename')
+      if (!phase || !filename) return
+      if (kind === 'unlink') await this.removePhaseDoc(match.agentId, phase, filename)
+      else await this.indexPhaseDoc(match.agentId, phase, filename)
       return
     }
 
-    const dreamSignal = matchDreamSignalPath(path)
-    if (dreamSignal) {
-      if (kind === 'unlink') {
-        await this.removeDreamSignal(dreamSignal.agent, dreamSignal.relPath)
-      } else {
-        await this.indexDreamSignal(dreamSignal.agent, dreamSignal.relPath, path)
-      }
-      return
+    if (sourceKind === 'dream_signal') {
+      const relPath = metadataString(match, 'relPath') ?? match.id
+      if (kind === 'unlink') await this.removeDreamSignal(match.agentId, relPath)
+      else await this.indexDreamSignal(match.agentId, relPath)
     }
   }
 
@@ -280,12 +244,16 @@ export class MemoryIndexer {
 
   private readonly lastDurableChunkCount = new Map<string, number>()
 
+  private async listRuntimeAgentIds(): Promise<string[]> {
+    return (await this.ctx.runtime.agents.list()).map((agent) => agent.id)
+  }
+
   private durableKey(agent: string, basename: string): string {
     return `${agent}::${basename}`
   }
 
   private async indexDurableTier(): Promise<void> {
-    for (const agent of listAgentIds()) {
+    for (const agent of await this.listRuntimeAgentIds()) {
       for (const basename of CANONICAL_DURABLE_FILES) {
         await this.indexDurableFile(agent, basename)
       }
@@ -294,16 +262,10 @@ export class MemoryIndexer {
   }
 
   private async indexDurableFile(agent: string, basename: string): Promise<void> {
-    const body = readDurableFile(agent, basename)
-    if (body === null) return
+    const entry = await getRuntimeMemoryEntry(this.ctx, 'durable', basename, agent)
+    if (!entry) return
 
-    const path = durableFilePath(agent, basename)
-    let mtimeMs = Date.now()
-    try {
-      if (existsSync(path)) mtimeMs = statSync(path).mtimeMs
-    } catch { /* keep fallback */ }
-
-    const rows = parseDurableFile(agent, basename, body, path, mtimeMs)
+    const rows = parseDurableFile(agent, basename, entry.content, entry.path ?? basename, entryMtimeMs(entry))
 
     const prevCount = this.lastDurableChunkCount.get(this.durableKey(agent, basename)) ?? 0
     if (rows.length < prevCount) {
@@ -335,11 +297,11 @@ export class MemoryIndexer {
   }
 
   private async indexSkillsForAgent(agent: string): Promise<void> {
-    const files = listAgentSkills(agent)
+    const files = await listRuntimeMemoryEntries(this.ctx, 'skill', agent)
     const seen = new Set<string>()
     for (const file of files) {
-      seen.add(file.skillName)
-      await this.indexSkillFile(agent, file.skillName)
+      seen.add(file.id)
+      await this.indexSkillFile(agent, file.id)
     }
     // Drop chunks for skills the agent removed between passes. Scan the
     // chunk-count map for this agent and tombstone any key not seen above.
@@ -353,13 +315,10 @@ export class MemoryIndexer {
   }
 
   private async indexSkillFile(agent: string, skillName: string): Promise<void> {
-    const body = readAgentSkill(agent, skillName)
-    if (body === null) return
+    const entry = await getRuntimeMemoryEntry(this.ctx, 'skill', skillName, agent)
+    if (!entry) return
 
-    const path = skillFilePath(agent, skillName)
-    const mtimeMs = skillFileMtime(agent, skillName) ?? Date.now()
-
-    const rows = parseSkillFile(agent, skillName, body, path, mtimeMs)
+    const rows = parseSkillFile(agent, skillName, entry.content, entry.path ?? skillName, entryMtimeMs(entry))
 
     const prevCount = this.lastSkillChunkCount.get(this.skillKey(agent, skillName)) ?? 0
     if (rows.length < prevCount) {
@@ -385,21 +344,25 @@ export class MemoryIndexer {
   // ─── Daily-note tier (C5) ─────────────────────────────────────────────────
 
   private async indexDailyNoteTier(): Promise<void> {
-    for (const agent of listAgentIds()) {
-      for (const filename of listDailyNotes(agent)) {
-        await this.indexDailyNote(agent, filename)
+    for (const agent of await this.listRuntimeAgentIds()) {
+      for (const entry of await listRuntimeMemoryEntries(this.ctx, 'daily_note', agent)) {
+        await this.indexDailyNote(agent, entry.id)
       }
     }
   }
 
   private async indexDailyNote(agent: string, filename: string): Promise<void> {
-    const body = readDailyNote(agent, filename)
-    if (body === null) return
-    const path = dailyNotePath(agent, filename)
-    const mtimeMs = dailyNoteMtime(agent, filename) ?? Date.now()
-    const sizeBytes = dailyNoteSize(agent, filename)
+    const entry = await getRuntimeMemoryEntry(this.ctx, 'daily_note', filename, agent)
+    if (!entry) return
 
-    const row = parseDailyNote(agent, filename, body, path, mtimeMs, sizeBytes)
+    const row = parseDailyNote(
+      agent,
+      filename,
+      entry.content,
+      entry.path ?? filename,
+      entryMtimeMs(entry),
+      entrySizeBytes(entry),
+    )
     if (row === null) return
     await this.writeRow(row)
   }
@@ -413,20 +376,20 @@ export class MemoryIndexer {
   private readonly lastSessionKeys = new Map<string, Set<string>>()
 
   private async indexSessionTier(): Promise<void> {
-    for (const agent of listAgentIds()) {
+    for (const agent of await this.listRuntimeAgentIds()) {
       await this.indexSessionsForAgent(agent)
     }
   }
 
   private async indexSessionsForAgent(agent: string): Promise<void> {
-    const raw = await this.loadSessionMap(agent)
-    if (raw === null) return
+    const loaded = await this.loadSessionMap(agent)
+    if (loaded === null) return
 
     const cutoff = this.backfillCutoffMs()
-    const srcPath = sessionStorePath(agent)
+    const srcPath = loaded.sourcePath
     const seen = new Set<string>()
 
-    for (const [key, value] of Object.entries(raw)) {
+    for (const [key, value] of Object.entries(loaded.map)) {
       if (!value || typeof value !== 'object' || Array.isArray(value)) continue
       const s = value as Record<string, unknown>
       const updatedAt = typeof s.updatedAt === 'number' ? s.updatedAt : null
@@ -447,20 +410,20 @@ export class MemoryIndexer {
     this.lastSessionKeys.set(agent, seen)
   }
 
-  private async loadSessionMap(agent: string): Promise<Record<string, unknown> | null> {
+  private async loadSessionMap(agent: string): Promise<{ map: Record<string, unknown>; sourcePath: string } | null> {
+    const entry = await getRuntimeMemoryEntry(this.ctx, 'session_store', 'sessions.json', agent)
+    if (!entry) return null
     try {
-      const resp = await gatewayCall<unknown>('sessions.list', { agentId: agent })
-      const map = this.extractSessionMap(resp)
-      if (map) return map
+      const parsed = JSON.parse(entry.content) as unknown
+      const map = this.extractSessionMap(parsed)
+      if (map) return { map, sourcePath: entry.path ?? `runtime:${agent}:sessions.json` }
     } catch (err) {
-      log.debug('session gateway failed, falling back to FS', {
+      log.debug('session store parse failed', {
         agent,
         err: err instanceof Error ? err.message : String(err),
       })
     }
-    const fs = readSessionStore(agent)
-    if (!fs || typeof fs !== 'object' || Array.isArray(fs)) return null
-    return fs as Record<string, unknown>
+    return null
   }
 
   private extractSessionMap(resp: unknown): Record<string, unknown> | null {
@@ -482,10 +445,16 @@ export class MemoryIndexer {
   // ─── Turn tier (C6) ───────────────────────────────────────────────────────
 
   private async indexTurnTier(): Promise<void> {
-    for (const agent of listAgentIds()) {
-      for (const file of listSessionJsonlFiles(agent)) {
-        if (file.isReset) continue
-        await this.indexSessionJsonl(agent, file.sessionId, file.path, file.size)
+    for (const agent of await this.listRuntimeAgentIds()) {
+      for (const file of await listRuntimeMemoryEntries(this.ctx, 'session_jsonl', agent)) {
+        if (metadataBoolean(file, 'isReset')) continue
+        await this.indexSessionJsonl(
+          agent,
+          metadataString(file, 'sessionId') ?? file.id,
+          file.tierId,
+          file.path ?? `runtime:${file.tierId}:${agent}:${file.id}`,
+          entrySizeBytes(file),
+        )
       }
     }
   }
@@ -493,35 +462,35 @@ export class MemoryIndexer {
   private async indexSessionJsonl(
     agent: string,
     sessionId: string,
+    tierId: string,
     path: string,
     reportedSize: number,
   ): Promise<void> {
-    if (!existsSync(path)) return
     const sessionKey = `agent:${agent}:${sessionId}`
     const threshold = this.opts.skipSessionOverBytes ?? DEFAULT_SKIP_SESSION_BYTES
     if (reportedSize > threshold) {
-      await this.indexSessionJsonlHead(agent, sessionId, sessionKey, path)
+      await this.indexSessionJsonlHead(agent, sessionId, sessionKey, tierId)
       return
     }
-    await this.indexSessionJsonlIncremental(agent, sessionId, sessionKey, path)
+    await this.indexSessionJsonlIncremental(agent, sessionId, sessionKey, tierId, path)
   }
 
   private async indexSessionJsonlHead(
     agent: string,
     sessionId: string,
     sessionKey: string,
-    path: string,
+    tierId: string,
   ): Promise<void> {
-    const realSize = statSync(path).size
-    const readBytes = Math.min(realSize, HEAD_CHUNK_BYTES)
-    const buf = Buffer.alloc(readBytes)
-    const fd = openSync(path, 'r')
-    try {
-      readSync(fd, buf, 0, readBytes, 0)
-    } finally {
-      closeSync(fd)
-    }
-    const text = buf.toString('utf-8')
+    const stat = await this.ctx.runtime.memory.statEntry(tierId, sessionId, { agentId: agent })
+    if (!stat) return
+    const readBytes = Math.min(stat.size, HEAD_CHUNK_BYTES)
+    const range = await this.ctx.runtime.memory.readEntryRange(tierId, sessionId, {
+      agentId: agent,
+      offset: 0,
+      length: readBytes,
+    })
+    if (!range) return
+    const text = range.content
     const rawLines = text.split('\n')
     if (!text.endsWith('\n')) rawLines.pop()
 
@@ -543,9 +512,11 @@ export class MemoryIndexer {
     agent: string,
     sessionId: string,
     sessionKey: string,
+    tierId: string,
     path: string,
   ): Promise<void> {
-    const stats = statSync(path)
+    const stats = await this.ctx.runtime.memory.statEntry(tierId, sessionId, { agentId: agent })
+    if (!stats) return
     let offset = getOffset(path)
     if (stats.size < offset) {
       log.info('session jsonl shrank — restarting from offset 0', {
@@ -558,14 +529,13 @@ export class MemoryIndexer {
     if (stats.size === offset) return
 
     const bytesToRead = stats.size - offset
-    const buf = Buffer.alloc(bytesToRead)
-    const fd = openSync(path, 'r')
-    try {
-      readSync(fd, buf, 0, bytesToRead, offset)
-    } finally {
-      closeSync(fd)
-    }
-    const text = buf.toString('utf-8')
+    const range = await this.ctx.runtime.memory.readEntryRange(tierId, sessionId, {
+      agentId: agent,
+      offset,
+      length: bytesToRead,
+    })
+    if (!range) return
+    const text = range.content
     const rawLines = text.split('\n')
     const trailingIncomplete = text.endsWith('\n') ? '' : (rawLines.pop() ?? '')
 
@@ -583,14 +553,17 @@ export class MemoryIndexer {
   // ─── Checkpoint tier (C7) ─────────────────────────────────────────────────
 
   private async indexCheckpointTier(): Promise<void> {
-    for (const agent of listAgentIds()) {
-      for (const file of listCheckpointJsonlFiles(agent)) {
+    for (const agent of await this.listRuntimeAgentIds()) {
+      for (const file of await listRuntimeMemoryEntries(this.ctx, 'checkpoint', agent)) {
+        const sessionId = metadataString(file, 'sessionId')
+        const checkpointId = metadataString(file, 'checkpointId')
+        const filename = metadataString(file, 'filename') ?? file.id
+        if (!sessionId || !checkpointId) continue
         await this.indexCheckpointFile(
           agent,
-          file.sessionId,
-          file.checkpointId,
-          file.filename,
-          file.path,
+          sessionId,
+          checkpointId,
+          filename,
         )
       }
     }
@@ -601,12 +574,18 @@ export class MemoryIndexer {
     sessionId: string,
     checkpointId: string,
     filename: string,
-    path: string,
   ): Promise<void> {
-    const body = readCheckpoint(agent, filename)
-    if (body === null) return
-    const mtimeMs = checkpointJsonlStat(path)?.mtimeMs ?? Date.now()
-    const row = parseCheckpoint(agent, sessionId, checkpointId, filename, body, path, mtimeMs)
+    const entry = await getRuntimeMemoryEntry(this.ctx, 'checkpoint', filename, agent)
+    if (!entry) return
+    const row = parseCheckpoint(
+      agent,
+      sessionId,
+      checkpointId,
+      filename,
+      entry.content,
+      entry.path ?? filename,
+      entryMtimeMs(entry),
+    )
     if (row === null) return
     await this.writeRow(row)
   }
@@ -622,12 +601,16 @@ export class MemoryIndexer {
   // ─── Dream tier (C8) ──────────────────────────────────────────────────────
 
   private async indexDreamTier(): Promise<void> {
-    for (const agent of listAgentIds()) {
-      for (const file of listPhaseDocs(agent)) {
-        await this.indexPhaseDoc(agent, file.phase, file.filename, file.path, file.mtimeMs)
+    for (const agent of await this.listRuntimeAgentIds()) {
+      for (const file of await listRuntimeMemoryEntries(this.ctx, 'dream_phase', agent)) {
+        const phase = metadataString(file, 'phase')
+        const filename = metadataString(file, 'filename')
+        if (!phase || !filename) continue
+        await this.indexPhaseDoc(agent, phase, filename)
       }
-      for (const file of listDreamSignalFiles(agent)) {
-        await this.indexDreamSignal(agent, file.relPath, file.path, file.mtimeMs)
+      for (const file of await listRuntimeMemoryEntries(this.ctx, 'dream_signal', agent)) {
+        const relPath = metadataString(file, 'relPath') ?? file.id
+        await this.indexDreamSignal(agent, relPath)
       }
     }
   }
@@ -636,16 +619,11 @@ export class MemoryIndexer {
     agent: string,
     phase: string,
     filename: string,
-    path: string,
-    mtimeMs?: number,
+    knownEntry?: RuntimeMemoryEntry,
   ): Promise<void> {
-    const body = readPhaseDoc(agent, phase, filename)
-    if (body === null) return
-    let mtime = mtimeMs
-    if (mtime === undefined) {
-      try { mtime = existsSync(path) ? statSync(path).mtimeMs : Date.now() } catch { mtime = Date.now() }
-    }
-    const row = parsePhaseDoc(agent, phase, filename, body, path, mtime)
+    const entry = knownEntry ?? await getRuntimeMemoryEntry(this.ctx, 'dream_phase', `${phase}/${filename}`, agent)
+    if (!entry) return
+    const row = parsePhaseDoc(agent, phase, filename, entry.content, entry.path ?? `${phase}/${filename}`, entryMtimeMs(entry))
     if (row === null) return
     await this.writeRow(row)
   }
@@ -653,16 +631,11 @@ export class MemoryIndexer {
   private async indexDreamSignal(
     agent: string,
     relPath: string,
-    path: string,
-    mtimeMs?: number,
+    knownEntry?: RuntimeMemoryEntry,
   ): Promise<void> {
-    const body = readDreamSignal(agent, relPath)
-    if (body === null) return
-    let mtime = mtimeMs
-    if (mtime === undefined) {
-      try { mtime = existsSync(path) ? statSync(path).mtimeMs : Date.now() } catch { mtime = Date.now() }
-    }
-    const row = parseDreamSignal(agent, relPath, body, path, mtime)
+    const entry = knownEntry ?? await getRuntimeMemoryEntry(this.ctx, 'dream_signal', relPath, agent)
+    if (!entry) return
+    const row = parseDreamSignal(agent, relPath, entry.content, entry.path ?? relPath, entryMtimeMs(entry))
     if (row === null) return
     await this.writeRow(row)
   }

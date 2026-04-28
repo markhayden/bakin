@@ -2,7 +2,7 @@
  * Session + turn tier routes.
  *
  *   GET /sessions?agent=<id>[&kind=<main|openai|…>]
- *         → list sessions for an agent (gateway-first, FS fallback)
+ *         → list sessions for an agent (runtime-backed)
  *   GET /sessions/:agent/:sessionKey
  *         → one session's full meta
  *   GET /sessions/:agent/:sessionKey/turns[?limit=<n>&offset=<n>&eventType=<…>]
@@ -16,22 +16,20 @@
  * truncation / head-only chunking rules, so the route is a pure query.
  */
 import type { APIRoute, PluginContext, SearchQueryParams } from '../../../../src/lib/plugin-types'
-import { readSessionStore, sessionStorePath } from '../openclaw-adapter'
-import { gatewayCall } from '../openclaw-gateway'
+import { getRuntimeMemoryEntry } from '../runtime-memory'
 
 type SessionMap = Record<string, unknown>
 
-async function loadSessionMap(agent: string): Promise<SessionMap | null> {
+async function loadSessionMap(ctx: PluginContext, agent: string): Promise<{ map: SessionMap; sourcePath?: string } | null> {
+  const entry = await getRuntimeMemoryEntry(ctx, 'session_store', 'sessions.json', agent)
+  if (!entry) return null
   try {
-    const resp = await gatewayCall<unknown>('sessions.list', { agentId: agent })
-    const map = extractSessionMap(resp)
-    if (map) return map
+    const parsed = JSON.parse(entry.content) as unknown
+    const map = extractSessionMap(parsed)
+    return map ? { map, sourcePath: entry.path } : null
   } catch {
-    /* fall through to FS */
+    return null
   }
-  const fs = readSessionStore(agent)
-  if (!fs || typeof fs !== 'object' || Array.isArray(fs)) return null
-  return fs as SessionMap
 }
 
 function extractSessionMap(resp: unknown): SessionMap | null {
@@ -55,18 +53,18 @@ function extractKind(key: string): string {
 export const sessionsListRoute: APIRoute = {
   path: '/sessions',
   method: 'GET',
-  description: 'List sessions for an agent (gateway-first, FS fallback)',
-  handler: async (req: Request, _ctx: PluginContext) => {
+  description: 'List sessions for an agent',
+  handler: async (req: Request, ctx: PluginContext) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
     if (!agent) return Response.json({ error: 'agent required' }, { status: 400 })
 
     const kindFilter = url.searchParams.get('kind')
-    const raw = await loadSessionMap(agent)
-    if (raw === null) return Response.json({ sessions: [], sourcePath: sessionStorePath(agent) })
+    const loaded = await loadSessionMap(ctx, agent)
+    if (loaded === null) return Response.json({ sessions: [], sourcePath: null })
 
     const sessions: Array<Record<string, unknown>> = []
-    for (const [key, value] of Object.entries(raw)) {
+    for (const [key, value] of Object.entries(loaded.map)) {
       if (!value || typeof value !== 'object' || Array.isArray(value)) continue
       const kind = extractKind(key)
       if (kindFilter && kind !== kindFilter) continue
@@ -77,7 +75,7 @@ export const sessionsListRoute: APIRoute = {
       const bu = typeof b.updatedAt === 'number' ? b.updatedAt : 0
       return bu - au
     })
-    return Response.json({ sessions, sourcePath: sessionStorePath(agent) })
+    return Response.json({ sessions, sourcePath: loaded.sourcePath ?? null })
   },
 }
 
@@ -87,15 +85,15 @@ export const sessionDetailRoute: APIRoute = {
   path: '/sessions/:agent/:sessionKey',
   method: 'GET',
   description: 'Read one session by key',
-  handler: async (req: Request, _ctx: PluginContext) => {
+  handler: async (req: Request, ctx: PluginContext) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
     const sessionKey = url.searchParams.get('sessionKey')
     if (!agent || !sessionKey) {
       return Response.json({ error: 'agent and sessionKey required' }, { status: 400 })
     }
-    const raw = await loadSessionMap(agent)
-    const match = raw ? raw[sessionKey] : null
+    const loaded = await loadSessionMap(ctx, agent)
+    const match = loaded ? loaded.map[sessionKey] : null
     if (!match || typeof match !== 'object') {
       return Response.json({ error: 'not found' }, { status: 404 })
     }

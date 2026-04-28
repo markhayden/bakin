@@ -12,11 +12,9 @@
  */
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
 import { createLogger } from '../../src/core/logger'
-import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import { getContentDir } from '@bakin/core/content-dir'
 import { join } from 'path'
 import { MemoryIndexer } from './lib/indexer'
-import { gatewaySubscribe } from './lib/openclaw-gateway'
 import { auditRoute } from './lib/routes/audit'
 import { durableListRoute, durableDetailRoute } from './lib/routes/durable'
 import {
@@ -128,7 +126,7 @@ const memoryPlugin: BakinPlugin = {
 
   contentFiles: [],
 
-  activate(ctx: PluginContext) {
+  async activate(ctx: PluginContext) {
     const settings = { ...DEFAULTS, ...(ctx.getSettings<Partial<MemorySettings>>() ?? {}) }
 
     // ─── Search: unified bakin_memory table ─────────────────────────────────
@@ -197,23 +195,11 @@ const memoryPlugin: BakinPlugin = {
     ctx.registerExecTool(createMemoryStatusTool(ctx))
 
     // ─── Watcher paths (spec §Watcher paths) ────────────────────────────────
-    // The indexer fans these out to per-tier handlers once those land.
+    // Provider-owned paths are supplied by the runtime adapter; this plugin
+    // only contributes Bakin's own audit log path.
     const watchPaths = [
-      // Bakin side
       join(getContentDir(), 'audit.jsonl'),
-      // OpenClaw: session identity
-      getOpenClawPath('agents', '*', 'sessions', 'sessions.json'),
-      // Transcripts + checkpoints live side-by-side under sessions/
-      getOpenClawPath('agents', '*', 'sessions', '*.jsonl'),
-      // Durable bootstrap files (main-agent workspace + subagent workspaces)
-      getOpenClawPath('workspace', '*.md'),
-      getOpenClawPath('workspaces', '*', '*.md'),
-      // Skills — SKILL.md per skill directory; indexed as durable kind=skill
-      getOpenClawPath('workspace', 'skills', '*', 'SKILL.md'),
-      getOpenClawPath('workspaces', '*', 'skills', '*', 'SKILL.md'),
-      // Daily notes + dream artifacts
-      getOpenClawPath('workspace', 'memory', '**', '*'),
-      getOpenClawPath('workspaces', '*', 'memory', '**', '*'),
+      ...(await ctx.runtime.memory.watchPaths()),
     ]
     ctx.watchFiles(watchPaths)
 
@@ -288,23 +274,9 @@ const memoryPlugin: BakinPlugin = {
           err: err instanceof Error ? err.message : String(err),
         })
       }
-
-      // WS live updates for sessions — best-effort. Chokidar on sessions.json
-      // is the safety net, so a dead gateway just means slightly higher
-      // latency, not broken correctness.
-      try {
-        await gatewaySubscribe('sessions.subscribe', {}, () => {
-          void indexer.indexTier('session').catch((err) => {
-            log.warn('session live re-index failed', {
-              err: err instanceof Error ? err.message : String(err),
-            })
-          })
-        })
-      } catch (err) {
-        log.info('sessions WS subscribe unavailable; relying on chokidar', {
-          err: err instanceof Error ? err.message : String(err),
-        })
-      }
+      // Runtime memory watcher paths are the live-update path. Runtime-native
+      // subscriptions can be added to the adapter contract if another backend
+      // needs push events that do not map to files.
     }
 
     // ─── Health check (migrated out of core/doctor.ts per #139 C5) ──────

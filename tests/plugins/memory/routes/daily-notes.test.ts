@@ -40,21 +40,6 @@ const {
   mockMemorySearch: mock<(q: string, opts?: unknown) => Promise<unknown>>(),
 }))()
 
-mock.module('../../../../plugins/memory/lib/openclaw-adapter', () => ({
-  listDailyNotes: mockListDailyNotes,
-  readDailyNote: mockReadDailyNote,
-}))
-
-mock.module('../../../../plugins/memory/lib/openclaw-cli', () => ({
-  memorySearch: mockMemorySearch,
-  MemoryCliError: class MemoryCliError extends Error {
-    constructor(msg: string, public cause?: unknown, public stderr?: string) {
-      super(msg)
-      this.name = 'MemoryCliError'
-    }
-  },
-}))
-
 import {
   dailyNotesListRoute,
   dailyNotesDetailRoute,
@@ -79,6 +64,30 @@ function makeCtx(antflyResults: Record<string, unknown>[] = []): { ctx: PluginCo
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: mock(),
     activity: { log: mock(), audit: mock() },
+    runtime: {
+      memory: {
+        listTiers: mock(async () => [{ id: 'daily-tier', label: 'Daily notes', metadata: { sourceKind: 'daily_note' } }]),
+        listEntries: mock(async (_tierId: string, opts?: { agentId?: string }) =>
+          mockListDailyNotes(opts?.agentId ?? '').map((name) => ({
+            id: name,
+            tierId: 'daily-tier',
+            agentId: opts?.agentId,
+            path: `/fake/${opts?.agentId ?? 'agent'}/memory/${name}`,
+            content: '',
+          })),
+        ),
+        getEntry: mock(async (_tierId: string, id: string, opts?: { agentId?: string }) => {
+          const content = mockReadDailyNote(opts?.agentId ?? '', id)
+          return content === null || content === undefined
+            ? null
+            : { id, tierId: 'daily-tier', agentId: opts?.agentId, path: `/fake/${id}`, content }
+        }),
+        search: mock(async (query: string, opts?: { agentId?: string; limit?: number }) => {
+          const result = await mockMemorySearch(query, { agent: opts?.agentId, limit: opts?.limit })
+          return result as { results: unknown[] }
+        }),
+      },
+    },
     search: {
       registerContentType: mock(),
       registerFileBackedContentType: mock(),

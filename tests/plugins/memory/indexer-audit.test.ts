@@ -66,6 +66,11 @@ function makeCtx(): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: mock(),
     activity: { log: mock(), audit: mock() },
+    runtime: {
+      memory: {
+        resolvePath: mock(async () => null),
+      },
+    },
     search: {
       registerContentType: mock(),
       registerFileBackedContentType: mock(),

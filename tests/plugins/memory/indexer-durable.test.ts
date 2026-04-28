@@ -2,10 +2,9 @@
  * Tests for MemoryIndexer.indexTier('durable') + handleWatcherEvent routing
  * for OpenClaw workspace canonical bootstrap files.
  *
- * The indexer's input for this tier is (a) listAgentIds() from the
- * openclaw-adapter, (b) CANONICAL_DURABLE_FILES, and (c) readDurableFile
- * + the file's mtime. All three are mocked here — no real filesystem reads
- * under ~/.openclaw/.
+ * The indexer's input for this tier is (a) agent IDs from the runtime adapter,
+ * (b) CANONICAL_DURABLE_FILES, and (c) runtime memory entries. All are mocked
+ * here, so no provider filesystem reads happen in the test.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, utimesSync } from 'fs'
@@ -33,71 +32,17 @@ mock.module('../../../src/core/logger', () => ({
 }))
 mock.module('../../../src/core/watcher', () => ({ watchFiles: mock() }))
 
-// Mock the openclaw-adapter.
 const {
   mockListAgentIds,
   mockReadDurableFile,
   mockDurableFilePath,
   mockMatchDurablePath,
-  mockCanonicalFiles,
 } = (() => ({
   mockListAgentIds: mock<() => string[]>(),
   mockReadDurableFile: mock<(agent: string, basename: string) => string | null>(),
   mockDurableFilePath: mock<(agent: string, basename: string) => string>(),
   mockMatchDurablePath: mock<(path: string) => { agent: string; basename: string } | null>(),
-  mockCanonicalFiles: ['SOUL.md', 'MEMORY.md'] as const,
 }))()
-
-mock.module('../../../plugins/memory/lib/openclaw-adapter', () => ({
-  listAgentIds: mockListAgentIds,
-  readDurableFile: mockReadDurableFile,
-  durableFilePath: mockDurableFilePath,
-  matchDurablePath: mockMatchDurablePath,
-  CANONICAL_DURABLE_FILES: mockCanonicalFiles,
-  DURABLE_KIND_BY_BASENAME: { 'SOUL.md': 'soul', 'MEMORY.md': 'memory' },
-  durableKindForBasename: (basename: string) =>
-    ({ 'SOUL.md': 'soul', 'MEMORY.md': 'memory' } as Record<string, string>)[basename],
-  // Skills (tier=durable, kind=skill) — stubbed so the durable indexer pass
-  // doesn't try to walk a real skills/ directory during this test.
-  listAgentSkills: mock(() => []),
-  readAgentSkill: mock(() => null),
-  skillFilePath: mock(() => ''),
-  skillFileMtime: mock(() => null),
-  matchSkillPath: mock(() => null),
-  // daily-note tier (C5) — stubbed so handleWatcherEvent's fallthrough match
-  // doesn't blow up in this tier's isolated tests.
-  listDailyNotes: mock(() => []),
-  readDailyNote: mock(() => null),
-  dailyNotePath: mock(() => ''),
-  dailyNoteMtime: mock(() => null),
-  dailyNoteSize: mock(() => 0),
-  matchDailyNotePath: mock(() => null),
-  // session + turn tiers (C6) — same rationale.
-  readSessionStore: mock(() => null),
-  sessionStorePath: mock(() => ''),
-  matchSessionStorePath: mock(() => null),
-  listSessionJsonlFiles: mock(() => []),
-  sessionJsonlPath: mock(() => ''),
-  sessionJsonlStat: mock(() => null),
-  matchSessionJsonlPath: mock(() => null),
-  // checkpoint tier (C7) — same rationale.
-  listCheckpointJsonlFiles: mock(() => []),
-  readCheckpoint: mock(() => null),
-  checkpointJsonlPath: mock(() => ''),
-  checkpointJsonlStat: mock(() => null),
-  matchCheckpointJsonlPath: mock(() => null),
-  // dream tier (C8) — stubs so handleWatcherEvent fallthrough doesn't blow up.
-  listPhaseDocs: mock(() => []),
-  listDreamSignalFiles: mock(() => []),
-  readPhaseDoc: mock(() => null),
-  readDreamSignal: mock(() => null),
-  matchPhaseDocPath: mock(() => null),
-  matchDreamSignalPath: mock(() => null),
-}))
-
-mock.module('../../../plugins/memory/lib/openclaw-gateway', () => ({
-  gatewayCall: mock(() => Promise.reject(new Error('gateway unused'))),
-}))
 
 import { MemoryIndexer } from '../../../plugins/memory/lib/indexer'
 import { clearAllOffsets } from '../../../plugins/memory/lib/offsets'
@@ -121,6 +66,42 @@ function makeCtx(): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: mock(),
     activity: { log: mock(), audit: mock() },
+    runtime: {
+      agents: {
+        list: mock(async () => mockListAgentIds().map((id) => ({ id, name: id }))),
+      },
+      memory: {
+        listTiers: mock(async () => [
+          { id: 'durable-tier', label: 'Durable', metadata: { sourceKind: 'durable' } },
+          { id: 'skill-tier', label: 'Skills', metadata: { sourceKind: 'skill' } },
+        ]),
+        listEntries: mock(async () => []),
+        getEntry: mock(async (tierId: string, id: string, opts?: { agentId?: string }) => {
+          if (tierId !== 'durable-tier' || !opts?.agentId) return null
+          const content = mockReadDurableFile(opts.agentId, id)
+          if (content === null) return null
+          return {
+            id,
+            tierId,
+            agentId: opts.agentId,
+            path: mockDurableFilePath(opts.agentId, id),
+            content,
+          }
+        }),
+        resolvePath: mock(async (path: string) => {
+          const match = mockMatchDurablePath(path)
+          return match
+            ? {
+                tierId: 'durable-tier',
+                id: match.basename,
+                agentId: match.agent,
+                path,
+                metadata: { sourceKind: 'durable', basename: match.basename },
+              }
+            : null
+        }),
+      },
+    },
     search: {
       registerContentType: mock(),
       registerFileBackedContentType: mock(),
