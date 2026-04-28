@@ -574,7 +574,7 @@ These were deferred from the spec; resolved or noted below:
 - **Type-check is non-negotiable.** `bunx tsc --noEmit -p tsconfig.app.json` after each commit. Bun's runtime test runner doesn't catch TS-only errors that CI does.
 - **Don't reformat unrelated code.** Mechanical renames + deletions only. Resist the urge to touch comments/imports/whitespace orthogonal to the migration.
 - **CLI verification beyond unit tests.** `./bakin agent-rules --check-all` and `./bakin agent-rules --apply-all --apply` run after C9 against a test `OPENCLAW_HOME`. Compare output against pre-migration snapshot.
-- **Test isolation is mandatory.** Per `feedback_test_isolation.md` memory + CLAUDE.md: every new test file mocks both `content-dir` shims, `openclaw-home`, `openclaw-client`, `logger`. Set `BAKIN_HOME` and `OPENCLAW_HOME` env vars BEFORE imports. Verbatim copy the scaffold from `tests/plugins/workflows/health-checks.test.ts:1-67`.
+- **Test isolation is mandatory.** Per `feedback_test_isolation.md` memory + CLAUDE.md: every new test file mocks both `content-dir` shims, provider home paths where applicable, the active runtime boundary, and `logger`. Set `BAKIN_HOME` and provider home env vars BEFORE imports. Verbatim copy the current scaffold from nearby health tests rather than older provider-client mocks.
 - **No stylistic drift from workflows precedent.** If something feels different from how workflows did it, default back to the workflows shape — even if the new way feels marginally cleaner. Consistency wins; "marginally cleaner" loses to maintenance friction across 9 plugins.
 - **Commit messages.** Conventional commits with scope (per CLAUDE.md):
   - `refactor(team): own agent-roster + personas + agent-assets health checks`

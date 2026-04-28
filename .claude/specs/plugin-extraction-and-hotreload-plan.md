@@ -109,7 +109,7 @@ Companion to `.claude/specs/plugin-extraction-and-hotreload.md`. Read the spec f
 | # | Path | Role | Rough edit surface |
 |---|---|---|---|
 | 4.1 | `bakin-bits-official/plugins/messaging/**` | Copy entire `bakin/plugins/messaging/` minus `dist/`. | ~3000 lines copied. |
-| 4.2 | `bakin-bits-official/plugins/messaging/index.ts` | Update imports: `'../../src/core/...'` → `'@bakin/sdk/...'`; `@/core/...` → `@bakin/sdk/...`. Some core utilities (vault, openclaw-client, etc.) need SDK re-exports OR direct imports adjusted. | ~30 line edits. |
+| 4.2 | `bakin-bits-official/plugins/messaging/index.ts` | Update imports: `'../../src/core/...'` → `'@bakin/sdk/...'`; `@/core/...` → `@bakin/sdk/...`. Some core utilities such as vault helpers need SDK re-exports OR direct imports adjusted. Runtime messaging must come from the plugin context, not a provider client. | ~30 line edits. |
 | 4.3 | `bakin-bits-official/plugins/messaging/package.json` | New dependencies array including `@bakin/sdk: "^X.Y.Z"`. Drop bakin-internal devDeps. | ~30 lines. |
 | 4.4 | `bakin-bits-official/plugins/messaging/bakin-plugin.json#version` | Set to `1.0.0`. | 1 line. |
 | 4.5 | `bakin-bits-official/plugins/messaging/tests/**` | Move tests from `bakin/tests/plugins/messaging/`. Update relative imports. Mock contexts from `@bakin/sdk/testing` (introduce if not present). | ~500 lines copied + edited. |
@@ -600,7 +600,7 @@ Files: 4.2, 4.3 (`index.ts`, `package.json`).
 
 Update every relative path import (`'../../src/core/...'`, `'@/core/...'`) to `@bakin/sdk/...`. Where SDK doesn't expose what's needed:
 - `vault` (private utility) — copy needed primitives into plugin's `lib/` OR file an SDK gap issue.
-- `openclaw-client.streamMessage`, `chatCompletion`, `sendChannelMessage` — these are core-coupled APIs. If SDK doesn't re-export them, that's an SDK gap. **Block on SDK update if needed; otherwise, this commit fails review.**
+- Runtime messaging/channel APIs must come from plugin context or SDK runtime abstractions. Do not reintroduce a core provider client as an SDK export.
 
 `package.json` adds `@bakin/sdk: "^X.Y.Z"` (whichever version Phase 0 confirmed is current).
 

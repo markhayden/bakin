@@ -133,7 +133,7 @@ Inherits from CLAUDE.md. Component-specific:
 
 ## Testing Strategy
 
-Mandatory mock setup per CLAUDE.md (content-dir x2, openclaw-home, logger, watcher, openclaw-client) on every test file.
+Mandatory mock setup per CLAUDE.md (content-dir x2, provider home paths where applicable, logger, watcher, active runtime boundary) on every test file.
 
 Per-component coverage requirements:
 
