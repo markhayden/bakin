@@ -477,7 +477,7 @@ async function cmdSearch(query: string, options: { table?: string; limit?: numbe
 }
 
 async function cmdSearchStats(): Promise<void> {
-  const result = await apiGet('/api/plugins/health/antfly-status') as {
+  const result = await apiGet('/api/plugins/health/search-status') as {
     enabled: boolean
     tables: Array<{
       table: string
@@ -487,7 +487,7 @@ async function cmdSearchStats(): Promise<void> {
       healthy?: boolean
     }>
   }
-  console.log(`Antfly: ${result.enabled ? 'enabled' : 'disabled'}`)
+  console.log(`Search: ${result.enabled ? 'enabled' : 'disabled'}`)
   if (result.tables?.length) {
     for (const t of result.tables) {
       const docs = (t.stats as any)?.num_docs ?? '?'

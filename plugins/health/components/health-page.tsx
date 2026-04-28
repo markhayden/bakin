@@ -429,7 +429,7 @@ export function HealthPage() {
         fetch('/api/plugins/health/summary'),
         fetch('/api/plugins/health/registry'),
         fetch('/api/plugins/health/usage'),
-        fetch('/api/plugins/health/antfly-status'),
+        fetch('/api/plugins/health/search-status'),
         fetch(`/api/plugins/health/usage-feed?kind=${kindForTab}&window=${usageWindow}`),
       ])
       const json = await summaryRes.json()
@@ -585,7 +585,7 @@ export function HealthPage() {
         </Card>
       </div>
 
-      {/* Search / Antfly Section */}
+      {/* Search Section */}
       {searchHealth && (
         <Card>
           <CardHeader>
@@ -599,7 +599,7 @@ export function HealthPage() {
                     <path d="M28.3149 6.96011H11.2167C8.86587 6.96012 6.96011 8.86587 6.9601 11.2167V28.3149L1.39945 33.8755C0.883015 34.392 0 34.0262 0 33.2958V11.2167C4.48304e-06 5.02189 5.02189 9.39218e-06 11.2167 0H33.2958C34.0262 0 34.3919 0.883017 33.8755 1.39945L28.3149 6.96011Z" fill="currentColor"/>
                     <path d="M11.8783 15.1175C11.8806 14.4067 12.7401 14.0522 13.2428 14.5549L17.8625 19.1746C18.1747 19.4867 18.1747 19.9928 17.8625 20.3049L13.2134 24.9541C12.709 25.4584 11.8467 25.0996 11.8489 24.3863L11.8783 15.1175Z" fill="currentColor"/>
                   </svg>
-                  Powered by Antfly
+                  Antfly adapter
                 </a>
               </span>
               <div className="flex items-center gap-2">

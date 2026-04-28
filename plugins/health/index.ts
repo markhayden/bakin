@@ -21,7 +21,7 @@ import { checkContentDir } from './lib/system-checks/content-dir'
 import { checkService } from './lib/system-checks/service'
 import { checkMcporter } from './lib/system-checks/mcporter'
 import { checkRuntime } from './lib/system-checks/runtime'
-import { checkAntfly } from './lib/system-checks/antfly'
+import { checkSearchAdapter } from './lib/system-checks/search'
 import { checkOrchestratorRules } from './lib/system-checks/orchestrator-rules'
 import { checkAndSyncSkill } from './lib/system-checks/sync-skill'
 import { checkPluginAssets } from './lib/system-checks/plugin-assets'
@@ -164,9 +164,9 @@ const healthPlugin: BakinPlugin = {
       },
     })
 
-    // Antfly search engine health + index stats
+    // Search adapter health + index stats
     ctx.registerRoute({
-      path: '/antfly-status',
+      path: '/search-status',
       method: 'GET',
       handler: async () => {
         return Response.json(await getSearchHealth())
@@ -308,9 +308,9 @@ const healthPlugin: BakinPlugin = {
       run: () => checkRuntime(),
     })
     ctx.registerHealthCheck({
-      id: 'antfly',
-      name: 'Antfly binary + daemon connection',
-      run: () => checkAntfly(),
+      id: 'search',
+      name: 'Search adapter binary + daemon connection',
+      run: () => checkSearchAdapter(),
     })
     ctx.registerHealthCheck({
       id: 'orchestrator-rules',
