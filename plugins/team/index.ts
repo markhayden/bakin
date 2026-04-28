@@ -1367,7 +1367,7 @@ const teamPlugin: BakinPlugin = {
         const maxMessages = maxParam ? Math.max(1, Math.min(1000, parseInt(maxParam, 10) || 200)) : 200
 
         try {
-          const transcript = readLatestSessionTranscript(agentId, { maxMessages })
+          const transcript = await readLatestSessionTranscript(ctx.runtime.memory, agentId, { maxMessages })
           return Response.json({ ok: true, transcript })
         } catch (err) {
           log.error('Failed to read active context', err, { agentId })
@@ -1964,14 +1964,14 @@ const teamPlugin: BakinPlugin = {
     // ─── Health checks (migrated out of core/doctor.ts per #139) ────────
     ctx.registerHealthCheck({
       id: 'agent-roster',
-      name: 'Bakin agent roster sync',
-      run: () => Promise.resolve(checkAgentRoster()),
+      name: 'Runtime agent roster',
+      run: () => checkAgentRoster(ctx.runtime.agents),
     })
     ctx.registerHealthCheck({
       id: 'personas',
       name: 'Persona files',
       autoFix: true,
-      run: () => Promise.resolve(checkPersonas(getContentDir())),
+      run: () => checkPersonas(getContentDir(), ctx.runtime.agents),
     })
     ctx.registerHealthCheck({
       id: 'agent-assets',

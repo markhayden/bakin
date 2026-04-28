@@ -113,7 +113,7 @@ mock.module('../../../src/core/usage', () => ({
 }))
 
 mock.module('../../../plugins/team/lib/session-reader', () => ({
-  readLatestSessionTranscript: mock(() => null),
+  readLatestSessionTranscript: mock(async () => null),
 }))
 
 mock.module('../../../src/lib/agents', () => ({
@@ -778,7 +778,7 @@ describe('team plugin — GET /:agentId/active-context', () => {
   it('returns transcript=null when no session exists', async () => {
     const sessionMod = await import('../../../plugins/team/lib/session-reader')
     const spy = sessionMod.readLatestSessionTranscript as ReturnType<typeof mock>
-    spy.mockReturnValueOnce(null)
+    spy.mockResolvedValueOnce(null)
 
     const route = findRoute(activated.routes, 'GET', '/:agentId/active-context')!
     const { status, body } = await callRoute(route, activated.ctx, { searchParams: { agentId: 'main' } })
@@ -796,13 +796,13 @@ describe('team plugin — GET /:agentId/active-context', () => {
       truncated: false,
       totalMessages: 1,
     }
-    spy.mockReturnValueOnce(transcript)
+    spy.mockResolvedValueOnce(transcript)
 
     const route = findRoute(activated.routes, 'GET', '/:agentId/active-context')!
     const { status, body } = await callRoute(route, activated.ctx, { searchParams: { agentId: 'pixel', max: '50' } })
     expect(status).toBe(200)
     expect(body).toEqual({ ok: true, transcript })
-    expect(spy).toHaveBeenCalledWith('pixel', { maxMessages: 50 })
+    expect(spy).toHaveBeenCalledWith(activated.ctx.runtime.memory, 'pixel', { maxMessages: 50 })
   })
 })
 

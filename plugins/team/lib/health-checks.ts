@@ -10,14 +10,15 @@
  * ctx.registerHealthCheck. runDiagnostics() picks them up through the
  * plugin-check loop in src/core/doctor.ts's runPluginHealthChecks().
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
 import { getSettings } from '../../../src/core/settings'
-import { getAgentIds } from '../../../packages/core/src/openclaw-config'
-import { getOpenClawPath } from '../../../packages/core/src/openclaw-home'
 import { agentAssetsComponent } from '../../../src/core/onboarding/agent-assets'
 import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
+
+type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list'>
 
 // ─── Result constructors (inlined; matches workflows precedent) ─────────────
 
@@ -34,44 +35,36 @@ function fixed(check: string, message: string): HealthCheckResult {
   return { check, status: 'fixed', message, autoFixable: true }
 }
 
-// ─── Agent roster: Bakin agents vs OpenClaw agents ─────────────────────────
+// ─── Agent roster: runtime agents exposed to Bakin ─────────────────────────
 
 /**
- * Compare Bakin's agent ids (from openclaw.json) with OpenClaw's own
- * agents.list. NOT auto-fixable — which system is "right" requires
- * human judgment.
+ * Verify the runtime adapter can provide a coherent agent roster.
+ * NOT auto-fixable - which runtime condition is "right" requires human
+ * judgment.
  */
-export function checkAgentRoster(): HealthCheckResult[] {
+export async function checkAgentRoster(runtime: RuntimeAgentReader): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = []
-  const openclawConfigPath = getOpenClawPath('openclaw.json')
-
-  if (!existsSync(openclawConfigPath)) {
-    results.push(warn('agent-roster', 'openclaw.json not found — cannot verify agent roster'))
-    return results
+  let agents: Awaited<ReturnType<RuntimeAgentReader['list']>>
+  try {
+    agents = await runtime.list()
+  } catch (err) {
+    return [error('agent-roster', `Failed to read runtime agent roster: ${err}`)]
   }
 
-  try {
-    const config = JSON.parse(readFileSync(openclawConfigPath, 'utf-8'))
-    const openclawAgents = (config.agents?.list || []).map((a: { id: string }) => a.id)
-    const bakinAgents = getAgentIds()
-
-    for (const agent of bakinAgents) {
-      if (!openclawAgents.includes(agent)) {
-        results.push(warn('agent-roster', `Agent "${agent}" is in Bakin but not in OpenClaw`))
-      }
+  const seen = new Set<string>()
+  for (const agent of agents) {
+    if (!agent.id) {
+      results.push(warn('agent-roster', 'Runtime returned an agent without an id'))
+      continue
     }
-
-    for (const ocAgent of openclawAgents) {
-      if (!bakinAgents.includes(ocAgent)) {
-        results.push(warn('agent-roster', `Agent "${ocAgent}" is in OpenClaw but not in Bakin settings`))
-      }
+    if (seen.has(agent.id)) {
+      results.push(warn('agent-roster', `Duplicate runtime agent id "${agent.id}"`))
     }
+    seen.add(agent.id)
+  }
 
-    if (results.length === 0) {
-      results.push(ok('agent-roster', `${bakinAgents.length} agents in sync`))
-    }
-  } catch (err) {
-    results.push(error('agent-roster', `Failed to read openclaw.json: ${err}`))
+  if (results.length === 0) {
+    results.push(ok('agent-roster', `${agents.length} runtime agent(s) available`))
   }
 
   return results
@@ -83,10 +76,18 @@ export function checkAgentRoster(): HealthCheckResult[] {
  * Verify each agent has a persona file. Auto-fixable — creates stub
  * files for missing agents when settings.doctor.autoFixSkill is true.
  */
-export function checkPersonas(contentDir: string): HealthCheckResult[] {
+export async function checkPersonas(
+  contentDir: string,
+  runtime: RuntimeAgentReader,
+): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = []
   const autoFix = getSettings().doctor.autoFixSkill
-  const agentIds = getAgentIds()
+  let agentIds: string[]
+  try {
+    agentIds = (await runtime.list()).map(agent => agent.id).filter(Boolean)
+  } catch (err) {
+    return [warn('personas', `Failed to read runtime agents: ${err}`, true)]
+  }
   const personasDir = join(contentDir, 'team', 'personas')
 
   if (!existsSync(personasDir)) {
