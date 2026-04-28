@@ -16,15 +16,15 @@ import {
 import { getKnownModel, getKnownProvider } from './data/known-models'
 
 // ---------------------------------------------------------------------------
-// Gateway sync tracking (globalThis-backed so every reach into this module
+// Runtime restart sync tracking (globalThis-backed so every reach into this module
 // reads the same instance)
 // ---------------------------------------------------------------------------
-interface GatewaySync { lastConfigChangeAt: number | null; lastRestartAt: number | null }
-const gw = globalThis as typeof globalThis & { __bakinGatewaySync?: GatewaySync }
-if (!gw.__bakinGatewaySync) gw.__bakinGatewaySync = { lastConfigChangeAt: null, lastRestartAt: null }
-function getGatewaySync(): GatewaySync { return gw.__bakinGatewaySync! }
-function markConfigDirty() { getGatewaySync().lastConfigChangeAt = Date.now() }
-function markGatewayRestarted() { getGatewaySync().lastRestartAt = Date.now() }
+interface RuntimeSync { lastConfigChangeAt: number | null; lastRestartAt: number | null }
+const runtimeSyncGlobal = globalThis as typeof globalThis & { __bakinRuntimeSync?: RuntimeSync }
+if (!runtimeSyncGlobal.__bakinRuntimeSync) runtimeSyncGlobal.__bakinRuntimeSync = { lastConfigChangeAt: null, lastRestartAt: null }
+function getRuntimeSync(): RuntimeSync { return runtimeSyncGlobal.__bakinRuntimeSync! }
+function markConfigDirty() { getRuntimeSync().lastConfigChangeAt = Date.now() }
+function markRuntimeRestarted() { getRuntimeSync().lastRestartAt = Date.now() }
 
 // ---------------------------------------------------------------------------
 // Runtime config types
@@ -381,7 +381,7 @@ const modelsPlugin: BakinPlugin = {
 
     ctx.hooks.register('models.markConfigDirty', () => { markConfigDirty() })
 
-    ctx.hooks.register('models.markGatewayRestarted', () => { markGatewayRestarted() })
+    ctx.hooks.register('models.markRuntimeRestarted', () => { markRuntimeRestarted() })
 
     ctx.hooks.register('models.getAvailableModels', async () => {
       const result = await fetchAvailableModels(ctx)
@@ -690,14 +690,14 @@ const modelsPlugin: BakinPlugin = {
     })
 
     // -------------------------------------------------------------------
-    // GET /api/plugins/models/gateway/status
+    // GET /api/plugins/models/runtime/status
     // -------------------------------------------------------------------
     ctx.registerRoute({
-      path: '/gateway/status',
+      path: '/runtime/status',
       method: 'GET',
-      description: 'Check if gateway config is out of sync (needs restart)',
+      description: 'Check if runtime config is out of sync (needs restart)',
       handler: async () => {
-        const sync = getGatewaySync()
+        const sync = getRuntimeSync()
         const restartNeeded = sync.lastConfigChangeAt !== null &&
           (sync.lastRestartAt === null || sync.lastConfigChangeAt > sync.lastRestartAt)
         return Response.json({ restartNeeded, ...sync })
@@ -705,21 +705,21 @@ const modelsPlugin: BakinPlugin = {
     })
 
     // -------------------------------------------------------------------
-    // POST /api/plugins/models/gateway/restart
+    // POST /api/plugins/models/runtime/restart
     // -------------------------------------------------------------------
     ctx.registerRoute({
-      path: '/gateway/restart',
+      path: '/runtime/restart',
       method: 'POST',
       handler: async () => {
         try {
           await ctx.runtime.restart()
-          markGatewayRestarted()
-          // Gateway restart invalidates both cache layers — the user
+          markRuntimeRestarted()
+          // Runtime restart invalidates both cache layers — the user
           // expects fresh data on the next /available hit.
           setModelsCache(null)
           clearPersistedCache()
-          ctx.activity.audit('gateway.restarted', 'system')
-          ctx.activity.log('system', 'Runtime gateway restarted', { category: 'models' })
+          ctx.activity.audit('runtime.restarted', 'system')
+          ctx.activity.log('system', 'Runtime restarted', { category: 'models' })
           return Response.json({ ok: true, message: 'Restart initiated' })
         } catch (err) {
           return Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 })

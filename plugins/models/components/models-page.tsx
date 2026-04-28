@@ -19,7 +19,7 @@ import {
 import { useQueryState } from "@bakin/sdk/hooks"
 import { AgentAvatar } from "@bakin/sdk/components"
 import { ModelSelect } from "@bakin/sdk/components"
-import { useGatewayStatus } from "@bakin/sdk/hooks"
+import { useRuntimeStatus } from "@bakin/sdk/hooks"
 // Relative
 import type { AgentModelConfig, AvailableModel, ModelsConfigResponse, TaskProfile } from '../types'
 import { BrandIcon } from './brand-icon'
@@ -115,7 +115,7 @@ export function ModelsPage() {
   const [pendingProfiles, setPendingProfiles] = useState<TaskProfile[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
-  const gateway = useGatewayStatus()
+  const runtimeStatus = useRuntimeStatus()
   const [newAliasName, setNewAliasName] = useState('')
   const [newAliasTarget, setNewAliasTarget] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -247,7 +247,7 @@ export function ModelsPage() {
       if (data.ok) {
         setPendingOwn((prev) => { const n = { ...prev }; delete n[agentId]; return n })
         setPendingSub((prev) => { const n = { ...prev }; delete n[agentId]; return n })
-        gateway.markDirty()
+        runtimeStatus.markDirty()
         await fetchConfig()
       }
     } catch (err) {
@@ -284,7 +284,7 @@ export function ModelsPage() {
       })
       const data = await res.json()
       if (data.ok) {
-        gateway.markDirty()
+        runtimeStatus.markDirty()
         await fetchConfig()
         await fetchAvailable()
       }
@@ -429,19 +429,19 @@ export function ModelsPage() {
       {error && <ErrorBanner message={error} onRetry={fetchConfig} />}
 
       {/* Restart banner */}
-      {gateway.restartNeeded && (
+      {runtimeStatus.restartNeeded && (
         <div className="flex items-center justify-between rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
           <span className="text-sm text-amber-400">
-            Gateway config out of sync. Restart to apply changes.
+            Runtime config out of sync. Restart to apply changes.
           </span>
           <Button
-            onClick={gateway.restart}
-            disabled={gateway.restarting}
+            onClick={runtimeStatus.restart}
+            disabled={runtimeStatus.restarting}
             variant="outline"
             size="sm"
             className="border-amber-500/30 text-amber-400 hover:bg-amber-500/20"
           >
-            {gateway.restarting ? 'Restarting...' : 'Restart Gateway'}
+            {runtimeStatus.restarting ? 'Restarting...' : 'Restart Runtime'}
           </Button>
         </div>
       )}
@@ -640,22 +640,22 @@ export function ModelsPage() {
 
       {tab === 'available' && (
         <div className="space-y-6">
-            {/* Gateway-out-of-sync banner */}
-            {gateway.restartNeeded && (
+            {/* Runtime-out-of-sync banner */}
+            {runtimeStatus.restartNeeded && (
               <div className="flex items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="size-3.5" />
                   <span>
-                    Runtime config changed since the last gateway restart. Model list may be out of date until you restart.
+                    Runtime config changed since the last runtime restart. Model list may be out of date until you restart.
                   </span>
                 </div>
                 <Button
                   size="xs"
                   variant="outline"
-                  disabled={gateway.restarting}
-                  onClick={gateway.restart}
+                  disabled={runtimeStatus.restarting}
+                  onClick={runtimeStatus.restart}
                 >
-                  {gateway.restarting ? 'Restarting…' : 'Restart gateway'}
+                  {runtimeStatus.restarting ? 'Restarting…' : 'Restart runtime'}
                 </Button>
               </div>
             )}
@@ -687,7 +687,7 @@ export function ModelsPage() {
             {!modelsLoaded || (refreshing && availableModels.length === 0) ? (
               <div className="flex flex-col items-center justify-center rounded-xl border border-border bg-card py-12 gap-3 text-sm text-muted-foreground">
                 <RefreshCw className="size-5 animate-spin text-foreground/60" />
-                <div>Querying runtime gateway — this can take up to 30 seconds on first load.</div>
+                <div>Querying runtime adapter — this can take up to 30 seconds on first load.</div>
               </div>
             ) : availableModels.length === 0 ? (
               <div className="rounded-xl border border-border bg-card p-6 space-y-3">

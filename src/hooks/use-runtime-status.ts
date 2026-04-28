@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 
-interface GatewayStatus {
+interface RuntimeStatus {
   restartNeeded: boolean
   restarting: boolean
   restart: () => Promise<void>
@@ -10,27 +10,27 @@ interface GatewayStatus {
 }
 
 /**
- * Check if the OpenClaw gateway needs a restart (config out of sync).
- * Shared across agent detail, models page, team grid.
+ * Check if the active runtime needs a restart after config changes.
+ * Shared across agent detail, models page, and team grid.
  */
-export function useGatewayStatus(): GatewayStatus {
+export function useRuntimeStatus(): RuntimeStatus {
   const [restartNeeded, setRestartNeeded] = useState(false)
   const [restarting, setRestarting] = useState(false)
 
   useEffect(() => {
-    fetch('/api/plugins/models/gateway/status')
+    fetch('/api/plugins/models/runtime/status')
       .then((r) => {
-        if (!r.ok) throw new Error(`Gateway status: ${r.status}`)
+        if (!r.ok) throw new Error(`Runtime status: ${r.status}`)
         return r.json()
       })
       .then((data) => { if (data?.restartNeeded) setRestartNeeded(true) })
-      .catch((e) => console.error('Failed to fetch gateway status:', e))
+      .catch((e) => console.error('Failed to fetch runtime status:', e))
   }, [])
 
   const restart = useCallback(async () => {
     setRestarting(true)
     try {
-      const res = await fetch('/api/plugins/models/gateway/restart', { method: 'POST' })
+      const res = await fetch('/api/plugins/models/runtime/restart', { method: 'POST' })
       if (res.ok) setRestartNeeded(false)
     } finally {
       setRestarting(false)

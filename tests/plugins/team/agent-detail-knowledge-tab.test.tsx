@@ -43,8 +43,8 @@ const setTabSpy = mock((v: string) => { queryState.tab = v })
 mock.module('@/hooks/use-query-state', () => ({
   useQueryState: (_key: string, defaultValue: string) => [queryState.tab || defaultValue, setTabSpy, mock()],
 }))
-mock.module('@/hooks/use-gateway-status', () => ({
-  useGatewayStatus: () => ({ restartNeeded: false, restart: mock(), restarting: false, markDirty: mock() }),
+mock.module('@/hooks/use-runtime-status', () => ({
+  useRuntimeStatus: () => ({ restartNeeded: false, restart: mock(), restarting: false, markDirty: mock() }),
 }))
 mock.module('@/components/agent-avatar', () => ({ AgentAvatar: () => <div /> }))
 mock.module('@/components/markdown-content', () => ({ MarkdownContent: () => <div /> }))
