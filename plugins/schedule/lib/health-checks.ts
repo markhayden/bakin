@@ -1,8 +1,8 @@
 /**
  * Schedule-plugin-owned doctor check.
  *
- * Migrated out of src/core/doctor.ts (#139 C4) — detects OpenClaw cron
- * jobs that aren't tracked in the Bakin schedule sidecar (orphans).
+ * Detects runtime cron jobs that aren't tracked in the Bakin schedule
+ * sidecar.
  *
  * Registered in plugins/schedule/index.ts activate() via
  * ctx.registerHealthCheck. runDiagnostics() picks it up through the
@@ -10,14 +10,16 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
+import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
 import { createLogger } from '../../../src/core/logger'
 import { getSettings } from '../../../src/core/settings'
 import { getMainAgentId } from '../../../src/core/main-agent'
-import { getOpenClawPath } from '../../../packages/core/src/openclaw-home'
 import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
 
 const log = createLogger('schedule:health')
+
+type RuntimeCronReader = Pick<AgentRuntimeAdapter['cron'], 'list'>
 
 // ─── Result constructors (inlined; matches workflows precedent) ─────────────
 
@@ -34,49 +36,35 @@ function fixed(check: string, message: string): HealthCheckResult {
   return { check, status: 'fixed', message, autoFixable: true }
 }
 
-// ─── Schedule sync: orphan OpenClaw cron jobs not in Bakin's sidecar ───────
+// ─── Schedule sync: orphan runtime cron jobs not in Bakin's sidecar ────────
 
 /**
- * Detect orphaned OpenClaw cron jobs that aren't tracked in Bakin's
+ * Detect orphaned runtime cron jobs that aren't tracked in Bakin's
  * `schedule/sidecar.json`. Auto-adopts them when
- * settings.doctor.autoFixSkill is true — creates a minimal sidecar
+ * settings.doctor.autoFixSkill is true - creates a minimal sidecar
  * entry flagged `requireTriage: true` and explicitly leaves agentId
  * unset (the user must triage rather than have a guessed assignment).
  */
-export function checkScheduleSync(contentDir: string): HealthCheckResult[] {
+export async function checkScheduleSync(
+  contentDir: string,
+  cron: RuntimeCronReader,
+): Promise<HealthCheckResult[]> {
   const checkName = 'schedule-sync'
   const autoFix = getSettings().doctor.autoFixSkill
   const results: HealthCheckResult[] = []
 
-  // Resolve OpenClaw jobs path — configurable, absent on fresh installs
-  let jobsPath: string
+  let runtimeJobs: Array<{ id: string; name: string }>
   try {
-    const configPath = getOpenClawPath('config.json')
-    if (existsSync(configPath)) {
-      const config = JSON.parse(readFileSync(configPath, 'utf-8'))
-      jobsPath = config?.cron?.store ?? getOpenClawPath('cron', 'jobs.json')
-    } else {
-      jobsPath = getOpenClawPath('cron', 'jobs.json')
-    }
-  } catch {
-    jobsPath = getOpenClawPath('cron', 'jobs.json')
-  }
-
-  if (!existsSync(jobsPath)) {
-    // Fresh install or no cron jobs yet — nothing to sync
-    return [ok(checkName, 'No OpenClaw cron jobs file found (fresh install)')]
-  }
-
-  let openclawJobs: Array<{ id: string; name: string; payload?: Record<string, unknown> }>
-  try {
-    const raw = JSON.parse(readFileSync(jobsPath, 'utf-8'))
-    openclawJobs = raw?.jobs ?? []
+    runtimeJobs = (await cron.list()).map(job => ({
+      id: job.id,
+      name: job.name || job.id,
+    }))
   } catch (err) {
-    return [warn(checkName, `Failed to read OpenClaw jobs: ${err}`)]
+    return [warn(checkName, `Failed to read runtime cron jobs: ${err}`)]
   }
 
-  if (openclawJobs.length === 0) {
-    return [ok(checkName, 'No OpenClaw cron jobs to sync')]
+  if (runtimeJobs.length === 0) {
+    return [ok(checkName, 'No runtime cron jobs to sync')]
   }
 
   // Read Bakin sidecar
@@ -92,15 +80,15 @@ export function checkScheduleSync(contentDir: string): HealthCheckResult[] {
     sidecar = { version: 1, jobs: {} }
   }
 
-  const orphans: typeof openclawJobs = []
-  for (const job of openclawJobs) {
+  const orphans: typeof runtimeJobs = []
+  for (const job of runtimeJobs) {
     if (!sidecar.jobs[job.id]) {
       orphans.push(job)
     }
   }
 
   if (orphans.length === 0) {
-    return [ok(checkName, `${openclawJobs.length} cron job(s), all tracked in Bakin sidecar`)]
+    return [ok(checkName, `${runtimeJobs.length} cron job(s), all tracked in Bakin sidecar`)]
   }
 
   for (const orphan of orphans) {
@@ -118,10 +106,10 @@ export function checkScheduleSync(contentDir: string): HealthCheckResult[] {
         updatedAt: now,
       }
       sidecar.jobs[orphan.id] = entry
-      results.push(fixed(checkName, `Auto-adopted orphan cron job "${orphan.name}" (id: ${orphan.id})`))
+      results.push(fixed(checkName, `Auto-adopted orphan runtime cron job "${orphan.name}" (id: ${orphan.id})`))
       log.info('Auto-adopted orphan cron job', { jobId: orphan.id, name: orphan.name })
     } else {
-      results.push(warn(checkName, `Orphan cron job "${orphan.name}" (id: ${orphan.id}) — not tracked in Bakin sidecar`, true))
+      results.push(warn(checkName, `Orphan runtime cron job "${orphan.name}" (id: ${orphan.id}) - not tracked in Bakin sidecar`, true))
     }
   }
 

@@ -1,12 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs'
+import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import type { BakinJobMeta, ScheduleSidecar } from '@bakin/schedule/types'
+import type { BakinJobMeta } from '@bakin/schedule/types'
 
 const testDir = join(tmpdir(), `bakin-test-bridge-${Date.now()}`)
 const sidecarDir = join(testDir, 'schedule')
-const sidecarPath = join(sidecarDir, 'sidecar.json')
 const openclawDir = join(testDir, 'openclaw')
 
 // Mock external deps
@@ -37,7 +36,10 @@ mock.module('../../../src/core/logger', () => ({
   }),
 }))
 
-const mockCreateTask = mock((_opts?: unknown) => Promise.resolve({ id: 'task-abc', workflowId: undefined }))
+const mockCreateTask = mock((opts?: unknown) => {
+  void opts
+  return Promise.resolve({ id: 'task-abc', workflowId: undefined })
+})
 mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
 }))
@@ -87,7 +89,7 @@ mock.module('../../../src/lib/plugin-registry', () => ({
   getHookRegistry: () => mockHookRegistry,
 }))
 
-import { readSidecar, writeSidecar, upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
+import { readSidecar, upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 
 function makeMeta(overrides: Partial<BakinJobMeta> = {}): BakinJobMeta {
@@ -106,10 +108,6 @@ function makeMeta(overrides: Partial<BakinJobMeta> = {}): BakinJobMeta {
     updatedAt: '2026-03-27T00:00:00Z',
     ...overrides,
   }
-}
-
-function writeSidecarFile(sidecar: ScheduleSidecar) {
-  writeFileSync(sidecarPath, JSON.stringify(sidecar))
 }
 
 // 64-char hex matches the length of a real randomBytes(32).toString('hex')
@@ -153,10 +151,10 @@ async function callBridge(
     registerSkill: mock(),
     registerHealthCheck: mock(),
     watchFiles: mock(),
-    storage: {} as any,
-    events: {} as any,
+    storage: {},
+    events: {},
     pluginId: 'schedule',
-    runtime: createMockRuntimeAdapter(),
+    runtime: makeBridgeRuntime(),
     activity: {
       log: mock((agent: string, message: string, opts?: { taskId?: string }) => {
         const broadcastFn = (globalThis as Record<string, unknown>).__bakinBroadcast as ((...args: unknown[]) => void) | undefined
@@ -191,7 +189,7 @@ async function callBridge(
     },
   }
 
-  await plugin.activate(ctx as any)
+  await plugin.activate(ctx as unknown as Parameters<typeof plugin.activate>[0])
 
   if (!bridgeHandler) throw new Error('Bridge handler not found')
 
@@ -208,6 +206,19 @@ async function callBridge(
   const res = await bridgeHandler(req)
   const body = await res.json()
   return { status: res.status, body }
+}
+
+function makeBridgeRuntime() {
+  const runtime = createMockRuntimeAdapter()
+  runtime.cron.list = async () => Object.values(readSidecar().jobs).map((job) => ({
+    id: job.jobId,
+    name: job.displayName ?? job.jobId,
+    schedule: '0 9 * * *',
+    command: job.taskPrompt ?? `bakin:schedule:${job.displayName ?? job.jobId}`,
+    enabled: true,
+    metadata: { tz: job.tz, createdAt: job.createdAt, updatedAt: job.updatedAt },
+  }))
+  return runtime
 }
 
 describe('schedule/bridge', () => {

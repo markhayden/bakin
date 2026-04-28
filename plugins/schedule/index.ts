@@ -5,9 +5,9 @@
 import { randomBytes, timingSafeEqual } from 'crypto'
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
-import type { CronJob } from '@bakin/core/adapters/runtime'
-import { mergeJob } from './lib/jobs-reader'
-import { readSidecar, upsertJob, removeJob, getJob, isPaused, shouldSkip, recordFailure, recordSuccess, withDefaults } from './lib/sidecar'
+import { readMergedJobs } from './lib/jobs-reader'
+import { getLastRun, readRuns } from './lib/runs-reader'
+import { upsertJob, removeJob, getJob, isPaused, shouldSkip, recordFailure, recordSuccess, withDefaults } from './lib/sidecar'
 import { parseSchedule } from './lib/cron-parser'
 import { createTaskWithEffects } from '../../src/core/task-service'
 import { getContentDir } from '../../src/core/content-dir'
@@ -15,7 +15,7 @@ import { createLogger } from '../../src/core/logger'
 import { getMainAgentId } from '../../src/core/main-agent'
 import { getHookRegistry } from '../../src/lib/plugin-registry'
 import { checkScheduleSync } from './lib/health-checks'
-import type { BakinJobMeta, BridgePayload, BridgeResult, MergedJob, RunEntry } from './types'
+import type { BakinJobMeta, BridgePayload, BridgeResult, MergedJob } from './types'
 
 const log = createLogger('schedule')
 
@@ -80,7 +80,7 @@ function getOrCreateBridgeSecret(): string | null {
   return fresh
 }
 
-/** Build the webhook URL the OpenClaw cron will POST to, with secret attached. */
+/** Build the webhook URL the runtime cron will POST to, with secret attached. */
 function buildBridgeWebhookUrl(): string {
   const port = process.env.PORT || '3737'
   const base = `${process.env.BAKIN_URL || `http://localhost:${port}`}/api/plugins/schedule/bridge`
@@ -98,14 +98,14 @@ let pluginCtx: PluginContext | null = null
 async function handleBridge(req: Request): Promise<Response> {
   // Gate 1: feature flag. The bridge setting defaults to enabled, but admins
   // can disable it to stop ALL cron-driven task creation without tearing down
-  // the underlying OpenClaw cron jobs.
+  // the underlying runtime cron jobs.
   const settings = pluginCtx?.getSettings<ScheduleSettings>() ?? {}
   if (settings.bridgeEnabled === false) {
     log.warn('Bridge call rejected — bridgeEnabled setting is false')
     return json({ ok: false, error: 'bridge disabled' }, 503)
   }
 
-  // Gate 2: shared-secret auth. OpenClaw calls the webhook with ?secret=<hex>
+  // Gate 2: shared-secret auth. Runtime cron calls the webhook with ?secret=<hex>
   // from the URL we registered when the cron was created (see
   // buildBridgeWebhookUrl). We require a match so a stale cron from a
   // previous install — or any unauthorized caller — cannot create tasks.
@@ -291,43 +291,7 @@ const schedulePlugin: BakinPlugin = {
     })
 
     async function readMergedRuntimeJobs(): Promise<MergedJob[]> {
-      const sidecar = readSidecar()
-      const jobs = await ctx.runtime.cron.list()
-      return jobs.map((job) => mergeJob(runtimeCronToOpenClawJob(job), sidecar.jobs[job.id]))
-    }
-
-    function runtimeCronToOpenClawJob(job: CronJob) {
-      return {
-        id: job.id,
-        name: job.name,
-        schedule: {
-          kind: 'cron' as const,
-          expr: job.schedule,
-          tz: typeof job.metadata?.tz === 'string' ? job.metadata.tz : undefined,
-        },
-        enabled: job.enabled,
-        delivery: typeof job.metadata?.webhookUrl === 'string'
-          ? { mode: 'webhook' as const, url: job.metadata.webhookUrl }
-          : undefined,
-        payload: { message: job.command },
-        createdAt: typeof job.metadata?.createdAt === 'string' ? job.metadata.createdAt : undefined,
-        updatedAt: typeof job.metadata?.updatedAt === 'string' ? job.metadata.updatedAt : undefined,
-      }
-    }
-
-    function runtimeRunToEntry(run: Awaited<ReturnType<typeof ctx.runtime.cron.listRuns>>[number]): RunEntry {
-      return {
-        runId: run.id,
-        jobId: run.jobId,
-        timestamp: run.startedAt ?? new Date().toISOString(),
-        status: run.status === 'failed' ? 'failure' : run.status === 'cancelled' ? 'skipped' : 'success',
-        error: run.error,
-      }
-    }
-
-    async function getLastRuntimeRun(jobId: string): Promise<RunEntry | null> {
-      const runs = await ctx.runtime.cron.listRuns(jobId)
-      return runs[0] ? runtimeRunToEntry(runs[0]) : null
+      return readMergedJobs(ctx.runtime.cron)
     }
 
     /** Convert a merged job to a search document */
@@ -353,7 +317,7 @@ const schedulePlugin: BakinPlugin = {
       })
     }
 
-    /** Runtime jobs live in OpenClaw + sidecar, so sync them into search on plugin activation. */
+    /** Runtime jobs live in the cron adapter + sidecar, so sync them into search on plugin activation. */
     async function syncRuntimeJobsToSearch(): Promise<void> {
       const jobs = await readMergedRuntimeJobs()
       for (const job of jobs) {
@@ -494,7 +458,7 @@ const schedulePlugin: BakinPlugin = {
         if (!meta) return json({ error: 'Job not found' }, 404)
 
         const defaults = withDefaults(meta)
-        const lastRun = await getLastRuntimeRun(jobId)
+        const lastRun = await getLastRun(ctx.runtime.cron, jobId)
         return json({
           job: {
             id: meta.jobId,
@@ -599,7 +563,7 @@ const schedulePlugin: BakinPlugin = {
       const jobId = url.searchParams.get('jobId')
       if (!jobId) return json({ error: 'jobId query param required' }, 400)
       const limit = parseInt(url.searchParams.get('limit') ?? '50', 10)
-      const runs = (await ctx.runtime.cron.listRuns(jobId)).slice(0, limit).map(runtimeRunToEntry)
+      const runs = await readRuns(ctx.runtime.cron, jobId, limit)
       return json({ runs })
     }
     ctx.registerRoute({ path: '/:jobId/runs', method: 'GET', description: 'Get run history for a job', handler: runsHandler })
@@ -616,7 +580,7 @@ const schedulePlugin: BakinPlugin = {
     }
     ctx.registerRoute({ path: '/parse', method: 'POST', description: 'Parse schedule expression', handler: parseHandler })
 
-    // POST /bridge — OpenClaw webhook → task creation
+    // POST /bridge - runtime cron webhook -> task creation
     ctx.registerRoute({ path: '/bridge', method: 'POST', description: 'Cron bridge webhook', handler: handleBridge })
 
     // ── Exec Tools (agent-facing) ──────────────────────────────────────
@@ -624,7 +588,7 @@ const schedulePlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_schedule_list',
       label: 'Listed scheduled jobs',
-      description: 'List all scheduled jobs (merged OpenClaw + Bakin view)',
+      description: 'List all scheduled jobs (merged runtime cron + Bakin view)',
       parameters: {
         filter: z.enum(['bakin', 'all']).optional().describe('Filter by job type'),
         agentId: z.string().optional().describe('Filter by assigned agent'),
@@ -807,7 +771,7 @@ const schedulePlugin: BakinPlugin = {
         const meta = getJob(params.jobId as string)
         if (!meta) return { ok: false, error: 'Job not found' }
         const defaults = withDefaults(meta)
-        const lastRun = await getLastRuntimeRun(params.jobId as string)
+        const lastRun = await getLastRun(ctx.runtime.cron, params.jobId as string)
         return {
           ok: true,
           job: {
@@ -862,7 +826,7 @@ const schedulePlugin: BakinPlugin = {
       handler: async (params: Record<string, unknown>) => {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
         const limit = typeof params.limit === 'number' ? params.limit : 50
-        const runs = (await ctx.runtime.cron.listRuns(params.jobId as string)).slice(0, limit).map(runtimeRunToEntry)
+        const runs = await readRuns(ctx.runtime.cron, params.jobId as string, limit)
         return { ok: true, runs }
       },
     })
@@ -928,9 +892,9 @@ const schedulePlugin: BakinPlugin = {
     // ─── Health check (migrated out of core/doctor.ts per #139 C4) ──────
     ctx.registerHealthCheck({
       id: 'schedule-sync',
-      name: 'OpenClaw cron jobs ↔ Bakin sidecar sync',
+      name: 'Runtime cron jobs and Bakin sidecar sync',
       autoFix: true,
-      run: () => Promise.resolve(checkScheduleSync(getContentDir())),
+      run: () => checkScheduleSync(getContentDir(), ctx.runtime.cron),
     })
 
     log.info('Schedule plugin activated')
@@ -939,21 +903,7 @@ const schedulePlugin: BakinPlugin = {
   async onReady() {
     const runtime = pluginCtx?.runtime
     if (!runtime) return
-    const sidecar = readSidecar()
-    const jobs = (await runtime.cron.list()).map((job) => mergeJob({
-      id: job.id,
-      name: job.name,
-      schedule: {
-        kind: 'cron' as const,
-        expr: job.schedule,
-        tz: typeof job.metadata?.tz === 'string' ? job.metadata.tz : undefined,
-      },
-      enabled: job.enabled,
-      delivery: typeof job.metadata?.webhookUrl === 'string'
-        ? { mode: 'webhook' as const, url: job.metadata.webhookUrl }
-        : undefined,
-      payload: { message: job.command },
-    }, sidecar.jobs[job.id]))
+    const jobs = await readMergedJobs(runtime.cron)
     const bakin = jobs.filter(j => j.isBakinJob)
     const paused = bakin.filter(j => j.paused)
     log.info(`Ready — ${bakin.length} bakin jobs (${paused.length} paused), ${jobs.length} total`)

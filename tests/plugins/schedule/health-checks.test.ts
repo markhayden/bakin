@@ -1,25 +1,21 @@
 /**
  * Schedule-plugin-owned doctor check.
  *
- * Migrated out of src/core/doctor.ts (#139 C4). Absorbs the prior
- * tests/core/doctor-schedule.test.ts content. Exercises checkScheduleSync
- * directly against fixture jobs.json + sidecar.json files in a temp
- * dir, rather than going through runDiagnostics — the orchestration
- * path is exercised separately by tests/core/doctor.test.ts.
+ * Exercises checkScheduleSync directly against runtime cron fixtures plus
+ * sidecar.json files in a temp dir, rather than going through runDiagnostics.
  */
 import { tmpdir } from 'os'
 import { join as pathJoin } from 'path'
 import { randomUUID } from 'crypto'
 
 const testDir = pathJoin(tmpdir(), `bakin-test-schedule-health-${Date.now()}-${randomUUID()}`)
-const openClawDir = pathJoin(testDir, 'openclaw')
 
 process.env.BAKIN_HOME = testDir
-process.env.OPENCLAW_HOME = openClawDir
 
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import type { CronJob } from '@bakin/core/adapters/runtime'
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -40,16 +36,6 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
   isUsingBakinHome: () => true,
-}))
-mock.module('@bakin/core/openclaw-home', () => ({
-  getOpenClawHome: () => openClawDir,
-  getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
-  resetOpenClawHome: () => {},
-}))
-mock.module('../../../packages/core/src/openclaw-home', () => ({
-  getOpenClawHome: () => openClawDir,
-  getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
-  resetOpenClawHome: () => {},
 }))
 
 let mockAutoFix = false
@@ -75,50 +61,53 @@ mock.module('../../../src/core/logger', () => ({
 
 import { checkScheduleSync } from '../../../plugins/schedule/lib/health-checks'
 
-const cronJobsPath = join(openClawDir, 'cron', 'jobs.json')
 const sidecarPath = join(testDir, 'schedule', 'sidecar.json')
+let runtimeJobs: CronJob[] = []
+let runtimeError: Error | null = null
+
+const cronReader = {
+  list: async () => {
+    if (runtimeError) throw runtimeError
+    return runtimeJobs
+  },
+}
+
+function makeCronJob(overrides: Partial<CronJob> = {}): CronJob {
+  return {
+    id: 'job-1',
+    name: 'daily-recipe',
+    schedule: '0 9 * * *',
+    command: 'bakin:schedule:daily-recipe',
+    enabled: true,
+    ...overrides,
+  }
+}
 
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
-  mkdirSync(testDir, { recursive: true })
-  mkdirSync(openClawDir, { recursive: true })
-  mkdirSync(join(openClawDir, 'cron'), { recursive: true })
   mkdirSync(join(testDir, 'schedule'), { recursive: true })
   mockAutoFix = false
+  runtimeJobs = []
+  runtimeError = null
 })
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-// ─── Fresh-install / no jobs ───────────────────────────────────────────────
-
-describe('checkScheduleSync — no jobs', () => {
-  it('reports ok when no OpenClaw cron jobs file exists (fresh install)', () => {
-    const results = checkScheduleSync(testDir)
+describe('checkScheduleSync - no jobs', () => {
+  it('reports ok when the runtime has no cron jobs', async () => {
+    const results = await checkScheduleSync(testDir, cronReader)
     expect(results).toHaveLength(1)
     expect(results[0].check).toBe('schedule-sync')
     expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/fresh install/)
-  })
-
-  it('reports ok when the jobs file exists but is empty', () => {
-    writeFileSync(cronJobsPath, JSON.stringify({ version: 1, jobs: [] }))
-    const results = checkScheduleSync(testDir)
-    expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/No OpenClaw cron jobs to sync/)
+    expect(results[0].message).toMatch(/No runtime cron jobs/)
   })
 })
 
-// ─── Tracked / orphan detection ───────────────────────────────────────────
-
-describe('checkScheduleSync — orphan detection', () => {
-  it('reports ok when all OpenClaw jobs are tracked in the sidecar', () => {
-    writeFileSync(cronJobsPath, JSON.stringify({
-      version: 1,
-      jobs: [{ id: 'job-1', name: 'daily-recipe' }],
-    }))
+describe('checkScheduleSync - orphan detection', () => {
+  it('reports ok when all runtime jobs are tracked in the sidecar', async () => {
+    runtimeJobs = [makeCronJob({ id: 'job-1', name: 'daily-recipe' })]
     writeFileSync(sidecarPath, JSON.stringify({
       version: 1,
       jobs: {
@@ -133,39 +122,31 @@ describe('checkScheduleSync — orphan detection', () => {
       },
     }))
 
-    const results = checkScheduleSync(testDir)
+    const results = await checkScheduleSync(testDir, cronReader)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('ok')
     expect(results[0].message).toMatch(/1 cron job\(s\), all tracked/)
   })
 
-  it('warns about orphaned cron jobs (no autoFix)', () => {
-    writeFileSync(cronJobsPath, JSON.stringify({
-      version: 1,
-      jobs: [{ id: 'orphan-1', name: 'rogue-cron' }],
-    }))
+  it('warns about orphaned runtime cron jobs without autoFix', async () => {
+    runtimeJobs = [makeCronJob({ id: 'orphan-1', name: 'rogue-cron' })]
     writeFileSync(sidecarPath, JSON.stringify({ version: 1, jobs: {} }))
 
-    const results = checkScheduleSync(testDir)
+    const results = await checkScheduleSync(testDir, cronReader)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('warn')
     expect(results[0].autoFixable).toBe(true)
-    expect(results[0].message).toMatch(/Orphan cron job "rogue-cron"/)
+    expect(results[0].message).toMatch(/Orphan runtime cron job "rogue-cron"/)
   })
 })
 
-// ─── Auto-adopt under autoFix ─────────────────────────────────────────────
-
-describe('checkScheduleSync — auto-adopt', () => {
-  it('auto-adopts orphaned cron jobs into the sidecar without guessing the agent', () => {
+describe('checkScheduleSync - auto-adopt', () => {
+  it('auto-adopts orphaned runtime cron jobs into the sidecar without guessing the agent', async () => {
     mockAutoFix = true
-    writeFileSync(cronJobsPath, JSON.stringify({
-      version: 1,
-      jobs: [{ id: 'orphan-1', name: 'rogue-cron' }],
-    }))
+    runtimeJobs = [makeCronJob({ id: 'orphan-1', name: 'rogue-cron' })]
     writeFileSync(sidecarPath, JSON.stringify({ version: 1, jobs: {} }))
 
-    const results = checkScheduleSync(testDir)
+    const results = await checkScheduleSync(testDir, cronReader)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('fixed')
     expect(results[0].message).toMatch(/Auto-adopted/)
@@ -178,57 +159,26 @@ describe('checkScheduleSync — auto-adopt', () => {
     expect(updated.jobs['orphan-1'].agentId).toBeUndefined()
   })
 
-  it('creates schedule/ directory when sidecar parent is missing', () => {
+  it('creates schedule/ directory when sidecar parent is missing', async () => {
     mockAutoFix = true
+    runtimeJobs = [makeCronJob({ id: 'orphan-1', name: 'rogue-cron' })]
     rmSync(join(testDir, 'schedule'), { recursive: true, force: true })
     expect(existsSync(join(testDir, 'schedule'))).toBe(false)
 
-    writeFileSync(cronJobsPath, JSON.stringify({
-      version: 1,
-      jobs: [{ id: 'orphan-1', name: 'rogue-cron' }],
-    }))
-
-    checkScheduleSync(testDir)
+    await checkScheduleSync(testDir, cronReader)
     expect(existsSync(sidecarPath)).toBe(true)
   })
 })
 
-// ─── Custom jobs.json path via OpenClaw config.json ───────────────────────
-
-describe('checkScheduleSync — config-overridden jobs path', () => {
-  it('honors `cron.store` override from openclaw.config.json', () => {
-    const customJobsPath = join(openClawDir, 'custom', 'jobs.json')
-    mkdirSync(join(openClawDir, 'custom'), { recursive: true })
-    writeFileSync(customJobsPath, JSON.stringify({
-      version: 1,
-      jobs: [{ id: 'cust-1', name: 'custom-cron' }],
-    }))
-    writeFileSync(
-      join(openClawDir, 'config.json'),
-      JSON.stringify({ cron: { store: customJobsPath } }),
-    )
-    writeFileSync(sidecarPath, JSON.stringify({ version: 1, jobs: {} }))
-
-    const results = checkScheduleSync(testDir)
+describe('checkScheduleSync - runtime failures', () => {
+  it('warns when the runtime cron adapter cannot list jobs', async () => {
+    runtimeError = new Error('adapter unavailable')
+    const results = await checkScheduleSync(testDir, cronReader)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('warn')
-    expect(results[0].message).toMatch(/custom-cron/)
+    expect(results[0].message).toMatch(/Failed to read runtime cron jobs/)
   })
 })
-
-// ─── Malformed jobs file ──────────────────────────────────────────────────
-
-describe('checkScheduleSync — malformed input', () => {
-  it('warns when the jobs file cannot be parsed', () => {
-    writeFileSync(cronJobsPath, '{not json')
-    const results = checkScheduleSync(testDir)
-    expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('warn')
-    expect(results[0].message).toMatch(/Failed to read OpenClaw jobs/)
-  })
-})
-
-// ─── Registration smoke test ──────────────────────────────────────────────
 
 describe('plugin registration', () => {
   it('registers the schedule-sync health check on activate', async () => {
@@ -238,6 +188,7 @@ describe('plugin registration', () => {
     const noopAsync = mock(async () => {})
     const ctx: Record<string, unknown> = {
       pluginId: 'schedule',
+      runtime: { cron: { list: mock(async () => []) } },
       registerRoute: noop, registerExecTool: noop, registerNav: noop,
       registerSlot: noop, registerSkill: noop, registerWorkflow: noop,
       registerNodeType: noop, registerNotificationChannel: noop,
