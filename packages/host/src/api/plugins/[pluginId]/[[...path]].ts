@@ -55,11 +55,12 @@ function buildCtx(pluginId: string): PluginContext {
   })
   const noopRegisterRoute = () => {}
   const assets = createPluginAssetsAPI()
+  const usePublicRuntimeFacade = state?.source === 'user' || pluginId === 'messaging' || pluginId === 'projects'
   return {
     storage,
     events,
     pluginId,
-    runtime: state?.source === 'user' ? createPluginRuntimeFacade(services.runtime) : services.runtime,
+    runtime: usePublicRuntimeFacade ? createPluginRuntimeFacade(services.runtime) : services.runtime,
     tasks: createPluginTaskService(services.tasks),
     assets,
     registerNav: () => {},

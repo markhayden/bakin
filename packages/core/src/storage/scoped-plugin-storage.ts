@@ -20,9 +20,11 @@ function assertSafePluginId(pluginId: string): void {
 
 export class ScopedPluginStorageAdapter implements StorageAdapter {
   readonly root: string
+  private readonly pluginId: string
 
   constructor(contentDir: string, pluginId: string) {
     assertSafePluginId(pluginId)
+    this.pluginId = pluginId
     this.root = join(contentDir, 'plugin-data', pluginId)
   }
 
@@ -126,5 +128,16 @@ export class ScopedPluginStorageAdapter implements StorageAdapter {
 
   writeJson(path: string, value: unknown): void {
     this.write(path, JSON.stringify(value, null, 2))
+  }
+
+  searchPath(path: string): string {
+    if (isAbsolute(path)) {
+      throw new Error(`Plugin storage path must be relative: ${path}`)
+    }
+    const normalized = normalize(path)
+    if (normalized === '..' || normalized.startsWith(`..${sep}`)) {
+      throw new Error(`Plugin storage path must not escape plugin root: ${path}`)
+    }
+    return join('plugin-data', this.pluginId, normalized === '.' ? '' : normalized).replaceAll('\\', '/')
   }
 }

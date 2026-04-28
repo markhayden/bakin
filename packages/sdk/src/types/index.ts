@@ -7,6 +7,7 @@
  */
 
 import type { ComponentType } from 'react'
+import type { ZodRawShape } from 'zod'
 
 // ---------------------------------------------------------------------------
 // Shared primitives
@@ -174,6 +175,7 @@ export interface StorageAdapter {
   stat?(path: string): StorageStat | null
   readJson?<T = unknown>(path: string): T | null
   writeJson?(path: string, value: unknown): void
+  searchPath?(path: string): string
 }
 
 // ---------------------------------------------------------------------------
@@ -204,8 +206,8 @@ export interface HookAPI {
 export interface NavItem {
   id: string
   label: string
-  icon?: string
-  href?: string
+  icon: string
+  href: string
   order?: number
   children?: NavItem[]
   alwaysExpanded?: boolean
@@ -631,7 +633,7 @@ export interface ExecToolDefinition {
   description: string
   label?: string
   activityDuplicate?: boolean
-  parameters: Record<string, unknown>
+  parameters: ZodRawShape
   handler: (params: Record<string, unknown>, agent: string, ctx?: PluginToolContext) => Promise<ExecToolResult>
   source?: string
 }

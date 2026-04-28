@@ -3,41 +3,27 @@
  * Manages content pipeline: draft → scheduled → executing → waiting → review → published
  */
 import { z } from 'zod'
-import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
-import {
-  loadMessagingItems,
-  createItem,
-  updateItem,
-  deleteItem,
-  getItem,
-} from './lib/storage'
+import type { BakinPlugin, PluginContext } from '@bakin/sdk/types'
+import { createMessagingStorage } from './lib/storage'
+import type { MessagingStorage } from './lib/storage'
 import type { CalendarItem, ContentStatus, ProposalStatus, MessagingSettings } from './types'
 import { DEFAULT_CHANNEL, DEFAULT_CONTENT_TYPES } from './types'
-import {
-  createSession,
-  loadSession,
-  listSessions,
-  updateSession as updateSessionFn,
-  deleteSession as deleteSessionFn,
-  appendMessage,
-  upsertProposals,
-  updateProposal,
-  confirmSession,
-} from './lib/sessions'
+import { createMessagingSessionStore } from './lib/sessions'
 import { buildMessages } from './lib/prompt-builder'
 import {
   buildDoc as buildBrainstormDoc,
-  parseSessionFile,
   sessionKey,
   SESSION_FILE_PATTERN,
 } from './lib/brainstorm-search'
-import { getContentDir } from '../../src/core/content-dir'
-import { createLogger } from '../../src/core/logger'
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync } from 'fs'
-import { join } from 'path'
 import type { PlanningSession } from './types'
 
-const log = createLogger('messaging')
+const log = {
+  info: (...args: unknown[]) => console.info('[messaging]', ...args),
+  warn: (...args: unknown[]) => console.warn('[messaging]', ...args),
+  error: (...args: unknown[]) => console.error('[messaging]', ...args),
+}
+
+let activeMessagingStorage: MessagingStorage | null = null
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -160,13 +146,11 @@ async function resolvePromptOptions(ctx: PluginContext, agentId: string) {
   const valid = await validateAgentId(ctx, agentId)
   let persona = ''
   if (valid) {
-    const personaPath = join(getContentDir(), 'team', 'personas', `${agentId}.md`)
-    if (existsSync(personaPath)) {
-      try {
-        persona = readFileSync(personaPath, 'utf-8')
-      } catch (err) {
-        log.warn('failed to read persona file', { agentId, err: err instanceof Error ? err.message : String(err) })
-      }
+    try {
+      const profile = await ctx.hooks.invoke<{ soul?: string } | null>('team.resolveProfile', { id: agentId })
+      persona = profile?.soul ?? ''
+    } catch (err) {
+      log.warn('team.resolveProfile hook failed during persona lookup', { agentId, err: err instanceof Error ? err.message : String(err) })
     }
   }
 
@@ -187,7 +171,11 @@ async function resolvePromptOptions(ctx: PluginContext, agentId: string) {
 // Approve logic (shared by route + exec tool)
 // ---------------------------------------------------------------------------
 
-async function approveItem(item: CalendarItem, ctx: PluginContext): Promise<{ item: CalendarItem; newStatus: ContentStatus } | { error: string; status: number }> {
+async function approveItem(
+  item: CalendarItem,
+  ctx: PluginContext,
+  messaging: MessagingStorage,
+): Promise<{ item: CalendarItem; newStatus: ContentStatus } | { error: string; status: number }> {
   let newStatus: ContentStatus
   if (item.status === 'draft') {
     newStatus = 'scheduled'
@@ -199,20 +187,13 @@ async function approveItem(item: CalendarItem, ctx: PluginContext): Promise<{ it
       const caption = item.draft?.caption || item.title
       const channels = normalizeChannels(item.channels)
 
-      // Derive filename → absolute path via the pure path function.
-      let media: string | undefined
+      let media = null as Awaited<ReturnType<PluginContext['assets']['fileRef']>> | null
       const mediaFilename = item.draft?.imageFilename || item.draft?.videoFilename
       if (mediaFilename) {
         try {
-          const { pathForFilename } = await import('../assets/lib/path-for-filename')
-          const { existsSync } = await import('fs')
-          const { join } = await import('path')
-          const rel = pathForFilename(mediaFilename)
-          const abs = rel ? join(getContentDir(), rel) : null
-          if (abs && existsSync(abs)) media = abs
-          else log.warn('Unknown media filename on approve', { itemId: item.id, filename: mediaFilename })
+          media = await ctx.assets.fileRef(mediaFilename)
         } catch (err) {
-          log.warn('Asset path resolver unavailable on approve', { err: err instanceof Error ? err.message : String(err) })
+          log.warn('Asset reference unavailable on approve', { itemId: item.id, filename: mediaFilename, err: err instanceof Error ? err.message : String(err) })
         }
       }
 
@@ -222,7 +203,7 @@ async function approveItem(item: CalendarItem, ctx: PluginContext): Promise<{ it
           content: {
             title: item.title,
             body: caption,
-            files: [{ name: mediaFilename ?? 'media', path: media }],
+            files: [media],
           },
         })
       } else {
@@ -240,7 +221,7 @@ async function approveItem(item: CalendarItem, ctx: PluginContext): Promise<{ it
     return { error: `Cannot approve item in status: ${item.status}`, status: 400 }
   }
 
-  const updated = updateItem(item.id, {
+  const updated = messaging.updateItem(item.id, {
     status: newStatus,
     ...(newStatus === 'published' ? { publishedAt: new Date().toISOString() } : {}),
   })
@@ -287,27 +268,28 @@ const messagingPlugin: BakinPlugin = {
   contentFiles: [],
 
   activate(ctx: PluginContext) {
-    // ── Data migration (calendar → messaging) ─────────────────────────
-    try {
-      const contentDir = getContentDir()
-
-      const oldCalendarJson = join(contentDir, 'calendar.json')
-      const newMessagingJson = join(contentDir, 'messaging.json')
-      if (existsSync(oldCalendarJson) && !existsSync(newMessagingJson)) {
-        renameSync(oldCalendarJson, newMessagingJson)
-        log.info('Migrated calendar.json → messaging.json')
-      }
-
-      const oldSessionsDir = join(contentDir, 'calendar', 'sessions')
-      const newSessionsDir = join(contentDir, 'messaging', 'sessions')
-      if (existsSync(oldSessionsDir) && !existsSync(newSessionsDir)) {
-        mkdirSync(join(contentDir, 'messaging'), { recursive: true })
-        renameSync(oldSessionsDir, newSessionsDir)
-        log.info('Migrated calendar/sessions → messaging/sessions')
-      }
-    } catch (err) {
-      log.warn('Data migration failed (non-fatal)', err)
-    }
+    const messaging = createMessagingStorage(ctx.storage)
+    activeMessagingStorage = messaging
+    const sessions = createMessagingSessionStore(ctx.storage, messaging)
+    const {
+      loadMessagingItems,
+      createItem,
+      updateItem,
+      deleteItem,
+      getItem,
+    } = messaging
+    const {
+      createSession,
+      loadSession,
+      saveSession,
+      listSessions,
+      updateSession: updateSessionFn,
+      deleteSession: deleteSessionFn,
+      appendMessage,
+      upsertProposals,
+      updateProposal,
+      confirmSession,
+    } = sessions
 
     // ── Seed default content types on first activate ──────────────────
     const currentSettings = ctx.getSettings<MessagingSettings>()
@@ -320,6 +302,7 @@ const messagingPlugin: BakinPlugin = {
     // Per spec §5.1d, ONLY brainstorm sessions get indexed search; calendar
     // items get a local substring filter in a later commit. No TTL — spec
     // does not mandate one and this is a dev machine with tens of sessions.
+    const sessionFilePattern = ctx.storage.searchPath?.(SESSION_FILE_PATTERN) ?? SESSION_FILE_PATTERN
     ctx.search.registerFileBackedContentType({
       table: 'messaging_brainstorm',
       schema: {
@@ -338,9 +321,9 @@ const messagingPlugin: BakinPlugin = {
       facets: ['status', 'agent_id'],
       filePatterns: [
         {
-          pattern: SESSION_FILE_PATTERN,
+          pattern: sessionFilePattern,
           fileToId: (rel) => {
-            const id = rel.replace(/^messaging\/sessions\//, '').replace(/\.json$/, '')
+            const id = rel.split('/').pop()?.replace(/\.json$/, '') ?? ''
             return id ? sessionKey(id) : null
           },
           fileToDoc: async (_rel, content) => {
@@ -357,10 +340,9 @@ const messagingPlugin: BakinPlugin = {
         },
       ],
       reindex: async function* () {
-        const sessionsDir = join(getContentDir(), 'messaging', 'sessions')
-        if (!existsSync(sessionsDir)) return
-        for (const file of readdirSync(sessionsDir).filter(f => f.endsWith('.json'))) {
-          const session = parseSessionFile(join(sessionsDir, file))
+        for (const file of (ctx.storage.list?.('messaging/sessions') ?? []).filter(f => f.endsWith('.json'))) {
+          const id = file.replace(/\.json$/, '')
+          const session = loadSession(id)
           if (session) {
             yield { key: sessionKey(session.id), doc: buildBrainstormDoc(session) }
           }
@@ -369,7 +351,7 @@ const messagingPlugin: BakinPlugin = {
       verifyExists: async (key: string) => {
         if (!key.startsWith('brainstorm-')) return false
         const id = key.slice('brainstorm-'.length)
-        return existsSync(join(getContentDir(), 'messaging', 'sessions', `${id}.json`))
+        return ctx.storage.exists(`messaging/sessions/${id}.json`)
       },
     })
 
@@ -471,7 +453,7 @@ const messagingPlugin: BakinPlugin = {
       const item = getItem(id)
       if (!item) return json({ error: 'Item not found' }, 404)
 
-      const result = await approveItem(item, ctx)
+      const result = await approveItem(item, ctx, messaging)
       if ('error' in result) return json({ error: result.error }, result.status)
       return json({ ok: true, item: result.item })
     }
@@ -881,8 +863,6 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
               // Link proposals to the first message and patch messageIds on proposals
               if (streamedProposalIds.length > 0) {
-                const { writeFileSync } = await import('fs')
-                const { join } = await import('path')
                 const reloadedSession = loadSession(sessionId)
                 if (reloadedSession) {
                   // Attach proposalIds to the first assistant message
@@ -895,10 +875,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
                       p.messageId = messageIds[0]
                     }
                   }
-                  writeFileSync(
-                    join(getContentDir(), 'messaging', 'sessions', `${sessionId}.json`),
-                    JSON.stringify(reloadedSession, null, 2)
-                  )
+                  saveSession(reloadedSession)
                 }
               }
 
@@ -1103,7 +1080,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         if (!params.itemId) return { ok: false, error: 'itemId required' }
         const item = getItem(params.itemId as string)
         if (!item) return { ok: false, error: 'Item not found' }
-        const result = await approveItem(item, ctx)
+        const result = await approveItem(item, ctx, messaging)
         if ('error' in result) return { ok: false, error: result.error }
         return { ok: true, item: result.item, newStatus: result.newStatus }
       },
@@ -1372,12 +1349,15 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
       },
     })
 
-    ctx.watchFiles(['messaging.json', 'messaging/sessions/*.json'])
+    ctx.watchFiles([
+      ctx.storage.searchPath?.('messaging.json') ?? 'messaging.json',
+      ctx.storage.searchPath?.(SESSION_FILE_PATTERN) ?? SESSION_FILE_PATTERN,
+    ])
     log.info('Messaging plugin activated')
   },
 
   onReady() {
-    const items = loadMessagingItems()
+    const items = activeMessagingStorage?.loadMessagingItems() ?? []
     const byStatus: Record<string, number> = {}
     for (const item of items) {
       byStatus[item.status] = (byStatus[item.status] || 0) + 1
@@ -1386,6 +1366,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
   },
 
   onShutdown() {
+    activeMessagingStorage = null
     log.info('Messaging plugin shutting down')
   },
 }

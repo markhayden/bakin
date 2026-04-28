@@ -37,6 +37,12 @@ export interface StorageAdapter {
   } | null
   readJson?<T = unknown>(path: string): T | null
   writeJson?(path: string, value: unknown): void
+  /**
+   * Convert a plugin-storage-relative path or glob to the content-dir-relative
+   * path seen by file-backed search/watch APIs. Implementations never return
+   * absolute host paths.
+   */
+  searchPath?(path: string): string
 }
 
 // ---------------------------------------------------------------------------

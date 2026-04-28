@@ -617,21 +617,26 @@ describe('Session exec tools', () => {
 
 describe('Proposal lifecycle', () => {
   // Import storage module functions directly for deeper testing
-  let createSessionDirect: typeof import('../../../plugins/messaging/lib/sessions').createSession
-  let loadSessionDirect: typeof import('../../../plugins/messaging/lib/sessions').loadSession
-  let addProposalsDirect: typeof import('../../../plugins/messaging/lib/sessions').addProposals
-  let updateProposalDirect: typeof import('../../../plugins/messaging/lib/sessions').updateProposal
-  let confirmSessionDirect: typeof import('../../../plugins/messaging/lib/sessions').confirmSession
-  let appendMessageDirect: typeof import('../../../plugins/messaging/lib/sessions').appendMessage
+  let createSessionDirect: ReturnType<typeof import('../../../plugins/messaging/lib/sessions').createMessagingSessionStore>['createSession']
+  let loadSessionDirect: ReturnType<typeof import('../../../plugins/messaging/lib/sessions').createMessagingSessionStore>['loadSession']
+  let addProposalsDirect: ReturnType<typeof import('../../../plugins/messaging/lib/sessions').createMessagingSessionStore>['addProposals']
+  let updateProposalDirect: ReturnType<typeof import('../../../plugins/messaging/lib/sessions').createMessagingSessionStore>['updateProposal']
+  let confirmSessionDirect: ReturnType<typeof import('../../../plugins/messaging/lib/sessions').createMessagingSessionStore>['confirmSession']
+  let appendMessageDirect: ReturnType<typeof import('../../../plugins/messaging/lib/sessions').createMessagingSessionStore>['appendMessage']
 
   beforeAll(async () => {
     const sessions = await import('../../../plugins/messaging/lib/sessions')
-    createSessionDirect = sessions.createSession
-    loadSessionDirect = sessions.loadSession
-    addProposalsDirect = sessions.addProposals
-    updateProposalDirect = sessions.updateProposal
-    confirmSessionDirect = sessions.confirmSession
-    appendMessageDirect = sessions.appendMessage
+    const storageMod = await import('../../../plugins/messaging/lib/storage')
+    const { MarkdownStorageAdapter } = await import('../../../packages/core/src/storage/markdown-adapter')
+    const storage = new MarkdownStorageAdapter(testDir)
+    const messaging = storageMod.createMessagingStorage(storage)
+    const store = sessions.createMessagingSessionStore(storage, messaging)
+    createSessionDirect = store.createSession
+    loadSessionDirect = store.loadSession
+    addProposalsDirect = store.addProposals
+    updateProposalDirect = store.updateProposal
+    confirmSessionDirect = store.confirmSession
+    appendMessageDirect = store.appendMessage
   })
 
   it('creates proposals linked to a message', () => {
