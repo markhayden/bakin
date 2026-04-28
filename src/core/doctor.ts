@@ -12,7 +12,7 @@
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
-import { getRuntimeAdapter } from './runtime-registry'
+import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { isOnboarded } from './onboarding/state'
 import { listHealthChecks } from '../../plugins/health/lib/health-check-registry'
@@ -83,7 +83,7 @@ async function notifyUnfixableIssues(results: HealthCheckResult[]): Promise<void
   const message = `Bakin Doctor found ${issues.length} issue(s) that need your attention:\n\n${lines.join('\n')}\n\nRun \`bakin doctor\` for full details.`
 
   try {
-    const runtime = getRuntimeAdapter()
+    const runtime = getAppServices().runtime
     const mainAgentId = await getRuntimeMainAgentId(runtime)
     await runtime.messaging.send({ agentId: mainAgentId, content: message })
     log.info('Notified main agent of unfixable issues', { count: issues.length })
