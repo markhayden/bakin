@@ -25,7 +25,6 @@ import {
   resetOpenClawConfigCache,
 } from '@bakin/core/openclaw-config'
 import { tryGetMainAgentId } from '@bakin/core/main-agent'
-import * as vault from '@bakin/core/vault'
 import type { OpenClawRuntimeAdapterOptions } from './index'
 import {
   getOpenClawMemoryEntry,
@@ -602,7 +601,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   private headers(agentId?: string, sessionKey?: string): Record<string, string> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    const token = vault.get('gateway-token')
+    const token = readGatewayToken()
     if (token) headers.Authorization = `Bearer ${token}`
     if (agentId) headers['x-openclaw-agent-id'] = agentId
     if (sessionKey) headers['x-openclaw-session-key'] = sessionKey
@@ -913,6 +912,12 @@ function getWorkspacePath(agentId: string): string {
     return config?.agents?.defaults?.workspace ?? join(getOpenClawHome(), 'workspace')
   }
   return join(getOpenClawHome(), 'workspaces', agentId)
+}
+
+function readGatewayToken(): string | null {
+  const config = readOpenClawConfig() as { gateway?: { auth?: { token?: unknown } } } | null
+  const token = config?.gateway?.auth?.token
+  return typeof token === 'string' && token.length > 0 ? token : null
 }
 
 function isSafeWorkspaceFile(path: string): boolean {

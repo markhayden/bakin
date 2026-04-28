@@ -29,7 +29,6 @@ import { getSettings } from './src/core/settings'
 import { getContentDir, getBakinPaths, isUsingBakinHome } from './src/core/content-dir'
 import { handleSSE, broadcast } from './src/core/sse'
 import { appendAudit } from './src/core/audit'
-import * as vault from './src/core/vault'
 import { createAppServices } from './src/core/app-services'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { handleJsonPost, jsonResponse } from './src/core/middleware'
@@ -121,9 +120,6 @@ const storage = new MarkdownStorageAdapter(CONTENT_DIR)
 const eventBus = new BakinEventBus(broadcast)
 
 ;(async () => {
-  // Initialize vault (load credentials from disk)
-  vault.initialize()
-
   // Initialize the adapter/task service spine before plugin activation.
   const appServices = await createAppServices()
 

@@ -27,7 +27,6 @@
     "./settings": "./src/settings.ts",
     "./content-dir": "./src/content-dir.ts",
     "./main-agent": "./src/main-agent.ts",
-    "./vault": "./src/vault.ts",
     "./openclaw-home": "./src/openclaw-home.ts",
     "./openclaw-config": "./src/openclaw-config.ts",
     "./plugin-types": "./src/plugin-types.ts",
