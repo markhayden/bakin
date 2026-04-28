@@ -109,7 +109,7 @@ steps:
   - id: publish
     type: output
     label: Publish
-    agent: roscoe
+    agent: $assigned
     description: >
       Post the completed social media content using bakin_exec_post_channel.
 

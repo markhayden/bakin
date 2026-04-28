@@ -7,7 +7,7 @@ steps:
   - id: write-script
     type: agent
     label: Write Script
-    agent: basil
+    agent: $assigned
     description: Write full video script using SALT methodology
 
   - id: script-gate
@@ -23,7 +23,7 @@ steps:
   - id: segment-script
     type: agent
     label: Break Into Clips
-    agent: basil
+    agent: $assigned
     description: Break approved script into 5-10 second clip segments, each with visual prompts
 
   - id: segments-gate

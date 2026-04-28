@@ -7,7 +7,7 @@ steps:
   - id: generate-voiceover
     type: agent
     label: Generate Voiceover
-    agent: rolo
+    agent: $assigned
     description: Generate voiceover audio from the approved script via TTS
 
   - id: voiceover-gate
@@ -23,7 +23,7 @@ steps:
   - id: stitch-video
     type: agent
     label: Stitch Video
-    agent: rolo
+    agent: $assigned
     description: Concatenate clips, overlay voiceover and music via ffmpeg
 
   - id: final-gate
@@ -41,5 +41,5 @@ steps:
     label: Publish
     channels:
       - general
-    agent: roscoe
+    agent: $assigned
     description: Post the final video to the channel

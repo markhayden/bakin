@@ -71,6 +71,18 @@ The user copy at `~/.bakin/workflows/definitions/{id}.yaml` always shadows a plu
 
 Cross-plugin id collisions are an activation-time error, but the loader catches the throw and continues with other plugins.
 
+## Portable Default Workflows
+
+Plugin-shipped workflow YAML under `plugins/*/defaults/workflows/` must be
+portable across runtime rosters. Do not hardcode local OpenClaw agent ids such
+as `basil`, `pixel`, `rolo`, or `roscoe` in default definitions. Use the
+symbolic `$assigned` token for every shipped `agent:` value until Bakin grows a
+provider-neutral role/capability selector.
+
+User-owned workflow YAML under `~/.bakin/workflows/definitions/` can still use
+local agent ids. The portability rule applies only to defaults committed with a
+plugin.
+
 ## Node-Type Registry
 
 `plugins/workflows/lib/node-type-registry.ts`. 5 builtins self-register at module load; plugins add more via `ctx.registerNodeType`:

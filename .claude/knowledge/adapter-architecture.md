@@ -135,14 +135,22 @@ Run:
 
 ```sh
 bun test tests/architecture/adapter-boundary.test.ts --isolate
+bun run lint
 bun run lint:home-bypasses
 rg -n "runtime\\.config\\.raw|config\\.raw|\\.raw<|openclaw\\.ai" src cli plugins packages/core/src packages/host/src scripts server.ts --glob '!packages/host/public/vendor/**'
 ```
 
 The architecture test scans `src/`, `plugins/`, `packages/core/src/`,
-`packages/host/src/`, `cli/`, `scripts/`, and `server.ts`. It fails on direct
-provider imports, raw provider paths, legacy OpenClaw client modules, legacy
-`flow_runs` metadata, provider setup URLs outside adapter factories, and raw
-runtime config access outside the gate.
+`packages/host/src/`, `cli/`, `scripts/`, and `server.ts`, including JSON and
+YAML files in those roots. It fails on direct provider imports, raw provider
+paths, legacy OpenClaw client modules, legacy `flow_runs` metadata, provider
+setup URLs outside adapter factories, raw runtime config access outside the
+gate, and hard-coded local runtime agent ids in plugin-shipped workflow
+defaults.
+
+ESLint duplicates the import-level restriction so provider package imports fail
+before the architecture test runs. `.claude/hooks/check-adapter-boundary.mjs`
+also runs after Claude Code edits and blocks the common provider-bypass and
+shipped-workflow-agent mistakes at edit time.
 
 Use `.claude/skills/check-adapter-boundary.md` for the full repeatable audit.
