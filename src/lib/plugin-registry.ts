@@ -461,11 +461,12 @@ class PluginRegistryImpl {
       ? new ScopedPluginStorageAdapter(getContentDir(), pluginId)
       : storage
     const assets = createPluginAssetsAPI()
+    const usePublicRuntimeFacade = state.source === 'user' || pluginId === 'messaging' || pluginId === 'projects'
     return {
       storage: pluginStorage,
       events,
       pluginId,
-      runtime: state.source === 'user' ? createPluginRuntimeFacade(services.runtime) : services.runtime,
+      runtime: usePublicRuntimeFacade ? createPluginRuntimeFacade(services.runtime) : services.runtime,
       tasks: createPluginTaskService(services.tasks),
       assets,
       registerNav: (items: NavItem[]) => { state.navItems.push(...items) },

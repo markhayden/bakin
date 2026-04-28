@@ -13,10 +13,10 @@
  * gets slow, the spec A8 bailout is keyword-only indexing on
  * `message_body` (drop the embedding template).
  */
-import { readFileSync } from 'fs'
 import type { PlanningSession } from '../types'
+import { readFileSync } from 'fs'
 
-/** Glob pattern (relative to content dir) matching session JSON files. */
+/** Glob pattern relative to ctx.storage. */
 export const SESSION_FILE_PATTERN = 'messaging/sessions/*.json'
 
 /**
@@ -59,28 +59,20 @@ export function buildDoc(session: PlanningSession): Record<string, unknown> {
   return doc
 }
 
-/**
- * Parse a session JSON file from an absolute path. Returns null on any
- * read/parse failure so callers (sync hook, reindex generator) can skip
- * malformed files without blowing up the whole indexer.
- */
+/** Derive the canonical search key for a session. */
+export function sessionKey(sessionId: string): string {
+  return `brainstorm-${sessionId}`
+}
+
 export function parseSessionFile(absPath: string): PlanningSession | null {
   try {
     const raw = readFileSync(absPath, 'utf-8')
     const parsed = JSON.parse(raw) as PlanningSession
-    if (!parsed || typeof parsed !== 'object' || typeof parsed.id !== 'string') {
-      return null
-    }
-    // Defensive defaults for shape drift.
+    if (!parsed || typeof parsed !== 'object' || typeof parsed.id !== 'string') return null
     if (!Array.isArray(parsed.messages)) parsed.messages = []
     if (!Array.isArray(parsed.proposals)) parsed.proposals = []
     return parsed
   } catch {
     return null
   }
-}
-
-/** Derive the canonical search key for a session. */
-export function sessionKey(sessionId: string): string {
-  return `brainstorm-${sessionId}`
 }

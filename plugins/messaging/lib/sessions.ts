@@ -1,71 +1,44 @@
 /**
- * Planning session storage — per-entity JSON files in ~/.bakin/messaging/sessions/
+ * Planning session storage. All persistence goes through ctx.storage so the
+ * plugin works the same as a built-in plugin and as an extracted plugin.
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'fs'
-import { join } from 'path'
-import { getContentDir } from '../../../src/core/content-dir'
+import type { StorageAdapter } from '@bakin/sdk/types'
 import { generateId } from './ids'
-import { createItem } from './storage'
+import type { MessagingStorage } from './storage'
 import type {
-  PlanningSession,
-  SessionMessage,
-  ProposedItem,
-  ProposalStatus,
   CalendarItem,
+  PlanningSession,
+  ProposalStatus,
+  ProposedItem,
+  SessionMessage,
 } from '../types'
 import { DEFAULT_CHANNEL } from '../types'
 
-// ---------------------------------------------------------------------------
-// Paths
-// ---------------------------------------------------------------------------
+const SESSIONS_DIR = 'messaging/sessions'
 
-function getSessionsDir(contentDir?: string): string {
-  return join(contentDir || getContentDir(), 'messaging', 'sessions')
+function sessionPath(sessionId: string): string {
+  return `${SESSIONS_DIR}/${sessionId}.json`
 }
 
-function getSessionPath(sessionId: string, contentDir?: string): string {
-  return join(getSessionsDir(contentDir), `${sessionId}.json`)
-}
-
-function ensureSessionsDir(contentDir?: string): void {
-  const dir = getSessionsDir(contentDir)
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true })
-  }
-}
-
-// ---------------------------------------------------------------------------
-// CRUD
-// ---------------------------------------------------------------------------
-
-export function createSession(opts: {
-  agentId: string
-  title?: string
-}): PlanningSession {
-  ensureSessionsDir()
-  const now = new Date().toISOString()
-  const session: PlanningSession = {
-    id: generateId(),
-    agentId: opts.agentId,
-    title: opts.title || 'New planning session',
-    status: 'active',
-    createdAt: now,
-    updatedAt: now,
-    messages: [],
-    proposals: [],
-  }
-  writeFileSync(getSessionPath(session.id), JSON.stringify(session, null, 2))
-  return session
-}
-
-export function loadSession(sessionId: string): PlanningSession | null {
-  const path = getSessionPath(sessionId)
-  if (!existsSync(path)) return null
+function readJson<T>(storage: StorageAdapter, path: string): T | null {
   try {
-    return JSON.parse(readFileSync(path, 'utf-8'))
+    if (storage.readJson) return storage.readJson<T>(path)
+    const raw = storage.read(path)
+    return raw ? JSON.parse(raw) as T : null
   } catch {
     return null
   }
+}
+
+function writeJson(storage: StorageAdapter, path: string, value: unknown): void {
+  if (storage.writeJson) storage.writeJson(path, value)
+  else storage.write(path, JSON.stringify(value, null, 2))
+}
+
+function normalizeSession(session: PlanningSession): PlanningSession {
+  if (!Array.isArray(session.messages)) session.messages = []
+  if (!Array.isArray(session.proposals)) session.proposals = []
+  return session
 }
 
 export interface SessionSummary {
@@ -79,24 +52,82 @@ export interface SessionSummary {
   approvedCount: number
 }
 
-export function listSessions(opts?: {
-  status?: string
-  agentId?: string
-}): SessionSummary[] {
-  const dir = getSessionsDir()
-  if (!existsSync(dir)) return []
+export interface MessagingSessionStore {
+  createSession(opts: { agentId: string; title?: string }): PlanningSession
+  loadSession(sessionId: string): PlanningSession | null
+  saveSession(session: PlanningSession): void
+  listSessions(opts?: { status?: string; agentId?: string }): SessionSummary[]
+  updateSession(sessionId: string, updates: { title?: string; status?: 'active' | 'completed' }): PlanningSession
+  deleteSession(sessionId: string): void
+  appendMessage(sessionId: string, message: { role: 'user' | 'assistant'; content: string }, proposalIds?: string[]): SessionMessage
+  addProposals(sessionId: string, messageId: string, items: Array<{
+    title: string
+    scheduledAt: string
+    contentType: string
+    tone: string
+    brief: string
+    channels?: string[]
+  }>): ProposedItem[]
+  upsertProposals(sessionId: string, messageId: string, items: Array<{
+    id?: string
+    title: string
+    scheduledAt: string
+    contentType: string
+    tone: string
+    brief: string
+    channels?: string[]
+  }>): ProposedItem[]
+  updateProposal(sessionId: string, proposalId: string, updates: {
+    status?: ProposalStatus
+    title?: string
+    brief?: string
+    tone?: string
+    scheduledAt?: string
+    channels?: string[]
+    rejectionNote?: string
+  }): ProposedItem
+  confirmSession(sessionId: string, opts?: { autoApprove?: boolean }): { itemsCreated: number; itemIds: string[] }
+}
 
-  const files = readdirSync(dir).filter(f => f.endsWith('.json'))
-  const summaries: SessionSummary[] = []
+export function createMessagingSessionStore(
+  storage: StorageAdapter,
+  messaging: MessagingStorage,
+): MessagingSessionStore {
+  function createSession(opts: { agentId: string; title?: string }): PlanningSession {
+    const now = new Date().toISOString()
+    const session: PlanningSession = {
+      id: generateId(),
+      agentId: opts.agentId,
+      title: opts.title || 'New planning session',
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+      messages: [],
+      proposals: [],
+    }
+    writeJson(storage, sessionPath(session.id), session)
+    return session
+  }
 
-  for (const file of files) {
-    try {
-      const raw = readFileSync(join(dir, file), 'utf-8')
-      const session: PlanningSession = JSON.parse(raw)
+  function loadSession(sessionId: string): PlanningSession | null {
+    const session = readJson<PlanningSession>(storage, sessionPath(sessionId))
+    return session ? normalizeSession(session) : null
+  }
 
+  function saveSession(session: PlanningSession): void {
+    writeJson(storage, sessionPath(session.id), session)
+  }
+
+  function listSessions(opts?: { status?: string; agentId?: string }): SessionSummary[] {
+    const files = storage.list?.(SESSIONS_DIR).filter(f => f.endsWith('.json')) ?? []
+    const summaries: SessionSummary[] = []
+
+    for (const file of files) {
+      const session = readJson<PlanningSession>(storage, `${SESSIONS_DIR}/${file}`)
+      if (!session) continue
+      normalizeSession(session)
       if (opts?.status && session.status !== opts.status) continue
       if (opts?.agentId && session.agentId !== opts.agentId) continue
-
       summaries.push({
         id: session.id,
         agentId: session.agentId,
@@ -107,248 +138,194 @@ export function listSessions(opts?: {
         proposalCount: session.proposals.length,
         approvedCount: session.proposals.filter(p => p.status === 'approved').length,
       })
-    } catch {
-      // skip malformed files
     }
+
+    return summaries.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
   }
 
-  return summaries.sort((a, b) =>
-    new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-  )
-}
-
-export function updateSession(
-  sessionId: string,
-  updates: { title?: string; status?: 'active' | 'completed' }
-): PlanningSession {
-  const session = loadSession(sessionId)
-  if (!session) throw new Error(`Session ${sessionId} not found`)
-
-  if (updates.title !== undefined) session.title = updates.title
-  if (updates.status !== undefined) session.status = updates.status
-  session.updatedAt = new Date().toISOString()
-
-  writeFileSync(getSessionPath(sessionId), JSON.stringify(session, null, 2))
-  return session
-}
-
-export function deleteSession(sessionId: string): void {
-  const path = getSessionPath(sessionId)
-  if (!existsSync(path)) throw new Error(`Session ${sessionId} not found`)
-  unlinkSync(path)
-}
-
-// ---------------------------------------------------------------------------
-// Messages
-// ---------------------------------------------------------------------------
-
-export function appendMessage(
-  sessionId: string,
-  message: { role: 'user' | 'assistant'; content: string },
-  proposalIds?: string[]
-): SessionMessage {
-  const session = loadSession(sessionId)
-  if (!session) throw new Error(`Session ${sessionId} not found`)
-
-  const msg: SessionMessage = {
-    id: generateId(),
-    role: message.role,
-    content: message.content,
-    timestamp: new Date().toISOString(),
-    proposalIds,
+  function updateSession(sessionId: string, updates: { title?: string; status?: 'active' | 'completed' }): PlanningSession {
+    const session = loadSession(sessionId)
+    if (!session) throw new Error(`Session ${sessionId} not found`)
+    if (updates.title !== undefined) session.title = updates.title
+    if (updates.status !== undefined) session.status = updates.status
+    session.updatedAt = new Date().toISOString()
+    writeJson(storage, sessionPath(sessionId), session)
+    return session
   }
 
-  session.messages.push(msg)
-  session.updatedAt = new Date().toISOString()
-  writeFileSync(getSessionPath(sessionId), JSON.stringify(session, null, 2))
-  return msg
-}
+  function deleteSession(sessionId: string): void {
+    if (!storage.exists(sessionPath(sessionId))) throw new Error(`Session ${sessionId} not found`)
+    storage.remove?.(sessionPath(sessionId))
+  }
 
-// ---------------------------------------------------------------------------
-// Proposals
-// ---------------------------------------------------------------------------
-
-export function addProposals(
-  sessionId: string,
-  messageId: string,
-  items: Array<{
-    title: string
-    scheduledAt: string
-    contentType: string
-    tone: string
-    brief: string
-    channels?: string[]
-  }>
-): ProposedItem[] {
-  const session = loadSession(sessionId)
-  if (!session) throw new Error(`Session ${sessionId} not found`)
-
-  const proposals: ProposedItem[] = items.map(item => ({
-    id: generateId(),
-    messageId,
-    revision: 1,
-    agentId: session.agentId,
-    title: item.title,
-    scheduledAt: item.scheduledAt,
-    contentType: item.contentType,
-    tone: item.tone,
-    brief: item.brief,
-    channels: normalizeChannels(item.channels),
-    status: 'proposed' as ProposalStatus,
-  }))
-
-  session.proposals.push(...proposals)
-  session.updatedAt = new Date().toISOString()
-  writeFileSync(getSessionPath(sessionId), JSON.stringify(session, null, 2))
-  return proposals
-}
-
-/**
- * Upsert proposals — if an item has an `id` matching an existing proposal, update it.
- * Otherwise create a new one. Returns the full list of affected proposals.
- */
-export function upsertProposals(
-  sessionId: string,
-  messageId: string,
-  items: Array<{
-    id?: string
-    title: string
-    scheduledAt: string
-    contentType: string
-    tone: string
-    brief: string
-    channels?: string[]
-  }>
-): ProposedItem[] {
-  const session = loadSession(sessionId)
-  if (!session) throw new Error(`Session ${sessionId} not found`)
-
-  const result: ProposedItem[] = []
-
-  for (const item of items) {
-    // Try to match existing proposal by id, then by title
-    let existing: ProposedItem | undefined
-    if (item.id) {
-      existing = session.proposals.find(p => p.id === item.id)
+  function appendMessage(
+    sessionId: string,
+    message: { role: 'user' | 'assistant'; content: string },
+    proposalIds?: string[],
+  ): SessionMessage {
+    const session = loadSession(sessionId)
+    if (!session) throw new Error(`Session ${sessionId} not found`)
+    const msg: SessionMessage = {
+      id: generateId(),
+      role: message.role,
+      content: message.content,
+      timestamp: new Date().toISOString(),
+      proposalIds,
     }
-    if (!existing) {
-      // Fallback: match by title (case-insensitive, trimmed)
-      const titleLower = item.title.toLowerCase().trim()
-      existing = session.proposals.find(
-        p => p.title.toLowerCase().trim() === titleLower && p.status !== 'approved'
-      )
-    }
+    session.messages.push(msg)
+    session.updatedAt = new Date().toISOString()
+    writeJson(storage, sessionPath(sessionId), session)
+    return msg
+  }
 
-    if (existing) {
-      // Update in place
-      existing.title = item.title
-      existing.scheduledAt = item.scheduledAt
-      existing.contentType = item.contentType
-      existing.tone = item.tone
-      existing.brief = item.brief
-      if (item.channels) existing.channels = normalizeChannels(item.channels)
-      existing.messageId = messageId
-      existing.revision += 1
-      if (existing.status === 'rejected') existing.status = 'revised'
-      result.push(existing)
-    } else {
-      // Create new
-      const newProposal: ProposedItem = {
-        id: generateId(),
-        messageId,
-        revision: 1,
-        agentId: session.agentId,
-        title: item.title,
-        scheduledAt: item.scheduledAt,
-        contentType: item.contentType,
-        tone: item.tone,
-        brief: item.brief,
-        channels: normalizeChannels(item.channels),
-        status: 'proposed',
+  function upsertProposals(
+    sessionId: string,
+    messageId: string,
+    items: Array<{
+      id?: string
+      title: string
+      scheduledAt: string
+      contentType: string
+      tone: string
+      brief: string
+      channels?: string[]
+    }>,
+  ): ProposedItem[] {
+    const session = loadSession(sessionId)
+    if (!session) throw new Error(`Session ${sessionId} not found`)
+    const result: ProposedItem[] = []
+
+    for (const item of items) {
+      let existing = item.id ? session.proposals.find(p => p.id === item.id) : undefined
+      if (!existing) {
+        const titleLower = item.title.toLowerCase().trim()
+        existing = session.proposals.find(p => p.title.toLowerCase().trim() === titleLower && p.status !== 'approved')
       }
-      session.proposals.push(newProposal)
-      result.push(newProposal)
+
+      if (existing) {
+        existing.title = item.title
+        existing.scheduledAt = item.scheduledAt
+        existing.contentType = item.contentType
+        existing.tone = item.tone
+        existing.brief = item.brief
+        if (item.channels) existing.channels = normalizeChannels(item.channels)
+        existing.messageId = messageId
+        existing.revision += 1
+        if (existing.status === 'rejected') existing.status = 'revised'
+        result.push(existing)
+      } else {
+        const newProposal: ProposedItem = {
+          id: generateId(),
+          messageId,
+          revision: 1,
+          agentId: session.agentId,
+          title: item.title,
+          scheduledAt: item.scheduledAt,
+          contentType: item.contentType,
+          tone: item.tone,
+          brief: item.brief,
+          channels: normalizeChannels(item.channels),
+          status: 'proposed',
+        }
+        session.proposals.push(newProposal)
+        result.push(newProposal)
+      }
     }
+
+    session.updatedAt = new Date().toISOString()
+    writeJson(storage, sessionPath(sessionId), session)
+    return result
   }
 
-  session.updatedAt = new Date().toISOString()
-  writeFileSync(getSessionPath(sessionId), JSON.stringify(session, null, 2))
-  return result
-}
-
-export function updateProposal(
-  sessionId: string,
-  proposalId: string,
-  updates: {
-    status?: ProposalStatus
-    title?: string
-    brief?: string
-    tone?: string
-    scheduledAt?: string
-    channels?: string[]
-    rejectionNote?: string
-  }
-): ProposedItem {
-  const session = loadSession(sessionId)
-  if (!session) throw new Error(`Session ${sessionId} not found`)
-
-  const idx = session.proposals.findIndex(p => p.id === proposalId)
-  if (idx === -1) throw new Error(`Proposal ${proposalId} not found`)
-
-  const proposal = session.proposals[idx]
-  if (updates.status !== undefined) proposal.status = updates.status
-  if (updates.title !== undefined) proposal.title = updates.title
-  if (updates.brief !== undefined) proposal.brief = updates.brief
-  if (updates.tone !== undefined) proposal.tone = updates.tone
-  if (updates.scheduledAt !== undefined) proposal.scheduledAt = updates.scheduledAt
-  if (updates.channels !== undefined) proposal.channels = updates.channels
-  if (updates.rejectionNote !== undefined) proposal.rejectionNote = updates.rejectionNote
-
-  session.updatedAt = new Date().toISOString()
-  writeFileSync(getSessionPath(sessionId), JSON.stringify(session, null, 2))
-  return proposal
-}
-
-// ---------------------------------------------------------------------------
-// Confirm plan
-// ---------------------------------------------------------------------------
-
-export function confirmSession(sessionId: string, opts: { autoApprove?: boolean } = {}): {
-  itemsCreated: number
-  itemIds: string[]
-} {
-  const session = loadSession(sessionId)
-  if (!session) throw new Error(`Session ${sessionId} not found`)
-  if (session.status === 'completed') throw new Error('Session already completed')
-
-  const approved = session.proposals.filter(p => p.status === 'approved')
-  if (approved.length === 0) throw new Error('No approved proposals to confirm')
-
-  const itemIds: string[] = []
-  const initialStatus: CalendarItem['status'] = opts.autoApprove ? 'scheduled' : 'draft'
-
-  for (const proposal of approved) {
-    const item = createItem({
-      title: proposal.title,
-      agent: proposal.agentId as CalendarItem['agent'],
-      contentType: proposal.contentType as CalendarItem['contentType'],
-      tone: proposal.tone as CalendarItem['tone'],
-      scheduledAt: proposal.scheduledAt,
-      brief: proposal.brief,
-      status: initialStatus,
-      sessionId,
-      channels: normalizeChannels(proposal.channels),
-    })
-
-    proposal.calendarItemId = item.id
-    itemIds.push(item.id)
+  function addProposals(
+    sessionId: string,
+    messageId: string,
+    items: Array<{
+      title: string
+      scheduledAt: string
+      contentType: string
+      tone: string
+      brief: string
+      channels?: string[]
+    }>,
+  ): ProposedItem[] {
+    return upsertProposals(sessionId, messageId, items)
   }
 
-  session.status = 'completed'
-  session.updatedAt = new Date().toISOString()
-  writeFileSync(getSessionPath(sessionId), JSON.stringify(session, null, 2))
+  function updateProposal(
+    sessionId: string,
+    proposalId: string,
+    updates: {
+      status?: ProposalStatus
+      title?: string
+      brief?: string
+      tone?: string
+      scheduledAt?: string
+      channels?: string[]
+      rejectionNote?: string
+    },
+  ): ProposedItem {
+    const session = loadSession(sessionId)
+    if (!session) throw new Error(`Session ${sessionId} not found`)
+    const idx = session.proposals.findIndex(p => p.id === proposalId)
+    if (idx === -1) throw new Error(`Proposal ${proposalId} not found`)
+    const proposal = session.proposals[idx]
+    if (updates.status !== undefined) proposal.status = updates.status
+    if (updates.title !== undefined) proposal.title = updates.title
+    if (updates.brief !== undefined) proposal.brief = updates.brief
+    if (updates.tone !== undefined) proposal.tone = updates.tone
+    if (updates.scheduledAt !== undefined) proposal.scheduledAt = updates.scheduledAt
+    if (updates.channels !== undefined) proposal.channels = updates.channels
+    if (updates.rejectionNote !== undefined) proposal.rejectionNote = updates.rejectionNote
+    session.updatedAt = new Date().toISOString()
+    writeJson(storage, sessionPath(sessionId), session)
+    return proposal
+  }
 
-  return { itemsCreated: itemIds.length, itemIds }
+  function confirmSession(sessionId: string, opts: { autoApprove?: boolean } = {}): { itemsCreated: number; itemIds: string[] } {
+    const session = loadSession(sessionId)
+    if (!session) throw new Error(`Session ${sessionId} not found`)
+    if (session.status === 'completed') throw new Error('Session already completed')
+    const approved = session.proposals.filter(p => p.status === 'approved')
+    if (approved.length === 0) throw new Error('No approved proposals to confirm')
+
+    const itemIds: string[] = []
+    const initialStatus: CalendarItem['status'] = opts.autoApprove ? 'scheduled' : 'draft'
+    for (const proposal of approved) {
+      const item = messaging.createItem({
+        title: proposal.title,
+        agent: proposal.agentId as CalendarItem['agent'],
+        contentType: proposal.contentType as CalendarItem['contentType'],
+        tone: proposal.tone as CalendarItem['tone'],
+        scheduledAt: proposal.scheduledAt,
+        brief: proposal.brief,
+        status: initialStatus,
+        sessionId,
+        channels: normalizeChannels(proposal.channels),
+      })
+      proposal.calendarItemId = item.id
+      itemIds.push(item.id)
+    }
+
+    session.status = 'completed'
+    session.updatedAt = new Date().toISOString()
+    writeJson(storage, sessionPath(sessionId), session)
+    return { itemsCreated: itemIds.length, itemIds }
+  }
+
+  return {
+    createSession,
+    loadSession,
+    saveSession,
+    listSessions,
+    updateSession,
+    deleteSession,
+    appendMessage,
+    addProposals,
+    upsertProposals,
+    updateProposal,
+    confirmSession,
+  }
 }
 
 function normalizeChannels(channels: string[] | undefined): string[] {
