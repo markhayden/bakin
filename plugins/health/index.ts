@@ -318,13 +318,13 @@ const healthPlugin: BakinPlugin = {
       id: 'orchestrator-rules',
       name: 'Main agent AGENTS.md orchestrator-rules block',
       autoFix: true,
-      run: () => checkOrchestratorRules(),
+      run: () => checkOrchestratorRules(ctx.runtime),
     })
     ctx.registerHealthCheck({
       id: 'skill',
-      name: 'Bakin SKILL.md sync to OpenClaw workspace',
+      name: 'Bakin SKILL.md sync to runtime',
       autoFix: true,
-      run: () => Promise.resolve(checkAndSyncSkill(process.cwd())),
+      run: () => checkAndSyncSkill(process.cwd(), ctx.runtime),
     })
     ctx.registerHealthCheck({
       id: 'plugin-assets',
