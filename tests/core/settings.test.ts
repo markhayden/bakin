@@ -29,7 +29,7 @@ describe('Settings', () => {
     expect(settings.sse.maxClients).toBe(50)
     expect(settings.antfly.enabled).toBe(true)
     expect(settings.runtime.adapter).toBe('openclaw')
-    expect(settings.runtime.settings.gatewayPort).toBe(18789)
+    expect(settings.runtime.settings).toEqual({})
   })
 
   it('returns doctor defaults including requireOnboard', () => {
@@ -97,16 +97,15 @@ describe('Settings', () => {
     expect(settings.dispatch.failureCooldownMs).toBe(1800000) // default preserved
   })
 
-  it('merges partial runtime adapter settings preserving nested defaults', () => {
+  it('keeps runtime adapter settings opaque to core', () => {
     fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
-      runtime: { settings: { gatewayPort: 19000 } },
+      runtime: { settings: { customPort: 19000 } },
     }))
 
     const settings = getSettings()
     expect(settings.runtime.adapter).toBe('openclaw')
-    expect(settings.runtime.settings.gatewayPort).toBe(19000)
-    expect(settings.runtime.settings.gatewayUrl).toBe('http://127.0.0.1')
+    expect(settings.runtime.settings).toEqual({ customPort: 19000 })
   })
 
   it('caches settings on subsequent calls', () => {

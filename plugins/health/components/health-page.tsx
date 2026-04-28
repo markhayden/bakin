@@ -10,7 +10,7 @@ import { Input } from "@bakin/sdk/ui"
 import { Skeleton } from "@bakin/sdk/ui"
 import { PluginHeader } from "@bakin/sdk/components"
 import { UnderlineTabs } from "@bakin/sdk/components"
-import { ExternalLink, Search, CircleCheck, Clock, AlertCircle } from 'lucide-react'
+import { Search, CircleCheck, Clock, AlertCircle } from 'lucide-react'
 import type { HealthCheckResult } from '@bakin/sdk'
 
 const USAGE_TABS = [
@@ -117,7 +117,6 @@ interface HealthSummary {
   errors1h: ErrorsByKind | null
   activeSessions: McpSessionInfo[] | null
   upSince: string | null
-  runtimePort: number | null
   server: ServerData | null
 }
 
@@ -501,14 +500,10 @@ export function HealthPage() {
     )
   }
 
-  const { doctor, server, runtimePort } = data
+  const { doctor, server } = data
 
   const memoryPercent = server?.totalMemoryMB
     ? Math.round((server.memoryMB / server.totalMemoryMB) * 100)
-    : null
-
-  const runtimeUrl = runtimePort
-    ? `${window.location.protocol}//${window.location.hostname}:${runtimePort}`
     : null
 
   return (
@@ -516,17 +511,6 @@ export function HealthPage() {
       <div className="flex items-center justify-between">
         <PluginHeader title="System Health" />
         <div className="flex items-center gap-3">
-          {runtimeUrl && (
-            <a
-              href={runtimeUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <ExternalLink className="size-3" />
-              Runtime
-            </a>
-          )}
           <span className="text-xs whitespace-nowrap">
             <span className="text-muted-foreground">{formatDateShort(lastRefresh)}</span>
             <span className="text-muted-foreground/60 mx-1.5">·</span>

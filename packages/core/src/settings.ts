@@ -12,29 +12,25 @@ const log = createLogger('settings')
 export type RuntimeAdapterName = 'openclaw'
 export type SearchAdapterName = 'antfly'
 
-export interface OpenClawRuntimeSettings extends Record<string, unknown> {
-  binaryPath: string
-  gatewayUrl: string
-  gatewayPort: number
-}
+export type RuntimeAdapterSettings = Record<string, unknown>
 
 export interface BakinSettings {
   runtime: {
     adapter: RuntimeAdapterName
-    settings: OpenClawRuntimeSettings
+    settings: RuntimeAdapterSettings
   }
   search: {
     adapter: SearchAdapterName
   }
   dispatch: {
     intervalMs: number
-    /** Cooldown after a structural failure (4xx/5xx from the gateway). */
+    /** Cooldown after a structural failure (4xx/5xx from the runtime). */
     failureCooldownMs: number
     /**
      * Cooldown after a transient failure (fetch/network error that survived
      * the sendMessage in-call retry). Shorter than `failureCooldownMs`
      * because transient errors should usually clear within a cycle — a
-     * long cooldown masks a healthy gateway as a real outage. See #115.
+     * long cooldown masks a healthy runtime as a real outage. See #115.
      */
     transientCooldownMs: number
     maxDispatched: number
@@ -147,11 +143,7 @@ export interface BakinSettings {
 export const DEFAULT_SETTINGS: BakinSettings = {
   runtime: {
     adapter: 'openclaw',
-    settings: {
-      binaryPath: process.env.OPENCLAW_PATH || '/opt/homebrew/bin/openclaw',
-      gatewayUrl: 'http://127.0.0.1',
-      gatewayPort: 18789,
-    },
+    settings: {},
   },
   search: {
     adapter: 'antfly',
