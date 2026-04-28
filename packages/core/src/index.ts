@@ -170,9 +170,6 @@ export { getMainAgentId } from './main-agent'
 // Logger
 export { createLogger } from './logger'
 
-// Vault
-export * as vault from './vault'
-
 // Utilities
 export { formatAge, isStale } from './format'
 export { generateTaskId } from './ids'
