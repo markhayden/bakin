@@ -117,7 +117,7 @@ interface HealthSummary {
   errors1h: ErrorsByKind | null
   activeSessions: McpSessionInfo[] | null
   upSince: string | null
-  openclawPort: number | null
+  runtimeGatewayPort: number | null
   server: ServerData | null
 }
 
@@ -501,14 +501,14 @@ export function HealthPage() {
     )
   }
 
-  const { doctor, server, openclawPort } = data
+  const { doctor, server, runtimeGatewayPort } = data
 
   const memoryPercent = server?.totalMemoryMB
     ? Math.round((server.memoryMB / server.totalMemoryMB) * 100)
     : null
 
-  const openclawUrl = openclawPort
-    ? `${window.location.protocol}//${window.location.hostname}:${openclawPort}`
+  const runtimeGatewayUrl = runtimeGatewayPort
+    ? `${window.location.protocol}//${window.location.hostname}:${runtimeGatewayPort}`
     : null
 
   return (
@@ -516,15 +516,15 @@ export function HealthPage() {
       <div className="flex items-center justify-between">
         <PluginHeader title="System Health" />
         <div className="flex items-center gap-3">
-          {openclawUrl && (
+          {runtimeGatewayUrl && (
             <a
-              href={openclawUrl}
+              href={runtimeGatewayUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               <ExternalLink className="size-3" />
-              OpenClaw
+              Runtime
             </a>
           )}
           <span className="text-xs whitespace-nowrap">
@@ -652,7 +652,7 @@ export function HealthPage() {
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {searchHealth.tables.map(t => {
-                  const docs = (t.stats as any)?.num_docs ?? 0
+                  const docs = typeof t.stats?.num_docs === 'number' ? t.stats.num_docs : 0
                   const progress = reindexProgress[t.table]
                   const isActive = reindexing && progress && !progress.done
                   const hasEnrichmentError = t.indexHealth?.some(i => i.error)

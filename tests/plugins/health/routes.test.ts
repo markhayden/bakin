@@ -158,7 +158,7 @@ describe('Health Plugin Routes', () => {
       expect(status).toBe(200)
       expect(body.doctor).toBeDefined()
       expect(body.server).toBeDefined()
-      expect(body.openclawPort).toBe(18789)
+      expect(body.runtimeGatewayPort).toBe(18789)
       expect(body.upSince).toBe('2026-04-01T00:00:00Z')
       expect(Array.isArray(body.activeSessions)).toBe(true)
       expect((body.activeSessions as unknown[]).length).toBe(1)
