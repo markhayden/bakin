@@ -53,11 +53,6 @@ mock.module('../../../src/core/watcher', () => ({
   registerUnlinkHook: mock(),
 }))
 
-mock.module('../../../src/core/openclaw-client', () => ({
-  sendToAgent: mock(),
-  sendMessage: mock(),
-}))
-
 mock.module('../../../src/core/audit', () => ({
   appendAudit: mock(),
 }))

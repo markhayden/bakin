@@ -50,14 +50,6 @@ mock.module('@/core/watcher', () => ({
   registerUnlinkHook: mock(),
 }))
 
-mock.module('@/core/openclaw-client', () => ({
-  sendToAgent: mock(),
-  sendMessage: mock(),
-  sendChannelMessage: mock(),
-  streamMessage: mock(),
-  chatCompletion: mock(),
-}))
-
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })

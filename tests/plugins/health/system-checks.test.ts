@@ -72,19 +72,12 @@ mock.module('../../../src/core/mcporter', () => ({
   syncConfig: async () => { syncConfigCalls++; return ['updated'] },
 }))
 
-let mockGatewayPing = async () => true
-let mockGatewayPingThrows: Error | null = null
-mock.module('../../../src/core/openclaw-client', () => ({
-  ping: async () => {
-    if (mockGatewayPingThrows) throw mockGatewayPingThrows
-    return mockGatewayPing()
-  },
-  sendMessage: mock(),
-}))
+let mockRuntimePing = async () => true
+let mockRuntimePingThrows: Error | null = null
 mock.module('../../../src/core/runtime-registry', () => ({
   pingRuntime: async () => {
-    if (mockGatewayPingThrows) throw mockGatewayPingThrows
-    return mockGatewayPing()
+    if (mockRuntimePingThrows) throw mockRuntimePingThrows
+    return mockRuntimePing()
   },
 }))
 
@@ -208,8 +201,8 @@ beforeEach(() => {
   mockAgentEntries = []
   mockStaleEntries = []
   syncConfigCalls = 0
-  mockGatewayPing = async () => true
-  mockGatewayPingThrows = null
+  mockRuntimePing = async () => true
+  mockRuntimePingThrows = null
   mockAntflyEnabled = false
   mockAntflyInstalled = true
   mockAntflyUrl = 'http://127.0.0.1:8765/api/v1'
@@ -358,7 +351,7 @@ describe('checkMcporter', () => {
 
 describe('checkGateway', () => {
   it('reports ok when ping succeeds', async () => {
-    mockGatewayPing = async () => true
+    mockRuntimePing = async () => true
     const results = await checkGateway()
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('ok')
@@ -366,14 +359,14 @@ describe('checkGateway', () => {
   })
 
   it('reports error when ping returns false', async () => {
-    mockGatewayPing = async () => false
+    mockRuntimePing = async () => false
     const results = await checkGateway()
     expect(results[0].status).toBe('error')
     expect(results[0].message).toMatch(/not responding/)
   })
 
   it('reports error when ping throws', async () => {
-    mockGatewayPingThrows = new Error('connection refused')
+    mockRuntimePingThrows = new Error('connection refused')
     const results = await checkGateway()
     expect(results[0].status).toBe('error')
     expect(results[0].message).toMatch(/connection refused/)

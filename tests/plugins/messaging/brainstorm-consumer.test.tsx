@@ -42,14 +42,6 @@ mock.module('@/core/watcher', () => ({
   registerUnlinkHook: mock(),
 }))
 
-mock.module('@/core/openclaw-client', () => ({
-  sendToAgent: mock(),
-  sendMessage: mock(),
-  sendChannelMessage: mock(),
-  streamMessage: mock(),
-  chatCompletion: mock(),
-}))
-
 // ---------------------------------------------------------------------------
 // useSearch — capture per-call so tests can drive `results` from outside.
 // ---------------------------------------------------------------------------

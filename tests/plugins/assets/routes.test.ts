@@ -49,10 +49,6 @@ mock.module('../../../src/core/watcher', () => ({
   registerUnlinkHook: mock(),
 }))
 
-mock.module('../../../src/core/openclaw-client', () => ({
-  sendToAgent: mock(),
-}))
-
 // Import the plugin after mocks are set up
 import assetsPlugin from '@bakin/assets'
 import { upsertAsset } from '@bakin/assets/lib/asset-index'

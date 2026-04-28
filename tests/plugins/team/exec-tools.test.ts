@@ -2,7 +2,7 @@
  * Tests for team plugin agent lifecycle MCP exec tools.
  *
  * Covers the 4 new tools: create_agent, update_identity, delete_agent, set_permissions.
- * All OpenClaw-touching modules are stubbed.
+ * All runtime-facing modules are stubbed.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, readFileSync, writeFileSync } from 'fs'
@@ -57,15 +57,6 @@ mock.module('../../../src/core/logger', () => ({
 mock.module('../../../src/core/watcher', () => ({
   registerSyncHook: mock(),
   registerUnlinkHook: mock(),
-}))
-
-mock.module('../../../src/core/openclaw-client', () => ({
-  sendMessage: mock(async () => 'ok'),
-  invokeTool: mock(async () => ({ ok: true })),
-  sendChannelMessage: mock(async () => 'ok'),
-  restartGateway: mock(async () => {}),
-  ping: mock(async () => true),
-  getAgentLastReply: mock(() => null),
 }))
 
 mock.module('../../../src/core/settings', () => ({
