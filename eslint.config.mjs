@@ -34,6 +34,44 @@ const bunGlobals = {
   WebSocket: "readonly",
 };
 
+const adapterBoundaryImportRestrictions = {
+  paths: [
+    {
+      name: "@antfly/sdk",
+      message: "Search provider SDK access belongs in packages/adapter-antfly. Use ctx.search/AppServices instead.",
+    },
+    {
+      name: "bun:sqlite",
+      message: "Raw SQLite access is not allowed outside adapter/storage ownership boundaries. Use the adapter or Bakin store contract.",
+    },
+  ],
+  patterns: [
+    {
+      group: [
+        "@bakin/adapter-openclaw",
+        "@bakin/adapter-openclaw/*",
+        "@bakin/adapter-antfly",
+        "@bakin/adapter-antfly/*",
+      ],
+      message: "Concrete adapter packages may only be imported by adapter factories. Use @bakin/core adapter interfaces, ctx.runtime, ctx.search, or AppServices.",
+    },
+    {
+      group: [
+        "@/core/antfly",
+        "@/core/antfly/*",
+        "src/core/antfly",
+        "src/core/antfly/*",
+        "**/core/antfly-server",
+        "**/core/openclaw-client",
+        "**/core/openclaw-home",
+        "**/core/openclaw-config",
+        "**/discord-gateway",
+      ],
+      message: "Legacy provider internals are behind the adapter layer. Route through the runtime/search adapter contract.",
+    },
+  ],
+};
+
 const eslintConfig = defineConfig([
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -101,6 +139,27 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-unused-vars": "off",
     },
   },
+  // Adapter boundary: production code talks to runtime/search providers only
+  // through AppServices and adapter contracts. Concrete adapter factories are
+  // the only non-adapter modules allowed to import adapter packages directly.
+  {
+    files: [
+      "src/**/*.{ts,tsx,js,mjs,mts}",
+      "packages/core/src/**/*.{ts,tsx,js,mjs,mts}",
+      "packages/host/src/**/*.{ts,tsx,js,mjs,mts}",
+      "plugins/**/*.{ts,tsx,js,mjs,mts}",
+      "cli/**/*.{ts,tsx,js,mjs,mts}",
+      "scripts/**/*.{ts,tsx,js,mjs,mts}",
+      "server.ts",
+    ],
+    ignores: [
+      "src/core/runtime-adapter-factory.ts",
+      "src/core/search-adapter-factory.ts",
+    ],
+    rules: {
+      "no-restricted-imports": ["error", adapterBoundaryImportRestrictions],
+    },
+  },
   // Plugin isolation: every plugin talks to Bakin's shell and to other
   // plugins exclusively through @bakin/sdk/*. Direct imports from another
   // plugin's internals or from Bakin's src/ components/hooks are banned so
@@ -111,7 +170,9 @@ const eslintConfig = defineConfig([
     files: ["plugins/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-imports": ["error", {
+        paths: adapterBoundaryImportRestrictions.paths,
         patterns: [
+          ...adapterBoundaryImportRestrictions.patterns,
           {
             group: [
               "@bakin/tasks/*",

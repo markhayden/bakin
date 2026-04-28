@@ -39,7 +39,7 @@ steps:
   - id: publish
     type: output
     label: Publish
-    agent: main-operator
+    agent: $assigned
     description: >
       Post the caption and final video using bakin_exec_post_channel.
 

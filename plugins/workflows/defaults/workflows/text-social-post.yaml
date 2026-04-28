@@ -25,7 +25,7 @@ steps:
   - id: publish
     type: output
     label: Publish
-    agent: main-operator
+    agent: $assigned
     description: >
       Post the text-only content using bakin_exec_post_channel.
 

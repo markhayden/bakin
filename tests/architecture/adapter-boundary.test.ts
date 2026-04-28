@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test'
 import { readdirSync, readFileSync } from 'fs'
 import { join, relative } from 'path'
+import yaml from 'js-yaml'
+import type { WorkflowDefinition, WorkflowStep } from '@bakin/workflows/types'
 
 const ROOT = process.cwd()
 const SCAN_ROOTS = [
@@ -12,7 +14,8 @@ const SCAN_ROOTS = [
   'scripts',
   'server.ts',
 ]
-const EXT_RE = /\.(ts|tsx|mjs|mts)$/
+const EXT_RE = /\.(ts|tsx|mjs|mts|js|jsx|cjs|json|ya?ml)$/
+const WORKFLOW_DEFAULTS_RE = /(^|\/)plugins\/[^/]+\/defaults\/workflows\/[^/]+\.ya?ml$/
 
 const DENYLIST = [
   {
@@ -100,6 +103,37 @@ function scanFiles(): string[] {
   return files
 }
 
+function isSymbolicAgent(value: string): boolean {
+  return value.startsWith('$')
+}
+
+function childSteps(step: WorkflowStep): WorkflowStep[] {
+  if (step.type === 'parallel') return step.steps
+  return []
+}
+
+function collectWorkflowAgentViolations(
+  def: WorkflowDefinition,
+  rel: string,
+  pathPrefix = 'steps',
+): string[] {
+  const hits: string[] = []
+
+  function visit(step: WorkflowStep, path: string): void {
+    const maybeAgent = 'agent' in step ? step.agent : undefined
+    if (typeof maybeAgent === 'string' && !isSymbolicAgent(maybeAgent)) {
+      hits.push(`${rel}:${path}.agent hard-coded runtime agent "${maybeAgent}"; use "$assigned" or another symbolic token`)
+    }
+
+    for (const [idx, child] of childSteps(step).entries()) {
+      visit(child, `${path}.steps[${idx}]`)
+    }
+  }
+
+  def.steps.forEach((step, idx) => visit(step, `${pathPrefix}[${idx}]`))
+  return hits
+}
+
 describe('adapter boundary architecture', () => {
   it('keeps provider internals inside adapter packages', () => {
     const hits: string[] = []
@@ -115,6 +149,35 @@ describe('adapter boundary architecture', () => {
           }
         }
       }
+    }
+
+    expect(hits).toEqual([])
+  })
+
+  it('flags hard-coded agents in workflow definitions', () => {
+    const def = {
+      name: 'Bad Default',
+      version: 1,
+      steps: [
+        { id: 'write', type: 'agent', label: 'Write', agent: 'chef' },
+        { id: 'publish', type: 'output', label: 'Publish', agent: '$assigned' },
+      ],
+    } as WorkflowDefinition
+
+    expect(collectWorkflowAgentViolations(def, 'plugins/example/defaults/workflows/bad.yaml')).toEqual([
+      'plugins/example/defaults/workflows/bad.yaml:steps[0].agent hard-coded runtime agent "chef"; use "$assigned" or another symbolic token',
+    ])
+  })
+
+  it('keeps shipped workflow defaults portable across runtime rosters', () => {
+    const hits: string[] = []
+
+    for (const file of scanFiles()) {
+      const rel = relative(ROOT, file)
+      if (!WORKFLOW_DEFAULTS_RE.test(rel)) continue
+
+      const parsed = yaml.load(readFileSync(file, 'utf-8')) as WorkflowDefinition
+      hits.push(...collectWorkflowAgentViolations(parsed, rel))
     }
 
     expect(hits).toEqual([])
