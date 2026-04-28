@@ -1,16 +1,15 @@
 /**
- * credentials component — warn-only checks for LLM providers and
- * messaging channels configured in OpenClaw's own files.
+ * credentials component - warn-only checks for LLM providers and
+ * messaging channels configured in the active runtime adapter.
  *
- * Bakin does NOT prompt users to paste secrets (that would be OpenClaw's
- * territory — OpenClaw has its own `openclaw setup` flow that knows
- * about Anthropic keys, Discord bot tokens, guild IDs, etc.). What this
- * module does is *verify* that OpenClaw has at least one provider and
+ * Bakin does NOT prompt users to paste secrets. That is the runtime
+ * adapter's territory. This module only verifies that the runtime has
+ * at least one provider and
  * one channel configured, so we can tell a new user "your agents won't
- * be able to reach any LLM until you run OpenClaw's setup" instead of
+ * be able to reach any LLM until you configure the runtime" instead of
  * letting them discover that from a broken dispatch at 3am.
  *
- * Both checks are **warn-only** — they never return `error`, and
+ * Both checks are **warn-only** - they never return `error`, and
  * `install()` is always a noop with a remediation pointer. The
  * orchestrator in T9 writes `components.llm: "warn"` and
  * `components.channels: "warn"` to the .onboarded marker on decline;
@@ -23,12 +22,12 @@ import type { CheckResult, InstallResult, OnboardingComponent } from './types'
 
 const log = createLogger('onboarding:credentials')
 
-const OPENCLAW_DOCS = 'https://openclaw.ai/docs/'
+const RUNTIME_DOCS = 'https://openclaw.ai/docs/'
 
 /**
- * Fields on a channel entry in openclaw.json that count as "a credential
- * is present." OpenClaw's own channel drivers accept different key names
- * (token for Discord/Slack, apiKey for some skill plugins, etc.) so we
+ * Fields on a runtime channel entry that count as "a credential is present."
+ * Channel drivers accept different key names (token for chat providers, apiKey
+ * for some skill plugins, etc.) so we
  * check for any of them.
  */
 const CHANNEL_CREDENTIAL_FIELDS = ['token', 'apiKey', 'api_key', 'botToken', 'bot_token']
@@ -74,7 +73,7 @@ async function checkLlm(): Promise<CheckResult> {
       name: 'llm',
       status: 'warn',
       message: `Could not parse ${configLabel}: ${err instanceof Error ? err.message : String(err)}`,
-      remediation: `Fix or regenerate credentials via OpenClaw. Docs: ${OPENCLAW_DOCS}`,
+      remediation: `Fix or regenerate runtime credentials. Docs: ${RUNTIME_DOCS}`,
       details: { configKey },
     }
   }
@@ -84,12 +83,12 @@ async function checkLlm(): Promise<CheckResult> {
       name: 'llm',
       status: 'warn',
       message: `No LLM provider configured — ${configLabel} is missing`,
-      remediation: `Configure at least one LLM provider via OpenClaw. Docs: ${OPENCLAW_DOCS}`,
-      details: { configKey, installUrl: OPENCLAW_DOCS },
+      remediation: `Configure at least one LLM provider via the runtime adapter. Docs: ${RUNTIME_DOCS}`,
+      details: { configKey, installUrl: RUNTIME_DOCS },
     }
   }
 
-  // OpenClaw has produced multiple shapes over its versions:
+  // Runtime adapters can expose multiple auth-profile shapes:
   //   1. Bare array:   [{ provider, apiKey }]       (imitation crab)
   //   2. Object+array: { profiles: [{ provider }] } (docker setup)
   //   3. Object+dict:  { profiles: { k: { provider } } }
@@ -114,7 +113,7 @@ async function checkLlm(): Promise<CheckResult> {
       name: 'llm',
       status: 'warn',
       message: `auth profiles have no provider entries`,
-      remediation: `Configure at least one LLM provider via OpenClaw. Docs: ${OPENCLAW_DOCS}`,
+      remediation: `Configure at least one LLM provider via the runtime adapter. Docs: ${RUNTIME_DOCS}`,
       details: { configKey },
     }
   }
@@ -127,8 +126,8 @@ async function checkLlm(): Promise<CheckResult> {
       name: 'llm',
       status: 'warn',
       message: 'No LLM provider in auth profiles has a non-empty apiKey',
-      remediation: `Configure at least one LLM provider via OpenClaw. Docs: ${OPENCLAW_DOCS}`,
-      details: { configKey, installUrl: OPENCLAW_DOCS },
+      remediation: `Configure at least one LLM provider via the runtime adapter. Docs: ${RUNTIME_DOCS}`,
+      details: { configKey, installUrl: RUNTIME_DOCS },
     }
   }
   return {
@@ -140,11 +139,11 @@ async function checkLlm(): Promise<CheckResult> {
 }
 
 async function installLlm(): Promise<InstallResult> {
-  log.info('llm.install() is a noop — LLM credentials are user-managed via OpenClaw')
+  log.info('llm.install() is a noop - LLM credentials are user-managed by the runtime adapter')
   return {
     name: 'llm',
     status: 'noop',
-    message: `LLM credentials must be configured via OpenClaw. Docs: ${OPENCLAW_DOCS}`,
+    message: `LLM credentials must be configured via the runtime adapter. Docs: ${RUNTIME_DOCS}`,
     durationMs: 0,
   }
 }
@@ -172,7 +171,7 @@ async function checkChannels(): Promise<CheckResult> {
       name: 'channels',
       status: 'warn',
       message: `Could not parse runtime channels config: ${err instanceof Error ? err.message : String(err)}`,
-      remediation: `Fix or regenerate channel credentials via OpenClaw. Docs: ${OPENCLAW_DOCS}`,
+      remediation: `Fix or regenerate runtime channel credentials. Docs: ${RUNTIME_DOCS}`,
       details: { configKey },
     }
   }
@@ -182,8 +181,8 @@ async function checkChannels(): Promise<CheckResult> {
       name: 'channels',
       status: 'warn',
       message: `No messaging channels configured — runtime channels config is missing`,
-      remediation: `Configure at least one channel (Discord, Telegram, Slack) via OpenClaw. Docs: ${OPENCLAW_DOCS}`,
-      details: { configKey, installUrl: OPENCLAW_DOCS },
+      remediation: `Configure at least one runtime channel. Docs: ${RUNTIME_DOCS}`,
+      details: { configKey, installUrl: RUNTIME_DOCS },
     }
   }
   if (typeof channels !== 'object' || channels === null) {
@@ -191,7 +190,7 @@ async function checkChannels(): Promise<CheckResult> {
       name: 'channels',
       status: 'warn',
       message: `runtime channels config is not an object`,
-      remediation: `Check the config shape or regenerate it via OpenClaw. Docs: ${OPENCLAW_DOCS}`,
+      remediation: `Check the config shape or regenerate it through the runtime adapter. Docs: ${RUNTIME_DOCS}`,
       details: { configKey },
     }
   }
@@ -203,8 +202,8 @@ async function checkChannels(): Promise<CheckResult> {
       name: 'channels',
       status: 'warn',
       message: 'No messaging channel in runtime config has a non-empty credential field',
-      remediation: `Configure at least one channel (Discord, Telegram, Slack) via OpenClaw. Docs: ${OPENCLAW_DOCS}`,
-      details: { configKey, installUrl: OPENCLAW_DOCS },
+      remediation: `Configure at least one runtime channel. Docs: ${RUNTIME_DOCS}`,
+      details: { configKey, installUrl: RUNTIME_DOCS },
     }
   }
   return {
@@ -216,11 +215,11 @@ async function checkChannels(): Promise<CheckResult> {
 }
 
 async function installChannels(): Promise<InstallResult> {
-  log.info('channels.install() is a noop — channel credentials are user-managed via OpenClaw')
+  log.info('channels.install() is a noop - channel credentials are user-managed by the runtime adapter')
   return {
     name: 'channels',
     status: 'noop',
-    message: `Channel credentials must be configured via OpenClaw. Docs: ${OPENCLAW_DOCS}`,
+    message: `Channel credentials must be configured via the runtime adapter. Docs: ${RUNTIME_DOCS}`,
     durationMs: 0,
   }
 }
@@ -231,5 +230,5 @@ export const channelsComponent: OnboardingComponent = {
   install: installChannels,
 }
 
-export const OPENCLAW_DOCS_URL = OPENCLAW_DOCS
+export const RUNTIME_DOCS_URL = RUNTIME_DOCS
 export const _internals = { CHANNEL_CREDENTIAL_FIELDS, hasCredentialField }

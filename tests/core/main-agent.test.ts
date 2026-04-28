@@ -89,7 +89,7 @@ describe('main-agent', () => {
         { id: 'patch', workspace: '/tmp/ws/patch' },
       ]))
       expect(() => getMainAgentId()).toThrow(/openclaw\.json has no agent with id 'main'/)
-      expect(() => getMainAgentId()).toThrow(/bakin check openclaw/)
+      expect(() => getMainAgentId()).toThrow(/bakin check runtime/)
     })
 
     it('throws when openclaw.json is missing entirely', () => {

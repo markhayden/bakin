@@ -50,7 +50,7 @@ Agent models are changed via the models plugin API, not direct OpenClaw writes:
 Bakin uses OpenClaw's canonical agent ids verbatim — no translation layer. The orchestrator id is the literal string `"main"` on **every** install; there is no detection heuristic, no settings override, no fallback. Subagents keep whatever ids OpenClaw assigns. Display names (e.g. "Roscoe", "Crab") come from `identity.name` in `openclaw.json` at render time and never leak into storage keys.
 
 Resolution helpers in `packages/core/src/main-agent.ts`:
-- `getMainAgentId(): string` — returns `"main"` if the entry exists, throws otherwise (with a pointer to `bakin check openclaw`)
+- `getMainAgentId(): string` — returns `"main"` if the entry exists, throws otherwise (with a pointer to `bakin check runtime`)
 - `tryGetMainAgentId(): string | null` — non-throwing variant for UI/degraded paths
 - `getMainAgentName(): string` — reads `identity.name` on the `main` entry, falls back to `"Main"`
 
@@ -62,7 +62,7 @@ All three call through `packages/core/src/openclaw-config.ts`, the single mtime-
 - Duplicate ids → first-wins, error logged with the discarded entry.
 - Duplicate **resolved** workspaces (explicit `workspace` field, falling back to `defaults.workspace`) → first-wins, error logged.
 
-The adapter is **read-only** — it never writes back to `openclaw.json` to "fix" violations. Repairs are the user's job; `bakin check openclaw` reports the exact violations (see `src/core/onboarding/openclaw.ts`).
+The adapter is **read-only** — it never writes back to runtime config to "fix" violations. Repairs are the user's job; `bakin check runtime` reports the exact violations (see `src/core/onboarding/runtime.ts`).
 
 ## Dispatch Permissions
 
@@ -222,6 +222,6 @@ Monitors agent and MCP server health:
 | `src/core/audit.ts` | Audit logging |
 | `src/core/sse.ts` | SSE client management |
 | `src/core/watchdog.ts` | Agent health monitoring |
-| `src/core/onboarding/openclaw.ts` | Doctor check — validates missing `main`, duplicate ids, duplicate workspaces. Reports only, never auto-fixes |
+| `src/core/onboarding/runtime.ts` | Doctor check — validates missing `main`, duplicate ids, duplicate workspaces. Reports only, never auto-fixes |
 | `src/core/settings.ts` | BakinSettings (dispatch/watchdog/antfly/etc. config). **Does not** contain the agent roster |
 | `scripts/lib/log-progress.ts` | Structured activity logging exec tool |

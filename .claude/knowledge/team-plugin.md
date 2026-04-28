@@ -14,7 +14,7 @@ The orchestrator id is always the literal string `"main"` on every OpenClaw inst
 
 - `packages/core/src/main-agent.ts` — `getMainAgentId()`, `tryGetMainAgentId()`, `getMainAgentName()`
 - `packages/core/src/openclaw-config.ts` — single mtime-cached reader for `openclaw.json`. All three helpers above call through here. Live edits are picked up on the next call.
-- `src/core/onboarding/openclaw.ts` — doctor check that flags missing `main`, duplicate ids, duplicate workspaces. Reports only, never auto-fixes. Run via `bakin check openclaw`.
+- `src/core/onboarding/runtime.ts` — doctor check that flags missing `main`, duplicate ids, duplicate workspaces. Reports only, never auto-fixes. Run via `bakin check runtime`.
 
 `BakinSettings.agents` and `BakinSettings.mainAgentId` **do not exist**. If you find a reference to them in tests or production code, it's a bug — use `getAgentIds()` / `getMainAgentId()` instead.
 
@@ -60,7 +60,7 @@ This runs at render time. Stored `team.json` values are never rewritten on read.
 
 ### Broken roster degraded state
 
-If `listAgents()` returned `[]` (missing `main`), the builder renders founder only. No orphan subagents, no synthesized sections. This is the intentional signal that OpenClaw state is broken — the UI stays quiet and points the user at `bakin check openclaw`.
+If `listAgents()` returned `[]` (missing `main`), the builder renders founder only. No orphan subagents, no synthesized sections. This is the intentional signal that runtime state is broken — the UI stays quiet and points the user at `bakin check runtime`.
 
 ### Synthetic "All agents" section
 
@@ -280,7 +280,7 @@ If a future iteration restores any of these, prefer adding back via new componen
 | Pyramid graph builder | `tests/plugins/team/build-graph.test.ts` |
 | Write normalization + read degradation + lifecycle routes | `tests/plugins/team/routes.test.ts` |
 | Agent lifecycle MCP exec tools | `tests/plugins/team/exec-tools.test.ts` |
-| Doctor integrity check | `tests/core/onboarding/openclaw.test.ts` |
+| Doctor integrity check | `tests/core/onboarding/runtime.test.ts` |
 | Owned health checks (agent-roster / personas / agent-assets) | `tests/plugins/team/health-checks.test.ts` |
 
 ## Owned health checks

@@ -12,7 +12,7 @@ export function getMainAgentId(): string {
   if (entry) return 'main'
   throw new Error(
     "openclaw.json has no agent with id 'main'. OpenClaw's orchestrator id is always 'main'; "
-    + 'add that entry or run `bakin check openclaw`.',
+    + 'add that entry or run `bakin check runtime`.',
   )
 }
 

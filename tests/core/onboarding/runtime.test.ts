@@ -1,7 +1,7 @@
 /**
- * Tests for the runtime onboarding component historically named "openclaw".
+ * Tests for the runtime onboarding component.
  *
- * The component no longer probes OpenClaw paths directly. It asks the configured
+ * The component does not probe provider paths directly. It asks the configured
  * runtime adapter for readiness, roster, and raw config integrity data.
  */
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
@@ -14,7 +14,7 @@ let runtimeConfig: unknown = null
 let runtimeConfigError: Error | null = null
 
 const runtime = {
-  name: 'openclaw',
+  name: 'test-runtime',
   version: 'test',
   requiredCoreVersion: '*',
   ping: async () => runtimeAvailable,
@@ -46,9 +46,9 @@ mock.module('../../../src/core/logger', () => ({
   }),
 }))
 
-describe('onboarding openclaw component', () => {
-  let openclawComponent: typeof import('../../../src/core/onboarding/openclaw').openclawComponent
-  let OPENCLAW_INSTALL_URL: string
+describe('onboarding runtime component', () => {
+  let runtimeComponent: typeof import('../../../src/core/onboarding/runtime').runtimeComponent
+  let RUNTIME_SETUP_URL: string
 
   beforeEach(async () => {
     useExistingServices = true
@@ -58,9 +58,9 @@ describe('onboarding openclaw component', () => {
     runtimeConfig = { agents: { list: [{ id: 'main' }] } }
     runtimeConfigError = null
     vi.resetModules()
-    const mod = await import('../../../src/core/onboarding/openclaw')
-    openclawComponent = mod.openclawComponent
-    OPENCLAW_INSTALL_URL = mod.OPENCLAW_INSTALL_URL
+    const mod = await import('../../../src/core/onboarding/runtime')
+    runtimeComponent = mod.runtimeComponent
+    RUNTIME_SETUP_URL = mod.RUNTIME_SETUP_URL
   })
 
   describe('check()', () => {
@@ -68,16 +68,16 @@ describe('onboarding openclaw component', () => {
       useExistingServices = false
       initError = new Error('adapter init failed')
 
-      const result = await openclawComponent.check()
+      const result = await runtimeComponent.check()
       expect(result.status).toBe('missing')
       expect(result.message).toContain('could not initialize')
-      expect(result.remediation).toContain(OPENCLAW_INSTALL_URL)
+      expect(result.remediation).toContain(RUNTIME_SETUP_URL)
     })
 
     it('reports missing when the runtime adapter is not reachable', async () => {
       runtimeAvailable = false
 
-      const result = await openclawComponent.check()
+      const result = await runtimeComponent.check()
       expect(result.status).toBe('missing')
       expect(result.message).toContain('not reachable')
     })
@@ -86,7 +86,7 @@ describe('onboarding openclaw component', () => {
       runtimeAgents = []
       runtimeConfig = { agents: { list: [] } }
 
-      const result = await openclawComponent.check()
+      const result = await runtimeComponent.check()
       expect(result.status).toBe('broken')
       expect(result.message).toContain('no agents')
     })
@@ -94,13 +94,13 @@ describe('onboarding openclaw component', () => {
     it('reports broken when runtime config cannot be read', async () => {
       runtimeConfigError = new Error('bad json')
 
-      const result = await openclawComponent.check()
+      const result = await runtimeComponent.check()
       expect(result.status).toBe('broken')
       expect(result.message).toContain('could not be read')
     })
 
     it('reports ok for a reachable runtime with a main agent', async () => {
-      const result = await openclawComponent.check()
+      const result = await runtimeComponent.check()
       expect(result.status).toBe('ok')
       expect(result.message).toContain('runtime adapter is available')
       expect(result.details?.mainAgentId).toBe('main')
@@ -112,7 +112,7 @@ describe('onboarding openclaw component', () => {
       runtimeAgents = [{ id: 'bob', name: 'Bob', status: 'active' }]
       runtimeConfig = { agents: { list: [{ id: 'bob', workspace: '/tmp/bob' }] } }
 
-      const result = await openclawComponent.check()
+      const result = await runtimeComponent.check()
       expect(result.status).toBe('broken')
       expect(result.message).toContain('no agent')
       expect(result.message).toContain("'main'")
@@ -128,7 +128,7 @@ describe('onboarding openclaw component', () => {
         },
       }
 
-      const result = await openclawComponent.check()
+      const result = await runtimeComponent.check()
       expect(result.status).toBe('broken')
       expect(result.message).toContain('duplicate')
       expect(result.message).toContain("'main'")
@@ -145,7 +145,7 @@ describe('onboarding openclaw component', () => {
         },
       }
 
-      const result = await openclawComponent.check()
+      const result = await runtimeComponent.check()
       expect(result.status).toBe('broken')
       expect(result.message).toContain("'a'")
       expect(result.message).toContain("'b'")
@@ -155,7 +155,7 @@ describe('onboarding openclaw component', () => {
 
   describe('install()', () => {
     it('is a noop that returns the install URL message', async () => {
-      const result = await openclawComponent.install({
+      const result = await runtimeComponent.install({
         interactive: false,
         autoApprove: true,
         json: false,
@@ -163,7 +163,7 @@ describe('onboarding openclaw component', () => {
         force: false,
       })
       expect(result.status).toBe('noop')
-      expect(result.message).toContain(OPENCLAW_INSTALL_URL)
+      expect(result.message).toContain(RUNTIME_SETUP_URL)
       expect(result.durationMs).toBe(0)
     })
   })

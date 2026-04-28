@@ -1,11 +1,11 @@
 /**
- * openclaw component — detects that OpenClaw is installed.
+ * runtime component - detects that the configured agent runtime is available.
  *
- * OpenClaw is a **hard prerequisite**, not something Bakin manages. This
+ * The runtime is a **hard prerequisite**, not something Bakin manages. This
  * component is check-only — `install()` is a noop that always returns a
- * message pointing at the OpenClaw install docs. The orchestrator is
+ * message pointing at the active runtime adapter setup path. The orchestrator is
  * responsible for using the `missing`/`error` status from `check()` to
- * abort the remaining onboarding steps: without OpenClaw there is no
+ * abort the remaining onboarding steps: without a runtime there is no
  * agent runtime, and everything downstream of this point (LLM keys,
  * channel config, credential discovery) would be meaningless.
  *
@@ -16,7 +16,7 @@
  *
  * If any one of those is missing we report `missing` (not `error`) and
  * leave the hard-stop decision to the orchestrator — a single `bakin check
- * openclaw` invocation should still be able to surface the same result
+ * runtime` invocation should still be able to surface the same result
  * without hard-exiting the process.
  */
 import { selectRuntimeMainAgent, type AgentRuntimeAdapter, type RuntimeAgent } from '@bakin/core/adapters/runtime'
@@ -24,10 +24,10 @@ import { createLogger } from '../logger'
 import { createAppServices, maybeGetAppServices } from '../app-services'
 import type { CheckResult, InstallResult, OnboardingComponent } from './types'
 
-const log = createLogger('onboarding:openclaw')
+const log = createLogger('onboarding:runtime')
 
-const INSTALL_URL = 'https://openclaw.ai/'
-const INSTALL_MESSAGE = `OpenClaw is required. Install it from ${INSTALL_URL} and rerun onboarding.`
+const SETUP_URL = 'https://openclaw.ai/'
+const SETUP_MESSAGE = `A runtime adapter is required. Configure the active runtime adapter and rerun onboarding. Current OpenClaw adapter docs: ${SETUP_URL}`
 
 interface RuntimeConfigForIntegrity {
   agents?: {
@@ -54,33 +54,30 @@ function configFromRuntimeAgents(agents: RuntimeAgent[]): RuntimeConfigForIntegr
 }
 
 /**
- * Reports-only integrity validator for a parsed openclaw.json.
+ * Reports-only integrity validator for a parsed runtime config.
  *
- * After issue #90, we rely on the invariant that OpenClaw's orchestrator
- * lives at `id: "main"` in every install, that agent ids are unique, and
- * that no two agents resolve to the same workspace (otherwise Bakin's
- * adapter cannot distinguish them). This scan collects *every* violation
- * so the user sees the whole picture on one run of `bakin check openclaw`
+ * Bakin relies on the invariant that the orchestrator agent lives at
+ * `id: "main"` in every runtime, that agent ids are unique, and that no two
+ * agents resolve to the same workspace. This scan collects *every* violation
+ * so the user sees the whole picture on one run of `bakin check runtime`
  * instead of playing whack-a-mole.
  *
- * **Never mutates openclaw.json.** Section 7 of the issue-90 spec is
- * explicit: doctor and migration code must never auto-write OpenClaw's
- * config. The user owns that file and decides how to fix it.
+ * **Never mutates runtime config.** The user owns the active runtime config
+ * and decides how to fix it.
  */
-export function validateOpenClawIntegrity(config: RuntimeConfigForIntegrity | null): string[] {
+export function validateRuntimeIntegrity(config: RuntimeConfigForIntegrity | null): string[] {
   const issues: string[] = []
   if (!config) return issues
 
   const list = Array.isArray(config.agents?.list) ? config.agents!.list! : []
 
-  // 1. Missing main — OpenClaw's orchestrator id is always "main" on every
-  //    install; Bakin's runtime helpers depend on that invariant.
+  // 1. Missing main - Bakin's runtime helpers depend on this invariant.
   const hasMain = list.some((a) => a?.id === 'main')
   if (!hasMain) {
     issues.push(
-      `openclaw.json has no agent with id 'main'. Add an entry like ` +
+      `Runtime config has no agent with id 'main'. Add an entry like ` +
         `{ "id": "main", "identity": { "name": "<your-agent-name>" } }. ` +
-        `OpenClaw's orchestrator id is always 'main' on every install.`
+        `Bakin's orchestrator id is always 'main'.`
     )
   }
 
@@ -94,7 +91,7 @@ export function validateOpenClawIntegrity(config: RuntimeConfigForIntegrity | nu
     if (seen.has(id)) {
       if (!reportedDupes.has(id)) {
         issues.push(
-          `openclaw.json has duplicate agent id '${id}'. Keep one entry; remove the other.`
+          `Runtime config has duplicate agent id '${id}'. Keep one entry; remove the other.`
         )
         reportedDupes.add(id)
       }
@@ -116,9 +113,9 @@ export function validateOpenClawIntegrity(config: RuntimeConfigForIntegrity | nu
     const existing = firstOwner.get(resolved)
     if (existing && existing !== id) {
       issues.push(
-        `openclaw.json has two agents sharing workspace '${resolved}': ` +
+        `Runtime config has two agents sharing workspace '${resolved}': ` +
           `'${existing}' and '${id}'. Bakin's adapter cannot distinguish ` +
-          `them — rename the workspace of one, or remove the duplicate entry.`
+          `them - rename the workspace of one, or remove the duplicate entry.`
       )
     } else if (!existing) {
       firstOwner.set(resolved, id)
@@ -134,22 +131,22 @@ async function check(): Promise<CheckResult> {
     runtime = await getRuntimeForOnboarding()
   } catch (err) {
     return {
-      name: 'openclaw',
+      name: 'runtime',
       status: 'missing',
       message: `Runtime adapter could not initialize: ${err instanceof Error ? err.message : String(err)}`,
-      remediation: INSTALL_MESSAGE,
-      details: { installUrl: INSTALL_URL },
+      remediation: SETUP_MESSAGE,
+      details: { installUrl: SETUP_URL },
     }
   }
 
   const available = await runtime.ping().catch(() => false)
   if (!available) {
     return {
-      name: 'openclaw',
+      name: 'runtime',
       status: 'missing',
       message: `${runtime.name} runtime adapter is not reachable`,
-      remediation: INSTALL_MESSAGE,
-      details: { runtime: runtime.name, installUrl: INSTALL_URL },
+      remediation: SETUP_MESSAGE,
+      details: { runtime: runtime.name, installUrl: SETUP_URL },
     }
   }
 
@@ -158,31 +155,31 @@ async function check(): Promise<CheckResult> {
     agents = await runtime.agents.list()
   } catch (err) {
     return {
-      name: 'openclaw',
+      name: 'runtime',
       status: 'broken',
       message: `Runtime agent roster could not be read: ${err instanceof Error ? err.message : String(err)}`,
       remediation: 'Fix the configured runtime adapter, then rerun onboarding.',
-      details: { runtime: runtime.name, installUrl: INSTALL_URL },
+      details: { runtime: runtime.name, installUrl: SETUP_URL },
     }
   }
 
   const mainAgent = selectRuntimeMainAgent(agents)
   if (!mainAgent) {
     return {
-      name: 'openclaw',
+      name: 'runtime',
       status: 'broken',
       message: 'Runtime adapter returned no agents',
       remediation: 'Create at least one orchestrator agent, then rerun onboarding.',
-      details: { runtime: runtime.name, installUrl: INSTALL_URL },
+      details: { runtime: runtime.name, installUrl: SETUP_URL },
     }
   }
 
   let config: RuntimeConfigForIntegrity | null
   try {
-    config = await runtime.config.raw<RuntimeConfigForIntegrity | null>('*', 'onboarding.openclaw.integrity')
+    config = await runtime.config.raw<RuntimeConfigForIntegrity | null>('*', 'onboarding.runtime.integrity')
   } catch (err) {
     return {
-      name: 'openclaw',
+      name: 'runtime',
       status: 'broken',
       message: `Runtime config could not be read: ${err instanceof Error ? err.message : String(err)}`,
       remediation: 'Fix or regenerate the runtime config, then rerun onboarding.',
@@ -190,19 +187,19 @@ async function check(): Promise<CheckResult> {
     }
   }
 
-  const integrityIssues = validateOpenClawIntegrity(config ?? configFromRuntimeAgents(agents))
+  const integrityIssues = validateRuntimeIntegrity(config ?? configFromRuntimeAgents(agents))
   if (integrityIssues.length > 0) {
     return {
-      name: 'openclaw',
+      name: 'runtime',
       status: 'broken',
-      message: `openclaw.json has ${integrityIssues.length} integrity issue${integrityIssues.length === 1 ? '' : 's'}:\n  - ${integrityIssues.join('\n  - ')}`,
-      remediation: 'Edit the runtime config to resolve the listed issues, then rerun `bakin check openclaw`. Bakin will not modify runtime config for you.',
+      message: `Runtime config has ${integrityIssues.length} integrity issue${integrityIssues.length === 1 ? '' : 's'}:\n  - ${integrityIssues.join('\n  - ')}`,
+      remediation: 'Edit the runtime config to resolve the listed issues, then rerun `bakin check runtime`. Bakin will not modify runtime config for you.',
       details: { runtime: runtime.name, integrityIssues },
     }
   }
 
   return {
-    name: 'openclaw',
+    name: 'runtime',
     status: 'ok',
     message: `${runtime.name} runtime adapter is available`,
     details: { runtime: runtime.name, mainAgentId: mainAgent.id },
@@ -210,22 +207,22 @@ async function check(): Promise<CheckResult> {
 }
 
 async function install(): Promise<InstallResult> {
-  // OpenClaw is never auto-installed by Bakin. Emit a noop with a helpful
+  // The runtime is never auto-installed by Bakin. Emit a noop with a helpful
   // message so the orchestrator can log it and exit cleanly.
-  log.info('openclaw.install() is a noop — OpenClaw is a user-managed prerequisite')
+  log.info('runtime.install() is a noop - runtime adapter setup is user-managed')
   return {
-    name: 'openclaw',
+    name: 'runtime',
     status: 'noop',
-    message: INSTALL_MESSAGE,
+    message: SETUP_MESSAGE,
     durationMs: 0,
   }
 }
 
-export const openclawComponent: OnboardingComponent = {
-  name: 'openclaw',
+export const runtimeComponent: OnboardingComponent = {
+  name: 'runtime',
   check,
   install,
 }
 
-export const OPENCLAW_INSTALL_URL = INSTALL_URL
-export const OPENCLAW_INSTALL_MESSAGE = INSTALL_MESSAGE
+export const RUNTIME_SETUP_URL = SETUP_URL
+export const RUNTIME_SETUP_MESSAGE = SETUP_MESSAGE
