@@ -221,6 +221,16 @@ describe('Health Plugin Routes', () => {
     })
   })
 
+  describe('GET /search-status', () => {
+    it('returns search adapter health data', async () => {
+      const route = findRoute(activated.routes, 'GET', '/search-status')!
+      expect(route).toBeDefined()
+      const { status, body } = await callRoute(route, activated.ctx)
+      expect(status).toBe(200)
+      expect(body).toEqual({ enabled: false, tables: [] })
+    })
+  })
+
   describe('GET /registry', () => {
     it('returns plugins list without execTools', async () => {
       const route = findRoute(activated.routes, 'GET', '/registry')!

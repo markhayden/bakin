@@ -149,7 +149,7 @@ import { checkContentDir } from '../../../plugins/health/lib/system-checks/conte
 import { checkService } from '../../../plugins/health/lib/system-checks/service'
 import { checkMcporter } from '../../../plugins/health/lib/system-checks/mcporter'
 import { checkRuntime } from '../../../plugins/health/lib/system-checks/runtime'
-import { checkAntfly } from '../../../plugins/health/lib/system-checks/antfly'
+import { checkSearchAdapter } from '../../../plugins/health/lib/system-checks/search'
 import { checkOrchestratorRules } from '../../../plugins/health/lib/system-checks/orchestrator-rules'
 import { checkAndSyncSkill } from '../../../plugins/health/lib/system-checks/sync-skill'
 import { checkPluginAssets } from '../../../plugins/health/lib/system-checks/plugin-assets'
@@ -373,31 +373,31 @@ describe('checkRuntime', () => {
   })
 })
 
-// ─── checkAntfly ──────────────────────────────────────────────────────────
+// ─── checkSearchAdapter ───────────────────────────────────────────────────
 
-describe('checkAntfly', () => {
+describe('checkSearchAdapter', () => {
   it('warns when disabled and binary is not installed', async () => {
     mockAntflyEnabled = false
     mockAntflyInstalled = false
-    const results = await checkAntfly()
+    const results = await checkSearchAdapter()
     expect(results[0].status).toBe('warn')
-    expect(results[0].message).toMatch(/disabled and binary not installed/)
+    expect(results[0].message).toMatch(/Search disabled and antfly adapter binary not installed/)
   })
 
   it('reports ok when disabled but the binary is installed', async () => {
     mockAntflyEnabled = false
     mockAntflyInstalled = true
-    const results = await checkAntfly()
+    const results = await checkSearchAdapter()
     expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/Antfly disabled/)
+    expect(results[0].message).toMatch(/Search disabled/)
   })
 
   it('reports error when enabled but the binary is missing', async () => {
     mockAntflyEnabled = true
     mockAntflyInstalled = false
-    const results = await checkAntfly()
+    const results = await checkSearchAdapter()
     expect(results[0].status).toBe('error')
-    expect(results[0].message).toMatch(/Antfly enabled but binary not found/)
+    expect(results[0].message).toMatch(/Search enabled but antfly adapter binary not found/)
   })
 
   it('reports ok when the daemon responds healthy', async () => {
@@ -407,7 +407,7 @@ describe('checkAntfly', () => {
     mockFetchHealth = 'green'
     installMockFetch()
     try {
-      const results = await checkAntfly()
+      const results = await checkSearchAdapter()
       expect(results[0].status).toBe('ok')
       expect(results[0].message).toMatch(/health: green/)
     } finally {
@@ -421,7 +421,7 @@ describe('checkAntfly', () => {
     mockFetchOk = false
     installMockFetch()
     try {
-      const results = await checkAntfly()
+      const results = await checkSearchAdapter()
       expect(results[0].status).toBe('error')
       expect(results[0].message).toMatch(/connection failed/)
     } finally {
@@ -578,7 +578,7 @@ describe('plugin registration', () => {
     expect(registeredIds).toContain('service')
     expect(registeredIds).toContain('mcporter')
     expect(registeredIds).toContain('runtime')
-    expect(registeredIds).toContain('antfly')
+    expect(registeredIds).toContain('search')
     expect(registeredIds).toContain('orchestrator-rules')
     expect(registeredIds).toContain('skill')
     expect(registeredIds).toContain('plugin-assets')
