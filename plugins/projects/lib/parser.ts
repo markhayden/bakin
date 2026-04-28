@@ -1,12 +1,11 @@
 /**
  * Projects plugin — parser.
- * Reads/writes project markdown files with YAML frontmatter.
+ * Parses project markdown files with YAML frontmatter and creates a
+ * storage-backed repository for project file I/O.
  * Pure functions where possible — no side effects.
  */
-import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 'fs'
-import { join } from 'path'
+import type { StorageAdapter } from '@bakin/sdk/types'
 import yaml from 'js-yaml'
-import { getBakinPaths } from '../../../src/core/content-dir'
 import type { Project, ProjectFrontmatter, ProjectTask, ProjectAsset, ProjectSummary } from '../types'
 
 // ---------------------------------------------------------------------------
@@ -28,10 +27,8 @@ export function nextTaskItemId(tasks: ProjectTask[]): string {
   return `t${String(max + 1).padStart(3, '0')}`
 }
 
-function getProjectsDir(): string {
-  const dir = getBakinPaths().projects
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  return dir
+function projectPath(id: string): string {
+  return `projects/${id}.md`
 }
 
 // ---------------------------------------------------------------------------
@@ -118,41 +115,50 @@ export function serializeProject(project: Project): string {
 // File I/O
 // ---------------------------------------------------------------------------
 
-export function readProject(id: string): Project | null {
-  const filePath = join(getProjectsDir(), `${id}.md`)
-  if (!existsSync(filePath)) return null
-  const content = readFileSync(filePath, 'utf-8')
-  return parseProject(content)
+export interface ProjectRepository {
+  readProject(id: string): Project | null
+  readAllProjects(): Project[]
+  writeProject(project: Project): void
+  deleteProjectFile(id: string): boolean
+  projectStoragePath(id: string): string
+  projectsGlob(): string
 }
 
-export function readAllProjects(): Project[] {
-  const dir = getProjectsDir()
-  if (!existsSync(dir)) return []
-  const files = readdirSync(dir).filter(f => f.endsWith('.md'))
-  const projects: Project[] = []
-  for (const f of files) {
-    try {
-      const content = readFileSync(join(dir, f), 'utf-8')
-      projects.push(parseProject(content))
-    } catch {
-      // Skip malformed project files
-    }
+export function createProjectRepository(storage: StorageAdapter): ProjectRepository {
+  return {
+    readProject(id: string): Project | null {
+      const content = storage.read(projectPath(id))
+      return content ? parseProject(content) : null
+    },
+
+    readAllProjects(): Project[] {
+      const files = (storage.list?.('projects') ?? []).filter(f => f.endsWith('.md'))
+      const projects: Project[] = []
+      for (const file of files) {
+        try {
+          const content = storage.read(`projects/${file}`)
+          if (content) projects.push(parseProject(content))
+        } catch {
+          // Skip malformed project files
+        }
+      }
+      return projects
+    },
+
+    writeProject(project: Project): void {
+      storage.write(projectPath(project.id), serializeProject(project))
+    },
+
+    deleteProjectFile(id: string): boolean {
+      const path = projectPath(id)
+      if (!storage.exists(path)) return false
+      storage.remove?.(path)
+      return true
+    },
+
+    projectStoragePath: projectPath,
+    projectsGlob: () => storage.searchPath?.('projects/*.md') ?? 'projects/*.md',
   }
-  return projects
-}
-
-export function writeProject(project: Project): void {
-  const dir = getProjectsDir()
-  const filePath = join(dir, `${project.id}.md`)
-  writeFileSync(filePath, serializeProject(project), 'utf-8')
-}
-
-export function deleteProjectFile(id: string): boolean {
-  const { unlinkSync } = require('fs')
-  const filePath = join(getProjectsDir(), `${id}.md`)
-  if (!existsSync(filePath)) return false
-  unlinkSync(filePath)
-  return true
 }
 
 export function projectToSummary(p: Project): ProjectSummary {

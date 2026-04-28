@@ -2,34 +2,19 @@
  * Projects plugin — server entry point.
  * Registers API routes, exec tools, and the task-link index.
  */
-import { existsSync } from 'fs'
-import { join } from 'path'
 import { z } from 'zod'
-import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
-import { getBakinPaths } from '../../src/core/content-dir'
-import { readProject, readAllProjects, projectToSummary } from './lib/parser'
-import {
-  createProject,
-  updateProject,
-  deleteProject,
-  addChecklistItem,
-  markChecklistItem,
-  updateChecklistItem,
-  removeChecklistItem,
-  linkChecklistItem,
-  promoteItemToTask,
-  attachAsset,
-  detachAsset,
-  rebuildIndex,
-  resolveLinkedTaskStatuses,
-  autoCheckLinkedItem,
-} from './lib/project-service'
-import { createLogger } from '../../src/core/logger'
-import { deleteTask } from '../../src/core/task-store'
-import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
+import type { BakinPlugin, PluginContext, RuntimeAgent } from '@bakin/sdk/types'
+import { createProjectRepository, projectToSummary } from './lib/parser'
+import { createProjectService } from './lib/project-service'
 import type { Project, ProjectStatus } from './types'
 
-const log = createLogger('projects')
+const log = {
+  info: (...args: unknown[]) => console.info('[projects]', ...args),
+  warn: (...args: unknown[]) => console.warn('[projects]', ...args),
+  error: (...args: unknown[]) => console.error('[projects]', ...args),
+}
+
+let activeProjectRepository: ReturnType<typeof createProjectRepository> | null = null
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -44,6 +29,14 @@ function json(data: unknown, status = 200): Response {
 
 async function readBody<T>(req: Request): Promise<T> {
   return req.json() as Promise<T>
+}
+
+async function getRuntimeMainAgentId(ctx: PluginContext): Promise<string> {
+  const agents = await ctx.runtime.agents.list()
+  const main = agents.find((agent: RuntimeAgent) => agent.metadata?.main === true)
+    ?? agents.find((agent: RuntimeAgent) => agent.id === 'main')
+    ?? agents[0]
+  return main?.id ?? 'main'
 }
 
 // ---------------------------------------------------------------------------
@@ -67,6 +60,28 @@ const projectsPlugin: BakinPlugin = {
   ],
 
   async activate(ctx: PluginContext) {
+    const repo = createProjectRepository(ctx.storage)
+    activeProjectRepository = repo
+    const projectService = createProjectService(ctx, repo)
+    const {
+      createProject,
+      updateProject,
+      deleteProject,
+      addChecklistItem,
+      markChecklistItem,
+      updateChecklistItem,
+      removeChecklistItem,
+      linkChecklistItem,
+      promoteItemToTask,
+      attachAsset,
+      detachAsset,
+      rebuildIndex,
+      resolveLinkedTaskStatuses,
+      autoCheckLinkedItem,
+    } = projectService
+    const readProject = repo.readProject
+    const readAllProjects = repo.readAllProjects
+
     // ─── Search Content Type Registration ─────────────────────────────
 
     /** Convert a project to a search document */
@@ -96,10 +111,10 @@ const projectsPlugin: BakinPlugin = {
       chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
       filePatterns: [
         {
-          pattern: 'projects/*.md',
+          pattern: repo.projectsGlob(),
           fileToId: (rel) => rel.replace(/^projects\//, '').replace(/\.md$/, ''),
           fileToDoc: async (rel) => {
-            const id = rel.replace(/^projects\//, '').replace(/\.md$/, '')
+            const id = rel.split('/').pop()?.replace(/\.md$/, '') ?? ''
             const project = readProject(id)
             return project ? projectToSearchDoc(project) : null
           },
@@ -112,8 +127,7 @@ const projectsPlugin: BakinPlugin = {
         }
       },
       verifyExists: async (key: string) => {
-        const filePath = join(getBakinPaths().projects, `${key}.md`)
-        return existsSync(filePath)
+        return ctx.storage.exists(repo.projectStoragePath(key))
       },
     })
 
@@ -130,8 +144,8 @@ const projectsPlugin: BakinPlugin = {
     }
 
     // Register cross-plugin hooks
-    ctx.hooks.register('projects.readProject', (d: Record<string, unknown>) => readProject(d.id as string))
-    ctx.hooks.register('projects.autoCheckLinkedItem', (d: Record<string, unknown>) => autoCheckLinkedItem(d.boardTaskId as string))
+    ctx.hooks.register('projects.readProject', (d: unknown) => readProject((d as Record<string, unknown>).id as string))
+    ctx.hooks.register('projects.autoCheckLinkedItem', (d: unknown) => autoCheckLinkedItem((d as Record<string, unknown>).boardTaskId as string))
 
     // Build in-memory index on startup
     try {
@@ -141,10 +155,10 @@ const projectsPlugin: BakinPlugin = {
     }
 
     // Watch project files for index rebuilds
-    ctx.watchFiles(['projects/*.md'])
+    ctx.watchFiles([repo.projectsGlob()])
     ctx.events.on('file.changed', (_event: string, data: Record<string, unknown>) => {
       const path = data.path as string | undefined
-      if (path && path.startsWith('projects/') && path.endsWith('.md')) {
+      if (path && path.includes('projects/') && path.endsWith('.md')) {
         rebuildIndex()
       }
     })
@@ -178,7 +192,7 @@ const projectsPlugin: BakinPlugin = {
     const createHandler = async (req: Request) => {
       const body = await readBody<{ title: string; body?: string; owner?: string; tasks?: string[] }>(req)
       if (!body.title) return json({ error: 'Missing title' }, 400)
-      const owner = body.owner ?? await getRuntimeMainAgentId(ctx.runtime)
+      const owner = body.owner ?? await getRuntimeMainAgentId(ctx)
       const result = await createProject({ ...body, owner })
       ctx.activity.audit('created', owner, { projectId: result.id, title: body.title })
       ctx.activity.log(owner, `Created project "${body.title}"`)
@@ -217,7 +231,7 @@ const projectsPlugin: BakinPlugin = {
           if (project) {
             for (const item of project.tasks) {
               if (item.taskId) {
-                try { await deleteTask(item.taskId) } catch { /* task may already be gone */ }
+                try { await ctx.tasks.remove(item.taskId) } catch { /* task may already be gone */ }
               }
             }
           }
@@ -394,7 +408,7 @@ const projectsPlugin: BakinPlugin = {
           'Respond concisely. If suggesting tasks, format them as a numbered list.',
         ].join('\n')
 
-        const agentId = body.agent || await getRuntimeMainAgentId(ctx.runtime)
+        const agentId = body.agent || await getRuntimeMainAgentId(ctx)
         const sessionKey = `projects-${body.projectId}-${Date.now()}`
 
         const stream = new ReadableStream({
@@ -792,7 +806,7 @@ const projectsPlugin: BakinPlugin = {
         ].join('\n')
 
         try {
-          const agentId = (params.agent as string) || await getRuntimeMainAgentId(ctx.runtime)
+          const agentId = (params.agent as string) || await getRuntimeMainAgentId(ctx)
           const result = await ctx.runtime.messaging.send({ agentId, content: context })
           const reply = result.content ?? ''
           ctx.activity.audit('project.asked', 'system', { projectId, agent: agentId })
@@ -808,7 +822,7 @@ const projectsPlugin: BakinPlugin = {
   },
 
   onReady() {
-    const projects = readAllProjects()
+    const projects = activeProjectRepository?.readAllProjects() ?? []
     const byStatus: Record<string, number> = {}
     for (const p of projects) {
       byStatus[p.status] = (byStatus[p.status] || 0) + 1
@@ -817,6 +831,7 @@ const projectsPlugin: BakinPlugin = {
   },
 
   onShutdown() {
+    activeProjectRepository = null
     log.info('Projects plugin shutting down')
   },
 }

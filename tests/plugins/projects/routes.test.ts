@@ -26,86 +26,6 @@ import type { ChatChunk, MessageArgs, MessageResult } from '@bakin/core/adapters
 const testDir = join(tmpdir(), `bakin-test-projects-routes-${Date.now()}`)
 const projectsDir = join(testDir, 'projects')
 
-// ---------------------------------------------------------------------------
-// Mocks — must be declared before any plugin imports
-// ---------------------------------------------------------------------------
-
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
-
-mock.module('../../../src/core/content-dir', () => ({
-  getBakinPaths: () => ({ projects: projectsDir }),
-  getContentDir: () => testDir,
-}))
-
-mock.module('../../../src/core/logger', () => ({
-  createLogger: () => ({
-    info: mock(),
-    warn: mock(),
-    error: mock(),
-    debug: mock(),
-  }),
-}))
-
-mock.module('../../../src/core/audit', () => ({
-  appendAudit: mock(),
-}))
-
-const mockCreateTask = mock((opts?: unknown) => {
-  void opts
-  return Promise.resolve({ id: 'promoted01' })
-})
-mock.module('../../../src/core/task-service', () => ({
-  createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
-}))
-
-mock.module('@/core/task-store', () => ({
-  readTaskboard: () => ({
-    columns: {
-      todo: [{ id: 'board01', title: 'Board Task 1' }],
-      inProgress: [],
-      review: [],
-      done: [{ id: 'board02', title: 'Done Task' }],
-      archived: [],
-      blocked: [],
-      backlog: [],
-    },
-  }),
-}))
-
-const mockDeleteTask = mock(async (..._args: unknown[]) => undefined)
-mock.module('../../../src/core/task-store', () => ({
-  readTaskboard: mock(() => ({
-    columns: {
-      todo: [{ id: 'board01', title: 'Board Task 1' }],
-      inProgress: [],
-      review: [],
-      done: [{ id: 'board02', title: 'Done Task' }],
-      archived: [],
-      blocked: [],
-      backlog: [],
-    },
-  })),
-  deleteTask: (...args: unknown[]) => mockDeleteTask(...args),
-}))
-mock.module('@/core/task-store', () => ({
-  readTaskboard: mock(() => ({
-    columns: {
-      todo: [{ id: 'board01', title: 'Board Task 1' }],
-      inProgress: [],
-      review: [],
-      done: [{ id: 'board02', title: 'Done Task' }],
-      archived: [],
-      blocked: [],
-      backlog: [],
-    },
-  })),
-  deleteTask: (...args: unknown[]) => mockDeleteTask(...args),
-}))
-
 /** Consume an SSE Response body into a list of {event, data} records. */
 async function consumeSSE(res: Response): Promise<Array<{ event: string; data: unknown }>> {
   const reader = res.body!.getReader()
@@ -153,7 +73,8 @@ function clearGlobals() {
 // ---------------------------------------------------------------------------
 
 import projectsPlugin from '../../../plugins/projects'
-import { readProject as readProjectFile } from '../../../plugins/projects/lib/parser'
+import { createProjectRepository } from '../../../plugins/projects/lib/parser'
+import { MarkdownStorageAdapter } from '../../../packages/core/src/storage/markdown-adapter'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -247,8 +168,6 @@ beforeEach(async () => {
   clearGlobals()
   if (existsSync(testDir)) rmSync(testDir, { recursive: true, force: true })
   mkdirSync(projectsDir, { recursive: true })
-  mockCreateTask.mockClear()
-  mockDeleteTask.mockClear()
   plugin = await activatePlugin(projectsPlugin, testDir)
 })
 
@@ -450,13 +369,16 @@ describe('Routes', () => {
         title: 'Linked',
         tasks: [{ id: 't001', title: 'Linked Item', checked: false, taskId: 'board01' }],
       })
+      const removeTask = mock(async (_taskId: string) => {})
+      plugin.ctx.tasks.remove = removeTask
 
       const route = findRoute(plugin.routes, 'DELETE', '/:projectId')!
       await callRoute(route, plugin.ctx, {
         searchParams: { projectId: 'proj-linked' },
         body: { deleteLinkedTasks: true },
       })
-      expect(mockDeleteTask).toHaveBeenCalledWith('board01')
+      expect(removeTask).toHaveBeenCalledWith('board01')
+      expect(existsSync(join(projectsDir, 'proj-linked.md'))).toBe(false)
     })
   })
 
@@ -624,8 +546,15 @@ describe('Routes', () => {
       })
       expect(status).toBe(200)
       expect(body.ok).toBe(true)
-      expect(body.taskId).toBe('promoted01')
-      expect(mockCreateTask).toHaveBeenCalledTimes(1)
+      expect(typeof body.taskId).toBe('string')
+      const tasks = await plugin.ctx.tasks.list({ projectId: 'proj-prom' })
+      expect(tasks).toHaveLength(1)
+      expect(tasks[0]).toMatchObject({
+        id: body.taskId,
+        title: 'Promote Me',
+        agent: 'pixel',
+        projectId: 'proj-prom',
+      })
     })
 
     it('returns 400 when ids are missing', async () => {
@@ -903,7 +832,7 @@ describe('Exec Tools', () => {
       const result = await callTool(tool, { title: 'Agent Owner' }, 'pixel')
       expect(result.ok).toBe(true)
       // The owner should be 'pixel' (passed as agent param)
-      const project = readProjectFile(result.id as string)
+      const project = createProjectRepository(new MarkdownStorageAdapter(testDir)).readProject(result.id as string)
       expect(project!.owner).toBe('pixel')
     })
   })
@@ -1076,8 +1005,15 @@ describe('Exec Tools', () => {
       expect(tool).toBeDefined()
       const result = await callTool(tool, { projectId: 'proj-pi', taskItemId: 't001', assignee: 'pixel' })
       expect(result.ok).toBe(true)
-      expect(result.taskId).toBe('promoted01')
-      expect(mockCreateTask).toHaveBeenCalledTimes(1)
+      expect(typeof result.taskId).toBe('string')
+      const tasks = await plugin.ctx.tasks.list({ projectId: 'proj-pi' })
+      expect(tasks).toHaveLength(1)
+      expect(tasks[0]).toMatchObject({
+        id: result.taskId,
+        title: 'Promote Me',
+        agent: 'pixel',
+        projectId: 'proj-pi',
+      })
     })
 
     it('returns error if item already linked', async () => {
