@@ -17,6 +17,7 @@ import type {
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
 import { getOpenClawHome, getOpenClawPath } from '@bakin/core/openclaw-home'
+import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
   findAgentById,
   getAgentList,
@@ -232,7 +233,14 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       if (!isSafeWorkspaceFile(path)) return null
       const file = join(getWorkspacePath(agentId), path)
       try {
-        return { path, content: readFileSync(file, 'utf-8'), updatedAt: statSync(file).mtime.toISOString() }
+        return {
+          path,
+          content: readFileSync(file, 'utf-8'),
+          updatedAt: statSync(file).mtime.toISOString(),
+          metadata: {
+            userEdited: isUserEdited(file),
+          },
+        }
       } catch {
         return null
       }

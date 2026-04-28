@@ -19,7 +19,7 @@ process.env.OPENCLAW_HOME = openClawDir
 process.env.BAKIN_HOME = testDir
 
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { createMockRuntimeAdapter } from '../../packages/core/src/adapters/runtime/testing'
 
@@ -43,6 +43,39 @@ type TestGlobal = typeof globalThis & {
   __bakinFallbackRuntimeAdapter?: ReturnType<typeof createMockRuntimeAdapter>
 }
 
+function installRuntimeMock(): void {
+  const runtime = createMockRuntimeAdapter({
+    name: 'route-test-runtime',
+    version: '0.0.0',
+    requiredCoreVersion: '*',
+  })
+  const baseAgents = runtime.agents
+  ;(globalThis as TestGlobal).__bakinFallbackRuntimeAdapter = {
+    ...runtime,
+    agents: {
+      ...baseAgents,
+      readWorkspaceFile: async (agentId, path) => {
+        const file = join(openClawDir, 'workspaces', agentId, path)
+        try {
+          return {
+            path,
+            content: readFileSync(file, 'utf-8'),
+            updatedAt: statSync(file).mtime.toISOString(),
+            metadata: { userEdited: false },
+          }
+        } catch {
+          return null
+        }
+      },
+      writeWorkspaceFile: async (agentId, file) => {
+        const dir = join(openClawDir, 'workspaces', agentId)
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, file.path), file.content, 'utf-8')
+      },
+    },
+  }
+}
+
 import * as installRoute from '../../packages/host/src/api/agent-packages/install'
 import * as listRoute from '../../packages/host/src/api/agent-packages/list'
 import * as dynamicRoute from '../../packages/host/src/api/agent-packages/dynamic'
@@ -56,11 +89,7 @@ beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
   mkdirSync(openClawDir, { recursive: true })
-  ;(globalThis as TestGlobal).__bakinFallbackRuntimeAdapter = createMockRuntimeAdapter({
-    name: 'route-test-runtime',
-    version: '0.0.0',
-    requiredCoreVersion: '*',
-  })
+  installRuntimeMock()
 })
 
 function seedAgentPackage(id = 'pixel'): string {
