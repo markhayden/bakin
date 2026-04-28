@@ -15,7 +15,7 @@ import { join, basename } from 'path'
 import { execFileSync } from 'child_process'
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
 import { getBakinPaths } from '../../src/core/content-dir'
-import { getRuntimeAdapter } from '../../src/core/runtime-registry'
+import { getAppServices } from '../../src/core/app-services'
 import {
   succeed,
   fail,
@@ -55,7 +55,7 @@ async function getApiKey(): Promise<string | null> {
 
   // Check runtime config
   try {
-    const config = await getRuntimeAdapter().config.get<RuntimeSkillConfig>()
+    const config = await getAppServices().runtime.config.get<RuntimeSkillConfig>()
     const skill = config?.skills?.entries?.['nano-banana-pro']
     if (typeof skill?.apiKey === 'string') return skill.apiKey
     if (typeof skill?.env?.GEMINI_API_KEY === 'string') return skill.env.GEMINI_API_KEY
