@@ -26,6 +26,18 @@ export interface StorageAdapter {
   append(path: string, content: string): void
   exists(path: string): boolean
   readAll(): Record<string, string>
+  list?(path?: string): string[]
+  remove?(path: string): void
+  rename?(from: string, to: string): void
+  stat?(path: string): {
+    path: string
+    size: number
+    mtimeMs: number
+    isFile: boolean
+    isDirectory: boolean
+  } | null
+  readJson?<T = unknown>(path: string): T | null
+  writeJson?(path: string, value: unknown): void
 }
 
 // ---------------------------------------------------------------------------
