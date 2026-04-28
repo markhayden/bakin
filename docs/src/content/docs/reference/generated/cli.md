@@ -124,7 +124,7 @@ Reason: Downloads a release and mutates the installed binary.
 
 ### `bakin doctor`
 
-Runs Bakin diagnostics for local dependencies, server state, agents, plugin assets, gateway behavior, and recoverable issues.
+Runs Bakin diagnostics for local dependencies, server state, agents, plugin assets, runtime behavior, and recoverable issues.
 
 - Visibility: `public`
 - Stability: `stable`
@@ -411,7 +411,7 @@ bakin agents send patch "Check the build"
 ```
 
 Example test mode: `illustrative`
-Reason: Requires a running agent gateway.
+Reason: Requires a running agent runtime.
 
 ### `bakin agents install <path|github:user/repo[@ref]> [--adopt] [--install-as <id>] [--replace]`
 
@@ -559,9 +559,9 @@ bakin plugins list
 Example test mode: `illustrative`
 Reason: Requires local server/plugin state.
 
-### `bakin plugins install <path|github:user/repo> [--yes]`
+### `bakin plugins install <path|github:user/repo[#subpath]> [--yes]`
 
-Installs a plugin from a local path or GitHub source. --yes skips the consent prompt.
+Installs a plugin from a local path or GitHub source. Append #subpath to install from a monorepo directory. --yes skips the consent prompt.
 
 - Visibility: `public`
 - Stability: `stable`
@@ -622,6 +622,38 @@ bakin plugins scaffold my-plugin
 
 Example test mode: `illustrative`
 Reason: Writes a new plugin directory.
+
+### `bakin plugins link <localPath> [--force]`
+
+Registers a local source tree as a developer-mode plugin via a symlink at ~/.bakin/plugins/<id>/. Used with the hot-reload coordinator. --force overrides id collisions with installed or core plugins.
+
+- Visibility: `public`
+- Stability: `stable`
+
+Example:
+
+```sh
+bakin plugins link ./my-plugin
+```
+
+Example test mode: `illustrative`
+Reason: Mutates local plugin state.
+
+### `bakin plugins unlink <id>`
+
+Removes the dev-mode symlink and lockfile entry. Refuses installed (non-linked) plugins — use `bakin plugins remove` for those.
+
+- Visibility: `public`
+- Stability: `stable`
+
+Example:
+
+```sh
+bakin plugins unlink my-plugin
+```
+
+Example test mode: `illustrative`
+Reason: Mutates local plugin state.
 
 ## Setup and config
 
@@ -721,7 +753,7 @@ bakin init
 Example test mode: `illustrative`
 Reason: Writes local home directory state.
 
-### `bakin check <openclaw|llm|channels|plugin-assets|agent-assets|all>`
+### `bakin check <runtime|llm|channels|plugin-assets|agent-assets|all>`
 
 Runs one or all first-run readiness checks.
 

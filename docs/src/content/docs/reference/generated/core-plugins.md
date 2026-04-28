@@ -31,14 +31,14 @@ System health dashboard — MCP stats, diagnostics, and uptime
 
 ## Memory
 
-Observability dashboard over every OpenClaw memory tier plus Bakin's audit log
+Observability dashboard over runtime memory tiers plus Bakin's audit log
 
 - ID: `memory`
 - Version: `2.0.0`
 - Bakin compatibility: `>=1.0.0`
 - Manifest: `plugins/memory/bakin-plugin.json`
 - Dependencies: `none`
-- Permissions: `storage.read`, `events.emit`, `openclaw.read`
+- Permissions: `storage.read`, `events.emit`, `runtime.read`
 
 ## Messaging
 
