@@ -11,9 +11,9 @@ export async function checkGateway(): Promise<HealthCheckResult[]> {
   try {
     const alive = await pingRuntime()
     if (alive) {
-      return [{ check: 'gateway', status: 'ok', message: 'OpenClaw gateway is reachable', autoFixable: false }]
+      return [{ check: 'gateway', status: 'ok', message: 'Runtime gateway is reachable', autoFixable: false }]
     }
-    return [{ check: 'gateway', status: 'error', message: 'OpenClaw gateway is not responding', autoFixable: false }]
+    return [{ check: 'gateway', status: 'error', message: 'Runtime gateway is not responding', autoFixable: false }]
   } catch (err) {
     return [{ check: 'gateway', status: 'error', message: `Gateway check failed: ${err}`, autoFixable: false }]
   }

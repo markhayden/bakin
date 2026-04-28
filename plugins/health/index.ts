@@ -125,7 +125,7 @@ const healthPlugin: BakinPlugin = {
           errors1h,
           activeSessions: mcp.activeSessions,
           upSince: mcp.upSince,
-          openclawPort: settings.openclaw.gatewayPort,
+          runtimeGatewayPort: settings.openclaw.gatewayPort,
           server: {
             port: Number(port),
             pid: process.pid,
@@ -306,7 +306,7 @@ const healthPlugin: BakinPlugin = {
     })
     ctx.registerHealthCheck({
       id: 'gateway',
-      name: 'OpenClaw HTTP gateway reachability',
+      name: 'Runtime gateway reachability',
       run: () => checkGateway(),
     })
     ctx.registerHealthCheck({
@@ -328,7 +328,7 @@ const healthPlugin: BakinPlugin = {
     })
     ctx.registerHealthCheck({
       id: 'plugin-assets',
-      name: 'Plugin-shipped OpenClaw skills install state',
+      name: 'Plugin-shipped runtime skills install state',
       run: () => checkPluginAssets(),
     })
     ctx.registerHealthCheck({
