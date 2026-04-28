@@ -15,7 +15,7 @@ import { basename, join } from 'path'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
-import { getRuntimeAdapter } from '../runtime-registry'
+import { getAppServices } from '../app-services'
 import {
   type AgentManifest,
   type Manifest,
@@ -122,7 +122,7 @@ export async function setKnowledgeEnabled(
   }
 
   // Mutate the SOUL.md through the runtime workspace API.
-  const runtime = getRuntimeAdapter()
+  const runtime = getAppServices().runtime
   const soulFile = await runtime.agents.readWorkspaceFile(entry.agentId, 'SOUL.md')
   if (!soulFile) {
     throw new Error(`SOUL.md missing for agent "${entry.agentId}" in the runtime workspace.`)

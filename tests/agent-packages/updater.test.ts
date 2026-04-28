@@ -41,7 +41,7 @@ mock.module('@bakin/core/openclaw-config', () => ({
 }))
 
 type TestGlobal = typeof globalThis & {
-  __bakinFallbackRuntimeAdapter?: AgentRuntimeAdapter
+  __bakinAppServices?: { runtime: AgentRuntimeAdapter }
 }
 
 function readJson(path: string): unknown {
@@ -81,7 +81,7 @@ function runtimeSkillDir(name: string, agentId?: string): string {
 }
 
 function installRuntimeMock(): void {
-  ;(globalThis as TestGlobal).__bakinFallbackRuntimeAdapter = {
+  const runtime = {
     agents: {
       listWorkspaceFiles: async () => [],
       list: async () => openClawAgents.map((agent) => ({
@@ -170,6 +170,7 @@ function installRuntimeMock(): void {
       },
     },
   } as unknown as AgentRuntimeAdapter
+  ;(globalThis as TestGlobal).__bakinAppServices = { runtime }
 }
 
 import { installPackage } from '../../src/core/agent-packages/installer'
