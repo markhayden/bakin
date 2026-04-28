@@ -383,6 +383,8 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `storage: StorageAdapter` | Read/write markdown files in `~/.bakin/` |
 | `events: EventBus` | Pub/sub with pattern matching |
 | `pluginId: string` | This plugin's ID |
+| `runtime: AgentRuntimeAdapter` | Adapter-backed runtime surface for agents, messaging, channels, cron, workspace files, skills, sessions, memory, models, and execution status. Plugins never import runtime provider packages directly. |
+| `tasks: BakinTaskStore` | Bakin-owned task metadata store under `~/.bakin/tasks/`. Runtime execution ids are delivery refs only. |
 | `registerNav(items)` | Add sidebar navigation items (server-side) |
 | `registerRoute(route)` | Add HTTP API route at `/api/plugins/{id}/{path}` |
 | `registerSlot(reg)` | Register React component for a named UI slot (server-side) |
@@ -402,7 +404,7 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `hooks.invoke<R>(name, data)` | Invoke a hook and get its result (RPC-style) |
 | `search.registerContentType(def)` | Register a searchable content type. Non-filesystem-backed path — plugin owns its own sync. |
 | `search.registerFileBackedContentType(def)` | File-backed variant: auto-wires watcher sync/unlink hooks AND schedules a startup mtime reconcile. |
-| `search.index(key, doc)` | Upsert a document into the Antfly index (fire-and-forget safe) |
+| `search.index(key, doc)` | Upsert a document through the active search adapter (fire-and-forget safe) |
 | `search.remove(key)` | Remove a document from the index |
 | `search.transform(key, ops)` | Atomic metadata update without re-embedding |
 | `search.query(params)` | Search this plugin's content type |
@@ -411,6 +413,14 @@ Both `search.registerContentType` and `search.registerFileBackedContentType`
 auto-register a `GET /search` route on the plugin's router so callers can
 hit `/api/plugins/{id}/search?q=...` without the plugin writing the
 handler by hand.
+
+### Plugins and adapters
+
+Plugins see runtime/search/task services only through `PluginContext` and exec
+tool context. They must not import `@bakin/adapter-openclaw`,
+`@bakin/adapter-antfly`, OpenClaw home/config/client helpers, provider SQLite
+files, or `@antfly/sdk`. If a plugin needs a new runtime/search capability, add
+it to the adapter contract first; do not pierce the boundary from plugin code.
 
 ### PluginSettingsSchema
 ```typescript

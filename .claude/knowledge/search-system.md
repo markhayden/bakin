@@ -2,7 +2,12 @@
 
 ## Overview
 
-Antfly is the vector database backing all search in Bakin — UI search and agent queries. It is **optional**: Bakin runs fully without it. When `settings.search.settings.enabled` is `false` (or Antfly is unreachable), search silently degrades — indexing calls are no-ops, queries return empty results.
+Search goes through `AppServices.search` / `ctx.search`. Antfly is the current
+search adapter implementation in `packages/adapter-antfly/`, backing UI search
+and agent queries. It is **optional**: Bakin runs fully without it. When
+`settings.search.settings.enabled` is `false` (or Antfly is unreachable),
+search silently degrades — indexing calls are no-ops, queries return empty
+results.
 
 Bakin's search pipeline supports multimodal content: text embeddings via BGE, image embeddings via CLIP (running through Antfly's Termite ML subsystem), hybrid BM25 + semantic fusion via RRF, and optional cross-encoder reranking on single-modality tables. File content for PDFs and text formats is extracted **server-side in Bakin** (via pdf-parse and `fs.readFileSync`) and passed to Antfly as a pre-resolved `content` field rather than dereferenced via Antfly's `{{remotePDF}}` / `{{remoteText}}` template helpers. See **Multimodal Architecture** below and `.claude/knowledge/multimodal-search.md` for the full rationale.
 
@@ -18,12 +23,12 @@ Mutation (create/update)
   → ctx.search.index(key, doc)
   → Bakin extracts file content (if applicable) into doc.content
   → Bakin computes image_url (file://) for raster images
-  → AntflyClient upserts into bakin_{contentType} table
+  → SearchAdapter upserts into bakin_{contentType} table
   → Antfly's embedding enricher chunks, embeds via BGE/CLIP, writes to indexes
 
 Deletion
   → plugin calls ctx.search.remove(key)
-  → AntflyClient deletes document
+  → SearchAdapter deletes document
 
 Periodic backstop scan (default 7d)
   → SearchCleanup scans all registered content types
@@ -33,7 +38,7 @@ Periodic backstop scan (default 7d)
 Query
   → ctx.search.query(params)
   → Registry looks up per-table index names and rerankField
-  → AntflyClient hybrid query: full-text (Bleve) + semantic (embeddings) via RRF
+  → SearchAdapter hybrid query: full-text (Bleve) + semantic (embeddings) via RRF
   → Cross-encoder reranker scores top-K if the content type opted in
   → Returns ranked results with per-index score breakdown
 
@@ -100,6 +105,7 @@ Higher-numbered paths exist as backstops for the lower ones.
 | File | Purpose |
 |---|---|
 | `packages/adapter-antfly/src/search.ts` | `AntflySearchAdapter` implementation: write path, query builder, reranker mapping, index health, transient shard retry |
+| `packages/core/src/adapters/search/` | Search adapter contract and testing helper |
 | `src/core/search-registry.ts` | `SearchRegistry` singleton, ctx.search provider, multi-index registration, query routing, file-backed helper |
 | `src/core/search-reconcile.ts` | Startup mtime-aware reconcile, glob matcher, file walker |
 | `src/core/search-cleanup.ts` | Periodic orphan backstop scan (default 7d), configurable interval |
@@ -199,7 +205,7 @@ interface SearchResponse {
   results: SearchResult[]
   aggregations?: Record<string, Array<{ value: string; count: number }>>  // facet term buckets
   rawAggregations?: Record<string, unknown>                                // Antfly's raw response (date_histogram etc.)
-  meta: { query: string; total: number; took_ms: number; source: 'antfly' | 'fallback' }
+  meta: { query: string; total: number; took_ms: number; source: 'search' | 'fallback' }
 }
 ```
 

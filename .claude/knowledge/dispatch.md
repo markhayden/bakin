@@ -43,3 +43,4 @@ Legacy plain-number entries are migrated to `{ kind: 'structural' }` by `getFail
 - `src/core/app-services.ts` — boot-created runtime/search/task service object
 - `packages/adapter-openclaw/src/runtime.ts` — OpenClaw adapter transport
 - `src/core/dispatch.ts` — `classifyDispatchError`, cooldown selection, blocked escalation
+- `.claude/knowledge/adapter-architecture.md` — adapter boundaries and task/runtime ownership

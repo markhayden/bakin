@@ -6,6 +6,12 @@ The "doctor" sweep — Bakin's periodic health audit — used to be a 1762-line 
 
 The single canonical result type is `HealthCheckResult`, exported from `@bakin/core/plugin-types` (re-exported via `@bakin/sdk` for plugin authors).
 
+Runtime/search provider health belongs to adapters. `src/core/app-services.ts`
+collects adapter health checks through the shared health service, while
+plugin-registered doctor checks remain the product-level checks surfaced by the
+health plugin. A health check may call `ctx.runtime` or `ctx.search`, but it
+must not import provider clients or provider path helpers directly.
+
 ## Architecture at a glance
 
 ```
@@ -47,8 +53,8 @@ The orchestrator is intentionally trivial — it has no opinion about what's bei
 | `plugins/health/lib/system-checks/content-dir.ts` | `content-dir` |
 | `plugins/health/lib/system-checks/service.ts` | `service` |
 | `plugins/health/lib/system-checks/mcporter.ts` | `mcporter` |
-| `plugins/health/lib/system-checks/gateway.ts` | `gateway` |
-| `plugins/health/lib/system-checks/antfly.ts` | `antfly` |
+| `plugins/health/lib/system-checks/runtime.ts` | `runtime` |
+| `plugins/health/lib/system-checks/search.ts` | `search` |
 | `plugins/health/lib/system-checks/orchestrator-rules.ts` | `orchestrator-rules` |
 | `plugins/health/lib/system-checks/sync-skill.ts` | `skill` |
 | `plugins/health/lib/system-checks/plugin-assets.ts` | `plugin-assets` |

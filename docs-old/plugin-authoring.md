@@ -120,6 +120,10 @@ const plugin: BakinPlugin = {
       return { result: 'ok', input: data }
     })
 
+    // Use adapter-backed services through ctx, never provider packages.
+    const agents = await ctx.runtime.agents.list()
+    await ctx.search.index('thing-1', { title: 'Thing', agentCount: agents.length })
+
     // Optional health check — surfaces on /health
     ctx.registerHealthCheck?.({
       id: 'reachability',
@@ -137,6 +141,21 @@ export default plugin
 Server routes are Web Fetch-shaped: `(req: Request, ctx?) => Promise<Response>`.
 They run on Bun, dispatched by the plugin catch-all at
 `/api/plugins/{pluginId}/{path}`.
+
+## Runtime and search adapters
+
+Plugins access external systems through `PluginContext`:
+
+- `ctx.runtime` for agents, messaging, channels, cron, workspace files, skills,
+  sessions, memory, models, and runtime execution status.
+- `ctx.search` for registering content types, indexing, transforms, removal,
+  and queries.
+- `ctx.tasks` for Bakin-owned task metadata.
+
+Do not import `@bakin/adapter-openclaw`, `@bakin/adapter-antfly`, OpenClaw
+home/config/client helpers, provider SQLite files, or `@antfly/sdk` from a
+plugin. If the context does not expose the capability you need, add it to the
+adapter contract first.
 
 ## Client entry (`client.tsx`)
 
@@ -325,7 +344,7 @@ needing them — not pre-emptively.
 ### `onUninstall(ctx)` hook
 
 Optional. Bakin calls it BEFORE tearing down its own bookkeeping
-(plugin dir, settings JSON, registry entries, owned OpenClaw skills).
+(plugin dir, settings JSON, registry entries, owned runtime skills).
 Use it to clean up data your plugin wrote OUTSIDE its own dir:
 
 ```ts
@@ -348,7 +367,7 @@ Bakin handles all of the following itself — you do NOT need to:
 - Hook handlers, exec tools, workflow node types, notification
   channels, health checks, and search content types your plugin
   registered
-- OpenClaw skills your plugin shipped via `defaults/openclaw-skills/`
+- Runtime skills your plugin shipped via `defaults/runtime-skills/`
   (Bakin honors `.userEdited` sentinels — those stay in place)
 
 Errors thrown from `onUninstall` are logged and audited but do NOT
@@ -366,7 +385,7 @@ packages lockfile pattern.
 ### Backup tarballs — `~/.bakin/.uninstalled/`
 
 `bakin plugins remove <id>` snapshots everything Bakin removes (plugin
-dir + settings JSON + owned OpenClaw skills minus `.userEdited` ones)
+dir + settings JSON + owned runtime skills minus `.userEdited` ones)
 into `~/.bakin/.uninstalled/<id>-<ISO>.tar.gz` BEFORE deleting. No
 auto-retention in this release; tarballs accumulate. Inspect with
 `tar -tzf <file>` or restore manually with `tar -xzf <file> -C ~/`.

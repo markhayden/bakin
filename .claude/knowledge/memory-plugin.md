@@ -185,7 +185,7 @@ plugins/memory/
 - **The runtime adapter is the only runtime-home reader.** All other modules (indexer, parsers, routes) must go through the typed runtime memory surfaces.
 - **Path resolution goes through adapter APIs.** No hardcoded runtime-home strings.
 - **Offsets are atomic.** `writeFileSync(tmp)` → `renameSync(tmp, file)` — never truncate-in-place.
-- **Tests mock everything.** `getContentDir`, logger, watcher, `openclaw-home`, `main-agent`, `vault`, `settings`, `child_process`, global `WebSocket`.
+- **Tests mock everything.** `getContentDir`, logger, watcher, `@bakin/adapter-openclaw/home`, runtime adapters, `vault`, `settings`, `child_process`, global `WebSocket`.
 
 ## Settings
 
