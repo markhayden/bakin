@@ -349,7 +349,7 @@ function SkillsTab({ agentId }: { agentId: string }) {
       <EmptyState
         icon={Sparkles}
         title="No skills installed"
-        description="Skills are reusable OpenClaw capabilities the agent can invoke. Install a skill-pack via the CLI to add some — `bakin packages install <source>`."
+        description="Skills are reusable runtime capabilities the agent can invoke. Install a skill-pack via the CLI to add some — `bakin packages install <source>`."
       />
     )
   }

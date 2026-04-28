@@ -1,10 +1,10 @@
 /**
  * Team plugin — server entry point.
  *
- * Adapter layer over OpenClaw agent workspaces. Registers REST routes,
+ * Adapter layer over runtime agent workspaces. Registers REST routes,
  * cross-plugin hooks, and MCP exec tools for agent management.
  *
- * Bakin reads from OpenClaw. Bakin writes to OpenClaw. Bakin never copies OpenClaw.
+ * Bakin reads and writes through the active runtime adapter.
  */
 import { z } from 'zod'
 import {
@@ -772,9 +772,9 @@ const teamPlugin: BakinPlugin = {
       embeddingTemplate: '{{name}} {{soul}}',
       facets: ['model', 'status'],
       reindex: async function* () {
-        // Agents are loaded from OpenClaw at runtime — use batch-index on load
+        // Agents are loaded from the runtime adapter — use batch-index on load
       },
-      verifyExists: async () => true, // Agents are managed by OpenClaw
+      verifyExists: async () => true, // Agents are managed by the runtime adapter
     })
 
     // ─── Agent-knowledge content type (Phase F-4) ────────────────────────
@@ -844,7 +844,7 @@ const teamPlugin: BakinPlugin = {
       })
     }
 
-    /** Batch-index all agents from OpenClaw */
+    /** Batch-index all agents from the runtime adapter */
     batchIndexAgents = async () => {
       try {
         const runtimeAgents = await ctx.runtime.agents.list()
@@ -940,7 +940,7 @@ const teamPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/',
       method: 'POST',
-      description: 'Create a new agent in OpenClaw',
+      description: 'Create a new agent in the active runtime',
       handler: async (req: Request) => {
         try {
           const body = await req.json() as Record<string, unknown>
@@ -1007,11 +1007,11 @@ const teamPlugin: BakinPlugin = {
       },
     })
 
-    // DELETE /:agentId — Remove an agent from OpenClaw
+    // DELETE /:agentId — Remove an agent from the active runtime
     ctx.registerRoute({
       path: '/:agentId',
       method: 'DELETE',
-      description: 'Remove an agent from OpenClaw and move workspace to trash',
+      description: 'Remove an agent from the active runtime and move workspace to trash',
       handler: async (req: Request) => {
         try {
           const url = new URL(req.url)
@@ -1175,7 +1175,7 @@ const teamPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/:agentId',
       method: 'GET',
-      description: 'Get full agent profile merged from OpenClaw',
+      description: 'Get full agent profile merged from runtime state',
       handler: async (req: Request) => {
         const url = new URL(req.url)
         const agentId = url.searchParams.get('agentId')
@@ -1225,7 +1225,7 @@ const teamPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/:agentId/files/:filename',
       method: 'PUT',
-      description: 'Write a workspace file (edits OpenClaw directly)',
+      description: 'Write a workspace file through the active runtime',
       handler: async (req: Request) => {
         const url = new URL(req.url)
         const agentId = url.searchParams.get('agentId')
@@ -1431,7 +1431,7 @@ const teamPlugin: BakinPlugin = {
     ctx.registerRoute({
       path: '/:agentId/start',
       method: 'POST',
-      description: 'Start an agent via OpenClaw',
+      description: 'Start an agent via the active runtime',
       handler: async (req: Request) => {
         const url = new URL(req.url)
         const agentId = url.searchParams.get('agentId')
@@ -1711,7 +1711,7 @@ const teamPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_team_message',
       label: 'Sent a message',
-      description: 'Send a message to an agent via OpenClaw.',
+      description: 'Send a message to an agent via the active runtime.',
       parameters: {
         agentId: z.string().describe('Agent ID'),
         message: z.string().describe('Message to send'),
@@ -1780,7 +1780,7 @@ const teamPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_team_create_agent',
       label: 'Created agent',
-      description: 'Create a new agent: registers in OpenClaw, writes persona files, configures dispatch permissions, optionally assigns to a team. Returns next-step instructions.',
+      description: 'Create a new agent: registers it with the active runtime, writes persona files, configures dispatch permissions, optionally assigns it to a team. Returns next-step instructions.',
       parameters: {
         id: z.string().regex(/^[a-z0-9-]+$/).optional().describe('Agent ID (lowercase alphanumeric + hyphens). Auto-derived from name if omitted.'),
         name: z.string().describe('Display name (e.g. "Jessica Fetcher")'),
@@ -1890,7 +1890,7 @@ const teamPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_team_delete_agent',
       label: 'Deleted agent',
-      description: 'Remove an agent from OpenClaw and clean up Bakin state. Requires confirm=true as a safety guard.',
+      description: 'Remove an agent from the active runtime and clean up Bakin state. Requires confirm=true as a safety guard.',
       parameters: {
         agentId: z.string().describe('Agent to delete'),
         confirm: z.boolean().describe('Must be true — safety guard against accidental deletion'),

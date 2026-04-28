@@ -537,7 +537,7 @@ Source: `plugins/schedule/index.ts:754`
 
 ## `bakin_exec_schedule_list`
 
-List all scheduled jobs (merged OpenClaw + Bakin view)
+List all scheduled jobs (merged runtime cron + Bakin view)
 
 Source: `plugins/schedule/index.ts:580`
 
@@ -717,7 +717,7 @@ Source: `plugins/tasks/index.ts:654`
 
 ## `bakin_exec_team_create_agent`
 
-Create a new agent: registers in OpenClaw, writes persona files, configures dispatch permissions, optionally assigns to a team. Returns next-step instructions.
+Create a new agent: registers it with the active runtime, writes persona files, configures dispatch permissions, optionally assigns it to a team. Returns next-step instructions.
 
 Source: `plugins/team/index.ts:1484`
 
@@ -727,7 +727,7 @@ Source: `plugins/team/index.ts:1484`
 
 ## `bakin_exec_team_delete_agent`
 
-Remove an agent from OpenClaw and clean up Bakin state. Requires confirm=true as a safety guard.
+Remove an agent from the active runtime and clean up Bakin state. Requires confirm=true as a safety guard.
 
 Source: `plugins/team/index.ts:1594`
 
@@ -757,7 +757,7 @@ Source: `plugins/team/index.ts:1439`
 
 ## `bakin_exec_team_message`
 
-Send a message to an agent via OpenClaw.
+Send a message to an agent via the active runtime.
 
 Source: `plugins/team/index.ts:1415`
 

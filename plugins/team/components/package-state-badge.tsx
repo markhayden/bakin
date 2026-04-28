@@ -7,7 +7,7 @@ import { Badge } from '@bakin/sdk/ui'
  * five color variants so the team grid surfaces install status at a
  * glance.
  *
- *   unmanaged          gray   — exists in OpenClaw, no Bakin tracking
+ *   unmanaged          gray   — exists in runtime, no Bakin tracking
  *   adopted            blue   — package attached, workspace files preserved
  *   managed            green  — fully package-managed
  *   drifted            yellow — projection sha mismatch (warn from doctor)
@@ -40,17 +40,17 @@ const STATE_STYLES: Record<PackageState, { label: string; cls: string; tip: stri
   absent: {
     label: 'absent',
     cls: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400',
-    tip: 'No OpenClaw entry and no package tracking.',
+    tip: 'No runtime entry and no package tracking.',
   },
   unmanaged: {
     label: 'unmanaged',
     cls: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400',
-    tip: 'Exists in OpenClaw but no Bakin agent-package tracks it. Install or adopt to enable knowledge / project asset management.',
+    tip: 'Exists in the active runtime but no Bakin agent-package tracks it. Install or adopt to enable knowledge / project asset management.',
   },
   adopted: {
     label: 'adopted',
     cls: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
-    tip: 'Package attached to an existing OpenClaw agent. Bakin manages knowledge markers + projected assets but never touches the workspace template files.',
+    tip: 'Package attached to an existing runtime agent. Bakin manages knowledge markers + projected assets but never touches the workspace template files.',
   },
   managed: {
     label: 'managed',

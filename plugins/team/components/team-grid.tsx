@@ -352,7 +352,7 @@ export function TeamGrid() {
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             This will register <span className="text-foreground font-medium">{pendingCreate?.data.name}</span> in
-            OpenClaw and create its workspace.
+            the active runtime and create its workspace.
           </p>
           {createError && (
             <p className="text-sm text-destructive">{createError}</p>

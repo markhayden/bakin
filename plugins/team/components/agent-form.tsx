@@ -156,7 +156,7 @@ export function AgentForm({
           className="font-mono"
         />
         <p className="text-xs text-muted-foreground">
-          Used in OpenClaw config and workspace paths. Lowercase, no spaces.
+          Used in runtime config and workspace paths. Lowercase, no spaces.
         </p>
       </div>
 
