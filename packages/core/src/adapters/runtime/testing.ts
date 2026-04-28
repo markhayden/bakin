@@ -48,6 +48,7 @@ export function createMockRuntimeAdapter(
       listWorkspaceFiles: async () => [],
       readWorkspaceFile: async () => null,
       writeWorkspaceFile: async () => {},
+      removeWorkspaceFile: async () => {},
       updatePermissions: async () => {},
       updateAllowlist: async () => {},
       heartbeat: async () => true,

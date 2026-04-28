@@ -123,7 +123,7 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
         return true
       })
       if (toUnproject.length > 0) {
-        unprojectPackage(toUnproject, { keepBlocks: true })
+        await unprojectPackage(toUnproject, { keepBlocks: true })
       }
     }
 
@@ -137,7 +137,7 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
       installedAt: updatedAt,
     }
 
-    const projectionResult = projectPackage({
+    const projectionResult = await projectPackage({
       manifest,
       stagingDir: fetched.stagingDir,
       agentId: entry.agentId,
