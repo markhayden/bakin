@@ -30,20 +30,16 @@ const { getContentDir, resetContentDir, initBakinHome } = require('@bakin/workfl
 describe('content-dir', () => {
   const testDir = join(tmpdir(), `bakin-test-contentdir-${Date.now()}`)
   const origBakinHome = process.env.BAKIN_HOME
-  const origContentDir = process.env.CONTENT_DIR
 
   beforeEach(() => {
     resetContentDir()
     delete process.env.BAKIN_HOME
-    delete process.env.CONTENT_DIR
   })
 
   afterEach(() => {
     resetContentDir()
     if (origBakinHome) process.env.BAKIN_HOME = origBakinHome
     else delete process.env.BAKIN_HOME
-    if (origContentDir) process.env.CONTENT_DIR = origContentDir
-    else delete process.env.CONTENT_DIR
     rmSync(testDir, { recursive: true, force: true })
   })
 
@@ -53,19 +49,10 @@ describe('content-dir', () => {
     expect(getContentDir()).toBe(customDir)
   })
 
-  it('uses CONTENT_DIR env var when set and BAKIN_HOME is not', () => {
-    const customDir = join(testDir, 'custom-content')
-    process.env.CONTENT_DIR = customDir
-    expect(getContentDir()).toBe(customDir)
-  })
-
-  it('falls back to ./content/ when ~/.bakin/ does not exist', () => {
-    // Create a ./content/ directory in a temp working dir
-    const contentDir = join(process.cwd(), 'content')
-    // The function should resolve to ./content/ since ~/.bakin/ won't
-    // exist in most test environments. We just verify the function doesn't crash.
-    const result = getContentDir()
-    expect(typeof result).toBe('string')
+  it('defaults to ~/.bakin when BAKIN_HOME is not set', () => {
+    const dir = getContentDir()
+    expect(dir.endsWith('/.bakin')).toBe(true)
+    expect(dir).not.toContain('/content')
   })
 })
 

@@ -222,21 +222,12 @@ afterAll(() => {
 // ─── checkContentDir ──────────────────────────────────────────────────────
 
 describe('checkContentDir', () => {
-  it('reports ok when using ~/.bakin/', () => {
+  it('reports the resolved Bakin home path', () => {
     const results = checkContentDir()
     expect(results).toHaveLength(1)
     expect(results[0].check).toBe('content-dir')
     expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/Content directory:/)
-  })
-
-  it('warns when content lives outside ~/.bakin/', () => {
-    mockUsingBakinHome = false
-    mockContentDir = '/some/other/path'
-    const results = checkContentDir()
-    expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('warn')
-    expect(results[0].message).toMatch(/run: bakin init/)
+    expect(results[0].message).toMatch(/Bakin home:/)
   })
 })
 

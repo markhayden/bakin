@@ -17,21 +17,17 @@ import { join } from 'path'
 
 describe('leak guard — content-dir', () => {
   const origBakinHome = process.env.BAKIN_HOME
-  const origContentDir = process.env.CONTENT_DIR
   const origHome = process.env.HOME
 
   beforeEach(() => {
     const { resetContentDir } = require('../../packages/core/src/content-dir')
     resetContentDir()
     delete process.env.BAKIN_HOME
-    delete process.env.CONTENT_DIR
   })
 
   afterEach(() => {
     if (origBakinHome !== undefined) process.env.BAKIN_HOME = origBakinHome
     else delete process.env.BAKIN_HOME
-    if (origContentDir !== undefined) process.env.CONTENT_DIR = origContentDir
-    else delete process.env.CONTENT_DIR
     if (origHome !== undefined) process.env.HOME = origHome
     const { resetContentDir } = require('../../packages/core/src/content-dir')
     resetContentDir()

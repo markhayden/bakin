@@ -28,18 +28,18 @@ import { resetContentDir } from '../../src/core/content-dir'
 
 describe('search-migration', () => {
   beforeEach(() => {
-    process.env.CONTENT_DIR = testDir
+    process.env.BAKIN_HOME = testDir
     if (fs.existsSync(testDir)) fs.rmSync(testDir, { recursive: true })
     fs.mkdirSync(testDir, { recursive: true })
     searchHarness = createSearchAdapterHarness()
     installSearchAdapter(searchHarness.adapter)
     // Reset the content-dir module cache so each test picks up the
-    // per-test CONTENT_DIR env var.
+    // per-test BAKIN_HOME env var.
     resetContentDir()
   })
 
   afterEach(() => {
-    delete process.env.CONTENT_DIR
+    delete process.env.BAKIN_HOME
     clearSearchAdapter()
     if (fs.existsSync(testDir)) fs.rmSync(testDir, { recursive: true })
   })

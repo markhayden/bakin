@@ -753,7 +753,7 @@ to populate `bakin_memory`.
 ### 6.9 Tasks (split-layer — bakin metadata + runtime execution)
 
 Bakin owns task metadata in `getBakinPaths().tasks` (default
-`~/.bakin/tasks/`; honors `BAKIN_HOME` / `CONTENT_DIR` resolution per
+`~/.bakin/tasks/`; honors `BAKIN_HOME` resolution per
 `packages/core/src/content-dir.ts`). Adapter is the executor.
 
 ```ts
@@ -1152,9 +1152,8 @@ the new adapter populates the same shape.
 New storage layer rooted at `getBakinPaths().tasks` (default
 `~/.bakin/tasks/`); files at `<root>/YYYY-MM/task-<id>.json`. Tasks
 storage path is added to `BakinPaths` in
-`packages/core/src/content-dir.ts` so it honors `BAKIN_HOME`,
-`CONTENT_DIR`, and the `./content/` fallback consistently with every
-other bakin storage path.
+`packages/core/src/content-dir.ts` so it resolves consistently with every
+other Bakin storage path: `BAKIN_HOME` when set, otherwise `~/.bakin`.
 
 The task store is a core Bakin module, not a plugin hook facade. Every task
 reader/writer uses this module after the hard cutover: kanban UI, task CLI,
