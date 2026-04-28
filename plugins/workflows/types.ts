@@ -3,6 +3,7 @@
  */
 
 import type { ApprovalActor } from '@bakin/core/plugin-types'
+import type { ApprovalRenderRef } from '@bakin/core/adapters/runtime'
 
 export type { ApprovalActor }
 
@@ -162,8 +163,8 @@ export interface StepState {
   rejectionReason?: string
   /** For nested workflow steps — the child instance's task ID (used as instance key) */
   childTaskId?: string
-  /** Discord message ID for gate alert — used to edit the message after approval/rejection */
-  discordMessageId?: string
+  /** Runtime-rendered gate approval reference used to resolve the rendered approval after a decision */
+  approvalRef?: ApprovalRenderRef
   /** Gate decision metadata — set when a gate enters pending_approval and when a decision is recorded */
   requestedAt?: string
   decidedAt?: string

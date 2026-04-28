@@ -53,17 +53,6 @@ mock.module('../../../src/core/audit', () => ({
   appendAudit: mock(),
 }))
 
-mock.module('../../../src/core/discord-gateway', () => ({
-  startGateway: mock(),
-  stopGateway: mock(),
-  onGateInteraction: mock(),
-  isGatewayConnected: mock(() => false),
-}))
-
-mock.module('../../../scripts/lib/post-discord', () => ({
-  loadDiscordConfig: mock(() => null),
-}))
-
 mock.module('../../../plugins/tasks/lib/flow-store', () => ({
   createTask: mock(() => Promise.resolve({ id: 'mock-task' })),
   addTaskLog: mock(() => Promise.resolve()),

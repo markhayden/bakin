@@ -33,7 +33,7 @@ import type {
 import { loadDefinition } from './parser'
 import { loadSkill } from './skill-loader'
 import { validateStepOutput, detectRejectionRepeat } from './schema-validator'
-import { notifyGateReached, notifyGateApproved, notifyGateRejected, notifyWorkflowComplete, notifyStepDispatched, notifyStepComplete, sendDiscordGateAlert, getDiscordGateSettings } from './notifications'
+import { notifyGateReached, notifyGateApproved, notifyGateRejected, notifyWorkflowComplete, notifyStepDispatched, notifyStepComplete, sendGateApprovalRequest, getGateNotificationSettings } from './notifications'
 import { getContentDir } from './content-dir'
 import { isPluginKind } from './node-type-registry'
 import { getHookRegistry } from '../../../src/lib/plugin-registry'
@@ -835,8 +835,8 @@ function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinition, co
     const childDef = loadDefinition(nested.workflow_id, contentDir)
     createBoardTaskForChild(childTaskId, instance.taskId, nested, childDef, instance.resolvedAgent)
   } else if (nextStep.type === 'gate') {
-    // Gates go to pending_approval — record requestedAt so the decision
-    // timeline (and Discord summary duration) can be computed later.
+    // Gates go to pending_approval and record requestedAt so the decision
+    // timeline can be computed later.
     instance.stepStates[nextStep.id] = {
       status: 'pending_approval',
       startedAt: now,
@@ -849,21 +849,20 @@ function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinition, co
     const priorOutput = priorStep ? instance.stepStates[priorStep.id]?.output : undefined
     notifyGateReached(instance, nextStep.id, nextStep.label || nextStep.id, priorOutput)
 
-    // Send Discord gate alert with approve/reject buttons (fire-and-forget)
-    const dSettings = getDiscordGateSettings()
-    if (dSettings?.discordGateAlerts) {
-      sendDiscordGateAlert(instance, nextStep.id, nextStep.label || nextStep.id, priorOutput, dSettings)
-        .then((messageId) => {
-          if (messageId) {
-            // Reload instance from disk to avoid overwriting concurrent changes
-            const fresh = loadInstance(instance.taskId, contentDir)
-            if (fresh) {
-              fresh.stepStates[nextStep.id].discordMessageId = messageId
-              saveInstance(fresh, contentDir)
-            }
+    // Send a runtime-rendered gate approval alert (fire-and-forget).
+    const channelSettings = getGateNotificationSettings()
+    if (channelSettings?.approvalChannelAlerts) {
+      sendGateApprovalRequest(instance, nextStep.id, nextStep.label || nextStep.id, priorOutput, channelSettings)
+        .then((approvalRef) => {
+          if (!approvalRef) return
+          // Reload instance from disk to avoid overwriting concurrent changes.
+          const fresh = loadInstance(instance.taskId, contentDir)
+          if (fresh) {
+            fresh.stepStates[nextStep.id].approvalRef = approvalRef
+            saveInstance(fresh, contentDir)
           }
         })
-        .catch((err) => { log.warn('Discord gate alert failed', err) })
+        .catch((err) => { log.warn('Gate approval alert failed', err) })
     }
 
     // Move the task to the review column while awaiting approval
@@ -900,7 +899,7 @@ export interface RejectGateOptions {
   contentDir?: string
 }
 
-/** Decision record returned by approveGate/rejectGate so callers (Discord
+/** Decision record returned by approveGate/rejectGate so callers
  * summary, audit) don't have to reload the instance. requestedAt may be
  * undefined for older instances created before #91 landed. */
 export interface GateDecisionRecord {
