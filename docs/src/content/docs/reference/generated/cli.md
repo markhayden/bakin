@@ -136,7 +136,7 @@ bakin doctor
 ```
 
 Example test mode: `illustrative`
-Reason: Depends on local Bakin/OpenClaw state.
+Reason: Depends on local Bakin/runtime state.
 
 ## Tasks and workflows
 
@@ -363,7 +363,7 @@ bakin agents list
 ```
 
 Example test mode: `illustrative`
-Reason: Depends on OpenClaw/Bakin state.
+Reason: Depends on Bakin/runtime state.
 
 ### `bakin agents status <id>`
 
@@ -379,7 +379,7 @@ bakin agents status patch
 ```
 
 Example test mode: `illustrative`
-Reason: Depends on OpenClaw/Bakin state.
+Reason: Depends on Bakin/runtime state.
 
 ### `bakin agents tasks <id>`
 
@@ -415,7 +415,7 @@ Reason: Requires a running agent gateway.
 
 ### `bakin agents install <path|github:user/repo[@ref]> [--adopt] [--install-as <id>] [--replace]`
 
-Installs or adopts an agent package into Bakin/OpenClaw-managed agent state.
+Installs or adopts an agent package into Bakin/runtime-managed agent state.
 
 - Visibility: `public`
 - Stability: `stable`
@@ -431,7 +431,7 @@ Reason: Mutates local agent package state.
 
 ### `bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--force]`
 
-Removes an installed agent package and optionally deletes the OpenClaw agent.
+Removes an installed agent package and optionally deletes the runtime agent.
 
 - Visibility: `public`
 - Stability: `stable`

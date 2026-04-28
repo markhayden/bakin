@@ -3,7 +3,7 @@ title: Agent Packages
 description: Package reusable agents, skills, workflows, knowledge, and workspace files for Bakin.
 ---
 
-Agent packages are installable bundles for Bakin and OpenClaw-managed agent state. They use `bakin-package.json`, not `bakin-plugin.json`.
+Agent packages are installable bundles for Bakin and runtime-managed agent state. They use `bakin-package.json`, not `bakin-plugin.json`.
 
 The tested manifest fixture for these docs lives at `docs/snippets/agent-package-basic/bakin-package.json`.
 
@@ -92,7 +92,7 @@ Install from GitHub:
 bakin agents install github:markhayden/content-planner --install-as content-planner
 ```
 
-Use `--adopt` when an existing OpenClaw agent should become managed by the package. Use `--replace` only when replacing an existing installed package intentionally.
+Use `--adopt` when an existing runtime agent should become managed by the package. Use `--replace` only when replacing an existing installed package intentionally.
 
 ## Source Dependencies
 
