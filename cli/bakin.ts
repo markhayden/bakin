@@ -730,7 +730,7 @@ async function cmdInit(): Promise<void> {
   console.log('Done.')
 }
 
-const SERVICE_LABEL = 'com.openclaw.mc'
+const SERVICE_LABEL = 'com.bakin.mc'
 
 // ---------------------------------------------------------------------------
 // LaunchAgent auto-start — commented out for now, run manually instead.

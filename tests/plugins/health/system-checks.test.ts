@@ -290,7 +290,7 @@ describe('checkService', () => {
       const launchDir = join(testDir, 'Library', 'LaunchAgents')
       mkdirSync(launchDir, { recursive: true })
       writeFileSync(
-        join(launchDir, 'com.openclaw.mc.plist'),
+        join(launchDir, 'com.bakin.mc.plist'),
         `<key>WorkingDirectory</key><string>/old/path</string><string>/old/path/server.ts</string>`,
       )
       const results = checkService('/new/project')
