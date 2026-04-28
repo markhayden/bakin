@@ -3,9 +3,8 @@
  * and the standalone `bakin packages install`.
  *
  * Responsibility: wire fetcher → resolver → projector → lockfile →
- * OpenClaw adapter, with pre-flight collision checks and a release-on-
- * exit advisory lock so two concurrent installs can't corrupt the
- * lockfile.
+ * runtime adapter, with pre-flight collision checks and a release-on-exit
+ * advisory lock so two concurrent installs can't corrupt the lockfile.
  *
  * Flow:
  *   1. Acquire ~/.bakin/packages/.lock
@@ -17,8 +16,8 @@
  *   6. Pre-flight collision check — refuse if any projection target collides
  *      with a different package's existing projection (different sha)
  *   7. Project deps in declaration order, then project the parent
- *   8. For kind:"agent" + fresh — call addAgent() on OpenClaw; for adopt
- *      mode — leave OpenClaw roster alone
+ *   8. For kind:"agent" + fresh — create the runtime agent; for adopt mode —
+ *      leave the runtime roster alone
  *   9. Update lockfile with parent + dep entries (atomic write)
  *   10. Move staging dirs into final ~/.bakin/packages/<kind>s/<id>@<ver>/
  *   11. Append audit event(s)
@@ -78,9 +77,9 @@ export interface InstallOptions {
   /** Source spec — local path or `github:user/repo[@ref]`. */
   source: string
   /**
-   * Force adoption of an existing OpenClaw agent rather than creating a
+   * Force adoption of an existing runtime agent rather than creating a
    * fresh one. Only valid for kind:"agent" packages where the agent id
-   * already exists in openclaw.json.
+   * already exists in the runtime roster.
    */
   adopt?: boolean
   /**
@@ -101,7 +100,7 @@ export interface InstallResult {
   packageId: string
   /** kind from the manifest. */
   kind: Manifest['kind']
-  /** True iff the OpenClaw roster was mutated (kind:"agent" fresh installs only). */
+  /** True iff the runtime roster was mutated (kind:"agent" fresh installs only). */
   createdAgent: boolean
   /** True iff this was an adopt rather than a fresh install. */
   adopted: boolean
@@ -318,7 +317,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
 
     if (manifest.kind === 'agent') {
       agentId = manifest.id
-      const stateInfo = getAgentState(agentId, lock)
+      const stateInfo = await getAgentState(agentId, lock)
       if (stateInfo.state === 'managed' || stateInfo.state === 'adopted') {
         throw new Error(
           `Agent "${agentId}" is already ${stateInfo.state} by package "${stateInfo.packageId}". ` +
@@ -328,7 +327,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
       if (stateInfo.state === 'unmanaged') {
         if (!options.adopt) {
           throw new Error(
-            `Agent "${agentId}" already exists in OpenClaw but is unmanaged. ` +
+            `Agent "${agentId}" already exists in the runtime but is unmanaged. ` +
               `Pass --adopt to attach this package to the existing agent, or remove the agent first.`,
           )
         }
@@ -338,7 +337,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
         // state === 'absent' — fresh install
         if (options.adopt) {
           throw new Error(
-            `Cannot --adopt agent "${agentId}" — it does not exist in OpenClaw. ` +
+            `Cannot --adopt agent "${agentId}" — it does not exist in the runtime. ` +
               `Drop the --adopt flag to create + manage it fresh.`,
           )
         }
@@ -400,7 +399,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     })
     projected.push({ resolvedId: resolvedTopId, result: parentResult })
 
-    // ─── 8. Create OpenClaw agent for kind:"agent" + fresh ────────────────
+    // ─── 8. Create runtime agent for kind:"agent" + fresh ────────────────
     if (manifest.kind === 'agent' && mode === 'fresh') {
       const input = manifestToCreateAgent(manifest)
       await createRuntimeAgent(input)

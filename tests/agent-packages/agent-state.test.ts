@@ -19,23 +19,17 @@ mock.module('@bakin/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
-  getOpenClawHome: () => join(testDir, 'openclaw'),
-  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
-  resetOpenClawHome: () => {},
-}))
 
-// Mock the openclaw-config readers so we control "what's in openclaw.json"
-// without writing files. The agent-state module imports findAgentById and
-// getAgentList from this exact path.
-let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
-mock.module('@bakin/core/openclaw-config', () => ({
-  readOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  resetOpenClawConfigCache: () => {},
-  getAgentList: () => openClawAgents,
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-  findAgentById: (id: string) => openClawAgents.find((a) => a.id === id) ?? null,
-}))
+type RuntimeRosterAgent = { id: string; name?: string }
+type TestGlobal = typeof globalThis & {
+  __bakinFallbackRuntimeAdapter?: {
+    agents: {
+      list: () => Promise<Array<{ id: string; name: string; status: 'active' }>>
+    }
+  }
+}
+
+let runtimeAgents: RuntimeRosterAgent[] = []
 
 import {
   getAgentState,
@@ -44,7 +38,16 @@ import {
 import type { Lockfile, PackageEntry } from '../../packages/core/src/agent-packages/lockfile'
 
 beforeEach(() => {
-  openClawAgents = []
+  runtimeAgents = []
+  ;(globalThis as TestGlobal).__bakinFallbackRuntimeAdapter = {
+    agents: {
+      list: async () => runtimeAgents.map((agent) => ({
+        id: agent.id,
+        name: agent.name ?? agent.id,
+        status: 'active',
+      })),
+    },
+  }
 })
 
 const NOW = '2026-04-24T12:00:00Z'
@@ -71,99 +74,99 @@ function lockOf(packages: Record<string, PackageEntry>): Lockfile {
 }
 
 describe('getAgentState — four discriminating cases', () => {
-  it('returns absent when agent is in neither OpenClaw nor lockfile', () => {
-    const info = getAgentState('ghost', lockOf({}))
+  it('returns absent when agent is in neither runtime nor lockfile', async () => {
+    const info = await getAgentState('ghost', lockOf({}))
     expect(info.state).toBe('absent')
     expect(info.entry).toBeUndefined()
     expect(info.packageId).toBeUndefined()
   })
 
-  it('returns unmanaged when agent is in OpenClaw but no lockfile entry', () => {
-    openClawAgents = [{ id: 'pixel', identity: { name: 'Pixel' } }]
-    const info = getAgentState('pixel', lockOf({}))
+  it('returns unmanaged when agent is in runtime but no lockfile entry', async () => {
+    runtimeAgents = [{ id: 'pixel', name: 'Pixel' }]
+    const info = await getAgentState('pixel', lockOf({}))
     expect(info.state).toBe('unmanaged')
     expect(info.entry).toBeUndefined()
   })
 
-  it('returns adopted when OpenClaw + lockfile state="adopted"', () => {
-    openClawAgents = [{ id: 'pixel' }]
-    const info = getAgentState('pixel', lockOf({ pixel: adoptedEntry() }))
+  it('returns adopted when runtime + lockfile state="adopted"', async () => {
+    runtimeAgents = [{ id: 'pixel' }]
+    const info = await getAgentState('pixel', lockOf({ pixel: adoptedEntry() }))
     expect(info.state).toBe('adopted')
     expect(info.packageId).toBe('pixel')
     expect(info.entry?.state).toBe('adopted')
   })
 
-  it('returns managed when OpenClaw + lockfile state="managed"', () => {
-    openClawAgents = [{ id: 'pixel' }]
-    const info = getAgentState('pixel', lockOf({ pixel: managedEntry() }))
+  it('returns managed when runtime + lockfile state="managed"', async () => {
+    runtimeAgents = [{ id: 'pixel' }]
+    const info = await getAgentState('pixel', lockOf({ pixel: managedEntry() }))
     expect(info.state).toBe('managed')
     expect(info.packageId).toBe('pixel')
   })
 })
 
 describe('getAgentState — orphan handling', () => {
-  it('returns the lockfile-recorded state when agent is in lockfile but absent from OpenClaw (drift)', () => {
-    // No agents in OpenClaw, but lockfile has a managed pixel entry.
+  it('returns the lockfile-recorded state when agent is in lockfile but absent from runtime (drift)', async () => {
+    // No agents in runtime, but lockfile has a managed pixel entry.
     // This is a drift state the doctor should flag — but the state lookup
     // must still report what the lockfile says, otherwise the installer
     // would refuse to act on the orphan.
-    const info = getAgentState('pixel', lockOf({ pixel: managedEntry() }))
+    const info = await getAgentState('pixel', lockOf({ pixel: managedEntry() }))
     expect(info.state).toBe('managed')
     expect(info.packageId).toBe('pixel')
   })
 
-  it('matches lockfile entries by agentId, not by package id', () => {
-    openClawAgents = [{ id: 'rolo' }]
+  it('matches lockfile entries by agentId, not by package id', async () => {
+    runtimeAgents = [{ id: 'rolo' }]
     // Package id "rolo-package" but agentId field is "rolo"
     const entry: PackageEntry = { ...managedEntry('rolo') }
-    const info = getAgentState('rolo', lockOf({ 'rolo-package': entry }))
+    const info = await getAgentState('rolo', lockOf({ 'rolo-package': entry }))
     expect(info.state).toBe('managed')
     expect(info.packageId).toBe('rolo-package')
   })
 })
 
 describe('listAllAgentStates', () => {
-  it('returns one info entry per OpenClaw agent', () => {
-    openClawAgents = [
+  it('returns one info entry per runtime agent', async () => {
+    runtimeAgents = [
       { id: 'main' },
       { id: 'pixel' },
       { id: 'rolo' },
     ]
-    const all = listAllAgentStates(lockOf({}))
+    const all = await listAllAgentStates(lockOf({}))
     expect(all.map((a) => a.agentId).sort()).toEqual(['main', 'pixel', 'rolo'])
     expect(all.every((a) => a.state === 'unmanaged')).toBe(true)
   })
 
-  it('cross-references lockfile entries — managed and adopted states populate', () => {
-    openClawAgents = [{ id: 'pixel' }, { id: 'rolo' }, { id: 'roscoe' }]
+  it('cross-references lockfile entries — managed and adopted states populate', async () => {
+    runtimeAgents = [{ id: 'pixel' }, { id: 'rolo' }, { id: 'roscoe' }]
     const lock = lockOf({
       pixel: managedEntry('pixel'),
       rolo: adoptedEntry('rolo'),
       // roscoe has no lockfile entry → unmanaged
     })
 
-    const all = listAllAgentStates(lock)
+    const all = await listAllAgentStates(lock)
     const byId = new Map(all.map((a) => [a.agentId, a]))
     expect(byId.get('pixel')?.state).toBe('managed')
     expect(byId.get('rolo')?.state).toBe('adopted')
     expect(byId.get('roscoe')?.state).toBe('unmanaged')
   })
 
-  it('surfaces lockfile-only orphans (lockfile entry without OpenClaw counterpart)', () => {
-    openClawAgents = [{ id: 'pixel' }]
+  it('surfaces lockfile-only orphans (lockfile entry without runtime counterpart)', async () => {
+    runtimeAgents = [{ id: 'pixel' }]
     const lock = lockOf({
       pixel: managedEntry(),
       'ghost-pkg': managedEntry('ghost-agent'),
     })
-    const all = listAllAgentStates(lock)
+    const all = await listAllAgentStates(lock)
     const byId = new Map(all.map((a) => [a.agentId, a]))
     expect(byId.has('pixel')).toBe(true)
     expect(byId.has('ghost-agent')).toBe(true)
     expect(byId.get('ghost-agent')?.packageId).toBe('ghost-pkg')
   })
 
-  it('skips non-agent kinds', () => {
-    openClawAgents = []
+  it('skips non-agent kinds', async () => {
+    runtimeAgents = []
     const lock: Lockfile = {
       version: 1,
       packages: {
@@ -179,6 +182,6 @@ describe('listAllAgentStates', () => {
         },
       },
     }
-    expect(listAllAgentStates(lock)).toEqual([])
+    await expect(listAllAgentStates(lock)).resolves.toEqual([])
   })
 })
