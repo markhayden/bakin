@@ -3,7 +3,7 @@
  *
  * runOnboard() walks every component in a fixed dependency order:
  *
- *   mkdir → settings → openclaw → antfly → models → mcporter → llm → channels
+ *   mkdir -> settings -> runtime -> search -> search-models -> mcporter -> llm -> channels
  *
  * For each component:
  *   1. Call `check()`. If it reports `ok` or `warn`, record and move on.
@@ -19,13 +19,13 @@
  *        failed            → 'error'
  *
  * Special cases baked into the flow:
- *   - OpenClaw missing/broken is a hard stop: the orchestrator records
- *     the openclaw status, marks every downstream component as 'skipped'
- *     with an "OpenClaw required" message, and returns without writing
+ *   - Runtime missing/broken is a hard stop: the orchestrator records
+ *     the runtime status, marks every downstream component as 'skipped'
+ *     with a "runtime required" message, and returns without writing
  *     the marker. Exit code 1.
- *   - Antfly missing that cascades into models: if antfly's post-install
- *     status is not 'ok', models is force-skipped with the reason
- *     "Antfly binary required." No point shelling to a binary that
+ *   - Search adapter missing that cascades into search-models: if search's
+ *     post-install status is not 'ok', search-models is force-skipped with
+ *     the reason "search adapter binary required." No point shelling to a binary that
  *     doesn't exist.
  *
  * Marker-write rule (matches the spec and Mark's sign-off):
@@ -43,9 +43,9 @@
 import { createLogger } from '../logger'
 import { mkdirComponent } from './mkdir'
 import { settingsComponent } from './settings'
-import { openclawComponent } from './openclaw'
-import { antflyComponent } from './antfly'
-import { modelsComponent } from './models'
+import { runtimeComponent } from './runtime'
+import { searchComponent } from './search'
+import { searchModelsComponent } from './search-models'
 import { mcporterComponent } from './mcporter'
 import { pluginAssetsComponent } from './plugin-assets'
 import { agentAssetsComponent } from './agent-assets'
@@ -68,9 +68,9 @@ export type { OnboardingState, ComponentStatus } from './state'
 export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
   mkdirComponent,
   settingsComponent,
-  openclawComponent,
-  antflyComponent,
-  modelsComponent,
+  runtimeComponent,
+  searchComponent,
+  searchModelsComponent,
   mcporterComponent,
   pluginAssetsComponent,
   agentAssetsComponent,
@@ -112,7 +112,6 @@ function resolveBakinVersion(): string {
   // is in the repo when the orchestrator runs. Failure is non-fatal —
   // the marker's bakinVersion is informational only.
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const pkg = require('../../../package.json') as { version?: string }
     return pkg.version ?? DEFAULT_BAKIN_VERSION
   } catch {
@@ -258,12 +257,12 @@ async function runComponent(
 }
 
 /**
- * Special-case handling for openclaw. Its install() is always a noop —
- * Bakin does not manage OpenClaw, it only detects it. So we read the
+ * Special-case handling for runtime. Its install() is always a noop -
+ * Bakin does not manage the runtime, it only detects it. So we read the
  * check result directly and translate any non-ok status into the
  * appropriate outcome for the orchestrator to cascade-skip on.
  */
-async function runOpenclawInline(component: OnboardingComponent): Promise<ComponentOutcome> {
+async function runRuntimeInline(component: OnboardingComponent): Promise<ComponentOutcome> {
   const start = Date.now()
   let check: CheckResult
   try {
@@ -344,21 +343,21 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
   for (let i = 0; i < COMPONENT_ORDER.length; i++) {
     const component = COMPONENT_ORDER[i]
 
-    // Cascade skip: if antfly is not ok, models has nothing to pull with.
+    // Cascade skip: if search is not ok, search-models has nothing to pull with.
     // Skip it before even calling check().
-    if (component.name === 'models') {
-      const antfly = outcomes.find((o) => o.name === 'antfly')
-      if (antfly && antfly.finalStatus !== 'ok') {
+    if (component.name === 'search-models') {
+      const search = outcomes.find((o) => o.name === 'search')
+      if (search && search.finalStatus !== 'ok') {
         const skip: ComponentOutcome = {
-          name: 'models',
+          name: 'search-models',
           finalStatus: 'skipped',
           check: {
-            name: 'models',
+            name: 'search-models',
             status: 'missing',
-            message: 'Skipped: Antfly binary is required to pull Termite models',
+            message: 'Skipped: search adapter binary is required to pull Termite models',
           },
-          message: 'Skipped: Antfly binary is required to pull Termite models',
-          remediation: 'Install Antfly first via `bakin install antfly`, then rerun onboarding.',
+          message: 'Skipped: search adapter binary is required to pull Termite models',
+          remediation: 'Install the configured search adapter first via `bakin install search`, then rerun onboarding.',
           durationMs: 0,
         }
         outcomes.push(skip)
@@ -367,18 +366,18 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
       }
     }
 
-    // OpenClaw is a user-managed prerequisite. Its install() is
-    // intentionally a noop (we point at https://openclaw.ai/), so the
+    // Runtime setup is a user-managed prerequisite. Its install() is
+    // intentionally a noop, so the
     // generic runComponent path — which maps install:noop to ok —
-    // would incorrectly mark a missing openclaw as ready. Handle it
+    // would incorrectly mark a missing runtime as ready. Handle it
     // inline: call check() only, derive the outcome from that, and
     // cascade-skip downstream if anything other than ok.
-    if (component.name === 'openclaw') {
-      const outcome = await runOpenclawInline(component)
+    if (component.name === 'runtime') {
+      const outcome = await runRuntimeInline(component)
       outcomes.push(outcome)
       if (opts.json) emitJson(outcome)
       if (outcome.finalStatus !== 'ok') {
-        log.warn('OpenClaw is not ready; aborting remaining onboarding steps')
+        log.warn('Runtime is not ready; aborting remaining onboarding steps')
         for (let j = i + 1; j < COMPONENT_ORDER.length; j++) {
           const remaining = COMPONENT_ORDER[j]
           const skip: ComponentOutcome = {
@@ -387,9 +386,9 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
             check: {
               name: remaining.name,
               status: 'missing',
-              message: 'Skipped: OpenClaw is a prerequisite and is not ready',
+              message: 'Skipped: runtime is a prerequisite and is not ready',
             },
-            message: 'Skipped: OpenClaw is a prerequisite and is not ready',
+            message: 'Skipped: runtime is a prerequisite and is not ready',
             remediation: outcome.remediation,
             durationMs: 0,
           }

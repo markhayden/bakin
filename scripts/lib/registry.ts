@@ -7,12 +7,14 @@
  */
 import { join } from 'path'
 import { existsSync, readFileSync } from 'fs'
-import type { ExecToolDefinition, PluginToolContext } from '../../src/lib/plugin-types'
+import type { ExecToolDefinition, PluginToolContext } from '@bakin/core/plugin-types'
 import { getHookRegistry } from '../../src/lib/plugin-registry'
 import { getContentDir } from '../../src/core/content-dir'
 import { appendAudit } from '../../src/core/audit'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
 import { BakinEventBus } from '../../src/lib/events/event-bus'
+import { getAppServices } from '../../src/core/app-services'
+import { buildSearchAPI } from '../../src/core/search-registry'
 
 // ---------------------------------------------------------------------------
 // Registry state
@@ -80,6 +82,7 @@ export function getToolContext(toolName: string): PluginToolContext | undefined 
   const pluginId = tool.source.startsWith('plugin:') ? tool.source.slice(7) : tool.source
 
   const hookReg = getHookRegistry()
+  const services = getAppServices()
   const contentDir = getContentDir()
   const broadcastFn = (globalThis as { __bakinBroadcast?: (data: Record<string, unknown>) => void }).__bakinBroadcast ?? (() => {})
 
@@ -87,6 +90,9 @@ export function getToolContext(toolName: string): PluginToolContext | undefined 
     storage: new MarkdownStorageAdapter(contentDir),
     events: new BakinEventBus(broadcastFn),
     pluginId,
+    runtime: services.runtime,
+    tasks: services.tasks,
+    search: buildSearchAPI(pluginId, { skipFileBackedWiring: true }),
     hooks: {
       register: (name: string, handler: (data: any) => any) => hookReg.register(name, handler),
       has: (name: string) => hookReg.has(name),

@@ -25,7 +25,7 @@ import schedulePlugin from '../../plugins/schedule'
 import projectsPlugin from '../../plugins/projects'
 import healthPlugin from '../../plugins/health'
 
-import type { BakinPlugin } from './plugin-types'
+import type { BakinPlugin } from '@bakin/core/plugin-types'
 
 export const CORE_PLUGIN_IMPORTS: Readonly<Record<string, BakinPlugin>> = {
   'plugins/team': teamPlugin,

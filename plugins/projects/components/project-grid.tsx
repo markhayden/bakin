@@ -62,7 +62,7 @@ export function ProjectGrid() {
   }, [search])
 
   // Build a score map keyed by project id. Projects index with the raw
-  // project.id (no Antfly prefix — see plugins/projects/index.ts reindex), so
+  // project.id (no search key prefix — see plugins/projects/index.ts reindex), so
   // no prefix-strip is needed. Used for both the relevance reorder AND the
   // debug-mode RRF/BM25/SEM overlay.
   const scoreMap = useMemo(() => {

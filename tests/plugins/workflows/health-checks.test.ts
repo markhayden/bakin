@@ -36,7 +36,7 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => `${testDir}/.openclaw`,
   getOpenClawPath: (p: string = '') => `${testDir}/.openclaw/${p}`,
 }))
@@ -46,19 +46,22 @@ mock.module('../../../src/core/logger', () => ({
 mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({ doctor: { autoFixSkill: false } }),
 }))
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,
 }))
+mock.module('../../../src/core/task-store', () => ({
+  readTaskboard: () => ({ columns: { todo: [{ id: 'task-exists' }], inProgress: [], review: [], done: [], archived: [], blocked: [], backlog: [] } }),
+}))
+mock.module('@/core/task-store', () => ({
+  readTaskboard: () => ({ columns: { todo: [{ id: 'task-exists' }], inProgress: [], review: [], done: [], archived: [], blocked: [], backlog: [] } }),
+}))
 
-// Hook registry — only readTaskboard is called from the checks
+// Hook registry remains available for plugin activation paths.
 mock.module('../../../src/lib/plugin-registry', () => ({
   getHookRegistry: () => ({
-    invoke: async (name: string) => {
-      if (name === 'tasks.readTaskboard') {
-        return { columns: { todo: [{ id: 'task-exists' }], done: [] } }
-      }
+    invoke: async (_name: string) => {
       return undefined
     },
     has: () => false,

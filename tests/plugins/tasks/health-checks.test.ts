@@ -10,51 +10,34 @@ import { join as pathJoin } from 'path'
 import { randomUUID } from 'crypto'
 
 const testDir = pathJoin(tmpdir(), `bakin-test-tasks-health-${Date.now()}-${randomUUID()}`)
-const openClawDir = pathJoin(testDir, 'openclaw')
-const flowsDir = pathJoin(openClawDir, 'flows')
-const dbPath = pathJoin(flowsDir, 'registry.sqlite')
+const mockPaths = { home: testDir, tasks: pathJoin(testDir, 'tasks'), heartbeats: pathJoin(testDir, 'heartbeats') }
 
-process.env.OPENCLAW_HOME = openClawDir
 process.env.BAKIN_HOME = testDir
 
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { Database } from 'bun:sqlite'
-import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs'
-import { join } from 'path'
-
-mkdirSync(flowsDir, { recursive: true })
+import { mkdirSync, rmSync, writeFileSync } from 'fs'
 
 // ─── Mocks (mandatory test-isolation per CLAUDE.md) ────────────────────────
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({}),
+  getBakinPaths: () => mockPaths,
   isUsingBakinHome: () => true,
 }))
 mock.module('@bakin/core/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({}),
+  getBakinPaths: () => mockPaths,
   isUsingBakinHome: () => true,
 }))
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({}),
+  getBakinPaths: () => mockPaths,
   isUsingBakinHome: () => true,
 }))
 mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
-  getBakinPaths: () => ({}),
+  getBakinPaths: () => mockPaths,
   isUsingBakinHome: () => true,
-}))
-mock.module('@bakin/core/openclaw-home', () => ({
-  getOpenClawHome: () => openClawDir,
-  getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
-  resetOpenClawHome: () => {},
-}))
-mock.module('../../../packages/core/src/openclaw-home', () => ({
-  getOpenClawHome: () => openClawDir,
-  getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
-  resetOpenClawHome: () => {},
 }))
 
 let mockAutoFix = false
@@ -64,15 +47,7 @@ mock.module('../../../src/core/settings', () => ({
 }))
 
 let mockKnownAgents: string[] = ['main', 'patch', 'pixel']
-mock.module('../../../packages/core/src/openclaw-config', () => ({
-  getAgentIds: () => mockKnownAgents,
-  readOpenClawConfig: () => ({ agents: { list: mockKnownAgents.map(id => ({ id })) } }),
-  resetOpenClawConfigCache: () => {},
-  getAgentList: () => mockKnownAgents.map(id => ({ id })),
-  findAgentById: (id: string) => mockKnownAgents.includes(id) ? { id } : null,
-}))
-
-mock.module('../../../src/core/main-agent', () => ({
+mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
   getMainAgentId: () => 'main',
   tryGetMainAgentId: () => 'main',
   getMainAgentName: () => 'Main',
@@ -87,17 +62,45 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-// flow-store mock — the migrated checks don't import it directly (they go
-// through the tasks.readTaskboard / tasks.clearDependency hooks), but the
-// per-directory test isolation rule requires every plugins/tasks/* test
-// to declare a flow-store mock so a careless future import can't leak
-// SQLite writes into the real ~/.openclaw/ tree. Also: the plugin-
-// registration smoke at the bottom of this file imports the full tasks
-// plugin via `await import('../../../plugins/tasks')`, which pulls in
-// every flow-store export — keep the surface complete.
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({
-  readTaskboard: () => null,
-  getAllTasks: () => ({ columns: { todo: [], inProgress: [], done: [] } }),
+type StoreTask = {
+  id: string
+  title: string
+  agent?: string
+  createdBy?: string
+  description?: string
+  dependsOn?: string
+  log?: unknown[]
+  order?: number
+  updatedAt?: number
+  blockedReason?: string
+}
+
+type StoreBoard = {
+  columns: {
+    backlog: StoreTask[]
+    todo: StoreTask[]
+    inProgress: StoreTask[]
+    review: StoreTask[]
+    done: StoreTask[]
+    blocked: StoreTask[]
+    archived: StoreTask[]
+  }
+}
+
+function emptyStoreBoard(): StoreBoard {
+  return { columns: { backlog: [], todo: [], inProgress: [], review: [], done: [], blocked: [], archived: [] } }
+}
+
+let storeBoard: StoreBoard = emptyStoreBoard()
+
+const clearedDependencies: string[] = []
+let clearDependencyShouldThrow = false
+
+// task-store mock — taskboard/order checks import it directly, and the plugin
+// registration smoke imports the full tasks plugin. Keep the surface complete.
+mock.module('@/core/task-store', () => ({
+  readTaskboard: () => storeBoard,
+  getAllTasks: () => storeBoard,
   getTask: () => null,
   createTask: () => undefined,
   deleteTask: () => undefined,
@@ -107,8 +110,17 @@ mock.module('../../../plugins/tasks/lib/flow-store', () => ({
   updateTask: () => undefined,
   moveTask: () => undefined,
   setDependency: () => undefined,
-  clearDependency: () => undefined,
-  reorderTasks: () => undefined,
+  clearDependency: (taskId: string) => {
+    if (clearDependencyShouldThrow) throw new Error('cleardep failed')
+    clearedDependencies.push(taskId)
+  },
+  reorderTasks: async (_column: string, orderedIds: string[]) => {
+    const tasks = Object.values(storeBoard.columns).flat()
+    orderedIds.forEach((id, order) => {
+      const task = tasks.find((candidate) => candidate.id === id)
+      if (task) task.order = order
+    })
+  },
   archiveOldTasks: () => 0,
   autoArchiveDoneTasks: () => 0,
 }))
@@ -125,26 +137,21 @@ mock.module('../../../src/core/task-service', () => ({
   triggerDispatch: async () => null,
 }))
 
-// Hook registry — task-consistency uses tasks.readTaskboard +
-// tasks.clearDependency. Tests inject the desired board shape per case.
-type BoardShape = {
-  inProgress: Array<{ id: string; title: string; agent?: string; dependsOn?: string; log?: unknown[] }>
-  done: Array<{ id: string; title: string; agent?: string; dependsOn?: string; log?: unknown[] }>
-  todo: unknown[]
-  blocked: unknown[]
-}
-let mockBoard: { columns: BoardShape } | null = null
-const clearedDependencies: string[] = []
-let clearDependencyShouldThrow = false
+mock.module('../../../src/core/app-services', () => ({
+  maybeGetAppServices: () => ({
+    runtime: {
+      agents: {
+        list: async () => mockKnownAgents.map(id => ({ id, name: id })),
+      },
+    },
+  }),
+}))
+
+// Hook registry remains available for plugin activation tests, but task
+// metadata checks read the shared task-store service directly.
 mock.module('../../../src/lib/plugin-registry', () => ({
   getHookRegistry: () => ({
-    invoke: async (name: string, data: Record<string, unknown>) => {
-      if (name === 'tasks.readTaskboard') return mockBoard
-      if (name === 'tasks.clearDependency') {
-        if (clearDependencyShouldThrow) throw new Error('cleardep failed')
-        clearedDependencies.push(data.taskId as string)
-        return undefined
-      }
+    invoke: async (_name: string, _data: Record<string, unknown>) => {
       return undefined
     },
     has: () => false,
@@ -158,82 +165,14 @@ import {
   checkTaskPositionIntegrity,
 } from '../../../plugins/tasks/lib/health-checks'
 
-// ─── SQLite test fixture ──────────────────────────────────────────────────
-
-function initTestDb() {
-  const db = new Database(dbPath)
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS flow_runs (
-      flow_id TEXT PRIMARY KEY,
-      shape TEXT,
-      sync_mode TEXT DEFAULT 'managed',
-      owner_key TEXT NOT NULL,
-      requester_origin_json TEXT,
-      controller_id TEXT,
-      revision INTEGER DEFAULT 0,
-      status TEXT NOT NULL,
-      notify_policy TEXT DEFAULT 'silent',
-      goal TEXT,
-      current_step TEXT,
-      blocked_task_id TEXT,
-      blocked_summary TEXT,
-      state_json TEXT,
-      wait_json TEXT,
-      cancel_requested_at INTEGER,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      ended_at INTEGER
-    )
-  `)
-  db.close()
-}
-
-function clearTestDb() {
-  if (!existsSync(dbPath)) return
-  const db = new Database(dbPath)
-  db.exec(`DELETE FROM flow_runs`)
-  db.close()
-}
-
-/** Remove .sqlite + WAL + SHM sidecars so a subsequent open is fresh. */
-function removeDbAndSidecars() {
-  for (const suffix of ['', '-wal', '-shm']) {
-    rmSync(dbPath + suffix, { force: true })
-  }
-}
-
-function insertFlowRow(args: {
-  flowId: string
-  status: 'queued' | 'running' | 'waiting' | 'succeeded'
-  state: Record<string, unknown>
-  blockedTaskId?: string
-  updatedAt?: number
-}) {
-  const db = new Database(dbPath)
-  db.prepare(`INSERT INTO flow_runs (flow_id, owner_key, status, state_json, blocked_task_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-    .run(
-      args.flowId,
-      'bakin:task:' + args.flowId,
-      args.status,
-      JSON.stringify(args.state),
-      args.blockedTaskId ?? null,
-      Date.now(),
-      args.updatedAt ?? Date.now(),
-    )
-  db.close()
-}
-
-initTestDb()
-
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
 beforeEach(() => {
-  clearTestDb()
+  storeBoard = emptyStoreBoard()
   mockAutoFix = false
   mockKnownAgents = ['main', 'patch', 'pixel']
-  mockBoard = null
   clearedDependencies.length = 0
   clearDependencyShouldThrow = false
 })
@@ -241,26 +180,16 @@ beforeEach(() => {
 // ─── checkTaskboard ────────────────────────────────────────────────────────
 
 describe('checkTaskboard', () => {
-  it('warns when the SQLite file does not exist', () => {
-    removeDbAndSidecars()
-    const results = checkTaskboard()
-    expect(results).toHaveLength(1)
-    expect(results[0].check).toBe('taskboard')
-    expect(results[0].status).toBe('warn')
-    expect(results[0].message).toMatch(/database not found/)
-    initTestDb() // restore for subsequent tests
-  })
-
   it('reports ok with the Bakin-owned task count', () => {
-    insertFlowRow({ flowId: 't1', status: 'running', state: {} })
-    insertFlowRow({ flowId: 't2', status: 'queued', state: {} })
+    storeBoard.columns.todo.push({ id: 't1', title: 'Queued task' })
+    storeBoard.columns.inProgress.push({ id: 't2', title: 'Running task' })
     const results = checkTaskboard()
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/2 tasks in flow_runs/)
+    expect(results[0].message).toMatch(/2 tasks in Bakin task JSON store/)
   })
 
-  it('returns ok with zero tasks when the table is empty', () => {
+  it('returns ok with zero tasks when the store is empty', () => {
     const results = checkTaskboard()
     expect(results[0].status).toBe('ok')
     expect(results[0].message).toMatch(/0 tasks/)
@@ -270,16 +199,14 @@ describe('checkTaskboard', () => {
 // ─── checkTaskConsistency ─────────────────────────────────────────────────
 
 describe('checkTaskConsistency', () => {
-  it('warns when no taskboard hook is registered', async () => {
-    mockBoard = null
+  it('reports ok when the Bakin task store is available and empty', async () => {
     const results = await checkTaskConsistency(testDir)
     expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('warn')
-    expect(results[0].message).toMatch(/Taskboard not available/)
+    expect(results[0].status).toBe('ok')
+    expect(results[0].message).toMatch(/0 in-progress, 0 done/)
   })
 
   it('reports ok when no inProgress / done tasks exist', async () => {
-    mockBoard = { columns: { inProgress: [], done: [], todo: [], blocked: [] } }
     const results = await checkTaskConsistency(testDir)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('ok')
@@ -287,14 +214,7 @@ describe('checkTaskConsistency', () => {
   })
 
   it('flags an in-progress task assigned to an unknown agent', async () => {
-    mockBoard = {
-      columns: {
-        inProgress: [{ id: 't1', title: 'Build something', agent: 'ghost', log: [{}] }],
-        done: [],
-        todo: [],
-        blocked: [],
-      },
-    }
+    storeBoard.columns.inProgress.push({ id: 't1', title: 'Build something', agent: 'ghost', log: [{}] })
     // Heartbeat exists so we don't ALSO flag heartbeat
     mkdirSync(pathJoin(testDir, 'heartbeats'), { recursive: true })
     writeFileSync(pathJoin(testDir, 'heartbeats', 'ghost.json'), '{}')
@@ -304,27 +224,13 @@ describe('checkTaskConsistency', () => {
   })
 
   it('flags an in-progress task with no heartbeat file', async () => {
-    mockBoard = {
-      columns: {
-        inProgress: [{ id: 't2', title: 'Heartbeatless work', agent: 'patch', log: [{}] }],
-        done: [],
-        todo: [],
-        blocked: [],
-      },
-    }
+    storeBoard.columns.inProgress.push({ id: 't2', title: 'Heartbeatless work', agent: 'patch', log: [{}] })
     const results = await checkTaskConsistency(testDir)
     expect(results.some(r => r.status === 'warn' && r.message.includes('no heartbeat file'))).toBe(true)
   })
 
   it('flags an in-progress task with zero log entries', async () => {
-    mockBoard = {
-      columns: {
-        inProgress: [{ id: 't3', title: 'No logs', agent: 'patch', log: [] }],
-        done: [],
-        todo: [],
-        blocked: [],
-      },
-    }
+    storeBoard.columns.inProgress.push({ id: 't3', title: 'No logs', agent: 'patch', log: [] })
     mkdirSync(pathJoin(testDir, 'heartbeats'), { recursive: true })
     writeFileSync(pathJoin(testDir, 'heartbeats', 'patch.json'), '{}')
     const results = await checkTaskConsistency(testDir)
@@ -334,43 +240,22 @@ describe('checkTaskConsistency', () => {
   it('flags an agent overloaded with > 3 concurrent in-progress tasks', async () => {
     mkdirSync(pathJoin(testDir, 'heartbeats'), { recursive: true })
     writeFileSync(pathJoin(testDir, 'heartbeats', 'patch.json'), '{}')
-    mockBoard = {
-      columns: {
-        inProgress: Array.from({ length: 4 }, (_, i) => ({
-          id: `t${i}`, title: `Task ${i}`, agent: 'patch', log: [{}],
-        })),
-        done: [],
-        todo: [],
-        blocked: [],
-      },
-    }
+    storeBoard.columns.inProgress.push(...Array.from({ length: 4 }, (_, i) => ({
+      id: `t${i}`, title: `Task ${i}`, agent: 'patch', log: [{}],
+    })))
     const results = await checkTaskConsistency(testDir)
     expect(results.some(r => r.status === 'warn' && r.message.includes('overloaded'))).toBe(true)
   })
 
   it('warns about orphaned dependsOn on a done task without autoFix', async () => {
-    mockBoard = {
-      columns: {
-        inProgress: [],
-        done: [{ id: 'd1', title: 'Stale dep', dependsOn: 'old-task' }],
-        todo: [],
-        blocked: [],
-      },
-    }
+    storeBoard.columns.done.push({ id: 'd1', title: 'Stale dep', dependsOn: 'old-task' })
     const results = await checkTaskConsistency(testDir)
     expect(results.some(r => r.status === 'warn' && r.message.includes('orphaned dependsOn') && r.autoFixable)).toBe(true)
   })
 
   it('clears orphaned dependsOn in autoFix mode', async () => {
     mockAutoFix = true
-    mockBoard = {
-      columns: {
-        inProgress: [],
-        done: [{ id: 'd2', title: 'Auto-clear', dependsOn: 'orphan' }],
-        todo: [],
-        blocked: [],
-      },
-    }
+    storeBoard.columns.done.push({ id: 'd2', title: 'Auto-clear', dependsOn: 'orphan' })
     const results = await checkTaskConsistency(testDir)
     expect(results.some(r => r.status === 'fixed' && r.message.includes('Cleared orphaned dependsOn'))).toBe(true)
     expect(clearedDependencies).toContain('d2')
@@ -379,14 +264,7 @@ describe('checkTaskConsistency', () => {
   it('falls back to a warn when clearDependency hook throws under autoFix', async () => {
     mockAutoFix = true
     clearDependencyShouldThrow = true
-    mockBoard = {
-      columns: {
-        inProgress: [],
-        done: [{ id: 'd3', title: 'Failed clear', dependsOn: 'orphan' }],
-        todo: [],
-        blocked: [],
-      },
-    }
+    storeBoard.columns.done.push({ id: 'd3', title: 'Failed clear', dependsOn: 'orphan' })
     const results = await checkTaskConsistency(testDir)
     expect(results.some(r => r.status === 'warn' && r.message.includes('failed to clear'))).toBe(true)
   })
@@ -395,64 +273,56 @@ describe('checkTaskConsistency', () => {
 // ─── checkTaskPositionIntegrity ───────────────────────────────────────────
 
 describe('checkTaskPositionIntegrity', () => {
-  it('reports ok when no database exists', () => {
-    removeDbAndSidecars()
-    const results = checkTaskPositionIntegrity()
+  it('reports ok when no tasks exist', async () => {
+    const results = await checkTaskPositionIntegrity()
     expect(results).toHaveLength(1)
     expect(results[0].check).toBe('order-integrity')
-    expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/No task database found/)
-    initTestDb()
-  })
-
-  it('reports ok when no tasks exist', () => {
-    const results = checkTaskPositionIntegrity()
     expect(results[0].status).toBe('ok')
     expect(results[0].message).toMatch(/No tasks to check/)
   })
 
-  it('reports ok when all tasks have unique orders', () => {
-    insertFlowRow({ flowId: 'a', status: 'queued', state: { order: 0 }, updatedAt: 1 })
-    insertFlowRow({ flowId: 'b', status: 'queued', state: { order: 1 }, updatedAt: 2 })
-    insertFlowRow({ flowId: 'c', status: 'running', state: { order: 0 }, updatedAt: 3 })
-    const results = checkTaskPositionIntegrity()
+  it('reports ok when all tasks have unique orders', async () => {
+    storeBoard.columns.todo.push(
+      { id: 'a', title: 'Queued A', order: 0, updatedAt: 1 },
+      { id: 'b', title: 'Queued B', order: 1, updatedAt: 2 },
+    )
+    storeBoard.columns.inProgress.push({ id: 'c', title: 'Running C', order: 0, updatedAt: 3 })
+    const results = await checkTaskPositionIntegrity()
     expect(results[0].status).toBe('ok')
     expect(results[0].message).toMatch(/All 3 tasks have valid unique order values/)
   })
 
-  it('warns when orders are missing without autoFix', () => {
-    insertFlowRow({ flowId: 'a', status: 'queued', state: {}, updatedAt: 1 })
-    insertFlowRow({ flowId: 'b', status: 'queued', state: {}, updatedAt: 2 })
-    const results = checkTaskPositionIntegrity()
+  it('warns when orders are missing without autoFix', async () => {
+    storeBoard.columns.todo.push(
+      { id: 'a', title: 'Queued A', updatedAt: 1 },
+      { id: 'b', title: 'Queued B', updatedAt: 2 },
+    )
+    const results = await checkTaskPositionIntegrity()
     expect(results[0].status).toBe('warn')
     expect(results[0].autoFixable).toBe(true)
     expect(results[0].message).toMatch(/missing/)
   })
 
-  it('warns when duplicate orders exist within a column', () => {
-    insertFlowRow({ flowId: 'a', status: 'queued', state: { order: 0 }, updatedAt: 1 })
-    insertFlowRow({ flowId: 'b', status: 'queued', state: { order: 0 }, updatedAt: 2 })
-    const results = checkTaskPositionIntegrity()
+  it('warns when duplicate orders exist within a column', async () => {
+    storeBoard.columns.todo.push(
+      { id: 'a', title: 'Queued A', order: 0, updatedAt: 1 },
+      { id: 'b', title: 'Queued B', order: 0, updatedAt: 2 },
+    )
+    const results = await checkTaskPositionIntegrity()
     expect(results[0].status).toBe('warn')
     expect(results[0].message).toMatch(/duplicates/)
   })
 
-  it('auto-fixes by reassigning order zero-indexed by updated_at desc', () => {
+  it('auto-fixes by reassigning order zero-indexed by updatedAt desc', async () => {
     mockAutoFix = true
-    insertFlowRow({ flowId: 'older', status: 'queued', state: {}, updatedAt: 100 })
-    insertFlowRow({ flowId: 'newer', status: 'queued', state: {}, updatedAt: 200 })
+    const older: StoreTask = { id: 'older', title: 'Older', updatedAt: 100 }
+    const newer: StoreTask = { id: 'newer', title: 'Newer', updatedAt: 200 }
+    storeBoard.columns.todo.push(older, newer)
 
-    const results = checkTaskPositionIntegrity()
+    const results = await checkTaskPositionIntegrity()
     expect(results[0].status).toBe('fixed')
-
-    // Verify the assignment in SQLite
-    const db = new Database(dbPath)
-    const rows = db.prepare(`SELECT flow_id, state_json FROM flow_runs ORDER BY updated_at DESC`).all() as Array<{ flow_id: string; state_json: string }>
-    db.close()
-    const newer = rows.find(r => r.flow_id === 'newer')!
-    const older = rows.find(r => r.flow_id === 'older')!
-    expect(JSON.parse(newer.state_json).order).toBe(0)
-    expect(JSON.parse(older.state_json).order).toBe(1)
+    expect(newer.order).toBe(0)
+    expect(older.order).toBe(1)
   })
 })
 
@@ -466,6 +336,9 @@ describe('plugin registration', () => {
     const noopAsync = mock(async () => {})
     const ctx: Record<string, unknown> = {
       pluginId: 'tasks',
+      runtime: {
+        agents: { list: mock(async () => mockKnownAgents.map(id => ({ id, name: id }))) },
+      },
       registerRoute: noop, registerExecTool: noop, registerNav: noop,
       registerSlot: noop, registerSkill: noop, registerWorkflow: noop,
       registerNodeType: noop, registerNotificationChannel: noop,

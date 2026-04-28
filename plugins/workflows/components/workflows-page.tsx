@@ -48,7 +48,7 @@ export function WorkflowsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search])
 
-  // Build a score map keyed by workflow name (stripping the `def:` Antfly prefix).
+  // Build a score map keyed by workflow name (stripping the `def:` search key prefix).
   // Used for both the relevance reorder AND the debug-mode RRF/BM25/SEM overlay.
   const scoreMap = useMemo(() => {
     const map = new Map<string, ScoreInfo>()

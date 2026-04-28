@@ -1,9 +1,9 @@
 /**
  * Brainstorm session search indexer.
  *
- * Builds Antfly search documents for planning sessions stored as JSON
+ * Builds search documents for planning sessions stored as JSON
  * under `~/.bakin/messaging/sessions/*.json`. Per spec §5.1d, only
- * brainstorm sessions get Antfly search — calendar items are out of
+ * brainstorm sessions get indexed search — calendar items are out of
  * scope for this content type and get a local substring filter instead.
  *
  * Perf note (spec §6 R5 / A8): concatenating every message body plus
@@ -52,8 +52,8 @@ export function buildDoc(session: PlanningSession): Record<string, unknown> {
     message_body: messageBody,
     proposal_summaries: proposalSummaries,
   }
-  // Antfly rejects empty strings for `datetime` fields — omit the key
-  // entirely when the value is missing rather than forcing a coerce.
+  // Datetime fields should be omitted when missing rather than forced
+  // through adapter-specific empty-string coercion.
   if (session.createdAt) doc.created_at = session.createdAt
   if (session.updatedAt) doc.updated_at = session.updatedAt
   return doc

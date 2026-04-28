@@ -17,8 +17,8 @@ mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
 }))
-mock.module('@bakin/tasks/lib/flow-store', () => ({}))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@/core/task-store', () => ({}))
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
 }))
@@ -271,7 +271,6 @@ describe('source-registry', () => {
   describe('globalThis persistence', () => {
     it('uses globalThis.__bakinWorkflowSources so state survives module re-evaluation', () => {
       registerPluginDefinition('workflows', 'persisted', def('Persisted'))
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const store = (globalThis as any).__bakinWorkflowSources
       expect(store).toBeDefined()
       expect(store.plugin.has('persisted')).toBe(true)

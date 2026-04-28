@@ -12,7 +12,7 @@
 Complete the user-plugin lifecycle. Today, `bakin plugins install` ships end-to-end but:
 
 - **No upgrade path** exists — users must `remove` then `install` to update
-- **Remove orphans state** — plugin-settings JSON, search-index rows, hook handlers, exec tools, OpenClaw skills, and registry entries all survive uninstall
+- **Remove orphans state** — plugin-settings JSON, search-index rows, hook handlers, exec tools, runtime skills, and registry entries all survive uninstall
 - **Manifest permissions are aspirational** — declared but never read, surfaced, or enforced
 - **No install-state ledger** — Bakin doesn't track *what* it installed, *from where*, *when*, or *with what permissions*; install/upgrade/list/remove all need this and there's no shared primitive
 
@@ -97,7 +97,7 @@ export interface BakinPlugin {
 - Fires **before** any Bakin-side cleanup, with the same full `PluginContext` the plugin received at activation. No reduced surface.
 - `void | Promise<void>` — sync OR async. Bakin awaits.
 - Errors thrown are logged via `log.error('plugin onUninstall failed', err, { pluginId })` and appended to audit, but **cleanup continues**. A buggy `onUninstall` must not trap the user in a half-removed state.
-- Plugin's responsibility: clean up any data it wrote *outside* its own dir (e.g., per-content-type rows in shared tables, files in user-owned dirs). Bakin handles its own bookkeeping (plugin dir, plugin-settings JSON, registry rows for this plugin's content types, OpenClaw skills the plugin shipped).
+- Plugin's responsibility: clean up any data it wrote *outside* its own dir (e.g., per-content-type rows in shared tables, files in user-owned dirs). Bakin handles its own bookkeeping (plugin dir, plugin-settings JSON, registry rows for this plugin's content types, runtime skills the plugin shipped).
 
 ### 3.3 Permission Schema
 
@@ -106,7 +106,7 @@ export interface BakinPlugin {
 ```ts
 export const PermissionSchema = z.enum([
   'events.emit',     // broadcast SSE events
-  'openclaw.read',   // read agent identity/skills/state from ~/.openclaw/
+  'runtime.read',    // read agent identity/skills/state from the runtime adapter
   'storage.read',    // read files in ~/.bakin/
   'storage.write',   // write files in ~/.bakin/
 ])
@@ -115,7 +115,7 @@ export type Permission = z.infer<typeof PermissionSchema>
 
 export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   'events.emit':   'Broadcast Server-Sent Events to connected browsers',
-  'openclaw.read': 'Read agent identity, skills, and workspace state from ~/.openclaw/',
+  'runtime.read':  'Read agent identity, skills, and workspace state from the runtime adapter',
   'storage.read':  'Read files in ~/.bakin/',
   'storage.write': 'Write files in ~/.bakin/',
 }
@@ -155,14 +155,14 @@ Populated during `pluginRegistry.initialize()` by walking `corePluginTable` entr
 |--------|---------|----------|
 | `packages/core/src/hooks/hook-registry.ts` | `unregisterByPlugin(pluginId: string): number` | Each handler stored alongside `pluginId` (added at register time via per-plugin `ctx.hooks.register` wrapper). Returns count removed. |
 | `scripts/lib/registry.ts` | `removeExecToolsByPlugin(pluginId: string): number` | Filter by name prefix `bakin_exec_<pluginId>_`. |
-| `src/core/search-registry.ts` | `purgeContentType(name: string): Promise<number>` | Atomic SQL-style `DELETE FROM bakin_<name>` against antfly. No-op + return 0 if antfly disabled. |
+| `src/core/search-registry.ts` | `purgeContentType(name: string): Promise<number>` | Atomic delete of all rows for a Bakin search content type through the active search adapter. No-op + return 0 if search is disabled. |
 | `plugins/workflows/lib/node-type-registry.ts` | (existing) `unregisterPluginNodeTypes(pluginId)` | Now called from remove flow, not just override. |
 | `src/core/notification-channels.ts` | (existing) `unregisterPluginNotificationChannels(pluginId)` | Same. |
 | `src/core/health-checks.ts` | (existing) `unregisterPluginHealthChecks(pluginId)` | Same. |
 
 **Cron:** no `ctx.cron` plugin surface today. Nothing to clean.
 
-### 3.6 OpenClaw skill cleanup
+### 3.6 runtime skill cleanup
 
 **Module:** `src/core/onboarding/plugin-assets.ts` — extend with:
 
@@ -171,7 +171,7 @@ Populated during `pluginRegistry.initialize()` by walking `corePluginTable` entr
 export async function removePluginAssets(pluginId: string): Promise<{ removed: number; kept: number }>
 ```
 
-Walk `~/.openclaw/skills/`, find every dir whose `.installedBy` has `pluginId === <removed-plugin>`. For each:
+Walk the runtime skill store, find every skill whose `.installedBy` has `pluginId === <removed-plugin>`. For each:
 - `.userEdited` sentinel present → skip, increment `kept`
 - Else → `rm -rf` skill dir, increment `removed`
 
@@ -186,7 +186,7 @@ export async function snapshotUninstall(args: {
   pluginId: string
   pluginDir: string                    // ~/.bakin/plugins/<id>/
   settingsFile?: string                // ~/.bakin/plugin-settings/<id>.json (if exists)
-  removedSkillDirs: string[]           // absolute paths under ~/.openclaw/skills/
+  removedSkillDirs: string[]           // paths captured from the runtime skill store
 }): Promise<string>                    // returns final tarball path
 ```
 
@@ -261,7 +261,7 @@ No retention. Tarballs accumulate. Follow-up issue tracks expiry policy.
    - `unregisterPluginHealthChecks(id)`
    - For every content type the plugin registered: `await ctx.search.purgeContentType(name)`
 5. Filesystem deletes:
-   - `removePluginAssets(id)` — OpenClaw skills (respecting `.userEdited`)
+   - `removePluginAssets(id)` — runtime skills (respecting `.userEdited`)
    - `rm ~/.bakin/plugin-settings/<id>.json` (if exists)
    - `rm -rf ~/.bakin/plugins/<id>/`
 6. Move tarball tmp → `~/.bakin/.uninstalled/<id>-<ISO>.tar.gz`
@@ -269,8 +269,8 @@ No retention. Tarballs accumulate. Follow-up issue tracks expiry policy.
 8. Exit:
    ```
    Removed plugin: <id>
-     Cleaned 4 OpenClaw skills (created-by-<id>)
-     Kept 2 user-edited skills (~/.openclaw/skills/{x,y}/)
+     Cleaned 4 runtime skills (created-by-<id>)
+     Kept 2 user-edited runtime skills
      Snapshot saved: ~/.bakin/.uninstalled/<id>-2026-04-25T...tar.gz
    Restart Bakin to fully release the plugin's modules: bakin stop && bakin start
    ```
@@ -353,7 +353,7 @@ tests/fixtures/plugins/
   fixture-plugins/
     minimal/                     — bakin-plugin.json + index.ts + client.tsx (no deps)
     with-permissions/            — declares storage.write + events.emit
-    with-skills/                 — ships defaults/openclaw-skills/X/SKILL.md
+    with-skills/                 — ships defaults/runtime-skills/X/SKILL.md
 ```
 
 **Modified files:**
@@ -402,10 +402,10 @@ Specific to this work:
 
 **Floor (CLAUDE.md, non-negotiable):**
 - Mock `getContentDir` (both `src/core/content-dir.ts` AND `packages/core/src/content-dir.ts`)
-- Mock `getOpenClawHome` (`@bakin/core/openclaw-home`)
+- Mock `getOpenClawHome` (`@bakin/adapter-openclaw/home`)
 - Mock the logger
 - Mock the watcher
-- Mock openclaw-client
+- Mock the active runtime boundary (`ctx.runtime` or `src/core/app-services`)
 - `bun test --isolate`
 - `process.env.OPENCLAW_HOME` and `process.env.BAKIN_HOME` set BEFORE imports for any module reading these at load time
 - `afterAll(() => rmSync(testDir, { recursive: true, force: true }))`
@@ -420,12 +420,12 @@ Specific to this work:
 **Layer B — Registry cleanup unit:**
 - `hook-unregister-by-plugin.test.ts` — Register from plugin A and B, sweep A, B handlers still fire; double-sweep is no-op; sweep with no matches returns 0
 - `exec-tools-remove-by-plugin.test.ts` — Prefix filtering correctness; tools without prefix unaffected; idempotent
-- `search-purge-content-type.test.ts` — Against in-memory antfly stub: insert N rows, purge, count == N, table rebuilds clean; antfly-disabled mode → no-op returns 0
+- `search-purge-content-type.test.ts` — Against an in-memory search adapter stub: insert N rows, purge, count == N, table rebuilds clean; search-disabled mode → no-op returns 0
 
 **Layer C — Integration (real fs, hermetic git in temp dirs):**
 - `install-flow.integration.test.ts` — Local-path install → lockfile written with correct shape, manifestSha matches, permissions captured. Github install (against hermetic bare repo) → same plus commitSha + ref recorded.
 - `upgrade-flow.integration.test.ts` — Github: push commit → upgrade detects sha drift → fast-forwards → lockfile updated. No-op short-circuit when shas equal. Permissions widened → prompt fires (consent-prompt mocked). Force-push scenario → fast-forward error surfaced. Local: modify source dir → upgrade re-syncs. Local source path missing → error message verbatim.
-- `remove-flow.integration.test.ts` — Full teardown happy path: `onUninstall` called, all 7 cleanup APIs invoked (assert via per-registry post-state), tarball lands in `.uninstalled/`, plugin dir gone, settings JSON gone, OpenClaw skills cleaned (with `.userEdited` honored — assert kept count). `onUninstall` throws → cleanup still completes, error logged.
+- `remove-flow.integration.test.ts` — Full teardown happy path: `onUninstall` called, all 7 cleanup APIs invoked (assert via per-registry post-state), tarball lands in `.uninstalled/`, plugin dir gone, settings JSON gone, runtime skills cleaned (with `.userEdited` honored — assert kept count). `onUninstall` throws → cleanup still completes, error logged.
 - `core-plugin-guard.test.ts` — Both `/api/plugins/remove` and `/api/plugins/upgrade` return 400 for any core id. Lockfile mutators throw for core ids.
 
 **Hybrid git substrate:**
@@ -447,7 +447,7 @@ Specific to this work:
 - Validate manifest with Zod at install/upgrade boundary
 - Atomic IO (tmp+rename) for lockfile writes and tarball writes
 - Resolve all paths via `getContentDir()` / `getOpenClawPath()`
-- Honor `.userEdited` sentinel files when removing OpenClaw skills
+- Honor `.userEdited` sentinel files when removing runtime skills
 - Log every plugin activation's permission set to audit + server.log
 - Continue cleanup after `onUninstall` errors (log+continue, never trap user)
 - Refuse mutation of core plugins at API + lockfile + CLI layers (defense in depth)
@@ -480,7 +480,7 @@ Specific to this work:
 | 4 | `feat(plugins): upgrade command (no-op detection + git/local rebuild)` | `/api/plugins/upgrade`, `cmdPluginsUpgrade`. Lockfile updated. Restart-required exit. |
 | 5 | `feat(plugins): list --check + lastChecked staleness hint` | Opt-in remote/local check; persists `remoteHeadSha`/`sourceTreeSha` + `lastChecked`. 7-day stale hint in plain `list`. |
 | 6 | `feat(plugins): hook + exec-tool unregister-by-plugin APIs + search purgeContentType` | Pure infra. No remove-flow change yet. |
-| 7 | `feat(plugins): onUninstall hook + full teardown sweep` | `BakinPlugin.onUninstall?`. Wire remove flow: hook → registry sweep (#6) → settings JSON → OpenClaw skills (`.userEdited` honored) → tarball snapshot → fs delete → lockfile entry. The big one. |
+| 7 | `feat(plugins): onUninstall hook + full teardown sweep` | `BakinPlugin.onUninstall?`. Wire remove flow: hook → registry sweep (#6) → settings JSON → runtime skills (`.userEdited` honored) → tarball snapshot → fs delete → lockfile entry. The big one. |
 | 8 | `feat(plugins): permissions Zod enum + audit log on activate` | Lock the 4-permission enum, descriptions map, log on every activation. Validate manifests at install/upgrade. (#142 layer 1) |
 | 9 | `feat(plugins): install/upgrade consent prompt` | Interactive prompt at install; on upgrade only when widened. `--yes` flag. (#142 layer 2) |
 | 10 | `test(plugins): lifecycle integration + unit coverage` | All Layer A/B/C tests. Hermetic local-git substrate. Optional `BAKIN_E2E_GITHUB=1` smoke. |

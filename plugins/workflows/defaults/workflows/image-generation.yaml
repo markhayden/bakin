@@ -10,7 +10,7 @@ steps:
   - id: develop-prompt
     type: agent
     label: Develop Prompt
-    agent: pixel
+    agent: $assigned
     description: >
       Develop a Nano Banana image generation prompt from the creative brief.
 
@@ -68,7 +68,7 @@ steps:
   - id: generate-image
     type: agent
     label: Generate Image
-    agent: pixel
+    agent: $assigned
     description: >
       Generate the image using bakin_exec_gen_image with the approved prompt.
 

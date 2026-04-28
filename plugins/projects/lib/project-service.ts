@@ -9,8 +9,7 @@ import { createTaskWithEffects } from '../../../src/core/task-service'
 import { appendAudit } from '../../../src/core/audit'
 import { getContentDir } from '../../../src/core/content-dir'
 import { createLogger } from '../../../src/core/logger'
-import { getMainAgentId } from '../../../src/core/main-agent'
-import { getHookRegistry } from '../../../src/lib/plugin-registry'
+import { readTaskboard } from '../../../src/core/task-store'
 import type { Project, ProjectTask, ProjectStatus } from '../types'
 
 const log = createLogger('projects')
@@ -40,7 +39,7 @@ function withProjectLock<T>(fn: () => T | Promise<T>): Promise<T> {
 // ---------------------------------------------------------------------------
 
 function broadcast(data: Record<string, unknown>): void {
-  const fn = (globalThis as any).__bakinBroadcast
+  const fn = (globalThis as { __bakinBroadcast?: (data: Record<string, unknown>) => void }).__bakinBroadcast
   if (fn) fn(data)
 }
 
@@ -113,7 +112,7 @@ export async function createProject(opts: CreateProjectOpts): Promise<{ id: stri
       status: 'draft',
       created: now,
       updated: now,
-      owner: opts.owner || getMainAgentId(),
+      owner: opts.owner || 'main',
       tasks: taskItems,
       assets: [],
       body: opts.body || (opts.title ? `# ${opts.title}\n` : ''),
@@ -424,8 +423,8 @@ export interface ResolvedAsset {
 }
 
 export async function resolveLinkedTaskStatuses(project: Project): Promise<Project & { resolvedTasks: Record<string, { column: string; title: string } | null>; resolvedAssets: ResolvedAsset[] }> {
-  const board = await getHookRegistry().invoke<{ columns: Record<string, Array<{ id: string; title: string }>> }>('tasks.readTaskboard', {})
-  const columns = board?.columns ?? {}
+  const board = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string; title: string }>> }
+  const columns = board.columns
   const resolved: Record<string, { column: string; title: string } | null> = {}
 
   for (const item of project.tasks) {
@@ -445,11 +444,12 @@ export async function resolveLinkedTaskStatuses(project: Project): Promise<Proje
   // Resolve asset summaries (lightweight — no full content).
   // Stored: just the filename. At render time: derive the path from the
   // filename (pure function) and read indexed metadata.
-  let resolvedAssets: ResolvedAsset[] = []
   try {
-    const { getAsset } = require('../../assets/lib/asset-index')
-    const { pathForFilename } = require('../../assets/lib/path-for-filename')
-    resolvedAssets = project.assets.map(a => {
+    const [{ getAsset }, { pathForFilename }] = await Promise.all([
+      import('../../assets/lib/asset-index'),
+      import('../../assets/lib/path-for-filename'),
+    ])
+    const resolvedAssets = project.assets.map(a => {
       const resolvedPath = pathForFilename(a.filename)
       const indexed = resolvedPath ? getAsset(resolvedPath) : null
       if (!indexed) return { filename: a.filename, label: a.label, type: 'unknown', missing: true }
@@ -461,14 +461,14 @@ export async function resolveLinkedTaskStatuses(project: Project): Promise<Proje
         tags: indexed.metadata?.tags,
       }
     })
+    return { ...project, resolvedTasks: resolved, resolvedAssets }
   } catch {
     // Assets plugin may not be loaded
-    resolvedAssets = project.assets.map(a => ({
+    const resolvedAssets = project.assets.map(a => ({
       filename: a.filename,
       label: a.label,
       type: 'unknown',
     }))
+    return { ...project, resolvedTasks: resolved, resolvedAssets }
   }
-
-  return { ...project, resolvedTasks: resolved, resolvedAssets }
 }

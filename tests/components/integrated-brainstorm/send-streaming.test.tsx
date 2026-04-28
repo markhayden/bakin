@@ -201,12 +201,12 @@ describe('IntegratedBrainstorm — send state machine & streaming', () => {
     })
     await waitFor(() => fake.isPending())
     act(() => {
-      fake.reject(new Error('gateway down'))
+      fake.reject(new Error('runtime down'))
     })
     await waitFor(() => {
       const err = screen.getByRole('alert')
       expect(err).toBeDefined()
-      expect(err.textContent).toContain('gateway down')
+      expect(err.textContent).toContain('runtime down')
     })
     // Input is focusable again — a follow-up send is permitted.
     act(() => {

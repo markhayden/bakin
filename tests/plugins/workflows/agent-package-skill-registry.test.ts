@@ -22,12 +22,12 @@ mock.module('@bakin/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
 }))
-mock.module('@bakin/tasks/lib/flow-store', () => ({}))
+mock.module('@/core/task-store', () => ({}))
 
 import {
   clearAgentPackageSkillRegistry,
@@ -87,7 +87,6 @@ describe('agent-package skill registry', () => {
 
   it('uses globalThis.__bakinAgentPackageSkills for persistence', () => {
     registerAgentPackageSkill('pixel', 'persisted', skill('Persisted'))
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const store = (globalThis as any).__bakinAgentPackageSkills
     expect(store).toBeDefined()
     expect(store.agentPackage.has('persisted')).toBe(true)

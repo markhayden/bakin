@@ -270,7 +270,7 @@ The component itself never touches fetch, headers, or SSE parsing — it's purel
 ### 1. Projects backend: `POST /projects/:id/ask` → SSE
 
 - Change the route at `plugins/projects/index.ts:353` from returning JSON to streaming SSE.
-- Mirror the shape of messaging's `POST /sessions/:id/messages` handler (search `src/core/openclaw-client` for the streaming variant; if only `sendMessage` exists non-streaming, add a streaming sibling or use the same underlying HTTP call with stream-consuming).
+- Mirror the shape of messaging's `POST /sessions/:id/messages` handler using the active runtime messaging boundary. Do not add or depend on a core provider client.
 - Emit events: `event: token\ndata: {"text":"…"}`, then `event: done\ndata: {"content":"…full…","messageId":"…"}`. No proposals in projects today.
 - Side effects (persistence, indexing) happen server-side at `done` emission, not during streaming.
 
@@ -469,7 +469,7 @@ Every exported prop must have at least one test that exercises it at a non-defau
 ### Integration verification — automated where possible
 
 - **Messaging SessionChat adapter test** — a plugin-level test at `plugins/messaging/tests/` that wires `<IntegratedBrainstorm>` to a mocked SSE backend, sends a message, asserts proposals forwarded via `onCustom` reach the review panel. Uses the test-helpers `activatePlugin` + mocked route per CLAUDE.md rules.
-- **Projects ask-handler test** — a plugin-level test at `plugins/projects/tests/` for the new SSE route: POST a prompt, consume the stream, assert `token` events arrive followed by a `done` event with accumulated content. Uses mocked `openclaw-client.sendMessage` streaming variant.
+- **Projects ask-handler test** — a plugin-level test at `plugins/projects/tests/` for the new SSE route: POST a prompt, consume the stream, assert `token` events arrive followed by a `done` event with accumulated content. Uses a mocked runtime messaging stream/send boundary.
 
 ### Manual smoke checklist (part of the PR description)
 
@@ -544,7 +544,7 @@ bun run dev                                          # watch-mode for manual ver
 
 ## Known unknowns
 
-1. **Streaming `sendMessage`** — projects `/ask` currently uses `sendMessage(agentId, context)` which returns a string. Check `src/core/openclaw-client.ts` for a streaming variant or the underlying pattern messaging's SSE route uses. May require a small addition to `openclaw-client`.
+1. **Runtime streaming** — projects `/ask` must use the runtime messaging stream boundary and fall back to runtime messaging send when streaming is unavailable.
 2. **Messaging's `planning-layout.tsx`** — lifting `onProposalsReceived` up a level may need minor refactor of how `session` state is passed. Should be ~10 line change.
 3. **Agent color hook** — `useAgentColor` needs to be re-exported from `@bakin/sdk/hooks` if not already. Verify during build.
 4. **`getMainAgentId`** — currently called on the server in projects `/ask` to default the agent. In the streaming version, this behavior must be preserved.

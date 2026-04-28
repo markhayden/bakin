@@ -2,7 +2,7 @@
  * Memory-plugin-owned doctor check.
  *
  * Migrated out of src/core/doctor.ts (#139 C5). Behavioral coverage
- * for checkSearchTables — antfly-disabled / antfly-unavailable /
+ * for checkSearchTables — search-disabled / search-unavailable /
  * empty registry / per-table doc-count branches / aggregate ok and
  * warn paths.
  */
@@ -17,6 +17,7 @@ process.env.OPENCLAW_HOME = pathJoin(testDir, 'openclaw')
 
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'fs'
+import type { SearchHealthSnapshot } from '../../../packages/core/src/plugin-types'
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -38,21 +39,21 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getBakinPaths: () => ({}),
   isUsingBakinHome: () => true,
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => pathJoin(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => pathJoin(testDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
 }))
-mock.module('../../../packages/core/src/openclaw-home', () => ({
+mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => pathJoin(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => pathJoin(testDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
 }))
 
-let mockAntflyEnabled = true
+let mockSearchEnabled = true
 mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
-    antfly: { enabled: mockAntflyEnabled },
+    search: { adapter: 'antfly', settings: { enabled: mockSearchEnabled } },
     doctor: { autoFixSkill: false },
   }),
   resetSettingsCache: () => {},
@@ -62,24 +63,19 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-let mockAntflyAvailable = true
-let mockAntflyInitThrows: Error | null = null
-mock.module('../../../src/core/antfly', () => ({
-  initialize: async () => {
-    if (mockAntflyInitThrows) throw mockAntflyInitThrows
-  },
-  available: () => mockAntflyAvailable,
-}))
-
 interface MockTable {
   table: string
   pluginId: string
   healthy: boolean
-  stats?: Record<string, unknown> | null
+  stats: Record<string, unknown> | null
 }
-let mockHealth: { enabled: boolean; tables: MockTable[] } = { enabled: true, tables: [] }
+let mockHealth: SearchHealthSnapshot = { enabled: true, tables: [] }
+let mockSearchHealthThrows: Error | null = null
+async function readMockSearchHealth(): Promise<SearchHealthSnapshot> {
+  if (mockSearchHealthThrows) throw mockSearchHealthThrows
+  return mockHealth
+}
 mock.module('../../../src/core/search-registry', () => ({
-  getSearchHealth: async () => mockHealth,
   // The plugin-registration smoke test imports the full memory plugin,
   // whose activate() chain reaches `ensureRegisteredTables` via
   // memory-migration. Stub it as a no-op so activate() doesn't throw.
@@ -94,7 +90,7 @@ mock.module('../../../src/core/search-registry', () => ({
   }),
 }))
 
-// memory-migration also reaches into antfly + offsets — stub the migrator
+// memory-migration also reaches into search + offsets — stub the migrator
 // itself so we don't need to mock its full deps tree.
 mock.module('../../../plugins/memory/lib/memory-migration', () => ({
   migrateIfNeeded: async () => {},
@@ -108,13 +104,6 @@ mock.module('../../../plugins/memory/lib/ttl-prune', () => ({
   stopTtlTimer: () => {},
 }))
 
-// openclaw-gateway — opens a WS in production. No-ops in tests.
-mock.module('../../../plugins/memory/lib/openclaw-gateway', () => ({
-  gatewaySubscribe: () => ({ close: () => {} }),
-  gatewayCall: async () => null,
-  __resetGatewayClientForTests: () => {},
-}))
-
 // Indexer constructor — only called inside the plugin smoke. Stub it.
 mock.module('../../../plugins/memory/lib/indexer', () => ({
   MemoryIndexer: class { backfill = async () => {}; sync = async () => {}; remove = async () => {} },
@@ -125,9 +114,8 @@ import { checkSearchTables } from '../../../plugins/memory/lib/health-checks'
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
-  mockAntflyEnabled = true
-  mockAntflyAvailable = true
-  mockAntflyInitThrows = null
+  mockSearchEnabled = true
+  mockSearchHealthThrows = null
   mockHealth = { enabled: true, tables: [] }
 })
 
@@ -135,24 +123,25 @@ afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-// ─── Inert returns when antfly is off / unreachable / disabled in registry ─
+// ─── Inert returns when search is off / unreachable / disabled in registry ─
 
 describe('checkSearchTables — quiescent paths', () => {
-  it('returns no rows when antfly is disabled in settings', async () => {
-    mockAntflyEnabled = false
-    const results = await checkSearchTables()
+  it('returns no rows when search is disabled in settings', async () => {
+    mockSearchEnabled = false
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results).toEqual([])
   })
 
-  it('returns no rows when antfly is enabled but unavailable (other check surfaces it)', async () => {
-    mockAntflyAvailable = false
-    const results = await checkSearchTables()
-    expect(results).toEqual([])
+  it('warns when search is enabled but no content types are registered', async () => {
+    const results = await checkSearchTables(readMockSearchHealth)
+    expect(results).toHaveLength(1)
+    expect(results[0].status).toBe('warn')
+    expect(results[0].message).toMatch(/no content types registered/)
   })
 
   it('returns no rows when search-registry reports the search subsystem disabled', async () => {
     mockHealth = { enabled: false, tables: [] }
-    const results = await checkSearchTables()
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results).toEqual([])
   })
 })
@@ -160,9 +149,9 @@ describe('checkSearchTables — quiescent paths', () => {
 // ─── Empty registry vs healthy aggregate ──────────────────────────────────
 
 describe('checkSearchTables — registry shape', () => {
-  it('warns when antfly is enabled but no content types are registered', async () => {
+  it('warns when search is enabled but no content types are registered', async () => {
     mockHealth = { enabled: true, tables: [] }
-    const results = await checkSearchTables()
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results).toHaveLength(1)
     expect(results[0].check).toBe('search-tables')
     expect(results[0].status).toBe('warn')
@@ -177,7 +166,7 @@ describe('checkSearchTables — registry shape', () => {
         { table: 'projects', pluginId: 'projects', healthy: true, stats: { num_docs: 5 } },
       ],
     }
-    const results = await checkSearchTables()
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('ok')
     expect(results[0].message).toMatch(/2 tables, 17 total documents/)
@@ -190,10 +179,10 @@ describe('checkSearchTables — registry shape', () => {
         { table: 'tasks', pluginId: 'tasks', healthy: true, stats: { storage_status: { empty: false } } },
       ],
     }
-    const results = await checkSearchTables()
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/document counts unavailable from current Antfly API/)
+    expect(results[0].message).toMatch(/document counts unavailable from current search adapter API/)
   })
 })
 
@@ -205,7 +194,7 @@ describe('checkSearchTables — per-table branches', () => {
       enabled: true,
       tables: [{ table: 'tasks', pluginId: 'tasks', healthy: true, stats: null }],
     }
-    const results = await checkSearchTables()
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results.some(r => r.status === 'warn' && r.message.includes('stats unavailable'))).toBe(true)
   })
 
@@ -214,7 +203,7 @@ describe('checkSearchTables — per-table branches', () => {
       enabled: true,
       tables: [{ table: 'schedule', pluginId: 'schedule', healthy: true, stats: { num_docs: 0 } }],
     }
-    const results = await checkSearchTables()
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results.some(r => r.status === 'ok' && r.message.includes('indexed at runtime'))).toBe(true)
   })
 
@@ -223,7 +212,7 @@ describe('checkSearchTables — per-table branches', () => {
       enabled: true,
       tables: [{ table: 'tasks', pluginId: 'tasks', healthy: true, stats: { num_docs: 0 } }],
     }
-    const results = await checkSearchTables()
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results.some(r => r.status === 'ok' && r.message.includes('reindex via POST /api/reindex?table=tasks'))).toBe(true)
   })
 
@@ -232,7 +221,7 @@ describe('checkSearchTables — per-table branches', () => {
       enabled: true,
       tables: [{ table: 'tasks', pluginId: 'tasks', healthy: true, stats: { storage_status: { empty: true } } }],
     }
-    const results = await checkSearchTables()
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results.some(r => r.status === 'ok' && r.message.includes('appears empty'))).toBe(true)
   })
 })
@@ -240,9 +229,9 @@ describe('checkSearchTables — per-table branches', () => {
 // ─── Failure path ─────────────────────────────────────────────────────────
 
 describe('checkSearchTables — failure path', () => {
-  it('returns an error row when the antfly initialize call throws', async () => {
-    mockAntflyInitThrows = new Error('connection refused')
-    const results = await checkSearchTables()
+  it('returns an error row when search health throws', async () => {
+    mockSearchHealthThrows = new Error('connection refused')
+    const results = await checkSearchTables(readMockSearchHealth)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('error')
     expect(results[0].message).toMatch(/connection refused/)
@@ -267,11 +256,13 @@ describe('plugin registration', () => {
       getSettings: () => ({ backfillDays: 0, skipSessionOverBytes: 0, skipResetBackups: false }),
       updateSettings: noop,
       activity: { log: noop, audit: noop },
+      runtime: { memory: { watchPaths: async () => [] } },
       hooks: { register: () => () => {}, has: () => false, invoke: noopAsync },
       search: {
         registerContentType: noop, registerFileBackedContentType: noop,
         index: noopAsync, remove: noopAsync, transform: noopAsync,
         query: mock(async () => ({ results: [], meta: { query: '', total: 0, took_ms: 0, source: 'fallback' as const } })),
+        health: readMockSearchHealth,
       },
       storage: {},
       events: { on: noop, emit: noop, off: noop },

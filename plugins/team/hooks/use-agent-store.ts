@@ -3,7 +3,7 @@
 /**
  * Central agent store — replaces agents-data.ts, agent-settings.ts, and use-agent-settings.ts.
  *
- * Loads agent data from the team plugin API (which reads from OpenClaw).
+ * Loads agent data from the team plugin API (which reads from the active runtime).
  * All components that need agent info import from here instead of static constants.
  */
 import { create } from 'zustand'
@@ -28,7 +28,7 @@ interface AgentStore {
    * endpoint fails — agent-packages is optional context, not load-blocking.
    */
   packageStates: Record<string, PackageStateRow>
-  /** Canonical main/orchestrator agent id (resolved server-side from settings → OpenClaw) */
+  /** Canonical main/orchestrator agent id (resolved server-side from the runtime adapter) */
   mainAgentId: string | null
   /** Whether initial load has completed */
   loaded: boolean
@@ -91,7 +91,13 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         teams: OrgTeam[]
         mainAgentId?: string
       }
-      const agents: AgentMeta[] = data.agents.map(({ status, heartbeat, heartbeatAge, model, ...meta }) => meta)
+      const agents: AgentMeta[] = data.agents.map(({
+        status: _status,
+        heartbeat: _heartbeat,
+        heartbeatAge: _heartbeatAge,
+        model: _model,
+        ...meta
+      }) => meta)
       const agentMap: Record<string, AgentMeta> = {}
       for (const a of agents) {
         agentMap[a.id] = a

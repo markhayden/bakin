@@ -1,4 +1,6 @@
 import { describe, it, expect, afterAll, mock } from 'bun:test'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 
 const { hoistedBakinHome, hoistedOpenClawHome } = (() => {
   const { mkdtempSync } = require('fs')
@@ -40,7 +42,7 @@ mock.module('../../src/core/content-dir', () => ({
   initBakinHome: () => {},
 }))
 
-mock.module('../../plugins/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,
@@ -78,7 +80,7 @@ mock.module('../../src/core/logger', () => ({
   }),
 }))
 
-import type { PluginContext, BakinPlugin, APIRoute, NavItem } from '../../src/lib/plugin-types'
+import type { PluginContext, BakinPlugin, APIRoute, NavItem } from '@bakin/core/plugin-types'
 import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
 import fs from 'fs'
@@ -135,6 +137,8 @@ function createMockContext(pluginId: string): {
     storage,
     events,
     pluginId,
+    runtime: createMockRuntimeAdapter(),
+    tasks: createMockBakinTaskStore(),
     registerNav: (items) => navItems.push(...items),
     registerRoute: (route) => routes.push(route),
     registerSlot: () => {},

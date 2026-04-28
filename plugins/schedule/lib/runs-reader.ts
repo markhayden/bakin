@@ -1,47 +1,18 @@
 /**
- * Reads cron run history from OpenClaw JSONL files.
- * Files stored at ~/.openclaw/cron/runs/<jobId>.jsonl
+ * Reads cron run history from the active runtime adapter.
  */
-import { readFileSync, existsSync } from 'fs'
-import { join } from 'path'
+import type { AgentRuntimeAdapter, CronRun } from '@bakin/core/adapters/runtime'
 import { createLogger } from '../../../src/core/logger'
-import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import type { RunEntry } from '../types'
 
 const log = createLogger('schedule:runs')
 
-const OPENCLAW_RUNS_DIR = getOpenClawPath('cron', 'runs')
+type RuntimeCronRunReader = Pick<AgentRuntimeAdapter['cron'], 'listRuns'>
 
 /** Read run history for a specific job. Returns newest-first. */
-export function readRuns(jobId: string, limit = 50, runsDir?: string): RunEntry[] {
-  const dir = runsDir ?? OPENCLAW_RUNS_DIR
-  const path = join(dir, `${jobId}.jsonl`)
-
-  if (!existsSync(path)) {
-    return []
-  }
-
+export async function readRuns(cron: RuntimeCronRunReader, jobId: string, limit = 50): Promise<RunEntry[]> {
   try {
-    const raw = readFileSync(path, 'utf-8')
-    const lines = raw.trim().split('\n').filter(Boolean)
-    const entries: RunEntry[] = []
-
-    for (const line of lines) {
-      try {
-        const entry = JSON.parse(line) as RunEntry
-        // Ensure required fields
-        if (entry.runId && entry.jobId && entry.timestamp) {
-          entries.push(entry)
-        }
-      } catch {
-        // Skip malformed lines
-        log.debug('Skipping malformed run entry', { jobId, line: line.slice(0, 100) })
-      }
-    }
-
-    // Sort newest-first and apply limit
-    entries.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-    return entries.slice(0, limit)
+    return (await cron.listRuns(jobId)).slice(0, limit).map(runtimeRunToEntry)
   } catch (err) {
     log.warn('Failed to read run history', err, { jobId })
     return []
@@ -49,7 +20,20 @@ export function readRuns(jobId: string, limit = 50, runsDir?: string): RunEntry[
 }
 
 /** Get the most recent run for a job. */
-export function getLastRun(jobId: string, runsDir?: string): RunEntry | null {
-  const runs = readRuns(jobId, 1, runsDir)
+export async function getLastRun(cron: RuntimeCronRunReader, jobId: string): Promise<RunEntry | null> {
+  const runs = await readRuns(cron, jobId, 1)
   return runs[0] ?? null
+}
+
+export function runtimeRunToEntry(run: CronRun): RunEntry {
+  return {
+    runId: run.id,
+    jobId: run.jobId,
+    timestamp: run.startedAt ?? run.endedAt ?? new Date().toISOString(),
+    status: run.status === 'failed' ? 'failure' : run.status === 'cancelled' ? 'skipped' : 'success',
+    duration: run.startedAt && run.endedAt
+      ? Math.max(0, Date.parse(run.endedAt) - Date.parse(run.startedAt))
+      : undefined,
+    error: run.error,
+  }
 }

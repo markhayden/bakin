@@ -26,12 +26,12 @@ mock.module('@bakin/core/main-agent', () => ({
 mock.module('@/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({}) }))
 mock.module('../../../src/core/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({}) }))
 mock.module('../../../packages/core/src/content-dir', () => ({ getContentDir: () => testDir, getBakinPaths: () => ({}) }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
 }))
-mock.module('../../../packages/core/src/openclaw-home', () => ({
+mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
@@ -43,8 +43,8 @@ const setTabSpy = mock((v: string) => { queryState.tab = v })
 mock.module('@/hooks/use-query-state', () => ({
   useQueryState: (_key: string, defaultValue: string) => [queryState.tab || defaultValue, setTabSpy, mock()],
 }))
-mock.module('@/hooks/use-gateway-status', () => ({
-  useGatewayStatus: () => ({ restartNeeded: false, restart: mock(), restarting: false, markDirty: mock() }),
+mock.module('@/hooks/use-runtime-status', () => ({
+  useRuntimeStatus: () => ({ restartNeeded: false, restart: mock(), restarting: false, markDirty: mock() }),
 }))
 mock.module('@/components/agent-avatar', () => ({ AgentAvatar: () => <div /> }))
 mock.module('@/components/markdown-content', () => ({ MarkdownContent: () => <div /> }))

@@ -22,7 +22,7 @@ describe('mock seed', () => {
     expect(existsSync(join(fixturesDir, 'openclaw.json'))).toBe(true)
     expect(existsSync(join(fixturesDir, 'auth-profiles.json'))).toBe(true)
     expect(existsSync(join(fixturesDir, 'jobs.json'))).toBe(true)
-    expect(existsSync(join(fixturesDir, 'seed.sql'))).toBe(true)
+    expect(existsSync(join(fixturesDir, 'tasks.json'))).toBe(true)
     expect(existsSync(join(fixturesDir, 'workspace', 'SOUL.md'))).toBe(true)
     expect(existsSync(join(fixturesDir, 'workspace', 'IDENTITY.md'))).toBe(true)
     expect(existsSync(join(fixturesDir, 'workspace', 'AGENTS.md'))).toBe(true)
@@ -81,21 +81,30 @@ describe('mock seed', () => {
     }
   })
 
-  it('fixture seed.sql creates flow_runs with seed tasks', () => {
+  it('fixture tasks.json creates Bakin task-store tasks', () => {
     const fixturesDir = join(import.meta.dirname, '..', '..', 'dev', 'imitation-crab', 'fixtures')
-    const sql = readFileSync(join(fixturesDir, 'seed.sql'), 'utf-8')
+    const tasks = JSON.parse(readFileSync(join(fixturesDir, 'tasks.json'), 'utf-8')) as Array<{
+      column: string
+      workflowId?: string
+      execution?: { flowId?: string | null }
+    }>
+    const columns = new Set(tasks.map(task => task.column))
+    const workflowIds = new Set(tasks.map(task => task.workflowId).filter(Boolean))
 
-    expect(sql).toContain('CREATE TABLE IF NOT EXISTS flow_runs')
-    expect(sql).toContain('bakin:task:')
+    expect(tasks.length).toBeGreaterThan(10)
 
     // Verify we have tasks in different states
-    expect(sql).toContain("'queued'")
-    expect(sql).toContain("'running'")
-    expect(sql).toContain("'waiting'")
-    expect(sql).toContain("'succeeded'")
-    expect(sql).toContain('"workflowId":"approval-copy"')
-    expect(sql).toContain('"workflowId":"approval-image"')
-    expect(sql).toContain('"workflowId":"approval-bundle"')
+    expect(columns).toContain('backlog')
+    expect(columns).toContain('todo')
+    expect(columns).toContain('inProgress')
+    expect(columns).toContain('review')
+    expect(columns).toContain('blocked')
+    expect(columns).toContain('done')
+    expect(columns).toContain('archived')
+    expect(workflowIds).toContain('approval-copy')
+    expect(workflowIds).toContain('approval-image')
+    expect(workflowIds).toContain('approval-bundle')
+    expect(tasks.every(task => task.execution?.flowId === null)).toBe(true)
   })
 
   it('approval workflow fixtures are pending approval with representative output types', () => {

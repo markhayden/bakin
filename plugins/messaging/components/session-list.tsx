@@ -92,7 +92,7 @@ export function SessionList({ onSelectSession, search, searchResults, searchLoad
     setDeleteTarget(null)
   }
 
-  // Score map keyed by session id (strip the `brainstorm-` Antfly prefix).
+  // Score map keyed by session id (strip the `brainstorm-` search key prefix).
   // Used for both the relevance reorder AND the debug-mode RRF/BM25/SEM overlay.
   const scoreMap = useMemo(() => {
     const map = new Map<string, ScoreInfo>()
@@ -116,7 +116,7 @@ export function SessionList({ onSelectSession, search, searchResults, searchLoad
         .filter(s => scoreMap.has(s.id))
         .sort((a, b) => (scoreMap.get(b.id)?.score ?? 0) - (scoreMap.get(a.id)?.score ?? 0))
     }
-    // While the search hook is in-flight we don't yet know the Antfly
+    // While the search hook is in-flight we don't yet know the search
     // hits — keep the full (agent-filtered) list visible instead of
     // flashing "no matches" during the 300ms debounce window.
     if (searchLoading) return agentFiltered
@@ -130,7 +130,7 @@ export function SessionList({ onSelectSession, search, searchResults, searchLoad
     // double-trigger. Keep `scoreMap` since it's what we actually read.
   }, [sessions, search, searchLoading, scoreMap, agentFilter])
 
-  // When searching, Antfly relevance order wins — skip manual sort.
+  // When searching, relevance order wins — skip manual sort.
   const isSearching = !!search?.trim()
   const sorted = useMemo(() => {
     if (isSearching) return filtered
@@ -319,4 +319,3 @@ export function SessionList({ onSelectSession, search, searchResults, searchLoad
     </>
   )
 }
-

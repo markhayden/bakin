@@ -3,7 +3,7 @@
   "name": "Memory",
   "version": "2.0.0",
   "bakin": ">=1.0.0",
-  "description": "Observability dashboard over every OpenClaw memory tier plus Bakin's audit log",
+  "description": "Observability dashboard over runtime memory tiers plus Bakin's audit log",
   "entry": {
     "server": "index.ts"
   },
@@ -11,5 +11,5 @@
   "secrets": [],
   "tests": "tests/",
   "dependencies": [],
-  "permissions": ["storage.read", "events.emit", "openclaw.read"]
+  "permissions": ["storage.read", "events.emit", "runtime.read"]
 }

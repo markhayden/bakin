@@ -13,7 +13,7 @@ import type {
   WorkflowDefinitionInput,
   PluginHealthCheckInput,
   SearchQueryParams,
-} from '../../src/lib/plugin-types'
+} from '@bakin/core/plugin-types'
 import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
 import { registerPluginDefinition } from '../../plugins/workflows/lib/source-registry'
@@ -21,6 +21,8 @@ import { registerPluginNodeType } from '../../plugins/workflows/lib/node-type-re
 import { registerPluginNotificationChannel } from '../../plugins/workflows/lib/notification-channel-registry'
 import type { WorkflowDefinition } from '../../plugins/workflows/types'
 import { createLogger } from '../../src/core/logger'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 
 const testHelperLog = createLogger('test-helpers')
 
@@ -95,10 +97,22 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
     })
   }
 
+  const runtime = createMockRuntimeAdapter()
+  if (runtime.memory) {
+    runtime.memory.watchPaths = async () => [
+      '/mock/openclaw/agents/*/sessions/sessions.json',
+      '/mock/openclaw/agents/*/sessions/*.jsonl',
+      '/mock/openclaw/workspace/*.md',
+      '/mock/openclaw/workspace/memory/**/*',
+    ]
+  }
+
   const ctx: PluginContext = {
     storage,
     events,
     pluginId,
+    runtime,
+    tasks: createMockBakinTaskStore(),
     registerNav: vi.fn(),
     registerRoute: (route) => routes.push(route),
     registerSlot: vi.fn(),
@@ -165,6 +179,7 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
           source: 'fallback' as const,
         },
       })),
+      health: vi.fn(async () => ({ enabled: false, tables: [] })),
     },
     hooks: {
       register: vi.fn(() => () => {}),

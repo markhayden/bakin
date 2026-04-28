@@ -201,9 +201,9 @@ describe('parseDurableFile — row identity + shape', () => {
     expect(a.id).not.toBe(b.id)
   })
 
-  it('sourceRef includes backend=openclaw and the full workspace path', () => {
+  it('sourceRef includes backend=runtime and the full workspace path', () => {
     const rows = parseDurableFile('main', 'SOUL.md', '# A\nbody', workspacePath, updatedAt)
-    expect(rows[0].sourceRef.backend).toBe('openclaw')
+    expect(rows[0].sourceRef.backend).toBe('runtime')
     expect(rows[0].sourceRef.path).toBe(workspacePath)
     expect(rows[0].sourceRef.file).toBe('SOUL.md')
   })

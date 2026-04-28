@@ -8,12 +8,12 @@
  *     lastUpdated: number,  // ms
  *   }
  *
- * One Antfly query per tier with `limit: 0` — we only need `meta.total`.
+ * One search query per tier with `limit: 0` — we only need `meta.total`.
  * A failure on one tier yields 0 for that tier rather than erroring the
  * whole response; the status view is for at-a-glance diagnostics, not a
  * source of truth.
  */
-import type { APIRoute, PluginContext, SearchQueryParams } from '../../../../src/lib/plugin-types'
+import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
 import { MEMORY_TIERS, type MemoryTier } from '../types'
 import { getOffsetsFilePath } from '../offsets'
 import { existsSync, readFileSync } from 'fs'
@@ -26,9 +26,9 @@ async function countForTier(ctx: PluginContext, tier: MemoryTier): Promise<numbe
   //   - q: '*' so full-text matches every doc (empty q scores nothing
   //     and returns total=0, which looked like an empty backfill).
   //   - strategy: 'full_text_only' so semantic search is skipped. With
-  //     the default RRF strategy, Antfly rejects limit: 0 queries with
-  //     "semantic search requires topk limit to be positive" and the
-  //     status route silently returned 0 for every tier.
+  //     the default RRF strategy, semantic adapters can reject limit: 0
+  //     queries because topk must be positive, and the status route would
+  //     silently return 0 for every tier.
   const params: SearchQueryParams = {
     q: '*',
     filters: { tier },

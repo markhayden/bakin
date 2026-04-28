@@ -27,7 +27,7 @@ mock.module('../../../../src/core/logger', () => ({
 }))
 
 import { createMemoryGetTurnTool } from '../../../../plugins/memory/mcp/get-turn'
-import type { PluginContext, SearchResponse, SearchResult } from '../../../../src/lib/plugin-types'
+import type { PluginContext, SearchResponse, SearchResult } from '@bakin/core/plugin-types'
 
 function makeCtx(results: SearchResult[] = []): PluginContext {
   return {
@@ -51,7 +51,7 @@ function makeCtx(results: SearchResult[] = []): PluginContext {
       transform: mock(async () => {}),
       query: mock(async (p) => ({
         results,
-        meta: { query: p.q, total: results.length, took_ms: 0, source: 'antfly' },
+        meta: { query: p.q, total: results.length, took_ms: 0, source: 'search' },
       } satisfies SearchResponse)),
     },
     hooks: { register: mock(() => () => {}), has: mock(() => false), invoke: mock(async () => undefined) },

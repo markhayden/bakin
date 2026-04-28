@@ -54,7 +54,6 @@ export function redirect(opts: unknown): never {
 }
 
 export const RouterProvider: ComponentType<{ router: unknown; children?: ReactNode }> = ({ children }) => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (children as any) ?? null
 }
 
@@ -66,6 +65,5 @@ export const Link: ComponentType<{ to?: string; children?: ReactNode; className?
   className,
   onClick,
 }) => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return { type: 'a', props: { href: to, className, onClick, children }, key: null, ref: null } as any
 }

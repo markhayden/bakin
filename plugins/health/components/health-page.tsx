@@ -10,7 +10,7 @@ import { Input } from "@bakin/sdk/ui"
 import { Skeleton } from "@bakin/sdk/ui"
 import { PluginHeader } from "@bakin/sdk/components"
 import { UnderlineTabs } from "@bakin/sdk/components"
-import { ExternalLink, Search, CircleCheck, Clock, AlertCircle } from 'lucide-react'
+import { Search, CircleCheck, Clock, AlertCircle } from 'lucide-react'
 import type { HealthCheckResult } from '@bakin/sdk'
 
 const USAGE_TABS = [
@@ -117,7 +117,6 @@ interface HealthSummary {
   errors1h: ErrorsByKind | null
   activeSessions: McpSessionInfo[] | null
   upSince: string | null
-  openclawPort: number | null
   server: ServerData | null
 }
 
@@ -430,7 +429,7 @@ export function HealthPage() {
         fetch('/api/plugins/health/summary'),
         fetch('/api/plugins/health/registry'),
         fetch('/api/plugins/health/usage'),
-        fetch('/api/plugins/health/antfly-status'),
+        fetch('/api/plugins/health/search-status'),
         fetch(`/api/plugins/health/usage-feed?kind=${kindForTab}&window=${usageWindow}`),
       ])
       const json = await summaryRes.json()
@@ -501,14 +500,10 @@ export function HealthPage() {
     )
   }
 
-  const { doctor, server, openclawPort } = data
+  const { doctor, server } = data
 
   const memoryPercent = server?.totalMemoryMB
     ? Math.round((server.memoryMB / server.totalMemoryMB) * 100)
-    : null
-
-  const openclawUrl = openclawPort
-    ? `${window.location.protocol}//${window.location.hostname}:${openclawPort}`
     : null
 
   return (
@@ -516,17 +511,6 @@ export function HealthPage() {
       <div className="flex items-center justify-between">
         <PluginHeader title="System Health" />
         <div className="flex items-center gap-3">
-          {openclawUrl && (
-            <a
-              href={openclawUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <ExternalLink className="size-3" />
-              OpenClaw
-            </a>
-          )}
           <span className="text-xs whitespace-nowrap">
             <span className="text-muted-foreground">{formatDateShort(lastRefresh)}</span>
             <span className="text-muted-foreground/60 mx-1.5">·</span>
@@ -601,22 +585,13 @@ export function HealthPage() {
         </Card>
       </div>
 
-      {/* Search / Antfly Section */}
+      {/* Search Section */}
       {searchHealth && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <span className="flex items-center gap-2">
                 Search
-                <a href="https://antfly.io" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/5 text-[10px] text-muted-foreground font-normal hover:bg-white/10 hover:text-foreground transition-colors cursor-pointer">
-                  <svg width="12" height="12" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M39.2842 28.0677C39.2842 34.2626 34.2623 39.2845 28.0674 39.2845H6.10853C5.37819 39.2845 5.01243 38.4015 5.52886 37.885L11.0896 32.3243H28.0674C30.4183 32.3243 32.324 30.4186 32.324 28.0677V11.0898L37.8847 5.5291C38.4012 5.01267 39.2842 5.37843 39.2842 6.10877V28.0677Z" fill="currentColor"/>
-                    <path d="M27.2721 24.5018C27.2698 25.2127 26.4103 25.5671 25.9076 25.0645L21.1775 20.3344C20.8653 20.0223 20.8653 19.5162 21.1775 19.2041L25.9377 14.4438C26.4421 13.9395 27.3044 14.2983 27.3022 15.0116L27.2721 24.5018Z" fill="currentColor"/>
-                    <path d="M28.3149 6.96011H11.2167C8.86587 6.96012 6.96011 8.86587 6.9601 11.2167V28.3149L1.39945 33.8755C0.883015 34.392 0 34.0262 0 33.2958V11.2167C4.48304e-06 5.02189 5.02189 9.39218e-06 11.2167 0H33.2958C34.0262 0 34.3919 0.883017 33.8755 1.39945L28.3149 6.96011Z" fill="currentColor"/>
-                    <path d="M11.8783 15.1175C11.8806 14.4067 12.7401 14.0522 13.2428 14.5549L17.8625 19.1746C18.1747 19.4867 18.1747 19.9928 17.8625 20.3049L13.2134 24.9541C12.709 25.4584 11.8467 25.0996 11.8489 24.3863L11.8783 15.1175Z" fill="currentColor"/>
-                  </svg>
-                  Powered by Antfly
-                </a>
               </span>
               <div className="flex items-center gap-2">
                 <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
@@ -652,7 +627,7 @@ export function HealthPage() {
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {searchHealth.tables.map(t => {
-                  const docs = (t.stats as any)?.num_docs ?? 0
+                  const docs = typeof t.stats?.num_docs === 'number' ? t.stats.num_docs : 0
                   const progress = reindexProgress[t.table]
                   const isActive = reindexing && progress && !progress.done
                   const hasEnrichmentError = t.indexHealth?.some(i => i.error)

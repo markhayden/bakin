@@ -313,9 +313,9 @@ async function cmdPluginsRemove(pluginId: string): Promise<number> {
     }
     console.log(`Removed plugin: ${res.id ?? pluginId}`)
     if (res.skills) {
-      console.log(`  Cleaned ${res.skills.removed} OpenClaw skill(s) (created-by-${res.id ?? pluginId})`)
+      console.log(`  Cleaned ${res.skills.removed} runtime skill(s) (created-by-${res.id ?? pluginId})`)
       if (res.skills.kept > 0) {
-        console.log(`  Kept ${res.skills.kept} user-edited skill(s) (~/.openclaw/skills/)`)
+        console.log(`  Kept ${res.skills.kept} user-edited runtime skill(s)`)
       }
     }
     if (res.skillsMissing && res.skillsMissing.length > 0) {

@@ -56,7 +56,7 @@ interface TaskLogTableProps {
   currentTasks: FlatTask[]
   /** Status filter from parent (empty = all) */
   statusFilter: string[]
-  /** When true, preserve Antfly relevance order instead of manual sort */
+  /** When true, preserve search relevance order instead of manual sort */
   isSearching?: boolean
   /** Per-task search score info, keyed by task id. Only set when debug + active search. */
   scoreMap?: Map<string, TaskScoreInfo>
@@ -126,7 +126,7 @@ export function TaskLogTable({ currentTasks, statusFilter, isSearching, scoreMap
     return allTasks.filter(t => statusFilter.includes(t.status))
   }, [allTasks, statusFilter])
 
-  // Sort — skip when searching to preserve Antfly relevance order
+  // Sort — skip when searching to preserve relevance order
   const sorted = useMemo(() => {
     if (isSearching) return filtered
     return [...filtered].sort((a, b) => {
@@ -261,4 +261,3 @@ function AgentCell({ agentId }: { agentId: string }) {
     </span>
   )
 }
-

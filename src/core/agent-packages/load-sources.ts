@@ -21,7 +21,7 @@
  * via the team plugin's existing `registerFileBackedContentType` helper —
  * not this module.
  *
- * Skill projection (writing files into ~/.openclaw/{workspaces,skills}/) is
+ * Skill projection into the runtime's workspace/global skill stores is
  * the installer's job (Phase E-3), not this module — by the time we get
  * here, those files are already on disk. We only populate the in-memory
  * registries so workflow runtime can resolve references.
@@ -270,7 +270,7 @@ export function loadAgentPackageSources(contentDir: string = getContentDir()): L
 
   for (const [packageId, entry] of Object.entries(lockfile.packages)) {
     // Only kinds that contribute workflows/workflow-skills get scanned.
-    // skill-packs ship OpenClaw skills (filesystem) but no workflow content;
+    // skill-packs ship runtime skills (filesystem) but no workflow content;
     // knowledge-packs ship knowledge files (search-indexed elsewhere).
     if (entry.kind !== 'agent' && entry.kind !== 'workflow-pack') continue
     try {

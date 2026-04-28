@@ -30,11 +30,11 @@ mock.module('fs', () => {
 
 import { readFileSync, statSync } from 'fs'
 
-let readOpenClawConfig: typeof import('../../packages/core/src/openclaw-config').readOpenClawConfig
-let getAgentList: typeof import('../../packages/core/src/openclaw-config').getAgentList
-let getAgentIds: typeof import('../../packages/core/src/openclaw-config').getAgentIds
-let findAgentById: typeof import('../../packages/core/src/openclaw-config').findAgentById
-let resetOpenClawConfigCache: typeof import('../../packages/core/src/openclaw-config').resetOpenClawConfigCache
+let readOpenClawConfig: typeof import('../../packages/adapter-openclaw/src/config').readOpenClawConfig
+let getAgentList: typeof import('../../packages/adapter-openclaw/src/config').getAgentList
+let getAgentIds: typeof import('../../packages/adapter-openclaw/src/config').getAgentIds
+let findAgentById: typeof import('../../packages/adapter-openclaw/src/config').findAgentById
+let resetOpenClawConfigCache: typeof import('../../packages/adapter-openclaw/src/config').resetOpenClawConfigCache
 
 function configBody(list: Array<Record<string, unknown>>, defaults: Record<string, unknown> = {}): string {
   return JSON.stringify({ agents: { defaults, list } })
@@ -51,7 +51,7 @@ describe('openclaw-config', () => {
     vi.mocked(readFileSync).mockImplementation(() => { throw new Error('ENOENT') })
     vi.mocked(statSync).mockImplementation(() => { throw new Error('ENOENT') })
 
-    const mod = await import('../../packages/core/src/openclaw-config')
+    const mod = await import('../../packages/adapter-openclaw/src/config')
     readOpenClawConfig = mod.readOpenClawConfig
     getAgentList = mod.getAgentList
     getAgentIds = mod.getAgentIds

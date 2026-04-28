@@ -1,7 +1,6 @@
 /**
- * GET /api/assets/{...path} — serve user assets by filename (single
- * segment, filename-as-identity resolved via the assets plugin) or by
- * legacy multi-segment path. Supports HTTP range reads for video seeking.
+ * GET /api/assets/{filename} — serve user assets by canonical filename.
+ * Supports HTTP range reads for video seeking.
  *
  * Migrated from src/app/api/assets/[...path]/route.ts for Phase B of
  * #147. `path[]` is derived from url.pathname (segments after /api/assets/).
@@ -38,16 +37,12 @@ export async function get(req: Request, url: URL): Promise<Response> {
     return Response.json({ error: 'Invalid path' }, { status: 400 })
   }
 
-  // Filename-as-identity: single-segment paths derive their location from
-  // the canonical filename. Multi-segment paths remain supported for
-  // legacy URL forms embedded in historical task descriptions.
-  let relPath: string
-  if (path.length === 1 && !path[0].includes('/')) {
-    const derived = await getHookRegistry().invoke<string | null>('assets.pathForFilename', { filename: path[0] })
-    relPath = derived ?? join('assets', ...path)
-  } else {
-    relPath = path.join('/')
+  if (path.length !== 1 || path[0].includes('/')) {
+    return Response.json({ error: 'Invalid filename' }, { status: 400 })
   }
+
+  const relPath = await getHookRegistry().invoke<string | null>('assets.pathForFilename', { filename: path[0] })
+  if (!relPath) return Response.json({ error: 'Not found' }, { status: 404 })
 
   const fullPath = join(CONTENT_DIR, relPath)
 

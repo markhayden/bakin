@@ -43,7 +43,6 @@ interface PluginRegistration {
    * For fine-grained ordering, call `registerSlot(name, Component, order, id)`
    * directly from the plugin's client.tsx alongside registerPlugin.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   slots?: Record<string, ComponentType<any>>
 }
 

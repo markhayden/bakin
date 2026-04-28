@@ -32,12 +32,6 @@ mock.module('../../src/core/settings', () => ({
 }))
 
 mock.module('../../src/core/audit', () => ({ appendAudit: mock() }))
-mock.module('../../src/core/openclaw-client', () => ({ sendMessage: mock().mockResolvedValue(undefined) }))
-mock.module('@bakin/tasks/lib/flow-store', () => ({
-  getTodoTasks: mock().mockReturnValue({ todoTasks: [] }),
-  moveTaskToInProgress: mock(),
-  addTaskLog: mock(),
-}))
 mock.module('../../src/lib/plugin-registry', () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: mock().mockResolvedValue(undefined),
@@ -46,11 +40,6 @@ mock.module('../../src/lib/plugin-registry', () => ({
   }),
 }))
 mock.module('../../src/lib/format', () => ({ isStale: mock().mockReturnValue(true) }))
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
 
 import { buildDispatchMessage } from '../../src/core/dispatch'
 

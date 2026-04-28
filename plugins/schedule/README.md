@@ -1,17 +1,17 @@
 # Schedule Plugin
 
-Cron job scheduling with OpenClaw bridge and automatic task creation. Manages recurring jobs that create tasks on the Bakin task board when they fire.
+Cron job scheduling through the active runtime adapter with automatic task creation. Manages recurring jobs that create tasks on the Bakin task board when they fire.
 
 ## How It Works
 
-The schedule plugin sits between **OpenClaw** (the cron engine) and **Bakin's task board**:
+The schedule plugin sits between the **runtime cron adapter** and **Bakin's task board**:
 
-1. **OpenClaw** manages cron timing and fires webhooks when jobs trigger
-2. **Bakin sidecar** (`~/.bakin/schedule/sidecar.json`) stores metadata that OpenClaw doesn't know about — agent assignment, task prompts, pause state, failure tracking
+1. **Runtime cron** manages timing and fires webhooks when jobs trigger
+2. **Bakin sidecar** (`~/.bakin/schedule/sidecar.json`) stores metadata that the runtime cron adapter doesn't own — agent assignment, task prompts, pause state, failure tracking
 3. **Bridge endpoint** receives the webhook, checks pause/skip/overlap rules, and creates a task on the board
 
 ```
-OpenClaw cron fires  →  POST /api/plugins/schedule/bridge?secret=<hex>
+Runtime cron fires   →  POST /api/plugins/schedule/bridge?secret=<hex>
                          ├── Auth: bridgeEnabled setting + shared-secret gate
                          ├── Check: paused? skip? overlap? failure limit?
                          ├── Create task on board (via task-service)
@@ -31,21 +31,21 @@ The secret is auto-generated on first access (`getOrCreateBridgeSecret`) and per
 
 ### Merged Job
 
-The UI always works with "merged jobs" — a combination of OpenClaw job data and Bakin sidecar metadata. Key fields:
+The UI always works with "merged jobs" — a combination of runtime cron data and Bakin sidecar metadata. Key fields:
 
 | Source | Fields |
 |--------|--------|
-| OpenClaw | `id`, `name`, `schedule` (type/value/tz), `enabled` |
+| Runtime cron | `id`, `name`, `schedule` (type/value/tz), `enabled` |
 | Sidecar | `agentId`, `owner`, `taskPrompt`, `taskTitle`, `workflowId`, `paused`, `pauseUntil`, `pauseReason`, `allowOverlap`, `maxFailures`, `consecutiveFailures`, `createdAt` |
 | Computed | `humanSchedule`, `nextRun`, `lastRun` |
 
 ### Schedule Sidecar
 
-Stored at `~/.bakin/schedule/sidecar.json`. Maps job IDs to `BakinJobMeta` records. Only Bakin-created jobs have `isBakinJob: true` — OpenClaw-only jobs appear in the list but lack Bakin metadata.
+Stored at `~/.bakin/schedule/sidecar.json`. Maps job IDs to `BakinJobMeta` records. Only Bakin-created jobs have `isBakinJob: true` — runtime-only jobs appear in the list but lack Bakin metadata.
 
 ### Run History
 
-OpenClaw writes run logs to `~/.openclaw/cron/runs/<jobId>.jsonl`. Each entry records `runId`, `timestamp`, `status` (success/failure/skipped), `duration`, and optionally the Bakin `taskId` created.
+The runtime cron adapter exposes run history. Each entry records `runId`, `timestamp`, `status` (success/failure/skipped), `duration`, and optionally the Bakin `taskId` created.
 
 ## UI Components
 
@@ -104,7 +104,7 @@ All routes are prefixed with `/api/plugins/schedule/`.
 | POST | `/:jobId/run` | Trigger immediate run |
 | GET | `/:jobId/runs` | Get run history for a job |
 | POST | `/parse` | Parse NL/cron schedule expression |
-| POST | `/bridge?secret=<hex>` | Webhook endpoint (called by OpenClaw). Requires `bridgeEnabled=true` and a matching `bridgeSecret`. See [Bridge Authentication](#bridge-authentication). |
+| POST | `/bridge?secret=<hex>` | Webhook endpoint (called by runtime cron). Requires `bridgeEnabled=true` and a matching `bridgeSecret`. See [Bridge Authentication](#bridge-authentication). |
 
 ## Exec Tools (Agent-Facing)
 
@@ -119,7 +119,7 @@ All routes are prefixed with `/api/plugins/schedule/`.
 
 ## Bridge Logic
 
-When OpenClaw fires a job, the bridge endpoint runs these checks in order:
+When runtime cron fires a job, the bridge endpoint runs these checks in order:
 
 1. **Is Bakin job?** — Skip if not managed by Bakin
 2. **Paused?** — Check manual pause + `pauseUntil` auto-resume
@@ -142,8 +142,8 @@ Configurable via `/settings` page:
 
 ## Dependencies
 
-- **tasks** plugin — Bridge creates tasks via `task-service`, checks task status via `tasks.readTaskboard` hook
-- **OpenClaw** — External cron engine at `~/.openclaw/`
+- Bakin task store — Bridge creates tasks via `task-service` and checks task status via the shared task-store service
+- **runtime cron adapter** — Provides cron CRUD, immediate runs, and run history
 
 ## File Structure
 
@@ -152,12 +152,11 @@ plugins/schedule/
   bakin-plugin.json          — Plugin manifest
   index.ts                   — Server entry (routes, exec tools, bridge)
   client.tsx                 — Client entry (nav items)
-  types.ts                   — Type definitions (sidecar, OpenClaw, merged, runs)
+  types.ts                   — Type definitions (sidecar, runtime cron, merged, runs)
   lib/
     cron-parser.ts           — NL and raw cron parsing
-    jobs-reader.ts           — Merges OpenClaw jobs + sidecar metadata
-    openclaw-cron.ts         — OpenClaw CLI wrapper (add/edit/remove/run)
-    runs-reader.ts           — Read run history from JSONL files
+    jobs-reader.ts           — Merges runtime cron jobs + sidecar metadata
+    runs-reader.ts           — Reads run history from the runtime cron adapter
     sidecar.ts               — Sidecar CRUD, pause/skip/failure logic
   components/
     schedule-page.tsx         — Main page orchestrator (URL state, filters, drawers)

@@ -2,7 +2,7 @@
 
 Bakin is a self-hosted multi-agent orchestration platform. It gives a single user a real-time dashboard into what their AI agents are doing — tasks, projects, workflows, assets, schedules — all powered by markdown files on the filesystem, pushed to the browser via SSE.
 
-Runs on a Mac mini, accessed via Tailscale. No database (except OpenClaw's task SQLite), no SaaS dependencies.
+Runs on a Mac mini, accessed via Tailscale. No SaaS dependencies.
 
 ## Architecture
 
@@ -15,12 +15,12 @@ Runs on a Mac mini, accessed via Tailscale. No database (except OpenClaw's task 
 - **Runtime plugin loader:** `packages/host/src/plugin-host/PluginHost.tsx` wraps the shell. On mount it fetches `/api/plugins/manifest`, then dynamic-imports each plugin's `clientEntry` URL (`/api/plugins/<id>/assets/client.js`). Each plugin module runs `registerPlugin` during load, populating the browser-global nav + slot registry. `AppSidebar` reads nav from `getAllNavItems()`.
 - **User plugins:** Installed into `~/.bakin/plugins/<id>/` via `bakin plugins install <path|github:user/repo>` — the installer copies source, runs `buildUserPlugin()` (in-binary Bun.build + optional `bun install` when the plugin declares deps), and the next server restart picks it up. User plugins structurally match core plugins; the loader doesn't know which bucket a plugin came from.
 - **Plugin lifecycle:** `bakin plugins {list [--check], install [--yes], upgrade [--yes], remove}` — install/upgrade/remove with consent prompts (#142), per-plugin teardown sweep + tarball backup (#119), and an install ledger at `~/.bakin/plugins/lock.json` (mirrors agent-packages lockfile pattern). Core plugins refuse `upgrade` and `remove` via `isCorePlugin()`. Restart-required for module reload. Deep reference: `.claude/specs/plugin-lifecycle.md`.
-- **Storage:** Markdown files, JSON sidecars, and JSONL logs in `~/.bakin/`. Tasks are the sole SQLite exception (in OpenClaw's `flow_runs` table). No other database.
+- **Storage:** Markdown files, JSON sidecars, and JSONL logs in `~/.bakin/`. Tasks live in the Bakin task-store under `~/.bakin/tasks/`.
 - **Real-time:** Server-Sent Events (SSE) push updates to all connected browsers.
-- **Agents:** Managed via OpenClaw gateway, communicate through MCP tools.
-- **Search:** `@antfly/sdk` for full-text + semantic search, `ctx.search` plugin API, `bakin_` table prefix.
-- **OpenClaw Adapter Principle:** Bakin reads from OpenClaw. Bakin writes to OpenClaw. Bakin never copies OpenClaw. Agent identity, soul, rules, tools, models, and workspace data all live in the OpenClaw home directory (`OPENCLAW_HOME` env var, defaults to `~/.openclaw/`). Bakin owns only UI-specific data (display settings, avatars, heartbeats). Question any pattern that duplicates OpenClaw state into Bakin code or storage. All OpenClaw paths MUST use `getOpenClawPath()` from `packages/core/src/openclaw-home.ts` — never hardcode `~/.openclaw/`.
-- **Agent Packages:** A second primitive distinct from plugins. Plugins ship code (routes, UI, MCP tools); agent packages ship **content** — identity (SOUL/IDENTITY/AGENTS/TOOLS), OpenClaw skills, workflows, and knowledge files — that personifies an agent in OpenClaw and gives it domain perspective. Manifested as `bakin-package.json` with `kind: "agent" | "skill-pack" | "workflow-pack" | "knowledge-pack"`. Three states per agent: `unmanaged`, `adopted`, `managed`. Deep reference: `.claude/knowledge/agent-packages.md`.
+- **Agents:** Managed through `AppServices.runtime` / `ctx.runtime`. OpenClaw is the current runtime implementation, isolated in `packages/adapter-openclaw/`.
+- **Search:** `AppServices.search` / `ctx.search` for full-text + semantic search. Antfly is the current search implementation, isolated in `packages/adapter-antfly/`; plugin and feature code never import `@antfly/sdk`.
+- **Adapter Boundary:** Runtime/search provider details stay behind adapter packages and the factories in `src/core/*-adapter-factory.ts`. Bakin owns UI data, task metadata, audit, assets, projects, workflows, plugin settings, and heartbeats. Runtime providers own agent identity, soul, rules, tools, models, workspace data, channels, cron jobs, and memory. Deep reference: `.claude/knowledge/adapter-architecture.md`. Audit skill: `.claude/skills/check-adapter-boundary.md`.
+- **Agent Packages:** A second primitive distinct from plugins. Plugins ship code (routes, UI, MCP tools); agent packages ship **content** — identity (SOUL/IDENTITY/AGENTS/TOOLS), runtime skills, workflows, and knowledge files — that personifies an agent in the active runtime and gives it domain perspective. Manifested as `bakin-package.json` with `kind: "agent" | "skill-pack" | "workflow-pack" | "knowledge-pack"`. Three states per agent: `unmanaged`, `adopted`, `managed`. Deep reference: `.claude/knowledge/agent-packages.md`.
 
 ## Build, Dev, CLI
 
@@ -30,7 +30,7 @@ Runs on a Mac mini, accessed via Tailscale. No database (except OpenClaw's task 
 
 ## Directory Map
 
-The full annotated directory map lives in `.claude/knowledge/repo-architecture.md`. Quick orientation: `packages/{core,sdk,host}` for shared code + SDK + client shell, `plugins/<id>/` for the 10 core plugins, `src/core/` for server-side modules with side effects, `src/lib/` for client+server-safe shared code, `agents/` for in-repo reference agent packages, `scripts/` for build infrastructure, `cli/` for the legacy HTTP-client CLI, `dev/imitation-crab/` for the OpenClaw mock.
+The full annotated directory map lives in `.claude/knowledge/repo-architecture.md`. Quick orientation: `packages/{core,sdk,host,adapter-openclaw,adapter-antfly}` for shared code + SDK + client shell + provider adapters, `plugins/<id>/` for the 10 core plugins, `src/core/` for server-side modules with side effects, `src/lib/` for client+server-safe shared code, `agents/` for in-repo reference agent packages, `scripts/` for build infrastructure, `cli/` for the legacy HTTP-client CLI, `dev/imitation-crab/` for the OpenClaw mock.
 
 ### Runtime Data Directory (`~/.bakin/`)
 Created by `bakin onboard` / `initBakinHome()`. Per-installation state, NOT in the repo.
@@ -44,6 +44,7 @@ Created by `bakin onboard` / `initBakinHome()`. Per-installation state, NOT in t
   assets/                  — Content files sharded by month under store/
   projects/                — Project markdown files
   heartbeats/              — Agent status heartbeats (JSON)
+  tasks/                   — Bakin-owned task metadata JSON, sharded by created month
   schedule/                — Cron job state
   workflows/               — Definitions, instances, skills
   team/                    — Contacts, personas
@@ -54,7 +55,7 @@ Created by `bakin onboard` / `initBakinHome()`. Per-installation state, NOT in t
 
 ## Plugin System
 
-Every plugin has `bakin-plugin.json` (manifest), `package.json` (peer deps on `react` + `@bakin/sdk`), `index.ts` (server entry exporting a `BakinPlugin` with `activate(ctx)`), `client.tsx` (calls `registerPlugin({ id, navItems, slots })` as a side effect — exports are not read), `components/`, `types.ts`, and optional `defaults/` for workflows / workflow-skills / openclaw-skills.
+Every plugin has `bakin-plugin.json` (manifest), `package.json` (peer deps on `react` + `@bakin/sdk`), `index.ts` (server entry exporting a `BakinPlugin` with `activate(ctx)`), `client.tsx` (calls `registerPlugin({ id, navItems, slots })` as a side effect — exports are not read), `components/`, `types.ts`, and optional `defaults/` for workflows / workflow-skills / runtime-skills.
 
 Core plugins build to `plugins/<id>/dist/`. User plugins build to `~/.bakin/plugins/<id>/dist/` via the in-binary builder (`buildUserPlugin` in `packages/host/src/plugin-host/user-plugin-builder.ts`).
 
@@ -114,7 +115,7 @@ Conventional commits with scope:
 
 **Every test file MUST mock the content-dir resolver AND the OpenClaw home resolver to use temp directories.** Tests that touch storage, assets, tasks, agent packages, or any plugin MUST NOT read from or write to `~/.bakin/` or `~/.openclaw/`. Leaked test data into either production directory has caused real incidents.
 
-Because `src/core/content-dir.ts` is a thin shim over `packages/core/src/content-dir.ts`, **mock both**. Any consumer may import from either path (or the `@/core/content-dir` alias), and missing one leaves a leak surface. Same applies to OpenClaw home.
+Because `src/core/content-dir.ts` is an app-facing facade over `packages/core/src/content-dir.ts`, **mock both**. Any consumer may import from either path (or the `@/core/content-dir` alias), and missing one leaves a leak surface. Same applies to OpenClaw home.
 
 Required mocks for any test that touches the filesystem:
 ```typescript
@@ -128,7 +129,7 @@ mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => { /* return paths under testDir */ },
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts) => join(testDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
@@ -152,29 +153,30 @@ Additional mandatory rules:
 - **Always clean up:** `afterAll(() => rmSync(testDir, { recursive: true, force: true }))`
 - **Mock the logger:** `mock.module('../../src/core/logger', ...)` — prevents noise and avoids side effects
 - **Mock the watcher:** `mock.module('../../src/core/watcher', ...)` — prevents chokidar from watching real dirs
-- **Mock openclaw-client:** Prevents tests from sending real messages to agents
+- **Mock AppServices/runtime adapters:** Prevents tests from sending real messages to agents
 - **Never hardcode `~/.bakin/`** or `process.env.HOME` in test fixtures
 - **Use `tests/plugins/test-helpers.ts`** (`activatePlugin`, `callRoute`, `callTool`) for plugin tests — these provide properly isolated mock contexts
 
-If a test does not mock the content-dir resolvers, it **will** eventually write to `~/.bakin/` and corrupt production data. There are no exceptions to this rule.
+If a test does not mock the content-dir resolvers, it **will** eventually write to `~/.bakin/` and corrupt production data. Pure scanner tests under `tests/architecture/` are the only exception because they do not import app modules; the mock checker hook handles that case explicitly.
 
 ## Key Patterns
 
 - **SSE Broadcasting** — `broadcast()` from `src/core/sse.ts`. Uses `globalThis.__bakinBroadcast` to survive Bun's HMR / module re-evaluation. Two channels: activity (progress) and audit (structured events).
 - **Agent Activity** — Agents report progress via `bakin_log_progress` MCP tool → `logProgress()` in task-service → SSE broadcast. Structured audit via `appendAudit()` → `audit.jsonl` + SSE + Antfly.
-- **Dispatch Failure Handling** — Two-layer defense (HTTP retry inside `openclaw-client`, then transient-vs-structural cooldown classification in `dispatch.ts`). Deep reference: `.claude/knowledge/dispatch.md`.
+- **Dispatch Failure Handling** — Two-layer defense (runtime-adapter transport retry, then transient-vs-structural cooldown classification in `dispatch.ts`). Deep reference: `.claude/knowledge/dispatch.md`.
 - **Usage Recording** — Single in-memory recorder at `src/core/usage.ts`. `recordUsage({ kind: 'mcp'|'rest'|'agent', ... })`; reads via `getUsageFeed`/`getStatsByMs`/`getErrorCount`. **Never add a parallel stat-tracking system** — fragmentation previously broke the health dashboard. Deep reference: `.claude/knowledge/usage-recording.md`.
 - **Models Cache + Catalog** — Persistent disk cache at `~/.bakin/plugin-settings/models/available.json` plus a curated catalog (`plugins/models/data/known-models.ts`) merged in server-side. **Never fabricate model metadata.** Deep reference: `.claude/knowledge/models-plugin.md`.
-- **OpenClaw Home Directory** — `getOpenClawHome()` / `getOpenClawPath()` in `packages/core/src/openclaw-home.ts`. Resolution: `OPENCLAW_HOME` env → `~/.openclaw/`. For dev without OpenClaw: `bun run dev:mock` (Imitation Crab in `dev/imitation-crab/`); reseed with `bun run mock:seed --force`.
-- **Content Directory** — `getContentDir()` in `packages/core/src/content-dir.ts`. Resolution: `BAKIN_HOME` env → `~/.bakin/` → `./content/` fallback. Well-known paths via `getBakinPaths()`.
+- **Adapter Boundary** — Provider code is factory-only from Bakin's perspective. Use `getAppServices().runtime/search/tasks` in core, `ctx.runtime/search/tasks` in plugins/tools, and `src/core/runtime-config-raw.ts` for the small allowlisted raw-config gate. Deep reference: `.claude/knowledge/adapter-architecture.md`.
+- **OpenClaw Home Directory** — Adapter-private `getOpenClawHome()` / `getOpenClawPath()` in `packages/adapter-openclaw/src/home.ts`. Resolution: `OPENCLAW_HOME` env → `~/.openclaw/`. For dev without OpenClaw: `bun run dev:mock` (Imitation Crab in `dev/imitation-crab/`); reseed with `bun run mock:seed --force`.
+- **Content Directory** — `getContentDir()` in `packages/core/src/content-dir.ts`. Resolution: `BAKIN_HOME` env → `~/.bakin/`. Well-known paths via `getBakinPaths()`.
 - **Plugin Communication** — Cross-plugin and core ↔ plugin calls go exclusively through the HookRegistry (`packages/core/src/hooks/hook-registry.ts`). Plugins register hooks in `activate()` via `ctx.hooks.register(name, handler)`; callers use `getHookRegistry().invoke<R>(name, data)`. Hook naming: `{pluginId}.{operation}`. No direct imports between plugins.
 - **MCP Tool Registration** — Fully dynamic. Plugins register exec tools via `ctx.registerExecTool()` during activation. Scripts self-register via `addExecTool()` on import. `mcp-server.ts` calls `getAllExecTools()` at startup.
 - **Plugin Settings** — Each plugin declares a `settingsSchema`; the settings page renders schemas via `PluginSettingsRenderer`. Values persisted at `~/.bakin/plugin-settings/{pluginId}.json`, accessible via `ctx.getSettings<T>()`. The same renderer drives a built-in **System & Alerts** tab that edits `~/.bakin/settings.json` via `/api/settings`. Watchdog re-reads settings every cycle — no restart needed.
 - **Server Logging** — `createLogger()` writes JSON lines to stdout AND `~/.bakin/logs/server.log` (10 MB rotation, single backup). Survives `nohup`/`launchd` detached stdio. Disable with `BAKIN_DISABLE_FILE_LOG=1`. Tests skip the file transport via `NODE_ENV=test` / `VITEST`. Every 5xx catch handler logs the stack via `log.error('...', err, { ...context })`.
 - **URL State & Deep Linking** — All user-facing filter/view state must be backed by URL query params. Use `useQueryState(key, default)` and `useQueryArrayState(key)` from `@bakin/sdk/hooks`. Params omitted at default. Pages must wrap content in `<Suspense>`. Deep reference: `.claude/knowledge/url-state-deep-linking.md`.
 - **Search Indexing** — File-backed plugins use `ctx.search.registerFileBackedContentType()` (auto-wires watcher sync/unlink + startup mtime reconcile + `GET /search` route). Non-file-backed plugins use `ctx.search.registerContentType()` and call `index()`/`remove()` themselves. Cross-plugin endpoint: `GET /api/search`. Memory plugin owns the unified `bakin_memory` table (replaces old `bakin_audit`). All tables use `bakin_` prefix; one content type per plugin. Antfly is optional — calls are no-ops when disabled. Deep references: `.claude/knowledge/search-system.md`, `.claude/knowledge/search-plugin-guide.md`.
-- **Memory Observability** — Read-only dashboard over OpenClaw's 7 memory tiers + Bakin's audit log, surfaced through the unified `bakin_memory` table with a `tier` facet. Incremental indexing via persisted byte offsets in `~/.bakin/plugin-settings/memory/offsets.json`; stable SHA256 row IDs make upserts idempotent. Schema migrations via `MEMORY_SCHEMA_VERSION` in `lib/memory-migration.ts`. Deep reference: `.claude/knowledge/memory-plugin.md`.
-- **Onboarding** — `src/core/onboarding/` — 8 component modules with shared `check()` + `install()` contract. CLI: `bakin onboard --yes` for non-interactive setup; `bakin mkdir`, `bakin install {antfly,models,mcporter}`, `bakin check {openclaw,llm,channels,all}`, `bakin settings init`. Doctor gates on `~/.bakin/.onboarded` marker.
+- **Memory Observability** — Read-only dashboard over runtime memory tiers + Bakin's audit log, surfaced through the unified `bakin_memory` table with a `tier` facet. Incremental indexing via persisted byte offsets in `~/.bakin/plugin-settings/memory/offsets.json`; stable SHA256 row IDs make upserts idempotent. Schema migrations via `MEMORY_SCHEMA_VERSION` in `lib/memory-migration.ts`. Deep reference: `.claude/knowledge/memory-plugin.md`.
+- **Onboarding** — `src/core/onboarding/` — 8 component modules with shared `check()` + `install()` contract. CLI: `bakin onboard --yes` for non-interactive setup; `bakin mkdir`, `bakin install {search,search-models,mcporter,plugin-assets,agent-assets}`, `bakin check {runtime,search,search-models,llm,channels,plugin-assets,agent-assets,all}`, `bakin settings init`. Doctor gates on `~/.bakin/.onboarded` marker.
 - **Debug Mode** — Global client-side toggle. State in Zustand + localStorage (`bakin-debug`). Access via `useDebug()` from `@bakin/sdk/hooks`. Toggle button in header (Bug icon). URL `?debug=true` activates as a one-shot seed.
 - **Shared UI Components** — All shared UI lives under `@bakin/sdk/components` — plugins always import from there, never from `packages/host/src/components/` directly. `PluginHeader` (title + count + search + actions) and `FacetFilter` (popover multi-select, back with `useQueryArrayState`) are the most reused.
 - **Doctor & Health Checks** — Every doctor check is plugin-registered via `ctx.registerHealthCheck`. `src/core/doctor.ts` is the orchestrator (cron + cache + audit + notify). Plugin-owned checks live at `plugins/{owner}/lib/health-checks.ts`; system-level checks live in the health plugin under `plugins/health/lib/system-checks/`. The single canonical result type is `HealthCheckResult` from `@bakin/sdk`. Deep reference: `.claude/knowledge/doctor-and-health-checks.md`.

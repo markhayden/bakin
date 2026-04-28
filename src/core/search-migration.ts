@@ -1,5 +1,5 @@
 /**
- * Search schema migration — drops and recreates Bakin's Antfly tables
+ * Search schema migration — drops and recreates Bakin's search tables
  * when the in-code schema version advances beyond the last-migrated
  * version stored on disk.
  *
@@ -26,8 +26,8 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join, dirname } from 'path'
 import { getContentDir } from './content-dir'
+import { getAppServices } from './app-services'
 import { createLogger } from './logger'
-import * as antfly from './antfly'
 
 const log = createLogger('search-migration')
 
@@ -83,7 +83,8 @@ export async function migrateIfNeeded(): Promise<{
   from: number
   to: number
 }> {
-  if (!antfly.enabled()) {
+  const search = getAppServices().search
+  if (!await search.available()) {
     return { migrated: false, from: 0, to: SCHEMA_VERSION }
   }
 
@@ -98,14 +99,14 @@ export async function migrateIfNeeded(): Promise<{
   })
 
   try {
-    const existing = await antfly.listTables()
+    const existing = await search.tables.list()
     const bakinTables = existing
       .map(t => t.name)
       .filter(name => name.startsWith(TABLE_PREFIX))
 
     for (const tableName of bakinTables) {
       try {
-        await antfly.dropTable(tableName)
+        await search.tables.drop(tableName)
         log.info(`Dropped table for schema migration: ${tableName}`)
       } catch (err) {
         log.warn(`Failed to drop table during migration: ${tableName}`, err)

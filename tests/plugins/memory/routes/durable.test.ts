@@ -5,7 +5,7 @@
  *   GET /durable?agent=<id>          → list canonical files present for agent
  *   GET /durable/:agent/:basename    → rendered content of one file
  *
- * Both go through openclaw-adapter for disk reads — mocked here.
+ * Both go through the runtime memory adapter.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'fs'
@@ -32,28 +32,17 @@ mock.module('../../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-// Mock the openclaw-adapter so routes don't touch the real filesystem.
 const {
   mockReadDurableFile,
-  mockListAgentIds,
-  mockCanonicalFiles,
 } = (() => ({
   mockReadDurableFile: mock<(agent: string, basename: string) => string | null>(),
-  mockListAgentIds: mock<() => string[]>(),
-  mockCanonicalFiles: ['SOUL.md', 'MEMORY.md', 'IDENTITY.md'] as const,
 }))()
-
-mock.module('../../../../plugins/memory/lib/openclaw-adapter', () => ({
-  readDurableFile: mockReadDurableFile,
-  listAgentIds: mockListAgentIds,
-  CANONICAL_DURABLE_FILES: mockCanonicalFiles,
-}))
 
 import {
   durableListRoute,
   durableDetailRoute,
 } from '../../../../plugins/memory/lib/routes/durable'
-import type { PluginContext } from '../../../../src/lib/plugin-types'
+import type { PluginContext } from '@bakin/core/plugin-types'
 
 function makeCtx(): PluginContext {
   return {
@@ -69,6 +58,18 @@ function makeCtx(): PluginContext {
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: mock(),
     activity: { log: mock(), audit: mock() },
+    runtime: {
+      memory: {
+        listTiers: mock(async () => [{ id: 'durable-tier', label: 'Durable', metadata: { sourceKind: 'durable' } }]),
+        getEntry: mock(async (_tierId: string, id: string, opts?: { agentId?: string }) => {
+          const agent = opts?.agentId ?? ''
+          const content = mockReadDurableFile(agent, id)
+          return content === null || content === undefined
+            ? null
+            : { id, tierId: 'durable-tier', agentId: agent, path: `/fake/${agent}/${id}`, content }
+        }),
+      },
+    },
     search: {
       registerContentType: mock(),
       registerFileBackedContentType: mock(),
@@ -103,7 +104,6 @@ beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
   mockReadDurableFile.mockReset()
-  mockListAgentIds.mockReset()
 })
 
 afterAll(() => {

@@ -29,13 +29,6 @@ mock.module('../../../src/core/watcher', () => ({
   watchFiles: mock(),
 }))
 
-mock.module('../../../src/core/openclaw-client', () => ({
-  sendMessage: mock(),
-  sendChannelMessage: mock(),
-  streamMessage: mock(),
-  chatCompletion: mock(),
-}))
-
 mock.module('@/components/ui/button', () => ({
   Button: ({ children, onClick, disabled, ...props }: Record<string, unknown>) => (
     <button onClick={onClick as () => void} disabled={disabled as boolean} {...props}>
@@ -240,7 +233,7 @@ describe('SessionList', () => {
     expect(onCreate).toHaveBeenCalledWith('chef')
   })
 
-  it('reorders by Antfly score when searchResults are provided', async () => {
+  it('reorders by search score when searchResults are provided', async () => {
     globalThis.fetch = mockFetch() as unknown as typeof fetch
     // s3 wins, then s1. s2 is filtered out because it's not in scoreMap.
     // Keys come in with the `brainstorm-` prefix — the component strips it.
@@ -288,7 +281,7 @@ describe('SessionList', () => {
 
   it('falls back to local substring match when loading settles with no hits', async () => {
     globalThis.fetch = mockFetch() as unknown as typeof fetch
-    // Loading has settled (searchLoading=false) and Antfly returned nothing
+    // Loading has settled (searchLoading=false) and search returned nothing
     // — the local title/agentId substring path runs.
     render(
       <SessionList

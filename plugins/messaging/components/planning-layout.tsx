@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from "@bakin/sdk/ui"
 import { Input } from "@bakin/sdk/ui"
 import { Badge } from "@bakin/sdk/ui"

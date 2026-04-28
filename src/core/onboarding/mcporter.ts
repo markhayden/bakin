@@ -2,14 +2,14 @@
  * mcporter component — thin wrapper around the existing src/core/mcporter
  * module. We intentionally do not duplicate the install logic; mcporter.ts
  * already exports `isMcporterInstalled()`, `installMcporter()`, and
- * `syncConfig()` which the server boot path and `bakin setup mcporter`
+ * `syncConfig()` which the server boot path and `bakin install mcporter`
  * both use. This component reuses them so the onboarding flow and the
  * existing code paths stay in sync.
  *
  * What this component adds:
  *   - A CheckResult/InstallResult surface for the T9 orchestrator
  *   - Interactive confirmation + non-interactive-requires-yes guard rails
- *     matching antfly/models
+ *     matching search/search-models
  *   - Post-install verification: the binary must be discoverable AND at
  *     least one per-agent entry must be present in ~/.mcporter/mcporter.json
  */
@@ -110,9 +110,9 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
   // it only writes when the computed entries differ from what's on disk,
   // and it returns the list of changes it made.
   const port = getPort()
-  let changes: string[] = []
+  let changes: string[]
   try {
-    changes = syncConfig(port)
+    changes = await syncConfig(port)
   } catch (err) {
     log.error('Failed to sync mcporter config', err)
     return {

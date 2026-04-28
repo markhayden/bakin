@@ -11,7 +11,7 @@ interface SortableHeadProps<F extends string> {
   dir: SortDir
   onSort: (f: F) => void
   /** When true, clicks are ignored and the sort indicator is hidden. Used
-   *  when an upstream relevance order (e.g. Antfly search) should win. */
+   *  when an upstream relevance order should win. */
   disabled?: boolean
   children: React.ReactNode
 }

@@ -1,17 +1,17 @@
 /**
  * Managed-block infrastructure for per-agent AGENTS.md blocks.
  *
- * The doctor runs `applyAllManagedBlocks` to keep 7 marker-fenced blocks
+ * The doctor runs `applyAllManagedBlocksForRuntime` to keep 7 marker-fenced blocks
  * (mission-control, hard-rules, dependency-pattern, media-delegation,
  * workflow-rules, scheduling-rules, asset-rules) in sync across every
- * non-main agent's `~/.openclaw/workspaces/{agentId}/AGENTS.md`. The
+ * non-main agent's workspace `AGENTS.md`. The
  * marker primitives (extractBlock, getBlockState, injectBlock) live in
  * packages/core/src/agent-packages/managed-blocks.ts and are shared
  * with the agent-package installer/projector.
  *
  * The orchestrator-rules block targets the main agent's
- * `~/.openclaw/workspace/AGENTS.md` and is owned by
- * plugins/health/lib/system-checks/orchestrator-rules.ts (which imports
+ * workspace `AGENTS.md` and is owned by plugins/health/lib/system-checks/orchestrator-rules.ts
+ * (which imports
  * AGENT_RULES_BLOCK_START/END + resolveOrchestratorRules from here).
  *
  * Migrated from src/core/doctor.ts in #139 C8 (orchestrator-rules
@@ -19,22 +19,15 @@
  * applyAllManagedBlocks). The CLI's `bakin agent-rules` subcommand
  * imports directly from this module.
  */
-import { existsSync, readFileSync, writeFileSync } from 'fs'
-import { join } from 'path'
-
 import {
   extractBlock,
   getBlockState,
   injectBlock,
 } from '../../../packages/core/src/agent-packages/managed-blocks'
-import { createLogger } from '../../../src/core/logger'
-import { getMainAgentId, getMainAgentName } from '../../../src/core/main-agent'
+import { createAppServices, maybeGetAppServices } from '../../../src/core/app-services'
 import { getHookRegistry } from '../../../src/lib/plugin-registry'
-import { getAgentIds } from '../../../packages/core/src/openclaw-config'
-import { getOpenClawPath } from '../../../packages/core/src/openclaw-home'
 import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
-
-const log = createLogger('managed-blocks')
+import type { AgentRuntimeAdapter, RuntimeAgent } from '../../../packages/core/src/adapters/runtime'
 
 // ─── Result constructors (inlined; matches workflows precedent) ─────────────
 
@@ -105,7 +98,7 @@ The skip reason is logged to the audit trail for debugging. Always verify agains
 
 11. **Gate approvals go through the UI.** When a workflow gate is reached, a notification is sent and the task card shows "Awaiting Approval" in the Bakin UI. Tell Mark a gate is waiting — do NOT approve or reject gates yourself. Mark handles gates in the task drawer.
 
-12. **MCP tools only. No REST. No CLI. Ever.** All orchestration happens through the \`bakin_exec_*\` MCP tools. OpenClaw has no native MCP client, so you reach them by shelling out to **mcporter** — a CLI shim that relays your call to Bakin's MCP server. Your server is \`bakin-AGENT_ID_PLACEHOLDER\`.
+12. **MCP tools only. No REST. No CLI. Ever.** All orchestration happens through the \`bakin_exec_*\` MCP tools. Agents reach them by shelling out to **mcporter** — a CLI shim that relays your call to Bakin's MCP server. Your server is \`bakin-AGENT_ID_PLACEHOLDER\`.
 
     **Invocation pattern (positional args):**
     \`\`\`
@@ -154,8 +147,12 @@ async function buildWorkflowCatalog(): Promise<string> {
 
 /** Resolve the orchestrator rules template with the current workflow catalog and main agent id */
 export async function resolveOrchestratorRules(): Promise<string> {
-  const agentId = getMainAgentId()
-  const agentName = getMainAgentName()
+  const runtime = await getRuntimeForManagedBlocks()
+  const context = runtimeManagedBlockContext(await runtime.agents.list())
+  return resolveOrchestratorRulesForAgent(context.mainAgentId, context.mainAgentName)
+}
+
+export async function resolveOrchestratorRulesForAgent(agentId: string, agentName: string): Promise<string> {
   return ORCHESTRATOR_RULES_CONTENT
     .replace('WORKFLOW_CATALOG_PLACEHOLDER', await buildWorkflowCatalog())
     .replaceAll('AGENT_ID_PLACEHOLDER', agentId)
@@ -164,51 +161,53 @@ export async function resolveOrchestratorRules(): Promise<string> {
 
 // ─── Generic managed-block helper ─────────────────────────────────────────
 
-interface ManagedBlockDef {
-  blockId: string
-  contentFn: (agentId: string) => string
-  agentFilter?: (agentId: string) => boolean // defaults to all non-main-agent
+interface ManagedBlockContext {
+  mainAgentId: string
+  mainAgentName: string
 }
 
-/**
- * Check / inject / update a managed block in each agent's AGENTS.md.
- *
- * The marker primitives are imported from
- * packages/core/src/agent-packages/managed-blocks.ts (shared with the
- * agent-package installer/projector). This function is the doctor-shaped
- * wrapper around them: it translates marker state into HealthCheckResult
- * shapes and applies the autoFix policy.
- *
- * All managed blocks follow the same marker pattern:
- *   <!-- bakin:{blockId}:start -->
- *   {content}
- *   <!-- bakin:{blockId}:end -->
- */
-function checkManagedBlock(def: ManagedBlockDef, autoFix: boolean): HealthCheckResult[] {
+interface ManagedBlockDef {
+  blockId: string
+  contentFn: (agentId: string, context: ManagedBlockContext) => string
+  agentFilter?: (agentId: string) => boolean // defaults to all non-orchestrator agents
+}
+
+function runtimeManagedBlockContext(agents: RuntimeAgent[]): ManagedBlockContext {
+  const main = agents.find((agent) => agent.id === 'main')
+    ?? agents.find((agent) => agent.role?.toLowerCase() === 'orchestrator')
+    ?? agents[0]
+  return {
+    mainAgentId: main?.id ?? 'main',
+    mainAgentName: main?.name ?? 'Main',
+  }
+}
+
+async function checkManagedBlockRuntime(
+  runtime: AgentRuntimeAdapter,
+  def: ManagedBlockDef,
+  autoFix: boolean,
+  agents: RuntimeAgent[],
+  context: ManagedBlockContext,
+): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = []
-  const openclawBase = getOpenClawPath()
   const checkName = `agent-${def.blockId}`
 
-  const mainId = getMainAgentId()
-  for (const agentId of getAgentIds()) {
-    if (agentId === mainId) continue
+  for (const agent of agents) {
+    const agentId = agent.id
+    if (agentId === context.mainAgentId) continue
     if (def.agentFilter && !def.agentFilter(agentId)) continue
 
-    const agentsPath = join(openclawBase, 'workspaces', agentId, 'AGENTS.md')
-
-    if (!existsSync(agentsPath)) {
+    const file = await runtime.agents.readWorkspaceFile(agentId, 'AGENTS.md')
+    if (!file) {
       results.push(warn(checkName, `AGENTS.md not found for ${agentId} — cannot verify ${def.blockId}`))
       continue
     }
 
-    const current = readFileSync(agentsPath, 'utf-8')
-    const expectedBody = def.contentFn(agentId).trim()
+    const current = file.content
+    const expectedBody = def.contentFn(agentId, context).trim()
     const state = getBlockState(current, def.blockId)
 
     if (state === 'orphan-start' || state === 'orphan-end') {
-      // Malformed marker pair — refuse to silently rewrite. The user's
-      // intent isn't clear (mid-edit? merge conflict remnant?), and
-      // overwriting could destroy unsynced work.
       results.push(error(
         checkName,
         `${def.blockId} block has malformed markers (${state}) in ${agentId}/AGENTS.md`,
@@ -221,28 +220,29 @@ function checkManagedBlock(def: ManagedBlockDef, autoFix: boolean): HealthCheckR
         results.push(warn(checkName, `${def.blockId} block missing from ${agentId}/AGENTS.md`, true))
         continue
       }
-      writeFileSync(agentsPath, injectBlock(current, def.blockId, expectedBody), 'utf-8')
+      await runtime.agents.writeWorkspaceFile(agentId, { path: 'AGENTS.md', content: injectBlock(current, def.blockId, expectedBody) })
       results.push(fixed(checkName, `Added ${def.blockId} block to ${agentId}/AGENTS.md`))
       continue
     }
 
-    // state === 'present'
     const currentBody = extractBlock(current, def.blockId) ?? ''
     if (currentBody === expectedBody) {
       results.push(ok(checkName, `${def.blockId} in ${agentId}/AGENTS.md is up to date`))
     } else if (autoFix) {
-      writeFileSync(agentsPath, injectBlock(current, def.blockId, expectedBody), 'utf-8')
+      await runtime.agents.writeWorkspaceFile(agentId, { path: 'AGENTS.md', content: injectBlock(current, def.blockId, expectedBody) })
       results.push(fixed(checkName, `Updated ${def.blockId} block in ${agentId}/AGENTS.md`))
     } else {
       results.push(warn(checkName, `${def.blockId} block is outdated in ${agentId}/AGENTS.md`, true))
     }
   }
 
-  // Suppress lint warning for unused log import on hot paths — kept for
-  // future debugging when block edits behave unexpectedly.
-  void log
-
   return results
+}
+
+async function getRuntimeForManagedBlocks(): Promise<AgentRuntimeAdapter> {
+  const existing = maybeGetAppServices()?.runtime
+  if (existing) return existing
+  return (await createAppServices()).runtime
 }
 
 // ─── Managed block definitions ────────────────────────────────────────────
@@ -281,12 +281,12 @@ mcporter call bakin-${agentId}.bakin_exec_get_paths
 
 > Auto-managed by \`bakin doctor\`. Do not edit this block manually.
 
-- **NEVER use \`openclaw agent\` to spawn or message other agents directly.** Always create a Bakin task via \`mcporter call bakin-${agentId}.bakin_exec_tasks_create title="<task>" assignee="<agent>"\` instead. Direct spawning bypasses the pipeline.
+- **NEVER use runtime-native agent commands to spawn or message other agents directly.** Always create a Bakin task via \`mcporter call bakin-${agentId}.bakin_exec_tasks_create title="<task>" assignee="<agent>"\` instead. Direct spawning bypasses the pipeline.
 - **NEVER modify task state directly.** Use Bakin tools via mcporter only.
-- **NEVER post to Discord without explicit instruction.** Content goes through Mark's review first.
+- **NEVER post to runtime channels without explicit instruction.** Content goes through Mark's review first.
 - **NEVER hardcode file paths.** Always discover paths via \`mcporter call bakin-${agentId}.bakin_exec_get_paths\`. Hardcoded paths break when the content directory moves.
 - **NEVER run scripts/bin/*.ts directly.** Those are debug wrappers that bypass Bakin tracking — no MCP call, no Health metrics, no audit log. Always use the MCP tool via \`mcporter call bakin-${agentId}.bakin_exec_<tool> ...\` instead.
-- **NEVER use \`openclaw cron\` directly for recurring tasks.** Use \`mcporter call bakin-${agentId}.bakin_exec_schedule_create name="..." schedule="every day at 9am" agentId="..." taskPrompt="..."\` instead. Direct cron jobs bypass Bakin — no agent context, no task creation, no audit trail.`,
+- **NEVER use runtime-native cron directly for recurring tasks.** Use \`mcporter call bakin-${agentId}.bakin_exec_schedule_create name="..." schedule="every day at 9am" agentId="..." taskPrompt="..."\` instead. Direct cron jobs bypass Bakin — no agent context, no task creation, no audit trail.`,
   },
 
   {
@@ -338,7 +338,7 @@ Then exit — you will be automatically re-dispatched when their task completes.
 
   {
     blockId: 'workflow-rules',
-    contentFn: (agentId: string) => `## Bakin Workflow Rules
+    contentFn: (agentId: string, context: ManagedBlockContext) => `## Bakin Workflow Rules
 
 > Auto-managed by \`bakin doctor\`. Do not edit this block manually.
 
@@ -348,7 +348,7 @@ When Bakin dispatches a workflow step to you, the dispatch message contains ever
 
 2. **Submit output ONLY via mcporter:** \`mcporter call bakin-${agentId}.bakin_exec_submit_step taskId=<id> stepId=<step> --args '<json>'\`. Conversational output does NOT complete the step.
 
-3. **Do NOT move the task, create subtasks, or message ${getMainAgentName()}** for workflow tasks — the workflow engine handles all coordination.
+3. **Do NOT move the task, create subtasks, or message ${context.mainAgentName}** for workflow tasks — the workflow engine handles all coordination.
 
 4. **Address rejection feedback specifically.** If re-dispatched with "REVISION REQUIRED", read the feedback and produce genuinely revised output. The server rejects near-duplicate resubmissions.
 
@@ -363,7 +363,7 @@ When Bakin dispatches a workflow step to you, the dispatch message contains ever
 
 > Auto-managed by \`bakin doctor\`. Do not edit this block manually.
 
-**NEVER use \`openclaw cron\` directly for recurring tasks.** Always use Bakin's schedule tools via mcporter. Direct cron jobs bypass Bakin tracking — no agent avatar, no prompt context, no task creation, no run history.
+**NEVER use runtime-native cron directly for recurring tasks.** Always use Bakin's schedule tools via mcporter. Direct cron jobs bypass Bakin tracking — no agent avatar, no prompt context, no task creation, no run history.
 
 ### Creating Scheduled Jobs
 \`\`\`bash
@@ -394,9 +394,9 @@ mcporter call bakin-${agentId}.bakin_exec_schedule_create name="daily-recipe" sc
 All created content (images, video, audio, text, plans, data) MUST go to the assets directory. Use the Bakin skill for full conventions, but here's the minimum:
 
 1. **Discover paths via mcporter:** \`mcporter call bakin-${agentId}.bakin_exec_get_paths\`
-2. **Organize by task:** \`\$ASSETS_DIR/<task-id>/filename.ext\`
-   - **No task?** Write to \`\$ASSETS_DIR/_unlinked/\` — NEVER place files directly in the type root (e.g. \`assets/text/file.md\` is WRONG, use \`assets/text/_unlinked/file.md\`)
-   - **Shared/reusable?** Write to \`\$ASSETS_DIR/library/\`
+2. **Organize by task:** \`$ASSETS_DIR/<task-id>/filename.ext\`
+   - **No task?** Write to \`$ASSETS_DIR/_unlinked/\` — NEVER place files directly in the type root (e.g. \`assets/text/file.md\` is WRONG, use \`assets/text/_unlinked/file.md\`)
+   - **Shared/reusable?** Write to \`$ASSETS_DIR/library/\`
 3. **Write sidecar FIRST, then the asset.** Sidecar filename = full asset filename + \`.meta.json\` (e.g. \`20260323-hero.png.meta.json\`, NOT \`hero.meta.json\`)
 4. **Sidecar fields — use these EXACT names:**
    - \`agent\` (required, string — NOT \`author\`), \`taskId\` (required, string or null), \`created\` (required, ISO 8601 — NOT \`createdAt\`)
@@ -407,14 +407,28 @@ All created content (images, video, audio, text, plans, data) MUST go to the ass
 ]
 
 /**
- * Apply all managed blocks. Called by the doctor (via the registered
- * `health.managed-blocks` check) and by the CLI's `bakin agent-rules`
- * subcommand directly.
+ * Apply all managed blocks using the configured runtime adapter. Called by
+ * the CLI's `bakin agent-rules` subcommand directly.
  */
-export function applyAllManagedBlocks(autoFix: boolean): HealthCheckResult[] {
+export async function applyAllManagedBlocks(autoFix: boolean): Promise<HealthCheckResult[]> {
+  return applyAllManagedBlocksForRuntime(await getRuntimeForManagedBlocks(), autoFix)
+}
+
+export async function applyAllManagedBlocksForRuntime(
+  runtime: AgentRuntimeAdapter,
+  autoFix: boolean,
+): Promise<HealthCheckResult[]> {
+  let agents: RuntimeAgent[]
+  try {
+    agents = await runtime.agents.list()
+  } catch (err) {
+    return [error('agent-managed-blocks', `Failed to list runtime agents: ${err instanceof Error ? err.message : String(err)}`)]
+  }
+
+  const context = runtimeManagedBlockContext(agents)
   const results: HealthCheckResult[] = []
   for (const block of MANAGED_BLOCKS) {
-    results.push(...checkManagedBlock(block, autoFix))
+    results.push(...await checkManagedBlockRuntime(runtime, block, autoFix, agents, context))
   }
   return results
 }

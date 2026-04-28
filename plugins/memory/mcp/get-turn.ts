@@ -7,7 +7,7 @@
  * (which the search response may have truncated into `snippet`).
  */
 import { z } from 'zod'
-import type { ExecToolDefinition, PluginContext } from '../../../src/lib/plugin-types'
+import type { ExecToolDefinition, PluginContext } from '@bakin/core/plugin-types'
 
 function parseMeta(raw: unknown): Record<string, unknown> | undefined {
   if (typeof raw !== 'string') return undefined

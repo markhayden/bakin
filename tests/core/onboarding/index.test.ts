@@ -25,7 +25,7 @@ interface ScriptedComponent {
   installCalls: number
 }
 
-const COMPONENT_NAMES = ['mkdir', 'settings', 'openclaw', 'antfly', 'models', 'mcporter', 'plugin-assets', 'agent-assets', 'llm', 'channels'] as const
+const COMPONENT_NAMES = ['mkdir', 'settings', 'runtime', 'search', 'search-models', 'mcporter', 'plugin-assets', 'agent-assets', 'llm', 'channels'] as const
 
 let scripts: Record<(typeof COMPONENT_NAMES)[number], ScriptedComponent>
 
@@ -54,9 +54,9 @@ mock.module('@bakin/core/main-agent', () => ({
 
 mock.module('../../../src/core/onboarding/mkdir', () => ({ mkdirComponent: makeMock('mkdir') }))
 mock.module('../../../src/core/onboarding/settings', () => ({ settingsComponent: makeMock('settings') }))
-mock.module('../../../src/core/onboarding/openclaw', () => ({ openclawComponent: makeMock('openclaw') }))
-mock.module('../../../src/core/onboarding/antfly', () => ({ antflyComponent: makeMock('antfly') }))
-mock.module('../../../src/core/onboarding/models', () => ({ modelsComponent: makeMock('models') }))
+mock.module('../../../src/core/onboarding/runtime', () => ({ runtimeComponent: makeMock('runtime') }))
+mock.module('../../../src/core/onboarding/search', () => ({ searchComponent: makeMock('search') }))
+mock.module('../../../src/core/onboarding/search-models', () => ({ searchModelsComponent: makeMock('search-models') }))
 mock.module('../../../src/core/onboarding/mcporter', () => ({ mcporterComponent: makeMock('mcporter') }))
 mock.module('../../../src/core/onboarding/plugin-assets', () => ({ pluginAssetsComponent: makeMock('plugin-assets') }))
 mock.module('../../../src/core/onboarding/agent-assets', () => ({ agentAssetsComponent: makeMock('agent-assets') }))
@@ -159,9 +159,9 @@ describe('runOnboard orchestrator', () => {
       expect(COMPONENT_ORDER.map((c) => c.name)).toEqual([
         'mkdir',
         'settings',
-        'openclaw',
-        'antfly',
-        'models',
+        'runtime',
+        'search',
+        'search-models',
         'mcporter',
         'plugin-assets',
         'agent-assets',
@@ -195,9 +195,9 @@ describe('runOnboard orchestrator', () => {
       expect(saveStateCalls[0].components).toEqual({
         mkdir: 'ok',
         settings: 'ok',
-        openclaw: 'ok',
-        antfly: 'ok',
-        models: 'ok',
+        runtime: 'ok',
+        search: 'ok',
+        'search-models': 'ok',
         mcporter: 'ok',
         'plugin-assets': 'ok',
         'agent-assets': 'ok',
@@ -213,11 +213,11 @@ describe('runOnboard orchestrator', () => {
 
   describe('missing components trigger install', () => {
     it('calls install() when check reports missing', async () => {
-      scripts.antfly.check = { name: 'antfly', status: 'missing', message: 'antfly missing' }
-      scripts.antfly.install = { name: 'antfly', status: 'installed', message: 'antfly installed', durationMs: 100 }
+      scripts.search.check = { name: 'search', status: 'missing', message: 'search missing' }
+      scripts.search.install = { name: 'search', status: 'installed', message: 'search installed', durationMs: 100 }
       const result = await runOnboard(opts)
-      expect(scripts.antfly.installCalls).toBe(1)
-      expect(result.outcomes.find((o) => o.name === 'antfly')?.finalStatus).toBe('ok')
+      expect(scripts.search.installCalls).toBe(1)
+      expect(result.outcomes.find((o) => o.name === 'search')?.finalStatus).toBe('ok')
       expect(result.exitCode).toBe(0)
       expect(result.markerWritten).toBe(true)
     })
@@ -242,10 +242,10 @@ describe('runOnboard orchestrator', () => {
     })
 
     it('treats install:noop as ok', async () => {
-      scripts.antfly.check = { name: 'antfly', status: 'missing', message: 'antfly missing' }
-      scripts.antfly.install = { name: 'antfly', status: 'noop', message: 'antfly already installed', durationMs: 0 }
+      scripts.search.check = { name: 'search', status: 'missing', message: 'search missing' }
+      scripts.search.install = { name: 'search', status: 'noop', message: 'search already installed', durationMs: 0 }
       const result = await runOnboard(opts)
-      expect(result.outcomes.find((o) => o.name === 'antfly')?.finalStatus).toBe('ok')
+      expect(result.outcomes.find((o) => o.name === 'search')?.finalStatus).toBe('ok')
     })
   })
 
@@ -255,12 +255,12 @@ describe('runOnboard orchestrator', () => {
 
   describe('checkOnly mode', () => {
     it('never calls install() even when check reports missing', async () => {
-      scripts.antfly.check = { name: 'antfly', status: 'missing', message: 'antfly missing' }
+      scripts.search.check = { name: 'search', status: 'missing', message: 'search missing' }
       scripts.mcporter.check = { name: 'mcporter', status: 'missing', message: 'mcporter missing' }
       const result = await runOnboard({ ...opts, checkOnly: true })
-      expect(scripts.antfly.installCalls).toBe(0)
+      expect(scripts.search.installCalls).toBe(0)
       expect(scripts.mcporter.installCalls).toBe(0)
-      expect(result.outcomes.find((o) => o.name === 'antfly')?.finalStatus).toBe('skipped')
+      expect(result.outcomes.find((o) => o.name === 'search')?.finalStatus).toBe('skipped')
       expect(result.outcomes.find((o) => o.name === 'mcporter')?.finalStatus).toBe('skipped')
       // check-only is non-destructive → marker still written iff no errors
       expect(result.exitCode).toBe(2)
@@ -293,83 +293,83 @@ describe('runOnboard orchestrator', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // OpenClaw cascade — missing openclaw aborts the entire flow
+  // Runtime cascade - missing runtime aborts the entire flow
   // ---------------------------------------------------------------------------
 
-  describe('openclaw cascade', () => {
-    it('openclaw missing halts the flow and skips every downstream component', async () => {
-      scripts.openclaw.check = {
-        name: 'openclaw',
+  describe('runtime cascade', () => {
+    it('runtime missing halts the flow and skips every downstream component', async () => {
+      scripts.runtime.check = {
+        name: 'runtime',
         status: 'missing',
-        message: 'openclaw not installed',
-        remediation: 'Install from https://openclaw.ai/',
+        message: 'runtime not configured',
+        remediation: 'Configure the runtime adapter',
       }
-      // install() is never called for openclaw — the orchestrator runs
-      // it inline, skipping install because openclaw is user-managed.
+      // install() is never called for runtime - the orchestrator runs
+      // it inline, skipping install because runtime setup is user-managed.
       const result = await runOnboard(opts)
-      // mkdir and settings still run (before openclaw in the order)
+      // mkdir and settings still run (before runtime in the order)
       expect(scripts.mkdir.checkCalls).toBe(1)
       expect(scripts.settings.checkCalls).toBe(1)
-      expect(scripts.openclaw.checkCalls).toBe(1)
-      expect(scripts.openclaw.installCalls).toBe(0) // never called
-      // Everything downstream is NOT run — check is never called on them
-      expect(scripts.antfly.checkCalls).toBe(0)
-      expect(scripts.models.checkCalls).toBe(0)
+      expect(scripts.runtime.checkCalls).toBe(1)
+      expect(scripts.runtime.installCalls).toBe(0) // never called
+      // Everything downstream is NOT run - check is never called on them
+      expect(scripts.search.checkCalls).toBe(0)
+      expect(scripts['search-models'].checkCalls).toBe(0)
       expect(scripts.mcporter.checkCalls).toBe(0)
       expect(scripts.llm.checkCalls).toBe(0)
       expect(scripts.channels.checkCalls).toBe(0)
       // All 8 components still appear in outcomes
       expect(result.outcomes).toHaveLength(10)
-      // OpenClaw is error (missing prerequisite), downstream all skipped
-      expect(result.outcomes.find((o) => o.name === 'openclaw')?.finalStatus).toBe('error')
-      expect(result.outcomes.find((o) => o.name === 'antfly')?.finalStatus).toBe('skipped')
+      // Runtime is error (missing prerequisite), downstream all skipped
+      expect(result.outcomes.find((o) => o.name === 'runtime')?.finalStatus).toBe('error')
+      expect(result.outcomes.find((o) => o.name === 'search')?.finalStatus).toBe('skipped')
       expect(result.outcomes.find((o) => o.name === 'channels')?.finalStatus).toBe('skipped')
-      // Per spec: OpenClaw missing is a hard stop — exit 1, no marker
+      // Per spec: runtime missing is a hard stop - exit 1, no marker
       expect(result.exitCode).toBe(1)
       expect(result.markerWritten).toBe(false)
     })
 
-    it('openclaw broken halts the flow with error status', async () => {
-      scripts.openclaw.check = {
-        name: 'openclaw',
+    it('runtime broken halts the flow with error status', async () => {
+      scripts.runtime.check = {
+        name: 'runtime',
         status: 'broken',
-        message: 'openclaw.json corrupt',
+        message: 'runtime config corrupt',
       }
       const result = await runOnboard(opts)
-      expect(result.outcomes.find((o) => o.name === 'openclaw')?.finalStatus).toBe('error')
-      // install() is never called — openclaw is inline
-      expect(scripts.openclaw.installCalls).toBe(0)
+      expect(result.outcomes.find((o) => o.name === 'runtime')?.finalStatus).toBe('error')
+      // install() is never called - runtime is inline
+      expect(scripts.runtime.installCalls).toBe(0)
       // Downstream components never ran
-      expect(scripts.antfly.checkCalls).toBe(0)
-      // Error → exit 1, no marker
+      expect(scripts.search.checkCalls).toBe(0)
+      // Error -> exit 1, no marker
       expect(result.exitCode).toBe(1)
       expect(result.markerWritten).toBe(false)
     })
   })
 
   // ---------------------------------------------------------------------------
-  // Antfly → models cascade — models needs the antfly binary
+  // Search -> search-models cascade: model downloads need the search adapter binary.
   // ---------------------------------------------------------------------------
 
-  describe('antfly → models cascade', () => {
-    it('skips models when antfly failed to install', async () => {
-      scripts.antfly.check = { name: 'antfly', status: 'missing', message: 'antfly missing' }
-      scripts.antfly.install = { name: 'antfly', status: 'failed', message: 'brew missing', durationMs: 0 }
+  describe('search -> search-models cascade', () => {
+    it('skips search-models when search failed to install', async () => {
+      scripts.search.check = { name: 'search', status: 'missing', message: 'search missing' }
+      scripts.search.install = { name: 'search', status: 'failed', message: 'brew missing', durationMs: 0 }
       const result = await runOnboard(opts)
-      expect(scripts.antfly.installCalls).toBe(1)
-      // models never even has check() called — it's pre-skipped
-      expect(scripts.models.checkCalls).toBe(0)
-      expect(result.outcomes.find((o) => o.name === 'models')?.finalStatus).toBe('skipped')
-      expect(result.outcomes.find((o) => o.name === 'models')?.message).toContain('Antfly binary is required')
-      // mcporter and credentials still run (not dependent on antfly)
+      expect(scripts.search.installCalls).toBe(1)
+      // search-models never even has check() called; it is pre-skipped.
+      expect(scripts['search-models'].checkCalls).toBe(0)
+      expect(result.outcomes.find((o) => o.name === 'search-models')?.finalStatus).toBe('skipped')
+      expect(result.outcomes.find((o) => o.name === 'search-models')?.message).toContain('search adapter binary is required')
+      // mcporter and credentials still run; they do not depend on search.
       expect(scripts.mcporter.checkCalls).toBe(1)
       expect(scripts.llm.checkCalls).toBe(1)
     })
 
-    it('runs models when antfly is ok', async () => {
+    it('runs search-models when search is ok', async () => {
       const result = await runOnboard(opts)
-      expect(scripts.models.checkCalls).toBe(1)
-      expect(result.outcomes.find((o) => o.name === 'models')?.finalStatus).toBe('ok')
+      expect(scripts['search-models'].checkCalls).toBe(1)
+      expect(result.outcomes.find((o) => o.name === 'search-models')?.finalStatus).toBe('ok')
     })
   })
 
@@ -404,9 +404,9 @@ describe('runOnboard orchestrator', () => {
       }
     })
 
-    it('emits JSON for cascaded skips from OpenClaw', async () => {
-      scripts.openclaw.check = { name: 'openclaw', status: 'missing', message: 'openclaw missing' }
-      scripts.openclaw.install = { name: 'openclaw', status: 'noop', message: 'required', durationMs: 0 }
+    it('emits JSON for cascaded skips from runtime', async () => {
+      scripts.runtime.check = { name: 'runtime', status: 'missing', message: 'runtime missing' }
+      scripts.runtime.install = { name: 'runtime', status: 'noop', message: 'required', durationMs: 0 }
       await runOnboard({ ...opts, json: true })
       // Should emit 8 lines total: 3 that actually ran + 5 cascade-skipped
       expect(stdoutLines).toHaveLength(10)
@@ -424,7 +424,7 @@ describe('runOnboard orchestrator', () => {
 
   describe('checkAll', () => {
     it('calls check() on every component and never install()', async () => {
-      scripts.antfly.check = { name: 'antfly', status: 'missing', message: 'antfly missing' }
+      scripts.search.check = { name: 'search', status: 'missing', message: 'search missing' }
       const results = await checkAll()
       expect(results).toHaveLength(10)
       expect(results.map((r) => r.name)).toEqual([...COMPONENT_NAMES])
@@ -462,13 +462,13 @@ describe('runOnboard orchestrator', () => {
     })
 
     it('converts a thrown install() error into an error outcome', async () => {
-      scripts.antfly.check = { name: 'antfly', status: 'missing', message: 'antfly missing' }
-      const mod = await import('../../../src/core/onboarding/antfly')
-      spyOn(mod.antflyComponent, 'install').mockRejectedValueOnce(new Error('spawn failed'))
+      scripts.search.check = { name: 'search', status: 'missing', message: 'search missing' }
+      const mod = await import('../../../src/core/onboarding/search')
+      spyOn(mod.searchComponent, 'install').mockRejectedValueOnce(new Error('spawn failed'))
       const result = await runOnboard(opts)
-      const antfly = result.outcomes.find((o) => o.name === 'antfly')
-      expect(antfly?.finalStatus).toBe('error')
-      expect(antfly?.message).toContain('spawn failed')
+      const search = result.outcomes.find((o) => o.name === 'search')
+      expect(search?.finalStatus).toBe('error')
+      expect(search?.message).toContain('spawn failed')
     })
   })
 })

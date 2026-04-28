@@ -14,6 +14,8 @@ import { join } from 'path'
 import { getSettings } from '../../../../src/core/settings'
 import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
 
+const SERVICE_LABEL = 'com.bakin.mc'
+
 function ok(message: string): HealthCheckResult {
   return { check: 'service', status: 'ok', message, autoFixable: false }
 }
@@ -36,7 +38,7 @@ export function checkService(projectRoot: string): HealthCheckResult[] {
 
   const results: HealthCheckResult[] = []
   const homedir = process.env.HOME || '~'
-  const plistPath = join(homedir, 'Library', 'LaunchAgents', 'com.openclaw.mc.plist')
+  const plistPath = join(homedir, 'Library', 'LaunchAgents', `${SERVICE_LABEL}.plist`)
 
   if (!existsSync(plistPath)) {
     results.push(warn('LaunchAgent plist not found — run: bakin setup service'))
@@ -66,7 +68,7 @@ export function checkService(projectRoot: string): HealthCheckResult[] {
 
   // Check service is loaded
   try {
-    execSync('launchctl list com.openclaw.mc', { encoding: 'utf-8', stdio: 'pipe' })
+    execSync(`launchctl list ${SERVICE_LABEL}`, { encoding: 'utf-8', stdio: 'pipe' })
   } catch {
     results.push(warn('LaunchAgent plist exists but service is not loaded — run: bakin setup service'))
   }

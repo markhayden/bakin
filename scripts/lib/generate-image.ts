@@ -13,9 +13,9 @@
 import { z } from 'zod'
 import { join, basename } from 'path'
 import { execFileSync } from 'child_process'
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
-import { getOpenClawPath } from '@bakin/core/openclaw-home'
+import { writeFileSync, mkdirSync, existsSync } from 'fs'
 import { getBakinPaths } from '../../src/core/content-dir'
+import { getAppServices } from '../../src/core/app-services'
 import {
   succeed,
   fail,
@@ -27,7 +27,7 @@ import {
 import type { ImagePreset } from './common'
 import { saveAsset } from '../../plugins/assets/lib/save-asset'
 import { addExecTool } from './registry'
-import type { ExecToolResult } from '../../src/lib/plugin-types'
+import type { ExecToolResult } from '@bakin/core/plugin-types'
 
 const PRESET_NAMES = ['social-portrait', 'social-square', 'social-landscape', 'custom'] as const
 const MODEL_NAMES = ['flash', 'pro'] as const
@@ -42,17 +42,24 @@ const GEMINI_MODELS: Record<ModelTier, string> = {
 // API key resolution
 // ---------------------------------------------------------------------------
 
-function getApiKey(): string | null {
+interface RuntimeSkillConfig {
+  skills?: {
+    entries?: Record<string, { apiKey?: unknown; env?: { GEMINI_API_KEY?: unknown } }>
+  }
+}
+
+async function getApiKey(): Promise<string | null> {
   // Check environment first
   if (process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY
   if (process.env.GOOGLE_AI_API_KEY) return process.env.GOOGLE_AI_API_KEY
 
-  // Check openclaw config
+  // Check runtime config
   try {
-    const configPath = getOpenClawPath('openclaw.json')
-    const config = JSON.parse(readFileSync(configPath, 'utf-8'))
+    const config = await getAppServices().runtime.config.get<RuntimeSkillConfig>()
     const skill = config?.skills?.entries?.['nano-banana-pro']
-    return skill?.apiKey || skill?.env?.GEMINI_API_KEY || null
+    if (typeof skill?.apiKey === 'string') return skill.apiKey
+    if (typeof skill?.env?.GEMINI_API_KEY === 'string') return skill.env.GEMINI_API_KEY
+    return null
   } catch {
     return null
   }
@@ -246,9 +253,9 @@ export async function generateImage(params: GenImageParams): Promise<ExecToolRes
     return fail('Either prompt or filePath is required')
   }
 
-  const apiKey = getApiKey()
+  const apiKey = await getApiKey()
   if (!apiKey) {
-    return fail('No Gemini API key found. Set GEMINI_API_KEY env var or configure in ~/.openclaw/openclaw.json')
+    return fail('No Gemini API key found. Set GEMINI_API_KEY env var or configure the runtime skill entry')
   }
 
   // Resolve dimensions

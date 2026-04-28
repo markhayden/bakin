@@ -1,5 +1,5 @@
 /**
- * System check — plugin-shipped OpenClaw skills (S-B): surface install
+ * System check — plugin-shipped runtime skills (S-B): surface install
  * state + drift. Migrated out of src/core/doctor.ts (#139 C8). Never
  * auto-installs — points the user at `bakin install plugin-assets`.
  */

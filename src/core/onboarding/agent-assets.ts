@@ -23,7 +23,6 @@
  * `bakin doctor` so the same data backs both views.
  */
 import { existsSync, readFileSync, statSync } from 'fs'
-import { createHash } from 'crypto'
 import { join } from 'path'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
@@ -76,6 +75,10 @@ function emptyReport(): ScanReport {
   }
 }
 
+function isRuntimeWorkspaceTarget(target: string): boolean {
+  return target.startsWith('runtime:workspace-file:')
+}
+
 /**
  * Walk every projection in the lockfile and classify each. Pure read —
  * never mutates the filesystem. Drift checks honor `.userEdited` so a
@@ -99,6 +102,10 @@ export function scanAgentAssets(lockfile?: Lockfile): ScanReport {
       // Knowledge-marker projections live inside SOUL.md; classified by
       // marker presence rather than sha.
       if (p.kind === 'knowledge-marker') {
+        if (isRuntimeWorkspaceTarget(p.target)) {
+          report.ok.push(finding)
+          continue
+        }
         if (!existsSync(p.target)) {
           finding.status = 'missing'
           report.missing.push(finding)
@@ -117,6 +124,11 @@ export function scanAgentAssets(lockfile?: Lockfile): ScanReport {
         } else {
           report.ok.push(finding)
         }
+        continue
+      }
+
+      if (p.kind === 'workspace-file' && p.templateOnly && isRuntimeWorkspaceTarget(p.target)) {
+        report.ok.push(finding)
         continue
       }
 
@@ -232,7 +244,6 @@ async function check(): Promise<CheckResult> {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function install(_opts: OnboardingOptions): Promise<InstallResult> {
   const start = Date.now()
   const report = scanAgentAssets()

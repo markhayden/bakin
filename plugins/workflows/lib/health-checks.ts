@@ -13,7 +13,7 @@ import { existsSync, readFileSync, readdirSync, unlinkSync } from 'fs'
 import { join } from 'path'
 
 import { getSettings } from '../../../src/core/settings'
-import { getHookRegistry } from '../../../src/lib/plugin-registry'
+import { readTaskboard } from '../../../src/core/task-store'
 import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
 
 import { listDefinitions } from './parser'
@@ -117,20 +117,18 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
  * tasks no longer exist on the board. `autoFix` is read from settings (no
  * longer a parameter) — matches the core doctor pattern.
  *
- * `tasks.readTaskboard` stays as a cross-plugin hook call (tasks plugin owns
- * the taskboard; we can't import directly without creating a circular dep).
+ * Reads the Bakin task store directly; task metadata is not owned by a plugin
+ * hook.
  */
 export async function checkStaleWorkflowInstances(contentDir: string): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = []
   const autoFix = getSettings().doctor.autoFixSkill
-  const hooks = getHookRegistry()
 
   try {
     const allInstances = listInstances(undefined, contentDir)
 
     interface BoardTask { id: string }
-    const board = await hooks.invoke<{ columns: Record<string, BoardTask[]> }>('tasks.readTaskboard', {})
-    if (!board) return [warn('workflow-instances', 'Taskboard not available')]
+    const board = readTaskboard() as unknown as { columns: Record<string, BoardTask[]> }
     const { columns } = board
     const allTaskIds = new Set<string>()
     for (const col of Object.values(columns)) {

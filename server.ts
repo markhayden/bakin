@@ -20,7 +20,7 @@ import config from './bakin.config'
 // Give the registry the static core-plugin table. Done here, not in
 // plugin-registry.ts, so the plugins only live in server.ts's module
 // graph — tests that import the registry don't drag every plugin +
-// every plugin-level side effect (watchers, OpenClaw path access) into
+// every plugin-level side effect (watchers, runtime path access) into
 // their module load.
 registerCorePlugins(CORE_PLUGIN_IMPORTS)
 
@@ -29,20 +29,16 @@ import { getSettings } from './src/core/settings'
 import { getContentDir, getBakinPaths, isUsingBakinHome } from './src/core/content-dir'
 import { handleSSE, broadcast } from './src/core/sse'
 import { appendAudit } from './src/core/audit'
-import * as vault from './src/core/vault'
-import * as openclaw from './src/core/openclaw-client'
-import { getMainAgentId } from './src/core/main-agent'
+import { createAppServices } from './src/core/app-services'
+import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { handleJsonPost, jsonResponse } from './src/core/middleware'
 import { writeCrossPluginSearchResponse } from './src/core/api-search-handler'
 import * as watcher from './src/core/watcher'
 import * as dispatch from './src/core/dispatch'
 import * as watchdog from './src/core/watchdog'
-import * as messagingCron from './src/core/messaging-cron'
 import { registerShutdownHandlers } from './src/core/lifecycle'
 import { checkAndContinueDependents } from './src/core/continuation'
 import { getAllRoutes, generateDocs } from './src/core/api-docs'
-import * as antfly from './src/core/antfly'
-import * as antflyServer from './src/core/antfly-server'
 import { migrateIfNeeded } from './src/core/search-migration'
 import * as agents from './src/core/agents'
 import * as doctor from './src/core/doctor'
@@ -71,7 +67,6 @@ import * as packagesInstallRoute from './packages/host/src/api/packages/install'
 import * as packagesDynamicRoute from './packages/host/src/api/packages/dynamic'
 import * as curatedListRoute from './packages/host/src/api/curated/list'
 import * as pluginsMemoryAuditRoute from './packages/host/src/api/plugins/memory/audit'
-import * as pluginsMemoryGatewayRoute from './packages/host/src/api/plugins/memory/gateway'
 import * as pluginsMemoryWorkspaceRoute from './packages/host/src/api/plugins/memory/workspace'
 import * as stateRoute from './packages/host/src/api/state'
 import * as assetsRoute from './packages/host/src/api/assets/[...path]'
@@ -121,8 +116,8 @@ const storage = new MarkdownStorageAdapter(CONTENT_DIR)
 const eventBus = new BakinEventBus(broadcast)
 
 ;(async () => {
-  // Initialize vault (load credentials from disk)
-  vault.initialize()
+  // Initialize the adapter/task service spine before plugin activation.
+  const appServices = await createAppServices()
 
   // Rebuild any stale user plugin dist/ before the registry imports them.
   // The registry dynamic-imports `<pluginDir>/<server-entry>` (typically
@@ -135,7 +130,7 @@ const eventBus = new BakinEventBus(broadcast)
 
   // Initialize plugin registry
   log.info('Loading plugins...')
-  await pluginRegistry.initialize(config, storage, eventBus)
+  await pluginRegistry.initialize(config, storage, eventBus, appServices)
 
   // Layer agent-package contributions on top of plugin-registered workflows +
   // workflow-skills. Plugins have populated the `plugin` tier of the workflow
@@ -150,19 +145,13 @@ const eventBus = new BakinEventBus(broadcast)
   // separate webpack-compiled module instances) can read the real data.
   ;(globalThis as any).__bakinGetRegistrySnapshot = () => pluginRegistry.getRegistrySnapshot()
 
-  // Start Antfly server if enabled (auto-manages the process)
-  await antflyServer.start()
-
-  // Initialize Antfly client (optional — no-op if disabled in settings)
-  await antfly.initialize()
-
   // Check the search schema version and drop stale bakin_* tables when
   // the in-code version has advanced beyond the last-migrated version.
   // The registry recreates the tables below via createRegisteredTables,
   // and we trigger a full reindex after plugins are ready.
   const migration = await migrateIfNeeded()
 
-  // Create Antfly tables for all registered search content types.
+  // Create search tables for all registered search content types.
   // Plugins (including memory, which owns the audit content type)
   // registered their schemas during pluginRegistry.initialize() above.
   const { createRegisteredTables, runPendingReconciles } = await import('./src/core/search-registry')
@@ -195,20 +184,22 @@ const eventBus = new BakinEventBus(broadcast)
   const { startCleanupTimer } = await import('./src/core/search-cleanup')
   startCleanupTimer()
 
-  // Register Antfly sync hook with file watcher
+  // Register search sync hook with file watcher
   // Legacy syncFile/syncFileUnlink removed — plugins now handle their own
   // indexing via ctx.search.index() / ctx.search.remove() with correct schemas
 
   // Generate API docs
   generateDocs(CONTENT_DIR)
 
-  // Create inbox handler using OpenClaw HTTP client
+  // Create inbox handler using the configured runtime adapter.
   const handleInboxFile = watcher.createInboxHandler({
     contentDir: CONTENT_DIR,
     sendNotification: (message: string) => {
-      openclaw.sendMessage(getMainAgentId(), message).catch(err => {
-        log.error('Failed to notify main agent of completion', err)
-      })
+      getRuntimeMainAgentId(appServices.runtime)
+        .then((agentId) => appServices.runtime.messaging.send({ agentId, content: message }))
+        .catch(err => {
+          log.error('Failed to notify main agent of completion', err)
+        })
     },
   })
 
@@ -265,7 +256,7 @@ const eventBus = new BakinEventBus(broadcast)
       return
     }
 
-    // Search endpoint — cross-table or per-table Antfly search
+    // Search endpoint — cross-table or per-table adapter search
     if (url.pathname === '/api/search' && req.method === 'GET') {
       writeCrossPluginSearchResponse(url, res).catch((err) => {
         log.error('Search response write failed', err)
@@ -315,7 +306,7 @@ const eventBus = new BakinEventBus(broadcast)
     if (url.pathname === '/api/internal/continuation' && req.method === 'POST') {
       handleJsonPost(req, res, async (body) => {
         const { completedTaskId, completedTitle } = body as { completedTaskId: string; completedTitle: string }
-        checkAndContinueDependents(completedTaskId, completedTitle, CONTENT_DIR, port).catch(err => {
+        checkAndContinueDependents(completedTaskId, completedTitle, CONTENT_DIR).catch(err => {
           log.error('Continuation check failed', err)
         })
         return { ok: true }
@@ -538,15 +529,10 @@ const eventBus = new BakinEventBus(broadcast)
       return
     }
 
-    // /api/plugins/memory/{audit,gateway,workspace} — former standalone
+    // /api/plugins/memory/{audit,workspace} — former standalone
     // routes now served directly (they shadow the plugin catch-all).
     if (url.pathname === '/api/plugins/memory/audit' && req.method === 'GET') {
       dispatchWebHandler(req, res, pluginsMemoryAuditRoute.get)
-      return
-    }
-
-    if (url.pathname === '/api/plugins/memory/gateway' && req.method === 'GET') {
-      dispatchWebHandler(req, res, pluginsMemoryGatewayRoute.get)
       return
     }
 
@@ -597,7 +583,7 @@ const eventBus = new BakinEventBus(broadcast)
 
     // Plugin catch-all — /api/plugins/:pluginId/:path* dispatches to each
     // plugin's registered route handlers. Must come LAST among /api/plugins/*
-    // dispatches so the more-specific install/remove/memory/*/manifest/assets
+    // dispatches so the more-specific install/remove/legacy memory/manifest/assets
     // routes above win.
     if (
       url.pathname.startsWith('/api/plugins/') &&
@@ -628,7 +614,7 @@ const eventBus = new BakinEventBus(broadcast)
 
   // Setup mcporter (install if needed + sync per-agent config)
   try {
-    mcporter.setup(port)
+    await mcporter.setup(port)
   } catch (err) {
     log.warn('mcporter setup failed — agents can still use REST/CLI', err)
   }
@@ -638,7 +624,7 @@ const eventBus = new BakinEventBus(broadcast)
   dispatch.start(CONTENT_DIR, port)
   dispatch.reconcileOnStartup(CONTENT_DIR)
   // messagingCron.start(CONTENT_DIR, port) — deprecated: schedule plugin bridge replaces this
-  watchdog.start(CONTENT_DIR, port)
+  watchdog.start(CONTENT_DIR)
   doctor.start(CONTENT_DIR, process.cwd())
 
   // Notify all plugins that every plugin is now active

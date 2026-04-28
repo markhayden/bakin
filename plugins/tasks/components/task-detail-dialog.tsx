@@ -17,12 +17,15 @@ import { useAgent } from "@bakin/sdk/hooks"
 import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
 import { toast } from "@bakin/sdk/hooks"
 import type { Task, ColumnId } from '../types'
+import { isRenderableAssetImageFilename } from '../lib/output-assets'
 
 /** Normalize step output — handles string (possibly JSON), object, or unexpected types. */
 function normalizeOutput(raw: unknown): Record<string, unknown> {
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw as Record<string, unknown>
   if (typeof raw === 'string') {
-    try { const parsed = JSON.parse(raw); if (parsed && typeof parsed === 'object') return parsed } catch {}
+    try { const parsed = JSON.parse(raw); if (parsed && typeof parsed === 'object') return parsed } catch {
+      // Plain text output is expected here.
+    }
     return { output: raw }
   }
   return { output: String(raw ?? '') }
@@ -36,18 +39,11 @@ function humanizeKey(key: string): string {
     .replace(/\b\w/g, c => c.toUpperCase())
 }
 
-/** Check if a string looks like a file path to an image. */
-function isImagePath(v: unknown): v is string {
-  return typeof v === 'string' && /\.(png|jpe?g|gif|webp|svg)$/i.test(v)
-}
-
 /** Render a single output value in human-readable form. */
 function OutputValue({ value }: { value: unknown }) {
   if (typeof value === 'string') {
-    if (isImagePath(value)) {
-      // Accept either a bare filename (filename-as-identity) or a legacy
-      // path — in both cases the resolver route picks the right file.
-      const filename = value.split('/').pop() || value
+    if (isRenderableAssetImageFilename(value)) {
+      const filename = value
       return (
         <div className="mt-0.5">
           <p className="text-xs text-zinc-400 break-all">{filename}</p>

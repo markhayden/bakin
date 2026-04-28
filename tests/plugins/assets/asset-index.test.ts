@@ -180,6 +180,8 @@ describe('assets/asset-index', () => {
       const asset = upsertAsset(`assets/store/${MONTH}/${orphan}`)
       expect(asset).not.toBeNull()
       expect(asset!.metadata.agent).toBe('unknown')
+      expect(asset!.metadata.taskId).toBeNull()
+      expect(asset!.metadata.type).toBe('images')
       expect(existsSync(join(monthDir, `${orphan}.meta.json`))).toBe(true)
     })
   })

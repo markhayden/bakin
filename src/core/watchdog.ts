@@ -9,10 +9,16 @@ import { getSettings } from './settings'
 import { broadcast } from './sse'
 import { appendAudit } from './audit'
 import { isStale } from '../lib/format'
-import * as openclaw from './openclaw-client'
-import { getMainAgentId } from './main-agent'
+import { getAppServices } from './app-services'
+import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { getHookRegistry } from '../lib/plugin-registry'
 import { getStatsByMs } from './usage'
+import {
+  addTaskLog,
+  blockTask,
+  moveTask,
+  readTaskboard,
+} from './task-store'
 
 const log = createLogger('watchdog')
 const hooks = () => getHookRegistry()
@@ -59,19 +65,8 @@ function getLastLogTimestamp(task: { log?: { timestamp: string }[] }): Date | nu
 function isAgentHeartbeatStale(contentDir: string, agent: string | undefined): boolean {
   if (!agent) return true
 
-  // Primary signal: did the gateway return a successful reply from this
-  // agent recently? Recorded in openclaw-client.sendMessage() — a returned
-  // reply means the gateway routed our request and got a response back,
-  // which is a stronger liveness indicator than an agent-written heartbeat
-  // file (which nothing currently writes).
-  const lastReplyMs = openclaw.getAgentLastReply(agent)
-  if (lastReplyMs !== null && Date.now() - lastReplyMs < 15 * 60 * 1000) {
-    return false
-  }
-
-  // Fallback: legacy agent-written heartbeat file. Kept so an agent that
-  // explicitly calls bakin_exec_heartbeat still counts as alive even if
-  // the server hasn't pinged them recently.
+  // Agent-written heartbeat file. A runtime liveness signal should be added
+  // as an explicit adapter capability instead of hidden registry state.
   const heartbeatPath = join(contentDir, 'heartbeats', `${agent}.json`)
   try {
     if (!existsSync(heartbeatPath)) return true
@@ -89,7 +84,27 @@ function countAutoRecoveries(task: { log?: { message: string }[] }): number {
   return task.log.filter(e => e.message.startsWith('Auto-recovered:')).length
 }
 
-export function start(contentDir: string, port: number): void {
+function getNotificationChannel(settings: ReturnType<typeof getSettings>): string | null {
+  const channel = settings.notifications.channel.trim()
+  return channel && channel !== 'none' ? channel : null
+}
+
+async function sendWatchdogChannelMessage(channel: string, message: string): Promise<void> {
+  await getAppServices().runtime.channels.sendMessage({
+    channels: [channel],
+    message: {
+      body: message,
+    },
+  })
+}
+
+async function sendMainAgentAlert(message: string): Promise<void> {
+  const runtime = getAppServices().runtime
+  const agentId = await getRuntimeMainAgentId(runtime)
+  await runtime.messaging.send({ agentId, content: message })
+}
+
+export function start(contentDir: string): void {
   const initialSettings = getSettings()
 
   watchdogTimer = setInterval(async () => {
@@ -99,8 +114,7 @@ export function start(contentDir: string, port: number): void {
     const settings = getSettings()
     try {
       type WdTask = { id: string; title: string; agent?: string; workflowId?: string; updatedAt?: number; log?: Array<{ message: string; timestamp: string }> }
-      const board = await hooks().invoke<{ columns: Record<string, WdTask[]> }>('tasks.readTaskboard', {})
-      if (!board) return
+      const board = readTaskboard() as unknown as { columns: Record<string, WdTask[]> }
       const { columns } = board
       const inProgressTasks = columns.inProgress || []
       const now = Date.now()
@@ -127,7 +141,7 @@ export function start(contentDir: string, port: number): void {
 
         if (stuckMs <= settings.watchdog.stuckThresholdMs) {
           // Task has recent activity — check for bypass patterns instead
-          checkBypassPatterns(task, contentDir, port)
+          checkBypassPatterns(task, contentDir)
           continue
         }
 
@@ -163,8 +177,8 @@ export function start(contentDir: string, port: number): void {
           if (recoveryCount >= settings.watchdog.maxAutoRecoveries) {
             // Escalate to blocked
             try {
-              await hooks().invoke<void>('tasks.blockTask', { identifier: task.id, reason: `Auto-recovery limit reached (${recoveryCount} attempts). Agent "${task.agent || 'unassigned'}" appears offline.` })
-              await hooks().invoke<void>('tasks.addTaskLog', { identifier: task.id, author: 'watchdog', message: `Escalated to blocked: ${recoveryCount} auto-recoveries exhausted. Manual intervention required.` })
+              await blockTask(task.id, `Auto-recovery limit reached (${recoveryCount} attempts). Agent "${task.agent || 'unassigned'}" appears offline.`)
+              await addTaskLog(task.id, 'watchdog', `Escalated to blocked: ${recoveryCount} auto-recoveries exhausted. Manual intervention required.`)
               appendAudit(contentDir, 'task.auto_recovery_exhausted', 'watchdog', { id: task.id, title: task.title, agent: task.agent, recoveryCount })
               log.warn('Task escalated to blocked after max recoveries', { id: task.id, title: task.title, recoveryCount })
             } catch (err) {
@@ -173,8 +187,8 @@ export function start(contentDir: string, port: number): void {
           } else {
             // Move back to todo for re-dispatch
             try {
-              await hooks().invoke<void>('tasks.addTaskLog', { identifier: task.id, author: 'watchdog', message: `Auto-recovered: no agent heartbeat or task log for ${minutesStuck}+ minutes. Moved back to Todo for re-dispatch.` })
-              await hooks().invoke<void>('tasks.moveTask', { identifier: task.id, to: 'todo' })
+              await addTaskLog(task.id, 'watchdog', `Auto-recovered: no agent heartbeat or task log for ${minutesStuck}+ minutes. Moved back to Todo for re-dispatch.`)
+              await moveTask(task.id, 'todo')
               appendAudit(contentDir, 'task.auto_recovered', 'watchdog', { id: task.id, title: task.title, agent: task.agent, minutesStuck })
               log.info('Task auto-recovered to todo', { id: task.id, title: task.title, minutesStuck })
             } catch (err) {
@@ -188,19 +202,20 @@ export function start(contentDir: string, port: number): void {
           broadcast({ type: 'alert', title: task.title, agent: task.agent, message: alertMsg })
 
           try {
-            await hooks().invoke<void>('tasks.addTaskLog', { identifier: task.id, author: 'watchdog', message: `ALERT: No progress logged in ${minutesStuck}+ minutes` })
+            await addTaskLog(task.id, 'watchdog', `ALERT: No progress logged in ${minutesStuck}+ minutes`)
           } catch (err) {
             log.warn('Failed to log watchdog alert on task', err)
           }
 
-          // Discord alert
-          openclaw.sendChannelMessage(
-            'discord',
-            `channel:${settings.watchdog.alertChannelId}`,
-            `⚠️ **Watchdog Alert**: Task "${task.title}" (@${task.agent || 'unassigned'}) has had no progress log in ${minutesStuck}+ minutes.`
-          ).catch(err => {
-            log.error('Watchdog Discord alert failed', err)
-          })
+          const notificationChannel = getNotificationChannel(settings)
+          if (notificationChannel) {
+            sendWatchdogChannelMessage(
+              notificationChannel,
+              `⚠️ **Watchdog Alert**: Task "${task.title}" (@${task.agent || 'unassigned'}) has had no progress log in ${minutesStuck}+ minutes.`
+            ).catch(err => {
+              log.error('Watchdog channel alert failed', err)
+            })
+          }
 
           log.warn('Stuck task detected', { title: task.title, agent: task.agent, minutesStuck, agentStale })
         }
@@ -234,13 +249,13 @@ export function start(contentDir: string, port: number): void {
                 errorRate,
               })
 
-              if (settings.notifications.channel !== 'none') {
-                openclaw.sendChannelMessage(
-                  settings.notifications.channel,
-                  settings.notifications.target || `channel:${wd.alertChannelId}`,
+              const notificationChannel = getNotificationChannel(settings)
+              if (notificationChannel) {
+                sendWatchdogChannelMessage(
+                  notificationChannel,
                   `⚠️ **MCP unhealthy** — ${alertMsg}. Check \`~/.bakin/logs/server.log\` and \`/health\`.`,
                 ).catch(err => {
-                  log.error('MCP 5xx Discord alert failed', err)
+                  log.error('MCP 5xx channel alert failed', err)
                 })
               }
             }
@@ -280,13 +295,13 @@ export function start(contentDir: string, port: number): void {
                 errorRate,
               })
 
-              if (settings.notifications.channel !== 'none') {
-                openclaw.sendChannelMessage(
-                  settings.notifications.channel,
-                  settings.notifications.target || `channel:${wd.alertChannelId}`,
+              const notificationChannel = getNotificationChannel(settings)
+              if (notificationChannel) {
+                sendWatchdogChannelMessage(
+                  notificationChannel,
                   `⚠️ **REST API unhealthy** — ${alertMsg}. Check \`~/.bakin/logs/server.log\` and \`/health\`.`,
                 ).catch(err => {
-                  log.error('REST 5xx Discord alert failed', err)
+                  log.error('REST 5xx channel alert failed', err)
                 })
               }
             }
@@ -328,8 +343,8 @@ export function start(contentDir: string, port: number): void {
           if (timeoutLogs >= wfSettings.maxRedispatches) {
             // Escalate — block the task
             try {
-              await hooks().invoke<void>('tasks.blockTask', { identifier: taskId, reason: `Workflow step "${instance.currentStepId}" timed out after ${wfSettings.maxRedispatches} re-dispatches. Agent never submitted output via step/complete API.` })
-              await hooks().invoke<void>('tasks.addTaskLog', { identifier: taskId, author: 'watchdog', message: `Workflow step timeout escalated to blocked after ${wfSettings.maxRedispatches} re-dispatches` })
+              await blockTask(taskId, `Workflow step "${instance.currentStepId}" timed out after ${wfSettings.maxRedispatches} re-dispatches. Agent never submitted output via step/complete API.`)
+              await addTaskLog(taskId, 'watchdog', `Workflow step timeout escalated to blocked after ${wfSettings.maxRedispatches} re-dispatches`)
               appendAudit(contentDir, 'workflow.step_timeout_blocked', 'watchdog', { taskId, stepId: instance.currentStepId, timeoutLogs })
               log.warn('Workflow step blocked after max timeouts', { taskId, stepId: instance.currentStepId })
             } catch (err) {
@@ -338,7 +353,7 @@ export function start(contentDir: string, port: number): void {
           } else {
             // Alert — the step will be re-dispatched on next dispatch cycle
             try {
-              await hooks().invoke<void>('tasks.addTaskLog', { identifier: taskId, author: 'watchdog', message: `TIMEOUT: Workflow step "${instance.currentStepId}" has been in_progress for ${minutesStuck}+ minutes with no output submitted via step/complete API.` })
+              await addTaskLog(taskId, 'watchdog', `TIMEOUT: Workflow step "${instance.currentStepId}" has been in_progress for ${minutesStuck}+ minutes with no output submitted via step/complete API.`)
               appendAudit(contentDir, 'workflow.step_timeout', 'watchdog', { taskId, stepId: instance.currentStepId, minutesStuck })
               log.warn('Workflow step timeout', { taskId, stepId: instance.currentStepId, minutesStuck })
             } catch (err) {
@@ -350,8 +365,9 @@ export function start(contentDir: string, port: number): void {
         log.error('Workflow step timeout check failed', err)
       }
 
-      // ─── Gate notification check (Discord alert) ──────────────────────
-      if (settings.notifications.channel !== 'none' && settings.notifications.gateAlerts !== false) {
+      // ─── Gate notification check (channel alert) ──────────────────────
+      const gateNotificationChannel = getNotificationChannel(settings)
+      if (gateNotificationChannel && settings.notifications.gateAlerts !== false) {
         try {
           const pendingGates = await hooks().invoke<Array<{ taskId: string; currentStepId: string; workflowId: string; stepStates: Record<string, { status: string; output?: unknown }>; history: Array<Record<string, unknown>> }>>('workflows.listInstances', { statusFilter: 'pending_approval' }) ?? []
 
@@ -364,13 +380,11 @@ export function start(contentDir: string, port: number): void {
             const label = gateStep?.label || currentStepId
 
             // Find task title from taskboard
-            const gateBoard = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string }>> }>('tasks.readTaskboard', {})
+            const gateBoard = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string; title: string }>> }
             let taskTitle = taskId
-            if (gateBoard) {
-              for (const col of Object.values(gateBoard.columns)) {
-                const task = col.find(t => t.id === taskId)
-                if (task) { taskTitle = task.title; break }
-              }
+            for (const col of Object.values(gateBoard.columns)) {
+              const task = col.find(t => t.id === taskId)
+              if (task) { taskTitle = task.title; break }
             }
 
             const shortId = taskId.slice(0, 6).toUpperCase()
@@ -393,12 +407,11 @@ export function start(contentDir: string, port: number): void {
 
             msg += `\n\nApprove or reject in Bakin UI.`
 
-            openclaw.sendChannelMessage(
-              settings.notifications.channel,
-              settings.notifications.target || `channel:${settings.watchdog.alertChannelId}`,
+            sendWatchdogChannelMessage(
+              gateNotificationChannel,
               msg
             ).catch(err => {
-              log.error('Gate Discord notification failed', err, { taskId })
+              log.error('Gate channel notification failed', err, { taskId })
             })
 
             await hooks().invoke<void>('workflows.markGateNotified', { taskId, stepId: currentStepId })
@@ -417,7 +430,7 @@ export function start(contentDir: string, port: number): void {
 }
 
 /** Scan recent task log entries for bypass pattern language */
-function checkBypassPatterns(task: { id: string; title: string; agent?: string; log?: { message: string; timestamp: string }[] }, contentDir: string, port: number): void {
+function checkBypassPatterns(task: { id: string; title: string; agent?: string; log?: { message: string; timestamp: string }[] }, contentDir: string): void {
   if (!task.log || task.log.length === 0) return
 
   // Only check the last 3 log entries
@@ -434,8 +447,7 @@ function checkBypassPatterns(task: { id: string; title: string; agent?: string; 
         broadcast({ type: 'alert', title: task.title, agent: task.agent, message: alertMsg })
         appendAudit(contentDir, 'task.bypass_detected', 'watchdog', { id: task.id, title: task.title, agent: task.agent, pattern: match[0] })
 
-        // Notify the main agent
-        openclaw.sendMessage(getMainAgentId(), alertMsg).catch(() => {})
+        sendMainAgentAlert(alertMsg).catch(() => {})
 
         log.warn('Bypass pattern detected', { id: task.id, title: task.title, pattern: match[0] })
         return // Only alert once per watchdog cycle per task

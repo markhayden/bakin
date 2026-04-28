@@ -36,11 +36,9 @@ export function useRouter(): Router {
   const navigate = useNavigate()
   return useMemo<Router>(() => ({
     push: (url) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       navigate({ to: url as any })
     },
     replace: (url) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       navigate({ to: url as any, replace: true })
     },
     back: () => {
@@ -95,6 +93,5 @@ export function useSearchParams(): URLSearchParams {
  * still get usable params from the currently-matched route.
  */
 export function useParams<T extends Record<string, string> = Record<string, string>>(): T {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return useTanstackParams({ strict: false } as any) as T
 }

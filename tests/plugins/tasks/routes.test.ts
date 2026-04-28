@@ -5,7 +5,6 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { mkdirSync, rmSync, existsSync } from 'fs'
-import type { APIRoute, ExecToolDefinition } from '../../../src/lib/plugin-types'
 import {
   activatePlugin,
   findRoute,
@@ -13,7 +12,6 @@ import {
   callRoute,
   callTool,
   callSearchRoute,
-  makeRequest,
   type ActivatedPlugin,
 } from '../test-helpers'
 
@@ -29,6 +27,10 @@ mock.module('@bakin/core/main-agent', () => ({
 
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
+  getBakinPaths: () => ({
+    tasks: join(testDir, 'tasks'),
+    heartbeats: join(testDir, 'heartbeats'),
+  }),
   isUsingBakinHome: () => true,
   resetContentDir: () => {},
   initBakinHome: () => {},
@@ -43,7 +45,7 @@ mock.module('../../../src/core/logger', () => ({
   }),
 }))
 
-mock.module('../../../src/lib/content', () => ({
+mock.module('../../../src/lib/content-files', () => ({
   readContentFile: mock(() => null),
   writeContentFile: mock(),
 }))
@@ -64,8 +66,9 @@ const mockMoveTask = mock()
 const mockSetDependency = mock()
 const mockClearDependency = mock()
 const mockReorderTasks = mock()
+const mockGetTask = mock()
 
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   readTaskboard: (...args: unknown[]) => mockReadTaskboard(...args),
   createTask: (...args: unknown[]) => mockCreateTask(...args),
   deleteTask: (...args: unknown[]) => mockDeleteTask(...args),
@@ -77,6 +80,7 @@ mock.module('../../../plugins/tasks/lib/flow-store', () => ({
   setDependency: (...args: unknown[]) => mockSetDependency(...args),
   clearDependency: (...args: unknown[]) => mockClearDependency(...args),
   reorderTasks: (...args: unknown[]) => mockReorderTasks(...args),
+  getTask: (...args: unknown[]) => mockGetTask(...args),
   autoArchiveDoneTasks: mock().mockReturnValue(0),
   archiveOldTasks: mock().mockReturnValue(0),
 }))
@@ -127,7 +131,7 @@ beforeEach(() => {
   for (const m of [
     mockReadTaskboard, mockCreateTask, mockDeleteTask, mockAssignTask,
     mockAddTaskLog, mockBlockTask, mockUpdateTask, mockMoveTask,
-    mockSetDependency, mockClearDependency, mockReorderTasks,
+    mockSetDependency, mockClearDependency, mockReorderTasks, mockGetTask,
     mockMoveTaskWithEffects, mockBlockTaskWithEffects, mockCreateTaskWithEffects,
     mockReportComplete, mockSetDependencyWithEffects, mockGetTaskDetails,
     mockLogProgress, mockTriggerDispatch,
@@ -1158,9 +1162,9 @@ describe('bakin_exec_tasks_set_dependency', () => {
   })
 })
 
-// ─── Search Dual-Write ──────────────────────────────────────────────────────
+// ─── Search Index Side Effects ──────────────────────────────────────────────
 
-describe('Search dual-write', () => {
+describe('Search index side effects', () => {
   it('removes task from search on delete', async () => {
     mockDeleteTask.mockResolvedValue(undefined)
 

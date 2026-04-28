@@ -21,7 +21,7 @@ import { Loader2 } from 'lucide-react'
  * parent can refresh its state badges + list.
  *
  * Mode selector toggles between fresh install and adopt — adopt requires
- * an OpenClaw agent at the named id to already exist (the installer
+ * a runtime agent at the named id to already exist (the installer
  * enforces this; the dialog just plumbs the flag).
  */
 

@@ -21,14 +21,14 @@ function fixed(message: string): HealthCheckResult {
   return { check: 'mcporter', status: 'fixed', message, autoFixable: true }
 }
 
-export function checkMcporter(): HealthCheckResult[] {
+export async function checkMcporter(): Promise<HealthCheckResult[]> {
   const port = Number(process.env.PORT || 3737)
   const autoFix = getSettings().doctor.autoFixSkill
   const results: HealthCheckResult[] = []
 
   if (!mcporter.isMcporterInstalled()) {
     if (!autoFix) {
-      return [warn('mcporter not installed — run: bakin setup mcporter', true)]
+      return [warn('mcporter not installed — run: bakin install mcporter', true)]
     }
     if (!mcporter.installMcporter()) {
       return [error('Failed to install mcporter — run: npm i -g mcporter')]
@@ -36,24 +36,24 @@ export function checkMcporter(): HealthCheckResult[] {
     results.push(fixed('Installed mcporter globally'))
   }
 
-  const status = mcporter.verifyConfig(port)
+  const status = await mcporter.verifyConfig(port)
 
   const missing = status.agentEntries.filter(e => !e.correct)
   if (missing.length > 0) {
     if (!autoFix) {
       return [
         ...results,
-        warn(`${missing.length} agent(s) missing or outdated in mcporter config — run: bakin setup mcporter`, true),
+        warn(`${missing.length} agent(s) missing or outdated in mcporter config — run: bakin install mcporter`, true),
       ]
     }
-    const changes = mcporter.syncConfig(port)
+    const changes = await mcporter.syncConfig(port)
     results.push(fixed(`Config updated: ${changes.join(', ')}`))
   } else {
     results.push(ok(`All ${status.agentEntries.length} agent entries configured`))
   }
 
   if (status.staleEntries.length > 0 && autoFix) {
-    mcporter.syncConfig(port) // syncConfig already removes stale
+    await mcporter.syncConfig(port) // syncConfig already removes stale
   }
 
   return results

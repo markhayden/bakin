@@ -31,14 +31,14 @@ System health dashboard — MCP stats, diagnostics, and uptime
 
 ## Memory
 
-Observability dashboard over every OpenClaw memory tier plus Bakin's audit log
+Observability dashboard over runtime memory tiers plus Bakin's audit log
 
 - ID: `memory`
 - Version: `2.0.0`
 - Bakin compatibility: `>=1.0.0`
 - Manifest: `plugins/memory/bakin-plugin.json`
 - Dependencies: `none`
-- Permissions: `storage.read`, `events.emit`, `openclaw.read`
+- Permissions: `storage.read`, `events.emit`, `runtime.read`
 
 ## Messaging
 
@@ -75,7 +75,7 @@ Project management with specs, checklists, task linking, and agent access via MC
 
 ## Schedule
 
-Cron job scheduling with OpenClaw bridge and task creation
+Cron job scheduling through the runtime adapter with task creation
 
 - ID: `schedule`
 - Version: `1.0.0`
@@ -86,7 +86,7 @@ Cron job scheduling with OpenClaw bridge and task creation
 
 ## Tasks
 
-Kanban task management with SQLite persistence (OpenClaw flow_runs), agent assignment, and dependency tracking
+Kanban task management with Bakin task-store persistence, agent assignment, and dependency tracking
 
 - ID: `tasks`
 - Version: `2.1.0`
@@ -97,7 +97,7 @@ Kanban task management with SQLite persistence (OpenClaw flow_runs), agent assig
 
 ## Team
 
-Agent team management — adapter layer over OpenClaw agent workspaces
+Agent team management — adapter layer over runtime agent workspaces
 
 - ID: `team`
 - Version: `1.0.0`

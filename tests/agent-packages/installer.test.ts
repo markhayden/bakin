@@ -7,7 +7,7 @@
  *   - workspace files / skills / assets / knowledge markers are on disk
  *   - the final install dir at ~/.bakin/packages/<kind>/<id>@<ver>/ holds
  *     the package source
- *   - openclaw-adapter mocks are called the right number of times in the
+ *   - runtime adapter mocks are called the right number of times in the
  *     right modes
  *   - audit events are written
  *
@@ -17,11 +17,10 @@
  */
 // IMPORTANT: env vars must land BEFORE any other import. ES-module import
 // hoisting puts our `import` lines above the `mock.module()` calls below,
-// so a transitive import of @bakin/core/openclaw-home (loaded by the
-// openclaw-adapter at module-top) reads process.env directly. Setting
-// OPENCLAW_HOME + BAKIN_HOME here is the CLAUDE.md-blessed escape for the
-// "mock arrives too late" case — the test-env safety guard in
-// packages/core/src/openclaw-home.ts compares the resolved path against
+// so a transitive import of @bakin/adapter-openclaw/home can read process.env
+// directly. Setting OPENCLAW_HOME + BAKIN_HOME here is the CLAUDE.md-blessed
+// escape for the "mock arrives too late" case — the test-env safety guard in
+// packages/adapter-openclaw/src/home.ts compares the resolved path against
 // $HOME/.openclaw and only throws when they match. Our temp paths can't
 // match, so the guard passes.
 import { tmpdir } from 'os'
@@ -34,8 +33,9 @@ process.env.OPENCLAW_HOME = openClawDir
 process.env.BAKIN_HOME = testDir
 
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
+import { dirname, join } from 'path'
+import type { AgentRuntimeAdapter, RuntimeSkill, WorkspaceFile } from '@bakin/core/adapters/runtime'
 
 // Both content-dir and openclaw-home are env-driven, so the env vars above
 // already redirect them. The mocks below are belt-and-suspenders for the
@@ -51,55 +51,158 @@ mock.module('@bakin/core/content-dir', () => ({
   getBakinPaths: () => ({}),
   isUsingBakinHome: () => true,
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => openClawDir,
   getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
   resetOpenClawHome: () => {},
 }))
 
-// Mock openclaw-config readers — agent-state needs them.
-let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
-mock.module('@bakin/core/openclaw-config', () => ({
-  readOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  resetOpenClawConfigCache: () => {},
-  getAgentList: () => openClawAgents,
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-  findAgentById: (id: string) => openClawAgents.find((a) => a.id === id) ?? null,
-}))
+let runtimeAgents: Array<{ id: string; identity?: { name?: string } }> = []
 
-// Mock the openclaw-adapter so addAgent doesn't shell out to openclaw CLI.
-// The installer imports it via a relative path that resolves to the same
-// module the @bakin/team alias points at; mocking the alias intercepts
-// both. The adapter's module-top runs `getOpenClawHome()` at load time
-// (which fires the CC-6 test-env guard if not pre-mocked), so this mock
-// MUST be installed before the installer is imported.
 const adapterCalls: { addAgent: unknown[]; addToAllowLists: unknown[] } = {
   addAgent: [],
   addToAllowLists: [],
 }
-const adapterMockFactory = () => ({
-  addAgent: async (input: { id: string }) => {
-    adapterCalls.addAgent.push(input)
-    openClawAgents.push({ id: input.id, identity: { name: input.id } })
-    return { id: input.id, workspace: join(openClawDir, 'workspaces', input.id) }
-  },
-  addToAllowLists: (newAgentId: string, dispatchable: unknown) => {
-    adapterCalls.addToAllowLists.push({ newAgentId, dispatchable })
-  },
-  getOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  listAgents: () => [],
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-  removeAgent: async () => true,
-  removeFromAllowLists: () => {},
-})
-mock.module('@bakin/team/lib/openclaw-adapter', adapterMockFactory)
-mock.module('../../plugins/team/lib/openclaw-adapter', adapterMockFactory)
+
+type TestGlobal = typeof globalThis & {
+  __bakinAppServices?: { runtime: AgentRuntimeAdapter }
+}
+
+function readJson(path: string): unknown {
+  try {
+    return JSON.parse(readFileSync(path, 'utf-8'))
+  } catch {
+    return null
+  }
+}
+
+function readSkillTree(root: string, prefix = ''): Record<string, string> {
+  const dir = join(root, prefix)
+  const files: Record<string, string> = {}
+  if (!existsSync(dir)) return files
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) continue
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name
+    const abs = join(root, rel)
+    if (entry.isDirectory()) {
+      Object.assign(files, readSkillTree(root, rel))
+    } else if (entry.isFile()) {
+      if (entry.name === '.installedBy' || entry.name === '.userEdited') continue
+      files[rel] = readFileSync(abs, 'utf-8')
+    }
+  }
+  return files
+}
+
+function runtimeWorkspaceFile(agentId: string, path: string): string {
+  return join(openClawDir, 'workspaces', agentId, path)
+}
+
+function runtimeSkillDir(name: string, agentId?: string): string {
+  return agentId
+    ? join(openClawDir, 'workspaces', agentId, 'skills', name)
+    : join(openClawDir, 'skills', name)
+}
+
+function installRuntimeMock(): void {
+  const runtime = {
+    agents: {
+      listWorkspaceFiles: async () => [],
+      list: async () => runtimeAgents.map((agent) => ({
+        id: agent.id,
+        name: agent.identity?.name ?? agent.id,
+        status: 'active',
+      })),
+      get: async (id: string) => {
+        const agent = runtimeAgents.find((entry) => entry.id === id)
+        return agent ? { id: agent.id, name: agent.identity?.name ?? agent.id, status: 'active' } : null
+      },
+      create: async (input: { id?: string; name: string; role?: string; model?: string; metadata?: Record<string, unknown> }) => {
+        const id = input.id ?? input.name.toLowerCase()
+        const call = { ...input, id, emoji: input.metadata?.emoji }
+        adapterCalls.addAgent.push(call)
+        runtimeAgents.push({ id, identity: { name: input.name } })
+        return { id, name: input.name, role: input.role, model: input.model, status: 'active', metadata: input.metadata }
+      },
+      update: async (id: string, input: { name?: string }) => ({ id, name: input.name ?? id, status: 'active' }),
+      remove: async (id: string) => {
+        runtimeAgents = runtimeAgents.filter((agent) => agent.id !== id)
+      },
+      readWorkspaceFile: async (agentId: string, path: string): Promise<WorkspaceFile | null> => {
+        const file = runtimeWorkspaceFile(agentId, path)
+        if (!existsSync(file)) return null
+        return {
+          path,
+          content: readFileSync(file, 'utf-8'),
+          updatedAt: statSync(file).mtime.toISOString(),
+          metadata: {
+            installedBy: readJson(`${file}.installedBy`),
+            userEdited: existsSync(`${file}.userEdited`),
+          },
+        }
+      },
+      writeWorkspaceFile: async (agentId: string, file: WorkspaceFile) => {
+        const target = runtimeWorkspaceFile(agentId, file.path)
+        mkdirSync(dirname(target), { recursive: true })
+        writeFileSync(target, file.content, 'utf-8')
+        if (file.metadata?.installedBy) {
+          writeFileSync(`${target}.installedBy`, JSON.stringify(file.metadata.installedBy, null, 2), 'utf-8')
+        } else {
+          rmSync(`${target}.installedBy`, { force: true })
+        }
+      },
+      removeWorkspaceFile: async (agentId: string, path: string) => {
+        const target = runtimeWorkspaceFile(agentId, path)
+        rmSync(target, { force: true })
+        rmSync(`${target}.installedBy`, { force: true })
+      },
+      updatePermissions: async () => {},
+      updateAllowlist: async (agentId: string, patch: Record<string, unknown>) => {
+        adapterCalls.addToAllowLists.push({ agentId, patch })
+      },
+      heartbeat: async () => true,
+    },
+    skills: {
+      list: async () => [],
+      get: async (name: string, agentId?: string): Promise<RuntimeSkill | null> => {
+        const dir = runtimeSkillDir(name, agentId)
+        const skillPath = join(dir, 'SKILL.md')
+        if (!existsSync(skillPath)) return null
+        return {
+          name,
+          path: skillPath,
+          instructions: readFileSync(skillPath, 'utf-8'),
+          files: readSkillTree(dir),
+          metadata: {
+            installedBy: readJson(join(dir, '.installedBy')),
+            userEdited: existsSync(join(dir, '.userEdited')),
+          },
+        }
+      },
+      write: async (skill: RuntimeSkill, agentId?: string) => {
+        const dir = runtimeSkillDir(skill.name, agentId)
+        const files = skill.files ?? { 'SKILL.md': skill.instructions ?? '' }
+        for (const [rel, content] of Object.entries(files)) {
+          const target = join(dir, rel)
+          mkdirSync(dirname(target), { recursive: true })
+          writeFileSync(target, content, 'utf-8')
+        }
+        if (skill.metadata?.installedBy) {
+          writeFileSync(join(dir, '.installedBy'), JSON.stringify(skill.metadata.installedBy, null, 2), 'utf-8')
+        } else {
+          rmSync(join(dir, '.installedBy'), { force: true })
+        }
+      },
+      remove: async (name: string, agentId?: string) => {
+        rmSync(runtimeSkillDir(name, agentId), { recursive: true, force: true })
+      },
+    },
+  } as unknown as AgentRuntimeAdapter
+  ;(globalThis as TestGlobal).__bakinAppServices = { runtime }
+}
 
 import { installPackage } from '../../src/core/agent-packages/installer'
-import {
-  readLockfile,
-  type Lockfile,
-} from '../../packages/core/src/agent-packages/lockfile'
+import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { extractBlock, hasBlock } from '../../packages/core/src/agent-packages/managed-blocks'
 import { isInstallLockHeld } from '../../src/core/agent-packages/install-lock'
 
@@ -111,9 +214,10 @@ beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
   mkdirSync(openClawDir, { recursive: true })
-  openClawAgents = []
+  runtimeAgents = []
   adapterCalls.addAgent.length = 0
   adapterCalls.addToAllowLists.length = 0
+  installRuntimeMock()
 })
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -187,7 +291,7 @@ function seedSkillPack(name: string): string {
 // ─── Happy paths ─────────────────────────────────────────────────────────────
 
 describe('installPackage — fresh install (kind:"agent")', () => {
-  it('writes lockfile entry, projections, and creates the OpenClaw agent', async () => {
+  it('writes lockfile entry, projections, and creates the runtime agent', async () => {
     const src = seedAgentPackage()
 
     const result = await installPackage({ source: src })
@@ -197,18 +301,18 @@ describe('installPackage — fresh install (kind:"agent")', () => {
     expect(result.createdAgent).toBe(true)
     expect(result.adopted).toBe(false)
 
-    // OpenClaw addAgent called with manifest values
+    // Runtime agent creation called with manifest values
     expect(adapterCalls.addAgent).toHaveLength(1)
     const addCall = adapterCalls.addAgent[0] as { id: string; emoji?: string; role?: string }
     expect(addCall.id).toBe('pixel')
     expect(addCall.emoji).toBe('🎨')
     expect(addCall.role).toBe('Image artist')
 
-    // dispatchableBy → main only
+    // dispatchableBy → main allowlist update
     expect(adapterCalls.addToAllowLists).toHaveLength(1)
     expect(adapterCalls.addToAllowLists[0]).toEqual({
-      newAgentId: 'pixel',
-      dispatchable: 'main',
+      agentId: 'main',
+      patch: { add: ['pixel'] },
     })
 
     // Lockfile entry shape
@@ -278,7 +382,7 @@ describe('installPackage — fresh install (kind:"agent")', () => {
 describe('installPackage — adopt mode', () => {
   it('attaches package without overwriting existing workspace files', async () => {
     // Pre-existing pixel agent + workspace SOUL the user wrote
-    openClawAgents = [{ id: 'pixel', identity: { name: 'Pixel' } }]
+    runtimeAgents = [{ id: 'pixel', identity: { name: 'Pixel' } }]
     const wsDir = join(openClawDir, 'workspaces', 'pixel')
     mkdirSync(wsDir, { recursive: true })
     writeFileSync(join(wsDir, 'SOUL.md'), '# user wrote this')
@@ -314,12 +418,12 @@ describe('installPackage — refuse paths', () => {
   })
 
   it('refuses fresh install on an unmanaged existing agent (without --adopt)', async () => {
-    openClawAgents = [{ id: 'pixel' }]
+    runtimeAgents = [{ id: 'pixel' }]
     const src = seedAgentPackage()
 
     expect(async () => {
       await installPackage({ source: src })
-    }).toThrow(/already exists in OpenClaw but is unmanaged/)
+    }).toThrow(/already exists in the runtime but is unmanaged/)
   })
 
   it('refuses --adopt when agent does not exist', async () => {

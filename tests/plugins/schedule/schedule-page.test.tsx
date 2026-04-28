@@ -57,10 +57,6 @@ mock.module('@/core/watcher', () => ({
   watchPath: mock(),
 }))
 
-mock.module('@/core/openclaw-client', () => ({
-  sendToAgent: mock(),
-}))
-
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })

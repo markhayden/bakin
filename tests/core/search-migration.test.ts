@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach, mock, type Mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import fs from 'fs'
 import path from 'path'
+import { clearSearchAdapter, createSearchAdapterHarness, installSearchAdapter } from '../helpers/search-adapter'
 
 const testDir = path.join(process.cwd(), 'test-content-search-migration')
 const stateFile = path.join(testDir, '.search-state.json')
@@ -15,26 +16,7 @@ mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-// Antfly mock — controlled per-test via state vars below
-const antflyState = {
-  enabled: true,
-  tables: [] as Array<{ name: string }>,
-  dropped: [] as string[],
-  listError: false as boolean | Error,
-  dropError: null as null | Error,
-}
-
-mock.module('../../src/core/antfly', () => ({
-  enabled: () => antflyState.enabled,
-  listTables: mock(async () => {
-    if (antflyState.listError) throw antflyState.listError
-    return antflyState.tables
-  }),
-  dropTable: mock(async (name: string) => {
-    if (antflyState.dropError) throw antflyState.dropError
-    antflyState.dropped.push(name)
-  }),
-}))
+let searchHarness: ReturnType<typeof createSearchAdapterHarness>
 
 import {
   SCHEMA_VERSION,
@@ -46,22 +28,19 @@ import { resetContentDir } from '../../src/core/content-dir'
 
 describe('search-migration', () => {
   beforeEach(() => {
-    process.env.CONTENT_DIR = testDir
+    process.env.BAKIN_HOME = testDir
     if (fs.existsSync(testDir)) fs.rmSync(testDir, { recursive: true })
     fs.mkdirSync(testDir, { recursive: true })
-    // Reset antfly mock state
-    antflyState.enabled = true
-    antflyState.tables = []
-    antflyState.dropped = []
-    antflyState.listError = false
-    antflyState.dropError = null
+    searchHarness = createSearchAdapterHarness()
+    installSearchAdapter(searchHarness.adapter)
     // Reset the content-dir module cache so each test picks up the
-    // per-test CONTENT_DIR env var.
+    // per-test BAKIN_HOME env var.
     resetContentDir()
   })
 
   afterEach(() => {
-    delete process.env.CONTENT_DIR
+    delete process.env.BAKIN_HOME
+    clearSearchAdapter()
     if (fs.existsSync(testDir)) fs.rmSync(testDir, { recursive: true })
   })
 
@@ -107,38 +86,38 @@ describe('search-migration', () => {
       expect(result.migrated).toBe(false)
       expect(result.from).toBe(SCHEMA_VERSION)
       expect(result.to).toBe(SCHEMA_VERSION)
-      expect(antflyState.dropped).toEqual([])
+      expect(searchHarness.calls.tablesDrop).not.toHaveBeenCalled()
     })
 
     it('is a no-op when stored version is greater than code version', async () => {
       fs.writeFileSync(stateFile, JSON.stringify({ version: SCHEMA_VERSION + 5 }))
       const result = await migrateIfNeeded()
       expect(result.migrated).toBe(false)
-      expect(antflyState.dropped).toEqual([])
+      expect(searchHarness.calls.tablesDrop).not.toHaveBeenCalled()
     })
 
     it('is a no-op when Antfly is disabled', async () => {
-      antflyState.enabled = false
+      searchHarness.setAvailable(false)
       fs.writeFileSync(stateFile, JSON.stringify({ version: 0 }))
       const result = await migrateIfNeeded()
       expect(result.migrated).toBe(false)
-      expect(antflyState.dropped).toEqual([])
+      expect(searchHarness.calls.tablesDrop).not.toHaveBeenCalled()
     })
 
     it('drops all bakin_* tables and writes the new version on mismatch', async () => {
-      antflyState.tables = [
-        { name: 'bakin_tasks' },
-        { name: 'bakin_assets' },
-        { name: 'bakin_projects' },
-        { name: 'external_legacy' }, // non-bakin, should be left alone
-        { name: 'other_thing' },
-      ]
+      searchHarness.setTables([
+        'bakin_tasks',
+        'bakin_assets',
+        'bakin_projects',
+        'external_legacy', // non-bakin, should be left alone
+        'other_thing',
+      ])
       // state file absent → stored version 0
       const result = await migrateIfNeeded()
       expect(result.migrated).toBe(true)
       expect(result.from).toBe(0)
       expect(result.to).toBe(SCHEMA_VERSION)
-      expect(antflyState.dropped.sort()).toEqual([
+      expect(searchHarness.calls.tablesDrop.mock.calls.map(call => call[0]).sort()).toEqual([
         'bakin_assets',
         'bakin_projects',
         'bakin_tasks',
@@ -148,26 +127,24 @@ describe('search-migration', () => {
     })
 
     it('continues migration even when one drop fails', async () => {
-      antflyState.tables = [{ name: 'bakin_tasks' }, { name: 'bakin_assets' }]
+      searchHarness.setTables(['bakin_tasks', 'bakin_assets'])
       // Fail only on the first drop
-      const { dropTable } = require('../../src/core/antfly') as typeof import('../../src/core/antfly')
       let calls = 0
-      vi.mocked(dropTable).mockImplementation(async (name: string) => {
+      searchHarness.calls.tablesDrop.mockImplementation(async (name: string) => {
         calls++
         if (calls === 1) throw new Error('simulated drop failure')
-        antflyState.dropped.push(name)
       })
 
       const result = await migrateIfNeeded()
       expect(result.migrated).toBe(true)
       // Second drop still ran despite the first failing
-      expect(antflyState.dropped).toContain('bakin_assets')
+      expect(searchHarness.calls.tablesDrop.mock.calls.map(call => call[0])).toContain('bakin_assets')
       // Version file still advances — the migration is best-effort
       expect(readStoredVersion()).toBe(SCHEMA_VERSION)
     })
 
     it('leaves state file unchanged when listTables throws', async () => {
-      antflyState.listError = new Error('connection refused')
+      searchHarness.calls.tablesList.mockRejectedValueOnce(new Error('connection refused'))
       const result = await migrateIfNeeded()
       expect(result.migrated).toBe(false)
       expect(result.from).toBe(0)

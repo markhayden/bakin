@@ -19,12 +19,13 @@ import { join } from 'path'
 import { MarkdownStorageAdapter } from '@/lib/storage/markdown-adapter'
 import { BakinEventBus } from '@/lib/events/event-bus'
 import { getContentDir } from '@/core/content-dir'
+import { getAppServices } from '@/core/app-services'
 import { createLogger } from '@/core/logger'
 import { buildSearchAPI } from '@/core/search-registry'
 import { appendAudit } from '@/core/audit'
 import { pluginRegistry } from '@/lib/plugin-registry'
 import { stampPluginResponse } from '@/core/plugin-host/version-stamp'
-import type { PluginContext, APIRoute } from '@/lib/plugin-types'
+import type { PluginContext, APIRoute } from '@bakin/core/plugin-types'
 
 const log = createLogger('plugin-route')
 
@@ -35,6 +36,7 @@ const log = createLogger('plugin-route')
  * (settings, activity, hooks, search) read/write through the real globals.
  */
 function buildCtx(pluginId: string): PluginContext {
+  const services = getAppServices()
   const storage = new MarkdownStorageAdapter()
   const events = new BakinEventBus((data) => {
     const broadcastFn = (globalThis as Record<string, unknown>).__bakinBroadcast as
@@ -47,6 +49,8 @@ function buildCtx(pluginId: string): PluginContext {
     storage,
     events,
     pluginId,
+    runtime: services.runtime,
+    tasks: services.tasks,
     registerNav: () => {},
     registerRoute: noopRegisterRoute,
     registerSlot: () => {},

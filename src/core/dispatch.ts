@@ -1,6 +1,6 @@
 /**
  * Task dispatch system for Bakin.
- * Periodically checks for TODO tasks and dispatches them to agents via OpenClaw.
+ * Periodically checks for TODO tasks and dispatches them to agents via the runtime adapter.
  */
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
@@ -8,17 +8,28 @@ import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { recordUsage } from './usage'
-import * as openclaw from './openclaw-client'
+import { getAppServices } from './app-services'
+import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { isStale } from '../lib/format'
 import { getHookRegistry } from '../lib/plugin-registry'
-import { getMainAgentId } from '@bakin/core/main-agent'
-import { getAgentIds } from '@bakin/core/openclaw-config'
+import { readProject } from '../../plugins/projects/lib/parser'
+import {
+  addTaskLog as appendTaskLog,
+  blockTask as blockStoredTask,
+  moveTask as moveStoredTask,
+  readTaskboard,
+  updateTask as updateStoredTask,
+} from './task-store'
 
 const log = createLogger('dispatch')
 const hooks = () => getHookRegistry()
 
-// Upstream openclaw error bodies land in task logs and audit JSONL via
-// the dispatch catch handlers. Bound the blast radius — a runaway gateway
+async function sendDispatchMessage(agentId: string, content: string): Promise<void> {
+  await getAppServices().runtime.messaging.send({ agentId, content })
+}
+
+// Upstream runtime error bodies land in task logs and audit JSONL via
+// the dispatch catch handlers. Bound the blast radius — a runaway adapter
 // response (HTML error page, stack trace, accidental secret echo) should
 // not balloon the audit file or the task drawer.
 const MAX_ERR_LEN = 500
@@ -42,6 +53,55 @@ interface DispatchState {
   failedDispatches: Record<string, FailureRecord>
 }
 
+type DispatchTask = {
+  id: string
+  title: string
+  agent?: string
+  workflowId?: string
+  description?: string
+  projectId?: string
+  log?: Array<{ timestamp: string }>
+}
+
+type DispatchColumns = {
+  backlog: DispatchTask[]
+  todo: DispatchTask[]
+  inProgress: DispatchTask[]
+  review: DispatchTask[]
+  done: DispatchTask[]
+  blocked: DispatchTask[]
+  archived: DispatchTask[]
+}
+
+function emptyDispatchColumns(): DispatchColumns {
+  return {
+    backlog: [],
+    todo: [],
+    inProgress: [],
+    review: [],
+    done: [],
+    blocked: [],
+    archived: [],
+  }
+}
+
+async function readDispatchColumns(): Promise<DispatchColumns> {
+  const board = readTaskboard() as unknown as { columns: Partial<DispatchColumns> }
+  return { ...emptyDispatchColumns(), ...(board?.columns ?? {}) }
+}
+
+async function addTaskLog(taskId: string, author: string, message: string): Promise<void> {
+  await appendTaskLog(taskId, author, message)
+}
+
+async function moveTaskToInProgress(taskId: string, agent: string): Promise<void> {
+  await updateStoredTask(taskId, { column: 'inProgress', agent })
+}
+
+async function moveTask(taskId: string, to: string, from?: string): Promise<void> {
+  await moveStoredTask(taskId, to, from)
+}
+
 const TRANSIENT_CODES = new Set([
   'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'UND_ERR_SOCKET', 'EPIPE',
 ])
@@ -50,13 +110,13 @@ const TRANSIENT_CODES = new Set([
 //   - transient: fetch/network errors that slipped past sendMessage's in-call
 //     retry — e.g. node-undici's TypeError('fetch failed'), raw socket
 //     errors surfaced via err.cause.code. Use the short cooldown.
-//   - structural: "OpenClaw sendMessage failed (<status>): <body>" — the
-//     gateway talked to us and said no. Use the long cooldown.
+//   - structural: adapter failures with an HTTP-like status. The runtime
+//     answered and said no, so use the long cooldown.
 // Default to 'structural' on unknown errors: treating an unknown failure as
 // a real outage is the safer side — worst case we wait longer than needed,
 // not shorter.
 function classifyDispatchError(err: unknown): DispatchFailureKind {
-  if (err instanceof Error && /^OpenClaw sendMessage failed \(\d+\)/.test(err.message)) {
+  if (err instanceof Error && /\bfailed \(\d{3}\)/.test(err.message)) {
     return 'structural'
   }
   if (err instanceof TypeError && err.message.includes('fetch failed')) return 'transient'
@@ -136,12 +196,13 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
   try {
     // Acquire state lock for the entire cycle to prevent races with dispatchSingleTask
     await withStateLock(async () => {
-    const { getTodoTasks, moveTaskToInProgress, addTaskLog } = await import('@bakin/tasks/lib/flow-store')
-
-    const { todoTasks } = getTodoTasks()
     const state = loadDispatchState(contentDir)
+    const runtime = getAppServices().runtime
+    const runtimeAgentIds = new Set((await runtime.agents.list()).map((agent) => agent.id))
+    const mainAgentId = await getRuntimeMainAgentId(runtime)
     // Reconcile dispatch state with taskboard reality
-    const { columns } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string; agent?: string; workflowId?: string; description?: string; projectId?: string; log?: Array<{ timestamp: string }> }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
+    const columns = await readDispatchColumns()
+    const todoTasks = columns.todo
     const activeIds = new Set([
       ...columns.inProgress.map(t => t.id),
       ...columns.done.map(t => t.id),
@@ -174,7 +235,8 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
           { ...wfTask, workflowId: wfTask.workflowId },
           contentDir, port, dispatchedSet, state,
           async () => {}, // already in progress, no column move needed
-          addTaskLog
+          addTaskLog,
+          mainAgentId,
         )
       } catch (err) {
         log.error(`Failed to re-dispatch workflow task "${task.title}"`, err)
@@ -195,7 +257,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         if (failure.count >= settings.dispatch.maxRetries) {
           // Escalate to blocked
           try {
-            await hooks().invoke<void>('tasks.blockTask', { identifier: task.id, reason: `Dispatch failed ${failure.count} times — agent may be unavailable` })
+            await blockStoredTask(task.id, `Dispatch failed ${failure.count} times - agent may be unavailable`)
             await addTaskLog(task.id, 'system', `Dispatch exhausted: ${failure.count} failed attempts. Task moved to blocked.`)
             appendAudit(contentDir, 'task.dispatch_exhausted', 'system', { id: task.id, title: task.title, count: failure.count })
             log.warn('Task blocked after max dispatch retries', { id: task.id, count: failure.count })
@@ -207,22 +269,22 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         if (Date.now() - failure.lastAttempt < cooldownForFailure(failure, settings)) continue
       }
 
-      if (task.agent && !getAgentIds().includes(task.agent)) continue
+      if (task.agent && !runtimeAgentIds.has(task.agent)) continue
 
       // Workflow-aware dispatch path
       const taskWithWorkflow = task as typeof task & { workflowId?: string }
       if (taskWithWorkflow.workflowId) {
         try {
-          await dispatchWorkflowTask({ ...taskWithWorkflow, workflowId: taskWithWorkflow.workflowId }, contentDir, port, dispatchedSet, state, moveTaskToInProgress, addTaskLog)
+          await dispatchWorkflowTask({ ...taskWithWorkflow, workflowId: taskWithWorkflow.workflowId }, contentDir, port, dispatchedSet, state, moveTaskToInProgress, addTaskLog, mainAgentId)
         } catch (err) {
           log.error(`Failed to dispatch workflow task "${task.title}"`, err)
         }
         continue
       }
 
-      const targetAgent = task.agent ?? getMainAgentId()
+      const targetAgent = task.agent ?? mainAgentId
 
-      const message = buildDispatchMessage(task, targetAgent, contentDir, port)
+      const message = buildDispatchMessage(task, targetAgent, contentDir, port, mainAgentId)
 
       try {
         // Move to inProgress BEFORE sending message to eliminate race condition
@@ -230,7 +292,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         await moveTaskToInProgress(task.id, targetAgent)
         appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
 
-        await openclaw.sendMessage(targetAgent, message)
+        await sendDispatchMessage(targetAgent, message)
         dispatchedSet.add(task.id)
 
         appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title })
@@ -279,14 +341,17 @@ export async function dispatchSingleTask(
   const settings = getSettings()
 
   await withStateLock(async () => {
-    const { columns } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string; agent?: string; workflowId?: string; description?: string; projectId?: string; log?: Array<{ timestamp: string }> }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
+    const columns = await readDispatchColumns()
     const task = columns.todo.find(t => t.id === taskId)
     if (!task) {
       log.debug('dispatchSingleTask: task not in todo, skipping', { taskId })
       return
     }
 
-    if (task.agent && !getAgentIds().includes(task.agent)) {
+    const runtime = getAppServices().runtime
+    const runtimeAgentIds = new Set((await runtime.agents.list()).map((agent) => agent.id))
+    const mainAgentId = await getRuntimeMainAgentId(runtime)
+    if (task.agent && !runtimeAgentIds.has(task.agent)) {
       log.warn('dispatchSingleTask: agent not in allowed list', { taskId, agent: task.agent })
       return
     }
@@ -310,18 +375,16 @@ export async function dispatchSingleTask(
       }
     }
 
-    const { moveTaskToInProgress, addTaskLog } = await import('@bakin/tasks/lib/flow-store')
-
     // Workflow-aware dispatch path
     const taskWithWorkflow = task as typeof task & { workflowId?: string }
     if (taskWithWorkflow.workflowId) {
       const dispatchedSet = new Set(state.dispatched)
       const wfStart = Date.now()
-      const wfAgent = task.agent ?? getMainAgentId()
+      const wfAgent = task.agent ?? mainAgentId
       try {
         await dispatchWorkflowTask(
           { ...taskWithWorkflow, workflowId: taskWithWorkflow.workflowId },
-          contentDir, port, dispatchedSet, state, moveTaskToInProgress, addTaskLog,
+          contentDir, port, dispatchedSet, state, moveTaskToInProgress, addTaskLog, mainAgentId,
         )
         state.dispatched = [...dispatchedSet]
         saveDispatchState(contentDir, state)
@@ -350,8 +413,8 @@ export async function dispatchSingleTask(
     }
 
     // Regular task dispatch
-    const targetAgent = task.agent ?? getMainAgentId()
-    const message = buildDispatchMessage(task, targetAgent, contentDir, port)
+    const targetAgent = task.agent ?? mainAgentId
+    const message = buildDispatchMessage(task, targetAgent, contentDir, port, mainAgentId)
     const dispatchStart = Date.now()
 
     try {
@@ -359,7 +422,7 @@ export async function dispatchSingleTask(
       await moveTaskToInProgress(task.id, targetAgent)
       appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
 
-      await openclaw.sendMessage(targetAgent, message)
+      await sendDispatchMessage(targetAgent, message)
 
       state.dispatched.push(task.id)
       saveDispatchState(contentDir, state)
@@ -408,8 +471,10 @@ export function buildDispatchMessage(
   task: { id: string; title: string; description?: string; agent?: string; projectId?: string },
   agentName: string,
   contentDir: string,
-  _port: number
+  _port: number,
+  mainAgentId = 'main',
 ): string {
+  void _port
   const detailsBlock = task.description ? `\n\nDetails:\n${task.description}` : ''
 
   // List attached assets by filename (stable identity). Agents open them
@@ -446,7 +511,6 @@ export function buildDispatchMessage(
   let projectBlock = ''
   if (task.projectId) {
     try {
-      const { readProject } = require('../../plugins/projects/lib/parser')
       const project = readProject(task.projectId)
       if (project) {
         projectBlock = `\n\n**Project:** "${project.title}" (id: ${project.id}, ${project.progress}% complete)\nThe project spec contains detailed requirements. Call bakin_exec_project_get to read it before starting work.`
@@ -462,7 +526,7 @@ export function buildDispatchMessage(
     return `Triage this task: "${task.title}".${detailsBlock}${assetsBlock}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=content/comms, chef=research/strategy) via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
-  if (task.agent === getMainAgentId()) {
+  if (task.agent === mainAgentId) {
     return `Work on this task: "${task.title}".${detailsBlock}${assetsBlock}\n\n${contactsRef} When done: \`${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
@@ -517,8 +581,8 @@ These tools help you accomplish the work. Use them as your primary way to save f
 # Save any file as a managed asset (handles naming + sidecar metadata)
 ${mc('bakin_exec_save_asset', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"`)}
 
-# Post to Discord (with optional image/video attachment)
-${mc('bakin_exec_post_discord', `channel="<name>" content="<message>" taskId=${task.id}`)}
+# Post to a runtime channel (with optional image/video attachment)
+${mc('bakin_exec_post_channel', `channel="<name>" content="<message>" taskId=${task.id}`)}
 
 # Generate image via Nano Banana
 ${mc('bakin_exec_gen_image', `taskId=${task.id} prompt="<text>" preset=social-portrait model=flash`)}
@@ -572,12 +636,13 @@ async function dispatchWorkflowTask(
   state: DispatchState,
   moveTaskToInProgress: (id: string, agent: string) => Promise<void>,
   addTaskLog: (id: string, author: string, message: string) => Promise<void>,
+  mainAgentId: string,
 ): Promise<void> {
   // Load or create workflow instance.
   // Pass the task assignee so $assigned steps resolve to whoever owns the task at start time.
-  let instance = await hooks().invoke<Record<string, unknown>>('workflows.loadInstance', { taskId: task.id })
+  const instance = await hooks().invoke<Record<string, unknown>>('workflows.loadInstance', { taskId: task.id })
   if (!instance) {
-    instance = await hooks().invoke<Record<string, unknown>>('workflows.createInstance', { taskId: task.id, workflowId: task.workflowId, assignee: task.agent }) ?? {}
+    await hooks().invoke<Record<string, unknown>>('workflows.createInstance', { taskId: task.id, workflowId: task.workflowId, assignee: task.agent })
     log.info('Created workflow instance', { taskId: task.id, workflowId: task.workflowId, resolvedAgent: task.agent })
   } else if (!instance.resolvedAgent && task.agent) {
     // Backfill resolvedAgent if instance was created before $assigned resolution was wired up
@@ -597,11 +662,11 @@ async function dispatchWorkflowTask(
   // non-workflow tasks. Prevents the task from sitting in "todo" while the
   // agent is already working on it.
   if (!dispatchedSet.has(task.id)) {
-    const { columns: fresh } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; agent?: string; title?: string; workflowId?: string }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
+    const { columns: fresh } = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string; agent?: string; title?: string; workflowId?: string }>> }
     const stillInTodo = fresh.todo.some(t => t.id === task.id)
     if (stillInTodo) {
-      const firstAgent = activeAgents[0]?.agent || task.agent || getMainAgentId()
-      await moveTaskToInProgress(task.id, firstAgent)
+      const ownerAgent = task.agent || activeAgents[0]?.agent || mainAgentId
+      await moveTaskToInProgress(task.id, ownerAgent)
       appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
     }
     dispatchedSet.add(task.id)
@@ -626,7 +691,7 @@ async function dispatchWorkflowTask(
     const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, port)
 
     try {
-      await openclaw.sendMessage(targetAgent, message)
+      await sendDispatchMessage(targetAgent, message)
       dispatchedSet.add(`${task.id}:${stepId}`)
 
       appendAudit(contentDir, 'task.dispatched', targetAgent, {
@@ -677,6 +742,7 @@ function buildWorkflowDispatchMessage(
   agentName: string,
   _port: number
 ): string {
+  void _port
   const lines: string[] = []
 
   // ─── Identity Frame ─────────────────────────────────────────────────
@@ -825,11 +891,11 @@ function buildWorkflowDispatchMessage(
   lines.push('')
   lines.push(`# Check workflow gate statuses`)
   lines.push(`${wfMc('bakin_exec_check_gates', `taskId=${task.id}`)}`);
-  // Only include post_discord for output/publish steps (non-output steps have "NO SIDE EFFECTS" constraint)
+  // Only include channel posting for output/publish steps (non-output steps have "NO SIDE EFFECTS" constraint)
   if (stepContext.type === 'output') {
     lines.push('')
-    lines.push(`# Post to Discord (with optional image/video attachment)`)
-    lines.push(`${wfMc('bakin_exec_post_discord', `channel="<name>" content="<message>" taskId=${task.id}`)}`);
+    lines.push(`# Post to a runtime channel (with optional image/video attachment)`)
+    lines.push(`${wfMc('bakin_exec_post_channel', `channel="<name>" content="<message>" taskId=${task.id}`)}`);
   }
   lines.push('```')
   lines.push('')
@@ -853,7 +919,7 @@ function buildWorkflowDispatchMessage(
 export async function reconcileOnStartup(contentDir: string): Promise<void> {
   const settings = getSettings()
   try {
-    const { columns } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string; agent?: string; workflowId?: string; description?: string; projectId?: string; log?: Array<{ timestamp: string }> }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
+    const { columns } = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string; title: string; agent?: string; workflowId?: string; description?: string; projectId?: string; log?: Array<{ timestamp: string }> }>> }
     let recovered = 0
 
     for (const task of [...columns.inProgress]) {
@@ -865,9 +931,8 @@ export async function reconcileOnStartup(contentDir: string): Promise<void> {
 
       if (agentStale && !hasRecentLog) {
         try {
-          await hooks().invoke<void>('tasks.addTaskLog', { identifier: task.id, author: 'system', message: 'Recovered on server restart: agent heartbeat stale and no recent task logs.' })
-          const { moveTask: doMove } = await import('@bakin/tasks/lib/flow-store')
-          await doMove(task.id, 'todo')
+          await addTaskLog(task.id, 'system', 'Recovered on server restart: agent heartbeat stale and no recent task logs.')
+          await moveTask(task.id, 'todo', 'inProgress')
           appendAudit(contentDir, 'task.startup_recovered', 'system', { id: task.id, title: task.title, agent: task.agent })
           recovered++
           log.info('Startup recovery: task moved to todo', { id: task.id, title: task.title })

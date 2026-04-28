@@ -27,7 +27,7 @@ mock.module('../../../../src/core/logger', () => ({
 }))
 
 import { createMemoryListAgentsTool } from '../../../../plugins/memory/mcp/list-agents'
-import type { PluginContext, SearchResponse } from '../../../../src/lib/plugin-types'
+import type { PluginContext, SearchResponse } from '@bakin/core/plugin-types'
 
 function makeCtx(perTierAgg: Record<string, Array<{ value: string; count: number }>>): PluginContext {
   return {
@@ -55,7 +55,7 @@ function makeCtx(perTierAgg: Record<string, Array<{ value: string; count: number
         return {
           results: [],
           aggregations: { agent: agg },
-          meta: { query: p.q, total: agg.reduce((s, a) => s + a.count, 0), took_ms: 0, source: 'antfly' },
+          meta: { query: p.q, total: agg.reduce((s, a) => s + a.count, 0), took_ms: 0, source: 'search' },
         } satisfies SearchResponse
       }),
     },
@@ -111,7 +111,7 @@ describe('memory_list_agents', () => {
       return {
         results: [],
         aggregations: { agent: agg },
-        meta: { query: p.q, total: agg.length, took_ms: 0, source: 'antfly' },
+        meta: { query: p.q, total: agg.length, took_ms: 0, source: 'search' },
       } satisfies SearchResponse
     })
     const tool = createMemoryListAgentsTool(ctx)

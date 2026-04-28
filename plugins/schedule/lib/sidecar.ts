@@ -1,12 +1,11 @@
 /**
- * Schedule sidecar — Bakin-owned metadata for OpenClaw cron jobs.
+ * Schedule sidecar - Bakin-owned metadata for runtime cron jobs.
  * Stored at ~/.bakin/schedule/sidecar.json.
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { dirname } from 'path'
 import { createLogger } from '../../../src/core/logger'
 import { getContentDir } from '../../../src/core/content-dir'
-import { getMainAgentId } from '../../../src/core/main-agent'
 import type { ScheduleSidecar, BakinJobMeta } from '../types'
 
 const log = createLogger('schedule:sidecar')
@@ -69,10 +68,13 @@ export function removeJob(jobId: string): boolean {
 }
 
 /** Apply defaults to a sidecar entry for display. */
-export function withDefaults(meta: BakinJobMeta): Required<Pick<BakinJobMeta, 'owner' | 'maxFailures' | 'allowOverlap' | 'requireTriage'>> & BakinJobMeta {
+export function withDefaults(
+  meta: BakinJobMeta,
+  defaultOwner: string,
+): Required<Pick<BakinJobMeta, 'owner' | 'maxFailures' | 'allowOverlap' | 'requireTriage'>> & BakinJobMeta {
   return {
     ...meta,
-    owner: meta.owner ?? getMainAgentId(),
+    owner: meta.owner ?? defaultOwner,
     maxFailures: meta.maxFailures ?? DEFAULTS.maxFailures,
     allowOverlap: meta.allowOverlap ?? DEFAULTS.allowOverlap,
     requireTriage: meta.requireTriage ?? DEFAULTS.requireTriage,

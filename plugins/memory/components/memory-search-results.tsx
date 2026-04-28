@@ -160,8 +160,8 @@ export function MemorySearchResults({
  * Per-result score breakdown overlay — matches the pattern used on the
  * messaging session list and asset cards. RRF is the merged rank, SEM is
  * the `embeddings` semantic index, BM25 is whichever full-text index key
- * Antfly attached (Bleve's key is an absolute filesystem path containing
- * "bleve", so it can't be hardcoded).
+ * the adapter attached. Some adapters use absolute filesystem paths for
+ * index keys, so it can't be hardcoded.
  */
 function ScoreBreakdown({ result }: { result: SearchResult }) {
   const scores = result.indexScores ?? {}

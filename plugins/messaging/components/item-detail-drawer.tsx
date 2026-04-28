@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Pencil, Trash2, MoreHorizontal, Check, X, Calendar, Clock, Hash, MessageSquare, Undo2 } from 'lucide-react'
+import { Pencil, Trash2, MoreHorizontal, Check, X, Calendar, Clock, MessageSquare, Undo2 } from 'lucide-react'
 import { BakinDrawer } from "@bakin/sdk/components"
 import { AgentAvatar } from "@bakin/sdk/components"
 import { AgentSelect } from "@bakin/sdk/components"
@@ -31,7 +31,7 @@ import {
   DialogTitle,
 } from "@bakin/sdk/ui"
 import type { CalendarItem, ContentTone } from '../types'
-import { DISCORD_GENERAL } from '../types'
+import { DEFAULT_CHANNEL } from '../types'
 import { TONE_LABELS, STATUS_BADGE } from '../constants'
 import { useAgent, useAgentIds } from "@bakin/sdk/hooks"
 import { useContentTypes, getContentTypeLabel } from '../hooks/use-content-types'
@@ -67,7 +67,7 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
   const [brief, setBrief] = useState('')
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
-  const [channels, setChannels] = useState<string[]>(['discord'])
+  const [channels, setChannels] = useState<string[]>([DEFAULT_CHANNEL])
   const [draftCaption, setDraftCaption] = useState('')
   const [draftImagePrompt, setDraftImagePrompt] = useState('')
   const [draftVideoPrompt, setDraftVideoPrompt] = useState('')
@@ -91,7 +91,7 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
       setTone(item.tone)
       setScheduledAt(item.scheduledAt.slice(0, 16))
       setBrief(item.brief || '')
-      setChannels(item.channels || (item.channel ? [item.channel] : ['discord']))
+      setChannels(item.channels)
       setDraftCaption(item.draft?.caption || '')
       setDraftImagePrompt(item.draft?.imagePrompt || '')
       setDraftVideoPrompt(item.draft?.videoPrompt || '')
@@ -103,13 +103,13 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
       setTone('conversational')
       setScheduledAt(defaultDate || new Date().toISOString().slice(0, 16))
       setBrief('')
-      setChannels(['discord'])
+      setChannels([DEFAULT_CHANNEL])
     }
     setRejectionNote('')
     setShowRejectForm(false)
     setConfirmDelete(false)
     setDirty(false)
-  }, [open, editing, item, isCreate, defaultDate])
+  }, [open, editing, item, isCreate, defaultDate, agentIds, contentTypes])
 
   const handleSave = async () => {
     if (!title.trim()) return
@@ -127,8 +127,6 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
             scheduledAt: new Date(scheduledAt).toISOString(),
             brief: brief.trim(),
             channels,
-            channel: channels[0] || 'discord',
-            channelTarget: DISCORD_GENERAL,
             status: 'draft',
           }),
         })
@@ -534,17 +532,12 @@ export function ItemDetailDrawer({ item, open, editing, onClose, onCancelEdit, o
               Channels
             </div>
             <div className="flex items-center gap-2 text-sm font-medium">
-              {(item.channels || (item.channel ? [item.channel] : [])).map(ch => (
+              {item.channels.map(ch => (
                 <Badge key={ch} variant="outline" className="text-[10px] inline-flex items-center gap-1">
                   <ChannelIcon channelId={ch} className="size-3" />
                   {getChannelLabel(ch, availableChannels)}
                 </Badge>
               ))}
-              {item.channelTarget && (
-                <span className="text-xs text-muted-foreground flex items-center gap-0.5">
-                  <Hash className="size-3" />{item.channelTarget}
-                </span>
-              )}
             </div>
           </div>
         </div>

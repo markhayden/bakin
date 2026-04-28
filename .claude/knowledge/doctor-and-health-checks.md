@@ -2,9 +2,15 @@
 
 ## What this is
 
-The "doctor" sweep — Bakin's periodic health audit — used to be a 1762-line monolith in `src/core/doctor.ts` with 18 builtin checks for everything from agent rosters to OpenClaw skill sync. After #139, every check is **plugin-registered** via `ctx.registerHealthCheck`. `src/core/doctor.ts` is now ~170 lines: cron + cache + audit + notify, plus the `runPluginHealthChecks()` orchestrator.
+The "doctor" sweep — Bakin's periodic health audit — used to be a 1762-line monolith in `src/core/doctor.ts` with 18 builtin checks for everything from agent rosters to runtime skill sync. After #139, every check is **plugin-registered** via `ctx.registerHealthCheck`. `src/core/doctor.ts` is now ~170 lines: cron + cache + audit + notify, plus the `runPluginHealthChecks()` orchestrator.
 
 The single canonical result type is `HealthCheckResult`, exported from `@bakin/core/plugin-types` (re-exported via `@bakin/sdk` for plugin authors).
+
+Runtime/search provider health belongs to adapters. `src/core/app-services.ts`
+collects adapter health checks through the shared health service, while
+plugin-registered doctor checks remain the product-level checks surfaced by the
+health plugin. A health check may call `ctx.runtime` or `ctx.search`, but it
+must not import provider clients or provider path helpers directly.
 
 ## Architecture at a glance
 
@@ -47,8 +53,8 @@ The orchestrator is intentionally trivial — it has no opinion about what's bei
 | `plugins/health/lib/system-checks/content-dir.ts` | `content-dir` |
 | `plugins/health/lib/system-checks/service.ts` | `service` |
 | `plugins/health/lib/system-checks/mcporter.ts` | `mcporter` |
-| `plugins/health/lib/system-checks/gateway.ts` | `gateway` |
-| `plugins/health/lib/system-checks/antfly.ts` | `antfly` |
+| `plugins/health/lib/system-checks/runtime.ts` | `runtime` |
+| `plugins/health/lib/system-checks/search.ts` | `search` |
 | `plugins/health/lib/system-checks/orchestrator-rules.ts` | `orchestrator-rules` |
 | `plugins/health/lib/system-checks/sync-skill.ts` | `skill` |
 | `plugins/health/lib/system-checks/plugin-assets.ts` | `plugin-assets` |
@@ -152,7 +158,7 @@ The orchestrator (`runPluginHealthChecks` in `src/core/doctor.ts`) wraps each `d
 
 - **Behavioral tests live with the plugin**: `tests/plugins/{owner}/health-checks.test.ts`. Pattern matches `tests/plugins/workflows/health-checks.test.ts`.
 - **Orchestration tests live in core**: `tests/core/doctor.test.ts` covers the gate, the audit append, and the cache. `tests/core/doctor-plugin-checks.test.ts` covers the per-check try/catch isolation.
-- **Test isolation is mandatory** (CLAUDE.md rule): every test that touches storage mocks both content-dir shims, `openclaw-home`, `openclaw-client`, and the logger. Verbatim copy `tests/plugins/workflows/health-checks.test.ts:1-67` as the scaffold.
+- **Test isolation is mandatory** (CLAUDE.md rule): every test that touches storage mocks both content-dir shims, runtime/home adapters as needed, and the logger. Verbatim copy the current plugin health-check scaffolds instead of adding new direct runtime-client mocks.
 
 ## Migration history
 

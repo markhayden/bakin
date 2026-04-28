@@ -1,18 +1,18 @@
 /**
- * System check — render Bakin's SKILL.md template into the OpenClaw
- * workspace. Source of truth is the repo's `skill/SKILL.md` for static
+ * System check — render Bakin's SKILL.md template into the runtime skill
+ * store. Source of truth is the repo's `skill/SKILL.md` for static
  * content; the exec-tools block between markers is generated at sync
  * time from the live tool registry.
  *
  * Migrated out of src/core/doctor.ts (#139 C8). Auto-fixable — safe
  * because it creates/overwrites only Bakin's own skill file.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 
 import { getSettings } from '../../../../src/core/settings'
-import { getOpenClawPath } from '../../../../packages/core/src/openclaw-home'
 import { getAllExecTools } from '../../../../scripts/lib/registry'
+import type { AgentRuntimeAdapter } from '../../../../packages/core/src/adapters/runtime'
 import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
 
 const EXEC_TOOLS_START = '<!-- bakin:exec-tools:start -->'
@@ -63,13 +63,13 @@ ${toolLines}
 \`\`\`bash
 # Save a file as a managed asset (handles naming + sidecar automatically)
 mcporter call bakin-<agent>.bakin_exec_save_asset taskId=<id> type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<desc>"
-# Post to Discord (with optional image/video attachment)
-mcporter call bakin-<agent>.bakin_exec_post_discord channel="<name>" content="<msg>" taskId=<id>
+# Post to a runtime channel (with optional image/video attachment)
+mcporter call bakin-<agent>.bakin_exec_post_channel channel="<name>" content="<msg>" taskId=<id>
 # Generate image via Nano Banana
 mcporter call bakin-<agent>.bakin_exec_gen_image taskId=<id> prompt="<text>" preset=social-portrait model=flash
 # Check workflow gate statuses
 mcporter call bakin-<agent>.bakin_exec_check_gates taskId=<id>
-# Create a recurring scheduled job (NEVER use openclaw cron directly)
+# Create a recurring scheduled job (NEVER use runtime-native cron directly)
 mcporter call bakin-<agent>.bakin_exec_schedule_create name="daily-recipe" schedule="every day at 11am" agentId="chef" taskPrompt="Post a short recipe"
 # List all scheduled jobs
 mcporter call bakin-<agent>.bakin_exec_schedule_list
@@ -94,7 +94,7 @@ function renderSyncedSkill(templateContent: string): string {
   return `${before}${buildExecToolsBlock()}${after}`
 }
 
-export function checkAndSyncSkill(projectRoot: string): HealthCheckResult[] {
+export async function checkAndSyncSkill(projectRoot: string, runtime: AgentRuntimeAdapter): Promise<HealthCheckResult[]> {
   const autoFix = getSettings().doctor.autoFixSkill
   const sourceSkill = join(projectRoot, 'skill', 'SKILL.md')
   if (!existsSync(sourceSkill)) {
@@ -109,29 +109,21 @@ export function checkAndSyncSkill(projectRoot: string): HealthCheckResult[] {
     return [error(`Failed to render skill template: ${(err as Error).message}`)]
   }
 
-  const workspaceSkillDir = getOpenClawPath('workspace', 'skills', 'bakin')
-  const targetSkill = join(workspaceSkillDir, 'SKILL.md')
+  const installedSkill = await runtime.skills.get('bakin')
 
-  if (!existsSync(targetSkill)) {
+  if (!installedSkill?.instructions) {
     if (!autoFix) {
-      return [warn('Bakin skill not installed in OpenClaw', true)]
+      return [warn('Bakin skill not installed in runtime', true)]
     }
     try {
-      mkdirSync(workspaceSkillDir, { recursive: true })
-      writeFileSync(targetSkill, renderedContent, 'utf-8')
-      writeFileSync(join(workspaceSkillDir, '_meta.json'), JSON.stringify({
-        slug: 'bakin',
-        version: '1.0.0',
-        installedAt: Date.now(),
-        source: 'bakin-doctor',
-      }, null, 2), 'utf-8')
-      return [fixed('Bakin skill installed in OpenClaw workspace')]
+      await runtime.skills.write({ name: 'bakin', instructions: renderedContent, metadata: { source: 'bakin-doctor' } })
+      return [fixed('Bakin skill installed in runtime')]
     } catch (err) {
       return [error(`Failed to install skill: ${err}`)]
     }
   }
 
-  const currentContent = readFileSync(targetSkill, 'utf-8')
+  const currentContent = installedSkill.instructions
   if (currentContent === renderedContent) {
     return [ok('Bakin skill is up to date')]
   }
@@ -154,24 +146,12 @@ export function checkAndSyncSkill(projectRoot: string): HealthCheckResult[] {
   }
 
   if (!autoFix) {
-    return [warn('Bakin skill is outdated in OpenClaw', true)]
+    return [warn('Bakin skill is outdated in runtime', true)]
   }
 
   try {
-    writeFileSync(targetSkill, renderedContent, 'utf-8')
-    const metaPath = join(workspaceSkillDir, '_meta.json')
-    let meta: Record<string, unknown> = {}
-    if (existsSync(metaPath)) {
-      try { meta = JSON.parse(readFileSync(metaPath, 'utf-8')) } catch { /* fresh */ }
-    }
-    const currentVersion = String(meta.version || '1.0.0')
-    const parts = currentVersion.split('.').map(Number)
-    parts[2] = (parts[2] || 0) + 1
-    meta.version = parts.join('.')
-    meta.updatedAt = Date.now()
-    meta.source = 'bakin-doctor'
-    writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8')
-    return [fixed(`Bakin skill updated to v${meta.version}`)]
+    await runtime.skills.write({ name: 'bakin', instructions: renderedContent, metadata: { source: 'bakin-doctor' } })
+    return [fixed('Bakin skill updated in runtime')]
   } catch (err) {
     return [error(`Failed to update skill: ${err}`)]
   }

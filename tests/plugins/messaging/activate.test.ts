@@ -53,13 +53,6 @@ mock.module('../../../src/core/audit', () => ({
   appendAudit: mock(),
 }))
 
-mock.module('../../../src/core/openclaw-client', () => ({
-  sendMessage: mock(),
-  sendChannelMessage: mock(),
-  streamMessage: mock(),
-  chatCompletion: mock(),
-}))
-
 ;(globalThis as any).__bakinBroadcast = mock()
 
 // Dynamic require — ES imports are hoisted above mock.module registrations, so

@@ -34,7 +34,7 @@ mock.module('../../../src/core/logger', () => ({
   }),
 }))
 
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   createTask: mock(() => Promise.resolve({ id: 'mock-task' })),
   addTaskLog: mock(() => Promise.resolve()),
   moveTask: mock(() => Promise.resolve()),
@@ -45,7 +45,7 @@ mock.module('../../../plugins/tasks/lib/flow-store', () => ({
   getTaskWithColumn: mock(() => null),
 }))
 
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => testDir,
   getOpenClawPath: (...parts: string[]) => join(testDir, ...parts),
   resetOpenClawHome: mock(),

@@ -3,7 +3,7 @@
  * Manages content pipeline: draft → scheduled → executing → waiting → review → published
  */
 import { z } from 'zod'
-import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import {
   loadMessagingItems,
   createItem,
@@ -12,7 +12,7 @@ import {
   getItem,
 } from './lib/storage'
 import type { CalendarItem, ContentStatus, ProposalStatus, MessagingSettings } from './types'
-import { DEFAULT_CONTENT_TYPES } from './types'
+import { DEFAULT_CHANNEL, DEFAULT_CONTENT_TYPES } from './types'
 import {
   createSession,
   loadSession,
@@ -20,13 +20,11 @@ import {
   updateSession as updateSessionFn,
   deleteSession as deleteSessionFn,
   appendMessage,
-  addProposals,
   upsertProposals,
   updateProposal,
   confirmSession,
 } from './lib/sessions'
 import { buildMessages } from './lib/prompt-builder'
-import { streamMessage, chatCompletion } from '@/core/openclaw-client'
 import {
   buildDoc as buildBrainstormDoc,
   parseSessionFile,
@@ -35,9 +33,7 @@ import {
 } from './lib/brainstorm-search'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
-import { sendChannelMessage } from '../../src/core/openclaw-client'
-import * as vault from '../../src/core/vault'
-import { existsSync, readFileSync, readdirSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync } from 'fs'
 import { join } from 'path'
 import type { PlanningSession } from './types'
 
@@ -58,9 +54,74 @@ async function readBody<T>(req: Request): Promise<T> {
   return req.json() as Promise<T>
 }
 
+function normalizeChannels(value: unknown): string[] {
+  if (!Array.isArray(value)) return [DEFAULT_CHANNEL]
+  const channels = value
+    .filter((channel): channel is string => typeof channel === 'string')
+    .map(channel => channel.trim())
+    .filter(Boolean)
+  return channels.length > 0 ? channels : [DEFAULT_CHANNEL]
+}
+
 interface AgentMetaLike { id: string; name?: string }
 
 const AGENT_ID_SHAPE = /^[a-z0-9-]+$/
+
+interface RuntimeChatOpts {
+  agentId: string
+  messages: Array<{ role: string; content: string }>
+  sessionKey?: string
+  signal?: AbortSignal
+  model?: string
+  maxTokens?: number
+}
+
+function flattenChatMessages(messages: Array<{ role: string; content: string }>): string {
+  if (messages.length === 1) return messages[0].content
+  return messages.map((message) => `${message.role.toUpperCase()}:\n${message.content}`).join('\n\n')
+}
+
+async function sendRuntimeChatCompletion(ctx: PluginContext, opts: RuntimeChatOpts): Promise<string> {
+  void opts.signal
+  const result = await ctx.runtime.messaging.send({
+    agentId: opts.agentId,
+    content: flattenChatMessages(opts.messages),
+    threadId: opts.sessionKey,
+    metadata: { model: opts.model, maxTokens: opts.maxTokens },
+  })
+  return result.content ?? ''
+}
+
+async function streamRuntimeChatCompletion(ctx: PluginContext, opts: RuntimeChatOpts): Promise<Response> {
+  void opts.signal
+  const chunks = ctx.runtime.messaging.stream({
+    agentId: opts.agentId,
+    content: flattenChatMessages(opts.messages),
+    threadId: opts.sessionKey,
+    metadata: { model: opts.model, maxTokens: opts.maxTokens },
+  })
+  const stream = new ReadableStream({
+    async start(controller) {
+      const encoder = new TextEncoder()
+      try {
+        for await (const chunk of chunks) {
+          if (chunk.type === 'text' && chunk.content) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: chunk.content } }] })}\n\n`))
+          } else if (chunk.type === 'error') {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: chunk.content ?? 'Runtime stream error' })}\n\n`))
+          }
+        }
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        controller.close()
+      } catch (err) {
+        controller.error(err)
+      }
+    },
+  })
+  return new Response(stream, {
+    headers: { 'Content-Type': 'text/event-stream' },
+  })
+}
 
 /**
  * Validates an agentId against a strict shape allowlist + live team roster.
@@ -68,7 +129,7 @@ const AGENT_ID_SHAPE = /^[a-z0-9-]+$/
  * - Shape guard (load-bearing): blocks path traversal. A regex-valid id
  *   cannot escape `~/.bakin/team/personas/`.
  * - Roster check (defense-in-depth): filters orphan references — shape-valid
- *   ids that aren't in the current OpenClaw roster. Best-effort: when the
+ *   ids that aren't in the current runtime roster. Best-effort: when the
  *   team plugin is unavailable or the hook throws, the shape guard alone
  *   suffices and messaging stays functional.
  */
@@ -133,10 +194,10 @@ async function approveItem(item: CalendarItem, ctx: PluginContext): Promise<{ it
   } else if (item.status === 'review') {
     newStatus = 'published'
 
-    // Post to Discord via HTTP (openclaw-client)
+    // Post through the active runtime channel adapter.
     try {
       const caption = item.draft?.caption || item.title
-      const target = item.channelTarget || '1483917792745885768'
+      const channels = normalizeChannels(item.channels)
 
       // Derive filename → absolute path via the pure path function.
       let media: string | undefined
@@ -155,9 +216,25 @@ async function approveItem(item: CalendarItem, ctx: PluginContext): Promise<{ it
         }
       }
 
-      await sendChannelMessage('discord', `channel:${target}`, caption, media)
+      if (media) {
+        await ctx.runtime.channels.deliverContent({
+          channels,
+          content: {
+            title: item.title,
+            body: caption,
+            files: [{ name: mediaFilename ?? 'media', path: media }],
+          },
+        })
+      } else {
+        await ctx.runtime.channels.sendMessage({
+          channels,
+          message: {
+            body: caption,
+          },
+        })
+      }
     } catch (err) {
-      log.error('Discord post failed', err)
+      log.error('Channel post failed', err)
     }
   } else {
     return { error: `Cannot approve item in status: ${item.status}`, status: 400 }
@@ -186,7 +263,7 @@ const messagingPlugin: BakinPlugin = {
     fields: [
       { key: 'defaultView', type: 'select', label: 'Default view', description: 'Default messaging view on page load', options: [{ value: 'month', label: 'Month' }, { value: 'week', label: 'Week' }, { value: 'list', label: 'List' }], default: 'month' },
       { key: 'showScheduleJobs', type: 'boolean', label: 'Show schedule jobs', description: 'Display recurring schedule jobs on the content calendar', default: false },
-      { key: 'channels', type: 'string', label: 'Channels', description: 'Comma-separated list of available distribution channels (e.g., discord,instagram,email)', default: 'discord' },
+      { key: 'channels', type: 'string', label: 'Channels', description: 'Comma-separated runtime channel IDs available for distribution (e.g., general,announcements,email)', default: DEFAULT_CHANNEL },
       {
         key: 'contentTypes',
         type: 'list',
@@ -212,8 +289,6 @@ const messagingPlugin: BakinPlugin = {
   activate(ctx: PluginContext) {
     // ── Data migration (calendar → messaging) ─────────────────────────
     try {
-      const { join } = require('path')
-      const { existsSync, renameSync, mkdirSync } = require('fs')
       const contentDir = getContentDir()
 
       const oldCalendarJson = join(contentDir, 'calendar.json')
@@ -242,7 +317,7 @@ const messagingPlugin: BakinPlugin = {
     }
 
     // ── Search Content Type Registration ─────────────────────────────
-    // Per spec §5.1d, ONLY brainstorm sessions get Antfly search; calendar
+    // Per spec §5.1d, ONLY brainstorm sessions get indexed search; calendar
     // items get a local substring filter in a later commit. No TTL — spec
     // does not mandate one and this is a dev machine with tens of sessions.
     ctx.search.registerFileBackedContentType({
@@ -300,16 +375,14 @@ const messagingPlugin: BakinPlugin = {
 
     // ── API Routes ─────────────────────────────────────────────────────
 
-    // GET / — list items (optional ?month=YYYY-MM&channel=discord filter)
+    // GET / — list items (optional ?month=YYYY-MM&channel=general filter)
     const listHandler = async (req: Request) => {
       const url = new URL(req.url)
       const month = url.searchParams.get('month')
       const channel = url.searchParams.get('channel')
       let items = loadMessagingItems()
       if (month) items = items.filter(i => i.scheduledAt.startsWith(month))
-      if (channel) items = items.filter(i =>
-        (i.channels && i.channels.includes(channel)) || i.channel === channel
-      )
+      if (channel) items = items.filter(i => i.channels.includes(channel))
       items.sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime())
       return json({ items })
     }
@@ -329,18 +402,16 @@ const messagingPlugin: BakinPlugin = {
     // POST / — create item
     const createHandler = async (req: Request) => {
       const body = await readBody<Record<string, unknown>>(req)
-      const { title, agent, channel, channelTarget, contentType, tone, scheduledAt, brief, status, channels } = body as Record<string, unknown>
+      const { title, agent, contentType, tone, scheduledAt, brief, status, channels } = body as Record<string, unknown>
 
       if (!title || !agent || !scheduledAt) {
         return json({ error: 'title, agent, and scheduledAt required' }, 400)
       }
 
-      const resolvedChannels = (channels as string[]) || (channel ? [channel as string] : ['discord'])
+      const resolvedChannels = normalizeChannels(channels)
       const item = createItem({
         title: title as string,
         agent: (agent as string) as CalendarItem['agent'],
-        channel: ((channel as string) || resolvedChannels[0] || 'discord') as CalendarItem['channel'],
-        channelTarget: (channelTarget as string) || '1483917792745885768',
         contentType: ((contentType as string) || 'post') as CalendarItem['contentType'],
         tone: ((tone as string) || 'conversational') as CalendarItem['tone'],
         scheduledAt: scheduledAt as string,
@@ -503,34 +574,12 @@ Format: conversational response in your voice, then a JSON block:
 
 ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says: ${body.message}`
 
-          const gwToken = vault.get('gateway-token')
-          if (!gwToken) throw new Error('Gateway token not found')
-
-          const { getSettings } = await import('../../src/core/settings')
-          const settings = getSettings()
-          const gatewayBase = `${settings.openclaw.gatewayUrl}:${settings.openclaw.gatewayPort}`
           const sessionKey = `brainstorm-${body.agentId}-${Date.now()}`
-          const gwResponse = await fetch(`${gatewayBase}/v1/chat/completions`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${gwToken}`,
-              'x-openclaw-session-key': sessionKey,
-            },
-            body: JSON.stringify({
-              model: 'openclaw:main',
-              max_tokens: 2048,
-              messages: [{ role: 'user', content: fullPrompt }],
-            }),
+          const content = await sendRuntimeChatCompletion(ctx, {
+            agentId: body.agentId,
+            sessionKey,
+            messages: [{ role: 'user', content: fullPrompt }],
           })
-
-          if (!gwResponse.ok) {
-            const err = await gwResponse.text()
-            throw new Error(`Gateway error: ${err}`)
-          }
-
-          const gwData = await gwResponse.json()
-          const content = gwData.choices?.[0]?.message?.content || ''
 
           let suggestions: Array<{
             title: string
@@ -661,14 +710,14 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         if (session.status === 'completed') return json({ error: 'Session is completed' }, 400)
 
         // Append user message
-        const userMsg = appendMessage(id, { role: 'user', content: body.message })
+        appendMessage(id, { role: 'user', content: body.message })
 
         // Build messages array with full session history
         const promptOptions = await resolvePromptOptions(ctx, session.agentId)
         const messages = buildMessages(session, body.message, promptOptions)
         const sessionKey = `session-${id}-${Date.now()}`
 
-        // Create a ReadableStream that pipes gateway SSE to the client
+        // Create a ReadableStream that pipes runtime SSE to the client
         const stream = new ReadableStream({
           async start(controller) {
             const encoder = new TextEncoder()
@@ -716,7 +765,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
               let gwResponse: Response | null = null
 
               try {
-                gwResponse = await streamMessage({
+                gwResponse = await streamRuntimeChatCompletion(ctx, {
                   messages,
                   agentId: session.agentId,
                   sessionKey,
@@ -724,17 +773,17 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
 
                 const contentType = gwResponse.headers.get('content-type') || ''
                 if (!contentType.includes('text/event-stream')) {
-                  // Gateway returned non-streaming response
+                  // Runtime returned non-streaming response
                   useStreaming = false
                 }
-              } catch (err) {
-                // Gateway doesn't support streaming — fall back
+              } catch {
+                // Runtime doesn't support streaming — fall back
                 useStreaming = false
                 gwResponse = null
               }
 
               if (useStreaming && gwResponse?.body) {
-                // Stream gateway SSE chunks to client
+                // Stream runtime SSE chunks to client
                 const reader = gwResponse.body.getReader()
                 const decoder = new TextDecoder()
                 let buffer = ''
@@ -771,7 +820,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
               } else {
                 // Non-streaming fallback
                 try {
-                  fullContent = await chatCompletion({
+                  fullContent = await sendRuntimeChatCompletion(ctx, {
                     messages,
                     agentId: session.agentId,
                     sessionKey,
@@ -938,7 +987,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         month: z.string().optional().describe('Filter by month (YYYY-MM)'),
         status: z.string().optional().describe('Filter by status (draft, scheduled, review, published, etc.)'),
         agent: z.string().optional().describe('Filter by assigned agent'),
-        channel: z.string().optional().describe('Filter by channel (e.g. discord, instagram)'),
+        channel: z.string().optional().describe('Filter by runtime channel ID (e.g. general, announcements)'),
       },
       handler: async (params: Record<string, unknown>) => {
         let items = loadMessagingItems()
@@ -947,9 +996,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         if (params.agent) items = items.filter(i => i.agent === params.agent)
         if (params.channel) {
           const ch = params.channel as string
-          items = items.filter(i =>
-            (i.channels && i.channels.includes(ch)) || i.channel === ch
-          )
+          items = items.filter(i => i.channels.includes(ch))
         }
         items.sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime())
         return {
@@ -961,7 +1008,6 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
             agent: i.agent,
             status: i.status,
             scheduledAt: i.scheduledAt,
-            channel: i.channel,
             channels: i.channels,
             contentType: i.contentType,
           })),
@@ -993,9 +1039,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         title: z.string().describe('Item title (required)'),
         agent: z.string().describe('Assigned agent (required)'),
         scheduledAt: z.string().describe('ISO datetime for scheduling (required)'),
-        channel: z.string().optional().describe('Channel (default: discord)'),
-        channels: z.array(z.string()).optional().describe('Distribution channels (e.g. ["discord", "instagram"])'),
-        channelTarget: z.string().optional().describe('Channel target ID'),
+        channels: z.array(z.string()).optional().describe('Runtime channel IDs (default: ["general"])'),
         contentType: z.string().optional().describe('Content type id from the messaging contentTypes setting (e.g. post, article, video)'),
         tone: z.string().optional().describe('Content tone (energetic, calm, educational, etc.)'),
         brief: z.string().optional().describe('Content brief'),
@@ -1005,14 +1049,12 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         if (!params.title || !params.agent || !params.scheduledAt) {
           return { ok: false, error: 'title, agent, and scheduledAt required' }
         }
-        const channels = (params.channels as string[]) || (params.channel ? [params.channel as string] : ['discord'])
+        const channels = normalizeChannels(params.channels)
         const item = createItem({
           title: params.title as string,
           agent: params.agent as CalendarItem['agent'],
           scheduledAt: params.scheduledAt as string,
-          channel: ((params.channel as string) || channels[0] || 'discord') as CalendarItem['channel'],
           channels,
-          channelTarget: (params.channelTarget as string) || '1483917792745885768',
           contentType: ((params.contentType as string) || 'post') as CalendarItem['contentType'],
           tone: ((params.tone as string) || 'conversational') as CalendarItem['tone'],
           brief: (params.brief as string) || '',
@@ -1224,14 +1266,14 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
           content: params.message as string,
         })
 
-        // Non-streaming: call gateway synchronously and collect full response
+        // Non-streaming: call runtime synchronously and collect full response
         const promptOptions = await resolvePromptOptions(ctx, session.agentId)
         const messages = buildMessages(session, params.message as string, promptOptions)
         const sessionKey = `session-${params.sessionId}-${Date.now()}`
 
         let fullContent: string
         try {
-          fullContent = await chatCompletion({
+          fullContent = await sendRuntimeChatCompletion(ctx, {
             messages,
             agentId: session.agentId,
             sessionKey,

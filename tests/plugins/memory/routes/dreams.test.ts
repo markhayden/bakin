@@ -2,7 +2,7 @@
  * Tests for plugins/memory/lib/routes/dreams.ts.
  *
  * Both endpoints hit the indexed `bakin_memory` table (tier=dream) — routes
- * never re-read the filesystem. The adapter and gateway are mocked
+ * never re-read the filesystem. Runtime memory is mocked
  * defensively so a missing `~/.openclaw/` never leaks through.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
@@ -29,7 +29,7 @@ mock.module('../../../../packages/core/src/content-dir', () => ({
 mock.module('../../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
-mock.module('../../../../packages/core/src/openclaw-home', () => ({
+mock.module('../../../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => join(testDir, '.openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
 }))
@@ -38,7 +38,7 @@ import {
   dreamsListRoute,
   dreamDetailRoute,
 } from '../../../../plugins/memory/lib/routes/dreams'
-import type { PluginContext, SearchResponse } from '../../../../src/lib/plugin-types'
+import type { PluginContext, SearchResponse } from '@bakin/core/plugin-types'
 
 interface CtxHarness {
   ctx: PluginContext
@@ -134,7 +134,7 @@ describe('dreamsListRoute — handler', () => {
           },
         },
       ],
-      meta: { query: '', total: 1, took_ms: 1, source: 'antfly' },
+      meta: { query: '', total: 1, took_ms: 1, source: 'search' },
     })
     const res = await dreamsListRoute.handler(req('/dreams', { agent: 'main' }), h.ctx)
     const body = await res.json() as { dreams: Array<Record<string, unknown>>; total: number }
@@ -173,7 +173,7 @@ describe('dreamsListRoute — handler', () => {
           },
         },
       ],
-      meta: { query: '', total: 2, took_ms: 1, source: 'antfly' },
+      meta: { query: '', total: 2, took_ms: 1, source: 'search' },
     })
     const res = await dreamsListRoute.handler(
       req('/dreams', { agent: 'main', phase: 'light' }),
@@ -201,7 +201,7 @@ describe('dreamsListRoute — handler', () => {
           fields: { meta: JSON.stringify({ artifactType: 'phase_doc', phase: 'light', date: '2026-04-16' }) },
         },
       ],
-      meta: { query: '', total: 2, took_ms: 1, source: 'antfly' },
+      meta: { query: '', total: 2, took_ms: 1, source: 'search' },
     })
     const res = await dreamsListRoute.handler(
       req('/dreams', { agent: 'main', date: '2026-04-17' }),
@@ -261,7 +261,7 @@ describe('dreamDetailRoute — handler', () => {
           },
         },
       ],
-      meta: { query: '', total: 2, took_ms: 1, source: 'antfly' },
+      meta: { query: '', total: 2, took_ms: 1, source: 'search' },
     })
     const res = await dreamDetailRoute.handler(
       req('/dreams/main/phase_doc', {
@@ -292,7 +292,7 @@ describe('dreamDetailRoute — handler', () => {
           },
         },
       ],
-      meta: { query: '', total: 1, took_ms: 1, source: 'antfly' },
+      meta: { query: '', total: 1, took_ms: 1, source: 'search' },
     })
     const res = await dreamDetailRoute.handler(
       req('/dreams/main/short_term_recall', {
@@ -319,7 +319,7 @@ describe('dreamDetailRoute — handler', () => {
           },
         },
       ],
-      meta: { query: '', total: 1, took_ms: 1, source: 'antfly' },
+      meta: { query: '', total: 1, took_ms: 1, source: 'search' },
     })
     const res = await dreamDetailRoute.handler(
       req('/dreams/main/phase_doc', {
@@ -339,7 +339,7 @@ describe('dreamDetailRoute — handler', () => {
       results: [
         { id: 'dream:bad', table: 'bakin_memory', score: 0.3, fields: { meta: '{not json' } },
       ],
-      meta: { query: '', total: 1, took_ms: 1, source: 'antfly' },
+      meta: { query: '', total: 1, took_ms: 1, source: 'search' },
     })
     const res = await dreamDetailRoute.handler(
       req('/dreams/main/phase_doc', {

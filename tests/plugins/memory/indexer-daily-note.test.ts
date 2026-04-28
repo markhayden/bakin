@@ -27,12 +27,14 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 mock.module('../../../src/core/watcher', () => ({ watchFiles: mock() }))
-mock.module('../../../packages/core/src/openclaw-home', () => ({
+mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => join(testDir, '.openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
 }))
-mock.module('../../../src/core/main-agent', () => ({
+mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
+  getMainAgentId: () => 'main',
   tryGetMainAgentId: () => null,
+  getMainAgentName: () => 'Main',
 }))
 
 const {
@@ -41,61 +43,17 @@ const {
   mockReadDailyNote,
   mockDailyNotePath,
   mockMatchDailyNotePath,
-  mockMatchDurablePath,
 } = (() => ({
   mockListAgentIds: mock<() => string[]>(),
   mockListDailyNotes: mock<(agent: string) => string[]>(),
   mockReadDailyNote: mock<(agent: string, filename: string) => string | null>(),
   mockDailyNotePath: mock<(agent: string, filename: string) => string>(),
   mockMatchDailyNotePath: mock<(path: string) => { agent: string; filename: string } | null>(),
-  mockMatchDurablePath: mock<(path: string) => { agent: string; basename: string } | null>(),
 }))()
-
-mock.module('../../../plugins/memory/lib/openclaw-adapter', () => ({
-  listAgentIds: mockListAgentIds,
-  listDailyNotes: mockListDailyNotes,
-  readDailyNote: mockReadDailyNote,
-  dailyNotePath: mockDailyNotePath,
-  dailyNoteMtime: mock(() => Date.now()),
-  dailyNoteSize: mock(() => 0),
-  matchDailyNotePath: mockMatchDailyNotePath,
-  // unrelated but imported by indexer — stub to avoid undefined-function errors
-  matchDurablePath: mockMatchDurablePath,
-  readDurableFile: mock(() => null),
-  durableFilePath: mock(() => ''),
-  CANONICAL_DURABLE_FILES: [] as const,
-  // session / turn / checkpoint / dream tiers — stubs so handleWatcherEvent fallthrough doesn't blow up.
-  readSessionStore: mock(() => null),
-  sessionStorePath: mock(() => ''),
-  matchSessionStorePath: mock(() => null),
-  listSessionJsonlFiles: mock(() => []),
-  sessionJsonlPath: mock(() => ''),
-  sessionJsonlStat: mock(() => null),
-  matchSessionJsonlPath: mock(() => null),
-  listCheckpointJsonlFiles: mock(() => []),
-  readCheckpoint: mock(() => null),
-  checkpointJsonlPath: mock(() => ''),
-  checkpointJsonlStat: mock(() => null),
-  matchCheckpointJsonlPath: mock(() => null),
-  listPhaseDocs: mock(() => []),
-  listDreamSignalFiles: mock(() => []),
-  readPhaseDoc: mock(() => null),
-  readDreamSignal: mock(() => null),
-  matchPhaseDocPath: mock(() => null),
-  matchDreamSignalPath: mock(() => null),
-  // skills (tier=durable, kind=skill) — stubs so handleWatcherEvent fallthrough doesn't blow up.
-  DURABLE_KIND_BY_BASENAME: {} as Record<string, string>,
-  durableKindForBasename: mock(() => undefined),
-  listAgentSkills: mock(() => []),
-  readAgentSkill: mock(() => null),
-  skillFilePath: mock(() => ''),
-  skillFileMtime: mock(() => null),
-  matchSkillPath: mock(() => null),
-}))
 
 import { MemoryIndexer } from '../../../plugins/memory/lib/indexer'
 import { clearAllOffsets } from '../../../plugins/memory/lib/offsets'
-import type { PluginContext } from '../../../src/lib/plugin-types'
+import type { PluginContext } from '@bakin/core/plugin-types'
 
 interface IndexedDoc { key: string; doc: Record<string, unknown> }
 
@@ -115,6 +73,42 @@ function makeCtx(): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: mock(),
     activity: { log: mock(), audit: mock() },
+    runtime: {
+      agents: {
+        list: mock(async () => mockListAgentIds().map((id) => ({ id, name: id }))),
+      },
+      memory: {
+        listTiers: mock(async () => [{ id: 'daily-tier', label: 'Daily', metadata: { sourceKind: 'daily_note' } }]),
+        listEntries: mock(async (_tierId: string, opts?: { agentId?: string }) =>
+          mockListDailyNotes(opts?.agentId ?? '').map((name) => ({
+            id: name,
+            tierId: 'daily-tier',
+            agentId: opts?.agentId,
+            path: mockDailyNotePath(opts?.agentId ?? '', name),
+            content: '',
+          })),
+        ),
+        getEntry: mock(async (_tierId: string, id: string, opts?: { agentId?: string }) => {
+          const agent = opts?.agentId ?? ''
+          const content = mockReadDailyNote(agent, id)
+          return content === null
+            ? null
+            : { id, tierId: 'daily-tier', agentId: agent, path: mockDailyNotePath(agent, id), content }
+        }),
+        resolvePath: mock(async (path: string) => {
+          const match = mockMatchDailyNotePath(path)
+          return match
+            ? {
+                tierId: 'daily-tier',
+                id: match.filename,
+                agentId: match.agent,
+                path,
+                metadata: { sourceKind: 'daily_note', filename: match.filename },
+              }
+            : null
+        }),
+      },
+    },
     search: {
       registerContentType: mock(),
       registerFileBackedContentType: mock(),
@@ -154,8 +148,6 @@ beforeEach(() => {
   mockReadDailyNote.mockReset()
   mockDailyNotePath.mockReset()
   mockMatchDailyNotePath.mockReset()
-  mockMatchDurablePath.mockReset()
-  mockMatchDurablePath.mockReturnValue(null)
   mockMatchDailyNotePath.mockReturnValue(null)
 })
 

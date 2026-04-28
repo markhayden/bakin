@@ -39,8 +39,8 @@ const TYPE_COLORS: Record<string, string> = {
 interface AssetCardProps {
   asset: AssetMeta
   onClick: () => void
-  onDelete: (path: string) => void
-  /** Antfly score info (only shown when debug=true) */
+  onDelete: (filename: string) => void
+  /** Search score info (only shown when debug=true) */
   scoreInfo?: AssetScoreInfo
 }
 
@@ -102,7 +102,7 @@ export function AssetCard({ asset, onClick, onDelete, scoreInfo }: AssetCardProp
           {formatSize(asset.size)}
         </span>
 
-        {/* Antfly relevance score debug overlay.
+        {/* Search relevance score debug overlay.
             bakin_assets is a multimodal table: Bleve BM25 + assets_text (BGE
             text embeddings) + assets_visual (CLIP on image pixels). The Bleve
             key is an absolute index path containing "bleve", so detect it by
@@ -214,7 +214,7 @@ export function AssetCard({ asset, onClick, onDelete, scoreInfo }: AssetCardProp
       <DeleteAssetDialog
         open={confirmOpen}
         filename={asset.filename}
-        onConfirm={() => { setConfirmOpen(false); onDelete(asset.path) }}
+        onConfirm={() => { setConfirmOpen(false); onDelete(asset.filename) }}
         onCancel={() => setConfirmOpen(false)}
       />
     </>

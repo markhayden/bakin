@@ -18,9 +18,11 @@ import { tmpdir } from 'os'
 import type {
   PluginContext,
   FileBackedContentTypeDefinition,
-} from '../../../src/lib/plugin-types'
+} from '@bakin/core/plugin-types'
 import { BakinEventBus } from '../../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../../src/lib/storage/markdown-adapter'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 
 const testDir = join(tmpdir(), `bakin-test-projects-sync-${Date.now()}`)
 const projectsDir = join(testDir, 'projects')
@@ -76,6 +78,8 @@ function makeCtx(): CapturedCtx {
     storage,
     events,
     pluginId: 'projects',
+    runtime: createMockRuntimeAdapter(),
+    tasks: createMockBakinTaskStore(),
     registerNav: mock(),
     registerRoute: mock(),
     registerSlot: mock(),

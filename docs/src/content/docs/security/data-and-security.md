@@ -3,13 +3,13 @@ title: Data and Security
 description: Practical operator guidance for Bakin data storage, local services, updates, plugins, and runtime security.
 ---
 
-Bakin is self-hosted. Operators should understand what runs locally, what is stored under `~/.bakin`, what talks to OpenClaw, and which external services are configured.
+Bakin is self-hosted. Operators should understand what runs locally, what is stored under `~/.bakin`, what talks to the configured runtime, and which external services are configured.
 
 Legal privacy policy details live on makinbakin.com. This page focuses on technical operator behavior.
 
 ## Local Runtime
 
-Bakin runs as a local server and dashboard. It coordinates local files, OpenClaw agent state, configured LLM providers, optional messaging channels, and core plugins.
+Bakin runs as a local server and dashboard. It coordinates local files, runtime agent state, configured LLM providers, optional messaging channels, and core plugins.
 
 The default server port is `3737`. Set `PORT` when binding somewhere else.
 
@@ -37,10 +37,10 @@ Use `bakin paths` to inspect exact locations.
 
 Bakin only uses external services you configure or invoke:
 
-- OpenClaw for agent coordination
+- the configured runtime adapter for agent coordination
 - LLM providers configured in settings
 - messaging channels configured for scheduling and approval flows
-- Antfly when search/indexing is enabled
+- the configured search adapter when search/indexing is enabled
 - GitHub release APIs for installer and self-update flows
 
 ## Plugins

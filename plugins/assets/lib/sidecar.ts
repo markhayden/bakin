@@ -3,7 +3,7 @@
  */
 import { readFileSync, writeFileSync, existsSync, statSync } from 'fs'
 import { createLogger } from '../../../src/core/logger'
-import { ASSET_TYPES, type AssetType } from './constants'
+import { ASSET_TYPES, getAssetType, type AssetType } from './constants'
 
 const log = createLogger('assets:sidecar')
 
@@ -15,9 +15,7 @@ export interface SidecarMeta {
   created: string
   /**
    * Asset type. Lives in the sidecar under filename-as-identity so retype
-   * is a metadata edit rather than a file move. Legacy sidecars written
-   * before the field existed are auto-populated from the directory layout
-   * on read (see `readSidecar`); migration (C6) writes it persistently.
+   * is a metadata edit rather than a file move.
    */
   type?: AssetType
   tool?: string
@@ -45,20 +43,6 @@ export const KNOWN_FIELDS = new Set([
   'agent', 'taskId', 'created', 'type', 'tool', 'description', 'tags', 'originalFilename', 'source',
 ])
 
-/**
- * Derive the asset type from a legacy path (`assets/{type}/{taskId}/...`).
- * Returns undefined when the path isn't in that shape or the second segment
- * isn't a known asset type. Used only as a read-side fallback for sidecars
- * written before the `type` field was added.
- */
-export function typeFromAssetPath(assetPath: string): AssetType | undefined {
-  const parts = assetPath.split('/')
-  const assetsIdx = parts.indexOf('assets')
-  if (assetsIdx < 0 || parts.length <= assetsIdx + 1) return undefined
-  const maybe = parts[assetsIdx + 1]
-  return (ASSET_TYPES as readonly string[]).includes(maybe) ? (maybe as AssetType) : undefined
-}
-
 export function getSidecarPath(assetPath: string): string {
   return assetPath + '.meta.json'
 }
@@ -70,12 +54,7 @@ export function readSidecar(assetPath: string): SidecarMeta | null {
   try {
     const raw = readFileSync(metaPath, 'utf-8')
     const meta = JSON.parse(raw)
-    const normalized = validateAndNormalize(meta)
-    if (!normalized.type) {
-      const derived = typeFromAssetPath(assetPath)
-      if (derived) normalized.type = derived
-    }
-    return normalized
+    return validateAndNormalize(meta)
   } catch (err) {
     log.warn('Failed to read sidecar', err, { path: metaPath })
     return null
@@ -89,21 +68,12 @@ export function writeSidecar(assetPath: string, meta: SidecarMeta): void {
 
 /**
  * Create a stub sidecar for an asset that's missing one.
- * Infers taskId from directory structure and created from file mtime.
+ * The filename-as-identity store does not encode task ownership, so taskId is
+ * intentionally unknown/null. Type is inferred from the filename extension.
  */
 export function createStub(assetPath: string): SidecarMeta {
   const parts = assetPath.split('/')
   const filename = parts[parts.length - 1]
-
-  // Infer taskId from path: assets/{type}/{taskId}/{filename}
-  let taskId: string | null = null
-  const assetsIdx = parts.indexOf('assets')
-  if (assetsIdx >= 0 && parts.length > assetsIdx + 3) {
-    const possibleTaskId = parts[assetsIdx + 2]
-    if (possibleTaskId !== '_unlinked' && possibleTaskId !== 'library') {
-      taskId = possibleTaskId
-    }
-  }
 
   let created = new Date().toISOString()
   try {
@@ -113,15 +83,15 @@ export function createStub(assetPath: string): SidecarMeta {
 
   const stub: SidecarMeta = {
     agent: 'unknown',
-    taskId,
+    taskId: null,
     created,
-    type: typeFromAssetPath(assetPath),
+    type: getAssetType(filename),
     description: `Auto-generated sidecar for ${filename}`,
     tags: [],
   }
 
   writeSidecar(assetPath, stub)
-  log.info('Created stub sidecar', { path: assetPath, taskId })
+  log.info('Created stub sidecar', { path: assetPath })
   return stub
 }
 

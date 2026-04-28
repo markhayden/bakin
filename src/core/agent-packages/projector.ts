@@ -6,11 +6,10 @@
  * landed in earlier phases. The projector consumes a parsed manifest
  * plus a staging directory and produces:
  *
- *   - workspace files at {openclaw}/workspaces/<agentId>/<file>
+ *   - workspace files through the runtime adapter
  *     (fresh mode only; update mode honors --refresh-template; adopt
  *      mode skips entirely)
- *   - skills at {openclaw}/workspaces/<agentId>/skills/<name>/  for kind:"agent"
- *     or  ~/.openclaw/skills/<name>/                            for kind:"skill-pack"
+ *   - skills in the runtime's agent-scoped or global skill store
  *   - assets at ~/.bakin/agents/<agentId>/<file>
  *   - knowledge markers injected into the agent's SOUL.md (catalog +
  *     per-enabled-lesson blocks)
@@ -29,8 +28,9 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, unlinkSync } from 'fs'
 import { dirname, join, basename } from 'path'
 import { createLogger } from '../logger'
-import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import { getContentDir } from '../content-dir'
+import { getAppServices } from '../app-services'
+import type { RuntimeSkill, WorkspaceFile } from '@bakin/core/adapters/runtime'
 import {
   type AgentManifest,
   type Manifest,
@@ -104,6 +104,10 @@ type WriteOp =
   | { kind: 'modified-file'; path: string; previousContent: string }
   | { kind: 'created-dir'; path: string }
   | { kind: 'created-tree'; path: string }
+  | { kind: 'created-workspace-file'; agentId: string; path: string }
+  | { kind: 'modified-workspace-file'; agentId: string; previous: WorkspaceFile }
+  | { kind: 'created-skill'; name: string; agentId?: string }
+  | { kind: 'modified-skill'; name: string; previous: RuntimeSkill; agentId?: string }
 
 class WriteLog {
   private readonly ops: WriteOp[] = []
@@ -124,8 +128,25 @@ class WriteLog {
     this.ops.push({ kind: 'created-tree', path })
   }
 
+  recordCreatedWorkspaceFile(agentId: string, path: string): void {
+    this.ops.push({ kind: 'created-workspace-file', agentId, path })
+  }
+
+  recordModifiedWorkspaceFile(agentId: string, previous: WorkspaceFile): void {
+    this.ops.push({ kind: 'modified-workspace-file', agentId, previous })
+  }
+
+  recordCreatedSkill(name: string, agentId?: string): void {
+    this.ops.push({ kind: 'created-skill', name, agentId })
+  }
+
+  recordModifiedSkill(name: string, previous: RuntimeSkill, agentId?: string): void {
+    this.ops.push({ kind: 'modified-skill', name, previous, agentId })
+  }
+
   /** Roll back every op in reverse order. Best-effort — log failures. */
-  rollback(): void {
+  async rollback(): Promise<void> {
+    const runtime = getAppServices().runtime
     for (let i = this.ops.length - 1; i >= 0; i--) {
       const op = this.ops[i]
       try {
@@ -149,11 +170,23 @@ class WriteLog {
           case 'created-tree':
             if (existsSync(op.path)) rmSync(op.path, { recursive: true, force: true })
             break
+          case 'created-workspace-file':
+            await runtime.agents.removeWorkspaceFile(op.agentId, op.path)
+            break
+          case 'modified-workspace-file':
+            await runtime.agents.writeWorkspaceFile(op.agentId, op.previous)
+            break
+          case 'created-skill':
+            await runtime.skills.remove(op.name, op.agentId)
+            break
+          case 'modified-skill':
+            await runtime.skills.write(op.previous, op.agentId)
+            break
         }
       } catch (err) {
         log.warn('Rollback step failed', {
           op: op.kind,
-          path: op.path,
+          path: 'path' in op ? op.path : 'name' in op ? op.name : op.previous.path,
           error: err instanceof Error ? err.message : String(err),
         })
       }
@@ -169,50 +202,76 @@ function ensureDir(absDir: string, log: WriteLog): void {
   log.recordCreatedDir(absDir)
 }
 
-function copyTree(src: string, dst: string): void {
-  mkdirSync(dst, { recursive: true })
-  for (const entry of readdirSync(src, { withFileTypes: true })) {
-    if (entry.isSymbolicLink()) continue // refuse symlinks — can't escape
-    const srcPath = join(src, entry.name)
-    const dstPath = join(dst, entry.name)
+function readSourceTree(root: string, prefix = ''): Record<string, string> {
+  const files: Record<string, string> = {}
+  for (const entry of readdirSync(join(root, prefix), { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) continue
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name
+    const abs = join(root, rel)
     if (entry.isDirectory()) {
-      copyTree(srcPath, dstPath)
+      Object.assign(files, readSourceTree(root, rel))
     } else if (entry.isFile()) {
-      mkdirSync(dirname(dstPath), { recursive: true })
-      copyFileSync(srcPath, dstPath)
+      files[rel] = readFileSync(abs, 'utf-8')
     }
   }
+  return files
 }
 
-/**
- * Write the contents of a single file with rollback support. Records the
- * write or the modification (with previous bytes captured) in the write log.
- */
-function writeFileTracked(path: string, body: string, log: WriteLog): void {
-  ensureDir(dirname(path), log)
-  if (existsSync(path)) {
-    const prev = readFileSync(path, 'utf-8')
-    writeFileSync(path, body, 'utf-8')
-    log.recordModifiedFile(path, prev)
-  } else {
-    writeFileSync(path, body, 'utf-8')
-    log.recordCreatedFile(path)
+function runtimeWorkspaceTarget(agentId: string, path: string): string {
+  return `runtime:workspace-file:${encodeURIComponent(agentId)}:${encodeURIComponent(path)}`
+}
+
+function runtimeSkillTarget(name: string, agentId?: string): string {
+  return agentId
+    ? `runtime:agent-skill:${encodeURIComponent(agentId)}:${encodeURIComponent(name)}`
+    : `runtime:global-skill:${encodeURIComponent(name)}`
+}
+
+type RuntimeProjectionTarget =
+  | { kind: 'workspace-file'; agentId: string; path: string }
+  | { kind: 'agent-skill'; agentId: string; name: string }
+  | { kind: 'global-skill'; name: string }
+
+function parseRuntimeTarget(target: string): RuntimeProjectionTarget | null {
+  const parts = target.split(':')
+  if (parts[0] !== 'runtime') return null
+  if (parts[1] === 'workspace-file' && parts.length === 4) {
+    return { kind: 'workspace-file', agentId: decodeURIComponent(parts[2]), path: decodeURIComponent(parts[3]) }
   }
+  if (parts[1] === 'agent-skill' && parts.length === 4) {
+    return { kind: 'agent-skill', agentId: decodeURIComponent(parts[2]), name: decodeURIComponent(parts[3]) }
+  }
+  if (parts[1] === 'global-skill' && parts.length === 3) {
+    return { kind: 'global-skill', name: decodeURIComponent(parts[2]) }
+  }
+  return null
+}
+
+function isInstalledByMarker(value: unknown): value is InstalledByMarker {
+  return Boolean(value)
+    && typeof value === 'object'
+    && typeof (value as InstalledByMarker).package === 'string'
+    && typeof (value as InstalledByMarker).sha256 === 'string'
+}
+
+function runtimeInstalledBy(skill: RuntimeSkill | null): InstalledByMarker | null {
+  const marker = skill?.metadata?.installedBy
+  return isInstalledByMarker(marker) ? marker : null
 }
 
 // ─── Workspace files ─────────────────────────────────────────────────────────
 
-function projectWorkspaceFiles(
+async function projectWorkspaceFiles(
   manifest: AgentManifest,
   agentId: string,
   options: ProjectorOptions,
   result: ProjectorResult,
   writeLog: WriteLog,
-): void {
+): Promise<void> {
   const files = manifest.contributions.workspaceFiles ?? []
   if (files.length === 0) return
 
-  const wsDir = getOpenClawPath('workspaces', agentId)
+  const runtime = getAppServices().runtime
 
   for (const rel of files) {
     const src = join(options.stagingDir, rel)
@@ -223,9 +282,11 @@ function projectWorkspaceFiles(
     // Workspace files land at the workspace root with the file's basename,
     // ignoring intermediate directories in the package source. The package
     // ships them under workspace/SOUL.md but they project as just SOUL.md.
-    const target = join(wsDir, basename(rel))
+    const filename = basename(rel)
+    const target = runtimeWorkspaceTarget(agentId, filename)
+    const existing = await runtime.agents.readWorkspaceFile(agentId, filename)
 
-    if (isUserEdited(target)) {
+    if (existing?.metadata?.userEdited === true) {
       result.skipped.push({ target, reason: 'userEdited' })
       continue
     }
@@ -236,14 +297,20 @@ function projectWorkspaceFiles(
     // Update mode: only rewrite when --refresh-template is requested.
     if (options.mode === 'update' && !options.refreshTemplate) continue
 
+    if (existing) {
+      writeLog.recordModifiedWorkspaceFile(agentId, existing)
+    } else {
+      writeLog.recordCreatedWorkspaceFile(agentId, filename)
+    }
+
     const body = readFileSync(src, 'utf-8')
-    writeFileTracked(target, body, writeLog)
-
-    const sha256 = computeFileSha(target)
+    const sha256 = computeFileSha(src)
     const marker: InstalledByMarker = { ...options.installedBy, sha256 }
-    writeInstalledBy(target, marker)
-    writeLog.recordCreatedFile(installedByPath(target))
-
+    await runtime.agents.writeWorkspaceFile(agentId, {
+      path: filename,
+      content: body,
+      metadata: { installedBy: marker },
+    })
     result.projections.push({
       kind: 'workspace-file',
       target,
@@ -255,33 +322,20 @@ function projectWorkspaceFiles(
 
 // ─── Skills ──────────────────────────────────────────────────────────────────
 
-function skillProjectionTarget(
-  manifest: Manifest,
-  skillName: string,
-  agentId: string | undefined,
-): string {
-  if (manifest.kind === 'agent') {
-    if (!agentId) throw new Error('agentId required for kind:"agent" skill projection')
-    return getOpenClawPath('workspaces', agentId, 'skills', skillName)
-  }
-  if (manifest.kind === 'skill-pack') {
-    return getOpenClawPath('skills', skillName)
-  }
-  throw new Error(`projectSkill called with unsupported kind: ${manifest.kind}`)
-}
-
-function projectSkills(
+async function projectSkills(
   manifest: AgentManifest | SkillPackManifest,
   options: ProjectorOptions,
   result: ProjectorResult,
   writeLog: WriteLog,
-): void {
+): Promise<void> {
   const skillRels =
     manifest.kind === 'agent'
       ? (manifest.contributions.skills ?? [])
       : manifest.contributions.skills
 
   if (skillRels.length === 0) return
+
+  const runtime = getAppServices().runtime
 
   for (const rel of skillRels) {
     const src = join(options.stagingDir, rel)
@@ -290,23 +344,28 @@ function projectSkills(
       continue
     }
     const skillName = basename(rel)
-    const target = skillProjectionTarget(manifest, skillName, options.agentId)
+    const scopedAgentId = manifest.kind === 'agent' ? options.agentId : undefined
+    if (manifest.kind === 'agent' && !scopedAgentId) {
+      throw new Error('agentId required for kind:"agent" skill projection')
+    }
+    const target = runtimeSkillTarget(skillName, scopedAgentId)
+    const existingSkill = await runtime.skills.get(skillName, scopedAgentId)
 
-    if (isUserEdited(target)) {
+    if (existingSkill?.metadata?.userEdited === true) {
       result.skipped.push({ target, reason: 'userEdited' })
       continue
     }
 
     // Skills always project on fresh + update; adopt mode also installs
     // skills (the user opted into the package's capabilities).
-    const targetExisted = existsSync(target)
+    const targetExisted = existingSkill !== null
 
     // Collision check: if the target already has a sidecar pointing at a
     // DIFFERENT package, refuse unless --replace was passed. This is the
-    // primary collision path for global ~/.openclaw/skills/<name>/ where
+    // primary collision path for global runtime skills where
     // two skill-packs could both ship the same skill name.
     if (targetExisted) {
-      const existingMarker = readInstalledBy(target)
+      const existingMarker = runtimeInstalledBy(existingSkill)
       if (
         existingMarker
         && existingMarker.package !== options.installedBy.package
@@ -318,26 +377,21 @@ function projectSkills(
           + `dependencies[].installAs alias, or pass --replace to overwrite.`,
         )
       }
-      // Replace by removing first — atomicity is handled by the recorded
-      // tree pointer in the write log; rollback re-creates it from staging.
-      rmSync(target, { recursive: true, force: true })
+      writeLog.recordModifiedSkill(skillName, existingSkill!, scopedAgentId)
     }
 
-    copyTree(src, target)
     if (!targetExisted) {
-      writeLog.recordCreatedTree(target)
-    } else {
-      // We can't trivially capture the prior tree — for V1 we record a
-      // "created-tree" rollback even on overwrite, accepting that rollback
-      // of an update returns to "no skill installed" rather than "previous
-      // version installed." A future pass can swap to a sibling-rename
-      // pattern for true rollback-to-prior-version.
-      writeLog.recordCreatedTree(target)
+      writeLog.recordCreatedSkill(skillName, scopedAgentId)
     }
 
-    const sha256 = computeDirSha(target)
-    writeInstalledBy(target, { ...options.installedBy, sha256 })
-    writeLog.recordCreatedFile(installedByPath(target))
+    const files = readSourceTree(src)
+    const sha256 = computeDirSha(src)
+    await runtime.skills.write({
+      name: skillName,
+      instructions: files['SKILL.md'] ?? '',
+      files,
+      metadata: { installedBy: { ...options.installedBy, sha256 } },
+    }, scopedAgentId)
 
     result.projections.push({ kind: 'skill', target, sha256 })
   }
@@ -486,15 +540,17 @@ function buildCatalogBody(
   return lines.join('\n')
 }
 
-function projectKnowledgeMarkers(
+async function projectKnowledgeMarkers(
   manifest: AgentManifest,
   agentId: string,
   options: ProjectorOptions,
   result: ProjectorResult,
   writeLog: WriteLog,
-): void {
-  const soulPath = getOpenClawPath('workspaces', agentId, 'SOUL.md')
-  if (!existsSync(soulPath)) {
+): Promise<void> {
+  const runtime = getAppServices().runtime
+  const soulPath = runtimeWorkspaceTarget(agentId, 'SOUL.md')
+  const soulFile = await runtime.agents.readWorkspaceFile(agentId, 'SOUL.md')
+  if (!soulFile) {
     // Adopt mode without an existing SOUL.md is unusual but possible if
     // the user pre-created the agent and never wrote SOUL.md. Skip with
     // a warning — the doctor will surface it.
@@ -502,7 +558,7 @@ function projectKnowledgeMarkers(
     return
   }
 
-  if (isUserEdited(soulPath)) {
+  if (soulFile.metadata?.userEdited === true) {
     result.skipped.push({ target: soulPath, reason: 'userEdited' })
     return
   }
@@ -513,7 +569,7 @@ function projectKnowledgeMarkers(
     ?? knowledge.filter((k) => k.defaultEnabled).map((k) => k.lessonId)
   const enabled = new Set(enabledList)
 
-  const before = readFileSync(soulPath, 'utf-8')
+  const before = soulFile.content
   let updated = before
 
   // 1. Catalog block — always written, lists every available lesson with
@@ -536,7 +592,12 @@ function projectKnowledgeMarkers(
   }
 
   if (updated !== before) {
-    writeFileTracked(soulPath, updated, writeLog)
+    writeLog.recordModifiedWorkspaceFile(agentId, soulFile)
+    await runtime.agents.writeWorkspaceFile(agentId, {
+      path: 'SOUL.md',
+      content: updated,
+      metadata: soulFile.metadata,
+    })
   }
 
   // Record one projection entry for the catalog plus one per enabled lesson.
@@ -562,7 +623,7 @@ function projectKnowledgeMarkers(
  * package level: any error rolls back every successful write before
  * re-throwing so the install state matches what was on disk before.
  */
-export function projectPackage(options: ProjectorOptions): ProjectorResult {
+export async function projectPackage(options: ProjectorOptions): Promise<ProjectorResult> {
   const result: ProjectorResult = { projections: [], skipped: [] }
   const writeLog = new WriteLog()
 
@@ -571,19 +632,19 @@ export function projectPackage(options: ProjectorOptions): ProjectorResult {
       if (!options.agentId) {
         throw new Error('agentId required for kind:"agent" projection')
       }
-      projectWorkspaceFiles(options.manifest, options.agentId, options, result, writeLog)
-      projectSkills(options.manifest, options, result, writeLog)
+      await projectWorkspaceFiles(options.manifest, options.agentId, options, result, writeLog)
+      await projectSkills(options.manifest, options, result, writeLog)
       projectAssets(options.manifest, options.agentId, options, result, writeLog)
-      projectKnowledgeMarkers(options.manifest, options.agentId, options, result, writeLog)
+      await projectKnowledgeMarkers(options.manifest, options.agentId, options, result, writeLog)
     } else if (options.manifest.kind === 'skill-pack') {
-      projectSkills(options.manifest, options, result, writeLog)
+      await projectSkills(options.manifest, options, result, writeLog)
     }
     // workflow-pack and knowledge-pack don't project filesystem-side at
     // V1 — workflow-pack lives in the source registry (boot-time load),
     // knowledge-pack is search-indexed by the team plugin. Their
     // package source dir under ~/.bakin/packages/* is the only "projection."
   } catch (err) {
-    writeLog.rollback()
+    await writeLog.rollback()
     throw err
   }
 
@@ -595,18 +656,44 @@ export function projectPackage(options: ProjectorOptions): ProjectorResult {
  * every projected file (skipping `.userEdited` ones), removes sidecars,
  * and strips knowledge markers from SOUL.md.
  */
-export function unprojectPackage(
+export async function unprojectPackage(
   projections: ProjectionEntry[],
   options: { keepBlocks?: boolean } = {},
-): void {
+): Promise<void> {
+  const runtime = getAppServices().runtime
   for (const p of projections) {
+    const runtimeTarget = parseRuntimeTarget(p.target)
     if (p.kind === 'knowledge-marker') {
       if (options.keepBlocks) continue
-      if (!existsSync(p.target)) continue
-      if (isUserEdited(p.target)) continue
-      const before = readFileSync(p.target, 'utf-8')
+      if (!runtimeTarget || runtimeTarget.kind !== 'workspace-file') continue
+      const file = await runtime.agents.readWorkspaceFile(runtimeTarget.agentId, runtimeTarget.path)
+      if (!file || file.metadata?.userEdited === true) continue
+      const before = file.content
       const after = removeBlock(before, p.blockId ?? '')
-      if (after !== before) writeFileSync(p.target, after, 'utf-8')
+      if (after !== before) {
+        await runtime.agents.writeWorkspaceFile(runtimeTarget.agentId, {
+          ...file,
+          content: after,
+        })
+      }
+      continue
+    }
+    if (runtimeTarget?.kind === 'workspace-file') {
+      const file = await runtime.agents.readWorkspaceFile(runtimeTarget.agentId, runtimeTarget.path)
+      if (!file || file.metadata?.userEdited === true) continue
+      await runtime.agents.removeWorkspaceFile(runtimeTarget.agentId, runtimeTarget.path)
+      continue
+    }
+    if (runtimeTarget?.kind === 'agent-skill') {
+      const skill = await runtime.skills.get(runtimeTarget.name, runtimeTarget.agentId)
+      if (!skill || skill.metadata?.userEdited === true) continue
+      await runtime.skills.remove(runtimeTarget.name, runtimeTarget.agentId)
+      continue
+    }
+    if (runtimeTarget?.kind === 'global-skill') {
+      const skill = await runtime.skills.get(runtimeTarget.name)
+      if (!skill || skill.metadata?.userEdited === true) continue
+      await runtime.skills.remove(runtimeTarget.name)
       continue
     }
     if (!existsSync(p.target)) continue
