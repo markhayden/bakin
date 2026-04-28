@@ -29,20 +29,23 @@ mock.module('@/core/content-dir', () => ({
 
 mock.module('@/core/settings', () => ({
   getSettings: mock(() => ({
-    antfly: {
-      enabled: true,
-      url: 'http://localhost:8080/api/v1',
-      search: {
-        strategy: 'rrf',
-        defaultLimit: 20,
-        reranker: { enabled: false },
+    search: {
+      adapter: 'antfly',
+      settings: {
+        enabled: true,
+        url: 'http://localhost:8080/api/v1',
+        search: {
+          strategy: 'rrf',
+          defaultLimit: 20,
+          reranker: { enabled: false },
+        },
+        embedders: {
+          default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
+        },
+        chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
+        auditTtl: '90d',
+        cleanupInterval: '7d',
       },
-      embedders: {
-        default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
-      },
-      chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
-      auditTtl: '90d',
-      cleanupInterval: '7d',
     },
   })),
 }))

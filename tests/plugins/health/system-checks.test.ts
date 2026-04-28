@@ -108,7 +108,7 @@ mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
     service: { enabled: mockServiceEnabled },
     doctor: { autoFixSkill: mockAutoFix },
-    antfly: { enabled: mockAntflyEnabled, url: mockAntflyUrl },
+    search: { adapter: 'antfly', settings: { enabled: mockAntflyEnabled, url: mockAntflyUrl } },
   }),
   resetSettingsCache: () => {},
 }))

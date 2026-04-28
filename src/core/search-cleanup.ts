@@ -7,7 +7,7 @@
  * scan only catches the rare cases where the watcher missed an event:
  * the process was down during a delete, the fs event was lost, etc.
  *
- * Default cadence is 7d (settings.antfly.cleanupInterval) — long
+ * Default cadence is 7d (settings.search.settings.cleanupInterval) — long
  * because it's a backstop, not the main consistency mechanism.
  *
  * Scans search tables and checks each document against its plugin's
@@ -120,15 +120,16 @@ function parseDuration(duration: string): number {
 
 /**
  * Start periodic orphan cleanup.
- * Interval is configured via settings.antfly.cleanupInterval.
+ * Interval is configured via settings.search.settings.cleanupInterval.
  */
 export function startCleanupTimer(): void {
   if (_g.__bakinSearchCleanupTimer) return
 
   const settings = getSettings()
-  if (!settings.antfly.enabled) return
+  const searchSettings = settings.search.settings
+  if (!searchSettings.enabled) return
 
-  const intervalMs = parseDuration(settings.antfly.cleanupInterval)
+  const intervalMs = parseDuration(searchSettings.cleanupInterval)
 
   _g.__bakinSearchCleanupTimer = setInterval(() => {
     runCleanup().catch(err => {
@@ -136,7 +137,7 @@ export function startCleanupTimer(): void {
     })
   }, intervalMs)
 
-  log.info(`Orphan backstop scan scheduled (interval: ${settings.antfly.cleanupInterval}) — primary path is the watcher unlink hook`)
+  log.info(`Orphan backstop scan scheduled (interval: ${searchSettings.cleanupInterval}) — primary path is the watcher unlink hook`)
 }
 
 /**

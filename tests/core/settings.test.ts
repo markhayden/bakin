@@ -27,7 +27,7 @@ describe('Settings', () => {
     const settings = getSettings()
     expect(settings.dispatch.intervalMs).toBe(300000)
     expect(settings.sse.maxClients).toBe(50)
-    expect(settings.antfly.enabled).toBe(true)
+    expect(settings.search.settings.enabled).toBe(true)
     expect(settings.runtime.adapter).toBe('openclaw')
     expect(settings.runtime.settings).toEqual({})
   })
@@ -54,36 +54,36 @@ describe('Settings', () => {
     expect(settings.doctor.autoFixSkill).toBe(true)
   })
 
-  it('returns antfly search defaults', () => {
+  it('returns search adapter defaults', () => {
     const settings = getSettings()
-    expect(settings.antfly.search.strategy).toBe('rrf')
-    expect(settings.antfly.search.defaultLimit).toBe(20)
-    expect(settings.antfly.search.reranker.enabled).toBe(true)
-    expect(settings.antfly.search.reranker.provider).toBe('termite')
-    expect(settings.antfly.search.reranker.model).toBe('mixedbread-ai/mxbai-rerank-base-v1')
-    expect(settings.antfly.embedders.default.provider).toBe('termite')
-    expect(settings.antfly.embedders.default.model).toBe('BAAI/bge-small-en-v1.5')
-    expect(settings.antfly.embedders.visual.provider).toBe('termite')
-    expect(settings.antfly.embedders.visual.model).toBe('openai/clip-vit-base-patch32')
-    expect(settings.antfly.chunking.defaultTargetTokens).toBe(200)
-    expect(settings.antfly.chunking.defaultOverlapTokens).toBe(25)
-    expect(settings.antfly.auditTtl).toBe('90d')
-    expect(settings.antfly.cleanupInterval).toBe('7d')
+    expect(settings.search.settings.search.strategy).toBe('rrf')
+    expect(settings.search.settings.search.defaultLimit).toBe(20)
+    expect(settings.search.settings.search.reranker.enabled).toBe(true)
+    expect(settings.search.settings.search.reranker.provider).toBe('termite')
+    expect(settings.search.settings.search.reranker.model).toBe('mixedbread-ai/mxbai-rerank-base-v1')
+    expect(settings.search.settings.embedders.default.provider).toBe('termite')
+    expect(settings.search.settings.embedders.default.model).toBe('BAAI/bge-small-en-v1.5')
+    expect(settings.search.settings.embedders.visual.provider).toBe('termite')
+    expect(settings.search.settings.embedders.visual.model).toBe('openai/clip-vit-base-patch32')
+    expect(settings.search.settings.chunking.defaultTargetTokens).toBe(200)
+    expect(settings.search.settings.chunking.defaultOverlapTokens).toBe(25)
+    expect(settings.search.settings.auditTtl).toBe('90d')
+    expect(settings.search.settings.cleanupInterval).toBe('7d')
   })
 
-  it('merges partial antfly overrides preserving nested defaults', () => {
+  it('merges partial search adapter overrides preserving nested defaults', () => {
     fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
-      antfly: { enabled: true, search: { defaultLimit: 50 } },
+      search: { settings: { enabled: true, search: { defaultLimit: 50 } } },
     }))
 
     const settings = getSettings()
-    expect(settings.antfly.enabled).toBe(true)
-    expect(settings.antfly.url).toBe('http://localhost:8080/api/v1') // default preserved
-    expect(settings.antfly.search.defaultLimit).toBe(50) // overridden
-    expect(settings.antfly.search.strategy).toBe('rrf') // default preserved
-    expect(settings.antfly.embedders.default.provider).toBe('termite') // default preserved
-    expect(settings.antfly.auditTtl).toBe('90d') // default preserved
+    expect(settings.search.settings.enabled).toBe(true)
+    expect(settings.search.settings.url).toBe('http://localhost:8080/api/v1') // default preserved
+    expect(settings.search.settings.search.defaultLimit).toBe(50) // overridden
+    expect(settings.search.settings.search.strategy).toBe('rrf') // default preserved
+    expect(settings.search.settings.embedders.default.provider).toBe('termite') // default preserved
+    expect(settings.search.settings.auditTtl).toBe('90d') // default preserved
   })
 
   it('merges partial overrides with defaults', () => {

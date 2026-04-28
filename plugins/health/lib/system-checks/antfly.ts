@@ -20,15 +20,16 @@ function error(message: string): HealthCheckResult {
 
 export async function checkAntfly(): Promise<HealthCheckResult[]> {
   const settings = getSettings()
+  const searchSettings = settings.search.settings
   // Lazy import keeps adapter setup off the cold path when the
   // check returns early (matches the original migration's pattern).
   const { isAntflyInstalled } = await import('@bakin/adapter-antfly')
 
-  if (!settings.antfly.enabled) {
+  if (!searchSettings.enabled) {
     if (!isAntflyInstalled()) {
       return [warn('Antfly disabled and binary not installed — install with: brew install --cask antflydb/antfly/antfly')]
     }
-    return [ok('Antfly disabled — binary installed, enable with: bakin settings set antfly.enabled true')]
+    return [ok('Antfly disabled — binary installed, enable with: bakin settings set search.settings.enabled true')]
   }
 
   if (!isAntflyInstalled()) {
@@ -36,8 +37,8 @@ export async function checkAntfly(): Promise<HealthCheckResult[]> {
   }
 
   const urls = Array.from(new Set([
-    settings.antfly.url.replace(/\/api\/v1\/?$/, ''),
-    settings.antfly.url.replace('localhost', '127.0.0.1').replace(/\/api\/v1\/?$/, ''),
+    searchSettings.url.replace(/\/api\/v1\/?$/, ''),
+    searchSettings.url.replace('localhost', '127.0.0.1').replace(/\/api\/v1\/?$/, ''),
   ]))
 
   let lastErr: unknown

@@ -4,8 +4,10 @@ import type { BakinSettings } from '../../packages/core/src/settings'
 
 function makeSettings(embedders: Record<string, { provider: string; model: string }>): BakinSettings {
   return {
-    antfly: {
-      embedders,
+    search: {
+      settings: {
+        embedders,
+      },
     },
   } as unknown as BakinSettings
 }

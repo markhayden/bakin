@@ -15,8 +15,8 @@ Model management controls the relationship between agents and available model ch
 
 - `models.allowlist`
 - `models.blocklist`
-- `antfly.embedders`
-- `antfly.search.reranker`
+- `search.settings.embedders`
+- `search.settings.search.reranker`
 
 ## Reference
 

@@ -66,7 +66,7 @@ mock.module('../../../src/core/settings', () => ({
       adapter: 'openclaw',
       settings: {},
     },
-    antfly: { auditTtl: null },
+    search: { adapter: 'antfly', settings: { auditTtl: null } },
   }),
 }))
 

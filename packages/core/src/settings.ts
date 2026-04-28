@@ -13,6 +13,52 @@ export type RuntimeAdapterName = 'openclaw'
 export type SearchAdapterName = 'antfly'
 
 export type RuntimeAdapterSettings = Record<string, unknown>
+export interface SearchAdapterSettings extends Record<string, unknown> {
+  enabled: boolean
+  url: string
+  auth?: { username: string; password: string }
+  search: {
+    strategy: 'rrf' | 'semantic_only' | 'full_text_only'
+    defaultLimit: number
+    /**
+     * Cross-encoder reranker configuration. When `enabled` is true and a
+     * query does not pass `rerank: false`, Bakin attaches this config to
+     * every search adapter query request. Reranking adds ~100-500ms latency
+     * but measurably improves result ordering for ambiguous queries.
+     */
+    reranker: {
+      enabled: boolean
+      provider: string
+      model: string
+      threshold?: number
+    }
+  }
+  /**
+   * Per-index embedder configs. `default` is the text embedder used by
+   * every content type that doesn't declare an override. `visual` is the
+   * multimodal (CLIP) embedder used by the assets plugin's visual index.
+   * Plugins reference an entry by name via SearchIndexDefinition.embedderRef.
+   */
+  embedders: {
+    default: { provider: string; model: string }
+    visual: { provider: string; model: string }
+    [key: string]: { provider: string; model: string }
+  }
+  chunking: {
+    defaultTargetTokens: number
+    defaultOverlapTokens: number
+  }
+  /** TTL for audit table entries (Go duration: '90d', '24h'). Empty string to disable. */
+  auditTtl: string
+  /**
+   * Interval for the orphan cleanup BACKSTOP scan (Go duration: '7d', '24h').
+   * The watcher unlink hook is the primary path for keeping search indexes
+   * in sync with filesystem deletes — this scan only catches the rare
+   * cases where the watcher missed an event (process down during the
+   * delete, fs event lost, etc.). 7d is the right cadence for that role.
+   */
+  cleanupInterval: string
+}
 
 export interface BakinSettings {
   runtime: {
@@ -21,6 +67,7 @@ export interface BakinSettings {
   }
   search: {
     adapter: SearchAdapterName
+    settings: SearchAdapterSettings
   }
   dispatch: {
     intervalMs: number
@@ -66,52 +113,6 @@ export interface BakinSettings {
     allowlist?: string[]
     blocklist?: string[]
   }
-  antfly: {
-    enabled: boolean
-    url: string
-    auth?: { username: string; password: string }
-    search: {
-      strategy: 'rrf' | 'semantic_only' | 'full_text_only'
-      defaultLimit: number
-      /**
-       * Cross-encoder reranker configuration. When `enabled` is true and a
-       * query does not pass `rerank: false`, Bakin attaches this config to
-       * every Antfly QueryRequest. Reranking adds ~100-500ms latency but
-       * measurably improves result ordering for ambiguous queries.
-       */
-      reranker: {
-        enabled: boolean
-        provider: string
-        model: string
-        threshold?: number
-      }
-    }
-    /**
-     * Per-index embedder configs. `default` is the text embedder used by
-     * every content type that doesn't declare an override. `visual` is the
-     * multimodal (CLIP) embedder used by the assets plugin's visual index.
-     * Plugins reference an entry by name via SearchIndexDefinition.embedderRef.
-     */
-    embedders: {
-      default: { provider: string; model: string }
-      visual: { provider: string; model: string }
-      [key: string]: { provider: string; model: string }
-    }
-    chunking: {
-      defaultTargetTokens: number
-      defaultOverlapTokens: number
-    }
-    /** TTL for audit table entries (Go duration: '90d', '24h'). Empty string to disable. */
-    auditTtl: string
-    /**
-     * Interval for the orphan cleanup BACKSTOP scan (Go duration: '7d', '24h').
-     * The watcher unlink hook is the primary path for keeping search indexes
-     * in sync with filesystem deletes — this scan only catches the rare
-     * cases where the watcher missed an event (process down during the
-     * delete, fs event lost, etc.). 7d is the right cadence for that role.
-     */
-    cleanupInterval: string
-  }
   doctor: {
     intervalMs: number
     autoFixSkill: boolean
@@ -147,6 +148,40 @@ export const DEFAULT_SETTINGS: BakinSettings = {
   },
   search: {
     adapter: 'antfly',
+    settings: {
+      enabled: true,
+      url: 'http://localhost:8080/api/v1',
+      search: {
+        strategy: 'rrf',
+        defaultLimit: 20,
+        reranker: {
+          enabled: true,
+          provider: 'termite',
+          model: 'mixedbread-ai/mxbai-rerank-base-v1',
+          threshold: 0.0,
+        },
+      },
+      embedders: {
+        // Default text embedder swapped to BAAI/bge-small-en-v1.5 (Termite)
+        // as of search schema version 2. BGE is a stronger retrieval model
+        // than Antfly's builtin MiniLM, especially for longer documents
+        // with diverse vocabulary (which is most of what Bakin indexes —
+        // task descriptions, markdown notes, PDF bodies, audit trails).
+        // Runs locally via Termite; no cloud dependency. A boot-time
+        // migration in src/core/search-migration.ts drops stale tables
+        // whenever SCHEMA_VERSION advances beyond the persisted version
+        // in `~/.bakin/.search-state.json`, forcing a clean reindex onto
+        // the new embedder.
+        default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
+        visual: { provider: 'termite', model: 'openai/clip-vit-base-patch32' },
+      },
+      chunking: {
+        defaultTargetTokens: 200,
+        defaultOverlapTokens: 25,
+      },
+      auditTtl: '90d',
+      cleanupInterval: '7d',
+    },
   },
   dispatch: {
     intervalMs: 5 * 60 * 1000,
@@ -177,40 +212,6 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     keepAliveMs: 30000,
   },
   models: {},
-  antfly: {
-    enabled: true,
-    url: 'http://localhost:8080/api/v1',
-    search: {
-      strategy: 'rrf',
-      defaultLimit: 20,
-      reranker: {
-        enabled: true,
-        provider: 'termite',
-        model: 'mixedbread-ai/mxbai-rerank-base-v1',
-        threshold: 0.0,
-      },
-    },
-    embedders: {
-      // Default text embedder swapped to BAAI/bge-small-en-v1.5 (Termite)
-      // as of search schema version 2. BGE is a stronger retrieval model
-      // than Antfly's builtin MiniLM, especially for longer documents
-      // with diverse vocabulary (which is most of what Bakin indexes —
-      // task descriptions, markdown notes, PDF bodies, audit trails).
-      // Runs locally via Termite; no cloud dependency. A boot-time
-      // migration in src/core/search-migration.ts drops stale tables
-      // whenever SCHEMA_VERSION advances beyond the persisted version
-      // in `~/.bakin/.search-state.json`, forcing a clean reindex onto
-      // the new embedder.
-      default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
-      visual: { provider: 'termite', model: 'openai/clip-vit-base-patch32' },
-    },
-    chunking: {
-      defaultTargetTokens: 200,
-      defaultOverlapTokens: 25,
-    },
-    auditTtl: '90d',
-    cleanupInterval: '7d',
-  },
   doctor: {
     intervalMs: 30 * 60 * 1000, // 30 minutes
     autoFixSkill: true,

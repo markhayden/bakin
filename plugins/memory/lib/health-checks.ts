@@ -36,7 +36,7 @@ function error(check: string, message: string): HealthCheckResult {
  */
 export async function checkSearchTables(): Promise<HealthCheckResult[]> {
   const settings = getSettings()
-  if (!settings.antfly.enabled) return []
+  if (!settings.search.settings.enabled) return []
 
   try {
     const { getSearchHealth } = await import('../../../src/core/search-registry')

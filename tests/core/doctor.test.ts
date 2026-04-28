@@ -46,7 +46,7 @@ mock.module('@/core/settings', () => ({
       adapter: 'openclaw',
       settings: {},
     },
-    antfly: { enabled: false },
+    search: { adapter: 'antfly', settings: { enabled: false } },
     doctor: { intervalMs: 1800000, autoFixSkill: false },
     service: { enabled: false },
   })),
@@ -236,7 +236,7 @@ describe('doctor', () => {
           adapter: 'openclaw',
           settings: {},
         },
-        antfly: { enabled: false },
+        search: { adapter: 'antfly', settings: { enabled: false } },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
         service: { enabled: false },
       })
@@ -260,7 +260,7 @@ describe('doctor', () => {
           adapter: 'openclaw',
           settings: {},
         },
-        antfly: { enabled: false },
+        search: { adapter: 'antfly', settings: { enabled: false } },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
         service: { enabled: false },
       })
@@ -286,7 +286,7 @@ describe('doctor', () => {
           adapter: 'openclaw',
           settings: {},
         },
-        antfly: { enabled: false },
+        search: { adapter: 'antfly', settings: { enabled: false } },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: false },
         service: { enabled: false },
       })
