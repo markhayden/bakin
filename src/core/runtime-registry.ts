@@ -22,10 +22,10 @@ export function getRuntimeAdapter(): AgentRuntimeAdapter {
   return runtimeGlobal.__bakinFallbackRuntimeAdapter
 }
 
-export async function sendAgentMessage(
+async function sendRuntimeMessage(
   agentId: string,
   content: string,
-  opts: { threadId?: string; metadata?: RuntimeMetadata } = {}
+  opts: { threadId?: string; metadata?: RuntimeMetadata } = {},
 ): Promise<string> {
   const result = await getRuntimeAdapter().messaging.send({
     agentId,
@@ -58,7 +58,7 @@ export interface RuntimeChatOpts {
 
 export async function chatAgentCompletion(opts: RuntimeChatOpts): Promise<string> {
   void opts.signal
-  return sendAgentMessage(opts.agentId, flattenChatMessages(opts.messages), {
+  return sendRuntimeMessage(opts.agentId, flattenChatMessages(opts.messages), {
     threadId: opts.sessionKey,
     metadata: { model: opts.model, maxTokens: opts.maxTokens },
   })
@@ -101,21 +101,6 @@ export async function invokeRuntimeTool(
   args: unknown
 ): Promise<ToolResult> {
   return getRuntimeAdapter().tools.invoke(agentId, name, args)
-}
-
-export async function sendRuntimeChannelMessage(
-  channel: string,
-  target: string,
-  message: string,
-  media?: string
-): Promise<void> {
-  await getRuntimeAdapter().channels.sendMessage({
-    channels: [channel],
-    message: {
-      body: message,
-      metadata: { target, ...(media ? { media } : {}) },
-    },
-  })
 }
 
 export async function restartRuntime(): Promise<void> {
