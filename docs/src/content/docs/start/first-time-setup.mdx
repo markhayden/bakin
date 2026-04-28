@@ -6,10 +6,10 @@ lastUpdated: 2026-04-25
 
 import { Aside } from '@astrojs/starlight/components'
 
-<Aside type="note" title="Bakin needs OpenClaw">
-Bakin is the dashboard. <a href="https://openclaw.ai/" target="_blank" rel="noopener noreferrer">OpenClaw</a> is the agent runtime it reads from. Install and start OpenClaw before onboarding, otherwise the OpenClaw check will fail.
+<Aside type="note" title="Bakin needs a runtime">
+Bakin is the dashboard. The default runtime adapter talks to <a href="https://openclaw.ai/" target="_blank" rel="noopener noreferrer">OpenClaw</a>. Install and start the configured runtime before onboarding, otherwise the runtime check will fail.
 
-Onboarding only *reads* `~/.openclaw/` to confirm the install. It never writes, modifies, or copies OpenClaw files.
+Runtime-owned files stay under the runtime's own home directory. With the default OpenClaw adapter, that is `~/.openclaw/`.
 </Aside>
 
 ```sh
@@ -29,7 +29,7 @@ bakin doctor
 If something fails, run the specific check to narrow it down:
 
 ```sh
-bakin check openclaw       # OpenClaw is installed, reachable, openclaw.json parses
+bakin check runtime        # configured runtime is installed, reachable, and parsable
 bakin check llm            # at least one LLM provider is configured
 bakin check channels       # messaging channels are wired up (when on)
 bakin check plugin-assets  # plugin defaults projected into ~/.bakin/
@@ -42,7 +42,7 @@ Full command reference lives in the [CLI docs](/docs/reference/generated/cli/).
 
 - Creates `~/.bakin/`, your local data directory
 - Seeds default settings
-- Confirms OpenClaw is reachable
+- Confirms the configured runtime is reachable
 - Confirms at least one LLM provider is configured
 - Confirms messaging channels if you've enabled messaging
 
@@ -56,7 +56,7 @@ Everything Bakin owns lives in `~/.bakin/` by default: settings, plugins, projec
 bakin paths
 ```
 
-Anything that normally lives in `~/.openclaw/` (agent identity, skills, tools, workspace data) stays there. Bakin reads from OpenClaw but never copies, mirrors, or duplicates its state.
+Anything owned by the runtime (agent identity, skills, tools, workspace data) stays in the runtime home. With the default OpenClaw adapter, that is `~/.openclaw/`.
 
 For demos or disposable tests, point Bakin at a different directory with `BAKIN_HOME`:
 

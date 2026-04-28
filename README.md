@@ -1,8 +1,8 @@
 # Bakin
 
-Multi-agent mission control for [OpenClaw](https://openclaw.dev). A self-hosted dashboard + backend that coordinates AI agents — tasks, workflows, asset management, scheduling, content calendars, memory observability, and hybrid full-text + semantic search — all driven by markdown files on the filesystem and pushed to the browser over Server-Sent Events.
+Multi-agent mission control for a local agent runtime. Bakin ships with an OpenClaw runtime adapter and an Antfly search adapter, coordinating AI agents across tasks, workflows, asset management, scheduling, content calendars, memory observability, and hybrid full-text + semantic search. Data is owned by Bakin under `~/.bakin/` and pushed to the browser over Server-Sent Events.
 
-Built on [Bun](https://bun.sh) end to end: runtime, bundler, package manager, and binary compiler. Distributed as a single-file executable (~69 MB on macOS arm64) with every core plugin and static asset embedded. Runs alongside the OpenClaw gateway on a Mac mini, accessed over Tailscale.
+Built on [Bun](https://bun.sh) end to end: runtime, bundler, package manager, and binary compiler. Distributed as a single-file executable (~69 MB on macOS arm64) with every core plugin and static asset embedded. Runs alongside the configured runtime adapter service on a Mac mini, accessed over Tailscale.
 
 ---
 
@@ -36,7 +36,7 @@ Replaces the running binary with the latest release. Uses the same sha256 verifi
 bakin onboard
 ```
 
-Walks you through creating `~/.bakin/`, seeding `settings.json`, checking for the OpenClaw binary + config, installing AntflyDB + Termite ML models, syncing mcporter, and verifying at least one LLM provider and one messaging channel. Writes `~/.bakin/.onboarded` so `bakin doctor` knows the machine is ready.
+Walks you through creating `~/.bakin/`, seeding `settings.json`, checking the configured runtime adapter, installing the default Antfly search adapter + Termite ML models, syncing mcporter, and verifying at least one LLM provider and one messaging channel. Writes `~/.bakin/.onboarded` so `bakin doctor` knows the machine is ready.
 
 For CI or scripted installs:
 
@@ -50,7 +50,7 @@ Individual commands for piecemeal use:
 |---|---|
 | `bakin mkdir` | Create/verify the `~/.bakin/` directory tree |
 | `bakin settings init` | Seed default `settings.json` |
-| `bakin check openclaw` | Detect OpenClaw binary + config |
+| `bakin check runtime` | Detect configured runtime adapter + config |
 | `bakin check llm` | Verify at least one LLM provider |
 | `bakin check channels` | Verify at least one messaging channel |
 | `bakin check all` | Run every check, report each |
@@ -80,7 +80,7 @@ server.ts                  HTTP entry. Node's http.createServer under Bun's
 packages/
   core/                    @bakin/core — shared types + utilities (content-dir
                            resolver, logger, settings, vault, hook registry,
-                           OpenClaw path + config helpers).
+                           adapter contracts, task store).
   sdk/                     @bakin/sdk — the plugin-author surface. Sub-paths
                            @bakin/sdk/{ui,hooks,components,slots,types,utils}.
                            Published to npm at release time.
@@ -109,12 +109,13 @@ scripts/                   Build + infrastructure (build-vendors, build-
                            exec tools (log progress, gen_image, post_discord,
                            heartbeat, get_paths).
 
-cli/                       Thin legacy CLI wrapper. Most commands go through
+cli/                       Thin CLI entry point. Most commands go through
                            src/core/cli.ts inside the compiled binary.
 
-dev/imitation-crab/        OpenClaw mock — seeds ~/.imitationcrab/ with
-                           fixtures and runs a mock gateway on :18789 for
-                           local dev without a real OpenClaw install.
+dev/imitation-crab/        OpenClaw-compatible runtime mock — seeds
+                           ~/.imitationcrab/ with fixtures and runs a mock
+                           gateway on :18789 for local dev without a real
+                           OpenClaw install.
 ```
 
 ### Runtime data (`~/.bakin/`)
@@ -123,7 +124,7 @@ Created on first run. Per-installation state, never in the repo.
 
 ```
 ~/.bakin/
-  settings.json            Runtime config (dispatch, watchdog, antfly, alerts)
+  settings.json            Runtime config (runtime, search, dispatch, alerts)
   plugin-settings/<id>.json Per-plugin settings
   plugins/<id>/            Installed user plugins (source + compiled dist/)
   agents/<id>/             UI data (avatars)
@@ -141,10 +142,10 @@ On boot:
 
 | Subsystem | Purpose | Interval |
 |---|---|---|
-| **Dispatch** | Assigns TODO tasks to agents via OpenClaw | 5 min |
+| **Dispatch** | Assigns TODO tasks to agents via the runtime adapter | 5 min |
 | **Watchdog** | Detects stuck tasks + MCP outages, alerts via Discord | 5 min |
 | **Doctor** | Health checks + safe auto-repair | 30 min |
-| **File Watcher** | `~/.bakin/` chokidar, syncs to Antfly, broadcasts SSE | Real-time |
+| **File Watcher** | `~/.bakin/` chokidar, syncs through the search adapter, broadcasts SSE | Real-time |
 | **SSE** | Real-time event stream to the dashboard | 30 s keepalive |
 | **MCP Server** | Tool server (Streamable HTTP + SSE) for agents | n/a |
 
@@ -162,11 +163,11 @@ Every plugin ships as a source tree with a `bakin-plugin.json` manifest, an `ind
 | **workflows** | Workflow execution engine with gates + xyflow canvas |
 | **assets** | Asset management with sidecar metadata, month-sharded storage |
 | **projects** | Project tracking with checklists |
-| **schedule** | Cron jobs bridged into OpenClaw |
+| **schedule** | Cron jobs bridged through the runtime adapter |
 | **messaging** | Content calendar + brainstorm planning sessions |
-| **memory** | Read-only observability over all 7 OpenClaw memory tiers + Bakin audit log (one unified `bakin_memory` table) |
+| **memory** | Read-only observability over runtime memory tiers + Bakin audit log (one unified `bakin_memory` table) |
 | **models** | Agent ↔ model assignments with curated catalog |
-| **team** | Agent team management (OpenClaw adapter layer) |
+| **team** | Agent team management through the runtime adapter |
 | **health** | System health dashboard |
 
 See [`docs/plugin-authoring.md`](./docs/plugin-authoring.md) for authoring a plugin end to end, and [`.claude/knowledge/plugin-system.md`](./.claude/knowledge/plugin-system.md) for the deep reference.
@@ -271,7 +272,7 @@ Core endpoints:
 | `POST` | `/api/agents/:id/message` | Send a message to an agent |
 | `GET` | `/api/agents/avatar?id=<agent>` | Avatar image |
 | `GET` | `/api/search` | Full-text + semantic search (`?q=&table=&agent=&limit=&facets=`) |
-| `POST` | `/api/reindex` | Reindex content to Antfly |
+| `POST` | `/api/reindex` | Reindex content through the search adapter |
 | `GET` | `/api/plugins/manifest` | Plugin manifest for the runtime loader |
 | `GET` | `/api/plugins/:id/assets/:path*` | Serve a plugin's compiled client bundle |
 | `POST` | `/mcp` | MCP tool server (Streamable HTTP + SSE) |
@@ -286,22 +287,22 @@ Each plugin can register additional routes under `/api/plugins/:id/*`.
 
 | Category | Checks | Auto-fix? |
 |---|---|---|
-| **Infrastructure** | content-dir, gateway, antfly, search-tables, service | Mixed |
+| **Infrastructure** | content-dir, runtime, search, search-tables, service | Mixed |
 | **Agents** | roster, personas, orchestrator-rules, mcporter, managed blocks | Mixed |
 | **Tasks** | taskboard, consistency, order integrity, skill exec tools | Mixed |
 | **Workflows** | skill-sync, definitions, instances, workflow-skills | Yes |
 | **Content** | assets, schedule-sync | No |
 
 **Safe** (auto-fix): creating missing dirs/files, syncing skills + rules, cleaning stale workflow instances.
-**Unsafe** (notify): roster mismatches, gateway down, taskDB inconsistencies — reported to OpenClaw as alerts.
+**Unsafe** (notify): roster mismatches, runtime down, task-store inconsistencies — reported to the main runtime agent as alerts.
 
 Run manually: `bakin doctor` or `GET /api/plugins/health/doctor?fresh=true`.
 
 ---
 
-## Search (Antfly)
+## Search
 
-[AntflyDB](https://antfly.dev) provides hybrid search (full-text BM25 + semantic vector) across every plugin's content. Enabled by default. Bakin auto-starts it as a child process on boot, creates tables, keeps them indexed via the file watcher, and shuts it down with SIGTERM.
+The search adapter provides hybrid search (full-text BM25 + semantic vector) across every plugin's content. The default adapter is [AntflyDB](https://antfly.dev). Enabled by default. Bakin auto-starts it as a child process on boot, creates tables, keeps them indexed via the file watcher, and shuts it down with SIGTERM.
 
 - **Text embeddings:** `BAAI/bge-small-en-v1.5` (Termite ONNX backend, local)
 - **Image embeddings:** `openai/clip-vit-base-patch32` (also local) — assets table carries side-by-side `assets_text` + `assets_visual` indexes
@@ -337,16 +338,18 @@ Key defaults:
 | `watchdog.stuckThresholdMs` | 1800000 (30 m) | Alert if no step progress |
 | `doctor.intervalMs` | 1800000 (30 m) | Health check interval |
 | `doctor.autoFixSkill` | true | Auto-fix safe issues |
-| `antfly.enabled` | true | Enable Antfly search |
+| `runtime.adapter` | `"openclaw"` | Runtime adapter |
+| `search.adapter` | `"antfly"` | Search adapter |
+| `search.settings.enabled` | true | Enable search |
 | `sse.maxClients` | 50 | Max SSE connections |
 
 ---
 
-## OpenClaw skill
+## Runtime Skill
 
-Bakin ships a skill file at `skill/SKILL.md` that teaches OpenClaw agents how to interact with Bakin — task lifecycle rules, required API calls, logging requirements, content locations.
+Bakin ships a skill file at `skill/SKILL.md` that teaches runtime agents how to interact with Bakin — task lifecycle rules, required API calls, logging requirements, content locations.
 
-Doctor auto-installs it to `~/.openclaw/workspace/skills/bakin/` and keeps it in sync. Verify with:
+With the default OpenClaw adapter, doctor auto-installs it to `~/.openclaw/workspace/skills/bakin/` and keeps it in sync. Verify with:
 
 ```bash
 openclaw skills list
