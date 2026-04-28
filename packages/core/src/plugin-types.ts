@@ -614,6 +614,27 @@ export interface SearchAPI {
 
   /** Search this plugin's content type. */
   query(params: SearchQueryParams): Promise<SearchResponse>
+
+  /**
+   * Plugin-scoped maintenance operations for indexers that own non-file-backed
+   * tables. This is intentionally narrower than the raw adapter: callers can
+   * only touch their own registered content type.
+   */
+  maintenance?: SearchMaintenanceAPI
+}
+
+export interface SearchMaintenanceAPI {
+  /** Whether the backing search service is reachable. */
+  available(): Promise<boolean>
+
+  /** Iterate every document in this plugin's registered content type. */
+  scan(): AsyncIterable<{ key: string; document: Record<string, unknown> }>
+
+  /** Remove several documents from this plugin's registered content type. */
+  batchRemove(keys: string[]): Promise<number>
+
+  /** Drop and recreate this plugin's registered content type table. */
+  resetContentType(): Promise<void>
 }
 
 // ---------------------------------------------------------------------------

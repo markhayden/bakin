@@ -234,7 +234,7 @@ const memoryPlugin: BakinPlugin = {
       // under the current write-time filters (TTL, parser rules, etc.). Runs
       // before backfill so the freshly-recreated table is what gets written.
       try {
-        const { migrated, from, to } = await migrateIfNeeded()
+        const { migrated, from, to } = await migrateIfNeeded(ctx.search)
         if (migrated) log.info('memory schema migrated', { from, to })
       } catch (err) {
         log.warn('memory migration failed — proceeding with backfill anyway', {
@@ -266,9 +266,9 @@ const memoryPlugin: BakinPlugin = {
         turnRetentionDays: settings.turnRetentionDays,
         auditRetentionDays: settings.auditRetentionDays,
       }
-      startTtlTimer(ttl)
+      startTtlTimer(ctx.search, ttl)
       try {
-        await pruneExpired(ttl)
+        await pruneExpired(ctx.search, ttl)
       } catch (err) {
         log.warn('initial ttl prune failed', {
           err: err instanceof Error ? err.message : String(err),

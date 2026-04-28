@@ -229,6 +229,44 @@ describe('search-registry', () => {
     expect(searchHarness.calls.documentsRemove).toHaveBeenCalledWith('bakin_tasks', 'task-1')
   })
 
+  it('maintenance.scan is scoped to the plugin table', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+    await api.index('task-1', { title: 'Build feature' })
+
+    const rows = []
+    for await (const row of api.maintenance!.scan()) rows.push(row)
+
+    expect(searchHarness.calls.scan).toHaveBeenCalledWith('bakin_tasks')
+    expect(rows).toEqual([{ key: 'task-1', document: { title: 'Build feature' } }])
+  })
+
+  it('maintenance.batchRemove is scoped to the plugin table', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+    await api.index('task-1', { title: 'Build feature' })
+
+    const removed = await api.maintenance!.batchRemove(['task-1'])
+
+    expect(removed).toBe(1)
+    expect(searchHarness.calls.documentsBatchRemove).toHaveBeenCalledWith('bakin_tasks', ['task-1'])
+  })
+
+  it('maintenance.resetContentType drops and recreates the plugin table', async () => {
+    const api = buildSearchAPI('tasks')
+    api.registerContentType(makeDef('tasks'))
+    await createRegisteredTables()
+    searchHarness.calls.tablesCreate.mockClear()
+
+    await api.maintenance!.resetContentType()
+
+    expect(searchHarness.calls.tablesDrop).toHaveBeenCalledWith('bakin_tasks')
+    expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
+      'bakin_tasks',
+      expect.objectContaining({ fields: expect.objectContaining({ title: { type: 'text' } }) }),
+    )
+  })
+
   it('transform calls search.documents.transform with $set ops', async () => {
     const api = buildSearchAPI('tasks')
     api.registerContentType(makeDef('tasks'))

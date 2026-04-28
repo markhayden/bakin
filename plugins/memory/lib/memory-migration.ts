@@ -15,6 +15,9 @@
  *       heartbeat/memory/memory-log/dreams/user/bootstrap) and bring
  *       `{workspace}/skills/*\/SKILL.md` into the durable indexer with
  *       kind=skill. Existing rows have no `kind` — drop + re-derive.
+ *   3 — rename runtime-originated source refs from provider-specific
+ *       `openclaw` to `runtime` and daily-note meta from `openclawIndexed`
+ *       to `runtimeIndexed`. Existing rows need a provider-neutral rederive.
  *
  * Bump `MEMORY_SCHEMA_VERSION` whenever a write-path change means existing
  * rows should be re-derived from source (new filters, new fields, changed
@@ -24,13 +27,12 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from '
 import { dirname, join } from 'path'
 import { getContentDir } from '@bakin/core/content-dir'
 import { createLogger } from '../../../src/core/logger'
-import { ensureRegisteredTables, getSearchAdapter } from '../../../src/core/search-registry'
+import type { SearchAPI } from '@bakin/core/plugin-types'
 import { clearAllOffsets, getOffsetsFilePath } from './offsets'
 
 const log = createLogger('memory:migration')
 
-export const MEMORY_SCHEMA_VERSION = 2
-const TABLE = 'bakin_memory'
+export const MEMORY_SCHEMA_VERSION = 3
 
 function versionFilePath(): string {
   return join(getContentDir(), 'plugin-settings', 'memory', 'schema-version.json')
@@ -79,21 +81,21 @@ export interface MigrationResult {
 
 /**
  * Runs once per boot. When the stored version is behind the code version:
- *   1. Drop `bakin_memory` so historical rows disappear.
+ *   1. Reset `bakin_memory` so historical rows disappear.
  *   2. Wipe `offsets.json` so the backfill re-reads every watched file from
  *      byte 0 instead of skipping past data that's no longer in the index.
- *   3. Re-run `ensureRegisteredTables` so the table is recreated with the
- *      current schema before the backfill starts writing.
+ *   3. Recreate the registered table with the current schema before the
+ *      backfill starts writing.
  *   4. Write the new version marker so this doesn't repeat.
  */
-export async function migrateIfNeeded(): Promise<MigrationResult> {
+export async function migrateIfNeeded(search: SearchAPI): Promise<MigrationResult> {
   const stored = readStoredVersion()
   if (stored >= MEMORY_SCHEMA_VERSION) {
     return { migrated: false, from: stored, to: MEMORY_SCHEMA_VERSION }
   }
 
-  const search = getSearchAdapter()
-  if (!await search.available()) {
+  const maintenance = search.maintenance
+  if (!maintenance || !await maintenance.available()) {
     log.info('Search adapter unavailable — skipping memory migration but still bumping marker', {
       stored,
       target: MEMORY_SCHEMA_VERSION,
@@ -102,28 +104,20 @@ export async function migrateIfNeeded(): Promise<MigrationResult> {
     return { migrated: false, from: stored, to: MEMORY_SCHEMA_VERSION }
   }
 
-  log.info('Memory schema version behind — dropping bakin_memory and clearing offsets', {
+  log.info('Memory schema version behind — resetting memory table and clearing offsets', {
     stored,
     target: MEMORY_SCHEMA_VERSION,
   })
 
   try {
-    await search.tables.drop(TABLE)
+    await maintenance.resetContentType()
   } catch (err) {
-    log.warn('Dropping bakin_memory failed — continuing', {
+    log.warn('Resetting memory search table failed — continuing', {
       err: err instanceof Error ? err.message : String(err),
     })
   }
 
   resetOffsets()
-
-  try {
-    await ensureRegisteredTables()
-  } catch (err) {
-    log.warn('ensureRegisteredTables after drop failed', {
-      err: err instanceof Error ? err.message : String(err),
-    })
-  }
 
   writeStoredVersion(MEMORY_SCHEMA_VERSION)
   return { migrated: true, from: stored, to: MEMORY_SCHEMA_VERSION }
