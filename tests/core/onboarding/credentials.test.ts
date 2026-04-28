@@ -7,25 +7,41 @@
  *     valid) surfaces correctly in CheckResult
  *   - install() for both subcomponents is a hard noop — no fs writes
  *
- * Uses a real temp directory plus a mock on @bakin/core/openclaw-home
- * so the component reads from files we control.
+ * Uses a real temp directory plus a mocked runtime config adapter
+ * so the component reads through the adapter boundary.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 let fakeHome: string
 
-mock.module('@bakin/core/openclaw-home', () => ({
-  getOpenClawHome: () => fakeHome,
-  getOpenClawPath: (...segments: string[]) => join(fakeHome, ...segments),
-}))
+const authProfilesPath = () => join(fakeHome, 'agents', 'main', 'agent', 'auth-profiles.json')
+const configPath = () => join(fakeHome, 'openclaw.json')
 
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
+const runtime = {
+  agents: {
+    list: async () => [{ id: 'main', name: 'Main', role: 'Orchestrator', status: 'active' }],
+  },
+  config: {
+    raw: async (key: string) => {
+      if (key === 'agents.main.authProfiles') {
+        if (!existsSync(authProfilesPath())) return null
+        return JSON.parse(readFileSync(authProfilesPath(), 'utf-8'))
+      }
+      if (key === 'channels') {
+        if (!existsSync(configPath())) return null
+        return JSON.parse(readFileSync(configPath(), 'utf-8')).channels
+      }
+      return null
+    },
+  },
+}
+
+mock.module('../../../src/core/app-services', () => ({
+  maybeGetAppServices: () => ({ runtime }),
+  createAppServices: async () => ({ runtime }),
 }))
 
 mock.module('../../../src/core/logger', () => ({
@@ -61,9 +77,6 @@ describe('onboarding credentials component', () => {
     checkOnly: false,
     force: false,
   }
-
-  const authProfilesPath = () => join(fakeHome, 'agents', 'main', 'agent', 'auth-profiles.json')
-  const configPath = () => join(fakeHome, 'openclaw.json')
 
   // -------------------------------------------------------------------------
   // llm component
@@ -176,7 +189,7 @@ describe('onboarding credentials component', () => {
       writeFileSync(configPath(), JSON.stringify({ gateway: { auth: { token: 'x' } } }))
       const result = await channelsComponent.check()
       expect(result.status).toBe('warn')
-      expect(result.message).toContain('non-empty credential field')
+      expect(result.message).toContain('missing')
     })
 
     it('reports warn when channels is not an object', async () => {
