@@ -84,8 +84,8 @@ mock.module('../../../src/core/runtime-registry', () => ({
 let mockAntflyEnabled = false
 let mockAntflyUrl = 'http://127.0.0.1:8765/api/v1'
 let mockAntflyInstalled = true
-mock.module('@bakin/adapter-antfly', () => ({
-  isAntflyInstalled: () => mockAntflyInstalled,
+mock.module('../../../src/core/search-adapter-factory', () => ({
+  isSearchAdapterInstalled: () => mockAntflyInstalled,
 }))
 
 const realFetch = globalThis.fetch

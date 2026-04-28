@@ -15,6 +15,11 @@ const EXT_RE = /\.(ts|tsx|mjs|mts)$/
 
 const DENYLIST = [
   {
+    label: 'concrete adapter import outside adapter factories',
+    regex: /@bakin\/adapter-(?:antfly|openclaw)/,
+    allow: (rel: string) => rel === 'src/core/search-adapter-factory.ts' || rel === 'src/core/runtime-adapter-factory.ts',
+  },
+  {
     label: 'legacy core Antfly facade import',
     regex: /(?:@\/core\/antfly|src\/core\/antfly|core\/antfly-server|antfly-server)/,
   },
@@ -77,7 +82,7 @@ describe('adapter boundary architecture', () => {
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i]
         for (const rule of DENYLIST) {
-          if (rule.regex.test(line)) {
+          if (rule.regex.test(line) && !rule.allow?.(rel)) {
             hits.push(`${rel}:${i + 1} ${rule.label}: ${line.trim()}`)
           }
         }

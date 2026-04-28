@@ -1,11 +1,11 @@
 import type { AppServices } from '@bakin/core/app-services'
 import { createHealthService } from '@bakin/core/app-services'
 import { createFileBakinTaskStore } from '@bakin/core/tasks/store'
-import { createOpenClawRuntimeAdapter } from '@bakin/adapter-openclaw'
-import { createAntflySearchAdapter } from '@bakin/adapter-antfly'
 import { appendAudit } from './audit'
 import { getBakinPaths, getContentDir } from './content-dir'
 import { createLogger } from './logger'
+import { createRuntimeAdapter } from './runtime-adapter-factory'
+import { createSearchAdapter } from './search-adapter-factory'
 import { getSettings } from './settings'
 
 type AppServicesGlobal = typeof globalThis & {
@@ -64,22 +64,4 @@ export function getAppServices(): AppServices {
 
 export function maybeGetAppServices(): AppServices | undefined {
   return (globalThis as AppServicesGlobal).__bakinAppServices
-}
-
-function createRuntimeAdapter(name: string) {
-  switch (name) {
-    case 'openclaw':
-      return createOpenClawRuntimeAdapter()
-    default:
-      throw new Error(`Unknown runtime adapter: ${name}`)
-  }
-}
-
-function createSearchAdapter(name: string) {
-  switch (name) {
-    case 'antfly':
-      return createAntflySearchAdapter()
-    default:
-      throw new Error(`Unknown search adapter: ${name}`)
-  }
 }
