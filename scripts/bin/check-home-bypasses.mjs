@@ -12,7 +12,7 @@
  * Allowlist: the resolver modules themselves, plus the onboarding/init
  * paths that legitimately have to write the real home directory.
  */
-import { readFileSync, readdirSync, statSync } from 'fs'
+import { readFileSync, readdirSync } from 'fs'
 import { join, relative } from 'path'
 
 const ROOT = process.cwd()

@@ -33,8 +33,6 @@ interface Props {
   isCompleted?: boolean
   onProposalUpdate?: (updatedProposal: ProposedItem) => void
   onConfirm?: (result: { itemsCreated: number; itemIds: string[] }) => void
-  onScrollToMessage?: (messageId: string) => void
-  onEditProposal?: (proposalId: string) => void
 }
 
 export function ReviewPanel({
@@ -43,8 +41,6 @@ export function ReviewPanel({
   isCompleted = false,
   onProposalUpdate,
   onConfirm,
-  onScrollToMessage,
-  onEditProposal,
 }: Props) {
   const [confirming, setConfirming] = useState(false)
   const [confirmed, setConfirmed] = useState(false)

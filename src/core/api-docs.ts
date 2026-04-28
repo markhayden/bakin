@@ -3,7 +3,7 @@
  * Collects route registrations from plugins and core, generates docs.
  */
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
-import { join, dirname } from 'path'
+import { join } from 'path'
 import { createLogger } from './logger'
 import type { APIRoute } from '../../packages/core/src/plugin-types'
 import type { ContractStability, ContractVisibility, DocsExample, SchemaLike, SourceLocation } from '../../packages/core/src/docs'

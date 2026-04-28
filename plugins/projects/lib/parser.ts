@@ -85,7 +85,7 @@ export function parseProject(content: string): Project {
 }
 
 export function serializeProject(project: Project): string {
-  const { body, progress, ...fm } = project
+  const { body, progress: _progress, ...fm } = project
   // Ensure tasks array is serialized correctly (omit undefined taskId)
   const cleanTasks = fm.tasks.map(t => {
     const item: Record<string, unknown> = { id: t.id, title: t.title, checked: t.checked }

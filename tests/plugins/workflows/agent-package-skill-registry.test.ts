@@ -87,7 +87,6 @@ describe('agent-package skill registry', () => {
 
   it('uses globalThis.__bakinAgentPackageSkills for persistence', () => {
     registerAgentPackageSkill('pixel', 'persisted', skill('Persisted'))
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const store = (globalThis as any).__bakinAgentPackageSkills
     expect(store).toBeDefined()
     expect(store.agentPackage.has('persisted')).toBe(true)

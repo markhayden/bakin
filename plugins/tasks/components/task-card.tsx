@@ -135,12 +135,11 @@ interface TaskCardProps {
   gateLabel?: string
   childTaskId?: string
   scoreInfo?: TaskScoreInfo
-  onAssign: (task: Task, agent: string) => void
   onDelete: (task: { id: string; title: string }) => void
   onClick: (task: Task, columnId: ColumnId) => void
 }
 
-export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, scoreInfo, onAssign, onDelete, onClick }: TaskCardProps) {
+export function TaskCard({ task, columnId, index = 0, gateLabel, childTaskId, scoreInfo, onDelete, onClick }: TaskCardProps) {
   const { ref, isDragging } = useSortable({
     id: task.id,
     group: columnId,

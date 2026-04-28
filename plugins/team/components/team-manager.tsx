@@ -102,7 +102,6 @@ export function TeamManager() {
       ) : (
         <div className="space-y-3">
           {teams.map((team) => {
-            const reporter = agents.find((a) => a.id === team.reportsTo)
             return (
               <div
                 key={team.id}

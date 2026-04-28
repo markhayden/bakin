@@ -174,8 +174,6 @@ export function KanbanBoard() {
     }
   }, [columns, view])
 
-  const hiddenArchivedCount = columns.archived.length - displayColumns.archived.length
-
   const [taskIdParam, setTaskIdParam] = useQueryState('taskId', '')
   const hasBoardFilters = Boolean(search) || agentFilter !== 'all'
 
@@ -342,15 +340,6 @@ export function KanbanBoard() {
     setOptimistic(null)
   }, [agentFilter, hasBoardFilters, optimistic, parsed.columns, refreshTaskboard, search])
 
-  const handleAssign = useCallback(async (task: Task, agent: string) => {
-    const ok = await apiFetch('/api/plugins/tasks/' + task.id + '/assign', { id: task.id, title: task.title, agent })
-    if (ok) {
-      await refreshTaskboard()
-    } else {
-      toast(`Failed to assign "${task.title}"`, 'error')
-    }
-  }, [refreshTaskboard])
-
   const [detailTask, setDetailTask] = useState<{ task: Task; columnId: ColumnId } | null>(null)
   const [editing, setEditing] = useState(false)
 
@@ -487,7 +476,6 @@ export function KanbanBoard() {
                       gateLabels={gateLabels}
                       childTaskLabels={childTaskLabels}
                       scoreMap={scoreMap}
-                      onAssign={handleAssign}
                       onDelete={setDeleteTarget}
                       onTaskClick={(task, columnId) => { setDetailTask({ task, columnId }); setEditing(false) }}
                       compact={colId === 'archived'}

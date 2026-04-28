@@ -160,7 +160,6 @@ export interface ActivityAPI {
 // ---------------------------------------------------------------------------
 export interface HookAPI {
   /** Register a handler for a named hook. Returns unsubscribe function. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   register(name: string, handler: (data: any) => any): () => void
   /** Check if any handlers are registered for a hook. */
   has(name: string): boolean

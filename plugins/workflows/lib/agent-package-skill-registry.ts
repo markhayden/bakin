@@ -30,7 +30,6 @@ interface SkillStore {
 }
 
 declare global {
-  // eslint-disable-next-line no-var
   var __bakinAgentPackageSkills: SkillStore | undefined
 }
 

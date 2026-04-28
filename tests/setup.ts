@@ -57,7 +57,6 @@ let realClearInterval: typeof clearInterval | null = null
 // builtins, so tests that need partial-mock ("spread actual, override a few
 // methods") use mock.module with a sync factory + require() directly. Our
 // shim just delegates straight to mock.module.
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 const vi = {
   // Mock constructors

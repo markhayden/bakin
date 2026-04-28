@@ -229,7 +229,6 @@ function discoverPlugins(): PluginEntry[] {
   // Built-in plugins from bakin.config.ts. We require() it lazily so
   // onboarding can run before the bundler resolves the workspace.
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mod = require('../../../bakin.config') as Record<string, unknown>
     const cfg = (mod.default ?? mod) as { plugins?: Array<{ path: string; enabled?: boolean }> }
     for (const p of cfg.plugins ?? []) {
@@ -243,7 +242,6 @@ function discoverPlugins(): PluginEntry[] {
 
   // User plugins under ~/.bakin/plugins/{id}/bakin-plugin.json
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { getContentDir } = require('../content-dir') as typeof import('../content-dir')
     const userPluginsDir = join(getContentDir(), 'plugins')
     if (existsSync(userPluginsDir)) {
@@ -301,7 +299,6 @@ async function check(): Promise<CheckResult> {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function install(_opts: OnboardingOptions): Promise<InstallResult> {
   const start = Date.now()
   const plugins = discoverPlugins()

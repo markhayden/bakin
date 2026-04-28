@@ -415,7 +415,6 @@ class PluginRegistryImpl {
       },
       search: buildSearchAPI(pluginId, { registerRoute }),
       hooks: {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         register: (name: string, handler: (data: any) => any) => {
           // Forward the plugin id so unregisterByPlugin can sweep this
           // handler when the plugin is removed (#119).

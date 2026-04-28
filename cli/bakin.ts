@@ -212,7 +212,7 @@ async function cmdSettingsGet(key?: string): Promise<void> {
 
 async function cmdSettingsSet(key: string, value: string): Promise<void> {
   const parts = key.split('.')
-  let obj: Record<string, unknown> = {}
+  const obj: Record<string, unknown> = {}
   let current = obj
   for (let i = 0; i < parts.length - 1; i++) {
     current[parts[i]] = {}
@@ -650,24 +650,6 @@ async function cmdPaths(key?: string): Promise<void> {
       console.log(`  ${k.padEnd(12)} ${v}`)
     }
   }
-}
-
-async function cmdInit(): Promise<void> {
-  const { initBakinHome } = await import('../src/core/content-dir')
-  const targetDir = process.env.BAKIN_HOME || undefined
-  console.log(`Initializing Bakin home directory${targetDir ? ` at ${targetDir}` : ''}...`)
-  const { created, seeded } = initBakinHome(targetDir)
-
-  if (created.length > 0) {
-    console.log(`Created ${created.length} directories/files`)
-  }
-  if (seeded.length > 0) {
-    console.log(`Seeded ${seeded.length} default files: ${seeded.join(', ')}`)
-  }
-  if (created.length === 0 && seeded.length === 0) {
-    console.log('Already initialized — nothing to do')
-  }
-  console.log('Done.')
 }
 
 const SERVICE_LABEL = 'com.bakin.mc'
@@ -1120,47 +1102,6 @@ async function cmdStop(): Promise<void> {
   } catch {
     console.log('[OK] No running Bakin process found')
   }
-}
-
-async function cmdSetupMcporter(): Promise<void> {
-  const port = Number(process.env.PORT || 3737)
-  const mcporter = await import('../src/core/mcporter')
-
-  console.log('[..] Checking mcporter installation...')
-  if (!mcporter.isMcporterInstalled()) {
-    console.log('[..] Installing mcporter...')
-    if (!mcporter.installMcporter()) {
-      console.error('[FAIL] Could not install mcporter. Run manually: npm i -g mcporter')
-      process.exit(1)
-    }
-    console.log('[OK] mcporter installed')
-  } else {
-    console.log('[OK] mcporter already installed')
-  }
-
-  console.log('[..] Syncing mcporter config...')
-  const changes = await mcporter.syncConfig(port)
-  if (changes.length > 0) {
-    for (const c of changes) console.log(`  ${c}`)
-    console.log(`[OK] Config updated`)
-  } else {
-    console.log('[OK] Config already up to date')
-  }
-
-  // Verify
-  const status = await mcporter.verifyConfig(port)
-  console.log('')
-  console.log('Agent MCP entries:')
-  for (const entry of status.agentEntries) {
-    console.log(`  ${entry.correct ? '[OK]' : '[!!]'} ${entry.name} → ${entry.url}`)
-  }
-  if (status.staleEntries.length > 0) {
-    console.log(`\nStale entries removed: ${status.staleEntries.join(', ')}`)
-  }
-
-  console.log('')
-  console.log('Test with:')
-  console.log('  mcporter call bakin-pixel.bakin_get_paths --allow-http')
 }
 
 // ---------------------------------------------------------------------------

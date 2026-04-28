@@ -112,7 +112,6 @@ function resolveBakinVersion(): string {
   // is in the repo when the orchestrator runs. Failure is non-fatal —
   // the marker's bakinVersion is informational only.
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const pkg = require('../../../package.json') as { version?: string }
     return pkg.version ?? DEFAULT_BAKIN_VERSION
   } catch {

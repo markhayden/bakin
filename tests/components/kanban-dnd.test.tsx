@@ -648,7 +648,6 @@ describe('TaskCard rendering', () => {
       <TaskCard
         task={task}
         columnId="todo"
-        onAssign={mock()}
         onDelete={mock()}
         onClick={mock()}
       />
@@ -677,7 +676,6 @@ describe('TaskCard rendering', () => {
       <TaskCard
         task={task}
         columnId="todo"
-        onAssign={mock()}
         onDelete={mock()}
         onClick={mock()}
       />
