@@ -12,8 +12,8 @@ const mockRuntimeSend = mock((...args: unknown[]) => {
   return Promise.resolve({ id: 'runtime-msg', content: 'agent reply' })
 })
 
-mock.module('@/core/runtime-registry', () => ({
-  getRuntimeAdapter: () => ({
+const mockAppServices = {
+  runtime: {
     agents: {
       get: mock(async (agentId: string) => ({ id: agentId, name: agentId, status: 'active' })),
       list: mock(async () => []),
@@ -21,7 +21,14 @@ mock.module('@/core/runtime-registry', () => ({
     messaging: {
       send: (...args: unknown[]) => mockRuntimeSend(...args),
     },
-  }),
+  },
+}
+
+mock.module('@/core/app-services', () => ({
+  getAppServices: () => mockAppServices,
+}))
+mock.module('../../src/core/app-services', () => ({
+  getAppServices: () => mockAppServices,
 }))
 
 mock.module('@/core/content-dir', () => ({

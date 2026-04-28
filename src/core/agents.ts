@@ -4,8 +4,8 @@
  */
 import { readFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
+import { getAppServices } from './app-services'
 import { createLogger } from './logger'
-import { getRuntimeAdapter } from './runtime-registry'
 import { createFileBakinTaskStore } from '@bakin/core/tasks/store'
 import { getBakinPaths } from './content-dir'
 
@@ -30,7 +30,7 @@ interface AgentTask {
  * Get status for a specific agent — their current tasks and last activity.
  */
 export async function getAgentStatus(agentId: string, contentDir: string): Promise<AgentStatus> {
-  const agent = await getRuntimeAdapter().agents.get(agentId)
+  const agent = await getAppServices().runtime.agents.get(agentId)
   const name = agent?.name ?? agentId
 
   // Get tasks assigned to this agent
@@ -72,7 +72,7 @@ export async function sendMessageToAgent(
   message: string
 ): Promise<{ ok: boolean; reply?: string; error?: string }> {
   try {
-    const result = await getRuntimeAdapter().messaging.send({ agentId, content: message })
+    const result = await getAppServices().runtime.messaging.send({ agentId, content: message })
     return { ok: true, reply: result.content ?? '' }
   } catch (err) {
     log.error(`Failed to send message to agent ${agentId}`, err)
@@ -86,7 +86,7 @@ export async function sendMessageToAgent(
 export async function listAgents(contentDir: string): Promise<AgentStatus[]> {
   const statuses: AgentStatus[] = []
 
-  for (const agent of await getRuntimeAdapter().agents.list()) {
+  for (const agent of await getAppServices().runtime.agents.list()) {
     statuses.push(await getAgentStatus(agent.id, contentDir))
   }
 
