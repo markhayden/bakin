@@ -356,16 +356,21 @@ export interface SearchSchemaField {
  * One vector index on a search table. A content type can declare multiple
  * indexes to embed the same document into several vector spaces — e.g. a
  * text index using BGE and a visual index using CLIP on the assets table.
- * Each index has its own embedder (resolved via embedderRef), template,
- * and optional chunker config.
+ * Each index has its own embedder (resolved via embedderRef), input
+ * declaration, and optional chunker config.
  */
 export interface SearchIndexDefinition {
   /** Index name as stored by the search adapter. Must be stable across restarts. */
   name: string
   /** Ref into settings.search.settings.embedders — 'default', 'visual', or custom. */
   embedderRef: string
-  /** Handlebars template for this index's embedding input. */
-  embeddingTemplate: string
+  /** Handlebars template for this index's text embedding input. */
+  embeddingTemplate?: string
+  /**
+   * Document field containing a URL to media bytes for visual/multimodal
+   * embedding input. The search adapter owns provider-specific helper syntax.
+   */
+  mediaUrlField?: string
   /** Per-index chunker config, overrides any table-level default. */
   chunker?: {
     enabled: boolean

@@ -5,7 +5,7 @@
  *   - image_url is computed for raster images (CLIP-compatible) only
  *   - SVG and non-image assets get no image_url
  *   - content is populated server-side for text and (mocked) PDF assets
- *     via extractAssetContent, NOT via {{remotePDF}}/{{remoteText}} helpers
+ *     via extractAssetContent, not provider-side file fetch helpers
  */
 import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs'
@@ -169,25 +169,24 @@ describe('assets multimodal indexing', () => {
     expect(byName.assets_visual).toBeDefined()
   })
 
-  it('text index template references the content field directly (no remotePDF)', async () => {
+  it('text index template references the content field directly', async () => {
     const def = await getRegisteredDef()
     const textIndex = (def.indexes as SearchIndexDefinition[]).find(i => i.name === 'assets_text')!
 
     expect(textIndex.embedderRef).toBe('default')
     expect(textIndex.embeddingTemplate).toContain('{{description}}')
     expect(textIndex.embeddingTemplate).toContain('{{content}}')
-    // The old {{remotePDF}} path is dead — Antfly's Go PDF library fails
-    // silently on real-world PDFs (see Bakin issue #72).
-    expect(textIndex.embeddingTemplate).not.toContain('{{remotePDF')
+    expect(textIndex.embeddingTemplate).not.toContain('remote')
     expect(textIndex.chunker?.enabled).toBe(true)
   })
 
-  it('visual index uses visual embedder with remoteMedia helper', async () => {
+  it('visual index uses visual embedder with a generic media URL field', async () => {
     const def = await getRegisteredDef()
     const visualIndex = (def.indexes as SearchIndexDefinition[]).find(i => i.name === 'assets_visual')!
 
     expect(visualIndex.embedderRef).toBe('visual')
-    expect(visualIndex.embeddingTemplate).toContain('{{remoteMedia url=image_url}}')
+    expect(visualIndex.mediaUrlField).toBe('image_url')
+    expect(visualIndex.embeddingTemplate).toBeUndefined()
   })
 
   it('schema includes content and image_url; no pdf_url', async () => {

@@ -15,6 +15,7 @@ import type {
   ScannedDocument,
   SearchAdapter,
   SearchHit,
+  SearchIndexConfig,
   TableConfig,
   TableHealth,
   TableInfo,
@@ -452,7 +453,7 @@ export class AntflySearchAdapter implements SearchAdapter {
       const entry: Record<string, unknown> = {
         name: idx.name,
         type: 'embeddings',
-        template: idx.template ?? idx.fields.map((field) => `{{${field}}}`).join(' '),
+        template: this.indexTemplate(idx),
         embedder: { provider: embedder.provider, model: embedder.model },
       }
       if (idx.chunker?.enabled) {
@@ -463,6 +464,12 @@ export class AntflySearchAdapter implements SearchAdapter {
     }
 
     return { schema, indexes }
+  }
+
+  private indexTemplate(idx: SearchIndexConfig): string {
+    const mediaUrlField = readString(idx.mediaUrlField)
+    if (mediaUrlField) return `{{#if ${mediaUrlField}}}{{remoteMedia url=${mediaUrlField}}}{{/if}}`
+    return idx.template ?? idx.fields.map((field) => `{{${field}}}`).join(' ')
   }
 
   private schemaFieldToAntflyType(type: string): string[] {

@@ -2,7 +2,7 @@
  * Assets plugin — file-backed unlink hook test.
  *
  * Closes issue #73: filesystem-level deletions must remove docs from the
- * Antfly bakin_assets index. The plugin migrated to
+ * adapter-backed bakin_assets index. The plugin migrated to
  * registerFileBackedContentType with `onUnlink` escape hatch.
  *
  * Under filename-as-identity, search keys are filenames (not paths), and

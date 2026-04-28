@@ -1,22 +1,20 @@
 /**
  * Server-side text extraction for indexable asset file types. Populates
- * the `content` field on the search doc so Antfly's embedding template
- * can reference extracted text directly via `{{content}}` instead of
- * round-tripping through `{{remotePDF}}` / `{{remoteText}}` helpers.
+ * the `content` field on the search doc so embedding templates can reference
+ * extracted text directly via `{{content}}` instead of asking the search
+ * provider to read local files during indexing.
  *
- * Motivation: Antfly's Go PDF library (ajroetker/pdf, a fork of
- * rsc.io/pdf) silently fails on real-world PDFs with complex font
- * subsetting, CID fonts, and text matrices — the three features every
- * design-tool PDF uses. pdf-parse (built on pdfjs-dist, the same engine
- * Firefox uses) handles all of them. See Bakin issue #72 for the full
- * upstream trace.
+ * Motivation: provider-side PDF extraction has failed silently on real-world
+ * PDFs with complex font subsetting, CID fonts, and text matrices — the three
+ * features every design-tool PDF uses. pdf-parse (built on pdfjs-dist, the
+ * same engine Firefox uses) handles all of them. See Bakin issue #72 for the
+ * full trace.
  *
  * Plain text formats (.md, .txt, .json, .csv, etc.) are read directly
- * with fs.readFileSync — no dependency needed, no round-trip to Antfly,
- * no private-IP block to work around.
+ * with fs.readFileSync — no dependency needed and no provider file fetch.
  *
  * Images are not handled here. They go through the `assets_visual` CLIP
- * index via `{{remoteMedia url=image_url}}`, which works.
+ * index via the search adapter's media URL field support.
  */
 import { readFileSync } from 'fs'
 import { createLogger } from '../../../src/core/logger'
