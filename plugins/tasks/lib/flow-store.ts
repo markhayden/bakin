@@ -1,8 +1,8 @@
 /**
  * Bakin-owned task metadata store.
  *
- * This file keeps the old tasks plugin API stable while moving task metadata
- * into ~/.bakin/tasks.
+ * The tasks plugin exposes service functions over the core task store while
+ * task metadata lives exclusively under ~/.bakin/tasks.
  */
 import { createFileBakinTaskStore, type BakinTask, type BakinTaskPatch, type SyncBakinTaskStore } from '@bakin/core/tasks/store'
 import { getBakinPaths } from '@bakin/core/content-dir'
@@ -146,7 +146,7 @@ export function readTaskboard(): TaskBoard {
   return { columns }
 }
 
-// Alias for hook compatibility
+// Hook/API alias for callers that need the full board snapshot.
 export { readTaskboard as getAllTasks }
 
 export function getTask(id: string): Task | null {
@@ -184,7 +184,7 @@ export function getAgentTasks(agentId: string): Task[] {
 }
 
 // ---------------------------------------------------------------------------
-// Core write operations (return Promises for backward compat)
+// Core write operations (async service API over the synchronous file store)
 // ---------------------------------------------------------------------------
 
 export function createTask(

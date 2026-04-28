@@ -1160,9 +1160,9 @@ describe('bakin_exec_tasks_set_dependency', () => {
   })
 })
 
-// ─── Search Dual-Write ──────────────────────────────────────────────────────
+// ─── Search Index Side Effects ──────────────────────────────────────────────
 
-describe('Search dual-write', () => {
+describe('Search index side effects', () => {
   it('removes task from search on delete', async () => {
     mockDeleteTask.mockResolvedValue(undefined)
 
