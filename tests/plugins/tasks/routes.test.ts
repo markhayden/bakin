@@ -5,7 +5,6 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, mock } from 'bun:test'
 import { join } from 'path'
 import { mkdirSync, rmSync, existsSync } from 'fs'
-import type { APIRoute, ExecToolDefinition } from '../../../src/lib/plugin-types'
 import {
   activatePlugin,
   findRoute,
@@ -13,7 +12,6 @@ import {
   callRoute,
   callTool,
   callSearchRoute,
-  makeRequest,
   type ActivatedPlugin,
 } from '../test-helpers'
 
@@ -29,6 +27,10 @@ mock.module('@bakin/core/main-agent', () => ({
 
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
+  getBakinPaths: () => ({
+    tasks: join(testDir, 'tasks'),
+    heartbeats: join(testDir, 'heartbeats'),
+  }),
   isUsingBakinHome: () => true,
   resetContentDir: () => {},
   initBakinHome: () => {},
