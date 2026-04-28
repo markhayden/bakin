@@ -21,6 +21,7 @@ process.env.BAKIN_HOME = testDir
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { createMockRuntimeAdapter } from '../../packages/core/src/adapters/runtime/testing'
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -38,14 +39,9 @@ mock.module('@bakin/core/openclaw-home', () => ({
   resetOpenClawHome: () => {},
 }))
 
-let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
-mock.module('@bakin/core/openclaw-config', () => ({
-  readOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  resetOpenClawConfigCache: () => {},
-  getAgentList: () => openClawAgents,
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-  findAgentById: (id: string) => openClawAgents.find((a) => a.id === id) ?? null,
-}))
+type TestGlobal = typeof globalThis & {
+  __bakinFallbackRuntimeAdapter?: ReturnType<typeof createMockRuntimeAdapter>
+}
 
 import * as installRoute from '../../packages/host/src/api/agent-packages/install'
 import * as listRoute from '../../packages/host/src/api/agent-packages/list'
@@ -60,7 +56,11 @@ beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
   mkdirSync(openClawDir, { recursive: true })
-  openClawAgents = []
+  ;(globalThis as TestGlobal).__bakinFallbackRuntimeAdapter = createMockRuntimeAdapter({
+    name: 'route-test-runtime',
+    version: '0.0.0',
+    requiredCoreVersion: '*',
+  })
 })
 
 function seedAgentPackage(id = 'pixel'): string {

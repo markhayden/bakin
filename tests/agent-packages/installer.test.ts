@@ -56,15 +56,7 @@ mock.module('@bakin/core/openclaw-home', () => ({
   resetOpenClawHome: () => {},
 }))
 
-// Mock openclaw-config readers — agent-state needs them.
-let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
-mock.module('@bakin/core/openclaw-config', () => ({
-  readOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  resetOpenClawConfigCache: () => {},
-  getAgentList: () => openClawAgents,
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-  findAgentById: (id: string) => openClawAgents.find((a) => a.id === id) ?? null,
-}))
+let runtimeAgents: Array<{ id: string; identity?: { name?: string } }> = []
 
 const adapterCalls: { addAgent: unknown[]; addToAllowLists: unknown[] } = {
   addAgent: [],
@@ -74,25 +66,25 @@ const adapterCalls: { addAgent: unknown[]; addToAllowLists: unknown[] } = {
 function installRuntimeMock(): void {
   ;(globalThis as Record<string, unknown>).__bakinFallbackRuntimeAdapter = {
     agents: {
-      list: async () => openClawAgents.map((agent) => ({
+      list: async () => runtimeAgents.map((agent) => ({
         id: agent.id,
         name: agent.identity?.name ?? agent.id,
         status: 'active',
       })),
       get: async (id: string) => {
-        const agent = openClawAgents.find((entry) => entry.id === id)
+        const agent = runtimeAgents.find((entry) => entry.id === id)
         return agent ? { id: agent.id, name: agent.identity?.name ?? agent.id, status: 'active' } : null
       },
       create: async (input: { id?: string; name: string; role?: string; model?: string; metadata?: Record<string, unknown> }) => {
         const id = input.id ?? input.name.toLowerCase()
         const call = { ...input, id, emoji: input.metadata?.emoji }
         adapterCalls.addAgent.push(call)
-        openClawAgents.push({ id, identity: { name: input.name } })
+        runtimeAgents.push({ id, identity: { name: input.name } })
         return { id, name: input.name, role: input.role, model: input.model, status: 'active', metadata: input.metadata }
       },
       update: async (id: string, input: { name?: string }) => ({ id, name: input.name ?? id, status: 'active' }),
       remove: async (id: string) => {
-        openClawAgents = openClawAgents.filter((agent) => agent.id !== id)
+        runtimeAgents = runtimeAgents.filter((agent) => agent.id !== id)
       },
       readWorkspaceFile: async () => null,
       writeWorkspaceFile: async () => {},
@@ -118,7 +110,7 @@ beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
   mkdirSync(openClawDir, { recursive: true })
-  openClawAgents = []
+  runtimeAgents = []
   adapterCalls.addAgent.length = 0
   adapterCalls.addToAllowLists.length = 0
   installRuntimeMock()
@@ -195,7 +187,7 @@ function seedSkillPack(name: string): string {
 // ─── Happy paths ─────────────────────────────────────────────────────────────
 
 describe('installPackage — fresh install (kind:"agent")', () => {
-  it('writes lockfile entry, projections, and creates the OpenClaw agent', async () => {
+  it('writes lockfile entry, projections, and creates the runtime agent', async () => {
     const src = seedAgentPackage()
 
     const result = await installPackage({ source: src })
@@ -205,7 +197,7 @@ describe('installPackage — fresh install (kind:"agent")', () => {
     expect(result.createdAgent).toBe(true)
     expect(result.adopted).toBe(false)
 
-    // OpenClaw addAgent called with manifest values
+    // Runtime agent creation called with manifest values
     expect(adapterCalls.addAgent).toHaveLength(1)
     const addCall = adapterCalls.addAgent[0] as { id: string; emoji?: string; role?: string }
     expect(addCall.id).toBe('pixel')
@@ -286,7 +278,7 @@ describe('installPackage — fresh install (kind:"agent")', () => {
 describe('installPackage — adopt mode', () => {
   it('attaches package without overwriting existing workspace files', async () => {
     // Pre-existing pixel agent + workspace SOUL the user wrote
-    openClawAgents = [{ id: 'pixel', identity: { name: 'Pixel' } }]
+    runtimeAgents = [{ id: 'pixel', identity: { name: 'Pixel' } }]
     const wsDir = join(openClawDir, 'workspaces', 'pixel')
     mkdirSync(wsDir, { recursive: true })
     writeFileSync(join(wsDir, 'SOUL.md'), '# user wrote this')
@@ -322,12 +314,12 @@ describe('installPackage — refuse paths', () => {
   })
 
   it('refuses fresh install on an unmanaged existing agent (without --adopt)', async () => {
-    openClawAgents = [{ id: 'pixel' }]
+    runtimeAgents = [{ id: 'pixel' }]
     const src = seedAgentPackage()
 
     expect(async () => {
       await installPackage({ source: src })
-    }).toThrow(/already exists in OpenClaw but is unmanaged/)
+    }).toThrow(/already exists in the runtime but is unmanaged/)
   })
 
   it('refuses --adopt when agent does not exist', async () => {
