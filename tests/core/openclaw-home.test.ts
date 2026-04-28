@@ -21,12 +21,13 @@ mock.module('os', () => {
   return { ...actual, homedir: () => '/tmp/bakin-test-module-home-fake' }
 })
 
+const actualContentDir = require('../../packages/core/src/content-dir') as typeof import('../../packages/core/src/content-dir')
+
 // Satisfy the content-dir mock requirement even though these tests don't
-// touch it — any transitive import could reach it otherwise.
+// touch it. Keep this as a pass-through so the mock cannot leak fake storage
+// paths into later files that intentionally exercise the real guard.
 mock.module('../../packages/core/src/content-dir', () => ({
-  getContentDir: () => '/tmp/bakin-test-guard-home-fake',
-  getBakinPaths: () => ({ home: '/tmp/bakin-test-guard-home-fake' }),
-  resetContentDir: mock(),
+  ...actualContentDir,
 }))
 
 describe('openclaw-home', () => {
@@ -78,8 +79,8 @@ describe('openclaw-home', () => {
       delete process.env.OPENCLAW_HOME
       process.env.HOME = '/tmp/bakin-test-guard-home-fake'
       const { getOpenClawPath } = require('../../packages/adapter-openclaw/src/home') as typeof import('../../packages/adapter-openclaw/src/home')
-      const result = getOpenClawPath('flows', 'registry.sqlite')
-      expect(result).toMatch(/\.openclaw\/flows\/registry\.sqlite$/)
+      const result = getOpenClawPath('agents', 'main', 'agent', 'auth-profiles.json')
+      expect(result).toMatch(/\.openclaw\/agents\/main\/agent\/auth-profiles\.json$/)
     })
   })
 })
