@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 /**
  * Pins the activate → onReady → indexer boundary.
  *
@@ -70,13 +71,6 @@ mock.module('../../../src/core/settings', () => ({
     antfly: { auditTtl: null },
   }),
 }))
-// The gateway subscribe only runs after onReady. Stub it so we don't try to
-// open a real WebSocket during the test.
-mock.module('../../../plugins/memory/lib/openclaw-gateway', () => ({
-  gatewaySubscribe: mock(async () => () => {}),
-  gatewayCall: mock(async () => ({})),
-}))
-
 import { activatePlugin } from '../test-helpers'
 import memoryPlugin from '../../../plugins/memory/index'
 import { MemoryIndexer } from '../../../plugins/memory/lib/indexer'

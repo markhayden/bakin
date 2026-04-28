@@ -254,6 +254,34 @@ export interface RuntimeMemoryEntry {
   metadata?: RuntimeMetadata
 }
 
+export interface RuntimeMemoryEntryStat {
+  size: number
+  mtimeMs: number
+  updatedAt?: string
+  metadata?: RuntimeMetadata
+}
+
+export interface RuntimeMemoryReadRange {
+  content: string
+  size: number
+  mtimeMs?: number
+  updatedAt?: string
+  metadata?: RuntimeMetadata
+}
+
+export interface RuntimeMemoryPathMatch {
+  tierId: string
+  id: string
+  agentId?: string
+  path: string
+  metadata?: RuntimeMetadata
+}
+
+export interface RuntimeMemorySearchResult {
+  results: unknown[]
+  metadata?: RuntimeMetadata
+}
+
 export interface TaskDispatchArgs {
   bakinTaskId: string
   agentId?: string
@@ -393,6 +421,15 @@ export interface AgentRuntimeAdapter {
     listTiers(): Promise<RuntimeMemoryTier[]>
     listEntries(tierId: string, opts?: { agentId?: string }): Promise<RuntimeMemoryEntry[]>
     getEntry(tierId: string, id: string, opts?: { agentId?: string }): Promise<RuntimeMemoryEntry | null>
+    statEntry(tierId: string, id: string, opts?: { agentId?: string }): Promise<RuntimeMemoryEntryStat | null>
+    readEntryRange(
+      tierId: string,
+      id: string,
+      opts?: { agentId?: string; offset?: number; length?: number },
+    ): Promise<RuntimeMemoryReadRange | null>
+    resolvePath(path: string): Promise<RuntimeMemoryPathMatch | null>
+    watchPaths(): Promise<string[]>
+    search(query: string, opts?: { agentId?: string; limit?: number }): Promise<RuntimeMemorySearchResult>
   }
 
   tasks: {

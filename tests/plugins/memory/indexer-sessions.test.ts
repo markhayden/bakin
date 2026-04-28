@@ -2,10 +2,7 @@
  * Tests for MemoryIndexer.indexTier('session') and watcher routing for
  * OpenClaw session rosters.
  *
- * Source of truth:
- *   - Preferred: gateway RPC `sessions.list` (rich, live metadata).
- *   - Fallback: `agents/<id>/sessions/sessions.json` map, loaded via the
- *     openclaw-adapter, used when the gateway throws.
+ * Source of truth: runtime memory `session_store` entries.
  *
  * Additional behaviors covered here:
  *   - 30-day backfill window (skip sessions with updatedAt < cutoff).
@@ -55,54 +52,6 @@ const {
   mockGatewayCall: mock<(method: string, params: unknown) => Promise<unknown>>(),
 }))()
 
-mock.module('../../../plugins/memory/lib/openclaw-adapter', () => ({
-  listAgentIds: mockListAgentIds,
-  readSessionStore: mockReadSessionStore,
-  sessionStorePath: (agent: string) => `/fake/${agent}/sessions.json`,
-  matchSessionStorePath: mockMatchSessionStorePath,
-  // adjacent tiers — stubbed so fallthrough matchers don't blow up.
-  readDurableFile: mock(() => null),
-  durableFilePath: mock(() => ''),
-  matchDurablePath: mock(() => null),
-  CANONICAL_DURABLE_FILES: [] as const,
-  listDailyNotes: mock(() => []),
-  readDailyNote: mock(() => null),
-  dailyNotePath: mock(() => ''),
-  dailyNoteMtime: mock(() => null),
-  dailyNoteSize: mock(() => 0),
-  matchDailyNotePath: mock(() => null),
-  // turn tier — stubbed; indexer tests for turn live in indexer-turns.test.ts.
-  listSessionJsonlFiles: mock(() => []),
-  sessionJsonlPath: mock(() => ''),
-  sessionJsonlStat: mock(() => null),
-  matchSessionJsonlPath: mock(() => null),
-  // checkpoint tier (C7) — stubbed so handleWatcherEvent fallthrough doesn't blow up.
-  listCheckpointJsonlFiles: mock(() => []),
-  readCheckpoint: mock(() => null),
-  checkpointJsonlPath: mock(() => ''),
-  checkpointJsonlStat: mock(() => null),
-  matchCheckpointJsonlPath: mock(() => null),
-  // dream tier (C8) — stubs so handleWatcherEvent fallthrough doesn't blow up.
-  listPhaseDocs: mock(() => []),
-  listDreamSignalFiles: mock(() => []),
-  readPhaseDoc: mock(() => null),
-  readDreamSignal: mock(() => null),
-  matchPhaseDocPath: mock(() => null),
-  matchDreamSignalPath: mock(() => null),
-  // skills (tier=durable, kind=skill) — stubs so handleWatcherEvent fallthrough doesn't blow up.
-  DURABLE_KIND_BY_BASENAME: {} as Record<string, string>,
-  durableKindForBasename: mock(() => undefined),
-  listAgentSkills: mock(() => []),
-  readAgentSkill: mock(() => null),
-  skillFilePath: mock(() => ''),
-  skillFileMtime: mock(() => null),
-  matchSkillPath: mock(() => null),
-}))
-
-mock.module('../../../plugins/memory/lib/openclaw-gateway', () => ({
-  gatewayCall: mockGatewayCall,
-}))
-
 import { MemoryIndexer } from '../../../plugins/memory/lib/indexer'
 import { clearAllOffsets } from '../../../plugins/memory/lib/offsets'
 import type { PluginContext } from '../../../src/lib/plugin-types'
@@ -125,6 +74,43 @@ function makeCtx(): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: mock(),
     activity: { log: mock(), audit: mock() },
+    runtime: {
+      agents: {
+        list: mock(async () => mockListAgentIds().map((id) => ({ id, name: id }))),
+      },
+      memory: {
+        listTiers: mock(async () => [{ id: 'sessions-tier', label: 'Sessions', metadata: { sourceKind: 'session_store' } }]),
+        getEntry: mock(async (_tierId: string, id: string, opts?: { agentId?: string }) => {
+          if (id !== 'sessions.json' || !opts?.agentId) return null
+          let value: unknown
+          try {
+            value = await mockGatewayCall('sessions.list', { agentId: opts.agentId })
+          } catch {
+            value = mockReadSessionStore(opts.agentId)
+          }
+          if (value === null || value === undefined) return null
+          return {
+            id,
+            tierId: 'sessions-tier',
+            agentId: opts.agentId,
+            path: `/fake/${opts.agentId}/sessions.json`,
+            content: JSON.stringify(value),
+          }
+        }),
+        resolvePath: mock(async (path: string) => {
+          const match = mockMatchSessionStorePath(path)
+          return match
+            ? {
+                tierId: 'sessions-tier',
+                id: 'sessions.json',
+                agentId: match.agent,
+                path,
+                metadata: { sourceKind: 'session_store' },
+              }
+            : null
+        }),
+      },
+    },
     search: {
       registerContentType: mock(),
       registerFileBackedContentType: mock(),

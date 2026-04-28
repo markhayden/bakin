@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 /**
  * Tests for the rewritten memory plugin shell (C2).
  *

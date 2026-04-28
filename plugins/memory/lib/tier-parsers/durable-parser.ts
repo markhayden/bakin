@@ -8,7 +8,7 @@
  * single row (chunkIndex=0, headingLevel=0, headingPath=[]).
  */
 import { createHash } from 'crypto'
-import { durableKindForBasename } from '../openclaw-adapter'
+import { durableKindForBasename } from '../durable-kinds'
 import type { MemoryRow } from '../types'
 
 const SNIPPET_CAP = 2048

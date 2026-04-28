@@ -12,7 +12,7 @@
  *   - Watcher `file.change` on a session JSONL routes into the turn indexer.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync, appendFileSync } from 'fs'
+import { mkdirSync, rmSync, writeFileSync, appendFileSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -58,61 +58,13 @@ const {
   mockSessionJsonlPath,
   mockSessionJsonlStat,
   mockMatchSessionJsonlPath,
-  mockGatewayCall,
 } = (() => ({
   mockListAgentIds: mock<() => string[]>(),
   mockListSessionJsonlFiles: mock<(agent: string) => JsonlFile[]>(),
   mockSessionJsonlPath: mock<(agent: string, sessionId: string) => string>(),
   mockSessionJsonlStat: mock<(path: string) => { size: number; mtimeMs: number } | null>(),
   mockMatchSessionJsonlPath: mock<(path: string) => { agent: string; sessionId: string; isReset: boolean } | null>(),
-  mockGatewayCall: mock<(method: string, params: unknown) => Promise<unknown>>(),
 }))()
-
-mock.module('../../../plugins/memory/lib/openclaw-adapter', () => ({
-  listAgentIds: mockListAgentIds,
-  listSessionJsonlFiles: mockListSessionJsonlFiles,
-  sessionJsonlPath: mockSessionJsonlPath,
-  sessionJsonlStat: mockSessionJsonlStat,
-  matchSessionJsonlPath: mockMatchSessionJsonlPath,
-  // adjacent tiers stubbed.
-  readSessionStore: mock(() => null),
-  matchSessionStorePath: mock(() => null),
-  readDurableFile: mock(() => null),
-  durableFilePath: mock(() => ''),
-  matchDurablePath: mock(() => null),
-  CANONICAL_DURABLE_FILES: [] as const,
-  listDailyNotes: mock(() => []),
-  readDailyNote: mock(() => null),
-  dailyNotePath: mock(() => ''),
-  dailyNoteMtime: mock(() => null),
-  dailyNoteSize: mock(() => 0),
-  matchDailyNotePath: mock(() => null),
-  // checkpoint tier — stubbed so handleWatcherEvent fallthrough doesn't blow up.
-  listCheckpointJsonlFiles: mock(() => []),
-  readCheckpoint: mock(() => null),
-  checkpointJsonlPath: mock(() => ''),
-  checkpointJsonlStat: mock(() => null),
-  matchCheckpointJsonlPath: mock(() => null),
-  // dream tier — stubbed.
-  listPhaseDocs: mock(() => []),
-  listDreamSignalFiles: mock(() => []),
-  readPhaseDoc: mock(() => null),
-  readDreamSignal: mock(() => null),
-  matchPhaseDocPath: mock(() => null),
-  matchDreamSignalPath: mock(() => null),
-  // skills (tier=durable, kind=skill) — stubs so handleWatcherEvent fallthrough doesn't blow up.
-  DURABLE_KIND_BY_BASENAME: {} as Record<string, string>,
-  durableKindForBasename: mock(() => undefined),
-  listAgentSkills: mock(() => []),
-  readAgentSkill: mock(() => null),
-  skillFilePath: mock(() => ''),
-  skillFileMtime: mock(() => null),
-  matchSkillPath: mock(() => null),
-}))
-
-mock.module('../../../plugins/memory/lib/openclaw-gateway', () => ({
-  gatewayCall: mockGatewayCall,
-}))
 
 import { MemoryIndexer } from '../../../plugins/memory/lib/indexer'
 import { clearAllOffsets } from '../../../plugins/memory/lib/offsets'
@@ -136,6 +88,60 @@ function makeCtx(): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: mock(),
     activity: { log: mock(), audit: mock() },
+    runtime: {
+      agents: {
+        list: mock(async () => mockListAgentIds().map((id) => ({ id, name: id }))),
+      },
+      memory: {
+        listTiers: mock(async () => [{ id: 'turn-tier', label: 'Turns', metadata: { sourceKind: 'session_jsonl' } }]),
+        listEntries: mock(async (_tierId: string, opts?: { agentId?: string }) =>
+          mockListSessionJsonlFiles(opts?.agentId ?? '').map((file) => ({
+            id: file.sessionId,
+            tierId: 'turn-tier',
+            agentId: file.agent,
+            path: file.path,
+            content: '',
+            metadata: {
+              sourceKind: 'session_jsonl',
+              sessionId: file.sessionId,
+              isReset: file.isReset,
+              sizeBytes: file.size,
+              mtimeMs: file.mtimeMs,
+            },
+          })),
+        ),
+        statEntry: mock(async (_tierId: string, id: string, opts?: { agentId?: string }) => {
+          const file = (mockListSessionJsonlFiles(opts?.agentId ?? '') ?? []).find((entry) => entry.sessionId === id)
+          const path = file?.path ?? mockSessionJsonlPath(opts?.agentId ?? '', id)
+          const stat = path ? statSync(path) : null
+          return stat ? { size: stat.size, mtimeMs: stat.mtimeMs } : null
+        }),
+        readEntryRange: mock(async (_tierId: string, id: string, opts?: { agentId?: string; offset?: number; length?: number }) => {
+          const file = (mockListSessionJsonlFiles(opts?.agentId ?? '') ?? []).find((entry) => entry.sessionId === id)
+          const path = file?.path ?? mockSessionJsonlPath(opts?.agentId ?? '', id)
+          const raw = readFileSync(path)
+          const start = opts?.offset ?? 0
+          const end = opts?.length === undefined ? raw.length : Math.min(raw.length, start + opts.length)
+          return { content: raw.subarray(start, end).toString('utf-8'), size: raw.length }
+        }),
+        resolvePath: mock(async (path: string) => {
+          const match = mockMatchSessionJsonlPath(path)
+          return match
+            ? {
+                tierId: 'turn-tier',
+                id: match.sessionId,
+                agentId: match.agent,
+                path,
+                metadata: {
+                  sourceKind: 'session_jsonl',
+                  sessionId: match.sessionId,
+                  isReset: match.isReset,
+                },
+              }
+            : null
+        }),
+      },
+    },
     search: {
       registerContentType: mock(),
       registerFileBackedContentType: mock(),
@@ -178,8 +184,6 @@ beforeEach(() => {
   mockSessionJsonlPath.mockReset()
   mockSessionJsonlStat.mockReset()
   mockMatchSessionJsonlPath.mockReset()
-  mockGatewayCall.mockReset()
-  mockGatewayCall.mockRejectedValue(new Error('gateway unused in these tests'))
   mockMatchSessionJsonlPath.mockReturnValue(null)
 })
 
