@@ -13,7 +13,7 @@ import type {
   WorkflowDefinitionInput,
   PluginHealthCheckInput,
   SearchQueryParams,
-} from '../../src/lib/plugin-types'
+} from '@bakin/core/plugin-types'
 import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
 import { registerPluginDefinition } from '../../plugins/workflows/lib/source-registry'

@@ -7,7 +7,7 @@
  * Both delegate to the runtime memory adapter. Routes never touch provider
  * files directly.
  */
-import type { APIRoute, PluginContext } from '../../../../src/lib/plugin-types'
+import type { APIRoute, PluginContext } from '@bakin/core/plugin-types'
 import { CANONICAL_DURABLE_FILES } from '../durable-kinds'
 import { getRuntimeMemoryEntry } from '../runtime-memory'
 

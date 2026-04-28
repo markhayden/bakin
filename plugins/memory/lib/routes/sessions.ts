@@ -15,7 +15,7 @@
  * indexed `bakin_memory` table — the indexer already enforces the 32 KB
  * truncation / head-only chunking rules, so the route is a pure query.
  */
-import type { APIRoute, PluginContext, SearchQueryParams } from '../../../../src/lib/plugin-types'
+import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
 import { getRuntimeMemoryEntry } from '../runtime-memory'
 
 type SessionMap = Record<string, unknown>

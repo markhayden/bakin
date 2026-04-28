@@ -7,7 +7,7 @@
  */
 import { join } from 'path'
 import { existsSync, readFileSync } from 'fs'
-import type { ExecToolDefinition, PluginToolContext } from '../../src/lib/plugin-types'
+import type { ExecToolDefinition, PluginToolContext } from '@bakin/core/plugin-types'
 import { getHookRegistry } from '../../src/lib/plugin-registry'
 import { getContentDir } from '../../src/core/content-dir'
 import { appendAudit } from '../../src/core/audit'

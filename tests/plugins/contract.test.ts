@@ -80,7 +80,7 @@ mock.module('../../src/core/logger', () => ({
   }),
 }))
 
-import type { PluginContext, BakinPlugin, APIRoute, NavItem } from '../../src/lib/plugin-types'
+import type { PluginContext, BakinPlugin, APIRoute, NavItem } from '@bakin/core/plugin-types'
 import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
 import fs from 'fs'

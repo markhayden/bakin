@@ -20,7 +20,7 @@ import {
   writeFileSync,
 } from 'fs'
 import { basename, dirname, join, relative } from 'path'
-import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { createLogger } from '../../src/core/logger'
 import { readHeartbeats } from '../../src/lib/content'
 import { getContentDir, getBakinPaths } from '../../packages/core/src/content-dir'

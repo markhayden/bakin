@@ -72,7 +72,7 @@ mock.module('../../../src/core/settings', () => ({
 
 import { activatePlugin, callSearchRoute } from '../test-helpers'
 import memoryPlugin from '../../../plugins/memory/index'
-import type { SearchResult } from '../../../src/lib/plugin-types'
+import type { SearchResult } from '@bakin/core/plugin-types'
 
 beforeAll(() => {
   mkdirSync(testDir, { recursive: true })

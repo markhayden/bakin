@@ -5,7 +5,7 @@
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { z } from 'zod'
-import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { getBakinPaths } from '../../src/core/content-dir'
 import { readProject, readAllProjects, projectToSummary } from './lib/parser'
 import {

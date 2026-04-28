@@ -15,7 +15,7 @@ import { activatePlugin } from '../test-helpers'
 import type {
   SearchContentTypeDefinition,
   SearchIndexDefinition,
-} from '../../../src/lib/plugin-types'
+} from '@bakin/core/plugin-types'
 
 const testDir = join(tmpdir(), `bakin-test-multimodal-${Date.now()}`)
 const assetsRoot = join(testDir, 'assets')

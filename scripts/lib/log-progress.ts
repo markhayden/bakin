@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { logProgress } from '../../src/core/task-service'
 import { succeed, fail } from './common'
 import { addExecTool } from './registry'
-import type { ExecToolResult } from '../../src/lib/plugin-types'
+import type { ExecToolResult } from '@bakin/core/plugin-types'
 
 const CATEGORIES = ['start', 'progress', 'milestone', 'blocked', 'complete'] as const
 type LogCategory = typeof CATEGORIES[number]

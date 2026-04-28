@@ -4,7 +4,7 @@
  */
 import { totalmem } from 'os'
 import { z } from 'zod'
-import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { getLastResults, runDiagnostics } from '../../src/core/doctor'
 import { createLogger } from '../../src/core/logger'
 import { getAllAgentUsage } from '../../src/core/agent-usage'

@@ -37,7 +37,7 @@ mock.module('../../../../packages/core/src/openclaw-home', () => ({
 
 import { statusRoute } from '../../../../plugins/memory/lib/routes/status'
 import { setOffset, clearAllOffsets } from '../../../../plugins/memory/lib/offsets'
-import type { PluginContext, SearchResponse } from '../../../../src/lib/plugin-types'
+import type { PluginContext, SearchResponse } from '@bakin/core/plugin-types'
 
 function makeCtx(
   perTierTotals: Partial<Record<string, number>>,

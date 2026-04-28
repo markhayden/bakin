@@ -4,7 +4,7 @@
  */
 import { randomBytes, timingSafeEqual } from 'crypto'
 import { z } from 'zod'
-import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { readMergedJobs } from './lib/jobs-reader'
 import { getLastRun, readRuns } from './lib/runs-reader'
 import { upsertJob, removeJob, getJob, isPaused, shouldSkip, recordFailure, recordSuccess, withDefaults } from './lib/sidecar'

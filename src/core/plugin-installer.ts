@@ -5,7 +5,7 @@
 import { existsSync, readFileSync, writeFileSync, cpSync, rmSync } from 'fs'
 import { join, basename } from 'path'
 import { createLogger } from './logger'
-import type { PluginManifest } from '../lib/plugin-types'
+import type { PluginManifest } from '@bakin/core/plugin-types'
 
 const log = createLogger('plugin-installer')
 

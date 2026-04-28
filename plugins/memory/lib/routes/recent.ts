@@ -22,7 +22,7 @@
  * (`results`, `aggregations`, `meta`) so the client can reuse `useSearch`'s
  * result renderer without a second type.
  */
-import type { APIRoute, PluginContext, SearchQueryParams } from '../../../../src/lib/plugin-types'
+import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
 import { MEMORY_TIERS, type MemoryTier } from '../types'
 
 const DEFAULT_LIMIT = 30

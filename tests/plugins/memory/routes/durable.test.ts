@@ -42,7 +42,7 @@ import {
   durableListRoute,
   durableDetailRoute,
 } from '../../../../plugins/memory/lib/routes/durable'
-import type { PluginContext } from '../../../../src/lib/plugin-types'
+import type { PluginContext } from '@bakin/core/plugin-types'
 
 function makeCtx(): PluginContext {
   return {

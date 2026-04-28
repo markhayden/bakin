@@ -3,7 +3,7 @@
  * Manages content pipeline: draft → scheduled → executing → waiting → review → published
  */
 import { z } from 'zod'
-import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import {
   loadMessagingItems,
   createItem,

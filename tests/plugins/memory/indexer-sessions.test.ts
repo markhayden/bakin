@@ -54,7 +54,7 @@ const {
 
 import { MemoryIndexer } from '../../../plugins/memory/lib/indexer'
 import { clearAllOffsets } from '../../../plugins/memory/lib/offsets'
-import type { PluginContext } from '../../../src/lib/plugin-types'
+import type { PluginContext } from '@bakin/core/plugin-types'
 
 interface IndexedDoc { key: string; doc: Record<string, unknown> }
 

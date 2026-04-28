@@ -109,7 +109,7 @@ describe('MCP server tool registration', () => {
         registerNav: () => {},
         registerRoute: () => {},
         registerSlot: () => {},
-        registerExecTool: (tool: import('../../src/lib/plugin-types').ExecToolDefinition) => {
+        registerExecTool: (tool: import('@bakin/core/plugin-types').ExecToolDefinition) => {
           tool.source = `plugin:${plugin.id}`
           addExecTool(tool)
         },

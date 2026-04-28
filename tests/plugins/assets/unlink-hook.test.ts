@@ -25,7 +25,7 @@ import { tmpdir } from 'os'
 import type {
   PluginContext,
   FileBackedContentTypeDefinition,
-} from '../../../src/lib/plugin-types'
+} from '@bakin/core/plugin-types'
 import { BakinEventBus } from '../../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../../src/lib/storage/markdown-adapter'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'

@@ -31,7 +31,7 @@ mock.module('../../../../src/core/logger', () => ({
 }))
 
 import { recentRoute } from '../../../../plugins/memory/lib/routes/recent'
-import type { PluginContext, SearchQueryParams } from '../../../../src/lib/plugin-types'
+import type { PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
 
 interface QueryRecorder {
   calls: SearchQueryParams[]
