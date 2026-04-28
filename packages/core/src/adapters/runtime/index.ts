@@ -9,6 +9,12 @@ export type {
 
 export type { ChannelCapability } from './capabilities'
 export { hasChannelCapability } from './capabilities'
+export {
+  getRuntimeMainAgent,
+  getRuntimeMainAgentId,
+  getRuntimeMainAgentName,
+  selectRuntimeMainAgent,
+} from './helpers'
 export type {
   AgentRuntimeAdapter,
   ApprovalDelivery,
