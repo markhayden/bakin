@@ -3,7 +3,7 @@
  *
  * runOnboard() walks every component in a fixed dependency order:
  *
- *   mkdir → settings → openclaw → antfly → models → mcporter → llm → channels
+ *   mkdir -> settings -> runtime -> antfly -> models -> mcporter -> llm -> channels
  *
  * For each component:
  *   1. Call `check()`. If it reports `ok` or `warn`, record and move on.
@@ -19,9 +19,9 @@
  *        failed            → 'error'
  *
  * Special cases baked into the flow:
- *   - OpenClaw missing/broken is a hard stop: the orchestrator records
- *     the openclaw status, marks every downstream component as 'skipped'
- *     with an "OpenClaw required" message, and returns without writing
+ *   - Runtime missing/broken is a hard stop: the orchestrator records
+ *     the runtime status, marks every downstream component as 'skipped'
+ *     with a "runtime required" message, and returns without writing
  *     the marker. Exit code 1.
  *   - Antfly missing that cascades into models: if antfly's post-install
  *     status is not 'ok', models is force-skipped with the reason
@@ -43,7 +43,7 @@
 import { createLogger } from '../logger'
 import { mkdirComponent } from './mkdir'
 import { settingsComponent } from './settings'
-import { openclawComponent } from './openclaw'
+import { runtimeComponent } from './runtime'
 import { antflyComponent } from './antfly'
 import { modelsComponent } from './models'
 import { mcporterComponent } from './mcporter'
@@ -68,7 +68,7 @@ export type { OnboardingState, ComponentStatus } from './state'
 export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
   mkdirComponent,
   settingsComponent,
-  openclawComponent,
+  runtimeComponent,
   antflyComponent,
   modelsComponent,
   mcporterComponent,
@@ -258,12 +258,12 @@ async function runComponent(
 }
 
 /**
- * Special-case handling for openclaw. Its install() is always a noop —
- * Bakin does not manage OpenClaw, it only detects it. So we read the
+ * Special-case handling for runtime. Its install() is always a noop -
+ * Bakin does not manage the runtime, it only detects it. So we read the
  * check result directly and translate any non-ok status into the
  * appropriate outcome for the orchestrator to cascade-skip on.
  */
-async function runOpenclawInline(component: OnboardingComponent): Promise<ComponentOutcome> {
+async function runRuntimeInline(component: OnboardingComponent): Promise<ComponentOutcome> {
   const start = Date.now()
   let check: CheckResult
   try {
@@ -367,18 +367,18 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
       }
     }
 
-    // OpenClaw is a user-managed prerequisite. Its install() is
-    // intentionally a noop (we point at https://openclaw.ai/), so the
+    // Runtime setup is a user-managed prerequisite. Its install() is
+    // intentionally a noop, so the
     // generic runComponent path — which maps install:noop to ok —
-    // would incorrectly mark a missing openclaw as ready. Handle it
+    // would incorrectly mark a missing runtime as ready. Handle it
     // inline: call check() only, derive the outcome from that, and
     // cascade-skip downstream if anything other than ok.
-    if (component.name === 'openclaw') {
-      const outcome = await runOpenclawInline(component)
+    if (component.name === 'runtime') {
+      const outcome = await runRuntimeInline(component)
       outcomes.push(outcome)
       if (opts.json) emitJson(outcome)
       if (outcome.finalStatus !== 'ok') {
-        log.warn('OpenClaw is not ready; aborting remaining onboarding steps')
+        log.warn('Runtime is not ready; aborting remaining onboarding steps')
         for (let j = i + 1; j < COMPONENT_ORDER.length; j++) {
           const remaining = COMPONENT_ORDER[j]
           const skip: ComponentOutcome = {
@@ -387,9 +387,9 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
             check: {
               name: remaining.name,
               status: 'missing',
-              message: 'Skipped: OpenClaw is a prerequisite and is not ready',
+              message: 'Skipped: runtime is a prerequisite and is not ready',
             },
-            message: 'Skipped: OpenClaw is a prerequisite and is not ready',
+            message: 'Skipped: runtime is a prerequisite and is not ready',
             remediation: outcome.remediation,
             durationMs: 0,
           }

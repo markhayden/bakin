@@ -1545,9 +1545,9 @@ async function cmdOnboardingSettingsInit(): Promise<void> {
   if (result.status === 'failed') process.exit(1)
 }
 
-async function cmdOnboardingCheckSingle(target: 'openclaw' | 'llm' | 'channels' | 'plugin-assets' | 'agent-assets'): Promise<void> {
+async function cmdOnboardingCheckSingle(target: 'runtime' | 'llm' | 'channels' | 'plugin-assets' | 'agent-assets'): Promise<void> {
   const componentMap: Record<string, () => Promise<{ check(): Promise<import('../src/core/onboarding/types').CheckResult> }>> = {
-    openclaw: async () => (await import('../src/core/onboarding/openclaw')).openclawComponent,
+    runtime: async () => (await import('../src/core/onboarding/runtime')).runtimeComponent,
     llm: async () => (await import('../src/core/onboarding/credentials')).llmComponent,
     channels: async () => (await import('../src/core/onboarding/credentials')).channelsComponent,
     'plugin-assets': async () => (await import('../src/core/onboarding/plugin-assets')).pluginAssetsComponent,
@@ -1877,13 +1877,13 @@ export async function main(): Promise<void> {
         break
 
       case 'check':
-        if (sub === 'openclaw' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-assets') {
+        if (sub === 'runtime' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-assets') {
           await cmdOnboardingCheckSingle(sub)
         } else if (sub === 'all') {
           await cmdOnboardingCheckAll()
         } else {
           console.error(`Unknown check target: ${sub}`)
-          console.error('Available: bakin check openclaw | llm | channels | plugin-assets | agent-assets | all')
+          console.error('Available: bakin check runtime | llm | channels | plugin-assets | agent-assets | all')
           process.exit(1)
         }
         break
