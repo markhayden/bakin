@@ -1,11 +1,10 @@
 /**
- * Calendar plugin — channel feature tests.
+ * Messaging plugin — channel feature tests.
  *
- * Tests configurable channels on routes, exec tools, and backward compatibility
- * with the legacy single `channel` field.
+ * Tests configurable runtime channel IDs on routes and exec tools.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs'
+import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -99,10 +98,6 @@ beforeEach(() => {
   writeFileSync(join(testDir, 'messaging.json'), '[]')
 })
 
-function readCalendar(): CalendarItem[] {
-  return JSON.parse(readFileSync(join(testDir, 'messaging.json'), 'utf-8'))
-}
-
 // ---------------------------------------------------------------------------
 // Route tests
 // ---------------------------------------------------------------------------
@@ -115,68 +110,41 @@ describe('Channel support — routes', () => {
         title: 'Multi-channel post',
         agent: 'basil',
         scheduledAt: '2026-04-14T10:00:00Z',
-        channels: ['discord', 'instagram'],
+        channels: ['general', 'announcements'],
       },
     })
     expect(result.status).toBe(200)
     expect(result.body.ok).toBe(true)
     const item = result.body.item as CalendarItem
-    expect(item.channels).toEqual(['discord', 'instagram'])
+    expect(item.channels).toEqual(['general', 'announcements'])
   })
 
   it('filters items by channel query param (channels array)', async () => {
     // Create items for different channels
     const postRoute = findRoute(plugin.routes, 'POST', '/')!
     await callRoute(postRoute, plugin.ctx, {
-      body: { title: 'Discord only', agent: 'basil', scheduledAt: '2026-04-14T10:00:00Z', channels: ['discord'] },
+      body: { title: 'General only', agent: 'basil', scheduledAt: '2026-04-14T10:00:00Z', channels: ['general'] },
     })
     await callRoute(postRoute, plugin.ctx, {
-      body: { title: 'Instagram only', agent: 'basil', scheduledAt: '2026-04-14T11:00:00Z', channels: ['instagram'] },
+      body: { title: 'Announcements only', agent: 'basil', scheduledAt: '2026-04-14T11:00:00Z', channels: ['announcements'] },
     })
     await callRoute(postRoute, plugin.ctx, {
-      body: { title: 'Both', agent: 'basil', scheduledAt: '2026-04-14T12:00:00Z', channels: ['discord', 'instagram'] },
+      body: { title: 'Both', agent: 'basil', scheduledAt: '2026-04-14T12:00:00Z', channels: ['general', 'announcements'] },
     })
 
     const listRoute = findRoute(plugin.routes, 'GET', '/')!
-    const discord = await callRoute(listRoute, plugin.ctx, {
-      searchParams: { channel: 'discord' },
+    const general = await callRoute(listRoute, plugin.ctx, {
+      searchParams: { channel: 'general' },
     })
-    const discordItems = discord.body.items as CalendarItem[]
-    expect(discordItems.length).toBe(2) // 'Discord only' + 'Both'
-    expect(discordItems.every(i => i.channels?.includes('discord'))).toBe(true)
+    const generalItems = general.body.items as CalendarItem[]
+    expect(generalItems.length).toBe(2) // 'General only' + 'Both'
+    expect(generalItems.every(i => i.channels.includes('general'))).toBe(true)
 
-    const instagram = await callRoute(listRoute, plugin.ctx, {
-      searchParams: { channel: 'instagram' },
+    const announcements = await callRoute(listRoute, plugin.ctx, {
+      searchParams: { channel: 'announcements' },
     })
-    const igItems = instagram.body.items as CalendarItem[]
-    expect(igItems.length).toBe(2) // 'Instagram only' + 'Both'
-  })
-
-  it('backward compat: filters by legacy channel field', async () => {
-    // Write an old-style item with channel but no channels array
-    const items = readCalendar()
-    items.push({
-      id: 'legacy-1',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      scheduledAt: '2026-04-14T10:00:00Z',
-      agent: 'basil',
-      channel: 'discord',
-      channelTarget: '123',
-      contentType: 'tip',
-      title: 'Legacy item',
-      brief: '',
-      tone: 'calm',
-      status: 'draft',
-    } as CalendarItem)
-    writeFileSync(join(testDir, 'messaging.json'), JSON.stringify(items))
-
-    const listRoute = findRoute(plugin.routes, 'GET', '/')!
-    const result = await callRoute(listRoute, plugin.ctx, {
-      searchParams: { channel: 'discord' },
-    })
-    const filtered = result.body.items as CalendarItem[]
-    expect(filtered.some(i => i.id === 'legacy-1')).toBe(true)
+    const announcementItems = announcements.body.items as CalendarItem[]
+    expect(announcementItems.length).toBe(2) // 'Announcements only' + 'Both'
   })
 })
 
@@ -198,7 +166,7 @@ describe('Channel support — exec tools', () => {
     expect(item.channels).toEqual(['email', 'twitter'])
   })
 
-  it('defaults to discord channel when neither channels nor channel provided', async () => {
+  it('defaults to general when channels are omitted', async () => {
     const tool = findTool(plugin.execTools, 'bakin_exec_messaging_create')!
     const result = await callTool(tool, {
       title: 'Default channel test',
@@ -207,20 +175,20 @@ describe('Channel support — exec tools', () => {
     })
     expect(result.ok).toBe(true)
     const item = result.item as CalendarItem
-    expect(item.channels).toEqual(['discord'])
+    expect(item.channels).toEqual(['general'])
   })
 
-  it('uses single channel param as channels array', async () => {
+  it('stores explicit channels array', async () => {
     const tool = findTool(plugin.execTools, 'bakin_exec_messaging_create')!
     const result = await callTool(tool, {
       title: 'Single channel test',
       agent: 'zen',
       scheduledAt: '2026-04-15T11:00:00Z',
-      channel: 'instagram',
+      channels: ['announcements'],
     })
     expect(result.ok).toBe(true)
     const item = result.item as CalendarItem
-    expect(item.channels).toEqual(['instagram'])
+    expect(item.channels).toEqual(['announcements'])
   })
 
   it('filters by channel via list exec tool', async () => {
@@ -228,14 +196,14 @@ describe('Channel support — exec tools', () => {
     writeFileSync(join(testDir, 'messaging.json'), JSON.stringify([
       {
         id: 'ch-1', createdAt: '2026-04-15T00:00:00Z', updatedAt: '2026-04-15T00:00:00Z',
-        scheduledAt: '2026-04-15T10:00:00Z', agent: 'basil', channel: 'discord',
-        channels: ['discord', 'youtube'], channelTarget: '123', contentType: 'tip',
+        scheduledAt: '2026-04-15T10:00:00Z', agent: 'basil',
+        channels: ['general', 'youtube'], contentType: 'tip',
         title: 'YT+DC', brief: '', tone: 'calm', status: 'draft',
       },
       {
         id: 'ch-2', createdAt: '2026-04-15T00:00:00Z', updatedAt: '2026-04-15T00:00:00Z',
-        scheduledAt: '2026-04-15T11:00:00Z', agent: 'basil', channel: 'instagram',
-        channels: ['instagram'], channelTarget: '456', contentType: 'tip',
+        scheduledAt: '2026-04-15T11:00:00Z', agent: 'basil',
+        channels: ['announcements'], contentType: 'tip',
         title: 'IG only', brief: '', tone: 'calm', status: 'draft',
       },
     ]))
@@ -251,8 +219,8 @@ describe('Channel support — exec tools', () => {
     writeFileSync(join(testDir, 'messaging.json'), JSON.stringify([
       {
         id: 'ch-3', createdAt: '2026-04-15T00:00:00Z', updatedAt: '2026-04-15T00:00:00Z',
-        scheduledAt: '2026-04-15T10:00:00Z', agent: 'basil', channel: 'discord',
-        channels: ['discord', 'tiktok'], channelTarget: '123', contentType: 'tip',
+        scheduledAt: '2026-04-15T10:00:00Z', agent: 'basil',
+        channels: ['general', 'tiktok'], contentType: 'tip',
         title: 'Has channels', brief: '', tone: 'calm', status: 'draft',
       },
     ]))
@@ -260,6 +228,6 @@ describe('Channel support — exec tools', () => {
     const tool = findTool(plugin.execTools, 'bakin_exec_messaging_list')!
     const result = await callTool(tool, {})
     const items = result.items as Record<string, unknown>[]
-    expect(items[0].channels).toEqual(['discord', 'tiktok'])
+    expect(items[0].channels).toEqual(['general', 'tiktok'])
   })
 })

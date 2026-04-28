@@ -120,11 +120,11 @@ describe('ProposalCard', () => {
   it('renders channel badges', () => {
     render(
       <ProposalCard
-        proposal={makeProposal({ channels: ['discord', 'instagram'] })}
+        proposal={makeProposal({ channels: ['general', 'announcements'] })}
       />
     )
-    expect(screen.getByText('discord')).toBeDefined()
-    expect(screen.getByText('instagram')).toBeDefined()
+    expect(screen.getByText('general')).toBeDefined()
+    expect(screen.getByText('announcements')).toBeDefined()
   })
 
   it('shows Revised status chip for revised items with action buttons', () => {

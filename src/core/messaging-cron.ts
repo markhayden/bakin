@@ -67,10 +67,14 @@ async function executeScheduledContent(contentDir: string, port: number): Promis
 }
 
 function buildContentTaskDescription(
-  item: Record<string, string>,
+  item: Record<string, unknown>,
   persona: string,
   port: number
 ): string {
+  const channels = Array.isArray(item.channels) && item.channels.length > 0
+    ? item.channels.filter((channel): channel is string => typeof channel === 'string' && channel.length > 0).join(', ')
+    : 'general'
+
   return `
 You are ${item.agent}. Here is your full persona:
 
@@ -83,7 +87,7 @@ Create content for the following brief:
 **Title:** ${item.title}
 **Type:** ${item.contentType}
 **Tone:** ${item.tone}
-**Channel:** Discord (#general)
+**Channels:** ${channels}
 
 **Brief:**
 ${item.brief}
@@ -102,8 +106,6 @@ Instructions:
    - PUT to http://localhost:${port}/api/plugins/messaging/${item.id} with: { "status": "review", "draft": { "caption": "...", "imageFilename": "{filename}.png", "videoFilename": "{filename}.mp4" } }
    - IMPORTANT: Use the bare filename returned by the asset save tool (e.g. "20260416-nemo-workout-a1b2c3d4.png"), NOT a path. Filenames are globally unique and stable across retype/relink.
    - Then mark your task complete
-
-Channel ID for posting: ${item.channelTarget}
 `
 }
 

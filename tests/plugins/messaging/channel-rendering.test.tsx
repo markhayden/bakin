@@ -2,7 +2,7 @@
 /**
  * Regression guards — messaging renders channel chips sourced from the
  * workflows.notificationChannels registry. Locks in the graceful-degradation
- * contract for orphan channel refs in legacy frontmatter.
+ * contract for orphan channel refs.
  */
 import { describe, it, expect, beforeEach, mock } from 'bun:test'
 import { cleanup, render, screen, fireEvent } from '@testing-library/react'
@@ -33,9 +33,9 @@ mock.module('../../../plugins/tasks/lib/flow-store', () => ({
 }))
 
 const MOCK_CHANNELS = [
-  { runtime: 'builtin' as const, id: 'discord', label: 'Discord', initials: 'DC', icon: 'MessageSquare' },
+  { runtime: 'builtin' as const, id: 'general', label: 'General', initials: 'GE', icon: 'MessageSquare' },
   { runtime: 'builtin' as const, id: 'email',   label: 'Email',   initials: 'EM', icon: 'Mail' },
-  { runtime: 'builtin' as const, id: 'slack',   label: 'Slack',   initials: 'SL', icon: 'MessageSquare' },
+  { runtime: 'builtin' as const, id: 'alerts',  label: 'Alerts',  initials: 'AL', icon: 'MessageSquare' },
 ]
 
 mock.module('@bakin/workflows/hooks/use-notification-channels', () => ({
@@ -87,8 +87,7 @@ function makeItem(overrides: Partial<CalendarItem> = {}): CalendarItem {
     id: 'item-1',
     title: 'Regression Post',
     agent: 'basil',
-    channel: 'discord',
-    channelTarget: '1234',
+    channels: ['general'],
     contentType: 'post',
     tone: 'conversational',
     scheduledAt: '2026-04-21T10:00:00Z',
@@ -104,7 +103,7 @@ describe('messaging drawer — channel chips from the workflows registry', () =>
   it('renders a chip per registered channel when the item has that channel active', () => {
     render(
       <ItemDetailDrawer
-        item={makeItem({ channels: ['discord', 'email'] })}
+        item={makeItem({ channels: ['general', 'email'] })}
         open
         editing={false}
         onClose={mock()}
@@ -115,7 +114,7 @@ describe('messaging drawer — channel chips from the workflows registry', () =>
       />
     )
     // Detail view shows chips labelled with getChannelLabel
-    expect(screen.getByText(/Discord/)).toBeDefined()
+    expect(screen.getByText(/General/)).toBeDefined()
     expect(screen.getByText(/Email/)).toBeDefined()
   })
 
