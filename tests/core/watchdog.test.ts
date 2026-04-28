@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock, type Mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -33,13 +33,12 @@ mock.module('../../src/core/settings', () => ({
       stuckThresholdMs: 30 * 60 * 1000,
       autoRecover: true,
       maxAutoRecoveries: 3,
-      alertChannelId: 'test-channel',
     },
     workflow: {
       stepTimeoutMs: 60 * 60 * 1000,
       maxRedispatches: 3,
     },
-    notifications: { channel: 'none' },
+    notifications: { channel: '', gateAlerts: true },
   }),
 }))
 
@@ -51,7 +50,10 @@ mock.module('../../src/core/sse', () => ({
   broadcast: mock(),
 }))
 
-const mockAgentLastReply = mock((_agentId: string) => null as number | null)
+const mockAgentLastReply = mock((agentId: string) => {
+  void agentId
+  return null as number | null
+})
 const mockRuntimeSend = mock((...args: unknown[]) => {
   void args
   return Promise.resolve({ id: 'runtime-msg' })
