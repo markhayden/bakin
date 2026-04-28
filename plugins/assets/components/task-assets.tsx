@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from '@tanstack/react-router'
 import { FolderOpen, Image, Video, Music, FileText, Plus, X } from 'lucide-react'
-import { Badge } from "@bakin/sdk/ui"
 import { AssetDetailModal } from './asset-detail'
 import type { AssetMeta } from "@bakin/sdk/types"
 
@@ -22,7 +21,7 @@ interface TaskAssetsProps {
 export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
   const [assets, setAssets] = useState<AssetMeta[]>([])
   const [loading, setLoading] = useState(true)
-  const [previewPath, setPreviewPath] = useState<string | null>(null)
+  const [previewFilename, setPreviewFilename] = useState<string | null>(null)
   const esRef = useRef<EventSource | null>(null)
 
   const fetchAssets = useCallback(() => {
@@ -114,7 +113,7 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
               className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 hover:border-[rgba(255,255,255,0.15)] transition-colors group text-left w-full"
             >
               <button
-                onClick={() => setPreviewPath(asset.path)}
+                onClick={() => setPreviewFilename(asset.filename)}
                 className="flex items-center gap-2 flex-1 min-w-0"
               >
                 {asset.type === 'images' ? (
@@ -149,10 +148,10 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
         })}
       </div>
 
-      {previewPath && (
+      {previewFilename && (
         <AssetDetailModal
-          assetPath={previewPath}
-          onClose={() => setPreviewPath(null)}
+          filename={previewFilename}
+          onClose={() => setPreviewFilename(null)}
         />
       )}
     </div>

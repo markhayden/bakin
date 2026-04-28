@@ -6,15 +6,15 @@ import { existsSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '../../../src/core/content-dir'
 import { getMimeType } from '../lib/constants'
-import { pathForFilename } from '../lib/path-for-filename'
+import { isSafeCanonicalFilename, pathForFilename } from '../lib/path-for-filename'
 
 export async function handleFile(req: Request): Promise<Response> {
   const url = new URL(req.url, 'http://localhost')
   const nameParam = url.searchParams.get('name')
 
-  let assetPath: string | null = null
+  let assetPath: string | null
   if (nameParam) {
-    if (nameParam.includes('/') || nameParam.includes('..')) {
+    if (!isSafeCanonicalFilename(nameParam)) {
       return Response.json({ error: 'Invalid filename' }, { status: 400 })
     }
     const derived = pathForFilename(nameParam)

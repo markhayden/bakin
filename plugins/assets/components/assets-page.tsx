@@ -27,9 +27,9 @@ function getStoredPageSize(): number {
 export function AssetsPage() {
   const [debug] = useDebug()
   const [view, setView] = useQueryState('view', 'grid')
-  const [search, setSearch] = useQueryState('q', '')
-  const [typeFilter, setTypeFilter] = useQueryArrayState('type')
-  const [assetPath, setAssetPath] = useQueryState('asset', '')
+  const [search] = useQueryState('q', '')
+  const [typeFilter] = useQueryArrayState('type')
+  const [assetFilename, setAssetFilename] = useQueryState('asset', '')
   const [sort, setSort] = useQueryState('sort', 'created')
   const [sortDir, setSortDir] = useQueryState('dir', 'desc')
   const [pageStr, setPageStr] = useQueryState('page', '1')
@@ -68,14 +68,14 @@ export function AssetsPage() {
 
   // Pass first selected type or 'all' to the hook (hook expects single string)
   const hookType = typeFilter.length === 0 ? 'all' : typeFilter.length === 1 ? typeFilter[0] : 'all'
-  const { assets, total, loading, deleteAsset } = useAssets({ type: isTrash ? 'all' : hookType })
+  const { assets, loading, deleteAsset } = useAssets({ type: isTrash ? 'all' : hookType })
   const trash = useTrash()
 
   // Resolve selected asset from ?asset= param
   const selectedAsset = useMemo(() => {
-    if (!assetPath || loading) return null
-    return assets.find(a => a.path === assetPath) ?? null
-  }, [assetPath, assets, loading])
+    if (!assetFilename || loading) return null
+    return assets.find(a => a.filename === assetFilename) ?? null
+  }, [assetFilename, assets, loading])
 
   const searchHook = useSearch({ plugin: 'assets', facets: ['asset_type', 'agent'], debounce: 300 })
   useEffect(() => {
@@ -179,7 +179,7 @@ export function AssetsPage() {
       ) : view === 'list' ? (
         <AssetsList
           assets={paged}
-          onSelect={(a: AssetMeta) => setAssetPath(a.path)}
+          onSelect={(a: AssetMeta) => setAssetFilename(a.filename)}
           onDelete={deleteAsset}
           sort={sort as SortField}
           sortDir={sortDir as SortDir}
@@ -188,7 +188,7 @@ export function AssetsPage() {
       ) : (
         <AssetsGrid
           assets={paged}
-          onSelect={(a: AssetMeta) => setAssetPath(a.path)}
+          onSelect={(a: AssetMeta) => setAssetFilename(a.filename)}
           onDelete={deleteAsset}
           scores={search && searchHook.results.length && debug ? new Map(searchHook.results.map(r => [r.id, { score: r.score, indexScores: r.indexScores }])) : undefined}
         />
@@ -207,11 +207,10 @@ export function AssetsPage() {
       {!isTrash && (
         <AssetDetail
           asset={selectedAsset}
-          onClose={() => setAssetPath('')}
-          onPathChange={setAssetPath}
-          onDelete={async (path) => {
-            const ok = await deleteAsset(path)
-            if (ok) setAssetPath('')
+          onClose={() => setAssetFilename('')}
+          onDelete={async (filename) => {
+            const ok = await deleteAsset(filename)
+            if (ok) setAssetFilename('')
           }}
         />
       )}

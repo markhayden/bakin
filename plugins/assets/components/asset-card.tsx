@@ -39,7 +39,7 @@ const TYPE_COLORS: Record<string, string> = {
 interface AssetCardProps {
   asset: AssetMeta
   onClick: () => void
-  onDelete: (path: string) => void
+  onDelete: (filename: string) => void
   /** Search score info (only shown when debug=true) */
   scoreInfo?: AssetScoreInfo
 }
@@ -214,7 +214,7 @@ export function AssetCard({ asset, onClick, onDelete, scoreInfo }: AssetCardProp
       <DeleteAssetDialog
         open={confirmOpen}
         filename={asset.filename}
-        onConfirm={() => { setConfirmOpen(false); onDelete(asset.path) }}
+        onConfirm={() => { setConfirmOpen(false); onDelete(asset.filename) }}
         onCancel={() => setConfirmOpen(false)}
       />
     </>

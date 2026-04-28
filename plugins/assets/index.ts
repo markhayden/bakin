@@ -22,7 +22,7 @@ import { relinkAsset } from './lib/relink'
 import { retypeAsset } from './lib/retype'
 import { buildIndex, upsertAsset, removeAsset, detectVariant, listAssets } from './lib/asset-index'
 import { validateSidecar, getSidecarPath, createStub } from './lib/sidecar'
-import { pathForFilename } from './lib/path-for-filename'
+import { isSafeCanonicalFilename, pathForFilename } from './lib/path-for-filename'
 import { ASSET_TYPES } from './lib/constants'
 import { listTrash, restoreAsset, emptyTrash, permanentDelete, softDelete, type TrashedAsset } from './lib/trash'
 import { saveAsset } from './lib/save-asset'
@@ -395,19 +395,18 @@ const assetsPlugin: BakinPlugin = {
     // GET /file — serve asset file for rendering
     ctx.registerRoute({ path: '/file', method: 'GET', description: 'Serve asset file', handler: handleFile })
 
-    // DELETE / — soft-delete an asset (path passed as ?path= query param)
+    // DELETE / — soft-delete an asset by canonical filename
     ctx.registerRoute({
       path: '/',
       method: 'DELETE',
       description: 'Soft-delete an asset',
       handler: async (req: Request) => {
         const url = new URL(req.url, 'http://localhost')
-        const assetPath = url.searchParams.get('path') || ''
+        const filename = url.searchParams.get('filename') || ''
         const res = await handleDelete(req)
         if (res.ok) {
           ctx.activity.audit('deleted', 'system')
           ctx.activity.log('system', 'Asset deleted')
-          const filename = filenameFromRel(assetPath)
           if (filename) ctx.search.remove(filename).catch(() => {})
         }
         return res
@@ -538,7 +537,7 @@ const assetsPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_assets_list',
       label: 'Listed assets',
-      description: 'List assets with optional type filter. Returns asset count and paths.',
+      description: 'List assets with optional type filter. Returns asset count, canonical filenames, and metadata.',
       parameters: {
         type: z.enum(ASSET_TYPES).optional().describe('Filter by asset type'),
       },
@@ -555,15 +554,15 @@ const assetsPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_assets_get',
       label: 'Read asset details',
-      description: 'Retrieve a single asset\'s sidecar metadata by path.',
+      description: 'Retrieve a single asset\'s sidecar metadata by canonical filename.',
       parameters: {
-        path: z.string().describe('Asset path relative to content dir (e.g. "assets/images/task123/file.png")'),
+        filename: z.string().describe('Canonical asset filename (e.g. "20260401-hero-a1b2c3d4.png")'),
       },
       handler: async (params: Record<string, unknown>) => {
-        const assetPath = params.path as string
-        if (!assetPath || assetPath.includes('..') || !assetPath.startsWith('assets/')) {
-          return { ok: false, error: 'Invalid asset path' }
-        }
+        const filename = params.filename as string
+        if (!isSafeCanonicalFilename(filename)) return { ok: false, error: 'Invalid filename' }
+        const assetPath = pathForFilename(filename)
+        if (!assetPath) return { ok: false, error: 'Invalid filename' }
         const contentDir = getContentDir()
         const fullPath = join(contentDir, assetPath)
         if (!existsSync(fullPath)) {
@@ -571,11 +570,11 @@ const assetsPlugin: BakinPlugin = {
         }
         const sidecarPath = getSidecarPath(fullPath)
         if (!existsSync(sidecarPath)) {
-          return { ok: true, asset: { path: assetPath, sidecar: null } }
+          return { ok: true, asset: { filename, path: assetPath, sidecar: null } }
         }
         try {
           const sidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
-          return { ok: true, asset: { path: assetPath, ...sidecar } }
+          return { ok: true, asset: { filename, path: assetPath, ...sidecar } }
         } catch (err) {
           return { ok: false, error: `Failed to read sidecar: ${(err as Error).message}` }
         }
@@ -588,7 +587,7 @@ const assetsPlugin: BakinPlugin = {
       description: 'Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically.',
       parameters: {
         filePath: z.string().describe('Absolute path to the source file to save'),
-        taskId: z.string().describe('Task ID — used for directory organization'),
+        taskId: z.string().describe('Task ID to record in sidecar metadata'),
         type: z.enum(ASSET_TYPES).describe(TYPE_RUBRIC),
         description: z.string().optional().describe('One-sentence summary visible in the asset grid and search. Be specific — "Q2 blog hero image" not "an image".'),
         tags: z.array(z.string()).optional().describe('Lowercase hyphenated tags for filtering. Use domain tags (social, blog), format tags (draft, final), and project tags.'),
@@ -608,23 +607,23 @@ const assetsPlugin: BakinPlugin = {
       activityDuplicate: true,
       description: 'Soft-delete an asset (moves to trash with 30-day expiry).',
       parameters: {
-        path: z.string().describe('Asset path relative to content dir (e.g. "assets/images/task123/file.png")'),
+        filename: z.string().describe('Canonical asset filename (e.g. "20260401-hero-a1b2c3d4.png")'),
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
-        const assetPath = params.path as string
-        if (!assetPath || assetPath.includes('..') || !assetPath.startsWith('assets/')) {
-          return { ok: false, error: 'Invalid asset path' }
-        }
+        const filename = params.filename as string
+        if (!isSafeCanonicalFilename(filename)) return { ok: false, error: 'Invalid filename' }
+        const assetPath = pathForFilename(filename)
+        if (!assetPath) return { ok: false, error: 'Invalid filename' }
         const contentDir = getContentDir()
         const fullPath = join(contentDir, assetPath)
         const assetsRoot = join(contentDir, 'assets')
+        if (!existsSync(fullPath)) return { ok: false, error: 'Asset not found' }
         const success = softDelete(fullPath, assetsRoot)
         if (!success) return { ok: false, error: 'Failed to delete asset' }
         removeAsset(assetPath)
-        const filename = filenameFromRel(assetPath)
-        if (filename) ctx.search.remove(filename).catch(() => {})
-        ctx.activity.audit('asset.deleted', agent, { path: assetPath })
-        return { ok: true, trashed: [assetPath] }
+        ctx.search.remove(filename).catch(() => {})
+        ctx.activity.audit('asset.deleted', agent, { filename, path: assetPath })
+        return { ok: true, filename, trashed: [assetPath] }
       },
     })
 
@@ -677,7 +676,7 @@ const assetsPlugin: BakinPlugin = {
       parameters: {
         filename: z.string().describe('The trash filename (includes __deleted- suffix)'),
       },
-      handler: async (params: Record<string, unknown>, agent: string) => {
+      handler: async (params: Record<string, unknown>) => {
         const filename = params.filename as string
         const assetsRoot = join(getContentDir(), 'assets')
         const restoredPath = await restoreAsset(filename, assetsRoot)
@@ -844,19 +843,19 @@ const assetsPlugin: BakinPlugin = {
       label: 'Updated asset content',
       description: 'Update the text content of an editable asset. Only works for text-based MIME types (markdown, plain text, YAML, JSON, CSV, XML). Rewrites the entire file.',
       parameters: {
-        path: z.string().describe('Asset path relative to content dir (e.g. "assets/text/task123/doc.md")'),
+        filename: z.string().describe('Canonical asset filename (e.g. "20260401-doc-a1b2c3d4.md")'),
         content: z.string().describe('New file content (replaces entire file)'),
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
         const req = new Request('http://localhost/api/plugins/assets/content', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ path: params.path, content: params.content }),
+          body: JSON.stringify({ filename: params.filename, content: params.content }),
         })
         const res = await handleContent(req)
         const data = await res.json()
         if (data.ok) {
-          ctx.activity.audit('asset.content_updated', agent, { path: params.path })
+          ctx.activity.audit('asset.content_updated', agent, { filename: params.filename, path: data.path })
           if (data.path) indexAsset(data.path as string).catch(() => {})
         }
         return data

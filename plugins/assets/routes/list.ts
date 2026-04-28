@@ -12,7 +12,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '../../../src/core/content-dir'
 import { buildIndex, listAssets, listGroupedAssets, getAsset } from '../lib/asset-index'
-import { pathForFilename } from '../lib/path-for-filename'
+import { isSafeCanonicalFilename, pathForFilename } from '../lib/path-for-filename'
 
 export async function handleList(req: Request): Promise<Response> {
   const url = new URL(req.url, 'http://localhost')
@@ -28,6 +28,7 @@ export async function handleList(req: Request): Promise<Response> {
 
   // Single-asset lookup by filename — stable under retype/relink.
   if (filename) {
+    if (!isSafeCanonicalFilename(filename)) return Response.json({ assets: [], count: 0, total: 0 })
     const derived = pathForFilename(filename)
     const path = derived && existsSync(join(getContentDir(), derived)) ? derived : undefined
     if (!path) return Response.json({ assets: [], count: 0, total: 0 })
