@@ -180,7 +180,7 @@ const healthPlugin: BakinPlugin = {
       path: '/usage',
       method: 'GET',
       handler: async () => {
-        return Response.json(getAllAgentUsage())
+        return Response.json(await getAllAgentUsage(ctx.runtime))
       },
     })
 

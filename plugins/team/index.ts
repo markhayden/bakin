@@ -1326,7 +1326,7 @@ const teamPlugin: BakinPlugin = {
         const agentId = url.searchParams.get('agentId')
         if (!agentId) return Response.json({ error: 'agentId required' }, { status: 400 })
 
-        const allUsage = getAllAgentUsage()
+        const allUsage = await getAllAgentUsage(ctx.runtime)
         const usage = allUsage.find((u) => u.agent === agentId)
 
         return Response.json({ usage: usage ?? null })
