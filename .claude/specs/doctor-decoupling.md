@@ -131,7 +131,7 @@ Health plugin layout (the system-check home):
 | `plugins/health/lib/system-checks/content-dir.ts` | `content-dir` |
 | `plugins/health/lib/system-checks/service.ts` | `service` |
 | `plugins/health/lib/system-checks/mcporter.ts` | `mcporter` |
-| `plugins/health/lib/system-checks/gateway.ts` | `gateway` |
+| `plugins/health/lib/system-checks/runtime.ts` | `runtime` |
 | `plugins/health/lib/system-checks/antfly.ts` | `antfly` |
 | `plugins/health/lib/system-checks/orchestrator-rules.ts` | `orchestrator-rules` |
 | `plugins/health/lib/system-checks/sync-skill.ts` | `skill` (Bakin SKILL.md sync) |
@@ -191,7 +191,7 @@ plugins/health/lib/managed-blocks.ts                 NEW  ~340 lines
 plugins/health/lib/system-checks/content-dir.ts      NEW  ~25 lines
 plugins/health/lib/system-checks/service.ts          NEW  ~80 lines
 plugins/health/lib/system-checks/mcporter.ts         NEW  ~55 lines
-plugins/health/lib/system-checks/gateway.ts          NEW  ~25 lines
+plugins/health/lib/system-checks/runtime.ts          NEW  ~25 lines
 plugins/health/lib/system-checks/antfly.ts           NEW  ~70 lines
 plugins/health/lib/system-checks/orchestrator-rules.ts NEW ~70 lines
 plugins/health/lib/system-checks/sync-skill.ts       NEW  ~110 lines
@@ -374,7 +374,7 @@ Detailed per-commit plan lives in `.claude/specs/doctor-decoupling-plan.md` (nex
 | 4 | `refactor(schedule): own schedule-sync health check` | 1 check → schedule |
 | 5 | `refactor(memory): own search-tables health check` | 1 check → memory |
 | 6 | `refactor(health): own content-dir + service + mcporter system checks` | 3 system checks |
-| 7 | `refactor(health): own gateway + antfly system checks` | 2 system checks |
+| 7 | `refactor(health): own runtime + antfly system checks` | 2 system checks |
 | 8 | `refactor(health): own orchestrator-rules + sync-skill + plugin-assets system checks` | 3 system checks |
 | 9 | `refactor(health): own managed-blocks system check + relocate infra` | 1 check + ~340 lines moved + CLI imports updated |
 | 10 | `refactor(core): collapse DiagnosticResult into HealthCheckResult (#139)` | Type rename + delete inline helpers + delete stray health-page.tsx copy + docs |

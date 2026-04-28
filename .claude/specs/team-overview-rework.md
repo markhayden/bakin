@@ -30,7 +30,7 @@ The current agent-detail Profile tab regurgitates content already shown on dedic
    - **Team selector** (moved from header)
    - **Workspace path** (already on Profile today; stays)
    - **Identity** (already on Profile today; stays — IDENTITY.md is structured metadata, not a redundant file editor)
-6. **Header becomes leaner** — back arrow, avatar, name, role, status, gateway-restart banner, delete button. No model picker, no team selector, no subagent perms badge (move to Overview if useful).
+6. **Header becomes leaner** — back arrow, avatar, name, role, status, runtime-restart banner, delete button. No model picker, no team selector, no subagent perms badge (move to Overview if useful).
 7. **Heartbeat tab — view-only** rendered markdown. No edit affordance. "Last updated <time ago>" header.
 8. **Active Context tab — read-only session transcript.** Shows the most recent session JSONL parsed into a message list (system / user / assistant / tool entries) with role badges and content. No filtering, no per-turn drill-down, no editing. Empty state when no sessions exist.
 9. **Markdown tabs (Soul / Rules / Tools) get the Assets pattern:**
@@ -167,7 +167,7 @@ Existing `agent-detail-tabs.test.tsx` updates: adjust the asserted TABS list, ke
 - Reintroduce Stats as a separate tab unless the Overview-condensed view proves insufficient (ask first)
 - Truncate or pre-process active-context messages on the server beyond JSONL parsing — show the user what was actually sent
 - Persist anything new to `~/.bakin/` for this rework — every data source is an existing file
-- Skip the `useGatewayStatus` hook on model change — model swaps trigger a gateway-restart-needed signal that the header banner depends on
+- Skip the `useRuntimeStatus` hook on model change — model swaps trigger a runtime-restart-needed signal that the header banner depends on
 
 ## Risks
 

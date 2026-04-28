@@ -127,7 +127,7 @@ runtime-dependent entrypoint before moving large provider implementations.
    helpers, lifecycle/health/doctor code, and tests.
 10. Activate plugins and collect search schemas.
 11. Provision/reconcile search tables after schemas are known.
-12. Start HTTP/SSE/gateway-facing services.
+12. Start HTTP/SSE/runtime-facing services.
 
 ### Required Coverage
 
