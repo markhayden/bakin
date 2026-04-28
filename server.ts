@@ -70,7 +70,6 @@ import * as packagesInstallRoute from './packages/host/src/api/packages/install'
 import * as packagesDynamicRoute from './packages/host/src/api/packages/dynamic'
 import * as curatedListRoute from './packages/host/src/api/curated/list'
 import * as pluginsMemoryAuditRoute from './packages/host/src/api/plugins/memory/audit'
-import * as pluginsMemoryGatewayRoute from './packages/host/src/api/plugins/memory/gateway'
 import * as pluginsMemoryWorkspaceRoute from './packages/host/src/api/plugins/memory/workspace'
 import * as stateRoute from './packages/host/src/api/state'
 import * as assetsRoute from './packages/host/src/api/assets/[...path]'
@@ -539,15 +538,10 @@ const eventBus = new BakinEventBus(broadcast)
       return
     }
 
-    // /api/plugins/memory/{audit,gateway,workspace} — former standalone
+    // /api/plugins/memory/{audit,workspace} — former standalone
     // routes now served directly (they shadow the plugin catch-all).
     if (url.pathname === '/api/plugins/memory/audit' && req.method === 'GET') {
       dispatchWebHandler(req, res, pluginsMemoryAuditRoute.get)
-      return
-    }
-
-    if (url.pathname === '/api/plugins/memory/gateway' && req.method === 'GET') {
-      dispatchWebHandler(req, res, pluginsMemoryGatewayRoute.get)
       return
     }
 
@@ -598,7 +592,7 @@ const eventBus = new BakinEventBus(broadcast)
 
     // Plugin catch-all — /api/plugins/:pluginId/:path* dispatches to each
     // plugin's registered route handlers. Must come LAST among /api/plugins/*
-    // dispatches so the more-specific install/remove/memory/*/manifest/assets
+    // dispatches so the more-specific install/remove/legacy memory/manifest/assets
     // routes above win.
     if (
       url.pathname.startsWith('/api/plugins/') &&
