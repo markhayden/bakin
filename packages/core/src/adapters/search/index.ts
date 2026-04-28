@@ -53,6 +53,43 @@ export interface SearchAdapter {
   }
 }
 
+export type SearchAdapterSetupCheckStatus = 'ok' | 'missing' | 'broken' | 'warn' | 'error'
+export type SearchAdapterSetupInstallStatus = 'installed' | 'skipped' | 'failed' | 'noop'
+
+export interface SearchAdapterSetupCheckResult {
+  name: string
+  status: SearchAdapterSetupCheckStatus
+  message: string
+  remediation?: string
+  details?: Record<string, unknown>
+}
+
+export interface SearchAdapterSetupInstallResult {
+  name: string
+  status: SearchAdapterSetupInstallStatus
+  message: string
+  error?: unknown
+  durationMs: number
+}
+
+export interface SearchAdapterSetupOptions {
+  interactive: boolean
+  autoApprove: boolean
+  json: boolean
+  askYesNo?: (question: string, defaultValue: boolean) => Promise<boolean>
+}
+
+export interface SearchAdapterSetupComponent {
+  readonly name: string
+  check(): Promise<SearchAdapterSetupCheckResult>
+  install(opts: SearchAdapterSetupOptions): Promise<SearchAdapterSetupInstallResult>
+}
+
+export interface SearchAdapterSetup {
+  readonly dependency: SearchAdapterSetupComponent
+  readonly models?: SearchAdapterSetupComponent
+}
+
 export type {
   AggregationRequest,
   BatchResult,

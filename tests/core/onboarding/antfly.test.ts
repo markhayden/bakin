@@ -14,6 +14,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { EventEmitter } from 'events'
+import * as actualFs from 'fs'
 
 // Per-test state for the mocks. Must be `let` so the mock closures can
 // read the current value on each call. `findBinaryQueue` is a queue so
@@ -26,14 +27,8 @@ let spawnError: Error | null
 let lastSpawnArgs: { cmd: string; args: string[]; opts: Record<string, unknown> } | null
 let askYesNoReturn: boolean
 
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
-
-mock.module('../../../src/core/search-adapter-factory', () => ({
-  findSearchAdapterBinary: () => {
+mock.module('../../../packages/adapter-antfly/src/server', () => ({
+  findAntflyBinary: () => {
     // Pop the next queued value; if the queue is empty, repeat the last
     // one. Lets tests set [null, '/path/to/binary'] to mean "missing on
     // first call, installed on second" without manual timing tricks.
@@ -41,6 +36,10 @@ mock.module('../../../src/core/search-adapter-factory', () => ({
     if (findBinaryQueue.length === 1) return findBinaryQueue[0]
     return findBinaryQueue.shift()!
   },
+  isAntflyInstalled: () => findBinaryQueue[0] !== null,
+  isAntflyRunning: () => false,
+  startAntflyServer: () => Promise.resolve(false),
+  stopAntflyServer: () => {},
 }))
 
 mock.module('../../../src/core/logger', () => ({
@@ -53,15 +52,14 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 mock.module('fs', () => {
-  const actual = require('fs') as typeof import('fs')
   return {
-    ...actual,
+    ...actualFs,
     existsSync: (p: unknown) => {
       const path = String(p)
       if (path === '/opt/homebrew/bin/brew' || path === '/usr/local/bin/brew') {
         return brewExists
       }
-      return actual.existsSync(p as never)
+      return actualFs.existsSync(p as never)
     },
   }
 })
@@ -88,13 +86,8 @@ mock.module('child_process', () => ({
   },
 }))
 
-mock.module('../../../src/core/onboarding/prompts', () => ({
-  askYesNo: () => Promise.resolve(askYesNoReturn),
-  readLine: () => Promise.resolve(''),
-}))
-
 describe('onboarding antfly component', () => {
-  let antflyComponent: typeof import('../../../src/core/onboarding/antfly').antflyComponent
+  let antflyComponent: ReturnType<typeof import('../../../packages/adapter-antfly/src/setup').createAntflySearchSetup>['dependency']
 
   beforeEach(async () => {
     findBinaryQueue = [null]
@@ -104,8 +97,8 @@ describe('onboarding antfly component', () => {
     lastSpawnArgs = null
     askYesNoReturn = true
     vi.resetModules()
-    const mod = await import('../../../src/core/onboarding/antfly')
-    antflyComponent = mod.antflyComponent
+    const mod = await import('../../../packages/adapter-antfly/src/setup')
+    antflyComponent = mod.createAntflySearchSetup().dependency
   })
 
   afterEach(() => {
@@ -118,6 +111,7 @@ describe('onboarding antfly component', () => {
     json: false,
     checkOnly: false,
     force: false,
+    askYesNo: () => Promise.resolve(askYesNoReturn),
   }
   const optsInteractive = {
     interactive: true,
@@ -125,6 +119,7 @@ describe('onboarding antfly component', () => {
     json: false,
     checkOnly: false,
     force: false,
+    askYesNo: () => Promise.resolve(askYesNoReturn),
   }
   const optsNonInteractiveNoYes = {
     interactive: false,
@@ -132,6 +127,7 @@ describe('onboarding antfly component', () => {
     json: false,
     checkOnly: false,
     force: false,
+    askYesNo: () => Promise.resolve(askYesNoReturn),
   }
 
   describe('check()', () => {
