@@ -7,7 +7,7 @@
  *   2. Registers exactly one search content type — `bakin_memory` — with the
  *      tier/agent/kind/eventType/phase/date facets called for by the spec.
  *   3. Does NOT register the legacy `audit` table.
- *   4. Does NOT register the old `/audit`, `/workspace`, `/gateway` routes.
+ *   4. Does NOT register the old `/workspace` or `/gateway` routes.
  *   5. Wires `ctx.watchFiles` with the spec-listed OpenClaw and Bakin paths.
  *   6. Keeps the existing nav item (`/memory`).
  */
