@@ -1,7 +1,7 @@
 /**
  * antfly component — installs the AntflyDB binary via Homebrew.
  *
- * check() reuses `findBinary()` from antfly-server so the discovery
+ * check() reuses the Antfly adapter binary discovery helper so the discovery
  * logic stays in one place (env var → /opt/homebrew/bin → /usr/local/bin
  * → ~/.antfly/bin). install() shells out to `brew install --cask
  * antflydb/antfly/antfly` via child_process.spawn — never with
@@ -15,8 +15,8 @@
  */
 import { spawn } from 'child_process'
 import { existsSync } from 'fs'
+import { findAntflyBinary } from '@bakin/adapter-antfly'
 import { createLogger } from '../logger'
-import { findBinary } from '../antfly-server'
 import { askYesNo } from './prompts'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 
@@ -34,7 +34,7 @@ function findBrew(): string | null {
 }
 
 async function check(): Promise<CheckResult> {
-  const binary = findBinary()
+  const binary = findAntflyBinary()
   if (binary) {
     return {
       name: 'antfly',
@@ -87,7 +87,7 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
   // Already installed? Short-circuit. The orchestrator calls check() up
   // front anyway, but we re-verify here because an individual CLI
   // invocation (`bakin install antfly`) may be run standalone.
-  const existing = findBinary()
+  const existing = findAntflyBinary()
   if (existing) {
     return {
       name: 'antfly',
@@ -150,7 +150,7 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
       }
     }
     // Verify the binary is now discoverable.
-    const installed = findBinary()
+    const installed = findAntflyBinary()
     if (!installed) {
       return {
         name: 'antfly',

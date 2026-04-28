@@ -40,8 +40,6 @@ import * as messagingCron from './src/core/messaging-cron'
 import { registerShutdownHandlers } from './src/core/lifecycle'
 import { checkAndContinueDependents } from './src/core/continuation'
 import { getAllRoutes, generateDocs } from './src/core/api-docs'
-import * as antfly from './src/core/antfly'
-import * as antflyServer from './src/core/antfly-server'
 import { migrateIfNeeded } from './src/core/search-migration'
 import * as agents from './src/core/agents'
 import * as doctor from './src/core/doctor'
@@ -147,12 +145,6 @@ const eventBus = new BakinEventBus(broadcast)
   // Expose registry accessors on globalThis so Next.js API routes (which get
   // separate webpack-compiled module instances) can read the real data.
   ;(globalThis as any).__bakinGetRegistrySnapshot = () => pluginRegistry.getRegistrySnapshot()
-
-  // Start Antfly server if enabled (auto-manages the process)
-  await antflyServer.start()
-
-  // Initialize Antfly client (optional — no-op if disabled in settings)
-  await antfly.initialize()
 
   // Check the search schema version and drop stale bakin_* tables when
   // the in-code version has advanced beyond the last-migrated version.
