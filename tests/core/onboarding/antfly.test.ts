@@ -2,7 +2,7 @@
  * Tests for the antfly onboarding component.
  *
  * Strategy:
- *   - Mock antfly-server so `findBinary()` returns a test-controlled value
+ *   - Mock the Antfly adapter binary helper so it returns a test-controlled value
  *   - Mock child_process.spawn to return a fake ChildProcess that emits a
  *     configurable exit code on `close` — no real brew runs
  *   - Mock fs.existsSync so the `findBrew()` helper inside the component
@@ -32,8 +32,8 @@ mock.module('@bakin/core/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
-mock.module('../../../src/core/antfly-server', () => ({
-  findBinary: () => {
+mock.module('@bakin/adapter-antfly', () => ({
+  findAntflyBinary: () => {
     // Pop the next queued value; if the queue is empty, repeat the last
     // one. Lets tests set [null, '/path/to/binary'] to mean "missing on
     // first call, installed on second" without manual timing tricks.
@@ -194,7 +194,7 @@ describe('onboarding antfly component', () => {
     it('reports failed when brew succeeds but binary is still missing', async () => {
       findBinaryQueue = [null]
       spawnExitCode = 0
-      // Never flip findBinaryReturn — simulates brew silently doing nothing
+      // Never flip findBinaryQueue — simulates brew silently doing nothing
       const result = await antflyComponent.install(optsAutoYes)
       expect(result.status).toBe('failed')
       expect(result.message).toContain('still not discoverable')

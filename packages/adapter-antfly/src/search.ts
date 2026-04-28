@@ -22,6 +22,7 @@ import type {
   TransformFn,
 } from '@bakin/core/adapters/search'
 import type { AntflySearchAdapterOptions } from './index'
+import { startAntflyServer, stopAntflyServer } from './server'
 
 interface AntflySettings {
   enabled: boolean
@@ -119,6 +120,14 @@ export class AntflySearchAdapter implements SearchAdapter {
       return
     }
 
+    const serverAvailable = await startAntflyServer(this.settings, this.logger)
+    if (!serverAvailable) {
+      this.client = null
+      this.embedderHashAtInit = this.embedderHash()
+      this.logger.warn('Antfly server unavailable - running in file-only mode')
+      return
+    }
+
     const config: ConstructorParameters<typeof AntflyClient>[0] = {
       baseUrl: this.settings.url,
     }
@@ -144,6 +153,7 @@ export class AntflySearchAdapter implements SearchAdapter {
 
   async shutdown(): Promise<void> {
     this.client = null
+    stopAntflyServer(this.logger)
   }
 
   async available(): Promise<boolean> {

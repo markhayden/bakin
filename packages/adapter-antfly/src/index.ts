@@ -1,5 +1,6 @@
 import type { SearchAdapter } from '@bakin/core/adapters/search'
 import { AntflySearchAdapter } from './search'
+export { findAntflyBinary, isAntflyInstalled, isAntflyRunning } from './server'
 
 export interface AntflySearchAdapterOptions {
   settings?: Record<string, unknown>
