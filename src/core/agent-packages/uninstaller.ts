@@ -29,9 +29,23 @@ import {
   acquireInstallLock,
   releaseInstallLock,
 } from './install-lock'
-import { removeAgent, removeFromAllowLists } from '@bakin/team/lib/openclaw-adapter'
+import { getRuntimeAdapter } from '../runtime-registry'
 
 const log = createLogger('agent-pkg:uninstall')
+
+async function removeRuntimeAgent(agentId: string): Promise<void> {
+  await getRuntimeAdapter().agents.remove(agentId)
+}
+
+async function removeRuntimeAllowListReferences(agentId: string): Promise<void> {
+  const runtime = getRuntimeAdapter()
+  const agents = await runtime.agents.list()
+  await Promise.all(
+    agents
+      .filter((agent) => agent.id !== agentId)
+      .map((agent) => runtime.agents.updateAllowlist(agent.id, { remove: [agentId] })),
+  )
+}
 
 export interface RemoveOptions {
   packageId: string
@@ -154,8 +168,8 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
     let deletedAgent = false
     if (entry.kind === 'agent' && entry.agentId && options.deleteAgent) {
       try {
-        await removeAgent(entry.agentId)
-        removeFromAllowLists(entry.agentId)
+        await removeRuntimeAgent(entry.agentId)
+        await removeRuntimeAllowListReferences(entry.agentId)
         deletedAgent = true
       } catch (err) {
         log.warn('Failed to delete OpenClaw agent', {

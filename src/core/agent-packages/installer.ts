@@ -66,10 +66,7 @@ import {
   acquireInstallLock,
   releaseInstallLock,
 } from './install-lock'
-import {
-  addAgent,
-  addToAllowLists,
-} from '@bakin/team/lib/openclaw-adapter'
+import { getRuntimeAdapter } from '../runtime-registry'
 import { readFileSync } from 'fs'
 import { join } from 'path'
 
@@ -187,6 +184,39 @@ interface AdapterCreateAgentInput {
   model?: string
 }
 
+async function createRuntimeAgent(input: AdapterCreateAgentInput): Promise<void> {
+  await getRuntimeAdapter().agents.create({
+    id: input.id,
+    name: input.name,
+    role: input.role,
+    model: input.model,
+    metadata: input.emoji ? { emoji: input.emoji } : undefined,
+  })
+}
+
+async function addRuntimeAllowLists(newAgentId: string, dispatchable: 'all' | 'main' | string[]): Promise<void> {
+  const runtime = getRuntimeAdapter()
+  if (dispatchable === 'main') {
+    await runtime.agents.updateAllowlist('main', { add: [newAgentId] })
+    return
+  }
+
+  if (dispatchable === 'all') {
+    const agents = await runtime.agents.list()
+    await Promise.all(
+      agents
+        .filter((agent) => agent.id !== newAgentId)
+        .map((agent) => runtime.agents.updateAllowlist(agent.id, { add: [newAgentId] })),
+    )
+    return
+  }
+
+  const targetIds = new Set(dispatchable)
+  targetIds.add('main')
+  targetIds.delete(newAgentId)
+  await Promise.all(Array.from(targetIds).map((agentId) => runtime.agents.updateAllowlist(agentId, { add: [newAgentId] })))
+}
+
 /**
  * Walk a parsed manifest's `dependencies` and return the lockfile keys of
  * the immediate deps it declared. Looks each dep up by `<source>@<ref>`
@@ -259,6 +289,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
       // covers JSON parse failures and other non-zod throws.
       throw new Error(
         manifest! === undefined ? `Manifest parse failed: ${message}` : `Manifest validation failed: ${formatManifestError(err as never)}`,
+        { cause: err },
       )
     }
 
@@ -372,13 +403,13 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     // ─── 8. Create OpenClaw agent for kind:"agent" + fresh ────────────────
     if (manifest.kind === 'agent' && mode === 'fresh') {
       const input = manifestToCreateAgent(manifest)
-      await addAgent(input)
+      await createRuntimeAgent(input)
       createdAgent = true
 
       const dispatchableBy = manifest.agent.dispatchableBy
       if (dispatchableBy && dispatchableBy.length > 0) {
         const target = dispatchableBy.length === 1 && dispatchableBy[0] === 'main' ? 'main' : dispatchableBy
-        addToAllowLists(manifest.id, target)
+        await addRuntimeAllowLists(manifest.id, target)
       }
     }
 

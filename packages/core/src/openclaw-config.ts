@@ -10,9 +10,9 @@
  *
  * Contract:
  *   - Pure read path. Never mutates openclaw.json.
- *     The legitimate write path lives in `plugins/team/lib/openclaw-adapter`
- *     (`addAgent` / `removeAgent`) and calls `resetOpenClawConfigCache()`
- *     after writing to force a re-read on the next call.
+ *     Legitimate write paths live behind the runtime adapter and call
+ *     `resetOpenClawConfigCache()` after writing to force a re-read on the
+ *     next call.
  *   - Mtime-cached: every call stats the file (cheap), re-parses only when
  *     the mtime changes. Renaming an agent in openclaw.json is picked up on
  *     the next call without a restart.
