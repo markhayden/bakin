@@ -4,12 +4,6 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 
 // Mock dependencies before importing
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
-
 mock.module('@/core/content-dir', () => ({
   getContentDir: mock(() => '/tmp/bakin-test'),
   getBakinPaths: mock(() => ({ home: '/tmp/bakin-test',
@@ -31,8 +25,26 @@ mock.module('@/core/continuation', () => ({
   checkAndContinueDependents: mock(() => Promise.resolve()),
 }))
 
-mock.module('@/core/openclaw-client', () => ({
-  sendMessage: mock(() => Promise.resolve('')),
+const mockRuntimeSend = mock((...args: unknown[]) => {
+  void args
+  return Promise.resolve({ id: 'runtime-msg' })
+})
+const mockRuntimeAgentsList = mock((...args: unknown[]) => {
+  void args
+  return Promise.resolve([
+    { id: 'main', name: 'Main', status: 'active' },
+  ])
+})
+
+mock.module('@/core/runtime-registry', () => ({
+  getRuntimeAdapter: () => ({
+    agents: {
+      list: (...args: unknown[]) => mockRuntimeAgentsList(...args),
+    },
+    messaging: {
+      send: (...args: unknown[]) => mockRuntimeSend(...args),
+    },
+  }),
 }))
 
 // Mock taskboard functions
@@ -327,17 +339,17 @@ describe('task-service', () => {
     })
 
     it('should move to done, log summary, and notify orchestrator', async () => {
-      const openclaw = await import('@/core/openclaw-client')
-
       await service.reportComplete('task-1', 'pixel', 'Generated 3 images')
 
       expect(mockAddTaskLog).toHaveBeenCalledWith(
         'task-1', 'pixel', 'Task complete: Generated 3 images'
       )
       expect(mockMoveTask).toHaveBeenCalled()
-      expect(openclaw.sendMessage).toHaveBeenCalledWith(
-        'main',
-        expect.stringContaining('TASK COMPLETE')
+      expect(mockRuntimeSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agentId: 'main',
+          content: expect.stringContaining('TASK COMPLETE'),
+        })
       )
     })
   })
