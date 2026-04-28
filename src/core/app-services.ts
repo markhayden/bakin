@@ -1,12 +1,12 @@
 import type { AppServices } from '@bakin/core/app-services'
 import { createHealthService } from '@bakin/core/app-services'
-import { createFileBakinTaskStore } from '@bakin/core/tasks/store'
 import { appendAudit } from './audit'
-import { getBakinPaths, getContentDir } from './content-dir'
+import { getContentDir } from './content-dir'
 import { createLogger } from './logger'
 import { createRuntimeAdapter } from './runtime-adapter-factory'
 import { createSearchAdapter } from './search-adapter-factory'
 import { getSettings } from './settings'
+import { getSharedBakinTaskStore } from './task-store'
 
 type AppServicesGlobal = typeof globalThis & {
   __bakinAppServices?: AppServices
@@ -20,7 +20,7 @@ export async function createAppServices(): Promise<AppServices> {
 
   const runtime = createRuntimeAdapter(settings.runtime.adapter)
   const search = createSearchAdapter(settings.search.adapter)
-  const tasks = createFileBakinTaskStore(getBakinPaths().tasks)
+  const tasks = getSharedBakinTaskStore()
 
   const adapterInit = {
     contentDir,

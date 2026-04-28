@@ -142,7 +142,7 @@ Configurable via `/settings` page:
 
 ## Dependencies
 
-- **tasks** plugin — Bridge creates tasks via `task-service`, checks task status via `tasks.readTaskboard` hook
+- Bakin task store — Bridge creates tasks via `task-service` and checks task status via the shared task-store service
 - **runtime cron adapter** — Provides cron CRUD, immediate runs, and run history
 
 ## File Structure

@@ -38,37 +38,32 @@ import { getContentDir } from './content-dir'
 import { isPluginKind } from './node-type-registry'
 import { getHookRegistry } from '../../../src/lib/plugin-registry'
 import { createLogger } from '@bakin/core/logger'
+import {
+  addTaskLog,
+  createTask,
+  getTask,
+  moveTask,
+} from '../../../src/core/task-store'
 
 const log = createLogger('workflow-runtime')
 
-type TaskHookTask = { id: string; title?: string; description?: string }
-type TaskHookBoard = { columns: Record<string, TaskHookTask[]> }
-
-async function readTaskboardFromHooks(): Promise<TaskHookBoard> {
-  return await getHookRegistry().invoke<TaskHookBoard>('tasks.readTaskboard', {}) ?? { columns: {} }
+type BoardTask = { id: string; title?: string; description?: string }
+async function findTaskFromStore(taskId: string): Promise<BoardTask | null> {
+  return getTask(taskId)
 }
 
-async function findTaskFromHooks(taskId: string): Promise<TaskHookTask | null> {
-  const { columns } = await readTaskboardFromHooks()
-  for (const col of Object.values(columns)) {
-    const found = col.find(task => task.id === taskId)
-    if (found) return found
-  }
-  return null
+async function addTaskLogToStore(identifier: string, author: string, message: string): Promise<void> {
+  await addTaskLog(identifier, author, message)
 }
 
-async function addTaskLogViaHook(identifier: string, author: string, message: string): Promise<void> {
-  await getHookRegistry().invoke('tasks.addTaskLog', { identifier, author, message })
-}
-
-async function moveTaskViaHook(identifier: string, to: string, from?: string): Promise<void> {
-  await getHookRegistry().invoke('tasks.moveTask', { identifier, to, from })
+async function moveTaskInStore(identifier: string, to: string, from?: string): Promise<void> {
+  await moveTask(identifier, to, from)
 }
 
 async function completeTaskViaHooks(instance: WorkflowInstance, from: string): Promise<void> {
-  const task = await findTaskFromHooks(instance.taskId).catch(() => null)
-  await addTaskLogViaHook(instance.taskId, 'workflow', `Workflow "${instance.workflowId}" completed - all steps done.`)
-  await moveTaskViaHook(instance.taskId, 'done', from)
+  const task = await findTaskFromStore(instance.taskId).catch(() => null)
+  await addTaskLogToStore(instance.taskId, 'workflow', `Workflow "${instance.workflowId}" completed - all steps done.`)
+  await moveTaskInStore(instance.taskId, 'done', from)
   const { appendAudit } = await import('../../../src/core/audit')
   await appendAudit(getContentDir(), 'task.moved', 'workflow', {
     id: instance.taskId,
@@ -98,7 +93,7 @@ function createBoardTaskForChild(
   assignee?: string,
 ) {
   void (async () => {
-    if (await findTaskFromHooks(childTaskId)) {
+    if (await findTaskFromStore(childTaskId)) {
       log.debug(`Skipping duplicate child task for ${childTaskId} — already on board`)
       return
     }
@@ -110,16 +105,16 @@ function createBoardTaskForChild(
     const agent = childAgent ? (childAgent as AgentStep).agent : assignee
     const resolvedAgent = agent === '$assigned' ? assignee : agent
 
-    await getHookRegistry().invoke('tasks.createTask', {
+    await createTask(
       title,
-      column: 'inProgress',
-      assignee: resolvedAgent,
-      description: description?.trim(),
-      workflowId: nestedStep.workflow_id,
-      createdBy: 'workflow',
-      id: childTaskId,
-    })
-    await addTaskLogViaHook(childTaskId, 'workflow', `Sub-workflow of task ${parentTaskId}`)
+      'inProgress',
+      resolvedAgent,
+      description?.trim(),
+      nestedStep.workflow_id,
+      'workflow',
+      childTaskId,
+    )
+    await addTaskLogToStore(childTaskId, 'workflow', `Sub-workflow of task ${parentTaskId}`)
   })().catch((err) => {
     log.error(`Failed to create board task for child ${childTaskId}`, err)
   })
@@ -714,8 +709,8 @@ function propagateChildCompletion(childInstance: WorkflowInstance, contentDir: s
   })
 
   // Move the child's board task to Done.
-  addTaskLogViaHook(childInstance.taskId, 'workflow', `Sub-workflow "${childInstance.workflowId}" completed.`)
-    .then(() => moveTaskViaHook(childInstance.taskId, 'done'))
+  addTaskLogToStore(childInstance.taskId, 'workflow', `Sub-workflow "${childInstance.workflowId}" completed.`)
+    .then(() => moveTaskInStore(childInstance.taskId, 'done'))
     .catch((err) => { log.warn('Failed to complete child workflow task', err) })
 
   advanceWorkflow(parentInstance, parentDef, contentDir)
@@ -855,7 +850,7 @@ function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinition, co
     }
 
     // Move the task to the review column while awaiting approval.
-    moveTaskViaHook(instance.taskId, 'review').catch((err) => {
+    moveTaskInStore(instance.taskId, 'review').catch((err) => {
       log.warn('Failed to move workflow task to review', err)
     })
   } else if (isPluginKind(nextStep.type)) {
@@ -959,10 +954,10 @@ export function approveGate(
 
   // Log gate approval to the task so watchdog sees recent activity
   // and move it back to inProgress (from review) unless the workflow just completed
-  addTaskLogViaHook(taskId, 'workflow', `Gate "${step.label || stepId}" approved - advancing workflow.`)
+  addTaskLogToStore(taskId, 'workflow', `Gate "${step.label || stepId}" approved - advancing workflow.`)
     .then(() => {
       if ((instance.status as string) !== 'complete') {
-        return moveTaskViaHook(taskId, 'inProgress')
+        return moveTaskInStore(taskId, 'inProgress')
       }
     })
     .catch((err) => { log.warn('Failed to log gate approval', err) })
@@ -1096,8 +1091,8 @@ export function rejectGate(
   clearGateNotified(taskId, stepId, dir)
 
   // Log gate rejection and move task back to inProgress (from review)
-  addTaskLogViaHook(taskId, 'workflow', `Gate "${step.label || stepId}" rejected: ${reason}`)
-    .then(() => moveTaskViaHook(taskId, 'inProgress'))
+  addTaskLogToStore(taskId, 'workflow', `Gate "${step.label || stepId}" rejected: ${reason}`)
+    .then(() => moveTaskInStore(taskId, 'inProgress'))
     .catch((err) => { log.warn('Failed to log gate rejection', err) })
 
   return { success: true, rewoundTo: targetId, decision }
@@ -1121,7 +1116,7 @@ export function cancelInstance(taskId: string, contentDir?: string): void {
     if (state.childTaskId && state.status === 'in_progress') {
       cancelInstance(state.childTaskId, dir)
       // Remove the child from active work.
-      moveTaskViaHook(state.childTaskId, 'done').catch((err) => {
+      moveTaskInStore(state.childTaskId, 'done').catch((err) => {
         log.warn('Failed to move cancelled child workflow task', err)
       })
     }

@@ -73,12 +73,17 @@ mock.module('../../../plugins/tasks/lib/flow-store', () => ({
   createTask: mock(() => Promise.resolve({ id: 'task-abc' })),
   addTaskLog: mock(() => Promise.resolve()),
 }))
+mock.module('../../../src/core/task-store', () => ({
+  readTaskboard: mock(() => mockTaskboard),
+}))
+mock.module('@/core/task-store', () => ({
+  readTaskboard: mock(() => mockTaskboard),
+}))
 
-// Mock the hook registry so getHookRegistry().invoke() routes to the taskboard mock
+// Mock the hook registry for workflow/project side effects. Schedule reads and
+// creates task metadata through task-store/task-service mocks.
 const mockHookRegistry = {
   invoke: mock(async <R>(name: string, _data: unknown): Promise<R | undefined> => {
-    if (name === 'tasks.readTaskboard') return mockTaskboard as R
-    if (name === 'tasks.createTask') return mockCreateTask(_data) as R
     return undefined
   }),
   register: mock(),

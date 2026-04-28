@@ -51,14 +51,17 @@ mock.module('../../../plugins/tasks/lib/flow-store', () => ({
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,
 }))
+mock.module('../../../src/core/task-store', () => ({
+  readTaskboard: () => ({ columns: { todo: [{ id: 'task-exists' }], inProgress: [], review: [], done: [], archived: [], blocked: [], backlog: [] } }),
+}))
+mock.module('@/core/task-store', () => ({
+  readTaskboard: () => ({ columns: { todo: [{ id: 'task-exists' }], inProgress: [], review: [], done: [], archived: [], blocked: [], backlog: [] } }),
+}))
 
-// Hook registry — only readTaskboard is called from the checks
+// Hook registry remains available for plugin activation paths.
 mock.module('../../../src/lib/plugin-registry', () => ({
   getHookRegistry: () => ({
-    invoke: async (name: string) => {
-      if (name === 'tasks.readTaskboard') {
-        return { columns: { todo: [{ id: 'task-exists' }], done: [] } }
-      }
+    invoke: async (_name: string) => {
       return undefined
     },
     has: () => false,

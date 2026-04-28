@@ -19,7 +19,60 @@ mock.module('../../../src/core/content-dir', () => ({
   initBakinHome: mock(),
   isUsingBakinHome: () => false,
 }))
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({}))
+
+type HookTask = { id: string; title: string; column: string; description?: string }
+const hookTasks = new Map<string, HookTask>()
+const createTaskHook = mock(async (data: Record<string, unknown>) => {
+  const id = data.id as string
+  hookTasks.set(id, {
+    id,
+    title: data.title as string,
+    column: data.column as string,
+    description: data.description as string | undefined,
+  })
+  return { id }
+})
+const addTaskLogHook = mock(async (_data?: Record<string, unknown>) => undefined)
+const moveTaskHook = mock(async (data: Record<string, unknown>) => {
+  const task = hookTasks.get(data.identifier as string)
+  if (task) task.column = data.to as string
+})
+
+function readTaskboardForTest() {
+  const columns: Record<string, HookTask[]> = {
+    backlog: [],
+    inProgress: [],
+    todo: [],
+    review: [],
+    done: [],
+    archived: [],
+    blocked: [],
+  }
+  for (const task of hookTasks.values()) {
+    ;(columns[task.column] ??= []).push(task)
+  }
+  return { columns }
+}
+
+const taskStoreMock = {
+  addTaskLog: (identifier: string, author: string, message: string) => addTaskLogHook({ identifier, author, message }),
+  createTask: (
+    title: string,
+    column?: string,
+    _assignee?: string,
+    description?: string,
+    _workflowId?: string,
+    _createdBy?: string,
+    id?: string,
+  ) => createTaskHook({ id, title, column, description }),
+  getTask: (id: string) => hookTasks.get(id) ?? null,
+  moveTask: (identifier: string, to: string, from?: string) => moveTaskHook({ identifier, to, from }),
+  readTaskboard: readTaskboardForTest,
+}
+
+mock.module('../../../src/core/task-store', () => taskStoreMock)
+mock.module('@/core/task-store', () => taskStoreMock)
+mock.module('../../../plugins/tasks/lib/flow-store', () => taskStoreMock)
 
 // Mock audit to prevent writes to audit.jsonl
 mock.module('../../../src/core/audit', () => ({
@@ -57,47 +110,6 @@ import {
 } from '@bakin/workflows/lib/runtime'
 import { invalidateSkillCache } from '@bakin/workflows/lib/skill-loader'
 import { getHookRegistry } from '../../../src/lib/plugin-registry'
-
-type HookTask = { id: string; title: string; column: string; description?: string }
-const hookTasks = new Map<string, HookTask>()
-const createTaskHook = mock(async (data: Record<string, unknown>) => {
-  const id = data.id as string
-  hookTasks.set(id, {
-    id,
-    title: data.title as string,
-    column: data.column as string,
-    description: data.description as string | undefined,
-  })
-  return { id }
-})
-const addTaskLogHook = mock(async () => undefined)
-const moveTaskHook = mock(async (data: Record<string, unknown>) => {
-  const task = hookTasks.get(data.identifier as string)
-  if (task) task.column = data.to as string
-})
-
-function installTaskHooks(): void {
-  const hooks = getHookRegistry()
-  hooks.clearAll()
-  hooks.register('tasks.readTaskboard', () => {
-    const columns: Record<string, HookTask[]> = {
-      backlog: [],
-      inProgress: [],
-      todo: [],
-      review: [],
-      done: [],
-      archived: [],
-      blocked: [],
-    }
-    for (const task of hookTasks.values()) {
-      ;(columns[task.column] ??= []).push(task)
-    }
-    return { columns }
-  })
-  hooks.register('tasks.createTask', createTaskHook)
-  hooks.register('tasks.addTaskLog', addTaskLogHook)
-  hooks.register('tasks.moveTask', moveTaskHook)
-}
 
 describe('runtime', () => {
   const defsDir = join(testDir, 'workflows', 'definitions')
@@ -210,7 +222,6 @@ steps:
     createTaskHook.mockClear()
     addTaskLogHook.mockClear()
     moveTaskHook.mockClear()
-    installTaskHooks()
     mkdirSync(defsDir, { recursive: true })
     mkdirSync(skillsDir, { recursive: true })
     mkdirSync(instancesDir, { recursive: true })

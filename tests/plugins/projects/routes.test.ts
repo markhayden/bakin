@@ -76,6 +76,36 @@ mock.module('../../../plugins/tasks/lib/flow-store', () => ({
   }),
 }))
 
+const mockDeleteTask = mock(async (..._args: unknown[]) => undefined)
+mock.module('../../../src/core/task-store', () => ({
+  readTaskboard: mock(() => ({
+    columns: {
+      todo: [{ id: 'board01', title: 'Board Task 1' }],
+      inProgress: [],
+      review: [],
+      done: [{ id: 'board02', title: 'Done Task' }],
+      archived: [],
+      blocked: [],
+      backlog: [],
+    },
+  })),
+  deleteTask: (...args: unknown[]) => mockDeleteTask(...args),
+}))
+mock.module('@/core/task-store', () => ({
+  readTaskboard: mock(() => ({
+    columns: {
+      todo: [{ id: 'board01', title: 'Board Task 1' }],
+      inProgress: [],
+      review: [],
+      done: [{ id: 'board02', title: 'Done Task' }],
+      archived: [],
+      blocked: [],
+      backlog: [],
+    },
+  })),
+  deleteTask: (...args: unknown[]) => mockDeleteTask(...args),
+}))
+
 /** Consume an SSE Response body into a list of {event, data} records. */
 async function consumeSSE(res: Response): Promise<Array<{ event: string; data: unknown }>> {
   const reader = res.body!.getReader()
@@ -218,6 +248,7 @@ beforeEach(async () => {
   if (existsSync(testDir)) rmSync(testDir, { recursive: true, force: true })
   mkdirSync(projectsDir, { recursive: true })
   mockCreateTask.mockClear()
+  mockDeleteTask.mockClear()
   plugin = await activatePlugin(projectsPlugin, testDir)
 })
 
@@ -414,7 +445,7 @@ describe('Routes', () => {
       expect(body.error).toMatch(/not found/i)
     })
 
-    it('invokes tasks.deleteTask hook when deleteLinkedTasks is true', async () => {
+    it('deletes linked Bakin tasks when deleteLinkedTasks is true', async () => {
       writeProjectFixture('proj-linked', {
         title: 'Linked',
         tasks: [{ id: 't001', title: 'Linked Item', checked: false, taskId: 'board01' }],
@@ -425,10 +456,7 @@ describe('Routes', () => {
         searchParams: { projectId: 'proj-linked' },
         body: { deleteLinkedTasks: true },
       })
-      expect(plugin.ctx.hooks.invoke).toHaveBeenCalledWith(
-        'tasks.deleteTask',
-        expect.objectContaining({ identifier: 'board01' }),
-      )
+      expect(mockDeleteTask).toHaveBeenCalledWith('board01')
     })
   })
 

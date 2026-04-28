@@ -6,10 +6,9 @@ import { createLogger } from './logger'
 import { appendAudit } from './audit'
 import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
-import { getHookRegistry } from '../lib/plugin-registry'
+import { addTaskLog, clearDependency, readTaskboard } from './task-store'
 
 const log = createLogger('continuation')
-const hooks = () => getHookRegistry()
 
 const MAX_RETRIES = 3
 const RETRY_DELAY_MS = 5000
@@ -19,13 +18,13 @@ export async function checkAndContinueDependents(
   completedTitle: string,
   contentDir: string
 ): Promise<void> {
-  const board = await hooks().invoke<{
+  const board = readTaskboard() as unknown as {
     columns: {
       inProgress: Array<{ id: string; title: string; agent?: string; dependsOn?: string }>
       todo: Array<{ id: string; title: string; agent?: string; dependsOn?: string }>
       blocked: Array<{ id: string; title: string; agent?: string; dependsOn?: string }>
     }
-  }>('tasks.readTaskboard', {})
+  }
   const columns = {
     inProgress: board?.columns.inProgress ?? [],
     todo: board?.columns.todo ?? [],
@@ -41,11 +40,11 @@ export async function checkAndContinueDependents(
         const isAlreadyInProgress = columns.inProgress.some(t => t.id === task.id)
         if (isAlreadyInProgress) {
           log.info('Skipping continuation — task already in progress', { id: task.id, title: task.title })
-          await hooks().invoke<void>('tasks.clearDependency', { taskId: task.id })
+          await clearDependency(task.id)
           continue
         }
 
-        await hooks().invoke<void>('tasks.clearDependency', { taskId: task.id })
+        await clearDependency(task.id)
 
         const agentId = task.agent ?? await getRuntimeMainAgentId(runtime)
         const mcServer = `bakin-${agentId}`
@@ -70,11 +69,7 @@ mcporter call ${mcServer}.bakin_exec_tasks_get taskId=${task.id}
             if (attempt === MAX_RETRIES) {
               log.error(`Continuation failed after ${MAX_RETRIES} attempts for "${task.title}"`, err)
               try {
-                await hooks().invoke<void>('tasks.addTaskLog', {
-                  identifier: task.id,
-                  author: 'system',
-                  message: `Continuation re-dispatch failed after ${MAX_RETRIES} attempts: agent "${agentId}" unreachable`,
-                })
+                await addTaskLog(task.id, 'system', `Continuation re-dispatch failed after ${MAX_RETRIES} attempts: agent "${agentId}" unreachable`)
               } catch { /* best effort */ }
             } else {
               log.warn(`Continuation attempt ${attempt} failed for "${task.title}", retrying in ${RETRY_DELAY_MS}ms`, err)

@@ -145,7 +145,7 @@ Source: `plugins/models/index.ts:384`
 
 ## `projects.autoCheckLinkedItem`
 
-Source: `plugins/projects/index.ts:133`
+Source: `plugins/projects/index.ts:134`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -153,79 +153,7 @@ Source: `plugins/projects/index.ts:133`
 
 ## `projects.readProject`
 
-Source: `plugins/projects/index.ts:132`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a hook contract declares stability
-- Contract status: `audited`
-
-## `tasks.addTaskLog`
-
-Source: `plugins/tasks/index.ts:140`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a hook contract declares stability
-- Contract status: `audited`
-
-## `tasks.blockTask`
-
-Source: `plugins/tasks/index.ts:139`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a hook contract declares stability
-- Contract status: `audited`
-
-## `tasks.clearDependency`
-
-Source: `plugins/tasks/index.ts:148`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a hook contract declares stability
-- Contract status: `audited`
-
-## `tasks.createTask`
-
-Source: `plugins/tasks/index.ts:137`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a hook contract declares stability
-- Contract status: `audited`
-
-## `tasks.deleteTask`
-
-Source: `plugins/tasks/index.ts:146`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a hook contract declares stability
-- Contract status: `audited`
-
-## `tasks.moveTask`
-
-Source: `plugins/tasks/index.ts:138`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a hook contract declares stability
-- Contract status: `audited`
-
-## `tasks.readTaskboard`
-
-Source: `plugins/tasks/index.ts:136`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a hook contract declares stability
-- Contract status: `audited`
-
-## `tasks.setDependency`
-
-Source: `plugins/tasks/index.ts:147`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a hook contract declares stability
-- Contract status: `audited`
-
-## `tasks.updateTask`
-
-Source: `plugins/tasks/index.ts:141`
+Source: `plugins/projects/index.ts:133`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -289,7 +217,7 @@ Source: `plugins/team/index.ts:872`
 
 ## `workflows.cancelInstance`
 
-Source: `plugins/workflows/index.ts:439`
+Source: `plugins/workflows/index.ts:440`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -297,7 +225,7 @@ Source: `plugins/workflows/index.ts:439`
 
 ## `workflows.completeStep`
 
-Source: `plugins/workflows/index.ts:431`
+Source: `plugins/workflows/index.ts:432`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -305,7 +233,7 @@ Source: `plugins/workflows/index.ts:431`
 
 ## `workflows.createInstance`
 
-Source: `plugins/workflows/index.ts:428`
+Source: `plugins/workflows/index.ts:429`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -313,7 +241,7 @@ Source: `plugins/workflows/index.ts:428`
 
 ## `workflows.getActiveAgents`
 
-Source: `plugins/workflows/index.ts:435`
+Source: `plugins/workflows/index.ts:436`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -321,7 +249,7 @@ Source: `plugins/workflows/index.ts:435`
 
 ## `workflows.getCurrentStep`
 
-Source: `plugins/workflows/index.ts:430`
+Source: `plugins/workflows/index.ts:431`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -329,7 +257,7 @@ Source: `plugins/workflows/index.ts:430`
 
 ## `workflows.getNotificationChannel`
 
-Source: `plugins/workflows/index.ts:445`
+Source: `plugins/workflows/index.ts:446`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -337,7 +265,7 @@ Source: `plugins/workflows/index.ts:445`
 
 ## `workflows.isGateNotified`
 
-Source: `plugins/workflows/index.ts:436`
+Source: `plugins/workflows/index.ts:437`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -345,7 +273,7 @@ Source: `plugins/workflows/index.ts:436`
 
 ## `workflows.listDefinitions`
 
-Source: `plugins/workflows/index.ts:433`
+Source: `plugins/workflows/index.ts:434`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -353,7 +281,7 @@ Source: `plugins/workflows/index.ts:433`
 
 ## `workflows.listInstances`
 
-Source: `plugins/workflows/index.ts:429`
+Source: `plugins/workflows/index.ts:430`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -361,7 +289,7 @@ Source: `plugins/workflows/index.ts:429`
 
 ## `workflows.listNotificationChannels`
 
-Source: `plugins/workflows/index.ts:444`
+Source: `plugins/workflows/index.ts:445`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -369,7 +297,7 @@ Source: `plugins/workflows/index.ts:444`
 
 ## `workflows.loadDefinition`
 
-Source: `plugins/workflows/index.ts:434`
+Source: `plugins/workflows/index.ts:435`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -377,7 +305,7 @@ Source: `plugins/workflows/index.ts:434`
 
 ## `workflows.loadInstance`
 
-Source: `plugins/workflows/index.ts:426`
+Source: `plugins/workflows/index.ts:427`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -385,7 +313,7 @@ Source: `plugins/workflows/index.ts:426`
 
 ## `workflows.markGateNotified`
 
-Source: `plugins/workflows/index.ts:437`
+Source: `plugins/workflows/index.ts:438`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -393,7 +321,7 @@ Source: `plugins/workflows/index.ts:437`
 
 ## `workflows.matchWorkflow`
 
-Source: `plugins/workflows/index.ts:432`
+Source: `plugins/workflows/index.ts:433`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -401,7 +329,7 @@ Source: `plugins/workflows/index.ts:432`
 
 ## `workflows.saveInstance`
 
-Source: `plugins/workflows/index.ts:427`
+Source: `plugins/workflows/index.ts:428`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -409,7 +337,7 @@ Source: `plugins/workflows/index.ts:427`
 
 ## `workflows.validateStepOutput`
 
-Source: `plugins/workflows/index.ts:438`
+Source: `plugins/workflows/index.ts:439`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability

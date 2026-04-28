@@ -9,7 +9,7 @@ import { createTaskWithEffects } from '../../../src/core/task-service'
 import { appendAudit } from '../../../src/core/audit'
 import { getContentDir } from '../../../src/core/content-dir'
 import { createLogger } from '../../../src/core/logger'
-import { getHookRegistry } from '../../../src/lib/plugin-registry'
+import { readTaskboard } from '../../../src/core/task-store'
 import type { Project, ProjectTask, ProjectStatus } from '../types'
 
 const log = createLogger('projects')
@@ -423,8 +423,8 @@ export interface ResolvedAsset {
 }
 
 export async function resolveLinkedTaskStatuses(project: Project): Promise<Project & { resolvedTasks: Record<string, { column: string; title: string } | null>; resolvedAssets: ResolvedAsset[] }> {
-  const board = await getHookRegistry().invoke<{ columns: Record<string, Array<{ id: string; title: string }>> }>('tasks.readTaskboard', {})
-  const columns = board?.columns ?? {}
+  const board = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string; title: string }>> }
+  const columns = board.columns
   const resolved: Record<string, { column: string; title: string } | null> = {}
 
   for (const item of project.tasks) {

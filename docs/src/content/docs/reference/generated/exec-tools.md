@@ -139,7 +139,7 @@ Source: `plugins/assets/index.ts:833`
 
 Get a human-readable overview of all gate statuses in a workflow. Shows which gates are approved, waiting, or pending.
 
-Source: `plugins/workflows/index.ts:1303`
+Source: `plugins/workflows/index.ts:1292`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -149,7 +149,7 @@ Source: `plugins/workflows/index.ts:1303`
 
 Get the current workflow step as human-readable formatted text. Includes instructions, prior outputs, schema, and rejection context in a clear structure.
 
-Source: `plugins/workflows/index.ts:1227`
+Source: `plugins/workflows/index.ts:1216`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -349,7 +349,7 @@ Source: `plugins/models/index.ts:733`
 
 Add a new checklist item to a project.
 
-Source: `plugins/projects/index.ts:566`
+Source: `plugins/projects/index.ts:567`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -359,7 +359,7 @@ Source: `plugins/projects/index.ts:566`
 
 Ask an agent a question about a project. Sends the project context (spec, checklist, assets) along with the message to the agent for brainstorming.
 
-Source: `plugins/projects/index.ts:756`
+Source: `plugins/projects/index.ts:757`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -369,7 +369,7 @@ Source: `plugins/projects/index.ts:756`
 
 Attach an existing asset to a project by filename. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in project_get — use asset tools to read full content when needed.
 
-Source: `plugins/projects/index.ts:668`
+Source: `plugins/projects/index.ts:669`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -379,7 +379,7 @@ Source: `plugins/projects/index.ts:668`
 
 Create a new project with title, markdown body, and optional initial checklist items. Returns project ID and generated task item IDs.
 
-Source: `plugins/projects/index.ts:499`
+Source: `plugins/projects/index.ts:500`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -389,7 +389,7 @@ Source: `plugins/projects/index.ts:499`
 
 Delete a project by ID.
 
-Source: `plugins/projects/index.ts:548`
+Source: `plugins/projects/index.ts:549`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -399,7 +399,7 @@ Source: `plugins/projects/index.ts:548`
 
 Remove an asset reference from a project by filename. Does not delete the asset itself.
 
-Source: `plugins/projects/index.ts:688`
+Source: `plugins/projects/index.ts:689`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -409,7 +409,7 @@ Source: `plugins/projects/index.ts:688`
 
 Get a project by ID including full spec, checklist, progress, and linked board task statuses.
 
-Source: `plugins/projects/index.ts:485`
+Source: `plugins/projects/index.ts:486`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -419,7 +419,7 @@ Source: `plugins/projects/index.ts:485`
 
 Link an existing board task to a project checklist item. Use this when a task was created separately and should be associated with a project.
 
-Source: `plugins/projects/index.ts:620`
+Source: `plugins/projects/index.ts:621`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -429,7 +429,7 @@ Source: `plugins/projects/index.ts:620`
 
 List all projects with optional status filter. Returns summaries with id, title, status, progress, taskCount.
 
-Source: `plugins/projects/index.ts:469`
+Source: `plugins/projects/index.ts:470`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -439,7 +439,7 @@ Source: `plugins/projects/index.ts:469`
 
 Mark a checklist item as checked (done) or unchecked. Returns updated progress percentage.
 
-Source: `plugins/projects/index.ts:581`
+Source: `plugins/projects/index.ts:582`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -449,7 +449,7 @@ Source: `plugins/projects/index.ts:581`
 
 Create a NEW board task from a project checklist item and automatically link it. The task appears on the task board with the item title and projectId set.
 
-Source: `plugins/projects/index.ts:644`
+Source: `plugins/projects/index.ts:645`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -459,7 +459,7 @@ Source: `plugins/projects/index.ts:644`
 
 Remove a checklist item from a project.
 
-Source: `plugins/projects/index.ts:601`
+Source: `plugins/projects/index.ts:602`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -469,7 +469,7 @@ Source: `plugins/projects/index.ts:601`
 
 Toggle a checklist item checked/unchecked by item ID. Returns updated progress percentage.
 
-Source: `plugins/projects/index.ts:707`
+Source: `plugins/projects/index.ts:708`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -479,7 +479,7 @@ Source: `plugins/projects/index.ts:707`
 
 Update a project\
 
-Source: `plugins/projects/index.ts:521`
+Source: `plugins/projects/index.ts:522`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -489,7 +489,7 @@ Source: `plugins/projects/index.ts:521`
 
 Update a checklist item\
 
-Source: `plugins/projects/index.ts:728`
+Source: `plugins/projects/index.ts:729`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -499,7 +499,7 @@ Source: `plugins/projects/index.ts:728`
 
 Today
 
-Source: `plugins/schedule/index.ts:854`
+Source: `plugins/schedule/index.ts:850`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -509,7 +509,7 @@ Source: `plugins/schedule/index.ts:854`
 
 Create a new scheduled job that creates tasks on the board
 
-Source: `plugins/schedule/index.ts:620`
+Source: `plugins/schedule/index.ts:616`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -519,7 +519,7 @@ Source: `plugins/schedule/index.ts:620`
 
 Delete a scheduled job
 
-Source: `plugins/schedule/index.ts:751`
+Source: `plugins/schedule/index.ts:747`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -529,7 +529,7 @@ Source: `plugins/schedule/index.ts:751`
 
 Get details for a single scheduled job
 
-Source: `plugins/schedule/index.ts:767`
+Source: `plugins/schedule/index.ts:763`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -539,7 +539,7 @@ Source: `plugins/schedule/index.ts:767`
 
 List all scheduled jobs (merged runtime cron + Bakin view)
 
-Source: `plugins/schedule/index.ts:593`
+Source: `plugins/schedule/index.ts:589`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -549,7 +549,7 @@ Source: `plugins/schedule/index.ts:593`
 
 Parse a natural language or raw cron schedule expression
 
-Source: `plugins/schedule/index.ts:839`
+Source: `plugins/schedule/index.ts:835`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -559,7 +559,7 @@ Source: `plugins/schedule/index.ts:839`
 
 Pause, resume, or skip runs for a scheduled job
 
-Source: `plugins/schedule/index.ts:710`
+Source: `plugins/schedule/index.ts:706`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -569,7 +569,7 @@ Source: `plugins/schedule/index.ts:710`
 
 Trigger an immediate run of a scheduled job
 
-Source: `plugins/schedule/index.ts:805`
+Source: `plugins/schedule/index.ts:801`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -579,7 +579,7 @@ Source: `plugins/schedule/index.ts:805`
 
 Get run history for a scheduled job
 
-Source: `plugins/schedule/index.ts:823`
+Source: `plugins/schedule/index.ts:819`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -589,7 +589,7 @@ Source: `plugins/schedule/index.ts:823`
 
 Update an existing scheduled job
 
-Source: `plugins/schedule/index.ts:672`
+Source: `plugins/schedule/index.ts:668`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -599,7 +599,7 @@ Source: `plugins/schedule/index.ts:672`
 
 Submit workflow step output with local pre-validation. Validates against the step schema BEFORE hitting the server, giving you detailed field-level errors without a round trip.
 
-Source: `plugins/workflows/index.ts:1247`
+Source: `plugins/workflows/index.ts:1236`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -609,7 +609,7 @@ Source: `plugins/workflows/index.ts:1247`
 
 Assign a task to an agent.
 
-Source: `plugins/tasks/index.ts:710`
+Source: `plugins/tasks/index.ts:688`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -619,7 +619,7 @@ Source: `plugins/tasks/index.ts:710`
 
 Mark a task as blocked with a reason. Use when you cannot proceed.
 
-Source: `plugins/tasks/index.ts:581`
+Source: `plugins/tasks/index.ts:559`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -629,7 +629,7 @@ Source: `plugins/tasks/index.ts:581`
 
 Report that your task is complete. Moves the task to Done and notifies the orchestrator.
 
-Source: `plugins/tasks/index.ts:601`
+Source: `plugins/tasks/index.ts:579`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -639,7 +639,7 @@ Source: `plugins/tasks/index.ts:601`
 
 Create a new task on the task board. Workflows are auto-matched by title when workflowId is not provided. Provide workflowId to force a specific workflow, or skipWorkflowReason to explicitly skip.
 
-Source: `plugins/tasks/index.ts:510`
+Source: `plugins/tasks/index.ts:488`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -649,7 +649,7 @@ Source: `plugins/tasks/index.ts:510`
 
 Delete a task from the board.
 
-Source: `plugins/tasks/index.ts:689`
+Source: `plugins/tasks/index.ts:667`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -659,7 +659,7 @@ Source: `plugins/tasks/index.ts:689`
 
 Get details about a task — title, description, current column, logs, dependencies, project context.
 
-Source: `plugins/tasks/index.ts:481`
+Source: `plugins/tasks/index.ts:459`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -669,7 +669,7 @@ Source: `plugins/tasks/index.ts:481`
 
 List all tasks on the board. Optionally filter by column or agent.
 
-Source: `plugins/tasks/index.ts:451`
+Source: `plugins/tasks/index.ts:429`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -679,7 +679,7 @@ Source: `plugins/tasks/index.ts:451`
 
 Log a human-readable progress update to the live activity feed. Call this at every significant step.
 
-Source: `plugins/tasks/index.ts:621`
+Source: `plugins/tasks/index.ts:599`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -689,7 +689,7 @@ Source: `plugins/tasks/index.ts:621`
 
 Move a task to a different column on the task board.
 
-Source: `plugins/tasks/index.ts:556`
+Source: `plugins/tasks/index.ts:534`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -699,7 +699,7 @@ Source: `plugins/tasks/index.ts:556`
 
 Register a dependency between tasks. Your task will be auto-re-dispatched when the dependency completes. After registering, exit — do not wait.
 
-Source: `plugins/tasks/index.ts:640`
+Source: `plugins/tasks/index.ts:618`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -709,7 +709,7 @@ Source: `plugins/tasks/index.ts:640`
 
 Update a task on the board — change title, description, or assigned agent.
 
-Source: `plugins/tasks/index.ts:659`
+Source: `plugins/tasks/index.ts:637`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -839,7 +839,7 @@ Source: `plugins/team/index.ts:1854`
 
 Complete a workflow step with output. Validates output against the step schema, advances the workflow to the next step. Returns success status and whether the workflow is complete.
 
-Source: `plugins/workflows/index.ts:1190`
+Source: `plugins/workflows/index.ts:1179`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -849,7 +849,7 @@ Source: `plugins/workflows/index.ts:1190`
 
 Get a workflow definition by filename. Returns the full definition with steps, inputs, and resolved sub-workflows.
 
-Source: `plugins/workflows/index.ts:1089`
+Source: `plugins/workflows/index.ts:1084`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -859,7 +859,7 @@ Source: `plugins/workflows/index.ts:1089`
 
 Get the full state of a workflow instance for a task, including step states and history.
 
-Source: `plugins/workflows/index.ts:1161`
+Source: `plugins/workflows/index.ts:1150`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -869,7 +869,7 @@ Source: `plugins/workflows/index.ts:1161`
 
 Get the current workflow step for a task. Returns only the current step (information gating — future steps are hidden). Critical for agents to know what to do next.
 
-Source: `plugins/workflows/index.ts:1175`
+Source: `plugins/workflows/index.ts:1164`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -879,7 +879,7 @@ Source: `plugins/workflows/index.ts:1175`
 
 List all workflow definitions (templates). Returns name, filename, description, and step count for each.
 
-Source: `plugins/workflows/index.ts:1070`
+Source: `plugins/workflows/index.ts:1065`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -889,7 +889,7 @@ Source: `plugins/workflows/index.ts:1070`
 
 List workflow instances. Optionally filter by status (in_progress, pending_approval, complete, failed, cancelled).
 
-Source: `plugins/workflows/index.ts:1148`
+Source: `plugins/workflows/index.ts:1137`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -899,7 +899,7 @@ Source: `plugins/workflows/index.ts:1148`
 
 Start a workflow instance for a task. The task must exist on the board. Returns the created instance.
 
-Source: `plugins/workflows/index.ts:1107`
+Source: `plugins/workflows/index.ts:1102`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability

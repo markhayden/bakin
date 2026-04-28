@@ -13,6 +13,13 @@ import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { isStale } from '../lib/format'
 import { getHookRegistry } from '../lib/plugin-registry'
 import { readProject } from '../../plugins/projects/lib/parser'
+import {
+  addTaskLog as appendTaskLog,
+  blockTask as blockStoredTask,
+  moveTask as moveStoredTask,
+  readTaskboard,
+  updateTask as updateStoredTask,
+} from './task-store'
 
 const log = createLogger('dispatch')
 const hooks = () => getHookRegistry()
@@ -79,23 +86,20 @@ function emptyDispatchColumns(): DispatchColumns {
 }
 
 async function readDispatchColumns(): Promise<DispatchColumns> {
-  const board = await hooks().invoke<{ columns: Partial<DispatchColumns> }>('tasks.readTaskboard', {})
+  const board = readTaskboard() as unknown as { columns: Partial<DispatchColumns> }
   return { ...emptyDispatchColumns(), ...(board?.columns ?? {}) }
 }
 
 async function addTaskLog(taskId: string, author: string, message: string): Promise<void> {
-  await hooks().invoke<void>('tasks.addTaskLog', { identifier: taskId, author, message })
+  await appendTaskLog(taskId, author, message)
 }
 
 async function moveTaskToInProgress(taskId: string, agent: string): Promise<void> {
-  await hooks().invoke<void>('tasks.updateTask', {
-    identifier: taskId,
-    updates: { column: 'inProgress', agent },
-  })
+  await updateStoredTask(taskId, { column: 'inProgress', agent })
 }
 
 async function moveTask(taskId: string, to: string, from?: string): Promise<void> {
-  await hooks().invoke<void>('tasks.moveTask', { identifier: taskId, to, from })
+  await moveStoredTask(taskId, to, from)
 }
 
 const TRANSIENT_CODES = new Set([
@@ -253,7 +257,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         if (failure.count >= settings.dispatch.maxRetries) {
           // Escalate to blocked
           try {
-            await hooks().invoke<void>('tasks.blockTask', { identifier: task.id, reason: `Dispatch failed ${failure.count} times — agent may be unavailable` })
+            await blockStoredTask(task.id, `Dispatch failed ${failure.count} times - agent may be unavailable`)
             await addTaskLog(task.id, 'system', `Dispatch exhausted: ${failure.count} failed attempts. Task moved to blocked.`)
             appendAudit(contentDir, 'task.dispatch_exhausted', 'system', { id: task.id, title: task.title, count: failure.count })
             log.warn('Task blocked after max dispatch retries', { id: task.id, count: failure.count })
@@ -658,7 +662,7 @@ async function dispatchWorkflowTask(
   // non-workflow tasks. Prevents the task from sitting in "todo" while the
   // agent is already working on it.
   if (!dispatchedSet.has(task.id)) {
-    const { columns: fresh } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; agent?: string; title?: string; workflowId?: string }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
+    const { columns: fresh } = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string; agent?: string; title?: string; workflowId?: string }>> }
     const stillInTodo = fresh.todo.some(t => t.id === task.id)
     if (stillInTodo) {
       const ownerAgent = task.agent || activeAgents[0]?.agent || mainAgentId
@@ -915,7 +919,7 @@ function buildWorkflowDispatchMessage(
 export async function reconcileOnStartup(contentDir: string): Promise<void> {
   const settings = getSettings()
   try {
-    const { columns } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string; agent?: string; workflowId?: string; description?: string; projectId?: string; log?: Array<{ timestamp: string }> }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
+    const { columns } = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string; title: string; agent?: string; workflowId?: string; description?: string; projectId?: string; log?: Array<{ timestamp: string }> }>> }
     let recovered = 0
 
     for (const task of [...columns.inProgress]) {
@@ -927,7 +931,7 @@ export async function reconcileOnStartup(contentDir: string): Promise<void> {
 
       if (agentStale && !hasRecentLog) {
         try {
-          await hooks().invoke<void>('tasks.addTaskLog', { identifier: task.id, author: 'system', message: 'Recovered on server restart: agent heartbeat stale and no recent task logs.' })
+          await addTaskLog(task.id, 'system', 'Recovered on server restart: agent heartbeat stale and no recent task logs.')
           await moveTask(task.id, 'todo', 'inProgress')
           appendAudit(contentDir, 'task.startup_recovered', 'system', { id: task.id, title: task.title, agent: task.agent })
           recovered++

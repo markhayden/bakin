@@ -8,10 +8,9 @@
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '@/core/content-dir'
-import { getHookRegistry } from '@/lib/plugin-registry'
+import { readTaskboard } from '@/core/task-store'
 import { mapAuditMessage } from '@/lib/map-audit-message'
 import type { ActivityEvent } from '@/types'
-import type { TaskBoard } from '@bakin/sdk/types'
 
 const AUDIT_PATH = join(getContentDir(), 'audit.jsonl')
 
@@ -50,8 +49,7 @@ export async function get(_req: Request): Promise<Response> {
 
   // 2. Pull task log entries from the task board
   try {
-    const board = await getHookRegistry().invoke<TaskBoard>('tasks.readTaskboard', {})
-    if (!board) throw new Error('tasks.readTaskboard hook returned nothing')
+    const board = readTaskboard()
     const columns = board.columns
     for (const col of Object.values(columns)) {
       for (const task of col) {

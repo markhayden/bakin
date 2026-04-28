@@ -112,8 +112,8 @@ const plugin: BakinPlugin = {
       handler: async (_params, _agent) => ({ ok: true }),
     })
 
-    // Read from another plugin via hooks — never import directly
-    const board = await ctx.hooks.invoke('tasks.readTaskboard', {})
+    // Read from another plugin via hooks — never import plugin files directly
+    const workflow = await ctx.hooks.invoke('workflows.loadDefinition', { name: 'publish-flow' })
 
     // Register a hook so other plugins can call into us
     ctx.hooks.register('my-plugin.someOperation', async (data) => {

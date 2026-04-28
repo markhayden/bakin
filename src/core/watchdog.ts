@@ -13,6 +13,12 @@ import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { getHookRegistry } from '../lib/plugin-registry'
 import { getStatsByMs } from './usage'
+import {
+  addTaskLog,
+  blockTask,
+  moveTask,
+  readTaskboard,
+} from './task-store'
 
 const log = createLogger('watchdog')
 const hooks = () => getHookRegistry()
@@ -108,8 +114,7 @@ export function start(contentDir: string): void {
     const settings = getSettings()
     try {
       type WdTask = { id: string; title: string; agent?: string; workflowId?: string; updatedAt?: number; log?: Array<{ message: string; timestamp: string }> }
-      const board = await hooks().invoke<{ columns: Record<string, WdTask[]> }>('tasks.readTaskboard', {})
-      if (!board) return
+      const board = readTaskboard() as unknown as { columns: Record<string, WdTask[]> }
       const { columns } = board
       const inProgressTasks = columns.inProgress || []
       const now = Date.now()
@@ -172,8 +177,8 @@ export function start(contentDir: string): void {
           if (recoveryCount >= settings.watchdog.maxAutoRecoveries) {
             // Escalate to blocked
             try {
-              await hooks().invoke<void>('tasks.blockTask', { identifier: task.id, reason: `Auto-recovery limit reached (${recoveryCount} attempts). Agent "${task.agent || 'unassigned'}" appears offline.` })
-              await hooks().invoke<void>('tasks.addTaskLog', { identifier: task.id, author: 'watchdog', message: `Escalated to blocked: ${recoveryCount} auto-recoveries exhausted. Manual intervention required.` })
+              await blockTask(task.id, `Auto-recovery limit reached (${recoveryCount} attempts). Agent "${task.agent || 'unassigned'}" appears offline.`)
+              await addTaskLog(task.id, 'watchdog', `Escalated to blocked: ${recoveryCount} auto-recoveries exhausted. Manual intervention required.`)
               appendAudit(contentDir, 'task.auto_recovery_exhausted', 'watchdog', { id: task.id, title: task.title, agent: task.agent, recoveryCount })
               log.warn('Task escalated to blocked after max recoveries', { id: task.id, title: task.title, recoveryCount })
             } catch (err) {
@@ -182,8 +187,8 @@ export function start(contentDir: string): void {
           } else {
             // Move back to todo for re-dispatch
             try {
-              await hooks().invoke<void>('tasks.addTaskLog', { identifier: task.id, author: 'watchdog', message: `Auto-recovered: no agent heartbeat or task log for ${minutesStuck}+ minutes. Moved back to Todo for re-dispatch.` })
-              await hooks().invoke<void>('tasks.moveTask', { identifier: task.id, to: 'todo' })
+              await addTaskLog(task.id, 'watchdog', `Auto-recovered: no agent heartbeat or task log for ${minutesStuck}+ minutes. Moved back to Todo for re-dispatch.`)
+              await moveTask(task.id, 'todo')
               appendAudit(contentDir, 'task.auto_recovered', 'watchdog', { id: task.id, title: task.title, agent: task.agent, minutesStuck })
               log.info('Task auto-recovered to todo', { id: task.id, title: task.title, minutesStuck })
             } catch (err) {
@@ -197,7 +202,7 @@ export function start(contentDir: string): void {
           broadcast({ type: 'alert', title: task.title, agent: task.agent, message: alertMsg })
 
           try {
-            await hooks().invoke<void>('tasks.addTaskLog', { identifier: task.id, author: 'watchdog', message: `ALERT: No progress logged in ${minutesStuck}+ minutes` })
+            await addTaskLog(task.id, 'watchdog', `ALERT: No progress logged in ${minutesStuck}+ minutes`)
           } catch (err) {
             log.warn('Failed to log watchdog alert on task', err)
           }
@@ -338,8 +343,8 @@ export function start(contentDir: string): void {
           if (timeoutLogs >= wfSettings.maxRedispatches) {
             // Escalate — block the task
             try {
-              await hooks().invoke<void>('tasks.blockTask', { identifier: taskId, reason: `Workflow step "${instance.currentStepId}" timed out after ${wfSettings.maxRedispatches} re-dispatches. Agent never submitted output via step/complete API.` })
-              await hooks().invoke<void>('tasks.addTaskLog', { identifier: taskId, author: 'watchdog', message: `Workflow step timeout escalated to blocked after ${wfSettings.maxRedispatches} re-dispatches` })
+              await blockTask(taskId, `Workflow step "${instance.currentStepId}" timed out after ${wfSettings.maxRedispatches} re-dispatches. Agent never submitted output via step/complete API.`)
+              await addTaskLog(taskId, 'watchdog', `Workflow step timeout escalated to blocked after ${wfSettings.maxRedispatches} re-dispatches`)
               appendAudit(contentDir, 'workflow.step_timeout_blocked', 'watchdog', { taskId, stepId: instance.currentStepId, timeoutLogs })
               log.warn('Workflow step blocked after max timeouts', { taskId, stepId: instance.currentStepId })
             } catch (err) {
@@ -348,7 +353,7 @@ export function start(contentDir: string): void {
           } else {
             // Alert — the step will be re-dispatched on next dispatch cycle
             try {
-              await hooks().invoke<void>('tasks.addTaskLog', { identifier: taskId, author: 'watchdog', message: `TIMEOUT: Workflow step "${instance.currentStepId}" has been in_progress for ${minutesStuck}+ minutes with no output submitted via step/complete API.` })
+              await addTaskLog(taskId, 'watchdog', `TIMEOUT: Workflow step "${instance.currentStepId}" has been in_progress for ${minutesStuck}+ minutes with no output submitted via step/complete API.`)
               appendAudit(contentDir, 'workflow.step_timeout', 'watchdog', { taskId, stepId: instance.currentStepId, minutesStuck })
               log.warn('Workflow step timeout', { taskId, stepId: instance.currentStepId, minutesStuck })
             } catch (err) {
@@ -375,13 +380,11 @@ export function start(contentDir: string): void {
             const label = gateStep?.label || currentStepId
 
             // Find task title from taskboard
-            const gateBoard = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string }>> }>('tasks.readTaskboard', {})
+            const gateBoard = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string; title: string }>> }
             let taskTitle = taskId
-            if (gateBoard) {
-              for (const col of Object.values(gateBoard.columns)) {
-                const task = col.find(t => t.id === taskId)
-                if (task) { taskTitle = task.title; break }
-              }
+            for (const col of Object.values(gateBoard.columns)) {
+              const task = col.find(t => t.id === taskId)
+              if (task) { taskTitle = task.title; break }
             }
 
             const shortId = taskId.slice(0, 6).toUpperCase()

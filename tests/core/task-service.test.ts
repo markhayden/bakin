@@ -67,16 +67,25 @@ const mockReadTaskboard = mock((..._args: unknown[]) => ({
 }))
 const mockSetDependency = mock((..._args: unknown[]) => Promise.resolve())
 const mockUpdateTask = mock((..._args: unknown[]) => Promise.resolve())
+const mockGetTaskWithColumn = mock((id: string) => {
+  if (id !== 'task-1') return null
+  return { task: { id: 'task-1', title: 'Test Task' }, column: 'inProgress' }
+})
 
-mock.module('@bakin/tasks/lib/flow-store', () => ({
+const taskStoreMock = {
   addTaskLog: mockAddTaskLog,
   blockTask: mockBlockTask,
   createTask: mockCreateTask,
+  getTaskWithColumn: mockGetTaskWithColumn,
   moveTask: mockMoveTask,
   readTaskboard: mockReadTaskboard,
   setDependency: mockSetDependency,
   updateTask: mockUpdateTask,
-}))
+}
+
+mock.module('@/core/task-store', () => taskStoreMock)
+mock.module('../../src/core/task-store', () => taskStoreMock)
+mock.module('@bakin/tasks/lib/flow-store', () => taskStoreMock)
 
 const mockLoadInstance = mock((..._args: unknown[]) => null)
 const mockCreateInstance = mock((..._args: unknown[]) => undefined)
@@ -96,15 +105,9 @@ const mockListDefinitions = mock((): Array<{ name: string }> => [
   { name: 'video-storyboard' },
 ])
 
-// Mock the hook registry so that hooks().invoke() routes to the right mock functions
+// Mock the hook registry for non-task side effects. Task metadata uses the
+// shared task-store mock above, not plugin hooks.
 const hookHandlers: Record<string, (...args: unknown[]) => unknown> = {
-  'tasks.readTaskboard': () => mockReadTaskboard(),
-  'tasks.addTaskLog': (data: any) => mockAddTaskLog(data.identifier, data.author, data.message),
-  'tasks.blockTask': (data: any) => mockBlockTask(data.identifier, data.reason, data.agent),
-  'tasks.createTask': (data: any) => mockCreateTask(data.title, data.column, data.assignee, data.description, data.workflowId, data.createdBy, data.id, data.parentId, data.projectId),
-  'tasks.moveTask': (data: any) => mockMoveTask(data.identifier, data.to, data.from),
-  'tasks.setDependency': (data: any) => mockSetDependency(data.taskId, data.dependsOnId),
-  'tasks.updateTask': (data: any) => mockUpdateTask(data.identifier, data.updates),
   'workflows.loadInstance': (data: any) => mockLoadInstance(data),
   'workflows.createInstance': (data: any) => mockCreateInstance(data),
   'workflows.matchWorkflow': () => null,
@@ -170,7 +173,7 @@ describe('task-service', () => {
       const { appendAudit } = require('@/core/audit') as typeof import('@/core/audit')
       await service.moveTaskWithEffects('task-1', 'done', 'pixel')
 
-      expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'done', undefined)
+      expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'done', undefined, undefined)
       expect(appendAudit).toHaveBeenCalledWith(
         expect.any(String),
         'task.moved',
@@ -221,7 +224,7 @@ describe('task-service', () => {
 
     it('should allow done-guard skip via option', async () => {
       await service.moveTaskWithEffects('task-1', 'done', 'pixel', { skipDoneGuard: true })
-      expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'done', undefined)
+      expect(mockMoveTask).toHaveBeenCalledWith('task-1', 'done', undefined, undefined)
     })
   })
 
