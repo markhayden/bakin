@@ -1,5 +1,5 @@
 /**
- * OpenClaw session JSONL → structured message stream.
+ * Runtime session JSONL -> structured message stream.
  *
  * Sibling to `src/core/agent-usage.ts`. Where agent-usage sums tokens and
  * cost across the latest session, session-reader returns the *messages*
@@ -7,18 +7,19 @@
  * sent and what it has produced.
  *
  * Discovery mirrors agent-usage: most recent session by the first JSONL
- * line's timestamp (file mtime is unreliable — sessions can be touched out
- * of order).
+ * line's timestamp. Runtime entry update time is only a fallback because
+ * sessions can be touched out of order.
  */
-import { readdirSync, readFileSync, statSync } from 'fs'
-import { join } from 'path'
+import type { AgentRuntimeAdapter, RuntimeMemoryEntry } from '@bakin/core/adapters/runtime'
 import { createLogger } from '../../../src/core/logger'
-import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import type { SessionMessage, SessionTranscript } from '../types'
 
 const log = createLogger('team:session-reader')
 
 const DEFAULT_MAX_MESSAGES = 200
+const SESSION_JSONL_SOURCE_KIND = 'session_jsonl'
+
+type RuntimeSessionMemory = Pick<AgentRuntimeAdapter['memory'], 'listTiers' | 'listEntries' | 'getEntry'>
 
 interface JsonlEntry {
   type?: string
@@ -29,36 +30,6 @@ interface JsonlEntry {
     role?: string
     model?: string
     content?: string | unknown
-  }
-}
-
-/**
- * Pick the most recent session file inside `<agentDir>/sessions/`.
- * Returns null when the directory is missing or empty.
- */
-function getLatestSession(agentDir: string): string | null {
-  const sessionsDir = join(agentDir, 'sessions')
-  try {
-    const candidates = readdirSync(sessionsDir).filter(
-      (f) => f.endsWith('.jsonl') && !f.includes('.deleted'),
-    )
-
-    let latest: { path: string; ts: number } | null = null
-    for (const f of candidates) {
-      const filePath = join(sessionsDir, f)
-      try {
-        const firstLine = readFileSync(filePath, 'utf-8').split('\n')[0]
-        const entry = JSON.parse(firstLine) as { timestamp?: string }
-        const ts = entry.timestamp ? new Date(entry.timestamp).getTime() : 0
-        if (!latest || ts > latest.ts) latest = { path: filePath, ts }
-      } catch {
-        const mtime = statSync(filePath).mtimeMs
-        if (!latest || mtime > latest.ts) latest = { path: filePath, ts: mtime }
-      }
-    }
-    return latest?.path ?? null
-  } catch {
-    return null
   }
 }
 
@@ -84,18 +55,10 @@ function stringifyContent(content: unknown): string {
  *   - malformed lines are silently ignored (don't blow up the whole transcript)
  *   - messages with no role and no content are skipped
  */
-function parseSessionTranscript(
-  filePath: string,
+export function parseSessionTranscriptContent(
+  content: string,
   maxMessages: number,
 ): SessionTranscript | null {
-  let content: string
-  try {
-    content = readFileSync(filePath, 'utf-8')
-  } catch (err) {
-    log.debug('Failed to read session file', { filePath, error: err instanceof Error ? err.message : String(err) })
-    return null
-  }
-
   const lines = content.split('\n').filter((l) => l.trim())
 
   let sessionId = ''
@@ -147,15 +110,74 @@ function parseSessionTranscript(
 
 /**
  * Read the latest session transcript for an agent. Returns null if the
- * agent has no sessions on disk yet.
+ * agent has no sessions in the runtime memory tier yet.
  */
-export function readLatestSessionTranscript(
+export async function readLatestSessionTranscript(
+  runtime: RuntimeSessionMemory,
   agentId: string,
   opts?: { maxMessages?: number },
-): SessionTranscript | null {
+): Promise<SessionTranscript | null> {
   const max = opts?.maxMessages ?? DEFAULT_MAX_MESSAGES
-  const agentDir = getOpenClawPath('agents', agentId)
-  const sessionFile = getLatestSession(agentDir)
-  if (!sessionFile) return null
-  return parseSessionTranscript(sessionFile, max)
+  const latest = await getLatestSessionEntry(runtime, agentId)
+  if (!latest) return null
+  return parseSessionTranscriptContent(latest.content, max)
+}
+
+async function getLatestSessionEntry(
+  runtime: RuntimeSessionMemory,
+  agentId: string,
+): Promise<RuntimeMemoryEntry | null> {
+  const tierId = await getSessionJsonlTierId(runtime)
+  if (!tierId) return null
+
+  let entries: RuntimeMemoryEntry[]
+  try {
+    entries = await runtime.listEntries(tierId, { agentId })
+  } catch (err) {
+    log.debug('Failed to list runtime session entries', { agentId, error: err instanceof Error ? err.message : String(err) })
+    return null
+  }
+
+  let latest: { entry: RuntimeMemoryEntry; ts: number } | null = null
+  for (const entry of entries) {
+    let full: RuntimeMemoryEntry | null
+    try {
+      full = await runtime.getEntry(tierId, entry.id, { agentId })
+    } catch (err) {
+      log.debug('Failed to read runtime session entry', { agentId, sessionId: entry.id, error: err instanceof Error ? err.message : String(err) })
+      continue
+    }
+    if (!full) continue
+    const ts = sessionTimestamp(full.content) ?? timestampMs(full.updatedAt) ?? timestampMs(entry.updatedAt) ?? 0
+    if (!latest || ts > latest.ts) latest = { entry: full, ts }
+  }
+
+  return latest?.entry ?? null
+}
+
+async function getSessionJsonlTierId(runtime: RuntimeSessionMemory): Promise<string | null> {
+  try {
+    const tiers = await runtime.listTiers()
+    return tiers.find((tier) => tier.metadata?.sourceKind === SESSION_JSONL_SOURCE_KIND)?.id ?? null
+  } catch (err) {
+    log.debug('Failed to discover runtime session transcript tier', { error: err instanceof Error ? err.message : String(err) })
+    return null
+  }
+}
+
+function sessionTimestamp(content: string): number | null {
+  const firstLine = content.split('\n').find((line) => line.trim())
+  if (!firstLine) return null
+  try {
+    const entry = JSON.parse(firstLine) as { timestamp?: string }
+    return timestampMs(entry.timestamp)
+  } catch {
+    return null
+  }
+}
+
+function timestampMs(value: string | undefined): number | null {
+  if (!value) return null
+  const ms = Date.parse(value)
+  return Number.isFinite(ms) ? ms : null
 }

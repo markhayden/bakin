@@ -23,6 +23,7 @@ process.env.BAKIN_HOME = testDir
 import { describe, it, expect, beforeEach, afterAll, afterEach, mock, spyOn } from 'bun:test'
 import { existsSync, mkdirSync, rmSync, writeFileSync, readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
+import type { RuntimeAgent } from '@bakin/core/adapters/runtime'
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -70,6 +71,8 @@ mock.module('@/core/settings', () => ({
 }))
 
 let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
+let runtimeAgents: RuntimeAgent[] = []
+let runtimeError: Error | null = null
 mock.module('@bakin/core/openclaw-config', () => ({
   readOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
   resetOpenClawConfigCache: () => {},
@@ -97,6 +100,17 @@ import {
   checkAgentAssets,
 } from '../../../plugins/team/lib/health-checks'
 
+const runtimeAgentReader = {
+  list: async () => {
+    if (runtimeError) throw runtimeError
+    return runtimeAgents
+  },
+}
+
+function makeRuntimeAgent(id: string, name = id): RuntimeAgent {
+  return { id, name, status: 'active' }
+}
+
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
@@ -106,46 +120,41 @@ beforeEach(() => {
   mkdirSync(testDir, { recursive: true })
   mkdirSync(openClawDir, { recursive: true })
   openClawAgents = []
+  runtimeAgents = []
+  runtimeError = null
   mockAutoFix = false
 })
 
 // ─── checkAgentRoster ──────────────────────────────────────────────────────
 
 describe('checkAgentRoster', () => {
-  it('warns when openclaw.json does not exist', () => {
-    const results = checkAgentRoster()
+  it('reports an error when the runtime roster cannot be read', async () => {
+    runtimeError = new Error('adapter unavailable')
+    const results = await checkAgentRoster(runtimeAgentReader)
     expect(results).toHaveLength(1)
     expect(results[0].check).toBe('agent-roster')
-    expect(results[0].status).toBe('warn')
-    expect(results[0].message).toMatch(/openclaw\.json not found/)
+    expect(results[0].status).toBe('error')
+    expect(results[0].message).toMatch(/runtime agent roster/)
   })
 
-  it('reports ok when Bakin and OpenClaw rosters agree', () => {
-    openClawAgents = [{ id: 'main' }, { id: 'patch' }]
-    writeFileSync(
-      join(openClawDir, 'openclaw.json'),
-      JSON.stringify({ agents: { list: [{ id: 'main' }, { id: 'patch' }] } }),
-    )
-    const results = checkAgentRoster()
+  it('reports ok when runtime returns a coherent roster', async () => {
+    runtimeAgents = [makeRuntimeAgent('main'), makeRuntimeAgent('patch')]
+    const results = await checkAgentRoster(runtimeAgentReader)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('ok')
-    expect(results[0].message).toMatch(/2 agents in sync/)
+    expect(results[0].message).toMatch(/2 runtime agent/)
   })
 
-  it('warns about agents in OpenClaw but not in Bakin', () => {
-    openClawAgents = [{ id: 'main' }]
-    writeFileSync(
-      join(openClawDir, 'openclaw.json'),
-      JSON.stringify({ agents: { list: [{ id: 'main' }, { id: 'orphan' }] } }),
-    )
-    const results = checkAgentRoster()
-    expect(results.some(r => r.status === 'warn' && r.message.includes('orphan'))).toBe(true)
+  it('warns about duplicate runtime agent ids', async () => {
+    runtimeAgents = [makeRuntimeAgent('main'), makeRuntimeAgent('main')]
+    const results = await checkAgentRoster(runtimeAgentReader)
+    expect(results.some(r => r.status === 'warn' && r.message.includes('Duplicate'))).toBe(true)
   })
 
-  it('reports an error if openclaw.json is malformed', () => {
-    writeFileSync(join(openClawDir, 'openclaw.json'), '{not json')
-    const results = checkAgentRoster()
-    expect(results.some(r => r.status === 'error')).toBe(true)
+  it('warns about runtime agents without ids', async () => {
+    runtimeAgents = [{ id: '', name: 'Broken' }]
+    const results = await checkAgentRoster(runtimeAgentReader)
+    expect(results.some(r => r.status === 'warn' && r.message.includes('without an id'))).toBe(true)
   })
 })
 
@@ -154,46 +163,47 @@ describe('checkAgentRoster', () => {
 describe('checkPersonas', () => {
   beforeEach(() => {
     openClawAgents = [{ id: 'main' }, { id: 'patch' }, { id: 'pixel' }]
+    runtimeAgents = [makeRuntimeAgent('main'), makeRuntimeAgent('patch'), makeRuntimeAgent('pixel')]
   })
 
-  it('detects missing persona files', () => {
+  it('detects missing persona files', async () => {
     const personasDir = join(testDir, 'team', 'personas')
     mkdirSync(personasDir, { recursive: true })
     writeFileSync(join(personasDir, 'main.md'), '# Main')
     // patch and pixel are missing
 
-    const results = checkPersonas(testDir)
+    const results = await checkPersonas(testDir, runtimeAgentReader)
     const warnings = results.filter(r => r.status === 'warn')
     expect(warnings.length).toBeGreaterThanOrEqual(2) // patch + pixel missing
     expect(warnings.some(r => r.message.includes('patch'))).toBe(true)
     expect(warnings.some(r => r.message.includes('pixel'))).toBe(true)
   })
 
-  it('reports ok when every agent has a persona', () => {
+  it('reports ok when every agent has a persona', async () => {
     const personasDir = join(testDir, 'team', 'personas')
     mkdirSync(personasDir, { recursive: true })
     for (const agent of ['main', 'patch', 'pixel']) {
       writeFileSync(join(personasDir, `${agent}.md`), `# ${agent}`)
     }
 
-    const results = checkPersonas(testDir)
+    const results = await checkPersonas(testDir, runtimeAgentReader)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('ok')
     expect(results[0].message).toMatch(/All 3 agents/)
   })
 
-  it('warns when the personas directory is missing (no autoFix)', () => {
-    const results = checkPersonas(testDir)
+  it('warns when the personas directory is missing (no autoFix)', async () => {
+    const results = await checkPersonas(testDir, runtimeAgentReader)
     expect(results.some(r => r.status === 'warn' && r.message.includes('No personas directory'))).toBe(true)
   })
 
-  it('creates stub persona files in autoFix mode', () => {
+  it('creates stub persona files in autoFix mode', async () => {
     mockAutoFix = true
     const personasDir = join(testDir, 'team', 'personas')
     mkdirSync(personasDir, { recursive: true })
     writeFileSync(join(personasDir, 'main.md'), '# Main')
 
-    const results = checkPersonas(testDir)
+    const results = await checkPersonas(testDir, runtimeAgentReader)
     const fixes = results.filter(r => r.status === 'fixed')
     expect(fixes.length).toBeGreaterThan(0)
     // Stubs were written
@@ -204,12 +214,12 @@ describe('checkPersonas', () => {
     expect(stub).toMatch(/Persona not yet configured/)
   })
 
-  it('creates the personas directory in autoFix mode when missing', () => {
+  it('creates the personas directory in autoFix mode when missing', async () => {
     mockAutoFix = true
     const personasDir = join(testDir, 'team', 'personas')
     expect(existsSync(personasDir)).toBe(false)
 
-    const results = checkPersonas(testDir)
+    const results = await checkPersonas(testDir, runtimeAgentReader)
     expect(existsSync(personasDir)).toBe(true)
     expect(results.some(r => r.status === 'fixed' && r.message.includes('Created missing personas directory'))).toBe(true)
   })
@@ -368,6 +378,7 @@ describe('plugin registration', () => {
     const noopAsync = mock(async () => {})
     const ctx: Record<string, unknown> = {
       pluginId: 'team',
+      runtime: { agents: { list: mock(async () => []) } },
       registerRoute: noop,
       registerExecTool: noop,
       registerNav: noop,
