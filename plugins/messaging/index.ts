@@ -20,7 +20,6 @@ import {
   updateSession as updateSessionFn,
   deleteSession as deleteSessionFn,
   appendMessage,
-  addProposals,
   upsertProposals,
   updateProposal,
   confirmSession,
@@ -34,8 +33,8 @@ import {
 } from './lib/brainstorm-search'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
-import { chatAgentCompletion, sendRuntimeChannelMessage, streamAgentMessageResponse } from '../../src/core/runtime-registry'
-import { existsSync, readFileSync, readdirSync } from 'fs'
+import { chatAgentCompletion, streamAgentMessageResponse } from '../../src/core/runtime-registry'
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync } from 'fs'
 import { join } from 'path'
 import type { PlanningSession } from './types'
 
@@ -153,7 +152,26 @@ async function approveItem(item: CalendarItem, ctx: PluginContext): Promise<{ it
         }
       }
 
-      await sendRuntimeChannelMessage('discord', `channel:${target}`, caption, media)
+      const channelTarget = `channel:${target}`
+      if (media) {
+        await ctx.runtime.channels.deliverContent({
+          channels: ['discord'],
+          content: {
+            title: item.title,
+            body: caption,
+            files: [{ name: mediaFilename ?? 'media', path: media }],
+            metadata: { target: channelTarget },
+          },
+        })
+      } else {
+        await ctx.runtime.channels.sendMessage({
+          channels: ['discord'],
+          message: {
+            body: caption,
+            metadata: { target: channelTarget },
+          },
+        })
+      }
     } catch (err) {
       log.error('Discord post failed', err)
     }
@@ -210,8 +228,6 @@ const messagingPlugin: BakinPlugin = {
   activate(ctx: PluginContext) {
     // ── Data migration (calendar → messaging) ─────────────────────────
     try {
-      const { join } = require('path')
-      const { existsSync, renameSync, mkdirSync } = require('fs')
       const contentDir = getContentDir()
 
       const oldCalendarJson = join(contentDir, 'calendar.json')
@@ -637,7 +653,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
         if (session.status === 'completed') return json({ error: 'Session is completed' }, 400)
 
         // Append user message
-        const userMsg = appendMessage(id, { role: 'user', content: body.message })
+        appendMessage(id, { role: 'user', content: body.message })
 
         // Build messages array with full session history
         const promptOptions = await resolvePromptOptions(ctx, session.agentId)
@@ -703,7 +719,7 @@ ${historyContext ? `Conversation so far:\n${historyContext}\n\n` : ''}Mark says:
                   // Gateway returned non-streaming response
                   useStreaming = false
                 }
-              } catch (err) {
+              } catch {
                 // Gateway doesn't support streaming — fall back
                 useStreaming = false
                 gwResponse = null
