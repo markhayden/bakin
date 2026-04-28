@@ -443,66 +443,6 @@ async function cmdDocs(): Promise<void> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Setup commands (run shell commands, not API wrappers)
-// ---------------------------------------------------------------------------
-
-async function cmdSetupAntfly(): Promise<void> {
-  const { execSync } = await import('child_process')
-  const { existsSync } = await import('fs')
-
-  // Step 1: Check if binary exists
-  const binaryPaths = [
-    '/opt/homebrew/bin/antfly',
-    '/usr/local/bin/antfly',
-    `${process.env.HOME}/.antfly/bin/antfly`,
-  ]
-  const installed = binaryPaths.some(p => existsSync(p))
-
-  if (installed) {
-    console.log('[OK] Antfly binary already installed')
-  } else {
-    console.log('[..] Installing AntflyDB via Homebrew...')
-    try {
-      execSync('brew install --cask antflydb/antfly/antfly', { stdio: 'inherit' })
-      console.log('[OK] Antfly installed')
-    } catch (err) {
-      console.error('[FAIL] Homebrew install failed. Install manually:')
-      console.error('  brew install --cask antflydb/antfly/antfly')
-      process.exit(1)
-    }
-  }
-
-  // Step 2: Enable in settings
-  console.log('[..] Enabling Antfly in Bakin settings...')
-  try {
-    await apiPost('/api/settings', { antfly: { enabled: true, url: 'http://localhost:8080/api/v1' } })
-    console.log('[OK] Antfly enabled')
-  } catch {
-    console.log('[WARN] Could not reach Bakin API — is the server running?')
-    console.log('  Start Bakin first: npm run dev')
-    console.log('  Then re-run: bakin setup antfly')
-    process.exit(1)
-  }
-
-  // Step 3: Reindex
-  console.log('[..] Reindexing content (this may take a moment on first run)...')
-  try {
-    // Give Antfly time to start and create tables
-    await new Promise(r => setTimeout(r, 5000))
-    const result = await apiPost('/api/reindex', {}) as { indexed?: number }
-    console.log(`[OK] Indexed ${result?.indexed || 0} documents`)
-  } catch (err) {
-    console.log('[WARN] Reindex failed — Antfly may still be starting. Try: bakin reindex')
-  }
-
-  console.log('')
-  console.log('Antfly setup complete! Bakin will auto-start Antfly on boot.')
-  console.log('  Search:     bakin search "your query"')
-  console.log('  Dashboard:  http://localhost:11433')
-  console.log('  Reindex:    bakin reindex')
-}
-
 async function cmdSearch(query: string, options: { table?: string; limit?: number; agent?: string; facets?: string } = {}): Promise<void> {
   let url = `/api/search?q=${encodeURIComponent(query)}`
   if (options.table) url += `&table=${encodeURIComponent(options.table)}`
@@ -1846,15 +1786,9 @@ export async function main(): Promise<void> {
         if (sub === 'service') {
           const uninstall = args.includes('--uninstall')
           await cmdSetupService({ uninstall })
-        } else if (sub === 'antfly') {
-          console.error('[deprecated] `bakin setup antfly` is now `bakin install antfly`. Delegating...')
-          await cmdOnboardingInstallSingle('antfly', args)
-        } else if (sub === 'mcporter') {
-          console.error('[deprecated] `bakin setup mcporter` is now `bakin install mcporter`. Delegating...')
-          await cmdOnboardingInstallSingle('mcporter', args)
         } else {
           console.error(`Unknown setup target: ${sub}`)
-          console.error('Available: bakin setup service | bakin setup antfly | bakin setup mcporter')
+          console.error('Available: bakin setup service')
           process.exit(1)
         }
         break

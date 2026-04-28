@@ -28,7 +28,7 @@ export async function checkMcporter(): Promise<HealthCheckResult[]> {
 
   if (!mcporter.isMcporterInstalled()) {
     if (!autoFix) {
-      return [warn('mcporter not installed — run: bakin setup mcporter', true)]
+      return [warn('mcporter not installed — run: bakin install mcporter', true)]
     }
     if (!mcporter.installMcporter()) {
       return [error('Failed to install mcporter — run: npm i -g mcporter')]
@@ -43,7 +43,7 @@ export async function checkMcporter(): Promise<HealthCheckResult[]> {
     if (!autoFix) {
       return [
         ...results,
-        warn(`${missing.length} agent(s) missing or outdated in mcporter config — run: bakin setup mcporter`, true),
+        warn(`${missing.length} agent(s) missing or outdated in mcporter config — run: bakin install mcporter`, true),
       ]
     }
     const changes = await mcporter.syncConfig(port)
