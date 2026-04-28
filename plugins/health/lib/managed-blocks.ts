@@ -1,17 +1,17 @@
 /**
  * Managed-block infrastructure for per-agent AGENTS.md blocks.
  *
- * The doctor runs `applyAllManagedBlocks` to keep 7 marker-fenced blocks
+ * The doctor runs `applyAllManagedBlocksForRuntime` to keep 7 marker-fenced blocks
  * (mission-control, hard-rules, dependency-pattern, media-delegation,
  * workflow-rules, scheduling-rules, asset-rules) in sync across every
- * non-main agent's `~/.openclaw/workspaces/{agentId}/AGENTS.md`. The
+ * non-main agent's workspace `AGENTS.md`. The
  * marker primitives (extractBlock, getBlockState, injectBlock) live in
  * packages/core/src/agent-packages/managed-blocks.ts and are shared
  * with the agent-package installer/projector.
  *
  * The orchestrator-rules block targets the main agent's
- * `~/.openclaw/workspace/AGENTS.md` and is owned by
- * plugins/health/lib/system-checks/orchestrator-rules.ts (which imports
+ * workspace `AGENTS.md` and is owned by plugins/health/lib/system-checks/orchestrator-rules.ts
+ * (which imports
  * AGENT_RULES_BLOCK_START/END + resolveOrchestratorRules from here).
  *
  * Migrated from src/core/doctor.ts in #139 C8 (orchestrator-rules
@@ -19,23 +19,15 @@
  * applyAllManagedBlocks). The CLI's `bakin agent-rules` subcommand
  * imports directly from this module.
  */
-import { existsSync, readFileSync, writeFileSync } from 'fs'
-import { join } from 'path'
-
 import {
   extractBlock,
   getBlockState,
   injectBlock,
 } from '../../../packages/core/src/agent-packages/managed-blocks'
-import { createLogger } from '../../../src/core/logger'
-import { getMainAgentId, getMainAgentName } from '../../../src/core/main-agent'
+import { createAppServices, maybeGetAppServices } from '../../../src/core/app-services'
 import { getHookRegistry } from '../../../src/lib/plugin-registry'
-import { getAgentIds } from '../../../packages/core/src/openclaw-config'
-import { getOpenClawPath } from '../../../packages/core/src/openclaw-home'
 import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
 import type { AgentRuntimeAdapter, RuntimeAgent } from '../../../packages/core/src/adapters/runtime'
-
-const log = createLogger('managed-blocks')
 
 // ─── Result constructors (inlined; matches workflows precedent) ─────────────
 
@@ -155,9 +147,9 @@ async function buildWorkflowCatalog(): Promise<string> {
 
 /** Resolve the orchestrator rules template with the current workflow catalog and main agent id */
 export async function resolveOrchestratorRules(): Promise<string> {
-  const agentId = getMainAgentId()
-  const agentName = getMainAgentName()
-  return resolveOrchestratorRulesForAgent(agentId, agentName)
+  const runtime = await getRuntimeForManagedBlocks()
+  const context = runtimeManagedBlockContext(await runtime.agents.list())
+  return resolveOrchestratorRulesForAgent(context.mainAgentId, context.mainAgentName)
 }
 
 export async function resolveOrchestratorRulesForAgent(agentId: string, agentName: string): Promise<string> {
@@ -177,11 +169,7 @@ interface ManagedBlockContext {
 interface ManagedBlockDef {
   blockId: string
   contentFn: (agentId: string, context: ManagedBlockContext) => string
-  agentFilter?: (agentId: string) => boolean // defaults to all non-main-agent
-}
-
-function defaultManagedBlockContext(): ManagedBlockContext {
-  return { mainAgentId: getMainAgentId(), mainAgentName: getMainAgentName() }
+  agentFilter?: (agentId: string) => boolean // defaults to all non-orchestrator agents
 }
 
 function runtimeManagedBlockContext(agents: RuntimeAgent[]): ManagedBlockContext {
@@ -192,80 +180,6 @@ function runtimeManagedBlockContext(agents: RuntimeAgent[]): ManagedBlockContext
     mainAgentId: main?.id ?? 'main',
     mainAgentName: main?.name ?? 'Main',
   }
-}
-
-/**
- * Check / inject / update a managed block in each agent's AGENTS.md.
- *
- * The marker primitives are imported from
- * packages/core/src/agent-packages/managed-blocks.ts (shared with the
- * agent-package installer/projector). This function is the doctor-shaped
- * wrapper around them: it translates marker state into HealthCheckResult
- * shapes and applies the autoFix policy.
- *
- * All managed blocks follow the same marker pattern:
- *   <!-- bakin:{blockId}:start -->
- *   {content}
- *   <!-- bakin:{blockId}:end -->
- */
-function checkManagedBlock(def: ManagedBlockDef, autoFix: boolean, context = defaultManagedBlockContext()): HealthCheckResult[] {
-  const results: HealthCheckResult[] = []
-  const openclawBase = getOpenClawPath()
-  const checkName = `agent-${def.blockId}`
-
-  for (const agentId of getAgentIds()) {
-    if (agentId === context.mainAgentId) continue
-    if (def.agentFilter && !def.agentFilter(agentId)) continue
-
-    const agentsPath = join(openclawBase, 'workspaces', agentId, 'AGENTS.md')
-
-    if (!existsSync(agentsPath)) {
-      results.push(warn(checkName, `AGENTS.md not found for ${agentId} — cannot verify ${def.blockId}`))
-      continue
-    }
-
-    const current = readFileSync(agentsPath, 'utf-8')
-    const expectedBody = def.contentFn(agentId, context).trim()
-    const state = getBlockState(current, def.blockId)
-
-    if (state === 'orphan-start' || state === 'orphan-end') {
-      // Malformed marker pair — refuse to silently rewrite. The user's
-      // intent isn't clear (mid-edit? merge conflict remnant?), and
-      // overwriting could destroy unsynced work.
-      results.push(error(
-        checkName,
-        `${def.blockId} block has malformed markers (${state}) in ${agentId}/AGENTS.md`,
-      ))
-      continue
-    }
-
-    if (state === 'absent') {
-      if (!autoFix) {
-        results.push(warn(checkName, `${def.blockId} block missing from ${agentId}/AGENTS.md`, true))
-        continue
-      }
-      writeFileSync(agentsPath, injectBlock(current, def.blockId, expectedBody), 'utf-8')
-      results.push(fixed(checkName, `Added ${def.blockId} block to ${agentId}/AGENTS.md`))
-      continue
-    }
-
-    // state === 'present'
-    const currentBody = extractBlock(current, def.blockId) ?? ''
-    if (currentBody === expectedBody) {
-      results.push(ok(checkName, `${def.blockId} in ${agentId}/AGENTS.md is up to date`))
-    } else if (autoFix) {
-      writeFileSync(agentsPath, injectBlock(current, def.blockId, expectedBody), 'utf-8')
-      results.push(fixed(checkName, `Updated ${def.blockId} block in ${agentId}/AGENTS.md`))
-    } else {
-      results.push(warn(checkName, `${def.blockId} block is outdated in ${agentId}/AGENTS.md`, true))
-    }
-  }
-
-  // Suppress lint warning for unused log import on hot paths — kept for
-  // future debugging when block edits behave unexpectedly.
-  void log
-
-  return results
 }
 
 async function checkManagedBlockRuntime(
@@ -323,6 +237,12 @@ async function checkManagedBlockRuntime(
   }
 
   return results
+}
+
+async function getRuntimeForManagedBlocks(): Promise<AgentRuntimeAdapter> {
+  const existing = maybeGetAppServices()?.runtime
+  if (existing) return existing
+  return (await createAppServices()).runtime
 }
 
 // ─── Managed block definitions ────────────────────────────────────────────
@@ -487,16 +407,11 @@ All created content (images, video, audio, text, plans, data) MUST go to the ass
 ]
 
 /**
- * Apply all managed blocks. Called by the doctor (via the registered
- * `health.managed-blocks` check) and by the CLI's `bakin agent-rules`
- * subcommand directly.
+ * Apply all managed blocks using the configured runtime adapter. Called by
+ * the CLI's `bakin agent-rules` subcommand directly.
  */
-export function applyAllManagedBlocks(autoFix: boolean): HealthCheckResult[] {
-  const results: HealthCheckResult[] = []
-  for (const block of MANAGED_BLOCKS) {
-    results.push(...checkManagedBlock(block, autoFix))
-  }
-  return results
+export async function applyAllManagedBlocks(autoFix: boolean): Promise<HealthCheckResult[]> {
+  return applyAllManagedBlocksForRuntime(await getRuntimeForManagedBlocks(), autoFix)
 }
 
 export async function applyAllManagedBlocksForRuntime(
