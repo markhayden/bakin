@@ -30,6 +30,13 @@ export type {
   PluginEntry,
   BakinConfig,
 } from './plugin-types'
+export {
+  PLUGIN_ID_RE,
+  PluginManifestError,
+  parsePluginManifest,
+  readPluginManifestJson,
+} from './plugins/manifest'
+export type { ParsePluginManifestOptions } from './plugins/manifest'
 
 // Storage
 export { MarkdownStorageAdapter } from './storage/markdown-adapter'

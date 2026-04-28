@@ -36,6 +36,7 @@ import {
   type PluginLockEntry,
 } from '@bakin/core/plugins/lockfile'
 import { parseManifestPermissions } from '@bakin/core/plugins/permissions'
+import { PLUGIN_ID_RE, readPluginManifestJson, PluginManifestError } from '@bakin/core/plugins/manifest'
 import { parseGithubSource, InvalidGithubSourceError } from '@bakin/core/plugins/source'
 import { computeSourceTreeSha } from '@/core/plugins/upgrade'
 import { signConsentToken, verifyConsentToken } from '@/core/plugins/consent-token'
@@ -355,17 +356,18 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         }, { status: 400 })
       }
 
-      let manifest: Record<string, unknown>
+      let manifest: Record<string, unknown> & { id: string; version: string }
       try {
-        manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
-      } catch {
+        manifest = readPluginManifestJson(readFileSync(manifestPath, 'utf-8')) as unknown as Record<string, unknown> & { id: string; version: string }
+      } catch (err) {
         rmSync(stagingDir, { recursive: true, force: true })
-        return Response.json({ ok: false, error: 'Invalid bakin-plugin.json' }, { status: 400 })
+        return Response.json({
+          ok: false,
+          error: err instanceof PluginManifestError ? err.message : 'Invalid bakin-plugin.json',
+        }, { status: 400 })
       }
 
-      const id = typeof manifest.id === 'string' && manifest.id.length > 0
-        ? manifest.id
-        : basename(body.source.replace(/\.git$/, ''))
+      const id = manifest.id || basename(body.source.replace(/\.git$/, ''))
 
       // Tightened from /^[a-z0-9][a-z0-9-_]{0,39}$/i — the case-insensitive
       // flag allowed mixed case which collides with case-insensitive macOS
@@ -373,7 +375,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       // between plugins like `foo_bar` + action `baz` vs `foo` + action
       // `bar_baz` (both produce bakin_exec_foo_bar_baz). Lowercase letters,
       // digits, and hyphen only; must start with a letter.
-      if (!/^[a-z][a-z0-9-]{0,39}$/.test(id)) {
+      if (!PLUGIN_ID_RE.test(id)) {
         rmSync(stagingDir, { recursive: true, force: true })
         auditInstallRejected('invalid_plugin_id', body.source, { id })
         return Response.json({

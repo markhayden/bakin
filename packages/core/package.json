@@ -27,6 +27,8 @@
     "./settings": "./src/settings.ts",
     "./content-dir": "./src/content-dir.ts",
     "./plugin-types": "./src/plugin-types.ts",
+    "./plugins/manifest": "./src/plugins/manifest.ts",
+    "./plugins/permissions": "./src/plugins/permissions.ts",
     "./constants": "./src/constants.ts",
     "./storage": "./src/storage/markdown-adapter.ts",
     "./events": "./src/events/event-bus.ts",

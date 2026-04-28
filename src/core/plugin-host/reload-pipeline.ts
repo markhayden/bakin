@@ -46,7 +46,7 @@ import {
   broadcastPluginError,
   broadcastPluginRecover,
 } from '@/core/sse'
-import type { BakinPlugin, PluginContext } from '@/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 
 const log = createLogger('reload-pipeline')
 
