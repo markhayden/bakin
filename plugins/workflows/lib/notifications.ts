@@ -5,10 +5,11 @@
  * through the active runtime adapter's channel surface so provider-specific
  * API details stay behind the adapter boundary.
  */
-import type { AgentRuntimeAdapter, ApprovalRenderRef } from '@bakin/core/adapters/runtime'
+import type { AgentRuntimeAdapter, ApprovalRenderRef, CreateApprovalArgs } from '@bakin/core/adapters/runtime'
 import type { ApprovalActor, EventBus } from '@bakin/core/plugin-types'
 import type { WorkflowInstance } from '../types'
 import { createLogger } from '../../../src/core/logger'
+import { createApprovalRecord, resolveApprovalRecord, updateApprovalDeliveries } from './approval-store'
 
 const log = createLogger('workflow-notifications')
 
@@ -38,13 +39,16 @@ export function getGateNotificationSettings(): GateNotificationSettings | null {
   return gateSettings
 }
 
-export function buildGateApprovalId(taskId: string, stepId: string): string {
-  return `workflow-gate:${encodeURIComponent(taskId)}:${encodeURIComponent(stepId)}`
+export function buildGateApprovalId(taskId: string, stepId: string, runId?: string, requestKey?: string): string {
+  const parts = ['workflow-gate', encodeURIComponent(taskId), encodeURIComponent(stepId)]
+  if (runId) parts.push(encodeURIComponent(runId))
+  if (requestKey) parts.push(encodeURIComponent(requestKey))
+  return parts.join(':')
 }
 
 export function parseGateApprovalId(approvalId: string): { taskId: string; stepId: string } | null {
   const parts = approvalId.split(':')
-  if (parts.length !== 3 || parts[0] !== 'workflow-gate') return null
+  if ((parts.length !== 3 && parts.length !== 4 && parts.length !== 5) || parts[0] !== 'workflow-gate') return null
   try {
     return {
       taskId: decodeURIComponent(parts[1]),
@@ -182,7 +186,8 @@ export async function sendGateApprovalRequest(
     return null
   }
 
-  const approvalId = buildGateApprovalId(instance.taskId, stepId)
+  const requestedAt = instance.stepStates[stepId]?.requestedAt ?? instance.updatedAt ?? instance.createdAt
+  const approvalId = buildGateApprovalId(instance.taskId, stepId, instance.instanceId, requestedAt)
   const channel = settings.approvalChannel || 'general'
   const body = [
     `Workflow ${instance.workflowId} has reached a gate and needs approval.`,
@@ -191,26 +196,41 @@ export async function sendGateApprovalRequest(
     renderPriorOutput(priorOutput),
   ].filter(Boolean).join('\n\n')
 
+  const request: CreateApprovalArgs['request'] = {
+    title: `Gate: ${label}`,
+    body,
+    options: [
+      { id: 'approve', label: 'Approve', variant: 'primary' },
+      { id: 'reject', label: 'Reject', variant: 'destructive' },
+    ],
+    context: {
+      instanceId: instance.instanceId,
+      workflowId: instance.workflowId,
+      taskId: instance.taskId,
+      stepId,
+      requireRejectReason: settings.requireRejectReason,
+    },
+  }
+
+  createApprovalRecord({
+    approvalId,
+    owner: {
+      workflowId: instance.workflowId,
+      runId: instance.instanceId,
+      stepId,
+      taskId: instance.taskId,
+    },
+    request,
+    createdAt: requestedAt,
+  })
+
   try {
     const result = await runtime.channels.createApproval({
       approvalId,
       channels: [channel],
-      request: {
-        title: `Gate: ${label}`,
-        body,
-        options: [
-          { id: 'approve', label: 'Approve', variant: 'primary' },
-          { id: 'reject', label: 'Reject', variant: 'destructive' },
-        ],
-        context: {
-          instanceId: instance.instanceId,
-          workflowId: instance.workflowId,
-          taskId: instance.taskId,
-          stepId,
-          requireRejectReason: settings.requireRejectReason,
-        },
-      },
+      request,
     })
+    updateApprovalDeliveries(approvalId, result.deliveries)
     log.info(`Gate approval alert sent for ${instance.taskId}:${stepId}`, {
       approvalId,
       deliveryCount: result.deliveries.length,
@@ -231,19 +251,22 @@ export async function resolveGateApproval(
 ): Promise<void> {
   if (!runtime || !approvalRef) return
 
+  const response = {
+    selectedOption: decision === 'approved' ? 'approve' : 'reject',
+    respondedAt: decidedAt,
+    actor: {
+      type: 'human' as const,
+      id: approver.id,
+      displayName: approver.displayName ?? approver.id,
+    },
+    ...(reason ? { comment: reason } : {}),
+  }
+  resolveApprovalRecord(approvalRef.approvalId, response)
+
   try {
     await runtime.channels.resolveApproval({
       ...approvalRef,
-      response: {
-        selectedOption: decision === 'approved' ? 'approve' : 'reject',
-        respondedAt: decidedAt,
-        actor: {
-          type: 'human',
-          id: approver.id,
-          displayName: approver.displayName ?? approver.id,
-        },
-        ...(reason ? { comment: reason } : {}),
-      },
+      response,
     })
   } catch (err) {
     log.warn('Gate approval resolve notification failed', err)
