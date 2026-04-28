@@ -1,8 +1,8 @@
 /**
  * Tests for the asset upload route (POST /api/plugins/assets/upload).
  */
-import { describe, it, expect, beforeAll, afterAll, afterEach, mock } from 'bun:test'
-import { mkdirSync, rmSync, existsSync, readdirSync, readFileSync } from 'fs'
+import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
+import { mkdirSync, rmSync, existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import {
@@ -12,7 +12,6 @@ import {
 } from '../test-helpers'
 
 const testDir = join(tmpdir(), `bakin-test-upload-${Date.now()}`)
-const assetsRoot = join(testDir, 'assets')
 
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
@@ -140,7 +139,7 @@ describe('POST /upload', () => {
     expect(body.path).toMatch(/^assets\/store\/\d{4}-\d{2}\//)
     // taskId lives in the sidecar — the absence of a task doesn't affect path.
     const sidecar = JSON.parse(readFileSync(join(testDir, body.metadataPath as string), 'utf-8'))
-    expect(sidecar.taskId === null || sidecar.taskId === '_unlinked').toBe(true)
+    expect(sidecar.taskId).toBeNull()
   })
 
   it('sets source to clipboard when specified', async () => {
