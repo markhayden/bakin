@@ -17,6 +17,7 @@
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import { MarkdownStorageAdapter } from '@/lib/storage/markdown-adapter'
+import { ScopedPluginStorageAdapter } from '@bakin/core/storage/scoped-plugin-storage'
 import { BakinEventBus } from '@/lib/events/event-bus'
 import { getContentDir } from '@/core/content-dir'
 import { getAppServices } from '@/core/app-services'
@@ -37,7 +38,10 @@ const log = createLogger('plugin-route')
  */
 function buildCtx(pluginId: string): PluginContext {
   const services = getAppServices()
-  const storage = new MarkdownStorageAdapter()
+  const state = pluginRegistry.getPluginState(pluginId)
+  const storage = state?.source === 'user'
+    ? new ScopedPluginStorageAdapter(getContentDir(), pluginId)
+    : new MarkdownStorageAdapter()
   const events = new BakinEventBus((data) => {
     const broadcastFn = (globalThis as Record<string, unknown>).__bakinBroadcast as
       | ((data: Record<string, unknown>) => void)

@@ -31,6 +31,7 @@
     "./plugins/permissions": "./src/plugins/permissions.ts",
     "./constants": "./src/constants.ts",
     "./storage": "./src/storage/markdown-adapter.ts",
+    "./storage/scoped-plugin-storage": "./src/storage/scoped-plugin-storage.ts",
     "./events": "./src/events/event-bus.ts",
     "./parsers/*": "./src/parsers/*.ts",
     "./format": "./src/format.ts"

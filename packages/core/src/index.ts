@@ -40,6 +40,7 @@ export type { ParsePluginManifestOptions } from './plugins/manifest'
 
 // Storage
 export { MarkdownStorageAdapter } from './storage/markdown-adapter'
+export { ScopedPluginStorageAdapter } from './storage/scoped-plugin-storage'
 
 // Events
 export { BakinEventBus } from './events/event-bus'

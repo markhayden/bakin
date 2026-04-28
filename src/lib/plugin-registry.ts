@@ -50,6 +50,7 @@ import {
   PluginManifestError,
   readPluginManifestJson,
 } from '../../packages/core/src/plugins/manifest'
+import { ScopedPluginStorageAdapter } from '../../packages/core/src/storage/scoped-plugin-storage'
 import { getAppServices } from '../core/app-services'
 import type { PluginManifest as PublicPluginManifest } from '@bakin/sdk/types'
 
@@ -451,8 +452,11 @@ class PluginRegistryImpl {
       state.routes.push(route)
       registerRouteDoc(pluginId, route)
     }
+    const pluginStorage = state.source === 'user'
+      ? new ScopedPluginStorageAdapter(getContentDir(), pluginId)
+      : storage
     return {
-      storage,
+      storage: pluginStorage,
       events,
       pluginId,
       runtime: services.runtime,
