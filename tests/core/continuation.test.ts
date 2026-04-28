@@ -35,15 +35,38 @@ mock.module('../../src/core/runtime-registry', () => ({
   }),
 }))
 
-// Mock flow-store that gets dynamically imported by continuation.ts
-const mockReadAllColumns = mock()
+let currentColumns: { todo?: any[]; inProgress?: any[]; blocked?: any[]; done?: any[] } = {}
 const mockClearDependency = mock().mockResolvedValue(undefined)
 const mockAddTaskLog = mock().mockResolvedValue(undefined)
 
-mock.module('@bakin/tasks/lib/flow-store', () => ({
-  readAllColumns: mockReadAllColumns,
-  clearDependency: mockClearDependency,
-  addTaskLog: mockAddTaskLog,
+const mockInvoke = mock(async (hook: string, args?: Record<string, unknown>) => {
+  if (hook === 'tasks.readTaskboard') {
+    return {
+      columns: {
+        todo: currentColumns.todo || [],
+        inProgress: currentColumns.inProgress || [],
+        blocked: currentColumns.blocked || [],
+        done: currentColumns.done || [],
+      },
+    }
+  }
+  if (hook === 'tasks.clearDependency') {
+    await mockClearDependency(args?.taskId)
+    return undefined
+  }
+  if (hook === 'tasks.addTaskLog') {
+    await mockAddTaskLog(args?.identifier, args?.author, args?.message)
+    return undefined
+  }
+  return undefined
+})
+
+mock.module('../../src/lib/plugin-registry', () => ({
+  getHookRegistry: mock().mockReturnValue({
+    invoke: mockInvoke,
+    has: mock().mockReturnValue(false),
+    register: mock(),
+  }),
 }))
 
 import { checkAndContinueDependents } from '../../src/core/continuation'
@@ -55,12 +78,7 @@ describe('continuation', () => {
   })
 
   function mockColumns(columns: { todo?: any[]; inProgress?: any[]; blocked?: any[]; done?: any[] }) {
-    mockReadAllColumns.mockReturnValue({
-      todo: columns.todo || [],
-      inProgress: columns.inProgress || [],
-      blocked: columns.blocked || [],
-      done: columns.done || [],
-    })
+    currentColumns = columns
   }
 
   it('does nothing when no tasks depend on completed task', async () => {

@@ -46,6 +46,58 @@ interface DispatchState {
   failedDispatches: Record<string, FailureRecord>
 }
 
+type DispatchTask = {
+  id: string
+  title: string
+  agent?: string
+  workflowId?: string
+  description?: string
+  projectId?: string
+  log?: Array<{ timestamp: string }>
+}
+
+type DispatchColumns = {
+  backlog: DispatchTask[]
+  todo: DispatchTask[]
+  inProgress: DispatchTask[]
+  review: DispatchTask[]
+  done: DispatchTask[]
+  blocked: DispatchTask[]
+  archived: DispatchTask[]
+}
+
+function emptyDispatchColumns(): DispatchColumns {
+  return {
+    backlog: [],
+    todo: [],
+    inProgress: [],
+    review: [],
+    done: [],
+    blocked: [],
+    archived: [],
+  }
+}
+
+async function readDispatchColumns(): Promise<DispatchColumns> {
+  const board = await hooks().invoke<{ columns: Partial<DispatchColumns> }>('tasks.readTaskboard', {})
+  return { ...emptyDispatchColumns(), ...(board?.columns ?? {}) }
+}
+
+async function addTaskLog(taskId: string, author: string, message: string): Promise<void> {
+  await hooks().invoke<void>('tasks.addTaskLog', { identifier: taskId, author, message })
+}
+
+async function moveTaskToInProgress(taskId: string, agent: string): Promise<void> {
+  await hooks().invoke<void>('tasks.updateTask', {
+    identifier: taskId,
+    updates: { column: 'inProgress', agent },
+  })
+}
+
+async function moveTask(taskId: string, to: string, from?: string): Promise<void> {
+  await hooks().invoke<void>('tasks.moveTask', { identifier: taskId, to, from })
+}
+
 const TRANSIENT_CODES = new Set([
   'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'UND_ERR_SOCKET', 'EPIPE',
 ])
@@ -140,15 +192,13 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
   try {
     // Acquire state lock for the entire cycle to prevent races with dispatchSingleTask
     await withStateLock(async () => {
-    const { getTodoTasks, moveTaskToInProgress, addTaskLog } = await import('@bakin/tasks/lib/flow-store')
-
-    const { todoTasks } = getTodoTasks()
     const state = loadDispatchState(contentDir)
     const runtime = getRuntimeAdapter()
     const runtimeAgentIds = new Set((await runtime.agents.list()).map((agent) => agent.id))
     const mainAgentId = await getRuntimeMainAgentId(runtime)
     // Reconcile dispatch state with taskboard reality
-    const { columns } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string; agent?: string; workflowId?: string; description?: string; projectId?: string; log?: Array<{ timestamp: string }> }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
+    const columns = await readDispatchColumns()
+    const todoTasks = columns.todo
     const activeIds = new Set([
       ...columns.inProgress.map(t => t.id),
       ...columns.done.map(t => t.id),
@@ -287,7 +337,7 @@ export async function dispatchSingleTask(
   const settings = getSettings()
 
   await withStateLock(async () => {
-    const { columns } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string; agent?: string; workflowId?: string; description?: string; projectId?: string; log?: Array<{ timestamp: string }> }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
+    const columns = await readDispatchColumns()
     const task = columns.todo.find(t => t.id === taskId)
     if (!task) {
       log.debug('dispatchSingleTask: task not in todo, skipping', { taskId })
@@ -320,8 +370,6 @@ export async function dispatchSingleTask(
         return
       }
     }
-
-    const { moveTaskToInProgress, addTaskLog } = await import('@bakin/tasks/lib/flow-store')
 
     // Workflow-aware dispatch path
     const taskWithWorkflow = task as typeof task & { workflowId?: string }
@@ -613,8 +661,8 @@ async function dispatchWorkflowTask(
     const { columns: fresh } = await hooks().invoke<{ columns: Record<string, Array<{ id: string; agent?: string; title?: string; workflowId?: string }>> }>('tasks.readTaskboard', {}) ?? { columns: {} }
     const stillInTodo = fresh.todo.some(t => t.id === task.id)
     if (stillInTodo) {
-      const firstAgent = activeAgents[0]?.agent || task.agent || mainAgentId
-      await moveTaskToInProgress(task.id, firstAgent)
+      const ownerAgent = task.agent || activeAgents[0]?.agent || mainAgentId
+      await moveTaskToInProgress(task.id, ownerAgent)
       appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
     }
     dispatchedSet.add(task.id)
@@ -880,8 +928,7 @@ export async function reconcileOnStartup(contentDir: string): Promise<void> {
       if (agentStale && !hasRecentLog) {
         try {
           await hooks().invoke<void>('tasks.addTaskLog', { identifier: task.id, author: 'system', message: 'Recovered on server restart: agent heartbeat stale and no recent task logs.' })
-          const { moveTask: doMove } = await import('@bakin/tasks/lib/flow-store')
-          await doMove(task.id, 'todo')
+          await moveTask(task.id, 'todo', 'inProgress')
           appendAudit(contentDir, 'task.startup_recovered', 'system', { id: task.id, title: task.title, agent: task.agent })
           recovered++
           log.info('Startup recovery: task moved to todo', { id: task.id, title: task.title })

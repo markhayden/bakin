@@ -1,13 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdtempSync, mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { createFileBakinTaskStore } from '@bakin/core/tasks/store'
 
-// Mock flow-store to avoid touching real SQLite
-const mockTasks: Array<{ id: string; title: string; agent?: string; description?: string }> = []
-const mockColumns: Record<string, typeof mockTasks> = {
-  backlog: [], inProgress: [], todo: [], review: [], done: [], archived: [], blocked: [],
-}
+const contentDir = mkdtempSync(join(tmpdir(), 'bakin-agents-test-'))
+process.env.BAKIN_HOME = contentDir
 
 const mockRuntimeSend = mock((...args: unknown[]) => {
   void args
@@ -26,30 +24,33 @@ mock.module('@/core/runtime-registry', () => ({
   }),
 }))
 
-mock.module('@bakin/tasks/lib/flow-store', () => ({
-  readTaskboard: () => ({ columns: mockColumns }),
+mock.module('@/core/content-dir', () => ({
+  getContentDir: () => contentDir,
+  getBakinPaths: () => ({ root: contentDir, tasks: join(contentDir, 'tasks') }),
+}))
+mock.module('../../src/core/content-dir', () => ({
+  getContentDir: () => contentDir,
+  getBakinPaths: () => ({ root: contentDir, tasks: join(contentDir, 'tasks') }),
+}))
+mock.module('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => contentDir,
+  getBakinPaths: () => ({ root: contentDir, tasks: join(contentDir, 'tasks') }),
+  resetContentDir: () => {},
 }))
 
 import { getAgentTasks, sendMessageToAgent } from '@/core/agents'
 
 describe('agents', () => {
-  let tempDir: string
-  let contentDir: string
-
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), 'bakin-agents-test-'))
-    contentDir = tempDir
+    rmSync(join(contentDir, 'tasks'), { recursive: true, force: true })
+    rmSync(join(contentDir, 'heartbeats'), { recursive: true, force: true })
     mkdirSync(join(contentDir, 'heartbeats'), { recursive: true })
-
-    // Reset mock columns
-    for (const key of Object.keys(mockColumns)) {
-      mockColumns[key] = []
-    }
     mockRuntimeSend.mockClear()
   })
 
-  afterEach(() => {
-    rmSync(tempDir, { recursive: true, force: true })
+  afterAll(() => {
+    rmSync(contentDir, { recursive: true, force: true })
+    delete process.env.BAKIN_HOME
   })
 
   describe('getAgentTasks', () => {
@@ -58,13 +59,10 @@ describe('agents', () => {
     })
 
     it('should return tasks assigned to a specific agent', () => {
-      mockColumns.inProgress = [
-        { id: 'fix-bug', title: 'Fix the bug', agent: 'main' },
-        { id: 'design-logo', title: 'Design logo', agent: 'pixel' },
-      ]
-      mockColumns.todo = [
-        { id: 'write-docs', title: 'Write docs', agent: 'main' },
-      ]
+      const store = createFileBakinTaskStore(join(contentDir, 'tasks'))
+      store.createSync({ id: 'fix-bug', title: 'Fix the bug', agent: 'main', column: 'inProgress' })
+      store.createSync({ id: 'design-logo', title: 'Design logo', agent: 'pixel', column: 'inProgress' })
+      store.createSync({ id: 'write-docs', title: 'Write docs', agent: 'main', column: 'todo' })
 
       const tasks = getAgentTasks('main', contentDir)
       expect(tasks).toHaveLength(2)
@@ -75,9 +73,8 @@ describe('agents', () => {
     })
 
     it('should not return tasks assigned to other agents', () => {
-      mockColumns.inProgress = [
-        { id: 'design-logo', title: 'Design logo', agent: 'pixel' },
-      ]
+      const store = createFileBakinTaskStore(join(contentDir, 'tasks'))
+      store.createSync({ id: 'design-logo', title: 'Design logo', agent: 'pixel', column: 'inProgress' })
 
       const tasks = getAgentTasks('main', contentDir)
       expect(tasks).toHaveLength(0)

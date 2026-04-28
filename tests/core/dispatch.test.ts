@@ -67,12 +67,6 @@ mock.module('../../src/core/runtime-registry', () => ({
   }),
 }))
 
-mock.module('@bakin/tasks/lib/flow-store', () => ({
-  getTodoTasks: mock().mockReturnValue({ todoTasks: [] }),
-  moveTaskToInProgress: mock(),
-  addTaskLog: mock(),
-}))
-
 mock.module('../../src/lib/plugin-registry', () => ({
   getHookRegistry: mock().mockReturnValue({
     invoke: mock().mockResolvedValue(undefined),
@@ -96,7 +90,6 @@ mock.module('@bakin/core/openclaw-home', () => ({
 
 import { loadDispatchState, start, stop, getDispatchInfo } from '../../src/core/dispatch'
 import { dispatchTasks } from '../../src/core/dispatch'
-import * as taskboard from '@bakin/tasks/lib/flow-store'
 import { getHookRegistry } from '../../src/lib/plugin-registry'
 import type { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
 
@@ -254,9 +247,6 @@ describe('dispatch', () => {
         has: mock().mockReturnValue(false),
         register: mock(),
       } as unknown as HookRegistry)
-
-      // Make getTodoTasks return our seeded task
-      vi.mocked(taskboard.getTodoTasks).mockReturnValue({ columns, todoTasks: [task] } as unknown as ReturnType<typeof taskboard.getTodoTasks>)
     }
 
     function readState() {
@@ -269,10 +259,8 @@ describe('dispatch', () => {
 
     afterEach(() => {
       // Reset mocks to a clean state so later test suites don't inherit
-      // todoTasks leaked from setupTodoTask or accumulated sendMessage
-      // call records. `vi.restoreAllMocks` in the parent afterEach restores
-      // spies but not `mock()` mocks from vi.mock factories.
-      vi.mocked(taskboard.getTodoTasks).mockReturnValue({ todoTasks: [] } as unknown as ReturnType<typeof taskboard.getTodoTasks>)
+      // accumulated sendMessage call records. `vi.restoreAllMocks` in the
+      // parent afterEach restores spies but not `mock()` mocks from factories.
       mockRuntimeSend.mockClear()
       mockRuntimeSend.mockResolvedValue({ id: 'runtime-msg' })
     })
@@ -340,8 +328,6 @@ describe('dispatch', () => {
         has: mock().mockReturnValue(false),
         register: mock(),
       } as unknown as HookRegistry)
-      vi.mocked(taskboard.getTodoTasks).mockReturnValue({ todoTasks: columns.todo } as ReturnType<typeof taskboard.getTodoTasks>)
-
       // Seed state already at maxRetries (3 in the test settings mock)
       writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify({
         lastRun: Date.now(),
@@ -412,8 +398,6 @@ describe('dispatch', () => {
         has: mock().mockReturnValue(false),
         register: mock(),
       } as unknown as HookRegistry)
-      vi.mocked(taskboard.getTodoTasks).mockReturnValue({ columns: columns as never, todoTasks: columns.todo as never } as ReturnType<typeof taskboard.getTodoTasks>)
-
       // The workflow branch calls sendMessage inside dispatchWorkflowTask; make it throw transiently.
       mockRuntimeSend.mockRejectedValueOnce(new TypeError('fetch failed'))
 
