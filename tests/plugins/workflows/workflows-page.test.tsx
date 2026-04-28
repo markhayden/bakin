@@ -18,7 +18,7 @@ import { tmpdir } from 'os'
 // ─── Test isolation mocks (mandatory per CLAUDE.md) ────────────────────────
 //
 // This is a pure React component test that does not touch the filesystem,
-// but we still mock content-dir + flow-store so an accidental import chain
+// but we still mock content-dir + task-store so an accidental import chain
 // cannot leak writes into ~/.bakin/ or ~/.openclaw/.
 
 const testDir = join(tmpdir(), `bakin-test-workflows-page-${Date.now()}`)
@@ -45,7 +45,7 @@ mock.module('../../../src/core/content-dir', () => ({
   isUsingBakinHome: () => false,
 }))
 
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   createTask: mock(),
   addTaskLog: mock(),
   moveTask: mock(),

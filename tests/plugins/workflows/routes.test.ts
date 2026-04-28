@@ -57,7 +57,7 @@ mock.module('../../../src/core/audit', () => ({
   appendAudit: mock(),
 }))
 
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   createTask: mock(() => Promise.resolve({ id: 'mock-task' })),
   addTaskLog: mock(() => Promise.resolve()),
   moveTask: mock(() => Promise.resolve()),

@@ -27,7 +27,7 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,

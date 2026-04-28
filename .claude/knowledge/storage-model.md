@@ -59,7 +59,7 @@ interface StorageAdapter {
 ```
 
 Provided to plugins via `PluginContext.storage`. Each plugin reads/writes to namespaced paths by convention (not enforced):
-- Tasks plugin: Bakin task store under `getBakinPaths().tasks`, exposed through `plugins/tasks/lib/flow-store.ts` for historical API compatibility
+- Tasks plugin: Bakin task store under `getBakinPaths().tasks`, exposed through the core service at `src/core/task-store.ts`
 - Projects plugin: `projects/*.md`
 - Assets plugin: `assets/store/{YYYY-MM}/{filename}` — filename-as-identity; sharded by month, flat inside the shard. See `.claude/knowledge/assets-plugin.md` for the storage model.
 - Schedule plugin: `schedule/`
@@ -68,7 +68,7 @@ Provided to plugins via `PluginContext.storage`. Each plugin reads/writes to nam
 ## Key File Formats
 
 ### Task Storage (Bakin JSON)
-Tasks are stored in the core Bakin task store at `getBakinPaths().tasks`. The concrete file store is `packages/core/src/tasks/store.ts`; it writes one JSON document per task at `tasks/{YYYY-MM}/task-{id}.json` with atomic temp-file rename writes. `plugins/tasks/lib/flow-store.ts` is now a compatibility-named service layer over that store, not a legacy DB adapter.
+Tasks are stored in the core Bakin task store at `getBakinPaths().tasks`. The concrete file store is `packages/core/src/tasks/store.ts`; it writes one JSON document per task at `tasks/{YYYY-MM}/task-{id}.json` with atomic temp-file rename writes. `src/core/task-store.ts` is the core task service layer over that store, not a plugin compatibility shim or legacy DB adapter.
 
 Bakin's own operational state (`audit.jsonl`, per-plugin `plugin-settings/*.json`, heartbeats, task JSON, etc.) is plain JSON / JSONL on the filesystem. User content (projects, assets, workflows, messaging) stays in markdown + sidecars on the filesystem; that boundary is intentional.
 
@@ -173,7 +173,7 @@ Configured in `BakinSettings.search`. See `.claude/knowledge/search-system.md` f
 | `src/core/content-dir.ts` | Re-export shim for backward compat |
 | `src/lib/storage/markdown-adapter.ts` | StorageAdapter implementation |
 | `packages/core/src/tasks/store.ts` | Bakin task metadata store |
-| `plugins/tasks/lib/flow-store.ts` | Compatibility-named task service layer over the Bakin task store |
+| `src/core/task-store.ts` | Core task service layer over the Bakin task store |
 | `src/lib/parsers/` | Markdown parsing utilities |
 | `src/core/audit.ts` | Audit JSONL writing + broadcast |
 | `src/core/settings.ts` | Settings loading with defaults |

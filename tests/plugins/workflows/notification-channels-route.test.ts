@@ -52,10 +52,14 @@ mock.module('../../../src/core/watcher', () => ({
   start: mock(),
   stop: mock(),
 }))
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,
+  createTask: mock(),
+  moveTask: mock(),
+  addTaskLog: mock(),
+  updateTask: mock(),
 }))
 ;(globalThis as any).__bakinBroadcast = mock()
 

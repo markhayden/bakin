@@ -186,7 +186,8 @@ JSON task store both create authoritative task metadata.
 - Update kanban UI, task CLI, workflow integration, schedule integration, and
   any task-service callers to use the same task-store source of truth.
 - Replace `src/core/dispatch.ts`, `src/core/agents.ts`, and
-  `src/core/continuation.ts` imports from `@bakin/tasks/lib/flow-store`.
+  `src/core/continuation.ts` imports from `@bakin/tasks/lib/flow-store` with
+  imports from `src/core/task-store.ts`.
 - Delete or rewrite task health checks so they inspect the Bakin task store and
   runtime adapter status, not raw `flow_runs` metadata.
 

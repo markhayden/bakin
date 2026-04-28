@@ -1158,8 +1158,8 @@ other Bakin storage path: `BAKIN_HOME` when set, otherwise `~/.bakin`.
 The task store is a core Bakin module, not a plugin hook facade. Every task
 reader/writer uses this module after the hard cutover: kanban UI, task CLI,
 workflows, schedule, dispatch, continuation, agent assignment, and health
-checks. The old `plugins/tasks/lib/flow-store.ts` metadata path is deleted or
-rewritten to delegate to this store; no direct `flow_runs` task metadata reads
+checks. The old `plugins/tasks/lib/flow-store.ts` metadata path is deleted;
+no compatibility shim remains, and no direct `flow_runs` task metadata reads
 remain outside the runtime adapter.
 
 Implementation sequencing is part of the contract: the Bakin task store is cut

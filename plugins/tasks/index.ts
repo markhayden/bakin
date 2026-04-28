@@ -1,6 +1,6 @@
 /**
  * Tasks plugin — server entry point.
- * Registers API routes, MCP exec tools, and cross-plugin hooks for task operations.
+ * Registers API routes and MCP exec tools for task operations.
  */
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
@@ -12,7 +12,8 @@ import {
   reorderTasks,
   archiveOldTasks,
   autoArchiveDoneTasks,
-} from './lib/flow-store'
+  getTask,
+} from '../../src/core/task-store'
 import {
   moveTaskWithEffects,
   blockTaskWithEffects,
@@ -86,7 +87,6 @@ const tasksPlugin: BakinPlugin = {
         }
       },
       verifyExists: async (key: string) => {
-        const { getTask } = await import('./lib/flow-store')
         return getTask(key) !== null
       },
     })

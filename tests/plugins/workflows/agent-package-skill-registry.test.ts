@@ -27,7 +27,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
 }))
-mock.module('@bakin/tasks/lib/flow-store', () => ({}))
+mock.module('@/core/task-store', () => ({}))
 
 import {
   clearAgentPackageSkillRegistry,

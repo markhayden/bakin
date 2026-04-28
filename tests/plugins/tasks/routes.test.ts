@@ -66,8 +66,9 @@ const mockMoveTask = mock()
 const mockSetDependency = mock()
 const mockClearDependency = mock()
 const mockReorderTasks = mock()
+const mockGetTask = mock()
 
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   readTaskboard: (...args: unknown[]) => mockReadTaskboard(...args),
   createTask: (...args: unknown[]) => mockCreateTask(...args),
   deleteTask: (...args: unknown[]) => mockDeleteTask(...args),
@@ -79,6 +80,7 @@ mock.module('../../../plugins/tasks/lib/flow-store', () => ({
   setDependency: (...args: unknown[]) => mockSetDependency(...args),
   clearDependency: (...args: unknown[]) => mockClearDependency(...args),
   reorderTasks: (...args: unknown[]) => mockReorderTasks(...args),
+  getTask: (...args: unknown[]) => mockGetTask(...args),
   autoArchiveDoneTasks: mock().mockReturnValue(0),
   archiveOldTasks: mock().mockReturnValue(0),
 }))
@@ -129,7 +131,7 @@ beforeEach(() => {
   for (const m of [
     mockReadTaskboard, mockCreateTask, mockDeleteTask, mockAssignTask,
     mockAddTaskLog, mockBlockTask, mockUpdateTask, mockMoveTask,
-    mockSetDependency, mockClearDependency, mockReorderTasks,
+    mockSetDependency, mockClearDependency, mockReorderTasks, mockGetTask,
     mockMoveTaskWithEffects, mockBlockTaskWithEffects, mockCreateTaskWithEffects,
     mockReportComplete, mockSetDependencyWithEffects, mockGetTaskDetails,
     mockLogProgress, mockTriggerDispatch,

@@ -95,7 +95,7 @@ mock.module('../../../src/core/search-registry', () => ({
 // Defensive stub — the test isolation hook scans for plugin refs in text
 // and flags any mention of plugins/tasks even though we never import the
 // module. Usage-feed assertions contain /api/plugins/tasks/* strings.
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({}))
+mock.module('@/core/task-store', () => ({}))
 
 // Registry snapshot accessor (plugins list only — exec tool stats are gone).
 ;(globalThis as unknown as { __bakinGetRegistrySnapshot: () => unknown[] }).__bakinGetRegistrySnapshot = () => [

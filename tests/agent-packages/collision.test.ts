@@ -49,7 +49,7 @@ mock.module('@bakin/adapter-openclaw/config', () => ({
   findAgentById: (id: string) => openClawAgents.find((a) => a.id === id) ?? null,
 }))
 
-mock.module('@bakin/tasks/lib/flow-store', () => ({}))
+mock.module('@/core/task-store', () => ({}))
 
 import { installPackage } from '../../src/core/agent-packages/installer'
 import { readInstalledBy } from '../../packages/core/src/agent-packages/markers'

@@ -62,7 +62,7 @@ mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
 }))
 
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   readTaskboard: () => ({
     columns: {
       todo: [{ id: 'board01', title: 'Board Task 1' }],
