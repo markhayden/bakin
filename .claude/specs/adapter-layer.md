@@ -916,7 +916,7 @@ runtimeAdapter, timestamp }` to a ring buffer. Bakin's doctor surfaces gaps:
 Adapter abstraction gaps detected:
   pluginId    keyPath                    accessCount
   ──────────  ─────────────────────────  ───────────
-  messaging   gateway.port               147
+  messaging   runtime.endpoint.port      147
   workflows   channels.discord.guildId   89
 ```
 

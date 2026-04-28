@@ -44,7 +44,7 @@ Companion to `.claude/specs/doctor-decoupling.md`. Read the spec first for the *
 | 6 | `plugins/health/lib/system-checks/content-dir.ts` | **New.** `checkContentDir`. Trivial — 25 lines. | ~25 lines. |
 | 7 | `plugins/health/lib/system-checks/service.ts` | **New.** `checkService`. macOS-only LaunchAgent plist check. Uses `child_process.execSync` for `launchctl list`. | ~80 lines. |
 | 8 | `plugins/health/lib/system-checks/mcporter.ts` | **New.** `checkMcporter`. Reads `getSettings()` for autoFix flag and port. Imports `* as mcporter from '@bakin/core/mcporter'`. | ~55 lines. |
-| 9 | `plugins/health/lib/system-checks/gateway.ts` | **New.** `checkGateway`. Pings via `openclaw.ping()`. | ~25 lines. |
+| 9 | `plugins/health/lib/system-checks/runtime.ts` | **New.** `checkRuntime`. Pings via `pingRuntime()`. | ~25 lines. |
 | 10 | `plugins/health/lib/system-checks/antfly.ts` | **New.** `checkAntfly`. Imports `installed` from `@bakin/core/antfly-server`. | ~70 lines. |
 | 11 | `plugins/health/lib/system-checks/orchestrator-rules.ts` | **New.** `checkOrchestratorRules`. Imports `AGENT_RULES_BLOCK_START/END` and `resolveOrchestratorRules` from sibling `../managed-blocks.ts`. | ~70 lines. |
 | 12 | `plugins/health/lib/system-checks/sync-skill.ts` | **New.** `checkAndSyncSkill` + `buildExecToolsBlock` + `renderSyncedSkill` + `EXEC_TOOLS_START/END` constants. Imports `getAllExecTools` from `@/scripts/lib/registry`. | ~110 lines. |
@@ -66,7 +66,7 @@ Companion to `.claude/specs/doctor-decoupling.md`. Read the spec first for the *
 | 28 | `tests/plugins/schedule/health-checks.test.ts` | **New.** Absorbs `tests/core/doctor-schedule.test.ts` content (265 lines). Plus registration smoke test. | ~280 lines. |
 | 29 | `tests/plugins/memory/health-checks.test.ts` | **New.** Subset of `tests/core/doctor.test.ts` covering search-tables. Plus registration smoke test. | ~120 lines. |
 | 30 | `tests/plugins/health/managed-blocks.test.ts` | **New.** Absorbs `tests/core/doctor-managed-blocks.test.ts` content (249 lines). Imports from `plugins/health/lib/managed-blocks`. Plus registration smoke test for the managed-blocks check. | ~270 lines. |
-| 31 | `tests/plugins/health/system-checks.test.ts` | **New.** Subset of `tests/core/doctor.test.ts` covering 8 system checks (content-dir, service, mcporter, gateway, antfly, orchestrator-rules, sync-skill, plugin-assets). Plus 9 registration smoke tests. | ~350 lines. |
+| 31 | `tests/plugins/health/system-checks.test.ts` | **New.** Subset of `tests/core/doctor.test.ts` covering 8 system checks (content-dir, service, mcporter, runtime, antfly, orchestrator-rules, sync-skill, plugin-assets). Plus 9 registration smoke tests. | ~350 lines. |
 | 32 | `tests/core/doctor.test.ts` | **Major shrink: 370 → ~80 lines.** Keeps: orchestration (runDiagnostics calls runPluginHealthChecks + aggregates + notifies + audits), getLastResults cache test, requireOnboard gate test, notifyUnfixableIssues dedup test. Drops: every per-check assertion (those moved to plugin test files). | -290 lines. |
 | 33 | `tests/core/doctor-agent-assets.test.ts` | **Delete.** Content moved into `tests/plugins/team/health-checks.test.ts` in C1. | -170 lines. |
 | 34 | `tests/core/doctor-schedule.test.ts` | **Delete.** Content moved into `tests/plugins/schedule/health-checks.test.ts` in C4. | -265 lines. |
@@ -125,7 +125,7 @@ C3 (assets)                                                 ─▶ C10
 C4 (schedule)                                               ─▶ C10
 C5 (memory)                                                 ─▶ C10
 C6 (health: content-dir + service + mcporter)               ─▶ C10
-C7 (health: gateway + antfly)                               ─▶ C10
+C7 (health: runtime + antfly)                               ─▶ C10
 C8 (health: orchestrator-rules + sync-skill + plugin-assets) ─▶ C9 (relocates managed-blocks deps)
 C9 (health: managed-blocks + relocate infra + CLI imports)  ─▶ C10
                                                             
@@ -329,17 +329,17 @@ C10 (collapse type + delete inline helpers + docs)          ──┘
 
 **Rollback:** `git revert <C6>`.
 
-### C7 — `refactor(health): own gateway + antfly system checks`
+### C7 — `refactor(health): own runtime + antfly system checks`
 
-**Scope:** Migrate 2 system checks (`gateway`, `antfly`) into `plugins/health/lib/system-checks/`.
+**Scope:** Migrate 2 system checks (`runtime`, `antfly`) into `plugins/health/lib/system-checks/`.
 
 **Files touched:**
 
-- **NEW** `plugins/health/lib/system-checks/gateway.ts` (~25 lines): `checkGateway` — pings `openclaw.ping()`.
+- **NEW** `plugins/health/lib/system-checks/runtime.ts` (~25 lines): `checkRuntime` — pings `pingRuntime()`.
 - **NEW** `plugins/health/lib/system-checks/antfly.ts` (~70 lines): `checkAntfly` — reads `getSettings()`, dynamic-imports `'@bakin/core/antfly-server'` for `installed()`. The dynamic import was preserved in today's check; keep it (avoids loading antfly-server on cold path when the check doesn't run).
 - **EDIT** `plugins/health/index.ts` — register two more checks.
 - **EDIT** `src/core/doctor.ts` — delete two functions + their `Promise.all` elements.
-- **EDIT** `tests/plugins/health/system-checks.test.ts` — add gateway + antfly cases + 2 more registration smoke tests.
+- **EDIT** `tests/plugins/health/system-checks.test.ts` — add runtime + antfly cases + 2 more registration smoke tests.
 
 **Verification:** Same shape. `wc -l src/core/doctor.ts` ≈ 750.
 
@@ -542,7 +542,7 @@ grep -cE "function check[A-Z]" src/core/doctor.ts # checks remaining
 - [ ] PR description summarizes the migration and links #139 (closes) and #172 (sibling, stays open).
 - [ ] Docs updates verified by spot-rendering the Astro site (`cd docs && bun run dev`) and confirming the health and plugin-authoring pages are accurate.
 - [ ] `.claude/knowledge/doctor-and-health-checks.md` exists and is accurate against the post-migration code.
-- [ ] On a test-home instance, `./bakin doctor` produces the same total result count as before (modulo namespaced ids); spot-check `team.agent-roster`, `tasks.taskboard`, `health.gateway`, `health.managed-blocks` are present.
+- [ ] On a test-home instance, `./bakin doctor` produces the same total result count as before (modulo namespaced ids); spot-check `team.agent-roster`, `tasks.taskboard`, `health.runtime`, `health.managed-blocks` are present.
 - [ ] Markers in `~/.openclaw/workspaces/{agentId}/AGENTS.md` are byte-identical pre- and post-migration on a snapshot test.
 - [ ] Issue #139 closes when the PR merges.
 
