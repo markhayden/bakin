@@ -753,7 +753,7 @@ bakin init
 Example test mode: `illustrative`
 Reason: Writes local home directory state.
 
-### `bakin check <runtime|llm|channels|plugin-assets|agent-assets|all>`
+### `bakin check <runtime|search|search-models|llm|channels|plugin-assets|agent-assets|all>`
 
 Runs one or all first-run readiness checks.
 
@@ -769,7 +769,7 @@ bakin check all
 Example test mode: `illustrative`
 Reason: Depends on local environment.
 
-### `bakin install <antfly|models|mcporter|plugin-assets|agent-assets>`
+### `bakin install <search|search-models|mcporter|plugin-assets|agent-assets>`
 
 Installs Bakin dependencies or plugin/agent assets.
 

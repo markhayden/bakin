@@ -74,7 +74,7 @@ async function checkAntflyDependency() {
     name: 'antfly',
     status: 'missing' as const,
     message: 'Antfly binary not found on any known install path',
-    remediation: `Run \`bakin install antfly\` to install via Homebrew (${BREW_CASK}).`,
+    remediation: `Run \`bakin install search\` to install the configured search adapter via Homebrew (${BREW_CASK}).`,
   }
 }
 
@@ -253,7 +253,7 @@ async function checkTermiteModels() {
     name: 'models',
     status: 'missing' as const,
     message: `${missing.length} of ${REQUIRED_MODELS.length} Termite model${missing.length === 1 ? '' : 's'} missing or incomplete`,
-    remediation: 'Run `bakin install models` to (re-)download the missing Termite models.',
+    remediation: 'Run `bakin install search-models` to (re-)download the missing Termite models.',
     details: {
       root: termiteModelsRoot(),
       missing: missing.map((e) => ({

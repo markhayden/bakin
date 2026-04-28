@@ -3,7 +3,7 @@
  *
  * runOnboard() walks every component in a fixed dependency order:
  *
- *   mkdir -> settings -> runtime -> antfly -> models -> mcporter -> llm -> channels
+ *   mkdir -> settings -> runtime -> search -> search-models -> mcporter -> llm -> channels
  *
  * For each component:
  *   1. Call `check()`. If it reports `ok` or `warn`, record and move on.
@@ -23,9 +23,9 @@
  *     the runtime status, marks every downstream component as 'skipped'
  *     with a "runtime required" message, and returns without writing
  *     the marker. Exit code 1.
- *   - Antfly missing that cascades into models: if antfly's post-install
- *     status is not 'ok', models is force-skipped with the reason
- *     "Antfly binary required." No point shelling to a binary that
+ *   - Search adapter missing that cascades into search-models: if search's
+ *     post-install status is not 'ok', search-models is force-skipped with
+ *     the reason "search adapter binary required." No point shelling to a binary that
  *     doesn't exist.
  *
  * Marker-write rule (matches the spec and Mark's sign-off):
@@ -44,8 +44,8 @@ import { createLogger } from '../logger'
 import { mkdirComponent } from './mkdir'
 import { settingsComponent } from './settings'
 import { runtimeComponent } from './runtime'
-import { antflyComponent } from './antfly'
-import { modelsComponent } from './models'
+import { searchComponent } from './search'
+import { searchModelsComponent } from './search-models'
 import { mcporterComponent } from './mcporter'
 import { pluginAssetsComponent } from './plugin-assets'
 import { agentAssetsComponent } from './agent-assets'
@@ -69,8 +69,8 @@ export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
   mkdirComponent,
   settingsComponent,
   runtimeComponent,
-  antflyComponent,
-  modelsComponent,
+  searchComponent,
+  searchModelsComponent,
   mcporterComponent,
   pluginAssetsComponent,
   agentAssetsComponent,
@@ -344,21 +344,21 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
   for (let i = 0; i < COMPONENT_ORDER.length; i++) {
     const component = COMPONENT_ORDER[i]
 
-    // Cascade skip: if antfly is not ok, models has nothing to pull with.
+    // Cascade skip: if search is not ok, search-models has nothing to pull with.
     // Skip it before even calling check().
-    if (component.name === 'models') {
-      const antfly = outcomes.find((o) => o.name === 'antfly')
-      if (antfly && antfly.finalStatus !== 'ok') {
+    if (component.name === 'search-models') {
+      const search = outcomes.find((o) => o.name === 'search')
+      if (search && search.finalStatus !== 'ok') {
         const skip: ComponentOutcome = {
-          name: 'models',
+          name: 'search-models',
           finalStatus: 'skipped',
           check: {
-            name: 'models',
+            name: 'search-models',
             status: 'missing',
-            message: 'Skipped: Antfly binary is required to pull Termite models',
+            message: 'Skipped: search adapter binary is required to pull Termite models',
           },
-          message: 'Skipped: Antfly binary is required to pull Termite models',
-          remediation: 'Install Antfly first via `bakin install antfly`, then rerun onboarding.',
+          message: 'Skipped: search adapter binary is required to pull Termite models',
+          remediation: 'Install the configured search adapter first via `bakin install search`, then rerun onboarding.',
           durationMs: 0,
         }
         outcomes.push(skip)
