@@ -128,6 +128,10 @@ commit submits source B):
    request-body `ref`, rejects conflicts, clones to staging at that ref,
    validates manifest + permissions, parses the manifest version, and
    computes `manifestSha`.
+   Before any target-dir copy/build, it also validates `dependencies`:
+   each dependency must be a core plugin, an installed user plugin, or
+   in the selected recommended-plugin install plan. Missing deps return
+   HTTP 400 and the staging dir is removed.
 3. If permissions are non-empty AND `accepted !== true`, server returns
    `{ awaitingConsent: true, id, version, permissions, consentToken }`
    and tears down staging. The token is HMAC-SHA256 over
@@ -149,6 +153,29 @@ commit submits source B):
 Zero-permission plugins skip the consent gate (no token needed).
 `--yes` short-circuits the prompt for scripted/CI installs but the
 token round-trip still runs for the binding check.
+
+### Dependency Validation
+
+`dependencies` in `bakin-plugin.json` are Bakin plugin IDs, not npm
+packages. npm packages are handled by `buildUserPlugin()` from the
+plugin's `package.json`; plugin dependencies are runtime/load-order
+contracts.
+
+Validation surfaces:
+
+- Generic copied installs (`bakin plugins install <source>`) refuse a
+  plugin before copy/build if any declared dependency is missing.
+- Dev installs (`bakin plugins install --dev <path>`) apply the same
+  dependency check before linking.
+- Recommended onboarding installs use the curated
+  `RECOMMENDED_PLUGINS` list as the official dependency index, validate
+  all selected plugins before installing, and topologically order selected
+  plugins while preserving curated order for independent entries.
+
+There is intentionally no implicit third-party network install from an
+arbitrary manifest dependency. If a dependency is not core, installed, or
+part of the selected official onboarding set, the user gets a clear error
+and can choose what to install.
 
 #### Monorepo `#subpath` syntax (Phase 1)
 

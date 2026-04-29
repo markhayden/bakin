@@ -47,13 +47,14 @@ Source: `docs/snippets/plugin-basic/bakin-plugin.json`
 | `contentFiles` | Files the plugin contributes to Bakin content. |
 | `secrets` | Secret names the plugin expects. |
 | `tests` | Plugin-local test command. |
-| `dependencies` | Runtime package dependencies. |
+| `dependencies` | Other Bakin plugin IDs that must be available before this plugin loads. |
 | `permissions` | Capability labels used for review and future policy enforcement. |
 
 ## Authoring Rules
 
 - Treat `id` as permanent once users install the plugin.
 - Keep entries relative to the plugin root.
+- Declare plugin dependencies by plugin ID. `bakin plugins install` refuses a plugin when a dependency is neither core nor already installed.
 - Declare permissions before adding new routes, exec tools, or external integrations.
 - Do not rely on undocumented host files. Import supported APIs from `@bakin/sdk` and `@bakin/sdk/*`.
 
