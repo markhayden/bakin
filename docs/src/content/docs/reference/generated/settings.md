@@ -3,10 +3,6 @@ title: Settings Reference
 description: Generated reference for Bakin settings keys and default values.
 ---
 
-Docs version: Bakin 1.0.0
-
-This page is generated from `packages/core/src/settings.ts`.
-
 Bakin reads settings from `settings.json` in the resolved Bakin home directory and deep-merges user values over these defaults.
 
 | Key | Default |
@@ -59,3 +55,8 @@ Bakin reads settings from `settings.json` in the resolved Bakin home directory a
 | `workflow.rejectRepeatThreshold` | `0.95` |
 | `workflow.enforceAgentScoping` | `true` |
 | `workflow.enforceWorkflowDoneGuard` | `true` |
+
+<aside class="generated-page-note" aria-label="Generated page metadata">
+  <span>Generated from <code>packages/core/src/settings.ts</code>.</span>
+  <span>Bakin 1.0.0.</span>
+</aside>

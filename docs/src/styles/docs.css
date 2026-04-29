@@ -462,6 +462,291 @@ starlight-toc nav a[href="#for-agents"]::before {
   font-size: 0.9rem;
 }
 
+.generated-page-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  margin-top: 3rem;
+  padding-top: 0.875rem;
+  border-top: 1px solid var(--sl-color-hairline);
+  color: var(--sl-color-gray-3);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.generated-page-note code {
+  font-size: 0.72rem;
+}
+
+.cli-reference-intro {
+  margin: 0.5rem 0 0;
+}
+
+.cli-reference-intro p {
+  color: var(--sl-color-gray-3);
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+.cli-common-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.75rem;
+  margin: 1.25rem 0 2rem;
+}
+
+.cli-common-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.025);
+  text-decoration: none;
+}
+
+.cli-common-card:hover,
+.cli-common-card:focus {
+  border-color: rgba(234, 234, 0, 0.45);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.cli-common-card code {
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--sl-color-white);
+  font-size: 0.78rem;
+}
+
+.cli-common-card span {
+  color: var(--sl-color-gray-3);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.cli-command-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  margin: 1.25rem 0 2.25rem;
+}
+
+.cli-section-description {
+  padding-bottom: 20px;
+  color: var(--sl-color-gray-3);
+  font-size: 0.95rem;
+  line-height: 1.65;
+}
+
+.cli-command {
+  scroll-margin-top: 5rem;
+}
+
+.cli-command__heading {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.cli-command__heading code {
+  flex: 0 0 auto;
+  padding: 0.32rem 0.58rem;
+  border: 0;
+  border-radius: 0.4rem;
+  box-shadow: none;
+  background: var(--bakin-brand-pink);
+  color: #0f0e0e;
+  font-size: 0.96rem;
+  font-weight: 600;
+}
+
+.cli-command__summary {
+  color: var(--sl-color-gray-2);
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.cli-command__description {
+  margin: 0 0 1rem;
+  color: var(--sl-color-gray-3);
+  font-size: 0.98rem;
+  line-height: 1.55;
+}
+
+.cli-command__box {
+  padding: 1.25rem;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.cli-command__anchor {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  flex: 0 0 auto;
+  color: var(--bakin-brand-yellow);
+  opacity: 0;
+  text-decoration: none;
+}
+
+.cli-command__anchor svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+}
+
+.cli-command:hover .cli-command__anchor,
+.cli-command__anchor:focus {
+  opacity: 1;
+}
+
+.cli-command__terminal {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin: 0 0 1.2rem;
+  padding: 1rem 1.1rem;
+  border-radius: 0.8rem;
+  background: #080808;
+  overflow-x: auto;
+}
+
+.cli-command__prompt {
+  color: var(--bakin-brand-pink);
+  font-family: var(--font-mono);
+}
+
+.cli-command__terminal code {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  flex: 1 1 auto;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  font-size: 0.92rem;
+}
+
+.cli-command__copy {
+  flex: 0 0 auto;
+  min-width: 4.5rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid rgba(120, 117, 116, 0.35);
+  border-radius: 0.55rem;
+  background: transparent;
+  color: var(--sl-color-gray-3);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.cli-command__copy:hover,
+.cli-command__copy:focus {
+  border-color: var(--sl-color-gray-3);
+  color: var(--sl-color-white);
+}
+
+.cli-token--binary {
+  color: var(--sl-color-white);
+  font-weight: 700;
+}
+
+.cli-token--option {
+  color: var(--bakin-brand-yellow);
+}
+
+.cli-token--arg {
+  color: var(--sl-color-gray-2);
+}
+
+.sl-markdown-content table.cli-command__args:not(:where(.not-content *)) {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+  margin-top: 1rem;
+  overflow: hidden;
+  background: #1d1b1b;
+  font-size: 0.85rem;
+}
+
+.sl-markdown-content table.cli-command__args th:not(:where(.not-content *)),
+.sl-markdown-content table.cli-command__args td:not(:where(.not-content *)) {
+  padding: 0.65rem 0.85rem;
+}
+
+.sl-markdown-content table.cli-command__args th:not(:where(.not-content *)) {
+  background: #242121;
+}
+
+.sl-markdown-content table.cli-command__args td:not(:where(.not-content *)) {
+  background: #1d1b1b;
+}
+
+.sl-markdown-content table.cli-command__args th:nth-child(1):not(:where(.not-content *)),
+.sl-markdown-content table.cli-command__args td:nth-child(1):not(:where(.not-content *)) {
+  width: 36%;
+}
+
+.sl-markdown-content table.cli-command__args th:nth-child(2):not(:where(.not-content *)),
+.sl-markdown-content table.cli-command__args td:nth-child(2):not(:where(.not-content *)) {
+  width: 12%;
+}
+
+.sl-markdown-content table.cli-command__args th:nth-child(3):not(:where(.not-content *)),
+.sl-markdown-content table.cli-command__args td:nth-child(3):not(:where(.not-content *)) {
+  width: 12%;
+}
+
+.cli-command__args td:first-child code {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--sl-color-gray-1);
+}
+
+.cli-command__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+}
+
+.cli-command__choices span {
+  display: inline-flex;
+  padding: 0.16rem 0.38rem;
+  border-radius: 0.3rem;
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--sl-color-gray-3);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.cli-command__meta {
+  margin-top: 1rem;
+  color: var(--sl-color-gray-3);
+  font-size: 0.78rem;
+}
+
 .sl-link-button.cta-sm {
   font-size: var(--sl-text-sm);
   padding: 0.375rem 0.875rem;

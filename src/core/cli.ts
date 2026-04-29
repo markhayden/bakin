@@ -583,7 +583,7 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
       default: {
         // Delegate to the legacy CLI (doctor, tasks, workflows, agents,
         // schedule, search, settings, trash, paths, reindex,
-        // onboard, setup, init, logs, agent-rules, etc.). The legacy
+        // onboard, setup, logs, agent-rules, etc.). The legacy
         // handler calls process.exit internally on success/failure, so
         // we don't return here.
         const { main: runLegacyCli } = await import(/* @vite-ignore */ '../../cli/bakin' as string) as { main: () => Promise<void> }
