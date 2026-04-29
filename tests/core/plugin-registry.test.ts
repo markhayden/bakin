@@ -263,6 +263,42 @@ describe('PluginRegistryImpl', () => {
     return pluginDir
   }
 
+  function writeUserPlugin(
+    id: string,
+    opts: {
+      deps?: string[]
+      activate?: string
+      manifest?: Record<string, unknown>
+    } = {},
+  ): string {
+    const pluginDir = join(tempDir, 'plugins', id)
+    mkdirSync(pluginDir, { recursive: true })
+    const manifest = {
+      id,
+      name: id.charAt(0).toUpperCase() + id.slice(1),
+      version: '1.0.0',
+      bakin: '>=1.0.0',
+      description: `User plugin ${id}`,
+      entry: { server: 'index.js' },
+      dependencies: opts.deps ?? [],
+      permissions: [],
+      ...opts.manifest,
+    }
+    writeFileSync(join(pluginDir, 'bakin-plugin.json'), JSON.stringify(manifest))
+    writeFileSync(
+      join(pluginDir, 'index.js'),
+      `const plugin = {
+        id: '${id}',
+        name: '${id.charAt(0).toUpperCase() + id.slice(1)}',
+        version: '1.0.0',
+        activate: function(ctx) { ${opts.activate || ''} },
+      }
+      module.exports = plugin
+      module.exports.default = plugin`,
+    )
+    return pluginDir
+  }
+
   // -------------------------------------------------------------------------
   // B1: topologicalSort (tested indirectly via initialize)
   // -------------------------------------------------------------------------
@@ -495,6 +531,103 @@ describe('PluginRegistryImpl', () => {
         'agent-1',
         { taskId: 'T1' },
       )
+    })
+  })
+
+  describe('user plugin failure states', () => {
+    it('reports missing dependencies without exposing plugin routes', async () => {
+      writeUserPlugin('needs-missing', {
+        deps: ['not-installed'],
+        activate: `ctx.registerRoute({ path: '/data', method: 'GET', handler: function() { return new Response('bad') } })`,
+      })
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      expect(pluginRegistry.getPluginIds()).not.toContain('needs-missing')
+      expect(pluginRegistry.findRoute('needs-missing', '/data', 'GET')).toBeNull()
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'needs-missing')
+      expect(failed).toMatchObject({
+        status: 'failed',
+        errorCode: 'missing_dependency',
+        missingDependencies: ['not-installed'],
+      })
+    })
+
+    it('reports dependency cycles as failed plugins', async () => {
+      writeUserPlugin('cycle-a', { deps: ['cycle-b'] })
+      writeUserPlugin('cycle-b', { deps: ['cycle-a'] })
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      const snapshot = pluginRegistry.getRegistrySnapshot()
+      expect(snapshot.find((entry: any) => entry.id === 'cycle-a')).toMatchObject({
+        status: 'failed',
+        errorCode: 'dependency_cycle',
+      })
+      expect(snapshot.find((entry: any) => entry.id === 'cycle-b')).toMatchObject({
+        status: 'failed',
+        errorCode: 'dependency_cycle',
+      })
+    })
+
+    it('reports activation errors as failed plugins', async () => {
+      writeUserPlugin('throws', {
+        activate: `throw new Error('boom')`,
+      })
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'throws')
+      expect(failed).toMatchObject({
+        status: 'failed',
+        errorCode: 'activation_failed',
+      })
+      expect(failed.errorMessage).toContain('boom')
+    })
+
+    it('fails user plugins that register undeclared API routes', async () => {
+      writeUserPlugin('undeclared-route', {
+        activate: `ctx.registerRoute({ path: '/data', method: 'GET', handler: function() { return new Response('bad') } })`,
+      })
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'undeclared-route')
+      expect(failed).toMatchObject({
+        status: 'failed',
+        errorCode: 'activation_failed',
+      })
+      expect(failed.errorMessage).toContain('undeclared API route')
+      expect(pluginRegistry.findRoute('undeclared-route', '/data', 'GET')).toBeNull()
+    })
+
+    it('allows user plugins to register declared API routes and exec tools', async () => {
+      writeUserPlugin('declared-surfaces', {
+        manifest: {
+          contributes: {
+            apiRoutes: [
+              { method: 'GET', path: '/data', summary: 'Read data' },
+            ],
+            execTools: [
+              { name: 'declared.tool', summary: 'Declared tool' },
+            ],
+          },
+        },
+        activate: `
+          ctx.registerRoute({ path: '/data', method: 'GET', handler: function() { return new Response('ok') } })
+          ctx.registerExecTool({ name: 'declared.tool', description: 'test', parameters: {}, handler: async () => ({ ok: true }) })
+        `,
+      })
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      expect(pluginRegistry.findRoute('declared-surfaces', '/data', 'GET')).not.toBeNull()
+      expect(mockAddExecTool).toHaveBeenCalledWith(expect.objectContaining({
+        source: 'plugin:declared-surfaces',
+        name: 'declared.tool',
+      }))
+      const active = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'declared-surfaces')
+      expect(active).toMatchObject({ status: 'active' })
     })
   })
 

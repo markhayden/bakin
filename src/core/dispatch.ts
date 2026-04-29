@@ -12,7 +12,6 @@ import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { isStale } from '../lib/format'
 import { getHookRegistry } from '../lib/plugin-registry'
-import { readProject } from '../../plugins/projects/lib/parser'
 import {
   addTaskLog as appendTaskLog,
   blockTask as blockStoredTask,
@@ -510,12 +509,7 @@ export function buildDispatchMessage(
   // Project context — lightweight mention if task has a projectId
   let projectBlock = ''
   if (task.projectId) {
-    try {
-      const project = readProject(task.projectId)
-      if (project) {
-        projectBlock = `\n\n**Project:** "${project.title}" (id: ${project.id}, ${project.progress}% complete)\nThe project spec contains detailed requirements. Call bakin_exec_project_get to read it before starting work.`
-      }
-    } catch { /* projects plugin may not be loaded */ }
+    projectBlock = `\n\n**Project:** id ${task.projectId}\nThe project spec may contain detailed requirements. Call bakin_exec_project_get to read it before starting work.`
   }
   const contactsRef = `Reference info is in ${join(contentDir, 'team/CONTACTS.md')}.`
 

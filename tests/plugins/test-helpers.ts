@@ -112,7 +112,13 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
     events,
     pluginId,
     runtime,
-    tasks: createMockBakinTaskStore(),
+    tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
+    assets: {
+      getByFilename: vi.fn(async () => null),
+      list: vi.fn(async () => []),
+      exists: vi.fn(async () => false),
+      fileRef: vi.fn(async (filename: string) => ({ kind: 'asset' as const, filename })),
+    },
     registerNav: vi.fn(),
     registerRoute: (route) => routes.push(route),
     registerSlot: vi.fn(),
@@ -183,6 +189,8 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
     },
     hooks: {
       register: vi.fn(() => () => {}),
+      call: vi.fn(async (_name: string, data: unknown) => data),
+      callAll: vi.fn(async () => undefined),
       has: vi.fn(() => false),
       invoke: vi.fn(async () => undefined),
     },

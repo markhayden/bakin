@@ -6,7 +6,6 @@
 import type { ZodRawShape, ZodType } from 'zod'
 import type { ContractStability, ContractVisibility, DocsExample, SchemaLike, SourceLocation } from './docs'
 import type { AgentRuntimeAdapter } from './adapters/runtime'
-import type { BakinTaskStore } from './tasks/store'
 
 // ---------------------------------------------------------------------------
 // Approval actor — identifies who decided a gate (or any reviewable action)
@@ -26,6 +25,24 @@ export interface StorageAdapter {
   append(path: string, content: string): void
   exists(path: string): boolean
   readAll(): Record<string, string>
+  list?(path?: string): string[]
+  remove?(path: string): void
+  rename?(from: string, to: string): void
+  stat?(path: string): {
+    path: string
+    size: number
+    mtimeMs: number
+    isFile: boolean
+    isDirectory: boolean
+  } | null
+  readJson?<T = unknown>(path: string): T | null
+  writeJson?(path: string, value: unknown): void
+  /**
+   * Convert a plugin-storage-relative path or glob to the content-dir-relative
+   * path seen by file-backed search/watch APIs. Implementations never return
+   * absolute host paths.
+   */
+  searchPath?(path: string): string
 }
 
 // ---------------------------------------------------------------------------
@@ -95,7 +112,8 @@ export interface PluginToolContext {
   events: EventBus
   pluginId: string
   runtime: AgentRuntimeAdapter
-  tasks: BakinTaskStore
+  tasks: PluginTaskService
+  assets: AssetsAPI
   search: SearchAPI
   hooks: HookAPI
   activity: ActivityAPI
@@ -161,6 +179,10 @@ export interface ActivityAPI {
 export interface HookAPI {
   /** Register a handler for a named hook. Returns unsubscribe function. */
   register(name: string, handler: (data: any) => any): () => void
+  /** Run registered handlers as a waterfall and return the final value. */
+  call<T>(name: string, data: T): Promise<T>
+  /** Run every registered handler and ignore return values. */
+  callAll(name: string, data: Record<string, unknown>): Promise<void>
   /** Check if any handlers are registered for a hook. */
   has(name: string): boolean
   /** Invoke a hook and return its result (RPC-style). */
@@ -291,7 +313,8 @@ export interface PluginContext {
   events: EventBus
   pluginId: string
   runtime: AgentRuntimeAdapter
-  tasks: BakinTaskStore
+  tasks: PluginTaskService
+  assets: AssetsAPI
   registerNav(items: NavItem[]): void
   registerRoute(route: APIRoute): void
   registerSlot(registration: UISlotRegistration): void
@@ -340,6 +363,130 @@ export interface PluginContext {
   hooks: HookAPI
   /** Adapter-backed search — register content types, index, query */
   search: SearchAPI
+}
+
+// ---------------------------------------------------------------------------
+// Public task service
+// ---------------------------------------------------------------------------
+
+export type PluginTaskColumn =
+  | 'backlog'
+  | 'todo'
+  | 'inProgress'
+  | 'review'
+  | 'done'
+  | 'blocked'
+  | 'archived'
+
+export interface PluginTask {
+  id: string
+  title: string
+  agent?: string
+  createdBy?: string
+  checked: boolean
+  column: PluginTaskColumn
+  date?: string
+  blockedReason?: string
+  description?: string
+  log?: TaskLogEntry[]
+  dependsOn?: string
+  parentId?: string | null
+  workflowId?: string
+  scheduleJobId?: string
+  projectId?: string
+  order?: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface TaskLogEntry {
+  timestamp: string
+  author: string
+  message: string
+  data?: Record<string, unknown>
+}
+
+export interface PluginTaskCreateInput {
+  id?: string
+  title: string
+  description?: string
+  agent?: string
+  createdBy?: string
+  column?: PluginTaskColumn
+  date?: string
+  workflowId?: string
+  projectId?: string
+  parentId?: string | null
+  skipWorkflowReason?: string
+}
+
+export interface PluginTaskUpdateInput {
+  title?: string
+  description?: string
+  agent?: string
+  createdBy?: string
+  checked?: boolean
+  column?: PluginTaskColumn
+  date?: string
+  blockedReason?: string
+  workflowId?: string
+  scheduleJobId?: string
+  projectId?: string
+  parentId?: string | null
+}
+
+export interface PluginTaskService {
+  create(input: PluginTaskCreateInput): Promise<PluginTask>
+  update(id: string, patch: PluginTaskUpdateInput): Promise<PluginTask>
+  move(id: string, column: PluginTaskColumn, order?: number): Promise<PluginTask>
+  remove(id: string): Promise<void>
+  get(id: string): Promise<PluginTask | null>
+  list(filter?: { column?: PluginTaskColumn; agent?: string; projectId?: string }): Promise<PluginTask[]>
+  appendLog(id: string, entry: TaskLogEntry): Promise<void>
+}
+
+// ---------------------------------------------------------------------------
+// Public assets service
+// ---------------------------------------------------------------------------
+
+export interface AssetVariantMeta {
+  role: 'thumbnail' | 'optimized' | 'webp'
+  path: string
+  filename: string
+  size: number
+  mimeType: string
+}
+
+export interface AssetMeta {
+  path: string
+  filename: string
+  type: 'text' | 'images' | 'video' | 'audio' | 'plans' | 'research' | 'pdf' | 'data' | 'other'
+  mimeType: string
+  size: number
+  mtimeMs?: number
+  metadata: {
+    agent: string
+    taskId: string | null
+    created: string
+    tool?: string
+    description?: string
+    tags?: string[]
+    originalFilename?: string
+  }
+  variants?: AssetVariantMeta[]
+}
+
+export interface AssetFileRef {
+  kind: 'asset'
+  filename: string
+  mimeType?: string
+}
+
+export interface AssetsAPI {
+  getByFilename(filename: string): Promise<AssetMeta | null>
+  list(filter?: { type?: AssetMeta['type']; taskId?: string | null }): Promise<AssetMeta[]>
+  exists(filename: string): Promise<boolean>
+  fileRef(filename: string): Promise<AssetFileRef>
 }
 
 // ---------------------------------------------------------------------------

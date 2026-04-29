@@ -116,7 +116,7 @@ export interface ContentDeliveryArgs {
     title: string
     body?: string
     url?: string
-    files?: Array<{ name: string; path: string; contentType?: string }>
+    files?: Array<{ name: string; path: string; contentType?: string } | { kind: 'asset'; filename: string; mimeType?: string }>
     metadata?: RuntimeMetadata
   }
 }

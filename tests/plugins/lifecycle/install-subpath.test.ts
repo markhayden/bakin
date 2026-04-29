@@ -56,11 +56,27 @@ const monorepoRoot = join(testDir, 'monorepo-root')
 let cloneUrl: string
 
 const FOO_MANIFEST = JSON.stringify(
-  { id: 'foo', name: 'Foo', version: '1.0.0', permissions: [] },
+  {
+    id: 'foo',
+    name: 'Foo',
+    version: '1.0.0',
+    bakin: '>=1.0.0',
+    description: 'Foo test plugin',
+    entry: { server: 'index.ts' },
+    permissions: [],
+  },
   null, 2,
 )
 const BAR_MANIFEST = JSON.stringify(
-  { id: 'bar', name: 'Bar', version: '0.5.0', permissions: [] },
+  {
+    id: 'bar',
+    name: 'Bar',
+    version: '0.5.0',
+    bakin: '>=1.0.0',
+    description: 'Bar test plugin',
+    entry: { server: 'index.ts' },
+    permissions: [],
+  },
   null, 2,
 )
 

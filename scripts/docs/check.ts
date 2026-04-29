@@ -103,7 +103,6 @@ const commandSnippets = {
   workflows: ['workflows list', 'workflows start', 'workflows step', 'workflows submit'],
   health: ['doctor', 'status'],
   schedule: ['schedule'],
-  messaging: ['messaging'],
 } satisfies Record<string, string[]>
 
 function renderCommandSnippet(marker: string): string {

@@ -37,8 +37,6 @@
       "@bakin/memory/*": ["./plugins/memory/*"],
       "@bakin/models": ["./plugins/models"],
       "@bakin/models/*": ["./plugins/models/*"],
-      "@bakin/messaging": ["./plugins/messaging"],
-      "@bakin/messaging/*": ["./plugins/messaging/*"],
       "@bakin/workflows": ["./plugins/workflows"],
       "@bakin/workflows/*": ["./plugins/workflows/*"],
       "@bakin/assets": ["./plugins/assets"],
@@ -47,8 +45,6 @@
       "@bakin/health/*": ["./plugins/health/*"],
       "@bakin/schedule": ["./plugins/schedule"],
       "@bakin/schedule/*": ["./plugins/schedule/*"],
-      "@bakin/projects": ["./plugins/projects"],
-      "@bakin/projects/*": ["./plugins/projects/*"],
       "@bakin/team": ["./plugins/team"],
       "@bakin/team/*": ["./plugins/team/*"]
     }

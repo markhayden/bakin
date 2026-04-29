@@ -20,7 +20,6 @@ Returns a `BakinPaths` object with absolute paths:
 |-----|------|---------|
 | `home` | `~/.bakin/` | Content root |
 | `memoryLog` | `MEMORY-LOG.md` | Agent memory log |
-| `messaging` | `messaging.json` | Messaging / content calendar events |
 | `audit` | `audit.jsonl` | Append-only audit trail |
 | `assets` | `assets/` | Asset root |
 | `assets.store` | `assets/store/` | Canonical asset store (flat, sharded by month) |
@@ -31,7 +30,6 @@ Returns a `BakinPaths` object with absolute paths:
 | `team` | `team/` | Team directory |
 | `heartbeats` | `heartbeats/` | Agent heartbeat JSON files |
 | `inbox` | `inbox/` | Incoming items |
-| `projects` | `projects/` | Project markdown files |
 | `tasks` | `tasks/` | Bakin-owned task metadata JSON |
 | `workflows` | `workflows/` | Definitions, instances, skills |
 | `settings` | `settings.json` | Runtime settings |
@@ -39,9 +37,11 @@ Returns a `BakinPaths` object with absolute paths:
 ### Initialization (`initBakinHome()`)
 Called by `bakin mkdir` / onboarding setup. Creates the directory structure:
 - `assets/`, `assets/store/`, `assets/inbox/`, `assets/.trash/` (month shards under `store/` are created on-demand by `saveAsset`)
-- `agents/`, `heartbeats/`, `inbox/`, `plugins/`, `projects/`, `tasks/`, `team/personas/`
+- `agents/`, `heartbeats/`, `inbox/`, `plugins/`, `tasks/`, `team/personas/`
 - `workflows/definitions/`, `workflows/skills/`, `workflows/instances/`
 - Seeds workflow skill files and definitions from plugin defaults
+
+Messaging and Projects are official external plugins. Their runtime data lives under plugin-scoped storage after installation, not in core-owned `messaging.json` or top-level `projects/` paths.
 
 ## Storage Adapter
 
@@ -58,9 +58,8 @@ interface StorageAdapter {
 }
 ```
 
-Provided to plugins via `PluginContext.storage`. Each plugin reads/writes to namespaced paths by convention (not enforced):
+Provided to plugins via `PluginContext.storage`. Core plugins receive the app storage adapter for their owned built-in paths. Installed external plugins receive `ScopedPluginStorageAdapter`, which confines reads and writes to `plugin-data/<plugin-id>/`.
 - Tasks plugin: Bakin task store under `getBakinPaths().tasks`, exposed through the core service at `src/core/task-store.ts`
-- Projects plugin: `projects/*.md`
 - Assets plugin: `assets/store/{YYYY-MM}/{filename}` — filename-as-identity; sharded by month, flat inside the shard. See `.claude/knowledge/assets-plugin.md` for the storage model.
 - Schedule plugin: `schedule/`
 - Memory plugin: `MEMORY-LOG.md`
@@ -70,30 +69,12 @@ Provided to plugins via `PluginContext.storage`. Each plugin reads/writes to nam
 ### Task Storage (Bakin JSON)
 Tasks are stored in the core Bakin task store at `getBakinPaths().tasks`. The concrete file store is `packages/core/src/tasks/store.ts`; it writes one JSON document per task at `tasks/{YYYY-MM}/task-{id}.json` with atomic temp-file rename writes. `src/core/task-store.ts` is the core task service layer over that store, not a plugin compatibility shim or legacy DB adapter.
 
-Bakin's own operational state (`audit.jsonl`, per-plugin `plugin-settings/*.json`, heartbeats, task JSON, etc.) is plain JSON / JSONL on the filesystem. User content (projects, assets, workflows, messaging) stays in markdown + sidecars on the filesystem; that boundary is intentional.
+Bakin's own operational state (`audit.jsonl`, per-plugin `plugin-settings/*.json`, `plugin-data/<id>/`, heartbeats, task JSON, etc.) is plain JSON / JSONL on the filesystem. User content managed by installed plugins lives under their scoped plugin data root unless it belongs to a core plugin-owned path such as assets or workflows.
 
 Task execution state is runtime-owned and is linked from task metadata through `task.execution.flowId` plus an execution cache. Runtime execution records are not the authoritative task metadata store.
 
-### Project files (`projects/{id}.md`)
-Markdown with YAML frontmatter:
-```markdown
----
-id: proj-abc123
-title: Q2 Content Campaign
-status: active
-created: 2026-03-28
----
-
-## Checklist
-- [x] Define content calendar [[task:task-001]]
-- [ ] Create hero images [[task:task-002]]
-- [ ] Write blog posts
-
-## Notes
-Free-form markdown content...
-```
-
-Parsed by `plugins/projects/lib/parser.ts`. Checklist items can link to tasks via `[[task:id]]`.
+### Official External Plugin Data
+Messaging and Projects live in `bakin-bits-official`, not in this repo's core plugin tree. When installed, their files are scoped under `plugin-data/messaging/` and `plugin-data/projects/`. Bakin core should interact with them through SDK contracts, routes, exec tools, and generic hooks such as `tasks.statusChanged` / `tasks.enrichDetails`, never through top-level storage paths or direct imports.
 
 ### Sidecar metadata pattern
 Content files have optional `.meta.json` sidecars colocated alongside the file:
@@ -135,7 +116,7 @@ Append-only, one JSON object per line:
 ### Settings (`settings.json` at content root)
 `BakinSettings` interface defined in `packages/core/src/settings.ts` (re-exported via `src/core/settings.ts`). Deep-merged with hard defaults at load time. Cached with `resetSettingsCache()` for invalidation.
 
-Key sections: `runtime`, `search`, `dispatch`, `watchdog`, `messaging`, `sse`, `models`, `doctor`, `service`, `notifications`, `workflow`.
+Key sections: `runtime`, `search`, `dispatch`, `watchdog`, `sse`, `models`, `doctor`, `service`, `notifications`, `workflow`.
 
 ## File Watching
 
@@ -145,7 +126,7 @@ Key sections: `runtime`, `search`, `dispatch`, `watchdog`, `messaging`, `sse`, `
 3. Broadcast via SSE to connected clients
 4. Clients update their Zustand stores
 
-Plugins can request watch patterns via `ctx.watchFiles(['projects/*.md'])`.
+Plugins can request watch patterns via `ctx.watchFiles(['data/*.md'])`; external plugin patterns are relative to that plugin's scoped storage root.
 
 ## Antfly Search Integration
 
@@ -181,5 +162,4 @@ Configured in `BakinSettings.search`. See `.claude/knowledge/search-system.md` f
 | `src/core/search-adapter-factory.ts` | Search adapter factory |
 | `src/core/search-registry.ts` | Search content type registry, ctx.search provider |
 | `src/core/search-cleanup.ts` | Periodic orphan cleanup for search indexes |
-| `plugins/projects/lib/parser.ts` | Project file parsing |
 | `plugins/assets/` | Asset management with sidecars |

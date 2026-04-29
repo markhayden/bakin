@@ -38,8 +38,9 @@ interface ManifestPlugin {
   id: string
   name: string
   version: string
-  clientEntry: string
+  clientEntry?: string
   clientCss?: string
+  status?: 'active' | 'failed'
 }
 
 interface Manifest {
@@ -82,6 +83,7 @@ function swapPluginCss(plugin: ManifestPlugin, version: string): void {
 }
 
 async function loadPluginClient(plugin: ManifestPlugin): Promise<void> {
+  if (plugin.status === 'failed' || !plugin.clientEntry) return
   injectPluginCss(plugin)
   try {
     const mod = await import(/* @vite-ignore */ plugin.clientEntry) as LoadedPluginModule
@@ -162,7 +164,7 @@ export function PluginHost({ children }: { children: ReactNode }) {
       const detail = (event as CustomEvent<VersionMismatchDetail>).detail
       if (!detail) return
       const plugin = latestManifest?.plugins.find((p) => p.id === detail.pluginId)
-      if (!plugin) return
+      if (!plugin?.clientEntry) return
       console.info(
         `[bakin] Plugin "${detail.pluginId}" version drifted (${detail.oldVersion} → ${detail.newVersion}); reloading client bundle.`,
       )

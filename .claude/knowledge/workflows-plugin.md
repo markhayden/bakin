@@ -138,7 +138,7 @@ Plugin ids are auto-namespaced as `{pluginId}.{id}`; builtins keep their short r
 
 Teardown: `unregisterPluginNotificationChannels(pluginId)` is called by `src/lib/plugin-registry.ts` in the user-plugin-overrides-builtin path alongside `unregisterPluginNodeTypes`, so hot reload of a plugin that registered channels doesn't leak `{pluginId}.{id}` entries.
 
-Messaging's drawer + calendar resolve channels through this registry (see `plugins/messaging/components/item-detail-drawer.tsx` + `content-calendar.tsx`); the old `CHANNEL_LABELS` / `CHANNEL_INITIALS` / `CHANNEL_ICONS` maps in `plugins/messaging/constants.ts` are gone.
+The official Messaging plugin resolves channels through this registry from `bakin-bits-official/plugins/messaging`; the old hardcoded channel label/icon maps are gone.
 
 ## Runtime Gate Approvals
 

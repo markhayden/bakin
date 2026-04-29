@@ -17,6 +17,7 @@
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import { MarkdownStorageAdapter } from '@/lib/storage/markdown-adapter'
+import { ScopedPluginStorageAdapter } from '@bakin/core/storage/scoped-plugin-storage'
 import { BakinEventBus } from '@/lib/events/event-bus'
 import { getContentDir } from '@/core/content-dir'
 import { getAppServices } from '@/core/app-services'
@@ -24,6 +25,11 @@ import { createLogger } from '@/core/logger'
 import { buildSearchAPI } from '@/core/search-registry'
 import { appendAudit } from '@/core/audit'
 import { pluginRegistry } from '@/lib/plugin-registry'
+import {
+  createPluginAssetsAPI,
+  createPluginRuntimeFacade,
+  createPluginTaskService,
+} from '@/lib/plugin-context-services'
 import { stampPluginResponse } from '@/core/plugin-host/version-stamp'
 import type { PluginContext, APIRoute } from '@bakin/core/plugin-types'
 
@@ -37,7 +43,10 @@ const log = createLogger('plugin-route')
  */
 function buildCtx(pluginId: string): PluginContext {
   const services = getAppServices()
-  const storage = new MarkdownStorageAdapter()
+  const state = pluginRegistry.getPluginState(pluginId)
+  const storage = state?.source === 'user'
+    ? new ScopedPluginStorageAdapter(getContentDir(), pluginId)
+    : new MarkdownStorageAdapter()
   const events = new BakinEventBus((data) => {
     const broadcastFn = (globalThis as Record<string, unknown>).__bakinBroadcast as
       | ((data: Record<string, unknown>) => void)
@@ -45,12 +54,14 @@ function buildCtx(pluginId: string): PluginContext {
     if (broadcastFn) broadcastFn(data as Record<string, unknown>)
   })
   const noopRegisterRoute = () => {}
+  const assets = createPluginAssetsAPI()
   return {
     storage,
     events,
     pluginId,
-    runtime: services.runtime,
-    tasks: services.tasks,
+    runtime: state?.source === 'user' ? createPluginRuntimeFacade(services.runtime) : services.runtime,
+    tasks: createPluginTaskService(services.tasks),
+    assets,
     registerNav: () => {},
     registerRoute: noopRegisterRoute,
     registerSlot: () => {},
@@ -117,6 +128,18 @@ function buildCtx(pluginId: string): PluginContext {
           | undefined
         if (registry) return registry.register(name, handler as (data: unknown) => unknown)
         return () => {}
+      },
+      call: async <T>(name: string, data: T) => {
+        const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as
+          | { call: <T>(n: string, d: T) => Promise<T> }
+          | undefined
+        return registry ? registry.call<T>(name, data) : data
+      },
+      callAll: async (name: string, data: Record<string, unknown>) => {
+        const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as
+          | { callAll: (n: string, d: Record<string, unknown>) => Promise<void> }
+          | undefined
+        if (registry) await registry.callAll(name, data)
       },
       has: (name) => {
         const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as

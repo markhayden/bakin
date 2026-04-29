@@ -106,6 +106,7 @@ export async function moveTaskWithEffects(
     }
   }
 
+  const taskBeforeMove = getTaskWithColumn(taskId)?.task
   await moveStoredTask(taskId, to, opts?.from, opts?.channel)
 
   const title = await resolveTitle(taskId)
@@ -119,6 +120,18 @@ export async function moveTaskWithEffects(
     meta: { taskId, previousStatus: opts?.from, title },
   })
 
+  hooks().callAll('tasks.statusChanged', {
+    taskId,
+    title,
+    from: opts?.from,
+    to,
+    agent,
+    channel: opts?.channel,
+    task: taskBeforeMove,
+  }).catch((err) => {
+    log.debug('Task status extension hook failed', { taskId, err: err instanceof Error ? err.message : String(err) })
+  })
+
   // Side effects when moved to done
   if (to.toLowerCase() === 'done') {
     // Search indexing handled by tasks plugin via ctx.search
@@ -127,11 +140,6 @@ export async function moveTaskWithEffects(
     })
     // Purge clipboard-source assets if the setting is enabled
     hooks().invoke('assets.purgeClipboardForTask', { taskId }).catch(() => {})
-  }
-
-  // Auto-check project checklist items when task reaches done or archived
-  if (to.toLowerCase() === 'done' || to.toLowerCase() === 'archived') {
-    hooks().invoke<void>('projects.autoCheckLinkedItem', { taskId }).catch(() => {})
   }
 
   // Auto-unblock parent when a child workflow task moves out of blocked
