@@ -147,6 +147,17 @@ Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
 HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-messaging).
 
+## Settings
+
+<!-- docs:settings messaging -->
+| Setting | Type | Default | What it does |
+| --- | --- | --- | --- |
+| Default view | `select` | `month` | Default messaging view on page load |
+| Show schedule jobs | `boolean` | `false` | Display recurring schedule jobs on the content calendar |
+| Channels | `string` | `DEFAULT_CHANNEL` | Comma-separated runtime channel IDs available for distribution (e.g., general,announcements,email) |
+| Content types | `list` |  | Categories used across the content calendar and brainstorm proposals. |
+<!-- /docs:settings -->
+
 <div class="for-agents">
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents

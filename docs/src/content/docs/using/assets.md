@@ -136,6 +136,16 @@ Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
 HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-assets).
 
+## Settings
+
+<!-- docs:settings assets -->
+| Setting | Type | Default | What it does |
+| --- | --- | --- | --- |
+| Generate thumbnails | `boolean` | `true` | Auto-create optimized thumbnails on upload |
+| Max file size (MB) | `number` | `50` | Reject uploads larger than this |
+| Purge clipboard assets on task completion | `boolean` | `false` | Auto-delete clipboard-pasted assets when their linked task is marked done |
+<!-- /docs:settings -->
+
 <div class="for-agents">
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents
