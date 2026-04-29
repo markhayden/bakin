@@ -140,11 +140,11 @@ Plugins compose by filename (`/api/assets/{filename}` is a stable URL) or by slo
 
 Most asset workflows happen in the UI or through agents. Trash is CLI-friendly:
 
-```sh
-bakin trash list                  # show soft-deleted items
-bakin trash restore <filename>    # bring one back
-bakin trash empty                 # purge everything
-```
+<!-- docs:cli-commands assets -->
+| Command | Purpose |
+| --- | --- |
+| `bakin trash [list\|restore\|empty] ...` | Manage trashed assets. |
+<!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 

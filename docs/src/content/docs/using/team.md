@@ -83,17 +83,18 @@ Everything else (soul, identity, rules, tools, skills, sessions) lives in the ru
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
 
-Same operations from the terminal:
-
-```sh
-bakin agents list                                          # roster
-bakin agents install <path|github:user/repo[@ref]>         # install an agent kit
-bakin agents update <agent-id>                             # pull latest
-bakin agents remove <agent-id>                             # uninstall
-bakin agents knowledge <list|enable|disable> ...           # toggle lessons
-bakin agents send <id> <message>                           # message an agent
-bakin packages list                                        # all installed packs
-```
+<!-- docs:cli-commands team -->
+| Command | Purpose |
+| --- | --- |
+| `bakin agents list [--packages]` | List agents. |
+| `bakin agents status <id>` | Get agent status. |
+| `bakin agents tasks <id>` | List tasks assigned to an agent. |
+| `bakin agents send <id> <message>` | Send a message to an agent. |
+| `bakin agents install <path\|github:user/repo[@ref]> [--adopt] [--install-as <id>] [--replace]` | Install an agent package. |
+| `bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--force]` | Remove an agent package. |
+| `bakin agents update [agent-id] [--refresh-template]` | Update agent packages. |
+| `bakin agents knowledge <list\|enable\|disable> ...` | Manage agent knowledge toggles. |
+<!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
