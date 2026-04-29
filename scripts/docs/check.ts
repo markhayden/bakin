@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
 import { CLI_COMMANDS } from '../../src/core/cli/registry'
-import { extractExecTools, renderExecToolsSnippet } from './source-scan'
+import { EXTRACTED_PLUGINS, extractExecTools, locateExtractedPlugin, renderExecToolsSnippet } from './source-scan'
 
 const repoRoot = new URL('../..', import.meta.url).pathname
 const docsRoot = join(repoRoot, 'docs')
@@ -153,6 +153,13 @@ function validateExecToolBlocks(file: string, text: string): void {
   for (const match of text.matchAll(markerPattern)) {
     const marker = match[1]
     if (!execToolMarkerExists(marker)) {
+      if (EXTRACTED_PLUGINS[marker] && !locateExtractedPlugin(marker)) {
+        errors.push(
+          `${rel}: exec-tools snippet "${marker}" references the extracted plugin "${EXTRACTED_PLUGINS[marker]}" but its source isn't reachable. ` +
+          `Clone bakin-bits-official next to bakin (sibling path) or set BAKIN_DOCS_EXTERNAL_SOURCES to its plugins directory.`,
+        )
+        continue
+      }
       errors.push(`${rel}: unknown exec-tools snippet marker "${marker}" (no tools start with bakin_exec_${marker}_)`)
       continue
     }

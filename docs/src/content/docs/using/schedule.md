@@ -84,7 +84,7 @@ Agents can list, create, pause, run, and parse cron through MCP exec tools.
 - `bakin_exec_schedule_create`: Create a new scheduled job that creates tasks on the board
 - `bakin_exec_schedule_delete`: Delete a scheduled job
 - `bakin_exec_schedule_get`: Get details for a single scheduled job
-- `bakin_exec_schedule_list`: List all scheduled jobs (merged OpenClaw + Bakin view)
+- `bakin_exec_schedule_list`: List all scheduled jobs (merged runtime cron + Bakin view)
 - `bakin_exec_schedule_parse`: Parse a natural language or raw cron schedule expression
 - `bakin_exec_schedule_pause`: Pause, resume, or skip runs for a scheduled job
 - `bakin_exec_schedule_run_now`: Trigger an immediate run of a scheduled job
