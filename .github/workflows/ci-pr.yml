@@ -23,6 +23,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # docs:check walks the sibling bakin-bits-official repo for the
+      # extracted messaging + projects plugins. Without this, snippet
+      # markers like `docs:cli-commands projects` would have no source
+      # to render from. See scripts/docs/source-scan.ts.
+      - name: Checkout bakin-bits-official (extracted plugins)
+        uses: actions/checkout@v4
+        with:
+          repository: madeinwyo/bakin-bits-official
+          path: external/bakin-bits-official
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -38,6 +48,8 @@ jobs:
         run: bunx tsc --noEmit -p tsconfig.app.json
 
       - name: Docs build
+        env:
+          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ github.workspace }}/external/bakin-bits-official/plugins
         run: bun run docs:check
 
       - name: Tests
