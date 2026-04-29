@@ -2,6 +2,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '../content-dir'
 import { readPluginLockfile } from '@bakin/core/plugins/lockfile'
+import { getInstalledPluginIds, planPluginDependencyOrder } from '../plugins/dependencies'
 import { askYesNo } from './prompts'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 
@@ -10,6 +11,7 @@ export interface RecommendedPlugin {
   name: string
   source: string
   description: string
+  dependencies: readonly string[]
   defaultSelected: boolean
 }
 
@@ -19,6 +21,7 @@ export const RECOMMENDED_PLUGINS = [
     name: 'Messaging',
     source: 'github:markhayden/bakin-bits-official#plugins/messaging',
     description: 'Content planning, calendar items, brainstorming sessions, approvals, and channel delivery.',
+    dependencies: ['team', 'workflows'],
     defaultSelected: true,
   },
   {
@@ -26,6 +29,7 @@ export const RECOMMENDED_PLUGINS = [
     name: 'Projects',
     source: 'github:markhayden/bakin-bits-official#plugins/projects',
     description: 'Project specs, checklists, task links, assets, and project-context agent tools.',
+    dependencies: ['tasks', 'assets', 'team'],
     defaultSelected: true,
   },
 ] as const satisfies readonly RecommendedPlugin[]
@@ -134,7 +138,17 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
 
   const failures: string[] = []
   const installed: string[] = []
-  for (const plugin of selected) {
+  const plan = planPluginDependencyOrder(selected, { installedIds: getInstalledPluginIds() })
+  if (!plan.ok) {
+    return {
+      name: 'recommended-plugins',
+      status: 'failed',
+      message: `Recommended plugin dependency check failed: ${plan.error}`,
+      durationMs: Date.now() - start,
+    }
+  }
+
+  for (const plugin of plan.ordered) {
     const result = await installSource(plugin.source)
     if (result.ok) installed.push(plugin.id)
     else failures.push(`${plugin.id}: ${result.error}`)

@@ -39,6 +39,7 @@ import { parseManifestPermissions } from '@bakin/core/plugins/permissions'
 import { PLUGIN_ID_RE, readPluginManifestJson, PluginManifestError } from '@bakin/core/plugins/manifest'
 import { parseGithubSource, InvalidGithubSourceError, assertGitRefValid } from '@bakin/core/plugins/source'
 import { computeSourceTreeSha } from '@/core/plugins/upgrade'
+import { checkPluginDependencies } from '@/core/plugins/dependencies'
 import { signConsentToken, verifyConsentToken } from '@/core/plugins/consent-token'
 import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
 import { appendAudit } from '@/core/audit'
@@ -565,6 +566,27 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         return Response.json({
           ok: false,
           error: `plugin "${id}": ${err instanceof Error ? err.message : String(err)}`,
+        }, { status: 400 })
+      }
+
+      const dependencyCheck = checkPluginDependencies({
+        id,
+        dependencies: Array.isArray(manifest.dependencies)
+          ? manifest.dependencies.filter((dep): dep is string => typeof dep === 'string')
+          : [],
+      })
+      if (!dependencyCheck.ok) {
+        rmSync(stagingDir, { recursive: true, force: true })
+        const missing = dependencyCheck.missing
+        const self = dependencyCheck.selfDependencies
+        auditInstallRejected('missing_dependencies', body.source, { id, missing, self })
+        const problems = [
+          ...(missing.length > 0 ? [`missing dependencies: ${missing.join(', ')}`] : []),
+          ...(self.length > 0 ? ['plugin cannot depend on itself'] : []),
+        ].join('; ')
+        return Response.json({
+          ok: false,
+          error: `Plugin "${id}" dependency check failed: ${problems}. Install dependencies first, then retry.`,
         }, { status: 400 })
       }
 
