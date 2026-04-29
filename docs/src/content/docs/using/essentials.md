@@ -73,10 +73,10 @@ This is how knowledge compounds. Each completed task, every retrieved citation, 
 bakin search <query>      # search indexed content
 bakin search:stats        # show index health
 bakin reindex             # reindex content
-bakin install antfly      # install or repair the search engine
+bakin install search      # install or repair the configured search adapter
 ```
 
-Search is powered by [Antfly](https://antfly.io/?ref=makinbakin.com). If Antfly isn't on your machine when you run `bakin onboard`, the installer offers to fetch it via Homebrew (you confirm before anything is installed). Without Antfly, search is disabled. Bakin itself keeps working normally.
+Search runs through Bakin's configured search adapter. If the adapter or its model dependencies are missing when you run `bakin onboard`, onboarding offers to install or repair them after confirmation. Without a healthy search adapter, search is disabled. Bakin itself keeps working normally.
 
 ## Navigation
 
