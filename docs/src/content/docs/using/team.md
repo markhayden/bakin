@@ -74,6 +74,18 @@ From the detail view, fire off a message to the agent directly. It lands in the 
     skills/
 ```
 
+## Settings
+
+<!-- docs:settings team -->
+<div class="settings-table">
+
+| Setting | Type | Default | What it does |
+| --- | --- | --- | --- |
+| Heartbeat stale threshold (minutes) | `number` | `15` | Mark agents as offline after this many minutes without a heartbeat or audit activity |
+
+</div>
+<!-- /docs:settings -->
+
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
 
 Team and packages share a CLI surface:
@@ -91,18 +103,6 @@ bakin packages list                                        # all installed packs
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
 HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-team).
-
-## Settings
-
-<!-- docs:settings team -->
-<div class="settings-table">
-
-| Setting | Type | Default | What it does |
-| --- | --- | --- | --- |
-| Heartbeat stale threshold (minutes) | `number` | `15` | Mark agents as offline after this many minutes without a heartbeat or audit activity |
-
-</div>
-<!-- /docs:settings -->
 
 <div class="for-agents">
 

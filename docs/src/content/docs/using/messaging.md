@@ -121,6 +121,21 @@ Each calendar item picks one or more channels from that registry. Channels show 
 
 Sessions index into search (table `bakin_messaging_brainstorm`) so they reach across-plugin queries. Calendar items filter locally on the page rather than indexing.
 
+## Settings
+
+<!-- docs:settings messaging -->
+<div class="settings-table">
+
+| Setting | Type | Default | What it does |
+| --- | --- | --- | --- |
+| Default view | `select` | `month` | Default messaging view on page load |
+| Show schedule jobs | `boolean` | `false` | Display recurring schedule jobs on the content calendar |
+| Channels | `string` | `DEFAULT_CHANNEL` | Comma-separated runtime channel IDs available for distribution (e.g., general,announcements,email) |
+| Content types | `list` |  | Categories used across the content calendar and brainstorm proposals. |
+
+</div>
+<!-- /docs:settings -->
+
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
 
 <!-- docs:cli-commands messaging -->
@@ -146,21 +161,6 @@ Sessions index into search (table `bakin_messaging_brainstorm`) so they reach ac
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
 HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-messaging).
-
-## Settings
-
-<!-- docs:settings messaging -->
-<div class="settings-table">
-
-| Setting | Type | Default | What it does |
-| --- | --- | --- | --- |
-| Default view | `select` | `month` | Default messaging view on page load |
-| Show schedule jobs | `boolean` | `false` | Display recurring schedule jobs on the content calendar |
-| Channels | `string` | `DEFAULT_CHANNEL` | Comma-separated runtime channel IDs available for distribution (e.g., general,announcements,email) |
-| Content types | `list` |  | Categories used across the content calendar and brainstorm proposals. |
-
-</div>
-<!-- /docs:settings -->
 
 <div class="for-agents">
 

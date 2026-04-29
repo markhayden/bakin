@@ -65,21 +65,6 @@ Workflows cancel automatically when their task moves to `Done` or `Blocked`, or 
 
 Definitions and instances both index into search (table `bakin_workflows`) on name, description, and step content.
 
-## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
-
-<!-- docs:cli-commands workflows -->
-| Command | Purpose |
-| --- | --- |
-| `bakin workflows list` | List workflow definitions. |
-| `bakin workflows start <taskId> <workflowId>` | Start a workflow. |
-| `bakin workflows step <taskId>` | Get current workflow step. |
-| `bakin workflows submit <taskId> <stepId> <json>` | Submit workflow step output. |
-<!-- /docs:cli-commands -->
-
-Full surface in the [CLI reference](/docs/reference/generated/cli/).
-
-HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-workflows).
-
 ## Settings
 
 <!-- docs:settings workflows -->
@@ -96,6 +81,21 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 
 </div>
 <!-- /docs:settings -->
+
+## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
+
+<!-- docs:cli-commands workflows -->
+| Command | Purpose |
+| --- | --- |
+| `bakin workflows list` | List workflow definitions. |
+| `bakin workflows start <taskId> <workflowId>` | Start a workflow. |
+| `bakin workflows step <taskId>` | Get current workflow step. |
+| `bakin workflows submit <taskId> <stepId> <json>` | Submit workflow step output. |
+<!-- /docs:cli-commands -->
+
+Full surface in the [CLI reference](/docs/reference/generated/cli/).
+
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-workflows).
 
 <div class="for-agents">
 

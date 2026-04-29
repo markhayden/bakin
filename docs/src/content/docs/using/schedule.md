@@ -61,20 +61,6 @@ Each job tracks consecutive failures. Past `maxFailures`, the job auto-pauses wi
 
 Cron expressions and run logs are in the OpenClaw home. Bakin reads them; OpenClaw writes them.
 
-## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
-
-Same surface from the terminal:
-
-<!-- docs:cli-commands schedule -->
-| Command | Purpose |
-| --- | --- |
-| `bakin schedule [list\|add\|pause\|resume\|remove\|run\|runs] ...` | Manage scheduled jobs. |
-<!-- /docs:cli-commands -->
-
-Full surface in the [CLI reference](/docs/reference/generated/cli/).
-
-HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-schedule).
-
 ## Settings
 
 <!-- docs:settings schedule -->
@@ -89,6 +75,20 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 
 </div>
 <!-- /docs:settings -->
+
+## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
+
+Same surface from the terminal:
+
+<!-- docs:cli-commands schedule -->
+| Command | Purpose |
+| --- | --- |
+| `bakin schedule [list\|add\|pause\|resume\|remove\|run\|runs] ...` | Manage scheduled jobs. |
+<!-- /docs:cli-commands -->
+
+Full surface in the [CLI reference](/docs/reference/generated/cli/).
+
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-schedule).
 
 <div class="for-agents">
 

@@ -96,6 +96,21 @@ The seven columns and what they mean:
 
 CLI moves and agent calls go through the same state machine.
 
+## Settings
+
+<!-- docs:settings tasks -->
+<div class="settings-table">
+
+| Setting | Type | Default | What it does |
+| --- | --- | --- | --- |
+| Default column | `select` | `todo` | Which column new tasks are created in |
+| Show completed tasks | `boolean` | `true` | Show tasks in the Done and Confirmed columns by default |
+| Auto-archive after (days) | `number` | `0` | Move completed tasks to archive after this many days. 0 to disable. |
+| Max in-progress tasks | `number` | `5` | Warn when more than this many tasks are in progress |
+
+</div>
+<!-- /docs:settings -->
+
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
 
 Same operations are available from the terminal when you'd rather not click:
@@ -116,21 +131,6 @@ Same operations are available from the terminal when you'd rather not click:
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
 HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-tasks).
-
-## Settings
-
-<!-- docs:settings tasks -->
-<div class="settings-table">
-
-| Setting | Type | Default | What it does |
-| --- | --- | --- | --- |
-| Default column | `select` | `todo` | Which column new tasks are created in |
-| Show completed tasks | `boolean` | `true` | Show tasks in the Done and Confirmed columns by default |
-| Auto-archive after (days) | `number` | `0` | Move completed tasks to archive after this many days. 0 to disable. |
-| Max in-progress tasks | `number` | `5` | Warn when more than this many tasks are in progress |
-
-</div>
-<!-- /docs:settings -->
 
 <div class="for-agents">
 
