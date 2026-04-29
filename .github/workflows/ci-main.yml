@@ -50,7 +50,7 @@ jobs:
         run: bun run docs:check
 
       - name: Tests
-        run: bun test --isolate
+        run: bun test --isolate tests
 
       - name: Build (host + plugins, no binary compile)
         run: |
