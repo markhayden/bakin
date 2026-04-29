@@ -51,6 +51,8 @@ Flip the toggle on when you're chasing something specific. Otherwise they stay o
 ## Settings
 
 <!-- docs:settings memory -->
+<div class="settings-table">
+
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
 | Backfill window (days) | `number` | `30` | On first activation, index this many days of history across all tiers. |
@@ -59,6 +61,8 @@ Flip the toggle on when you're chasing something specific. Otherwise they stay o
 | Compare against runtime recall | `boolean` | `true` | Show runtime daily-note recall alongside Bakin search results. |
 | Turn retention (days) | `number` | `7` | Turns older than this are dropped at write time and pruned daily. The runtime still owns the source transcript. |
 | Audit retention (days) | `number` | `30` | Audit rows older than this are dropped at write time and pruned daily. |
+
+</div>
 <!-- /docs:settings -->
 
 Defaults are sensible. Most folks will never touch this.

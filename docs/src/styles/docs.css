@@ -148,6 +148,15 @@ pre {
   text-align: left;
 }
 
+/* Keep the Type and Default columns of plugin Settings tables on one line.
+   Code-formatted defaults like `10 * 1024 * 1024` look broken when wrapped. */
+.sl-markdown-content .settings-table table td:nth-child(2):not(:where(.not-content *)),
+.sl-markdown-content .settings-table table td:nth-child(3):not(:where(.not-content *)),
+.sl-markdown-content .settings-table table th:nth-child(2):not(:where(.not-content *)),
+.sl-markdown-content .settings-table table th:nth-child(3):not(:where(.not-content *)) {
+  white-space: nowrap;
+}
+
 .hero img {
   filter: drop-shadow(0 0 18px rgba(255, 112, 158, 0.22));
 }

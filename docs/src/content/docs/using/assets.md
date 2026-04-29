@@ -139,11 +139,15 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 ## Settings
 
 <!-- docs:settings assets -->
+<div class="settings-table">
+
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
 | Generate thumbnails | `boolean` | `true` | Auto-create optimized thumbnails on upload |
 | Max file size (MB) | `number` | `50` | Reject uploads larger than this |
 | Purge clipboard assets on task completion | `boolean` | `false` | Auto-delete clipboard-pasted assets when their linked task is marked done |
+
+</div>
 <!-- /docs:settings -->
 
 <div class="for-agents">

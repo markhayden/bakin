@@ -150,12 +150,16 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 ## Settings
 
 <!-- docs:settings messaging -->
+<div class="settings-table">
+
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
 | Default view | `select` | `month` | Default messaging view on page load |
 | Show schedule jobs | `boolean` | `false` | Display recurring schedule jobs on the content calendar |
 | Channels | `string` | `DEFAULT_CHANNEL` | Comma-separated runtime channel IDs available for distribution (e.g., general,announcements,email) |
 | Content types | `list` |  | Categories used across the content calendar and brainstorm proposals. |
+
+</div>
 <!-- /docs:settings -->
 
 <div class="for-agents">

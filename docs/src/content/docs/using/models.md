@@ -53,10 +53,14 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 ## Settings
 
 <!-- docs:settings models -->
+<div class="settings-table">
+
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
 | Show usage metrics | `boolean` | `true` | Display token usage and cost estimates |
 | Default model | `select` | `openai-codex/gpt-5.4` | Default model for new agents |
+
+</div>
 <!-- /docs:settings -->
 
 <div class="for-agents">
