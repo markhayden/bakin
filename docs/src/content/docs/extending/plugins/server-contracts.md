@@ -38,6 +38,8 @@ export default plugin
 
 Use `activate()` for registration, not for long-running background work. Keep side effects obvious and idempotent so plugin reload and test setup are predictable.
 
+Do not create lifetime resources at module import time. Timers, process listeners, file watchers, sockets, EventSources, and event-target listeners belong inside `activate(ctx)` or a narrower handler and need a matching cleanup path. Bakin's plugin lint rule fails direct top-level lifetime side effects because old module instances can survive hot reload.
+
 | API | Use it for |
 | --- | --- |
 | `ctx.registerRoute()` | HTTP routes under the plugin API mount. |
@@ -120,4 +122,4 @@ settingsSchema: {
 
 ## Shutdown
 
-Use `onShutdown()` for graceful cleanup and `onSettingsChange()` for settings-driven updates. Do not make plugin consumers restart Bakin for ordinary configuration changes unless the underlying service truly requires it.
+Use `onShutdown()` for graceful cleanup and `onSettingsChange()` for settings-driven updates. Clear interval/timeout handles, close sockets/EventSources/watchers, and call any unsubscribe functions returned by event buses or external libraries. Do not make plugin consumers restart Bakin for ordinary configuration changes unless the underlying service truly requires it.

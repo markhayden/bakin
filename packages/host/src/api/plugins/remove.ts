@@ -5,15 +5,12 @@
  *   1. Refuse if isCorePlugin(id)
  *   2. Call plugin.onUninstall(ctx) if defined — log + continue on error
  *   3. Snapshot Bakin-owned data into ~/.bakin/.uninstalled/<id>-<ISO>.tar.gz
- *   4. Sweep registries: hooks, exec tools, workflow nodes, notification
- *      channels, health checks, search content types
+ *   4. Deactivate the plugin in memory: onShutdown, hooks, exec tools,
+ *      workflow nodes, notification channels, health checks, search
+ *      content types, runtime skills, and registry state
  *   5. Deletes: runtime skills (honors .userEdited), settings
  *      JSON, plugin dir
  *   6. Remove lockfile entry
- *
- * A Bakin restart is still required for the plugin's modules to be
- * released from the JS module cache; the registry sweep ensures no new
- * invocations land while the in-memory state is being torn down.
  */
 import { existsSync, rmSync } from 'fs'
 import { join } from 'path'
@@ -21,18 +18,9 @@ import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { appendAudit } from '@/core/audit'
 import {
-  getHookRegistry,
   isCorePlugin,
   pluginRegistry,
 } from '@/lib/plugin-registry'
-import { removeExecToolsByPlugin } from '../../../../../scripts/lib/registry'
-import { unregisterPluginNodeTypes } from '../../../../../plugins/workflows/lib/node-type-registry'
-import { unregisterPluginNotificationChannels } from '../../../../../plugins/workflows/lib/notification-channel-registry'
-import { unregisterPluginHealthChecks } from '../../../../../plugins/health/lib/health-check-registry'
-import {
-  getContentTypes,
-  purgeContentType,
-} from '@/core/search-registry'
 import {
   planPluginAssetsRemoval,
   removePluginAssets,
@@ -43,6 +31,7 @@ import {
   removePlugin,
   writePluginLockfile,
 } from '@bakin/core/plugins/lockfile'
+import { notifyPluginRemoved } from '@/core/plugins/live-lifecycle'
 
 const log = createLogger('plugin-remove')
 
@@ -149,50 +138,11 @@ export async function post(req: Request, _url: URL): Promise<Response> {
     // the safety-net failed would be the wrong tradeoff.
   }
 
-  // ─── 4. Registry sweep ─────────────────────────────────────────────────────
-  const sweepReport = {
-    hooks: 0,
-    execTools: 0,
-    contentTypes: 0,
-  }
-  try {
-    sweepReport.hooks = getHookRegistry().unregisterByPlugin(pluginId)
-  } catch (err) {
-    log.warn('hook unregisterByPlugin failed', err, { pluginId })
-  }
-  try {
-    sweepReport.execTools = removeExecToolsByPlugin(pluginId)
-  } catch (err) {
-    log.warn('removeExecToolsByPlugin failed', err, { pluginId })
-  }
-  try {
-    unregisterPluginNodeTypes(pluginId)
-  } catch (err) {
-    log.warn('unregisterPluginNodeTypes failed', err, { pluginId })
-  }
-  try {
-    unregisterPluginNotificationChannels(pluginId)
-  } catch (err) {
-    log.warn('unregisterPluginNotificationChannels failed', err, { pluginId })
-  }
-  try {
-    unregisterPluginHealthChecks(pluginId)
-  } catch (err) {
-    log.warn('unregisterPluginHealthChecks failed', err, { pluginId })
-  }
-  // Purge every content type the plugin owned. Iterate a snapshot of the
-  // map so we don't mutate while iterating.
-  const ownedTables = [...getContentTypes().entries()]
-    .filter(([, def]) => def.pluginId === pluginId)
-    .map(([table]) => table)
-  for (const table of ownedTables) {
-    try {
-      await purgeContentType(table)
-      sweepReport.contentTypes++
-    } catch (err) {
-      log.warn('purgeContentType failed', err, { pluginId, table })
-    }
-  }
+  // ─── 4. Registry deactivation ─────────────────────────────────────────────
+  const sweepReport = await pluginRegistry.deactivatePlugin(pluginId, {
+    callShutdown: true,
+    removeState: true,
+  })
 
   // ─── 5. Filesystem deletes ─────────────────────────────────────────────────
   let skillsResult: { removed: number; kept: number; missingFromDisk: string[] } = { removed: 0, kept: 0, missingFromDisk: [] }
@@ -235,13 +185,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
     log.warn('lockfile entry removal failed', err, { pluginId })
   }
 
-  // Drop the in-memory plugin state too — same shape `loadUserPlugins`
-  // does on override. Best-effort; the next restart re-bootstraps anyway.
-  try {
-    pluginRegistry.deletePlugin?.(pluginId)
-  } catch {
-    /* best-effort */
-  }
+  notifyPluginRemoved(pluginId)
 
   log.info(`Removed plugin "${pluginId}"`, {
     pluginId,
@@ -264,6 +208,6 @@ export async function post(req: Request, _url: URL): Promise<Response> {
     skillsMissing: skillsResult.missingFromDisk,
     sweep: sweepReport,
     snapshot: snapshotPath,
-    message: `Removed "${pluginId}". Restart Bakin to fully release the plugin's modules.`,
+    message: `Removed "${pluginId}" and deactivated it.`,
   })
 }

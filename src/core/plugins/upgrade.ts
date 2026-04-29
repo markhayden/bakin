@@ -10,9 +10,8 @@
  * lands in C9 — for now, callers receive `awaitingConsent: true` with the
  * diff and decide what to do (CLI surfaces a placeholder; --yes overrides).
  *
- * Hot reload is out of scope (decision 13). On success, the caller is
- * expected to surface the spec'd "Restart Bakin to activate the change"
- * message.
+ * The HTTP endpoint live-activates the rebuilt plugin when the server
+ * registry is running.
  */
 import { existsSync, readFileSync, readdirSync, statSync, cpSync, rmSync } from 'fs'
 import { join, relative } from 'path'
@@ -24,6 +23,7 @@ import { isCorePlugin } from '@/lib/plugin-registry'
 import { appendAudit } from '@/core/audit'
 import {
   type PluginLockEntry,
+  isLinked,
   readPluginLockfile,
   updatePlugin,
   writePluginLockfile,
@@ -377,6 +377,11 @@ export async function upgradePlugin(
   if (!entry) {
     throw new UpgradeRefusedError(
       `plugin "${id}" is not installed (no lockfile entry). Install it first with: bakin plugins install <source>`,
+    )
+  }
+  if (isLinked(entry)) {
+    throw new UpgradeRefusedError(
+      `plugin "${id}" is dev-installed from ${entry.linkedSource}; edit the source directly or unlink it first`,
     )
   }
 

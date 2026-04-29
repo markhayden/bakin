@@ -38,7 +38,7 @@ import { Copy, LayoutGrid, Save, Trash2 } from 'lucide-react'
 import { Button } from "@bakin/sdk/ui"
 import { Input } from "@bakin/sdk/ui"
 
-import { getAllNodeRenderers, getNodeRendererVersion, subscribeNodeRenderers } from '../lib/node-renderer-registry'
+import { getNodeRendererSnapshot, subscribeNodeRenderers } from '../lib/node-renderer-registry'
 import { NodeTypePalette, PALETTE_DRAG_MIME_TYPE } from './node-type-palette'
 import { NodeConfigDrawer } from './node-config-drawer'
 import { canConnect } from '../lib/edge-rules'
@@ -220,8 +220,7 @@ export function WorkflowCanvasEditor({
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null)
 
   // Subscribe to registry mutations — see note in workflow-canvas.tsx.
-  const rendererVersion = useSyncExternalStore(subscribeNodeRenderers, getNodeRendererVersion, getNodeRendererVersion)
-  const nodeTypes = useMemo<NodeTypes>(() => getAllNodeRenderers(), [rendererVersion])
+  const nodeTypes = useSyncExternalStore(subscribeNodeRenderers, getNodeRendererSnapshot, getNodeRendererSnapshot) as NodeTypes
   const nodes = useMemo(() => deriveNodes(state), [state])
   const edges = state.edges
 

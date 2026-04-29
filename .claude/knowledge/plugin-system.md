@@ -817,11 +817,27 @@ and customize any core plugin without modifying the repo.
 
 ## Hot Reload (Phase 2)
 
-`bakin plugins link <localPath>` registers a developer-owned source
-tree as a symlinked plugin. With the hot-reload coordinator running
-(`BAKIN_DEV_HOTRELOAD=1`), file saves in the linked source tree
-trigger an in-process build + module swap — no restart, no manual
-reload.
+`bakin plugins install --dev <localPath>` registers a developer-owned
+source tree as a symlinked plugin. `bakin plugins link <localPath>`
+still exists as the lower-level command, but `install --dev` is the
+preferred authoring path. With `bakin dev` running (`BAKIN_DEV=1` and
+`BAKIN_DEV_HOTRELOAD=1`), saves in the linked source tree trigger an
+in-process build + module swap — no manual reinstall and no restart for
+ordinary server/client edits.
+
+Linked plugins are loaded from `~/.bakin/plugins/<id>`, which is a symlink
+to the source checkout. Startup discovery follows symlinked directories, so
+`bakin stop && bakin start` still loads a dev-installed plugin. Normal
+`bakin start` activates it but does not watch source edits; run
+`bakin dev` for rebuild/hot-swap behavior.
+
+Collision rules:
+
+- `install --dev` only accepts local paths.
+- If the plugin id is already installed as a copied plugin, fail unless
+  `--force` is passed.
+- If the plugin id is already linked/dev-installed, fail even with
+  `--force`; unlink it first.
 
 ### Architecture
 
@@ -838,15 +854,16 @@ buildUserPlugin(pluginDir) → dist/index.js + dist/client.js
     ↓ (success)             ↓ (fail)
                               broadcastPluginError → SSE → dev overlay
 runReloadPipeline:
-  1. plugin.onShutdown?.()                       (errors logged, never rethrow)
-  2. Sweep: removeExecToolsByPlugin,
+  1. import(`${dir}/dist/index.js?v=${attempt}`)  (cache-bust; old plugin stays active on import failure)
+  2. plugin.onShutdown?.()                       (errors logged, never rethrow)
+  3. Sweep: removeExecToolsByPlugin,
             HookRegistry.unregisterByPlugin,
             unregisterPluginNodeTypes,
             unregisterPluginNotificationChannels,
             unregisterPluginHealthChecks,
-            purgeContentType per registered table
-  3. Clear state arrays (routes/slots/navItems/etc.)
-  4. import(`${dir}/dist/index.js?v=${attempt}`)  (cache-bust)
+            unregisterContentTypesByPlugin (preserve search tables),
+            removePluginSkillsByPlugin
+  4. Clear state arrays (routes/slots/navItems/etc.)
   5. await newPlugin.activate(ctx)               (same ctx as before;
                                                   closures repopulate state)
   6. state.plugin = newPlugin
@@ -900,6 +917,27 @@ after restart either matches (0 = client default) or detects a
   be allowed to brick the dev loop. Logged + ignored.
 - **Build failures keep the watcher live.** No manual recovery —
   next save kicks off a fresh attempt.
+- **Import failures keep the old plugin active.** The pipeline imports
+  the new server module before calling `onShutdown` or sweeping old
+  registrations. Syntax/top-level import mistakes therefore show a dev
+  overlay without disabling the previous working plugin.
+- **Plugin module import must stay free of lifetime side effects.**
+  Timers, process listeners, file watchers, sockets, and event listeners
+  must be created inside `activate(ctx)` or narrower handlers and cleaned
+  in `onShutdown()`. `bakin/no-plugin-top-level-side-effects` enforces the
+  direct import-time cases because old module instances stay alive after a
+  cache-busted hot reload.
+- **Search tables survive hot reload.** The reload path unregisters
+  plugin-owned search wiring and pending reconciles, then recreates them
+  on activate. Only remove/uninstall purges backing tables.
+- **Chokidar v5 watches roots, not globs.** Linked plugins are watched at
+  the source root and filtered against `devWatch` patterns in Bakin.
+  Passing `components/**/*.tsx` directly to `chokidar.watch()` silently
+  misses files.
+- **Same-version client swaps are deduped.** Exact duplicate
+  `clientEntry?v=version` swaps must no-op after the first success;
+  otherwise a cached dynamic import can fail to re-run `registerPlugin()`
+  after the old nav/slots were unregistered.
 
 ### Failure-recovery symmetry
 

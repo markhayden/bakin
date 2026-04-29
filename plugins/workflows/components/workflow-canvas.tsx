@@ -26,7 +26,7 @@ const RESET_NODE_STYLES = `
   }
 `
 
-import { getAllNodeRenderers, getNodeRendererVersion, subscribeNodeRenderers } from '../lib/node-renderer-registry'
+import { getNodeRendererSnapshot, subscribeNodeRenderers } from '../lib/node-renderer-registry'
 import type { WorkflowDefinition, WorkflowStep } from '../types'
 
 const NODE_WIDTH = 280
@@ -287,8 +287,7 @@ export function WorkflowCanvas({ definition, subWorkflows, onNodeClick }: Workfl
   // load, hot install) trigger a re-render — ESM hoisting means a
   // module-scope snapshot would be empty, and a one-shot mount-time memo
   // would miss anything registered after the canvas mounts.
-  const rendererVersion = useSyncExternalStore(subscribeNodeRenderers, getNodeRendererVersion, getNodeRendererVersion)
-  const nodeTypes = useMemo<NodeTypes>(() => getAllNodeRenderers(), [rendererVersion])
+  const nodeTypes = useSyncExternalStore(subscribeNodeRenderers, getNodeRendererSnapshot, getNodeRendererSnapshot) as NodeTypes
   const { nodes: initialNodes, edges } = useMemo(
     () => buildGraph(definition, subWorkflows),
     [definition, subWorkflows],

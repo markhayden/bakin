@@ -27,6 +27,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, render, screen, waitFor, act } from '@testing-library/react'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import { pathToFileURL } from 'url'
 
 // Per CLAUDE.md — defensive content-dir mocks even for pure React tests.
 mock.module('../../src/core/content-dir', () => {
@@ -105,6 +109,8 @@ afterEach(() => {
   removeDevScriptTag()
   for (const id of USED_IDS) unregisterPlugin(id)
   delete (window as unknown as { __bakinHotSwapPlugin?: unknown }).__bakinHotSwapPlugin
+  delete (globalThis as Record<string, unknown>).__bakinHotSwapRegister
+  delete (globalThis as Record<string, unknown>).__bakinHotSwapImportCount
   vi.unstubAllGlobals()
   cleanup()
 })
@@ -183,6 +189,52 @@ describe('PluginHost — hot-swap unregisters synchronously', () => {
     if (p && typeof p.catch === 'function') p.catch(() => {})
 
     await waitFor(() => expect(screen.queryByTestId('slot-content')).toBeNull())
+  })
+
+  it('dedupes repeated hot-swaps for the same evaluated client URL', async () => {
+    injectDevScriptTag()
+    render(
+      <PluginHost>
+        <ProbeTree />
+      </PluginHost>,
+    )
+    await waitFor(() => expect(document.querySelector('div')).not.toBeNull())
+
+    const moduleDir = mkdtempSync(join(tmpdir(), 'bakin-plugin-host-hotswap-'))
+    const modulePath = join(moduleDir, 'client.mjs')
+    writeFileSync(modulePath, [
+      'globalThis.__bakinHotSwapImportCount = (globalThis.__bakinHotSwapImportCount ?? 0) + 1',
+      'globalThis.__bakinHotSwapRegister()',
+      '',
+    ].join('\n'))
+    ;(globalThis as Record<string, unknown>).__bakinHotSwapRegister = () => {
+      registerPlugin({
+        id: 'x',
+        slots: { 'page:/probe': SlotPage },
+      })
+    }
+
+    const handle = (window as unknown as {
+      __bakinHotSwapPlugin?: (...a: unknown[]) => Promise<void>
+    }).__bakinHotSwapPlugin
+    expect(typeof handle).toBe('function')
+
+    const clientEntry = pathToFileURL(modulePath).href
+    await act(async () => {
+      await handle!('x', clientEntry, 'same-version')
+    })
+    await waitFor(() => expect(screen.queryByTestId('slot-content')?.textContent)
+      .toBe('rendered-from-x'))
+
+    await act(async () => {
+      await handle!('x', clientEntry, 'same-version')
+    })
+
+    expect((globalThis as Record<string, unknown>).__bakinHotSwapImportCount).toBe(1)
+    await waitFor(() => expect(screen.queryByTestId('slot-content')?.textContent)
+      .toBe('rendered-from-x'))
+
+    rmSync(moduleDir, { recursive: true, force: true })
   })
 })
 

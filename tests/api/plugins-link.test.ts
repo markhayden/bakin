@@ -37,6 +37,12 @@ mock.module('../../packages/host/src/plugin-host/user-plugin-builder', () => ({
 mock.module('@/lib/plugin-registry', () => ({
   isCorePlugin: () => false,
 }))
+mock.module('@/core/plugins/live-lifecycle', () => ({
+  activateUserPluginDir: async (pluginDir: string) => ({ id: pluginDir.split('/').pop() ?? 'plugin', version: '0.1.0', runtimeVersion: 1 }),
+  watchLinkedPluginIfEnabled: async () => false,
+  unwatchPluginIfEnabled: async () => false,
+  notifyPluginRemoved: () => {},
+}))
 
 import { post as linkPOST } from '../../packages/host/src/api/plugins/link'
 import { post as unlinkPOST } from '../../packages/host/src/api/plugins/unlink'
@@ -100,7 +106,7 @@ describe('POST /api/plugins/link — happy path', () => {
     expect(res.status).toBe(200)
     expect(body.ok).toBe(true)
     expect(body.id).toBe('apilinked')
-    expect(body.message).toMatch(/Restart Bakin/)
+    expect(body.message).toMatch(/activated/)
 
     const symlink = join(testDir, 'plugins', 'apilinked')
     expect(lstatSync(symlink).isSymbolicLink()).toBe(true)

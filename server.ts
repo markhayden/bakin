@@ -647,10 +647,10 @@ const eventBus = new BakinEventBus(broadcast)
     log.info(`Listening on 0.0.0.0:${port} (Tailscale: http://100.91.112.69:${port})`)
   })
 
-  // Hot-reload coordinator (Phase 2 P2.C8). Strictly opt-in via
-  // BAKIN_DEV_HOTRELOAD=1 so the compiled production binary doesn't
-  // pull chokidar into its module graph.
-  if (process.env.BAKIN_DEV_HOTRELOAD === '1') {
+  // Hot-reload coordinator (Phase 2 P2.C8). Enabled by `bakin dev`
+  // (BAKIN_DEV=1) or explicitly via BAKIN_DEV_HOTRELOAD=1 so the
+  // compiled production binary doesn't pull chokidar into its module graph.
+  if (process.env.BAKIN_DEV === '1' || process.env.BAKIN_DEV_HOTRELOAD === '1') {
     try {
       const { startHotReloadCoordinator } = await import('./src/core/plugin-host/hot-reload-coordinator')
       startHotReloadCoordinator()

@@ -10,6 +10,10 @@ const MAX_RETRIES = 20
 const BASE_DELAY = 1000
 const MAX_DELAY = 30000
 
+function isDevPluginHotReloadActive(): boolean {
+  return typeof document !== 'undefined' && !!document.querySelector('script[src="/__bakin-dev/client.js"]')
+}
+
 export function useSSE() {
   const updateFile = useContentStore((s) => s.updateFile)
   const setConnected = useContentStore((s) => s.setConnected)
@@ -51,6 +55,16 @@ export function useSSE() {
           // Taskboard changed (SQLite mutation) — notify subscribers
           if (data.type === 'taskboard') {
             bumpTaskboard()
+            return
+          }
+
+          // Installed/removed user plugins change the runtime manifest.
+          // Dev tabs handle this through the dev hot-swap client; normal
+          // tabs need a page reload so PluginHost re-fetches the manifest.
+          if (data.type === 'plugin:manifest-changed') {
+            if (!isDevPluginHotReloadActive()) {
+              window.location.reload()
+            }
             return
           }
 

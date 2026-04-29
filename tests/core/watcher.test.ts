@@ -35,7 +35,13 @@ mock.module('chokidar', () => ({
   }),
 }))
 
-import { start, stop, registerSyncHook, createInboxHandler } from '../../src/core/watcher'
+import {
+  start,
+  stop,
+  registerSyncHook,
+  createInboxHandler,
+  shouldIgnoreContentWatcherPath,
+} from '../../src/core/watcher'
 import { broadcast } from '../../src/core/sse'
 import { appendAudit } from '../../src/core/audit'
 import { BakinEventBus } from '../../src/lib/events/event-bus'
@@ -63,6 +69,18 @@ describe('watcher', () => {
       const eventBus = new BakinEventBus(() => {})
       start({ contentDir: tempDir, eventBus, onInboxFile: mock() })
       expect(chokidar.watch).toHaveBeenCalledWith(tempDir, expect.any(Object))
+    })
+
+    it('ignores installed and linked plugin files under content/plugins', async () => {
+      const chokidar = await import('chokidar')
+      const eventBus = new BakinEventBus(() => {})
+      start({ contentDir: tempDir, eventBus, onInboxFile: mock() })
+
+      const opts = vi.mocked(chokidar.watch).mock.calls[0][1] as { ignored: (path: string) => boolean }
+      expect(opts.ignored(tempDir)).toBe(false)
+      expect(opts.ignored(join(tempDir, 'plugins'))).toBe(true)
+      expect(opts.ignored(join(tempDir, 'plugins', 'projects', 'lib', 'project-service.ts'))).toBe(true)
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'assets', '.trash'))).toBe(false)
     })
 
     it('stop is idempotent', async () => {
