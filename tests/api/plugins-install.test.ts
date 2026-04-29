@@ -12,7 +12,7 @@
  * `URL` derived from the Request.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { mkdirSync, writeFileSync, existsSync, rmSync } from 'fs'
+import { mkdirSync, writeFileSync, existsSync, rmSync, realpathSync } from 'fs'
 import { join } from 'path'
 
 const testDir = (() => {
@@ -36,6 +36,12 @@ mock.module('../../packages/core/src/content-dir', () => ({
 }))
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
+}))
+mock.module('@/core/plugins/live-lifecycle', () => ({
+  activateUserPluginDir: async () => ({ id: 'hello', version: '1.0.0', runtimeVersion: 1 }),
+  isLiveActivationUnavailable: () => false,
+  watchLinkedPluginIfEnabled: async () => false,
+  notifyPluginRemoved: () => {},
 }))
 
 import { post as installPOST } from '../../packages/host/src/api/plugins/install'
@@ -90,6 +96,7 @@ afterAll(() => {
 beforeEach(() => {
   const installed = join(testDir, 'plugins', 'hello')
   if (existsSync(installed)) rmSync(installed, { recursive: true, force: true })
+  rmSync(join(testDir, 'plugins', 'lock.json'), { force: true })
 })
 
 describe('POST /api/plugins/install', () => {
@@ -147,8 +154,34 @@ describe('POST /api/plugins/install', () => {
     const body = await res.json()
     expect(body.ok).toBe(true)
     expect(body.id).toBe('hello')
-    expect(body.message).toMatch(/Restart Bakin/)
+    expect(body.message).toMatch(/activated/)
     expect(existsSync(join(testDir, 'plugins', 'hello', 'bakin-plugin.json'))).toBe(true)
+  })
+
+  it('rejects dev installs from github sources', async () => {
+    const res = await invoke(installPOST, makeRequest({
+      source: 'github:madeinwyo/bakin-bits-official#plugins/messaging',
+      type: 'github',
+      dev: true,
+    }))
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toMatch(/dev installs only support local/i)
+  })
+
+  it('dev-installs a local plugin through the link flow', async () => {
+    const res = await invoke(installPOST, makeRequest({
+      source: sourcePluginDir,
+      type: 'local',
+      dev: true,
+    }))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.ok).toBe(true)
+    expect(body.id).toBe('hello')
+    expect(body.activated).toBe(true)
+    expect(body.linkedSource).toBe(realpathSync(sourcePluginDir))
+    expect(body.message).toMatch(/Dev-installed/)
   })
 
   it('overwrites an existing install cleanly', async () => {

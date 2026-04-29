@@ -7,12 +7,16 @@
  * for those, which runs the snapshot + teardown sweep). LinkRefusedError
  * → 400; everything else → 500.
  *
- * As with link, restart is still required for the registry teardown to
- * complete in the running process. The hot-reload coordinator (P2.C8)
- * adds in-process teardown for live unlink without a restart.
+ * The endpoint also tears down the in-memory plugin registrations and
+ * stops the linked-source watcher in dev mode.
  */
 import { createLogger } from '@/core/logger'
 import { unlinkPlugin, LinkRefusedError } from '@/core/plugins/link'
+import { pluginRegistry } from '@/lib/plugin-registry'
+import {
+  notifyPluginRemoved,
+  unwatchPluginIfEnabled,
+} from '@/core/plugins/live-lifecycle'
 
 const log = createLogger('plugin-unlink-endpoint')
 
@@ -33,12 +37,15 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   }
 
   try {
+    await unwatchPluginIfEnabled(body.pluginId)
     const result = await unlinkPlugin(body.pluginId)
+    await pluginRegistry.deactivatePlugin(result.id, { callShutdown: true, removeState: true })
+    notifyPluginRemoved(result.id)
     log.info(`Unlinked plugin "${result.id}"`, { source: result.linkedSource })
     return Response.json({
       ok: true,
       id: result.id,
-      message: `Unlinked "${result.id}". Restart Bakin to release the plugin.`,
+      message: `Unlinked "${result.id}" and deactivated it.`,
     })
   } catch (err) {
     if (err instanceof LinkRefusedError) {

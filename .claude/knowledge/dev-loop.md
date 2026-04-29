@@ -14,10 +14,15 @@ visible difference is what happens when you save a plugin file:
 
 - **v1 behavior (retained for shell / SDK / CSS):** save a file → full
   page reload (or link-tag swap for CSS). Everything mounts fresh.
-- **v2 behavior (added for plugins):** save a plugin file → only that
-  plugin's subtree remounts. Shell (sidebar, routing, zustand stores),
-  other plugins, URL, scroll position, focus, the `/api/events` SSE
-  connection — all survive.
+- **v2 behavior (core plugin client files):** save a core plugin client
+  file under `plugins/<id>/` → only that plugin's client subtree
+  remounts. Shell (sidebar, routing, zustand stores), other plugins,
+  URL, scroll position, focus, the `/api/events` SSE connection — all
+  survive.
+- **v2 behavior (linked user plugins):** save a linked plugin file under
+  its source tree → Bakin rebuilds the plugin, hot-swaps server
+  registrations in-process, then remounts that plugin's client bundle.
+  This is the path used by `bakin plugins install --dev <path>`.
 
 Not yet shipped:
 
@@ -26,7 +31,9 @@ Not yet shipped:
   `react-refresh/babel` + the runtime hooked into every plugin bundle.
   Revisit if v2's "plugin-wide remount" feels insufficient in practice.
 - **v4 (deferred):** server-side reload on `src/core/**`, `server.ts`,
-  and plugin `index.ts` edits. Today requires manual Ctrl-C + rerun.
+  and core plugin `index.ts` edits. Today requires manual Ctrl-C +
+  rerun. Linked user plugin server entries already reload through the
+  hot-reload coordinator.
 - **v5 (deferred):** LAN/Tailscale-accessible dev mode so OpenClaw can
   run on a separate machine. Would need auth-token gating on
   `/api/dev/{events,notify}`.
@@ -37,7 +44,7 @@ Not yet shipped:
 bun run dev
     │
     ▼
-scripts/dev.ts (process.env.BAKIN_DEV = '1')
+scripts/dev.ts (process.env.BAKIN_DEV = '1', BAKIN_DEV_HOTRELOAD = '1')
     │
     ├── Initial prestart build (css, vendors, plugins, host-shell)
     ├── Bun.build(dev-client.ts → public/__bakin-dev/client.js)
@@ -48,7 +55,9 @@ scripts/dev.ts (process.env.BAKIN_DEV = '1')
     │     • packages/sdk/src/**           → rebuild vendors → dev:reload
     │     • public/globals.css mtime      → dev:css
     └── await import('../server')  ← boots HTTP + MCP + SSE + content watcher
-          │                            in the same process; broadcastDev()
+          │                            in the same process; starts linked
+          │                            plugin hot-reload coordinator;
+          │                            broadcastDev()
           │                            writes directly to the dev SSE client
           │                            Set (no HTTP round-trip)
           ▼
@@ -104,7 +113,7 @@ Any future change that rebuilds a vendor bundle keyed on React **must** trigger 
 
 ## Hot-swap mechanism (v2)
 
-When a plugin file changes:
+When a core plugin client file changes:
 
 1. `scripts/dev.ts` calls `buildOnePlugin(id)`. On success, captures `mtime` of the new `plugins/<id>/dist/client.js` and broadcasts `{ type: 'dev:hot-swap', scope: 'plugin', id, version: mtime }`.
 2. Dev client debounces events per-plugin (100 ms), picks the latest, calls `window.__bakinHotSwapPlugin(id, '/api/plugins/<id>/assets/client.js', version)`.
@@ -117,6 +126,39 @@ When a plugin file changes:
    b. Swaps the plugin's `<link data-bakin-plugin-css="<id>">` with a cache-busted href (if present). Old link removes on new link's `onload`.
    c. `await import(clientEntry + '?v=' + version)` — browser fetches the new bundle, new module instance runs `registerPlugin({...})` as a side effect, re-populating nav + slots. Registry version bumps again.
 4. Registry consumers (`<Slot>` in `packages/sdk/src/slots/index.tsx`, `<AppSidebar>` in `packages/host/src/components/layout/app-sidebar.tsx`) subscribe to `subscribeRegistry` via `useSyncExternalStore`. Each bumped version triggers a re-render at every subscribed consumer independently. The subscription lives at the consumer, **not** at `PluginHost` — a parent's store re-render doesn't force descendants with unchanged props to re-execute, so any component that reads the registry at render time has to own its own subscription.
+
+When a linked user plugin file changes:
+
+1. `src/core/plugin-host/hot-reload-coordinator.ts` watches the
+   lockfile's `linked: true` entries. `bakin dev` starts this coordinator
+   automatically, and `bakin plugins install --dev <path>` attaches a
+   watcher immediately if the server is already running.
+   `~/.bakin/plugins/<id>` is a symlink in this mode; startup plugin
+   discovery must follow symlinks to directories, not rely on
+   `Dirent.isDirectory()`.
+2. On save, the coordinator rebuilds the linked source with
+   `buildUserPlugin()`. Build failures emit `dev:error` and keep the
+   watcher alive; the next save retries.
+3. On successful build, `runReloadPipeline()` imports the new server
+   module with a cache-busting query. Import failure leaves the old plugin
+   active. Activation failure sweeps partial registrations and disables
+   the plugin until the next successful save.
+4. A successful server reload bumps the plugin version and broadcasts
+   `dev:hot-swap` through both the main SSE bridge and the dev SSE
+   channel. `PluginHost` refreshes `/api/plugins/manifest`, swaps CSS if
+   needed, unregisters the old client contribution, and imports the new
+   client bundle.
+
+Most day-to-day UI and route changes should not require a restart. Rare
+changes that alter durable schema, content-type ownership, or startup-only
+contracts may still need a restart; document those cases in the plugin's
+own development notes.
+
+Linked plugin watching is root-watch plus manifest filtering. Chokidar v5
+does not interpret glob strings passed directly to `watch()`, so the
+coordinator watches the plugin source root, then filters events against
+`devWatch` patterns itself. Supported patterns intentionally cover the
+common plugin shapes: literal files/directories, `*`, `?`, and `**/*.ext`.
 
 ### Why the old module doesn't break
 
@@ -158,7 +200,16 @@ v2 hot-swap is correct iff every client-side registration API has a paired teard
 | `registerNodeRenderer(kind, component)` | `plugins/workflows/lib/node-renderer-registry.ts` | `kind` | `unregisterNodeRenderer(kind)` — swept by `registerPluginCleanup('workflows', …)` |
 | `registerPluginDefinition(pluginId, id, def)` | `plugins/workflows/lib/source-registry.ts` | `pluginId` | `unregisterPluginDefinitions(pluginId)` — same cleanup hook |
 
-Server-side registrations (`ctx.registerExecTool`, `ctx.hooks.register`, `ctx.registerRoute`, `ctx.search.registerContentType`, etc.) are **not** in scope for hot-swap teardown. Those persist until server restart — v2 doesn't touch the server's plugin registry.
+For linked user plugins, server-side registrations (`ctx.registerExecTool`,
+`ctx.hooks.register`, `ctx.registerRoute`, `ctx.search.registerContentType`,
+etc.) are swept and rebuilt by the server reload pipeline. For core plugins
+in the repo, `scripts/dev.ts` still ignores root `index.ts`; changing core
+plugin server registrations requires restarting `bakin dev`.
+
+Server-side hot reload unregisters search content-type wiring and pending
+reconciles for the plugin, then re-registers them on activate. It does not
+drop the underlying search tables on every save; destructive table purging
+belongs to plugin remove/uninstall.
 
 ## Gotchas that bit us during the initial rollout
 
@@ -181,6 +232,16 @@ The shell watcher's extension regex is `/\.(ts|tsx)$/`, not `/\.(ts|tsx|css)$/`.
 ### `/__bakin-dev/*` 404s in production, not SPA-fallback 200
 
 In `_static.ts`, the `/__bakin-dev/*` path check runs **unconditionally** and returns 404 when `BAKIN_DEV !== '1'`. If it fell through to the SPA fallback, `GET /__bakin-dev/client.js` in production would return `index.html` with a 200 status — benign (no dev-client bytes leak) but semantically wrong. Tests in `tests/api/dev-routes.test.ts` + binary-launch acceptance at the end of the rollout verify all dev routes 404 cleanly in the compiled binary.
+
+### Duplicate same-version hot-swap events are no-ops
+
+Linked plugin saves can produce both a main SSE plugin reload and a dev SSE
+hot-swap for the same plugin/version. The dev client usually collapses this,
+but `PluginHost` must also dedupe exact `clientEntry?v=version` imports and
+serialize swaps per plugin. Without that guard, a second same-version swap
+can call `unregisterPlugin(id)`, import a browser-cached module whose
+module-load side effects do not re-run, and leave the plugin missing from
+the nav until a manual browser refresh.
 
 ### `scripts/dev-build-one-plugin.ts` uses `node:child_process.spawn`, not `Bun.spawn`
 
@@ -245,7 +306,7 @@ All 10 core plugins were audited clean as of commit 8 of the HMR rollout.
 **Save didn't trigger a rebuild.**
 Check `/tmp/bakin-dev.log` (or wherever you're capturing stdout) for `[dev]` lines. Silent = chokidar didn't see the event. Possible causes:
 - File is outside every watcher's root (e.g., `src/core/**` is intentionally not watched).
-- Plugin source is outside the plugin's `devWatch` globs. Check `bakin-plugin.json` and the default globs in `scripts/dev.ts`.
+- Plugin source is outside the plugin's `devWatch` globs. Check `bakin-plugin.json` and the defaults in `src/core/plugin-host/hot-reload-coordinator.ts`.
 - `node_modules`/`.git`/`dist` — ignored on purpose.
 
 **Browser didn't reload after a rebuild succeeded.**

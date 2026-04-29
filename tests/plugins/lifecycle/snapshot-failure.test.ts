@@ -47,7 +47,12 @@ mock.module('../../../src/core/plugins/uninstall-snapshot', () => ({
 }))
 mock.module('../../../src/lib/plugin-registry', () => ({
   isCorePlugin: () => false,
-  pluginRegistry: { getPlugin: () => undefined, getPluginContext: () => undefined, deletePlugin: () => false },
+  pluginRegistry: {
+    getPlugin: () => undefined,
+    getPluginContext: () => undefined,
+    deletePlugin: () => false,
+    deactivatePlugin: async () => ({ hooks: 0, execTools: 0, contentTypes: 0, skills: 0 }),
+  },
   getHookRegistry: () => ({ unregisterByPlugin: () => 0 }),
 }))
 

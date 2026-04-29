@@ -10,14 +10,15 @@
  *   { ok: true, id, before, after, noop, awaitingConsent, newPermissions }
  *   { ok: false, error: string, core?: boolean }    on refusal/4xx
  *
- * Restart required for the upgraded plugin's modules to load — caller
- * surfaces the spec'd "Restart Bakin..." message.
+ * The upgraded plugin is activated immediately after a successful rebuild.
  */
 import { createLogger } from '@/core/logger'
 import { upgradePlugin, UpgradeRefusedError } from '@/core/plugins/upgrade'
 import { isCorePlugin } from '@/lib/plugin-registry'
 import { appendAudit } from '@/core/audit'
 import { getContentDir } from '@/core/content-dir'
+import { activateUserPluginDir } from '@/core/plugins/live-lifecycle'
+import { join } from 'path'
 
 const log = createLogger('plugin-upgrade')
 
@@ -66,7 +67,21 @@ export async function post(req: Request, _url: URL): Promise<Response> {
 
   try {
     const result = await upgradePlugin(pluginId, { yes: body.yes === true })
-    return Response.json({ ok: true, ...result })
+    let runtimeVersion: number | undefined
+    if (!result.noop && !result.awaitingConsent) {
+      try {
+        const activation = await activateUserPluginDir(join(getContentDir(), 'plugins', pluginId))
+        runtimeVersion = activation.runtimeVersion
+      } catch (activationErr) {
+        const message = activationErr instanceof Error ? activationErr.message : String(activationErr)
+        log.error('Plugin upgrade activation failed', activationErr as Error, { pluginId })
+        return Response.json({
+          ok: false,
+          error: `Upgraded "${pluginId}" but failed to activate it: ${message}`,
+        }, { status: 500 })
+      }
+    }
+    return Response.json({ ok: true, ...result, ...(runtimeVersion !== undefined ? { runtimeVersion } : {}) })
   } catch (err) {
     if (err instanceof UpgradeRefusedError) {
       return Response.json({ ok: false, error: err.message }, { status: 400 })

@@ -5,6 +5,7 @@
 import type { IncomingMessage, ServerResponse } from 'http'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
+import { broadcastDev } from '../../packages/host/src/api/dev/events'
 
 const log = createLogger('sse')
 
@@ -85,6 +86,13 @@ export type PluginRecoverEvent = {
   timestamp: string
 }
 
+export type PluginManifestChangedEvent = {
+  type: 'plugin:manifest-changed'
+  pluginId: string
+  action: 'changed' | 'removed'
+  timestamp: string
+}
+
 export function broadcastPluginReload(pluginId: string, version: number, opts: { hasClientCss?: boolean } = {}): void {
   broadcast({
     type: 'dev:plugin:reload',
@@ -93,6 +101,16 @@ export function broadcastPluginReload(pluginId: string, version: number, opts: {
     ...(opts.hasClientCss !== undefined ? { hasClientCss: opts.hasClientCss } : {}),
     timestamp: new Date().toISOString(),
   } satisfies PluginReloadEvent)
+  broadcastDev({ type: 'dev:hot-swap', scope: 'plugin', id: pluginId, version: String(version) })
+}
+
+export function broadcastPluginManifestChanged(pluginId: string, action: PluginManifestChangedEvent['action']): void {
+  broadcast({
+    type: 'plugin:manifest-changed',
+    pluginId,
+    action,
+    timestamp: new Date().toISOString(),
+  } satisfies PluginManifestChangedEvent)
 }
 
 export function broadcastPluginError(pluginId: string, message: string, stderr?: string): void {
@@ -103,6 +121,7 @@ export function broadcastPluginError(pluginId: string, message: string, stderr?:
     ...(stderr ? { stderr } : {}),
     timestamp: new Date().toISOString(),
   } satisfies PluginErrorEvent)
+  broadcastDev({ type: 'dev:error', scope: 'plugin', message, ...(stderr ? { stderr } : {}) })
 }
 
 export function broadcastPluginRecover(pluginId: string): void {
@@ -111,6 +130,7 @@ export function broadcastPluginRecover(pluginId: string): void {
     pluginId,
     timestamp: new Date().toISOString(),
   } satisfies PluginRecoverEvent)
+  broadcastDev({ type: 'dev:recover', scope: 'plugin' })
 }
 
 // Expose broadcast on globalThis so Next.js API routes (which get a separate

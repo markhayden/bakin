@@ -50,6 +50,8 @@ interface RegistryState {
   contentTypes: Map<string, SearchContentTypeDefinition & { pluginId: string }>
   /** Map of pluginId → full table name */
   pluginTables: Map<string, string>
+  /** File-backed watcher hook disposers by full table name. */
+  fileBackedWiring: Map<string, { pluginId: string; dispose: () => void }>
   /** Whether tables have been created during this startup */
   tablesCreated: boolean
   /**
@@ -73,6 +75,7 @@ function getRegistry(): RegistryState {
     _g.__bakinSearchRegistry = {
       contentTypes: new Map(),
       pluginTables: new Map(),
+      fileBackedWiring: new Map(),
       tablesCreated: false,
       pendingReconciles: [],
     }
@@ -91,6 +94,47 @@ const TABLE_PREFIX = 'bakin_'
 
 function fullTableName(table: string): string {
   return table.startsWith(TABLE_PREFIX) ? table : `${TABLE_PREFIX}${table}`
+}
+
+function removePendingReconciles(pluginId: string, tableName?: string): number {
+  const registry = getRegistry()
+  let removed = 0
+  const keep = registry.pendingReconciles.filter((item) => {
+    const matchesPlugin = item.pluginId === pluginId
+    const matchesTable = tableName === undefined || fullTableName(item.def.table) === tableName
+    const shouldRemove = matchesPlugin && matchesTable
+    if (shouldRemove) removed++
+    return !shouldRemove
+  })
+  registry.pendingReconciles.length = 0
+  registry.pendingReconciles.push(...keep)
+  return removed
+}
+
+function disposeFileBackedWiring(tableName: string): void {
+  const registry = getRegistry()
+  const wiring = registry.fileBackedWiring.get(tableName)
+  if (!wiring) return
+  registry.fileBackedWiring.delete(tableName)
+  try {
+    wiring.dispose()
+  } catch (err) {
+    log.warn('File-backed watcher cleanup failed', err, { tableName, pluginId: wiring.pluginId })
+  }
+}
+
+function forgetContentType(tableName: string, def?: { pluginId: string }): boolean {
+  const registry = getRegistry()
+  const existing = def ?? registry.contentTypes.get(tableName)
+  const removed = registry.contentTypes.delete(tableName)
+  disposeFileBackedWiring(tableName)
+  if (existing) {
+    removePendingReconciles(existing.pluginId, tableName)
+    if (registry.pluginTables.get(existing.pluginId) === tableName) {
+      registry.pluginTables.delete(existing.pluginId)
+    }
+  }
+  return removed
 }
 
 // ---------------------------------------------------------------------------
@@ -254,12 +298,7 @@ export async function purgeContentType(name: string): Promise<number> {
   const def = registry.contentTypes.get(tableName)
 
   if (!await search.available()) {
-    if (def) {
-      registry.contentTypes.delete(tableName)
-      if (registry.pluginTables.get(def.pluginId) === tableName) {
-        registry.pluginTables.delete(def.pluginId)
-      }
-    }
+    if (def) forgetContentType(tableName, def)
     return 0
   }
 
@@ -278,15 +317,29 @@ export async function purgeContentType(name: string): Promise<number> {
     throw err
   }
 
-  if (def) {
-    registry.contentTypes.delete(tableName)
-    if (registry.pluginTables.get(def.pluginId) === tableName) {
-      registry.pluginTables.delete(def.pluginId)
-    }
-  }
+  if (def) forgetContentType(tableName, def)
 
   log.info(`Purged content type ${tableName} (${removed} docs)`)
   return removed
+}
+
+/**
+ * Remove a plugin's in-memory search registrations and file watcher hooks
+ * without dropping the underlying search tables. This is the hot-reload path:
+ * the plugin will immediately re-register its content types on activate, and
+ * preserving the table avoids destructive dev-loop behavior on every save.
+ */
+export function unregisterContentTypesByPlugin(pluginId: string): number {
+  const registry = getRegistry()
+  const ownedTables = [...registry.contentTypes.entries()]
+    .filter(([, def]) => def.pluginId === pluginId)
+    .map(([tableName, def]) => ({ tableName, def }))
+
+  for (const { tableName, def } of ownedTables) {
+    forgetContentType(tableName, def)
+  }
+  removePendingReconciles(pluginId)
+  return ownedTables.length
 }
 
 /**
@@ -402,11 +455,18 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
     },
 
     registerFileBackedContentType(def: FileBackedContentTypeDefinition): void {
+      const tableName = fullTableName(def.table)
+
+      // A plugin can re-register the same content type during dev hot reload.
+      // Replace the previous hook pair before wiring the new one so file
+      // changes do not fan out through stale plugin closures.
+      disposeFileBackedWiring(tableName)
+      removePendingReconciles(pluginId, tableName)
+
       // Standard registration first — gives us the table, schema, and reindex
       // generator. Everything below layers watcher hooks + reconcile on top.
       api.registerContentType(def)
       if (opts?.skipFileBackedWiring) return
-      const tableName = fullTableName(def.table)
 
       const includePatterns = def.filePatterns.map(p => p.pattern)
       const excludePatterns = def.excludePatterns ?? []
@@ -416,7 +476,7 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         return matchesAnyPattern(rel, includePatterns)
       }
 
-      registerSyncHook(async (rel, content) => {
+      const unregisterSync = registerSyncHook(async (rel, content) => {
         if (!matchesScope(rel)) return
         try {
           if (def.onSync) {
@@ -442,7 +502,7 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         }
       })
 
-      registerUnlinkHook(async (rel) => {
+      const unregisterUnlink = registerUnlinkHook(async (rel) => {
         if (!matchesScope(rel)) return
         try {
           if (def.onUnlink) {
@@ -457,6 +517,14 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
         } catch (err) {
           log.warn('File-backed unlink hook failed', err, { table: tableName, rel })
         }
+      })
+
+      registry.fileBackedWiring.set(tableName, {
+        pluginId,
+        dispose: () => {
+          unregisterSync?.()
+          unregisterUnlink?.()
+        },
       })
 
       // Schedule startup reconcile. We can't run it inline because the
@@ -592,15 +660,24 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
  * before the reconcile tries to scan them. Failures are logged and
  * swallowed so one bad reconcile doesn't block the rest.
  */
-export async function runPendingReconciles(): Promise<void> {
+async function runPendingReconcilesMatching(predicate: (item: RegistryState['pendingReconciles'][number]) => boolean): Promise<void> {
   const registry = getRegistry()
   if (registry.pendingReconciles.length === 0) return
   if (!await getSearchAdapter().available()) {
+    const keep = registry.pendingReconciles.filter((item) => !predicate(item))
     registry.pendingReconciles.length = 0
+    registry.pendingReconciles.push(...keep)
     return
   }
   const contentDir = getContentDir()
-  const items = registry.pendingReconciles.splice(0)
+  const items: RegistryState['pendingReconciles'] = []
+  const keep: RegistryState['pendingReconciles'] = []
+  for (const item of registry.pendingReconciles) {
+    if (predicate(item)) items.push(item)
+    else keep.push(item)
+  }
+  registry.pendingReconciles.length = 0
+  registry.pendingReconciles.push(...keep)
   for (const { pluginId, def } of items) {
     try {
       const api = buildSearchAPI(pluginId)
@@ -620,6 +697,23 @@ export async function runPendingReconciles(): Promise<void> {
       log.error('Startup reconcile failed', err, { pluginId, table: def.table })
     }
   }
+}
+
+export async function runPendingReconciles(): Promise<void> {
+  await runPendingReconcilesMatching(() => true)
+}
+
+export async function runPendingReconcilesForPlugin(pluginId: string): Promise<void> {
+  await runPendingReconcilesMatching((item) => item.pluginId === pluginId)
+}
+
+export async function ensurePluginSearchReady(pluginId: string): Promise<void> {
+  const { failures } = await ensureRegisteredTables()
+  const pluginFailures = failures.filter((failure) => failure.pluginId === pluginId)
+  if (pluginFailures.length > 0) {
+    log.warn('Plugin search table readiness failed', { pluginId, failures: pluginFailures })
+  }
+  await runPendingReconcilesForPlugin(pluginId)
 }
 
 /**

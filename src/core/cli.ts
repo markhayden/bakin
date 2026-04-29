@@ -170,8 +170,8 @@ interface InstallApiResponse {
   message?: string
 }
 
-async function cmdPluginsInstall(source: string, opts: { yes: boolean }): Promise<number> {
-  const isGithub = source.startsWith('github:') || (source.includes('/') && !source.startsWith('.') && !source.startsWith('/'))
+async function cmdPluginsInstall(source: string, opts: { yes: boolean; dev?: boolean; force?: boolean }): Promise<number> {
+  const isGithub = !opts.dev && (source.startsWith('github:') || (source.includes('/') && !source.startsWith('.') && !source.startsWith('/')))
   const type: 'github' | 'local' = isGithub ? 'github' : 'local'
   try {
     // First call — preflight. With --yes the caller skips the consent
@@ -180,7 +180,7 @@ async function cmdPluginsInstall(source: string, opts: { yes: boolean }): Promis
     // one (--yes implies "accept whatever permissions show up").
     let response = await api<InstallApiResponse>('/api/plugins/install', {
       method: 'POST',
-      body: JSON.stringify({ source, type, accepted: false }),
+      body: JSON.stringify({ source, type, accepted: false, dev: opts.dev === true, force: opts.force === true }),
     })
 
     if (response.error) {
@@ -209,7 +209,14 @@ async function cmdPluginsInstall(source: string, opts: { yes: boolean }): Promis
       }
       response = await api<InstallApiResponse>('/api/plugins/install', {
         method: 'POST',
-        body: JSON.stringify({ source, type, accepted: true, consentToken: response.consentToken }),
+        body: JSON.stringify({
+          source,
+          type,
+          accepted: true,
+          consentToken: response.consentToken,
+          dev: opts.dev === true,
+          force: opts.force === true,
+        }),
       })
       if (response.error) {
         console.error(`Install failed: ${response.error}`)
@@ -221,7 +228,7 @@ async function cmdPluginsInstall(source: string, opts: { yes: boolean }): Promis
       return 1
     }
 
-    console.log(response.message ?? `Installed "${response.id}". Restart Bakin to load the plugin.`)
+    console.log(response.message ?? `Installed "${response.id}".`)
     return 0
   } catch (err) {
     console.error(`Install failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -279,7 +286,7 @@ async function cmdPluginsUpgrade(pluginId: string, opts: { yes: boolean }): Prom
     const fromSha = (res.before?.commitSha ?? '').slice(0, 8)
     const toSha = (res.after?.commitSha ?? '').slice(0, 8)
     const shaPart = fromSha && toSha ? ` (sha ${fromSha}...${toSha})` : ''
-    console.log(`Upgraded ${pluginId} v${fromV} → v${toV}${shaPart}. Restart Bakin to activate the change: bakin stop && bakin start`)
+    console.log(`Upgraded ${pluginId} v${fromV} → v${toV}${shaPart} and activated it.`)
     return 0
   } catch (err) {
     console.error(`Upgrade failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -330,7 +337,6 @@ async function cmdPluginsRemove(pluginId: string): Promise<number> {
       // user can recover (or knows to back up before retrying).
       console.error(`  WARNING: pre-removal snapshot failed — plugin files cannot be restored from ~/.bakin/.uninstalled/`)
     }
-    console.log(`Restart Bakin to fully release the plugin's modules: bakin stop && bakin start`)
     // Exit non-zero when the snapshot failed so scripted callers can react.
     return res.snapshot ? 0 : 1
   } catch (err) {
@@ -357,7 +363,7 @@ async function cmdPluginsLink(localPath: string, opts: { force: boolean }): Prom
       console.error(`Link failed: ${res.error}`)
       return 1
     }
-    console.log(res.message ?? `Linked "${res.id}". Restart Bakin to activate the plugin.`)
+    console.log(res.message ?? `Linked "${res.id}".`)
     if (res.linkedSource) {
       console.log(`  ~/.bakin/plugins/${res.id} → ${res.linkedSource}`)
     }
@@ -381,7 +387,7 @@ async function cmdPluginsUnlink(pluginId: string): Promise<number> {
       console.error(`Unlink failed: ${res.error}`)
       return 1
     }
-    console.log(res.message ?? `Unlinked "${res.id ?? pluginId}". Restart Bakin to release the plugin.`)
+    console.log(res.message ?? `Unlinked "${res.id ?? pluginId}".`)
     return 0
   } catch (err) {
     console.error(`Unlink failed: ${err instanceof Error ? err.message : String(err)}`)
@@ -514,12 +520,16 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
           return { startServer: false, exitCode: await cmdPluginsList({ check }) }
         }
         if (sub === 'install') {
-          if (!args[2]) {
-            console.error('Usage: bakin plugins install <path|github:user/repo[#subpath]> [--yes]')
+          const installArgs = args.slice(2)
+          const source = installArgs.find(arg => !arg.startsWith('--'))
+          if (!source) {
+            console.error('Usage: bakin plugins install [--dev] <path|github:user/repo[#subpath]> [--yes] [--force]')
             return { startServer: false, exitCode: 1 }
           }
-          const yes = args.slice(3).includes('--yes')
-          return { startServer: false, exitCode: await cmdPluginsInstall(args[2], { yes }) }
+          const yes = installArgs.includes('--yes')
+          const dev = installArgs.includes('--dev')
+          const force = installArgs.includes('--force')
+          return { startServer: false, exitCode: await cmdPluginsInstall(source, { yes, dev, force }) }
         }
         if (sub === 'upgrade') {
           if (!args[2]) {

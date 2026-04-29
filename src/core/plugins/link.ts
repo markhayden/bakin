@@ -194,7 +194,7 @@ export async function linkPlugin(
   localPath: string,
   opts: LinkOptions = {},
 ): Promise<LinkResult> {
-  const real = resolveAndContain(localPath);
+  const real = resolveAndContain(localPath)
   const { id, version, manifestSha, permissions } = readManifest(real)
 
   // Refuse collisions with installed user plugins unless force=true.
@@ -202,7 +202,14 @@ export async function linkPlugin(
   // avoids the partial-state risk of creating a symlink first then
   // realizing the lockfile already had this id.
   const existingLock = readPluginLockfile()
-  if (existingLock.plugins[id] && opts.force !== true) {
+  const existingEntry = existingLock.plugins[id]
+  if (existingEntry && isLinkedEntry(existingEntry)) {
+    auditLinkRejected('id_collision_linked', localPath, { id, linkedSource: existingEntry.linkedSource })
+    throw new LinkRefusedError(
+      `plugin id "${id}" is already dev-installed from ${existingEntry.linkedSource}; run \`bakin plugins unlink ${id}\` first`,
+    )
+  }
+  if (existingEntry && opts.force !== true) {
     auditLinkRejected('id_collision_installed', localPath, { id })
     throw new LinkRefusedError(
       `plugin id "${id}" is already installed; pass --force to override or run \`bakin plugins remove ${id}\` first`,
@@ -223,6 +230,13 @@ export async function linkPlugin(
   mkdirSync(pluginsRoot, { recursive: true })
   const pluginDir = join(pluginsRoot, id)
 
+  try {
+    await buildUserPlugin(real)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new LinkRefusedError(`linked source failed initial build: ${message}`)
+  }
+
   // If a stale symlink/dir/regular file is sitting at the target, remove
   // it before symlinking. The collision check above already gated us; this
   // covers the case where the lockfile and the on-disk dir diverged.
@@ -235,16 +249,6 @@ export async function linkPlugin(
   }
 
   symlinkSync(real, pluginDir, 'dir')
-
-  try {
-    await buildUserPlugin(pluginDir)
-  } catch (err) {
-    // Build failure leaves the user's source intact but yanks the symlink
-    // so they don't end up with a half-linked plugin.
-    if (lstatSync(pluginDir).isSymbolicLink()) unlinkSync(pluginDir)
-    const message = err instanceof Error ? err.message : String(err)
-    throw new LinkRefusedError(`linked source failed initial build: ${message}`)
-  }
 
   const entry: PluginLockEntry = {
     source: real,
