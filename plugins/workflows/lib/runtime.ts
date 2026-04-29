@@ -284,6 +284,12 @@ function resolveAgent(agentValue: string | undefined, instance: WorkflowInstance
   return agentValue
 }
 
+function getStepOwner(step: WorkflowStep, instance: WorkflowInstance): string | undefined {
+  if (step.type === 'agent') return resolveAgent((step as AgentStep).agent, instance)
+  if (step.type === 'output') return resolveAgent((step as OutputStep).agent, instance)
+  return undefined
+}
+
 /**
  * Payload passed to `workflows.executeNode.{kind}` hook handlers. The plugin
  * that owns the kind is responsible for driving the step to completion
@@ -408,6 +414,7 @@ export function getCurrentStep(
 
   // Gate pending approval
   if (step.type === 'gate' && instance.stepStates[currentId]?.status === 'pending_approval') {
+    if (agentId) return null
     return {
       status: 'pending_approval',
       stepId: currentId,
@@ -434,6 +441,7 @@ export function getCurrentStep(
       if (childStep && instance.stepStates[childStep.id]?.status === 'in_progress') {
         return buildStepContext(childStep, instance, dir)
       }
+      return null
     }
     // Return first in_progress child
     for (const child of parallel.steps) {
@@ -441,6 +449,11 @@ export function getCurrentStep(
         return buildStepContext(child, instance, dir)
       }
     }
+  }
+
+  if (agentId) {
+    const owner = getStepOwner(step, instance)
+    if (!owner || owner === '$assigned' || owner !== agentId) return null
   }
 
   return buildStepContext(step, instance, dir)
@@ -459,8 +472,8 @@ function buildStepContext(
   }
 
   // Resolve agent (handles $assigned → snapshotted assignee)
-  if (step.type === 'agent') ctx.agent = resolveAgent((step as AgentStep).agent, instance)
-  if (step.type === 'output' && (step as OutputStep).agent) ctx.agent = resolveAgent((step as OutputStep).agent, instance)
+  const owner = getStepOwner(step, instance)
+  if (owner) ctx.agent = owner
 
   // Resolve instructions from skill or description
   const skillName = (step as AgentStep | OutputStep).skill
@@ -548,6 +561,59 @@ export interface CompleteStepResult {
   errors?: string[]
   nextStep?: StepContext | { status: 'complete' } | { status: 'pending_approval'; stepId: string; label: string }
   workflowComplete?: boolean
+}
+
+export type WorkflowToolUseAction = 'progress-log' | 'task-complete' | 'task-block' | 'channel-post'
+
+export interface WorkflowToolUseAuthorization {
+  allowed: boolean
+  reason?: string
+  step?: StepContext
+}
+
+export function authorizeWorkflowToolUse(
+  taskId: string,
+  agentId: string,
+  action: WorkflowToolUseAction,
+  contentDir?: string,
+): WorkflowToolUseAuthorization {
+  const dir = contentDir || getContentDir()
+  const instance = loadInstance(taskId, dir)
+  if (!instance || instance.status === 'complete' || instance.status === 'cancelled') {
+    return { allowed: true }
+  }
+
+  if (action === 'task-complete') {
+    return {
+      allowed: false,
+      reason: 'This is an active workflow task. Submit the current workflow step and let the workflow engine complete the task.',
+    }
+  }
+
+  if (instance.status === 'pending_approval') {
+    return {
+      allowed: false,
+      reason: 'This workflow is waiting on a human approval gate. Agents cannot mutate it until the gate resolves.',
+    }
+  }
+
+  const step = getCurrentStep(taskId, agentId, dir)
+  if (!step || !('type' in step)) {
+    return {
+      allowed: false,
+      reason: `Agent "${agentId}" is not the owner of the active workflow step for task "${taskId}".`,
+    }
+  }
+
+  if (action === 'channel-post' && step.type !== 'output') {
+    return {
+      allowed: false,
+      reason: 'Workflow channel posts are only allowed from the active output step.',
+      step,
+    }
+  }
+
+  return { allowed: true, step }
 }
 
 /**
