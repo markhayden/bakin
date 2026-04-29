@@ -26,8 +26,18 @@ export type NodeRenderer = ComponentType<NodeProps>
 const registry = new Map<string, NodeRenderer>()
 const listeners = new Set<() => void>()
 let version = 0
+let nodeTypesSnapshot: NodeTypes = {}
+
+function rebuildNodeTypesSnapshot(): void {
+  const result: NodeTypes = {}
+  for (const [kind, component] of registry.entries()) {
+    result[kind] = component
+  }
+  nodeTypesSnapshot = result
+}
 
 function notify(): void {
+  rebuildNodeTypesSnapshot()
   version++
   for (const l of listeners) l()
 }
@@ -55,11 +65,15 @@ export function getNodeRenderer(kind: string): NodeRenderer | undefined {
 
 /** Return the full kind→component map in the shape xyflow's nodeTypes prop expects. */
 export function getAllNodeRenderers(): NodeTypes {
-  const result: NodeTypes = {}
-  for (const [kind, component] of registry.entries()) {
-    result[kind] = component
-  }
-  return result
+  return { ...nodeTypesSnapshot }
+}
+
+/**
+ * Stable snapshot for React's useSyncExternalStore. Unlike getAllNodeRenderers,
+ * this returns the same object until the registry mutates.
+ */
+export function getNodeRendererSnapshot(): NodeTypes {
+  return nodeTypesSnapshot
 }
 
 /** List registered kinds — used by the palette to enumerate available node types. */
