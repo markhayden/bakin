@@ -34,11 +34,42 @@ export default defineConfig({
         PageTitle: './src/components/PageTitle.astro',
         Footer: './src/components/DocsFooter.astro',
       },
-      head: gtmId
-        ? [
-            {
-              tag: 'script',
-              content: `
+      head: [
+        {
+          tag: 'script',
+          content: `
+// Pin the TOC link that matches the URL hash. Starlight's scroll-spy uses
+// IntersectionObserver to highlight the TOC entry for the heading currently
+// in view, but sections at the very bottom of a page can't scroll high enough
+// to trigger the observer — so clicking them sets the URL hash without any
+// visible TOC feedback. Re-applying on hashchange + page-load fixes that.
+(function () {
+  var ATTR = 'data-toc-hash-pinned';
+  function escapeHash(hash) {
+    if (typeof CSS !== 'undefined' && CSS.escape) return CSS.escape(hash);
+    return hash.replace(/[^a-zA-Z0-9_-]/g, '\\\\$&');
+  }
+  function apply() {
+    document.querySelectorAll('[' + ATTR + ']').forEach(function (el) {
+      el.removeAttribute(ATTR);
+    });
+    var hash = window.location.hash.slice(1);
+    if (!hash) return;
+    var link = document.querySelector('starlight-toc a[href$="#' + escapeHash(hash) + '"]');
+    if (link) link.setAttribute(ATTR, '');
+  }
+  window.addEventListener('hashchange', apply);
+  document.addEventListener('astro:page-load', apply);
+  if (document.readyState !== 'loading') apply();
+  else document.addEventListener('DOMContentLoaded', apply);
+})();
+          `,
+        },
+        ...(gtmId
+          ? [
+              {
+                tag: 'script',
+                content: `
 window.dataLayer = window.dataLayer || [];
 window.gtag = window.gtag || function(){ window.dataLayer.push(arguments); };
 (function () {
@@ -143,9 +174,10 @@ document.addEventListener("click", function (event) {
   }
 });
 `,
-            },
-          ]
-        : [],
+              },
+            ]
+          : []),
+      ],
       defaultLocale: 'root',
       editLink: {
         baseUrl: 'https://github.com/madeinwyo/bakin/edit/main/docs/',
