@@ -15,6 +15,166 @@
   ],
   "secrets": [],
   "tests": "tests/",
-  "dependencies": ["tasks"],
-  "permissions": ["storage.read", "storage.write", "events.emit"]
+  "dependencies": [
+    "tasks"
+  ],
+  "permissions": [
+    "storage.read",
+    "storage.write",
+    "events.emit"
+  ],
+  "contributes": {
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/definitions",
+        "summary": "List all workflow templates with step counts and resolved sub-workflows"
+      },
+      {
+        "method": "POST",
+        "path": "/definitions",
+        "summary": "Create a new user-owned workflow definition"
+      },
+      {
+        "method": "DELETE",
+        "path": "/definitions/:name",
+        "summary": "Delete a user-owned workflow definition"
+      },
+      {
+        "method": "GET",
+        "path": "/definitions/:name",
+        "summary": "Get a specific workflow definition by name"
+      },
+      {
+        "method": "PUT",
+        "path": "/definitions/:name",
+        "summary": "Update or shadow a workflow definition (writes user YAML)"
+      },
+      {
+        "method": "POST",
+        "path": "/gates/:taskId/approve",
+        "summary": "Approve a human gate step"
+      },
+      {
+        "method": "POST",
+        "path": "/gates/:taskId/reject",
+        "summary": "Reject a gate step, rewinds workflow"
+      },
+      {
+        "method": "GET",
+        "path": "/gates/pending",
+        "summary": "List all gates awaiting approval"
+      },
+      {
+        "method": "GET",
+        "path": "/gates/status",
+        "summary": "Batch check gate status for tasks"
+      },
+      {
+        "method": "GET",
+        "path": "/instances",
+        "summary": "List active workflow instances. Optional status filter."
+      },
+      {
+        "method": "GET",
+        "path": "/instances/:taskId",
+        "summary": "Get full workflow instance state for a task"
+      },
+      {
+        "method": "POST",
+        "path": "/instances/start",
+        "summary": "Start a workflow instance for a task"
+      },
+      {
+        "method": "GET",
+        "path": "/node-types",
+        "summary": "List registered workflow node types (builtin + plugin-registered) for the canvas palette"
+      },
+      {
+        "method": "GET",
+        "path": "/notification-channels",
+        "summary": "List registered notification channels"
+      },
+      {
+        "method": "GET",
+        "path": "/steps/:taskId",
+        "summary": "Get current workflow step for a task"
+      },
+      {
+        "method": "POST",
+        "path": "/steps/:taskId/complete",
+        "summary": "Submit step output, validates against schema, advances workflow"
+      }
+    ],
+    "execTools": [
+      {
+        "name": "bakin_exec_workflows_complete_step",
+        "summary": "Complete a workflow step with output",
+        "description": "Complete a workflow step with output. Validates output against the step schema, advances the workflow to the next step. Returns success status and whether the workflow is complete."
+      },
+      {
+        "name": "bakin_exec_workflows_get_definition",
+        "summary": "Get a workflow definition by filename",
+        "description": "Get a workflow definition by filename. Returns the full definition with steps, inputs, and resolved sub-workflows."
+      },
+      {
+        "name": "bakin_exec_workflows_get_instance",
+        "summary": "Get the full state of a workflow instance for a task, including step states and history",
+        "description": "Get the full state of a workflow instance for a task, including step states and history."
+      },
+      {
+        "name": "bakin_exec_workflows_get_step",
+        "summary": "Get the current workflow step for a task",
+        "description": "Get the current workflow step for a task. Returns only the current step (information gating — future steps are hidden). Critical for agents to know what to do next."
+      },
+      {
+        "name": "bakin_exec_workflows_list",
+        "summary": "List all workflow definitions (templates)",
+        "description": "List all workflow definitions (templates). Returns name, filename, description, and step count for each."
+      },
+      {
+        "name": "bakin_exec_workflows_list_instances",
+        "summary": "List workflow instances",
+        "description": "List workflow instances. Optionally filter by status (in_progress, pending_approval, complete, failed, cancelled)."
+      },
+      {
+        "name": "bakin_exec_workflows_start",
+        "summary": "Start a workflow instance for a task",
+        "description": "Start a workflow instance for a task. The task must exist on the board. Returns the created instance."
+      }
+    ],
+    "cliCommands": [
+      {
+        "name": "workflows list",
+        "usage": "bakin workflows list",
+        "summary": "List workflow definitions.",
+        "dispatch": {
+          "type": "execTool",
+          "name": "bakin_exec_workflows_list"
+        }
+      },
+      {
+        "name": "workflows start",
+        "usage": "bakin workflows start <taskId> <workflowId>",
+        "summary": "Start a workflow.",
+        "dispatch": {
+          "type": "execTool",
+          "name": "bakin_exec_workflows_start"
+        }
+      },
+      {
+        "name": "workflows step",
+        "usage": "bakin workflows step <taskId>",
+        "summary": "Get current workflow step."
+      },
+      {
+        "name": "workflows submit",
+        "usage": "bakin workflows submit <taskId> <stepId> <json>",
+        "summary": "Submit workflow step output."
+      }
+    ],
+    "docs": {
+      "slug": "using/workflows"
+    }
+  }
 }

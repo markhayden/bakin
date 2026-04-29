@@ -11,5 +11,123 @@
   "secrets": [],
   "tests": "tests/",
   "dependencies": [],
-  "permissions": ["storage.read", "events.emit", "runtime.read"]
+  "permissions": [
+    "storage.read",
+    "events.emit",
+    "runtime.read"
+  ],
+  "contributes": {
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/audit",
+        "summary": "List indexed audit entries with optional filters"
+      },
+      {
+        "method": "GET",
+        "path": "/checkpoints",
+        "summary": "List compaction checkpoints for an agent (optionally by session)"
+      },
+      {
+        "method": "GET",
+        "path": "/checkpoints/:agent/:sessionId/:checkpointId",
+        "summary": "Read one checkpoint by (agent, sessionId, checkpointId)"
+      },
+      {
+        "method": "GET",
+        "path": "/daily-notes",
+        "summary": "List daily notes for an agent (sorted by date desc)"
+      },
+      {
+        "method": "GET",
+        "path": "/daily-notes/:agent/:filename",
+        "summary": "Read one daily note"
+      },
+      {
+        "method": "POST",
+        "path": "/daily-notes/compare-search",
+        "summary": "Run the same query against Bakin search and runtime memory search"
+      },
+      {
+        "method": "GET",
+        "path": "/dreams",
+        "summary": "List dream artifacts for an agent (optional phase/date/artifactType filters)"
+      },
+      {
+        "method": "GET",
+        "path": "/dreams/:agent/:artifactType",
+        "summary": "Read one dream artifact by (agent, artifactType[, phase, date])"
+      },
+      {
+        "method": "GET",
+        "path": "/durable",
+        "summary": "List canonical durable files present for an agent"
+      },
+      {
+        "method": "GET",
+        "path": "/durable/:agent/:basename",
+        "summary": "Read one canonical durable file for an agent"
+      },
+      {
+        "method": "GET",
+        "path": "/recent",
+        "summary": "Recent memory items across tiers, sorted by updated_at desc"
+      },
+      {
+        "method": "GET",
+        "path": "/sessions",
+        "summary": "List sessions for an agent"
+      },
+      {
+        "method": "GET",
+        "path": "/sessions/:agent/:sessionKey",
+        "summary": "Read one session by key"
+      },
+      {
+        "method": "GET",
+        "path": "/sessions/:agent/:sessionKey/turns",
+        "summary": "List turns belonging to one session (indexed)"
+      },
+      {
+        "method": "GET",
+        "path": "/status",
+        "summary": "Indexer health: per-tier row counts + offset snapshot"
+      },
+      {
+        "method": "GET",
+        "path": "/turns",
+        "summary": "List turns by (agent, sessionId)"
+      }
+    ],
+    "execTools": [
+      {
+        "name": "bakin_exec_memory_get_session",
+        "summary": "Fetch a session by key plus its most recent turns",
+        "description": "Fetch a session by key plus its most recent turns."
+      },
+      {
+        "name": "bakin_exec_memory_get_turn",
+        "summary": "Fetch a single turn by id (the `turn:<hex>` form)",
+        "description": "Fetch a single turn by id (the `turn:<hex>` form)."
+      },
+      {
+        "name": "bakin_exec_memory_list_agents",
+        "summary": "Agents with memory rows, each with total count and per-tier breakdown",
+        "description": "Agents with memory rows, each with total count and per-tier breakdown."
+      },
+      {
+        "name": "bakin_exec_memory_search",
+        "summary": "Hybrid search across every memory tier (sessions, turns, checkpoints, daily notes, dreams, durable, audit)",
+        "description": "Hybrid search across every memory tier (sessions, turns, checkpoints, daily notes, dreams, durable, audit). Optional tier/agent filters."
+      },
+      {
+        "name": "bakin_exec_memory_status",
+        "summary": "Indexer health: per-tier row counts, offset tracking, snapshot timestamp",
+        "description": "Indexer health: per-tier row counts, offset tracking, snapshot timestamp."
+      }
+    ],
+    "docs": {
+      "slug": "using/memory"
+    }
+  }
 }

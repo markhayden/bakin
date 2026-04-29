@@ -2,7 +2,14 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
 import { CLI_COMMANDS } from '../../src/core/cli/registry'
-import { EXTRACTED_PLUGINS, extractExecTools, locateExtractedPlugin, renderExecToolsSnippet } from './source-scan'
+import {
+  EXTRACTED_PLUGINS,
+  extractExecTools,
+  getApiRoutes,
+  getCliCommands,
+  locateExtractedPlugin,
+  renderExecToolsSnippet,
+} from './source-scan'
 
 const repoRoot = new URL('../..', import.meta.url).pathname
 const docsRoot = join(repoRoot, 'docs')
@@ -106,6 +113,22 @@ const commandSnippets = {
 } satisfies Record<string, string[]>
 
 function renderCommandSnippet(marker: string): string {
+  // 1. Manifest-first: plugins that declare contributes.cliCommands win.
+  const manifestCommands = getCliCommands(marker)
+  if (manifestCommands.length) {
+    const lines = [
+      `<!-- docs:cli-commands ${marker} -->`,
+      '| Command | Purpose |',
+      '| --- | --- |',
+    ]
+    for (const command of manifestCommands) {
+      lines.push(`| \`${command.usage.replace(/\|/g, '\\|')}\` | ${command.summary} |`)
+    }
+    lines.push('<!-- /docs:cli-commands -->')
+    return lines.join('\n')
+  }
+
+  // 2. Legacy: hardcoded grouping in `commandSnippets` for in-repo plugins.
   const names = commandSnippets[marker as keyof typeof commandSnippets]
   if (!names) return ''
 
@@ -126,18 +149,55 @@ function renderCommandSnippet(marker: string): string {
   return lines.join('\n')
 }
 
+function cliMarkerKnown(marker: string): boolean {
+  if (commandSnippets[marker as keyof typeof commandSnippets]) return true
+  if (getCliCommands(marker).length) return true
+  return false
+}
+
 function validateCliCommandBlocks(file: string, text: string): void {
   const rel = file.replace(repoRoot, '').replace(/^\//, '')
   const commandMarkerPattern = /<!-- docs:cli-commands ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:cli-commands -->/g
   for (const match of text.matchAll(commandMarkerPattern)) {
     const marker = match[1]
-    if (!commandSnippets[marker as keyof typeof commandSnippets]) {
+    if (!cliMarkerKnown(marker)) {
       errors.push(`${rel}: unknown CLI command snippet marker "${marker}"`)
       continue
     }
     const expected = renderCommandSnippet(marker)
     if (match[0].trimEnd() !== expected) {
-      errors.push(`${rel}: CLI command snippet "${marker}" is out of sync with src/core/cli/registry.ts`)
+      errors.push(`${rel}: CLI command snippet "${marker}" is out of sync with manifest contributes.cliCommands or src/core/cli/registry.ts`)
+    }
+  }
+}
+
+function renderApiRoutesSnippet(marker: string): string {
+  const routes = getApiRoutes(marker)
+  if (!routes.length) return ''
+  const lines = [
+    `<!-- docs:api-routes ${marker} -->`,
+    '| Method | Path | Purpose |',
+    '| --- | --- | --- |',
+  ]
+  for (const route of routes) {
+    lines.push(`| \`${route.method}\` | \`${route.path}\` | ${route.summary} |`)
+  }
+  lines.push('<!-- /docs:api-routes -->')
+  return lines.join('\n')
+}
+
+function validateApiRouteBlocks(file: string, text: string): void {
+  const rel = file.replace(repoRoot, '').replace(/^\//, '')
+  const markerPattern = /<!-- docs:api-routes ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:api-routes -->/g
+  for (const match of text.matchAll(markerPattern)) {
+    const marker = match[1]
+    const expected = renderApiRoutesSnippet(marker)
+    if (!expected) {
+      errors.push(`${rel}: unknown api-routes snippet marker "${marker}" (no manifest contributes.apiRoutes and no ctx.registerRoute calls in plugins/${marker}/)`)
+      continue
+    }
+    if (match[0].trimEnd() !== expected) {
+      errors.push(`${rel}: api-routes snippet "${marker}" is out of sync with manifest contributes.apiRoutes (or in-repo plugin source)`)
     }
   }
 }
@@ -244,6 +304,7 @@ for (const file of walkMarkdown(docsContentRoot)) {
   validateBakinCommands(file, text)
   validateCliCommandBlocks(file, text)
   validateExecToolBlocks(file, text)
+  validateApiRouteBlocks(file, text)
   validateDocsSnippetBlocks(file, text)
   validateJsonFences(file, text)
 }

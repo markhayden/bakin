@@ -90,6 +90,42 @@ bakin packages list                                        # all installed packs
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
+## API routes
+
+<!-- docs:api-routes team -->
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/` | List all agents with runtime status |
+| `POST` | `/` | Create a new agent in the active runtime |
+| `DELETE` | `/:agentId` | Remove an agent from the active runtime and move workspace to trash |
+| `GET` | `/:agentId` | Get full agent profile merged from runtime state |
+| `GET` | `/:agentId/active-context` | Read the most recent session JSONL parsed into a message stream |
+| `GET` | `/:agentId/avatar` | Serve agent avatar image |
+| `POST` | `/:agentId/avatar` | Upload agent avatar image |
+| `GET` | `/:agentId/files` | List workspace files for an agent |
+| `GET` | `/:agentId/files/:filename` | Read a specific workspace file |
+| `PUT` | `/:agentId/files/:filename` | Write a workspace file through the active runtime |
+| `GET` | `/:agentId/heartbeat` | Read the agent's HEARTBEAT.md narrative + file mtime |
+| `PUT` | `/:agentId/identity` | Update agent identity fields and persona files |
+| `GET` | `/:agentId/memory` | List memory files for an agent |
+| `GET` | `/:agentId/memory/:date` | Read a specific memory file |
+| `PUT` | `/:agentId/permissions` | Update agent dispatch permissions (subagents.allowAgents) |
+| `GET` | `/:agentId/recent-activity` | Per-agent dispatch + error counts across 5m / 1h / 24h windows (resets on server restart) |
+| `GET` | `/:agentId/skills` | List installed skills for an agent |
+| `GET` | `/:agentId/skills/:skillId` | Read SKILL.md for a specific skill |
+| `POST` | `/:agentId/start` | Start an agent via the active runtime |
+| `GET` | `/:agentId/stats` | Get token usage and cost stats for an agent |
+| `POST` | `/:agentId/stop` | Stop an agent |
+| `PUT` | `/:agentId/team` | Assign an agent to an organizational team |
+| `GET` | `/settings` | Get agent display settings |
+| `PUT` | `/settings` | Update agent display settings |
+| `GET` | `/teams` | List organizational teams |
+| `POST` | `/teams` | Create an organizational team |
+| `DELETE` | `/teams/:teamId` | Delete an organizational team |
+| `PUT` | `/teams/:teamId` | Update an organizational team |
+| `GET` | `/teams/:teamId/members` | List agents belonging to a team |
+<!-- /docs:api-routes -->
+
 <div class="for-agents">
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents

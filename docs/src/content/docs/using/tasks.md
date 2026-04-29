@@ -104,6 +104,7 @@ Same operations are available from the terminal when you'd rather not click:
 | Command | Purpose |
 | --- | --- |
 | `bakin tasks list [--column=<column>]` | List tasks. |
+| `bakin tasks get <id>` | Get task details. |
 | `bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow=<reason>]` | Create a task. |
 | `bakin tasks move <id> <column>` | Move a task. |
 | `bakin tasks log <id> <message>` | Log task progress. |
@@ -113,6 +114,25 @@ Same operations are available from the terminal when you'd rather not click:
 <!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
+
+## API routes
+
+<!-- docs:api-routes tasks -->
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/` | List all tasks |
+| `POST` | `/` | Create a new task |
+| `DELETE` | `/:taskId` | Delete a task |
+| `GET` | `/:taskId` | Get a single task by ID |
+| `PUT` | `/:taskId` | Update a task |
+| `POST` | `/:taskId/assign` | Assign a task to an agent |
+| `POST` | `/:taskId/block` | Mark a task as blocked |
+| `POST` | `/:taskId/complete` | Mark a task as complete |
+| `POST` | `/:taskId/dependency` | Set a dependency between tasks |
+| `POST` | `/:taskId/log` | Add a log entry to a task |
+| `POST` | `/:taskId/move` | Move a task to a different column |
+| `POST` | `/reorder` | Reorder tasks within a column |
+<!-- /docs:api-routes -->
 
 <div class="for-agents">
 

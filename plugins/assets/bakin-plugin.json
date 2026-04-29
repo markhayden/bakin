@@ -11,5 +11,140 @@
   "secrets": [],
   "tests": "tests/",
   "dependencies": [],
-  "permissions": ["storage.read", "storage.write", "events.emit"]
+  "permissions": [
+    "storage.read",
+    "storage.write",
+    "events.emit"
+  ],
+  "contributes": {
+    "apiRoutes": [
+      {
+        "method": "DELETE",
+        "path": "/",
+        "summary": "Soft-delete an asset"
+      },
+      {
+        "method": "GET",
+        "path": "/",
+        "summary": "List assets with filters"
+      },
+      {
+        "method": "PUT",
+        "path": "/content",
+        "summary": "Update text content of an editable asset"
+      },
+      {
+        "method": "GET",
+        "path": "/file",
+        "summary": "Serve asset file"
+      },
+      {
+        "method": "PATCH",
+        "path": "/link",
+        "summary": "Relink or unlink an asset"
+      },
+      {
+        "method": "PATCH",
+        "path": "/retype",
+        "summary": "Change asset type classification"
+      },
+      {
+        "method": "DELETE",
+        "path": "/trash",
+        "summary": "Empty entire trash"
+      },
+      {
+        "method": "GET",
+        "path": "/trash",
+        "summary": "List trashed assets"
+      },
+      {
+        "method": "DELETE",
+        "path": "/trash/:file",
+        "summary": "Permanently delete a trashed asset"
+      },
+      {
+        "method": "POST",
+        "path": "/trash/:file/restore",
+        "summary": "Restore a trashed asset"
+      },
+      {
+        "method": "POST",
+        "path": "/upload",
+        "summary": "Upload asset files"
+      }
+    ],
+    "execTools": [
+      {
+        "name": "bakin_exec_assets_audit",
+        "summary": "Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files",
+        "description": "Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files. Set fix=true to auto-generate missing thumbnails and create stub sidecars."
+      },
+      {
+        "name": "bakin_exec_assets_delete",
+        "summary": "Soft-delete an asset (moves to trash, restorable until trash is emptied)",
+        "description": "Soft-delete an asset (moves to trash, restorable until trash is emptied)."
+      },
+      {
+        "name": "bakin_exec_assets_empty_trash",
+        "summary": "Permanently delete all items from trash",
+        "description": "Permanently delete all items from trash. This cannot be undone."
+      },
+      {
+        "name": "bakin_exec_assets_get",
+        "summary": "Retrieve a single asset's sidecar metadata by canonical filename",
+        "description": "Retrieve a single asset's sidecar metadata by canonical filename."
+      },
+      {
+        "name": "bakin_exec_assets_link",
+        "summary": "Link an asset to a different task, or unlink it (set taskId to null)",
+        "description": "Link an asset to a different task, or unlink it (set taskId to null). Sidecar-only edit — no file move."
+      },
+      {
+        "name": "bakin_exec_assets_list",
+        "summary": "List assets with optional type filter",
+        "description": "List assets with optional type filter. Returns asset count, canonical filenames, and metadata."
+      },
+      {
+        "name": "bakin_exec_assets_list_trash",
+        "summary": "List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge",
+        "description": "List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge."
+      },
+      {
+        "name": "bakin_exec_assets_permanent_delete",
+        "summary": "Permanently delete a specific trashed asset",
+        "description": "Permanently delete a specific trashed asset. This cannot be undone."
+      },
+      {
+        "name": "bakin_exec_assets_restore",
+        "summary": "Restore a trashed asset back to its original location",
+        "description": "Restore a trashed asset back to its original location. Use bakin_exec_assets_list_trash first to get the filename."
+      },
+      {
+        "name": "bakin_exec_assets_retype",
+        "summary": "Change an asset's type classification",
+        "description": "Change an asset's type classification. Sidecar-only edit — no file move."
+      },
+      {
+        "name": "bakin_exec_assets_save",
+        "summary": "Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug",
+        "description": "Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically."
+      },
+      {
+        "name": "bakin_exec_assets_update_content",
+        "summary": "Update the text content of an editable asset",
+        "description": "Update the text content of an editable asset. Only works for text-based MIME types (markdown, plain text, YAML, JSON, CSV, XML). Rewrites the entire file."
+      }
+    ],
+    "cliCommands": [
+      {
+        "name": "trash",
+        "usage": "bakin trash [list|restore|empty] ...",
+        "summary": "Manage trashed assets."
+      }
+    ],
+    "docs": {
+      "slug": "using/assets"
+    }
+  }
 }

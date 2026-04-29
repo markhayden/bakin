@@ -134,6 +134,24 @@ bakin trash empty                 # purge everything
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
+## API routes
+
+<!-- docs:api-routes assets -->
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `DELETE` | `/` | Soft-delete an asset |
+| `GET` | `/` | List assets with filters |
+| `PUT` | `/content` | Update text content of an editable asset |
+| `GET` | `/file` | Serve asset file |
+| `PATCH` | `/link` | Relink or unlink an asset |
+| `PATCH` | `/retype` | Change asset type classification |
+| `DELETE` | `/trash` | Empty entire trash |
+| `GET` | `/trash` | List trashed assets |
+| `DELETE` | `/trash/:file` | Permanently delete a trashed asset |
+| `POST` | `/trash/:file/restore` | Restore a trashed asset |
+| `POST` | `/upload` | Upload asset files |
+<!-- /docs:api-routes -->
+
 <div class="for-agents">
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents

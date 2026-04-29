@@ -11,5 +11,199 @@
   "secrets": [],
   "tests": "tests/",
   "dependencies": [],
-  "permissions": ["storage.read", "storage.write", "events.emit"]
+  "permissions": [
+    "storage.read",
+    "storage.write",
+    "events.emit"
+  ],
+  "contributes": {
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/",
+        "summary": "List all tasks"
+      },
+      {
+        "method": "POST",
+        "path": "/",
+        "summary": "Create a new task"
+      },
+      {
+        "method": "DELETE",
+        "path": "/:taskId",
+        "summary": "Delete a task"
+      },
+      {
+        "method": "GET",
+        "path": "/:taskId",
+        "summary": "Get a single task by ID"
+      },
+      {
+        "method": "PUT",
+        "path": "/:taskId",
+        "summary": "Update a task"
+      },
+      {
+        "method": "POST",
+        "path": "/:taskId/assign",
+        "summary": "Assign a task to an agent"
+      },
+      {
+        "method": "POST",
+        "path": "/:taskId/block",
+        "summary": "Mark a task as blocked"
+      },
+      {
+        "method": "POST",
+        "path": "/:taskId/complete",
+        "summary": "Mark a task as complete"
+      },
+      {
+        "method": "POST",
+        "path": "/:taskId/dependency",
+        "summary": "Set a dependency between tasks"
+      },
+      {
+        "method": "POST",
+        "path": "/:taskId/log",
+        "summary": "Add a log entry to a task"
+      },
+      {
+        "method": "POST",
+        "path": "/:taskId/move",
+        "summary": "Move a task to a different column"
+      },
+      {
+        "method": "POST",
+        "path": "/reorder",
+        "summary": "Reorder tasks within a column"
+      }
+    ],
+    "execTools": [
+      {
+        "name": "bakin_exec_tasks_assign",
+        "summary": "Assign a task to an agent",
+        "description": "Assign a task to an agent."
+      },
+      {
+        "name": "bakin_exec_tasks_block",
+        "summary": "Mark a task as blocked with a reason",
+        "description": "Mark a task as blocked with a reason. Use when you cannot proceed."
+      },
+      {
+        "name": "bakin_exec_tasks_complete",
+        "summary": "Report that your task is complete",
+        "description": "Report that your task is complete. Moves the task to Done and notifies the orchestrator."
+      },
+      {
+        "name": "bakin_exec_tasks_create",
+        "summary": "Create a new task on the task board",
+        "description": "Create a new task on the task board. Workflows are auto-matched by title when workflowId is not provided. Provide workflowId to force a specific workflow, or skipWorkflowReason to explicitly skip."
+      },
+      {
+        "name": "bakin_exec_tasks_delete",
+        "summary": "Delete a task from the board",
+        "description": "Delete a task from the board."
+      },
+      {
+        "name": "bakin_exec_tasks_get",
+        "summary": "Get details about a task — title, description, current column, logs, dependencies, project context",
+        "description": "Get details about a task — title, description, current column, logs, dependencies, project context."
+      },
+      {
+        "name": "bakin_exec_tasks_list",
+        "summary": "List all tasks on the board",
+        "description": "List all tasks on the board. Optionally filter by column or agent."
+      },
+      {
+        "name": "bakin_exec_tasks_log_progress",
+        "summary": "Log a human-readable progress update to the live activity feed",
+        "description": "Log a human-readable progress update to the live activity feed. Call this at every significant step."
+      },
+      {
+        "name": "bakin_exec_tasks_move",
+        "summary": "Move a task to a different column on the task board",
+        "description": "Move a task to a different column on the task board."
+      },
+      {
+        "name": "bakin_exec_tasks_set_dependency",
+        "summary": "Register a dependency between tasks",
+        "description": "Register a dependency between tasks. Your task will be auto-re-dispatched when the dependency completes. After registering, exit — do not wait."
+      },
+      {
+        "name": "bakin_exec_tasks_update",
+        "summary": "Update a task on the board — change title, description, or assigned agent",
+        "description": "Update a task on the board — change title, description, or assigned agent."
+      }
+    ],
+    "cliCommands": [
+      {
+        "name": "tasks list",
+        "usage": "bakin tasks list [--column=<column>]",
+        "summary": "List tasks.",
+        "dispatch": {
+          "type": "execTool",
+          "name": "bakin_exec_tasks_list"
+        }
+      },
+      {
+        "name": "tasks get",
+        "usage": "bakin tasks get <id>",
+        "summary": "Get task details.",
+        "dispatch": {
+          "type": "execTool",
+          "name": "bakin_exec_tasks_get"
+        }
+      },
+      {
+        "name": "tasks create",
+        "usage": "bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow=<reason>]",
+        "summary": "Create a task.",
+        "dispatch": {
+          "type": "execTool",
+          "name": "bakin_exec_tasks_create"
+        }
+      },
+      {
+        "name": "tasks move",
+        "usage": "bakin tasks move <id> <column>",
+        "summary": "Move a task.",
+        "dispatch": {
+          "type": "execTool",
+          "name": "bakin_exec_tasks_move"
+        }
+      },
+      {
+        "name": "tasks log",
+        "usage": "bakin tasks log <id> <message>",
+        "summary": "Log task progress."
+      },
+      {
+        "name": "tasks block",
+        "usage": "bakin tasks block <id> <reason>",
+        "summary": "Block a task.",
+        "dispatch": {
+          "type": "execTool",
+          "name": "bakin_exec_tasks_block"
+        }
+      },
+      {
+        "name": "tasks depend",
+        "usage": "bakin tasks depend <id> <dependsOn>",
+        "summary": "Register a task dependency."
+      },
+      {
+        "name": "tasks complete",
+        "usage": "bakin tasks complete <id> <summary>",
+        "summary": "Complete a task.",
+        "dispatch": {
+          "type": "execTool",
+          "name": "bakin_exec_tasks_complete"
+        }
+      }
+    ],
+    "docs": {
+      "slug": "using/tasks"
+    }
+  }
 }

@@ -1,5 +1,12 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { extractExecTools, relativeSource, renderExecToolsSnippet, sourceFiles } from './source-scan'
+import {
+  extractExecTools,
+  getApiRoutes,
+  getCliCommands,
+  relativeSource,
+  renderExecToolsSnippet,
+  sourceFiles,
+} from './source-scan'
 import { dirname, join } from 'node:path'
 import { APP_VERSION } from '../../packages/core/src/constants'
 import { DEFAULT_SETTINGS } from '../../packages/core/src/settings'
@@ -77,6 +84,22 @@ function docsPath(path: string): string {
 }
 
 function renderCommandSnippet(marker: string): string {
+  // 1. Manifest-first: plugins that declare contributes.cliCommands win.
+  const manifestCommands = getCliCommands(marker)
+  if (manifestCommands.length) {
+    const lines = [
+      `<!-- docs:cli-commands ${marker} -->`,
+      '| Command | Purpose |',
+      '| --- | --- |',
+    ]
+    for (const command of manifestCommands) {
+      lines.push(`| \`${command.usage.replace(/\|/g, '\\|')}\` | ${command.summary} |`)
+    }
+    lines.push('<!-- /docs:cli-commands -->')
+    return lines.join('\n')
+  }
+
+  // 2. Legacy hardcoded grouping for in-repo plugins that haven't backfilled.
   const names = commandSnippets[marker as keyof typeof commandSnippets]
   if (!names) throw new Error(`Unknown CLI command snippet: ${marker}`)
 
@@ -94,6 +117,21 @@ function renderCommandSnippet(marker: string): string {
   }
 
   lines.push('<!-- /docs:cli-commands -->')
+  return lines.join('\n')
+}
+
+function renderApiRoutesSnippet(marker: string): string {
+  const routes = getApiRoutes(marker)
+  if (!routes.length) throw new Error(`No api-routes for marker: ${marker}`)
+  const lines = [
+    `<!-- docs:api-routes ${marker} -->`,
+    '| Method | Path | Purpose |',
+    '| --- | --- | --- |',
+  ]
+  for (const route of routes) {
+    lines.push(`| \`${route.method}\` | \`${route.path}\` | ${route.summary} |`)
+  }
+  lines.push('<!-- /docs:api-routes -->')
   return lines.join('\n')
 }
 
@@ -129,12 +167,14 @@ function updateGeneratedContentBlocks(): void {
   const commandMarkerPattern = /<!-- docs:cli-commands ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:cli-commands -->/g
   const snippetMarkerPattern = /<!-- docs:snippet ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:snippet -->/g
   const execToolsMarkerPattern = /<!-- docs:exec-tools ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:exec-tools -->/g
+  const apiRoutesMarkerPattern = /<!-- docs:api-routes ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:api-routes -->/g
   for (const file of markdownFiles) {
     const text = readFileSync(file, 'utf8')
     const next = text
       .replace(commandMarkerPattern, (_match, marker: string) => renderCommandSnippet(marker))
       .replace(snippetMarkerPattern, (_match, marker: string) => renderDocsSnippetBlock(marker))
       .replace(execToolsMarkerPattern, (_match, marker: string) => renderExecToolsSnippet(marker))
+      .replace(apiRoutesMarkerPattern, (_match, marker: string) => renderApiRoutesSnippet(marker))
     if (next !== text) writeStableFile(file, next)
   }
 }
