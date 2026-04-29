@@ -157,6 +157,15 @@ pre {
   white-space: nowrap;
 }
 
+/* Two-column "label : description" tables. Keep the label column on one line
+   so short bold labels like **Context Usage** don't wrap mid-name when the
+   description squeezes them. */
+.sl-markdown-content .label-table table td:first-child:not(:where(.not-content *)),
+.sl-markdown-content .label-table table th:first-child:not(:where(.not-content *)) {
+  white-space: nowrap;
+  width: 1%;
+}
+
 .hero img {
   filter: drop-shadow(0 0 18px rgba(255, 112, 158, 0.22));
 }

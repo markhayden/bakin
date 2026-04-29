@@ -1,52 +1,85 @@
 ---
 title: Health
-description: "Live dashboard over Bakin's runtime: server stats, MCP sessions, doctor diagnostics, search index, and per-tool usage."
+description: "Cost, context, call volume, and diagnostics for every agent. Everything you can't see from the runtime alone."
 ---
 
-Health is the single pane that tells you whether everything's working. Server stats, active MCP sessions, doctor diagnostics, search engine state, plugin registry, and live usage feeds for every tool, endpoint, and agent. Pluggable so any plugin can register its own health check.
+What's each agent costing you? Which tool got hammered today? Whose context window is about to wrap? Whose dispatches are silently failing? Your runtime keeps the receipts but it doesn't read them back to you. This dashboard does.
 
-## The health view
-
-<figure class="screenshot-frame">
-  <figcaption>The health page with server stats on top, MCP sessions, doctor results, search engine status, and the usage tabs at the bottom.</figcaption>
-</figure>
-
-Sections from top to bottom:
-
-- **Server stats** — port, pid, memory, uptime.
-- **MCP sessions** — active agent connections and what they're doing.
-- **Doctor diagnostics** — cached results from the last doctor sweep, refreshable.
-- **Antfly health** — search engine status and per-table row counts.
-- **Plugin registry** — every plugin loaded, with route counts.
-- **Usage** — three tabs for tool, endpoint, and agent usage.
-
-## Usage tabs
+Live token counts, session costs, MCP and REST volumes, error rates, plugin status, search-engine state, the full diagnostic sweep. Without Bakin you'd be grepping JSONL transcripts to answer any of it.
 
 <figure class="screenshot-frame">
-  <figcaption>The usage panel with three tabs (Tool / Endpoint / Agent), windowed to 5m, 1h, or 24h.</figcaption>
+  <figcaption>The health dashboard: cost and context cards, usage tabs, doctor results, system status, all in one feed.</figcaption>
 </figure>
 
-Single in-memory recorder feeds all three tabs. Every MCP exec tool call, every REST endpoint hit, every agent dispatch lands in one place and gets aggregated.
+## Cost and Context
 
-- **Tool Usage** — by exec tool name, count + error rate per window.
-- **Endpoint Usage** — by REST path, count + error rate.
-- **Agent Usage** — by agent id, calls + errors per window.
+Two cards anchor the top of the dashboard side by side. They cover the questions that pile up fastest when you've got a roster running: what each agent is costing you, and whose context is about to overflow. Glance at them on the way past, look closer when something looks off.
 
-Filter windows: 5 minutes, 1 hour, 24 hours.
+<figure class="screenshot-frame">
+  <figcaption>Context usage on the left (tokens in each agent's latest session), session cost on the right with the day's running total.</figcaption>
+</figure>
+
+<div class="label-table">
+
+| Card | What it answers |
+| --- | --- |
+| **Context Usage** | Total tokens in each agent's latest session, bar-charted. Spot who's pushing the model's window before they hit it. |
+| **Session Cost** | Input, output, cache-read, cache-write, and total per agent with the day's running total at the top. Pulled from the runtime's posted rates, directional not invoice-grade. Answers "is Roscoe's day eating my budget?" without making you go ask the gateway. |
+
+</div>
+
+:::tip[Watch the cache-read column]
+Cache-read tokens cost a fraction of fresh input tokens. That column tells you whether your agents are getting good cache hits or burning through fresh context every turn.
+:::
+
+## Call Volume
+
+Three tabs sit below the cost cards, all feeding from the same in-memory recorder. Same activity, sliced three ways. When something looks off in the system, this is usually the first place you'll see it.
+
+<figure class="screenshot-frame">
+  <figcaption>The usage panel: tool, endpoint, and agent tabs, windowed to 5m, 1h, or 24h.</figcaption>
+</figure>
+
+<div class="label-table">
+
+| Tab | What it counts |
+| --- | --- |
+| **Tool Usage** | Every MCP exec tool call, by name (e.g. `bakin_exec_tasks_create`). Count + error rate per window. |
+| **Endpoint Usage** | Every REST endpoint hit, by path. Count + error rate. |
+| **Agent Usage** | Calls + errors per agent. Quick read on who's busy and who's stuck. |
+
+</div>
+
+:::tip[Window the view]
+5 minutes, 1 hour, or 24 hours. Useful for catching: "is the orchestrator looping?", "is this tool error-spiking?", "who's the noisy agent right now?"
+:::
 
 ## Doctor
 
-`bakin doctor` runs the full diagnostic sweep — agent roster, skill sync, gateway, taskboard, assets, plugin assets, agent assets. Results cache for 30 minutes; the dashboard polls every ~10 seconds but reads from cache so re-running is cheap. Force a fresh sweep from the refresh button or by running `bakin doctor` from the CLI.
+A green-light scan of every moving part in the stack. Agent roster, runtime adapter, search adapter, taskboard, assets, channel approvals, the works. Red means broken, yellow means drifting, and most rows have a one-click auto-fix so you don't have to know what went wrong to fix it.
+
+Run it before you start the day or any time something feels off. Results cache so the dashboard reads fast; the refresh button (or `bakin doctor` from the CLI) forces a fresh sweep.
+
+## System Status
+
+Live state of the Bakin process and what it's connected to:
+
+<div class="label-table">
+
+| Section | What's there |
+| --- | --- |
+| **Server stats** | Port, PID, memory in use, uptime, node version. |
+| **MCP sessions** | Agents currently connected, open session count per agent, when they connected. |
+| **Plugin registry** | Every plugin loaded, with route count and source (built-in vs user-installed). |
+| **Search engine** | Antfly status and row counts per `bakin_*` table. |
+
+</div>
+
+Quick sanity check for "did everything actually start up?"
 
 ## Pluggable health checks
 
-Any plugin can register a health check that surfaces in the dashboard. Plugins register through the health-check registry; Health then renders the result alongside the built-in checks. Useful for any plugin that owns external state (a job queue, an external API, a database).
-
-## Concepts
-
-- **Single source of usage truth.** All MCP/REST/agent stats flow through one in-memory recorder. There is intentionally no parallel stat system.
-- **Doctor results are cached.** Live polling reads from cache. Refresh forces a re-run.
-- **Read-only.** Health writes nothing. It surfaces everything other plugins and core systems already track.
+Any plugin can register a health check that surfaces here alongside the built-ins. It picks up the same color coding (red / yellow / green) and the same auto-fix scaffolding. If a plugin owns external state worth watching (an API key, a queue, a cache, a daemon), wire a check.
 
 ## Settings
 
@@ -62,8 +95,6 @@ Any plugin can register a health check that surfaces in the dashboard. Plugins r
 <!-- /docs:settings -->
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
-
-Health surfaces through the diagnostic CLI:
 
 <!-- docs:cli-commands health -->
 | Command | Purpose |
@@ -93,6 +124,6 @@ Full schemas in the [Exec tools reference](/docs/reference/generated/exec-tools/
 
 ## Related
 
+- [Models](/docs/using/models/): pick cheaper models for the agents that show up loudest in Cost
 - [Essentials → System Status](/docs/using/essentials/#system-status): the always-on dot in the header is backed by these checks
-- [Daily Operation](/docs/start/operation/): start, stop, restart, update — all the lifecycle commands that affect health
-- [Settings](/docs/using/settings/): alert thresholds and dispatch cadence
+- [Daily Operation](/docs/start/operation/): start, stop, restart, update, the lifecycle commands that affect health
