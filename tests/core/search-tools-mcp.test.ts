@@ -158,6 +158,7 @@ mock.module('../../src/core/search-registry', () => ({
   getContentTypes: getContentTypesMock,
   getTableForPlugin: getTableForPluginMock,
   getIndexNames: mock(() => ['embeddings']),
+  purgeContentType: mock(async () => {}),
   buildSearchAPI: mock(() => ({ health: getSearchHealthMock })),
 }))
 

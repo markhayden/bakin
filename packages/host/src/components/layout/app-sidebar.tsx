@@ -20,7 +20,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
-import { getAllNavItems, getRegistryVersion, subscribeRegistry } from '@bakin/sdk'
+import { getNavItemsSnapshot, subscribeRegistry } from '@bakin/sdk'
 import { useSidebarContext } from '@/context/sidebar-context'
 import { usePathname } from '../../hooks/use-pathname'
 import {
@@ -59,11 +59,9 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
   // Subscribe to registry mutations so the sidebar re-renders when a
   // plugin hot-swaps (v2 dev mode) — PluginHost's own subscription only
   // forces PluginHost itself to re-render; consumers below need their own.
-  useSyncExternalStore(subscribeRegistry, getRegistryVersion, getRegistryVersion)
-  // Runtime registry (populated by each plugin's client.mjs via registerPlugin
-  // after the PluginHost dynamic-imports them). Fetched per render so
-  // newly-registered plugins surface on the next re-render cycle.
-  const allNavItems = getAllNavItems()
+  const allNavItems = useSyncExternalStore(subscribeRegistry, getNavItemsSnapshot, getNavItemsSnapshot)
+  // Runtime registry populated by each plugin's client.mjs via registerPlugin
+  // after PluginHost dynamically imports it.
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
     // Seed initial state: expand any group whose section is active on load
     const initial = new Set<string>()
@@ -95,7 +93,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
       }
       return next
     })
-  }, [pathname])
+  }, [allNavItems, pathname])
 
   const toggleExpand = (id: string) => {
     setExpandedIds(current => {

@@ -28,7 +28,9 @@ bakin stop
 bakin restart
 ```
 
-`restart` is a `stop` followed by `start`. Good for picking up settings changes, plugin installs, or core agent file changes that don't auto-reload.
+`restart` is a `stop` followed by `start`. Good for picking up settings changes, core agent file changes, or rare plugin manifest/schema changes that don't auto-reload.
+
+Dev-installed plugins (`bakin plugins install --dev <path>`) load on normal start because Bakin follows the symlink under `~/.bakin/plugins/<id>`. Live rebuilds for source edits only run under `bakin dev`.
 
 ## Check that it's healthy
 

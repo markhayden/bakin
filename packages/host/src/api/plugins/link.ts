@@ -11,12 +11,15 @@
  * adapter so the CLI can drive the same code path. LinkRefusedError →
  * 400; everything else → 500.
  *
- * Restart still required for the linked plugin's `activate(ctx)` to
- * register hooks/routes/exec tools/etc. Hot-reload of an already-active
- * linked plugin lands in P2.C7-C9; this endpoint just registers it.
+ * The endpoint activates the plugin immediately when the registry is
+ * initialized, and attaches the linked-source watcher in dev mode.
  */
 import { createLogger } from '@/core/logger'
 import { linkPlugin, LinkRefusedError } from '@/core/plugins/link'
+import {
+  activateUserPluginDir,
+  watchLinkedPluginIfEnabled,
+} from '@/core/plugins/live-lifecycle'
 
 const log = createLogger('plugin-link-endpoint')
 
@@ -42,9 +45,13 @@ export async function post(req: Request, _url: URL): Promise<Response> {
 
   try {
     const result = await linkPlugin(body.localPath, { force: body.force })
+    const activation = await activateUserPluginDir(result.pluginDir)
+    const watching = await watchLinkedPluginIfEnabled(result.id, result.linkedSource)
     log.info(`Linked plugin "${result.id}"`, {
       source: result.linkedSource,
       version: result.version,
+      activated: true,
+      watching,
     })
     return Response.json({
       ok: true,
@@ -52,7 +59,9 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       pluginDir: result.pluginDir,
       linkedSource: result.linkedSource,
       version: result.version,
-      message: `Linked "${result.id}". Restart Bakin to activate the plugin.`,
+      runtimeVersion: activation.runtimeVersion,
+      watching,
+      message: `Linked "${result.id}" and activated it${watching ? ' with dev hot reload' : ''}.`,
     })
   } catch (err) {
     if (err instanceof LinkRefusedError) {

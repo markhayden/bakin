@@ -23,7 +23,7 @@
  * (`index.ts`, `client.tsx`, `components/`, `lib/`).
  */
 import { existsSync, readFileSync } from 'fs'
-import { join } from 'path'
+import { join, relative } from 'path'
 import chokidar, { type FSWatcher } from 'chokidar'
 import { createLogger } from '@/core/logger'
 import { broadcastPluginError, broadcastPluginRecover } from '@/core/sse'
@@ -53,6 +53,84 @@ const ALWAYS_IGNORE = [
   /\bdist\b/,
   /\.tsbuildinfo$/,
 ]
+
+function normalizeWatchPath(path: string): string {
+  return path.replace(/\\/g, '/').replace(/^\.\//, '')
+}
+
+function hasGlobSyntax(path: string): boolean {
+  const normalized = normalizeWatchPath(path)
+  return normalized.includes('*') || normalized.includes('?') || normalized.includes('[') || normalized.includes('{')
+}
+
+function isSafeWatchPath(path: string): boolean {
+  const normalized = normalizeWatchPath(path)
+  return normalized !== '..' && !normalized.startsWith('../') && !normalized.includes('/../')
+}
+
+function readWatchPatterns(pluginDir: string): string[] {
+  const manifestPath = join(pluginDir, 'bakin-plugin.json')
+  let manifestPaths: string[] | null = null
+  if (existsSync(manifestPath)) {
+    try {
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as { devWatch?: unknown }
+      if (Array.isArray(manifest.devWatch)) {
+        const filtered = manifest.devWatch
+          .filter((p): p is string => typeof p === 'string' && p.length > 0)
+          .map(normalizeWatchPath)
+          .filter(isSafeWatchPath)
+        if (filtered.length > 0) manifestPaths = filtered
+      }
+    } catch {
+      // Bad manifest — fall through to defaults.
+    }
+  }
+  return manifestPaths ?? [...DEFAULT_WATCH_PATHS]
+}
+
+function globToRegExp(pattern: string): RegExp {
+  let out = '^'
+  for (let i = 0; i < pattern.length; i += 1) {
+    const char = pattern[i]
+    const next = pattern[i + 1]
+    const afterNext = pattern[i + 2]
+    if (char === '*') {
+      if (next === '*') {
+        if (afterNext === '/') {
+          out += '(?:.*/)?'
+          i += 2
+        } else {
+          out += '.*'
+          i += 1
+        }
+      } else {
+        out += '[^/]*'
+      }
+      continue
+    }
+    if (char === '?') {
+      out += '[^/]'
+      continue
+    }
+    out += /[\\^$.*+?()[\]{}|]/.test(char) ? `\\${char}` : char
+  }
+  return new RegExp(`${out}$`)
+}
+
+function matchesWatchPattern(relPath: string, pattern: string): boolean {
+  const rel = normalizeWatchPath(relPath)
+  const normalizedPattern = normalizeWatchPath(pattern)
+  if (!hasGlobSyntax(normalizedPattern)) {
+    return rel === normalizedPattern || rel.startsWith(`${normalizedPattern}/`)
+  }
+  return globToRegExp(normalizedPattern).test(rel)
+}
+
+export function __matchesWatchTargetForTest(pluginDir: string, changedPath: string, patterns: readonly string[]): boolean {
+  const relPath = relative(pluginDir, changedPath)
+  if (relPath.startsWith('..')) return false
+  return patterns.some((pattern) => matchesWatchPattern(relPath, pattern))
+}
 
 interface CoordinatorState {
   watchers: Map<string, FSWatcher>
@@ -91,25 +169,15 @@ function getState(): CoordinatorState {
 /**
  * Resolve the watch globs for a plugin. Manifest's `devWatch` array
  * wins; fall back to the curated default that mirrors the common
- * plugin layout. Globs are converted to absolute paths so chokidar
- * doesn't have to interpret relative bases.
+ * plugin layout. Returned targets are absolute for logging/test
+ * visibility; chokidar v5 watches the plugin root and filters these
+ * patterns in the event handler.
  */
 export function resolveWatchTargets(pluginDir: string): string[] {
-  const manifestPath = join(pluginDir, 'bakin-plugin.json')
-  let manifestPaths: string[] | null = null
-  if (existsSync(manifestPath)) {
-    try {
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as { devWatch?: unknown }
-      if (Array.isArray(manifest.devWatch)) {
-        const filtered = manifest.devWatch.filter((p): p is string => typeof p === 'string' && p.length > 0)
-        if (filtered.length > 0) manifestPaths = filtered
-      }
-    } catch {
-      // Bad manifest — fall through to defaults.
-    }
-  }
-  const targets = manifestPaths ?? [...DEFAULT_WATCH_PATHS]
-  return targets.map((p) => join(pluginDir, p)).filter((p) => existsSync(p))
+  const targets = readWatchPatterns(pluginDir)
+  return targets
+    .map((p) => join(pluginDir, p))
+    .filter((p, index) => hasGlobSyntax(targets[index]) || existsSync(p))
 }
 
 /**
@@ -185,17 +253,19 @@ interface WatcherSpec {
 }
 
 function attachWatcher(spec: WatcherSpec): FSWatcher | null {
+  const patterns = readWatchPatterns(spec.pluginDir)
   const targets = resolveWatchTargets(spec.pluginDir)
   if (targets.length === 0) {
     log.warn('hot-reload: no watch targets resolved for plugin', { pluginId: spec.pluginId, pluginDir: spec.pluginDir })
     return null
   }
-  const watcher = chokidar.watch(targets, {
+  const watcher = chokidar.watch(spec.pluginDir, {
     ignoreInitial: true,
     ignored: ALWAYS_IGNORE,
     awaitWriteFinish: { stabilityThreshold: 50, pollInterval: 20 },
   })
-  watcher.on('all', (_event, _path) => {
+  watcher.on('all', (_event, path) => {
+    if (!__matchesWatchTargetForTest(spec.pluginDir, path, patterns)) return
     scheduleReload(spec.pluginId, spec.pluginDir)
   })
   watcher.on('error', (err) => {
@@ -205,6 +275,35 @@ function attachWatcher(spec: WatcherSpec): FSWatcher | null {
   return watcher
 }
 
+export function isHotReloadCoordinatorStarted(): boolean {
+  return getState().started
+}
+
+export function watchLinkedPlugin(pluginId: string, pluginDir: string): boolean {
+  const state = getState()
+  if (!state.started) return false
+
+  const existing = state.watchers.get(pluginId)
+  if (existing) void existing.close()
+
+  const watcher = attachWatcher({ pluginId, pluginDir })
+  if (!watcher) {
+    state.watchers.delete(pluginId)
+    return false
+  }
+  state.watchers.set(pluginId, watcher)
+  return true
+}
+
+export async function unwatchPlugin(pluginId: string): Promise<boolean> {
+  const state = getState()
+  const watcher = state.watchers.get(pluginId)
+  if (!watcher) return false
+  state.watchers.delete(pluginId)
+  try { await watcher.close() } catch { /* swallow */ }
+  return true
+}
+
 /**
  * Discover currently-linked plugins from the lockfile and attach a
  * watcher to each one. Idempotent — re-attaching a watcher for a
@@ -212,7 +311,6 @@ function attachWatcher(spec: WatcherSpec): FSWatcher | null {
  * watcher first).
  */
 export function attachWatchersFromLockfile(): void {
-  const state = getState()
   let lock: ReturnType<typeof readPluginLockfile>
   try {
     lock = readPluginLockfile()
@@ -225,11 +323,7 @@ export function attachWatchersFromLockfile(): void {
     const linkedSource = entry.linkedSource
     if (!linkedSource) continue
 
-    const existing = state.watchers.get(id)
-    if (existing) void existing.close()
-
-    const watcher = attachWatcher({ pluginId: id, pluginDir: linkedSource })
-    if (watcher) state.watchers.set(id, watcher)
+    watchLinkedPlugin(id, linkedSource)
   }
 }
 

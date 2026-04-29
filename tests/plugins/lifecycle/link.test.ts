@@ -4,8 +4,9 @@
  * Verifies the full link + unlink contract:
  *   - linkPlugin creates a symlink at ~/.bakin/plugins/<id>/, runs the
  *     initial build, and writes a `linked: true` lockfile entry.
- *   - id collisions with installed AND core plugin ids refuse without
- *     --force; force=true overrides.
+ *   - id collisions with installed and core plugin ids refuse without
+ *     --force; force=true overrides those, but never overwrites an
+ *     already-linked plugin.
  *   - resolveAndContain refuses paths that escape the trusted roots.
  *   - Build failure rolls back the symlink so no half-linked state
  *     persists.
@@ -139,15 +140,52 @@ describe('linkPlugin — refusal cases', () => {
   })
 
   it('refuses id collision with an installed plugin (without force)', async () => {
-    // Pre-seed the lockfile with an installed entry of the same id.
-    const seedDir = join(testDir, 'seed')
-    writeManifest(seedDir, { id: 'collide', name: 'Collide', version: '1.0.0', permissions: [] })
-    await linkPlugin(seedDir)
-    rmSync(seedDir, { recursive: true, force: true })
+    const { addPlugin, writePluginLockfile, readPluginLockfile } = await import(
+      '../../../packages/core/src/plugins/lockfile'
+    )
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'collide', {
+      source: 'github:owner/repo',
+      type: 'github',
+      ref: 'main',
+      commitSha: '0123456789abcdef0123456789abcdef01234567',
+      installedAt: new Date().toISOString(),
+      version: '1.0.0',
+      permissions: [],
+      manifestSha: 'cafebabe',
+    }))
 
-    // Re-link should refuse.
     writeManifest(sourceDir, { id: 'collide', name: 'Collide', version: '1.0.0', permissions: [] })
     await expect(linkPlugin(sourceDir)).rejects.toThrow(/already installed/i)
+  })
+
+  it('--force allows linking over an installed plugin id', async () => {
+    const { addPlugin, writePluginLockfile, readPluginLockfile } = await import(
+      '../../../packages/core/src/plugins/lockfile'
+    )
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'force-collide', {
+      source: 'github:owner/repo',
+      type: 'github',
+      ref: 'main',
+      commitSha: '0123456789abcdef0123456789abcdef01234567',
+      installedAt: new Date().toISOString(),
+      version: '1.0.0',
+      permissions: [],
+      manifestSha: 'cafebabe',
+    }))
+
+    writeManifest(sourceDir, { id: 'force-collide', name: 'Force Collide', version: '2.0.0', permissions: [] })
+    const result = await linkPlugin(sourceDir, { force: true })
+    expect(result.id).toBe('force-collide')
+    expect(readPluginLockfile().plugins['force-collide']?.linked).toBe(true)
+  })
+
+  it('refuses id collision with an already linked plugin even with force', async () => {
+    const seedDir = join(testDir, 'seed-linked')
+    writeManifest(seedDir, { id: 'linked-collide', name: 'Linked', version: '1.0.0', permissions: [] })
+    await linkPlugin(seedDir)
+
+    writeManifest(sourceDir, { id: 'linked-collide', name: 'Linked Again', version: '1.0.0', permissions: [] })
+    await expect(linkPlugin(sourceDir, { force: true })).rejects.toThrow(/already dev-installed/i)
   })
 
   it('refuses id collision with a core plugin (without force)', async () => {

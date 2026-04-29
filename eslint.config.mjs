@@ -3,6 +3,7 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
+import noPluginTopLevelSideEffects from "./scripts/eslint-rules/no-plugin-top-level-side-effects.mjs";
 
 // Bakin runs across Bun server code, browser UI code, CLI scripts, and tests.
 // TypeScript owns undefined checks; this keeps ESLint from misclassifying
@@ -70,6 +71,12 @@ const adapterBoundaryImportRestrictions = {
       message: "Legacy provider internals are behind the adapter layer. Route through the runtime/search adapter contract.",
     },
   ],
+};
+
+const bakinPluginRules = {
+  rules: {
+    "no-plugin-top-level-side-effects": noPluginTopLevelSideEffects,
+  },
 };
 
 const eslintConfig = defineConfig([
@@ -167,8 +174,10 @@ const eslintConfig = defineConfig([
   // established in #141 (SDK + slot system) and enforced through the Bun
   // migration in #147.
   {
-    files: ["plugins/**/*.{ts,tsx}"],
+    files: ["plugins/**/*.{ts,tsx,js,mjs,mts}"],
+    plugins: { bakin: bakinPluginRules },
     rules: {
+      "bakin/no-plugin-top-level-side-effects": "error",
       "no-restricted-imports": ["error", {
         paths: adapterBoundaryImportRestrictions.paths,
         patterns: [

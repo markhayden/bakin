@@ -80,6 +80,8 @@ mock.module('../../../src/core/search-registry', () => ({
     enabled: false,
     tables: [],
   })),
+  getContentTypes: mock(() => []),
+  purgeContentType: mock(async () => {}),
   // plugin-registry.ts (transitively imported by health/managed-blocks via
   // getHookRegistry) re-imports buildSearchAPI; provide a no-op stub.
   buildSearchAPI: () => ({

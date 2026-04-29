@@ -36,6 +36,14 @@ import type { Task, ColumnId } from './types'
 const log = createLogger('tasks')
 
 const COLUMNS = ['backlog', 'todo', 'inProgress', 'review', 'done', 'blocked', 'archived'] as const
+let maintenanceTimers: Array<ReturnType<typeof setInterval>> = []
+
+function clearMaintenanceTimers(): void {
+  for (const timer of maintenanceTimers) {
+    clearInterval(timer)
+  }
+  maintenanceTimers = []
+}
 
 const tasksPlugin: BakinPlugin = {
   id: 'tasks',
@@ -56,6 +64,8 @@ const tasksPlugin: BakinPlugin = {
   ],
 
   activate(ctx: PluginContext) {
+    clearMaintenanceTimers()
+
     // ─── Search Content Type Registration ─────────────────────────────
 
     ctx.search.registerContentType({
@@ -705,10 +715,10 @@ const tasksPlugin: BakinPlugin = {
     // Auto-archive: move done tasks to archived after 24 hours (runs hourly)
     const autoArchived = autoArchiveDoneTasks()
     if (autoArchived > 0) log.info(`Auto-archived ${autoArchived} done tasks (>24h)`)
-    setInterval(() => {
+    maintenanceTimers.push(setInterval(() => {
       const count = autoArchiveDoneTasks()
       if (count > 0) log.info(`Auto-archive: moved ${count} done tasks to archived`)
-    }, 60 * 60 * 1000)
+    }, 60 * 60 * 1000))
 
     // Hard-delete old completed tasks on startup + every 6 hours
     const taskSettings = ctx.getSettings<{ autoArchiveDays?: number }>()
@@ -716,10 +726,10 @@ const tasksPlugin: BakinPlugin = {
       const days = taskSettings.autoArchiveDays
       const deleted = archiveOldTasks(days)
       if (deleted > 0) log.info(`Deleted ${deleted} old tasks (>${days} days)`)
-      setInterval(() => {
+      maintenanceTimers.push(setInterval(() => {
         const count = archiveOldTasks(days)
         if (count > 0) log.info(`Periodic cleanup: deleted ${count} old tasks`)
-      }, 6 * 60 * 60 * 1000)
+      }, 6 * 60 * 60 * 1000))
     }
 
     // ─── Health checks (migrated out of core/doctor.ts per #139 C2) ─────
@@ -756,6 +766,7 @@ const tasksPlugin: BakinPlugin = {
   },
 
   onShutdown() {
+    clearMaintenanceTimers()
     log.info('Shutting down tasks plugin')
   },
 }

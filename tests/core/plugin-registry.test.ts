@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, mock, type Mock } from 'bun:test'
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'fs'
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
@@ -132,6 +132,7 @@ mock.module('@/core/migrations', () => ({
 
 mock.module('../../scripts/lib/registry', () => ({
   addExecTool: mock(),
+  removeExecToolsByPlugin: mock(() => 0),
 }))
 
 describe('PluginRegistryImpl', () => {
@@ -269,9 +270,10 @@ describe('PluginRegistryImpl', () => {
       deps?: string[]
       activate?: string
       manifest?: Record<string, unknown>
+      root?: string
     } = {},
   ): string {
-    const pluginDir = join(tempDir, 'plugins', id)
+    const pluginDir = join(opts.root ?? join(tempDir, 'plugins'), id)
     mkdirSync(pluginDir, { recursive: true })
     const manifest = {
       id,
@@ -535,6 +537,21 @@ describe('PluginRegistryImpl', () => {
   })
 
   describe('user plugin failure states', () => {
+    it('loads user plugins installed as symlinks', async () => {
+      const sourceDir = writeUserPlugin('linked-user', {
+        root: join(tempDir, 'dev-sources'),
+      })
+      const pluginsDir = join(tempDir, 'plugins')
+      mkdirSync(pluginsDir, { recursive: true })
+      symlinkSync(sourceDir, join(pluginsDir, 'linked-user'), 'dir')
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      expect(pluginRegistry.getPluginIds()).toContain('linked-user')
+      const active = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'linked-user')
+      expect(active).toMatchObject({ status: 'active' })
+    })
+
     it('reports missing dependencies without exposing plugin routes', async () => {
       writeUserPlugin('needs-missing', {
         deps: ['not-installed'],

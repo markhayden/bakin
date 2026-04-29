@@ -75,7 +75,7 @@ mock.module('@/core/sse', () => ({
   broadcast: mock(),
 }))
 
-import { buildSearchAPI, resetSearchRegistry } from '@/core/search-registry'
+import { buildSearchAPI, getContentTypes, resetSearchRegistry, unregisterContentTypesByPlugin } from '@/core/search-registry'
 import * as watcher from '@/core/watcher'
 
 afterAll(() => {
@@ -284,5 +284,38 @@ describe('search-registry buildSearchAPI auto-registration', () => {
 
     expect(watcher.registerSyncHook).toHaveBeenCalledTimes(1)
     expect(watcher.registerUnlinkHook).toHaveBeenCalledTimes(1)
+  })
+
+  it('rewiring the same file-backed content type disposes stale watcher hooks', () => {
+    const disposeSync = mock()
+    const disposeUnlink = mock()
+    vi.mocked(watcher.registerSyncHook).mockReturnValueOnce(disposeSync)
+    vi.mocked(watcher.registerUnlinkHook).mockReturnValueOnce(disposeUnlink)
+
+    const api = buildSearchAPI('widgets', { registerRoute: () => {} })
+    api.registerFileBackedContentType(makeFileBackedDef('widgets'))
+    api.registerFileBackedContentType(makeFileBackedDef('widgets'))
+
+    expect(watcher.registerSyncHook).toHaveBeenCalledTimes(2)
+    expect(watcher.registerUnlinkHook).toHaveBeenCalledTimes(2)
+    expect(disposeSync).toHaveBeenCalledTimes(1)
+    expect(disposeUnlink).toHaveBeenCalledTimes(1)
+  })
+
+  it('unregisterContentTypesByPlugin removes registrations and disposes watcher hooks without dropping tables', () => {
+    const disposeSync = mock()
+    const disposeUnlink = mock()
+    vi.mocked(watcher.registerSyncHook).mockReturnValueOnce(disposeSync)
+    vi.mocked(watcher.registerUnlinkHook).mockReturnValueOnce(disposeUnlink)
+
+    const api = buildSearchAPI('widgets', { registerRoute: () => {} })
+    api.registerFileBackedContentType(makeFileBackedDef('widgets'))
+
+    expect(getContentTypes().has('bakin_widgets')).toBe(true)
+    expect(unregisterContentTypesByPlugin('widgets')).toBe(1)
+    expect(getContentTypes().has('bakin_widgets')).toBe(false)
+    expect(disposeSync).toHaveBeenCalledTimes(1)
+    expect(disposeUnlink).toHaveBeenCalledTimes(1)
+    expect(searchHarness.calls.tablesDrop).not.toHaveBeenCalled()
   })
 })
