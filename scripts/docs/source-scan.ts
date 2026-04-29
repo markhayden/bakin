@@ -350,3 +350,186 @@ export function getCliCommands(pluginId: string): CliCommandContribution[] {
   const manifest = getPluginManifest(pluginId)
   return manifest?.contributes?.cliCommands ?? []
 }
+
+// ─── Settings schema extraction ──────────────────────────────────────────────
+
+export interface PluginSettingField {
+  key: string
+  type: string
+  label?: string
+  description?: string
+  default?: string
+}
+
+function findMatchingBrace(text: string, openIdx: number, open: string, close: string): number {
+  let depth = 0
+  for (let i = openIdx; i < text.length; i++) {
+    const ch = text[i]
+    if (ch === open) depth++
+    else if (ch === close) {
+      depth--
+      if (depth === 0) return i
+    }
+  }
+  return -1
+}
+
+function extractFieldsArrayBody(source: string): string | null {
+  const schemaMatch = source.match(/settingsSchema:\s*\{/)
+  if (!schemaMatch || schemaMatch.index === undefined) return null
+  const schemaOpen = schemaMatch.index + schemaMatch[0].length - 1
+  const schemaClose = findMatchingBrace(source, schemaOpen, '{', '}')
+  if (schemaClose === -1) return null
+  const schemaBody = source.slice(schemaOpen + 1, schemaClose)
+  const fieldsMatch = schemaBody.match(/fields:\s*\[/)
+  if (!fieldsMatch || fieldsMatch.index === undefined) return null
+  const arrOpen = fieldsMatch.index + fieldsMatch[0].length - 1
+  const arrClose = findMatchingBrace(schemaBody, arrOpen, '[', ']')
+  if (arrClose === -1) return null
+  return schemaBody.slice(arrOpen + 1, arrClose)
+}
+
+function splitFieldObjects(arrayBody: string): string[] {
+  const objects: string[] = []
+  let depth = 0
+  let start = -1
+  let inString: string | null = null
+  for (let i = 0; i < arrayBody.length; i++) {
+    const ch = arrayBody[i]
+    if (inString) {
+      if (ch === '\\') { i++; continue }
+      if (ch === inString) inString = null
+      continue
+    }
+    if (ch === '"' || ch === "'" || ch === '`') { inString = ch; continue }
+    if (ch === '{') {
+      if (depth === 0) start = i
+      depth++
+    } else if (ch === '}') {
+      depth--
+      if (depth === 0 && start !== -1) {
+        objects.push(arrayBody.slice(start + 1, i))
+        start = -1
+      }
+    }
+  }
+  return objects
+}
+
+function parseDefaultsConst(source: string): Map<string, string> {
+  const map = new Map<string, string>()
+  const match = source.match(/const\s+DEFAULTS(?::\s*[^=]+)?\s*=\s*\{/)
+  if (!match || match.index === undefined) return map
+  const open = match.index + match[0].length - 1
+  const close = findMatchingBrace(source, open, '{', '}')
+  if (close === -1) return map
+  const body = source.slice(open + 1, close)
+  // Match each "key: value," pair at depth 0.
+  let depth = 0
+  let entryStart = 0
+  let inString: string | null = null
+  const pushEntry = (entry: string) => {
+    const colon = entry.indexOf(':')
+    if (colon === -1) return
+    const key = entry.slice(0, colon).trim().replace(/^['"`]|['"`]$/g, '')
+    const value = entry.slice(colon + 1).trim().replace(/,$/, '').trim()
+    if (key) map.set(key, value)
+  }
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i]
+    if (inString) {
+      if (ch === '\\') { i++; continue }
+      if (ch === inString) inString = null
+      continue
+    }
+    if (ch === '"' || ch === "'" || ch === '`') { inString = ch; continue }
+    if (ch === '{' || ch === '[' || ch === '(') depth++
+    else if (ch === '}' || ch === ']' || ch === ')') depth--
+    else if (ch === ',' && depth === 0) {
+      pushEntry(body.slice(entryStart, i))
+      entryStart = i + 1
+    }
+  }
+  pushEntry(body.slice(entryStart))
+  return map
+}
+
+function parseTopLevelStringConsts(source: string): Map<string, string> {
+  const map = new Map<string, string>()
+  // Matches: const FOO = 'bar' or const FOO: T = "bar"
+  const re = /(?:^|\n)\s*const\s+([A-Z_][A-Z0-9_]*)\s*(?::[^=\n]+)?\s*=\s*(['"`])((?:\\.|(?!\2).)*)\2/g
+  let match: RegExpExecArray | null
+  while ((match = re.exec(source))) {
+    map.set(match[1], match[3])
+  }
+  return map
+}
+
+function resolveDefault(
+  raw: string | undefined,
+  defaults: Map<string, string>,
+  topLevelConsts: Map<string, string>,
+): string | undefined {
+  if (!raw) return undefined
+  const trimmed = raw.trim().replace(/,$/, '').trim()
+  // DEFAULTS.foo or DEFAULTS['foo']
+  const refMatch = trimmed.match(/^DEFAULTS\.([A-Za-z_][\w]*)/) ??
+    trimmed.match(/^DEFAULTS\[['"`]([^'"`]+)['"`]\]/)
+  if (refMatch) {
+    const resolved = defaults.get(refMatch[1])
+    if (resolved !== undefined) return resolved
+  }
+  // Bare top-level const reference (e.g. `default: DEFAULT_CHANNEL`).
+  const constMatch = trimmed.match(/^([A-Z_][A-Z0-9_]*)$/)
+  if (constMatch) {
+    const resolved = topLevelConsts.get(constMatch[1])
+    if (resolved !== undefined) return resolved
+  }
+  return trimmed
+}
+
+function extractFieldKV(block: string, key: string): string | undefined {
+  // Capture: key: 'value' or key: "value" or key: `value`
+  const re = new RegExp(`${key}:\\s*(['"\`])((?:\\\\.|(?!\\1).)*)\\1`, 's')
+  const m = block.match(re)
+  if (m) return m[2].replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\`/g, '`')
+  // Capture: key: <bare-value> up to comma-or-end
+  const bare = block.match(new RegExp(`${key}:\\s*([^,}\\n]+)`, 's'))
+  return bare?.[1]?.trim()
+}
+
+/**
+ * Extracts the `settingsSchema.fields` declaration from a plugin's `index.ts`
+ * and returns rich field metadata. Resolves `DEFAULTS.foo`-style references
+ * against the same file's `const DEFAULTS` declaration when present.
+ */
+export function extractPluginSettings(pluginId: string): PluginSettingField[] {
+  const indexPaths: string[] = [join(repoRoot, 'plugins', pluginId, 'index.ts')]
+  for (const root of externalSourceRoots()) {
+    indexPaths.push(join(root, pluginId, 'index.ts'))
+  }
+  const indexPath = indexPaths.find(p => existsSync(p))
+  if (!indexPath) return []
+  const source = readFileSync(indexPath, 'utf8')
+  const arrayBody = extractFieldsArrayBody(source)
+  if (!arrayBody) return []
+  const defaults = parseDefaultsConst(source)
+  const topLevelConsts = parseTopLevelStringConsts(source)
+  const fields: PluginSettingField[] = []
+  for (const block of splitFieldObjects(arrayBody)) {
+    const key = extractFieldKV(block, 'key')
+    if (!key) continue
+    const type = extractFieldKV(block, 'type') ?? 'string'
+    const label = extractFieldKV(block, 'label')
+    const description = extractFieldKV(block, 'description')
+    const rawDefault = extractFieldKV(block, 'default')
+    fields.push({
+      key,
+      type,
+      label,
+      description,
+      default: resolveDefault(rawDefault, defaults, topLevelConsts),
+    })
+  }
+  return fields
+}

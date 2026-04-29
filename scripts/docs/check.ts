@@ -5,6 +5,7 @@ import { CLI_COMMANDS } from '../../src/core/cli/registry'
 import {
   EXTRACTED_PLUGINS,
   extractExecTools,
+  extractPluginSettings,
   getApiRoutes,
   getCliCommands,
   locateExtractedPlugin,
@@ -186,6 +187,29 @@ function renderApiRoutesSnippet(marker: string): string {
   return lines.join('\n')
 }
 
+function escapeTableCell(value: string): string {
+  return value.replace(/\|/g, '\\|').replace(/\n+/g, ' ').trim()
+}
+
+function renderSettingsSnippet(marker: string): string {
+  const fields = extractPluginSettings(marker)
+  if (!fields.length) return ''
+  const lines = [
+    `<!-- docs:settings ${marker} -->`,
+    '| Setting | Type | Default | What it does |',
+    '| --- | --- | --- | --- |',
+  ]
+  for (const field of fields) {
+    const name = escapeTableCell(field.label || field.key)
+    const type = `\`${field.type}\``
+    const def = field.default ? `\`${escapeTableCell(field.default)}\`` : ''
+    const desc = escapeTableCell(field.description || '')
+    lines.push(`| ${name} | ${type} | ${def} | ${desc} |`)
+  }
+  lines.push('<!-- /docs:settings -->')
+  return lines.join('\n')
+}
+
 function validateApiRouteBlocks(file: string, text: string): void {
   const rel = file.replace(repoRoot, '').replace(/^\//, '')
   const markerPattern = /<!-- docs:api-routes ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:api-routes -->/g
@@ -198,6 +222,22 @@ function validateApiRouteBlocks(file: string, text: string): void {
     }
     if (match[0].trimEnd() !== expected) {
       errors.push(`${rel}: api-routes snippet "${marker}" is out of sync with manifest contributes.apiRoutes (or in-repo plugin source)`)
+    }
+  }
+}
+
+function validateSettingsBlocks(file: string, text: string): void {
+  const rel = file.replace(repoRoot, '').replace(/^\//, '')
+  const markerPattern = /<!-- docs:settings ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:settings -->/g
+  for (const match of text.matchAll(markerPattern)) {
+    const marker = match[1]
+    const expected = renderSettingsSnippet(marker)
+    if (!expected) {
+      errors.push(`${rel}: unknown settings snippet marker "${marker}" (plugin has no settingsSchema in source)`)
+      continue
+    }
+    if (match[0].trimEnd() !== expected) {
+      errors.push(`${rel}: settings snippet "${marker}" is out of sync with the plugin's settingsSchema`)
     }
   }
 }
@@ -305,6 +345,7 @@ for (const file of walkMarkdown(docsContentRoot)) {
   validateCliCommandBlocks(file, text)
   validateExecToolBlocks(file, text)
   validateApiRouteBlocks(file, text)
+  validateSettingsBlocks(file, text)
   validateDocsSnippetBlocks(file, text)
   validateJsonFences(file, text)
 }

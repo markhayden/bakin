@@ -80,6 +80,19 @@ Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
 HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-workflows).
 
+## Settings
+
+<!-- docs:settings workflows -->
+| Setting | Type | Default | What it does |
+| --- | --- | --- | --- |
+| Gate timeout (hours) | `number` | `24` | Auto-reject gates not approved within this time |
+| Max concurrent steps | `number` | `3` | Maximum steps running in parallel per workflow |
+| Notify on gate | `boolean` | `true` | Send notification when a gate needs approval |
+| Channel gate alerts | `boolean` | `false` | Send runtime channel approvals when gates need review |
+| Gate approval channel | `string` | `general` | Runtime channel ID for gate approval messages |
+| Require reject reason | `boolean` | `true` | Require a reason when rejecting from a channel approval |
+<!-- /docs:settings -->
+
 <div class="for-agents">
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents

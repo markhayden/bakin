@@ -1,6 +1,7 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import {
   extractExecTools,
+  extractPluginSettings,
   getApiRoutes,
   getCliCommands,
   listPluginManifests,
@@ -136,6 +137,29 @@ function renderApiRoutesSnippet(marker: string): string {
   return lines.join('\n')
 }
 
+function escapeTableCell(value: string): string {
+  return value.replace(/\|/g, '\\|').replace(/\n+/g, ' ').trim()
+}
+
+function renderSettingsSnippet(marker: string): string {
+  const fields = extractPluginSettings(marker)
+  if (!fields.length) throw new Error(`No settings for marker: ${marker}`)
+  const lines = [
+    `<!-- docs:settings ${marker} -->`,
+    '| Setting | Type | Default | What it does |',
+    '| --- | --- | --- | --- |',
+  ]
+  for (const field of fields) {
+    const name = escapeTableCell(field.label || field.key)
+    const type = `\`${field.type}\``
+    const def = field.default ? `\`${escapeTableCell(field.default)}\`` : ''
+    const desc = escapeTableCell(field.description || '')
+    lines.push(`| ${name} | ${type} | ${def} | ${desc} |`)
+  }
+  lines.push('<!-- /docs:settings -->')
+  return lines.join('\n')
+}
+
 function renderDocsSnippetBlock(marker: string): string {
   const snippet = docsSnippetBlocks[marker as keyof typeof docsSnippetBlocks]
   if (!snippet) throw new Error(`Unknown docs snippet block: ${marker}`)
@@ -169,6 +193,7 @@ function updateGeneratedContentBlocks(): void {
   const snippetMarkerPattern = /<!-- docs:snippet ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:snippet -->/g
   const execToolsMarkerPattern = /<!-- docs:exec-tools ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:exec-tools -->/g
   const apiRoutesMarkerPattern = /<!-- docs:api-routes ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:api-routes -->/g
+  const settingsMarkerPattern = /<!-- docs:settings ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:settings -->/g
   for (const file of markdownFiles) {
     const text = readFileSync(file, 'utf8')
     const next = text
@@ -176,6 +201,7 @@ function updateGeneratedContentBlocks(): void {
       .replace(snippetMarkerPattern, (_match, marker: string) => renderDocsSnippetBlock(marker))
       .replace(execToolsMarkerPattern, (_match, marker: string) => renderExecToolsSnippet(marker))
       .replace(apiRoutesMarkerPattern, (_match, marker: string) => renderApiRoutesSnippet(marker))
+      .replace(settingsMarkerPattern, (_match, marker: string) => renderSettingsSnippet(marker))
     if (next !== text) writeStableFile(file, next)
   }
 }

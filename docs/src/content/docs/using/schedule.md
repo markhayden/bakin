@@ -75,6 +75,17 @@ Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
 HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-schedule).
 
+## Settings
+
+<!-- docs:settings schedule -->
+| Setting | Type | Default | What it does |
+| --- | --- | --- | --- |
+| Max concurrent jobs | `number` | `3` | Maximum jobs that can run at the same time |
+| Failure cooldown (ms) | `number` | `300000` | Wait time after failure before retrying |
+| Max consecutive failures | `number` | `3` | Pause job after this many consecutive failures |
+| Bridge enabled | `boolean` | `true` | Allow cron jobs to create tasks via the bridge |
+<!-- /docs:settings -->
+
 <div class="for-agents">
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents

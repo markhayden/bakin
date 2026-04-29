@@ -1,64 +1,67 @@
 ---
 title: Memory
-description: "Read-only dashboard over every memory tier in OpenClaw plus Bakin's audit log. One unified search across all of it."
+description: "One search across every conversation, decision, and durable thing your agents remember. Read-only window into the agent's past."
 ---
 
-Memory is where you go when you need to know what agents knew, what happened, and where context came from. It indexes seven tiers of OpenClaw's memory plus Bakin's audit log into a single searchable surface. Read-only — Memory never writes to OpenClaw or anywhere else. It just shows you what's there.
+Your window into everything an agent knows or should know. Sessions, daily notes, soul / rules / skills, dreams, checkpoints. All indexed, hybrid scored, ranked. You and your agents both reach for it when you need to know what was decided, where a rule came from, or why an agent is acting weird today.
 
-## The memory dashboard
+The runtime owns the data, this just shows you what's there.
 
 <figure class="screenshot-frame">
-  <figcaption>Memory dashboard with tier overview cards on top, search and facets in the middle, results below.</figcaption>
+  <figcaption>The memory dashboard: tier overview cards on top, search and filters in the middle, a recent feed (or your search hits) below.</figcaption>
 </figure>
 
-Top: tier-overview cards with live row counts so you can see how much of each kind exists. Middle: a unified search bar plus tier and agent facets. Bottom: results — a recent feed when no query, unified search hits when there is one. Click any row to open the detail drawer with the full content.
+## Search
 
-## The seven tiers
+Type a query, get ranked hits across every tier in one list. Hybrid scoring (keyword + semantic) so "launch plan" finds the document titled exactly that AND the session where you talked about going to market. Click any row for the full content in a side drawer.
 
-| Tier | What it holds |
-| --- | --- |
-| **Sessions** | Long-form chat sessions between agents and you |
-| **Checkpoints** | Snapshots agents take to preserve context across sessions |
-| **Daily notes** | Per-day summaries written by agents |
-| **Durable** | Long-term knowledge agents have decided to keep |
-| **Dreams** | Background reflection agents do between active work |
-| **Turns** | Individual agent turns (debug-only) |
-| **Audit** | Bakin's own audit log of every system event (debug-only) |
+Three filters narrow the result set:
 
-Turns and audit are noisy — they're hidden by default and surface when you flip on `?debug=1`.
+- **Agent**: avatar strip on the left. Click an avatar to scope to one agent.
+- **Tier**: multi-select chips. Pick `sessions` + `daily_note` to focus on conversational history, `durable` for the canonical layer, etc.
+- **Kind** (under `durable` only): slice the durable layer further into `soul`, `rules`, `skills`, `tools`, `identity`, `memory-log`, `dreams`, `user`, `bootstrap`.
 
-## Common actions
+What it's good at:
 
-### Search across everything
+- *"What did we decide about the brand voice?"* → durable + sessions + daily notes, scoped to the agent that owns it.
+- *"Why is patch acting weird today?"* → clear the search, agent filter set to `patch`, scan the recent feed.
+- *"Where did this rule come from?"* → tier `durable`, kind `rules`, search the keyword.
 
-Type a query, get hits from every tier in one ranked list. Semantic + BM25, just like the rest of Bakin's search. Filter the result set with tier and agent facets.
+Filters live in the URL. Bookmark a view, share the link, your teammate lands on the same answer.
 
-### Browse by tier
+When the search bar is empty, the page shows a recent feed across the same filters so you can browse without a query. Overview cards up top give live row counts per tier.
 
-Click a tier card to scope results to just that tier. Useful when you remember the *kind* of memory but not the agent.
+## What's in there
 
-### Inspect a row
+Five tiers in the default view, each with its own shape and use:
 
-Open the detail drawer for any result to see the full content, source path, agent, and timestamp.
+- **Sessions**: chat threads, by agent. Each one carries token counts, model, status, and the back-link to the conversation itself.
+- **Daily Notes**: end-of-day summaries an agent writes for itself. Quick way to scan what's been on their mind without scrolling through every session.
+- **Durable**: long-term knowledge. Soul, identity, rules, tools, skills, MEMORY-LOG, the stuff that defines who the agent is. Filter by `Kind` to zoom in on just the soul, just the skills, just the rules.
+- **Dreams**: background reflection an agent does between active work. Phase docs, signals, the agent's own theories about what's going on.
+- **Checkpoints**: compaction snapshots. When a session gets too big, the agent compresses it into a checkpoint and starts fresh. The checkpoint is what carries forward.
 
-## Concepts
+Two more tiers exist for when you're debugging, both hidden behind the `System Logs` toggle in the page header:
 
-- **Bakin reads, OpenClaw owns.** Memory is a read-only adapter. Sessions, checkpoints, and dreams all live under `~/.openclaw/`. Daily notes and durable memory live in OpenClaw's workspace. Memory indexes them and gets out of the way.
-- **One table, one search, seven tiers.** Everything goes into `bakin_memory` with a `tier` facet. A single query reaches across all seven plus audit. There's no separate audit search.
-- **Incremental indexing.** Memory tracks per-tier byte offsets at `~/.bakin/plugin-settings/memory/offsets.json` and only indexes what changed since last sync. Stable SHA256 row IDs keep upserts idempotent.
+- **Turns**: every individual message inside a session.
+- **Audit**: every Bakin event in the system.
 
-## Where state lives
+Flip the toggle on when you're chasing something specific. Otherwise they stay out of the way so the dashboard reads as "what this agent knows" rather than a wall of operational noise.
 
-```
-~/.openclaw/                                    # everything Memory indexes (read-only)
-  agents/<id>/sessions/*.jsonl
-  workspace/*.md
-  ...
-~/.bakin/audit.jsonl                            # Bakin's audit log (also indexed)
-~/.bakin/plugin-settings/memory/offsets.json    # what Memory owns (sync state only)
-```
+## Settings
 
-Memory writes nothing else.
+<!-- docs:settings memory -->
+| Setting | Type | Default | What it does |
+| --- | --- | --- | --- |
+| Backfill window (days) | `number` | `30` | On first activation, index this many days of history across all tiers. |
+| Skip sessions over (bytes) | `number` | `10 * 1024 * 1024` | Transcripts larger than this are skipped to keep the indexer responsive. |
+| Skip .reset backup transcripts | `boolean` | `true` | Historical reset backups are not live state; skip by default. |
+| Compare against runtime recall | `boolean` | `true` | Show runtime daily-note recall alongside Bakin search results. |
+| Turn retention (days) | `number` | `7` | Turns older than this are dropped at write time and pruned daily. The runtime still owns the source transcript. |
+| Audit retention (days) | `number` | `30` | Audit rows older than this are dropped at write time and pruned daily. |
+<!-- /docs:settings -->
+
+Defaults are sensible. Most folks will never touch this.
 
 HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-memory).
 
@@ -83,5 +86,5 @@ Full schemas in the [Exec tools reference](/docs/reference/generated/exec-tools/
 ## Related
 
 - [Essentials](/docs/using/essentials/#search): cross-table search includes memory automatically
-- [Team](/docs/using/team/): agents whose memory tiers Memory indexes
+- [Team](/docs/using/team/): the agents whose memory tiers Memory indexes
 - [Activity Feed](/docs/using/essentials/#activity-feed): live event stream that audit memory replays after the fact
