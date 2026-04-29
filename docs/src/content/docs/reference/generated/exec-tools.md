@@ -159,7 +159,7 @@ Source: `plugins/workflows/index.ts:1232`
 
 Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results.
 
-Source: `plugins/health/index.ts:258`
+Source: `plugins/health/index.ts:259`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -169,157 +169,7 @@ Source: `plugins/health/index.ts:258`
 
 Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work.
 
-Source: `plugins/health/index.ts:229`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_messaging_approve`
-
-Approve a messaging item (draft → scheduled, review → published)
-
-Source: `plugins/messaging/index.ts:1094`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_messaging_create`
-
-Create a new messaging item
-
-Source: `plugins/messaging/index.ts:1033`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_messaging_delete`
-
-Delete a messaging item
-
-Source: `plugins/messaging/index.ts:1135`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_messaging_get`
-
-Get details for a single messaging item
-
-Source: `plugins/messaging/index.ts:1018`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_messaging_list`
-
-List messaging items with optional filters
-
-Source: `plugins/messaging/index.ts:982`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_messaging_proposal_update`
-
-Update a proposal status or fields (approve, reject, edit)
-
-Source: `plugins/messaging/index.ts:1316`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_messaging_reject`
-
-Reject a messaging item back to draft status
-
-Source: `plugins/messaging/index.ts:1112`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_messaging_session_confirm`
-
-Confirm a planning session — creates messaging items from approved proposals
-
-Source: `plugins/messaging/index.ts:1350`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_messaging_session_create`
-
-Create a new planning session for an agent
-
-Source: `plugins/messaging/index.ts:1187`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_messaging_session_delete`
-
-Delete a planning session
-
-Source: `plugins/messaging/index.ts:1230`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_messaging_session_get`
-
-Get a planning session with full message history and proposals
-
-Source: `plugins/messaging/index.ts:1172`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_messaging_session_list`
-
-List planning sessions with optional filters
-
-Source: `plugins/messaging/index.ts:1155`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_messaging_session_message`
-
-Send a message in a planning session (non-streaming, returns full response)
-
-Source: `plugins/messaging/index.ts:1250`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_messaging_session_update`
-
-Update a planning session title or status
-
-Source: `plugins/messaging/index.ts:1207`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_messaging_update`
-
-Update a messaging item
-
-Source: `plugins/messaging/index.ts:1068`
+Source: `plugins/health/index.ts:230`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -340,156 +190,6 @@ Source: `plugins/models/index.ts:752`
 List available AI models with tier classification (budget/standard/premium). Use this to discover what models are available for assignment.
 
 Source: `plugins/models/index.ts:733`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_project_add_item`
-
-Add a new checklist item to a project.
-
-Source: `plugins/projects/index.ts:567`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_project_ask`
-
-Ask an agent a question about a project. Sends the project context (spec, checklist, assets) along with the message to the agent for brainstorming.
-
-Source: `plugins/projects/index.ts:757`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_project_attach_asset`
-
-Attach an existing asset to a project by filename. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in project_get — use asset tools to read full content when needed.
-
-Source: `plugins/projects/index.ts:669`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_project_create`
-
-Create a new project with title, markdown body, and optional initial checklist items. Returns project ID and generated task item IDs.
-
-Source: `plugins/projects/index.ts:500`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_project_delete`
-
-Delete a project by ID.
-
-Source: `plugins/projects/index.ts:549`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_project_detach_asset`
-
-Remove an asset reference from a project by filename. Does not delete the asset itself.
-
-Source: `plugins/projects/index.ts:689`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_project_get`
-
-Get a project by ID including full spec, checklist, progress, and linked board task statuses.
-
-Source: `plugins/projects/index.ts:486`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_project_link_item`
-
-Link an existing board task to a project checklist item. Use this when a task was created separately and should be associated with a project.
-
-Source: `plugins/projects/index.ts:621`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_project_list`
-
-List all projects with optional status filter. Returns summaries with id, title, status, progress, taskCount.
-
-Source: `plugins/projects/index.ts:470`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_project_mark_item`
-
-Mark a checklist item as checked (done) or unchecked. Returns updated progress percentage.
-
-Source: `plugins/projects/index.ts:582`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_project_promote_item`
-
-Create a NEW board task from a project checklist item and automatically link it. The task appears on the task board with the item title and projectId set.
-
-Source: `plugins/projects/index.ts:645`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_project_remove_item`
-
-Remove a checklist item from a project.
-
-Source: `plugins/projects/index.ts:602`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_project_toggle_item`
-
-Toggle a checklist item checked/unchecked by item ID. Returns updated progress percentage.
-
-Source: `plugins/projects/index.ts:708`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_project_update`
-
-Update a project\
-
-Source: `plugins/projects/index.ts:522`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a tool contract declares stability
-- Contract status: `audited`
-
-## `bakin_exec_project_update_item`
-
-Update a checklist item\
-
-Source: `plugins/projects/index.ts:729`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -609,7 +309,7 @@ Source: `plugins/workflows/index.ts:1252`
 
 Assign a task to an agent.
 
-Source: `plugins/tasks/index.ts:688`
+Source: `plugins/tasks/index.ts:676`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -619,7 +319,7 @@ Source: `plugins/tasks/index.ts:688`
 
 Mark a task as blocked with a reason. Use when you cannot proceed.
 
-Source: `plugins/tasks/index.ts:559`
+Source: `plugins/tasks/index.ts:547`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -629,7 +329,7 @@ Source: `plugins/tasks/index.ts:559`
 
 Report that your task is complete. Moves the task to Done and notifies the orchestrator.
 
-Source: `plugins/tasks/index.ts:579`
+Source: `plugins/tasks/index.ts:567`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -639,7 +339,7 @@ Source: `plugins/tasks/index.ts:579`
 
 Create a new task on the task board. Workflows are auto-matched by title when workflowId is not provided. Provide workflowId to force a specific workflow, or skipWorkflowReason to explicitly skip.
 
-Source: `plugins/tasks/index.ts:488`
+Source: `plugins/tasks/index.ts:476`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -649,7 +349,7 @@ Source: `plugins/tasks/index.ts:488`
 
 Delete a task from the board.
 
-Source: `plugins/tasks/index.ts:667`
+Source: `plugins/tasks/index.ts:655`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -679,7 +379,7 @@ Source: `plugins/tasks/index.ts:429`
 
 Log a human-readable progress update to the live activity feed. Call this at every significant step.
 
-Source: `plugins/tasks/index.ts:599`
+Source: `plugins/tasks/index.ts:587`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -689,7 +389,7 @@ Source: `plugins/tasks/index.ts:599`
 
 Move a task to a different column on the task board.
 
-Source: `plugins/tasks/index.ts:534`
+Source: `plugins/tasks/index.ts:522`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -699,7 +399,7 @@ Source: `plugins/tasks/index.ts:534`
 
 Register a dependency between tasks. Your task will be auto-re-dispatched when the dependency completes. After registering, exit — do not wait.
 
-Source: `plugins/tasks/index.ts:618`
+Source: `plugins/tasks/index.ts:606`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -709,7 +409,7 @@ Source: `plugins/tasks/index.ts:618`
 
 Update a task on the board — change title, description, or assigned agent.
 
-Source: `plugins/tasks/index.ts:637`
+Source: `plugins/tasks/index.ts:625`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability

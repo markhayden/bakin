@@ -82,7 +82,6 @@ describe('initBakinHome', () => {
     expect(existsSync(join(testDir, 'assets', 'inbox'))).toBe(true)
 
     // Verify other directories
-    expect(existsSync(join(testDir, 'projects'))).toBe(true)
     expect(existsSync(join(testDir, 'team', 'personas'))).toBe(true)
 
     expect(created.length).toBeGreaterThan(0)

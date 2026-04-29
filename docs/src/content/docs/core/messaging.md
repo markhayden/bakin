@@ -1,17 +1,13 @@
 ---
 title: Messaging
-description: Use Bakin messaging for content calendar items, planning sessions, approvals, and proposals.
+description: Install the official Messaging plugin for content calendar items, planning sessions, approvals, and proposals.
 ---
 
-Messaging supports content planning and approval workflows. It tracks items, planning sessions, messages, proposals, approvals, and rejections.
+Messaging is an official plugin distributed from `markhayden/bakin-bits-official`, not a core plugin bundled inside Bakin. Once installed, it contributes content planning routes, MCP/exec tools, and CLI commands from its plugin manifest.
 
-## Common Commands
+## Install
 
-<!-- docs:cli-commands messaging -->
-| Command | Purpose |
-| --- | --- |
-| `bakin messaging <list|get|create|update|delete|approve|reject|sessions|session|session-create|session-update|session-delete|message|confirm|proposal> ...` | Manage messaging items and planning sessions. |
-<!-- /docs:cli-commands -->
+Install it during `bakin onboard` when prompted, or later with `bakin plugins install github:markhayden/bakin-bits-official#plugins/messaging --yes`.
 
 ## Operator Notes
 

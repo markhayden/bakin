@@ -3,7 +3,7 @@
  *
  * runOnboard() walks every component in a fixed dependency order:
  *
- *   mkdir -> settings -> runtime -> search -> search-models -> mcporter -> llm -> channels
+ *   mkdir -> settings -> runtime -> search -> search-models -> mcporter -> plugin-assets -> agent-assets -> llm -> channels -> recommended-plugins
  *
  * For each component:
  *   1. Call `check()`. If it reports `ok` or `warn`, record and move on.
@@ -50,6 +50,7 @@ import { mcporterComponent } from './mcporter'
 import { pluginAssetsComponent } from './plugin-assets'
 import { agentAssetsComponent } from './agent-assets'
 import { llmComponent, channelsComponent } from './credentials'
+import { recommendedPluginsComponent } from './recommended-plugins'
 import { saveState, clearMarker } from './state'
 import type { CheckResult, OnboardingComponent, OnboardingOptions } from './types'
 import type { ComponentStatus } from './state'
@@ -76,6 +77,7 @@ export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
   agentAssetsComponent,
   llmComponent,
   channelsComponent,
+  recommendedPluginsComponent,
 ] as const
 
 /**

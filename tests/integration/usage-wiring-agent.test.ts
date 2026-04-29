@@ -54,6 +54,16 @@ mock.module('../../src/lib/plugin-registry', () => {
         return () => handlers.delete(name)
       },
       has: (name: string) => handlers.has(name),
+      call: async <T>(name: string, data: T): Promise<T> => {
+        const h = handlers.get(name)
+        if (!h) return data
+        const result = await h(data)
+        return (result === undefined || result === null ? data : result) as T
+      },
+      callAll: async (name: string, data: Record<string, unknown>): Promise<void> => {
+        const h = handlers.get(name)
+        if (h) await h(data)
+      },
       invoke: async <R>(name: string, data: unknown): Promise<R | undefined> => {
         const h = handlers.get(name)
         if (!h) return undefined

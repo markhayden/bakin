@@ -91,10 +91,8 @@ import fs from 'fs'
 const tasksPlugin = require('../../plugins/tasks').default as typeof import('../../plugins/tasks').default
 const memoryPlugin = require('../../plugins/memory').default as typeof import('../../plugins/memory').default
 const modelsPlugin = require('../../plugins/models').default as typeof import('../../plugins/models').default
-const messagingPlugin = require('../../plugins/messaging').default as typeof import('../../plugins/messaging').default
 const workflowsPlugin = require('../../plugins/workflows').default as typeof import('../../plugins/workflows').default
 const assetsPlugin = require('../../plugins/assets').default as typeof import('../../plugins/assets').default
-const projectsPlugin = require('../../plugins/projects').default as typeof import('../../plugins/projects').default
 const schedulePlugin = require('../../plugins/schedule').default as typeof import('../../plugins/schedule').default
 const healthPlugin = require('../../plugins/health').default as typeof import('../../plugins/health').default
 
@@ -138,7 +136,13 @@ function createMockContext(pluginId: string): {
     events,
     pluginId,
     runtime: createMockRuntimeAdapter(),
-    tasks: createMockBakinTaskStore(),
+    tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
+    assets: {
+      getByFilename: async () => null,
+      list: async () => [],
+      exists: async () => false,
+      fileRef: async (filename: string) => ({ kind: 'asset' as const, filename }),
+    },
     registerNav: (items) => navItems.push(...items),
     registerRoute: (route) => routes.push(route),
     registerSlot: () => {},
@@ -165,6 +169,8 @@ function createMockContext(pluginId: string): {
     },
     hooks: {
       register: () => () => {},
+      call: async (_name, data) => data,
+      callAll: async () => {},
       has: () => false,
       invoke: async () => undefined,
     },
@@ -177,10 +183,8 @@ const ALL_PLUGINS: BakinPlugin[] = [
   tasksPlugin,
   memoryPlugin,
   modelsPlugin,
-  messagingPlugin,
   workflowsPlugin,
   assetsPlugin,
-  projectsPlugin,
   schedulePlugin,
   healthPlugin,
 ]

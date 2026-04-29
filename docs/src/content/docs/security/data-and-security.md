@@ -25,7 +25,7 @@ Important files and directories include:
 | `audit.jsonl` | Append-only audit events. |
 | `logs/` | Runtime logs. |
 | `assets/` | Asset storage, inbox, and trash. |
-| `projects/` | Project content. |
+| `plugins/` | Installed external plugins, their bundles, and plugin-scoped data. |
 | `workflows/` | Workflow definitions, skills, and instances. |
 | `team/` | Team and persona data. |
 | `heartbeats/` | Agent heartbeat files. |

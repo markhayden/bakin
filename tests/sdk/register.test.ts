@@ -36,12 +36,14 @@ import {
   subscribeRegistry,
   getAllNavItems,
   getPluginNavItems,
+  getPluginRoute,
+  getPluginRoutes,
 } from '@bakin/sdk'
 import { getSlotEntries } from '@bakin/sdk/slots'
 
 function NoopComp() { return null }
 
-const USED_IDS = ['x', 'A', 'B', 'cleanup-test']
+const USED_IDS = ['x', 'A', 'B', 'cleanup-test', 'routes']
 
 afterEach(() => {
   for (const id of USED_IDS) unregisterPlugin(id)
@@ -86,6 +88,43 @@ describe('unregisterPlugin — cross-plugin isolation', () => {
     const entries = getSlotEntries('shared')
     expect(entries).toHaveLength(1)
     expect(entries[0].owner).toBe('B')
+  })
+})
+
+describe('client route registry', () => {
+  it('registers and matches exact and dynamic plugin routes', () => {
+    registerPlugin({
+      id: 'routes',
+      routes: {
+        '/messaging/calendar': NoopComp,
+        '/projects/:id': NoopComp,
+        '/projects/[id]/edit': NoopComp,
+      },
+    })
+
+    expect(getPluginRoutes('routes')).toHaveLength(3)
+    expect(getPluginRoute('/messaging/calendar')).toMatchObject({
+      pluginId: 'routes',
+      path: '/messaging/calendar',
+      params: {},
+    })
+    expect(getPluginRoute('/projects/abc-123')).toMatchObject({
+      pluginId: 'routes',
+      path: '/projects/:id',
+      params: { id: 'abc-123' },
+    })
+    expect(getPluginRoute('/projects/abc-123/edit')).toMatchObject({
+      pluginId: 'routes',
+      path: '/projects/[id]/edit',
+      params: { id: 'abc-123' },
+    })
+  })
+
+  it('removes route entries on unregister', () => {
+    registerPlugin({ id: 'routes', routes: { '/x': NoopComp } })
+    expect(getPluginRoute('/x')).not.toBeNull()
+    unregisterPlugin('routes')
+    expect(getPluginRoute('/x')).toBeNull()
   })
 })
 

@@ -112,7 +112,6 @@ const hookHandlers: Record<string, (...args: unknown[]) => unknown> = {
   'workflows.matchWorkflow': () => null,
   'workflows.loadDefinition': (data: any) => mockLoadDefinition(data),
   'workflows.listDefinitions': () => mockListDefinitions(),
-  'projects.autoCheckLinkedItem': () => Promise.resolve(),
 }
 
 const mockHookRegistry = {
@@ -121,6 +120,7 @@ const mockHookRegistry = {
     if (handler) return await handler(data) as R
     return undefined
   }),
+  callAll: mock(async () => undefined),
   register: mock(),
   has: mock(() => false),
 }
@@ -179,6 +179,15 @@ describe('task-service', () => {
         'pixel',
         expect.objectContaining({ id: 'task-1', to: 'done' }),
         undefined,
+      )
+      expect(mockHookRegistry.callAll).toHaveBeenCalledWith(
+        'tasks.statusChanged',
+        expect.objectContaining({
+          taskId: 'task-1',
+          to: 'done',
+          agent: 'pixel',
+          task: expect.objectContaining({ id: 'task-1' }),
+        }),
       )
     })
 

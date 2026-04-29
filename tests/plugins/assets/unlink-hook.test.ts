@@ -87,7 +87,13 @@ function makeCtx(): CapturedCtx {
     events,
     pluginId: 'assets',
     runtime: createMockRuntimeAdapter(),
-    tasks: createMockBakinTaskStore(),
+    tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
+    assets: {
+      getByFilename: mock(async () => null),
+      list: mock(async () => []),
+      exists: mock(async () => false),
+      fileRef: mock(async (filename: string) => ({ kind: 'asset' as const, filename })),
+    },
     registerNav: mock(),
     registerRoute: mock(),
     registerSlot: mock(),
@@ -113,6 +119,8 @@ function makeCtx(): CapturedCtx {
     },
     hooks: {
       register: mock(() => () => {}),
+      call: mock(async (_name, data) => data),
+      callAll: mock(async () => undefined),
       has: mock(() => false),
       invoke: mock(async () => undefined),
     },

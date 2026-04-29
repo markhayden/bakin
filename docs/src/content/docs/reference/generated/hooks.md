@@ -89,7 +89,7 @@ Source: `plugins/assets/index.ts:304`
 
 ## `health.getCheck`
 
-Source: `plugins/health/index.ts:82`
+Source: `plugins/health/index.ts:83`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -97,7 +97,7 @@ Source: `plugins/health/index.ts:82`
 
 ## `health.listChecks`
 
-Source: `plugins/health/index.ts:81`
+Source: `plugins/health/index.ts:82`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -138,22 +138,6 @@ Source: `plugins/models/index.ts:382`
 ## `models.markRuntimeRestarted`
 
 Source: `plugins/models/index.ts:384`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a hook contract declares stability
-- Contract status: `audited`
-
-## `projects.autoCheckLinkedItem`
-
-Source: `plugins/projects/index.ts:134`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a hook contract declares stability
-- Contract status: `audited`
-
-## `projects.readProject`
-
-Source: `plugins/projects/index.ts:133`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability

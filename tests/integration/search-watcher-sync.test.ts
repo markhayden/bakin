@@ -1,7 +1,7 @@
 /**
  * End-to-end search ↔ watcher integration test.
  *
- * Validates the FULL pipeline for all three migrated plugins:
+ * Validates the FULL pipeline for file-backed core plugins:
  *
  *   plugin.activate(ctx)
  *     → ctx.search.registerFileBackedContentType(def)
@@ -36,7 +36,6 @@ mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     home: testDir,
-    projects: join(testDir, 'projects'),
     workflows: join(testDir, 'workflows'),
     assets: join(testDir, 'assets'),
   }),
@@ -82,7 +81,6 @@ import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
 import type { PluginContext, BakinPlugin } from '@bakin/core/plugin-types'
 
-import projectsPlugin from '../../plugins/projects'
 import workflowsPlugin from '../../plugins/workflows'
 import assetsPlugin from '../../plugins/assets'
 
@@ -113,7 +111,13 @@ function makeCtx(plugin: BakinPlugin): PluginContext {
     events,
     pluginId: plugin.id,
     runtime: createMockRuntimeAdapter(),
-    tasks: createMockBakinTaskStore(),
+    tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
+    assets: {
+      getByFilename: mock(async () => null),
+      list: mock(async () => []),
+      exists: mock(async () => false),
+      fileRef: mock(async (filename: string) => ({ kind: 'asset' as const, filename })),
+    },
     registerNav: mock(),
     registerRoute: mock(),
     registerSlot: mock(),
@@ -130,6 +134,8 @@ function makeCtx(plugin: BakinPlugin): PluginContext {
     search,
     hooks: {
       register: mock(() => () => {}),
+      call: mock(async (_name, data) => data),
+      callAll: mock(async () => undefined),
       has: mock(() => false),
       invoke: mock(async () => undefined),
     },
@@ -146,7 +152,6 @@ async function flushHooks(): Promise<void> {
 describe('integration: search ↔ watcher sync', () => {
   beforeEach(() => {
     rmSync(testDir, { recursive: true, force: true })
-    mkdirSync(join(testDir, 'projects'), { recursive: true })
     mkdirSync(join(testDir, 'workflows', 'definitions'), { recursive: true })
     mkdirSync(join(testDir, 'workflows', 'instances'), { recursive: true })
     mkdirSync(join(testDir, 'assets', 'images', 'task-1'), { recursive: true })
@@ -168,28 +173,6 @@ describe('integration: search ↔ watcher sync', () => {
     await stop()
     clearSearchAdapter()
     rmSync(testDir, { recursive: true, force: true })
-  })
-
-  it('projects plugin: write triggers index, delete triggers remove', async () => {
-    await projectsPlugin.activate(makeCtx(projectsPlugin))
-    const eventBus = new BakinEventBus(() => {})
-    start({ contentDir: testDir, eventBus, onInboxFile: mock() })
-    const handlers = await getChokidarHandlers()
-
-    const projectFile = join(testDir, 'projects', 'integration.md')
-    writeFileSync(projectFile, '---\ntitle: Integration\nstatus: active\n---\nbody\n')
-    handlers.add(projectFile)
-    await flushHooks()
-
-    const projectIndex = indexCalls.find(c => c.table === 'bakin_projects')
-    expect(projectIndex).toBeDefined()
-    expect(projectIndex!.key).toBe('integration')
-    expect(projectIndex!.doc.title).toBe('Integration')
-
-    handlers.unlink(projectFile)
-    await flushHooks()
-
-    expect(removeCalls).toContainEqual({ table: 'bakin_projects', key: 'integration' })
   })
 
   it('workflows plugin: definition YAML add/delete flows through search', async () => {

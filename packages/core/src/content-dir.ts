@@ -97,7 +97,6 @@ export function resetContentDir(): void {
 export interface BakinPaths {
   home: string
   memoryLog: string
-  messaging: string
   audit: string
   assets: string
   'assets.store': string
@@ -108,7 +107,6 @@ export interface BakinPaths {
   team: string
   heartbeats: string
   inbox: string
-  projects: string
   tasks: string
   workflows: string
   settings: string
@@ -121,7 +119,6 @@ export function getBakinPaths(): BakinPaths {
   return {
     home,
     memoryLog: join(home, 'MEMORY-LOG.md'),
-    messaging: join(home, 'messaging.json'),
     audit: join(home, 'audit.jsonl'),
     assets,
     'assets.store': join(assets, 'store'),
@@ -132,7 +129,6 @@ export function getBakinPaths(): BakinPaths {
     team: join(home, 'team'),
     heartbeats: join(home, 'heartbeats'),
     inbox: join(home, 'inbox'),
-    projects: join(home, 'projects'),
     tasks: join(home, 'tasks'),
     workflows: join(home, 'workflows'),
     settings: join(home, 'settings.json'),
@@ -163,7 +159,6 @@ export function initBakinHome(targetDir?: string): { created: string[]; seeded: 
     join(home, 'heartbeats'),
     join(home, 'inbox'),
     join(home, 'plugins'),
-    join(home, 'projects'),
     join(home, 'tasks'),
     join(home, 'team'),
     join(home, 'team', 'personas'),

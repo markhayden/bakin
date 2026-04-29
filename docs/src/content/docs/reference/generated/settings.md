@@ -46,7 +46,6 @@ Bakin reads settings from `settings.json` in the resolved Bakin home directory a
 | `watchdog.restErrorThreshold` | `0.5` |
 | `watchdog.restMinSamples` | `3` |
 | `watchdog.restAlertCooldownMs` | `300000` |
-| `messaging.intervalMs` | `300000` |
 | `sse.maxClients` | `50` |
 | `sse.keepAliveMs` | `30000` |
 | `doctor.intervalMs` | `1800000` |

@@ -25,7 +25,6 @@ function requiredDirs(): string[] {
     paths['assets.inbox'],
     paths.agents,
     paths.heartbeats,
-    paths.projects,
     paths.workflows,
     paths.team,
   ]

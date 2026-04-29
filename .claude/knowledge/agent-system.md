@@ -140,8 +140,8 @@ Agents interact with Bakin through MCP tools served by `src/core/mcp-server.ts`:
 | workflows plugin | 10 | `ctx.registerExecTool()` | `bakin_exec_workflows_list_definitions`, `bakin_exec_workflows_get_step` |
 | assets plugin | 9 | `ctx.registerExecTool()` | `bakin_exec_assets_save`, `bakin_exec_assets_list` |
 | schedule plugin | 10 | `ctx.registerExecTool()` | `bakin_exec_schedule_list`, `bakin_exec_schedule_fire` |
-| messaging plugin | 15 | `ctx.registerExecTool()` | `bakin_exec_messaging_list`, `bakin_exec_messaging_create`, `bakin_exec_messaging_session_list` |
-| projects plugin | 15 | `ctx.registerExecTool()` | `bakin_exec_projects_list`, `bakin_exec_projects_create` |
+| official messaging plugin | 15 | `ctx.registerExecTool()` | `bakin_exec_messaging_list`, `bakin_exec_messaging_create`, `bakin_exec_messaging_session_list` |
+| official projects plugin | 15 | `ctx.registerExecTool()` | `bakin_exec_project_list`, `bakin_exec_project_create` |
 | team plugin | 12 | `ctx.registerExecTool()` | `bakin_exec_team_list`, `bakin_exec_team_org`, `bakin_exec_team_create_agent`, `bakin_exec_team_delete_agent`, `bakin_exec_team_update_identity`, `bakin_exec_team_set_permissions` |
 | scripts/lib/log-progress.ts | 1 | `addExecTool()` | `bakin_exec_log` |
 | scripts/lib/generate-image.ts | 1 | `addExecTool()` | `bakin_exec_gen_image` (Gemini generation or raw file import via `filePath` param) |
