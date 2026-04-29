@@ -143,6 +143,22 @@ Source: `plugins/models/index.ts:384`
 - Stability: `beta` until a hook contract declares stability
 - Contract status: `audited`
 
+## `tasks.enrichDetails`
+
+Source: `bakin-bits-official/plugins/projects/index.ts:156`
+
+- Visibility: `public` until explicitly marked otherwise
+- Stability: `beta` until a hook contract declares stability
+- Contract status: `audited`
+
+## `tasks.statusChanged`
+
+Source: `bakin-bits-official/plugins/projects/index.ts:149`
+
+- Visibility: `public` until explicitly marked otherwise
+- Stability: `beta` until a hook contract declares stability
+- Contract status: `audited`
+
 ## `team.getAgent`
 
 Source: `plugins/team/index.ts:866`

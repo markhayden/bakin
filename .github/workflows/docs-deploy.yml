@@ -35,6 +35,15 @@ jobs:
         with:
           ref: ${{ inputs.version_ref || github.ref }}
 
+      # docs:check walks the sibling bakin-bits-official repo for the
+      # extracted messaging + projects plugins (see scripts/docs/source-
+      # scan.ts). Cloned ABOVE $GITHUB_WORKSPACE so other tooling
+      # (e.g. test runners) doesn't accidentally recurse into it.
+      # actions/checkout rejects paths outside the workspace, so use
+      # plain git clone (the repo is public).
+      - name: Clone bakin-bits-official (extracted plugins)
+        run: git clone --depth 1 https://github.com/madeinwyo/bakin-bits-official.git "${{ runner.workspace }}/external/bakin-bits-official"
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -44,6 +53,8 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build docs
+        env:
+          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
         run: bun run docs:check
 
       - name: Upload docs artifact

@@ -8,8 +8,91 @@
     "server": "index.ts"
   },
   "contentFiles": [],
-  "secrets": ["anthropic-api-key", "gateway-token"],
+  "secrets": [
+    "anthropic-api-key",
+    "gateway-token"
+  ],
   "tests": "tests/",
-  "dependencies": ["team"],
-  "permissions": ["storage.read", "storage.write", "events.emit"]
+  "dependencies": [
+    "team"
+  ],
+  "permissions": [
+    "storage.read",
+    "storage.write",
+    "events.emit"
+  ],
+  "contributes": {
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/aliases",
+        "summary": "GET /aliases"
+      },
+      {
+        "method": "POST",
+        "path": "/aliases",
+        "summary": "POST /aliases"
+      },
+      {
+        "method": "GET",
+        "path": "/available",
+        "summary": "Bypass cache and fetch the model list fresh from the runtime adapter"
+      },
+      {
+        "method": "GET",
+        "path": "/config",
+        "summary": "GET /config"
+      },
+      {
+        "method": "POST",
+        "path": "/config",
+        "summary": "POST /config"
+      },
+      {
+        "method": "POST",
+        "path": "/defaults",
+        "summary": "POST /defaults"
+      },
+      {
+        "method": "GET",
+        "path": "/profiles",
+        "summary": "GET /profiles"
+      },
+      {
+        "method": "PUT",
+        "path": "/profiles",
+        "summary": "Check if runtime config is out of sync (needs restart)"
+      },
+      {
+        "method": "POST",
+        "path": "/refresh",
+        "summary": "Bypass cache and fetch the model list fresh from the runtime adapter"
+      },
+      {
+        "method": "POST",
+        "path": "/runtime/restart",
+        "summary": "List available AI models with tier classification (budget/standard/premium). Use this to discover what models are available for assignment."
+      },
+      {
+        "method": "GET",
+        "path": "/runtime/status",
+        "summary": "Check if runtime config is out of sync (needs restart)"
+      }
+    ],
+    "execTools": [
+      {
+        "name": "bakin_exec_models_get_config",
+        "summary": "Get model configuration for all agents or a specific agent",
+        "description": "Get model configuration for all agents or a specific agent. Shows effective model (own override or default), subagent model, and system defaults."
+      },
+      {
+        "name": "bakin_exec_models_list",
+        "summary": "List available AI models with tier classification (budget/standard/premium)",
+        "description": "List available AI models with tier classification (budget/standard/premium). Use this to discover what models are available for assignment."
+      }
+    ],
+    "docs": {
+      "slug": "using/models"
+    }
+  }
 }

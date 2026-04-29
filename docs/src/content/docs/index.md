@@ -11,7 +11,7 @@ hero:
       link: /docs/start/install/
       icon: right-arrow
     - text: Build a Plugin
-      link: /docs/extend/plugins/overview/
+      link: /docs/extending/plugins/overview/
       icon: external
 ---
 

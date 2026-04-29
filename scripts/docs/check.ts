@@ -2,7 +2,15 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
 import { CLI_COMMANDS } from '../../src/core/cli/registry'
-import { extractExecTools, renderExecToolsSnippet } from './source-scan'
+import {
+  EXTRACTED_PLUGINS,
+  extractExecTools,
+  extractPluginSettings,
+  getApiRoutes,
+  getCliCommands,
+  locateExtractedPlugin,
+  renderExecToolsSnippet,
+} from './source-scan'
 
 const repoRoot = new URL('../..', import.meta.url).pathname
 const docsRoot = join(repoRoot, 'docs')
@@ -106,6 +114,22 @@ const commandSnippets = {
 } satisfies Record<string, string[]>
 
 function renderCommandSnippet(marker: string): string {
+  // 1. Manifest-first: plugins that declare contributes.cliCommands win.
+  const manifestCommands = getCliCommands(marker)
+  if (manifestCommands.length) {
+    const lines = [
+      `<!-- docs:cli-commands ${marker} -->`,
+      '| Command | Purpose |',
+      '| --- | --- |',
+    ]
+    for (const command of manifestCommands) {
+      lines.push(`| \`${command.usage.replace(/\|/g, '\\|')}\` | ${command.summary} |`)
+    }
+    lines.push('<!-- /docs:cli-commands -->')
+    return lines.join('\n')
+  }
+
+  // 2. Legacy: hardcoded grouping in `commandSnippets` for in-repo plugins.
   const names = commandSnippets[marker as keyof typeof commandSnippets]
   if (!names) return ''
 
@@ -119,11 +143,17 @@ function renderCommandSnippet(marker: string): string {
   for (const name of names) {
     const command = byName.get(name)
     if (!command) return ''
-    lines.push(`| \`${command.usage}\` | ${command.summary} |`)
+    lines.push(`| \`${command.usage.replace(/\|/g, '\\|')}\` | ${command.summary} |`)
   }
 
   lines.push('<!-- /docs:cli-commands -->')
   return lines.join('\n')
+}
+
+function cliMarkerKnown(marker: string): boolean {
+  if (commandSnippets[marker as keyof typeof commandSnippets]) return true
+  if (getCliCommands(marker).length) return true
+  return false
 }
 
 function validateCliCommandBlocks(file: string, text: string): void {
@@ -131,13 +161,87 @@ function validateCliCommandBlocks(file: string, text: string): void {
   const commandMarkerPattern = /<!-- docs:cli-commands ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:cli-commands -->/g
   for (const match of text.matchAll(commandMarkerPattern)) {
     const marker = match[1]
-    if (!commandSnippets[marker as keyof typeof commandSnippets]) {
+    if (!cliMarkerKnown(marker)) {
       errors.push(`${rel}: unknown CLI command snippet marker "${marker}"`)
       continue
     }
     const expected = renderCommandSnippet(marker)
     if (match[0].trimEnd() !== expected) {
-      errors.push(`${rel}: CLI command snippet "${marker}" is out of sync with src/core/cli/registry.ts`)
+      errors.push(`${rel}: CLI command snippet "${marker}" is out of sync with manifest contributes.cliCommands or src/core/cli/registry.ts`)
+    }
+  }
+}
+
+function renderApiRoutesSnippet(marker: string): string {
+  const routes = getApiRoutes(marker)
+  if (!routes.length) return ''
+  const lines = [
+    `<!-- docs:api-routes ${marker} -->`,
+    '| Method | Path | Purpose |',
+    '| --- | --- | --- |',
+  ]
+  for (const route of routes) {
+    lines.push(`| \`${route.method}\` | \`${route.path}\` | ${route.summary} |`)
+  }
+  lines.push('<!-- /docs:api-routes -->')
+  return lines.join('\n')
+}
+
+function escapeTableCell(value: string): string {
+  return value.replace(/\|/g, '\\|').replace(/\n+/g, ' ').trim()
+}
+
+function renderSettingsSnippet(marker: string): string {
+  const fields = extractPluginSettings(marker)
+  if (!fields.length) return ''
+  const lines = [
+    `<!-- docs:settings ${marker} -->`,
+    '<div class="settings-table">',
+    '',
+    '| Setting | Type | Default | What it does |',
+    '| --- | --- | --- | --- |',
+  ]
+  for (const field of fields) {
+    const name = escapeTableCell(field.label || field.key)
+    const type = `\`${field.type}\``
+    const def = field.default ? `\`${escapeTableCell(field.default)}\`` : ''
+    const desc = escapeTableCell(field.description || '')
+    lines.push(`| ${name} | ${type} | ${def} | ${desc} |`)
+  }
+  lines.push('')
+  lines.push('</div>')
+  lines.push('<!-- /docs:settings -->')
+  return lines.join('\n')
+}
+
+function validateApiRouteBlocks(file: string, text: string): void {
+  const rel = file.replace(repoRoot, '').replace(/^\//, '')
+  const markerPattern = /<!-- docs:api-routes ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:api-routes -->/g
+  for (const match of text.matchAll(markerPattern)) {
+    const marker = match[1]
+    const expected = renderApiRoutesSnippet(marker)
+    if (!expected) {
+      errors.push(`${rel}: unknown api-routes snippet marker "${marker}" (no manifest contributes.apiRoutes and no ctx.registerRoute calls in plugins/${marker}/)`)
+      continue
+    }
+    if (match[0].trimEnd() !== expected) {
+      errors.push(`${rel}: api-routes snippet "${marker}" is out of sync with manifest contributes.apiRoutes (or in-repo plugin source)`)
+    }
+  }
+}
+
+function validateSettingsBlocks(file: string, text: string): void {
+  const rel = file.replace(repoRoot, '').replace(/^\//, '')
+  const markerPattern = /<!-- docs:settings ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:settings -->/g
+  for (const match of text.matchAll(markerPattern)) {
+    const marker = match[1]
+    const expected = renderSettingsSnippet(marker)
+    if (!expected) {
+      errors.push(`${rel}: unknown settings snippet marker "${marker}" (plugin has no settingsSchema in source)`)
+      continue
+    }
+    if (match[0].trimEnd() !== expected) {
+      errors.push(`${rel}: settings snippet "${marker}" is out of sync with the plugin's settingsSchema`)
     }
   }
 }
@@ -153,6 +257,13 @@ function validateExecToolBlocks(file: string, text: string): void {
   for (const match of text.matchAll(markerPattern)) {
     const marker = match[1]
     if (!execToolMarkerExists(marker)) {
+      if (EXTRACTED_PLUGINS[marker] && !locateExtractedPlugin(marker)) {
+        errors.push(
+          `${rel}: exec-tools snippet "${marker}" references the extracted plugin "${EXTRACTED_PLUGINS[marker]}" but its source isn't reachable. ` +
+          `Clone bakin-bits-official next to bakin (sibling path) or set BAKIN_DOCS_EXTERNAL_SOURCES to its plugins directory.`,
+        )
+        continue
+      }
       errors.push(`${rel}: unknown exec-tools snippet marker "${marker}" (no tools start with bakin_exec_${marker}_)`)
       continue
     }
@@ -237,6 +348,8 @@ for (const file of walkMarkdown(docsContentRoot)) {
   validateBakinCommands(file, text)
   validateCliCommandBlocks(file, text)
   validateExecToolBlocks(file, text)
+  validateApiRouteBlocks(file, text)
+  validateSettingsBlocks(file, text)
   validateDocsSnippetBlocks(file, text)
   validateJsonFences(file, text)
 }

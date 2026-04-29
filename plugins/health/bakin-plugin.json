@@ -11,5 +11,73 @@
   "secrets": [],
   "tests": "tests/",
   "dependencies": [],
-  "permissions": ["storage.read"]
+  "permissions": [
+    "storage.read"
+  ],
+  "contributes": {
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/checks",
+        "summary": "List registered plugin health checks (metadata only; does not execute them)."
+      },
+      {
+        "method": "GET",
+        "path": "/doctor",
+        "summary": "GET /doctor"
+      },
+      {
+        "method": "GET",
+        "path": "/registry",
+        "summary": "GET /registry"
+      },
+      {
+        "method": "GET",
+        "path": "/search-status",
+        "summary": "GET /search-status"
+      },
+      {
+        "method": "GET",
+        "path": "/summary",
+        "summary": "GET /summary"
+      },
+      {
+        "method": "GET",
+        "path": "/usage",
+        "summary": "GET /usage"
+      },
+      {
+        "method": "GET",
+        "path": "/usage-feed",
+        "summary": "GET /usage-feed"
+      }
+    ],
+    "execTools": [
+      {
+        "name": "bakin_exec_health_doctor",
+        "summary": "Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc",
+        "description": "Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results."
+      },
+      {
+        "name": "bakin_exec_health_status",
+        "summary": "Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts",
+        "description": "Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work."
+      }
+    ],
+    "cliCommands": [
+      {
+        "name": "status",
+        "usage": "bakin status",
+        "summary": "Show dispatch and server status."
+      },
+      {
+        "name": "doctor",
+        "usage": "bakin doctor",
+        "summary": "Run health checks."
+      }
+    ],
+    "docs": {
+      "slug": "using/health"
+    }
+  }
 }
