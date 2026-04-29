@@ -47,6 +47,7 @@ import {
 } from '@bakin/core/plugins/lockfile'
 import { parseManifestPermissions } from '@bakin/core/plugins/permissions'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
+import { checkPluginDependencies } from './dependencies'
 
 const log = createLogger('plugin-link')
 
@@ -88,6 +89,7 @@ const PLUGIN_ID_REGEX = /^[a-z][a-z0-9-]{0,39}$/
 const LinkManifestSchema = z.object({
   id: z.string().min(1),
   version: z.string().optional(),
+  dependencies: z.array(z.string().min(1)).optional(),
   permissions: z.unknown().optional(),
 })
 
@@ -128,7 +130,13 @@ function resolveAndContain(localPath: string): string {
   return real
 }
 
-function readManifest(dir: string): { id: string; version: string; manifestSha: string; permissions: PluginLockEntry['permissions'] } {
+function readManifest(dir: string): {
+  id: string
+  version: string
+  manifestSha: string
+  dependencies: string[]
+  permissions: PluginLockEntry['permissions']
+} {
   const manifestPath = join(dir, 'bakin-plugin.json')
   if (!existsSync(manifestPath)) {
     throw new LinkRefusedError(`source dir is missing bakin-plugin.json: ${dir}`)
@@ -167,6 +175,7 @@ function readManifest(dir: string): { id: string; version: string; manifestSha: 
     id: manifest.id,
     version: manifest.version && manifest.version.length > 0 ? manifest.version : '0.0.0',
     manifestSha,
+    dependencies: manifest.dependencies ?? [],
     permissions,
   }
 }
@@ -195,7 +204,7 @@ export async function linkPlugin(
   opts: LinkOptions = {},
 ): Promise<LinkResult> {
   const real = resolveAndContain(localPath)
-  const { id, version, manifestSha, permissions } = readManifest(real)
+  const { id, version, manifestSha, dependencies, permissions } = readManifest(real)
 
   // Refuse collisions with installed user plugins unless force=true.
   // `addLinkedPlugin` would also catch the dup id, but a clear pre-check
@@ -224,6 +233,22 @@ export async function linkPlugin(
     throw new LinkRefusedError(
       `plugin id "${id}" matches a core feature module; pass --force to intentionally shadow it`,
     )
+  }
+
+  const dependencyCheck = checkPluginDependencies({ id, dependencies })
+  if (!dependencyCheck.ok) {
+    auditLinkRejected('missing_dependencies', localPath, {
+      id,
+      missing: dependencyCheck.missing,
+      self: dependencyCheck.selfDependencies,
+    })
+    const problems = [
+      ...(dependencyCheck.missing.length > 0
+        ? [`missing dependencies: ${dependencyCheck.missing.join(', ')}`]
+        : []),
+      ...(dependencyCheck.selfDependencies.length > 0 ? ['plugin cannot depend on itself'] : []),
+    ].join('; ')
+    throw new LinkRefusedError(`plugin "${id}" dependency check failed: ${problems}. Install dependencies first, then retry.`)
   }
 
   const pluginsRoot = join(getContentDir(), 'plugins')
