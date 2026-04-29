@@ -164,4 +164,31 @@ describe('memory plugin lifecycle — activate vs onReady', () => {
       handleSpy.mockRestore()
     }
   })
+
+  it('onShutdown() unsubscribes watcher event handlers', async () => {
+    await memoryPlugin.onShutdown?.()
+
+    const handleSpy = vi
+      .spyOn(MemoryIndexer.prototype, 'handleWatcherEvent')
+      .mockImplementation(async () => {})
+
+    try {
+      const activated = await activatePlugin(memoryPlugin, testDir)
+      await flush()
+
+      await memoryPlugin.onReady?.()
+      await flush()
+
+      activated.ctx.events.emit('file.change', { file: '/tmp/before-shutdown.jsonl' })
+      await flush()
+      expect(handleSpy).toHaveBeenCalledTimes(1)
+
+      await memoryPlugin.onShutdown?.()
+      activated.ctx.events.emit('file.change', { file: '/tmp/after-shutdown.jsonl' })
+      await flush()
+      expect(handleSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      handleSpy.mockRestore()
+    }
+  })
 })
