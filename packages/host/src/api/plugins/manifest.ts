@@ -19,6 +19,7 @@ import { createLogger } from '@/core/logger'
 import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { runChecks } from '@/core/plugins/upgrade'
 import { EMBEDDED_ASSETS } from '../_embedded-assets'
+import type { PluginContributions } from '@bakin/sdk/types'
 
 const log = createLogger('plugin-manifest')
 
@@ -51,6 +52,7 @@ interface ManifestPlugin {
   errorCode?: string
   errorMessage?: string
   missingDependencies?: string[]
+  contributes?: PluginContributions
 }
 
 interface ManifestResponse {
@@ -138,6 +140,7 @@ export async function get(req: Request): Promise<Response> {
       upgradeAvailable,
       staleHintDays,
       status: entry.status,
+      contributes: entry.contributes,
     }
     if (entry.status === 'active') {
       plugin.clientEntry = `/api/plugins/${entry.id}/assets/client.js`

@@ -461,7 +461,7 @@ class PluginRegistryImpl {
       ? new ScopedPluginStorageAdapter(getContentDir(), pluginId)
       : storage
     const assets = createPluginAssetsAPI()
-    const usePublicRuntimeFacade = state.source === 'user' || pluginId === 'messaging' || pluginId === 'projects'
+    const usePublicRuntimeFacade = state.source === 'user'
     return {
       storage: pluginStorage,
       events,
@@ -584,6 +584,8 @@ class PluginRegistryImpl {
           // handler when the plugin is removed (#119).
           return hookRegistry.register(name, handler, pluginId)
         },
+        call: <T>(name: string, data: T) => hookRegistry.call<T>(name, data),
+        callAll: (name: string, data: Record<string, unknown>) => hookRegistry.callAll(name, data),
         has: (name: string) => hookRegistry.has(name),
         invoke: <R>(name: string, data: unknown) => hookRegistry.invoke<R>(name, data),
       },
@@ -900,6 +902,7 @@ class PluginRegistryImpl {
     name: string
     version: string
     description: string
+    contributes?: PublicPluginManifest['contributes']
     source: 'built-in' | 'user'
     status: 'active' | 'failed'
     errorCode?: PluginFailureState['errorCode']
@@ -912,6 +915,7 @@ class PluginRegistryImpl {
       name: state.plugin.name,
       version: state.plugin.version,
       description: state.description,
+      contributes: state.manifest?.contributes,
       // Was a `id.startsWith('user:')` heuristic that always evaluated to
       // 'built-in' — no id is ever prefixed `user:`. Use the authoritative
       // corePluginIds predicate instead.

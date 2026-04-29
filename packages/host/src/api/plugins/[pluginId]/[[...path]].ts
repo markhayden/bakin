@@ -55,12 +55,11 @@ function buildCtx(pluginId: string): PluginContext {
   })
   const noopRegisterRoute = () => {}
   const assets = createPluginAssetsAPI()
-  const usePublicRuntimeFacade = state?.source === 'user' || pluginId === 'messaging' || pluginId === 'projects'
   return {
     storage,
     events,
     pluginId,
-    runtime: usePublicRuntimeFacade ? createPluginRuntimeFacade(services.runtime) : services.runtime,
+    runtime: state?.source === 'user' ? createPluginRuntimeFacade(services.runtime) : services.runtime,
     tasks: createPluginTaskService(services.tasks),
     assets,
     registerNav: () => {},
@@ -129,6 +128,18 @@ function buildCtx(pluginId: string): PluginContext {
           | undefined
         if (registry) return registry.register(name, handler as (data: unknown) => unknown)
         return () => {}
+      },
+      call: async <T>(name: string, data: T) => {
+        const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as
+          | { call: <T>(n: string, d: T) => Promise<T> }
+          | undefined
+        return registry ? registry.call<T>(name, data) : data
+      },
+      callAll: async (name: string, data: Record<string, unknown>) => {
+        const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as
+          | { callAll: (n: string, d: Record<string, unknown>) => Promise<void> }
+          | undefined
+        if (registry) await registry.callAll(name, data)
       },
       has: (name) => {
         const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as

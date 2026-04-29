@@ -564,7 +564,7 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
 
       default: {
         // Delegate to the legacy CLI (doctor, tasks, workflows, agents,
-        // schedule, messaging, search, settings, trash, paths, reindex,
+        // schedule, search, settings, trash, paths, reindex,
         // onboard, setup, init, logs, agent-rules, etc.). The legacy
         // handler calls process.exit internally on success/failure, so
         // we don't return here.

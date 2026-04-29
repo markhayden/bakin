@@ -16,7 +16,7 @@ Primary docs:
   Use this for lifecycle commands, health checks, updates, and runtime operation.
 
 - Core workflows: https://makinbakin.com/docs/core/tasks/
-  Use this for built-in Bakin areas such as tasks, workflows, projects, assets, schedule, messaging, memory, models, team, and health.
+  Use this for built-in Bakin areas such as tasks, workflows, assets, schedule, memory, models, team, and health. Official add-on plugins such as Messaging and Projects are installed separately but documented in the same site.
 
 - Plugin authoring: https://makinbakin.com/docs/extend/plugins/overview/
   Use this when building Bakin plugins with @bakin/sdk.

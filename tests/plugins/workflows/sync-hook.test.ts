@@ -125,6 +125,8 @@ function makeCtx(): CapturedCtx {
     },
     hooks: {
       register: mock(() => () => {}),
+      call: mock(async (_name, data) => data),
+      callAll: mock(async () => undefined),
       has: mock(() => false),
       invoke: mock(async () => undefined),
     },

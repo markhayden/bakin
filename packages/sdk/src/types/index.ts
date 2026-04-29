@@ -195,6 +195,8 @@ export interface ActivityAPI {
 
 export interface HookAPI {
   register(name: string, handler: (data: unknown) => unknown): () => void
+  call<T>(name: string, data: T): Promise<T>
+  callAll(name: string, data: Record<string, unknown>): Promise<void>
   has(name: string): boolean
   invoke<R>(name: string, data: unknown): Promise<R | undefined>
 }
@@ -882,7 +884,7 @@ export interface WorkflowStep {
   [key: string]: unknown
 }
 
-export interface WorkflowTemplate extends WorkflowDefinition {}
+export type WorkflowTemplate = WorkflowDefinition
 
 export interface BakinConfig {
   plugins: PluginEntry[]

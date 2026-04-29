@@ -62,6 +62,7 @@ import * as pluginsUnlinkRoute from './packages/host/src/api/plugins/unlink'
 import * as agentPackagesListRoute from './packages/host/src/api/agent-packages/list'
 import * as agentPackagesInstallRoute from './packages/host/src/api/agent-packages/install'
 import * as agentPackagesDynamicRoute from './packages/host/src/api/agent-packages/dynamic'
+import * as execToolsRoute from './packages/host/src/api/exec-tools/[toolName]'
 import * as packagesListRoute from './packages/host/src/api/packages/list'
 import * as packagesInstallRoute from './packages/host/src/api/packages/install'
 import * as packagesDynamicRoute from './packages/host/src/api/packages/dynamic'
@@ -367,6 +368,11 @@ const eventBus = new BakinEventBus(broadcast)
       return
     }
 
+    if (url.pathname.startsWith('/api/exec-tools/') && req.method === 'POST') {
+      dispatchWebHandler(req, res, execToolsRoute.post)
+      return
+    }
+
     // Plugin install/remove endpoints (migrated — see Phase B block below for install)
     if (url.pathname === '/api/plugins/install' && req.method === 'POST') {
       dispatchWebHandler(req, res, pluginsInstallRoute.post)
@@ -623,7 +629,6 @@ const eventBus = new BakinEventBus(broadcast)
   watcher.start({ contentDir: CONTENT_DIR, eventBus, onInboxFile: handleInboxFile })
   dispatch.start(CONTENT_DIR, port)
   dispatch.reconcileOnStartup(CONTENT_DIR)
-  // messagingCron.start(CONTENT_DIR, port) — deprecated: schedule plugin bridge replaces this
   watchdog.start(CONTENT_DIR)
   doctor.start(CONTENT_DIR, process.cwd())
 

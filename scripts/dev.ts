@@ -27,8 +27,8 @@ const DEV_CLIENT_ENTRY = join(REPO_ROOT, 'packages/host/src/dev-client/client.ts
 const DEV_CLIENT_OUTDIR = join(REPO_ROOT, 'packages/host/public/__bakin-dev')
 
 const CORE_PLUGINS = [
-  'tasks', 'team', 'workflows', 'projects', 'assets',
-  'schedule', 'memory', 'messaging', 'models', 'health',
+  'tasks', 'team', 'workflows', 'assets',
+  'schedule', 'memory', 'models', 'health',
 ]
 
 const EXTERNAL = [

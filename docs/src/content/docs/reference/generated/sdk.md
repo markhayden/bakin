@@ -15,7 +15,7 @@ Source: `packages/sdk/src/index.ts`
 | --- |
 | `export * from './types'` |
 | `export {` |
-| `export type { NavItem, PluginRegistration } from './register'` |
+| `export type { ClientRouteEntry, MatchedPluginRoute, NavItem, PluginRegistration } from './register'` |
 
 ## `@bakin/sdk/ui`
 
@@ -122,12 +122,101 @@ Source: `packages/sdk/src/types/index.ts`
 
 | Export declaration |
 | --- |
-| `export type {` |
-| `export type { BakinSettings } from '@bakin/core/settings'` |
-| `export type { BakinPaths } from '@bakin/core/content-dir'` |
-| `export type {` |
-| `export type { AvailableModel } from '@bakin/models/types'` |
-| `export type { WorkflowDefinition, WorkflowInstance, WorkflowStep, WorkflowTemplate } from '@bakin/workflows/types'` |
+| `export type HttpMethod = 'GET' \| 'POST' \| 'PUT' \| 'PATCH' \| 'DELETE'` |
+| `export type ContractVisibility = 'public' \| 'internal' \| 'experimental'` |
+| `export type ContractStability = 'stable' \| 'beta' \| 'experimental' \| 'deprecated'` |
+| `export interface SchemaLike<T = unknown> {` |
+| `export interface SourceLocation {` |
+| `export interface DocsExample {` |
+| `export type PluginPermission =` |
+| `export type RuntimeCapability =` |
+| `export interface PluginEntryPoints {` |
+| `export interface ApiRouteContribution {` |
+| `export interface ClientRouteContribution {` |
+| `export interface ExecToolContribution {` |
+| `export interface CliCommandContribution {` |
+| `export interface SettingsContribution {` |
+| `export interface DocsContribution {` |
+| `export interface PluginContributions {` |
+| `export interface PluginManifest {` |
+| `export interface StorageStat {` |
+| `export interface StorageAdapter {` |
+| `export interface EventBus {` |
+| `export interface ActivityAPI {` |
+| `export interface HookAPI {` |
+| `export interface NavItem {` |
+| `export interface APIRoute {` |
+| `export interface UISlotRegistration {` |
+| `export interface ContentFile {` |
+| `export interface RuntimeAgent {` |
+| `export interface RuntimeChannel {` |
+| `export interface RuntimeMessageArgs {` |
+| `export interface RuntimeMessageResult {` |
+| `export interface RuntimeChatChunk {` |
+| `export interface CronJob {` |
+| `export interface CronRun {` |
+| `export interface RuntimeSkill {` |
+| `export interface WorkspaceFile {` |
+| `export interface AgentRuntimeAdapter {` |
+| `export interface TaskLogEntry {` |
+| `export interface Task {` |
+| `export interface TaskColumns {` |
+| `export interface TaskBoard {` |
+| `export type ColumnId = keyof TaskColumns` |
+| `export interface TaskCreateInput {` |
+| `export interface TaskUpdateInput {` |
+| `export interface TaskService {` |
+| `export interface SearchSchemaField {` |
+| `export interface SearchIndexDefinition {` |
+| `export interface SearchContentTypeDefinition {` |
+| `export interface FilePatternMapper {` |
+| `export interface FileBackedContentTypeDefinition extends SearchContentTypeDefinition {` |
+| `export interface SearchQueryParams {` |
+| `export interface SearchResult {` |
+| `export interface SearchResponse {` |
+| `export interface SearchHealthSnapshot {` |
+| `export interface SearchTransformOp {` |
+| `export interface SearchAPI {` |
+| `export interface AssetVariantMeta {` |
+| `export interface AssetMeta {` |
+| `export interface TrashedAssetMeta {` |
+| `export interface AssetFileRef {` |
+| `export interface AssetsAPI {` |
+| `export interface ExecToolResult {` |
+| `export interface PluginToolContext {` |
+| `export interface ExecToolDefinition {` |
+| `export interface SkillDefinition {` |
+| `export interface WorkflowDefinitionInput {` |
+| `export type FormFieldType = 'string' \| 'text' \| 'number' \| 'boolean' \| 'select' \| 'agent' \| 'skill' \| 'list'` |
+| `export interface FormField {` |
+| `export interface EdgeRules {` |
+| `export interface PluginNodeTypeInput<T = unknown> {` |
+| `export interface PluginNotificationChannelInput {` |
+| `export interface HealthCheckResult {` |
+| `export interface PluginHealthCheckInput {` |
+| `export interface StringSettingsField extends BaseSettingsField {` |
+| `export interface NumberSettingsField extends BaseSettingsField {` |
+| `export interface BooleanSettingsField extends BaseSettingsField {` |
+| `export interface SelectSettingsField extends BaseSettingsField {` |
+| `export interface ListSettingsField extends BaseSettingsField {` |
+| `export type SettingsField =` |
+| `export interface PluginSettingsSchema {` |
+| `export interface PluginContext {` |
+| `export interface BakinPlugin {` |
+| `export interface CalendarEvent {` |
+| `export interface CalendarDay {` |
+| `export interface RecurringEvent {` |
+| `export interface MemoryEntry {` |
+| `export interface MemoryDay {` |
+| `export interface Heartbeat {` |
+| `export interface ProjectMeta {` |
+| `export interface AvailableModel {` |
+| `export interface WorkflowDefinition {` |
+| `export interface WorkflowInstance {` |
+| `export interface WorkflowStep {` |
+| `export type WorkflowTemplate = WorkflowDefinition` |
+| `export interface BakinConfig {` |
+| `export interface PluginEntry {` |
 
 ## `@bakin/sdk/utils`
 
@@ -144,5 +233,20 @@ Source: `packages/sdk/src/metadata/index.ts`
 
 | Export declaration |
 | --- |
-| `export {` |
-| `export type {` |
+| `export type { ContractStability, ContractVisibility, DocsExample, SchemaLike, SourceLocation }` |
+| `export type HookKind = 'rpc' \| 'event' \| 'waterfall'` |
+| `export interface ContractMetadata {` |
+| `export interface RouteContract<Input = unknown, Output = unknown> extends ContractMetadata {` |
+| `export interface CliCommandContract extends ContractMetadata {` |
+| `export interface HookContract<Input = unknown, Output = unknown> extends ContractMetadata {` |
+| `export interface SlotContract<Props = unknown> extends ContractMetadata {` |
+| `export interface ExecToolContract<Input = unknown, Output = unknown> extends ContractMetadata {` |
+| `export type PublicContract =` |
+| `export function defineRouteContract<const T extends RouteContract>(contract: T): T {` |
+| `export function defineCliCommandContract<const T extends CliCommandContract>(contract: T): T {` |
+| `export function defineHookContract<const T extends HookContract>(contract: T): T {` |
+| `export function defineSlotContract<const T extends SlotContract>(contract: T): T {` |
+| `export function defineExecToolContract<const T extends ExecToolContract>(contract: T): T {` |
+| `export interface DocsAwareAPIRoute<Input = unknown, Output = unknown> extends RouteContract<Input, Output> {` |
+| `export function defineApiRoute<const T extends DocsAwareAPIRoute>(route: T): T {` |
+| `export const definePluginRoute = defineApiRoute` |

@@ -3,7 +3,7 @@
 ## Overview
 
 Bakin is a single Bun workspace. The repo is five named packages under
-`packages/{core,sdk,host,adapter-openclaw,adapter-antfly}`, ten first-party
+`packages/{core,sdk,host,adapter-openclaw,adapter-antfly}`, eight first-party
 plugins under `plugins/<id>/`, a small server-side core under `src/`, and a
 handful of scripts. The
 whole thing compiles via `bun build --compile` into a single-file
@@ -32,9 +32,9 @@ Bun.
 │   ├── host/                  ← @bakin/host — client shell + API handlers
 │   ├── adapter-openclaw/      ← runtime adapter implementation
 │   └── adapter-antfly/        ← search adapter implementation
-├── plugins/                   ← 10 first-party plugins (each has bakin-plugin.json)
-│   ├── tasks/      workflows/   assets/      projects/   schedule/
-│   ├── memory/     messaging/   models/      team/       health/
+├── plugins/                   ← 8 first-party plugins (each has bakin-plugin.json)
+│   ├── tasks/      workflows/   assets/      schedule/
+│   ├── memory/     models/      team/        health/
 ├── src/
 │   ├── core/                  ← server-only modules with side effects
 │   └── lib/                   ← shared code (client + server safe)
@@ -179,7 +179,7 @@ packages/host/
 | Hook registry | cli.ts (binary CLI dispatcher) |
 |  | runtime-config-raw.ts (allowlisted raw runtime config reads) |
 |  | plugin-scaffold.ts, self-update.ts |
-|  | onboarding/ (8 components) |
+|  | onboarding/ (11 components) |
 
 **Rule of thumb:** If a module has external side effects (writes files,
 opens connections, uses globalThis) it stays in `src/core/`. If it's a
@@ -339,12 +339,11 @@ Created by `bakin onboard` or `initBakinHome()`.
 ├── .onboarded                ← marker the doctor gates on
 ├── MEMORY-LOG.md             ← agent memory log
 ├── audit.jsonl               ← append-only audit trail
-├── messaging.json            ← messaging / content calendar events
 ├── assets/
 │   ├── store/                ← canonical assets, flat, sharded by month
 │   ├── inbox/                ← drop-zone for manual ingestion
 │   └── .trash/               ← soft-delete with 7-day TTL
-├── projects/                 ← project markdown files
+├── plugins/                  ← installed external plugin storage and bundles
 ├── workflows/
 │   ├── definitions/          ← YAML templates (user-owned)
 │   ├── instances/            ← running workflow state

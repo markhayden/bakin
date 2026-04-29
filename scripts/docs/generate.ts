@@ -45,7 +45,6 @@ const commandSnippets = {
   workflows: ['workflows list', 'workflows start', 'workflows step', 'workflows submit'],
   health: ['doctor', 'status'],
   schedule: ['schedule'],
-  messaging: ['messaging'],
 }
 const docsSnippetBlocks = {
   'plugin-basic-manifest': {
@@ -572,7 +571,7 @@ function renderRuntimePathsReference(): string {
     ['personas', 'Agent persona files.'],
     ['heartbeats', 'Agent heartbeat files.'],
     ['inbox', 'General inbox directory.'],
-    ['projects', 'Project markdown/content data.'],
+    ['tasks', 'Bakin-owned task metadata store.'],
     ['workflows', 'Workflow definitions, skills, and instances.'],
   ]
   const lines = [
@@ -769,7 +768,7 @@ Primary docs:
   Use this for lifecycle commands, health checks, updates, and runtime operation.
 
 - Core workflows: ${docsUrl}/core/tasks/
-  Use this for built-in Bakin areas such as tasks, workflows, projects, assets, schedule, messaging, memory, models, team, and health.
+  Use this for built-in Bakin areas such as tasks, workflows, assets, schedule, memory, models, team, and health. Official add-on plugins such as Messaging and Projects are installed separately but documented in the same site.
 
 - Plugin authoring: ${docsUrl}/extend/plugins/overview/
   Use this when building Bakin plugins with @bakin/sdk.

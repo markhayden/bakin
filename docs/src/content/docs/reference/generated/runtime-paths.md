@@ -28,5 +28,5 @@ Resolution order:
 | `personas` | Agent persona files. |
 | `heartbeats` | Agent heartbeat files. |
 | `inbox` | General inbox directory. |
-| `projects` | Project markdown/content data. |
+| `tasks` | Bakin-owned task metadata store. |
 | `workflows` | Workflow definitions, skills, and instances. |

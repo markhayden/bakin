@@ -889,18 +889,21 @@ describe('bakin_exec_tasks_get', () => {
   it('enriches with project context when projectId is present', async () => {
     const details = { task: { id: 'abc', projectId: 'proj-1' }, column: 'todo' }
     mockGetTaskDetails.mockResolvedValue(details)
-    const mockHooksInvoke = activated.ctx.hooks.invoke as ReturnType<typeof mock>
-    mockHooksInvoke.mockResolvedValueOnce({
-      title: 'Project X',
-      status: 'active',
-      progress: 50,
-      body: 'This is the project body content for testing purposes.',
+    const mockHooksCall = activated.ctx.hooks.call as ReturnType<typeof mock>
+    mockHooksCall.mockImplementationOnce(async (_name: string, data: Record<string, unknown>) => ({
+      ...data,
+      projectTitle: 'Project X',
+      projectStatus: 'active',
+      projectProgress: 50,
+      projectExcerpt: 'This is the project body content for testing purposes.',
     })
+    )
 
     const tool = findTool(activated.execTools, 'bakin_exec_tasks_get')!
     const result = await callTool(tool, { taskId: 'abc' })
 
     expect(result.ok).toBe(true)
+    expect(mockHooksCall).toHaveBeenCalledWith('tasks.enrichDetails', details)
     expect(result.projectTitle).toBe('Project X')
     expect(result.projectStatus).toBe('active')
     expect(result.projectProgress).toBe(50)
@@ -909,8 +912,8 @@ describe('bakin_exec_tasks_get', () => {
   it('gracefully handles missing project plugin', async () => {
     const details = { task: { id: 'abc', projectId: 'proj-1' }, column: 'todo' }
     mockGetTaskDetails.mockResolvedValue(details)
-    const mockHooksInvoke = activated.ctx.hooks.invoke as ReturnType<typeof mock>
-    mockHooksInvoke.mockRejectedValueOnce(new Error('Hook not found'))
+    const mockHooksCall = activated.ctx.hooks.call as ReturnType<typeof mock>
+    mockHooksCall.mockRejectedValueOnce(new Error('Hook not found'))
 
     const tool = findTool(activated.execTools, 'bakin_exec_tasks_get')!
     const result = await callTool(tool, { taskId: 'abc' })

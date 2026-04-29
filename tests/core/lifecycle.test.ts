@@ -37,11 +37,6 @@ mock.module('../../src/core/watchdog', () => ({
   stop: mockWatchdogStop,
 }))
 
-const mockMessagingStop = mock()
-mock.module('../../src/core/messaging-cron', () => ({
-  stop: mockMessagingStop,
-}))
-
 const mockWatcherStop = mock().mockResolvedValue(undefined)
 mock.module('../../src/core/watcher', () => ({
   stop: mockWatcherStop,
@@ -119,13 +114,12 @@ describe('lifecycle', () => {
     expect(mockShutdownAll).toHaveBeenCalled()
   })
 
-  it('shutdown stops dispatch, watchdog, messaging cron, watcher, adapters, and SSE', async () => {
+  it('shutdown stops dispatch, watchdog, watcher, adapters, and SSE', async () => {
     registerShutdownHandlers(mockServer(), '/tmp/test')
     await processListeners['SIGTERM']()
 
     expect(mockDispatchStop).toHaveBeenCalled()
     expect(mockWatchdogStop).toHaveBeenCalled()
-    expect(mockMessagingStop).toHaveBeenCalled()
     expect(mockWatcherStop).toHaveBeenCalled()
     expect(mockSearchShutdown).toHaveBeenCalled()
     expect(mockSseStop).toHaveBeenCalled()
