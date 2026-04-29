@@ -239,7 +239,7 @@ export async function createTaskWithEffects(opts: {
   if (effectiveWorkflowId) {
     const def = await hooks().invoke<Record<string, unknown> | null>('workflows.loadDefinition', { name: effectiveWorkflowId })
     if (!def) {
-      const available = await hooks().invoke<Array<{ name: string }>>('workflows.listDefinitions', {}) ?? []
+      const available = await hooks().invoke<Array<{ name: string }>>('workflows.definitions.list', {}) ?? []
       const names = available.map(d => d.name).sort().join(', ') || '(none)'
       throw new Error(
         `Unknown workflow: "${effectiveWorkflowId}". Available workflows: ${names}. ` +

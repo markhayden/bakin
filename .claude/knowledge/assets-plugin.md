@@ -211,7 +211,7 @@ Registered in `plugins/assets/index.ts`:
 - `assets.createStub(filename)` — auto-create metadata
 - `assets.detectVariant(filename)` — check if file is a variant
 - `assets.getAssetTypes()` — return available asset type enum
-- `assets.listTrash()` / `assets.restoreAsset()` / `assets.emptyTrash()`
+- `assets.trash.list()` / `assets.restoreAsset()` / `assets.emptyTrash()`
 - `assets.purgeClipboardForTask(taskId)` — soft-delete clipboard-source assets for a completed task (gated by `purgeClipboardOnComplete` setting)
 
 ## Key Files

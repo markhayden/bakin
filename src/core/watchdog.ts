@@ -314,7 +314,7 @@ export function start(contentDir: string): void {
       // ─── Workflow step timeout detection ─────────────────────────────
       try {
         const wfSettings = settings.workflow
-        const activeInstances = await hooks().invoke<Array<{ taskId: string; currentStepId: string; workflowId: string; status: string; stepStates: Record<string, { status: string; startedAt?: string; output?: unknown }>; history: Array<{ stepId: string; rejectionReason?: string }> }>>('workflows.listInstances', { statusFilter: 'in_progress' }) ?? []
+        const activeInstances = await hooks().invoke<Array<{ taskId: string; currentStepId: string; workflowId: string; status: string; stepStates: Record<string, { status: string; startedAt?: string; output?: unknown }>; history: Array<{ stepId: string; rejectionReason?: string }> }>>('workflows.instances.list', { statusFilter: 'in_progress' }) ?? []
 
         // Build set of task IDs on the board for orphan detection
         const boardTaskIds = new Set<string>()
@@ -369,7 +369,7 @@ export function start(contentDir: string): void {
       const gateNotificationChannel = getNotificationChannel(settings)
       if (gateNotificationChannel && settings.notifications.gateAlerts !== false) {
         try {
-          const pendingGates = await hooks().invoke<Array<{ taskId: string; currentStepId: string; workflowId: string; stepStates: Record<string, { status: string; output?: unknown }>; history: Array<Record<string, unknown>> }>>('workflows.listInstances', { statusFilter: 'pending_approval' }) ?? []
+          const pendingGates = await hooks().invoke<Array<{ taskId: string; currentStepId: string; workflowId: string; stepStates: Record<string, { status: string; output?: unknown }>; history: Array<Record<string, unknown>> }>>('workflows.instances.list', { statusFilter: 'pending_approval' }) ?? []
 
           for (const instance of pendingGates) {
             const { taskId, currentStepId, workflowId } = instance

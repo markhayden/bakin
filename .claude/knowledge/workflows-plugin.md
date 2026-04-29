@@ -128,7 +128,7 @@ ctx.registerNotificationChannel({
 Plugin ids are auto-namespaced as `{pluginId}.{id}`; builtins keep their short runtime-channel ids (`general`, `alerts`, etc.). `NotifyChannel.channel` in `plugins/workflows/types.ts` is `string` and the zod schema at `notifyChannelSchema` uses `z.string().min(1)`.
 
 **Cross-plugin read surfaces:**
-- `workflows.listNotificationChannels` — HookRegistry, returns `NotificationChannelDef[]`
+- `workflows.notificationChannels.list` — HookRegistry, returns `NotificationChannelDef[]`
 - `workflows.getNotificationChannel` — HookRegistry, takes `{ id }`, returns `NotificationChannelDef | null`
 - `GET /api/plugins/workflows/notification-channels` — REST, returns `{ channels: NotificationChannelDef[] }`
 

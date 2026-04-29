@@ -64,7 +64,7 @@ async function getAgentMeta(ctx: PluginContext): Promise<AgentMeta[]> {
     return agentMetaCache.agents
   }
   try {
-    const agents = await ctx.hooks.invoke<AgentMeta[]>('team.listAgents', {})
+    const agents = await ctx.hooks.invoke<AgentMeta[]>('team.list', {})
     if (agents && Array.isArray(agents)) {
       agentMetaCache = { agents, fetchedAt: Date.now() }
       return agents

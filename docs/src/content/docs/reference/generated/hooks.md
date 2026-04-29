@@ -47,14 +47,6 @@ Source: `plugins/assets/index.ts:305`
 - Stability: `beta` until a hook contract declares stability
 - Contract status: `audited`
 
-## `assets.listTrash`
-
-Source: `plugins/assets/index.ts:340`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a hook contract declares stability
-- Contract status: `audited`
-
 ## `assets.pathForFilename`
 
 Source: `plugins/assets/index.ts:309`
@@ -79,6 +71,14 @@ Source: `plugins/assets/index.ts:341`
 - Stability: `beta` until a hook contract declares stability
 - Contract status: `audited`
 
+## `assets.trash.list`
+
+Source: `plugins/assets/index.ts:340`
+
+- Visibility: `public` until explicitly marked otherwise
+- Stability: `beta` until a hook contract declares stability
+- Contract status: `audited`
+
 ## `assets.validateSidecar`
 
 Source: `plugins/assets/index.ts:304`
@@ -95,7 +95,7 @@ Source: `plugins/health/index.ts:83`
 - Stability: `beta` until a hook contract declares stability
 - Contract status: `audited`
 
-## `health.listChecks`
+## `health.list`
 
 Source: `plugins/health/index.ts:82`
 
@@ -199,7 +199,7 @@ Source: `plugins/team/index.ts:875`
 - Stability: `beta` until a hook contract declares stability
 - Contract status: `audited`
 
-## `team.listAgents`
+## `team.list`
 
 Source: `plugins/team/index.ts:865`
 
@@ -239,6 +239,14 @@ Source: `plugins/workflows/index.ts:443`
 - Stability: `beta` until a hook contract declares stability
 - Contract status: `audited`
 
+## `workflows.definitions.list`
+
+Source: `plugins/workflows/index.ts:448`
+
+- Visibility: `public` until explicitly marked otherwise
+- Stability: `beta` until a hook contract declares stability
+- Contract status: `audited`
+
 ## `workflows.getActiveAgents`
 
 Source: `plugins/workflows/index.ts:450`
@@ -263,23 +271,7 @@ Source: `plugins/workflows/index.ts:460`
 - Stability: `beta` until a hook contract declares stability
 - Contract status: `audited`
 
-## `workflows.isGateNotified`
-
-Source: `plugins/workflows/index.ts:451`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a hook contract declares stability
-- Contract status: `audited`
-
-## `workflows.listDefinitions`
-
-Source: `plugins/workflows/index.ts:448`
-
-- Visibility: `public` until explicitly marked otherwise
-- Stability: `beta` until a hook contract declares stability
-- Contract status: `audited`
-
-## `workflows.listInstances`
+## `workflows.instances.list`
 
 Source: `plugins/workflows/index.ts:444`
 
@@ -287,9 +279,9 @@ Source: `plugins/workflows/index.ts:444`
 - Stability: `beta` until a hook contract declares stability
 - Contract status: `audited`
 
-## `workflows.listNotificationChannels`
+## `workflows.isGateNotified`
 
-Source: `plugins/workflows/index.ts:459`
+Source: `plugins/workflows/index.ts:451`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -322,6 +314,14 @@ Source: `plugins/workflows/index.ts:452`
 ## `workflows.matchWorkflow`
 
 Source: `plugins/workflows/index.ts:447`
+
+- Visibility: `public` until explicitly marked otherwise
+- Stability: `beta` until a hook contract declares stability
+- Contract status: `audited`
+
+## `workflows.notificationChannels.list`
+
+Source: `plugins/workflows/index.ts:459`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability

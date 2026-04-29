@@ -862,7 +862,7 @@ const teamPlugin: BakinPlugin = {
 
     // ─── Cross-Plugin Hooks ────────────────────────────────────────────
 
-    ctx.hooks.register('team.listAgents', () => listRuntimeAgentMetas(ctx.runtime))
+    ctx.hooks.register('team.list', () => listRuntimeAgentMetas(ctx.runtime))
     ctx.hooks.register('team.getAgent', async (d: Record<string, unknown>) => {
       const id = d.id as string
       const agents = await listRuntimeAgentMetas(ctx.runtime)
