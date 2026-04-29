@@ -134,23 +134,7 @@ bakin trash empty                 # purge everything
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
-## API routes
-
-<!-- docs:api-routes assets -->
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `DELETE` | `/` | Soft-delete an asset |
-| `GET` | `/` | List assets with filters |
-| `PUT` | `/content` | Update text content of an editable asset |
-| `GET` | `/file` | Serve asset file |
-| `PATCH` | `/link` | Relink or unlink an asset |
-| `PATCH` | `/retype` | Change asset type classification |
-| `DELETE` | `/trash` | Empty entire trash |
-| `GET` | `/trash` | List trashed assets |
-| `DELETE` | `/trash/:file` | Permanently delete a trashed asset |
-| `POST` | `/trash/:file/restore` | Restore a trashed asset |
-| `POST` | `/upload` | Upload asset files |
-<!-- /docs:api-routes -->
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-assets).
 
 <div class="for-agents">
 

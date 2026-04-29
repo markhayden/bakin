@@ -71,27 +71,7 @@ Projects index into search (table `bakin_projects`) on `title` and `body`, facet
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
-## API routes
-
-<!-- docs:api-routes projects -->
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/` | List projects |
-| `GET` | `/:projectId` | Get a project |
-| `POST` | `/` | Create a project |
-| `PUT` | `/:projectId` | Update a project |
-| `DELETE` | `/:projectId` | Delete a project |
-| `POST` | `/:projectId/checklist` | Add a checklist item |
-| `PUT` | `/:projectId/checklist/:itemId/toggle` | Toggle a checklist item |
-| `PUT` | `/:projectId/checklist/:itemId` | Update a checklist item |
-| `DELETE` | `/:projectId/checklist/:itemId` | Remove a checklist item |
-| `POST` | `/:projectId/checklist/:itemId/link` | Link a checklist item to a task |
-| `POST` | `/:projectId/checklist/:itemId/promote` | Promote a checklist item to a task |
-| `POST` | `/:projectId/assets` | Attach an asset |
-| `DELETE` | `/:projectId/assets/:filename` | Detach an asset |
-| `POST` | `/:projectId/ask` | Ask an agent about a project |
-| `GET` | `/search` | Search projects |
-<!-- /docs:api-routes -->
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-projects).
 
 <div class="for-agents">
 

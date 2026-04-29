@@ -60,28 +60,7 @@ Open the detail drawer for any result to see the full content, source path, agen
 
 Memory writes nothing else.
 
-## API routes
-
-<!-- docs:api-routes memory -->
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/audit` | List indexed audit entries with optional filters |
-| `GET` | `/checkpoints` | List compaction checkpoints for an agent (optionally by session) |
-| `GET` | `/checkpoints/:agent/:sessionId/:checkpointId` | Read one checkpoint by (agent, sessionId, checkpointId) |
-| `GET` | `/daily-notes` | List daily notes for an agent (sorted by date desc) |
-| `GET` | `/daily-notes/:agent/:filename` | Read one daily note |
-| `POST` | `/daily-notes/compare-search` | Run the same query against Bakin search and runtime memory search |
-| `GET` | `/dreams` | List dream artifacts for an agent (optional phase/date/artifactType filters) |
-| `GET` | `/dreams/:agent/:artifactType` | Read one dream artifact by (agent, artifactType[, phase, date]) |
-| `GET` | `/durable` | List canonical durable files present for an agent |
-| `GET` | `/durable/:agent/:basename` | Read one canonical durable file for an agent |
-| `GET` | `/recent` | Recent memory items across tiers, sorted by updated_at desc |
-| `GET` | `/sessions` | List sessions for an agent |
-| `GET` | `/sessions/:agent/:sessionKey` | Read one session by key |
-| `GET` | `/sessions/:agent/:sessionKey/turns` | List turns belonging to one session (indexed) |
-| `GET` | `/status` | Indexer health: per-tier row counts + offset snapshot |
-| `GET` | `/turns` | List turns by (agent, sessionId) |
-<!-- /docs:api-routes -->
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-memory).
 
 <div class="for-agents">
 

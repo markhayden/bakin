@@ -73,22 +73,7 @@ Same surface from the terminal:
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
-## API routes
-
-<!-- docs:api-routes schedule -->
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/` | List all scheduled jobs |
-| `POST` | `/` | Create a scheduled job |
-| `DELETE` | `/:jobId` | Delete a scheduled job |
-| `GET` | `/:jobId` | Get details for a single scheduled job |
-| `PUT` | `/:jobId` | PUT /:jobId |
-| `POST` | `/:jobId/pause` | Pause/resume/skip a job |
-| `POST` | `/:jobId/run` | Trigger immediate run |
-| `GET` | `/:jobId/runs` | Get run history for a job |
-| `POST` | `/bridge` | Cron bridge webhook |
-| `POST` | `/parse` | Parse schedule expression |
-<!-- /docs:api-routes -->
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-schedule).
 
 <div class="for-agents">
 

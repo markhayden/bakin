@@ -48,23 +48,7 @@ Named tier presets — `budget`, `standard`, `premium`. Each maps to a concrete 
   models.json             # per-agent config, aliases, task profiles
 ```
 
-## API routes
-
-<!-- docs:api-routes models -->
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/aliases` | GET /aliases |
-| `POST` | `/aliases` | POST /aliases |
-| `GET` | `/available` | Bypass cache and fetch the model list fresh from the runtime adapter |
-| `GET` | `/config` | GET /config |
-| `POST` | `/config` | POST /config |
-| `POST` | `/defaults` | POST /defaults |
-| `GET` | `/profiles` | GET /profiles |
-| `PUT` | `/profiles` | Check if runtime config is out of sync (needs restart) |
-| `POST` | `/refresh` | Bypass cache and fetch the model list fresh from the runtime adapter |
-| `POST` | `/runtime/restart` | List available AI models with tier classification (budget/standard/premium). Use this to discover what models are available for assignment. |
-| `GET` | `/runtime/status` | Check if runtime config is out of sync (needs restart) |
-<!-- /docs:api-routes -->
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-models).
 
 <div class="for-agents">
 
