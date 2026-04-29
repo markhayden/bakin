@@ -18,6 +18,7 @@ import { dirname, join } from 'path'
 import { z } from 'zod'
 import { getContentDir } from '../content-dir'
 import { PermissionSchema } from './permissions'
+import { isGitRefString } from './source'
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -32,8 +33,11 @@ const PluginTypeSchema = z.enum(['github', 'local'])
  * no ref exists.
  */
 const RefStringSchema = z.string().refine(
-  s => s.length === 0 || /^[A-Za-z0-9._/-]+$/.test(s),
-  { message: 'ref must be empty or match /^[A-Za-z0-9._/-]+$/' },
+  s => s.length === 0 || isGitRefString(s),
+  {
+    message:
+      'ref must be empty or match /^[A-Za-z0-9._/-]+$/ without leading "-", path-like slashes, "..", "//", or trailing "."',
+  },
 )
 
 /**

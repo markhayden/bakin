@@ -151,11 +151,10 @@ describe.skipIf(!gitAvailable())('install subpath — happy path', () => {
     expect(lock.plugins.foo).toBeDefined()
     expect(lock.plugins.foo!.source).toBe(source)
     expect(lock.plugins.foo!.type).toBe('github')
-    // The subpath install drops `.git/`, so the resolveGitProvenance
-    // helper finds no symbolic-ref/HEAD — both fields land empty.
-    // That's documented behavior: the upgrade flow re-clones to staging.
-    expect(lock.plugins.foo!.ref).toBe('')
-    expect(lock.plugins.foo!.commitSha).toBe('')
+    // Provenance is captured from the staging clone before the subpath copy
+    // drops `.git/`, so pinned upgrades can remain deterministic.
+    expect(lock.plugins.foo!.ref).toBe('main')
+    expect(lock.plugins.foo!.commitSha).toMatch(/^[a-f0-9]{40}$/)
   })
 
   it('two subpath installs from the same monorepo can coexist', async () => {
