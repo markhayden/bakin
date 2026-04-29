@@ -3,7 +3,7 @@
  *
  * Installs a standalone skill-pack / workflow-pack / knowledge-pack.
  * Same body shape as /api/agents/install minus `adopt` (only agent
- * packages have an OpenClaw counterpart that adoption attaches to).
+ * packages have a runtime-agent counterpart that adoption attaches to).
  */
 import { z } from 'zod'
 import { installPackage } from '@/core/agent-packages/installer'

@@ -16,8 +16,7 @@
  * the same package may re-register on update.
  *
  * Backed by globalThis so a single process keeps one registry instance
- * even when this module is reached from multiple entry points (same
- * pattern as src/core/sse.ts and src/core/openclaw-client.ts).
+ * even when this module is reached from multiple entry points.
  */
 import type { WorkflowDefinition } from '../types'
 

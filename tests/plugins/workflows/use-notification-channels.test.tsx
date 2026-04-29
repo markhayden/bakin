@@ -27,7 +27,7 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,
@@ -41,9 +41,9 @@ import {
 } from '../../../plugins/workflows/hooks/use-notification-channels'
 
 const MOCK_CHANNELS = [
-  { runtime: 'builtin' as const, id: 'discord',   label: 'Discord',   initials: 'DC', icon: 'MessageSquare' },
-  { runtime: 'builtin' as const, id: 'email',     label: 'Email',     initials: 'EM', icon: 'Mail' },
-  { runtime: 'builtin' as const, id: 'instagram', label: 'Instagram', initials: 'IG', icon: 'Instagram' },
+  { runtime: 'builtin' as const, id: 'general',       label: 'General',       initials: 'GE', icon: 'MessageSquare' },
+  { runtime: 'builtin' as const, id: 'email',         label: 'Email',         initials: 'EM', icon: 'Mail' },
+  { runtime: 'builtin' as const, id: 'announcements', label: 'Announcements', initials: 'AN', icon: 'MessageSquare' },
 ]
 
 let fetchSpy: ReturnType<typeof spyOn> | null = null

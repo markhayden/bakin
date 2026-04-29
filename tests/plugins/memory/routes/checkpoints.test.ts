@@ -2,7 +2,7 @@
  * Tests for plugins/memory/lib/routes/checkpoints.ts.
  *
  * Both endpoints hit the indexed `bakin_memory` table (tier=checkpoint) —
- * neither re-reads the filesystem. The adapter and gateway are mocked
+ * neither re-reads the filesystem. Runtime memory is mocked
  * defensively so a missing `~/.openclaw/` never leaks through.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
@@ -29,7 +29,7 @@ mock.module('../../../../packages/core/src/content-dir', () => ({
 mock.module('../../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
-mock.module('../../../../packages/core/src/openclaw-home', () => ({
+mock.module('../../../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => join(testDir, '.openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
 }))
@@ -38,7 +38,7 @@ import {
   checkpointsListRoute,
   checkpointDetailRoute,
 } from '../../../../plugins/memory/lib/routes/checkpoints'
-import type { PluginContext, SearchResponse } from '../../../../src/lib/plugin-types'
+import type { PluginContext, SearchResponse } from '@bakin/core/plugin-types'
 
 interface CtxHarness {
   ctx: PluginContext
@@ -126,7 +126,7 @@ describe('checkpointsListRoute — handler', () => {
       results: [
         { id: 'checkpoint:abcd', table: 'bakin_memory', score: 0.9, fields: { title: 'cp' } },
       ],
-      meta: { query: '', total: 1, took_ms: 1, source: 'antfly' },
+      meta: { query: '', total: 1, took_ms: 1, source: 'search' },
     })
     const res = await checkpointsListRoute.handler(
       req('/checkpoints', { agent: 'main' }),
@@ -211,7 +211,7 @@ describe('checkpointDetailRoute — handler', () => {
           },
         },
       ],
-      meta: { query: '', total: 2, took_ms: 1, source: 'antfly' },
+      meta: { query: '', total: 2, took_ms: 1, source: 'search' },
     })
     const res = await checkpointDetailRoute.handler(
       req('/checkpoints/main/sess-1/cp-a', {
@@ -241,7 +241,7 @@ describe('checkpointDetailRoute — handler', () => {
           },
         },
       ],
-      meta: { query: '', total: 1, took_ms: 1, source: 'antfly' },
+      meta: { query: '', total: 1, took_ms: 1, source: 'search' },
     })
     const res = await checkpointDetailRoute.handler(
       req('/checkpoints/main/sess-1/cp-a', {
@@ -260,7 +260,7 @@ describe('checkpointDetailRoute — handler', () => {
       results: [
         { id: 'checkpoint:bad', table: 'bakin_memory', score: 0.3, fields: { meta: '{not json' } },
       ],
-      meta: { query: '', total: 1, took_ms: 1, source: 'antfly' },
+      meta: { query: '', total: 1, took_ms: 1, source: 'search' },
     })
     const res = await checkpointDetailRoute.handler(
       req('/checkpoints/main/sess-1/cp-a', {

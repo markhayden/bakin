@@ -15,7 +15,7 @@ Two code paths read an agent persona markdown file using a user-supplied `agentI
    const personaPath = join(dir, 'team', 'personas', `${agentId}.md`)
    ```
 
-A client body of `{ "agentId": "../../../etc/passwd" }` walks outside `~/.bakin/team/personas/`. Bakin is single-user Tailscale-only today, so impact is bounded — but this is a traversal primitive that becomes an exploit the moment the auth boundary changes (marketplace plugins, multi-user, exposed gateway).
+A client body of `{ "agentId": "../../../etc/passwd" }` walks outside `~/.bakin/team/personas/`. Bakin is single-user Tailscale-only today, so impact is bounded — but this is a traversal primitive that becomes an exploit the moment the auth boundary changes (marketplace plugins, multi-user, exposed runtime API).
 
 A secondary smell: the `/brainstorm` handler **duplicates the persona-load logic** inline instead of reusing `prompt-builder.ts`. Both paths therefore have to be patched independently, and any future third caller would silently inherit the traversal primitive.
 

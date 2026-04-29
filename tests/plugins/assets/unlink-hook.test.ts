@@ -2,7 +2,7 @@
  * Assets plugin — file-backed unlink hook test.
  *
  * Closes issue #73: filesystem-level deletions must remove docs from the
- * Antfly bakin_assets index. The plugin migrated to
+ * adapter-backed bakin_assets index. The plugin migrated to
  * registerFileBackedContentType with `onUnlink` escape hatch.
  *
  * Under filename-as-identity, search keys are filenames (not paths), and
@@ -25,9 +25,11 @@ import { tmpdir } from 'os'
 import type {
   PluginContext,
   FileBackedContentTypeDefinition,
-} from '../../../src/lib/plugin-types'
+} from '@bakin/core/plugin-types'
 import { BakinEventBus } from '../../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../../src/lib/storage/markdown-adapter'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 
 const testDir = join(tmpdir(), `bakin-test-assets-unlink-${Date.now()}`)
 const assetsDir = join(testDir, 'assets')
@@ -84,6 +86,14 @@ function makeCtx(): CapturedCtx {
     storage,
     events,
     pluginId: 'assets',
+    runtime: createMockRuntimeAdapter(),
+    tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
+    assets: {
+      getByFilename: mock(async () => null),
+      list: mock(async () => []),
+      exists: mock(async () => false),
+      fileRef: mock(async (filename: string) => ({ kind: 'asset' as const, filename })),
+    },
     registerNav: mock(),
     registerRoute: mock(),
     registerSlot: mock(),
@@ -109,6 +119,8 @@ function makeCtx(): CapturedCtx {
     },
     hooks: {
       register: mock(() => () => {}),
+      call: mock(async (_name, data) => data),
+      callAll: mock(async () => undefined),
       has: mock(() => false),
       invoke: mock(async () => undefined),
     },

@@ -17,7 +17,7 @@ Companion to `.claude/specs/plugin-lifecycle.md`. Read the spec first for the *w
 - Workflow-node / notification-channel / health-check registries already have `unregisterPluginX(id)` APIs but they're only called when a user plugin overrides a core one (`plugin-registry.ts:427-429`)
 - No `ctx.search.purgeContentType` exists; `ctx.search` exposes `index/remove/transform/registerContentType`
 - `manifest.permissions` is parsed and discarded — zero readers
-- 4 distinct permission strings appear across all current manifests: `events.emit`, `openclaw.read`, `storage.read`, `storage.write`
+- 4 distinct permission strings appear across all current manifests: `events.emit`, `runtime.read`, `storage.read`, `storage.write`
 - Agent-packages lockfile (`packages/core/src/agent-packages/lockfile.ts`) is the canonical pattern: Zod schema + atomic tmp+rename IO + pure mutators + `getOrphanedPacks` style helpers. Mirror the docblock voice and export ordering.
 
 **Per-commit verification adds `bunx tsc --noEmit -p tsconfig.app.json`** alongside `bun test --isolate` — Bun's runtime test runner doesn't catch TS-only errors that CI does.
@@ -32,8 +32,8 @@ Companion to `.claude/specs/plugin-lifecycle.md`. Read the spec first for the *w
 | 4 | `packages/core/src/hooks/hook-registry.ts` | Add `unregisterByPlugin(pluginId): number`. Each handler now stored alongside its `pluginId`. | ~30 line addition. |
 | 5 | `src/lib/plugin-registry.ts` | Add `isCorePlugin(id)` predicate + `corePluginIds` Set. Populate during init. Wire `register` to capture `pluginId` for hook tracking. Wire activation log (#142 layer 1). | ~40 line addition; one new export. |
 | 6 | `scripts/lib/registry.ts` | Add `removeExecToolsByPlugin(pluginId): number` — filters by `bakin_exec_<pluginId>_*` name prefix. | +15 lines. |
-| 7 | `src/core/search-registry.ts` | Add `purgeContentType(name): Promise<number>` — atomic delete of all rows in `bakin_<name>` table; no-op if antfly disabled. | ~30 line addition. |
-| 8 | `src/core/onboarding/plugin-assets.ts` | Add `removePluginAssets(pluginId): Promise<{ removed, kept }>` — walks `~/.openclaw/skills/`, removes dirs whose `.installedBy.pluginId` matches and `.userEdited` is absent. | ~50 line addition. |
+| 7 | `src/core/search-registry.ts` | Add `purgeContentType(name): Promise<number>` — atomic delete of all rows for a Bakin search content type through the active search adapter; no-op if search is disabled. | ~30 line addition. |
+| 8 | `src/core/onboarding/plugin-assets.ts` | Add `removePluginAssets(pluginId): Promise<{ removed, kept }>` — uses the runtime adapter to remove skills whose `.installedBy.pluginId` matches and `.userEdited` is absent. | ~50 line addition. |
 | 9 | `src/core/plugins/uninstall-snapshot.ts` | **New.** `snapshotUninstall({ pluginId, pluginDir, settingsFile, removedSkillDirs })` — builds `<id>-<ISO>.tar.gz` atomically into `~/.bakin/.uninstalled/`. | ~80 lines. |
 | 10 | `src/core/plugins/install.ts` | **New.** Extracted install flow (Zod manifest validation, lockfile write, consent prompt orchestration). Re-used by both `/api/plugins/install` and the (future) hot-reload path. | ~150 lines. |
 | 11 | `src/core/plugins/upgrade.ts` | **New.** `upgradePlugin(id, opts)` — git fetch / fast-forward + local re-cpSync, no-op detection, lockfile update, consent prompt for widened permissions. | ~200 lines. |
@@ -50,7 +50,7 @@ Companion to `.claude/specs/plugin-lifecycle.md`. Read the spec first for the *w
 | 22 | `tests/plugins/lifecycle/is-core-plugin.test.ts` | **New.** Layer A — predicate stable across init calls. | ~50 lines. |
 | 23 | `tests/plugins/lifecycle/hook-unregister-by-plugin.test.ts` | **New.** Layer B — sweep removes only matching plugin's handlers. | ~80 lines. |
 | 24 | `tests/plugins/lifecycle/exec-tools-remove-by-plugin.test.ts` | **New.** Layer B — prefix filter correctness, idempotent. | ~60 lines. |
-| 25 | `tests/plugins/lifecycle/search-purge-content-type.test.ts` | **New.** Layer B — purge against in-memory antfly stub. | ~100 lines. |
+| 25 | `tests/plugins/lifecycle/search-purge-content-type.test.ts` | **New.** Layer B — purge against in-memory search adapter stub. | ~100 lines. |
 | 26 | `tests/plugins/lifecycle/install-flow.integration.test.ts` | **New.** Layer C — local + hermetic-github install → lockfile shape correct. | ~200 lines. |
 | 27 | `tests/plugins/lifecycle/upgrade-flow.integration.test.ts` | **New.** Layer C — github push+upgrade, no-op short-circuit, force-push error, local resync, missing-source error, widened-permissions prompt. | ~300 lines. |
 | 28 | `tests/plugins/lifecycle/remove-flow.integration.test.ts` | **New.** Layer C — full teardown sweep + tarball + `.userEdited` honored + `onUninstall` error survives. | ~250 lines. |
@@ -427,12 +427,12 @@ bunx tsc --noEmit -p tsconfig.app.json
   ```
 
 `src/core/search-registry.ts`:
-- New: `purgeContentType(name: string): Promise<number>` — calls Antfly's bulk delete (`db.exec(\`DELETE FROM bakin_${name}\`)`); when antfly disabled, return 0. Drop the registration from the in-memory content-type map. Returns row count.
+- New: `purgeContentType(name: string): Promise<number>` — calls the active search adapter's bulk delete for `bakin_${name}`; when search is disabled, return 0. Drop the registration from the in-memory content-type map. Returns row count.
 
 **Tests:** Three smoke tests inline:
 - `tests/plugins/lifecycle/hook-unregister-smoke.test.ts` — register from two pluginIds, sweep one
 - `tests/plugins/lifecycle/exec-tool-prefix-smoke.test.ts` — prefix filter
-- `tests/plugins/lifecycle/search-purge-smoke.test.ts` — register content type, insert rows (against in-memory antfly stub), purge
+- `tests/plugins/lifecycle/search-purge-smoke.test.ts` — register content type, insert rows (against in-memory search adapter stub), purge
 
 Full coverage in C10.
 
@@ -467,7 +467,7 @@ bunx tsc --noEmit -p tsconfig.app.json
 
 `src/core/onboarding/plugin-assets.ts`:
 - Add `removePluginAssets(pluginId: string): Promise<{ removed: number; kept: number; removedDirs: string[] }>` per spec §3.6
-- Walks `~/.openclaw/skills/`, reads each `.installedBy`, filters by `pluginId`, checks for `.userEdited` sentinel, removes or keeps accordingly
+- Uses the runtime adapter skill API, reads each `.installedBy`, filters by `pluginId`, checks for `.userEdited` sentinel, removes or keeps accordingly
 
 `src/core/plugins/uninstall-snapshot.ts` (new):
 - Implements `snapshotUninstall` per spec §3.7
@@ -518,7 +518,7 @@ bunx tsc --noEmit -p tsconfig.app.json
 - [ ] Tarball lands at `~/.bakin/.uninstalled/<id>-<ISO>.tar.gz` and contains plugin dir + settings + filtered skills
 - [ ] Plugin dir gone from `~/.bakin/plugins/`
 - [ ] Settings JSON gone from `~/.bakin/plugin-settings/`
-- [ ] OpenClaw skills owned by plugin are gone (except `.userEdited` ones — assert kept count)
+- [ ] runtime skills owned by plugin are gone (except `.userEdited` ones — assert kept count)
 - [ ] Lockfile entry gone
 - [ ] Hook handlers, exec tools, workflow nodes, channels, health checks, search content types all unregistered (assert via post-state inspection)
 - [ ] `onUninstall` throwing does NOT block any cleanup step
@@ -673,14 +673,14 @@ Key infrastructure:
 - `tests/fixtures/plugins/hermetic-git.ts` — git helpers using `execFileSync('git', [...], { cwd })`. Skip with clear message if `git` not on PATH (`which git` fails)
 - `tests/fixtures/plugins/fixture-plugins/minimal/` — `bakin-plugin.json` (`{ id: 'fixture-minimal', name: 'Minimal', version: '0.1.0', entry: { server: 'index.ts' }, permissions: [] }`) + `index.ts` (`export default { activate() {} } as BakinPlugin`)
 - `tests/fixtures/plugins/fixture-plugins/with-permissions/` — same shape, `permissions: ['storage.write', 'events.emit']`
-- `tests/fixtures/plugins/fixture-plugins/with-skills/` — same shape, plus `defaults/openclaw-skills/example/SKILL.md`
+- `tests/fixtures/plugins/fixture-plugins/with-skills/` — same shape, plus `defaults/runtime-skills/example/SKILL.md`
 
 Each test file follows CLAUDE.md isolation:
 - Mock `getContentDir` (both paths) → temp dir
 - Mock `getOpenClawHome` → temp dir
 - Mock logger (no-op)
 - Mock watcher (no-op)
-- Mock openclaw-client (in-memory map)
+- Mock the active runtime boundary (`ctx.runtime` or `src/core/app-services`) with in-memory state
 - `process.env.BAKIN_HOME` + `OPENCLAW_HOME` set BEFORE imports
 - `afterAll(() => rmSync(testDir, { recursive: true, force: true }))`
 
@@ -695,7 +695,7 @@ Coverage matrix per spec §7:
 | A | `is-core-plugin.test.ts` | Predicate stable across init |
 | B | `hook-unregister-by-plugin.test.ts` | Plugin-scoped sweep correctness |
 | B | `exec-tools-remove-by-plugin.test.ts` | Prefix filter, idempotent |
-| B | `search-purge-content-type.test.ts` | Bulk delete + content-type unregister; antfly-disabled no-op |
+| B | `search-purge-content-type.test.ts` | Bulk delete + content-type unregister; search-disabled no-op |
 | C | `install-flow.integration.test.ts` | Local + hermetic-github → lockfile shape correct |
 | C | `upgrade-flow.integration.test.ts` | Push+upgrade, no-op short-circuit, force-push error, local resync, missing-source error, widened-perms prompt |
 | C | `remove-flow.integration.test.ts` | Full teardown, tarball, `.userEdited` honored, `onUninstall` error survives |

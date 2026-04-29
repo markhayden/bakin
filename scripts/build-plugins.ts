@@ -4,9 +4,9 @@
  * script owns the list of plugins and the externals list.
  *
  * Server entries use --target=bun and --packages=external so node_modules
- * deps (chokidar, zod, js-yaml, @antfly/sdk, etc.) stay out of the plugin
- * bundle. The host process already has them installed; bun:sqlite is
- * resolved at runtime by Bun itself.
+ * deps (chokidar, zod, js-yaml, search SDKs, etc.) stay out of the plugin
+ * bundle. The host process already has them installed; native Bun modules
+ * are resolved at runtime by Bun itself.
  *
  * Client entries use --target=browser. Only react + @bakin/sdk/* are
  * externalized — other client deps (lucide-react, zustand, shadcn
@@ -16,8 +16,8 @@
 import { buildOnePlugin } from './dev-build-one-plugin'
 
 const CORE_PLUGINS = [
-  'tasks', 'team', 'workflows', 'projects', 'assets',
-  'schedule', 'memory', 'messaging', 'models', 'health',
+  'tasks', 'team', 'workflows', 'assets',
+  'schedule', 'memory', 'models', 'health',
 ]
 
 const EXTERNAL = [

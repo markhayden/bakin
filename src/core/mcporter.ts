@@ -12,7 +12,8 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { execSync } from 'child_process'
 import { createLogger } from './logger'
-import { getAgentIds } from '@bakin/core/openclaw-config'
+import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
+import { createAppServices, maybeGetAppServices } from './app-services'
 
 const log = createLogger('mcporter')
 
@@ -88,6 +89,17 @@ function writeConfig(config: McporterConfig): void {
   writeFileSync(mcporterConfig(), JSON.stringify(config, null, 2) + '\n', 'utf-8')
 }
 
+async function getRuntimeForMcporter(): Promise<AgentRuntimeAdapter> {
+  const existing = maybeGetAppServices()?.runtime
+  if (existing) return existing
+  return (await createAppServices()).runtime
+}
+
+async function listRuntimeAgentIds(): Promise<string[]> {
+  const runtime = await getRuntimeForMcporter()
+  return (await runtime.agents.list()).map((agent) => agent.id).filter(Boolean)
+}
+
 /**
  * Get the expected mcporter server name for an agent.
  */
@@ -107,8 +119,8 @@ export function mcpUrl(agent: string, port: number): string {
  * Idempotent — only writes if entries are missing or outdated.
  * Returns list of changes made.
  */
-export function syncConfig(port: number): string[] {
-  const agents = getAgentIds()
+export async function syncConfig(port: number): Promise<string[]> {
+  const agents = await listRuntimeAgentIds()
   const config = readConfig()
   const changes: string[] = []
 
@@ -150,13 +162,13 @@ export function syncConfig(port: number): string[] {
 /**
  * Verify mcporter config is correct. Returns diagnostic info.
  */
-export function verifyConfig(port: number): {
+export async function verifyConfig(port: number): Promise<{
   installed: boolean
   configExists: boolean
   agentEntries: Array<{ agent: string; name: string; url: string; correct: boolean }>
   staleEntries: string[]
-} {
-  const agents = getAgentIds()
+}> {
+  const agents = await listRuntimeAgentIds()
   const config = readConfig()
   const servers = config.mcpServers || {}
 
@@ -191,13 +203,13 @@ export function verifyConfig(port: number): {
  * Full setup: ensure installed + sync config.
  * Returns true if everything is ready.
  */
-export function setup(port: number): boolean {
+export async function setup(port: number): Promise<boolean> {
   if (!ensureInstalled()) {
     log.error('mcporter setup failed — could not install')
     return false
   }
 
-  const changes = syncConfig(port)
+  const changes = await syncConfig(port)
   if (changes.length > 0) {
     log.info('mcporter config synced', { changes })
   } else {

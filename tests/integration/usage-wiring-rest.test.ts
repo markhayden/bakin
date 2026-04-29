@@ -41,9 +41,9 @@ mock.module('../../src/core/logger', () => ({
 // Defensive: even though this test never imports the tasks plugin, the repo's
 // test-isolation hook scans test files for plugin references and requires a
 // mock any time "plugins/tasks" appears in the source. Several `/api/tasks`
-// fixture URLs trip that check, so we stub flow-store to keep the hook green
+// fixture URLs trip that check, so we stub task-store to keep the hook green
 // and guarantee the tasks storage layer can never be reached from this file.
-mock.module('../../plugins/tasks/lib/flow-store', () => ({}))
+mock.module('@/core/task-store', () => ({}))
 
 import { trackResponse, normalizePath } from '../../src/core/rest-tracking'
 import { getUsageFeed, clearUsage } from '../../src/core/usage'

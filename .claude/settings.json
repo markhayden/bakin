@@ -10,6 +10,12 @@
             "command": "node .claude/hooks/check-test-mocks.mjs",
             "timeout": 10,
             "statusMessage": "Checking test mocks..."
+          },
+          {
+            "type": "command",
+            "command": "node .claude/hooks/check-adapter-boundary.mjs",
+            "timeout": 10,
+            "statusMessage": "Checking adapter boundary..."
           }
         ]
       }

@@ -24,7 +24,7 @@ import {
   DialogTitle,
 } from "@bakin/sdk/ui"
 import { BakinDrawer } from "@bakin/sdk/components"
-import { useGatewayStatus } from "@bakin/sdk/hooks"
+import { useRuntimeStatus } from "@bakin/sdk/hooks"
 import { useAgentStore, useAgentColor, useMainAgentId, usePackageState } from '@bakin/sdk/hooks'
 import { buildGraph } from '../lib/build-graph'
 import { AgentForm, type AgentFormData } from './agent-form'
@@ -194,7 +194,7 @@ export function TeamGrid() {
   const reload = useAgentStore((s) => s.load)
   const [showCreate, setShowCreate] = useState(false)
   const [showTeams, setShowTeams] = useState(false)
-  const gateway = useGatewayStatus()
+  const runtimeStatus = useRuntimeStatus()
   const [submitting, setSubmitting] = useState(false)
   const [pendingCreate, setPendingCreate] = useState<{ data: AgentFormData; avatarFile: File | null } | null>(null)
   const [createError, setCreateError] = useState<string | null>(null)
@@ -296,19 +296,19 @@ export function TeamGrid() {
       </div>
 
       {/* Restart banner */}
-      {gateway.restartNeeded && (
+      {runtimeStatus.restartNeeded && (
         <div className="flex items-center justify-between border-b border-amber-500/20 bg-amber-500/10 px-6 py-2.5">
           <span className="text-sm text-amber-400">
-            Gateway config out of sync. Restart to apply changes.
+            Runtime config out of sync. Restart to apply changes.
           </span>
           <Button
-            onClick={gateway.restart}
-            disabled={gateway.restarting}
+            onClick={runtimeStatus.restart}
+            disabled={runtimeStatus.restarting}
             variant="outline"
             size="sm"
             className="border-amber-500/30 text-amber-400 hover:bg-amber-500/20"
           >
-            {gateway.restarting ? 'Restarting...' : 'Restart Gateway'}
+            {runtimeStatus.restarting ? 'Restarting...' : 'Restart Runtime'}
           </Button>
         </div>
       )}
@@ -352,14 +352,14 @@ export function TeamGrid() {
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             This will register <span className="text-foreground font-medium">{pendingCreate?.data.name}</span> in
-            OpenClaw and create its workspace.
+            the active runtime and create its workspace.
           </p>
           {createError && (
             <p className="text-sm text-destructive">{createError}</p>
           )}
           <div className="flex flex-col gap-2 mt-2">
             <Button onClick={handleConfirmCreate} disabled={submitting}>
-              {submitting ? <><Loader2 className="size-3.5 animate-spin mr-1.5" />Creating...</> : 'Create & Restart Gateway'}
+              {submitting ? <><Loader2 className="size-3.5 animate-spin mr-1.5" />Creating...</> : 'Create & Restart Runtime'}
             </Button>
             <Button
               variant="outline"
@@ -397,7 +397,7 @@ export function TeamGrid() {
               Save Without Restart
             </Button>
             <p className="text-[11px] text-muted-foreground/70 text-center">
-              Without a restart, the agent won&apos;t be live until the gateway is manually restarted.
+              Without a restart, the agent won&apos;t be live until the runtime is manually restarted.
             </p>
           </div>
         </DialogContent>

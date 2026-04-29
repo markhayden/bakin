@@ -28,14 +28,14 @@ mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => `${testDir}/.openclaw`,
   getOpenClawPath: (p: string = '') => `${testDir}/.openclaw/${p}`,
 }))
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
-mock.module('../../plugins/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,
@@ -159,5 +159,20 @@ describe('runPluginHealthChecks', () => {
     const results = await runPluginHealthChecks()
     expect(results).toHaveLength(3)
     expect(results.map(r => r.check)).toEqual(['multi.a', 'multi.b', 'multi.c'])
+  })
+
+  it('isolates a check that returns a non-array — synthetic error result', async () => {
+    registerPluginHealthCheck('test-a', {
+      id: 'bad-shape',
+      name: 'Returns undefined',
+      // Type-cast to bypass the contract — this simulates a buggy/malicious plugin
+      run: (async () => undefined) as unknown as () => Promise<import('../../packages/core/src/plugin-types').HealthCheckResult[]>,
+    })
+
+    const results = await runPluginHealthChecks()
+    expect(results).toHaveLength(1)
+    expect(results[0].check).toBe('test-a.bad-shape')
+    expect(results[0].status).toBe('error')
+    expect(results[0].message).toMatch(/non-array/)
   })
 })

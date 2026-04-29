@@ -10,7 +10,7 @@ import { tmpdir } from 'os'
 process.env.HOME = '/tmp/bakin-test-content-dir-guard-fake'
 
 // Satisfy the test-mock hook — the test file imports via @bakin/workflows
-// alias and has 'openclaw' in a comment, so the hook flags flow-store and
+// alias and has 'openclaw' in a comment, so the hook flags task-store and
 // openclaw-home as required even though this test never touches either.
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
@@ -18,8 +18,8 @@ mock.module('@bakin/core/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
-mock.module('../../plugins/tasks/lib/flow-store', () => ({}))
-mock.module('../../packages/core/src/openclaw-home', () => ({
+mock.module('@/core/task-store', () => ({}))
+mock.module('../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => '/tmp/bakin-test-content-dir-guard-fake',
   getOpenClawPath: (...parts: string[]) => parts.join('/'),
   resetOpenClawHome: mock(),
@@ -30,20 +30,16 @@ const { getContentDir, resetContentDir, initBakinHome } = require('@bakin/workfl
 describe('content-dir', () => {
   const testDir = join(tmpdir(), `bakin-test-contentdir-${Date.now()}`)
   const origBakinHome = process.env.BAKIN_HOME
-  const origContentDir = process.env.CONTENT_DIR
 
   beforeEach(() => {
     resetContentDir()
     delete process.env.BAKIN_HOME
-    delete process.env.CONTENT_DIR
   })
 
   afterEach(() => {
     resetContentDir()
     if (origBakinHome) process.env.BAKIN_HOME = origBakinHome
     else delete process.env.BAKIN_HOME
-    if (origContentDir) process.env.CONTENT_DIR = origContentDir
-    else delete process.env.CONTENT_DIR
     rmSync(testDir, { recursive: true, force: true })
   })
 
@@ -53,19 +49,10 @@ describe('content-dir', () => {
     expect(getContentDir()).toBe(customDir)
   })
 
-  it('uses CONTENT_DIR env var when set and BAKIN_HOME is not', () => {
-    const customDir = join(testDir, 'custom-content')
-    process.env.CONTENT_DIR = customDir
-    expect(getContentDir()).toBe(customDir)
-  })
-
-  it('falls back to ./content/ when ~/.bakin/ does not exist', () => {
-    // Create a ./content/ directory in a temp working dir
-    const contentDir = join(process.cwd(), 'content')
-    // The function should resolve to ./content/ since ~/.bakin/ won't
-    // exist in most test environments. We just verify the function doesn't crash.
-    const result = getContentDir()
-    expect(typeof result).toBe('string')
+  it('defaults to ~/.bakin when BAKIN_HOME is not set', () => {
+    const dir = getContentDir()
+    expect(dir.endsWith('/.bakin')).toBe(true)
+    expect(dir).not.toContain('/content')
   })
 })
 
@@ -95,7 +82,6 @@ describe('initBakinHome', () => {
     expect(existsSync(join(testDir, 'assets', 'inbox'))).toBe(true)
 
     // Verify other directories
-    expect(existsSync(join(testDir, 'projects'))).toBe(true)
     expect(existsSync(join(testDir, 'team', 'personas'))).toBe(true)
 
     expect(created.length).toBeGreaterThan(0)

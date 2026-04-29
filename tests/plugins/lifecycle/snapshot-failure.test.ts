@@ -16,10 +16,12 @@ import { mkdirSync, writeFileSync, rmSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
+import { installFilesystemRuntimeAppServices } from '../../helpers/runtime-app-services'
 
 const testDir = join(tmpdir(), `bakin-test-snapshot-fail-${Date.now()}-${randomUUID()}`)
 process.env.BAKIN_HOME = testDir
-process.env.OPENCLAW_HOME = join(testDir, 'openclaw')
+const openClawDir = join(testDir, 'openclaw')
+process.env.OPENCLAW_HOME = openClawDir
 
 mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -29,9 +31,9 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
-  getOpenClawHome: () => join(testDir, 'openclaw'),
-  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+mock.module('@bakin/adapter-openclaw/home', () => ({
+  getOpenClawHome: () => openClawDir,
+  getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
   resetOpenClawHome: () => {},
 }))
 mock.module('../../../src/core/logger', () => ({
@@ -64,6 +66,8 @@ beforeEach(() => {
   // Fresh state — wipe lockfile + plugin dir.
   rmSync(join(testDir, 'plugins'), { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
+  mkdirSync(openClawDir, { recursive: true })
+  installFilesystemRuntimeAppServices({ openClawDir })
 })
 
 function makeRequest(body: unknown): Request {

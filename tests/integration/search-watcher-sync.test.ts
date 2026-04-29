@@ -1,17 +1,17 @@
 /**
  * End-to-end search ↔ watcher integration test.
  *
- * Validates the FULL pipeline for all three migrated plugins:
+ * Validates the FULL pipeline for file-backed core plugins:
  *
  *   plugin.activate(ctx)
  *     → ctx.search.registerFileBackedContentType(def)
  *     → search-registry.buildSearchAPI registers sync/unlink hooks
  *     → chokidar fires add / unlink
  *     → hooks invoke def.onSync / def.onUnlink (or default mapper flow)
- *     → antfly.indexDocument / removeDocument
+ *     → search adapter index/remove calls
  *
  * Chokidar is mocked so we can fire `add` / `unlink` deterministically.
- * Antfly is mocked so we can capture the resulting index/remove calls.
+ * SearchAdapter is mocked so we can capture the resulting index/remove calls.
  * Everything else (search-registry, watcher hook plumbing, plugin code)
  * is the real production code path.
  */
@@ -20,6 +20,9 @@ import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { FSWatcher } from 'chokidar'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
+import { clearSearchAdapter, createSearchAdapterHarness, installSearchAdapter } from '../helpers/search-adapter'
 
 const testDir = join(tmpdir(), `bakin-int-search-watcher-${process.pid}-${Date.now()}`)
 
@@ -33,7 +36,6 @@ mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     home: testDir,
-    projects: join(testDir, 'projects'),
     workflows: join(testDir, 'workflows'),
     assets: join(testDir, 'assets'),
   }),
@@ -60,37 +62,11 @@ mock.module('../../src/core/audit', () => ({
   appendAudit: mock(),
 }))
 
-mock.module('../../src/core/discord-gateway', () => ({
-  startGateway: mock(),
-  stopGateway: mock(),
-  onGateInteraction: mock(),
-  isGatewayConnected: mock(() => false),
-}))
-
-mock.module('../../scripts/lib/post-discord', () => ({
-  loadDiscordConfig: mock(() => null),
-}))
-
-mock.module('../../plugins/tasks/lib/flow-store', () => ({}))
+mock.module('@/core/task-store', () => ({}))
 
 const indexCalls: Array<{ table: string; key: string; doc: Record<string, unknown> }> = []
 const removeCalls: Array<{ table: string; key: string }> = []
-
-mock.module('../../src/core/antfly', () => ({
-  enabled: () => true,
-  indexDocument: mock(async (table: string, key: string, doc: Record<string, unknown>) => {
-    indexCalls.push({ table, key, doc })
-  }),
-  removeDocument: mock(async (table: string, key: string) => {
-    removeCalls.push({ table, key })
-  }),
-  getClient: mock(() => null),
-  createTable: mock(async () => {}),
-  scanTable: mock(async () => []),
-  searchTable: mock(async () => ({ hits: { hits: [], total: 0 }, took: 0 })),
-  deleteTable: mock(async () => {}),
-  getIndexHealth: mock(async () => ({ ready: 0, total: 0, queued: 0 })),
-}))
+let searchHarness: ReturnType<typeof createSearchAdapterHarness>
 
 mock.module('chokidar', () => ({
   watch: mock().mockReturnValue({
@@ -103,9 +79,8 @@ import { start, stop } from '../../src/core/watcher'
 import { buildSearchAPI, resetSearchRegistry } from '../../src/core/search-registry'
 import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
-import type { PluginContext, BakinPlugin } from '../../src/lib/plugin-types'
+import type { PluginContext, BakinPlugin } from '@bakin/core/plugin-types'
 
-import projectsPlugin from '../../plugins/projects'
 import workflowsPlugin from '../../plugins/workflows'
 import assetsPlugin from '../../plugins/assets'
 
@@ -135,6 +110,14 @@ function makeCtx(plugin: BakinPlugin): PluginContext {
     storage,
     events,
     pluginId: plugin.id,
+    runtime: createMockRuntimeAdapter(),
+    tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
+    assets: {
+      getByFilename: mock(async () => null),
+      list: mock(async () => []),
+      exists: mock(async () => false),
+      fileRef: mock(async (filename: string) => ({ kind: 'asset' as const, filename })),
+    },
     registerNav: mock(),
     registerRoute: mock(),
     registerSlot: mock(),
@@ -151,6 +134,8 @@ function makeCtx(plugin: BakinPlugin): PluginContext {
     search,
     hooks: {
       register: mock(() => () => {}),
+      call: mock(async (_name, data) => data),
+      callAll: mock(async () => undefined),
       has: mock(() => false),
       invoke: mock(async () => undefined),
     },
@@ -167,41 +152,27 @@ async function flushHooks(): Promise<void> {
 describe('integration: search ↔ watcher sync', () => {
   beforeEach(() => {
     rmSync(testDir, { recursive: true, force: true })
-    mkdirSync(join(testDir, 'projects'), { recursive: true })
     mkdirSync(join(testDir, 'workflows', 'definitions'), { recursive: true })
     mkdirSync(join(testDir, 'workflows', 'instances'), { recursive: true })
     mkdirSync(join(testDir, 'assets', 'images', 'task-1'), { recursive: true })
     indexCalls.length = 0
     removeCalls.length = 0
     resetSearchRegistry()
+    searchHarness = createSearchAdapterHarness()
+    searchHarness.calls.documentsIndex.mockImplementation(async (table, key, doc) => {
+      indexCalls.push({ table, key, doc })
+    })
+    searchHarness.calls.documentsRemove.mockImplementation(async (table, key) => {
+      removeCalls.push({ table, key })
+    })
+    installSearchAdapter(searchHarness.adapter)
     mock.clearAllMocks()
   })
 
   afterEach(async () => {
     await stop()
+    clearSearchAdapter()
     rmSync(testDir, { recursive: true, force: true })
-  })
-
-  it('projects plugin: write triggers index, delete triggers remove', async () => {
-    await projectsPlugin.activate(makeCtx(projectsPlugin))
-    const eventBus = new BakinEventBus(() => {})
-    start({ contentDir: testDir, eventBus, onInboxFile: mock() })
-    const handlers = await getChokidarHandlers()
-
-    const projectFile = join(testDir, 'projects', 'integration.md')
-    writeFileSync(projectFile, '---\ntitle: Integration\nstatus: active\n---\nbody\n')
-    handlers.add(projectFile)
-    await flushHooks()
-
-    const projectIndex = indexCalls.find(c => c.table === 'bakin_projects')
-    expect(projectIndex).toBeDefined()
-    expect(projectIndex!.key).toBe('integration')
-    expect(projectIndex!.doc.title).toBe('Integration')
-
-    handlers.unlink(projectFile)
-    await flushHooks()
-
-    expect(removeCalls).toContainEqual({ table: 'bakin_projects', key: 'integration' })
   })
 
   it('workflows plugin: definition YAML add/delete flows through search', async () => {

@@ -3,7 +3,7 @@
  * Tests all 7 API routes and 9 MCP exec tools registered by the plugin.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync, existsSync, readdirSync, readFileSync } from 'fs'
+import { mkdirSync, rmSync, writeFileSync, existsSync, readdirSync, readFileSync, renameSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import {
@@ -47,10 +47,6 @@ mock.module('../../../src/core/logger', () => ({
 mock.module('../../../src/core/watcher', () => ({
   registerSyncHook: mock(),
   registerUnlinkHook: mock(),
-}))
-
-mock.module('../../../src/core/openclaw-client', () => ({
-  sendToAgent: mock(),
 }))
 
 // Import the plugin after mocks are set up
@@ -205,6 +201,7 @@ describe('exec tool registration', () => {
 
   it.each([
     'bakin_exec_assets_list',
+    'bakin_exec_assets_get',
     'bakin_exec_assets_save',
     'bakin_exec_assets_delete',
     'bakin_exec_assets_link',
@@ -263,10 +260,10 @@ describe('GET / — list assets', () => {
     }
   })
 
-  it('looks up single asset by path', async () => {
+  it('looks up single asset by filename', async () => {
     const route = findRoute(plugin.routes, 'GET', '/')!
     const { status, body } = await callRoute(route, plugin.ctx, {
-      searchParams: { path: relPathFor(README) },
+      searchParams: { filename: README },
     })
 
     expect(status).toBe(200)
@@ -275,10 +272,10 @@ describe('GET / — list assets', () => {
     expect(assets[0].filename).toBe(README)
   })
 
-  it('returns empty when path not found', async () => {
+  it('returns empty when filename not found', async () => {
     const route = findRoute(plugin.routes, 'GET', '/')!
     const { status, body } = await callRoute(route, plugin.ctx, {
-      searchParams: { path: 'assets/store/2026-03/20260320-ghost-ffffffff.png' },
+      searchParams: { filename: '20260320-ghost-ffffffff.png' },
     })
 
     expect(status).toBe(200)
@@ -330,7 +327,7 @@ describe('GET /file — serve asset file', () => {
   it('serves an existing file with correct content-type', async () => {
     const route = findRoute(plugin.routes, 'GET', '/file')!
     const req = makeRequest('/file', {
-      searchParams: { path: relPathFor(HERO) },
+      searchParams: { name: HERO },
     })
     const res = await route.handler(req, plugin.ctx)
 
@@ -346,7 +343,7 @@ describe('GET /file — serve asset file', () => {
   it('serves a markdown file', async () => {
     const route = findRoute(plugin.routes, 'GET', '/file')!
     const req = makeRequest('/file', {
-      searchParams: { path: relPathFor(README) },
+      searchParams: { name: README },
     })
     const res = await route.handler(req, plugin.ctx)
 
@@ -354,30 +351,30 @@ describe('GET /file — serve asset file', () => {
     expect(res.headers.get('Content-Type')).toBe('text/markdown')
   })
 
-  it('returns 400 when path is missing', async () => {
+  it('returns 400 when name is missing', async () => {
     const route = findRoute(plugin.routes, 'GET', '/file')!
     const req = makeRequest('/file')
     const res = await route.handler(req, plugin.ctx)
 
     expect(res.status).toBe(400)
     const body = await res.json()
-    expect(body.error).toMatch(/(path|name).*required/i)
+    expect(body.error).toMatch(/name.*required/i)
   })
 
-  it('returns 400 for path traversal attempt', async () => {
+  it('returns 400 for filename traversal attempt', async () => {
     const route = findRoute(plugin.routes, 'GET', '/file')!
     const req = makeRequest('/file', {
-      searchParams: { path: 'assets/../../../etc/passwd' },
+      searchParams: { name: '../etc/passwd' },
     })
     const res = await route.handler(req, plugin.ctx)
 
     expect(res.status).toBe(400)
   })
 
-  it('returns 400 when path does not start with assets/', async () => {
+  it('does not accept the removed path query parameter', async () => {
     const route = findRoute(plugin.routes, 'GET', '/file')!
     const req = makeRequest('/file', {
-      searchParams: { path: 'projects/secret.md' },
+      searchParams: { path: relPathFor(HERO) },
     })
     const res = await route.handler(req, plugin.ctx)
 
@@ -387,7 +384,7 @@ describe('GET /file — serve asset file', () => {
   it('returns 404 for nonexistent file', async () => {
     const route = findRoute(plugin.routes, 'GET', '/file')!
     const req = makeRequest('/file', {
-      searchParams: { path: 'assets/store/2026-03/20260320-missing-ffffffff.png' },
+      searchParams: { name: '20260320-missing-ffffffff.png' },
     })
     const res = await route.handler(req, plugin.ctx)
 
@@ -443,9 +440,8 @@ describe('DELETE / — soft-delete asset', () => {
       type: 'images',
     })
 
-    const rel = relPathFor(filename)
     const route = findRoute(plugin.routes, 'DELETE', '/')!
-    const req = makeRequest(`/?path=${rel}`, {
+    const req = makeRequest(`/?filename=${filename}`, {
       method: 'DELETE',
     })
     const res = await route.handler(req, plugin.ctx)
@@ -453,6 +449,7 @@ describe('DELETE / — soft-delete asset', () => {
 
     expect(res.status).toBe(200)
     expect(body.ok).toBe(true)
+    const rel = relPathFor(filename)
     expect(body.trashed).toContain(rel)
 
     // File should be in .trash/
@@ -475,9 +472,8 @@ describe('DELETE / — soft-delete asset', () => {
     })
     createAssetFixture(thumb, 'thumb')
 
-    const rel = relPathFor(primary)
     const route = findRoute(plugin.routes, 'DELETE', '/')!
-    const req = makeRequest(`/?path=${rel}`, {
+    const req = makeRequest(`/?filename=${primary}`, {
       method: 'DELETE',
     })
     const res = await route.handler(req, plugin.ctx)
@@ -485,6 +481,7 @@ describe('DELETE / — soft-delete asset', () => {
 
     expect(res.status).toBe(200)
     expect(body.trashed.length).toBeGreaterThanOrEqual(2)
+    const rel = relPathFor(primary)
     expect(existsSync(join(testDir, rel))).toBe(false)
     expect(existsSync(join(testDir, relPathFor(thumb)))).toBe(false)
   })
@@ -499,7 +496,7 @@ describe('DELETE / — soft-delete asset', () => {
     })
 
     const route = findRoute(plugin.routes, 'DELETE', '/')!
-    const req = makeRequest(`/?path=${relPathFor(filename)}`, {
+    const req = makeRequest(`/?filename=${filename}`, {
       method: 'DELETE',
     })
     await route.handler(req, plugin.ctx)
@@ -508,7 +505,7 @@ describe('DELETE / — soft-delete asset', () => {
     expect(plugin.ctx.activity.log).toHaveBeenCalledWith('system', 'Asset deleted')
   })
 
-  it('returns 400 when path is missing', async () => {
+  it('returns 400 when filename is missing', async () => {
     const route = findRoute(plugin.routes, 'DELETE', '/')!
     const req = makeRequest('/', { method: 'DELETE' })
     const res = await route.handler(req, plugin.ctx)
@@ -516,9 +513,9 @@ describe('DELETE / — soft-delete asset', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns 400 for path traversal', async () => {
+  it('returns 400 for unsafe filename', async () => {
     const route = findRoute(plugin.routes, 'DELETE', '/')!
-    const req = makeRequest('/?path=assets/../../../etc/passwd', { method: 'DELETE' })
+    const req = makeRequest('/?filename=assets/../../../etc/passwd', { method: 'DELETE' })
     const res = await route.handler(req, plugin.ctx)
 
     expect(res.status).toBe(400)
@@ -749,6 +746,41 @@ describe('exec tool: bakin_exec_assets_list', () => {
 })
 
 // ===========================================================================
+// Exec tool: bakin_exec_assets_get
+// ===========================================================================
+
+describe('exec tool: bakin_exec_assets_get', () => {
+  it('reads asset metadata by canonical filename', async () => {
+    const filename = '20260325-tool-get-abcd1234.md'
+    createAssetFixture(filename, '# Metadata', {
+      agent: 'scribe',
+      taskId: 'task-tool-get',
+      created: '2026-03-25T00:00:00Z',
+      type: 'text',
+    })
+
+    const tool = findTool(plugin.execTools, 'bakin_exec_assets_get')!
+    const result = await callTool(tool, { filename }, 'scribe')
+    const asset = result.asset as { filename: string; path: string; taskId: string }
+
+    expect(result.ok).toBe(true)
+    expect(asset.filename).toBe(filename)
+    expect(asset.path).toBe(relPathFor(filename))
+    expect(asset.taskId).toBe('task-tool-get')
+  })
+
+  it('rejects path-shaped filenames', async () => {
+    const tool = findTool(plugin.execTools, 'bakin_exec_assets_get')!
+    const result = await callTool(tool, {
+      filename: 'assets/store/2026-03/20260325-tool-get-abcd1234.md',
+    }, 'scribe')
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/invalid filename/i)
+  })
+})
+
+// ===========================================================================
 // Exec tool: bakin_exec_assets_save
 // ===========================================================================
 
@@ -818,13 +850,13 @@ describe('exec tool: bakin_exec_assets_delete', () => {
       type: 'text',
     })
 
-    const rel = relPathFor(filename)
     const tool = findTool(plugin.execTools, 'bakin_exec_assets_delete')!
     const result = await callTool(tool, {
-      path: rel,
+      filename,
     }, 'scribe')
 
     expect(result.ok).toBe(true)
+    const rel = relPathFor(filename)
     expect(existsSync(join(testDir, rel))).toBe(false)
   })
 
@@ -1018,9 +1050,8 @@ describe('exec tool: bakin_exec_assets_audit', () => {
 
   it('returns error when assets directory does not exist', async () => {
     // Temporarily rename assets dir
-    const { renameSync: rn } = require('fs') as typeof import('fs')
     const backup = assetsRoot + '_backup'
-    rn(assetsRoot, backup)
+    renameSync(assetsRoot, backup)
 
     try {
       const tool = findTool(plugin.execTools, 'bakin_exec_assets_audit')!
@@ -1028,7 +1059,7 @@ describe('exec tool: bakin_exec_assets_audit', () => {
       expect(result.ok).toBe(false)
       expect(result.error).toMatch(/not found/i)
     } finally {
-      rn(backup, assetsRoot)
+      renameSync(backup, assetsRoot)
     }
   })
 })
@@ -1219,7 +1250,7 @@ describe('DELETE route integration — browser URL simulation', () => {
   }
 
   it('DELETE / matches when browser sends query-param path', () => {
-    // Browser sends: DELETE /api/plugins/assets?path=assets/store/{ym}/{file}
+    // Browser sends: DELETE /api/plugins/assets?filename={canonical-filename}
     // Next.js extracts: pathSegments = [] → routePath = "/"
     const routePath = '/'
     const match = matchRoute(plugin.routes, routePath, 'DELETE')
@@ -1229,7 +1260,7 @@ describe('DELETE route integration — browser URL simulation', () => {
     expect(match!.route.method).toBe('DELETE')
   })
 
-  it('handler receives path from query param and deletes successfully', async () => {
+  it('handler receives filename from query param and deletes successfully', async () => {
     const filename = '20260325-browser-delete-66666666.png'
     createAssetFixture(filename, 'image-data', {
       agent: 'pixel',
@@ -1238,26 +1269,24 @@ describe('DELETE route integration — browser URL simulation', () => {
       type: 'images',
     })
 
-    // Simulate the exact URL the browser constructs:
-    // fetch(`/api/plugins/assets?path=${encodeURIComponent(path)}`, { method: 'DELETE' })
-    const assetPath = relPathFor(filename)
     const route = findRoute(plugin.routes, 'DELETE', '/')!
-    const req = makeRequest(`/?path=${encodeURIComponent(assetPath)}`, { method: 'DELETE' })
+    const req = makeRequest(`/?filename=${encodeURIComponent(filename)}`, { method: 'DELETE' })
     const res = await route.handler(req, plugin.ctx)
     const body = await res.json()
 
     expect(res.status).toBe(200)
     expect(body.ok).toBe(true)
+    const assetPath = relPathFor(filename)
     expect(body.trashed).toContain(assetPath)
     expect(existsSync(join(testDir, assetPath))).toBe(false)
   })
 
   it('old path-based URL would NOT have matched the parameterized route', () => {
     // Before the fix, the client sent:
-    // DELETE /api/plugins/assets/assets%2Fimages%2Ftask%2Ffile.png
-    // Next.js decoded this to pathSegments = ["assets", "images", "task", "file.png"]
-    // routePath = "/assets/images/task/file.png" — 4 segments vs 1 in /:assetPath
-    const routePath = '/assets/images/task/file.png'
+    // DELETE /api/plugins/assets/assets%2Fstore%2F2026-03%2Ffile.png
+    // Next.js decoded this to pathSegments = ["assets", "store", "2026-03", "file.png"]
+    // routePath = "/assets/store/2026-03/file.png" — 4 segments vs 1 in /:assetPath
+    const routePath = '/assets/store/2026-03/file.png'
     const match = matchRoute(plugin.routes, routePath, 'DELETE')
 
     // This should NOT match any route (proving the old approach was broken)
@@ -1493,7 +1522,7 @@ describe('PUT /content — update asset content', () => {
     const route = findRoute(plugin.routes, 'PUT', '/content')!
     const req = makeRequest('/content', {
       method: 'PUT',
-      body: { path: rel, content: '# Updated content' },
+      body: { filename, content: '# Updated content' },
     })
     const res = await route.handler(req, plugin.ctx)
     const body = await res.json()
@@ -1510,7 +1539,7 @@ describe('PUT /content — update asset content', () => {
     const route = findRoute(plugin.routes, 'PUT', '/content')!
     const req = makeRequest('/content', {
       method: 'PUT',
-      body: { path: relPathFor(HERO), content: 'not allowed' },
+      body: { filename: HERO, content: 'not allowed' },
     })
     const res = await route.handler(req, plugin.ctx)
 
@@ -1519,11 +1548,11 @@ describe('PUT /content — update asset content', () => {
     expect(body.error).toMatch(/not editable/i)
   })
 
-  it('returns 400 for path traversal', async () => {
+  it('returns 400 for unsafe filename', async () => {
     const route = findRoute(plugin.routes, 'PUT', '/content')!
     const req = makeRequest('/content', {
       method: 'PUT',
-      body: { path: 'assets/../../../etc/passwd', content: 'hack' },
+      body: { filename: 'assets/../../../etc/passwd', content: 'hack' },
     })
     const res = await route.handler(req, plugin.ctx)
 
@@ -1534,7 +1563,7 @@ describe('PUT /content — update asset content', () => {
     const route = findRoute(plugin.routes, 'PUT', '/content')!
     const req = makeRequest('/content', {
       method: 'PUT',
-      body: { path: 'assets/store/2026-04/20260415-missing-ffffffff.md', content: 'test' },
+      body: { filename: '20260415-missing-ffffffff.md', content: 'test' },
     })
     const res = await route.handler(req, plugin.ctx)
 
@@ -1545,7 +1574,7 @@ describe('PUT /content — update asset content', () => {
     const route = findRoute(plugin.routes, 'PUT', '/content')!
     const req = makeRequest('/content', {
       method: 'PUT',
-      body: { path: relPathFor(README) },
+      body: { filename: README },
     })
     const res = await route.handler(req, plugin.ctx)
 
@@ -1592,7 +1621,7 @@ describe('bakin_exec_assets_update_content', () => {
 
     const tool = findTool(plugin.execTools, 'bakin_exec_assets_update_content')!
     const result = await callTool(tool, {
-      path: rel,
+      filename,
       content: '# Revised',
     }, 'scribe')
 

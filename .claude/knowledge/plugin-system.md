@@ -106,7 +106,7 @@ PluginLockEntry {
   remoteHeadSha? // last seen remote sha (github only)
   sourceTreeSha? // install/upgrade time tree sha (local only)
   lastSourceTreeSha? // --check time tree sha (local only)
-  installedSkills? // OpenClaw skill names this plugin shipped — the
+  installedSkills? // runtime skill names this plugin shipped — the
                   // authoritative allowlist for uninstall (defeats fake
                   // .installedBy markers per #119 hardening)
 }
@@ -145,6 +145,36 @@ commit submits source B):
 Zero-permission plugins skip the consent gate (no token needed).
 `--yes` short-circuits the prompt for scripted/CI installs but the
 token round-trip still runs for the binding check.
+
+#### Monorepo `#subpath` syntax (Phase 1)
+
+`bakin plugins install github:user/repo#plugins/foo` installs one
+plugin from a multi-plugin repository. The shared parser at
+`packages/core/src/plugins/source.ts` is the single source of truth for
+both the install endpoint and the upgrade flow — they used to carry
+their own copies of the same logic with a comment promising lockstep.
+
+Behavior:
+
+- Subpath is optional; without `#` the install/upgrade flows behave
+  exactly as before.
+- The install flow clones the parent repo to staging and copies only
+  `<staging>/<subpath>/` to `~/.bakin/plugins/<id>/`. The cloned repo's
+  `.git/` is dropped along with the rest.
+- The lockfile records the full source string with `#subpath` so the
+  upgrade flow can re-resolve it. Subpath upgrades take a different
+  path (`upgradeGithubSubpath`): re-clone to staging, run the same
+  consent gate against the subpath manifest, then replace the plugin
+  dir with the subpath contents. The in-place `git fetch`+`git merge`
+  flow used by non-subpath upgrades cannot apply here since there's no
+  local `.git/` to fetch into.
+- Subpath validation is enforced at three layers: the lockfile schema
+  (`SourceStringSchema` in `lockfile.ts`), the shared `parseGithubSource`
+  parser, and a defensive `realpathSync` containment check after the
+  clone. Each rejects empty subpaths, leading/trailing slashes, `..`/`.`
+  segments, and multiple `#` delimiters.
+- `#subpath` is **not** supported for `type: 'local'` installs — point
+  the local path directly at the plugin dir instead.
 
 ### Upgrade flow — `bakin plugins upgrade <id> [--yes]`
 
@@ -210,7 +240,7 @@ Full teardown sweep through `packages/host/src/api/plugins/remove.ts`:
    contract)
 2. Call `plugin.onUninstall(ctx)` if defined — log + audit + continue
    on error (a buggy hook must not trap the user)
-3. Plan OpenClaw skill cleanup — partition by the lockfile entry's
+3. Plan runtime skill cleanup — partition by the lockfile entry's
    `installedSkills` allowlist (the authoritative record of what this
    plugin actually installed) intersected with on-disk
    `.installedBy.pluginId` markers,
@@ -218,7 +248,7 @@ Full teardown sweep through `packages/host/src/api/plugins/remove.ts`:
 4. Snapshot Bakin-owned data via `snapshotUninstall` →
    `~/.bakin/.uninstalled/<id>-<ISO>.tar.gz` (atomic tmp+rename via
    `Bun.spawn(['tar', ...])` against a staging dir for clean tarball
-   structure: `plugins/`, `plugin-settings/`, `openclaw-skills/`)
+   structure: `plugins/`, `plugin-settings/`, `runtime-skills/`)
 5. Sweep registries:
    - `hookRegistry.unregisterByPlugin(id)` — sweeps every handler
      tagged with the plugin id during `ctx.hooks.register`
@@ -293,7 +323,7 @@ Specific `plugin.upgrade.rejected` reasons (`data.reason` field):
 ```ts
 PermissionSchema = z.enum([
   'events.emit',
-  'openclaw.read',
+  'runtime.read',
   'storage.read',
   'storage.write',
 ])
@@ -353,6 +383,8 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `storage: StorageAdapter` | Read/write markdown files in `~/.bakin/` |
 | `events: EventBus` | Pub/sub with pattern matching |
 | `pluginId: string` | This plugin's ID |
+| `runtime: AgentRuntimeAdapter` | Adapter-backed runtime surface for agents, messaging, channels, cron, workspace files, skills, sessions, memory, models, and execution status. Plugins never import runtime provider packages directly. |
+| `tasks: BakinTaskStore` | Bakin-owned task metadata store under `~/.bakin/tasks/`. Runtime execution ids are delivery refs only. |
 | `registerNav(items)` | Add sidebar navigation items (server-side) |
 | `registerRoute(route)` | Add HTTP API route at `/api/plugins/{id}/{path}` |
 | `registerSlot(reg)` | Register React component for a named UI slot (server-side) |
@@ -361,6 +393,7 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `registerWorkflow(def, opts?)` | Register a plugin-shipped workflow definition. User definitions in `~/.bakin/workflows/definitions/` always win on collision; cross-plugin id collisions are logged but do not throw out of `activate()`. Same-plugin re-registration is idempotent. |
 | `registerNodeType(def)` | Register a custom xyflow node kind for the workflow canvas (namespaced to `{pluginId}.{kind}`) |
 | `registerNotificationChannel(def)` | Register a notification channel (namespaced to `{pluginId}.{id}`) |
+| `registerHealthCheck(def)` | Register a doctor check (namespaced to `{pluginId}.{id}`). Picked up by `runPluginHealthChecks` in `src/core/doctor.ts`. Per-check try/catch lives in the orchestrator. Deep ref: `.claude/knowledge/doctor-and-health-checks.md`. |
 | `watchFiles(patterns)` | Request file watcher notifications |
 | `getSettings<T>()` | Read this plugin's persisted settings from `plugin-settings/{id}.json` |
 | `updateSettings(patch)` | Merge partial update into settings, persist, notify `onSettingsChange` |
@@ -371,7 +404,7 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `hooks.invoke<R>(name, data)` | Invoke a hook and get its result (RPC-style) |
 | `search.registerContentType(def)` | Register a searchable content type. Non-filesystem-backed path — plugin owns its own sync. |
 | `search.registerFileBackedContentType(def)` | File-backed variant: auto-wires watcher sync/unlink hooks AND schedules a startup mtime reconcile. |
-| `search.index(key, doc)` | Upsert a document into the Antfly index (fire-and-forget safe) |
+| `search.index(key, doc)` | Upsert a document through the active search adapter (fire-and-forget safe) |
 | `search.remove(key)` | Remove a document from the index |
 | `search.transform(key, ops)` | Atomic metadata update without re-embedding |
 | `search.query(params)` | Search this plugin's content type |
@@ -380,6 +413,14 @@ Both `search.registerContentType` and `search.registerFileBackedContentType`
 auto-register a `GET /search` route on the plugin's router so callers can
 hit `/api/plugins/{id}/search?q=...` without the plugin writing the
 handler by hand.
+
+### Plugins and adapters
+
+Plugins see runtime/search/task services only through `PluginContext` and exec
+tool context. They must not import `@bakin/adapter-openclaw`,
+`@bakin/adapter-antfly`, OpenClaw home/config/client helpers, provider SQLite
+files, or `@antfly/sdk`. If a plugin needs a new runtime/search capability, add
+it to the adapter contract first; do not pierce the boundary from plugin code.
 
 ### PluginSettingsSchema
 ```typescript
@@ -580,25 +621,25 @@ Same pattern is used for the plugin registry
 3. Hooks are RPC-style: one handler per hook name, returns a result.
 
 ### Hook naming convention
-`{pluginId}.{operation}` — e.g., `tasks.readTaskboard`,
-`workflows.getCurrentStep`, `projects.readProject`.
+`{pluginId}.{operation}` — e.g., `workflows.loadInstance`,
+`workflows.getCurrentStep`, `tasks.enrichDetails`.
 
 ### Current hook registrations
 
 | Plugin | Hooks | Examples |
 |--------|-------|---------|
-| tasks | 9 | `tasks.readTaskboard`, `tasks.createTask`, `tasks.moveTask`, `tasks.blockTask`, `tasks.addTaskLog`, `tasks.updateTask`, `tasks.deleteTask`, `tasks.setDependency`, `tasks.clearDependency` |
+| tasks | 0 task-metadata hooks | Task metadata is owned by `src/core/task-store.ts` and is not exposed through plugin hooks |
 | workflows | 13 | `workflows.loadInstance`, `workflows.createInstance`, `workflows.getCurrentStep`, `workflows.completeStep`, `workflows.matchWorkflow`, `workflows.listDefinitions`, `workflows.loadDefinition`, `workflows.getActiveAgents`, `workflows.saveInstance`, etc. |
 | assets | 8 | `assets.validateSidecar`, `assets.getSidecarPath`, `assets.createStub`, `assets.detectVariant`, `assets.getAssetTypes`, `assets.listTrash`, `assets.restoreAsset`, `assets.emptyTrash` |
 | team | 7 | `team.listAgents`, `team.getAgent`, `team.getAgentIds`, `team.resolveProfile`, `team.getTeamMembers`, `team.getAgentTeam`, `team.getOrgStructure` |
 | models | 5 | `models.configChanged`, `models.getEffectiveModel`, `models.getAvailableModels`, `models.markConfigDirty`, `models.markGatewayRestarted` |
-| projects | 2 | `projects.readProject`, `projects.autoCheckLinkedItem` |
+| tasks extensions | 2 | `tasks.statusChanged`, `tasks.enrichDetails` |
 
 ### Invoking hooks from core
 ```typescript
 import { getHookRegistry } from '@/lib/plugin-registry'
 const hooks = getHookRegistry()
-const board = await hooks.invoke<TaskBoard>('tasks.readTaskboard', {})
+const instance = await hooks.invoke<WorkflowInstance>('workflows.loadInstance', { taskId })
 ```
 
 **Critical:** No direct imports between plugins or from core → plugins.
@@ -736,10 +777,10 @@ to drop files in place.
 |-----------|--------|----------|
 | `defaults/workflows/*.yaml` | The owning plugin's `activate()` (workflows plugin uses `lib/load-defaults.ts`) | Each YAML is parsed and registered via `ctx.registerWorkflow(def, { readOnly: true })`. User copies under `~/.bakin/workflows/definitions/` always shadow these. |
 | `defaults/workflow-skills/*.md` | `src/lib/plugin-skill-loader.ts`, invoked by the plugin loader after every `activate()` | Each `.md` is parsed (YAML frontmatter for `name` + `output_schema`; body is the instruction) and registered via `ctx.registerSkill()`. In-memory only — no filesystem install. |
-| `defaults/openclaw-skills/{name}/SKILL.md` (+ `scripts/`) | `src/core/onboarding/plugin-assets.ts` (`bakin install plugin-assets`) | Each skill dir is copied to `~/.openclaw/skills/{name}/` with a `.installedBy` marker (sha256). `.userEdited` sentinel locks a dir from overwrite. `bakin doctor` surfaces drift. |
+| `defaults/runtime-skills/{name}/SKILL.md` (+ `scripts/`) | `src/core/onboarding/plugin-assets.ts` (`bakin install plugin-assets`) | Each skill dir is copied to `runtime skill store/` with a `.installedBy` marker (sha256). `.userEdited` sentinel locks a dir from overwrite. `bakin doctor` surfaces drift. |
 
 The first two are S-A (workflow-step skills, in-memory). The third is
-S-B (OpenClaw runtime skills, on disk). See
+S-B (runtime skills, on disk). See
 `.claude/knowledge/workflows-plugin.md` for the full breakdown.
 
 ## Storage Adapter
@@ -773,6 +814,116 @@ communication goes through the HookRegistry instead.
 `~/.bakin/plugins/` is scanned after built-in plugins. If a user plugin
 has the same id as a built-in, it replaces it. This lets users fork
 and customize any core plugin without modifying the repo.
+
+## Hot Reload (Phase 2)
+
+`bakin plugins link <localPath>` registers a developer-owned source
+tree as a symlinked plugin. With the hot-reload coordinator running
+(`BAKIN_DEV_HOTRELOAD=1`), file saves in the linked source tree
+trigger an in-process build + module swap — no restart, no manual
+reload.
+
+### Architecture
+
+```
+File save in linked plugin
+    ↓
+chokidar watcher (per-plugin)
+    ↓ debounce 80ms
+Hot-reload coordinator
+  - Per-plugin pipeline mutex
+  - Inflight + pending: 3 saves while in-flight = 1 follow-up cycle
+    ↓
+buildUserPlugin(pluginDir) → dist/index.js + dist/client.js
+    ↓ (success)             ↓ (fail)
+                              broadcastPluginError → SSE → dev overlay
+runReloadPipeline:
+  1. plugin.onShutdown?.()                       (errors logged, never rethrow)
+  2. Sweep: removeExecToolsByPlugin,
+            HookRegistry.unregisterByPlugin,
+            unregisterPluginNodeTypes,
+            unregisterPluginNotificationChannels,
+            unregisterPluginHealthChecks,
+            purgeContentType per registered table
+  3. Clear state arrays (routes/slots/navItems/etc.)
+  4. import(`${dir}/dist/index.js?v=${attempt}`)  (cache-bust)
+  5. await newPlugin.activate(ctx)               (same ctx as before;
+                                                  closures repopulate state)
+  6. state.plugin = newPlugin
+  7. bumpVersion(pluginId)
+  8. broadcastPluginReload (+ broadcastPluginRecover if recovering
+     from a prior error)
+    ↓
+SSE event: { type: 'dev:plugin:reload', pluginId, version }
+    ↓
+Browser dev client (packages/host/src/dev-client/client.ts)
+    ↓
+PluginHost.hotSwapPlugin:
+  - unregisterPlugin(id)        (drops nav/slot contributions)
+  - swapPluginCss               (cache-busted href)
+  - import(`${clientEntry}?v=${version}`)  (re-runs registerPlugin
+                                            as a side effect)
+    ↓
+React tree re-renders with the new contributions.
+```
+
+### Version stamping (the safety net)
+
+Every response from `/api/plugins/<id>/*` carries an
+`X-Bakin-Plugin-Version: <id>:<n>` header (set by
+`stampPluginResponse` in `src/core/plugin-host/version-stamp.ts`).
+The client wraps `fetch` (`packages/host/src/plugin-host/
+version-mismatch-detector.ts`); on every plugin response it compares
+the header to the last known version. Drift dispatches the same
+hot-swap path as an SSE event would have.
+
+This belt + suspenders coverage protects against missed SSE events
+(browser tab in background, network blip): the next plugin-bound
+fetch surfaces the drift and triggers reload.
+
+The version is monotonic per plugin within a single server process.
+A server restart resets to 0 — that's intentional. The first response
+after restart either matches (0 = client default) or detects a
+"version went down" regression, both of which trigger the same reload.
+
+### Critical invariants
+
+- **Cache-bust uses an always-incrementing `importAttemptCounter`**,
+  separate from the success-only version registry. Without that, a
+  failed reload would leave the version unchanged and the next retry
+  would import the same `?v=N` URL Bun already cached as failing —
+  the user couldn't recover even after fixing the code.
+- **The same `ctx` is reused** across reloads. State arrays are
+  cleared before re-activate so the new plugin's registrations land
+  cleanly without piling on top of the swept ones.
+- **`onShutdown` errors NEVER propagate.** A buggy onShutdown can't
+  be allowed to brick the dev loop. Logged + ignored.
+- **Build failures keep the watcher live.** No manual recovery —
+  next save kicks off a fresh attempt.
+
+### Failure-recovery symmetry
+
+Two distinct error sources, each with its own tracker:
+
+- **Build errors** → coordinator broadcasts `dev:plugin:error`,
+  records in `state.buildErrored`. Next successful build emits
+  `dev:plugin:recover` BEFORE running the pipeline (so the client
+  clears its overlay before the bundle swap lands).
+- **Import / activate errors** → pipeline broadcasts
+  `dev:plugin:error`, records in its own `erroredPlugins`. Next
+  successful pipeline run emits `dev:plugin:recover` before
+  `dev:plugin:reload`.
+
+### Key files
+
+| File | Purpose |
+|---|---|
+| `src/core/plugin-host/version-stamp.ts` | Per-plugin version registry + response stamping |
+| `src/core/plugin-host/reload-pipeline.ts` | Server-side teardown + cache-bust import + activate |
+| `src/core/plugin-host/hot-reload-coordinator.ts` | Watcher + per-plugin pipeline mutex |
+| `packages/host/src/plugin-host/version-mismatch-detector.ts` | Client-side fetch wrapping + drift detection |
+| `packages/host/src/dev-client/client.ts` | SSE event handlers (`dev:plugin:reload` etc.) |
+| `packages/host/src/plugin-host/PluginHost.tsx` | `hotSwapPlugin` — re-fetch + re-mount mechanics |
 
 ## Key Files
 

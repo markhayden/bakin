@@ -14,12 +14,6 @@ const testHome = (() => {
   return { home, openclaw }
 })()
 
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
-
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testHome.home,
   getBakinPaths: () => ({
@@ -48,30 +42,49 @@ mock.module('@/core/content-dir', () => ({
 // Mock settings
 mock.module('@/core/settings', () => ({
   getSettings: mock(() => ({
-    antfly: { enabled: false },
+    runtime: {
+      adapter: 'openclaw',
+      settings: {},
+    },
+    search: { adapter: 'antfly', settings: { enabled: false } },
     doctor: { intervalMs: 1800000, autoFixSkill: false },
-    openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
     service: { enabled: false },
   })),
 }))
 
-// Mock openclaw-config — owns the authoritative agent roster after T2
-mock.module('@bakin/core/openclaw-config', () => ({
-  getAgentIds: mock(() => ['main', 'patch', 'pixel']),
-  findAgentById: mock((id: string) => (['main', 'patch', 'pixel'].includes(id) ? { id } : null)),
-  readOpenClawConfig: mock(() => ({ agents: [{ id: 'main' }, { id: 'patch' }, { id: 'pixel' }] })),
-  resetOpenClawConfigCache: mock(),
+mock.module('@bakin/adapter-openclaw/home', () => ({
+  getOpenClawHome: () => testHome.openclaw,
+  getOpenClawPath: (...parts: string[]) => [testHome.openclaw, ...parts].join('/'),
+  resetOpenClawHome: () => {},
 }))
 
-mock.module('@bakin/core/openclaw-home', () => ({
-  getOpenClawHome: () => '/tmp/doctor-test-openclaw',
-  getOpenClawPath: (...parts: string[]) => ['/tmp/doctor-test-openclaw', ...parts].join('/'),
-}))
+const mockRuntimeSend = mock((...args: unknown[]) => {
+  void args
+  return Promise.resolve({ id: 'runtime-msg' })
+})
+const mockRuntimeAgentsList = mock((...args: unknown[]) => {
+  void args
+  return Promise.resolve([
+    { id: 'main', name: 'Main', status: 'active' },
+  ])
+})
 
-// Mock openclaw-client
-mock.module('@/core/openclaw-client', () => ({
-  ping: mock(async () => false),
-  sendMessage: mock(),
+const mockAppServices = {
+  runtime: {
+    agents: {
+      list: (...args: unknown[]) => mockRuntimeAgentsList(...args),
+    },
+    messaging: {
+      send: (...args: unknown[]) => mockRuntimeSend(...args),
+    },
+  },
+}
+
+mock.module('@/core/app-services', () => ({
+  getAppServices: () => mockAppServices,
+}))
+mock.module('../../src/core/app-services', () => ({
+  getAppServices: () => mockAppServices,
 }))
 
 // Mock audit (avoid file writes in tests)
@@ -139,6 +152,8 @@ describe('doctor', () => {
       message: '0 plugin assets to install',
       details: { totalAvailable: 0 },
     })
+    mockRuntimeSend.mockClear()
+    mockRuntimeAgentsList.mockClear()
   })
 
   afterEach(() => {
@@ -150,163 +165,61 @@ describe('doctor', () => {
     expect(typeof doctor.runDiagnostics).toBe('function')
   })
 
-  it('should detect missing persona files', async () => {
-    const doctor = await import('@/core/doctor')
-    // Only create persona for main, not patch or pixel
-    writeFileSync(join(contentDir, 'team', 'personas', 'main.md'), '# Main')
-
-    const results = await doctor.runDiagnostics(contentDir, tempDir)
-    const personaResults = results.filter(r => r.check === 'personas')
-    const warnings = personaResults.filter(r => r.status === 'warn')
-    expect(warnings.length).toBeGreaterThanOrEqual(2) // patch and pixel missing
-  })
-
-  it('should check taskboard via SQLite', async () => {
-    const doctor = await import('@/core/doctor')
-    const results = await doctor.runDiagnostics(contentDir, tempDir)
-    const tbResults = results.filter(r => r.check === 'taskboard')
-    // With mocked bun:sqlite, should get either ok or warn depending on db existence
-    expect(tbResults.length).toBeGreaterThan(0)
-  })
-
-  it('should report gateway as unreachable', async () => {
-    const doctor = await import('@/core/doctor')
-    const results = await doctor.runDiagnostics(contentDir, tempDir)
-    const gwResults = results.filter(r => r.check === 'gateway')
-    expect(gwResults[0].status).toBe('error')
-  })
-
-  describe('plugin-assets section', () => {
-    it('reports ok when plugin-assets check returns ok', async () => {
-      mockPluginAssetsCheck.mockResolvedValue({
-        name: 'plugin-assets',
+  it('aggregates registered plugin checks via runPluginHealthChecks', async () => {
+    // Sanity check: when plugins ARE registered, runDiagnostics surfaces
+    // their rows. Catches the regression "runPluginHealthChecks isn't being
+    // awaited" — a class of bug invisible to the gate-only assertions below.
+    const registry = await import('../../plugins/health/lib/health-check-registry')
+    registry.registerHealthCheck({
+      runtime: 'plugin',
+      pluginId: 'doctor-test',
+      id: 'doctor-test.synthetic',
+      name: 'Synthetic',
+      run: async () => [{
+        check: 'synthetic-row',
         status: 'ok',
-        message: 'All 3 plugin asset(s) installed',
-        details: { totalAvailable: 3 },
-      })
+        message: 'Synthetic row from registered test plugin',
+        autoFixable: false,
+      }],
+    })
+    try {
       const doctor = await import('@/core/doctor')
       const results = await doctor.runDiagnostics(contentDir, tempDir)
-      const section = results.filter(r => r.check === 'plugin-assets')
-      expect(section.length).toBe(1)
-      expect(section[0].status).toBe('ok')
-      expect(section[0].message).toMatch(/3 plugin asset/)
-    })
-
-    it('reports warn with remediation reminder when drift exists', async () => {
-      mockPluginAssetsCheck.mockResolvedValue({
-        name: 'plugin-assets',
-        status: 'warn',
-        message: '2 plugin asset(s) need install (1 missing, 1 drifted)',
-        remediation: 'Run `bakin install plugin-assets` to apply.',
-        details: {
-          totalAvailable: 3,
-          missing: [{ pluginId: 'workflows', name: 'foo' }],
-          drifted: [{ pluginId: 'workflows', name: 'bar' }],
-        },
-      })
-      const doctor = await import('@/core/doctor')
-      const results = await doctor.runDiagnostics(contentDir, tempDir)
-      const section = results.filter(r => r.check === 'plugin-assets')
-      expect(section.length).toBe(1)
-      expect(section[0].status).toBe('warn')
-      expect(section[0].message).toMatch(/bakin install plugin-assets/)
-    })
-
-    it('does not auto-install — only surfaces a reminder', async () => {
-      mockPluginAssetsCheck.mockResolvedValue({
-        name: 'plugin-assets',
-        status: 'warn',
-        message: '1 plugin asset(s) need install (1 missing, 0 drifted)',
-        remediation: 'Run `bakin install plugin-assets` to apply.',
-      })
-      const doctor = await import('@/core/doctor')
-      const results = await doctor.runDiagnostics(contentDir, tempDir)
-      const section = results.filter(r => r.check === 'plugin-assets')
-      expect(section[0].autoFixable).toBe(false)
-    })
+      expect(results.find(r => r.check === 'synthetic-row')).toBeDefined()
+      expect(results.find(r => r.check === 'onboarded')).toBeUndefined()
+    } finally {
+      registry.unregisterHealthCheck('doctor-test.synthetic')
+    }
   })
 
-  describe('asset sidecar mismatch detection', () => {
-    it('should detect mismatched sidecar naming', async () => {
-      const doctor = await import('@/core/doctor')
-
-      // Create the assets directory structure
-      const taskDir = join(contentDir, 'assets', 'images', 'task-abc')
-      mkdirSync(taskDir, { recursive: true })
-
-      // Create asset file
-      writeFileSync(join(taskDir, '20250727-pop-tart.png'), 'fake-image')
-
-      // Create misnamed sidecar (wrong name — missing date prefix and extension)
-      writeFileSync(join(taskDir, 'pop-tart.meta.json'), JSON.stringify({
-        author: 'pixel',
-        taskId: 'task-abc',
-        createdAt: '2026-03-23T14:00:00Z',
-        tool: 'dall-e-3',
-        description: 'A pop tart',
-      }))
-
-      // Run without autoFix to detect the mismatch
-      const results = await doctor.runDiagnostics(contentDir, tempDir)
-      const assetResults = results.filter(r => r.check === 'assets')
-
-      // Should report misnamed sidecar and missing sidecar for the asset
-      const warnings = assetResults.filter(r => r.status === 'warn')
-      expect(warnings.some(r => r.message.includes('misnamed') || r.message.includes('missing'))).toBe(true)
+  it('notifies the runtime main agent about unfixable plugin issues', async () => {
+    const registry = await import('../../plugins/health/lib/health-check-registry')
+    registry.registerHealthCheck({
+      runtime: 'plugin',
+      pluginId: 'doctor-test',
+      id: 'doctor-test.unfixable',
+      name: 'Unfixable',
+      run: async () => [{
+        check: 'unfixable-row',
+        status: 'error',
+        message: 'Needs operator attention',
+        autoFixable: false,
+      }],
     })
-
-    it('should auto-fix mismatched sidecar by merging into stub', async () => {
-      // Override settings to enable autoFix
-      const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
-      vi.mocked(getSettings).mockReturnValue({
-        antfly: { enabled: false },
-        doctor: { intervalMs: 1800000, autoFixSkill: true },
-        openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
-        service: { enabled: false },
-      } as ReturnType<typeof getSettings>)
-
+    try {
       const doctor = await import('@/core/doctor')
-
-      const taskDir = join(contentDir, 'assets', 'images', 'task-abc')
-      mkdirSync(taskDir, { recursive: true })
-
-      // Create asset file
-      writeFileSync(join(taskDir, '20250727-pop-tart.png'), 'fake-image')
-
-      // Create stub sidecar (correct name, agent: "unknown")
-      writeFileSync(join(taskDir, '20250727-pop-tart.png.meta.json'), JSON.stringify({
-        agent: 'unknown',
-        taskId: 'task-abc',
-        created: '2026-03-23T00:00:00Z',
-        description: 'Auto-generated sidecar for 20250727-pop-tart.png',
-        tags: [],
-      }, null, 2))
-
-      // Create mismatched sidecar (wrong name, rich content with wrong field names)
-      writeFileSync(join(taskDir, 'pop-tart.meta.json'), JSON.stringify({
-        author: 'pixel',
-        taskId: 'task-abc',
-        createdAt: '2026-03-23T14:00:00Z',
-        tool: 'dall-e-3',
-        description: 'A delicious pop tart image',
+      await doctor.runDiagnostics(contentDir, tempDir)
+      expect(mockRuntimeSend).toHaveBeenCalledWith(expect.objectContaining({
+        agentId: 'main',
+        content: expect.stringContaining('Needs operator attention'),
       }))
-
-      const results = await doctor.runDiagnostics(contentDir, tempDir)
-      const assetResults = results.filter(r => r.check === 'assets')
-      const fixes = assetResults.filter(r => r.status === 'fixed')
-      expect(fixes.some(r => r.message.includes('misnamed') || r.message.includes('Merged'))).toBe(true)
-
-      // Verify the correctly-named sidecar now has the rich content with normalized fields
-      const correctMeta = JSON.parse(readFileSync(join(taskDir, '20250727-pop-tart.png.meta.json'), 'utf-8'))
-      expect(correctMeta.agent).toBe('pixel') // normalized from author
-      expect(correctMeta.created).toBe('2026-03-23T14:00:00Z') // normalized from createdAt
-      expect(correctMeta.tool).toBe('dall-e-3')
-      expect(correctMeta.description).toBe('A delicious pop tart image')
-
-      // Verify the mismatched sidecar was removed
-      expect(existsSync(join(taskDir, 'pop-tart.meta.json'))).toBe(false)
-    })
+    } finally {
+      registry.unregisterHealthCheck('doctor-test.unfixable')
+    }
   })
+
+  // plugin-assets coverage moved to tests/plugins/health/system-checks.test.ts
+  // when checkPluginAssets migrated to plugins/health/lib/system-checks/ in #139 C8.
 
   // ---------------------------------------------------------------------------
   // Onboarding gate: requireOnboard + .onboarded marker
@@ -318,12 +231,17 @@ describe('doctor', () => {
       const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
       const settings = (getSettings as unknown as ReturnType<typeof mock>)
       settings.mockReturnValueOnce({
-        antfly: { enabled: false },
+        runtime: {
+          adapter: 'openclaw',
+          settings: {},
+        },
+        search: { adapter: 'antfly', settings: { enabled: false } },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
-        openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
         service: { enabled: false },
       })
-      vi.resetModules()
+      // (vi.resetModules is a no-op in the bun:test shim — getSettings reads
+      // lazily inside runDiagnostics so the mockReturnValueOnce above takes
+      // effect on the next call without a forced module re-evaluation.)
       const { runDiagnostics } = require('@/core/doctor') as typeof import('@/core/doctor')
       const results = await runDiagnostics(contentDir, tempDir)
       expect(results).toHaveLength(1)
@@ -337,16 +255,24 @@ describe('doctor', () => {
       const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
       const settings = (getSettings as unknown as ReturnType<typeof mock>)
       settings.mockReturnValueOnce({
-        antfly: { enabled: false },
+        runtime: {
+          adapter: 'openclaw',
+          settings: {},
+        },
+        search: { adapter: 'antfly', settings: { enabled: false } },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
-        openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
         service: { enabled: false },
       })
-      vi.resetModules()
+      // (vi.resetModules is a no-op in the bun:test shim — getSettings reads
+      // lazily inside runDiagnostics so the mockReturnValueOnce above takes
+      // effect on the next call without a forced module re-evaluation.)
       const { runDiagnostics } = require('@/core/doctor') as typeof import('@/core/doctor')
       const results = await runDiagnostics(contentDir, tempDir)
-      // Should have many results from the normal check suite, not just 1
-      expect(results.length).toBeGreaterThan(1)
+      // Post-migration (#139): runDiagnostics no longer runs builtin checks
+      // directly — every check is plugin-registered via runPluginHealthChecks.
+      // With no plugins activated in this test, the result set is empty
+      // when the gate doesn't fire. The non-presence of 'onboarded' is
+      // what proves the gate didn't trip.
       expect(results.find(r => r.check === 'onboarded')).toBeUndefined()
     })
 
@@ -355,15 +281,20 @@ describe('doctor', () => {
       const { getSettings } = require('@/core/settings') as typeof import('@/core/settings')
       const settings = (getSettings as unknown as ReturnType<typeof mock>)
       settings.mockReturnValueOnce({
-        antfly: { enabled: false },
+        runtime: {
+          adapter: 'openclaw',
+          settings: {},
+        },
+        search: { adapter: 'antfly', settings: { enabled: false } },
         doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: false },
-        openclaw: { binaryPath: 'openclaw', gatewayUrl: 'http://127.0.0.1', gatewayPort: 18789 },
         service: { enabled: false },
       })
-      vi.resetModules()
+      // (vi.resetModules is a no-op in the bun:test shim — getSettings reads
+      // lazily inside runDiagnostics so the mockReturnValueOnce above takes
+      // effect on the next call without a forced module re-evaluation.)
       const { runDiagnostics } = require('@/core/doctor') as typeof import('@/core/doctor')
       const results = await runDiagnostics(contentDir, tempDir)
-      expect(results.length).toBeGreaterThan(1)
+      // See note above: the gate not firing = no 'onboarded' row.
       expect(results.find(r => r.check === 'onboarded')).toBeUndefined()
     })
   })

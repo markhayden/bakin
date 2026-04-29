@@ -69,10 +69,6 @@ mock.module('@/core/watcher', () => ({
   registerUnlinkHook: mock(),
 }))
 
-mock.module('@/core/openclaw-client', () => ({
-  sendToAgent: mock(),
-}))
-
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
 // ─── Hook stubs ───────────────────────────────────────────────────────────
@@ -220,8 +216,8 @@ import { AssetsPage } from '../../../plugins/assets/components/assets-page'
 
 function makeAsset(overrides: Partial<AssetMeta> = {}): AssetMeta {
   return {
-    path: 'assets/images/task-001/hero.png',
-    filename: 'hero.png',
+    path: 'assets/store/2026-04/20260401-hero-a1b2c3d4.png',
+    filename: '20260401-hero-a1b2c3d4.png',
     type: 'images',
     size: 1024,
     metadata: {
@@ -268,8 +264,8 @@ describe('AssetsPage smoke', () => {
   it('renders the grid view by default once loaded', () => {
     useAssetsState.loading = false
     useAssetsState.assets = [
-      makeAsset({ path: 'assets/images/t1/a.png', filename: 'a.png' }),
-      makeAsset({ path: 'assets/images/t1/b.png', filename: 'b.png' }),
+      makeAsset({ path: 'assets/store/2026-04/20260401-a-aaaaaaaa.png', filename: '20260401-a-aaaaaaaa.png' }),
+      makeAsset({ path: 'assets/store/2026-04/20260401-b-bbbbbbbb.png', filename: '20260401-b-bbbbbbbb.png' }),
     ]
     render(<AssetsPage />)
     const grid = screen.getByTestId('assets-grid')
@@ -280,21 +276,21 @@ describe('AssetsPage smoke', () => {
   it('passes search results down by ID, ordered by score', () => {
     useAssetsState.loading = false
     useAssetsState.assets = [
-      makeAsset({ path: 'assets/images/t1/a.png', filename: 'a.png' }),
-      makeAsset({ path: 'assets/images/t1/b.png', filename: 'b.png' }),
-      makeAsset({ path: 'assets/images/t1/c.png', filename: 'c.png' }),
+      makeAsset({ path: 'assets/store/2026-04/20260401-a-aaaaaaaa.png', filename: '20260401-a-aaaaaaaa.png' }),
+      makeAsset({ path: 'assets/store/2026-04/20260401-b-bbbbbbbb.png', filename: '20260401-b-bbbbbbbb.png' }),
+      makeAsset({ path: 'assets/store/2026-04/20260401-c-cccccccc.png', filename: '20260401-c-cccccccc.png' }),
     ]
     // Seed search query state and search hook results
     getQueryString('q', '').setValue('hero')
     searchHookState.results = [
-      { id: 'assets/images/t1/c.png', score: 0.9, table: 'bakin_assets', fields: {} },
-      { id: 'assets/images/t1/a.png', score: 0.7, table: 'bakin_assets', fields: {} },
+      { id: 'assets/store/2026-04/20260401-c-cccccccc.png', score: 0.9, table: 'bakin_assets', fields: {} },
+      { id: 'assets/store/2026-04/20260401-a-aaaaaaaa.png', score: 0.7, table: 'bakin_assets', fields: {} },
     ]
 
     render(<AssetsPage />)
 
     const filenames = (assetsGridProps.current.assets ?? []).map(a => a.filename)
-    expect(filenames).toEqual(['c.png', 'a.png']) // ordered by score desc, b.png filtered out
+    expect(filenames).toEqual(['20260401-c-cccccccc.png', '20260401-a-aaaaaaaa.png'])
   })
 
   it('falls back to local filename/description/tags/agent filter when search results are empty', () => {

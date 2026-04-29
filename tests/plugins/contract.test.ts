@@ -1,4 +1,6 @@
 import { describe, it, expect, afterAll, mock } from 'bun:test'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 
 const { hoistedBakinHome, hoistedOpenClawHome } = (() => {
   const { mkdtempSync } = require('fs')
@@ -40,7 +42,7 @@ mock.module('../../src/core/content-dir', () => ({
   initBakinHome: () => {},
 }))
 
-mock.module('../../plugins/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,
@@ -78,7 +80,7 @@ mock.module('../../src/core/logger', () => ({
   }),
 }))
 
-import type { PluginContext, BakinPlugin, APIRoute, NavItem } from '../../src/lib/plugin-types'
+import type { PluginContext, BakinPlugin, APIRoute, NavItem } from '@bakin/core/plugin-types'
 import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
 import fs from 'fs'
@@ -89,10 +91,8 @@ import fs from 'fs'
 const tasksPlugin = require('../../plugins/tasks').default as typeof import('../../plugins/tasks').default
 const memoryPlugin = require('../../plugins/memory').default as typeof import('../../plugins/memory').default
 const modelsPlugin = require('../../plugins/models').default as typeof import('../../plugins/models').default
-const messagingPlugin = require('../../plugins/messaging').default as typeof import('../../plugins/messaging').default
 const workflowsPlugin = require('../../plugins/workflows').default as typeof import('../../plugins/workflows').default
 const assetsPlugin = require('../../plugins/assets').default as typeof import('../../plugins/assets').default
-const projectsPlugin = require('../../plugins/projects').default as typeof import('../../plugins/projects').default
 const schedulePlugin = require('../../plugins/schedule').default as typeof import('../../plugins/schedule').default
 const healthPlugin = require('../../plugins/health').default as typeof import('../../plugins/health').default
 
@@ -135,6 +135,14 @@ function createMockContext(pluginId: string): {
     storage,
     events,
     pluginId,
+    runtime: createMockRuntimeAdapter(),
+    tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
+    assets: {
+      getByFilename: async () => null,
+      list: async () => [],
+      exists: async () => false,
+      fileRef: async (filename: string) => ({ kind: 'asset' as const, filename }),
+    },
     registerNav: (items) => navItems.push(...items),
     registerRoute: (route) => routes.push(route),
     registerSlot: () => {},
@@ -161,6 +169,8 @@ function createMockContext(pluginId: string): {
     },
     hooks: {
       register: () => () => {},
+      call: async (_name, data) => data,
+      callAll: async () => {},
       has: () => false,
       invoke: async () => undefined,
     },
@@ -173,10 +183,8 @@ const ALL_PLUGINS: BakinPlugin[] = [
   tasksPlugin,
   memoryPlugin,
   modelsPlugin,
-  messagingPlugin,
   workflowsPlugin,
   assetsPlugin,
-  projectsPlugin,
   schedulePlugin,
   healthPlugin,
 ]

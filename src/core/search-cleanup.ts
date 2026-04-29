@@ -7,15 +7,15 @@
  * scan only catches the rare cases where the watcher missed an event:
  * the process was down during a delete, the fs event was lost, etc.
  *
- * Default cadence is 7d (settings.antfly.cleanupInterval) — long
+ * Default cadence is 7d (settings.search.settings.cleanupInterval) — long
  * because it's a backstop, not the main consistency mechanism.
  *
- * Scans Antfly tables and checks each document against its plugin's
+ * Scans search tables and checks each document against its plugin's
  * verifyExists() callback. Removes orphans that no longer exist at source.
  */
 import { createLogger } from './logger'
 import { getSettings } from './settings'
-import * as antfly from './antfly'
+import { getAppServices } from './app-services'
 import { getContentTypes } from './search-registry'
 
 const log = createLogger('search-cleanup')
@@ -50,6 +50,8 @@ export async function runCleanup(): Promise<CleanupStats[]> {
 
   try {
     const contentTypes = getContentTypes()
+    const search = getAppServices().search
+    if (!await search.available()) return []
 
     for (const [tableName, def] of contentTypes) {
       const stats: CleanupStats = { table: tableName, scanned: 0, orphans: 0, errors: 0 }
@@ -57,7 +59,7 @@ export async function runCleanup(): Promise<CleanupStats[]> {
       try {
         const orphanKeys: string[] = []
 
-        for await (const { key } of antfly.scanTable(tableName)) {
+        for await (const { key } of search.scan(tableName)) {
           stats.scanned++
 
           try {
@@ -72,13 +74,13 @@ export async function runCleanup(): Promise<CleanupStats[]> {
 
           // Batch remove every 100 orphans to avoid accumulating too much
           if (orphanKeys.length >= 100) {
-            await antfly.batchRemove(tableName, orphanKeys.splice(0))
+            await search.documents.batchRemove(tableName, orphanKeys.splice(0))
           }
         }
 
         // Remove remaining orphans
         if (orphanKeys.length > 0) {
-          await antfly.batchRemove(tableName, orphanKeys)
+          await search.documents.batchRemove(tableName, orphanKeys)
         }
 
         if (stats.orphans > 0) {
@@ -119,15 +121,16 @@ function parseDuration(duration: string): number {
 
 /**
  * Start periodic orphan cleanup.
- * Interval is configured via settings.antfly.cleanupInterval.
+ * Interval is configured via settings.search.settings.cleanupInterval.
  */
 export function startCleanupTimer(): void {
   if (_g.__bakinSearchCleanupTimer) return
 
   const settings = getSettings()
-  if (!settings.antfly.enabled) return
+  const searchSettings = settings.search.settings
+  if (!searchSettings.enabled) return
 
-  const intervalMs = parseDuration(settings.antfly.cleanupInterval)
+  const intervalMs = parseDuration(searchSettings.cleanupInterval)
 
   _g.__bakinSearchCleanupTimer = setInterval(() => {
     runCleanup().catch(err => {
@@ -135,7 +138,7 @@ export function startCleanupTimer(): void {
     })
   }, intervalMs)
 
-  log.info(`Orphan backstop scan scheduled (interval: ${settings.antfly.cleanupInterval}) — primary path is the watcher unlink hook`)
+  log.info(`Orphan backstop scan scheduled (interval: ${searchSettings.cleanupInterval}) — primary path is the watcher unlink hook`)
 }
 
 /**

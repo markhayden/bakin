@@ -5,7 +5,7 @@ lastUpdated: 2026-04-25
 ---
 
 :::note[Most of this happens on its own]
-This page walks through the manual controls. In practice, your OpenClaw agents handle ~99% of it: creating tasks, moving them through columns, logging progress, linking dependencies, completing work. You're here to set the rules and step in when something needs a human.
+This page walks through the manual controls. In practice, runtime agents handle most of it: creating tasks, moving them through columns, logging progress, linking dependencies, completing work. You're here to set the rules and step in when something needs a human.
 :::
 
 Tasks are Bakin's work unit. Each one records what needs to happen, who owns it, what column it's in, and the full activity log behind it. Everything worth seeing, auditing, or handing off to a teammate lives here.

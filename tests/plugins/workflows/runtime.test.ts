@@ -20,6 +20,59 @@ mock.module('../../../src/core/content-dir', () => ({
   isUsingBakinHome: () => false,
 }))
 
+type HookTask = { id: string; title: string; column: string; description?: string }
+const hookTasks = new Map<string, HookTask>()
+const createTaskHook = mock(async (data: Record<string, unknown>) => {
+  const id = data.id as string
+  hookTasks.set(id, {
+    id,
+    title: data.title as string,
+    column: data.column as string,
+    description: data.description as string | undefined,
+  })
+  return { id }
+})
+const addTaskLogHook = mock(async (_data?: Record<string, unknown>) => undefined)
+const moveTaskHook = mock(async (data: Record<string, unknown>) => {
+  const task = hookTasks.get(data.identifier as string)
+  if (task) task.column = data.to as string
+})
+
+function readTaskboardForTest() {
+  const columns: Record<string, HookTask[]> = {
+    backlog: [],
+    inProgress: [],
+    todo: [],
+    review: [],
+    done: [],
+    archived: [],
+    blocked: [],
+  }
+  for (const task of hookTasks.values()) {
+    ;(columns[task.column] ??= []).push(task)
+  }
+  return { columns }
+}
+
+const taskStoreMock = {
+  addTaskLog: (identifier: string, author: string, message: string) => addTaskLogHook({ identifier, author, message }),
+  createTask: (
+    title: string,
+    column?: string,
+    _assignee?: string,
+    description?: string,
+    _workflowId?: string,
+    _createdBy?: string,
+    id?: string,
+  ) => createTaskHook({ id, title, column, description }),
+  getTask: (id: string) => hookTasks.get(id) ?? null,
+  moveTask: (identifier: string, to: string, from?: string) => moveTaskHook({ identifier, to, from }),
+  readTaskboard: readTaskboardForTest,
+}
+
+mock.module('../../../src/core/task-store', () => taskStoreMock)
+mock.module('@/core/task-store', () => taskStoreMock)
+
 // Mock audit to prevent writes to audit.jsonl
 mock.module('../../../src/core/audit', () => ({
   appendAudit: mock(),
@@ -35,24 +88,9 @@ mock.module('../../../src/core/logger', () => ({
   }),
 }))
 
-// Mock flow-store so tests don't leak child-workflow tasks into the real board.
-// The path needs three `../` to reach the repo root — two would land in tests/
-// and the mock would silently no-op, letting the real module write to
-// ~/.openclaw/flows/registry.sqlite.
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({
-  createTask: mock(() => Promise.resolve({ id: 'mock-task' })),
-  addTaskLog: mock(() => Promise.resolve()),
-  moveTask: mock(() => Promise.resolve()),
-  readTaskboard: mock(() => ({
-    columns: { backlog: [], inProgress: [], todo: [], review: [], done: [], archived: [], blocked: [] },
-  })),
-  getTask: mock(() => null),
-  getTaskWithColumn: mock(() => null),
-}))
-
 // Defense-in-depth: even if another module reaches openclaw-home, redirect it
 // into testDir instead of ~/.openclaw/.
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => testDir,
   getOpenClawPath: (...parts: string[]) => join(testDir, ...parts),
   resetOpenClawHome: mock(),
@@ -70,6 +108,7 @@ import {
   cancelInstance,
 } from '@bakin/workflows/lib/runtime'
 import { invalidateSkillCache } from '@bakin/workflows/lib/skill-loader'
+import { getHookRegistry } from '../../../src/lib/plugin-registry'
 
 describe('runtime', () => {
   const defsDir = join(testDir, 'workflows', 'definitions')
@@ -178,6 +217,10 @@ steps:
 
   beforeEach(() => {
     invalidateSkillCache()
+    hookTasks.clear()
+    createTaskHook.mockClear()
+    addTaskLogHook.mockClear()
+    moveTaskHook.mockClear()
     mkdirSync(defsDir, { recursive: true })
     mkdirSync(skillsDir, { recursive: true })
     mkdirSync(instancesDir, { recursive: true })
@@ -204,6 +247,7 @@ Write a great caption.
 
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true })
+    getHookRegistry().clearAll()
   })
 
   // ─── createInstance ─────────────────────────────────────────────────
@@ -459,14 +503,14 @@ Write a great caption.
 
       approveGate('task-gate-app', 'review-gate', {
         contentDir: testDir,
-        approver: { source: 'discord', id: '999', displayName: 'Approver Person' },
+        approver: { source: 'channel', id: '999', displayName: 'Approver Person' },
       })
 
       const instance = loadInstance('task-gate-app', testDir)
       const gateState = instance!.stepStates['review-gate']
       expect(gateState.decidedAt).toBeTruthy()
       expect(gateState.approver).toEqual({
-        source: 'discord',
+        source: 'channel',
         id: '999',
         displayName: 'Approver Person',
       })
@@ -504,7 +548,7 @@ Write a great caption.
 
       const result = approveGate('task-gate-dur', 'review-gate', {
         contentDir: testDir,
-        approver: { source: 'discord', id: '999', displayName: 'Approver' },
+        approver: { source: 'channel', id: '999', displayName: 'Approver' },
       })
 
       expect(result.decision).toBeDefined()
@@ -883,25 +927,9 @@ steps:
     workflow_id: child-wf
 `)
 
-      // Stateful mock: track which ids have been "created" on the board
-      // so getTask(id) returns truthy after createTask has been called.
-      const flowStore = await import('../../../plugins/tasks/lib/flow-store')
-      const createdIds = new Set<string>()
-      vi.mocked(flowStore.createTask).mockImplementation(
-        // Positional signature: (title, column, assignee, description, workflowId, createdBy, id, parentId, projectId)
-        (((...args: unknown[]) => {
-          const id = (args[6] as string) ?? 'mock-task'
-          createdIds.add(id)
-          return Promise.resolve({ id } as unknown)
-        }) as unknown) as typeof flowStore.createTask,
-      )
-      vi.mocked(flowStore.getTask).mockImplementation(
-        (id: string) => (createdIds.has(id) ? ({ id, title: 'stub' } as unknown as ReturnType<typeof flowStore.getTask>) : null),
-      )
-
       createInstance('task-retry', 'parent-first-nested', testDir)
-      await vi.waitFor(() => expect(createdIds.has('task-retry--nested-child')).toBe(true))
-      const firstCallCount = vi.mocked(flowStore.createTask).mock.calls.length
+      await vi.waitFor(() => expect(hookTasks.has('task-retry--nested-child')).toBe(true))
+      const firstCallCount = createTaskHook.mock.calls.length
       expect(firstCallCount).toBeGreaterThanOrEqual(1)
 
       // Simulate watchdog re-dispatch: createInstance overwrites the parent
@@ -912,7 +940,7 @@ steps:
       // duplicate createTask would have time to land before we assert.
       await new Promise(resolve => setImmediate(resolve))
 
-      const secondCallCount = vi.mocked(flowStore.createTask).mock.calls.length
+      const secondCallCount = createTaskHook.mock.calls.length
       expect(secondCallCount).toBe(firstCallCount)
     })
   })

@@ -4,19 +4,28 @@
  */
 import { totalmem } from 'os'
 import { z } from 'zod'
-import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { getLastResults, runDiagnostics } from '../../src/core/doctor'
 import { createLogger } from '../../src/core/logger'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
 import { getSettings } from '../../src/core/settings'
 import { getContentDir } from '../../src/core/content-dir'
-import { getSearchHealth } from '../../src/core/search-registry'
 import { getUsageFeed, getErrorCount, getStatsByMs, WINDOW_MS, type UsageKind, type WindowKey } from '../../src/core/usage'
 import {
   listHealthChecks,
   getHealthCheck,
   type HealthCheckDef,
 } from './lib/health-check-registry'
+import { checkContentDir } from './lib/system-checks/content-dir'
+import { checkService } from './lib/system-checks/service'
+import { checkMcporter } from './lib/system-checks/mcporter'
+import { checkRuntime } from './lib/system-checks/runtime'
+import { checkChannelApprovals } from './lib/system-checks/channel-approvals'
+import { checkSearchAdapter } from './lib/system-checks/search'
+import { checkOrchestratorRules } from './lib/system-checks/orchestrator-rules'
+import { checkAndSyncSkill } from './lib/system-checks/sync-skill'
+import { checkPluginAssets } from './lib/system-checks/plugin-assets'
+import { applyAllManagedBlocksForRuntime } from './lib/managed-blocks'
 // Registry accessors live on globalThis because Next.js API routes get
 // separate webpack-compiled module instances with empty Maps. The custom
 // server (server.ts) registers the real accessors after plugin init.
@@ -108,7 +117,6 @@ const healthPlugin: BakinPlugin = {
         } : null
 
         const mcp = getMcpSessions()
-        const settings = getSettings()
         const errors1h = getErrorCount(WINDOW_MS['1h'])
 
         return Response.json({
@@ -116,7 +124,6 @@ const healthPlugin: BakinPlugin = {
           errors1h,
           activeSessions: mcp.activeSessions,
           upSince: mcp.upSince,
-          openclawPort: settings.openclaw.gatewayPort,
           server: {
             port: Number(port),
             pid: process.pid,
@@ -157,21 +164,22 @@ const healthPlugin: BakinPlugin = {
       },
     })
 
-    // Antfly search engine health + index stats
+    // Search adapter health + index stats
     ctx.registerRoute({
-      path: '/antfly-status',
+      path: '/search-status',
       method: 'GET',
       handler: async () => {
-        return Response.json(await getSearchHealth())
+        const health = ctx.search.health ? await ctx.search.health() : { enabled: false, tables: [] }
+        return Response.json(health)
       },
     })
 
-    // Agent context/token usage from OpenClaw sessions
+    // Agent context/token usage from runtime sessions
     ctx.registerRoute({
       path: '/usage',
       method: 'GET',
       handler: async () => {
-        return Response.json(getAllAgentUsage())
+        return Response.json(await getAllAgentUsage(ctx.runtime))
       },
     })
 
@@ -251,7 +259,7 @@ const healthPlugin: BakinPlugin = {
     ctx.registerExecTool({
       name: 'bakin_exec_health_doctor',
       label: 'Ran diagnostics',
-      description: 'Run system diagnostics (agent roster, skill sync, gateway, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results.',
+      description: 'Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results.',
       parameters: {
         fresh: z.boolean().optional().describe('Force fresh diagnostics instead of cached results'),
       },
@@ -276,6 +284,62 @@ const healthPlugin: BakinPlugin = {
           return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
       },
+    })
+
+    // ─── System health checks (migrated out of core/doctor.ts per #139 C6+) ──
+    ctx.registerHealthCheck({
+      id: 'content-dir',
+      name: 'Content directory location',
+      run: () => Promise.resolve(checkContentDir()),
+    })
+    ctx.registerHealthCheck({
+      id: 'service',
+      name: 'macOS LaunchAgent plist',
+      run: () => Promise.resolve(checkService(process.cwd())),
+    })
+    ctx.registerHealthCheck({
+      id: 'mcporter',
+      name: 'mcporter install + per-agent config',
+      autoFix: true,
+      run: () => checkMcporter(),
+    })
+    ctx.registerHealthCheck({
+      id: 'runtime',
+      name: 'Runtime reachability',
+      run: () => checkRuntime(ctx.runtime),
+    })
+    ctx.registerHealthCheck({
+      id: 'channel-approvals',
+      name: 'Runtime channel approval responses',
+      run: () => checkChannelApprovals(ctx.runtime),
+    })
+    ctx.registerHealthCheck({
+      id: 'search',
+      name: 'Search adapter binary + daemon connection',
+      run: () => checkSearchAdapter(),
+    })
+    ctx.registerHealthCheck({
+      id: 'orchestrator-rules',
+      name: 'Main agent AGENTS.md orchestrator-rules block',
+      autoFix: true,
+      run: () => checkOrchestratorRules(ctx.runtime),
+    })
+    ctx.registerHealthCheck({
+      id: 'skill',
+      name: 'Bakin SKILL.md sync to runtime',
+      autoFix: true,
+      run: () => checkAndSyncSkill(process.cwd(), ctx.runtime),
+    })
+    ctx.registerHealthCheck({
+      id: 'plugin-assets',
+      name: 'Plugin-shipped runtime skills install state',
+      run: () => checkPluginAssets(),
+    })
+    ctx.registerHealthCheck({
+      id: 'managed-blocks',
+      name: 'Per-agent managed blocks in AGENTS.md',
+      autoFix: true,
+      run: () => applyAllManagedBlocksForRuntime(ctx.runtime, getSettings().doctor.autoFixSkill),
     })
   },
 

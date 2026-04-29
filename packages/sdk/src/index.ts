@@ -29,5 +29,7 @@ export {
   subscribeRegistry,
   getAllNavItems,
   getPluginNavItems,
+  getPluginRoute,
+  getPluginRoutes,
 } from './register'
-export type { NavItem, PluginRegistration } from './register'
+export type { ClientRouteEntry, MatchedPluginRoute, NavItem, PluginRegistration } from './register'

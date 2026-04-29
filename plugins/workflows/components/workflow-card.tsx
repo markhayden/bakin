@@ -32,7 +32,7 @@ export function WorkflowCard({
 }: {
   template: WorkflowTemplate
   onClick: () => void
-  /** Antfly score info — only shown when debug mode + active search */
+  /** Search score info — only shown when debug mode + active search */
   scoreInfo?: ScoreInfo
 }) {
   const agentIds = collectAgents(template.definition.steps)

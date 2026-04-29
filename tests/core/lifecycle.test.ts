@@ -24,6 +24,7 @@ mock.module('../../src/core/audit', () => ({
 const mockSseStop = mock()
 mock.module('../../src/core/sse', () => ({
   stop: mockSseStop,
+  broadcast: mock(),
 }))
 
 const mockDispatchStop = mock()
@@ -36,22 +37,26 @@ mock.module('../../src/core/watchdog', () => ({
   stop: mockWatchdogStop,
 }))
 
-const mockMessagingStop = mock()
-mock.module('../../src/core/messaging-cron', () => ({
-  stop: mockMessagingStop,
-}))
-
 const mockWatcherStop = mock().mockResolvedValue(undefined)
 mock.module('../../src/core/watcher', () => ({
   stop: mockWatcherStop,
+  registerSyncHook: () => () => {},
+  registerUnlinkHook: () => () => {},
 }))
 
 mock.module('../../src/core/doctor', () => ({
   stop: mock(),
 }))
 
-mock.module('../../src/core/antfly-server', () => ({
-  stop: mock(),
+const mockSearchShutdown = mock().mockResolvedValue(undefined)
+const mockAppServices = {
+  search: { shutdown: mockSearchShutdown },
+}
+mock.module('../../src/core/app-services', () => ({
+  maybeGetAppServices: () => mockAppServices,
+  getAppServices: () => mockAppServices,
+  setAppServices: () => {},
+  createAppServices: async () => mockAppServices,
 }))
 
 const mockShutdownAll = mock().mockResolvedValue(undefined)
@@ -59,6 +64,11 @@ mock.module('../../src/lib/plugin-registry', () => ({
   pluginRegistry: {
     shutdownAll: mockShutdownAll,
   },
+  getHookRegistry: () => ({
+    invoke: async () => undefined,
+    has: () => false,
+    register: () => () => {},
+  }),
 }))
 
 describe('lifecycle', () => {
@@ -104,14 +114,14 @@ describe('lifecycle', () => {
     expect(mockShutdownAll).toHaveBeenCalled()
   })
 
-  it('shutdown stops dispatch, watchdog, messaging cron, watcher, and SSE', async () => {
+  it('shutdown stops dispatch, watchdog, watcher, adapters, and SSE', async () => {
     registerShutdownHandlers(mockServer(), '/tmp/test')
     await processListeners['SIGTERM']()
 
     expect(mockDispatchStop).toHaveBeenCalled()
     expect(mockWatchdogStop).toHaveBeenCalled()
-    expect(mockMessagingStop).toHaveBeenCalled()
     expect(mockWatcherStop).toHaveBeenCalled()
+    expect(mockSearchShutdown).toHaveBeenCalled()
     expect(mockSseStop).toHaveBeenCalled()
   })
 

@@ -1,24 +1,19 @@
 /**
  * Tasks plugin — server entry point.
- * Registers API routes, MCP exec tools, and cross-plugin hooks for task operations.
+ * Registers API routes and MCP exec tools for task operations.
  */
 import { z } from 'zod'
-import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import {
   readTaskboard,
-  createTask,
   deleteTask,
   assignTask,
-  addTaskLog,
-  blockTask,
   updateTask,
-  moveTask,
-  setDependency,
-  clearDependency,
   reorderTasks,
   archiveOldTasks,
   autoArchiveDoneTasks,
-} from './lib/flow-store'
+  getTask,
+} from '../../src/core/task-store'
 import {
   moveTaskWithEffects,
   blockTaskWithEffects,
@@ -30,7 +25,13 @@ import {
   triggerDispatch,
 } from '../../src/core/task-service'
 import { createLogger } from '../../src/core/logger'
-import type { Task, TaskBoard, ColumnId } from './types'
+import { getContentDir } from '../../packages/core/src/content-dir'
+import {
+  checkTaskboard,
+  checkTaskConsistency,
+  checkTaskPositionIntegrity,
+} from './lib/health-checks'
+import type { Task, ColumnId } from './types'
 
 const log = createLogger('tasks')
 
@@ -86,7 +87,6 @@ const tasksPlugin: BakinPlugin = {
         }
       },
       verifyExists: async (key: string) => {
-        const { getTask } = await import('./lib/flow-store')
         return getTask(key) !== null
       },
     })
@@ -111,7 +111,6 @@ const tasksPlugin: BakinPlugin = {
     /** Index a task by looking it up and indexing its current state */
     async function indexTask(taskId: string): Promise<void> {
       try {
-        const { getTask } = await import('./lib/flow-store')
         const board = readTaskboard()
         const columns = board.columns as unknown as Record<string, Task[]>
         for (const [colName, tasks] of Object.entries(columns)) {
@@ -125,22 +124,6 @@ const tasksPlugin: BakinPlugin = {
         log.warn('Failed to index task', { taskId, error: err instanceof Error ? err.message : String(err) })
       }
     }
-
-    // ─── Cross-Plugin Hooks ────────────────────────────────────────────
-
-    ctx.hooks.register('tasks.readTaskboard', () => readTaskboard())
-    ctx.hooks.register('tasks.createTask', (d: Record<string, unknown>) => createTask(d.title as string, d.column as string | undefined, d.assignee as string | undefined, d.description as string | undefined, d.workflowId as string | undefined, d.createdBy as string | undefined, d.id as string | undefined, d.parentId as string | undefined, d.projectId as string | undefined))
-    ctx.hooks.register('tasks.moveTask', (d: Record<string, unknown>) => moveTask(d.identifier as string, d.to as string, d.from as string | undefined, d.channel as string | undefined))
-    ctx.hooks.register('tasks.blockTask', (d: Record<string, unknown>) => blockTask(d.identifier as string, d.reason as string, d.agent as string | undefined))
-    ctx.hooks.register('tasks.addTaskLog', (d: Record<string, unknown>) => addTaskLog(d.identifier as string, d.author as string, d.message as string))
-    ctx.hooks.register('tasks.updateTask', (d: Record<string, unknown>) => {
-      const updates = { ...(d.updates as Record<string, unknown>) }
-      delete updates.channel // Never trust channel from hook callers — only the REST route controls this
-      return updateTask(d.identifier as string, updates)
-    })
-    ctx.hooks.register('tasks.deleteTask', (d: Record<string, unknown>) => deleteTask(d.identifier as string))
-    ctx.hooks.register('tasks.setDependency', (d: Record<string, unknown>) => setDependency(d.taskId as string, d.dependsOnId as string))
-    ctx.hooks.register('tasks.clearDependency', (d: Record<string, unknown>) => clearDependency(d.taskId as string))
 
     // ─── REST API Routes ───────────────────────────────────────────────
 
@@ -484,21 +467,15 @@ const tasksPlugin: BakinPlugin = {
         const result = await getTaskDetails(params.taskId as string)
         if (!result) return { ok: false, error: `Task ${params.taskId} not found` }
 
-        // Enrich with project context if task has projectId
-        const pId = (result.task as Record<string, unknown>).projectId as string | undefined
-        if (pId) {
-          try {
-            const project = await ctx.hooks.invoke<{ title: string; status: string; progress: number; body: string }>('projects.readProject', { projectId: pId })
-            if (project) {
-              ;(result as Record<string, unknown>).projectTitle = project.title
-              ;(result as Record<string, unknown>).projectStatus = project.status
-              ;(result as Record<string, unknown>).projectProgress = project.progress
-              ;(result as Record<string, unknown>).projectExcerpt = project.body.slice(0, 500)
-            }
-          } catch { /* project plugin may not be available */ }
+        let enriched = result as Record<string, unknown>
+        try {
+          enriched = await ctx.hooks.call<Record<string, unknown>>('tasks.enrichDetails', enriched)
+        } catch {
+          // Detail enrichment is optional plugin behavior; task reads should
+          // still work if an installed plugin's extension is unavailable.
         }
 
-        return { ok: true, ...result }
+        return { ok: true, ...enriched }
       },
     })
 
@@ -641,7 +618,7 @@ const tasksPlugin: BakinPlugin = {
         taskId: z.string().describe('Your task ID (the one that depends)'),
         dependsOn: z.string().describe('Task ID you depend on'),
       },
-      handler: async (params: Record<string, unknown>, agent: string) => {
+      handler: async (params: Record<string, unknown>) => {
         try {
           await setDependencyWithEffects(params.taskId as string, params.dependsOn as string, 'mcp')
           return { ok: true, message: `Dependency registered. You will be re-dispatched when ${params.dependsOn} completes. Stop now.` }
@@ -671,7 +648,7 @@ const tasksPlugin: BakinPlugin = {
           if (title !== undefined) updates.title = title
           if (description !== undefined) updates.description = description
           if (assignee !== undefined) updates.agent = assignee
-          const result = await ctx.hooks.invoke('tasks.updateTask', { identifier: taskId, updates })
+          const result = await updateTask(taskId, updates)
           ctx.activity.audit('updated', agent, { taskId })
           indexTask(taskId).catch(() => {})
           return { ok: true, result }
@@ -692,7 +669,7 @@ const tasksPlugin: BakinPlugin = {
       handler: async (params: Record<string, unknown>, agent: string) => {
         const taskId = params.taskId as string
         try {
-          await ctx.hooks.invoke('tasks.deleteTask', { identifier: taskId })
+          await deleteTask(taskId)
           ctx.activity.audit('deleted', agent, { taskId })
           ctx.search.remove(taskId).catch(() => {})
           return { ok: true }
@@ -744,6 +721,25 @@ const tasksPlugin: BakinPlugin = {
         if (count > 0) log.info(`Periodic cleanup: deleted ${count} old tasks`)
       }, 6 * 60 * 60 * 1000)
     }
+
+    // ─── Health checks (migrated out of core/doctor.ts per #139 C2) ─────
+    ctx.registerHealthCheck({
+      id: 'taskboard',
+      name: 'Taskboard SQLite reachability',
+      run: () => Promise.resolve(checkTaskboard()),
+    })
+    ctx.registerHealthCheck({
+      id: 'task-consistency',
+      name: 'Task consistency (orphans, overload, stale in-progress)',
+      autoFix: true,
+      run: () => checkTaskConsistency(getContentDir(), ctx.runtime.agents),
+    })
+    ctx.registerHealthCheck({
+      id: 'order-integrity',
+      name: 'Task position / order integrity',
+      autoFix: true,
+      run: () => Promise.resolve(checkTaskPositionIntegrity()),
+    })
   },
 
   async onReady() {

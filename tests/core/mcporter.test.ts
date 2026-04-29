@@ -3,11 +3,11 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
+let runtimeAgentIds = ['main', 'pixel', 'trainer']
+
+function runtimeAgents() {
+  return runtimeAgentIds.map((id) => ({ id, name: id, status: 'active' }))
+}
 
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
@@ -18,13 +18,21 @@ mock.module('../../src/core/logger', () => ({
   }),
 }))
 
-mock.module('@bakin/core/openclaw-config', () => ({
-  getAgentIds: mock().mockReturnValue(['main', 'pixel', 'trainer']),
-}))
-
-mock.module('@bakin/core/openclaw-home', () => ({
-  getOpenClawHome: () => '/tmp/mcporter-test-openclaw',
-  getOpenClawPath: (...parts: string[]) => ['/tmp/mcporter-test-openclaw', ...parts].join('/'),
+mock.module('../../src/core/app-services', () => ({
+  maybeGetAppServices: () => ({
+    runtime: {
+      agents: {
+        list: async () => runtimeAgents(),
+      },
+    },
+  }),
+  createAppServices: async () => ({
+    runtime: {
+      agents: {
+        list: async () => runtimeAgents(),
+      },
+    },
+  }),
 }))
 
 mock.module('../../src/core/content-dir', () => ({
@@ -56,6 +64,7 @@ describe('mcporter', () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bakin-mcporter-'))
     mcporterHome = join(tempDir, '.mcporter')
     mcporterConfig = join(mcporterHome, 'mcporter.json')
+    runtimeAgentIds = ['main', 'pixel', 'trainer']
 
     // Set HOME before module import so MCPORTER_HOME captures tempDir
     process.env.HOME = tempDir
@@ -143,8 +152,8 @@ describe('mcporter', () => {
   // -------------------------------------------------------------------------
 
   describe('syncConfig', () => {
-    it('creates entries for all agents when no config exists', () => {
-      const changes = syncConfig(3737)
+    it('creates entries for all agents when no config exists', async () => {
+      const changes = await syncConfig(3737)
       expect(changes).toHaveLength(3)
       expect(changes).toContain('added bakin-main')
       expect(changes).toContain('added bakin-pixel')
@@ -154,15 +163,15 @@ describe('mcporter', () => {
       expect(config.mcpServers['bakin-main'].url).toBe('http://localhost:3737/mcp?agent=main')
     })
 
-    it('returns empty when config is already up to date', () => {
-      syncConfig(3737)
-      const changes = syncConfig(3737)
+    it('returns empty when config is already up to date', async () => {
+      await syncConfig(3737)
+      const changes = await syncConfig(3737)
       expect(changes).toHaveLength(0)
     })
 
-    it('updates entries when port changes', () => {
-      syncConfig(3737)
-      const changes = syncConfig(4000)
+    it('updates entries when port changes', async () => {
+      await syncConfig(3737)
+      const changes = await syncConfig(4000)
       expect(changes).toHaveLength(3)
       expect(changes.every(c => c.startsWith('updated'))).toBe(true)
 
@@ -170,7 +179,7 @@ describe('mcporter', () => {
       expect(config.mcpServers['bakin-main'].url).toContain('4000')
     })
 
-    it('removes stale entries for agents no longer in settings', () => {
+    it('removes stale entries for agents no longer in settings', async () => {
       mkdirSync(mcporterHome, { recursive: true })
       writeFileSync(mcporterConfig, JSON.stringify({
         mcpServers: {
@@ -181,14 +190,14 @@ describe('mcporter', () => {
         },
       }))
 
-      const changes = syncConfig(3737)
+      const changes = await syncConfig(3737)
       expect(changes).toContain('removed bakin-oldagent (agent no longer in settings)')
 
       const config = JSON.parse(readFileSync(mcporterConfig, 'utf-8'))
       expect(config.mcpServers['bakin-oldagent']).toBeUndefined()
     })
 
-    it('preserves non-bakin entries', () => {
+    it('preserves non-bakin entries', async () => {
       mkdirSync(mcporterHome, { recursive: true })
       writeFileSync(mcporterConfig, JSON.stringify({
         mcpServers: {
@@ -196,7 +205,7 @@ describe('mcporter', () => {
         },
       }))
 
-      syncConfig(3737)
+      await syncConfig(3737)
       const config = JSON.parse(readFileSync(mcporterConfig, 'utf-8'))
       expect(config.mcpServers['other-tool']).toBeDefined()
     })
@@ -207,11 +216,11 @@ describe('mcporter', () => {
   // -------------------------------------------------------------------------
 
   describe('verifyConfig', () => {
-    it('reports correct entries after sync', () => {
+    it('reports correct entries after sync', async () => {
       vi.mocked(execSync).mockReturnValue('ok')
-      syncConfig(3737)
+      await syncConfig(3737)
 
-      const result = verifyConfig(3737)
+      const result = await verifyConfig(3737)
       expect(result.installed).toBe(true)
       expect(result.configExists).toBe(true)
       expect(result.agentEntries).toHaveLength(3)
@@ -219,15 +228,15 @@ describe('mcporter', () => {
       expect(result.staleEntries).toHaveLength(0)
     })
 
-    it('reports incorrect entries when port differs', () => {
-      syncConfig(3737)
+    it('reports incorrect entries when port differs', async () => {
+      await syncConfig(3737)
       vi.mocked(execSync).mockReturnValue('ok')
 
-      const result = verifyConfig(4000)
+      const result = await verifyConfig(4000)
       expect(result.agentEntries.every(e => !e.correct)).toBe(true)
     })
 
-    it('reports stale entries', () => {
+    it('reports stale entries', async () => {
       mkdirSync(mcporterHome, { recursive: true })
       writeFileSync(mcporterConfig, JSON.stringify({
         mcpServers: {
@@ -237,7 +246,7 @@ describe('mcporter', () => {
       }))
       vi.mocked(execSync).mockReturnValue('ok')
 
-      const result = verifyConfig(3737)
+      const result = await verifyConfig(3737)
       expect(result.staleEntries).toContain('bakin-stale')
     })
   })
@@ -247,14 +256,14 @@ describe('mcporter', () => {
   // -------------------------------------------------------------------------
 
   describe('setup', () => {
-    it('returns true when install succeeds and config syncs', () => {
+    it('returns true when install succeeds and config syncs', async () => {
       vi.mocked(execSync).mockReturnValue('ok')
-      expect(setup(3737)).toBe(true)
+      expect(await setup(3737)).toBe(true)
     })
 
-    it('returns false when mcporter cannot be installed', () => {
+    it('returns false when mcporter cannot be installed', async () => {
       vi.mocked(execSync).mockImplementation(() => { throw new Error('fail') })
-      expect(setup(3737)).toBe(false)
+      expect(await setup(3737)).toBe(false)
     })
   })
 })

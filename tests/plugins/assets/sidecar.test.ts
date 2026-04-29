@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
-import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs'
+import { mkdirSync, rmSync, existsSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { readSidecar, writeSidecar, createStub, getSidecarPath, validateSidecar } from '@bakin/assets/lib/sidecar'
 
 describe('assets/sidecar', () => {
   const testDir = join(tmpdir(), `bakin-test-sidecar-${Date.now()}`)
-  const assetsDir = join(testDir, 'assets', 'images', 'task123')
+  const assetsDir = join(testDir, 'assets', 'store', '2026-03')
 
   beforeEach(() => {
     mkdirSync(assetsDir, { recursive: true })
@@ -90,29 +90,21 @@ describe('assets/sidecar', () => {
       const stub = createStub(assetPath)
 
       expect(stub.agent).toBe('unknown')
-      expect(stub.taskId).toBe('task123') // inferred from dir
+      expect(stub.taskId).toBeNull()
+      expect(stub.type).toBe('images')
       expect(typeof stub.created).toBe('string')
       expect(existsSync(getSidecarPath(assetPath))).toBe(true)
     })
 
-    it('infers null taskId from _unlinked directory', () => {
-      const unlinkedDir = join(testDir, 'assets', 'images', '_unlinked')
-      mkdirSync(unlinkedDir, { recursive: true })
-      const assetPath = join(unlinkedDir, 'loose.png')
+    it('does not infer task ownership from path segments', () => {
+      const nestedDir = join(testDir, 'assets', 'store', '2026-03', 'looks-like-task')
+      mkdirSync(nestedDir, { recursive: true })
+      const assetPath = join(nestedDir, 'loose.md')
       writeFileSync(assetPath, 'data')
 
       const stub = createStub(assetPath)
       expect(stub.taskId).toBeNull()
-    })
-
-    it('infers null taskId from library directory', () => {
-      const libraryDir = join(testDir, 'assets', 'images', 'library')
-      mkdirSync(libraryDir, { recursive: true })
-      const assetPath = join(libraryDir, 'logo.png')
-      writeFileSync(assetPath, 'data')
-
-      const stub = createStub(assetPath)
-      expect(stub.taskId).toBeNull()
+      expect(stub.type).toBe('text')
     })
   })
 

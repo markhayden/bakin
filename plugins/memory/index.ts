@@ -1,8 +1,8 @@
 /**
  * Memory plugin — server entry point (v2 rebuild, C2).
  *
- * Read-only observability over every OpenClaw memory tier plus Bakin's own
- * audit log, surfaced through a single `bakin_memory` Antfly table. Per-tier
+ * Read-only observability over every runtime memory tier plus Bakin's own
+ * audit log, surfaced through a single `bakin_memory` search table. Per-tier
  * routes, UI, and indexer logic land in subsequent commits (C3–C8).
  *
  * This file deliberately stays small: it (a) registers the `bakin_memory`
@@ -10,13 +10,11 @@
  * into it, (c) wires the BakinCreate watch list. All tier-specific code
  * lives under plugins/memory/lib/.
  */
-import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { createLogger } from '../../src/core/logger'
-import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import { getContentDir } from '@bakin/core/content-dir'
 import { join } from 'path'
 import { MemoryIndexer } from './lib/indexer'
-import { gatewaySubscribe } from './lib/openclaw-gateway'
 import { auditRoute } from './lib/routes/audit'
 import { durableListRoute, durableDetailRoute } from './lib/routes/durable'
 import {
@@ -41,6 +39,7 @@ import { createMemoryListAgentsTool } from './mcp/list-agents'
 import { createMemoryStatusTool } from './mcp/status'
 import { migrateIfNeeded } from './lib/memory-migration'
 import { pruneExpired, startTtlTimer, stopTtlTimer } from './lib/ttl-prune'
+import { checkSearchTables } from './lib/health-checks'
 
 const log = createLogger('memory')
 
@@ -48,7 +47,7 @@ interface MemorySettings {
   backfillDays: number
   skipSessionOverBytes: number
   skipResetBackups: boolean
-  lanceDbComparisonEnabled: boolean
+  runtimeComparisonEnabled: boolean
   turnRetentionDays: number
   auditRetentionDays: number
 }
@@ -57,7 +56,7 @@ const DEFAULTS: MemorySettings = {
   backfillDays: 30,
   skipSessionOverBytes: 10 * 1024 * 1024,
   skipResetBackups: true,
-  lanceDbComparisonEnabled: true,
+  runtimeComparisonEnabled: true,
   turnRetentionDays: 7,
   auditRetentionDays: 30,
 }
@@ -98,17 +97,17 @@ const memoryPlugin: BakinPlugin = {
         default: DEFAULTS.skipResetBackups,
       },
       {
-        key: 'lanceDbComparisonEnabled',
+        key: 'runtimeComparisonEnabled',
         type: 'boolean',
-        label: 'Compare against LanceDB recall',
-        description: 'Show OpenClaw daily-note vector recall alongside Antfly results.',
-        default: DEFAULTS.lanceDbComparisonEnabled,
+        label: 'Compare against runtime recall',
+        description: 'Show runtime daily-note recall alongside Bakin search results.',
+        default: DEFAULTS.runtimeComparisonEnabled,
       },
       {
         key: 'turnRetentionDays',
         type: 'number',
         label: 'Turn retention (days)',
-        description: 'Turns older than this are dropped at write time and pruned daily. OpenClaw still owns the source JSONL.',
+        description: 'Turns older than this are dropped at write time and pruned daily. The runtime still owns the source transcript.',
         default: DEFAULTS.turnRetentionDays,
       },
       {
@@ -127,7 +126,7 @@ const memoryPlugin: BakinPlugin = {
 
   contentFiles: [],
 
-  activate(ctx: PluginContext) {
+  async activate(ctx: PluginContext) {
     const settings = { ...DEFAULTS, ...(ctx.getSettings<Partial<MemorySettings>>() ?? {}) }
 
     // ─── Search: unified bakin_memory table ─────────────────────────────────
@@ -196,30 +195,18 @@ const memoryPlugin: BakinPlugin = {
     ctx.registerExecTool(createMemoryStatusTool(ctx))
 
     // ─── Watcher paths (spec §Watcher paths) ────────────────────────────────
-    // The indexer fans these out to per-tier handlers once those land.
+    // Provider-owned paths are supplied by the runtime adapter; this plugin
+    // only contributes Bakin's own audit log path.
     const watchPaths = [
-      // Bakin side
       join(getContentDir(), 'audit.jsonl'),
-      // OpenClaw: session identity
-      getOpenClawPath('agents', '*', 'sessions', 'sessions.json'),
-      // Transcripts + checkpoints live side-by-side under sessions/
-      getOpenClawPath('agents', '*', 'sessions', '*.jsonl'),
-      // Durable bootstrap files (main-agent workspace + subagent workspaces)
-      getOpenClawPath('workspace', '*.md'),
-      getOpenClawPath('workspaces', '*', '*.md'),
-      // Skills — SKILL.md per skill directory; indexed as durable kind=skill
-      getOpenClawPath('workspace', 'skills', '*', 'SKILL.md'),
-      getOpenClawPath('workspaces', '*', 'skills', '*', 'SKILL.md'),
-      // Daily notes + dream artifacts
-      getOpenClawPath('workspace', 'memory', '**', '*'),
-      getOpenClawPath('workspaces', '*', 'memory', '**', '*'),
+      ...(await ctx.runtime.memory.watchPaths()),
     ]
     ctx.watchFiles(watchPaths)
 
     // Fan watcher events into the indexer. BakinEventBus handlers receive
     // (event, data) where data = { file, event, content }. Core's watcher
-    // only covers ~/.bakin/ — OpenClaw filesystem watching for the tiers
-    // under ~/.openclaw/ is owned by the indexer itself (lands in C3+).
+    // only covers Bakin-owned files; runtime filesystem watching for
+    // provider-owned tiers is owned by the indexer itself.
     // Events that fire before onReady() would hit a missing table, so we
     // gate them behind the same ready flag as the initial backfill.
     ctx.events.on('file.add', (_event, data) => {
@@ -247,7 +234,7 @@ const memoryPlugin: BakinPlugin = {
       // under the current write-time filters (TTL, parser rules, etc.). Runs
       // before backfill so the freshly-recreated table is what gets written.
       try {
-        const { migrated, from, to } = await migrateIfNeeded()
+        const { migrated, from, to } = await migrateIfNeeded(ctx.search)
         if (migrated) log.info('memory schema migrated', { from, to })
       } catch (err) {
         log.warn('memory migration failed — proceeding with backfill anyway', {
@@ -279,32 +266,25 @@ const memoryPlugin: BakinPlugin = {
         turnRetentionDays: settings.turnRetentionDays,
         auditRetentionDays: settings.auditRetentionDays,
       }
-      startTtlTimer(ttl)
+      startTtlTimer(ctx.search, ttl)
       try {
-        await pruneExpired(ttl)
+        await pruneExpired(ctx.search, ttl)
       } catch (err) {
         log.warn('initial ttl prune failed', {
           err: err instanceof Error ? err.message : String(err),
         })
       }
-
-      // WS live updates for sessions — best-effort. Chokidar on sessions.json
-      // is the safety net, so a dead gateway just means slightly higher
-      // latency, not broken correctness.
-      try {
-        await gatewaySubscribe('sessions.subscribe', {}, () => {
-          void indexer.indexTier('session').catch((err) => {
-            log.warn('session live re-index failed', {
-              err: err instanceof Error ? err.message : String(err),
-            })
-          })
-        })
-      } catch (err) {
-        log.info('sessions WS subscribe unavailable; relying on chokidar', {
-          err: err instanceof Error ? err.message : String(err),
-        })
-      }
+      // Runtime memory watcher paths are the live-update path. Runtime-native
+      // subscriptions can be added to the adapter contract if another backend
+      // needs push events that do not map to files.
     }
+
+    // ─── Health check (migrated out of core/doctor.ts per #139 C5) ──────
+    ctx.registerHealthCheck({
+      id: 'search-tables',
+      name: 'Search table stats',
+      run: () => checkSearchTables(ctx.search.health?.bind(ctx.search)),
+    })
 
     log.info('memory plugin activated', {
       backfillDays: settings.backfillDays,

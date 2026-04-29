@@ -7,7 +7,7 @@
  *   3. Snapshot Bakin-owned data into ~/.bakin/.uninstalled/<id>-<ISO>.tar.gz
  *   4. Sweep registries: hooks, exec tools, workflow nodes, notification
  *      channels, health checks, search content types
- *   5. Filesystem deletes: OpenClaw skills (honors .userEdited), settings
+ *   5. Deletes: runtime skills (honors .userEdited), settings
  *      JSON, plugin dir
  *   6. Remove lockfile entry
  *
@@ -51,6 +51,7 @@ interface RemoveBody {
 }
 
 export async function post(req: Request, _url: URL): Promise<Response> {
+  void _url
   let body: RemoveBody
   try {
     body = await req.json()
@@ -112,10 +113,10 @@ export async function post(req: Request, _url: URL): Promise<Response> {
     }, 'system')
   }
 
-  // ─── 2. Plan OpenClaw skill cleanup BEFORE snapshot ──────────────────────
-  // We snapshot the to-remove skill dirs into the tarball, then actually
-  // delete them. Capturing the plan first lets the snapshot include the
-  // exact paths the cleanup step will delete.
+  // ─── 2. Plan runtime skill cleanup BEFORE snapshot ───────────────────────
+  // We snapshot the to-remove skill content into the tarball, then actually
+  // delete it. Capturing the plan first lets the snapshot include exactly
+  // what the cleanup step will delete.
   //
   // Authority: the LOCKFILE entry's installedSkills allowlist, NOT the
   // on-disk `.installedBy` markers. This defeats the fake-marker
@@ -124,7 +125,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   // into deleting them, because the lockfile entry only records skills
   // this plugin actually installed.
   const ownedSkills = readPluginLockfile().plugins[pluginId]?.installedSkills ?? []
-  const assetsPlan = planPluginAssetsRemoval(pluginId, ownedSkills)
+  const assetsPlan = await planPluginAssetsRemoval(pluginId, ownedSkills)
 
   // ─── 3. Snapshot ───────────────────────────────────────────────────────────
   let snapshotPath: string | null = null
@@ -133,7 +134,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       pluginId,
       pluginDir,
       settingsFile: existsSync(settingsFile) ? settingsFile : undefined,
-      removedSkillDirs: assetsPlan.toRemove,
+      removedSkills: assetsPlan.snapshots,
     })
     snapshotPath = result.tarballPath
   } catch (err) {
@@ -196,7 +197,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   // ─── 5. Filesystem deletes ─────────────────────────────────────────────────
   let skillsResult: { removed: number; kept: number; missingFromDisk: string[] } = { removed: 0, kept: 0, missingFromDisk: [] }
   try {
-    const r = await removePluginAssets(pluginId, ownedSkills)
+    const r = await removePluginAssets(pluginId, ownedSkills, assetsPlan)
     skillsResult = { removed: r.removed, kept: r.kept, missingFromDisk: r.missingFromDisk }
     if (r.missingFromDisk.length > 0) {
       log.warn('lockfile claimed ownership of skills not present on disk', {

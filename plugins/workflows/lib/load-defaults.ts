@@ -13,7 +13,7 @@
  */
 import { readdirSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
-import type { PluginContext } from '../../../src/lib/plugin-types'
+import type { PluginContext } from '@bakin/core/plugin-types'
 import { parseYAML, validateDefinition } from './parser'
 import type { WorkflowDefinition } from '../types'
 

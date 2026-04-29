@@ -24,13 +24,14 @@ Publish the completed content to configured channels.
 
 1. Gather all outputs from previous steps (copy, image, video)
 2. Format the post for each target channel
-3. Publish to each configured channel (Discord, etc.)
+3. Publish to each configured runtime channel
 4. Record the post URLs for tracking
 
-## Channel-Specific Notes
+## Runtime Channel Notes
 
-- **Discord:** Use embed format with image attachment
-- **Other channels:** Adapt formatting to platform requirements
+- Use `bakin_exec_post_channel` for delivery.
+- Preserve attachments as explicit files instead of embedding provider-specific URLs.
+- Adapt formatting only when the task or runtime channel name makes a platform requirement explicit.
 
 ## Verification
 

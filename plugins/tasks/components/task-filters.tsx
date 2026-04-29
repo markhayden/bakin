@@ -19,7 +19,7 @@ interface TaskFiltersProps {
   statusFilter?: string[]
   onStatusChange?: (statuses: string[]) => void
   showStatusFilter?: boolean
-  /** Aggregation counts from Antfly search (status → count) */
+  /** Aggregation counts from search (status → count) */
   statusCounts?: Record<string, number>
 }
 

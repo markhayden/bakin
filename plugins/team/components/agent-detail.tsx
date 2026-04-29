@@ -3,7 +3,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useRouter } from '@bakin/sdk/hooks'
 import { ArrowLeft, Loader2, Camera, Trash2, BookOpen, Sparkles, Calendar } from 'lucide-react'
-import { Badge } from "@bakin/sdk/ui"
 import { Button } from "@bakin/sdk/ui"
 import {
   Dialog,
@@ -12,7 +11,7 @@ import {
   DialogTitle,
 } from "@bakin/sdk/ui"
 import { Skeleton } from "@bakin/sdk/ui"
-import { useGatewayStatus } from "@bakin/sdk/hooks"
+import { useRuntimeStatus } from "@bakin/sdk/hooks"
 import type { AvailableModel } from "@bakin/sdk/types"
 import { useAgentStore, useAgentColor, useMainAgentId, usePackageState } from '@bakin/sdk/hooks'
 import { useQueryState } from "@bakin/sdk/hooks"
@@ -54,7 +53,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([])
   const [savingModel, setSavingModel] = useState(false)
-  const gateway = useGatewayStatus()
+  const runtimeStatus = useRuntimeStatus()
 
   useEffect(() => {
     setLoading(true)
@@ -80,7 +79,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
         body: JSON.stringify({ agentId, ownModel }),
       })
       if (res.ok) {
-        gateway.markDirty()
+        runtimeStatus.markDirty()
         // Refetch profile to get the correct effective model
         const updated = await fetch(`/api/plugins/team/${agentId}`).then((r) => r.json())
         setProfile(updated)
@@ -198,19 +197,19 @@ export function AgentDetail({ agentId }: { agentId: string }) {
       </div>
 
       {/* Restart banner */}
-      {gateway.restartNeeded && (
+      {runtimeStatus.restartNeeded && (
         <div className="flex items-center justify-between rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
           <span className="text-sm text-amber-400">
-            Gateway config out of sync. Restart to apply changes.
+            Runtime config out of sync. Restart to apply changes.
           </span>
           <Button
-            onClick={gateway.restart}
-            disabled={gateway.restarting}
+            onClick={runtimeStatus.restart}
+            disabled={runtimeStatus.restarting}
             variant="outline"
             size="sm"
             className="border-amber-500/30 text-amber-400 hover:bg-amber-500/20"
           >
-            {gateway.restarting ? 'Restarting...' : 'Restart Gateway'}
+            {runtimeStatus.restarting ? 'Restarting...' : 'Restart Runtime'}
           </Button>
         </div>
       )}
@@ -264,7 +263,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             This will remove <span className="text-foreground font-medium">{profile.name}</span> from
-            the agent roster and restart the OpenClaw gateway. The workspace will be moved to trash.
+            the agent roster and restart the active runtime. The workspace will be moved to trash.
           </p>
           <p className="text-xs text-muted-foreground/70 mt-1">
             This cannot be undone from the UI.
@@ -349,7 +348,7 @@ function SkillsTab({ agentId }: { agentId: string }) {
       <EmptyState
         icon={Sparkles}
         title="No skills installed"
-        description="Skills are reusable OpenClaw capabilities the agent can invoke. Install a skill-pack via the CLI to add some — `bakin packages install <source>`."
+        description="Skills are reusable runtime capabilities the agent can invoke. Install a skill-pack via the CLI to add some — `bakin packages install <source>`."
       />
     )
   }
@@ -457,4 +456,3 @@ function MemoryTab({ agentId }: { agentId: string }) {
     </div>
   )
 }
-

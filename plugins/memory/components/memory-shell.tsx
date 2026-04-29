@@ -67,7 +67,7 @@ const ALL_TIER_OPTIONS: FacetOption[] = [
 ]
 
 // Durable sub-tier "kind" buckets. Values match the normalized mapping in
-// `plugins/memory/lib/openclaw-adapter.ts:DURABLE_KIND_BY_BASENAME` plus
+// `plugins/memory/lib/durable-kinds.ts:DURABLE_KIND_BY_BASENAME` plus
 // `skill` from the skill indexer. Labels mirror the team-detail tab names
 // so `kind=soul` on /memory lines up with the SOUL tab on /team/<id>.
 const KIND_OPTIONS: FacetOption[] = [

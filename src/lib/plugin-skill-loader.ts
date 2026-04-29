@@ -15,7 +15,7 @@
 import { existsSync, readdirSync, readFileSync } from 'fs'
 import { join } from 'path'
 import yaml from 'js-yaml'
-import type { PluginContext, SkillDefinition } from './plugin-types'
+import type { PluginContext, SkillDefinition } from '@bakin/core/plugin-types'
 
 export interface LoadPluginSkillsResult {
   registered: string[]

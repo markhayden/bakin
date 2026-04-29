@@ -2,7 +2,12 @@
 
 ## Overview
 
-Antfly is the vector database backing all search in Bakin — UI search and agent queries. It is **optional**: Bakin runs fully without it. When `settings.antfly.enabled` is `false` (or Antfly is unreachable), search silently degrades — indexing calls are no-ops, queries return empty results.
+Search goes through `AppServices.search` / `ctx.search`. Antfly is the current
+search adapter implementation in `packages/adapter-antfly/`, backing UI search
+and agent queries. It is **optional**: Bakin runs fully without it. When
+`settings.search.settings.enabled` is `false` (or Antfly is unreachable),
+search silently degrades — indexing calls are no-ops, queries return empty
+results.
 
 Bakin's search pipeline supports multimodal content: text embeddings via BGE, image embeddings via CLIP (running through Antfly's Termite ML subsystem), hybrid BM25 + semantic fusion via RRF, and optional cross-encoder reranking on single-modality tables. File content for PDFs and text formats is extracted **server-side in Bakin** (via pdf-parse and `fs.readFileSync`) and passed to Antfly as a pre-resolved `content` field rather than dereferenced via Antfly's `{{remotePDF}}` / `{{remoteText}}` template helpers. See **Multimodal Architecture** below and `.claude/knowledge/multimodal-search.md` for the full rationale.
 
@@ -18,12 +23,12 @@ Mutation (create/update)
   → ctx.search.index(key, doc)
   → Bakin extracts file content (if applicable) into doc.content
   → Bakin computes image_url (file://) for raster images
-  → AntflyClient upserts into bakin_{contentType} table
+  → SearchAdapter upserts into bakin_{contentType} table
   → Antfly's embedding enricher chunks, embeds via BGE/CLIP, writes to indexes
 
 Deletion
   → plugin calls ctx.search.remove(key)
-  → AntflyClient deletes document
+  → SearchAdapter deletes document
 
 Periodic backstop scan (default 7d)
   → SearchCleanup scans all registered content types
@@ -33,7 +38,7 @@ Periodic backstop scan (default 7d)
 Query
   → ctx.search.query(params)
   → Registry looks up per-table index names and rerankField
-  → AntflyClient hybrid query: full-text (Bleve) + semantic (embeddings) via RRF
+  → SearchAdapter hybrid query: full-text (Bleve) + semantic (embeddings) via RRF
   → Cross-encoder reranker scores top-K if the content type opted in
   → Returns ranked results with per-index score breakdown
 
@@ -90,7 +95,7 @@ Higher-numbered paths exist as backstops for the lower ones.
    `performStartupReconcile()` walks the filesystem, compares mtimes
    against the indexed `_mtime_ms` field, and re-indexes drift or
    removes orphans. Then a periodic backstop scan runs every 7d
-   (`settings.antfly.cleanupInterval`) calling `verifyExists()` for
+   (`settings.search.settings.cleanupInterval`) calling `verifyExists()` for
    every indexed key — this catches the rare cases where the process
    was down during a delete or the fs event was lost. The 7d cadence
    is intentional: the backstop is a safety net, not the primary path.
@@ -99,7 +104,8 @@ Higher-numbered paths exist as backstops for the lower ones.
 
 | File | Purpose |
 |---|---|
-| `src/core/antfly.ts` | `AntflyClient` wrapper — write path, query builder, retry on transient shard errors |
+| `packages/adapter-antfly/src/search.ts` | `AntflySearchAdapter` implementation: write path, query builder, reranker mapping, index health, transient shard retry |
+| `packages/core/src/adapters/search/` | Search adapter contract and testing helper |
 | `src/core/search-registry.ts` | `SearchRegistry` singleton, ctx.search provider, multi-index registration, query routing, file-backed helper |
 | `src/core/search-reconcile.ts` | Startup mtime-aware reconcile, glob matcher, file walker |
 | `src/core/search-cleanup.ts` | Periodic orphan backstop scan (default 7d), configurable interval |
@@ -116,7 +122,7 @@ Higher-numbered paths exist as backstops for the lower ones.
 
 All Antfly tables use the `bakin_` prefix: `bakin_tasks`, `bakin_assets`, `bakin_projects`, etc.
 
-**Registered tables:** tasks, assets, projects, workflows, schedule, team, memory, brainstorm (8 total). All are registered by their owning plugin. The **memory** plugin owns `bakin_memory` — a single unified table with a `tier` facet that discriminates across 7 memory tiers (audit, session, turn, checkpoint, daily_note, durable, dream). This replaced the former `bakin_audit` table during the memory-plugin-rebuild (2026-04-18) — the old table was dropped with no shim. The brainstorm table is owned by the **messaging** plugin.
+**Registered tables:** core tables are registered by their owning core plugin. Official external plugins add tables when installed; for example Projects owns `bakin_projects` and Messaging owns `bakin_messaging_brainstorm`. The **memory** plugin owns `bakin_memory` — a single unified table with a `tier` facet that discriminates across 7 memory tiers (audit, session, turn, checkpoint, daily_note, durable, dream). This replaced the former `bakin_audit` table during the memory-plugin-rebuild (2026-04-18) — the old table was dropped with no shim.
 
 **Multi-index tables:** `bakin_assets` is currently the only table with more than one embedding index — it has `assets_text` (BGE over sidecar metadata + extracted PDF/text content) and `assets_visual` (CLIP over raster image pixels). All other tables use a single default embedding index named `embeddings`.
 
@@ -156,7 +162,7 @@ interface SearchContentTypeDefinition {
 
 interface SearchIndexDefinition {
   name: string            // e.g. 'assets_text', 'assets_visual'
-  embedderRef: string     // key into settings.antfly.embedders
+  embedderRef: string     // key into settings.search.settings.embedders
   embeddingTemplate: string
   chunker?: { enabled: boolean; targetTokens?: number; overlapTokens?: number }
 }
@@ -199,7 +205,7 @@ interface SearchResponse {
   results: SearchResult[]
   aggregations?: Record<string, Array<{ value: string; count: number }>>  // facet term buckets
   rawAggregations?: Record<string, unknown>                                // Antfly's raw response (date_histogram etc.)
-  meta: { query: string; total: number; took_ms: number; source: 'antfly' | 'fallback' }
+  meta: { query: string; total: number; took_ms: number; source: 'search' | 'fallback' }
 }
 ```
 
@@ -215,7 +221,7 @@ Queries combine full-text (BM25) and semantic (vector) results via Reciprocal Ra
 | `semantic_only` | Vector similarity only |
 | `full_text_only` | BM25 only, no embeddings required |
 
-Global default: `settings.antfly.search.strategy`.
+Global default: `settings.search.settings.search.strategy`.
 
 **Per-table index routing:** when a table has multiple embedding indexes declared via `def.indexes`, the registry's `getIndexNames(tableName)` resolves the effective index list (e.g. `['assets_text', 'assets_visual']`) and passes it to `antfly.queryTable()`. The client sends the array in `QueryRequest.indexes`, and Antfly runs semantic search across all of them — results from each index are merged into the final RRF ranking with a per-index score breakdown in `_index_scores`.
 
@@ -225,11 +231,11 @@ The BM25 index key in `_index_scores` is a full filesystem path (e.g. `/path/to/
 
 ### Reranker
 
-Optional cross-encoder reranking after initial retrieval. Configured globally via `settings.antfly.search.reranker` (provider, model, threshold, enabled flag), and **opted into per content type** via `SearchContentTypeDefinition.rerankField`.
+Optional cross-encoder reranking after initial retrieval. Configured globally via `settings.search.settings.search.reranker` (provider, model, threshold, enabled flag), and **opted into per content type** via `SearchContentTypeDefinition.rerankField`.
 
 **How rerank attachment works:**
 - The registry looks up `rerankField` for the queried table via `getRerankField(tableName)`
-- `buildRerankerConfig()` in `src/core/antfly.ts` only attaches a reranker to the `QueryRequest` when **all three** are true: global `enabled: true`, per-query `rerank !== false`, and `rerankField` is set on the content type
+- `buildRerankerConfig()` in `packages/adapter-antfly/src/search.ts` only attaches a reranker to the `QueryRequest` when **all three** are true: global `enabled: true`, per-query `rerank !== false`, and `rerankField` is set on the content type
 - Tables that don't set `rerankField` get pure RRF hybrid fusion (Bleve full-text + semantic embeddings), no cross-encoder pass
 - Antfly rejects reranker configs that don't include `field` or `template` with a 400, so a missing `rerankField` MUST translate to "no reranker" — not "reranker without field"
 
@@ -273,10 +279,10 @@ Bakin's text and visual embeddings use different models. Both run locally via An
 
 ### Per-index embedder selection
 
-Each `SearchIndexDefinition` declares an `embedderRef` string. The registry's table-creation path passes the ref to `resolveEmbedder()` which looks it up in `settings.antfly.embedders` and returns the concrete `{ provider, model }` config. Add a new provider by:
+Each `SearchIndexDefinition` declares an `embedderRef` string. The registry's table-creation path passes the ref to `resolveEmbedder()` which looks it up in `settings.search.settings.embedders` and returns the concrete `{ provider, model }` config. Add a new provider by:
 
-1. Adding a named entry to `settings.antfly.embedders` (e.g. `highres: { provider: 'vertex', model: 'multimodalembedding@001' }`)
-2. Adding a case in `src/core/antfly.ts` for the provider (or rely on Antfly's built-in provider support)
+1. Adding a named entry to `settings.search.settings.embedders` (e.g. `highres: { provider: 'vertex', model: 'multimodalembedding@001' }`)
+2. Adding adapter/provider support in `packages/adapter-antfly/src/search.ts` if Antfly's built-in provider support is not enough
 3. Referencing the new name from a content type's `indexes[].embedderRef`
 
 No plugin code changes needed. The `visual` ref is only consumed by `bakin_assets.assets_visual` today; every other table uses `default`.
@@ -384,7 +390,7 @@ Antfly's `createTable` returns as soon as table metadata is written, but the sha
 - `shard is still initializing`
 - `Failed to forward batches: ... shard is still initializing`
 
-`retryTransientBatch()` in `src/core/antfly.ts` wraps every batch write (`indexDocument`, `removeDocument`, `transformDocument`, `batchIndex`, `batchRemove`) with exponential backoff on those specific error messages:
+`retryTransientBatch()` in `packages/adapter-antfly/src/search.ts` wraps every batch write (`indexDocument`, `removeDocument`, `transformDocument`, `batchIndex`, `batchRemove`) with exponential backoff on those specific error messages:
 
 - **5 retries max** — ~3.1 seconds total (100ms → 200ms → 400ms → 800ms → 1600ms)
 - **Transient only** — non-matching errors bubble through on the first attempt
@@ -397,8 +403,8 @@ The migration path is the common trigger — 7 tables recreated, reindex fires i
 Long documents are split before embedding. Configured per content type via `chunker: { enabled, targetTokens, overlapTokens }`. Defaults from settings:
 
 ```
-settings.antfly.chunking.defaultTargetTokens   — target tokens per chunk (default 200)
-settings.antfly.chunking.defaultOverlapTokens  — overlap between chunks (default 25)
+settings.search.settings.chunking.defaultTargetTokens   — target tokens per chunk (default 200)
+settings.search.settings.chunking.defaultOverlapTokens  — overlap between chunks (default 25)
 ```
 
 If a content type has no `chunker` (or `chunker.enabled` is false), the `embeddingTemplate` output is embedded whole. For tables with `indexes[]`, each index's chunker config is applied independently — `assets_text` chunks at 200/25, `assets_visual` does not chunk (image embeddings are whole-doc).
@@ -412,10 +418,10 @@ primary mechanism — it's a safety net for the rare cases where the
 process was down during a delete or the fs event was lost.
 
 1. For each registered content type, list all indexed document keys from Antfly
-2. Call `def.verifyExists(key)` for each key (checks source: filesystem, SQLite, etc.)
+2. Call `def.verifyExists(key)` for each key (checks source: filesystem, task store, runtime adapter, etc.)
 3. Remove any document whose source no longer exists
 
-Interval controlled by `settings.antfly.cleanupInterval` (Go duration string,
+Interval controlled by `settings.search.settings.cleanupInterval` (Go duration string,
 default `'7d'`). Backstop scan does not run if Antfly is disabled. The
 default was demoted from 24h → 7d in the issue #73 PR because the watcher
 unlink hook now does the immediate work.
@@ -484,7 +490,7 @@ This is opt-in because it adds one query per table. Intended for smoke tests and
 
 ### Key types
 
-The foundation type is `IndexHealth` from `src/core/antfly.ts`:
+The foundation shape is the adapter index health result from `packages/adapter-antfly/src/search.ts`:
 
 ```typescript
 interface IndexHealthEntry {
@@ -524,7 +530,7 @@ The hook exports the `SearchResult`, `SearchResponse`, `UseSearchOptions`, and `
 
 ## Settings Reference
 
-All under `settings.antfly`:
+All under `settings.search.settings`:
 
 | Key | Type | Purpose |
 |---|---|---|

@@ -1,7 +1,7 @@
 /**
  * Tests for the settings onboarding component.
  *
- * Uses CONTENT_DIR env var rather than a vi.mock on content-dir because
+ * Uses BAKIN_HOME env var rather than a vi.mock on content-dir because
  * the component imports `updateSettings` from src/core/settings, which
  * reads its target path through `getContentDir()` at call time. Setting
  * the env var lets the real module cooperate with a temp directory
@@ -34,7 +34,7 @@ describe('onboarding settings component', () => {
   let resetSettingsCache: typeof import('../../../src/core/settings').resetSettingsCache
 
   beforeEach(async () => {
-    process.env.CONTENT_DIR = TEST_CONTENT_DIR
+    process.env.BAKIN_HOME = TEST_CONTENT_DIR
     if (fs.existsSync(TEST_CONTENT_DIR)) {
       fs.rmSync(TEST_CONTENT_DIR, { recursive: true, force: true })
     }
@@ -48,7 +48,7 @@ describe('onboarding settings component', () => {
   })
 
   afterEach(() => {
-    delete process.env.CONTENT_DIR
+    delete process.env.BAKIN_HOME
     if (fs.existsSync(TEST_CONTENT_DIR)) {
       fs.rmSync(TEST_CONTENT_DIR, { recursive: true, force: true })
     }

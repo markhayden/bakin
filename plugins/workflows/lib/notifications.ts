@@ -1,28 +1,62 @@
 /**
  * Workflow notification dispatcher.
- * Emits SSE events for UI updates and optionally sends chat notifications
- * (Discord first) when gates are reached or workflows complete.
+ *
+ * Workflow code emits local UI events directly. External delivery is routed
+ * through the active runtime adapter's channel surface so provider-specific
+ * API details stay behind the adapter boundary.
  */
-import type { ApprovalActor, EventBus } from '../../../src/lib/plugin-types'
+import type { AgentRuntimeAdapter, ApprovalRenderRef, CreateApprovalArgs } from '@bakin/core/adapters/runtime'
+import type { ApprovalActor, EventBus } from '@bakin/core/plugin-types'
 import type { WorkflowInstance } from '../types'
-import { loadDiscordConfig, resolveChannelId } from '../../../scripts/lib/post-discord'
 import { createLogger } from '../../../src/core/logger'
+import { createApprovalRecord, resolveApprovalRecord, updateApprovalDeliveries } from './approval-store'
 
 const log = createLogger('workflow-notifications')
 
 let eventBus: EventBus | null = null
-let discordSettings: DiscordGateSettings | null = null
+let runtime: AgentRuntimeAdapter | null = null
+let gateSettings: GateNotificationSettings | null = null
+
+export interface GateNotificationSettings {
+  approvalChannelAlerts: boolean
+  approvalChannel: string
+  requireRejectReason: boolean
+}
 
 export function setEventBus(bus: EventBus): void {
   eventBus = bus
 }
 
-export function setDiscordGateSettings(settings: DiscordGateSettings): void {
-  discordSettings = settings
+export function setNotificationRuntime(adapter: AgentRuntimeAdapter): void {
+  runtime = adapter
 }
 
-export function getDiscordGateSettings(): DiscordGateSettings | null {
-  return discordSettings
+export function setGateNotificationSettings(settings: GateNotificationSettings): void {
+  gateSettings = settings
+}
+
+export function getGateNotificationSettings(): GateNotificationSettings | null {
+  return gateSettings
+}
+
+export function buildGateApprovalId(taskId: string, stepId: string, runId?: string, requestKey?: string): string {
+  const parts = ['workflow-gate', encodeURIComponent(taskId), encodeURIComponent(stepId)]
+  if (runId) parts.push(encodeURIComponent(runId))
+  if (requestKey) parts.push(encodeURIComponent(requestKey))
+  return parts.join(':')
+}
+
+export function parseGateApprovalId(approvalId: string): { taskId: string; stepId: string } | null {
+  const parts = approvalId.split(':')
+  if ((parts.length !== 3 && parts.length !== 4 && parts.length !== 5) || parts[0] !== 'workflow-gate') return null
+  try {
+    return {
+      taskId: decodeURIComponent(parts[1]),
+      stepId: decodeURIComponent(parts[2]),
+    }
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -139,219 +173,111 @@ export function notifyStepDispatched(
   })
 }
 
-// ---------------------------------------------------------------------------
-// Discord Gate Alerts
-// ---------------------------------------------------------------------------
-
-/** Discord embed field value cap — fields rendering longer values are truncated by Discord. */
-const DISCORD_FIELD_CAP = 1024
-/** Discord message content cap — longer messages must be split across multiple posts. */
-const DISCORD_MESSAGE_CAP = 2000
-/** Discord thread name cap — anything longer is truncated by the API. */
-const DISCORD_THREAD_NAME_CAP = 100
-
-/**
- * Start a thread on an existing channel message and post the given content
- * inside it. Splits content longer than DISCORD_MESSAGE_CAP into sequential
- * posts so the full text always lands. Fire-and-forget — failures log but
- * do not throw, so a missing CREATE_PUBLIC_THREADS permission won't break
- * the gate alert flow.
- */
-export async function postThreadReply(
-  channelId: string,
-  messageId: string,
-  threadName: string,
-  content: string,
-): Promise<void> {
-  const config = loadDiscordConfig()
-  if (!config) return
-
-  const truncatedName = threadName.slice(0, DISCORD_THREAD_NAME_CAP)
-  const authHeaders = {
-    Authorization: `Bot ${config.botToken}`,
-    'Content-Type': 'application/json',
-  }
-
-  let threadId: string | null = null
-  try {
-    const startRes = await fetch(
-      `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}/threads`,
-      {
-        method: 'POST',
-        headers: authHeaders,
-        body: JSON.stringify({ name: truncatedName, auto_archive_duration: 60 }),
-      },
-    )
-
-    if (!startRes.ok) {
-      const text = await startRes.text()
-      log.warn(`Discord thread create failed (${startRes.status}): ${text}`)
-      return
-    }
-    const thread = await startRes.json() as { id: string }
-    threadId = thread.id
-  } catch (err) {
-    log.error('Discord thread create error', err)
-    return
-  }
-
-  // Split content into Discord-message-sized chunks and post sequentially.
-  const chunks: string[] = []
-  let remaining = content
-  while (remaining.length > 0) {
-    chunks.push(remaining.slice(0, DISCORD_MESSAGE_CAP))
-    remaining = remaining.slice(DISCORD_MESSAGE_CAP)
-  }
-
-  for (const chunk of chunks) {
-    try {
-      const postRes = await fetch(
-        `https://discord.com/api/v10/channels/${threadId}/messages`,
-        {
-          method: 'POST',
-          headers: authHeaders,
-          body: JSON.stringify({ content: chunk }),
-        },
-      )
-      if (!postRes.ok) {
-        const text = await postRes.text()
-        log.warn(`Discord thread message failed (${postRes.status}): ${text}`)
-      }
-    } catch (err) {
-      log.error('Discord thread message error', err)
-    }
-  }
-}
-
-export interface DiscordGateSettings {
-  discordGateAlerts: boolean
-  discordGateChannel: string
-  requireRejectReason: boolean
-}
-
-/**
- * Send a Discord message with approve/reject buttons for a gate step.
- * Returns the Discord message ID for later editing, or null on failure.
- */
-export async function sendDiscordGateAlert(
+export async function sendGateApprovalRequest(
   instance: WorkflowInstance,
   stepId: string,
   label: string,
   priorOutput: Record<string, unknown> | undefined,
-  settings: DiscordGateSettings,
-): Promise<string | null> {
-  if (!settings.discordGateAlerts) return null
-
-  const config = loadDiscordConfig()
-  if (!config) {
-    log.warn('Discord not configured — skipping gate alert')
+  settings: GateNotificationSettings,
+): Promise<ApprovalRenderRef | null> {
+  if (!settings.approvalChannelAlerts) return null
+  if (!runtime) {
+    log.warn('Runtime channel adapter unavailable; skipping gate approval alert')
     return null
   }
 
-  const channelName = settings.discordGateChannel || 'general'
-  const { id: channelId } = await resolveChannelId(channelName)
-  if (!channelId) {
-    log.warn(`Discord channel "${channelName}" not found — skipping gate alert`)
-    return null
-  }
+  const requestedAt = instance.stepStates[stepId]?.requestedAt ?? instance.updatedAt ?? instance.createdAt
+  const approvalId = buildGateApprovalId(instance.taskId, stepId, instance.instanceId, requestedAt)
+  const channel = settings.approvalChannel || 'general'
+  const body = [
+    `Workflow ${instance.workflowId} has reached a gate and needs approval.`,
+    `Task: ${instance.taskId}`,
+    `Step: ${stepId}`,
+    renderPriorOutput(priorOutput),
+  ].filter(Boolean).join('\n\n')
 
-  // Build prior output summary (truncated for embed). The full text is
-  // posted as a thread reply below if it overflows the embed field cap.
-  let outputSummary = ''
-  let outputFull = ''
-  if (priorOutput) {
-    const entries = Object.entries(priorOutput)
-    for (const [key, value] of entries) {
-      const fullValue = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
-      outputFull += `**${key}:**\n${fullValue}\n\n`
-      const preview = typeof value === 'string' ? value : JSON.stringify(value)
-      outputSummary += `**${key}:** ${preview.slice(0, 200)}${preview.length > 200 ? '...' : ''}\n`
-    }
-  }
-
-  // The summary is pre-truncated per-value to 200 chars, so it's always
-  // small; the meaningful overflow signal is the full content size.
-  const overflowsEmbedField = outputFull.length > DISCORD_FIELD_CAP
-  const truncationNotice = overflowsEmbedField ? '\n\n_Full output posted in thread below._' : ''
-
-  const embed = {
+  const request: CreateApprovalArgs['request'] = {
     title: `Gate: ${label}`,
-    description: `Workflow **${instance.workflowId}** has reached a gate and needs your approval.`,
-    color: 16776960, // Yellow
-    fields: [
-      { name: 'Task', value: instance.taskId, inline: true },
-      { name: 'Step', value: stepId, inline: true },
-      ...(outputSummary ? [{
-        name: 'Prior Output',
-        value: outputSummary.slice(0, DISCORD_FIELD_CAP - truncationNotice.length) + truncationNotice,
-      }] : []),
+    body,
+    options: [
+      { id: 'approve', label: 'Approve', variant: 'primary' },
+      { id: 'reject', label: 'Reject', variant: 'destructive' },
     ],
-    timestamp: new Date().toISOString(),
+    context: {
+      instanceId: instance.instanceId,
+      workflowId: instance.workflowId,
+      taskId: instance.taskId,
+      stepId,
+      requireRejectReason: settings.requireRejectReason,
+    },
   }
 
-  const components = [{
-    type: 1, // Action Row
-    components: [
-      {
-        type: 2, // Button
-        style: 3, // Success (green)
-        label: 'Approve',
-        custom_id: `gate:approve:${instance.taskId}:${stepId}`,
-      },
-      {
-        type: 2, // Button
-        style: 4, // Danger (red)
-        label: 'Reject',
-        custom_id: `gate:reject:${instance.taskId}:${stepId}`,
-      },
-    ],
-  }]
+  createApprovalRecord({
+    approvalId,
+    owner: {
+      workflowId: instance.workflowId,
+      runId: instance.instanceId,
+      stepId,
+      taskId: instance.taskId,
+    },
+    request,
+    createdAt: requestedAt,
+  })
 
   try {
-    const payload = { embeds: [embed], components }
-    const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bot ${config.botToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
+    const result = await runtime.channels.createApproval({
+      approvalId,
+      channels: [channel],
+      request,
     })
-
-    if (!res.ok) {
-      const text = await res.text()
-      log.error(`Discord gate alert failed (${res.status}): ${text}`)
-      return null
-    }
-
-    const msg = await res.json() as { id: string }
-    log.info(`Discord gate alert sent for ${instance.taskId}:${stepId}`, { messageId: msg.id })
-
-    // Overflow: if the summary was too long for the embed field, post the
-    // full prior output as a thread reply on the gate message. Fire-and-
-    // forget — a thread permission failure does not invalidate the alert.
-    if (overflowsEmbedField && outputFull) {
-      const threadName = `${instance.workflowId} — ${label}`
-      postThreadReply(channelId, msg.id, threadName, outputFull).catch(() => {})
-    }
-
-    return msg.id
+    updateApprovalDeliveries(approvalId, result.deliveries)
+    log.info(`Gate approval alert sent for ${instance.taskId}:${stepId}`, {
+      approvalId,
+      deliveryCount: result.deliveries.length,
+    })
+    return { approvalId, deliveries: result.deliveries }
   } catch (err) {
-    log.error('Discord gate alert error', err)
+    log.warn('Gate approval alert failed', err)
     return null
   }
 }
 
+export async function resolveGateApproval(
+  approvalRef: ApprovalRenderRef | undefined,
+  decision: 'approved' | 'rejected',
+  approver: ApprovalActor,
+  decidedAt: string,
+  reason?: string,
+): Promise<void> {
+  if (!runtime || !approvalRef) return
+
+  const response = {
+    selectedOption: decision === 'approved' ? 'approve' : 'reject',
+    respondedAt: decidedAt,
+    actor: {
+      type: 'human' as const,
+      id: approver.id,
+      displayName: approver.displayName ?? approver.id,
+    },
+    ...(reason ? { comment: reason } : {}),
+  }
+  resolveApprovalRecord(approvalRef.approvalId, response)
+
+  try {
+    await runtime.channels.resolveApproval({
+      ...approvalRef,
+      response,
+    })
+  } catch (err) {
+    log.warn('Gate approval resolve notification failed', err)
+  }
+}
+
 /**
- * Post a standalone summary message after a gate decision. This is the
- * durable "what happened" trace — the awaiting card edit (above) preserves
- * the original ask, but this message is what someone scrolling the
- * approvals channel reads to understand who decided what, when, and why.
- *
- * Fire-and-forget — failures log but do not throw, so a Discord outage
- * never blocks workflow progression.
+ * Post a standalone summary after a gate decision. Failures are logged but do
+ * not block workflow progression.
  */
-export async function sendDiscordGateSummary(
+export async function sendGateDecisionSummary(
   instance: WorkflowInstance,
   stepId: string,
   gateLabel: string,
@@ -361,72 +287,59 @@ export async function sendDiscordGateSummary(
   requestedAt: string | undefined,
   decidedAt: string,
   reason: string | undefined,
-  settings: DiscordGateSettings,
+  settings: GateNotificationSettings,
 ): Promise<void> {
-  if (!settings.discordGateAlerts) return
-
-  const config = loadDiscordConfig()
-  if (!config) return
-
-  const channelName = settings.discordGateChannel || 'general'
-  const { id: channelId } = await resolveChannelId(channelName)
-  if (!channelId) return
+  if (!settings.approvalChannelAlerts) return
+  if (!runtime) return
 
   const decisionLabel = decision === 'approved' ? 'Approved' : 'Rejected'
-  const color = decision === 'approved' ? 5763719 : 15548997
   const approverLabel = `${approver.displayName ?? approver.id} (${approver.source})`
-
-  // Discord's relative timestamp marker — clients render "5 minutes ago"
-  const tsRel = (iso: string): string => `<t:${Math.floor(Date.parse(iso) / 1000)}:R>`
-
-  const fields: Array<{ name: string; value: string; inline?: boolean }> = [
-    { name: 'Decision', value: decisionLabel, inline: true },
-    { name: 'Decided by', value: approverLabel, inline: true },
-    { name: 'Workflow', value: instance.workflowId, inline: true },
-    { name: 'Task', value: instance.taskId, inline: true },
-    { name: 'Step', value: stepId, inline: true },
+  const fields = [
+    { label: 'Decision', value: decisionLabel },
+    { label: 'Decided by', value: approverLabel },
+    { label: 'Workflow', value: instance.workflowId },
+    { label: 'Task', value: instance.taskId },
+    { label: 'Step', value: stepId },
+    ...(requestedAt ? [
+      { label: 'Requested', value: requestedAt },
+      { label: 'Duration', value: humanizeDuration(Date.parse(decidedAt) - Date.parse(requestedAt)) },
+    ] : []),
+    { label: 'Decided', value: decidedAt },
+    ...(reason ? [{ label: 'Reason', value: reason }] : []),
   ]
 
-  if (requestedAt) {
-    fields.push({ name: 'Requested', value: tsRel(requestedAt), inline: true })
-    const durationMs = Date.parse(decidedAt) - Date.parse(requestedAt)
-    fields.push({ name: 'Duration', value: humanizeDuration(durationMs), inline: true })
-  }
-  fields.push({ name: 'Decided', value: tsRel(decidedAt), inline: true })
-
-  if (reason) {
-    fields.push({ name: 'Reason', value: reason })
-  }
-
-  const embed: Record<string, unknown> = {
-    title: `Gate ${decisionLabel}: ${gateLabel}`,
-    description: gateDescription ?? '',
-    color,
-    fields,
-    footer: { text: `instance ${instance.instanceId}` },
-    timestamp: decidedAt,
-  }
-
   try {
-    const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bot ${config.botToken}`,
-        'Content-Type': 'application/json',
+    await runtime.channels.sendNotification({
+      channels: [settings.approvalChannel || 'general'],
+      notification: {
+        severity: decision === 'approved' ? 'success' : 'warn',
+        title: `Gate ${decisionLabel}: ${gateLabel}`,
+        body: gateDescription ?? '',
+        fields,
+        metadata: {
+          instanceId: instance.instanceId,
+          workflowId: instance.workflowId,
+          taskId: instance.taskId,
+          stepId,
+          decision,
+        },
       },
-      body: JSON.stringify({ embeds: [embed] }),
     })
-
-    if (!res.ok) {
-      const text = await res.text()
-      log.warn(`Discord gate summary failed (${res.status}): ${text}`)
-    }
   } catch (err) {
-    log.error('Discord gate summary error', err)
+    log.warn('Gate decision summary failed', err)
   }
 }
 
+function renderPriorOutput(priorOutput: Record<string, unknown> | undefined): string {
+  if (!priorOutput) return ''
+  const rendered = JSON.stringify(priorOutput, null, 2)
+  if (!rendered) return ''
+  const cap = 4000
+  return `Prior output:\n${rendered.length > cap ? `${rendered.slice(0, cap)}\n...[truncated]` : rendered}`
+}
+
 function humanizeDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return 'unknown'
   if (ms < 1000) return `${ms}ms`
   const s = Math.floor(ms / 1000)
   if (s < 60) return `${s}s`
@@ -436,97 +349,4 @@ function humanizeDuration(ms: number): string {
   if (h < 24) return `${h}h ${m % 60}m`
   const d = Math.floor(h / 24)
   return `${d}d ${h % 24}h`
-}
-
-/**
- * Edit a Discord gate alert message to reflect the outcome (approved/rejected).
- * Preserves the original embed's title and fields, appends a Decision and
- * Decided-by field (plus Reason on reject), updates the color, and removes
- * the buttons. Falls back to a stripped embed if the GET fails so the edit
- * still happens with at least minimal context.
- */
-export async function editDiscordGateMessage(
-  channelName: string,
-  messageId: string,
-  decision: 'approved' | 'rejected',
-  approver: ApprovalActor,
-  decidedAt: string,
-  reason?: string,
-): Promise<void> {
-  const config = loadDiscordConfig()
-  if (!config) return
-
-  const { id: channelId } = await resolveChannelId(channelName)
-  if (!channelId) return
-
-  const color = decision === 'approved' ? 5763719 : 15548997 // Green : Red
-  const decisionLabel = decision === 'approved' ? 'Approved' : 'Rejected'
-  const approverLabel = `${approver.displayName ?? approver.id} (${approver.source})`
-  const messageUrl = `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`
-  const authHeaders = { Authorization: `Bot ${config.botToken}` }
-
-  // GET the existing message to preserve its embed context. If this fails
-  // (missing READ_MESSAGE_HISTORY permission, message deleted, etc.), fall
-  // back to a stripped embed — the audit log is the canonical record either
-  // way, and the second summary message in C5 carries the full context.
-  let preservedEmbed: Record<string, unknown> | null = null
-  try {
-    const getRes = await fetch(messageUrl, { headers: authHeaders })
-    if (getRes.ok) {
-      const msg = await getRes.json() as { embeds?: Array<Record<string, unknown>> }
-      preservedEmbed = msg.embeds?.[0] ?? null
-    } else {
-      const text = await getRes.text()
-      log.warn(`Discord message GET failed (${getRes.status}): ${text} — falling back to stripped embed`)
-    }
-  } catch (err) {
-    log.warn('Discord message GET error — falling back to stripped embed', err as Error)
-  }
-
-  const decisionFields: Array<{ name: string; value: string; inline?: boolean }> = [
-    { name: 'Decision', value: decisionLabel, inline: true },
-    { name: 'Decided by', value: approverLabel, inline: true },
-  ]
-  if (decision === 'rejected' && reason) {
-    decisionFields.push({ name: 'Reason', value: reason })
-  }
-
-  const newEmbed: Record<string, unknown> = preservedEmbed
-    ? {
-        ...preservedEmbed,
-        color,
-        fields: [
-          ...((preservedEmbed.fields as Array<unknown> | undefined) ?? []),
-          ...decisionFields,
-        ],
-        timestamp: decidedAt,
-      }
-    : {
-        title: `Gate ${decisionLabel}`,
-        description: decision === 'approved' ? 'Approved' : `Rejected${reason ? `: ${reason}` : ''}`,
-        color,
-        fields: decisionFields,
-        timestamp: decidedAt,
-      }
-
-  try {
-    const res = await fetch(messageUrl, {
-      method: 'PATCH',
-      headers: {
-        ...authHeaders,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        embeds: [newEmbed],
-        components: [],
-      }),
-    })
-
-    if (!res.ok) {
-      const text = await res.text()
-      log.warn(`Discord message edit failed (${res.status}): ${text}`)
-    }
-  } catch (err) {
-    log.error('Discord message edit error', err)
-  }
 }

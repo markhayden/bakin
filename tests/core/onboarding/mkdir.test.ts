@@ -33,7 +33,6 @@ mock.module('../../../src/core/content-dir', () => {
       return {
         home,
         memoryLog: join(home, 'MEMORY-LOG.md'),
-        messaging: join(home, 'messaging.json'),
         audit: join(home, 'audit.jsonl'),
         assets,
         'assets.store': join(assets, 'store'),
@@ -44,7 +43,6 @@ mock.module('../../../src/core/content-dir', () => {
         team: join(home, 'team'),
         heartbeats: join(home, 'heartbeats'),
         inbox: join(home, 'inbox'),
-        projects: join(home, 'projects'),
         workflows: join(home, 'workflows'),
         settings: join(home, 'settings.json'),
       }
@@ -145,11 +143,11 @@ describe('onboarding mkdir component', () => {
 
     it('re-creates only the missing pieces on partial wipe', async () => {
       await mkdirComponent.install(opts)
-      rmSync(join(testDir, 'projects'), { recursive: true, force: true })
+      rmSync(join(testDir, 'workflows'), { recursive: true, force: true })
       const second = await mkdirComponent.install(opts)
       // Not a noop — something was missing
       expect(second.status).toBe('installed')
-      expect(existsSync(join(testDir, 'projects'))).toBe(true)
+      expect(existsSync(join(testDir, 'workflows'))).toBe(true)
     })
   })
 })

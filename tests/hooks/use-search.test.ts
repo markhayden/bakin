@@ -265,7 +265,7 @@ describe('useSearch — clear()', () => {
     mockFetchResponse({
       results: [{ id: '1', table: 'bakin_tasks', score: 1, fields: {} }],
       aggregations: { status: [{ value: 'open', count: 1 }] },
-      meta: { query: 'foo', total: 1, took_ms: 5, source: 'antfly' },
+      meta: { query: 'foo', total: 1, took_ms: 5, source: 'search' },
     })
 
     const { result } = renderHook(() => useSearch({ plugin: 'tasks', debounce: 10 }))

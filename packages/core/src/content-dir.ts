@@ -6,8 +6,7 @@
  *
  * Resolution order:
  * 1. BAKIN_HOME env var (if set)
- * 2. ~/.bakin/ (preferred default, if it exists)
- * 3. ./content/ (backward compat fallback)
+ * 2. ~/.bakin/
  */
 import { existsSync, mkdirSync, copyFileSync, readdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
@@ -73,22 +72,12 @@ function resolveContentDirInner(): string {
   // 1. BAKIN_HOME env var
   if (process.env.BAKIN_HOME) return process.env.BAKIN_HOME
 
-  // 2. CONTENT_DIR env var (existing compat)
-  if (process.env.CONTENT_DIR) return process.env.CONTENT_DIR
-
-  // 3. ~/.bakin/ if it exists
-  if (existsSync(bakinHomeDefault())) return bakinHomeDefault()
-
-  // 4. ./content/ fallback
-  const localContent = join(process.cwd(), 'content')
-  if (existsSync(localContent)) return localContent
-
-  // Default: ./content/ even if it doesn't exist yet
-  return localContent
+  // 2. ~/.bakin/
+  return bakinHomeDefault()
 }
 
 /**
- * Whether the content dir has been migrated to ~/.bakin/.
+ * Whether the content dir is inside the supported Bakin home contract.
  */
 export function isUsingBakinHome(): boolean {
   const dir = getContentDir()
@@ -108,7 +97,6 @@ export function resetContentDir(): void {
 export interface BakinPaths {
   home: string
   memoryLog: string
-  messaging: string
   audit: string
   assets: string
   'assets.store': string
@@ -119,7 +107,7 @@ export interface BakinPaths {
   team: string
   heartbeats: string
   inbox: string
-  projects: string
+  tasks: string
   workflows: string
   settings: string
   logs: string
@@ -131,7 +119,6 @@ export function getBakinPaths(): BakinPaths {
   return {
     home,
     memoryLog: join(home, 'MEMORY-LOG.md'),
-    messaging: join(home, 'messaging.json'),
     audit: join(home, 'audit.jsonl'),
     assets,
     'assets.store': join(assets, 'store'),
@@ -142,7 +129,7 @@ export function getBakinPaths(): BakinPaths {
     team: join(home, 'team'),
     heartbeats: join(home, 'heartbeats'),
     inbox: join(home, 'inbox'),
-    projects: join(home, 'projects'),
+    tasks: join(home, 'tasks'),
     workflows: join(home, 'workflows'),
     settings: join(home, 'settings.json'),
     logs: join(home, 'logs'),
@@ -172,7 +159,7 @@ export function initBakinHome(targetDir?: string): { created: string[]; seeded: 
     join(home, 'heartbeats'),
     join(home, 'inbox'),
     join(home, 'plugins'),
-    join(home, 'projects'),
+    join(home, 'tasks'),
     join(home, 'team'),
     join(home, 'team', 'personas'),
     join(home, 'workflows'),
@@ -224,4 +211,3 @@ export function initBakinHome(targetDir?: string): { created: string[]; seeded: 
 
   return { created, seeded }
 }
-

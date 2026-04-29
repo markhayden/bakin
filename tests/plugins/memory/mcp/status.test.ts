@@ -28,14 +28,14 @@ mock.module('../../../../packages/core/src/content-dir', () => ({
 mock.module('../../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
-mock.module('../../../../packages/core/src/openclaw-home', () => ({
+mock.module('../../../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => join(testDir, '.openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
 }))
 
 import { createMemoryStatusTool } from '../../../../plugins/memory/mcp/status'
 import { setOffset, clearAllOffsets } from '../../../../plugins/memory/lib/offsets'
-import type { PluginContext, SearchResponse } from '../../../../src/lib/plugin-types'
+import type { PluginContext, SearchResponse } from '@bakin/core/plugin-types'
 
 function makeCtx(perTierTotal: Record<string, number>): PluginContext {
   return {
@@ -62,7 +62,7 @@ function makeCtx(perTierTotal: Record<string, number>): PluginContext {
         const total = perTierTotal[tier] ?? 0
         return {
           results: [],
-          meta: { query: p.q, total, took_ms: 0, source: 'antfly' },
+          meta: { query: p.q, total, took_ms: 0, source: 'search' },
         } satisfies SearchResponse
       }),
     },
@@ -114,7 +114,7 @@ describe('memory_status', () => {
       if (p.filters?.tier === 'turn') throw new Error('boom')
       const tier = p.filters?.tier ?? ''
       const total = tier === 'audit' ? 10 : 0
-      return { results: [], meta: { query: p.q, total, took_ms: 0, source: 'antfly' } } satisfies SearchResponse
+      return { results: [], meta: { query: p.q, total, took_ms: 0, source: 'search' } } satisfies SearchResponse
     })
     const res = await createMemoryStatusTool(ctx).handler({}, 'system')
     expect(res.ok).toBe(true)

@@ -18,7 +18,7 @@
  * and BEFORE `bun build --compile`. The binary-build orchestrator
  * (scripts/build-binary.ts) enforces that order.
  */
-import { readdirSync, statSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
+import { readdirSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join, resolve, relative, dirname } from 'node:path'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')

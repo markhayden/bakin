@@ -13,7 +13,7 @@
  * Both endpoints read from the `bakin_memory` table (tier=dream). The indexer
  * is the single source of truth — routes never re-parse files.
  */
-import type { APIRoute, PluginContext, SearchQueryParams } from '../../../../src/lib/plugin-types'
+import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
 
 function parseLimitOffset(url: URL): { limit: number; offset: number } {
   const l = Number(url.searchParams.get('limit'))

@@ -228,7 +228,7 @@ export function hasDependents(lock: Lockfile, id: string): boolean {
   return (entry.refCount ?? 0) > 0
 }
 
-/** Look up the agent-kind entry that owns the given OpenClaw agent id, if any. */
+/** Look up the agent-kind entry that owns the given runtime agent id, if any. */
 export function findAgentPackage(
   lock: Lockfile,
   agentId: string,

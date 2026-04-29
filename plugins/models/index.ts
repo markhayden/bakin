@@ -2,16 +2,11 @@
  * Models plugin — server entry point.
  * API routes for model config, available models, aliases, task profiles, and defaults.
  */
-// Node builtins
-import { readFileSync, writeFileSync } from 'fs'
-import { execFile } from 'child_process'
 // External
 import { z } from 'zod'
 // Internal
-import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 // Relative
-import { getOpenClawPath } from '@bakin/core/openclaw-home'
-import { tryGetMainAgentId } from '@bakin/core/main-agent'
 import type { AgentModelConfig, AvailableModel, TaskProfile, ModelsPluginSettings } from './types'
 import {
   readPersistedCache,
@@ -20,24 +15,21 @@ import {
 } from './lib/models-cache'
 import { getKnownModel, getKnownProvider } from './data/known-models'
 
-const OPENCLAW_JSON = getOpenClawPath('openclaw.json')
-const OPENCLAW_BIN = process.env.OPENCLAW_PATH || '/opt/homebrew/bin/openclaw'
-
 // ---------------------------------------------------------------------------
-// Gateway sync tracking (globalThis-backed so every reach into this module
+// Runtime restart sync tracking (globalThis-backed so every reach into this module
 // reads the same instance)
 // ---------------------------------------------------------------------------
-interface GatewaySync { lastConfigChangeAt: number | null; lastRestartAt: number | null }
-const gw = globalThis as typeof globalThis & { __bakinGatewaySync?: GatewaySync }
-if (!gw.__bakinGatewaySync) gw.__bakinGatewaySync = { lastConfigChangeAt: null, lastRestartAt: null }
-function getGatewaySync(): GatewaySync { return gw.__bakinGatewaySync! }
-function markConfigDirty() { getGatewaySync().lastConfigChangeAt = Date.now() }
-function markGatewayRestarted() { getGatewaySync().lastRestartAt = Date.now() }
+interface RuntimeSync { lastConfigChangeAt: number | null; lastRestartAt: number | null }
+const runtimeSyncGlobal = globalThis as typeof globalThis & { __bakinRuntimeSync?: RuntimeSync }
+if (!runtimeSyncGlobal.__bakinRuntimeSync) runtimeSyncGlobal.__bakinRuntimeSync = { lastConfigChangeAt: null, lastRestartAt: null }
+function getRuntimeSync(): RuntimeSync { return runtimeSyncGlobal.__bakinRuntimeSync! }
+function markConfigDirty() { getRuntimeSync().lastConfigChangeAt = Date.now() }
+function markRuntimeRestarted() { getRuntimeSync().lastRestartAt = Date.now() }
 
 // ---------------------------------------------------------------------------
-// OpenClaw config types
+// Runtime config types
 // ---------------------------------------------------------------------------
-interface OpenclawAgent {
+interface RuntimeModelAgentConfig {
   id: string
   name?: string
   identity?: { name?: string; emoji?: string }
@@ -46,7 +38,7 @@ interface OpenclawAgent {
   [key: string]: unknown
 }
 
-interface OpenclawConfig {
+interface RuntimeModelConfig {
   agents: {
     defaults: {
       model: { primary: string; fallbacks?: string[] }
@@ -54,7 +46,7 @@ interface OpenclawConfig {
       subagents?: { model?: string; [k: string]: unknown }
       [key: string]: unknown
     }
-    list: OpenclawAgent[]
+    list: RuntimeModelAgentConfig[]
     [key: string]: unknown
   }
   [key: string]: unknown
@@ -87,29 +79,29 @@ async function getAgentMeta(ctx: PluginContext): Promise<AgentMeta[]> {
 // ---------------------------------------------------------------------------
 // Config read/write helpers
 // ---------------------------------------------------------------------------
-function readConfig(): OpenclawConfig {
-  const raw = readFileSync(OPENCLAW_JSON, 'utf-8')
-  // Strip whole-line // comments only (lines where // is the first non-whitespace).
-  // Cannot naively strip mid-line // — it breaks URLs inside strings.
-  const cleaned = raw.replace(/^\s*\/\/.*$/gm, '')
-  return JSON.parse(cleaned)
+async function readConfig(ctx: PluginContext): Promise<RuntimeModelConfig> {
+  return ctx.runtime.config.get<RuntimeModelConfig>()
 }
 
-function writeConfig(config: OpenclawConfig): void {
-  writeFileSync(OPENCLAW_JSON, JSON.stringify(config, null, 2), 'utf-8')
+async function writeConfig(ctx: PluginContext, config: RuntimeModelConfig, reason: string): Promise<void> {
+  await ctx.runtime.config.replace(config, reason)
 }
 
-function updateConfig(updater: (config: OpenclawConfig) => void): void {
-  const config = readConfig()
+async function updateConfig(
+  ctx: PluginContext,
+  reason: string,
+  updater: (config: RuntimeModelConfig) => void,
+): Promise<void> {
+  const config = await readConfig(ctx)
   updater(config)
-  writeConfig(config)
+  await writeConfig(ctx, config, reason)
 }
 
 // ---------------------------------------------------------------------------
 // Resolve agents from config + team hook metadata
 // ---------------------------------------------------------------------------
 async function resolveAgents(ctx: PluginContext): Promise<AgentModelConfig[]> {
-  const config = readConfig()
+  const config = await readConfig(ctx)
   const teamAgents = await getAgentMeta(ctx)
   const defaultModel = config.agents.defaults.model.primary
   const defaultSubagentModel = config.agents.defaults.subagents?.model
@@ -117,7 +109,7 @@ async function resolveAgents(ctx: PluginContext): Promise<AgentModelConfig[]> {
     : null
 
   const agents = config.agents.list.map((agent) => {
-    // Resolve from team hook first, then OpenClaw identity, then ID
+    // Resolve from team hook first, then runtime identity, then ID
     const teamAgent = teamAgents.find((a) => a.id === agent.id)
     const rawName = teamAgent?.name || agent.identity?.name || agent.name || agent.id
     // Capitalize raw IDs that look like slugs (e.g. 'main' → 'Main')
@@ -140,8 +132,9 @@ async function resolveAgents(ctx: PluginContext): Promise<AgentModelConfig[]> {
     }
   })
 
-  // Sort: main agent first, then alphabetically
-  const mainId = tryGetMainAgentId()
+  // Sort the canonical orchestrator first when the runtime config exposes one,
+  // then alphabetically for every other runtime agent.
+  const mainId = config.agents.list.some((agent) => agent.id === 'main') ? 'main' : null
   agents.sort((a, b) => {
     if (mainId) {
       if (a.agentId === mainId) return -1
@@ -188,38 +181,16 @@ function sortModels(a: AvailableModel, b: AvailableModel): number {
   return a.name.localeCompare(b.name)
 }
 
-interface OpenClawModelListJson {
-  models?: Array<{
-    key?: string
-    name?: string
-    input?: string
-    contextWindow?: number
-    local?: boolean
-    available?: boolean
-    tags?: string[]
-    missing?: boolean
-  }>
-}
-
-async function loadConfiguredModelsFromOpenClaw(): Promise<AvailableModel[]> {
-  const stdout = await new Promise<string>((resolve, reject) => {
-    execFile(OPENCLAW_BIN, ['models', 'list', '--all', '--json'], { timeout: 30000 }, (err, out) => {
-      if (err) {
-        reject(err)
-        return
-      }
-      resolve(out)
-    })
-  })
-  const parsed = JSON.parse(stdout) as OpenClawModelListJson
-  const config = readConfig()
+async function loadConfiguredModelsFromRuntime(ctx: PluginContext): Promise<AvailableModel[]> {
+  const runtimeModels = await ctx.runtime.models.listAvailable({ includeUnavailable: true })
+  const config = await readConfig(ctx)
   const defaultModel = normalizeModelId(config.agents.defaults.model.primary)
   const fallbackModels = (config.agents.defaults.model.fallbacks ?? []).map(normalizeModelId)
 
-  return (parsed.models ?? [])
-    .filter((model) => model.key && model.available === true && !model.missing)
+  return runtimeModels
+    .filter((model) => model.id && model.available !== false)
     .map((model) => {
-      const id = normalizeModelId(model.key!)
+      const id = normalizeModelId(model.id)
       const tags = model.tags ?? []
       const fallbackIndex = fallbackModels.indexOf(id)
       const provider = providerFromId(id)
@@ -263,12 +234,12 @@ interface FetchResult {
 }
 
 // In-flight promise dedupe — two concurrent /available requests on a
-// cold-cold start would otherwise both spawn `openclaw models list`,
-// a 15-20 second CLI process. With this, the second caller awaits
+// cold-cold start would otherwise both ask the runtime for its complete
+// model list, which can be slow. With this, the second caller awaits
 // the first's result.
 let inflightFetch: Promise<FetchResult> | null = null
 
-async function fetchAvailableModels(): Promise<FetchResult> {
+async function fetchAvailableModels(ctx: PluginContext): Promise<FetchResult> {
   // 1. Hot read — in-memory cache (fresh by TTL)
   const memCached = getModelsCache()
   if (memCached && Date.now() - memCached.fetchedAt < CACHE_TTL) {
@@ -291,14 +262,14 @@ async function fetchAvailableModels(): Promise<FetchResult> {
   if (inflightFetch) return inflightFetch
   inflightFetch = (async (): Promise<FetchResult> => {
     try {
-      const models = await loadConfiguredModelsFromOpenClaw()
+      const models = await loadConfiguredModelsFromRuntime(ctx)
       const now = Date.now()
       setModelsCache({ models, fetchedAt: now })
-      writePersistedCache({ models, fetchedAt: now, source: 'openclaw' })
+      writePersistedCache({ models, fetchedAt: now, source: 'runtime' })
       return { models, cached: false, cachedAt: now, stale: false }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      console.error('Failed to fetch models from OpenClaw:', err)
+      console.error('Failed to fetch models from runtime:', err)
       return { models: [], cached: false, cachedAt: null, stale: false, error: message }
     } finally {
       inflightFetch = null
@@ -316,7 +287,7 @@ const DEFAULT_ALIASES: Record<string, string> = {
   opus: 'anthropic/claude-opus-4-6',
 }
 
-function readAliases(config: OpenclawConfig): Record<string, string> {
+function readAliases(config: RuntimeModelConfig): Record<string, string> {
   const raw = config.agents.defaults.models
   if (!raw || typeof raw !== 'object') return {}
   const result: Record<string, string> = {}
@@ -410,10 +381,10 @@ const modelsPlugin: BakinPlugin = {
 
     ctx.hooks.register('models.markConfigDirty', () => { markConfigDirty() })
 
-    ctx.hooks.register('models.markGatewayRestarted', () => { markGatewayRestarted() })
+    ctx.hooks.register('models.markRuntimeRestarted', () => { markRuntimeRestarted() })
 
     ctx.hooks.register('models.getAvailableModels', async () => {
-      const result = await fetchAvailableModels()
+      const result = await fetchAvailableModels(ctx)
       return result.models
     })
 
@@ -425,7 +396,7 @@ const modelsPlugin: BakinPlugin = {
       method: 'GET',
       handler: async () => {
         try {
-          const result = await fetchAvailableModels()
+          const result = await fetchAvailableModels(ctx)
           return Response.json(result)
         } catch (err) {
           return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
@@ -438,18 +409,18 @@ const modelsPlugin: BakinPlugin = {
     // -------------------------------------------------------------------
     // Force a fresh fetch, bypassing both cache layers. Used by the
     // manual Refresh button on the models page and by the stale-auto-
-    // refresh path. On OpenClaw failure we fall back to the last-known-
+    // refresh path. On runtime failure we fall back to the last-known-
     // good cache (if any) — never fake data.
     ctx.registerRoute({
       path: '/refresh',
       method: 'POST',
-      description: 'Bypass cache and fetch the model list fresh from OpenClaw',
+      description: 'Bypass cache and fetch the model list fresh from the runtime adapter',
       handler: async () => {
         try {
-          const models = await loadConfiguredModelsFromOpenClaw()
+          const models = await loadConfiguredModelsFromRuntime(ctx)
           const now = Date.now()
           setModelsCache({ models, fetchedAt: now })
-          writePersistedCache({ models, fetchedAt: now, source: 'openclaw' })
+          writePersistedCache({ models, fetchedAt: now, source: 'runtime' })
           return Response.json({ ok: true, models, cached: false, cachedAt: now, stale: false })
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
@@ -485,7 +456,7 @@ const modelsPlugin: BakinPlugin = {
       handler: async () => {
         try {
           const agents = await resolveAgents(ctx)
-          const config = readConfig()
+          const config = await readConfig(ctx)
           return Response.json({
             agents,
             defaultModel: normalizeModelId(config.agents.defaults.model.primary),
@@ -517,7 +488,7 @@ const modelsPlugin: BakinPlugin = {
           const before = agentsBefore.find((a) => a.agentId === agentId)
           const oldModel = before?.effectiveModel ?? null
 
-          updateConfig((config) => {
+          await updateConfig(ctx, 'models.update-agent-config', (config) => {
             const agent = config.agents.list.find((a) => a.id === agentId)
             if (!agent) throw new Error(`Agent "${agentId}" not found`)
 
@@ -574,7 +545,7 @@ const modelsPlugin: BakinPlugin = {
           const raw = await req.json()
           const body = DefaultsUpdateSchema.parse(raw)
 
-          updateConfig((config) => {
+          await updateConfig(ctx, 'models.update-defaults', (config) => {
             if (body.defaultModel) {
               config.agents.defaults.model.primary = normalizeModelId(body.defaultModel)
             }
@@ -618,7 +589,7 @@ const modelsPlugin: BakinPlugin = {
       method: 'GET',
       handler: async () => {
         try {
-          const config = readConfig()
+          const config = await readConfig(ctx)
           const aliases = readAliases(config)
           return Response.json({ aliases })
         } catch (err) {
@@ -638,7 +609,7 @@ const modelsPlugin: BakinPlugin = {
           const raw = await req.json()
           const body = AliasActionSchema.parse(raw)
 
-          updateConfig((config) => {
+          await updateConfig(ctx, 'models.update-aliases', (config) => {
             if (!config.agents.defaults.models) {
               config.agents.defaults.models = {}
             }
@@ -719,14 +690,14 @@ const modelsPlugin: BakinPlugin = {
     })
 
     // -------------------------------------------------------------------
-    // GET /api/plugins/models/gateway/status
+    // GET /api/plugins/models/runtime/status
     // -------------------------------------------------------------------
     ctx.registerRoute({
-      path: '/gateway/status',
+      path: '/runtime/status',
       method: 'GET',
-      description: 'Check if gateway config is out of sync (needs restart)',
+      description: 'Check if runtime config is out of sync (needs restart)',
       handler: async () => {
-        const sync = getGatewaySync()
+        const sync = getRuntimeSync()
         const restartNeeded = sync.lastConfigChangeAt !== null &&
           (sync.lastRestartAt === null || sync.lastConfigChangeAt > sync.lastRestartAt)
         return Response.json({ restartNeeded, ...sync })
@@ -734,28 +705,25 @@ const modelsPlugin: BakinPlugin = {
     })
 
     // -------------------------------------------------------------------
-    // POST /api/plugins/models/gateway/restart
+    // POST /api/plugins/models/runtime/restart
     // -------------------------------------------------------------------
     ctx.registerRoute({
-      path: '/gateway/restart',
+      path: '/runtime/restart',
       method: 'POST',
       handler: async () => {
-        return new Promise<Response>((resolve) => {
-          execFile(OPENCLAW_BIN, ['gateway', 'restart'], (err) => {
-            if (err) {
-              resolve(Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 }))
-            } else {
-              markGatewayRestarted()
-              // Gateway restart invalidates both cache layers — the user
-              // expects fresh data on the next /available hit.
-              setModelsCache(null)
-              clearPersistedCache()
-              ctx.activity.audit('gateway.restarted', 'system')
-              ctx.activity.log('system', 'OpenClaw gateway restarted', { category: 'models' })
-              resolve(Response.json({ ok: true, message: 'Restart initiated' }))
-            }
-          })
-        })
+        try {
+          await ctx.runtime.restart()
+          markRuntimeRestarted()
+          // Runtime restart invalidates both cache layers — the user
+          // expects fresh data on the next /available hit.
+          setModelsCache(null)
+          clearPersistedCache()
+          ctx.activity.audit('runtime.restarted', 'system')
+          ctx.activity.log('system', 'Runtime restarted', { category: 'models' })
+          return Response.json({ ok: true, message: 'Restart initiated' })
+        } catch (err) {
+          return Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+        }
       },
     })
 
@@ -771,7 +739,7 @@ const modelsPlugin: BakinPlugin = {
       },
       handler: async (params: Record<string, unknown>) => {
         try {
-          const result = await fetchAvailableModels()
+          const result = await fetchAvailableModels(ctx)
           const tier = params.tier as string | undefined
           const models = tier ? result.models.filter((m) => m.tier === tier) : result.models
           return { ok: true, models, cached: result.cached }

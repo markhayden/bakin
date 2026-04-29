@@ -18,6 +18,7 @@ mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     root: testDir,
+    tasks: join(testDir, 'tasks'),
     settings: join(testDir, 'settings.json'),
     audit: join(testDir, 'audit.jsonl'),
     logs: join(testDir, 'logs'),
@@ -26,11 +27,6 @@ mock.module('../../src/core/content-dir', () => ({
 
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
-}))
-
-mock.module('../../src/core/openclaw-client', () => ({
-  sendMessage: mock().mockResolvedValue(undefined),
-  openclaw: { sendMessage: mock().mockResolvedValue(undefined) },
 }))
 
 // Mock audit so it doesn't try to write jsonl with real paths pulled in elsewhere.
@@ -42,6 +38,8 @@ mock.module('../../src/core/audit', () => ({
 mock.module('../../src/core/watcher', () => ({
   watchContentDir: mock(),
   getWatcher: () => ({ on: mock(), close: mock() }),
+  registerSyncHook: mock(() => {}),
+  registerUnlinkHook: mock(() => {}),
 }))
 
 // Stub the plugin registry / hooks so task-service can call hooks without
@@ -56,6 +54,16 @@ mock.module('../../src/lib/plugin-registry', () => {
         return () => handlers.delete(name)
       },
       has: (name: string) => handlers.has(name),
+      call: async <T>(name: string, data: T): Promise<T> => {
+        const h = handlers.get(name)
+        if (!h) return data
+        const result = await h(data)
+        return (result === undefined || result === null ? data : result) as T
+      },
+      callAll: async (name: string, data: Record<string, unknown>): Promise<void> => {
+        const h = handlers.get(name)
+        if (h) await h(data)
+      },
       invoke: async <R>(name: string, data: unknown): Promise<R | undefined> => {
         const h = handlers.get(name)
         if (!h) return undefined
@@ -73,19 +81,101 @@ mock.module('@bakin/core/main-agent', () => ({
 }))
 
 // Pin openclaw home under testDir so nothing reads real ~/.openclaw.
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => join(testDir, '.openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
 }))
 
+mock.module('../../src/core/app-services', () => ({
+  getAppServices: () => ({
+    runtime: {
+      agents: {
+        list: async () => [
+          { id: 'alice', name: 'Alice', role: 'Builder', status: 'active' },
+          { id: 'orchestrator', name: 'Orchestrator', role: 'Orchestrator', status: 'active' },
+        ],
+      },
+      messaging: {
+        send: async () => ({ id: 'msg-1', content: '' }),
+      },
+    },
+  }),
+}))
+
+const taskColumns = {
+  backlog: [] as any[],
+  todo: [] as any[],
+  inProgress: [] as any[],
+  review: [] as any[],
+  done: [] as any[],
+  archived: [] as any[],
+  blocked: [] as any[],
+}
+const mockMoveTask = mock(async (..._args: unknown[]) => undefined)
+const mockUpdateTask = mock(async (..._args: unknown[]) => undefined)
+const mockAddTaskLog = mock(async (..._args: unknown[]) => undefined)
+
+function resetTaskColumns(): void {
+  for (const tasks of Object.values(taskColumns)) tasks.length = 0
+}
+
+function allTasks(): any[] {
+  return Object.values(taskColumns).flat()
+}
+
+function getTaskWithColumn(taskId: string): { task: any; column: string } | null {
+  for (const [column, tasks] of Object.entries(taskColumns)) {
+    const task = tasks.find((candidate) => candidate.id === taskId)
+    if (task) return { task, column }
+  }
+  return null
+}
+
+function taskStoreMock() {
+  return {
+    VALID_TRANSITIONS: {},
+    readTaskboard: mock(() => ({ columns: taskColumns })),
+    readAllColumns: mock(() => taskColumns),
+    getAllTasks: mock(() => allTasks()),
+    getTask: mock((taskId: string) => getTaskWithColumn(taskId)?.task ?? null),
+    getTaskWithColumn: mock((taskId: string) => getTaskWithColumn(taskId)),
+    getTodoTasks: mock(() => taskColumns.todo),
+    getTasksByColumn: mock((column: keyof typeof taskColumns) => taskColumns[column] ?? []),
+    getTasksByAgent: mock((agent: string) => allTasks().filter((task) => task.agent === agent)),
+    getAgentTasks: mock((agent: string) => allTasks().filter((task) => task.agent === agent)),
+    getArchivedCount: mock(() => taskColumns.archived.length),
+    localDateString: mock(() => '2026-04-28'),
+    normalizeColumn: mock((column: string) => column),
+    createTask: mock(async (..._args: unknown[]) => ({ id: 'created-task', title: 'Created task' })),
+    assignTask: mock(async (..._args: unknown[]) => undefined),
+    deleteTask: mock(async (..._args: unknown[]) => undefined),
+    moveTask: (...args: unknown[]) => mockMoveTask(...args),
+    moveTaskToInProgress: mock(async (taskId: string, agent: string) => mockUpdateTask(taskId, { column: 'inProgress', agent })),
+    updateTask: (...args: unknown[]) => mockUpdateTask(...args),
+    addTaskLog: (...args: unknown[]) => mockAddTaskLog(...args),
+    blockTask: mock(async (..._args: unknown[]) => undefined),
+    setDependency: mock(async (..._args: unknown[]) => undefined),
+    clearDependency: mock(async (..._args: unknown[]) => undefined),
+    reorderTasks: mock(async (..._args: unknown[]) => undefined),
+    archiveOldTasks: mock(() => 0),
+    autoArchiveDoneTasks: mock(() => 0),
+  }
+}
+
+mock.module('../../src/core/task-store', () => taskStoreMock())
+mock.module('@/core/task-store', () => taskStoreMock())
+
 import { clearUsage, getUsageFeed } from '../../src/core/usage'
-import { getHookRegistry } from '../../src/lib/plugin-registry'
 
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
 describe('T2.3 agent usage wiring', () => {
   beforeEach(() => {
     clearUsage()
+    resetTaskColumns()
+    mockMoveTask.mockClear()
+    mockUpdateTask.mockClear()
+    mockAddTaskLog.mockClear()
   })
 
   it('heartbeat tool records an agent usage entry', async () => {
@@ -111,17 +201,7 @@ describe('T2.3 agent usage wiring', () => {
 
   it('task-service moveTaskWithEffects records a task.<status> usage entry', async () => {
     const { moveTaskWithEffects } = require('../../src/core/task-service') as typeof import('../../src/core/task-service')
-    const hooks = getHookRegistry()
-
-    // Register minimal hook handlers so moveTaskWithEffects can run.
-    hooks.register('tasks.readTaskboard', () => ({
-      columns: {
-        todo: [],
-        inProgress: [{ id: 'task-1', title: 'Test task' }],
-        done: [],
-      },
-    }))
-    hooks.register('tasks.moveTask', () => undefined)
+    taskColumns.inProgress.push({ id: 'task-1', title: 'Test task' })
 
     await moveTaskWithEffects('task-1', 'inProgress', 'alice', { from: 'todo' })
 
@@ -144,30 +224,15 @@ describe('T2.3 agent usage wiring', () => {
         dispatch: { maxRetries: 3, failureCooldownMs: 1000, transientCooldownMs: 500, maxDispatched: 200 },
       }),
     }))
-    // Dispatch now derives the agent roster from openclaw-config (T2).
-    mock.module('@bakin/core/openclaw-config', () => ({
-      getAgentIds: () => ['alice'],
-      findAgentById: (id: string) => (id === 'alice' ? { id: 'alice' } : null),
-      readOpenClawConfig: () => ({ agents: [{ id: 'alice' }] }),
-      resetOpenClawConfigCache: () => {},
-    }))
     // Stub taskboard lib used via dynamic import inside dispatch.
-    mock.module('@bakin/tasks/lib/flow-store', () => ({
+    mock.module('@/core/task-store', () => ({
       moveTaskToInProgress: mock().mockResolvedValue(undefined),
       addTaskLog: mock().mockResolvedValue(undefined),
     }))
 
     // State file is written under testDir — provide an empty file ok.
     const { dispatchSingleTask } = require('../../src/core/dispatch') as typeof import('../../src/core/dispatch')
-    const hooks = getHookRegistry()
-
-    hooks.register('tasks.readTaskboard', () => ({
-      columns: {
-        todo: [{ id: 'dispatch-task-1', title: 'Dispatch me', agent: 'alice' }],
-        inProgress: [],
-        done: [],
-      },
-    }))
+    taskColumns.todo.push({ id: 'dispatch-task-1', title: 'Dispatch me', agent: 'alice' })
 
     await dispatchSingleTask('dispatch-task-1', testDir, 3737, 'kick')
 

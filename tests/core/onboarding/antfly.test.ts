@@ -1,8 +1,8 @@
 /**
- * Tests for the antfly onboarding component.
+ * Tests for the Antfly search-adapter setup component.
  *
  * Strategy:
- *   - Mock antfly-server so `findBinary()` returns a test-controlled value
+ *   - Mock the search adapter binary helper so it returns a test-controlled value
  *   - Mock child_process.spawn to return a fake ChildProcess that emits a
  *     configurable exit code on `close` — no real brew runs
  *   - Mock fs.existsSync so the `findBrew()` helper inside the component
@@ -14,6 +14,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { EventEmitter } from 'events'
+import * as actualFs from 'fs'
 
 // Per-test state for the mocks. Must be `let` so the mock closures can
 // read the current value on each call. `findBinaryQueue` is a queue so
@@ -26,14 +27,8 @@ let spawnError: Error | null
 let lastSpawnArgs: { cmd: string; args: string[]; opts: Record<string, unknown> } | null
 let askYesNoReturn: boolean
 
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
-
-mock.module('../../../src/core/antfly-server', () => ({
-  findBinary: () => {
+mock.module('../../../packages/adapter-antfly/src/server', () => ({
+  findAntflyBinary: () => {
     // Pop the next queued value; if the queue is empty, repeat the last
     // one. Lets tests set [null, '/path/to/binary'] to mean "missing on
     // first call, installed on second" without manual timing tricks.
@@ -41,6 +36,10 @@ mock.module('../../../src/core/antfly-server', () => ({
     if (findBinaryQueue.length === 1) return findBinaryQueue[0]
     return findBinaryQueue.shift()!
   },
+  isAntflyInstalled: () => findBinaryQueue[0] !== null,
+  isAntflyRunning: () => false,
+  startAntflyServer: () => Promise.resolve(false),
+  stopAntflyServer: () => {},
 }))
 
 mock.module('../../../src/core/logger', () => ({
@@ -53,15 +52,14 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 mock.module('fs', () => {
-  const actual = require('fs') as typeof import('fs')
   return {
-    ...actual,
+    ...actualFs,
     existsSync: (p: unknown) => {
       const path = String(p)
       if (path === '/opt/homebrew/bin/brew' || path === '/usr/local/bin/brew') {
         return brewExists
       }
-      return actual.existsSync(p as never)
+      return actualFs.existsSync(p as never)
     },
   }
 })
@@ -88,13 +86,8 @@ mock.module('child_process', () => ({
   },
 }))
 
-mock.module('../../../src/core/onboarding/prompts', () => ({
-  askYesNo: () => Promise.resolve(askYesNoReturn),
-  readLine: () => Promise.resolve(''),
-}))
-
-describe('onboarding antfly component', () => {
-  let antflyComponent: typeof import('../../../src/core/onboarding/antfly').antflyComponent
+describe('Antfly search setup component', () => {
+  let dependencyComponent: ReturnType<typeof import('../../../packages/adapter-antfly/src/setup').createAntflySearchSetup>['dependency']
 
   beforeEach(async () => {
     findBinaryQueue = [null]
@@ -104,8 +97,8 @@ describe('onboarding antfly component', () => {
     lastSpawnArgs = null
     askYesNoReturn = true
     vi.resetModules()
-    const mod = await import('../../../src/core/onboarding/antfly')
-    antflyComponent = mod.antflyComponent
+    const mod = await import('../../../packages/adapter-antfly/src/setup')
+    dependencyComponent = mod.createAntflySearchSetup().dependency
   })
 
   afterEach(() => {
@@ -118,6 +111,7 @@ describe('onboarding antfly component', () => {
     json: false,
     checkOnly: false,
     force: false,
+    askYesNo: () => Promise.resolve(askYesNoReturn),
   }
   const optsInteractive = {
     interactive: true,
@@ -125,6 +119,7 @@ describe('onboarding antfly component', () => {
     json: false,
     checkOnly: false,
     force: false,
+    askYesNo: () => Promise.resolve(askYesNoReturn),
   }
   const optsNonInteractiveNoYes = {
     interactive: false,
@@ -132,28 +127,29 @@ describe('onboarding antfly component', () => {
     json: false,
     checkOnly: false,
     force: false,
+    askYesNo: () => Promise.resolve(askYesNoReturn),
   }
 
   describe('check()', () => {
     it('reports ok when the antfly binary is found', async () => {
       findBinaryQueue = ['/opt/homebrew/bin/antfly']
-      const result = await antflyComponent.check()
+      const result = await dependencyComponent.check()
       expect(result.status).toBe('ok')
       expect(result.details?.binary).toBe('/opt/homebrew/bin/antfly')
     })
 
     it('reports missing when the binary is not found', async () => {
       findBinaryQueue = [null]
-      const result = await antflyComponent.check()
+      const result = await dependencyComponent.check()
       expect(result.status).toBe('missing')
-      expect(result.remediation).toContain('bakin install antfly')
+      expect(result.remediation).toContain('bakin install search')
     })
   })
 
   describe('install()', () => {
     it('is a noop when antfly is already installed', async () => {
       findBinaryQueue = ['/opt/homebrew/bin/antfly']
-      const result = await antflyComponent.install(optsAutoYes)
+      const result = await dependencyComponent.install(optsAutoYes)
       expect(result.status).toBe('noop')
       expect(lastSpawnArgs).toBeNull()
     })
@@ -161,7 +157,7 @@ describe('onboarding antfly component', () => {
     it('fails cleanly when Homebrew is missing', async () => {
       findBinaryQueue = [null]
       brewExists = false
-      const result = await antflyComponent.install(optsAutoYes)
+      const result = await dependencyComponent.install(optsAutoYes)
       expect(result.status).toBe('failed')
       expect(result.message).toContain('Homebrew not found')
       expect(lastSpawnArgs).toBeNull()
@@ -172,7 +168,7 @@ describe('onboarding antfly component', () => {
       // Second (post-spawn verification) returns the installed path.
       findBinaryQueue = [null, '/opt/homebrew/bin/antfly']
       brewExists = true
-      const result = await antflyComponent.install(optsAutoYes)
+      const result = await dependencyComponent.install(optsAutoYes)
 
       expect(lastSpawnArgs).not.toBeNull()
       expect(lastSpawnArgs!.cmd).toBe('/opt/homebrew/bin/brew')
@@ -186,7 +182,7 @@ describe('onboarding antfly component', () => {
     it('reports failed when brew exits non-zero', async () => {
       findBinaryQueue = [null]
       spawnExitCode = 1
-      const result = await antflyComponent.install(optsAutoYes)
+      const result = await dependencyComponent.install(optsAutoYes)
       expect(result.status).toBe('failed')
       expect(result.message).toContain('exited with code 1')
     })
@@ -194,8 +190,8 @@ describe('onboarding antfly component', () => {
     it('reports failed when brew succeeds but binary is still missing', async () => {
       findBinaryQueue = [null]
       spawnExitCode = 0
-      // Never flip findBinaryReturn — simulates brew silently doing nothing
-      const result = await antflyComponent.install(optsAutoYes)
+      // Never flip findBinaryQueue — simulates brew silently doing nothing
+      const result = await dependencyComponent.install(optsAutoYes)
       expect(result.status).toBe('failed')
       expect(result.message).toContain('still not discoverable')
     })
@@ -203,14 +199,14 @@ describe('onboarding antfly component', () => {
     it('skips install when user declines the prompt', async () => {
       findBinaryQueue = [null]
       askYesNoReturn = false
-      const result = await antflyComponent.install(optsInteractive)
+      const result = await dependencyComponent.install(optsInteractive)
       expect(result.status).toBe('skipped')
       expect(lastSpawnArgs).toBeNull()
     })
 
     it('skips install in non-interactive mode without --yes', async () => {
       findBinaryQueue = [null]
-      const result = await antflyComponent.install(optsNonInteractiveNoYes)
+      const result = await dependencyComponent.install(optsNonInteractiveNoYes)
       expect(result.status).toBe('skipped')
       expect(result.message).toContain('Non-interactive')
       expect(lastSpawnArgs).toBeNull()
@@ -219,7 +215,7 @@ describe('onboarding antfly component', () => {
     it('reports failed when spawn emits an error event', async () => {
       findBinaryQueue = [null]
       spawnError = new Error('ENOENT')
-      const result = await antflyComponent.install(optsAutoYes)
+      const result = await dependencyComponent.install(optsAutoYes)
       expect(result.status).toBe('failed')
       expect(result.message).toContain('ENOENT')
     })

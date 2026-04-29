@@ -174,8 +174,6 @@ export function KanbanBoard() {
     }
   }, [columns, view])
 
-  const hiddenArchivedCount = columns.archived.length - displayColumns.archived.length
-
   const [taskIdParam, setTaskIdParam] = useQueryState('taskId', '')
   const hasBoardFilters = Boolean(search) || agentFilter !== 'all'
 
@@ -186,7 +184,7 @@ export function KanbanBoard() {
   const [debug] = useDebug()
 
   // Per-task search score map for the debug overlay. Tasks register their
-  // Antfly key as the raw `task.id` (see `plugins/tasks/index.ts` reindex
+  // search key as the raw `task.id` (see `plugins/tasks/index.ts` reindex
   // generator), so no prefix to strip. Only build/pass when debug is on AND
   // there's an active search query — the map is undefined otherwise so
   // TaskCardContent skips the overlay entirely.
@@ -342,15 +340,6 @@ export function KanbanBoard() {
     setOptimistic(null)
   }, [agentFilter, hasBoardFilters, optimistic, parsed.columns, refreshTaskboard, search])
 
-  const handleAssign = useCallback(async (task: Task, agent: string) => {
-    const ok = await apiFetch('/api/plugins/tasks/' + task.id + '/assign', { id: task.id, title: task.title, agent })
-    if (ok) {
-      await refreshTaskboard()
-    } else {
-      toast(`Failed to assign "${task.title}"`, 'error')
-    }
-  }, [refreshTaskboard])
-
   const [detailTask, setDetailTask] = useState<{ task: Task; columnId: ColumnId } | null>(null)
   const [editing, setEditing] = useState(false)
 
@@ -487,7 +476,6 @@ export function KanbanBoard() {
                       gateLabels={gateLabels}
                       childTaskLabels={childTaskLabels}
                       scoreMap={scoreMap}
-                      onAssign={handleAssign}
                       onDelete={setDeleteTarget}
                       onTaskClick={(task, columnId) => { setDetailTask({ task, columnId }); setEditing(false) }}
                       compact={colId === 'archived'}

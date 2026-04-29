@@ -1,0 +1,269 @@
+/**
+ * Regression test for plugins/health/lib/managed-blocks.ts.
+ *
+ * Migrated from tests/core/doctor-managed-blocks.test.ts in #139 C9.
+ * Pins the existing managed-block flow byte-equal so the registered
+ * health.managed-blocks check can be lifted in without changing
+ * observed behavior. Cases:
+ *
+ *   - Block missing + autoFix=true → block appended with one blank line
+ *     of separation; trailing newline; rest of file untouched
+ *   - Block missing + autoFix=false → no write, warn returned
+ *   - Block present + body matches expected → ok, no write
+ *   - Block present + body drifted + autoFix=true → in-place update,
+ *     surrounding content preserved exactly
+ *   - Block present + body drifted + autoFix=false → warn, no write
+ *   - Start marker without end marker → error result, no write
+ *   - main agent skipped (orchestrator owns its own AGENTS.md)
+ *
+ * Test isolation per CC-6: mocks app services to a temp-backed runtime
+ * adapter and seeds a synthetic roster. The doctor's other checks are
+ * sidestepped by calling `applyAllManagedBlocks` directly.
+ */
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
+import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs'
+import { dirname, join } from 'path'
+import { tmpdir } from 'os'
+import { randomUUID } from 'crypto'
+
+const testDir = join(tmpdir(), `bakin-test-doctor-blocks-${Date.now()}-${randomUUID()}`)
+const runtimeDir = join(testDir, 'runtime')
+
+const runtimeAgents = [
+  { id: 'main', name: 'Main', role: 'Orchestrator', status: 'active' },
+  { id: 'pixel', name: 'Pixel', role: 'Image', status: 'active' },
+  { id: 'rolo', name: 'Rolo', role: 'Video', status: 'active' },
+]
+
+const appRuntime = {
+  agents: {
+    list: async () => runtimeAgents,
+    readWorkspaceFile: async (agentId: string, path: string) => {
+      const fullPath = join(runtimeDir, 'workspaces', agentId, path)
+      return existsSync(fullPath) ? { path, content: readFileSync(fullPath, 'utf-8') } : null
+    },
+    writeWorkspaceFile: async (agentId: string, file: { path: string; content: string }) => {
+      const fullPath = join(runtimeDir, 'workspaces', agentId, file.path)
+      mkdirSync(dirname(fullPath), { recursive: true })
+      writeFileSync(fullPath, file.content, 'utf-8')
+    },
+  },
+}
+
+mock.module('@/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+  isUsingBakinHome: () => true,
+}))
+mock.module('@bakin/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({}),
+  isUsingBakinHome: () => true,
+}))
+mock.module('../../../src/core/app-services', () => ({
+  maybeGetAppServices: () => ({ runtime: appRuntime }),
+  createAppServices: async () => ({ runtime: appRuntime }),
+}))
+
+import { applyAllManagedBlocks, applyAllManagedBlocksForRuntime } from '../../../plugins/health/lib/managed-blocks'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+
+afterAll(() => {
+  rmSync(testDir, { recursive: true, force: true })
+})
+
+function workspacePath(agentId: string): string {
+  return join(runtimeDir, 'workspaces', agentId)
+}
+
+function agentsMdPath(agentId: string): string {
+  return join(workspacePath(agentId), 'AGENTS.md')
+}
+
+function seedAgentsMd(agentId: string, content: string): void {
+  mkdirSync(workspacePath(agentId), { recursive: true })
+  writeFileSync(agentsMdPath(agentId), content, 'utf-8')
+}
+
+beforeEach(() => {
+  rmSync(testDir, { recursive: true, force: true })
+  mkdirSync(testDir, { recursive: true })
+  mkdirSync(runtimeDir, { recursive: true })
+})
+
+describe('applyAllManagedBlocks — block missing', () => {
+  it('with autoFix=true, appends every managed block with one-blank-line separation and trailing newline', async () => {
+    seedAgentsMd('pixel', '# Pixel — Image Artist\n\nResponsibilities go here.\n')
+
+    const results = await applyAllManagedBlocks(true)
+    expect(results.some((r) => r.status === 'fixed')).toBe(true)
+
+    const final = readFileSync(agentsMdPath('pixel'), 'utf-8')
+    expect(final.startsWith('# Pixel — Image Artist\n\nResponsibilities go here.\n\n<!-- bakin:'))
+      .toBe(true)
+    expect(final).toContain('<!-- bakin:mission-control:start -->')
+    expect(final).toContain('<!-- bakin:mission-control:end -->')
+    expect(final).toContain('<!-- bakin:hard-rules:start -->')
+    expect(final).toContain('<!-- bakin:dependency-pattern:start -->')
+    // Final byte should be a newline (matches doctor's append convention)
+    expect(final.endsWith('\n')).toBe(true)
+  })
+
+  it('with autoFix=false, returns warn diagnostics without writing', async () => {
+    seedAgentsMd('pixel', '# Pixel\n')
+
+    const before = readFileSync(agentsMdPath('pixel'), 'utf-8')
+    const results = await applyAllManagedBlocks(false)
+
+    expect(results.some((r) => r.status === 'warn' && r.autoFixable)).toBe(true)
+    expect(readFileSync(agentsMdPath('pixel'), 'utf-8')).toBe(before)
+  })
+})
+
+describe('applyAllManagedBlocks — block present', () => {
+  it('with body matching expected, returns ok, leaves file byte-equal', async () => {
+    // Seed both rostered subagents so applyAll doesn't return warn for
+    // missing AGENTS.md on rolo.
+    seedAgentsMd('pixel', '# Pixel\n\nProse.\n')
+    seedAgentsMd('rolo', '# Rolo\n')
+
+    // First pass: write the blocks via autoFix
+    await applyAllManagedBlocks(true)
+    const pixelAfterFirst = readFileSync(agentsMdPath('pixel'), 'utf-8')
+    const roloAfterFirst = readFileSync(agentsMdPath('rolo'), 'utf-8')
+
+    // Second pass: scoped to pixel + rolo, should be all-ok or fixed (no warn/error)
+    const results = await applyAllManagedBlocks(true)
+    expect(
+      results.every((r) => r.status === 'ok' || r.status === 'fixed'),
+    ).toBe(true)
+    const okCount = results.filter((r) => r.status === 'ok').length
+    expect(okCount).toBeGreaterThan(0)
+
+    // Files unchanged on second pass
+    expect(readFileSync(agentsMdPath('pixel'), 'utf-8')).toBe(pixelAfterFirst)
+    expect(readFileSync(agentsMdPath('rolo'), 'utf-8')).toBe(roloAfterFirst)
+  })
+
+  it('with drifted body and autoFix=true, in-place updates while preserving surrounding content', async () => {
+    const stale = `# Pixel
+
+Prose before.
+
+<!-- bakin:mission-control:start -->
+this is some stale content
+<!-- bakin:mission-control:end -->
+
+Prose after.
+`
+    seedAgentsMd('pixel', stale)
+
+    await applyAllManagedBlocks(true)
+    const final = readFileSync(agentsMdPath('pixel'), 'utf-8')
+
+    // Surrounding content preserved
+    expect(final.startsWith('# Pixel\n\nProse before.\n\n<!-- bakin:mission-control:start -->')).toBe(true)
+    expect(final).toContain('Prose after.')
+    // Stale content gone
+    expect(final).not.toContain('this is some stale content')
+    // Mission-control markers still present
+    expect(final).toContain('<!-- bakin:mission-control:start -->')
+    expect(final).toContain('<!-- bakin:mission-control:end -->')
+  })
+
+  it('with drifted body and autoFix=false, returns warn, no write', async () => {
+    const stale = `<!-- bakin:mission-control:start -->
+stale content
+<!-- bakin:mission-control:end -->
+`
+    seedAgentsMd('pixel', stale)
+    const before = readFileSync(agentsMdPath('pixel'), 'utf-8')
+
+    const results = await applyAllManagedBlocks(false)
+    expect(
+      results.some(
+        (r) => r.status === 'warn' && r.check === 'agent-mission-control' && r.autoFixable,
+      ),
+    ).toBe(true)
+    expect(readFileSync(agentsMdPath('pixel'), 'utf-8')).toBe(before)
+  })
+})
+
+describe('applyAllManagedBlocks — malformed file', () => {
+  it('returns error for the malformed block, does not rewrite the orphan-start region', async () => {
+    const broken = `# Pixel\n\n<!-- bakin:mission-control:start -->\nstuck content with no end marker`
+    seedAgentsMd('pixel', broken)
+
+    const results = await applyAllManagedBlocks(true)
+
+    // Mission-control specifically errors out — its orphan start marker stays
+    // untouched (no replacement, no end marker injected by the doctor's path).
+    expect(
+      results.some((r) => r.status === 'error' && r.check === 'agent-mission-control'),
+    ).toBe(true)
+
+    const after = readFileSync(agentsMdPath('pixel'), 'utf-8')
+    expect(after).toContain('<!-- bakin:mission-control:start -->\nstuck content with no end marker')
+    // Doctor must NOT silently inject an end marker for mission-control
+    expect(after).not.toContain('<!-- bakin:mission-control:end -->')
+
+    // OTHER managed blocks have no markers, so doctor still appends them.
+    expect(after).toContain('<!-- bakin:hard-rules:start -->')
+    expect(after).toContain('<!-- bakin:hard-rules:end -->')
+  })
+})
+
+describe('applyAllManagedBlocks — main agent skip', () => {
+  it('does not touch main agent`s AGENTS.md', async () => {
+    seedAgentsMd('main', '# Main\n')
+    seedAgentsMd('pixel', '# Pixel\n')
+
+    await applyAllManagedBlocks(true)
+
+    // main was not touched — still no markers
+    const mainContent = readFileSync(agentsMdPath('main'), 'utf-8')
+    expect(mainContent).not.toContain('<!-- bakin:mission-control')
+
+    // pixel was touched
+    const pixelContent = readFileSync(agentsMdPath('pixel'), 'utf-8')
+    expect(pixelContent).toContain('<!-- bakin:mission-control:start -->')
+  })
+})
+
+describe('applyAllManagedBlocks — missing AGENTS.md', () => {
+  it('returns warn when an agent has no AGENTS.md, does not create one', async () => {
+    // pixel is in the roster but we don't seed AGENTS.md
+    mkdirSync(workspacePath('pixel'), { recursive: true })
+
+    const results = await applyAllManagedBlocks(true)
+    expect(results.some((r) => r.status === 'warn' && r.message.includes('AGENTS.md not found'))).toBe(true)
+    expect(existsSync(agentsMdPath('pixel'))).toBe(false)
+  })
+})
+
+describe('applyAllManagedBlocksForRuntime', () => {
+  it('uses runtime agents and workspace files instead of OpenClaw paths', async () => {
+    const files = new Map<string, string>([
+      ['main:AGENTS.md', '# Main\n'],
+      ['pixel:AGENTS.md', '# Pixel\n'],
+    ])
+    const runtime = createMockRuntimeAdapter()
+    runtime.agents.list = async () => [
+      { id: 'main', name: 'Main', role: 'Orchestrator', status: 'active' },
+      { id: 'pixel', name: 'Pixel', role: 'Image', status: 'active' },
+    ]
+    runtime.agents.readWorkspaceFile = async (agentId, path) => {
+      const content = files.get(`${agentId}:${path}`)
+      return content === undefined ? null : { path, content }
+    }
+    runtime.agents.writeWorkspaceFile = async (agentId, file) => {
+      files.set(`${agentId}:${file.path}`, file.content)
+    }
+
+    const results = await applyAllManagedBlocksForRuntime(runtime, true)
+
+    expect(results.some((r) => r.status === 'fixed')).toBe(true)
+    expect(files.get('pixel:AGENTS.md')).toContain('<!-- bakin:mission-control:start -->')
+    expect(files.get('main:AGENTS.md')).toBe('# Main\n')
+  })
+})

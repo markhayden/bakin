@@ -4,7 +4,7 @@ All shared UI primitives in this doc are re-exported from `@bakin/sdk/components
 
 ```tsx
 import { BakinDrawer, PluginHeader, FacetFilter, AgentAvatar } from '@bakin/sdk/components'
-import { useSearch, useGatewayStatus } from '@bakin/sdk/hooks'
+import { useSearch, useRuntimeStatus } from '@bakin/sdk/hooks'
 ```
 
 Core plugins use the same imports. The path-style `src/components/*.tsx` entries in the tables below are the source-of-truth locations inside the repo — plugins never reach them directly.
@@ -256,22 +256,22 @@ Options are grouped by provider (`anthropic`, `openai-codex`, `google`, etc.), n
 | Team | agent-form | Select model during agent creation |
 | Models | models-page | Agent config table, alias target, task profile model |
 
-## useGatewayStatus
+## useRuntimeStatus
 
-`src/hooks/use-gateway-status.ts` — Checks if the OpenClaw gateway needs a restart after config changes.
+`src/hooks/use-runtime-status.ts` — Checks if the active runtime needs a restart after config changes.
 
 ### Return Value
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `restartNeeded` | `boolean` | True if config changed since last gateway restart |
+| `restartNeeded` | `boolean` | True if config changed since last runtime restart |
 | `restarting` | `boolean` | True while restart POST is in flight |
-| `restart` | `() => Promise<void>` | Calls `POST /api/plugins/models/gateway/restart` |
+| `restart` | `() => Promise<void>` | Calls `POST /api/plugins/models/runtime/restart` |
 | `markDirty` | `() => void` | Optimistically set `restartNeeded` without waiting for server |
 
 ### How It Works
 
-Server tracks `lastConfigChangeAt` and `lastRestartAt` timestamps via `globalThis.__bakinGatewaySync` (survives Bun HMR and module re-evaluation). The hook fetches `GET /api/plugins/models/gateway/status` on mount and shows the amber restart banner if out of sync.
+Server tracks `lastConfigChangeAt` and `lastRestartAt` timestamps via `globalThis.__bakinRuntimeSync` (survives Bun HMR and module re-evaluation). The hook fetches `GET /api/plugins/models/runtime/status` on mount and shows the amber restart banner if out of sync.
 
 ### Where Used
 
@@ -300,7 +300,7 @@ Located at `src/hooks/use-search.ts`. Provides Antfly-powered semantic search al
 
 ```tsx
 <AgentFilter
-  agentIds={agentIds}           // any string[] — useAgentIds() for OpenClaw agents, CONTENT_AGENTS for messaging
+  agentIds={agentIds}           // any string[] — useAgentIds() for runtime agents, CONTENT_AGENTS for messaging
   value={agentFilter}            // current selection ('all' or an id)
   onChange={setAgentFilter}      // typically wired to useQueryState('agent', 'all')
 />
@@ -422,7 +422,7 @@ const onSend: BrainstormOnSend = async (prompt, history, { signal, onToken, onCu
 }
 ```
 
-The server-side helpers live in `src/core/openclaw-client.ts`: `streamMessage()` returns a raw `Response` with an SSE body; `chatCompletion()` is the non-streaming fallback used by both messaging and projects when the gateway returns non-streaming.
+Server-side agent calls go through the active runtime adapter (`ctx.runtime` in plugins, `getAppServices().runtime` in core). Project and messaging brainstorm routes write SSE events themselves while using `runtime.messaging.send()` for non-streaming provider calls.
 
 ### Architecture notes
 
@@ -447,9 +447,9 @@ src/components/facet-filter.tsx          — Multi-select filter with optional A
 src/components/sortable-head.tsx         — Generic sortable table header cell
 src/components/integrated-brainstorm/    — Unified streaming agent-chat surface
 src/hooks/use-search.ts                  — Search hook (Antfly-backed) with debounce + fallback
-src/hooks/use-gateway-status.ts          — Gateway restart sync checker
+src/hooks/use-runtime-status.ts          — Runtime restart sync checker
 src/hooks/use-vertical-resize.ts         — Drag-to-resize hook (messaging panels + brainstorm)
 src/components/ui/dropdown-menu.tsx      — Base dropdown (focus: bg-secondary)
 src/components/ui/sheet.tsx              — Sheet primitive (used by BakinDrawer)
-src/core/openclaw-client.ts              — streamMessage + chatCompletion (SSE & JSON variants)
+src/core/app-services.ts                 — boot-created runtime/search/task services
 ```

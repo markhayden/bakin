@@ -7,7 +7,7 @@ export interface AgentMeta {
   headshot: string
 }
 
-/** Full agent profile merged from OpenClaw config + workspace files */
+/** Full agent profile merged from runtime config + workspace files */
 export interface AgentProfile extends AgentMeta {
   model: string
   workspacePath: string
@@ -94,7 +94,7 @@ export interface PackageStateRow {
 }
 
 /**
- * Single message from an OpenClaw session JSONL. Used by the Active Context
+ * Single message from a runtime session JSONL. Used by the Active Context
  * tab to render what the agent has actually been sent + has produced.
  */
 export interface SessionMessage {

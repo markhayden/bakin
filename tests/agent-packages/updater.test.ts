@@ -11,8 +11,9 @@ process.env.OPENCLAW_HOME = openClawDir
 process.env.BAKIN_HOME = testDir
 
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
+import { dirname, join } from 'path'
+import type { AgentRuntimeAdapter, RuntimeSkill, WorkspaceFile } from '@bakin/core/adapters/runtime'
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -24,35 +25,146 @@ mock.module('@bakin/core/content-dir', () => ({
   getBakinPaths: () => ({}),
   isUsingBakinHome: () => true,
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => openClawDir,
   getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
   resetOpenClawHome: () => {},
 }))
 
 let openClawAgents: Array<{ id: string; identity?: { name?: string } }> = []
-mock.module('@bakin/core/openclaw-config', () => ({
-  readOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  resetOpenClawConfigCache: () => {},
-  getAgentList: () => openClawAgents,
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-  findAgentById: (id: string) => openClawAgents.find((a) => a.id === id) ?? null,
-}))
 
-const adapterMockFactory = () => ({
-  addAgent: async (input: { id: string }) => {
-    openClawAgents.push({ id: input.id, identity: { name: input.id } })
-    return { id: input.id, workspace: join(openClawDir, 'workspaces', input.id) }
-  },
-  addToAllowLists: () => {},
-  removeAgent: async () => true,
-  removeFromAllowLists: () => {},
-  getOpenClawConfig: () => ({ agents: { list: openClawAgents } }),
-  listAgents: () => [],
-  getAgentIds: () => openClawAgents.map((a) => a.id),
-})
-mock.module('@bakin/team/lib/openclaw-adapter', adapterMockFactory)
-mock.module('../../plugins/team/lib/openclaw-adapter', adapterMockFactory)
+type TestGlobal = typeof globalThis & {
+  __bakinAppServices?: { runtime: AgentRuntimeAdapter }
+}
+
+function readJson(path: string): unknown {
+  try {
+    return JSON.parse(readFileSync(path, 'utf-8'))
+  } catch {
+    return null
+  }
+}
+
+function readSkillTree(root: string, prefix = ''): Record<string, string> {
+  const dir = join(root, prefix)
+  const files: Record<string, string> = {}
+  if (!existsSync(dir)) return files
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) continue
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name
+    const abs = join(root, rel)
+    if (entry.isDirectory()) {
+      Object.assign(files, readSkillTree(root, rel))
+    } else if (entry.isFile()) {
+      if (entry.name === '.installedBy' || entry.name === '.userEdited') continue
+      files[rel] = readFileSync(abs, 'utf-8')
+    }
+  }
+  return files
+}
+
+function runtimeWorkspaceFile(agentId: string, path: string): string {
+  return join(openClawDir, 'workspaces', agentId, path)
+}
+
+function runtimeSkillDir(name: string, agentId?: string): string {
+  return agentId
+    ? join(openClawDir, 'workspaces', agentId, 'skills', name)
+    : join(openClawDir, 'skills', name)
+}
+
+function installRuntimeMock(): void {
+  const runtime = {
+    agents: {
+      listWorkspaceFiles: async () => [],
+      list: async () => openClawAgents.map((agent) => ({
+        id: agent.id,
+        name: agent.identity?.name ?? agent.id,
+        status: 'active',
+      })),
+      get: async (id: string) => {
+        const agent = openClawAgents.find((entry) => entry.id === id)
+        return agent ? { id: agent.id, name: agent.identity?.name ?? agent.id, status: 'active' } : null
+      },
+      create: async (input: { id?: string; name: string }) => {
+        const id = input.id ?? input.name.toLowerCase()
+        openClawAgents.push({ id, identity: { name: input.name } })
+        return { id, name: input.name, status: 'active' }
+      },
+      update: async (id: string, input: { name?: string }) => ({ id, name: input.name ?? id, status: 'active' }),
+      remove: async (id: string) => {
+        openClawAgents = openClawAgents.filter((agent) => agent.id !== id)
+      },
+      readWorkspaceFile: async (agentId: string, path: string): Promise<WorkspaceFile | null> => {
+        const file = runtimeWorkspaceFile(agentId, path)
+        if (!existsSync(file)) return null
+        return {
+          path,
+          content: readFileSync(file, 'utf-8'),
+          updatedAt: statSync(file).mtime.toISOString(),
+          metadata: {
+            installedBy: readJson(`${file}.installedBy`),
+            userEdited: existsSync(`${file}.userEdited`),
+          },
+        }
+      },
+      writeWorkspaceFile: async (agentId: string, file: WorkspaceFile) => {
+        const target = runtimeWorkspaceFile(agentId, file.path)
+        mkdirSync(dirname(target), { recursive: true })
+        writeFileSync(target, file.content, 'utf-8')
+        if (file.metadata?.installedBy) {
+          writeFileSync(`${target}.installedBy`, JSON.stringify(file.metadata.installedBy, null, 2), 'utf-8')
+        } else {
+          rmSync(`${target}.installedBy`, { force: true })
+        }
+      },
+      removeWorkspaceFile: async (agentId: string, path: string) => {
+        const target = runtimeWorkspaceFile(agentId, path)
+        rmSync(target, { force: true })
+        rmSync(`${target}.installedBy`, { force: true })
+      },
+      updatePermissions: async () => {},
+      updateAllowlist: async () => {},
+      heartbeat: async () => true,
+    },
+    skills: {
+      list: async () => [],
+      get: async (name: string, agentId?: string): Promise<RuntimeSkill | null> => {
+        const dir = runtimeSkillDir(name, agentId)
+        const skillPath = join(dir, 'SKILL.md')
+        if (!existsSync(skillPath)) return null
+        return {
+          name,
+          path: skillPath,
+          instructions: readFileSync(skillPath, 'utf-8'),
+          files: readSkillTree(dir),
+          metadata: {
+            installedBy: readJson(join(dir, '.installedBy')),
+            userEdited: existsSync(join(dir, '.userEdited')),
+          },
+        }
+      },
+      write: async (skill: RuntimeSkill, agentId?: string) => {
+        const dir = runtimeSkillDir(skill.name, agentId)
+        const files = skill.files ?? { 'SKILL.md': skill.instructions ?? '' }
+        for (const [rel, content] of Object.entries(files)) {
+          const target = join(dir, rel)
+          mkdirSync(dirname(target), { recursive: true })
+          writeFileSync(target, content, 'utf-8')
+        }
+        if (skill.metadata?.installedBy) {
+          writeFileSync(join(dir, '.installedBy'), JSON.stringify(skill.metadata.installedBy, null, 2), 'utf-8')
+        } else {
+          rmSync(join(dir, '.installedBy'), { force: true })
+        }
+      },
+      remove: async (name: string, agentId?: string) => {
+        rmSync(runtimeSkillDir(name, agentId), { recursive: true, force: true })
+      },
+    },
+  } as unknown as AgentRuntimeAdapter
+  ;(globalThis as TestGlobal).__bakinAppServices = { runtime }
+}
 
 import { installPackage } from '../../src/core/agent-packages/installer'
 import { updatePackageById } from '../../src/core/agent-packages/updater'
@@ -67,6 +179,7 @@ beforeEach(() => {
   mkdirSync(testDir, { recursive: true })
   mkdirSync(openClawDir, { recursive: true })
   openClawAgents = []
+  installRuntimeMock()
 })
 
 function seedAgentPackage(opts: { id?: string; version?: string; soulBody?: string } = {}): string {

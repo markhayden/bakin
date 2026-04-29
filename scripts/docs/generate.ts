@@ -45,7 +45,6 @@ const commandSnippets = {
   workflows: ['workflows list', 'workflows start', 'workflows step', 'workflows submit'],
   health: ['doctor', 'status'],
   schedule: ['schedule'],
-  messaging: ['messaging'],
 }
 const docsSnippetBlocks = {
   'plugin-basic-manifest': {
@@ -572,7 +571,7 @@ function renderRuntimePathsReference(): string {
     ['personas', 'Agent persona files.'],
     ['heartbeats', 'Agent heartbeat files.'],
     ['inbox', 'General inbox directory.'],
-    ['projects', 'Project markdown/content data.'],
+    ['tasks', 'Bakin-owned task metadata store.'],
     ['workflows', 'Workflow definitions, skills, and instances.'],
   ]
   const lines = [
@@ -590,9 +589,7 @@ function renderRuntimePathsReference(): string {
     'Resolution order:',
     '',
     '1. `BAKIN_HOME` environment variable.',
-    '2. `CONTENT_DIR` compatibility environment variable.',
-    '3. `~/.bakin/` when it exists.',
-    '4. `./content/` fallback.',
+    '2. `~/.bakin/`.',
     '',
     '| Key | Purpose |',
     '| --- | --- |',
@@ -757,7 +754,7 @@ writeStableFile(
 
 ${versionLine}
 
-Bakin is a self-hosted dashboard, backend, CLI, and extension system for running agent work with OpenClaw. Use these docs to install Bakin, operate it, build plugins, author agent packages, and understand the public contracts exposed by the SDK, hooks, slots, CLI, and HTTP API.
+Bakin is a self-hosted dashboard, backend, CLI, and extension system for running agent work through a configured runtime adapter. Use these docs to install Bakin, operate it, build plugins, author agent packages, and understand the public contracts exposed by the SDK, hooks, slots, CLI, and HTTP API.
 
 Primary docs:
 
@@ -771,7 +768,7 @@ Primary docs:
   Use this for lifecycle commands, health checks, updates, and runtime operation.
 
 - Core workflows: ${docsUrl}/core/tasks/
-  Use this for built-in Bakin areas such as tasks, workflows, projects, assets, schedule, messaging, memory, models, team, and health.
+  Use this for built-in Bakin areas such as tasks, workflows, assets, schedule, memory, models, team, and health. Official add-on plugins such as Messaging and Projects are installed separately but documented in the same site.
 
 - Plugin authoring: ${docsUrl}/extend/plugins/overview/
   Use this when building Bakin plugins with @bakin/sdk.
@@ -842,7 +839,7 @@ const bundles = {
   },
   'agent-authoring.md': {
     title: 'Bakin Agent Authoring',
-    body: 'Agent-facing docs are explicit and labeled. Explain only the OpenClaw concepts needed to use Bakin, then link to OpenClaw for deeper details. Agent package examples must be validated before publication.',
+    body: 'Agent-facing docs are explicit and labeled. Explain runtime-specific concepts only when a package depends on them. Agent package examples must be validated before publication.',
   },
   'api.md': {
     title: 'Bakin API Reference',

@@ -13,7 +13,6 @@ interface KanbanColumnProps {
   childTaskLabels?: Record<string, string>
   /** Per-task search score info, keyed by task id. Only set when debug + active search. */
   scoreMap?: Map<string, TaskScoreInfo>
-  onAssign: (task: Task, agent: string) => void
   onDelete: (task: { id: string; title: string }) => void
   onTaskClick: (task: Task, columnId: ColumnId) => void
   onAddTask?: (columnId: ColumnId) => void
@@ -23,7 +22,7 @@ interface KanbanColumnProps {
   onHeaderClick?: () => void
 }
 
-export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, scoreMap, onAssign, onDelete, onTaskClick, onAddTask, footer, compact, totalCount, onHeaderClick }: KanbanColumnProps) {
+export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, scoreMap, onDelete, onTaskClick, onAddTask, footer, compact, totalCount, onHeaderClick }: KanbanColumnProps) {
   const { ref, isDropTarget } = useDroppable({
     id,
     accept: 'item',
@@ -119,7 +118,6 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, scoreMap,
                 gateLabel={gateLabels?.[task.id]}
                 childTaskId={childTaskLabels?.[task.id]}
                 scoreInfo={scoreMap?.get(task.id)}
-                onAssign={onAssign}
                 onDelete={onDelete}
                 onClick={onTaskClick}
               />

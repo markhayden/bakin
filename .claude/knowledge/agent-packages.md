@@ -4,7 +4,12 @@
 
 ## Why this primitive exists
 
-Plugins ship code (routes, UI, MCP tools). Before agent-packages, every agent was hand-edited under `~/.openclaw/workspaces/<id>/` — no install/update/drift story, no way to share an agent across machines, no separation between content and customization. Agent-packages formalize that as a versioned, distributable, lockfile-tracked content unit.
+Plugins ship code (routes, UI, MCP tools). Before agent-packages, every agent
+was hand-edited directly in the runtime workspace — no install/update/drift
+story, no way to share an agent across machines, no separation between content
+and customization. Agent-packages formalize that as a versioned,
+distributable, lockfile-tracked content unit projected through the active
+runtime adapter.
 
 Conceptual split:
 - **Plugin** = behavior. Code that runs.
@@ -19,11 +24,14 @@ Four `kind` values discriminate what a manifest can contain:
 | Kind | What it ships | Lockfile key |
 |---|---|---|
 | `agent` | persona files, optional skills/workflows/knowledge/assets, dispatch perms | bare id (`pixel`) |
-| `skill-pack` | reusable OpenClaw skills used by multiple agents | compound (`visual@0.3.1`) |
+| `skill-pack` | reusable runtime skills used by multiple agents | compound (`visual@0.3.1`) |
 | `workflow-pack` | reusable workflow definitions + workflow-skills | compound |
 | `knowledge-pack` | cross-agent knowledge lessons | compound |
 
-**Why agents use plain ids:** one OpenClaw agent per id, no two-versions-coexist semantics. **Why non-agents use compound:** during `bakin packages update`, the new version installs alongside the old one, then the lockfile pointer flips atomically.
+**Why agents use plain ids:** one runtime agent per id, no two-versions-coexist
+semantics. **Why non-agents use compound:** during `bakin packages update`, the
+new version installs alongside the old one, then the lockfile pointer flips
+atomically.
 
 ## Manifest schema
 
@@ -105,7 +113,7 @@ Functions: `injectBlock`, `extractBlock`, `removeBlock`, `listBlocks`, `hasBlock
 2. **Fetch source** via `source-fetcher.ts` → staging dir + commitSha. github: clones with `--depth 1 --branch <ref>` first; on failure (commit SHAs not accepted by `--branch`), falls back to deeper clone + `git checkout`. Local sources copy with `dereference:false`. Bare names refuse.
 3. **Parse + validate manifest** via the zod schema
 4. **Compute install mode** for `kind: "agent"`:
-   - state=`absent` + no `--adopt`: `mode=fresh` (calls `addAgent` on OpenClaw later)
+   - state=`absent` + no `--adopt`: `mode=fresh` (creates the runtime agent later)
    - state=`unmanaged` + `--adopt`: `mode=adopt` (preserves existing workspace files, only writes markers)
    - state=`managed`/`adopted`: refuse with "use update" message
 5. **Resolve dependencies** via `dependency-resolver.ts` — recursive walk, cycle detection, max-depth=8, leaves-first topological order
@@ -116,7 +124,10 @@ Functions: `injectBlock`, `extractBlock`, `removeBlock`, `listBlocks`, `hasBlock
    - Knowledge markers (catalog block + per-lesson blocks per `enableKnowledge`)
    - Atomic at the package level via in-memory `WriteLog`; any error rolls back every prior write
 7. **Update lockfile** atomically. Builds two id→key maps (`idToLockKey` for `incrementRefCount`, `sourceToLockKey` for `listImmediateDeps`) so each transitive dep records its IMMEDIATE parent (not the top-level invocation root) as the dependent — critical for cascade-removal correctness.
-8. **For kind:"agent" + fresh:** call `addAgent()` + `addToAllowLists()` from the team-plugin's openclaw-adapter. defaultModel + dispatchableBy propagate to openclaw.json on fresh install only (per settled D5 — user owns models post-install via the Models UI).
+8. **For kind:"agent" + fresh:** call `getAppServices().runtime.agents.create()`
+   and update runtime allowlists. `defaultModel` + `dispatchableBy` propagate
+   through the runtime adapter on fresh install only (per settled D5 — user owns
+   models post-install via the Models UI).
 9. **Commit staging → install dirs** via `renameSync` (atomic on same fs)
 10. **Audit** via `appendAudit()` — events: `agent_pkg.{installed,adopted,updated,removed,knowledge_enabled,knowledge_disabled}` and `pkg.{installed,removed}` for non-agent kinds
 11. **Release lock** in finally — survives any error path
@@ -175,18 +186,25 @@ V1 limitation: knowledge-pack lessons aren't indexed (glob targets `packages/age
 
 ## Three states for an agent
 
-`src/core/agent-packages/agent-state.ts:getAgentState(agentId)` cross-references openclaw.json + lockfile:
+`src/core/agent-packages/agent-state.ts:getAgentState(agentId)` cross-references
+the runtime roster + lockfile:
 
 - `absent` — neither side knows the agent
-- `unmanaged` — in OpenClaw, no lockfile entry (the historical default for hand-built agents)
+- `unmanaged` — in the runtime roster, no lockfile entry (the historical default for hand-built agents)
 - `adopted` — both sides know it; lockfile state="adopted"; Bakin only manages markers + assets, never workspace files
 - `managed` — both sides know it; lockfile state="managed"; Bakin owns the package + projected files
 
-Critical correctness rule: an agent in OpenClaw without a lockfile entry MUST surface as `unmanaged` (NOT `absent`). Mis-classifying lets the installer create a fresh OpenClaw agent with the same id, blowing away the user's existing setup.
+Critical correctness rule: a runtime agent without a lockfile entry MUST surface
+as `unmanaged` (NOT `absent`). Mis-classifying lets the installer create a
+fresh runtime agent with the same id, risking the user's existing setup.
 
 ## Doctor integration
 
-`src/core/doctor.ts:checkAgentAssets(autoFix)` runs in the existing parallel-check `Promise.all` alongside plugin-assets / gateway / antfly. Translates `agentAssetsComponent.check()` into `DiagnosticResult[]`. With `autoFix` on, drift triggers `agentAssetsComponent.install()` which runs the standard update flow (workspace files stay templateOnly-protected; everything else re-projected).
+`plugins/team/lib/health-checks.ts:checkAgentAssets()` surfaces drift in the
+team-owned health checks. It delegates to
+`src/core/onboarding/agent-assets.ts`; with auto-fix enabled, drift triggers the
+standard install/update projection flow (workspace files stay
+templateOnly-protected; everything else re-projects through runtime adapters).
 
 ## CLI surface
 
@@ -293,9 +311,7 @@ plugins/workflows/lib/
 └── agent-package-skill-registry.ts  in-memory registry (parallel to plugin skills)
 
 scripts/migration/
-├── snapshot-agent.ts       capture an agent's OpenClaw + Bakin state for conversion
-├── validate-package.ts     zod-validate a candidate package directory
-└── wipe-and-install-all.ts one-shot baseline reset
+└── validate-package.ts     zod-validate a candidate package directory
 
 agents/                      In-repo reference packages (8 backfilled). NOT bundled
 └── <id>/                    in the binary — install via `bakin agents install ./agents/<id>`.

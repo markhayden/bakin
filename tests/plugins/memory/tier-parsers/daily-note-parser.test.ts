@@ -50,7 +50,7 @@ describe('parseDailyNote — well-formed filename', () => {
     const meta = DailyNoteMetaSchema.parse(JSON.parse(row.meta))
     expect(meta.date).toBe('2026-04-18')
     expect(meta.file).toBe('2026-04-18.md')
-    expect(meta.openclawIndexed).toBe(true)
+    expect(meta.runtimeIndexed).toBe(true)
   })
 
   it('extracts date prefix from dash-suffixed filenames (e.g. 2026-04-18-session.md)', () => {
@@ -79,7 +79,7 @@ describe('parseDailyNote — well-formed filename', () => {
 
   it('sourceRef points at the original file', () => {
     const row = parseDailyNote('main', '2026-04-18.md', 'x', sourcePath, mtime, 1)!
-    expect(row.sourceRef.backend).toBe('openclaw')
+    expect(row.sourceRef.backend).toBe('runtime')
     expect(row.sourceRef.path).toBe(sourcePath)
     expect(row.sourceRef.file).toBe('2026-04-18.md')
   })
