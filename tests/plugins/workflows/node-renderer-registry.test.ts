@@ -33,6 +33,7 @@ import {
   unregisterNodeRenderer,
   getNodeRenderer,
   getAllNodeRenderers,
+  getNodeRendererSnapshot,
   listNodeRendererKinds,
 } from '../../../plugins/workflows/lib/node-renderer-registry'
 
@@ -77,6 +78,24 @@ describe('node-renderer-registry', () => {
     registerNodeRenderer('test.delta', StubA)
     const all = getAllNodeRenderers()
     expect(all['test.delta']).toBe(StubA)
+  })
+
+  it('exposes a stable nodeTypes snapshot for useSyncExternalStore', () => {
+    const before = getNodeRendererSnapshot()
+    expect(getNodeRendererSnapshot()).toBe(before)
+
+    registerNodeRenderer('test.snapshot', StubA)
+    const afterRegister = getNodeRendererSnapshot()
+    expect(afterRegister).not.toBe(before)
+    expect(afterRegister['test.snapshot']).toBe(StubA)
+    expect(getNodeRendererSnapshot()).toBe(afterRegister)
+
+    const copy = getAllNodeRenderers()
+    expect(copy).toEqual(afterRegister)
+    expect(copy).not.toBe(afterRegister)
+
+    unregisterNodeRenderer('test.snapshot')
+    expect(getNodeRendererSnapshot()).not.toBe(afterRegister)
   })
 
   it('listNodeRendererKinds returns registered kinds', () => {

@@ -61,8 +61,17 @@ interface ClientRegistry {
   navByPlugin: Map<string, NavItem[]>
   routesByPlugin: Map<string, ClientRouteEntry[]>
   cleanupByPlugin: Map<string, Array<() => void>>
+  navItemsSnapshot: NavItem[]
   version: number
   listeners: Set<() => void>
+}
+
+function buildNavItemsSnapshot(registry: ClientRegistry): NavItem[] {
+  const items: NavItem[] = []
+  for (const navItems of registry.navByPlugin.values()) {
+    items.push(...navItems)
+  }
+  return items.sort((a, b) => (a.order ?? 100) - (b.order ?? 100))
 }
 
 function getRegistry(): ClientRegistry {
@@ -72,15 +81,21 @@ function getRegistry(): ClientRegistry {
       navByPlugin: new Map<string, NavItem[]>(),
       routesByPlugin: new Map<string, ClientRouteEntry[]>(),
       cleanupByPlugin: new Map<string, Array<() => void>>(),
+      navItemsSnapshot: [],
       version: 0,
       listeners: new Set<() => void>(),
     } as ClientRegistry
   }
-  return g.__bakinClientRegistry as ClientRegistry
+  const registry = g.__bakinClientRegistry as ClientRegistry
+  if (!Array.isArray(registry.navItemsSnapshot)) {
+    registry.navItemsSnapshot = buildNavItemsSnapshot(registry)
+  }
+  return registry
 }
 
 function bumpVersion(): void {
   const registry = getRegistry()
+  registry.navItemsSnapshot = buildNavItemsSnapshot(registry)
   registry.version++
   for (const l of registry.listeners) {
     try { l() } catch (err) { console.error('[bakin] registry listener threw:', err) }
@@ -175,12 +190,15 @@ export function subscribeRegistry(listener: () => void): () => void {
  * The shell's sidebar reads this at render time.
  */
 export function getAllNavItems(): NavItem[] {
-  const registry = getRegistry()
-  const items: NavItem[] = []
-  for (const navItems of registry.navByPlugin.values()) {
-    items.push(...navItems)
-  }
-  return items.sort((a, b) => (a.order ?? 100) - (b.order ?? 100))
+  return [...getRegistry().navItemsSnapshot]
+}
+
+/**
+ * Stable nav snapshot for React's useSyncExternalStore. The returned array
+ * identity only changes when plugin registration changes.
+ */
+export function getNavItemsSnapshot(): readonly NavItem[] {
+  return getRegistry().navItemsSnapshot
 }
 
 /**
