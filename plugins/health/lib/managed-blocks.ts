@@ -133,7 +133,7 @@ The skip reason is logged to the audit trail for debugging. Always verify agains
 async function buildWorkflowCatalog(): Promise<string> {
   try {
     const hooks = getHookRegistry()
-    const defs = await hooks.invoke<Array<{ definition: Record<string, unknown>; name: string }>>('workflows.listDefinitions', {}) ?? []
+    const defs = await hooks.invoke<Array<{ definition: Record<string, unknown>; name: string }>>('workflows.definitions.list', {}) ?? []
     if (defs.length === 0) return '   (no workflows defined yet)'
     return defs.map(d => {
       const steps = (d.definition.steps || []) as Array<Record<string, unknown>>
