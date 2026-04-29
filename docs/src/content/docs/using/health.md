@@ -48,6 +48,19 @@ Any plugin can register a health check that surfaces in the dashboard. Plugins r
 - **Doctor results are cached.** Live polling reads from cache. Refresh forces a re-run.
 - **Read-only.** Health writes nothing. It surfaces everything other plugins and core systems already track.
 
+## Settings
+
+<!-- docs:settings health -->
+<div class="settings-table">
+
+| Setting | Type | Default | What it does |
+| --- | --- | --- | --- |
+| Refresh interval (seconds) | `number` | `30` | How often to poll for updated metrics |
+| Detailed metrics | `boolean` | `true` | Show per-plugin and per-tool breakdowns |
+
+</div>
+<!-- /docs:settings -->
+
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
 
 Health surfaces through the diagnostic CLI:
@@ -62,19 +75,6 @@ Health surfaces through the diagnostic CLI:
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
 HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-health).
-
-## Settings
-
-<!-- docs:settings health -->
-<div class="settings-table">
-
-| Setting | Type | Default | What it does |
-| --- | --- | --- | --- |
-| Refresh interval (seconds) | `number` | `30` | How often to poll for updated metrics |
-| Detailed metrics | `boolean` | `true` | Show per-plugin and per-tool breakdowns |
-
-</div>
-<!-- /docs:settings -->
 
 <div class="for-agents">
 

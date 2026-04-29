@@ -122,20 +122,6 @@ Assets is one of Bakin's most-consumed plugins. Cross-plugin touchpoints:
 
 Plugins compose by filename (`/api/assets/{filename}` is a stable URL) or by slot (`asset-preview`, `asset-detail-modal`, `task-assets`).
 
-## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
-
-Most asset workflows happen in the UI or through agents. Trash is CLI-friendly:
-
-```sh
-bakin trash list                  # show soft-deleted items
-bakin trash restore <filename>    # bring one back
-bakin trash empty                 # purge everything
-```
-
-Full surface in the [CLI reference](/docs/reference/generated/cli/).
-
-HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-assets).
-
 ## Settings
 
 <!-- docs:settings assets -->
@@ -149,6 +135,20 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 
 </div>
 <!-- /docs:settings -->
+
+## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
+
+Most asset workflows happen in the UI or through agents. Trash is CLI-friendly:
+
+```sh
+bakin trash list                  # show soft-deleted items
+bakin trash restore <filename>    # bring one back
+bakin trash empty                 # purge everything
+```
+
+Full surface in the [CLI reference](/docs/reference/generated/cli/).
+
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-assets).
 
 <div class="for-agents">
 

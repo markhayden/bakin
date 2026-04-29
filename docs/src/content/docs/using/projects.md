@@ -48,6 +48,19 @@ Raw assets that give additional context or direction to the project. Customer fe
 
 Projects index into search (table `bakin_projects`) on `title` and `body`, faceted by `status`, with semantic chunking enabled for long specs.
 
+## Settings
+
+<!-- docs:settings projects -->
+<div class="settings-table">
+
+| Setting | Type | Default | What it does |
+| --- | --- | --- | --- |
+| Default project status | `select` | `active` | Status assigned to new projects |
+| Auto-promote threshold | `number` | `0` | Auto-promote checklist items to tasks when project has more than N unchecked items (0 = disabled) |
+
+</div>
+<!-- /docs:settings -->
+
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
 
 <!-- docs:cli-commands projects -->
@@ -72,19 +85,6 @@ Projects index into search (table `bakin_projects`) on `title` and `body`, facet
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
 HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-projects).
-
-## Settings
-
-<!-- docs:settings projects -->
-<div class="settings-table">
-
-| Setting | Type | Default | What it does |
-| --- | --- | --- | --- |
-| Default project status | `select` | `active` | Status assigned to new projects |
-| Auto-promote threshold | `number` | `0` | Auto-promote checklist items to tasks when project has more than N unchecked items (0 = disabled) |
-
-</div>
-<!-- /docs:settings -->
 
 <div class="for-agents">
 
