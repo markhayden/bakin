@@ -121,6 +121,55 @@ Each calendar item picks one or more channels from that registry. Channels show 
 
 Sessions index into search (table `bakin_messaging_brainstorm`) so they reach across-plugin queries. Calendar items filter locally on the page rather than indexing.
 
+## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
+
+<!-- docs:cli-commands messaging -->
+| Command | Purpose |
+| --- | --- |
+| `bakin messaging list` | List messaging items |
+| `bakin messaging get <itemId>` | Get a messaging item |
+| `bakin messaging create <title> <agent> <scheduledAt>` | Create a messaging item |
+| `bakin messaging update <itemId>` | Update a messaging item |
+| `bakin messaging delete <itemId>` | Delete a messaging item |
+| `bakin messaging approve <itemId>` | Approve a messaging item |
+| `bakin messaging reject <itemId>` | Reject a messaging item |
+| `bakin messaging sessions` | List planning sessions |
+| `bakin messaging session <sessionId>` | Get a planning session |
+| `bakin messaging session-create <agentId>` | Create a planning session |
+| `bakin messaging session-update <sessionId>` | Update a planning session |
+| `bakin messaging session-delete <sessionId>` | Delete a planning session |
+| `bakin messaging message <sessionId> <message>` | Message a planning session |
+| `bakin messaging confirm <sessionId>` | Confirm planning-session proposals |
+| `bakin messaging proposal <sessionId> <proposalId>` | Update a planning-session proposal |
+<!-- /docs:cli-commands -->
+
+Full surface in the [CLI reference](/docs/reference/generated/cli/).
+
+## API routes
+
+<!-- docs:api-routes messaging -->
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/` | List messaging items |
+| `GET` | `/:itemId` | Get a messaging item |
+| `POST` | `/` | Create a messaging item |
+| `PUT` | `/:itemId` | Update a messaging item |
+| `DELETE` | `/:itemId` | Delete a messaging item |
+| `POST` | `/:itemId/approve` | Approve and optionally publish a messaging item |
+| `POST` | `/:itemId/unapprove` | Move an approved messaging item back to draft |
+| `POST` | `/:itemId/reject` | Reject a messaging item |
+| `POST` | `/brainstorm` | Send a one-shot brainstorm prompt |
+| `GET` | `/sessions` | List planning sessions |
+| `GET` | `/sessions/:id` | Get a planning session |
+| `POST` | `/sessions` | Create a planning session |
+| `PUT` | `/sessions/:id` | Update a planning session |
+| `DELETE` | `/sessions/:id` | Delete a planning session |
+| `POST` | `/sessions/:id/messages` | Send a message to a planning session |
+| `PUT` | `/sessions/:id/proposals/:proposalId` | Update a planning-session proposal |
+| `POST` | `/sessions/:id/confirm` | Confirm planning-session proposals into calendar items |
+| `GET` | `/search` | Search messaging brainstorm sessions |
+<!-- /docs:api-routes -->
+
 <div class="for-agents">
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents

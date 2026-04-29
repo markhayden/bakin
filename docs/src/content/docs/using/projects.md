@@ -48,6 +48,51 @@ Raw assets that give additional context or direction to the project. Customer fe
 
 Projects index into search (table `bakin_projects`) on `title` and `body`, faceted by `status`, with semantic chunking enabled for long specs.
 
+## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
+
+<!-- docs:cli-commands projects -->
+| Command | Purpose |
+| --- | --- |
+| `bakin projects list` | List projects |
+| `bakin projects get <projectId>` | Get a project |
+| `bakin projects create <title>` | Create a project |
+| `bakin projects update <projectId>` | Update a project |
+| `bakin projects delete <projectId>` | Delete a project |
+| `bakin projects add-item <projectId> <title>` | Add a checklist item |
+| `bakin projects toggle-item <projectId> <itemId> <checked>` | Toggle a checklist item |
+| `bakin projects update-item <projectId> <itemId>` | Update a checklist item |
+| `bakin projects remove-item <projectId> <taskItemId>` | Remove a checklist item |
+| `bakin projects link-item <projectId> <taskItemId> <taskId>` | Link a checklist item to a task |
+| `bakin projects promote-item <projectId> <taskItemId>` | Promote a checklist item to a task |
+| `bakin projects attach-asset <projectId> <filename>` | Attach an asset to a project |
+| `bakin projects detach-asset <projectId> <filename>` | Detach an asset from a project |
+| `bakin projects ask <projectId> <message>` | Ask an agent about a project |
+<!-- /docs:cli-commands -->
+
+Full surface in the [CLI reference](/docs/reference/generated/cli/).
+
+## API routes
+
+<!-- docs:api-routes projects -->
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/` | List projects |
+| `GET` | `/:projectId` | Get a project |
+| `POST` | `/` | Create a project |
+| `PUT` | `/:projectId` | Update a project |
+| `DELETE` | `/:projectId` | Delete a project |
+| `POST` | `/:projectId/checklist` | Add a checklist item |
+| `PUT` | `/:projectId/checklist/:itemId/toggle` | Toggle a checklist item |
+| `PUT` | `/:projectId/checklist/:itemId` | Update a checklist item |
+| `DELETE` | `/:projectId/checklist/:itemId` | Remove a checklist item |
+| `POST` | `/:projectId/checklist/:itemId/link` | Link a checklist item to a task |
+| `POST` | `/:projectId/checklist/:itemId/promote` | Promote a checklist item to a task |
+| `POST` | `/:projectId/assets` | Attach an asset |
+| `DELETE` | `/:projectId/assets/:filename` | Detach an asset |
+| `POST` | `/:projectId/ask` | Ask an agent about a project |
+| `GET` | `/search` | Search projects |
+<!-- /docs:api-routes -->
+
 <div class="for-agents">
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents

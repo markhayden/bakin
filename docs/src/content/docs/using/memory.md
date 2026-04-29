@@ -60,6 +60,29 @@ Open the detail drawer for any result to see the full content, source path, agen
 
 Memory writes nothing else.
 
+## API routes
+
+<!-- docs:api-routes memory -->
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/audit` | List indexed audit entries with optional filters |
+| `GET` | `/checkpoints` | List compaction checkpoints for an agent (optionally by session) |
+| `GET` | `/checkpoints/:agent/:sessionId/:checkpointId` | Read one checkpoint by (agent, sessionId, checkpointId) |
+| `GET` | `/daily-notes` | List daily notes for an agent (sorted by date desc) |
+| `GET` | `/daily-notes/:agent/:filename` | Read one daily note |
+| `POST` | `/daily-notes/compare-search` | Run the same query against Bakin search and runtime memory search |
+| `GET` | `/dreams` | List dream artifacts for an agent (optional phase/date/artifactType filters) |
+| `GET` | `/dreams/:agent/:artifactType` | Read one dream artifact by (agent, artifactType[, phase, date]) |
+| `GET` | `/durable` | List canonical durable files present for an agent |
+| `GET` | `/durable/:agent/:basename` | Read one canonical durable file for an agent |
+| `GET` | `/recent` | Recent memory items across tiers, sorted by updated_at desc |
+| `GET` | `/sessions` | List sessions for an agent |
+| `GET` | `/sessions/:agent/:sessionKey` | Read one session by key |
+| `GET` | `/sessions/:agent/:sessionKey/turns` | List turns belonging to one session (indexed) |
+| `GET` | `/status` | Indexer health: per-tier row counts + offset snapshot |
+| `GET` | `/turns` | List turns by (agent, sessionId) |
+<!-- /docs:api-routes -->
+
 <div class="for-agents">
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents

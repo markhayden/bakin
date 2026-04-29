@@ -78,6 +78,29 @@ Definitions and instances both index into search (table `bakin_workflows`) on na
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
+## API routes
+
+<!-- docs:api-routes workflows -->
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/definitions` | List all workflow templates with step counts and resolved sub-workflows |
+| `POST` | `/definitions` | Create a new user-owned workflow definition |
+| `DELETE` | `/definitions/:name` | Delete a user-owned workflow definition |
+| `GET` | `/definitions/:name` | Get a specific workflow definition by name |
+| `PUT` | `/definitions/:name` | Update or shadow a workflow definition (writes user YAML) |
+| `POST` | `/gates/:taskId/approve` | Approve a human gate step |
+| `POST` | `/gates/:taskId/reject` | Reject a gate step, rewinds workflow |
+| `GET` | `/gates/pending` | List all gates awaiting approval |
+| `GET` | `/gates/status` | Batch check gate status for tasks |
+| `GET` | `/instances` | List active workflow instances. Optional status filter. |
+| `GET` | `/instances/:taskId` | Get full workflow instance state for a task |
+| `POST` | `/instances/start` | Start a workflow instance for a task |
+| `GET` | `/node-types` | List registered workflow node types (builtin + plugin-registered) for the canvas palette |
+| `GET` | `/notification-channels` | List registered notification channels |
+| `GET` | `/steps/:taskId` | Get current workflow step for a task |
+| `POST` | `/steps/:taskId/complete` | Submit step output, validates against schema, advances workflow |
+<!-- /docs:api-routes -->
+
 <div class="for-agents">
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents

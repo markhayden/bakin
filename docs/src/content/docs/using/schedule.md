@@ -73,6 +73,23 @@ Same surface from the terminal:
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
+## API routes
+
+<!-- docs:api-routes schedule -->
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/` | List all scheduled jobs |
+| `POST` | `/` | Create a scheduled job |
+| `DELETE` | `/:jobId` | Delete a scheduled job |
+| `GET` | `/:jobId` | Get details for a single scheduled job |
+| `PUT` | `/:jobId` | PUT /:jobId |
+| `POST` | `/:jobId/pause` | Pause/resume/skip a job |
+| `POST` | `/:jobId/run` | Trigger immediate run |
+| `GET` | `/:jobId/runs` | Get run history for a job |
+| `POST` | `/bridge` | Cron bridge webhook |
+| `POST` | `/parse` | Parse schedule expression |
+<!-- /docs:api-routes -->
+
 <div class="for-agents">
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents

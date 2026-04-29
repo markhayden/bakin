@@ -48,6 +48,24 @@ Named tier presets — `budget`, `standard`, `premium`. Each maps to a concrete 
   models.json             # per-agent config, aliases, task profiles
 ```
 
+## API routes
+
+<!-- docs:api-routes models -->
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/aliases` | GET /aliases |
+| `POST` | `/aliases` | POST /aliases |
+| `GET` | `/available` | Bypass cache and fetch the model list fresh from the runtime adapter |
+| `GET` | `/config` | GET /config |
+| `POST` | `/config` | POST /config |
+| `POST` | `/defaults` | POST /defaults |
+| `GET` | `/profiles` | GET /profiles |
+| `PUT` | `/profiles` | Check if runtime config is out of sync (needs restart) |
+| `POST` | `/refresh` | Bypass cache and fetch the model list fresh from the runtime adapter |
+| `POST` | `/runtime/restart` | List available AI models with tier classification (budget/standard/premium). Use this to discover what models are available for assignment. |
+| `GET` | `/runtime/status` | Check if runtime config is out of sync (needs restart) |
+<!-- /docs:api-routes -->
+
 <div class="for-agents">
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents

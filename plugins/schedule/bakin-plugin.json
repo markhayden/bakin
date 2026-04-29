@@ -7,9 +7,135 @@
   "entry": {
     "server": "index.ts"
   },
-  "contentFiles": ["schedule/"],
-  "secrets": ["gateway-token"],
+  "contentFiles": [
+    "schedule/"
+  ],
+  "secrets": [
+    "gateway-token"
+  ],
   "tests": "tests/",
-  "dependencies": ["tasks"],
-  "permissions": ["storage.read", "storage.write", "events.emit"]
+  "dependencies": [
+    "tasks"
+  ],
+  "permissions": [
+    "storage.read",
+    "storage.write",
+    "events.emit"
+  ],
+  "contributes": {
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/",
+        "summary": "List all scheduled jobs"
+      },
+      {
+        "method": "POST",
+        "path": "/",
+        "summary": "Create a scheduled job"
+      },
+      {
+        "method": "DELETE",
+        "path": "/:jobId",
+        "summary": "Delete a scheduled job"
+      },
+      {
+        "method": "GET",
+        "path": "/:jobId",
+        "summary": "Get details for a single scheduled job"
+      },
+      {
+        "method": "PUT",
+        "path": "/:jobId",
+        "summary": "PUT /:jobId"
+      },
+      {
+        "method": "POST",
+        "path": "/:jobId/pause",
+        "summary": "Pause/resume/skip a job"
+      },
+      {
+        "method": "POST",
+        "path": "/:jobId/run",
+        "summary": "Trigger immediate run"
+      },
+      {
+        "method": "GET",
+        "path": "/:jobId/runs",
+        "summary": "Get run history for a job"
+      },
+      {
+        "method": "POST",
+        "path": "/bridge",
+        "summary": "Cron bridge webhook"
+      },
+      {
+        "method": "POST",
+        "path": "/parse",
+        "summary": "Parse schedule expression"
+      }
+    ],
+    "execTools": [
+      {
+        "name": "bakin_exec_schedule_briefing",
+        "summary": "Today's schedule summary — which jobs fire, assigned agents, alerts",
+        "description": "Today's schedule summary — which jobs fire, assigned agents, alerts. Designed for orchestrator daily briefing."
+      },
+      {
+        "name": "bakin_exec_schedule_create",
+        "summary": "Create a new scheduled job that creates tasks on the board",
+        "description": "Create a new scheduled job that creates tasks on the board"
+      },
+      {
+        "name": "bakin_exec_schedule_delete",
+        "summary": "Delete a scheduled job",
+        "description": "Delete a scheduled job"
+      },
+      {
+        "name": "bakin_exec_schedule_get",
+        "summary": "Get details for a single scheduled job",
+        "description": "Get details for a single scheduled job"
+      },
+      {
+        "name": "bakin_exec_schedule_list",
+        "summary": "List all scheduled jobs (merged runtime cron + Bakin view)",
+        "description": "List all scheduled jobs (merged runtime cron + Bakin view)"
+      },
+      {
+        "name": "bakin_exec_schedule_parse",
+        "summary": "Parse a natural language or raw cron schedule expression",
+        "description": "Parse a natural language or raw cron schedule expression"
+      },
+      {
+        "name": "bakin_exec_schedule_pause",
+        "summary": "Pause, resume, or skip runs for a scheduled job",
+        "description": "Pause, resume, or skip runs for a scheduled job"
+      },
+      {
+        "name": "bakin_exec_schedule_run_now",
+        "summary": "Trigger an immediate run of a scheduled job",
+        "description": "Trigger an immediate run of a scheduled job"
+      },
+      {
+        "name": "bakin_exec_schedule_runs",
+        "summary": "Get run history for a scheduled job",
+        "description": "Get run history for a scheduled job"
+      },
+      {
+        "name": "bakin_exec_schedule_update",
+        "summary": "Update an existing scheduled job",
+        "description": "Update an existing scheduled job"
+      }
+    ],
+    "cliCommands": [
+      {
+        "name": "schedule",
+        "usage": "bakin schedule [list|add|pause|resume|remove|run|runs] ...",
+        "summary": "Manage scheduled jobs."
+      }
+    ],
+    "docs": {
+      "slug": "using/schedule"
+    }
+  }
 }
