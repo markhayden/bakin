@@ -138,7 +138,7 @@ export function getBakinPaths(): BakinPaths {
 
 /**
  * Initialize the ~/.bakin/ directory structure.
- * Called by `bakin init` CLI command or on first run.
+ * Called by `bakin mkdir` CLI command or on first run.
  */
 export function initBakinHome(targetDir?: string): { created: string[]; seeded: string[] } {
   const home = targetDir || bakinHomeDefault()

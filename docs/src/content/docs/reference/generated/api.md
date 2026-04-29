@@ -3,10 +3,6 @@ title: API Reference
 description: Generated reference for documented Bakin HTTP API routes.
 ---
 
-Docs version: Bakin 1.0.0
-
-This page is generated from `src/core/api-docs.ts` and each plugin's `bakin-plugin.json:contributes.apiRoutes` (with source-scan fallback for plugins that have not declared a manifest contract yet).
-
 ## Core Routes
 
 ### `GET /api/events`
@@ -972,3 +968,10 @@ Get current workflow step for a task
 ### `POST /api/plugins/workflows/steps/:taskId/complete`
 
 Submit step output, validates against schema, advances workflow
+
+
+<aside class="generated-page-note" aria-label="Generated page metadata">
+  <span>Generated from <code>src/core/api-docs.ts + plugin manifests</code>.</span>
+  <span>Bakin 1.0.0.</span>
+  <span>Includes source-scan fallback for plugins without manifest route contracts.</span>
+</aside>

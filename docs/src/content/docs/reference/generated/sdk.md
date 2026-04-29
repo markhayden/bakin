@@ -3,10 +3,6 @@ title: SDK Reference
 description: Generated audit reference for @bakin/sdk subpath exports.
 ---
 
-Docs version: Bakin 1.0.0
-
-This page is generated from `packages/sdk/package.json` and SDK barrel files. Full TypeDoc output will replace this audit view once public TSDoc coverage is complete.
-
 ## `@bakin/sdk`
 
 Source: `packages/sdk/src/index.ts`
@@ -250,3 +246,9 @@ Source: `packages/sdk/src/metadata/index.ts`
 | `export interface DocsAwareAPIRoute<Input = unknown, Output = unknown> extends RouteContract<Input, Output> {` |
 | `export function defineApiRoute<const T extends DocsAwareAPIRoute>(route: T): T {` |
 | `export const definePluginRoute = defineApiRoute` |
+
+<aside class="generated-page-note" aria-label="Generated page metadata">
+  <span>Generated from <code>packages/sdk/package.json + SDK barrel files</code>.</span>
+  <span>Bakin 1.0.0.</span>
+  <span>Full TypeDoc output will replace this audit view once public TSDoc coverage is complete.</span>
+</aside>

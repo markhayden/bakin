@@ -3,6 +3,7 @@ import starlight from '@astrojs/starlight'
 import rehypeExternalLinks from 'rehype-external-links'
 
 const gtmId = process.env.PUBLIC_GTM_ID ?? 'GTM-KZQK989V'
+const showMaintainerDocs = process.env.NODE_ENV !== 'production' || process.env.BAKIN_DOCS_MAINTAINER === '1'
 
 export default defineConfig({
   site: 'https://makinbakin.com',
@@ -62,6 +63,49 @@ export default defineConfig({
   document.addEventListener('astro:page-load', apply);
   if (document.readyState !== 'loading') apply();
   else document.addEventListener('DOMContentLoaded', apply);
+})();
+          `,
+        },
+        {
+          tag: 'script',
+          content: `
+(function () {
+  function fallbackCopy(text) {
+    var field = document.createElement("textarea");
+    field.value = text;
+    field.setAttribute("readonly", "");
+    field.style.position = "fixed";
+    field.style.opacity = "0";
+    document.body.appendChild(field);
+    field.select();
+    try {
+      document.execCommand("copy");
+    } finally {
+      document.body.removeChild(field);
+    }
+  }
+
+  document.addEventListener("click", function (event) {
+    var button = event.target instanceof Element ? event.target.closest("[data-cli-copy]") : null;
+    if (!button) return;
+    var command = button.getAttribute("data-cli-copy") || "";
+    var original = button.textContent || "Copy";
+    var done = function () {
+      button.textContent = "Copied";
+      window.setTimeout(function () {
+        button.textContent = original;
+      }, 1400);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(command).then(done).catch(function () {
+        fallbackCopy(command);
+        done();
+      });
+    } else {
+      fallbackCopy(command);
+      done();
+    }
+  });
 })();
           `,
         },
@@ -237,8 +281,7 @@ document.addEventListener("click", function (event) {
         {
           label: 'Reference',
           items: [
-            { label: 'Reference Index', slug: 'reference' },
-            { label: 'CLI Reference', slug: 'reference/generated/cli' },
+            { label: 'CLI', slug: 'reference/generated/cli' },
             { label: 'API Reference', slug: 'reference/generated/api' },
             { label: 'Hook Reference', slug: 'reference/generated/hooks' },
             { label: 'Exec/MCP Tools', slug: 'reference/generated/exec-tools' },
@@ -266,6 +309,14 @@ document.addEventListener("click", function (event) {
             { label: 'Overview', slug: 'contribute/overview' },
           ],
         },
+        ...(showMaintainerDocs
+          ? [{
+              label: 'Maintainer',
+              items: [
+                { label: 'Generated Coverage', slug: 'reference/generated/coverage' },
+              ],
+            }]
+          : []),
       ],
     }),
   ],
