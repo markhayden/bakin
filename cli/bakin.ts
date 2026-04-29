@@ -243,11 +243,17 @@ async function cmdPluginsList(): Promise<void> {
   }
 }
 
-async function cmdPluginsInstall(source: string, opts: { yes?: boolean } = {}): Promise<void> {
-  const type = source.startsWith('github:') || source.includes('/') && !source.startsWith('.') && !source.startsWith('/')
+async function cmdPluginsInstall(source: string, opts: { yes?: boolean; dev?: boolean; force?: boolean } = {}): Promise<void> {
+  const type = !opts.dev && (source.startsWith('github:') || source.includes('/') && !source.startsWith('.') && !source.startsWith('/'))
     ? 'github'
     : 'local'
-  const result = await apiPost('/api/plugins/install', { source, type, accepted: false }) as {
+  const result = await apiPost('/api/plugins/install', {
+    source,
+    type,
+    accepted: false,
+    dev: opts.dev === true,
+    force: opts.force === true,
+  }) as {
     awaitingConsent?: boolean
     consentToken?: string
   }
@@ -257,6 +263,8 @@ async function cmdPluginsInstall(source: string, opts: { yes?: boolean } = {}): 
       type,
       accepted: true,
       consentToken: result.consentToken,
+      dev: opts.dev === true,
+      force: opts.force === true,
     })
     print(accepted)
   } else {
@@ -266,6 +274,19 @@ async function cmdPluginsInstall(source: string, opts: { yes?: boolean } = {}): 
 
 async function cmdPluginsRemove(pluginId: string): Promise<void> {
   const result = await apiPost('/api/plugins/remove', { pluginId })
+  print(result)
+}
+
+async function cmdPluginsLink(localPath: string, opts: { force?: boolean } = {}): Promise<void> {
+  const result = await apiPost('/api/plugins/link', {
+    localPath,
+    force: opts.force === true,
+  })
+  print(result)
+}
+
+async function cmdPluginsUnlink(pluginId: string): Promise<void> {
+  const result = await apiPost('/api/plugins/unlink', { pluginId })
   print(result)
 }
 
@@ -1686,11 +1707,23 @@ export async function main(): Promise<void> {
         if (sub === 'list') {
           await cmdPluginsList()
         } else if (sub === 'install') {
-          if (!args[2]) { console.error('Usage: bakin plugins install <path|github:user/repo[#subpath]> [--yes]'); process.exit(1) }
-          await cmdPluginsInstall(args[2], { yes: args.includes('--yes') })
+          const installArgs = args.slice(2)
+          const source = installArgs.find(arg => !arg.startsWith('--'))
+          if (!source) { console.error('Usage: bakin plugins install [--dev] <path|github:user/repo[#subpath]> [--yes] [--force]'); process.exit(1) }
+          await cmdPluginsInstall(source, {
+            yes: installArgs.includes('--yes'),
+            dev: installArgs.includes('--dev'),
+            force: installArgs.includes('--force'),
+          })
         } else if (sub === 'remove') {
           if (!args[2]) { console.error('Usage: bakin plugins remove <id>'); process.exit(1) }
           await cmdPluginsRemove(args[2])
+        } else if (sub === 'link') {
+          if (!args[2]) { console.error('Usage: bakin plugins link <localPath> [--force]'); process.exit(1) }
+          await cmdPluginsLink(args[2], { force: args.slice(3).includes('--force') })
+        } else if (sub === 'unlink') {
+          if (!args[2]) { console.error('Usage: bakin plugins unlink <id>'); process.exit(1) }
+          await cmdPluginsUnlink(args[2])
         } else {
           console.error(`Unknown plugins subcommand: ${sub}`)
           process.exit(1)

@@ -16,9 +16,9 @@
  * - Plugin source size is bounded to keep a hostile manifest from
  *   exhausting memory in JSON.parse / Levenshtein.
  *
- * Restart required for the plugin's UI (nav items, pages, slot
- * registrations) to take effect — the server-side plugin loader picks
- * up the new manifest on next boot.
+ * In a running Bakin server the installed plugin is activated immediately.
+ * If this endpoint is exercised before the plugin registry has booted,
+ * activation is deferred until the next server start.
  */
 import { existsSync, readFileSync, mkdirSync, cpSync, rmSync, statSync, realpathSync } from 'fs'
 import { homedir } from 'os'
@@ -42,6 +42,12 @@ import { computeSourceTreeSha } from '@/core/plugins/upgrade'
 import { signConsentToken, verifyConsentToken } from '@/core/plugins/consent-token'
 import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
 import { appendAudit } from '@/core/audit'
+import { linkPlugin, LinkRefusedError } from '@/core/plugins/link'
+import {
+  activateUserPluginDir,
+  isLiveActivationUnavailable,
+  watchLinkedPluginIfEnabled,
+} from '@/core/plugins/live-lifecycle'
 
 /** Hard ceiling for any plugin source we'll accept — a manifest that big is malicious. */
 const MANIFEST_MAX_BYTES = 1 * 1024 * 1024  // 1MB
@@ -179,6 +185,10 @@ function recordInstall(args: {
 interface InstallBody {
   source: string
   type: 'local' | 'github'
+  /** Developer-mode local install: symlink source and watch/reload it. */
+  dev?: boolean
+  /** Used with dev=true to replace an existing install/link for the same id. */
+  force?: boolean
   /**
    * #142 layer 2 — set true after the user accepts the consent prompt. When
    * the manifest declares permissions and this is false, the endpoint
@@ -258,6 +268,61 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   }
   if (body.type !== 'local' && body.type !== 'github') {
     return Response.json({ ok: false, error: 'Invalid type; must be "local" or "github"' }, { status: 400 })
+  }
+  if (body.dev !== undefined && typeof body.dev !== 'boolean') {
+    return Response.json({ ok: false, error: 'dev must be a boolean' }, { status: 400 })
+  }
+  if (body.force !== undefined && typeof body.force !== 'boolean') {
+    return Response.json({ ok: false, error: 'force must be a boolean' }, { status: 400 })
+  }
+  if (body.dev === true) {
+    if (body.type !== 'local') {
+      return Response.json({
+        ok: false,
+        error: 'dev installs only support local plugin paths; clone the source locally and run `bakin plugins install --dev <path>`',
+      }, { status: 400 })
+    }
+    try {
+      const result = await linkPlugin(body.source, { force: body.force === true })
+      let runtimeVersion: number | undefined
+      let activated = false
+      try {
+        const activation = await activateUserPluginDir(result.pluginDir)
+        runtimeVersion = activation.runtimeVersion
+        activated = true
+      } catch (activationErr) {
+        if (!isLiveActivationUnavailable(activationErr)) throw activationErr
+      }
+      const watching = activated
+        ? await watchLinkedPluginIfEnabled(result.id, result.linkedSource)
+        : false
+      log.info(`Dev-installed plugin "${result.id}"`, {
+        source: result.linkedSource,
+        version: result.version,
+        activated,
+        watching,
+      })
+      return Response.json({
+        ok: true,
+        id: result.id,
+        pluginDir: result.pluginDir,
+        linkedSource: result.linkedSource,
+        version: result.version,
+        ...(runtimeVersion !== undefined ? { runtimeVersion } : {}),
+        activated,
+        watching,
+        message: activated
+          ? `Dev-installed "${result.id}" and activated it${watching ? ' with hot reload' : ''}.`
+          : `Dev-installed "${result.id}". It will activate on the next Bakin start.`,
+      })
+    } catch (err) {
+      if (err instanceof LinkRefusedError) {
+        return Response.json({ ok: false, error: err.message }, { status: 400 })
+      }
+      const message = err instanceof Error ? err.message : String(err)
+      log.error('Plugin dev install failed', err as Error, { source: body.source })
+      return Response.json({ ok: false, error: message }, { status: 500 })
+    }
   }
 
   const pluginsRoot = join(getContentDir(), 'plugins')
@@ -546,12 +611,36 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         permissions: parsedPermissions,
       })
 
+      let runtimeVersion: number | undefined
+      let activated = false
+      try {
+        const activation = await activateUserPluginDir(targetDir)
+        runtimeVersion = activation.runtimeVersion
+        activated = true
+      } catch (activationErr) {
+        if (isLiveActivationUnavailable(activationErr)) {
+          log.info('Plugin installed outside a running registry; activation deferred until next start', { id })
+        } else {
+          const message = activationErr instanceof Error ? activationErr.message : String(activationErr)
+          log.error('Plugin install activation failed', activationErr as Error, { id })
+          return Response.json({
+            ok: false,
+            id,
+            error: `Installed "${id}" but failed to activate it: ${message}`,
+          }, { status: 500 })
+        }
+      }
+
       log.info(`Installed plugin "${id}"`, { source: body.source, type: body.type })
 
       return Response.json({
         ok: true,
         id,
-        message: `Installed "${id}". Restart Bakin to load the plugin.`,
+        ...(runtimeVersion !== undefined ? { runtimeVersion } : {}),
+        activated,
+        message: activated
+          ? `Installed "${id}" and activated it.`
+          : `Installed "${id}". It will activate on the next Bakin start.`,
       })
     } catch (err) {
       rmSync(stagingDir, { recursive: true, force: true })

@@ -559,9 +559,9 @@ bakin plugins list
 Example test mode: `illustrative`
 Reason: Requires local server/plugin state.
 
-### `bakin plugins install <path|github:user/repo[#subpath]> [--yes]`
+### `bakin plugins install [--dev] <path|github:user/repo[#subpath]> [--yes] [--force]`
 
-Installs a plugin from a local path or GitHub source. Append #subpath to install from a monorepo directory. --yes skips the consent prompt.
+Installs a plugin from a local path or GitHub source. Append #subpath to install from a monorepo directory. --dev symlinks a local source tree for live development. --yes skips the consent prompt. --force replaces an existing install when used with --dev.
 
 - Visibility: `public`
 - Stability: `stable`
@@ -569,7 +569,7 @@ Installs a plugin from a local path or GitHub source. Append #subpath to install
 Example:
 
 ```sh
-bakin plugins install ./my-plugin
+bakin plugins install --dev ./my-plugin
 ```
 
 Example test mode: `illustrative`
@@ -625,7 +625,7 @@ Reason: Writes a new plugin directory.
 
 ### `bakin plugins link <localPath> [--force]`
 
-Registers a local source tree as a developer-mode plugin via a symlink at ~/.bakin/plugins/<id>/. Used with the hot-reload coordinator. --force overrides id collisions with installed or core plugins.
+Registers a local source tree as a developer-mode plugin via a symlink at ~/.bakin/plugins/<id>/. Used with the hot-reload coordinator. --force overrides id collisions with copied installs or core plugins, but already-linked plugins must be unlinked first.
 
 - Visibility: `public`
 - Stability: `stable`

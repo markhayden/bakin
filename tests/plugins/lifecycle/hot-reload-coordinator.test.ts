@@ -3,9 +3,9 @@
  * P2.C8). The full chokidar→build→reload integration lands in P2.C10's
  * end-to-end test; this file exercises the unit-level concerns:
  *
- *   - resolveWatchTargets honors devWatch in the manifest, falls back
- *     to the curated default when absent, and skips paths that don't
- *     exist on disk.
+ *   - resolveWatchTargets honors devWatch in the manifest, preserves
+ *     explicit globs, falls back to the curated default when absent, and
+ *     skips literal paths that don't exist on disk.
  *   - The per-plugin pipeline mutex coalesces overlapping triggers
  *     into a single follow-up cycle (inflight + pending pattern).
  *   - Successive triggers for the same id never overlap.
@@ -86,6 +86,7 @@ mock.module('../../../src/core/plugin-host/reload-pipeline', () => ({
 
 import {
   resolveWatchTargets,
+  __matchesWatchTargetForTest,
   startHotReloadCoordinator,
   stopHotReloadCoordinator,
   __triggerReloadForTest,
@@ -141,11 +142,56 @@ describe('resolveWatchTargets', () => {
     ])
   })
 
+  it('preserves manifest devWatch globs for chokidar', () => {
+    writeFileSync(join(pluginRoot, 'bakin-plugin.json'), JSON.stringify({
+      id: 'x', name: 'X', version: '0.0.0',
+      devWatch: ['**/*.ts', '**/*.tsx', 'bakin-plugin.json'],
+    }))
+
+    const targets = resolveWatchTargets(pluginRoot)
+    expect(targets).toEqual([
+      join(pluginRoot, '**/*.ts'),
+      join(pluginRoot, '**/*.tsx'),
+      join(pluginRoot, 'bakin-plugin.json'),
+    ])
+  })
+
   it('handles malformed manifest gracefully', () => {
     writeFileSync(join(pluginRoot, 'bakin-plugin.json'), 'not-json{{{')
     writeFileSync(join(pluginRoot, 'index.ts'), '// stub')
     const targets = resolveWatchTargets(pluginRoot)
     expect(targets).toContain(join(pluginRoot, 'index.ts'))
+  })
+
+  it('matches recursive manifest globs after chokidar v5 root-watch events', () => {
+    expect(__matchesWatchTargetForTest(
+      pluginRoot,
+      join(pluginRoot, 'components', 'empty-state.tsx'),
+      ['**/*.ts', '**/*.tsx', 'bakin-plugin.json'],
+    )).toBe(true)
+    expect(__matchesWatchTargetForTest(
+      pluginRoot,
+      join(pluginRoot, 'client.tsx'),
+      ['**/*.ts', '**/*.tsx', 'bakin-plugin.json'],
+    )).toBe(true)
+    expect(__matchesWatchTargetForTest(
+      pluginRoot,
+      join(pluginRoot, 'styles.css'),
+      ['**/*.ts', '**/*.tsx', 'bakin-plugin.json'],
+    )).toBe(false)
+  })
+
+  it('matches literal directory watch entries for nested file changes', () => {
+    expect(__matchesWatchTargetForTest(
+      pluginRoot,
+      join(pluginRoot, 'components', 'empty-state.tsx'),
+      ['components'],
+    )).toBe(true)
+    expect(__matchesWatchTargetForTest(
+      pluginRoot,
+      join(pluginRoot, 'lib', 'service.ts'),
+      ['components'],
+    )).toBe(false)
   })
 })
 
