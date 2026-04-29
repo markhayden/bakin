@@ -1,43 +1,50 @@
 ---
 title: Models
-description: "Pick what model each agent runs. Manage aliases, task profiles, and the merged catalog from your providers."
+description: "Pick the right model for each agent and each role. Live catalog from every provider, tier-based profiles, aliases, and subagent overrides."
 ---
 
-Models is where you decide what runs each agent. Pick a concrete model id, an alias, or a tier-based profile. The plugin merges live API catalogs from your providers with a curated metadata layer (tier, brand, context window) the APIs don't expose, so you always see the full picture.
-
-## The models view
+Right model for the right job. Premium where the work earns it, budget where it doesn't. A heartbeat ping shouldn't run on GPT-5; a real strategy doc shouldn't run on Haiku. This is where you make sure each agent and each kind of work lands on a model that fits.
 
 <figure class="screenshot-frame">
-  <figcaption>The models view with four tabs: Agent Config, Available Models, Aliases, and Task Profiles.</figcaption>
+  <figcaption>The models view: agent config on top, with tabs for the available catalog, aliases, and task profiles.</figcaption>
 </figure>
 
-Four tabs across the top, plus a header with a refresh-cache button and a gateway-status indicator that flags when changes haven't been picked up yet.
+## Agent Config
 
-### Agent Config
+One row per agent. Pick a concrete model, an alias, or a task profile. The dropdown shows the merged catalog (concrete ids, aliases, profiles) so you can route by capability or by name.
+
+Two slots per agent:
+
+| Slot | What it does |
+| --- | --- |
+| **Primary** | The model the agent itself runs on. |
+| **Subagent** | The model used when this agent dispatches work to others. Set the orchestrator to premium and its helpers to budget here, instead of upgrading every agent. |
+
+Defaults apply to anyone without an override. Fallback models cover provider outages: when the primary doesn't respond, the runtime walks the fallback list in order.
+
+## Available Models
+
+The catalog from every configured provider, merged with a curated metadata layer that adds what the APIs don't return: tier (budget / standard / premium), best-for hint, cost summary, context window. Refresh from the provider anytime; results cache to disk so the page loads instantly.
+
+| Tier | Use it for |
+| --- | --- |
+| **Budget** | Heartbeats, status pings, simple parsing, anything high-volume and low-stakes. |
+| **Standard** | Day-to-day agent work. Writing, planning, most tool use. |
+| **Premium** | Hard problems. Long-context analysis, multi-step reasoning, work where the model's mistakes are expensive. |
+
+Configure provider keys in [Settings](/docs/using/settings/) and they show up here automatically.
+
+## Aliases
+
+Custom names mapped to model ids. Define `daily-driver` → `claude-sonnet-4-6` once, point your agents at `daily-driver`, swap the underlying id later in one place. Useful when the provider ships a new generation and you want to roll the team forward without touching every agent.
+
+## Task Profiles
 
 <figure class="screenshot-frame">
-  <figcaption>The agent config tab: per-agent model picker with current selection, context window, and rate limits.</figcaption>
+  <figcaption>Task profiles map a name to a concrete model, so agents can be configured by purpose instead of vendor id.</figcaption>
 </figure>
 
-One row per agent. Pick a model from the merged dropdown — concrete model ids, aliases, and task profiles all show up. Context window and rate-limit info inline.
-
-### Available Models
-
-The full catalog from every provider you have configured (Anthropic, OpenAI, etc.), merged with the curated metadata layer. Refresh from the API anytime; results cache to disk so the page loads instantly.
-
-### Aliases
-
-Custom names that map to model ids. Define `daily-driver` → `claude-sonnet-4-5` once and use the alias everywhere. Swap the underlying model later in one place.
-
-### Task Profiles
-
-Named tier presets — `budget`, `standard`, `premium`. Each maps to a concrete model. Configure agents with a profile name and Bakin resolves it at dispatch time.
-
-## Concepts
-
-- **Cache plus catalog.** The provider API is the source of truth for what exists. The curated catalog at `plugins/models/data/known-models.ts` adds the metadata APIs don't return. Bakin merges both server-side, persistent disk cache at `~/.bakin/plugin-settings/models/available.json`. Never assumes data the provider didn't give you.
-- **Three layers of indirection.** Concrete model id → alias → task profile. Configure agents at whichever layer fits the use case. Aliases let you swap models without touching every agent. Profiles let you reason about cost vs capability instead of vendor naming.
-- **Gateway-restart awareness.** Some changes don't apply until the OpenClaw gateway reloads. The header surfaces a "config dirty" indicator until it's been restarted, so you know what's live and what isn't.
+Named presets that abstract away vendor naming entirely. `budget`, `standard`, `premium` ship by default; add your own from the Task Profiles tab. Configure an agent with a profile name and Bakin resolves it at dispatch time. Lets you reason about cost vs capability instead of model ids.
 
 ## Where it lives
 
@@ -48,7 +55,7 @@ Named tier presets — `budget`, `standard`, `premium`. Each maps to a concrete 
   models.json             # per-agent config, aliases, task profiles
 ```
 
-HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-models).
+The runtime owns the actual model assignment (it's what gets sent to the gateway on dispatch). Bakin reads and writes through the runtime adapter, never copies state.
 
 ## Settings
 
@@ -62,6 +69,8 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 
 </div>
 <!-- /docs:settings -->
+
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-models).
 
 <div class="for-agents">
 
@@ -82,4 +91,4 @@ Full schemas in the [Exec tools reference](/docs/reference/generated/exec-tools/
 
 - [Team](/docs/using/team/): per-agent model assignment is read here
 - [Settings](/docs/using/settings/): provider keys, allowlists, and blocklists
-- [Health](/docs/using/health/): gateway status and dispatch usage by model
+- [Health](/docs/using/health/): dispatch usage broken down by model and agent
