@@ -2,7 +2,7 @@
  * Server-side plugin registry singleton.
  * Loads plugins, stores their registrations, and provides lookups.
  */
-import { existsSync, readdirSync, readFileSync } from 'fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
 import type {
   BakinConfig,
@@ -36,13 +36,13 @@ import type {
 } from '@bakin/core/plugin-types'
 import type { AppServices } from '@bakin/core/app-services'
 import { registerRouteDoc } from '../core/api-docs'
-import { addExecTool } from '../../scripts/lib/registry'
+import { addExecTool, removeExecToolsByPlugin } from '../../scripts/lib/registry'
 import { runMigrations } from '../core/migrations'
 import { getContentDir } from '../core/content-dir'
 import { createLogger } from '../core/logger'
 import { appendAudit } from '../core/audit'
 import { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
-import { buildSearchAPI } from '../core/search-registry'
+import { buildSearchAPI, getContentTypes, purgeContentType } from '../core/search-registry'
 import { loadPluginSkills } from './plugin-skill-loader'
 import { setCorePluginCheck, readPluginLockfile } from '../../packages/core/src/plugins/lockfile'
 import { parseManifestPermissions } from '../../packages/core/src/plugins/permissions'
@@ -87,6 +87,14 @@ const log = createLogger('plugin-registry')
 
 function resolveAppServices(services?: AppServices): AppServices {
   return services ?? getAppServices()
+}
+
+function isPluginDirectoryEntry(parentDir: string, name: string): boolean {
+  try {
+    return statSync(join(parentDir, name)).isDirectory()
+  } catch {
+    return false
+  }
 }
 
 /** Singleton hook registry shared across all plugins and core modules.
@@ -229,15 +237,31 @@ export function getPluginSkills(): Map<string, SkillDefinition> {
   return pluginSkills
 }
 
+export function removePluginSkillsByPlugin(pluginId: string): number {
+  let removed = 0
+  const source = `plugin:${pluginId}`
+  for (const [name, skill] of [...pluginSkills.entries()]) {
+    if (skill.source === source) {
+      pluginSkills.delete(name)
+      removed++
+    }
+  }
+  return removed
+}
+
+let userPluginImportCounter = 0
+
 class PluginRegistryImpl {
   private plugins = new Map<string, PluginState>()
   private failedPlugins = new Map<string, PluginFailureState>()
   private initialized = false
+  private runtime: { storage: StorageAdapter; events: EventBus; services: AppServices } | null = null
 
   async initialize(config: BakinConfig, storage: StorageAdapter, events: EventBus, services?: AppServices): Promise<void> {
     if (this.initialized) return
     this.initialized = true
     const appServices = resolveAppServices(services)
+    this.runtime = { storage, events, services: appServices }
 
     // Collect all plugin paths and their manifest dependencies
     const entries: PluginLoadEntry[] = []
@@ -416,6 +440,156 @@ class PluginRegistryImpl {
       message: failure.errorMessage,
       missingDependencies: failure.missingDependencies,
     })
+  }
+
+  private clearStateArrays(state: PluginState): void {
+    state.routes.length = 0
+    state.slots.length = 0
+    state.navItems.length = 0
+    state.watchPatterns.length = 0
+    state.nodeKinds.length = 0
+    state.channelIds.length = 0
+    state.healthCheckIds.length = 0
+  }
+
+  async deactivatePlugin(pluginId: string, opts: { callShutdown?: boolean; removeState?: boolean } = {}): Promise<{
+    hooks: number
+    execTools: number
+    contentTypes: number
+    skills: number
+  }> {
+    const state = this.plugins.get(pluginId)
+    const report = { hooks: 0, execTools: 0, contentTypes: 0, skills: 0 }
+    if (!state) return report
+
+    if (opts.callShutdown !== false) {
+      try {
+        await state.plugin.onShutdown?.()
+      } catch (err) {
+        log.warn(`onShutdown failed during plugin deactivation`, { pluginId, err: String(err) })
+      }
+    }
+
+    try { report.hooks = hookRegistry.unregisterByPlugin(pluginId) } catch (err) {
+      log.warn('deactivate: unregisterByPlugin failed', { pluginId, err: String(err) })
+    }
+    try { report.execTools = removeExecToolsByPlugin(pluginId) } catch (err) {
+      log.warn('deactivate: removeExecToolsByPlugin failed', { pluginId, err: String(err) })
+    }
+    try { unregisterPluginNodeTypes(pluginId) } catch (err) {
+      log.warn('deactivate: unregisterPluginNodeTypes failed', { pluginId, err: String(err) })
+    }
+    try { unregisterPluginNotificationChannels(pluginId) } catch (err) {
+      log.warn('deactivate: unregisterPluginNotificationChannels failed', { pluginId, err: String(err) })
+    }
+    try { unregisterPluginHealthChecks(pluginId) } catch (err) {
+      log.warn('deactivate: unregisterPluginHealthChecks failed', { pluginId, err: String(err) })
+    }
+    try {
+      const ownedTables = [...getContentTypes().entries()]
+        .filter(([, def]) => def.pluginId === pluginId)
+        .map(([table]) => table)
+      for (const table of ownedTables) {
+        try {
+          await purgeContentType(table)
+          report.contentTypes++
+        } catch (err) {
+          log.warn('deactivate: purgeContentType failed', { pluginId, table, err: String(err) })
+        }
+      }
+    } catch (err) {
+      log.warn('deactivate: search-registry walk failed', { pluginId, err: String(err) })
+    }
+
+    report.skills = removePluginSkillsByPlugin(pluginId)
+    this.clearStateArrays(state)
+    if (opts.removeState !== false) {
+      this.plugins.delete(pluginId)
+      corePluginIds.delete(pluginId)
+    }
+    return report
+  }
+
+  async activateUserPluginFromDir(pluginPath: string, opts: { cacheBust?: boolean; preferDist?: boolean } = {}): Promise<{ id: string; version: string }> {
+    if (!this.runtime) {
+      throw new Error('plugin registry is not initialized; cannot activate user plugin')
+    }
+
+    const manifestPath = join(pluginPath, 'bakin-plugin.json')
+    if (!existsSync(manifestPath)) {
+      throw new Error(`source dir is missing bakin-plugin.json: ${pluginPath}`)
+    }
+
+    let manifest: PublicPluginManifest
+    try {
+      manifest = readPluginManifestJson(readFileSync(manifestPath, 'utf-8'))
+    } catch (err) {
+      const id = pluginPath.split('/').pop() ?? pluginPath
+      this.markPluginFailed({
+        id,
+        name: id,
+        version: '0.0.0',
+        description: '',
+        source: 'user',
+        errorCode: 'manifest_invalid',
+        errorMessage: err instanceof PluginManifestError || err instanceof Error ? err.message : String(err),
+      })
+      throw err
+    }
+
+    const deps = manifest.dependencies ?? []
+    const missing = deps.filter(dep => !this.plugins.has(dep))
+    if (missing.length > 0) {
+      const message = `Missing dependencies: ${missing.join(', ')}`
+      this.markPluginFailed({
+        id: manifest.id,
+        name: manifest.name,
+        version: manifest.version,
+        description: manifest.description ?? '',
+        source: 'user',
+        errorCode: 'missing_dependency',
+        errorMessage: message,
+        missingDependencies: missing,
+      })
+      throw new Error(message)
+    }
+
+    const failedDeps = deps.filter(dep => this.failedPlugins.has(dep))
+    if (failedDeps.length > 0) {
+      const message = `Dependency failed: ${failedDeps.join(', ')}`
+      this.markPluginFailed({
+        id: manifest.id,
+        name: manifest.name,
+        version: manifest.version,
+        description: manifest.description ?? '',
+        source: 'user',
+        errorCode: 'dependency_failed',
+        errorMessage: message,
+        missingDependencies: failedDeps,
+      })
+      throw new Error(message)
+    }
+
+    try {
+      return await this.activateUserPluginEntry(
+        { path: pluginPath, id: manifest.id, deps, manifest },
+        this.runtime.storage,
+        this.runtime.events,
+        this.runtime.services,
+        opts,
+      )
+    } catch (err) {
+      this.markPluginFailed({
+        id: manifest.id,
+        name: manifest.name,
+        version: manifest.version,
+        description: manifest.description ?? '',
+        source: 'user',
+        errorCode: 'activation_failed',
+        errorMessage: err instanceof Error ? err.message : String(err),
+      })
+      throw err
+    }
   }
 
   private assertRouteDeclared(pluginId: string, state: PluginState, route: APIRoute): void {
@@ -689,6 +863,75 @@ class PluginRegistryImpl {
     }
   }
 
+  private async activateUserPluginEntry(
+    entry: PluginLoadEntry,
+    storage: StorageAdapter,
+    events: EventBus,
+    services: AppServices,
+    opts: { cacheBust?: boolean; preferDist?: boolean } = {},
+  ): Promise<{ id: string; version: string }> {
+    const manifest = entry.manifest!
+    const pluginId = manifest.id
+    const manifestPath = join(entry.path, 'bakin-plugin.json')
+
+    // User plugin overrides built-in or replaces a previous user instance.
+    // Tear down the currently active registration set before activating
+    // the new module so routes/hooks/tools/search tables don't pile up.
+    if (this.plugins.has(pluginId)) {
+      console.log(`  ↻ User plugin reloads: ${pluginId}`)
+      await this.deactivatePlugin(pluginId, { callShutdown: true, removeState: true })
+    }
+
+    const distServer = join(entry.path, 'dist', 'index.js')
+    const sourceServer = join(entry.path, manifest.entry?.server || 'index.ts')
+    let importTarget = opts.preferDist && existsSync(distServer)
+      ? distServer
+      : sourceServer
+    if (opts.cacheBust) {
+      userPluginImportCounter += 1
+      importTarget = `${importTarget}?v=${Date.now()}-${userPluginImportCounter}`
+    }
+
+    const mod = await import(/* webpackIgnore: true */ importTarget)
+    const plugin: BakinPlugin = mod.default || mod.plugin || mod
+
+    if (!plugin.id || !plugin.activate) {
+      throw new Error(`User plugin "${entry.id}" missing id or activate`)
+    }
+
+    const state: PluginState = {
+      plugin,
+      manifest,
+      source: 'user',
+      description: manifest.description || '',
+      navItems: plugin.navItems || [],
+      routes: [],
+      slots: [],
+      watchPatterns: [],
+      nodeKinds: [],
+      channelIds: [],
+      healthCheckIds: [],
+    }
+
+    const ctx = this.buildContext(plugin.id, state, storage, events, services)
+    await plugin.activate(ctx)
+    state.ctx = ctx
+    // #142 layer 1 — surface user-plugin permissions to the audit log.
+    // Source is read from the lockfile (github vs local) by the helper.
+    logPluginActivation({ plugin, source: 'user', manifestPath })
+    const skillResult = loadPluginSkills(entry.path, ctx, log)
+    if (skillResult.registered.length > 0) {
+      log.info(`Auto-registered ${skillResult.registered.length} workflow skill(s) for user plugin "${plugin.id}"`, {
+        skills: skillResult.registered,
+      })
+    }
+    this.plugins.set(plugin.id, state)
+    this.failedPlugins.delete(plugin.id)
+    corePluginIds.delete(plugin.id)
+    console.log(`  ✓ User plugin loaded: ${plugin.name} v${plugin.version}`)
+    return { id: plugin.id, version: plugin.version }
+  }
+
   /**
    * Scan ~/.bakin/plugins/ for user-installed plugins.
    * User plugins with the same ID as built-in plugins override them.
@@ -702,7 +945,7 @@ class PluginRegistryImpl {
       const dirEntries = readdirSync(userPluginsDir, { withFileTypes: true })
       const entries: PluginLoadEntry[] = []
       for (const entry of dirEntries) {
-        if (!entry.isDirectory()) continue
+        if (!isPluginDirectoryEntry(userPluginsDir, entry.name)) continue
 
         const manifestPath = join(userPluginsDir, entry.name, 'bakin-plugin.json')
         if (!existsSync(manifestPath)) continue
@@ -770,65 +1013,7 @@ class PluginRegistryImpl {
         }
 
         try {
-          const manifest = entry.manifest!
-          const pluginId = manifest.id
-          const manifestPath = join(entry.path, 'bakin-plugin.json')
-
-          // User plugin overrides built-in — drop the built-in's workflow
-          // node kinds so the user plugin can re-register them without
-          // hitting the duplicate-kind guard in registerPluginNodeType.
-          // Also drop the core marker: the active instance is now the user's
-          // and they should be able to `bakin plugins remove` their override.
-          if (this.plugins.has(pluginId)) {
-            console.log(`  ↻ User plugin overrides built-in: ${pluginId}`)
-            unregisterPluginNodeTypes(pluginId)
-            unregisterPluginNotificationChannels(pluginId)
-            unregisterPluginHealthChecks(pluginId)
-            this.plugins.delete(pluginId)
-            corePluginIds.delete(pluginId)
-          }
-
-          const serverEntry = manifest.entry?.server || 'index.ts'
-          const relativePath = join(entry.path, serverEntry)
-
-          const mod = await import(/* webpackIgnore: true */ relativePath)
-          const plugin: BakinPlugin = mod.default || mod.plugin || mod
-
-          if (!plugin.id || !plugin.activate) {
-            console.warn(`User plugin "${entry.id}" missing id or activate — skipping`)
-            continue
-          }
-
-          const state: PluginState = {
-            plugin,
-            manifest,
-            source: 'user',
-            description: manifest.description || '',
-            navItems: plugin.navItems || [],
-            routes: [],
-            slots: [],
-            watchPatterns: [],
-            nodeKinds: [],
-            channelIds: [],
-            healthCheckIds: [],
-          }
-
-          const ctx = this.buildContext(plugin.id, state, storage, events, services)
-          await plugin.activate(ctx)
-          state.ctx = ctx
-          // #142 layer 1 — surface user-plugin permissions to the audit log.
-          // Source is read from the lockfile (github vs local) by the helper.
-          logPluginActivation({ plugin, source: 'user', manifestPath })
-          const userPluginPath = entry.path
-          const skillResult = loadPluginSkills(userPluginPath, ctx, log)
-          if (skillResult.registered.length > 0) {
-            log.info(`Auto-registered ${skillResult.registered.length} workflow skill(s) for user plugin "${plugin.id}"`, {
-              skills: skillResult.registered,
-            })
-          }
-          this.plugins.set(plugin.id, state)
-          this.failedPlugins.delete(plugin.id)
-          console.log(`  ✓ User plugin loaded: ${plugin.name} v${plugin.version}`)
+          await this.activateUserPluginEntry(entry, storage, events, services)
         } catch (err) {
           log.error(`Failed to load user plugin "${entry.id}"`, err)
           this.markPluginFailed({
@@ -996,7 +1181,9 @@ class PluginRegistryImpl {
   _resetForTests(): void {
     this.plugins.clear()
     this.failedPlugins.clear()
+    pluginSkills.clear()
     this.initialized = false
+    this.runtime = null
   }
 }
 

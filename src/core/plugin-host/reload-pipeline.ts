@@ -4,20 +4,24 @@
  * `runReloadPipeline(pluginId, dir)` performs an in-process swap of a
  * linked plugin's server-side module:
  *
- *   1. Run the old plugin's `onShutdown()` (errors logged, never throw).
- *   2. Sweep every registry the plugin contributed to: exec tools, hooks,
- *      workflow node types, notification channels, health checks, search
- *      content types. Empty the state's per-plugin arrays so the next
- *      activate doesn't pile registrations on top of the swept ones.
- *   3. Cache-bust import the new module (`<dir>/dist/index.js?v=<n>`).
- *   4. Run the new plugin's `activate(ctx)`. The same `ctx` from the
+ *   1. Cache-bust import the new module (`<dir>/dist/index.js?v=<n>`).
+ *      Import failures leave the old plugin active.
+ *   2. Run the old plugin's `onShutdown()` (errors logged, never throw).
+ *   3. Sweep every registry the plugin contributed to: exec tools, hooks,
+ *      workflow node types, notification channels, health checks, runtime
+ *      skills, and hot-reload search wiring. Search tables are preserved;
+ *      uninstall/remove owns destructive table purging.
+ *   4. Empty the state's per-plugin arrays so the next activate doesn't
+ *      pile registrations on top of the swept ones.
+ *   5. Run the new plugin's `activate(ctx)`. The same `ctx` from the
  *      previous activation is reused; its closures already reference the
  *      `state` arrays we just emptied, so the new plugin's registrations
  *      land cleanly.
- *   5. On success: replace `state.plugin` with the new module, bump the
- *      version, broadcast `dev:plugin:reload` (the client + the
- *      version-mismatch detector both react to it).
- *   6. On failure: re-run the sweep, broadcast `dev:plugin:error`, leave
+ *   6. On success: replace `state.plugin` with the new module, refresh
+ *      plugin search readiness, bump the version, and broadcast the reload
+ *      so dev tabs hot-swap the client bundle.
+ *   7. On activation failure: re-run the sweep, broadcast
+ *      `dev:plugin:error`, leave
  *      the plugin entry in the registry with no registrations (effective
  *      "disabled" state — every route returns 404 until reload succeeds).
  *
@@ -31,12 +35,12 @@
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from '@/core/logger'
-import { pluginRegistry, getHookRegistry } from '@/lib/plugin-registry'
+import { pluginRegistry, getHookRegistry, removePluginSkillsByPlugin } from '@/lib/plugin-registry'
 import { removeExecToolsByPlugin } from '../../../scripts/lib/registry'
 import { unregisterPluginNodeTypes } from '../../../plugins/workflows/lib/node-type-registry'
 import { unregisterPluginNotificationChannels } from '../../../plugins/workflows/lib/notification-channel-registry'
 import { unregisterPluginHealthChecks } from '../../../plugins/health/lib/health-check-registry'
-import { getContentTypes, purgeContentType } from '@/core/search-registry'
+import { ensurePluginSearchReady, unregisterContentTypesByPlugin } from '@/core/search-registry'
 import {
   bumpVersion,
   getVersion,
@@ -122,20 +126,23 @@ async function sweepPluginRegistrations(pluginId: string): Promise<void> {
   try { unregisterPluginHealthChecks(pluginId) } catch (err) {
     log.warn('sweep: unregisterPluginHealthChecks failed', { pluginId, err: String(err) })
   }
-  // Search content types — there can be more than one in principle; purge each.
+  try { removePluginSkillsByPlugin(pluginId) } catch (err) {
+    log.warn('sweep: removePluginSkillsByPlugin failed', { pluginId, err: String(err) })
+  }
+  // Search content types — hot reload unregisters runtime wiring only. It
+  // must not drop backing tables on every save; uninstall/remove owns that.
   try {
-    const contentTypes = getContentTypes()
-    const tablesToPurge: string[] = []
-    for (const [tableName, def] of contentTypes) {
-      if (def.pluginId === pluginId) tablesToPurge.push(tableName)
-    }
-    for (const tableName of tablesToPurge) {
-      try { await purgeContentType(tableName) } catch (err) {
-        log.warn('sweep: purgeContentType failed', { pluginId, tableName, err: String(err) })
-      }
-    }
+    unregisterContentTypesByPlugin(pluginId)
   } catch (err) {
     log.warn('sweep: search-registry walk failed', { pluginId, err: String(err) })
+  }
+}
+
+async function refreshPluginSearch(pluginId: string): Promise<void> {
+  try {
+    await ensurePluginSearchReady(pluginId)
+  } catch (err) {
+    log.warn('reload: search readiness refresh failed', { pluginId, err: String(err) })
   }
 }
 
@@ -186,20 +193,7 @@ export async function runReloadPipeline(args: {
 
   const ctx: PluginContext = state.ctx
 
-  // Step 1: onShutdown. Errors logged but never propagate — the new
-  // module is going to land regardless of how cleanly the old one bowed
-  // out, otherwise a buggy onShutdown would brick the dev loop.
-  try {
-    await state.plugin.onShutdown?.()
-  } catch (err) {
-    log.warn('onShutdown threw during reload (continuing)', { pluginId, err: String(err) })
-  }
-
-  // Step 2: sweep registries + clear state arrays.
-  await sweepPluginRegistrations(pluginId)
-  clearStateArrays(state)
-
-  // Step 3: cache-bust import. Bun resolves `?v=<n>` as a fresh module
+  // Step 1: cache-bust import. Bun resolves `?v=<n>` as a fresh module
   // graph entry — every reload sees the file system's current bytes.
   // `dist/index.js` is the canonical output of buildUserPlugin; tests
   // and edge cases may produce `.mjs` instead, so we try both.
@@ -229,10 +223,24 @@ export async function runReloadPipeline(args: {
     return { ok: false, version: getVersion(pluginId), error: message, failedAt: 'import' }
   }
 
+  // Step 2: onShutdown. Errors logged but never propagate — the new
+  // module already imported cleanly, so a buggy onShutdown can't be
+  // allowed to brick the dev loop.
+  try {
+    await state.plugin.onShutdown?.()
+  } catch (err) {
+    log.warn('onShutdown threw during reload (continuing)', { pluginId, err: String(err) })
+  }
+
+  // Step 3: sweep registries + clear state arrays.
+  await sweepPluginRegistrations(pluginId)
+  clearStateArrays(state)
+
   // Step 4: activate. On throw, re-sweep so any partial registrations
   // the activate body managed to complete are gone.
   try {
     await newPlugin.activate(ctx)
+    await refreshPluginSearch(pluginId)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     log.error('reload: activate threw', err as Error, { pluginId })
