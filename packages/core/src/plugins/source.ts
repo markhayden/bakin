@@ -25,6 +25,13 @@ export interface ParsedGithubSource {
   cloneUrl: string
   /** Monorepo subpath inside the clone; empty string when no `#subpath`. */
   subpath: string
+  /**
+   * Optional git ref parsed from shorthand `@ref` syntax. Full URLs do not
+   * parse `@ref` here because forms like `git@github.com:owner/repo.git`
+   * already use `@` for transport identity; pass refs separately via
+   * `bakin plugins install --ref <ref>` for those sources.
+   */
+  ref?: string
 }
 
 export class InvalidGithubSourceError extends Error {
@@ -59,6 +66,28 @@ function assertSubpathValid(subpath: string): void {
   }
 }
 
+/** Git refs accepted from user input before they reach git positionally. */
+export function isGitRefString(ref: string): boolean {
+  return (
+    ref.length > 0 &&
+    !ref.startsWith('-') &&
+    /^[A-Za-z0-9._/-]+$/.test(ref) &&
+    !ref.startsWith('/') &&
+    !ref.endsWith('/') &&
+    !ref.endsWith('.') &&
+    !ref.includes('..') &&
+    !ref.includes('//')
+  )
+}
+
+export function assertGitRefValid(ref: string): void {
+  if (!isGitRefString(ref)) {
+    throw new InvalidGithubSourceError(
+      `ref must match /^[A-Za-z0-9._/-]+$/ and must not be empty, option-like, or path-like — got "${ref}"`,
+    )
+  }
+}
+
 /**
  * Parse a plugin install source string into `{ cloneUrl, subpath }`.
  *
@@ -74,9 +103,10 @@ function assertSubpathValid(subpath: string): void {
  *   ssh://git@github.com/user/repo.git
  *   file:///abs/path/to/clone
  *
- * `@ref` is intentionally NOT parsed here — the lockfile records ref
- * separately (`PluginLockEntrySchema.ref`) and the install endpoint does
- * not honor `@ref` in the shorthand form yet (issue #177).
+ * Also accepts `@ref` on shorthand forms:
+ *   github:user/repo@v1.2.3
+ *   github:user/repo@v1.2.3#subpath
+ *   user/repo@feature/foo
  */
 export function parseGithubSource(source: string): ParsedGithubSource {
   if (source.length === 0) {
@@ -107,6 +137,7 @@ export function parseGithubSource(source: string): ParsedGithubSource {
   }
 
   let cloneUrl: string
+  let ref: string | undefined
   if (
     stripped.startsWith('http://') ||
     stripped.startsWith('https://') ||
@@ -116,9 +147,16 @@ export function parseGithubSource(source: string): ParsedGithubSource {
   ) {
     cloneUrl = stripped
   } else {
-    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*(\.git)?$/.test(stripped)) {
+    let repoSpec = stripped
+    const atIdx = stripped.lastIndexOf('@')
+    if (atIdx !== -1) {
+      repoSpec = stripped.slice(0, atIdx)
+      ref = stripped.slice(atIdx + 1)
+      assertGitRefValid(ref)
+    }
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*(\.git)?$/.test(repoSpec)) {
       throw new InvalidGithubSourceError(
-        `invalid github user/repo shorthand: "${stripped}"`,
+        `invalid github user/repo shorthand: "${repoSpec}"`,
       )
     }
     // Strip any trailing `.git` from the shorthand before re-appending it,
@@ -126,7 +164,7 @@ export function parseGithubSource(source: string): ParsedGithubSource {
     // `https://github.com/owner/repo.git` (the existing install endpoint
     // double-suffixed the latter form, producing `.git.git` URLs that
     // GitHub silently tolerates but no other host does).
-    const repoPart = stripped.endsWith('.git') ? stripped.slice(0, -'.git'.length) : stripped
+    const repoPart = repoSpec.endsWith('.git') ? repoSpec.slice(0, -'.git'.length) : repoSpec
     cloneUrl = `https://github.com/${repoPart}.git`
   }
 
@@ -134,5 +172,5 @@ export function parseGithubSource(source: string): ParsedGithubSource {
     throw new InvalidGithubSourceError('github clone URL is suspiciously long')
   }
 
-  return { cloneUrl, subpath }
+  return ref ? { cloneUrl, subpath, ref } : { cloneUrl, subpath }
 }

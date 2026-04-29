@@ -37,7 +37,7 @@ import {
 } from '@bakin/core/plugins/lockfile'
 import { parseManifestPermissions } from '@bakin/core/plugins/permissions'
 import { PLUGIN_ID_RE, readPluginManifestJson, PluginManifestError } from '@bakin/core/plugins/manifest'
-import { parseGithubSource, InvalidGithubSourceError } from '@bakin/core/plugins/source'
+import { parseGithubSource, InvalidGithubSourceError, assertGitRefValid } from '@bakin/core/plugins/source'
 import { computeSourceTreeSha } from '@/core/plugins/upgrade'
 import { signConsentToken, verifyConsentToken } from '@/core/plugins/consent-token'
 import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
@@ -80,9 +80,13 @@ const log = createLogger('plugin-install')
  * state. Both failures are non-fatal; the lockfile records the honest
  * emptiness rather than fabricating a synthetic value.
  */
-function resolveGitProvenance(targetDir: string, type: 'github' | 'local'): { ref: string; commitSha: string } {
+function resolveGitProvenance(
+  targetDir: string,
+  type: 'github' | 'local',
+  requestedRef = '',
+): { ref: string; commitSha: string } {
   if (type === 'local') return { ref: '', commitSha: '' }
-  let ref = ''
+  let ref = requestedRef
   let commitSha = ''
   try {
     commitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
@@ -94,15 +98,17 @@ function resolveGitProvenance(targetDir: string, type: 'github' | 'local'): { re
   } catch {
     // commitSha stays ''
   }
-  try {
-    ref = execFileSync('git', ['symbolic-ref', '--short', 'HEAD'], {
-      cwd: targetDir,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      maxBuffer: 1024 * 1024,
-    }).trim()
-  } catch {
-    // detached HEAD or other — ref stays ''
+  if (!ref) {
+    try {
+      ref = execFileSync('git', ['symbolic-ref', '--short', 'HEAD'], {
+        cwd: targetDir,
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        maxBuffer: 1024 * 1024,
+      }).trim()
+    } catch {
+      // detached HEAD or other — ref stays ''
+    }
   }
   return { ref, commitSha }
 }
@@ -126,10 +132,11 @@ function recordInstall(args: {
   source: string
   type: 'github' | 'local'
   permissions: PluginLockEntry['permissions']
+  gitProvenance?: { ref: string; commitSha: string }
 }): void {
   const { id, targetDir, manifestSha, manifest, source, type } = args
   try {
-    const { ref, commitSha } = resolveGitProvenance(targetDir, type)
+    const { ref, commitSha } = args.gitProvenance ?? resolveGitProvenance(targetDir, type)
 
     let version: string
     if (typeof manifest.version === 'string' && manifest.version.length > 0) {
@@ -185,6 +192,8 @@ function recordInstall(args: {
 interface InstallBody {
   source: string
   type: 'local' | 'github'
+  /** Optional git ref to install for github sources. */
+  ref?: string
   /** Developer-mode local install: symlink source and watch/reload it. */
   dev?: boolean
   /** Used with dev=true to replace an existing install/link for the same id. */
@@ -245,13 +254,62 @@ function resolveAndContainLocalSource(rawSource: string): { ok: true; path: stri
  */
 function resolveGithubCloneUrl(
   rawSource: string,
-): { ok: true; url: string; subpath: string } | { ok: false; error: string } {
+): { ok: true; url: string; subpath: string; ref: string } | { ok: false; error: string } {
   try {
     const parsed = parseGithubSource(rawSource)
-    return { ok: true, url: parsed.cloneUrl, subpath: parsed.subpath }
+    return { ok: true, url: parsed.cloneUrl, subpath: parsed.subpath, ref: parsed.ref ?? '' }
   } catch (err) {
     if (err instanceof InvalidGithubSourceError) return { ok: false, error: err.message }
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+function consentSourceIdentity(source: string, ref: string): string {
+  return ref ? JSON.stringify({ source, ref }) : source
+}
+
+function formatGitError(err: unknown): string {
+  const maybe = err as { stderr?: Buffer | string; stdout?: Buffer | string; message?: string }
+  const stderr = Buffer.isBuffer(maybe.stderr) ? maybe.stderr.toString('utf-8') : maybe.stderr
+  const stdout = Buffer.isBuffer(maybe.stdout) ? maybe.stdout.toString('utf-8') : maybe.stdout
+  return (stderr || stdout || maybe.message || String(err)).trim()
+}
+
+function cloneGithubSource(cloneUrl: string, stagingDir: string, ref: string): void {
+  try {
+    if (ref) {
+      execFileSync('git', ['clone', '--depth', '1', '--branch', ref, '--', cloneUrl, stagingDir], {
+        stdio: 'pipe',
+        maxBuffer: 10 * 1024 * 1024,
+      })
+    } else {
+      execFileSync('git', ['clone', '--depth', '1', '--', cloneUrl, stagingDir], {
+        stdio: 'pipe',
+        maxBuffer: 10 * 1024 * 1024,
+      })
+    }
+    return
+  } catch (firstErr) {
+    if (!ref) throw firstErr
+    // `git clone --branch <sha>` only works for branch/tag names. Fall
+    // back to a full no-checkout clone so exact commit pins are supported.
+    rmSync(stagingDir, { recursive: true, force: true })
+    mkdirSync(stagingDir, { recursive: true })
+    try {
+      execFileSync('git', ['clone', '--no-checkout', '--', cloneUrl, stagingDir], {
+        stdio: 'pipe',
+        maxBuffer: 10 * 1024 * 1024,
+      })
+      execFileSync('git', ['checkout', '--detach', ref], {
+        cwd: stagingDir,
+        stdio: 'pipe',
+        maxBuffer: 10 * 1024 * 1024,
+      })
+      return
+    } catch (fallbackErr) {
+      const detail = formatGitError(fallbackErr) || formatGitError(firstErr)
+      throw new Error(`failed to clone ${cloneUrl} at ref "${ref}": ${detail}`)
+    }
   }
 }
 
@@ -268,6 +326,22 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   }
   if (body.type !== 'local' && body.type !== 'github') {
     return Response.json({ ok: false, error: 'Invalid type; must be "local" or "github"' }, { status: 400 })
+  }
+  if (body.ref !== undefined) {
+    if (typeof body.ref !== 'string') {
+      return Response.json({ ok: false, error: 'ref must be a string' }, { status: 400 })
+    }
+    try {
+      assertGitRefValid(body.ref)
+    } catch (err) {
+      return Response.json({
+        ok: false,
+        error: err instanceof InvalidGithubSourceError ? err.message : String(err),
+      }, { status: 400 })
+    }
+    if (body.type !== 'github') {
+      return Response.json({ ok: false, error: '--ref only applies to github plugin installs' }, { status: 400 })
+    }
   }
   if (body.dev !== undefined && typeof body.dev !== 'boolean') {
     return Response.json({ ok: false, error: 'dev must be a boolean' }, { status: 400 })
@@ -339,6 +413,8 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       // staging dir itself; for github monorepo installs
       // (`github:user/repo#plugins/foo`) it is `<stagingDir>/<subpath>`.
       let effectivePluginDir: string = stagingDir
+      let requestedRef = ''
+      let gitProvenance: { ref: string; commitSha: string } | undefined
 
       if (body.type === 'local') {
         if (body.source.includes('#')) {
@@ -363,12 +439,25 @@ export async function post(req: Request, _url: URL): Promise<Response> {
           auditInstallRejected('invalid_github_url', body.source, { error: parsedUrl.error })
           return Response.json({ ok: false, error: parsedUrl.error }, { status: 400 })
         }
-        // `--` ends option parsing so a bizarre URL can't be reinterpreted
-        // as a git option. URL was also validated for leading `-` above.
-        execFileSync('git', ['clone', '--depth', '1', '--', parsedUrl.url, stagingDir], {
-          stdio: 'pipe',
-          maxBuffer: 10 * 1024 * 1024,
-        })
+        if (body.ref && parsedUrl.ref && body.ref !== parsedUrl.ref) {
+          rmSync(stagingDir, { recursive: true, force: true })
+          auditInstallRejected('ref_conflict', body.source, { sourceRef: parsedUrl.ref, bodyRef: body.ref })
+          return Response.json({
+            ok: false,
+            error: `conflicting refs: source uses "${parsedUrl.ref}" but request body uses "${body.ref}"`,
+          }, { status: 400 })
+        }
+        requestedRef = body.ref ?? parsedUrl.ref
+
+        try {
+          cloneGithubSource(parsedUrl.url, stagingDir, requestedRef)
+          gitProvenance = resolveGitProvenance(stagingDir, body.type, requestedRef)
+        } catch (err) {
+          rmSync(stagingDir, { recursive: true, force: true })
+          const message = err instanceof Error ? err.message : String(err)
+          auditInstallRejected('git_clone_failed', body.source, { ref: requestedRef, error: message })
+          return Response.json({ ok: false, error: message }, { status: 400 })
+        }
 
         if (parsedUrl.subpath) {
           // `parseGithubSource` already rejects `..` segments and leading
@@ -495,8 +584,9 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         // against the freshly cloned manifest. If the manifest changed
         // between preflight and commit, commit returns awaitingConsent
         // again with the new diff instead of installing.
+        const consentSource = consentSourceIdentity(body.source, requestedRef)
         const consentToken = signConsentToken({
-          source: body.source,
+          source: consentSource,
           manifestSha: stagedManifestSha,
           permissions: parsedPermissions,
         })
@@ -533,7 +623,8 @@ export async function post(req: Request, _url: URL): Promise<Response> {
             error: 'consentToken is invalid or expired (re-run install to re-prompt)',
           }, { status: 400 })
         }
-        if (token.source !== body.source) {
+        const consentSource = consentSourceIdentity(body.source, requestedRef)
+        if (token.source !== consentSource) {
           rmSync(stagingDir, { recursive: true, force: true })
           auditInstallRejected('consent_source_mismatch', body.source, { id, tokenSource: token.source })
           return Response.json({
@@ -548,7 +639,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         if (token.manifestSha !== stagedManifestSha) {
           const versionForPrompt = typeof manifest.version === 'string' ? manifest.version : '0.0.0'
           const freshToken = signConsentToken({
-            source: body.source,
+            source: consentSource,
             manifestSha: stagedManifestSha,
             permissions: parsedPermissions,
           })
@@ -609,6 +700,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         source: recordedSource,
         type: body.type,
         permissions: parsedPermissions,
+        gitProvenance,
       })
 
       let runtimeVersion: number | undefined
@@ -631,7 +723,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         }
       }
 
-      log.info(`Installed plugin "${id}"`, { source: body.source, type: body.type })
+      log.info(`Installed plugin "${id}"`, { source: body.source, type: body.type, ref: requestedRef })
 
       return Response.json({
         ok: true,

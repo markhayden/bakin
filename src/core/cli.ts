@@ -17,6 +17,7 @@
  */
 import { APP_VERSION } from '../../packages/core/src/constants'
 import { renderCliUsage } from './cli/registry'
+import { parsePluginInstallArgs, PLUGIN_INSTALL_USAGE } from './cli/plugin-install-args'
 
 const BAKIN_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 
@@ -170,9 +171,10 @@ interface InstallApiResponse {
   message?: string
 }
 
-async function cmdPluginsInstall(source: string, opts: { yes: boolean; dev?: boolean; force?: boolean }): Promise<number> {
+async function cmdPluginsInstall(source: string, opts: { yes: boolean; dev?: boolean; force?: boolean; ref?: string }): Promise<number> {
   const isGithub = !opts.dev && (source.startsWith('github:') || (source.includes('/') && !source.startsWith('.') && !source.startsWith('/')))
   const type: 'github' | 'local' = isGithub ? 'github' : 'local'
+  const ref = opts.ref
   try {
     // First call — preflight. With --yes the caller skips the consent
     // round-trip entirely, but we still go through preflight first so the
@@ -180,7 +182,7 @@ async function cmdPluginsInstall(source: string, opts: { yes: boolean; dev?: boo
     // one (--yes implies "accept whatever permissions show up").
     let response = await api<InstallApiResponse>('/api/plugins/install', {
       method: 'POST',
-      body: JSON.stringify({ source, type, accepted: false, dev: opts.dev === true, force: opts.force === true }),
+      body: JSON.stringify({ source, type, ref, accepted: false, dev: opts.dev === true, force: opts.force === true }),
     })
 
     if (response.error) {
@@ -212,6 +214,7 @@ async function cmdPluginsInstall(source: string, opts: { yes: boolean; dev?: boo
         body: JSON.stringify({
           source,
           type,
+          ref,
           accepted: true,
           consentToken: response.consentToken,
           dev: opts.dev === true,
@@ -521,15 +524,20 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
         }
         if (sub === 'install') {
           const installArgs = args.slice(2)
-          const source = installArgs.find(arg => !arg.startsWith('--'))
-          if (!source) {
-            console.error('Usage: bakin plugins install [--dev] <path|github:user/repo[#subpath]> [--yes] [--force]')
+          const parsed = parsePluginInstallArgs(installArgs)
+          if (parsed.error || !parsed.source) {
+            console.error(parsed.error ? `${parsed.error}\n${PLUGIN_INSTALL_USAGE}` : PLUGIN_INSTALL_USAGE)
             return { startServer: false, exitCode: 1 }
           }
-          const yes = installArgs.includes('--yes')
-          const dev = installArgs.includes('--dev')
-          const force = installArgs.includes('--force')
-          return { startServer: false, exitCode: await cmdPluginsInstall(source, { yes, dev, force }) }
+          return {
+            startServer: false,
+            exitCode: await cmdPluginsInstall(parsed.source, {
+              yes: parsed.yes,
+              dev: parsed.dev,
+              force: parsed.force,
+              ref: parsed.ref,
+            }),
+          }
         }
         if (sub === 'upgrade') {
           if (!args[2]) {
