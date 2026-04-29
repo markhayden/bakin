@@ -34,24 +34,34 @@ export function loadDefaultWorkflows(
     (f) => f.endsWith('.yaml') || f.endsWith('.yml'),
   )
 
+  const parsedFiles: Array<{ id: string; definition: WorkflowDefinition }> = []
   for (const file of files) {
     const id = file.replace(/\.(yaml|yml)$/, '')
     try {
       const raw = readFileSync(join(defaultsDir, file), 'utf-8')
       const parsed = parseYAML(raw) as unknown as WorkflowDefinition
-      const errors = validateDefinition(parsed)
-      if (errors.length > 0) {
-        result.skipped.push({ id, errors })
-        log.warn(`Skipping invalid plugin-shipped workflow "${id}"`, { errors })
-        continue
-      }
-      ctx.registerWorkflow({ ...parsed, id })
-      result.registered.push(id)
+      parsedFiles.push({ id, definition: parsed })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       result.skipped.push({ id, errors: [message] })
       log.warn(`Failed to load plugin-shipped workflow "${id}"`, { error: message })
     }
+  }
+
+  const knownWorkflowIds = new Set(parsedFiles.map((entry) => entry.id))
+  for (const { id, definition } of parsedFiles) {
+    const errors = validateDefinition(definition, {
+      definitionId: id,
+      source: 'plugin',
+      knownWorkflowIds,
+    })
+    if (errors.length > 0) {
+      result.skipped.push({ id, errors })
+      log.warn(`Skipping invalid plugin-shipped workflow "${id}"`, { errors })
+      continue
+    }
+    ctx.registerWorkflow({ ...definition, id })
+    result.registered.push(id)
   }
 
   return result

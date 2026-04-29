@@ -441,7 +441,7 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `registerSlot(reg)` | Register React component for a named UI slot (server-side) |
 | `registerExecTool(tool)` | Register MCP execution tool (agent-callable) |
 | `registerSkill(skill)` | Register AI skill definition (S-A, in-memory) |
-| `registerWorkflow(def, opts?)` | Register a plugin-shipped workflow definition. User definitions in `~/.bakin/workflows/definitions/` always win on collision; cross-plugin id collisions are logged but do not throw out of `activate()`. Same-plugin re-registration is idempotent. |
+| `registerWorkflow(def, opts?)` | Register a plugin-shipped workflow definition. Plugin definitions must be portable; use symbolic agents such as `$assigned` rather than local runtime ids. User definitions in `~/.bakin/workflows/definitions/` always win on collision; cross-plugin id collisions are logged but do not throw out of `activate()`. Same-plugin re-registration is idempotent. |
 | `registerNodeType(def)` | Register a custom xyflow node kind for the workflow canvas (namespaced to `{pluginId}.{kind}`) |
 | `registerNotificationChannel(def)` | Register a notification channel (namespaced to `{pluginId}.{id}`) |
 | `registerHealthCheck(def)` | Register a doctor check (namespaced to `{pluginId}.{id}`). Picked up by `runPluginHealthChecks` in `src/core/doctor.ts`. Per-check try/catch lives in the orchestrator. Deep ref: `.claude/knowledge/doctor-and-health-checks.md`. |
@@ -680,7 +680,7 @@ Same pattern is used for the plugin registry
 | Plugin | Hooks | Examples |
 |--------|-------|---------|
 | tasks | 0 task-metadata hooks | Task metadata is owned by `src/core/task-store.ts` and is not exposed through plugin hooks |
-| workflows | 13 | `workflows.loadInstance`, `workflows.createInstance`, `workflows.getCurrentStep`, `workflows.completeStep`, `workflows.matchWorkflow`, `workflows.definitions.list`, `workflows.loadDefinition`, `workflows.getActiveAgents`, `workflows.saveInstance`, etc. |
+| workflows | 17 | `workflows.loadInstance`, `workflows.createInstance`, `workflows.getCurrentStep`, `workflows.completeStep`, `workflows.authorizeToolUse`, `workflows.matchWorkflow`, `workflows.definitions.list`, `workflows.loadDefinition`, `workflows.getActiveAgents`, `workflows.saveInstance`, etc. |
 | assets | 8 | `assets.validateSidecar`, `assets.getSidecarPath`, `assets.createStub`, `assets.detectVariant`, `assets.getAssetTypes`, `assets.trash.list`, `assets.restoreAsset`, `assets.emptyTrash` |
 | team | 7 | `team.list`, `team.getAgent`, `team.getAgentIds`, `team.resolveProfile`, `team.getTeamMembers`, `team.getAgentTeam`, `team.getOrgStructure` |
 | models | 5 | `models.configChanged`, `models.getEffectiveModel`, `models.getAvailableModels`, `models.markConfigDirty`, `models.markGatewayRestarted` |
@@ -826,7 +826,7 @@ to drop files in place.
 
 | Directory | Loader | Behavior |
 |-----------|--------|----------|
-| `defaults/workflows/*.yaml` | The owning plugin's `activate()` (workflows plugin uses `lib/load-defaults.ts`) | Each YAML is parsed and registered via `ctx.registerWorkflow(def, { readOnly: true })`. User copies under `~/.bakin/workflows/definitions/` always shadow these. |
+| `defaults/workflows/*.yaml` | The owning plugin's `activate()` (workflows plugin uses `lib/load-defaults.ts`) | YAML files are parsed in two passes, validated against the runtime-supported workflow contract, then registered via `ctx.registerWorkflow(def, { readOnly: true })`. User copies under `~/.bakin/workflows/definitions/` always shadow these. |
 | `defaults/workflow-skills/*.md` | `src/lib/plugin-skill-loader.ts`, invoked by the plugin loader after every `activate()` | Each `.md` is parsed (YAML frontmatter for `name` + `output_schema`; body is the instruction) and registered via `ctx.registerSkill()`. In-memory only — no filesystem install. |
 | `defaults/runtime-skills/{name}/SKILL.md` (+ `scripts/`) | `src/core/onboarding/plugin-assets.ts` (`bakin install plugin-assets`) | Each skill dir is copied to `runtime skill store/` with a `.installedBy` marker (sha256). `.userEdited` sentinel locks a dir from overwrite. `bakin doctor` surfaces drift. |
 

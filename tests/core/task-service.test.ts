@@ -4,14 +4,15 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 
 // Mock dependencies before importing
-mock.module('@/core/content-dir', () => ({
+const contentDirMock = {
   getContentDir: mock(() => '/tmp/bakin-test'),
-  getBakinPaths: mock(() => ({ home: '/tmp/bakin-test',
+  getBakinPaths: mock(() => ({ home: '/tmp/bakin-test' })),
   isUsingBakinHome: () => true,
   resetContentDir: () => {},
   initBakinHome: () => {},
-})),
-}))
+}
+mock.module('@/core/content-dir', () => contentDirMock)
+mock.module('../../src/core/content-dir', () => contentDirMock)
 
 mock.module('@/core/audit', () => ({
   appendAudit: mock(),
@@ -125,9 +126,12 @@ const mockHookRegistry = {
   has: mock(() => false),
 }
 
-mock.module('@/lib/plugin-registry', () => ({
+const pluginRegistryMock = {
   getHookRegistry: () => mockHookRegistry,
-}))
+  getPluginSkills: () => new Map(),
+}
+mock.module('@/lib/plugin-registry', () => pluginRegistryMock)
+mock.module('../../src/lib/plugin-registry', () => pluginRegistryMock)
 
 describe('task-service', () => {
   let service: typeof import('@/core/task-service')
@@ -164,6 +168,18 @@ describe('task-service', () => {
       delete (globalThis as any).__bakinBroadcast
       await service.logProgress('task-1', 'pixel', 'test')
       expect(mockAddTaskLog).toHaveBeenCalledTimes(1)
+    })
+
+    it('rejects progress logging when workflow ownership denies it', async () => {
+      mockHookRegistry.has.mockReturnValueOnce(true)
+      mockHookRegistry.invoke.mockResolvedValueOnce({
+        allowed: false,
+        reason: 'Agent "pixel" is not the owner of the active workflow step',
+      })
+
+      await expect(service.logProgress('task-1', 'pixel', 'test')).rejects.toThrow(/not the owner/)
+      expect(mockBroadcast).not.toHaveBeenCalled()
+      expect(mockAddTaskLog).not.toHaveBeenCalled()
     })
   })
 
@@ -325,6 +341,21 @@ describe('task-service', () => {
 
       expect(result.workflowId).toBe('image-social-post')
       expect(mockCreateTask).toHaveBeenCalled()
+    })
+
+    it('surfaces workflow start failures after clearing the task workflowId', async () => {
+      mockLoadDefinition.mockReturnValueOnce({ name: 'image-social-post', steps: [] })
+      mockCreateInstance.mockImplementationOnce(() => {
+        throw new Error('unknown agent pixel')
+      })
+
+      await expect(service.createTaskWithEffects({
+        title: 'Bad owner',
+        workflowId: 'image-social-post',
+        createdBy: 'main',
+      })).rejects.toThrow(/Failed to start workflow "image-social-post": unknown agent pixel/)
+
+      expect(mockUpdateTask).toHaveBeenCalledWith('new-task-123', { workflowId: undefined })
     })
 
     it('does not call workflows.loadDefinition when no workflowId provided', async () => {

@@ -3,7 +3,7 @@ title: Workflows
 description: "Visual multi-step recipes with gates, parallel branches, and structured outputs. Reusable across tasks."
 ---
 
-Rails when your agents need them. A workflow is a graph of connected steps that get worked one at a time. Use them when order matters: review before publish, validation before commit, multi-step jobs you don't want an agent freestyling on.
+Rails when your agents need them. A workflow is an ordered recipe of steps that get worked one at a time, with explicit support for approval gates, parallel agent work, sub-workflows, and final outputs. Use them when order matters: review before publish, validation before commit, multi-step jobs you don't want an agent freestyling on.
 
 Workflows attach to tasks. When an agent creates a task it picks the workflow that fits, or skips with a reason. You can change the call later from the task's detail panel: swap workflows, attach one, or detach.
 
@@ -17,18 +17,18 @@ Workflows attach to tasks. When an agent creates a task it picks the workflow th
   <figcaption>The canvas with steps stacked top to bottom. A "Start" card up top summarizes the inputs.</figcaption>
 </figure>
 
-Open any workflow to see its recipe on the canvas. Steps stacked top to bottom, connected by edges that follow the flow. A `Start` card up top summarizes the inputs. Each step shows its type, label, and the agent that runs it. Click any step to look inside: who owns it, what it depends on, what it expects to output, where it routes on approve or reject.
+Open any workflow to see its recipe on the canvas. Steps stack top to bottom in runtime order; edges show the supported flow between those steps. A `Start` card up top summarizes the inputs. Each step shows its type, label, and the agent that runs it. Click any step to look inside: who owns it, what it depends on, what it expects to output, where it routes on approve or reject.
 
 Same surface for building. No second editor to learn.
 
 ## Steps
 
-A workflow is any number of connected steps. Every step has a type:
+A workflow is any number of ordered steps. Every step has a type:
 
 - **Agent step**: an agent runs the work. Output gets validated against a schema before the workflow advances.
 - **Gate**: pauses for your approval before moving on. Optional notifications, configurable approve and reject paths.
-- **Parallel**: groups child steps that run side by side. The workflow waits for every child to finish before it continues.
-- **Output**: the terminal step. Optionally publishes the final result to channels like Discord, Slack, or email.
+- **Parallel**: groups agent child steps that run side by side. The workflow waits for every child to finish before it continues.
+- **Output**: the terminal step. Optionally publishes the final result to channels like Discord, Slack, or email. Channel posting is allowed only from the active output owner.
 - **Sub-workflow**: runs another workflow inline, with its own task on the board so you can watch it move.
 
 ## Managing workflows
@@ -53,6 +53,7 @@ Workflows cancel automatically when their task moves to `Done` or `Blocked`, or 
 
 - **Definitions vs instances.** A definition is the recipe. An instance is one run of that recipe tied to a specific task. Many instances of one definition.
 - **Information gating.** Agents only ever see the current step, never future ones. They submit output, Bakin validates, then releases the next step.
+- **Ownership gating.** Workflow tools use the actual MCP caller. Agents cannot spoof another `agentId`, complete workflow tasks through task tools, or mutate a workflow while it waits at a human gate.
 
 ## Where it lives
 

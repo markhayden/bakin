@@ -2,11 +2,11 @@
 
 ## Overview
 
-The workflows plugin owns workflow **authoring**, **storage**, **resolution**, and the **canvas/editor UI**. The execution engine (`runtime.ts`) is treated as a black box — every change in the 2026-04 overhaul left it untouched.
+The workflows plugin owns workflow **authoring**, **storage**, **resolution**, execution, and the **canvas/editor UI**. Runtime execution is intentionally conservative: definitions are edited as a canvas, but the engine currently executes an ordered top-level step list with explicit support for gates, output steps, parallel child agent steps, and nested workflows.
 
-Two registries make plugin-shipped workflows possible without breaking the existing user-owned YAML model:
+Two registries make plugin- and package-shipped workflows possible without breaking the existing user-owned YAML model:
 
-- **Source registry** (`lib/source-registry.ts`) — in-memory index of every workflow definition the system knows about, keyed by id, with provenance (`plugin` vs `user`). User wins on collision.
+- **Source registry** (`lib/source-registry.ts`) — in-memory index of every workflow definition the system knows about, keyed by id, with provenance (`plugin`, `agent-package`, or `user`). Resolution order is `user > agent-package > plugin`.
 - **Node-type registry** (`lib/node-type-registry.ts`) — single source of truth for the 5 builtin step types. The same Zod schemas drive both YAML parsing and the form editor — they cannot drift.
 
 ## Two Skill Systems (Don't Conflate)
@@ -53,14 +53,16 @@ The first two paths are in-memory only — every reboot rebuilds them from disk.
 ```typescript
 registerPluginDefinition(pluginId, id, definition)   // throws if a *different* plugin owns id; same plugin overwrite is allowed (hot reload)
 unregisterPluginDefinitions(pluginId)                // wipes every entry for that plugin
+registerAgentPackageDefinition(packageId, id, definition)
+unregisterAgentPackageDefinitions(packageId)
 registerUserDefinition(id, definition)               // user-owned (~/.bakin/workflows/definitions/) — silently shadows plugin entry
 unregisterUserDefinition(id)
-getDefinition(id) → SourceEntry | undefined          // user wins over plugin
-listAll() → SourceEntry[]                            // resolved through user-wins rule
-isReadOnly(id)                                       // true iff plugin-owned with no user shadow — CRUD routes refuse writes
+getDefinition(id) → SourceEntry | undefined          // user > agent-package > plugin
+listAll() → SourceEntry[]                            // resolved through source precedence
+isReadOnly(id)                                       // true iff non-user-owned with no user shadow — CRUD routes refuse writes
 ```
 
-`SourceEntry` carries `{ id, definition, source: 'plugin' | 'user', pluginId? }` so the UI can render badges and the routes can refuse plugin-owned writes.
+`SourceEntry` carries `{ id, definition, source: 'plugin' | 'agent-package' | 'user', pluginId?, packageId? }` so the UI can render badges and the routes can refuse non-user-owned writes.
 
 ### User-wins precedence
 
@@ -79,9 +81,35 @@ as `chef`, `pixel`, `rolo`, or `main-operator` in default definitions. Use the
 symbolic `$assigned` token for every shipped `agent:` value until Bakin grows a
 provider-neutral role/capability selector.
 
-User-owned workflow YAML under `~/.bakin/workflows/definitions/` can still use
-local agent ids. The portability rule applies only to defaults committed with a
-plugin.
+User-owned and agent-package workflow YAML can use literal local agent ids.
+Start-time validation checks those ids against the runtime roster. `$assigned`
+requires the task to already have an assignee and fails before instance creation
+if it cannot resolve.
+
+Default workflow loading is two-pass: Bakin parses every file, builds the set of
+known workflow ids, then validates. Nested workflow references are therefore not
+filesystem-order dependent.
+
+## Runtime Execution Contract
+
+The current runtime is not a general DAG executor. It executes top-level steps in
+file order. `dependsOn` is preserved as metadata and validation, but it cannot
+pull a future step forward or express arbitrary graph branching.
+
+Validation enforces the current engine's real contract:
+
+- `dependsOn` can only reference earlier top-level steps.
+- `gate.on_approve` must advance to the next top-level step, or `done` for a final gate.
+- `gate.on_reject.goto` can only target the current or an earlier top-level step.
+- `parallel` groups can only contain agent child steps; gates, output steps, nested workflows, and child `dependsOn` are rejected.
+- `workflow` nested references must resolve to known definitions and cannot reference themselves. Start-time validation rejects nested workflow cycles.
+- `output` steps require an agent owner so channel-post authorization has a concrete principal.
+
+Agents are also gated at tool-use time. Workflow step reads and submissions use
+the actual MCP caller, not a caller-supplied `agentId`. Progress logs and task
+blocking are allowed only for the current step owner. Direct task completion is
+denied while a workflow is active. Channel posts are allowed only for the current
+owner of the active `output` step.
 
 ## Node-Type Registry
 
@@ -154,7 +182,7 @@ Startup calls `rehydratePendingApprovals()` from `plugins/workflows/lib/approval
 |--------|------|----------|
 | `GET` | `/definitions` | List, including `source` and `pluginId` for plugin-owned entries |
 | `GET` | `/definitions/:name` | Single definition with provenance |
-| `POST` | `/definitions` | Validate against `workflowDefinitionSchema`, write to `~/.bakin/workflows/definitions/{slug}.yaml`. 409 on slug collision (user dir), 400 on Zod failure. |
+| `POST` | `/definitions` | Validate against `workflowDefinitionSchema` plus runtime semantic rules, write to `~/.bakin/workflows/definitions/{slug}.yaml`. 409 on slug collision (user dir), 400 on validation failure. |
 | `PUT` | `/definitions/:name` | Same validation. **403 if `isReadOnly(name)`** — caller must POST a new id instead. |
 | `DELETE` | `/definitions/:name` | **403 on plugin-owned**. 200 on user-owned; warning payload lists nested workflows pointing at the deleted id. |
 
@@ -238,12 +266,12 @@ Same non-negotiable rules as the rest of the codebase:
 
 | File | Purpose |
 |------|---------|
-| `plugins/workflows/lib/runtime.ts` | Workflow execution. **READ-ONLY in this overhaul.** |
+| `plugins/workflows/lib/runtime.ts` | Workflow execution, step ownership, and active-workflow tool authorization |
 | `plugins/workflows/lib/approval-store.ts` | File-backed durable workflow approval records |
 | `plugins/workflows/lib/approval-rehydration.ts` | Startup reattachment/retry for pending workflow approvals |
 | `plugins/workflows/lib/notifications.ts` | Runtime channel notifications and gate approval rendering |
-| `plugins/workflows/lib/parser.ts` | `loadDefinition` + `listDefinitions` — consults the source registry first, falls back to disk |
-| `plugins/workflows/lib/source-registry.ts` | Per-id source index with user-wins precedence |
+| `plugins/workflows/lib/parser.ts` | `loadDefinition`, `listDefinitions`, and semantic validation of the runtime-supported workflow contract |
+| `plugins/workflows/lib/source-registry.ts` | Per-id source index with user > agent-package > plugin precedence |
 | `plugins/workflows/lib/node-type-registry.ts` | Zod schemas + form metadata for the 5 builtins |
 | `plugins/workflows/lib/load-defaults.ts` | Reads `defaults/workflows/*.yaml` and calls `ctx.registerWorkflow` per file |
 | `plugins/workflows/lib/skill-loader.ts` | Resolves `step.skill` to in-memory body (S-A) |
