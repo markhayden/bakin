@@ -160,6 +160,14 @@ coordinator watches the plugin source root, then filters events against
 `devWatch` patterns itself. Supported patterns intentionally cover the
 common plugin shapes: literal files/directories, `*`, `?`, and `**/*.ext`.
 
+Plugin modules must not create lifetime side effects during import. Old
+module instances remain reachable after cache-busted hot reloads, so
+top-level timers, process listeners, file watchers, sockets, EventSources,
+and event-target listeners leak across saves. The
+`bakin/no-plugin-top-level-side-effects` ESLint rule enforces the direct
+cases. Create lifetime resources inside `activate(ctx)` or narrower
+handlers, store the handle/disposer, and clean them in `onShutdown()`.
+
 ### Why the old module doesn't break
 
 - Old module's exports (React components) were rendered into the DOM. After `unregisterPlugin`, the shell re-renders without those components — React unmounts the subtrees. The exports become garbage.
