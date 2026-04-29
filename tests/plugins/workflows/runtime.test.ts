@@ -105,6 +105,7 @@ import {
   rejectGate,
   listInstances,
   getActiveAgents,
+  authorizeWorkflowToolUse,
   cancelInstance,
 } from '@bakin/workflows/lib/runtime'
 import { invalidateSkillCache } from '@bakin/workflows/lib/skill-loader'
@@ -427,6 +428,13 @@ Write a great caption.
       const roloStep = getCurrentStep('task-par3', 'rolo', testDir)
       expect((roloStep as Record<string, unknown>).stepId).toBe('create-video')
     })
+
+    it('does not leak a parallel sibling step to the wrong agent', () => {
+      createInstance('task-par-wrong', 'parallel', testDir)
+      completeStep('task-par-wrong', 'write-copy', { brief: 'test' }, undefined, testDir)
+
+      expect(getCurrentStep('task-par-wrong', 'trainer', testDir)).toBeNull()
+    })
   })
 
   // ─── Gate operations ────────────────────────────────────────────────
@@ -678,6 +686,53 @@ Write a great caption.
       createInstance('task-scope-undef', 'linear', testDir)
       const result = completeStep('task-scope-undef', 'step-one', { data: 'done' }, undefined, testDir)
       expect(result.success).toBe(true)
+    })
+
+    it('does not return a linear step to a non-owner agent', () => {
+      createInstance('task-step-scope-bad', 'linear', testDir)
+      expect(getCurrentStep('task-step-scope-bad', 'pixel', testDir)).toBeNull()
+    })
+
+    it('authorizes progress logs only for the current owner', () => {
+      createInstance('task-auth-log', 'linear', testDir)
+
+      expect(authorizeWorkflowToolUse('task-auth-log', 'chef', 'progress-log', testDir).allowed).toBe(true)
+      const denied = authorizeWorkflowToolUse('task-auth-log', 'pixel', 'progress-log', testDir)
+      expect(denied.allowed).toBe(false)
+      expect(denied.reason).toContain('not the owner')
+    })
+
+    it('allows channel posts only from active output steps', () => {
+      writeFileSync(join(defsDir, 'output-flow.yaml'), `
+name: Output Flow
+description: Output step auth
+version: 1
+steps:
+  - id: write
+    type: agent
+    label: Write
+    agent: chef
+  - id: publish
+    type: output
+    label: Publish
+    agent: chef
+`)
+      createInstance('task-auth-post', 'output-flow', testDir)
+
+      const early = authorizeWorkflowToolUse('task-auth-post', 'chef', 'channel-post', testDir)
+      expect(early.allowed).toBe(false)
+      expect(early.reason).toContain('only allowed from the active output step')
+
+      completeStep('task-auth-post', 'write', { text: 'ready' }, 'chef', testDir)
+      expect(authorizeWorkflowToolUse('task-auth-post', 'chef', 'channel-post', testDir).allowed).toBe(true)
+    })
+
+    it('denies task completion while a workflow is active', () => {
+      createInstance('task-auth-complete', 'linear', testDir)
+
+      const denied = authorizeWorkflowToolUse('task-auth-complete', 'chef', 'task-complete', testDir)
+      expect(denied.allowed).toBe(false)
+      expect(denied.reason).toContain('workflow engine complete')
     })
   })
 

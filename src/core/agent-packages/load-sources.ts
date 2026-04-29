@@ -41,6 +41,7 @@ import {
   registerAgentPackageDefinition,
   unregisterAgentPackageDefinitions,
 } from '../../../plugins/workflows/lib/source-registry'
+import { validateDefinition } from '../../../plugins/workflows/lib/parser'
 import {
   registerAgentPackageSkill,
   unregisterAgentPackageSkills,
@@ -121,6 +122,7 @@ function loadWorkflowsForPackage(
   workflows: string[],
   result: LoadSourcesResult,
 ): void {
+  const parsed: Array<{ id: string; rel: string; definition: WorkflowDefinition }> = []
   for (const rel of workflows) {
     const abs = join(packageDir, rel)
     if (!existsSync(abs)) {
@@ -142,6 +144,21 @@ function loadWorkflowsForPackage(
     }
     const fallback = basename(rel).replace(/\.(yaml|yml)$/i, '')
     const id = deriveWorkflowId(definition, fallback)
+    parsed.push({ id, rel, definition })
+  }
+
+  const knownWorkflowIds = new Set(parsed.map((entry) => entry.id))
+  for (const { id, rel, definition } of parsed) {
+    const errors = validateDefinition(definition, {
+      definitionId: id,
+      source: 'agent-package',
+      contentDir: getContentDir(),
+      knownWorkflowIds,
+    })
+    if (errors.length > 0) {
+      result.warnings.push({ packageId, message: `invalid workflow ${rel}: ${errors.join('; ')}` })
+      continue
+    }
     try {
       registerAgentPackageDefinition(packageId, id, definition)
       result.workflowsRegistered++
