@@ -54,6 +54,15 @@ const commandSnippets = {
   health: ['doctor', 'status'],
   schedule: ['schedule'],
 }
+const cliQuickLinks: Record<string, string> = {
+  start: 'bakin start',
+  onboard: 'bakin onboard',
+  doctor: 'bakin doctor',
+  'tasks list': 'bakin tasks list',
+  'tasks create': 'bakin tasks create <title>',
+  'plugins install': 'bakin plugins install <source>',
+  search: 'bakin search <query>',
+}
 const docsSnippetBlocks = {
   'plugin-basic-manifest': {
     file: 'snippets/plugin-basic/bakin-plugin.json',
@@ -316,6 +325,164 @@ function flattenObject(value: unknown, prefix = ''): Array<{ key: string; value:
 }
 
 const versionLine = `Docs version: Bakin ${APP_VERSION}`
+function generatedPageNote(source: string, note?: string): string {
+  const escapedSource = source.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const escapedNote = note?.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return [
+    '<aside class="generated-page-note" aria-label="Generated page metadata">',
+    `  <span>Generated from <code>${escapedSource}</code>.</span>`,
+    `  <span>Bakin ${APP_VERSION}.</span>`,
+    escapedNote ? `  <span>${escapedNote}</span>` : '',
+    '</aside>',
+  ].filter(Boolean).join('\n')
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function parseCliUsage(command: CliCommand): Array<{ token: string; displayToken: string; choices: string[]; kind: 'argument' | 'option' | 'choice'; required: boolean; description: string }> {
+  const usageParts = command.usage.match(/\[[^\]]+\]|<[^>]+>|\S+/g) ?? []
+  const commandWords = ['bakin', ...command.name.split(/\s+/)]
+  const parts = usageParts.slice(commandWords.length).filter((token) => token !== '...')
+
+  return parts.flatMap((token) => {
+    const required = token.startsWith('<')
+    const optional = token.startsWith('[')
+    const bracketless = token.replace(/^\[/, '').replace(/\]$/, '')
+    const inner = required && bracketless.startsWith('<') && bracketless.endsWith('>')
+      ? bracketless.slice(1, -1)
+      : bracketless
+    const isOption = inner.startsWith('--') || inner.startsWith('-')
+    const hasChoice = inner.includes('|')
+    const choices = hasChoice ? inner.split('|') : []
+    if (optional && choices.length && choices.every(choice => choice.startsWith('--') || choice.startsWith('-'))) {
+      return choices.map(choice => ({
+        token: `[${choice}]`,
+        displayToken: `[${choice}]`,
+        choices: [],
+        kind: 'option' as const,
+        required: false,
+        description: describeCliPart(choice, 'option', false),
+      }))
+    }
+    const kind = hasChoice ? 'choice' : isOption ? 'option' : 'argument'
+    const description = describeCliPart(inner, kind, required)
+    return [{
+      token,
+      displayToken: kind === 'choice' ? displayCliPartToken(inner, kind, required && !optional, optional) : token,
+      choices,
+      kind,
+      required: required && !optional,
+      description,
+    }]
+  })
+}
+
+function displayCliPartToken(token: string, kind: 'argument' | 'option' | 'choice', required: boolean, optional: boolean): string {
+  if (kind !== 'choice') return `${optional ? '[' : ''}${required ? '<' : ''}${token}${required ? '>' : ''}${optional ? ']' : ''}`
+  const labels: Record<string, string> = {
+    'runtime|search|search-models|llm|channels|plugin-assets|agent-assets|recommended-plugins|all': 'target',
+    'search|search-models|mcporter|plugin-assets|agent-assets|recommended-plugins': 'component',
+    'list|enable|disable': 'action',
+    'list|add|pause|resume|remove|run|runs': 'action',
+    'list|restore|empty': 'action',
+    'path|github:user/repo': 'source',
+    'path|github:user/repo[@ref]': 'source',
+    'path|github:user/repo[@ref][#subpath]': 'source',
+  }
+  const label = labels[token] ?? 'value'
+  return required ? `<${label}>` : optional ? `[${label}]` : label
+}
+
+function describeCliPart(token: string, kind: 'argument' | 'option' | 'choice', required: boolean): string {
+  const normalized = token.replace(/[<>[\]]/g, '').replace(/\s+/g, ' ')
+  const descriptions: Record<string, string> = {
+    id: 'Resource identifier.',
+    agent: 'Agent id to assign or target.',
+    'agent-id': 'Agent id to install, update, remove, or inspect.',
+    title: 'Human-readable title.',
+    message: 'Message text.',
+    column: 'Task board column.',
+    reason: 'Human-readable reason.',
+    summary: 'Completion summary.',
+    dependsOn: 'Task id this task depends on.',
+    taskId: 'Task id.',
+    workflowId: 'Workflow definition id.',
+    stepId: 'Workflow step id.',
+    json: 'JSON payload.',
+    key: 'Dot-notation settings key.',
+    value: 'Value to write.',
+    query: 'Search query.',
+    filter: 'Optional log filter.',
+    filename: 'Asset trash filename.',
+    name: 'Name to create.',
+    packageId: 'Package id.',
+    'package-id': 'Package id.',
+    localPath: 'Local filesystem path.',
+    path: 'Local filesystem path.',
+    'path|github:user/repo': 'Local path or GitHub source.',
+    'path|github:user/repo[@ref]': 'Local path or pinned GitHub source.',
+    'path|github:user/repo[@ref][#subpath]': 'Local path or GitHub source, optionally pinned and scoped to a subpath.',
+    'runtime|search|search-models|llm|channels|plugin-assets|agent-assets|recommended-plugins|all': 'Check target.',
+    'search|search-models|mcporter|plugin-assets|agent-assets|recommended-plugins': 'Install target.',
+    'list|enable|disable': 'Knowledge action.',
+    'list|add|pause|resume|remove|run|runs': 'Schedule action.',
+    'list|restore|empty': 'Trash action.',
+    '--column=<column>': 'Filter by task column.',
+    '--workflow=<id>': 'Attach a workflow by id.',
+    '--no-workflow=<reason>': 'Skip workflow matching with a reason.',
+    '--packages': 'Show package state instead of the runtime roster.',
+    '--adopt': 'Adopt an existing runtime agent.',
+    '--install-as <id>': 'Install under a specific id.',
+    '--replace': 'Replace an existing install.',
+    '--keep-blocks': 'Leave managed blocks on disk.',
+    '--delete-agent': 'Delete the runtime agent too.',
+    '--force': 'Bypass the normal safety guard.',
+    '--refresh-template': 'Refresh generated package template files.',
+    '--check': 'Dry-run; report what would change.',
+    '--yes': 'Accept all defaults non-interactively.',
+    '--json': 'Emit machine-readable output.',
+    '--dev': 'Install in local development mode.',
+    '--ref <ref>': 'Pin a Git ref.',
+    '--table=<name>': 'Limit the operation to one search table.',
+    '--rebuild': 'Drop and rebuild indexes.',
+    '--agent=<id>': 'Filter by agent id.',
+    '--limit=<n>': 'Maximum number of results.',
+    '--facets=<list>': 'Comma-separated facet names.',
+    '--apply': 'Apply the managed block.',
+    '--apply-all': 'Apply managed blocks for all agents.',
+    '--check-all': 'Check managed blocks for all agents.',
+    '--uninstall': 'Remove the installed service.',
+  }
+  if (descriptions[normalized]) return descriptions[normalized]
+  if (kind === 'choice') return 'Choose one of these values.'
+  if (kind === 'option') return normalized.includes(' <') || normalized.includes('=') ? 'Optional flag with a value.' : 'Optional flag.'
+  return required ? 'Required value.' : 'Optional value.'
+}
+
+function renderCliUsageLine(command: CliCommand): string {
+  const tokens = command.usage.match(/\[[^\]]+\]|<[^>]+>|\S+/g) ?? []
+  return tokens.map((token, index) => {
+    const inner = token.replace(/^\[/, '').replace(/\]$/, '').replace(/^</, '').replace(/>$/, '')
+    const hasChoice = inner.includes('|')
+    const required = token.startsWith('<')
+    const optional = token.startsWith('[')
+    const displayToken = hasChoice ? displayCliPartToken(inner, 'choice', required && !optional, optional) : token
+    const className = index === 0
+      ? 'cli-token cli-token--binary'
+      : token.startsWith('[') || token.startsWith('--') || token.startsWith('-')
+        ? 'cli-token cli-token--option'
+        : token.startsWith('<')
+          ? 'cli-token cli-token--arg'
+          : 'cli-token'
+    return `<span class="${className}">${escapeHtml(displayToken)}</span>`
+  }).join(' ')
+}
 
 function buildCoverageReport(): Record<string, unknown> {
   const routes = getAllRoutes()
@@ -392,51 +559,172 @@ function buildCoverageReport(): Record<string, unknown> {
   }
 }
 
+type CliCommand = typeof CLI_COMMANDS[number]
+
+const cliReferenceGroups: Array<{
+  title: string
+  description: string
+  matches(command: CliCommand): boolean
+}> = [
+  {
+    title: 'Lifecycle',
+    description: 'Use these commands to run the local server, check whether it is healthy, restart it after configuration changes, and keep the installed CLI current.',
+    matches: (command) => ['start', 'stop', 'restart', 'status', 'dev', 'version', 'update', 'setup service'].includes(command.name),
+  },
+  {
+    title: 'First-Time Setup',
+    description: 'These commands create the local directories and baseline settings Bakin needs before normal operation. They are most useful on a fresh machine or when repairing a partially configured install.',
+    matches: (command) => ['onboard', 'check', 'install', 'mkdir'].includes(command.name),
+  },
+  {
+    title: 'Task Management',
+    description: 'Task commands cover the day-to-day board workflow: creating work, changing status, recording notes, expressing dependencies, and sending ready tasks to agents.',
+    matches: (command) => command.name === 'dispatch' || command.name.startsWith('tasks '),
+  },
+  {
+    title: 'Workflows',
+    description: 'Workflow commands are for guided, multi-step task execution. Use them to discover available flows, start one against a task, advance steps, and submit required inputs.',
+    matches: (command) => command.name.startsWith('workflows '),
+  },
+  {
+    title: 'Agents',
+    description: 'Use these commands to inspect registered agents, review their status and assignments, and send direct messages without opening the dashboard.',
+    matches: (command) => ['agents list', 'agents status', 'agents tasks', 'agents send'].includes(command.name),
+  },
+  {
+    title: 'Agent Packages',
+    description: 'Agent package commands install and maintain reusable agent definitions, bundled knowledge, prompts, and rules that Bakin manages as local agent state.',
+    matches: (command) => ['agents install', 'agents remove', 'agents update', 'agents knowledge'].includes(command.name) || command.name.startsWith('packages '),
+  },
+  {
+    title: 'Plugins',
+    description: 'Plugin commands manage Bakin extensions from the command line, including installing official packages, linking local development plugins, and scaffolding new plugin projects.',
+    matches: (command) => command.name.startsWith('plugins '),
+  },
+  {
+    title: 'Schedule',
+    description: 'Use the schedule command to list and manage recurring jobs that create tasks automatically on a configured cadence.',
+    matches: (command) => command.name === 'schedule',
+  },
+  {
+    title: 'Search',
+    description: 'Search commands query indexed Bakin content, report index health, and rebuild indexes after adapter or data changes.',
+    matches: (command) => ['search', 'search:stats', 'reindex'].includes(command.name),
+  },
+  {
+    title: 'Assets',
+    description: 'Asset maintenance currently focuses on the trash flow: reviewing soft-deleted assets, restoring them, or purging them permanently.',
+    matches: (command) => command.name === 'trash',
+  },
+  {
+    title: 'Settings',
+    description: 'Settings commands are the scriptable path for reading, changing, and seeding local configuration values.',
+    matches: (command) => command.name.startsWith('settings '),
+  },
+  {
+    title: 'Diagnostics and Paths',
+    description: 'Diagnostics commands expose the information needed when something is not behaving as expected: logs, resolved paths, health checks, API docs, and generated agent rules.',
+    matches: (command) => ['doctor', 'logs', 'paths', 'docs', 'agent-rules'].includes(command.name),
+  },
+]
+
+function renderCliCommandBlock(command: CliCommand): string {
+  const usageParts = parseCliUsage(command)
+  const commandId = command.name.replace(/[^a-z0-9]+/g, '-')
+  const commandNotes = [
+    command.stability !== 'stable' ? `Stability: <code>${escapeHtml(command.stability)}</code>` : '',
+    command.aliases?.length ? `Aliases: ${command.aliases.map(alias => `<code>${escapeHtml(alias)}</code>`).join(' ')}` : '',
+  ].filter(Boolean)
+
+  return [
+    `<section class="cli-command" id="${commandId}">`,
+    '  <div class="cli-command__heading">',
+    `    <code>${escapeHtml(command.name)}</code>`,
+    `    <span class="cli-command__summary">${escapeHtml(command.summary)}</span>`,
+    `    <a class="cli-command__anchor" href="#${commandId}" aria-label="Link to ${escapeHtml(command.name)}"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a>`,
+    '  </div>',
+    '  <div class="cli-command__box">',
+    `  <p class="cli-command__description">${escapeHtml(command.description)}</p>`,
+    '  <div class="cli-command__terminal">',
+    '    <span class="cli-command__prompt">&gt;</span>',
+    `    <code>${renderCliUsageLine(command)}</code>`,
+    `    <button class="cli-command__copy" type="button" data-cli-copy="${escapeHtml(command.usage)}" aria-label="Copy ${escapeHtml(command.usage)}">Copy</button>`,
+    '  </div>',
+    usageParts.length ? [
+      '  <table class="cli-command__args">',
+      '    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>',
+      '    <tbody>',
+      ...usageParts.map(part => `      <tr><td><code>${escapeHtml(part.displayToken)}</code>${part.choices.length ? `<span class="cli-command__choices">${part.choices.map(choice => `<span>${escapeHtml(choice)}</span>`).join('')}</span>` : ''}</td><td>${part.kind}</td><td>${part.required ? 'yes' : 'no'}</td><td>${part.description}</td></tr>`),
+      '    </tbody>',
+      '  </table>',
+    ].join('\n') : '',
+    commandNotes.length ? `  <p class="cli-command__meta">${commandNotes.join(' · ')}</p>` : '',
+    '  </div>',
+    '</section>',
+  ].filter(Boolean).join('\n')
+}
+
 function renderCliReference(): string {
-  const grouped = new Map<string, typeof CLI_COMMANDS[number][]>()
-  for (const command of CLI_COMMANDS) {
-    const group = command.group ?? 'Commands'
-    if (!grouped.has(group)) grouped.set(group, [])
-    grouped.get(group)!.push(command)
+  const commonCommandNames = ['start', 'onboard', 'doctor', 'tasks list', 'tasks create', 'plugins install', 'search']
+  const byName = new Map(CLI_COMMANDS.map(command => [command.name, command]))
+  const assigned = new Set<string>()
+  const grouped = cliReferenceGroups.map(group => {
+    const commands = CLI_COMMANDS.filter(command => group.matches(command))
+    for (const command of commands) assigned.add(command.name)
+    return { ...group, commands }
+  }).filter(group => group.commands.length > 0)
+    .sort((a, b) => a.title.localeCompare(b.title))
+  const unassigned = CLI_COMMANDS.filter(command => !assigned.has(command.name))
+  if (unassigned.length) {
+    grouped.push({
+      title: 'Other',
+      description: 'Commands without a dedicated reference family.',
+      matches: () => false,
+      commands: unassigned,
+    })
   }
 
   const lines = [
     '---',
-    'title: CLI Reference',
-    'description: Generated reference for public Bakin CLI commands.',
-    '---',
+	    'title: CLI',
+	    'description: Generated reference for public Bakin CLI commands.',
+		    '---',
+		    '',
+    '<div class="cli-reference-intro">',
+    '  <p>The Bakin CLI is the fastest way to run local setup, check health, manage tasks, install plugins, and script repeatable work. Use it when you want a direct command instead of clicking through the dashboard, or when you need Bakin actions inside shell scripts and automation.</p>',
+    '</div>',
     '',
-    '# CLI Reference',
+    '## Popular',
     '',
-    versionLine,
+    '<div class="cli-common-grid">',
+    ...commonCommandNames.map((name) => {
+      const command = byName.get(name)
+      if (!command) return ''
+      const commandId = command.name.replace(/[^a-z0-9]+/g, '-')
+      return [
+        `<a class="cli-common-card" href="#${commandId}">`,
+        `  <code>${escapeHtml(cliQuickLinks[name] ?? command.usage)}</code>`,
+        `  <span>${escapeHtml(command.summary)}</span>`,
+        '</a>',
+      ].join('\n')
+    }).filter(Boolean),
+    '</div>',
     '',
-    'This page is generated from `src/core/cli/registry.ts`.',
-    '',
-  ]
+		  ]
 
-  for (const [group, commands] of grouped) {
-    lines.push(`## ${group}`, '')
-    for (const command of commands) {
-      lines.push(`### \`${command.usage}\``, '')
-      lines.push(command.description, '')
-      lines.push(`- Visibility: \`${command.visibility}\``)
-      lines.push(`- Stability: \`${command.stability}\``)
-      if (command.aliases?.length) lines.push(`- Aliases: ${command.aliases.map(a => `\`${a}\``).join(', ')}`)
-      if (command.examples?.length) {
-        lines.push('', 'Example:', '')
-        const example = command.examples[0]
-        if (example.code) {
-          lines.push('```sh', example.code, '```', '')
-        }
-        lines.push(`Example test mode: \`${example.test ?? 'unspecified'}\``)
-        if (example.reason) lines.push(`Reason: ${example.reason}`)
-      }
-      lines.push('')
+  for (const group of grouped) {
+    lines.push(`## ${group.title}`, '')
+    lines.push(`<p class="cli-section-description">${escapeHtml(group.description)}</p>`, '')
+    lines.push('<div class="cli-command-list">')
+    for (const command of group.commands) {
+      lines.push(renderCliCommandBlock(command))
     }
-  }
+    lines.push('</div>', '')
+		  }
+		  lines.push(generatedPageNote('src/core/cli/registry.ts'), '')
 
-  return lines.join('\n')
-}
+	  return lines.join('\n')
+	}
 
 function renderApiReference(): string {
   const coreRoutes = getAllRoutes().filter(r => r.pluginId === 'core')
@@ -445,15 +733,9 @@ function renderApiReference(): string {
     '---',
     'title: API Reference',
     'description: Generated reference for documented Bakin HTTP API routes.',
-    '---',
-    '',
-    '# API Reference',
-    '',
-    versionLine,
-    '',
-    'This page is generated from `src/core/api-docs.ts` and each plugin\'s `bakin-plugin.json:contributes.apiRoutes` (with source-scan fallback for plugins that have not declared a manifest contract yet).',
-    '',
-    '## Core Routes',
+	    '---',
+	    '',
+	    '## Core Routes',
     '',
   ]
 
@@ -470,7 +752,7 @@ function renderApiReference(): string {
 
   // Plugin routes — manifest contract first, source-scan fallback.
   const manifests = listPluginManifests().sort((a, b) => a.id.localeCompare(b.id))
-  for (const manifest of manifests) {
+	  for (const manifest of manifests) {
     const routes = getApiRoutes(manifest.id)
     if (!routes.length) continue
     lines.push(`## Plugin: ${manifest.id}`, '')
@@ -482,10 +764,11 @@ function renderApiReference(): string {
       if (route.permissions?.length) lines.push(`- Permissions: ${route.permissions.map(p => `\`${p}\``).join(', ')}`)
       lines.push('')
     }
-  }
+	  }
+	  lines.push(generatedPageNote('src/core/api-docs.ts + plugin manifests', 'Includes source-scan fallback for plugins without manifest route contracts.'), '')
 
-  return lines.join('\n')
-}
+	  return lines.join('\n')
+	}
 
 function renderHookReference(): string {
   const hooks = extractHookRegistrations()
@@ -493,26 +776,21 @@ function renderHookReference(): string {
     '---',
     'title: Hook Reference',
     'description: Generated audit reference for Bakin hook registrations.',
-    '---',
-    '',
-    '# Hook Reference',
-    '',
-    versionLine,
-    '',
-    'This page is generated by source audit. The next contract pass will replace audited hook entries with explicit `defineHookContract(...)` metadata.',
-    '',
-  ]
+	    '---',
+	    '',
+	  ]
 
-  for (const hook of hooks) {
+	  for (const hook of hooks) {
     lines.push(`## \`${hook.name}\``, '')
     lines.push(`Source: \`${hook.file}:${hook.line}\``, '')
     lines.push('- Visibility: `public` until explicitly marked otherwise')
     lines.push('- Stability: `beta` until a hook contract declares stability')
     lines.push('- Contract status: `audited`', '')
-  }
+	  }
+	  lines.push(generatedPageNote('source audit', 'A later contract pass will replace audited hook entries with explicit metadata.'), '')
 
-  return lines.join('\n')
-}
+	  return lines.join('\n')
+	}
 
 function renderExecToolReference(): string {
   const tools = extractExecTools()
@@ -520,27 +798,22 @@ function renderExecToolReference(): string {
     '---',
     'title: Exec and MCP Tool Reference',
     'description: Generated audit reference for Bakin exec/MCP tools exposed to agents.',
-    '---',
-    '',
-    '# Exec and MCP Tool Reference',
-    '',
-    versionLine,
-    '',
-    'This page is generated by source audit. The next contract pass will replace audited tool entries with explicit metadata and schemas.',
-    '',
-  ]
+	    '---',
+	    '',
+	  ]
 
-  for (const tool of tools) {
+	  for (const tool of tools) {
     lines.push(`## \`${tool.name}\``, '')
     if (tool.description) lines.push(tool.description, '')
     lines.push(`Source: \`${tool.file}:${tool.line}\``, '')
     lines.push('- Visibility: `public` until explicitly marked otherwise')
     lines.push('- Stability: `beta` until a tool contract declares stability')
     lines.push('- Contract status: `audited`', '')
-  }
+	  }
+	  lines.push(generatedPageNote('source audit', 'A later contract pass will replace audited tool entries with explicit metadata and schemas.'), '')
 
-  return lines.join('\n')
-}
+	  return lines.join('\n')
+	}
 
 function renderPluginCatalog(): string {
   const plugins = readCorePluginManifests()
@@ -548,17 +821,11 @@ function renderPluginCatalog(): string {
     '---',
     'title: Core Plugin Catalog',
     'description: Generated catalog of core plugins shipped with Bakin.',
-    '---',
-    '',
-    '# Core Plugin Catalog',
-    '',
-    versionLine,
-    '',
-    'This page is generated from `plugins/*/bakin-plugin.json` manifests.',
-    '',
-  ]
+	    '---',
+	    '',
+	  ]
 
-  for (const plugin of plugins) {
+	  for (const plugin of plugins) {
     lines.push(`## ${plugin.name}`, '')
     lines.push(plugin.description ?? 'No description provided.', '')
     lines.push(`- ID: \`${plugin.id}\``)
@@ -568,10 +835,11 @@ function renderPluginCatalog(): string {
     lines.push(`- Dependencies: ${plugin.dependencies?.length ? plugin.dependencies.map(d => `\`${d}\``).join(', ') : '`none`'}`)
     lines.push(`- Permissions: ${plugin.permissions?.length ? plugin.permissions.map(p => `\`${p}\``).join(', ') : '`none declared`'}`)
     lines.push('')
-  }
+	  }
+	  lines.push(generatedPageNote('plugins/*/bakin-plugin.json'), '')
 
-  return lines.join('\n')
-}
+	  return lines.join('\n')
+	}
 
 function renderSettingsReference(): string {
   const settings = flattenObject(DEFAULT_SETTINGS)
@@ -579,25 +847,19 @@ function renderSettingsReference(): string {
     '---',
     'title: Settings Reference',
     'description: Generated reference for Bakin settings keys and default values.',
-    '---',
-    '',
-    '# Settings Reference',
-    '',
-    versionLine,
-    '',
-    'This page is generated from `packages/core/src/settings.ts`.',
-    '',
-    'Bakin reads settings from `settings.json` in the resolved Bakin home directory and deep-merges user values over these defaults.',
+	    '---',
+	    '',
+	    'Bakin reads settings from `settings.json` in the resolved Bakin home directory and deep-merges user values over these defaults.',
     '',
     '| Key | Default |',
     '| --- | --- |',
   ]
-  for (const setting of settings) {
-    lines.push(`| \`${setting.key}\` | \`${JSON.stringify(setting.value)}\` |`)
-  }
-  lines.push('')
-  return lines.join('\n')
-}
+	  for (const setting of settings) {
+	    lines.push(`| \`${setting.key}\` | \`${JSON.stringify(setting.value)}\` |`)
+	  }
+	  lines.push('', generatedPageNote('packages/core/src/settings.ts'), '')
+	  return lines.join('\n')
+	}
 
 function renderRuntimePathsReference(): string {
   const paths = [
@@ -622,13 +884,9 @@ function renderRuntimePathsReference(): string {
     '---',
     'title: Runtime Paths',
     'description: Reference for Bakin runtime files under the resolved Bakin home directory.',
-    '---',
-    '',
-    '# Runtime Paths',
-    '',
-    versionLine,
-    '',
-    'This page documents the well-known paths returned by `getBakinPaths()` in `packages/core/src/content-dir.ts`.',
+	    '---',
+	    '',
+	    'This page documents the well-known paths returned by `getBakinPaths()` in `packages/core/src/content-dir.ts`.',
     '',
     'Resolution order:',
     '',
@@ -638,12 +896,12 @@ function renderRuntimePathsReference(): string {
     '| Key | Purpose |',
     '| --- | --- |',
   ]
-  for (const [key, description] of paths) {
-    lines.push(`| \`${key}\` | ${description} |`)
-  }
-  lines.push('')
-  return lines.join('\n')
-}
+	  for (const [key, description] of paths) {
+	    lines.push(`| \`${key}\` | ${description} |`)
+	  }
+	  lines.push('', generatedPageNote('packages/core/src/content-dir.ts'), '')
+	  return lines.join('\n')
+	}
 
 function renderSdkReference(): string {
   const entries = readSdkExports()
@@ -651,17 +909,11 @@ function renderSdkReference(): string {
     '---',
     'title: SDK Reference',
     'description: Generated audit reference for @bakin/sdk subpath exports.',
-    '---',
-    '',
-    '# SDK Reference',
-    '',
-    versionLine,
-    '',
-    'This page is generated from `packages/sdk/package.json` and SDK barrel files. Full TypeDoc output will replace this audit view once public TSDoc coverage is complete.',
-    '',
-  ]
+	    '---',
+	    '',
+	  ]
 
-  for (const entry of entries) {
+	  for (const entry of entries) {
     lines.push(`## \`${entry.importPath}\``, '')
     lines.push(`Source: \`${entry.source}\``, '')
     if (entry.exports.length === 0) {
@@ -674,10 +926,11 @@ function renderSdkReference(): string {
       lines.push(`| \`${exported.replaceAll('|', '\\|')}\` |`)
     }
     lines.push('')
-  }
+	  }
+	  lines.push(generatedPageNote('packages/sdk/package.json + SDK barrel files', 'Full TypeDoc output will replace this audit view once public TSDoc coverage is complete.'), '')
 
-  return lines.join('\n')
-}
+	  return lines.join('\n')
+	}
 
 function renderCoverageReference(): string {
   const routes = getAllRoutes()
@@ -692,52 +945,50 @@ function renderCoverageReference(): string {
   const settings = flattenObject(DEFAULT_SETTINGS)
   const sdkExports = readSdkExports()
 
-  return `---
-title: Generated Coverage
-description: Coverage report for generated Bakin documentation surfaces.
----
-
-# Generated Coverage
-
-${versionLine}
-
-This page is generated by \`scripts/docs/generate.ts\`. It exists to make launch coverage visible and to give CI a stable place to compare generated documentation output.
-
-| Surface | Source | Status |
-| --- | --- | --- |
-| CLI commands | \`src/core/cli/registry.ts\` | Active: ${CLI_COMMANDS.length} commands, ${cliExampleCount} examples |
-| HTTP routes | \`src/core/api-docs.ts\` and route metadata | Active: ${routes.length} routes, ${routeInputSchemaCount} input schemas, ${routeOutputSchemaCount} output schemas, ${routeExampleCount} routes with examples |
-| Plugin routes | Runtime route registration metadata | Partial: ${routes.filter(route => route.pluginId !== 'core').length} documented plugin routes |
-| Hooks | Source scan for \`hooks.register(...)\` | Audited: ${hooks.length} registrations |
-| Slots | SDK slot contract plus source scan | Documented: ${publicSlotNames.length} public slot names, ${slots.length} audited registrations |
-| Exec/MCP tools | Source scan for \`registerExecTool(...)\` | Audited: ${execTools.length} tools |
-| Core plugins | \`plugins/*/bakin-plugin.json\` | Active: ${corePlugins.length} plugin manifests |
-| Settings | \`packages/core/src/settings.ts\` | Active: ${settings.length} flattened settings |
-| Runtime paths | \`packages/core/src/content-dir.ts\` | Active: documented path contract |
-| SDK exports | \`packages/sdk/package.json\` and barrel files | Audited: ${sdkExports.length} subpaths |
-| Agent package kinds | \`packages/core/src/agent-packages/manifest.ts\` | Active: agent, skill-pack, workflow-pack, knowledge-pack |
-| Tested snippets | \`docs/snippets\` | Active: ${docsSnippetFiles.length} required fixtures |
-| LLM docs | \`docs/public/llms*\` | Active: ${llmBundleFiles.length} public bundles |
-
-## Launch Gates
-
-These generated surfaces are in CI through \`bun run docs:check\`:
-
-- generated docs and LLM bundles exist
-- Markdown pages have title and description frontmatter
-- required snippet fixtures exist
-- snippet JSON parses cleanly
-- the Starlight site builds with Pagefind search and sitemap output
-
-## Remaining Contract Debt
-
-The current generated docs distinguish active structured metadata from audited source scans. Audited surfaces are public enough to document, but still need stronger contract objects before they should be considered final:
-
-- hooks need explicit kind, schemas, examples, visibility, and stability
-- exec/MCP tools need explicit metadata and output shape coverage
-- plugin routes should use the same route metadata helpers as core routes
-- SDK exports need complete TSDoc and stability annotations
-`
+  return [
+    '---',
+    'title: Generated Coverage',
+    'description: Coverage report for generated Bakin documentation surfaces.',
+    '---',
+    '',
+    '| Surface | Source | Status |',
+    '| --- | --- | --- |',
+    `| CLI commands | \`src/core/cli/registry.ts\` | Active: ${CLI_COMMANDS.length} commands, ${cliExampleCount} examples |`,
+    `| HTTP routes | \`src/core/api-docs.ts\` and route metadata | Active: ${routes.length} routes, ${routeInputSchemaCount} input schemas, ${routeOutputSchemaCount} output schemas, ${routeExampleCount} routes with examples |`,
+    `| Plugin routes | Runtime route registration metadata | Partial: ${routes.filter(route => route.pluginId !== 'core').length} documented plugin routes |`,
+    `| Hooks | Source scan for \`hooks.register(...)\` | Audited: ${hooks.length} registrations |`,
+    `| Slots | SDK slot contract plus source scan | Documented: ${publicSlotNames.length} public slot names, ${slots.length} audited registrations |`,
+    `| Exec/MCP tools | Source scan for \`registerExecTool(...)\` | Audited: ${execTools.length} tools |`,
+    `| Core plugins | \`plugins/*/bakin-plugin.json\` | Active: ${corePlugins.length} plugin manifests |`,
+    `| Settings | \`packages/core/src/settings.ts\` | Active: ${settings.length} flattened settings |`,
+    '| Runtime paths | `packages/core/src/content-dir.ts` | Active: documented path contract |',
+    `| SDK exports | \`packages/sdk/package.json\` and barrel files | Audited: ${sdkExports.length} subpaths |`,
+    '| Agent package kinds | `packages/core/src/agent-packages/manifest.ts` | Active: agent, skill-pack, workflow-pack, knowledge-pack |',
+    `| Tested snippets | \`docs/snippets\` | Active: ${docsSnippetFiles.length} required fixtures |`,
+    `| LLM docs | \`docs/public/llms*\` | Active: ${llmBundleFiles.length} public bundles |`,
+    '',
+    '## Launch Gates',
+    '',
+    'These generated surfaces are in CI through `bun run docs:check`:',
+    '',
+    '- generated docs and LLM bundles exist',
+    '- Markdown pages have title and description frontmatter',
+    '- required snippet fixtures exist',
+    '- snippet JSON parses cleanly',
+    '- the Starlight site builds with Pagefind search and sitemap output',
+    '',
+    '## Remaining Contract Debt',
+    '',
+    'The current generated docs distinguish active structured metadata from audited source scans. Audited surfaces are public enough to document, but still need stronger contract objects before they should be considered final:',
+    '',
+    '- hooks need explicit kind, schemas, examples, visibility, and stability',
+    '- exec/MCP tools need explicit metadata and output shape coverage',
+    '- plugin routes should use the same route metadata helpers as core routes',
+    '- SDK exports need complete TSDoc and stability annotations',
+    '',
+    generatedPageNote('scripts/docs/generate.ts', 'Maintainer-only launch coverage and CI comparison output.'),
+    '',
+  ].join('\n')
 }
 
 writeStableFile(

@@ -27,7 +27,7 @@ const ALLOWLIST = [
   'src/core/onboarding',
   // Dev mock sets its own home and must know the real one to avoid collisions
   'dev/imitation-crab',
-  // CLI `bakin init` seeds the real home
+  // CLI `bakin mkdir` seeds the real home
   'cli/bakin.ts',
   // Guard script + regression test intentionally reference the raw paths
   'scripts/bin/check-home-bypasses.mjs',

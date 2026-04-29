@@ -3,10 +3,6 @@ title: Core Plugin Catalog
 description: Generated catalog of core plugins shipped with Bakin.
 ---
 
-Docs version: Bakin 1.0.0
-
-This page is generated from `plugins/*/bakin-plugin.json` manifests.
-
 ## Assets
 
 Centralized content store for all artifacts with rich rendering, search, task linking, manual upload, and clipboard paste
@@ -94,3 +90,8 @@ Workflow runtime — enforces step-by-step agent execution with gated delivery, 
 - Manifest: `plugins/workflows/bakin-plugin.json`
 - Dependencies: `tasks`
 - Permissions: `storage.read`, `storage.write`, `events.emit`
+
+<aside class="generated-page-note" aria-label="Generated page metadata">
+  <span>Generated from <code>plugins/*/bakin-plugin.json</code>.</span>
+  <span>Bakin 1.0.0.</span>
+</aside>
