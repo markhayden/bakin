@@ -119,7 +119,7 @@ export function extractExecTools(): ExecTool[] {
       if (seen.has(key)) continue
       seen.add(key)
       const block = lines.slice(i, Math.min(lines.length, i + 35)).join('\n')
-      const descMatch = block.match(/description:\s*(["'`])((?:\\.|(?!\1).)*)\1/s)
+      const descMatch = block.match(/description:\s*(["'`])((?:\\[\s\S]|(?!\1)[\s\S])*)\1/)
       const description = descMatch?.[2]?.replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\`/g, '`')
       tools.push({ name, description, file: relativeSource(file), line: i + 1 })
     }
@@ -281,8 +281,8 @@ export function extractApiRoutes(): ApiRouteRegistration[] {
       const method = block.match(/method:\s*['"`]([A-Z]+)['"`]/)?.[1]
       if (!path || !method || !HTTP_METHOD_LITERALS.has(method)) continue
       const summary =
-        block.match(/summary:\s*(["'`])((?:\\.|(?!\1).)*)\1/s)?.[2] ??
-        block.match(/description:\s*(["'`])((?:\\.|(?!\1).)*)\1/s)?.[2]
+        block.match(/summary:\s*(["'`])((?:\\[\s\S]|(?!\1)[\s\S])*)\1/)?.[2] ??
+        block.match(/description:\s*(["'`])((?:\\[\s\S]|(?!\1)[\s\S])*)\1/)?.[2]
       const cleanedSummary = summary?.replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\`/g, '`')
       routes.push({
         pluginId,
