@@ -13,7 +13,7 @@ Tasks are Bakin's work unit. Each one records what needs to happen, who owns it,
 ## Bakin Board
 
 <figure class="screenshot-frame">
-  <figcaption>The Bakin Board with seven columns: Backlog, Todo, In Progress, Review, Done, Archived, Blocked.</figcaption>
+  <figcaption>The Bakin Board with seven columns: Backlog, Todo, Blocked, In Progress, Review, Done, Archived.</figcaption>
 </figure>
 
 The board is the home view. Each column is a state, each card is a task. Drag cards between columns to move work forward. Click a card to open its detail panel and see the full history.
@@ -58,7 +58,7 @@ Move to `Done` and add a one-line summary. The summary is what shows up in memor
 
 ### Delete a task
 
-Use the trash icon in the detail panel. Deletes are soft. Recover from `bakin trash` later if you change your mind.
+Use the trash icon in the detail panel. Task deletes remove the task from the board; `bakin trash` is only for asset recovery.
 
 ## Filtering and searching
 
@@ -76,11 +76,11 @@ The seven columns and what they mean:
 | --- | --- |
 | Backlog | Captured but not yet approved or scheduled |
 | Todo | Approved and queued for work |
+| Blocked | Can't progress, needs input or dependency resolution |
 | In Progress | Actively being worked |
 | Review | Work done, waiting for human approval |
 | Done | Approved and complete |
 | Archived | Cleared off the active board, history preserved |
-| Blocked | Can't progress, needs input or dependency resolution |
 
 <p class="gap-top">Tasks move along a fixed state machine. Allowed transitions:</p>
 
@@ -104,7 +104,7 @@ CLI moves and agent calls go through the same state machine.
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
 | Default column | `select` | `todo` | Which column new tasks are created in |
-| Show completed tasks | `boolean` | `true` | Show tasks in the Done and Confirmed columns by default |
+| Show completed tasks | `boolean` | `true` | Show tasks in the Done and Archived columns by default |
 | Auto-archive after (days) | `number` | `0` | Move completed tasks to archive after this many days. 0 to disable. |
 | Max in-progress tasks | `number` | `5` | Warn when more than this many tasks are in progress |
 
