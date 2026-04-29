@@ -13,6 +13,7 @@
 @source "../../sdk/src/**/*.{ts,tsx}";
 @source "../../../src/**/*.{ts,tsx}";
 @source "../../../plugins/**/*.{ts,tsx}";
+@source "../../../../bakin-bits-official/plugins/**/*.{ts,tsx}";
 
 @custom-variant dark (&:is(.dark *));
 
