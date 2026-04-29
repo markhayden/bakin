@@ -14,10 +14,10 @@ Workflows attach to tasks. When an agent creates a task it picks the workflow th
 ## Canvas
 
 <figure class="screenshot-frame">
-  <figcaption>The canvas with steps stacked top to bottom. A "Start" node up top summarizes the inputs.</figcaption>
+  <figcaption>The canvas with steps stacked top to bottom. A "Start" card up top summarizes the inputs.</figcaption>
 </figure>
 
-Open any workflow to see its recipe on the canvas. Steps stacked top to bottom, connected by edges that follow the flow. A `Start` node up top summarizes the inputs. Each step shows its type, label, and the agent that runs it. Click any step to look inside: who owns it, what it depends on, what it expects to output, where it routes on approve or reject.
+Open any workflow to see its recipe on the canvas. Steps stacked top to bottom, connected by edges that follow the flow. A `Start` card up top summarizes the inputs. Each step shows its type, label, and the agent that runs it. Click any step to look inside: who owns it, what it depends on, what it expects to output, where it routes on approve or reject.
 
 Same surface for building. No second editor to learn.
 

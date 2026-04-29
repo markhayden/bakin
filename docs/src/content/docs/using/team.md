@@ -1,78 +1,73 @@
 ---
 title: Team
-description: "Org-chart view of your agent roster. Identity, skills, knowledge, heartbeats, and package state in one place."
+description: "Visual roster of your agents with reporting structure, identity, skills, knowledge, and live status."
 ---
 
-Team is your agent roster. Who's on the team, who reports to whom, what each agent knows and can do, who's on shift right now. The plugin is an adapter over OpenClaw — every agent's identity, skills, and tools live in OpenClaw's home directory. Team owns only UI extras: avatars, display settings, heartbeats.
+Visual roster of your agents. Who reports to whom, who's online, what each one knows and can do. Click any agent for their full profile: soul, identity, rules, tools, skills, the whole stack.
 
-## The team view
-
-<figure class="screenshot-frame">
-  <figcaption>The team org chart with agent cards arranged in a node graph showing reporting and team structure.</figcaption>
-</figure>
-
-Visual org chart, not a flat list. Each agent is a card-shaped node; edges show reporting and team structure. Hover for status, click into the detail view for full identity.
-
-## The agent detail view
+The runtime owns the agents themselves. Bakin reads them, edits them, never copies them.
 
 <figure class="screenshot-frame">
-  <figcaption>Agent detail view with tabs for Overview, Active Context, identity files, Heartbeat, and Knowledge.</figcaption>
+  <figcaption>The roster with agent cards arranged by reporting and team structure.</figcaption>
 </figure>
 
-Tabs across the top:
+## Roster
 
-- **Overview** — name, role, model, current status, recent activity.
-- **Active Context** — what the agent is currently working on.
-- **SOUL / IDENTITY / AGENTS / TOOLS** — the markdown files that define the agent. Edit in place.
-- **Heartbeat** — live status snapshots.
-- **Knowledge** — toggle individual lessons in the agent's knowledge pack on or off.
+Each agent is a card connected by reporting and team structure. Cards show name, role, color, and status at a glance: working, available, offline. Hover any card for a quick read, click in to open the profile.
 
-## Common actions
+`+ New Agent` walks you through name, role, model, and identity templates, then registers the agent with the runtime. Reorganize from the `Teams` dialog: add a team, set who it reports to, move agents around.
 
-### Hire a new agent
+## Profile
 
-`+ New Agent` walks you through name, role, model, and identity templates. Bakin installs the agent into OpenClaw with the right files in the right places.
+<figure class="screenshot-frame">
+  <figcaption>The profile with tabs across the top, agent identity on the left, edits land in the runtime when you save.</figcaption>
+</figure>
 
-### Adopt or install agent packages
+Click an agent and their profile opens. Ten tabs across the top:
 
-Agents can come from agent packs (see [Essentials → Bundles](/docs/using/essentials/#bundles)). Adopt brings an existing OpenClaw agent under Bakin's management. Install drops in a fresh agent kit.
+| Tab | What's there |
+| --- | --- |
+| **Overview** | Name, role, model, current status, recent activity. |
+| **Identity** | The agent's `IDENTITY.md`. Who they are, role, scope. Edit in place. |
+| **Soul** | The agent's `SOUL.md`. Personality, values, voice. |
+| **Memory** | Browse and search this agent's session and durable memory. |
+| **Heartbeat** | Live status snapshots from the runtime. |
+| **Rules** | Behavioral constraints the agent operates under. |
+| **Tools** | Tools the agent can reach. |
+| **Skills** | Domain-specific skill packs they've been given. |
+| **Knowledge** | Lesson toggles for the agent's knowledge pack. Flip individual lessons on or off without uninstalling. |
+| **Active Context** | What the agent is working on right now. |
 
-### Edit identity, soul, tools
+Edits to any markdown tab save back to the runtime. Avatars upload separately and live in `~/.bakin/agents/<id>/` (UI-only, doesn't touch the runtime).
 
-The detail view's markdown tabs open the agent's actual files for editing. Save writes back to OpenClaw. Avatars upload separately and live in `~/.bakin/agents/<id>/`.
+Send a message to the agent straight from the profile. It lands in their session and shows up in the [Activity Feed](/docs/using/essentials/#activity-feed) once they pick it up.
 
-### Toggle knowledge lessons
+## Hiring and adopting
 
-Each agent kit ships a knowledge pack — markdown lessons the agent can pull from. Toggle individual lessons on or off without uninstalling the pack.
+Two paths into the roster:
 
-### Send a message
+- **`+ New Agent`** scaffolds a fresh agent: name, role, model, identity templates. Bakin registers it with the runtime and writes the files where they go.
+- **Install or adopt a package**. Installing pulls a curated agent kit from a package source and drops it in. Adopting takes ownership of an agent that already exists in the runtime but wasn't being tracked.
 
-From the detail view, fire off a message to the agent directly. It lands in the agent's session and shows up in [Activity Feed](/docs/using/essentials/#activity-feed) once the agent picks it up.
+Each agent in the chart carries a state badge:
 
-## Concepts
-
-- **OpenClaw owns the agent.** Identity, soul, AGENTS.md, TOOLS, skills — all of it lives under `~/.openclaw/agents/<id>/workspace/`. Team reads and writes those files but never copies them.
-- **Three states per agent.**
-  - `unmanaged` — agent exists in OpenClaw but Bakin doesn't track it
-  - `adopted` — Bakin manages this agent without owning the kit
-  - `managed` — Bakin installed the agent from a kit and owns the lifecycle
-  - Plus `drifted` and `update-available` flags when the kit ships changes
-- **Knowledge toggles persist in the lockfile.** Disabling a lesson doesn't delete it; it just flags it off in the agent-package lockfile. Re-enable anytime.
+| State | Meaning |
+| --- | --- |
+| `managed` | Bakin owns the install. Came from a package, lifecycle tracked. |
+| `adopted` | Bakin manages it, doesn't own the source kit. |
+| `unmanaged` | Exists in the runtime but isn't tracked yet. |
+| `drifted` | The package shipped changes the local agent hasn't picked up. |
+| `update-available` | A newer version of the package is ready to pull. |
 
 ## Where state lives
 
 ```
-~/.bakin/agents/<id>/                # UI extras only
-  avatar.jpg
-  avatar-full.png
-  .installedBy
+~/.bakin/agents/<id>/                # UI extras only (avatars, display settings)
 ~/.bakin/heartbeats/*.json           # live status snapshots
-~/.bakin/plugin-settings/team.json   # display preferences
-~/.openclaw/agents/<id>/             # canonical agent state (Team reads this)
-  workspace/
-    SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md
-    skills/
+~/.bakin/plugin-settings/team.json   # team layout + per-agent display
 ```
+
+Everything else (soul, identity, rules, tools, skills, sessions) lives in the runtime's home and gets read through the adapter.
 
 ## Settings
 
@@ -88,7 +83,7 @@ From the detail view, fire off a message to the agent directly. It lands in the 
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
 
-Team and packages share a CLI surface:
+Same operations from the terminal:
 
 ```sh
 bakin agents list                                          # roster
