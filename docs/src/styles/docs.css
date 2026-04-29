@@ -166,6 +166,20 @@ pre {
   width: 1%;
 }
 
+/* Right-sidebar TOC: when the URL has a hash matching a TOC link, pin its
+   highlight even if Starlight's scroll-spy can't reach it (sections at the
+   very bottom of the page). The attribute is set by an inline script in
+   astro.config.mjs:head. */
+starlight-toc a[data-toc-hash-pinned] {
+  color: var(--sl-color-text-accent);
+  font-weight: 600;
+}
+/* When something is pinned, suppress scroll-spy's competing highlight. */
+starlight-toc:has(a[data-toc-hash-pinned]) a[aria-current="true"]:not([data-toc-hash-pinned]) {
+  color: inherit;
+  font-weight: inherit;
+}
+
 .hero img {
   filter: drop-shadow(0 0 18px rgba(255, 112, 158, 0.22));
 }
