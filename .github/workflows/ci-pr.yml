@@ -27,11 +27,15 @@ jobs:
       # extracted messaging + projects plugins. Without this, snippet
       # markers like `docs:cli-commands projects` would have no source
       # to render from. See scripts/docs/source-scan.ts.
+      #
+      # Cloned ABOVE $GITHUB_WORKSPACE so `bun test` doesn't recurse into
+      # it and try to run the sibling's plugin tests with bakin's
+      # @bakin/sdk path-aliases.
       - name: Checkout bakin-bits-official (extracted plugins)
         uses: actions/checkout@v4
         with:
           repository: markhayden/bakin-bits-official
-          path: external/bakin-bits-official
+          path: ../external/bakin-bits-official
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -49,8 +53,8 @@ jobs:
 
       - name: Docs build
         env:
-          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ github.workspace }}/external/bakin-bits-official/plugins
+          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
         run: bun run docs:check
 
       - name: Tests
-        run: bun test --isolate tests
+        run: bun test --isolate
