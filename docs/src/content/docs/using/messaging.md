@@ -121,16 +121,6 @@ Each calendar item picks one or more channels from that registry. Channels show 
 
 Sessions index into search (table `bakin_messaging_brainstorm`) so they reach across-plugin queries. Calendar items filter locally on the page rather than indexing.
 
-## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
-
-<!-- docs:cli-commands messaging -->
-| Command | Purpose |
-| --- | --- |
-| `bakin messaging <list\|get\|create\|update\|delete\|approve\|reject\|sessions\|session\|session-create\|session-update\|session-delete\|message\|confirm\|proposal> ...` | Manage messaging items and planning sessions. |
-<!-- /docs:cli-commands -->
-
-Full surface in the [CLI reference](/docs/reference/generated/cli/).
-
 <div class="for-agents">
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents

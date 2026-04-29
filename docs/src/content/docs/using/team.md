@@ -97,11 +97,11 @@ Full surface in the [CLI reference](/docs/reference/generated/cli/).
 Agents introspect and operate on the team through MCP exec tools.
 
 <!-- docs:exec-tools team -->
-- `bakin_exec_team_create_agent`: Create a new agent: registers in OpenClaw, writes persona files, configures dispatch permissions, optionally assigns to a team. Returns next-step instructions.
-- `bakin_exec_team_delete_agent`: Remove an agent from OpenClaw and clean up Bakin state. Requires confirm=true as a safety guard.
+- `bakin_exec_team_create_agent`: Create a new agent: registers it with the active runtime, writes persona files, configures dispatch permissions, optionally assigns it to a team. Returns next-step instructions.
+- `bakin_exec_team_delete_agent`: Remove an agent from the active runtime and clean up Bakin state. Requires confirm=true as a safety guard.
 - `bakin_exec_team_list`: List all agents with their current status (online/working/available/offline).
 - `bakin_exec_team_members`: Get agents that belong to a specific team (e.g. "builders", "creators").
-- `bakin_exec_team_message`: Send a message to an agent via OpenClaw.
+- `bakin_exec_team_message`: Send a message to an agent via the active runtime.
 - `bakin_exec_team_my_team`: Get the team that a specific agent belongs to, including all teammates.
 - `bakin_exec_team_org`: Get the full org structure: teams with their members. Use this to understand who is on which team and reporting lines.
 - `bakin_exec_team_profile`: Get the full profile for an agent including soul, rules, and tools.

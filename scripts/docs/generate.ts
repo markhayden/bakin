@@ -1,5 +1,5 @@
-import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { renderExecToolsSnippet } from './source-scan'
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { extractExecTools, relativeSource, renderExecToolsSnippet, sourceFiles } from './source-scan'
 import { dirname, join } from 'node:path'
 import { APP_VERSION } from '../../packages/core/src/constants'
 import { DEFAULT_SETTINGS } from '../../packages/core/src/settings'
@@ -12,7 +12,6 @@ const generatedRoot = join(docsRoot, '.generated')
 const docsOrigin = 'https://makinbakin.com'
 const docsBasePath = '/docs'
 const docsUrl = `${docsOrigin}${docsBasePath}`
-const sourceRoots = [join(repoRoot, 'plugins'), join(repoRoot, 'src'), join(repoRoot, 'packages')]
 const llmBundleFiles = [
   'llms.txt',
   'llms-full.txt',
@@ -71,21 +70,6 @@ function writeStableFile(path: string, contents: string): void {
     ? contents.replace(/^(---\n[\s\S]*?\n---\n\n)# [^\n]+\n\n/, '$1')
     : contents
   writeFileSync(path, stableContents.trimEnd() + '\n', 'utf8')
-}
-
-function walkFiles(dir: string, files: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    if (entry === 'node_modules' || entry === 'dist' || entry === '.astro') continue
-    const path = join(dir, entry)
-    const stat = statSync(path)
-    if (stat.isDirectory()) walkFiles(path, files)
-    else if (/\.(ts|tsx)$/.test(entry)) files.push(path)
-  }
-  return files
-}
-
-function relativeSource(path: string): string {
-  return path.replace(repoRoot, '').replace(/^\//, '')
 }
 
 function docsPath(path: string): string {
@@ -155,10 +139,6 @@ function updateGeneratedContentBlocks(): void {
   }
 }
 
-function sourceFiles(): string[] {
-  return sourceRoots.flatMap(root => walkFiles(root))
-}
-
 function extractHookRegistrations(): Array<{ name: string; file: string; line: number }> {
   const hooks: Array<{ name: string; file: string; line: number }> = []
   for (const file of sourceFiles()) {
@@ -170,23 +150,6 @@ function extractHookRegistrations(): Array<{ name: string; file: string; line: n
     }
   }
   return hooks.sort((a, b) => a.name.localeCompare(b.name) || a.file.localeCompare(b.file))
-}
-
-function extractExecTools(): Array<{ name: string; description?: string; file: string; line: number }> {
-  const tools: Array<{ name: string; description?: string; file: string; line: number }> = []
-  for (const file of sourceFiles()) {
-    const text = readFileSync(file, 'utf8')
-    const lines = text.split('\n')
-    for (let i = 0; i < lines.length; i++) {
-      if (!lines[i].includes('registerExecTool')) continue
-      const block = lines.slice(i, Math.min(lines.length, i + 35)).join('\n')
-      const name = block.match(/name:\s*['"`]([^'"`]+)['"`]/)?.[1]
-      if (!name) continue
-      const description = block.match(/description:\s*['"`]([^'"`]+)['"`]/)?.[1]
-      tools.push({ name, description, file: relativeSource(file), line: i + 1 })
-    }
-  }
-  return tools.sort((a, b) => a.name.localeCompare(b.name) || a.file.localeCompare(b.file))
 }
 
 function extractSlotRegistrations(): Array<{ name: string; file: string; line: number }> {
