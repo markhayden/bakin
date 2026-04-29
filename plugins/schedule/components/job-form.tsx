@@ -59,7 +59,7 @@ export function JobForm({
       setPrompt(initial.taskPrompt ?? '')
       setWorkflowId(initial.workflowId ?? '')
       setTaskTitle(initial.taskTitle ?? '')
-      setOwner(initial.owner ?? mainAgentId ?? '')
+      setOwner(initial.owner ?? '')
       setRequireTriage(initial.requireTriage ?? false)
       setAllowOverlap(initial.allowOverlap ?? false)
       setMaxFailures(initial.maxFailures ?? 3)
@@ -69,9 +69,10 @@ export function JobForm({
 
   // Sync default owner once main agent id resolves from the team store.
   useEffect(() => {
+    if (initial?.owner) return
     if (!mainAgentId) return
     setOwner((prev) => (prev ? prev : mainAgentId))
-  }, [mainAgentId])
+  }, [initial, mainAgentId])
 
   const canSubmit = name.trim() && schedule.trim() && parsedOk && !submitting
 

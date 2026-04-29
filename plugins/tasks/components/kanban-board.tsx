@@ -338,7 +338,7 @@ export function KanbanBoard() {
 
     await refreshTaskboard()
     setOptimistic(null)
-  }, [agentFilter, hasBoardFilters, optimistic, parsed.columns, refreshTaskboard, search])
+  }, [agentFilter, hasBoardFilters, optimistic, refreshTaskboard, search])
 
   const [detailTask, setDetailTask] = useState<{ task: Task; columnId: ColumnId } | null>(null)
   const [editing, setEditing] = useState(false)

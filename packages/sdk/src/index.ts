@@ -28,6 +28,7 @@ export {
   getRegistryVersion,
   subscribeRegistry,
   getAllNavItems,
+  getNavItemsSnapshot,
   getPluginNavItems,
   getPluginRoute,
   getPluginRoutes,
