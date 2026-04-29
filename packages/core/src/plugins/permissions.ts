@@ -31,6 +31,23 @@ export const PermissionSchema = z.enum([
 
 export type Permission = z.infer<typeof PermissionSchema>
 
+export class PermissionDenied extends Error {
+  readonly pluginId: string
+  readonly permission: Permission
+  readonly method: string
+
+  constructor(input: { pluginId: string; permission: Permission; method: string }) {
+    super(
+      `Plugin "${input.pluginId}" called ${input.method} without declaring permission "${input.permission}". ` +
+      `Add "${input.permission}" to permissions in bakin-plugin.json.`,
+    )
+    this.name = 'PermissionDenied'
+    this.pluginId = input.pluginId
+    this.permission = input.permission
+    this.method = input.method
+  }
+}
+
 export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   'events.emit':   'Broadcast Server-Sent Events to connected browsers',
   'assets.read':   'Read asset metadata and runtime-deliverable asset references',

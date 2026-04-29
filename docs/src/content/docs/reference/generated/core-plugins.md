@@ -16,7 +16,7 @@ Centralized content store for all artifacts with rich rendering, search, task li
 - Bakin compatibility: `>=1.0.0`
 - Manifest: `plugins/assets/bakin-plugin.json`
 - Dependencies: `none`
-- Permissions: `storage.read`, `storage.write`, `events.emit`
+- Permissions: `storage.read`, `storage.write`, `events.emit`, `search.read`, `search.write`
 
 ## Health
 
@@ -27,7 +27,7 @@ System health dashboard — MCP stats, diagnostics, and uptime
 - Bakin compatibility: `>=1.0.0`
 - Manifest: `plugins/health/bakin-plugin.json`
 - Dependencies: `none`
-- Permissions: `storage.read`
+- Permissions: `storage.read`, `runtime.read`, `runtime.agents`, `runtime.channels`, `runtime.skills`, `search.read`
 
 ## Memory
 
@@ -38,7 +38,7 @@ Observability dashboard over runtime memory tiers plus Bakin's audit log
 - Bakin compatibility: `>=1.0.0`
 - Manifest: `plugins/memory/bakin-plugin.json`
 - Dependencies: `none`
-- Permissions: `storage.read`, `events.emit`, `runtime.read`
+- Permissions: `storage.read`, `events.emit`, `runtime.read`, `runtime.agents`, `search.read`, `search.write`
 
 ## Models
 
@@ -49,7 +49,7 @@ Agent model configuration — per-agent models, aliases, task profiles, availabl
 - Bakin compatibility: `>=1.0.0`
 - Manifest: `plugins/models/bakin-plugin.json`
 - Dependencies: `team`
-- Permissions: `storage.read`, `storage.write`, `events.emit`
+- Permissions: `storage.read`, `storage.write`, `events.emit`, `runtime.read`, `runtime.models`
 
 ## Schedule
 
@@ -60,7 +60,7 @@ Cron job scheduling through the runtime adapter with task creation
 - Bakin compatibility: `>=1.0.0`
 - Manifest: `plugins/schedule/bakin-plugin.json`
 - Dependencies: `tasks`
-- Permissions: `storage.read`, `storage.write`, `events.emit`
+- Permissions: `storage.read`, `storage.write`, `events.emit`, `runtime.read`, `runtime.cron`, `search.read`, `search.write`
 
 ## Tasks
 
@@ -71,7 +71,7 @@ Kanban task management with Bakin task-store persistence, agent assignment, and 
 - Bakin compatibility: `>=1.0.0`
 - Manifest: `plugins/tasks/bakin-plugin.json`
 - Dependencies: `none`
-- Permissions: `storage.read`, `storage.write`, `events.emit`
+- Permissions: `storage.read`, `storage.write`, `events.emit`, `runtime.agents`, `search.read`, `search.write`
 
 ## Team
 
@@ -82,7 +82,7 @@ Agent team management — adapter layer over runtime agent workspaces
 - Bakin compatibility: `>=1.0.0`
 - Manifest: `plugins/team/bakin-plugin.json`
 - Dependencies: `none`
-- Permissions: `storage.read`, `storage.write`, `events.emit`
+- Permissions: `storage.read`, `storage.write`, `events.emit`, `runtime.read`, `runtime.agents`, `runtime.skills`, `search.read`, `search.write`
 
 ## Workflows
 
@@ -93,4 +93,4 @@ Workflow runtime — enforces step-by-step agent execution with gated delivery, 
 - Bakin compatibility: `>=1.0.0`
 - Manifest: `plugins/workflows/bakin-plugin.json`
 - Dependencies: `tasks`
-- Permissions: `storage.read`, `storage.write`, `events.emit`
+- Permissions: `storage.read`, `storage.write`, `events.emit`, `runtime.agents`, `runtime.channels`, `search.read`, `search.write`
