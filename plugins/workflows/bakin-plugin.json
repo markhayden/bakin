@@ -21,7 +21,11 @@
   "permissions": [
     "storage.read",
     "storage.write",
-    "events.emit"
+    "events.emit",
+    "runtime.agents",
+    "runtime.channels",
+    "search.read",
+    "search.write"
   ],
   "contributes": {
     "apiRoutes": [

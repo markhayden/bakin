@@ -12,7 +12,7 @@ description: Coverage report for generated Bakin documentation surfaces.
 | Slots | SDK slot contract plus source scan | Documented: 6 public slot names, 1 audited registrations |
 | Exec/MCP tools | Source scan for `registerExecTool(...)` | Audited: 106 tools |
 | Core plugins | `plugins/*/bakin-plugin.json` | Active: 8 plugin manifests |
-| Settings | `packages/core/src/settings.ts` | Active: 48 flattened settings |
+| Settings | `packages/core/src/settings.ts` | Active: 49 flattened settings |
 | Runtime paths | `packages/core/src/content-dir.ts` | Active: documented path contract |
 | SDK exports | `packages/sdk/package.json` and barrel files | Audited: 8 subpaths |
 | Agent package kinds | `packages/core/src/agent-packages/manifest.ts` | Active: agent, skill-pack, workflow-pack, knowledge-pack |
