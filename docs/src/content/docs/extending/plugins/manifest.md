@@ -22,7 +22,7 @@ Source: `docs/snippets/plugin-basic/bakin-plugin.json`
     "client": "client.tsx"
   },
   "permissions": [
-    "routes:read"
+    "storage.read"
   ]
 }
 ```
@@ -48,14 +48,15 @@ Source: `docs/snippets/plugin-basic/bakin-plugin.json`
 | `secrets` | Secret names the plugin expects. |
 | `tests` | Plugin-local test command. |
 | `dependencies` | Other Bakin plugin IDs that must be available before this plugin loads. |
-| `permissions` | Capability labels used for review and future policy enforcement. |
+| `permissions` | Capability labels used for install consent and runtime capability checks. |
 
 ## Authoring Rules
 
 - Treat `id` as permanent once users install the plugin.
 - Keep entries relative to the plugin root.
 - Declare plugin dependencies by plugin ID. `bakin plugins install` refuses a plugin when a dependency is neither core nor already installed.
-- Declare permissions before adding new routes, exec tools, or external integrations.
+- Declare permissions before calling runtime/data APIs such as `ctx.storage`, `ctx.search`, `ctx.tasks`, or `ctx.runtime.*`.
+- Runtime permission mode defaults to warning-only. Missing declarations are logged and audited; enforcement can throw `PermissionDenied`.
 - Do not rely on undocumented host files. Import supported APIs from `@bakin/sdk` and `@bakin/sdk/*`.
 
 ## Validation

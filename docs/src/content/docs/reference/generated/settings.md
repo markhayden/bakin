@@ -59,3 +59,4 @@ Bakin reads settings from `settings.json` in the resolved Bakin home directory a
 | `workflow.rejectRepeatThreshold` | `0.95` |
 | `workflow.enforceAgentScoping` | `true` |
 | `workflow.enforceWorkflowDoneGuard` | `true` |
+| `plugins.runtimeCapabilityMode` | `"warn"` |

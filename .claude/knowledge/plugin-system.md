@@ -366,23 +366,36 @@ Specific `plugin.upgrade.rejected` reasons (`data.reason` field):
 - `force_push_detected` — local HEAD is not an ancestor of the remote
   ref's new HEAD (history was rewritten)
 
-### Permissions (#142 layers 1+2)
+### Permissions (#142 layers 1-3)
 
 `packages/core/src/plugins/permissions.ts` — Zod enum locked to the
-4 currently-used strings:
+current runtime/data capability surface:
 
 ```ts
 PermissionSchema = z.enum([
   'events.emit',
+  'assets.read',
   'runtime.read',
+  'runtime.agents',
+  'runtime.messaging',
+  'runtime.channels',
+  'runtime.cron',
+  'runtime.skills',
+  'runtime.models',
+  'search.read',
+  'search.write',
   'storage.read',
   'storage.write',
+  'tasks.read',
+  'tasks.write',
 ])
 ```
 
 `PERMISSION_DESCRIPTIONS` provides human-readable strings for the
 consent prompt UX. Adding a new permission = one enum entry + one
 description entry, shipped alongside the capability that needs it.
+`PermissionDenied` is the named runtime error used when enforcement is
+enabled and a plugin calls an undeclared capability.
 
 **Layer 1 — audit on activate**: every plugin activation appends to
 `audit.jsonl` and `server.log`:
@@ -404,8 +417,34 @@ injected stdio for testability. Permissions removed at upgrade time
 do NOT trigger a prompt (no security concern); permissions added
 trigger the diff prompt.
 
-**Layer 3** (runtime capability gating) is deferred — see follow-up
-issue.
+**Layer 3 — runtime capability gating**: `src/lib/plugin-permissions.ts`
+wraps the live `PluginContext` at the registry boundary. The wrapper is
+centralized: plugin APIs do not scatter permission checks internally.
+Gated surfaces include `ctx.storage`, `ctx.events.emit`,
+`ctx.activity`, `ctx.tasks`, `ctx.assets`, `ctx.search`, and runtime
+adapter domains (`ctx.runtime.agents`, `.channels`, `.cron`, `.skills`,
+`.models`, `.messaging`, plus `.memory/.sessions/.config` under
+`runtime.read`). Registration APIs and `ctx.hooks.*` are intentionally
+not gated in this layer.
+
+Runtime mode lives in core settings:
+
+```json
+{ "plugins": { "runtimeCapabilityMode": "warn" } }
+```
+
+Allowed values:
+- `warn` (default) — allow the call, log once per plugin/method/permission,
+  and append `plugin.permission_missing` to audit.
+- `enforce` — same reporting, then throw `PermissionDenied`.
+- `off` — emergency bypass.
+
+Grant source:
+- User-installed plugins are checked against lockfile-accepted
+  permissions (`~/.bakin/plugins/lock.json`).
+- Built-in/core plugins are checked against their manifest permissions.
+- If a user plugin has no lockfile entry, Bakin falls back to its
+  manifest and logs that fallback.
 
 ## Core Interfaces
 
