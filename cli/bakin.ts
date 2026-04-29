@@ -8,6 +8,7 @@ import {
   cmdScheduleResume, cmdScheduleRemove, cmdScheduleRun, cmdScheduleRuns,
 } from '../src/cli/schedule'
 import { renderCliUsage } from '../src/core/cli/registry'
+import { parsePluginInstallArgs, PLUGIN_INSTALL_USAGE } from '../src/core/cli/plugin-install-args'
 
 const BASE_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 
@@ -243,13 +244,14 @@ async function cmdPluginsList(): Promise<void> {
   }
 }
 
-async function cmdPluginsInstall(source: string, opts: { yes?: boolean; dev?: boolean; force?: boolean } = {}): Promise<void> {
+async function cmdPluginsInstall(source: string, opts: { yes?: boolean; dev?: boolean; force?: boolean; ref?: string } = {}): Promise<void> {
   const type = !opts.dev && (source.startsWith('github:') || source.includes('/') && !source.startsWith('.') && !source.startsWith('/'))
     ? 'github'
     : 'local'
   const result = await apiPost('/api/plugins/install', {
     source,
     type,
+    ref: opts.ref,
     accepted: false,
     dev: opts.dev === true,
     force: opts.force === true,
@@ -261,6 +263,7 @@ async function cmdPluginsInstall(source: string, opts: { yes?: boolean; dev?: bo
     const accepted = await apiPost('/api/plugins/install', {
       source,
       type,
+      ref: opts.ref,
       accepted: true,
       consentToken: result.consentToken,
       dev: opts.dev === true,
@@ -1708,12 +1711,16 @@ export async function main(): Promise<void> {
           await cmdPluginsList()
         } else if (sub === 'install') {
           const installArgs = args.slice(2)
-          const source = installArgs.find(arg => !arg.startsWith('--'))
-          if (!source) { console.error('Usage: bakin plugins install [--dev] <path|github:user/repo[#subpath]> [--yes] [--force]'); process.exit(1) }
-          await cmdPluginsInstall(source, {
-            yes: installArgs.includes('--yes'),
-            dev: installArgs.includes('--dev'),
-            force: installArgs.includes('--force'),
+          const parsed = parsePluginInstallArgs(installArgs)
+          if (parsed.error || !parsed.source) {
+            console.error(parsed.error ? `${parsed.error}\n${PLUGIN_INSTALL_USAGE}` : PLUGIN_INSTALL_USAGE)
+            process.exit(1)
+          }
+          await cmdPluginsInstall(parsed.source, {
+            yes: parsed.yes,
+            dev: parsed.dev,
+            force: parsed.force,
+            ref: parsed.ref,
           })
         } else if (sub === 'remove') {
           if (!args[2]) { console.error('Usage: bakin plugins remove <id>'); process.exit(1) }

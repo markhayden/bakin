@@ -559,9 +559,9 @@ bakin plugins list
 Example test mode: `illustrative`
 Reason: Requires local server/plugin state.
 
-### `bakin plugins install [--dev] <path|github:user/repo[#subpath]> [--yes] [--force]`
+### `bakin plugins install [--dev] <path|github:user/repo[@ref][#subpath]> [--ref <ref>] [--yes] [--force]`
 
-Installs a plugin from a local path or GitHub source. Append #subpath to install from a monorepo directory. --dev symlinks a local source tree for live development. --yes skips the consent prompt. --force replaces an existing install when used with --dev.
+Installs a plugin from a local path or GitHub source. Append #subpath to install from a monorepo directory, or pin a GitHub install with @ref / --ref. --dev symlinks a local source tree for live development. --yes skips the consent prompt. --force replaces an existing install when used with --dev.
 
 - Visibility: `public`
 - Stability: `stable`

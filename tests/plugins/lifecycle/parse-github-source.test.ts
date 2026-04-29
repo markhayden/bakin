@@ -59,10 +59,20 @@ describe('parseGithubSource — shorthand', () => {
     })
   })
 
-  it('rejects shorthand with `@ref` until #177 lands', () => {
-    expect(() => parseGithubSource('github:owner/repo@v1.2.3')).toThrow(
-      InvalidGithubSourceError,
-    )
+  it('parses shorthand with `@ref`', () => {
+    expect(parseGithubSource('github:owner/repo@v1.2.3')).toEqual({
+      cloneUrl: 'https://github.com/owner/repo.git',
+      subpath: '',
+      ref: 'v1.2.3',
+    })
+  })
+
+  it('parses shorthand refs with slashes', () => {
+    expect(parseGithubSource('owner/repo@feature/foo')).toEqual({
+      cloneUrl: 'https://github.com/owner/repo.git',
+      subpath: '',
+      ref: 'feature/foo',
+    })
   })
 })
 
@@ -110,6 +120,14 @@ describe('parseGithubSource — subpath extraction', () => {
   it('returns empty subpath when no `#`', () => {
     expect(parseGithubSource('github:owner/repo').subpath).toBe('')
   })
+
+  it('parses shorthand ref before subpath', () => {
+    expect(parseGithubSource('github:owner/repo@release/2026#plugins/foo')).toEqual({
+      cloneUrl: 'https://github.com/owner/repo.git',
+      subpath: 'plugins/foo',
+      ref: 'release/2026',
+    })
+  })
 })
 
 describe('parseGithubSource — security/refusal cases', () => {
@@ -125,7 +143,10 @@ describe('parseGithubSource — security/refusal cases', () => {
     ['dot segment', 'github:owner/repo#./plugins/foo'],
     ['multiple #', 'github:owner/repo#a#b'],
     ['invalid shorthand', 'not-a-valid-shorthand'],
-    ['shorthand with @ref', 'github:owner/repo@v1'],
+    ['empty ref', 'github:owner/repo@'],
+    ['option-like ref', 'github:owner/repo@-v1'],
+    ['path-like ref', 'github:owner/repo@feature//foo'],
+    ['ref with parent traversal', 'github:owner/repo@release/../v1'],
     ['leading dot in owner', 'github:.owner/repo'],
   ])('rejects %s', (_label, source) => {
     expect(() => parseGithubSource(source)).toThrow(InvalidGithubSourceError)
