@@ -41,12 +41,12 @@ The detail drawer's `History` tab lists past fires with timestamps, success/fail
 
 ## How it works
 
-Schedule splits ownership: OpenClaw owns the cron, Bakin owns everything around it.
+Schedule splits ownership: the runtime owns the cron, Bakin owns everything around it.
 
-- **OpenClaw owns the cron itself.** The actual cron daemon, expressions, and run logs live in the OpenClaw home directory. Bakin shells out to `openclaw cron add/edit/remove/run` to change them.
+- **The runtime owns the cron itself.** The actual cron daemon, expressions, and run logs live in the runtime home directory. Bakin asks the runtime adapter to add, edit, remove, or fire them.
 - **Bakin owns sidecar metadata.** Display name, owner, agent assignment, task title and prompt, workflow link, and pause/failure state live in `~/.bakin/schedule/sidecar.json`.
 
-When a cron fires, OpenClaw POSTs the **bridge endpoint** (`/api/plugins/schedule/bridge`) with an HMAC-signed payload. Bakin verifies the signature, creates a real task, optionally starts a workflow, and dispatches the work to the assigned agent. The bridge secret auto-generates on first use.
+When a cron fires, the runtime POSTs the **bridge endpoint** (`/api/plugins/schedule/bridge`) with an HMAC-signed payload. Bakin verifies the signature, creates a real task, optionally starts a workflow, and dispatches the work to the assigned agent. The bridge secret auto-generates on first use.
 
 ## Failure handling
 
@@ -59,7 +59,7 @@ Each job tracks consecutive failures. Past `maxFailures`, the job auto-pauses wi
   sidecar.json           # per-job display + ownership metadata
 ```
 
-Cron expressions and run logs are in the OpenClaw home. Bakin reads them; OpenClaw writes them.
+Cron expressions and run logs live in the runtime home. Bakin reads them; the runtime writes them.
 
 ## Settings
 

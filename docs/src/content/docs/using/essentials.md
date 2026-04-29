@@ -30,7 +30,7 @@ Core plugins ship with Bakin and can't be removed. Everything else is fair game.
 
 ### Agents
 
-Where plugins ship code, agent kits ship the content that makes an agent an agent: identity, skills, workflows, knowledge bombs. Once installed, Bakin projects the kit into your OpenClaw home directory and registers the agent in its lockfile. From there it picks up task assignments, calls MCP tools, and reports results like any other team member.
+Where plugins ship code, agent kits ship the content that makes an agent an agent: identity, skills, workflows, knowledge bombs. Once installed, Bakin projects the kit into your runtime's home directory and registers the agent in its lockfile. From there it picks up task assignments, calls MCP tools, and reports results like any other team member.
 
 Most tools call a markdown file an "agent." Bakin's are hired, not prompted.
 
@@ -41,7 +41,7 @@ bakin agents update <agent-id>                        # pull the latest
 bakin agents remove <agent-id>                        # uninstall
 ```
 
-Agent kits are projected, not copied. The OpenClaw home directory stays the source of truth for agent state. [Build your own kit](/docs/extending/agents/overview/) or grab one from the community to make Bakin yours.
+Agent kits are projected, not copied. The runtime home directory stays the source of truth for agent state. [Build your own kit](/docs/extending/agents/overview/) or grab one from the community to make Bakin yours.
 
 ## Activity Feed
 
@@ -88,7 +88,7 @@ This is the main menu. All apps have one, but this one is ours. Self-explanatory
   <figcaption>The dispatch ticker counting down to the next cycle.</figcaption>
 </figure>
 
-Dispatch ensures queued work gets picked up by the right agent. Tasks pile up in a queue as they're created. Every dispatch cycle, Bakin scans the queue, picks out anything ready to run, and routes each task to its assigned agent through OpenClaw. The agent takes it from there.
+Dispatch ensures queued work gets picked up by the right agent. Tasks pile up in a queue as they're created. Every dispatch cycle, Bakin scans the queue, picks out anything ready to run, and routes each task to its assigned agent through the runtime. The agent takes it from there.
 
 Agents can dispatch other agents on the fly too. When one finishes a task or hands off new work, it can route directly to whoever's next without waiting for the cycle. Bakin's dispatch loop sits behind that as the safety net: it catches anything that fell through, retries transient failures, and cools down structural ones so nothing sits stuck indefinitely.
 
