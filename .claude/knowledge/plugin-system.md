@@ -116,26 +116,30 @@ Pure mutators (`addPlugin`, `removePlugin`, `updatePlugin`) never touch
 fs. `setCorePluginCheck(predicate)` wires defense-in-depth so mutators
 throw for core ids. Set during `pluginRegistry.initialize()`.
 
-### Install flow — `bakin plugins install <src> [--yes]`
+### Install flow — `bakin plugins install <src> [--ref <ref>] [--yes]`
 
 Two-phase with a HMAC-signed consent token binding to defend against a
 source-swap-after-prompt attack (the prompt approves source A but the
 commit submits source B):
 
-1. CLI POSTs `/api/plugins/install` with `{ source, type }` (no
+1. CLI POSTs `/api/plugins/install` with `{ source, type, ref? }` (no
    `accepted`).
-2. Server clones to staging, validates manifest + permissions, parses
-   the manifest version, computes `manifestSha`.
+2. Server parses `@ref` for shorthand sources or accepts `--ref` as the
+   request-body `ref`, rejects conflicts, clones to staging at that ref,
+   validates manifest + permissions, parses the manifest version, and
+   computes `manifestSha`.
 3. If permissions are non-empty AND `accepted !== true`, server returns
    `{ awaitingConsent: true, id, version, permissions, consentToken }`
    and tears down staging. The token is HMAC-SHA256 over
-   `{source, manifestSha, permissions, expiresAt}` with a process-
-   lifetime key (5-minute TTL).
+   `{source identity, manifestSha, permissions, expiresAt}` with a
+   process-lifetime key (5-minute TTL). The source identity includes
+   the requested ref when one was supplied, so preflight and commit
+   cannot silently swap refs.
 4. CLI surfaces the consent prompt.
-5. On accept, CLI re-POSTs with `{ source, type, accepted: true,
+5. On accept, CLI re-POSTs with `{ source, type, ref?, accepted: true,
    consentToken }`. Server re-clones, recomputes `manifestSha`, then:
    - Verifies the token signature + expiry.
-   - Asserts `token.source === body.source` (refuses on mismatch).
+   - Asserts `token.source === source identity` (refuses on mismatch).
    - Asserts `token.manifestSha === fresh manifestSha` (if the manifest
      changed between preflight and commit, returns awaitingConsent
      again with `manifestChanged: true` + a fresh token + the new diff).
@@ -168,6 +172,26 @@ Behavior:
   dir with the subpath contents. The in-place `git fetch`+`git merge`
   flow used by non-subpath upgrades cannot apply here since there's no
   local `.git/` to fetch into.
+
+#### Git ref pinning
+
+Install supports both `bakin plugins install github:user/repo@v1.2.3`
+and `bakin plugins install github:user/repo#plugins/foo --ref v1.2.3`.
+Inline `@ref` parsing is intentionally limited to shorthand sources so
+`git@github.com:owner/repo.git` remains unambiguous; full URL and
+`file://` installs use `--ref`.
+
+The lockfile records:
+
+- `source`: the original install source string.
+- `ref`: the requested ref when supplied, otherwise the cloned symbolic
+  branch when available.
+- `commitSha`: `git rev-parse HEAD` captured from the staging clone
+  before subpath installs drop `.git/`.
+
+Exact commit refs are supported. The installer first tries a shallow
+`git clone --branch <ref>` for branch/tag refs, then falls back to a
+full no-checkout clone plus detached checkout so raw commit shas work.
 - Subpath validation is enforced at three layers: the lockfile schema
   (`SourceStringSchema` in `lockfile.ts`), the shared `parseGithubSource`
   parser, and a defensive `realpathSync` containment check after the

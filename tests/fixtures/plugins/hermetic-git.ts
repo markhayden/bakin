@@ -31,6 +31,11 @@ function run(cmd: string, args: string[], cwd: string, env: NodeJS.ProcessEnv = 
   }).toString().trim()
 }
 
+/** Run git in a fixture repo and return trimmed stdout. */
+export function runGit(args: string[], cwd: string, env: NodeJS.ProcessEnv = {}): string {
+  return run('git', args, cwd, env)
+}
+
 /**
  * Initialize a bare git repo + a working clone seeded with `files`.
  * Returns the absolute path of the bare repo (use `file://` + this path

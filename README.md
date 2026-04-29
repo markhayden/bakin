@@ -178,6 +178,7 @@ See [`docs/plugin-authoring.md`](./docs/plugin-authoring.md) for authoring a plu
 bakin plugins list                          # installed plugins + versions
 bakin plugins install ./my-plugin           # from local path
 bakin plugins install github:user/repo      # from GitHub
+bakin plugins install github:user/repo --ref v1.2.3
 bakin plugins remove my-plugin              # refuses to remove core plugins
 bakin plugins scaffold <name>               # starter plugin at ./<name>/
 ```

@@ -14,7 +14,7 @@ bun install
 bakin plugins install --dev .
 ```
 
-Use `--dev` while authoring. It symlinks the local source into Bakin, activates it immediately, and participates in the dev reload loop. Use a normal `bakin plugins install <path|github:user/repo[#subpath]>` when you want a copied/pinned install.
+Use `--dev` while authoring. It symlinks the local source into Bakin, activates it immediately, and participates in the dev reload loop. Use a normal `bakin plugins install <path|github:user/repo[@ref][#subpath]>` when you want a copied install, and add `--ref <tag|branch|sha>` when you want to pin the git source.
 
 Run Bakin with `bakin dev` while editing linked plugins. Client components, routes, server registrations, hooks, exec tools, and most search wiring rebuild and hot-swap from the linked source tree. Manifest, durable schema, and startup-only contract changes can still require `bakin restart`.
 
