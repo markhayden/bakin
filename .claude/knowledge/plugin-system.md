@@ -921,6 +921,12 @@ after restart either matches (0 = client default) or detects a
   the new server module before calling `onShutdown` or sweeping old
   registrations. Syntax/top-level import mistakes therefore show a dev
   overlay without disabling the previous working plugin.
+- **Plugin module import must stay free of lifetime side effects.**
+  Timers, process listeners, file watchers, sockets, and event listeners
+  must be created inside `activate(ctx)` or narrower handlers and cleaned
+  in `onShutdown()`. `bakin/no-plugin-top-level-side-effects` enforces the
+  direct import-time cases because old module instances stay alive after a
+  cache-busted hot reload.
 - **Search tables survive hot reload.** The reload path unregisters
   plugin-owned search wiring and pending reconciles, then recreates them
   on activate. Only remove/uninstall purges backing tables.

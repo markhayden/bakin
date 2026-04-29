@@ -67,6 +67,14 @@ const DEFAULTS: MemorySettings = {
 // exist.
 let deferredBackfill: (() => Promise<void>) | null = null
 let ready = false
+let eventDisposers: Array<() => void> = []
+
+function clearEventSubscriptions(): void {
+  for (const dispose of eventDisposers) {
+    dispose()
+  }
+  eventDisposers = []
+}
 
 const memoryPlugin: BakinPlugin = {
   id: 'memory',
@@ -127,6 +135,8 @@ const memoryPlugin: BakinPlugin = {
   contentFiles: [],
 
   async activate(ctx: PluginContext) {
+    clearEventSubscriptions()
+
     const settings = { ...DEFAULTS, ...(ctx.getSettings<Partial<MemorySettings>>() ?? {}) }
 
     // ─── Search: unified bakin_memory table ─────────────────────────────────
@@ -209,18 +219,18 @@ const memoryPlugin: BakinPlugin = {
     // provider-owned tiers is owned by the indexer itself.
     // Events that fire before onReady() would hit a missing table, so we
     // gate them behind the same ready flag as the initial backfill.
-    ctx.events.on('file.add', (_event, data) => {
+    eventDisposers.push(ctx.events.on('file.add', (_event, data) => {
       if (!ready) return
       void indexer.handleWatcherEvent(String(data.file ?? ''), 'add')
-    })
-    ctx.events.on('file.change', (_event, data) => {
+    }))
+    eventDisposers.push(ctx.events.on('file.change', (_event, data) => {
       if (!ready) return
       void indexer.handleWatcherEvent(String(data.file ?? ''), 'change')
-    })
-    ctx.events.on('file.unlink', (_event, data) => {
+    }))
+    eventDisposers.push(ctx.events.on('file.unlink', (_event, data) => {
       if (!ready) return
       void indexer.handleWatcherEvent(String(data.file ?? ''), 'unlink')
-    })
+    }))
 
     // Defer the initial backfill until onReady(). activate() runs BEFORE
     // createRegisteredTables() in server.ts, so writes issued here would
@@ -306,6 +316,7 @@ const memoryPlugin: BakinPlugin = {
   async onShutdown() {
     ready = false
     deferredBackfill = null
+    clearEventSubscriptions()
     stopTtlTimer()
   },
 }
