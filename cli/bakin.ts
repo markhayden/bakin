@@ -1072,7 +1072,7 @@ async function cmdLogs(filter?: string): Promise<void> {
 
   if (!existsSync(auditPath)) {
     console.error(`Audit log not found: ${auditPath}`)
-    console.error('Is Bakin initialized? Run: bakin init')
+    console.error('Is Bakin initialized? Run: bakin mkdir')
     process.exit(1)
   }
 
@@ -1820,11 +1820,6 @@ export async function main(): Promise<void> {
 
       case 'onboard':
         await cmdOnboard(args)
-        break
-
-      case 'init':
-        console.error('[deprecated] `bakin init` is now `bakin mkdir`. Delegating...')
-        await cmdOnboardingMkdir()
         break
 
       case 'doctor':

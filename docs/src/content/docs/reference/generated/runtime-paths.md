@@ -3,8 +3,6 @@ title: Runtime Paths
 description: Reference for Bakin runtime files under the resolved Bakin home directory.
 ---
 
-Docs version: Bakin 1.0.0
-
 This page documents the well-known paths returned by `getBakinPaths()` in `packages/core/src/content-dir.ts`.
 
 Resolution order:
@@ -30,3 +28,8 @@ Resolution order:
 | `inbox` | General inbox directory. |
 | `tasks` | Bakin-owned task metadata store. |
 | `workflows` | Workflow definitions, skills, and instances. |
+
+<aside class="generated-page-note" aria-label="Generated page metadata">
+  <span>Generated from <code>packages/core/src/content-dir.ts</code>.</span>
+  <span>Bakin 1.0.0.</span>
+</aside>
