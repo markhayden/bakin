@@ -1,6 +1,6 @@
 ---
 title: Settings
-description: "Every Bakin knob in one panel. System-wide config, per-plugin tabs, no restart on save."
+description: "Every Bakin knob in one panel. System config, plugin settings, no restart on save."
 ---
 
 Every knob Bakin gives you, in one panel. System-wide stuff (dispatch, watchdog, alerts) sits in `System & Alerts`. Every plugin that exposes options gets its own tab. Save and it's live; the watchdog re-reads on its next cycle, no restart needed.
@@ -31,7 +31,7 @@ The built-in tab covers the runtime knobs that don't belong to any single plugin
 
 Most folks never touch these. Defaults are sane. Tweak when you've got a specific reason.
 
-## Per-plugin tabs
+## Plugin Settings
 
 Every plugin can declare its own settings. When it does, a tab shows up here with the same UI and persistence rules. Look for `Memory`, `Models`, `Tasks`, etc. once those plugins are active. Each plugin's page documents what's behind its tab.
 
