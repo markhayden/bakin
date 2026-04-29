@@ -120,12 +120,16 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 ## Settings
 
 <!-- docs:settings tasks -->
+<div class="settings-table">
+
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
 | Default column | `select` | `todo` | Which column new tasks are created in |
 | Show completed tasks | `boolean` | `true` | Show tasks in the Done and Confirmed columns by default |
 | Auto-archive after (days) | `number` | `0` | Move completed tasks to archive after this many days. 0 to disable. |
 | Max in-progress tasks | `number` | `5` | Warn when more than this many tasks are in progress |
+
+</div>
 <!-- /docs:settings -->
 
 <div class="for-agents">

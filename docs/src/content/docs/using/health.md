@@ -66,10 +66,14 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 ## Settings
 
 <!-- docs:settings health -->
+<div class="settings-table">
+
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
 | Refresh interval (seconds) | `number` | `30` | How often to poll for updated metrics |
 | Detailed metrics | `boolean` | `true` | Show per-plugin and per-tool breakdowns |
+
+</div>
 <!-- /docs:settings -->
 
 <div class="for-agents">

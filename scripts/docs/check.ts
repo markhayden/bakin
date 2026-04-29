@@ -196,6 +196,8 @@ function renderSettingsSnippet(marker: string): string {
   if (!fields.length) return ''
   const lines = [
     `<!-- docs:settings ${marker} -->`,
+    '<div class="settings-table">',
+    '',
     '| Setting | Type | Default | What it does |',
     '| --- | --- | --- | --- |',
   ]
@@ -206,6 +208,8 @@ function renderSettingsSnippet(marker: string): string {
     const desc = escapeTableCell(field.description || '')
     lines.push(`| ${name} | ${type} | ${def} | ${desc} |`)
   }
+  lines.push('')
+  lines.push('</div>')
   lines.push('<!-- /docs:settings -->')
   return lines.join('\n')
 }

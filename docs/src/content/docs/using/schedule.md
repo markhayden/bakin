@@ -78,12 +78,16 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 ## Settings
 
 <!-- docs:settings schedule -->
+<div class="settings-table">
+
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
 | Max concurrent jobs | `number` | `3` | Maximum jobs that can run at the same time |
 | Failure cooldown (ms) | `number` | `300000` | Wait time after failure before retrying |
 | Max consecutive failures | `number` | `3` | Pause job after this many consecutive failures |
 | Bridge enabled | `boolean` | `true` | Allow cron jobs to create tasks via the bridge |
+
+</div>
 <!-- /docs:settings -->
 
 <div class="for-agents">

@@ -83,6 +83,8 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 ## Settings
 
 <!-- docs:settings workflows -->
+<div class="settings-table">
+
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
 | Gate timeout (hours) | `number` | `24` | Auto-reject gates not approved within this time |
@@ -91,6 +93,8 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 | Channel gate alerts | `boolean` | `false` | Send runtime channel approvals when gates need review |
 | Gate approval channel | `string` | `general` | Runtime channel ID for gate approval messages |
 | Require reject reason | `boolean` | `true` | Require a reason when rejecting from a channel approval |
+
+</div>
 <!-- /docs:settings -->
 
 <div class="for-agents">

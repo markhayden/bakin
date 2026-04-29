@@ -95,9 +95,13 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 ## Settings
 
 <!-- docs:settings team -->
+<div class="settings-table">
+
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
 | Heartbeat stale threshold (minutes) | `number` | `15` | Mark agents as offline after this many minutes without a heartbeat or audit activity |
+
+</div>
 <!-- /docs:settings -->
 
 <div class="for-agents">

@@ -76,10 +76,14 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 ## Settings
 
 <!-- docs:settings projects -->
+<div class="settings-table">
+
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
 | Default project status | `select` | `active` | Status assigned to new projects |
 | Auto-promote threshold | `number` | `0` | Auto-promote checklist items to tasks when project has more than N unchecked items (0 = disabled) |
+
+</div>
 <!-- /docs:settings -->
 
 <div class="for-agents">
