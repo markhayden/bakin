@@ -11,10 +11,6 @@ import { Route as IndexRoute } from './routes/index'
 import { Route as TasksRoute } from './routes/tasks'
 import { Route as TeamIndexRoute } from './routes/team.index'
 import { Route as TeamIdRoute } from './routes/team.$id'
-import { Route as ProjectsIndexRoute } from './routes/projects.index'
-import { Route as ProjectsNewRoute } from './routes/projects.new'
-import { Route as ProjectsIdIndexRoute } from './routes/projects.$id.index'
-import { Route as ProjectsIdEditRoute } from './routes/projects.$id.edit'
 import { Route as WorkflowsIndexRoute } from './routes/workflows.index'
 import { Route as WorkflowsNewRoute } from './routes/workflows.new'
 import { Route as WorkflowsIdIndexRoute } from './routes/workflows.$id.index'
@@ -22,9 +18,6 @@ import { Route as WorkflowsIdEditRoute } from './routes/workflows.$id.edit'
 import { Route as AssetsRoute } from './routes/assets'
 import { Route as HealthRoute } from './routes/health'
 import { Route as MemoryRoute } from './routes/memory'
-import { Route as MessagingIndexRoute } from './routes/messaging.index'
-import { Route as MessagingCalendarRoute } from './routes/messaging.calendar'
-import { Route as MessagingBrainstormRoute } from './routes/messaging.brainstorm'
 import { Route as ModelsRoute } from './routes/models'
 import { Route as ScheduleRoute } from './routes/schedule'
 import { Route as SettingsRoute } from './routes/settings'
@@ -35,10 +28,6 @@ const routeTree = RootRoute.addChildren([
   TasksRoute,
   TeamIndexRoute,
   TeamIdRoute,
-  ProjectsIndexRoute,
-  ProjectsNewRoute,
-  ProjectsIdIndexRoute,
-  ProjectsIdEditRoute,
   WorkflowsIndexRoute,
   WorkflowsNewRoute,
   WorkflowsIdIndexRoute,
@@ -46,9 +35,6 @@ const routeTree = RootRoute.addChildren([
   AssetsRoute,
   HealthRoute,
   MemoryRoute,
-  MessagingIndexRoute,
-  MessagingCalendarRoute,
-  MessagingBrainstormRoute,
   ModelsRoute,
   ScheduleRoute,
   SettingsRoute,
