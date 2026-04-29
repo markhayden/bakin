@@ -229,7 +229,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.definition) setWfDefinition(d.definition) })
       .catch(() => {})
-  }, [workflowId])
+  }, [wfDefinition?.name, workflowId])
 
   // Derived workflow state
   const isGatePending = wfInstance?.status === 'pending_approval'

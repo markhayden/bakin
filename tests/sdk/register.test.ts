@@ -35,6 +35,7 @@ import {
   getRegistryVersion,
   subscribeRegistry,
   getAllNavItems,
+  getNavItemsSnapshot,
   getPluginNavItems,
   getPluginRoute,
   getPluginRoutes,
@@ -196,5 +197,23 @@ describe('getRegistryVersion + subscribeRegistry', () => {
     unsubscribe()
     registerPlugin({ id: 'x' })
     expect(listener).toHaveBeenCalledTimes(2)  // no further calls after unsubscribe
+  })
+
+  it('exposes a stable nav snapshot for useSyncExternalStore', () => {
+    const before = getNavItemsSnapshot()
+    expect(getNavItemsSnapshot()).toBe(before)
+
+    registerPlugin({ id: 'x', navItems: [{ id: 'x-nav', label: 'X', href: '/x' }] })
+    const afterRegister = getNavItemsSnapshot()
+    expect(afterRegister).not.toBe(before)
+    expect(afterRegister.some((item) => item.id === 'x-nav')).toBe(true)
+    expect(getNavItemsSnapshot()).toBe(afterRegister)
+
+    const copy = getAllNavItems()
+    expect(copy).toEqual([...afterRegister])
+    expect(copy).not.toBe(afterRegister)
+
+    unregisterPlugin('x')
+    expect(getNavItemsSnapshot()).not.toBe(afterRegister)
   })
 })
