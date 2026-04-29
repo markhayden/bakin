@@ -602,6 +602,29 @@ describe('PluginRegistryImpl', () => {
       expect(failed.errorMessage).toContain('boom')
     })
 
+    it('wraps plugin contexts with runtime permission warnings', async () => {
+      const path = writeFakePlugin('needs-storage', {
+        activate: `ctx.storage.write('state.txt', 'no permission')`,
+      })
+
+      await pluginRegistry.initialize({ plugins: [{ path }] }, mockStorage(), mockEvents())
+
+      const active = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'needs-storage')
+      expect(active).toMatchObject({ status: 'active' })
+      expect(mockAppendAudit).toHaveBeenCalledWith(
+        expect.any(String),
+        'plugin.permission_missing',
+        'system',
+        expect.objectContaining({
+          pluginId: 'needs-storage',
+          method: 'ctx.storage.write',
+          requiredPermission: 'storage.write',
+          mode: 'warn',
+        }),
+        'system',
+      )
+    })
+
     it('fails user plugins that register undeclared API routes', async () => {
       writeUserPlugin('undeclared-route', {
         activate: `ctx.registerRoute({ path: '/data', method: 'GET', handler: function() { return new Response('bad') } })`,

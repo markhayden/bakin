@@ -127,7 +127,7 @@ Source: `plugins/assets/index.ts:834`
 
 Get a human-readable overview of all gate statuses in a workflow. Shows which gates are approved, waiting, or pending.
 
-Source: `plugins/workflows/index.ts:1408`
+Source: `plugins/workflows/index.ts:1410`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -157,7 +157,7 @@ Source: `scripts/lib/get-paths.ts:9`
 
 Get the current workflow step as human-readable formatted text. Includes instructions, prior outputs, schema, and rejection context in a clear structure.
 
-Source: `plugins/workflows/index.ts:1332`
+Source: `plugins/workflows/index.ts:1334`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -757,7 +757,7 @@ Source: `scripts/lib/search-tools.ts:90`
 
 Submit workflow step output with local pre-validation. Validates against the step schema BEFORE hitting the server, giving you detailed field-level errors without a round trip.
 
-Source: `plugins/workflows/index.ts:1352`
+Source: `plugins/workflows/index.ts:1354`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -997,7 +997,7 @@ Source: `plugins/team/index.ts:1855`
 
 Complete a workflow step with output. Validates output against the step schema, advances the workflow to the next step. Returns success status and whether the workflow is complete.
 
-Source: `plugins/workflows/index.ts:1296`
+Source: `plugins/workflows/index.ts:1298`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -1007,7 +1007,7 @@ Source: `plugins/workflows/index.ts:1296`
 
 Get a workflow definition by filename. Returns the full definition with steps, inputs, and resolved sub-workflows.
 
-Source: `plugins/workflows/index.ts:1202`
+Source: `plugins/workflows/index.ts:1204`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -1017,7 +1017,7 @@ Source: `plugins/workflows/index.ts:1202`
 
 Get the full state of a workflow instance for a task, including step states and history.
 
-Source: `plugins/workflows/index.ts:1268`
+Source: `plugins/workflows/index.ts:1270`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -1027,7 +1027,7 @@ Source: `plugins/workflows/index.ts:1268`
 
 Get the current workflow step for a task. Returns only the current step (information gating — future steps are hidden). Critical for agents to know what to do next.
 
-Source: `plugins/workflows/index.ts:1282`
+Source: `plugins/workflows/index.ts:1284`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -1037,7 +1037,7 @@ Source: `plugins/workflows/index.ts:1282`
 
 List all workflow definitions (templates). Returns name, filename, description, and step count for each.
 
-Source: `plugins/workflows/index.ts:1183`
+Source: `plugins/workflows/index.ts:1185`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -1047,7 +1047,7 @@ Source: `plugins/workflows/index.ts:1183`
 
 List workflow instances. Optionally filter by status (in_progress, pending_approval, complete, failed, cancelled).
 
-Source: `plugins/workflows/index.ts:1255`
+Source: `plugins/workflows/index.ts:1257`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -1057,7 +1057,7 @@ Source: `plugins/workflows/index.ts:1255`
 
 Start a workflow instance for a task. The task must exist on the board. Returns the created instance.
 
-Source: `plugins/workflows/index.ts:1220`
+Source: `plugins/workflows/index.ts:1222`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability

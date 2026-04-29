@@ -55,6 +55,7 @@ Bakin reads settings from `settings.json` in the resolved Bakin home directory a
 | `workflow.rejectRepeatThreshold` | `0.95` |
 | `workflow.enforceAgentScoping` | `true` |
 | `workflow.enforceWorkflowDoneGuard` | `true` |
+| `plugins.runtimeCapabilityMode` | `"warn"` |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
   <span>Generated from <code>packages/core/src/settings.ts</code>.</span>

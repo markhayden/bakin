@@ -37,6 +37,14 @@ export {
   readPluginManifestJson,
 } from './plugins/manifest'
 export type { ParsePluginManifestOptions } from './plugins/manifest'
+export {
+  PermissionDenied,
+  PERMISSION_DESCRIPTIONS,
+  newPermissions,
+  parseManifestPermissions,
+  suggestPermission,
+} from './plugins/permissions'
+export type { Permission } from './plugins/permissions'
 
 // Storage
 export { MarkdownStorageAdapter } from './storage/markdown-adapter'

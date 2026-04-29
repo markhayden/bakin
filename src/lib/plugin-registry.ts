@@ -58,6 +58,7 @@ import {
   createPluginRuntimeFacade,
   createPluginTaskService,
 } from './plugin-context-services'
+import { wrapPluginContextPermissions } from './plugin-permissions'
 
 /**
  * Optional static core-plugin table. Set from server.ts on startup so
@@ -636,7 +637,7 @@ class PluginRegistryImpl {
       : storage
     const assets = createPluginAssetsAPI()
     const usePublicRuntimeFacade = state.source === 'user'
-    return {
+    const ctx: PluginContext = {
       storage: pluginStorage,
       events,
       pluginId,
@@ -764,6 +765,11 @@ class PluginRegistryImpl {
         invoke: <R>(name: string, data: unknown) => hookRegistry.invoke<R>(name, data),
       },
     }
+    return wrapPluginContextPermissions(ctx, {
+      pluginId,
+      source: state.source,
+      manifestPermissions: state.manifest?.permissions ?? [],
+    })
   }
 
   private async loadPlugin(
