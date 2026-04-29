@@ -97,16 +97,40 @@ describe('client route registry', () => {
     registerPlugin({
       id: 'routes',
       routes: {
+        '/messaging': NoopComp,
         '/messaging/calendar': NoopComp,
+        '/messaging/brainstorm': NoopComp,
+        '/projects': NoopComp,
+        '/projects/new': NoopComp,
         '/projects/:id': NoopComp,
         '/projects/[id]/edit': NoopComp,
       },
     })
 
-    expect(getPluginRoutes('routes')).toHaveLength(3)
+    expect(getPluginRoutes('routes')).toHaveLength(7)
+    expect(getPluginRoute('/messaging')).toMatchObject({
+      pluginId: 'routes',
+      path: '/messaging',
+      params: {},
+    })
     expect(getPluginRoute('/messaging/calendar')).toMatchObject({
       pluginId: 'routes',
       path: '/messaging/calendar',
+      params: {},
+    })
+    expect(getPluginRoute('/messaging/brainstorm')).toMatchObject({
+      pluginId: 'routes',
+      path: '/messaging/brainstorm',
+      params: {},
+    })
+    expect(getPluginRoute('/projects')).toMatchObject({
+      pluginId: 'routes',
+      path: '/projects',
+      params: {},
+    })
+    expect(getPluginRoute('/projects/new')).toMatchObject({
+      pluginId: 'routes',
+      path: '/projects/new',
       params: {},
     })
     expect(getPluginRoute('/projects/abc-123')).toMatchObject({
@@ -126,6 +150,22 @@ describe('client route registry', () => {
     expect(getPluginRoute('/x')).not.toBeNull()
     unregisterPlugin('routes')
     expect(getPluginRoute('/x')).toBeNull()
+  })
+
+  it('prefers exact plugin routes over dynamic sibling routes', () => {
+    registerPlugin({
+      id: 'routes',
+      routes: {
+        '/projects/:id': NoopComp,
+        '/projects/new': NoopComp,
+      },
+    })
+
+    expect(getPluginRoute('/projects/new')).toMatchObject({
+      pluginId: 'routes',
+      path: '/projects/new',
+      params: {},
+    })
   })
 })
 
