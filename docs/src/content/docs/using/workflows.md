@@ -78,28 +78,7 @@ Definitions and instances both index into search (table `bakin_workflows`) on na
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
-## API routes
-
-<!-- docs:api-routes workflows -->
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/definitions` | List all workflow templates with step counts and resolved sub-workflows |
-| `POST` | `/definitions` | Create a new user-owned workflow definition |
-| `DELETE` | `/definitions/:name` | Delete a user-owned workflow definition |
-| `GET` | `/definitions/:name` | Get a specific workflow definition by name |
-| `PUT` | `/definitions/:name` | Update or shadow a workflow definition (writes user YAML) |
-| `POST` | `/gates/:taskId/approve` | Approve a human gate step |
-| `POST` | `/gates/:taskId/reject` | Reject a gate step, rewinds workflow |
-| `GET` | `/gates/pending` | List all gates awaiting approval |
-| `GET` | `/gates/status` | Batch check gate status for tasks |
-| `GET` | `/instances` | List active workflow instances. Optional status filter. |
-| `GET` | `/instances/:taskId` | Get full workflow instance state for a task |
-| `POST` | `/instances/start` | Start a workflow instance for a task |
-| `GET` | `/node-types` | List registered workflow node types (builtin + plugin-registered) for the canvas palette |
-| `GET` | `/notification-channels` | List registered notification channels |
-| `GET` | `/steps/:taskId` | Get current workflow step for a task |
-| `POST` | `/steps/:taskId/complete` | Submit step output, validates against schema, advances workflow |
-<!-- /docs:api-routes -->
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-workflows).
 
 <div class="for-agents">
 

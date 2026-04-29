@@ -61,19 +61,7 @@ Health surfaces through the diagnostic CLI:
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
-## API routes
-
-<!-- docs:api-routes health -->
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/checks` | List registered plugin health checks (metadata only; does not execute them). |
-| `GET` | `/doctor` | GET /doctor |
-| `GET` | `/registry` | GET /registry |
-| `GET` | `/search-status` | GET /search-status |
-| `GET` | `/summary` | GET /summary |
-| `GET` | `/usage` | GET /usage |
-| `GET` | `/usage-feed` | GET /usage-feed |
-<!-- /docs:api-routes -->
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-health).
 
 <div class="for-agents">
 

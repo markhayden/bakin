@@ -115,24 +115,7 @@ Same operations are available from the terminal when you'd rather not click:
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
-## API routes
-
-<!-- docs:api-routes tasks -->
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/` | List all tasks |
-| `POST` | `/` | Create a new task |
-| `DELETE` | `/:taskId` | Delete a task |
-| `GET` | `/:taskId` | Get a single task by ID |
-| `PUT` | `/:taskId` | Update a task |
-| `POST` | `/:taskId/assign` | Assign a task to an agent |
-| `POST` | `/:taskId/block` | Mark a task as blocked |
-| `POST` | `/:taskId/complete` | Mark a task as complete |
-| `POST` | `/:taskId/dependency` | Set a dependency between tasks |
-| `POST` | `/:taskId/log` | Add a log entry to a task |
-| `POST` | `/:taskId/move` | Move a task to a different column |
-| `POST` | `/reorder` | Reorder tasks within a column |
-<!-- /docs:api-routes -->
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-tasks).
 
 <div class="for-agents">
 

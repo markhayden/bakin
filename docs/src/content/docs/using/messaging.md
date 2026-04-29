@@ -145,30 +145,7 @@ Sessions index into search (table `bakin_messaging_brainstorm`) so they reach ac
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
-## API routes
-
-<!-- docs:api-routes messaging -->
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/` | List messaging items |
-| `GET` | `/:itemId` | Get a messaging item |
-| `POST` | `/` | Create a messaging item |
-| `PUT` | `/:itemId` | Update a messaging item |
-| `DELETE` | `/:itemId` | Delete a messaging item |
-| `POST` | `/:itemId/approve` | Approve and optionally publish a messaging item |
-| `POST` | `/:itemId/unapprove` | Move an approved messaging item back to draft |
-| `POST` | `/:itemId/reject` | Reject a messaging item |
-| `POST` | `/brainstorm` | Send a one-shot brainstorm prompt |
-| `GET` | `/sessions` | List planning sessions |
-| `GET` | `/sessions/:id` | Get a planning session |
-| `POST` | `/sessions` | Create a planning session |
-| `PUT` | `/sessions/:id` | Update a planning session |
-| `DELETE` | `/sessions/:id` | Delete a planning session |
-| `POST` | `/sessions/:id/messages` | Send a message to a planning session |
-| `PUT` | `/sessions/:id/proposals/:proposalId` | Update a planning-session proposal |
-| `POST` | `/sessions/:id/confirm` | Confirm planning-session proposals into calendar items |
-| `GET` | `/search` | Search messaging brainstorm sessions |
-<!-- /docs:api-routes -->
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-messaging).
 
 <div class="for-agents">
 

@@ -3,6 +3,7 @@ import {
   extractExecTools,
   getApiRoutes,
   getCliCommands,
+  listPluginManifests,
   relativeSource,
   renderExecToolsSnippet,
   sourceFiles,
@@ -408,12 +409,7 @@ function renderCliReference(): string {
 }
 
 function renderApiReference(): string {
-  const routes = getAllRoutes()
-  const grouped = new Map<string, typeof routes>()
-  for (const route of routes) {
-    if (!grouped.has(route.pluginId)) grouped.set(route.pluginId, [])
-    grouped.get(route.pluginId)!.push(route)
-  }
+  const coreRoutes = getAllRoutes().filter(r => r.pluginId === 'core')
 
   const lines = [
     '---',
@@ -425,19 +421,34 @@ function renderApiReference(): string {
     '',
     versionLine,
     '',
-    'This page is generated from `src/core/api-docs.ts` and runtime route registration metadata.',
+    'This page is generated from `src/core/api-docs.ts` and each plugin\'s `bakin-plugin.json:contributes.apiRoutes` (with source-scan fallback for plugins that have not declared a manifest contract yet).',
+    '',
+    '## Core Routes',
     '',
   ]
 
-  for (const [pluginId, pluginRoutes] of grouped) {
-    lines.push(`## ${pluginId === 'core' ? 'Core Routes' : `Plugin: ${pluginId}`}`, '')
-    for (const route of pluginRoutes) {
-      lines.push(`### \`${route.method} ${route.fullPath}\``, '')
+  for (const route of coreRoutes) {
+    lines.push(`### \`${route.method} ${route.fullPath}\``, '')
+    lines.push(route.summary, '')
+    if (route.description) lines.push(route.description, '')
+    if (route.params) lines.push(`Parameters: \`${route.params}\``, '')
+    lines.push(`- Visibility: \`${route.visibility}\``)
+    lines.push(`- Stability: \`${route.stability}\``)
+    if (route.permissions?.length) lines.push(`- Permissions: ${route.permissions.map(p => `\`${p}\``).join(', ')}`)
+    lines.push('')
+  }
+
+  // Plugin routes — manifest contract first, source-scan fallback.
+  const manifests = listPluginManifests().sort((a, b) => a.id.localeCompare(b.id))
+  for (const manifest of manifests) {
+    const routes = getApiRoutes(manifest.id)
+    if (!routes.length) continue
+    lines.push(`## Plugin: ${manifest.id}`, '')
+    if (manifest.description) lines.push(manifest.description, '')
+    for (const route of routes) {
+      const fullPath = `/api/plugins/${manifest.id}${route.path}`
+      lines.push(`### \`${route.method} ${fullPath}\``, '')
       lines.push(route.summary, '')
-      if (route.description) lines.push(route.description, '')
-      if (route.params) lines.push(`Parameters: \`${route.params}\``, '')
-      lines.push(`- Visibility: \`${route.visibility}\``)
-      lines.push(`- Stability: \`${route.stability}\``)
       if (route.permissions?.length) lines.push(`- Permissions: ${route.permissions.map(p => `\`${p}\``).join(', ')}`)
       lines.push('')
     }

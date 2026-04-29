@@ -206,12 +206,15 @@ function readManifestFile(path: string): PluginManifestRecord | undefined {
  *   - in-repo `plugins/<id>/bakin-plugin.json`
  *   - sibling `bakin-bits-official/plugins/<id>/bakin-plugin.json` (or whatever
  *     `BAKIN_DOCS_EXTERNAL_SOURCES` points at)
+ *
+ * Skips scaffold directories whose id begins with `_` (e.g. `_template`).
  */
 export function listPluginManifests(): PluginManifestRecord[] {
   const records: PluginManifestRecord[] = []
   const inRepoDir = join(repoRoot, 'plugins')
   if (existsSync(inRepoDir)) {
     for (const entry of readdirSync(inRepoDir).sort()) {
+      if (entry.startsWith('_')) continue
       const manifestPath = join(inRepoDir, entry, 'bakin-plugin.json')
       if (!existsSync(manifestPath)) continue
       const record = readManifestFile(manifestPath)
@@ -221,6 +224,7 @@ export function listPluginManifests(): PluginManifestRecord[] {
   for (const root of externalSourceRoots()) {
     if (!existsSync(root)) continue
     for (const entry of readdirSync(root).sort()) {
+      if (entry.startsWith('_')) continue
       const manifestPath = join(root, entry, 'bakin-plugin.json')
       if (!existsSync(manifestPath)) continue
       const record = readManifestFile(manifestPath)
