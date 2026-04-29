@@ -3,58 +3,56 @@ title: Workflows
 description: "Visual multi-step recipes with gates, parallel branches, and structured outputs. Reusable across tasks."
 ---
 
-Workflows are the recipes Bakin runs against tasks. Multi-step, optionally gated, optionally parallel. Define them visually as node graphs, attach them to tasks, and watch instances move through the steps as agents work.
+Rails when your agents need them. A workflow is a graph of connected steps that get worked one at a time. Use them when order matters: review before publish, validation before commit, multi-step jobs you don't want an agent freestyling on.
 
-## The workflows view
-
-<figure class="screenshot-frame">
-  <figcaption>The workflows grid showing definitions with step counts and last-run status.</figcaption>
-</figure>
-
-Card grid of workflow definitions. Each card shows name, description, step count, and last instance status. Click in for the detail view (definition graph + recent instances).
-
-## The canvas editor
+Workflows attach to tasks. When an agent creates a task it picks the workflow that fits, or skips with a reason. You can change the call later from the task's detail panel: swap workflows, attach one, or detach.
 
 <figure class="screenshot-frame">
-  <figcaption>The visual workflow editor with a node-type palette on the left and the graph canvas on the right.</figcaption>
+  <figcaption>The workflows grid: each card shows the workflow's name, description, step count, and the agents it touches.</figcaption>
 </figure>
 
-`+ New Workflow` (or edit an existing one) opens the canvas. Drag nodes from the palette, connect them with edges, configure each step in the side drawer. Save persists to YAML.
+## Canvas
 
-Built-in node types:
+<figure class="screenshot-frame">
+  <figcaption>The canvas with steps stacked top to bottom. A "Start" node up top summarizes the inputs.</figcaption>
+</figure>
 
-- **Trigger** — entry point, fires when the workflow starts.
-- **Agent step** — an agent performs work and emits structured output.
-- **Gate** — human approval required before the workflow advances.
-- **Parallel** — branches run concurrently and rejoin.
-- **Output** — final structured result.
-- **Sub-workflow** — call another workflow inline.
+Open any workflow to see its recipe on the canvas. Steps stacked top to bottom, connected by edges that follow the flow. A `Start` node up top summarizes the inputs. Each step shows its type, label, and the agent that runs it. Click any step to look inside: who owns it, what it depends on, what it expects to output, where it routes on approve or reject.
 
-Plugins can add more node types via `registerNodeRenderer` so custom visualizations slot in.
+Same surface for building. No second editor to learn.
 
-## Common actions
+## Steps
 
-### Start a workflow on a task
+A workflow is any number of connected steps. Every step has a type:
 
-From a task's detail panel, attach a workflow. A new instance gets created and the first step dispatches to the assigned agent.
+- **Agent step**: an agent runs the work. Output gets validated against a schema before the workflow advances.
+- **Gate**: pauses for your approval before moving on. Optional notifications, configurable approve and reject paths.
+- **Parallel**: groups child steps that run side by side. The workflow waits for every child to finish before it continues.
+- **Output**: the terminal step. Optionally publishes the final result to channels like Discord, Slack, or email.
+- **Sub-workflow**: runs another workflow inline, with its own task on the board so you can watch it move.
 
-### Submit step output
+## Managing workflows
 
-When an agent finishes a step, it submits structured output that gets validated against the step's schema. Validation fails fast with a clear error.
+### Build a workflow
+
+`+ New Workflow` puts the canvas in build mode. Drag steps from the palette, wire them together, click any step to configure it. Save and the workflow's available to attach to any task.
+
+### Attach to a task
+
+Agents creating a task pick the workflow that fits, or skip with a reason. Bakin nudges them with a suggestion based on the task's title, but every attach is intentional. From the task's detail panel you can swap, attach, or detach anytime.
 
 ### Approve a gate
 
-Gates pause the workflow until you approve from the UI or via the CLI. Channels (Slack, Discord, email) ping you when a gate is ready.
+Gates pause the workflow until you decide. The task's detail panel shows the gate and the prior step's output for context. Approve and the workflow advances; reject and it rewinds. If notifications are configured, they ping you when one's waiting; with Discord gate alerts on, you can also approve or reject straight from the message.
 
-### Cancel an in-flight instance
+### Cancel a workflow
 
-From the instance view, cancel to short-circuit. The task stays; the workflow just stops advancing.
+Workflows cancel automatically when their task moves to `Done` or `Blocked`, or when the task is deleted. No separate stop button.
 
 ## Concepts
 
-- **Definitions vs instances.** A definition is a YAML template. An instance is a single run tied to a specific task. You can have many instances of one definition.
-- **Schemas validate every output.** Each step declares what its output must look like. Bakin enforces it on submit so downstream steps get predictable data.
-- **Gates and channels.** Gates are paired with notification channels. Workflows owns the channel registry, so anything that needs to ping a human wires through here.
+- **Definitions vs instances.** A definition is the recipe. An instance is one run of that recipe tied to a specific task. Many instances of one definition.
+- **Information gating.** Agents only ever see the current step, never future ones. They submit output, Bakin validates, then releases the next step.
 
 ## Where it lives
 
@@ -98,9 +96,9 @@ Agents work the workflow surface through MCP exec tools. The full set covers def
 
 Plus three top-level helpers used during agent step execution:
 
-- `bakin_exec_get_step`: fetch the current step's input data
-- `bakin_exec_submit_step`: submit step output (same as the CLI form)
-- `bakin_exec_check_gates`: ask whether a gate is open and ready to advance
+- `bakin_exec_get_step`: read the current step as human-readable text. Instructions, prior outputs, schema, and rejection context all in one structured view.
+- `bakin_exec_submit_step`: submit step output with local pre-validation against the step schema, returning field-level errors without a server round trip.
+- `bakin_exec_check_gates`: human-readable overview of every gate in the workflow. Approved, waiting, pending.
 
 Full schemas in the [Exec tools reference](/docs/reference/generated/exec-tools/).
 
