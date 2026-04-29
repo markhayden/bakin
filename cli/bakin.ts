@@ -243,12 +243,23 @@ async function cmdPluginsList(): Promise<void> {
   }
 }
 
-async function cmdPluginsInstall(source: string): Promise<void> {
-  if (source.startsWith('github:') || source.includes('/') && !source.startsWith('.') && !source.startsWith('/')) {
-    const result = await apiPost('/api/plugins/install', { source, type: 'github' })
-    print(result)
+async function cmdPluginsInstall(source: string, opts: { yes?: boolean } = {}): Promise<void> {
+  const type = source.startsWith('github:') || source.includes('/') && !source.startsWith('.') && !source.startsWith('/')
+    ? 'github'
+    : 'local'
+  const result = await apiPost('/api/plugins/install', { source, type, accepted: false }) as {
+    awaitingConsent?: boolean
+    consentToken?: string
+  }
+  if (opts.yes && result.awaitingConsent && result.consentToken) {
+    const accepted = await apiPost('/api/plugins/install', {
+      source,
+      type,
+      accepted: true,
+      consentToken: result.consentToken,
+    })
+    print(accepted)
   } else {
-    const result = await apiPost('/api/plugins/install', { source, type: 'local' })
     print(result)
   }
 }
@@ -1675,8 +1686,8 @@ export async function main(): Promise<void> {
         if (sub === 'list') {
           await cmdPluginsList()
         } else if (sub === 'install') {
-          if (!args[2]) { console.error('Usage: bakin plugins install <path|github:user/repo>'); process.exit(1) }
-          await cmdPluginsInstall(args[2])
+          if (!args[2]) { console.error('Usage: bakin plugins install <path|github:user/repo[#subpath]> [--yes]'); process.exit(1) }
+          await cmdPluginsInstall(args[2], { yes: args.includes('--yes') })
         } else if (sub === 'remove') {
           if (!args[2]) { console.error('Usage: bakin plugins remove <id>'); process.exit(1) }
           await cmdPluginsRemove(args[2])
