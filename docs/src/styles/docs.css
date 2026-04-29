@@ -148,6 +148,45 @@ pre {
   text-align: left;
 }
 
+/* Keep the Type and Default columns of plugin Settings tables on one line.
+   Code-formatted defaults like `10 * 1024 * 1024` look broken when wrapped. */
+.sl-markdown-content .settings-table table td:nth-child(2):not(:where(.not-content *)),
+.sl-markdown-content .settings-table table td:nth-child(3):not(:where(.not-content *)),
+.sl-markdown-content .settings-table table th:nth-child(2):not(:where(.not-content *)),
+.sl-markdown-content .settings-table table th:nth-child(3):not(:where(.not-content *)) {
+  white-space: nowrap;
+}
+
+/* Two-column "label : description" tables. Keep the label column on one line
+   so short bold labels like **Context Usage** don't wrap mid-name when the
+   description squeezes them. */
+.sl-markdown-content .label-table table td:first-child:not(:where(.not-content *)),
+.sl-markdown-content .label-table table th:first-child:not(:where(.not-content *)) {
+  white-space: nowrap;
+  width: 1%;
+}
+
+/* Right-sidebar TOC: distinguish passive scroll-spy from intentional click.
+   - Scroll-spy (aria-current): text brightens to white, no background.
+     "You're scrolling past this."
+   - URL hash pin (set by inline script in astro.config.mjs:head): pink text
+     + pink background box. "You clicked here on purpose."
+   Order matters — pin rule comes after so it wins when both are on the same
+   link. */
+/* Scroll-spy text: white. */
+starlight-toc a[aria-current="true"] {
+  color: var(--sl-color-white);
+}
+
+/* Pinned (URL hash) link: pink text + soft pink background box. Renders even
+   if scroll-spy hasn't fired (bottom-of-page sections). The matching ::before
+   bullet is colored alongside the bullet rules above. */
+starlight-toc a[data-toc-hash-pinned] {
+  color: var(--sl-color-text-accent);
+  background-color: color-mix(in srgb, var(--bakin-brand-pink) 14%, transparent);
+  border-radius: 0.375rem;
+}
+
 .hero img {
   filter: drop-shadow(0 0 18px rgba(255, 112, 158, 0.22));
 }
@@ -206,7 +245,14 @@ starlight-toc nav a::before {
   background: var(--sl-color-gray-2);
 }
 
+/* Scroll-spy bullet: white (matches the white text). */
 starlight-toc nav a[aria-current="true"]::before {
+  background: var(--sl-color-white);
+}
+
+/* Pinned (URL hash) bullet: pink, full time. Stays pink even when scroll-spy
+   hasn't reached this section (e.g. bottom-of-page Related links). */
+starlight-toc nav a[data-toc-hash-pinned]::before {
   background: var(--bakin-brand-pink);
 }
 
@@ -236,6 +282,84 @@ starlight-toc nav a[href="#for-agents"]::before {
 
 .gap-top {
   margin-top: 1.6rem;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  border-radius: 50%;
+  vertical-align: 0.05em;
+  margin-right: 0.15em;
+}
+
+.status-dot--green {
+  background: #22c55e;
+}
+
+.status-dot--red {
+  background: #ef4444;
+}
+
+.sl-markdown-content .heading-with-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  margin-top: 3rem;
+}
+
+.sl-markdown-content .heading-with-chip > * {
+  margin: 0;
+}
+
+.sl-markdown-content .heading-with-chip h2 {
+  margin: 0;
+}
+
+.sl-markdown-content .heading-with-chip .sl-heading-wrapper > :first-child {
+  padding-inline-end: 0;
+}
+
+.sl-markdown-content .powered-by-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.3em 0.7em;
+  border-radius: 0.3em;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--sl-color-gray-3);
+  font-size: 0.875rem;
+  font-weight: 400;
+  text-decoration: none;
+  letter-spacing: 0.02em;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sl-markdown-content .powered-by-chip:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--sl-color-white);
+  text-decoration: none;
+}
+
+.sl-markdown-content .powered-by-chip svg {
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
+  flex-shrink: 0;
+}
+
+.sl-markdown-content .powered-by-chip span {
+  font-size: 0.85em;
+}
+
+.sl-markdown-content .for-agents {
+  font-size: 0.75rem;
+  margin-top: 3rem;
+}
+
+.sl-markdown-content .for-agents h2 {
+  font-size: var(--sl-text-h2);
 }
 
 .heading-icon {

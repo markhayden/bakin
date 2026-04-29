@@ -1,5 +1,14 @@
-import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { renderExecToolsSnippet } from './source-scan'
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  extractExecTools,
+  extractPluginSettings,
+  getApiRoutes,
+  getCliCommands,
+  listPluginManifests,
+  relativeSource,
+  renderExecToolsSnippet,
+  sourceFiles,
+} from './source-scan'
 import { dirname, join } from 'node:path'
 import { APP_VERSION } from '../../packages/core/src/constants'
 import { DEFAULT_SETTINGS } from '../../packages/core/src/settings'
@@ -12,7 +21,6 @@ const generatedRoot = join(docsRoot, '.generated')
 const docsOrigin = 'https://makinbakin.com'
 const docsBasePath = '/docs'
 const docsUrl = `${docsOrigin}${docsBasePath}`
-const sourceRoots = [join(repoRoot, 'plugins'), join(repoRoot, 'src'), join(repoRoot, 'packages')]
 const llmBundleFiles = [
   'llms.txt',
   'llms-full.txt',
@@ -73,26 +81,27 @@ function writeStableFile(path: string, contents: string): void {
   writeFileSync(path, stableContents.trimEnd() + '\n', 'utf8')
 }
 
-function walkFiles(dir: string, files: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    if (entry === 'node_modules' || entry === 'dist' || entry === '.astro') continue
-    const path = join(dir, entry)
-    const stat = statSync(path)
-    if (stat.isDirectory()) walkFiles(path, files)
-    else if (/\.(ts|tsx)$/.test(entry)) files.push(path)
-  }
-  return files
-}
-
-function relativeSource(path: string): string {
-  return path.replace(repoRoot, '').replace(/^\//, '')
-}
-
 function docsPath(path: string): string {
   return `${docsBasePath}${path.startsWith('/') ? path : `/${path}`}`
 }
 
 function renderCommandSnippet(marker: string): string {
+  // 1. Manifest-first: plugins that declare contributes.cliCommands win.
+  const manifestCommands = getCliCommands(marker)
+  if (manifestCommands.length) {
+    const lines = [
+      `<!-- docs:cli-commands ${marker} -->`,
+      '| Command | Purpose |',
+      '| --- | --- |',
+    ]
+    for (const command of manifestCommands) {
+      lines.push(`| \`${command.usage.replace(/\|/g, '\\|')}\` | ${command.summary} |`)
+    }
+    lines.push('<!-- /docs:cli-commands -->')
+    return lines.join('\n')
+  }
+
+  // 2. Legacy hardcoded grouping for in-repo plugins that haven't backfilled.
   const names = commandSnippets[marker as keyof typeof commandSnippets]
   if (!names) throw new Error(`Unknown CLI command snippet: ${marker}`)
 
@@ -106,10 +115,52 @@ function renderCommandSnippet(marker: string): string {
   for (const name of names) {
     const command = byName.get(name)
     if (!command) throw new Error(`Missing CLI command for docs snippet "${marker}": ${name}`)
-    lines.push(`| \`${command.usage}\` | ${command.summary} |`)
+    lines.push(`| \`${command.usage.replace(/\|/g, '\\|')}\` | ${command.summary} |`)
   }
 
   lines.push('<!-- /docs:cli-commands -->')
+  return lines.join('\n')
+}
+
+function renderApiRoutesSnippet(marker: string): string {
+  const routes = getApiRoutes(marker)
+  if (!routes.length) throw new Error(`No api-routes for marker: ${marker}`)
+  const lines = [
+    `<!-- docs:api-routes ${marker} -->`,
+    '| Method | Path | Purpose |',
+    '| --- | --- | --- |',
+  ]
+  for (const route of routes) {
+    lines.push(`| \`${route.method}\` | \`${route.path}\` | ${route.summary} |`)
+  }
+  lines.push('<!-- /docs:api-routes -->')
+  return lines.join('\n')
+}
+
+function escapeTableCell(value: string): string {
+  return value.replace(/\|/g, '\\|').replace(/\n+/g, ' ').trim()
+}
+
+function renderSettingsSnippet(marker: string): string {
+  const fields = extractPluginSettings(marker)
+  if (!fields.length) throw new Error(`No settings for marker: ${marker}`)
+  const lines = [
+    `<!-- docs:settings ${marker} -->`,
+    '<div class="settings-table">',
+    '',
+    '| Setting | Type | Default | What it does |',
+    '| --- | --- | --- | --- |',
+  ]
+  for (const field of fields) {
+    const name = escapeTableCell(field.label || field.key)
+    const type = `\`${field.type}\``
+    const def = field.default ? `\`${escapeTableCell(field.default)}\`` : ''
+    const desc = escapeTableCell(field.description || '')
+    lines.push(`| ${name} | ${type} | ${def} | ${desc} |`)
+  }
+  lines.push('')
+  lines.push('</div>')
+  lines.push('<!-- /docs:settings -->')
   return lines.join('\n')
 }
 
@@ -145,18 +196,18 @@ function updateGeneratedContentBlocks(): void {
   const commandMarkerPattern = /<!-- docs:cli-commands ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:cli-commands -->/g
   const snippetMarkerPattern = /<!-- docs:snippet ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:snippet -->/g
   const execToolsMarkerPattern = /<!-- docs:exec-tools ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:exec-tools -->/g
+  const apiRoutesMarkerPattern = /<!-- docs:api-routes ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:api-routes -->/g
+  const settingsMarkerPattern = /<!-- docs:settings ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:settings -->/g
   for (const file of markdownFiles) {
     const text = readFileSync(file, 'utf8')
     const next = text
       .replace(commandMarkerPattern, (_match, marker: string) => renderCommandSnippet(marker))
       .replace(snippetMarkerPattern, (_match, marker: string) => renderDocsSnippetBlock(marker))
       .replace(execToolsMarkerPattern, (_match, marker: string) => renderExecToolsSnippet(marker))
+      .replace(apiRoutesMarkerPattern, (_match, marker: string) => renderApiRoutesSnippet(marker))
+      .replace(settingsMarkerPattern, (_match, marker: string) => renderSettingsSnippet(marker))
     if (next !== text) writeStableFile(file, next)
   }
-}
-
-function sourceFiles(): string[] {
-  return sourceRoots.flatMap(root => walkFiles(root))
 }
 
 function extractHookRegistrations(): Array<{ name: string; file: string; line: number }> {
@@ -170,23 +221,6 @@ function extractHookRegistrations(): Array<{ name: string; file: string; line: n
     }
   }
   return hooks.sort((a, b) => a.name.localeCompare(b.name) || a.file.localeCompare(b.file))
-}
-
-function extractExecTools(): Array<{ name: string; description?: string; file: string; line: number }> {
-  const tools: Array<{ name: string; description?: string; file: string; line: number }> = []
-  for (const file of sourceFiles()) {
-    const text = readFileSync(file, 'utf8')
-    const lines = text.split('\n')
-    for (let i = 0; i < lines.length; i++) {
-      if (!lines[i].includes('registerExecTool')) continue
-      const block = lines.slice(i, Math.min(lines.length, i + 35)).join('\n')
-      const name = block.match(/name:\s*['"`]([^'"`]+)['"`]/)?.[1]
-      if (!name) continue
-      const description = block.match(/description:\s*['"`]([^'"`]+)['"`]/)?.[1]
-      tools.push({ name, description, file: relativeSource(file), line: i + 1 })
-    }
-  }
-  return tools.sort((a, b) => a.name.localeCompare(b.name) || a.file.localeCompare(b.file))
 }
 
 function extractSlotRegistrations(): Array<{ name: string; file: string; line: number }> {
@@ -405,12 +439,7 @@ function renderCliReference(): string {
 }
 
 function renderApiReference(): string {
-  const routes = getAllRoutes()
-  const grouped = new Map<string, typeof routes>()
-  for (const route of routes) {
-    if (!grouped.has(route.pluginId)) grouped.set(route.pluginId, [])
-    grouped.get(route.pluginId)!.push(route)
-  }
+  const coreRoutes = getAllRoutes().filter(r => r.pluginId === 'core')
 
   const lines = [
     '---',
@@ -422,19 +451,34 @@ function renderApiReference(): string {
     '',
     versionLine,
     '',
-    'This page is generated from `src/core/api-docs.ts` and runtime route registration metadata.',
+    'This page is generated from `src/core/api-docs.ts` and each plugin\'s `bakin-plugin.json:contributes.apiRoutes` (with source-scan fallback for plugins that have not declared a manifest contract yet).',
+    '',
+    '## Core Routes',
     '',
   ]
 
-  for (const [pluginId, pluginRoutes] of grouped) {
-    lines.push(`## ${pluginId === 'core' ? 'Core Routes' : `Plugin: ${pluginId}`}`, '')
-    for (const route of pluginRoutes) {
-      lines.push(`### \`${route.method} ${route.fullPath}\``, '')
+  for (const route of coreRoutes) {
+    lines.push(`### \`${route.method} ${route.fullPath}\``, '')
+    lines.push(route.summary, '')
+    if (route.description) lines.push(route.description, '')
+    if (route.params) lines.push(`Parameters: \`${route.params}\``, '')
+    lines.push(`- Visibility: \`${route.visibility}\``)
+    lines.push(`- Stability: \`${route.stability}\``)
+    if (route.permissions?.length) lines.push(`- Permissions: ${route.permissions.map(p => `\`${p}\``).join(', ')}`)
+    lines.push('')
+  }
+
+  // Plugin routes — manifest contract first, source-scan fallback.
+  const manifests = listPluginManifests().sort((a, b) => a.id.localeCompare(b.id))
+  for (const manifest of manifests) {
+    const routes = getApiRoutes(manifest.id)
+    if (!routes.length) continue
+    lines.push(`## Plugin: ${manifest.id}`, '')
+    if (manifest.description) lines.push(manifest.description, '')
+    for (const route of routes) {
+      const fullPath = `/api/plugins/${manifest.id}${route.path}`
+      lines.push(`### \`${route.method} ${fullPath}\``, '')
       lines.push(route.summary, '')
-      if (route.description) lines.push(route.description, '')
-      if (route.params) lines.push(`Parameters: \`${route.params}\``, '')
-      lines.push(`- Visibility: \`${route.visibility}\``)
-      lines.push(`- Stability: \`${route.stability}\``)
       if (route.permissions?.length) lines.push(`- Permissions: ${route.permissions.map(p => `\`${p}\``).join(', ')}`)
       lines.push('')
     }

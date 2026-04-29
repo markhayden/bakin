@@ -11,5 +11,265 @@
   "secrets": [],
   "tests": "tests/",
   "dependencies": [],
-  "permissions": ["storage.read", "storage.write", "events.emit"]
+  "permissions": [
+    "storage.read",
+    "storage.write",
+    "events.emit"
+  ],
+  "contributes": {
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/",
+        "summary": "List all agents with runtime status"
+      },
+      {
+        "method": "POST",
+        "path": "/",
+        "summary": "Create a new agent in the active runtime"
+      },
+      {
+        "method": "DELETE",
+        "path": "/:agentId",
+        "summary": "Remove an agent from the active runtime and move workspace to trash"
+      },
+      {
+        "method": "GET",
+        "path": "/:agentId",
+        "summary": "Get full agent profile merged from runtime state"
+      },
+      {
+        "method": "GET",
+        "path": "/:agentId/active-context",
+        "summary": "Read the most recent session JSONL parsed into a message stream"
+      },
+      {
+        "method": "GET",
+        "path": "/:agentId/avatar",
+        "summary": "Serve agent avatar image"
+      },
+      {
+        "method": "POST",
+        "path": "/:agentId/avatar",
+        "summary": "Upload agent avatar image"
+      },
+      {
+        "method": "GET",
+        "path": "/:agentId/files",
+        "summary": "List workspace files for an agent"
+      },
+      {
+        "method": "GET",
+        "path": "/:agentId/files/:filename",
+        "summary": "Read a specific workspace file"
+      },
+      {
+        "method": "PUT",
+        "path": "/:agentId/files/:filename",
+        "summary": "Write a workspace file through the active runtime"
+      },
+      {
+        "method": "GET",
+        "path": "/:agentId/heartbeat",
+        "summary": "Read the agent's HEARTBEAT.md narrative + file mtime"
+      },
+      {
+        "method": "PUT",
+        "path": "/:agentId/identity",
+        "summary": "Update agent identity fields and persona files"
+      },
+      {
+        "method": "GET",
+        "path": "/:agentId/memory",
+        "summary": "List memory files for an agent"
+      },
+      {
+        "method": "GET",
+        "path": "/:agentId/memory/:date",
+        "summary": "Read a specific memory file"
+      },
+      {
+        "method": "PUT",
+        "path": "/:agentId/permissions",
+        "summary": "Update agent dispatch permissions (subagents.allowAgents)"
+      },
+      {
+        "method": "GET",
+        "path": "/:agentId/recent-activity",
+        "summary": "Per-agent dispatch + error counts across 5m / 1h / 24h windows (resets on server restart)"
+      },
+      {
+        "method": "GET",
+        "path": "/:agentId/skills",
+        "summary": "List installed skills for an agent"
+      },
+      {
+        "method": "GET",
+        "path": "/:agentId/skills/:skillId",
+        "summary": "Read SKILL.md for a specific skill"
+      },
+      {
+        "method": "POST",
+        "path": "/:agentId/start",
+        "summary": "Start an agent via the active runtime"
+      },
+      {
+        "method": "GET",
+        "path": "/:agentId/stats",
+        "summary": "Get token usage and cost stats for an agent"
+      },
+      {
+        "method": "POST",
+        "path": "/:agentId/stop",
+        "summary": "Stop an agent"
+      },
+      {
+        "method": "PUT",
+        "path": "/:agentId/team",
+        "summary": "Assign an agent to an organizational team"
+      },
+      {
+        "method": "GET",
+        "path": "/settings",
+        "summary": "Get agent display settings"
+      },
+      {
+        "method": "PUT",
+        "path": "/settings",
+        "summary": "Update agent display settings"
+      },
+      {
+        "method": "GET",
+        "path": "/teams",
+        "summary": "List organizational teams"
+      },
+      {
+        "method": "POST",
+        "path": "/teams",
+        "summary": "Create an organizational team"
+      },
+      {
+        "method": "DELETE",
+        "path": "/teams/:teamId",
+        "summary": "Delete an organizational team"
+      },
+      {
+        "method": "PUT",
+        "path": "/teams/:teamId",
+        "summary": "Update an organizational team"
+      },
+      {
+        "method": "GET",
+        "path": "/teams/:teamId/members",
+        "summary": "List agents belonging to a team"
+      }
+    ],
+    "execTools": [
+      {
+        "name": "bakin_exec_team_create_agent",
+        "summary": "Create a new agent: registers it with the active runtime, writes persona files, configures dispatch permissions, optionally assigns it to a team",
+        "description": "Create a new agent: registers it with the active runtime, writes persona files, configures dispatch permissions, optionally assigns it to a team. Returns next-step instructions."
+      },
+      {
+        "name": "bakin_exec_team_delete_agent",
+        "summary": "Remove an agent from the active runtime and clean up Bakin state",
+        "description": "Remove an agent from the active runtime and clean up Bakin state. Requires confirm=true as a safety guard."
+      },
+      {
+        "name": "bakin_exec_team_list",
+        "summary": "List all agents with their current status (online/working/available/offline)",
+        "description": "List all agents with their current status (online/working/available/offline)."
+      },
+      {
+        "name": "bakin_exec_team_members",
+        "summary": "Get agents that belong to a specific team (e",
+        "description": "Get agents that belong to a specific team (e.g. \"builders\", \"creators\")."
+      },
+      {
+        "name": "bakin_exec_team_message",
+        "summary": "Send a message to an agent via the active runtime",
+        "description": "Send a message to an agent via the active runtime."
+      },
+      {
+        "name": "bakin_exec_team_my_team",
+        "summary": "Get the team that a specific agent belongs to, including all teammates",
+        "description": "Get the team that a specific agent belongs to, including all teammates."
+      },
+      {
+        "name": "bakin_exec_team_org",
+        "summary": "Get the full org structure: teams with their members",
+        "description": "Get the full org structure: teams with their members. Use this to understand who is on which team and reporting lines."
+      },
+      {
+        "name": "bakin_exec_team_profile",
+        "summary": "Get the full profile for an agent including soul, rules, and tools",
+        "description": "Get the full profile for an agent including soul, rules, and tools."
+      },
+      {
+        "name": "bakin_exec_team_read_file",
+        "summary": "Read a workspace file for an agent (e",
+        "description": "Read a workspace file for an agent (e.g., SOUL.md, AGENTS.md, TOOLS.md)."
+      },
+      {
+        "name": "bakin_exec_team_set_permissions",
+        "summary": "Update dispatch permissions — which agents a given agent can dispatch tasks to (subagents",
+        "description": "Update dispatch permissions — which agents a given agent can dispatch tasks to (subagents.allowAgents)."
+      },
+      {
+        "name": "bakin_exec_team_status",
+        "summary": "Get the heartbeat and health status for an agent",
+        "description": "Get the heartbeat and health status for an agent."
+      },
+      {
+        "name": "bakin_exec_team_update_identity",
+        "summary": "Update an existing agent's identity fields (name, emoji, role, vibe, etc",
+        "description": "Update an existing agent's identity fields (name, emoji, role, vibe, etc.) and/or workspace files (SOUL.md, TOOLS.md)."
+      }
+    ],
+    "cliCommands": [
+      {
+        "name": "agents list",
+        "usage": "bakin agents list [--packages]",
+        "summary": "List agents."
+      },
+      {
+        "name": "agents status",
+        "usage": "bakin agents status <id>",
+        "summary": "Get agent status."
+      },
+      {
+        "name": "agents tasks",
+        "usage": "bakin agents tasks <id>",
+        "summary": "List tasks assigned to an agent."
+      },
+      {
+        "name": "agents send",
+        "usage": "bakin agents send <id> <message>",
+        "summary": "Send a message to an agent."
+      },
+      {
+        "name": "agents install",
+        "usage": "bakin agents install <path|github:user/repo[@ref]> [--adopt] [--install-as <id>] [--replace]",
+        "summary": "Install an agent package."
+      },
+      {
+        "name": "agents remove",
+        "usage": "bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--force]",
+        "summary": "Remove an agent package."
+      },
+      {
+        "name": "agents update",
+        "usage": "bakin agents update [agent-id] [--refresh-template]",
+        "summary": "Update agent packages."
+      },
+      {
+        "name": "agents knowledge",
+        "usage": "bakin agents knowledge <list|enable|disable> ...",
+        "summary": "Manage agent knowledge toggles."
+      }
+    ],
+    "docs": {
+      "slug": "using/team"
+    }
+  }
 }

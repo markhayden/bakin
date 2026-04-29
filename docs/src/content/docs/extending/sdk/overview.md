@@ -37,6 +37,6 @@ Prefer SDK components for plugin UI. Custom UI is allowed for domain-specific ne
 
 ## Related Authoring Guides
 
-- [Plugin Manifest](/docs/extend/plugins/manifest/)
-- [Server Contracts](/docs/extend/plugins/server-contracts/)
-- [Client UI](/docs/extend/plugins/client-ui/)
+- [Plugin Manifest](/docs/extending/plugins/manifest/)
+- [Server Contracts](/docs/extending/plugins/server-contracts/)
+- [Client UI](/docs/extending/plugins/client-ui/)

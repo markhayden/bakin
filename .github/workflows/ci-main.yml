@@ -20,6 +20,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # docs:check walks the sibling bakin-bits-official repo for the
+      # extracted messaging + projects plugins (see scripts/docs/source-
+      # scan.ts). Cloned ABOVE $GITHUB_WORKSPACE so `bun test` doesn't
+      # recurse into it. actions/checkout rejects paths outside the
+      # workspace, so use plain git clone (the repo is public).
+      - name: Clone bakin-bits-official (extracted plugins)
+        run: git clone --depth 1 https://github.com/markhayden/bakin-bits-official.git "${{ runner.workspace }}/external/bakin-bits-official"
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -35,6 +43,8 @@ jobs:
         run: bunx tsc --noEmit -p tsconfig.app.json
 
       - name: Docs build
+        env:
+          BAKIN_DOCS_EXTERNAL_SOURCES: ${{ runner.workspace }}/external/bakin-bits-official/plugins
         run: bun run docs:check
 
       - name: Tests

@@ -18,7 +18,7 @@ Tasks are Bakin's work unit. Each one records what needs to happen, who owns it,
 
 The board is the home view. Each column is a state, each card is a task. Drag cards between columns to move work forward. Click a card to open its detail panel and see the full history.
 
-## Common actions
+## Task Management
 
 ### Create a task
 
@@ -96,6 +96,21 @@ The seven columns and what they mean:
 
 CLI moves and agent calls go through the same state machine.
 
+## Settings
+
+<!-- docs:settings tasks -->
+<div class="settings-table">
+
+| Setting | Type | Default | What it does |
+| --- | --- | --- | --- |
+| Default column | `select` | `todo` | Which column new tasks are created in |
+| Show completed tasks | `boolean` | `true` | Show tasks in the Done and Confirmed columns by default |
+| Auto-archive after (days) | `number` | `0` | Move completed tasks to archive after this many days. 0 to disable. |
+| Max in-progress tasks | `number` | `5` | Warn when more than this many tasks are in progress |
+
+</div>
+<!-- /docs:settings -->
+
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
 
 Same operations are available from the terminal when you'd rather not click:
@@ -104,6 +119,7 @@ Same operations are available from the terminal when you'd rather not click:
 | Command | Purpose |
 | --- | --- |
 | `bakin tasks list [--column=<column>]` | List tasks. |
+| `bakin tasks get <id>` | Get task details. |
 | `bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow=<reason>]` | Create a task. |
 | `bakin tasks move <id> <column>` | Move a task. |
 | `bakin tasks log <id> <message>` | Log task progress. |
@@ -113,6 +129,10 @@ Same operations are available from the terminal when you'd rather not click:
 <!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
+
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-tasks).
+
+<div class="for-agents">
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents
 
@@ -134,8 +154,10 @@ Agents drive tasks through MCP exec tools. The full set:
 
 Full schemas and arguments in the [Exec tools reference](/docs/reference/generated/exec-tools/).
 
+</div>
+
 ## Related
 
-- [Workflows](/docs/core/workflows/): multi-step work that tasks can attach to
-- [Memory](/docs/core/memory/): search across completed tasks
-- [Schedule](/docs/core/schedule/): recurring task creation
+- [Workflows](/docs/using/workflows/): multi-step work that tasks can attach to
+- [Memory](/docs/using/memory/): search across completed tasks
+- [Schedule](/docs/using/schedule/): recurring task creation
