@@ -11,8 +11,12 @@ Bakin plugins are source trees with a manifest, a server entry, and a client ent
 bakin plugins scaffold my-plugin
 cd my-plugin
 bun install
-bakin plugins install .
+bakin plugins install --dev .
 ```
+
+Use `--dev` while authoring. It symlinks the local source into Bakin, activates it immediately, and participates in the dev reload loop. Use a normal `bakin plugins install <path|github:user/repo[#subpath]>` when you want a copied/pinned install.
+
+Run Bakin with `bakin dev` while editing linked plugins. Client components, routes, server registrations, hooks, exec tools, and most search wiring rebuild and hot-swap from the linked source tree. Manifest, durable schema, and startup-only contract changes can still require `bakin restart`.
 
 ## Tested Example
 

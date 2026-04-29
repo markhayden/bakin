@@ -309,7 +309,7 @@ Source: `plugins/workflows/index.ts:1252`
 
 Assign a task to an agent.
 
-Source: `plugins/tasks/index.ts:676`
+Source: `plugins/tasks/index.ts:682`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -319,7 +319,7 @@ Source: `plugins/tasks/index.ts:676`
 
 Mark a task as blocked with a reason. Use when you cannot proceed.
 
-Source: `plugins/tasks/index.ts:547`
+Source: `plugins/tasks/index.ts:553`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -329,7 +329,7 @@ Source: `plugins/tasks/index.ts:547`
 
 Report that your task is complete. Moves the task to Done and notifies the orchestrator.
 
-Source: `plugins/tasks/index.ts:567`
+Source: `plugins/tasks/index.ts:573`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -339,7 +339,7 @@ Source: `plugins/tasks/index.ts:567`
 
 Create a new task on the task board. Workflows are auto-matched by title when workflowId is not provided. Provide workflowId to force a specific workflow, or skipWorkflowReason to explicitly skip.
 
-Source: `plugins/tasks/index.ts:476`
+Source: `plugins/tasks/index.ts:482`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -349,7 +349,7 @@ Source: `plugins/tasks/index.ts:476`
 
 Delete a task from the board.
 
-Source: `plugins/tasks/index.ts:655`
+Source: `plugins/tasks/index.ts:661`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -379,7 +379,7 @@ Source: `plugins/tasks/index.ts:429`
 
 Log a human-readable progress update to the live activity feed. Call this at every significant step.
 
-Source: `plugins/tasks/index.ts:587`
+Source: `plugins/tasks/index.ts:593`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -389,7 +389,7 @@ Source: `plugins/tasks/index.ts:587`
 
 Move a task to a different column on the task board.
 
-Source: `plugins/tasks/index.ts:522`
+Source: `plugins/tasks/index.ts:528`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -399,7 +399,7 @@ Source: `plugins/tasks/index.ts:522`
 
 Register a dependency between tasks. Your task will be auto-re-dispatched when the dependency completes. After registering, exit — do not wait.
 
-Source: `plugins/tasks/index.ts:606`
+Source: `plugins/tasks/index.ts:612`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -409,7 +409,7 @@ Source: `plugins/tasks/index.ts:606`
 
 Update a task on the board — change title, description, or assigned agent.
 
-Source: `plugins/tasks/index.ts:625`
+Source: `plugins/tasks/index.ts:631`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability

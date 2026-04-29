@@ -102,13 +102,46 @@ async function loadPluginClient(plugin: ManifestPlugin): Promise<void> {
 // Manifest kept module-scoped so hotSwapPlugin can look up clientCss
 // without re-fetching. Populated by PluginHost on mount.
 let latestManifest: Manifest | null = null
+const hotSwapInFlight = new Map<string, Promise<void>>()
+const appliedHotSwapUrls = new Map<string, string>()
 
-async function hotSwapPlugin(id: string, clientEntry: string, version: string): Promise<void> {
-  const manifest = latestManifest
+async function refreshManifest(): Promise<Manifest | null> {
+  try {
+    const res = await fetch('/api/plugins/manifest')
+    if (!res.ok) return latestManifest
+    latestManifest = (await res.json()) as Manifest
+  } catch {
+    // Keep the last known manifest; hot-swap can still import by URL.
+  }
+  return latestManifest
+}
+
+async function performHotSwap(id: string, clientEntry: string, version: string, importUrl: string): Promise<void> {
+  const manifest = await refreshManifest()
   const plugin = manifest?.plugins.find((p) => p.id === id)
   unregisterPlugin(id)
   if (plugin) swapPluginCss(plugin, version)
-  await import(/* @vite-ignore */ `${clientEntry}?v=${version}`)
+  await import(/* @vite-ignore */ importUrl)
+  appliedHotSwapUrls.set(id, importUrl)
+}
+
+async function hotSwapPlugin(id: string, clientEntry: string, version: string): Promise<void> {
+  const importUrl = `${clientEntry}?v=${version}`
+  if (appliedHotSwapUrls.get(id) === importUrl) return
+
+  const existing = hotSwapInFlight.get(id)
+  if (existing) {
+    await existing
+    if (appliedHotSwapUrls.get(id) === importUrl) return
+  }
+
+  const task = performHotSwap(id, clientEntry, version, importUrl)
+  hotSwapInFlight.set(id, task)
+  try {
+    await task
+  } finally {
+    if (hotSwapInFlight.get(id) === task) hotSwapInFlight.delete(id)
+  }
 }
 
 function isDevModeActive(): boolean {
@@ -122,14 +155,12 @@ export function PluginHost({ children }: { children: ReactNode }) {
     let cancelled = false
     ;(async () => {
       try {
-        const res = await fetch('/api/plugins/manifest')
-        if (!res.ok) {
-          console.error('[bakin] Failed to fetch plugin manifest:', res.status, res.statusText)
+        const manifest = await refreshManifest()
+        if (!manifest) {
+          console.error('[bakin] Failed to fetch plugin manifest')
           if (!cancelled) setReady(true)
           return
         }
-        const manifest = (await res.json()) as Manifest
-        latestManifest = manifest
         await Promise.all(manifest.plugins.map(loadPluginClient))
       } catch (err) {
         console.error('[bakin] Plugin host boot failed:', err)

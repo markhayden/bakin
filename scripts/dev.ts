@@ -12,6 +12,7 @@
  * Commit 5 wires CSS hot-swap, full reload, and the error overlay.
  */
 process.env.BAKIN_DEV = '1'
+process.env.BAKIN_DEV_HOTRELOAD = '1'
 
 import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'

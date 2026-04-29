@@ -32,6 +32,8 @@
  * value flows from event → hook → index without translation. Sync hooks
  * also receive the file content as a UTF-8 string (empty for binary
  * assets, which the watcher recognizes by their `assets/` prefix).
+ * Registration returns an unsubscribe function for dev/plugin reload
+ * paths that replace watcher hooks without process restart.
  *
  * ─── Filter ──────────────────────────────────────────────────────────
  *
@@ -39,6 +41,11 @@
  * `.yml`. Anything else under `~/.bakin/` is ignored. Asset binaries are
  * matched separately via the `assets/` prefix and broadcast WITHOUT a
  * file read (no content payload) since they may be very large.
+ *
+ * `~/.bakin/plugins/**` is explicitly ignored. Installed and linked plugins
+ * are runtime artifacts, not user content; linked plugins are symlinks to
+ * external source trees, and following them here races plugin lifecycle
+ * operations like unlink/hot-reload.
  */
 import { watch, type FSWatcher } from 'chokidar'
 import { readFileSync } from 'fs'
@@ -59,22 +66,25 @@ const syncHooks: SyncHook[] = []
 // Unlink hooks — modules can register to be notified of file deletions
 type UnlinkHook = (relativePath: string) => void | Promise<void>
 const unlinkHooks: UnlinkHook[] = []
+type UnsubscribeHook = () => void
 
 /**
  * Subscribe to file `add` and `change` events.
  *
  * Hooks receive the file path relative to `contentDir` and the UTF-8
  * file content (empty string for binary asset files). Hooks are awaited
- * in registration order; errors are logged and swallowed. Returns void —
- * unregistration is not supported because hooks are wired during plugin
- * activation and live for the process lifetime.
+ * in registration order; errors are logged and swallowed.
  *
  * NOTE: hooks fire ~300ms after the write due to `awaitWriteFinish`.
  * Authoritative consistency paths should call mutators directly rather
  * than relying on this hook. See file header for the full contract.
  */
-export function registerSyncHook(hook: SyncHook): void {
+export function registerSyncHook(hook: SyncHook): UnsubscribeHook {
   syncHooks.push(hook)
+  return () => {
+    const idx = syncHooks.indexOf(hook)
+    if (idx >= 0) syncHooks.splice(idx, 1)
+  }
 }
 
 /**
@@ -84,8 +94,12 @@ export function registerSyncHook(hook: SyncHook): void {
  * forget semantics as `registerSyncHook`. Use for symmetric cleanup of
  * derived state (search indexes, in-memory trackers, caches).
  */
-export function registerUnlinkHook(hook: UnlinkHook): void {
+export function registerUnlinkHook(hook: UnlinkHook): UnsubscribeHook {
   unlinkHooks.push(hook)
+  return () => {
+    const idx = unlinkHooks.indexOf(hook)
+    if (idx >= 0) unlinkHooks.splice(idx, 1)
+  }
 }
 
 async function runSyncHooks(relativePath: string, content: string): Promise<void> {
@@ -114,7 +128,24 @@ interface WatcherDeps {
   onInboxFile: (fullPath: string) => void
 }
 
+export function shouldIgnoreContentWatcherPath(contentDir: string, path: string): boolean {
+  if (path === contentDir) return false
+  const rel = relative(contentDir, path).replace(/\\/g, '/')
+  if (rel === '' || rel === '.') return false
+
+  // User plugin installs live under ~/.bakin/plugins. In dev-link mode each
+  // plugin dir is a symlink into an external source checkout, so the content
+  // watcher must never traverse or emit events for it.
+  if (rel === 'plugins' || rel.startsWith('plugins/')) return true
+
+  const basename = path.split(/[\\/]/).pop() || ''
+  // Allow .trash inside assets (we handle skipping in handleFileEvent)
+  if (basename === '.trash' && rel.startsWith('assets/')) return false
+  return basename.startsWith('.')
+}
+
 function handleFileEvent(deps: WatcherDeps, fullPath: string, event: string): void {
+  if (shouldIgnoreContentWatcherPath(deps.contentDir, fullPath)) return
   const rel = relative(deps.contentDir, fullPath)
 
   // Skip audit.jsonl — it's append-only and grows large.
@@ -167,14 +198,7 @@ function handleFileEvent(deps: WatcherDeps, fullPath: string, event: string): vo
 
 export function start(deps: WatcherDeps): void {
   watcher = watch(deps.contentDir, {
-    ignored: (path: string) => {
-      // Ignore dotfiles/dotdirs WITHIN the content dir, but not the content dir itself
-      if (path === deps.contentDir) return false
-      const basename = path.split('/').pop() || ''
-      // Allow .trash inside assets (we handle skipping in handleFileEvent)
-      if (basename === '.trash' && path.includes('/assets/')) return false
-      return basename.startsWith('.')
-    },
+    ignored: (path: string) => shouldIgnoreContentWatcherPath(deps.contentDir, path),
     persistent: true,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 50 },
   })
@@ -182,6 +206,7 @@ export function start(deps: WatcherDeps): void {
   watcher.on('change', (fullPath: string) => handleFileEvent(deps, fullPath, 'change'))
   watcher.on('add', (fullPath: string) => handleFileEvent(deps, fullPath, 'add'))
   watcher.on('unlink', (fullPath: string) => {
+    if (shouldIgnoreContentWatcherPath(deps.contentDir, fullPath)) return
     const rel = relative(deps.contentDir, fullPath)
     if (rel === 'audit.jsonl') return
     log.info('File deleted', { file: rel })
