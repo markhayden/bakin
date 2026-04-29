@@ -79,7 +79,7 @@ const healthPlugin: BakinPlugin = {
       autoFix: !!def.autoFix,
     })
 
-    ctx.hooks.register('health.listChecks', () => listHealthChecks().map(stripRun))
+    ctx.hooks.register('health.list', () => listHealthChecks().map(stripRun))
     ctx.hooks.register('health.getCheck', (d: Record<string, unknown>) => {
       const def = getHealthCheck(d.id as string)
       return def ? stripRun(def) : null

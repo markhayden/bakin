@@ -629,9 +629,9 @@ Same pattern is used for the plugin registry
 | Plugin | Hooks | Examples |
 |--------|-------|---------|
 | tasks | 0 task-metadata hooks | Task metadata is owned by `src/core/task-store.ts` and is not exposed through plugin hooks |
-| workflows | 13 | `workflows.loadInstance`, `workflows.createInstance`, `workflows.getCurrentStep`, `workflows.completeStep`, `workflows.matchWorkflow`, `workflows.listDefinitions`, `workflows.loadDefinition`, `workflows.getActiveAgents`, `workflows.saveInstance`, etc. |
-| assets | 8 | `assets.validateSidecar`, `assets.getSidecarPath`, `assets.createStub`, `assets.detectVariant`, `assets.getAssetTypes`, `assets.listTrash`, `assets.restoreAsset`, `assets.emptyTrash` |
-| team | 7 | `team.listAgents`, `team.getAgent`, `team.getAgentIds`, `team.resolveProfile`, `team.getTeamMembers`, `team.getAgentTeam`, `team.getOrgStructure` |
+| workflows | 13 | `workflows.loadInstance`, `workflows.createInstance`, `workflows.getCurrentStep`, `workflows.completeStep`, `workflows.matchWorkflow`, `workflows.definitions.list`, `workflows.loadDefinition`, `workflows.getActiveAgents`, `workflows.saveInstance`, etc. |
+| assets | 8 | `assets.validateSidecar`, `assets.getSidecarPath`, `assets.createStub`, `assets.detectVariant`, `assets.getAssetTypes`, `assets.trash.list`, `assets.restoreAsset`, `assets.emptyTrash` |
+| team | 7 | `team.list`, `team.getAgent`, `team.getAgentIds`, `team.resolveProfile`, `team.getTeamMembers`, `team.getAgentTeam`, `team.getOrgStructure` |
 | models | 5 | `models.configChanged`, `models.getEffectiveModel`, `models.getAvailableModels`, `models.markConfigDirty`, `models.markGatewayRestarted` |
 | tasks extensions | 2 | `tasks.statusChanged`, `tasks.enrichDetails` |
 

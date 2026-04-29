@@ -441,11 +441,11 @@ const workflowsPlugin: BakinPlugin = {
     ctx.hooks.register('workflows.loadInstance', (d: Record<string, unknown>) => loadInstance(d.taskId as string, d.contentDir as string | undefined))
     ctx.hooks.register('workflows.saveInstance', (d: Record<string, unknown>) => saveInstance(d.instance as Parameters<typeof saveInstance>[0], d.contentDir as string | undefined))
     ctx.hooks.register('workflows.createInstance', (d: Record<string, unknown>) => createInstance(d.taskId as string, d.workflowId as string, d.contentDir as string | undefined, d.assignee as string | undefined, d.parentContext as Record<string, unknown> | undefined))
-    ctx.hooks.register('workflows.listInstances', (d: Record<string, unknown>) => listInstances(d.statusFilter as string | undefined, d.contentDir as string | undefined))
+    ctx.hooks.register('workflows.instances.list', (d: Record<string, unknown>) => listInstances(d.statusFilter as string | undefined, d.contentDir as string | undefined))
     ctx.hooks.register('workflows.getCurrentStep', (d: Record<string, unknown>) => getCurrentStep(d.taskId as string, d.agentId as string | undefined, d.contentDir as string | undefined))
     ctx.hooks.register('workflows.completeStep', (d: Record<string, unknown>) => completeStep(d.taskId as string, d.stepId as string, d.output as Record<string, unknown>, d.callerAgentId as string | undefined, d.contentDir as string | undefined))
     ctx.hooks.register('workflows.matchWorkflow', (d: Record<string, unknown>) => matchWorkflow(d.title as string, d.description as string | undefined))
-    ctx.hooks.register('workflows.listDefinitions', (d: Record<string, unknown>) => listDefinitions(d.contentDir as string | undefined))
+    ctx.hooks.register('workflows.definitions.list', (d: Record<string, unknown>) => listDefinitions(d.contentDir as string | undefined))
     ctx.hooks.register('workflows.loadDefinition', (d: Record<string, unknown>) => loadDefinition(d.name as string, d.contentDir as string | undefined))
     ctx.hooks.register('workflows.getActiveAgents', (d: Record<string, unknown>) => getActiveAgents(d.taskId as string, d.contentDir as string | undefined))
     ctx.hooks.register('workflows.isGateNotified', (d: Record<string, unknown>) => isGateNotified(d.taskId as string, d.stepId as string, d.contentDir as string | undefined))
@@ -456,7 +456,7 @@ const workflowsPlugin: BakinPlugin = {
     })
 
     // ─── Notification Channel Registry Hooks ─────────────────────────
-    ctx.hooks.register('workflows.listNotificationChannels', () => listNotificationChannels())
+    ctx.hooks.register('workflows.notificationChannels.list', () => listNotificationChannels())
     ctx.hooks.register('workflows.getNotificationChannel', (d: Record<string, unknown>) => {
       return getNotificationChannel(d.id as string) ?? null
     })

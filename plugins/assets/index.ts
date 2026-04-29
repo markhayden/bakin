@@ -337,7 +337,7 @@ const assetsPlugin: BakinPlugin = {
       }
       return { purged }
     })
-    ctx.hooks.register('assets.listTrash', (d: Record<string, unknown>) => listTrash(d.assetsRoot as string))
+    ctx.hooks.register('assets.trash.list', (d: Record<string, unknown>) => listTrash(d.assetsRoot as string))
     ctx.hooks.register('assets.restoreAsset', (d: Record<string, unknown>) => restoreAsset(d.trashFilename as string, d.assetsRoot as string))
     ctx.hooks.register('assets.emptyTrash', (d: Record<string, unknown>) => emptyTrash(d.assetsRoot as string))
 
