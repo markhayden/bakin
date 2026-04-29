@@ -1,12 +1,12 @@
 /**
- * Persistent disk cache for the OpenClaw models list.
+ * Persistent disk cache for the runtime models list.
  *
  * The in-memory cache in `plugins/models/index.ts` stays as the hot-read
  * layer; this module is the persistence layer underneath. On cold start
  * (server restart), the in-memory cache is empty but disk may still hold
  * the last successful fetch — hydrating from here means the UI renders
- * last-known-good data immediately instead of lying for 15–20 seconds
- * while `openclaw models list` resolves.
+ * last-known-good data immediately instead of waiting for the runtime
+ * model enumeration call to resolve.
  *
  * Reads zod-validate against the current AvailableModel shape. Corrupt,
  * missing, or schema-drifted files return `null` so callers treat them
@@ -26,7 +26,7 @@ const log = createLogger('models-cache')
 export interface PersistedCache {
   models: AvailableModel[]
   fetchedAt: number
-  source: 'openclaw' | 'empty'
+  source: 'runtime' | 'empty'
 }
 
 function cachePath(): string {
@@ -45,7 +45,7 @@ const availableModelSchema = z
 const persistedCacheSchema = z.object({
   models: z.array(availableModelSchema),
   fetchedAt: z.number(),
-  source: z.enum(['openclaw', 'empty']),
+  source: z.enum(['runtime', 'empty']),
 })
 
 export function readPersistedCache(): PersistedCache | null {

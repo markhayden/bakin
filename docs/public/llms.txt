@@ -2,7 +2,7 @@
 
 Docs version: Bakin 1.0.0
 
-Bakin is a self-hosted dashboard, backend, CLI, and extension system for running agent work with OpenClaw. Use these docs to install Bakin, operate it, build plugins, author agent packages, and understand the public contracts exposed by the SDK, hooks, slots, CLI, and HTTP API.
+Bakin is a self-hosted dashboard, backend, CLI, and extension system for running agent work through a configured runtime adapter. Use these docs to install Bakin, operate it, build plugins, author agent packages, and understand the public contracts exposed by the SDK, hooks, slots, CLI, and HTTP API.
 
 Primary docs:
 
@@ -16,7 +16,7 @@ Primary docs:
   Use this for lifecycle commands, health checks, updates, and runtime operation.
 
 - Core workflows: https://makinbakin.com/docs/core/tasks/
-  Use this for built-in Bakin areas such as tasks, workflows, projects, assets, schedule, messaging, memory, models, team, and health.
+  Use this for built-in Bakin areas such as tasks, workflows, assets, schedule, memory, models, team, and health. Official add-on plugins such as Messaging and Projects are installed separately but documented in the same site.
 
 - Plugin authoring: https://makinbakin.com/docs/extend/plugins/overview/
   Use this when building Bakin plugins with @bakin/sdk.

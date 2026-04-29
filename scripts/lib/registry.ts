@@ -7,12 +7,20 @@
  */
 import { join } from 'path'
 import { existsSync, readFileSync } from 'fs'
-import type { ExecToolDefinition, PluginToolContext } from '../../src/lib/plugin-types'
+import type { ExecToolDefinition, PluginToolContext } from '@bakin/core/plugin-types'
 import { getHookRegistry } from '../../src/lib/plugin-registry'
 import { getContentDir } from '../../src/core/content-dir'
 import { appendAudit } from '../../src/core/audit'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
+import { ScopedPluginStorageAdapter } from '@bakin/core/storage/scoped-plugin-storage'
 import { BakinEventBus } from '../../src/lib/events/event-bus'
+import { getAppServices } from '../../src/core/app-services'
+import { buildSearchAPI } from '../../src/core/search-registry'
+import {
+  createPluginAssetsAPI,
+  createPluginRuntimeFacade,
+  createPluginTaskService,
+} from '../../src/lib/plugin-context-services'
 
 // ---------------------------------------------------------------------------
 // Registry state
@@ -80,15 +88,26 @@ export function getToolContext(toolName: string): PluginToolContext | undefined 
   const pluginId = tool.source.startsWith('plugin:') ? tool.source.slice(7) : tool.source
 
   const hookReg = getHookRegistry()
+  const services = getAppServices()
   const contentDir = getContentDir()
   const broadcastFn = (globalThis as { __bakinBroadcast?: (data: Record<string, unknown>) => void }).__bakinBroadcast ?? (() => {})
+  const assets = createPluginAssetsAPI()
+  const storage = pluginId === 'core'
+    ? new MarkdownStorageAdapter(contentDir)
+    : new ScopedPluginStorageAdapter(contentDir, pluginId)
 
   return {
-    storage: new MarkdownStorageAdapter(contentDir),
+    storage,
     events: new BakinEventBus(broadcastFn),
     pluginId,
+    runtime: createPluginRuntimeFacade(services.runtime),
+    tasks: createPluginTaskService(services.tasks),
+    assets,
+    search: buildSearchAPI(pluginId, { skipFileBackedWiring: true }),
     hooks: {
       register: (name: string, handler: (data: any) => any) => hookReg.register(name, handler),
+      call: <T>(name: string, data: T) => hookReg.call<T>(name, data),
+      callAll: (name: string, data: Record<string, unknown>) => hookReg.callAll(name, data),
       has: (name: string) => hookReg.has(name),
       invoke: <R>(name: string, data: unknown) => hookReg.invoke<R>(name, data),
     },

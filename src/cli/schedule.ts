@@ -41,19 +41,6 @@ async function apiDelete<T>(path: string): Promise<T> {
   return res.json() as Promise<T>
 }
 
-async function apiPut<T>(path: string, body: Record<string, unknown>): Promise<T> {
-  const res = await fetch(`${BASE_URL}/api/plugins/schedule${path}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`API error ${res.status}: ${text}`)
-  }
-  return res.json() as Promise<T>
-}
-
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------

@@ -66,13 +66,13 @@ export function useAssets(options: UseAssetsOptions = {}) {
     }
   }, [fetchAssets])
 
-  const deleteAsset = useCallback(async (path: string) => {
+  const deleteAsset = useCallback(async (filename: string) => {
     try {
-      const res = await fetch(`/api/plugins/assets?path=${encodeURIComponent(path)}`, {
+      const res = await fetch(`/api/plugins/assets?filename=${encodeURIComponent(filename)}`, {
         method: 'DELETE',
       })
       if (res.ok) {
-        setAssets(prev => prev.filter(a => a.path !== path))
+        setAssets(prev => prev.filter(a => a.filename !== filename))
         return true
       }
     } catch { /* ignore */ }

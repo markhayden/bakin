@@ -4,7 +4,7 @@
  * `~/.bakin/.uninstalled/<id>-<ISO>.tar.gz`.
  *
  * Captures only the Bakin-owned set: the plugin dir, the plugin-settings
- * JSON, and the OpenClaw skill dirs we're about to delete. Does NOT
+ * JSON, and the runtime skills we're about to delete. Does NOT
  * capture data the plugin's own onUninstall removed — that's the plugin's
  * responsibility per the contract.
  *
@@ -19,8 +19,8 @@
  * and macOS ship `tar`; no new npm dep. Resolution captured in
  * .claude/specs/plugin-lifecycle-plan.md C7 OPEN QUESTION.
  */
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync } from 'fs'
-import { join, basename } from 'path'
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'
+import { join, basename, dirname } from 'path'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 
@@ -32,8 +32,10 @@ export interface SnapshotInput {
   pluginDir: string
   /** Absolute path to ~/.bakin/plugin-settings/<id>.json. May not exist. */
   settingsFile?: string
-  /** Absolute paths of OpenClaw skill dirs that will be removed. */
-  removedSkillDirs: string[]
+  /** Runtime skill content that will be removed. */
+  removedSkills?: Array<{ name: string; files: Record<string, string> }>
+  /** Legacy direct path snapshots; kept for tests and non-runtime callers. */
+  removedSkillDirs?: string[]
 }
 
 export interface SnapshotResult {
@@ -92,10 +94,21 @@ export async function snapshotUninstall(input: SnapshotInput): Promise<SnapshotR
       captured.push(input.settingsFile)
     }
 
-    for (const dir of input.removedSkillDirs) {
+    for (const skill of input.removedSkills ?? []) {
+      const skillRoot = join(stagingDir, 'runtime-skills', skill.name)
+      for (const [rel, content] of Object.entries(skill.files)) {
+        if (!isSafeSnapshotRel(rel)) continue
+        const dest = join(skillRoot, rel)
+        mkdirSync(dirname(dest), { recursive: true })
+        writeFileSync(dest, content, 'utf-8')
+      }
+      captured.push(`runtime:skills/${skill.name}`)
+    }
+
+    for (const dir of input.removedSkillDirs ?? []) {
       if (!existsSync(dir)) continue
-      const dest = join(stagingDir, 'openclaw-skills', basename(dir))
-      mkdirSync(join(stagingDir, 'openclaw-skills'), { recursive: true })
+      const dest = join(stagingDir, 'runtime-skills', basename(dir))
+      mkdirSync(join(stagingDir, 'runtime-skills'), { recursive: true })
       cpSync(dir, dest, { recursive: true, dereference: false })
       captured.push(dir)
     }
@@ -107,7 +120,7 @@ export async function snapshotUninstall(input: SnapshotInput): Promise<SnapshotR
     } else {
       // Tar the staging dir contents (not the staging dir itself) so the
       // tarball has clean top-level entries: plugins/, plugin-settings/,
-      // openclaw-skills/. `-C <staging>` enters the staging dir; `.` then
+      // runtime-skills/. `-C <staging>` enters the staging dir; `.` then
       // archives its contents.
       await spawnTar(['-czf', tmpPath, '-C', stagingDir, '.'])
     }
@@ -119,7 +132,10 @@ export async function snapshotUninstall(input: SnapshotInput): Promise<SnapshotR
     renameSync(tmpPath, finalPath)
   } catch (err) {
     // Leave tmp for debugging — but try to surface a useful error.
-    throw new Error(`snapshotUninstall: rename failed for ${tmpPath} → ${finalPath}: ${err instanceof Error ? err.message : String(err)}`)
+    throw new Error(
+      `snapshotUninstall: rename failed for ${tmpPath} → ${finalPath}: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    )
   }
   // Tarball may contain plugin-settings JSON with secrets — restrict to
   // the owner only. Best-effort: never throw on chmod failure.
@@ -135,6 +151,13 @@ export async function snapshotUninstall(input: SnapshotInput): Promise<SnapshotR
     captured: captured.length,
   })
   return { tarballPath: finalPath, capturedPaths: captured }
+}
+
+function isSafeSnapshotRel(path: string): boolean {
+  return Boolean(path)
+    && !path.startsWith('/')
+    && !path.includes('\\')
+    && !path.split('/').some((part) => part === '..' || part === '')
 }
 
 /**
@@ -181,4 +204,3 @@ async function spawnTar(args: string[]): Promise<void> {
     throw new Error(`tar exited with code ${code}: ${stderr.trim() || '(no stderr)'}`)
   }
 }
-

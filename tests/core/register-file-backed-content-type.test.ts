@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, mock, type Mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
+import { clearSearchAdapter, createSearchAdapterHarness, installSearchAdapter } from '../helpers/search-adapter'
 
 const syncHooks: Array<(rel: string, content: string) => void | Promise<void>> = []
 const unlinkHooks: Array<(rel: string) => void | Promise<void>> = []
@@ -26,38 +27,25 @@ mock.module('@/core/content-dir', () => ({
   }),
 }))
 
-mock.module('@/core/antfly', () => ({
-  enabled: mock(() => true),
-  createTable: mock(async () => true),
-  listTables: mock(async () => []),
-  indexDocument: mock(async () => {}),
-  removeDocument: mock(async () => {}),
-  transformDocument: mock(async () => {}),
-  scanTable: mock(async function* () {}),
-  rebuildIndexes: mock(async () => {}),
-  batchIndex: mock(async (_t: string, docs: Record<string, unknown>) => Object.keys(docs).length),
-  multiQuery: mock(async () => ({ results: [], total: 0, took: 0 })),
-  queryTable: mock(async () => ({ results: [], total: 0, took: 0 })),
-  getIndexHealth: mock(async () => null),
-  getTableStats: mock(async () => null),
-}))
-
 mock.module('@/core/settings', () => ({
   getSettings: mock(() => ({
-    antfly: {
-      enabled: true,
-      url: 'http://localhost:8080/api/v1',
-      search: {
-        strategy: 'rrf',
-        defaultLimit: 20,
-        reranker: { enabled: false },
+    search: {
+      adapter: 'antfly',
+      settings: {
+        enabled: true,
+        url: 'http://localhost:8080/api/v1',
+        search: {
+          strategy: 'rrf',
+          defaultLimit: 20,
+          reranker: { enabled: false },
+        },
+        embedders: {
+          default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
+        },
+        chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
+        auditTtl: '90d',
+        cleanupInterval: '7d',
       },
-      embedders: {
-        default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
-      },
-      chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
-      auditTtl: '90d',
-      cleanupInterval: '7d',
     },
   })),
 }))
@@ -76,15 +64,22 @@ mock.module('@/core/sse', () => ({
 }))
 
 import { buildSearchAPI, resetSearchRegistry } from '@/core/search-registry'
-import * as antfly from '@/core/antfly'
 import type { FileBackedContentTypeDefinition } from '../../packages/core/src/plugin-types'
 
 describe('registerFileBackedContentType', () => {
+  let searchHarness: ReturnType<typeof createSearchAdapterHarness>
+
   beforeEach(() => {
     resetSearchRegistry()
+    searchHarness = createSearchAdapterHarness()
+    installSearchAdapter(searchHarness.adapter)
     syncHooks.length = 0
     unlinkHooks.length = 0
     mock.clearAllMocks()
+  })
+
+  afterEach(() => {
+    clearSearchAdapter()
   })
 
   function makeDef(overrides: Partial<FileBackedContentTypeDefinition> = {}): FileBackedContentTypeDefinition {
@@ -121,8 +116,8 @@ describe('registerFileBackedContentType', () => {
 
     await syncHooks[0]('projects/foo.md', 'foo body')
 
-    expect(antfly.indexDocument).toHaveBeenCalledTimes(1)
-    const [tableName, key, doc] = vi.mocked(antfly.indexDocument).mock.calls[0]
+    expect(searchHarness.calls.documentsIndex).toHaveBeenCalledTimes(1)
+    const [tableName, key, doc] = searchHarness.calls.documentsIndex.mock.calls[0]
     expect(tableName).toBe('bakin_projects')
     expect(key).toBe('foo')
     expect((doc as Record<string, unknown>).title).toBe('projects/foo.md')
@@ -135,7 +130,7 @@ describe('registerFileBackedContentType', () => {
     await syncHooks[0]('other/foo.md', 'foo')
     await syncHooks[0]('projects/foo.txt', 'foo')
 
-    expect(antfly.indexDocument).not.toHaveBeenCalled()
+    expect(searchHarness.calls.documentsIndex).not.toHaveBeenCalled()
   })
 
   it('sync hook honors excludePatterns', async () => {
@@ -153,10 +148,10 @@ describe('registerFileBackedContentType', () => {
     }))
 
     await syncHooks[0]('assets/image/.trash/old.jpg', '')
-    expect(antfly.indexDocument).not.toHaveBeenCalled()
+    expect(searchHarness.calls.documentsIndex).not.toHaveBeenCalled()
 
     await syncHooks[0]('assets/image/live.jpg', '')
-    expect(antfly.indexDocument).toHaveBeenCalledTimes(1)
+    expect(searchHarness.calls.documentsIndex).toHaveBeenCalledTimes(1)
   })
 
   it('sync hook delegates to onSync escape hatch when provided', async () => {
@@ -179,7 +174,7 @@ describe('registerFileBackedContentType', () => {
     expect(onSync).toHaveBeenCalledTimes(1)
     expect(onSync).toHaveBeenCalledWith('assets/image/foo.jpg', '')
     // The standard index path is bypassed
-    expect(antfly.indexDocument).not.toHaveBeenCalled()
+    expect(searchHarness.calls.documentsIndex).not.toHaveBeenCalled()
   })
 
   it('unlink hook removes documents matching the pattern', async () => {
@@ -188,8 +183,8 @@ describe('registerFileBackedContentType', () => {
 
     await unlinkHooks[0]('projects/bar.md')
 
-    expect(antfly.removeDocument).toHaveBeenCalledTimes(1)
-    const [tableName, key] = vi.mocked(antfly.removeDocument).mock.calls[0]
+    expect(searchHarness.calls.documentsRemove).toHaveBeenCalledTimes(1)
+    const [tableName, key] = searchHarness.calls.documentsRemove.mock.calls[0]
     expect(tableName).toBe('bakin_projects')
     expect(key).toBe('bar')
   })
@@ -199,7 +194,7 @@ describe('registerFileBackedContentType', () => {
     api.registerFileBackedContentType(makeDef())
 
     await unlinkHooks[0]('other/bar.md')
-    expect(antfly.removeDocument).not.toHaveBeenCalled()
+    expect(searchHarness.calls.documentsRemove).not.toHaveBeenCalled()
   })
 
   it('unlink hook delegates to onUnlink escape hatch when provided', async () => {
@@ -221,7 +216,7 @@ describe('registerFileBackedContentType', () => {
 
     expect(onUnlink).toHaveBeenCalledTimes(1)
     expect(onUnlink).toHaveBeenCalledWith('assets/image/old.jpg')
-    expect(antfly.removeDocument).not.toHaveBeenCalled()
+    expect(searchHarness.calls.documentsRemove).not.toHaveBeenCalled()
   })
 
   it('skips indexing when mapper.fileToDoc returns null', async () => {
@@ -237,7 +232,7 @@ describe('registerFileBackedContentType', () => {
     }))
 
     await syncHooks[0]('projects/foo.md', 'x')
-    expect(antfly.indexDocument).not.toHaveBeenCalled()
+    expect(searchHarness.calls.documentsIndex).not.toHaveBeenCalled()
   })
 
   it('multiple filePatterns route to the correct mapper', async () => {
@@ -260,9 +255,9 @@ describe('registerFileBackedContentType', () => {
 
     expect(fileToDocA).toHaveBeenCalledTimes(1)
     expect(fileToDocB).toHaveBeenCalledTimes(1)
-    expect(antfly.indexDocument).toHaveBeenCalledTimes(2)
-    const calls = vi.mocked(antfly.indexDocument).mock.calls
-    const keys = calls.map((c: any[]) => c[1])
+    expect(searchHarness.calls.documentsIndex).toHaveBeenCalledTimes(2)
+    const calls = searchHarness.calls.documentsIndex.mock.calls
+    const keys = calls.map((c) => c[1])
     expect(keys).toContain('def:workflows/definitions/x.yaml')
     expect(keys).toContain('inst:workflows/instances/y.json')
   })

@@ -30,9 +30,17 @@ export type {
   PluginEntry,
   BakinConfig,
 } from './plugin-types'
+export {
+  PLUGIN_ID_RE,
+  PluginManifestError,
+  parsePluginManifest,
+  readPluginManifestJson,
+} from './plugins/manifest'
+export type { ParsePluginManifestOptions } from './plugins/manifest'
 
 // Storage
 export { MarkdownStorageAdapter } from './storage/markdown-adapter'
+export { ScopedPluginStorageAdapter } from './storage/scoped-plugin-storage'
 
 // Events
 export { BakinEventBus } from './events/event-bus'
@@ -49,16 +57,123 @@ export type { BakinPaths } from './content-dir'
 
 // Settings
 export { DEFAULT_SETTINGS, getSettings, updateSettings, resetSettingsCache } from './settings'
-export type { BakinSettings } from './settings'
+export type { BakinSettings, RuntimeAdapterSettings, RuntimeAdapterName, SearchAdapterSettings, SearchAdapterName } from './settings'
 
-// Main agent
-export { getMainAgentId } from './main-agent'
+// Adapter contracts
+export type { AppServices, HealthService } from './app-services'
+export { createHealthService } from './app-services'
+export type {
+  AdapterAuditEvent,
+  AdapterHealthCheckDefinition,
+  AdapterHealthCheckResult,
+  AdapterInitOpts,
+  AdapterLogger,
+  AdapterVersionInfo,
+  Unsubscribe,
+} from './adapters/shared'
+export type {
+  AgentRuntimeAdapter,
+  ApprovalDelivery,
+  ApprovalOption,
+  ApprovalPatch,
+  ApprovalRenderRef,
+  ApprovalRenderResult,
+  ApprovalResolveEvent,
+  ApprovalResponse,
+  CancelApprovalArgs,
+  ChannelCapability,
+  ChannelInfo,
+  ChannelInteractionEvent,
+  ChannelMessageArgs,
+  ChannelMessageEvent,
+  ChatChunk,
+  ContentDeliveryArgs,
+  CreateApprovalArgs,
+  CreateCronJobInput,
+  CreateRuntimeAgentInput,
+  CronJob,
+  CronRun,
+  DeliveryResult,
+  DurableApprovalRecord,
+  EditApprovalArgs,
+  ListExecutionsOpts,
+  MessageArgs,
+  MessageResult,
+  NotificationArgs,
+  ResolveApprovalArgs,
+  RuntimeAgent,
+  RuntimeAllowlistPatch,
+  RuntimeConfigAccess,
+  RuntimeMemoryEntry,
+  RuntimeMemoryTier,
+  RuntimeMetadata,
+  RuntimePermissionPatch,
+  RuntimeSession,
+  RuntimeSkill,
+  TaskDispatchArgs,
+  TaskDispatchResult,
+  TaskExecutionEvent,
+  TaskExecutionStatus,
+  ToolDefinition,
+  ToolResult,
+  UpdateCronJobInput,
+  UpdateRuntimeAgentInput,
+  WorkspaceFile,
+} from './adapters/runtime'
+export {
+  getRuntimeMainAgent,
+  getRuntimeMainAgentId,
+  getRuntimeMainAgentName,
+  hasChannelCapability,
+  selectRuntimeMainAgent,
+} from './adapters/runtime'
+export { createMockRuntimeAdapter } from './adapters/runtime/testing'
+export type {
+  AggregationRequest,
+  BatchResult,
+  Document,
+  FacetCount,
+  Filter,
+  IndexItem,
+  IndexOpts,
+  Query,
+  QueryDiagnostics,
+  QueryResult,
+  RebuildReport,
+  ScanOpts,
+  ScannedDocument,
+  ScoreBreakdown,
+  SearchAdapter,
+  SearchFieldConfig,
+  SearchHit,
+  SearchIndexConfig,
+  SortSpec,
+  TableConfig,
+  TableHealth,
+  TableInfo,
+  TableStats,
+  TransformFn,
+} from './adapters/search'
+export { createMockSearchAdapter } from './adapters/search/testing'
+
+// Bakin task store
+export type {
+  BakinTask,
+  BakinTaskPatch,
+  BakinTaskStore,
+  BakinTaskStoreEvent,
+  CreateBakinTaskInput,
+  SyncBakinTaskStore,
+  TaskComment,
+  TaskDependencyPatch,
+  TaskListOpts,
+  TaskLogEntry,
+} from './tasks/store'
+export { createEmptyBakinTask, createFileBakinTaskStore } from './tasks/store'
+export { createMockBakinTaskStore } from './tasks/testing'
 
 // Logger
 export { createLogger } from './logger'
-
-// Vault
-export * as vault from './vault'
 
 // Utilities
 export { formatAge, isStale } from './format'

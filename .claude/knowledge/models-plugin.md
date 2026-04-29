@@ -12,13 +12,13 @@ Path: `~/.bakin/plugin-settings/models/available.json`. Owned by `plugins/models
 
 `fetchAvailableModels` returns `{ models, stale: boolean, error? }`. The client surfaces cached data immediately and kicks off a background `POST /api/plugins/models/refresh` when `stale` is true.
 
-`POST /api/plugins/models/gateway/restart` clears both cache layers (memory + disk).
+`POST /api/plugins/models/runtime/restart` clears both cache layers (memory + disk).
 
 ## Layer 2: Curated catalog
 
 Path: `plugins/models/data/known-models.ts`. Bakin-maintained lookup of ~22 popular models — frontier + OSS, LLM + image + video — with descriptions, tier, cost range, and brand-icon slugs.
 
-Merged into each OpenClaw-sourced `AvailableModel` server-side via `getKnownModel()` / `getKnownProvider()`. Unknown models render plain — **no fabrication**.
+Merged into each runtime-sourced `AvailableModel` server-side via `getKnownModel()` / `getKnownProvider()`. Unknown models render plain — **no fabrication**.
 
 ## Brand icons
 

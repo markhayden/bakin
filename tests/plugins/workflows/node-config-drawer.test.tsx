@@ -35,7 +35,7 @@ mock.module('../../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({}),
 }))
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({}))
+mock.module('@/core/task-store', () => ({}))
 
 // Stub AgentSelect so the agent-field renderer renders in jsdom without
 // hitting the agent store.

@@ -6,7 +6,7 @@
  * HTTP round-trip. Per-tier errors degrade to 0, matching the REST route's
  * "dashboard, not source of truth" stance.
  */
-import type { ExecToolDefinition, PluginContext } from '../../../src/lib/plugin-types'
+import type { ExecToolDefinition, PluginContext } from '@bakin/core/plugin-types'
 import { MEMORY_TIERS, type MemoryTier } from '../lib/types'
 import { getOffsetsFilePath } from '../lib/offsets'
 import { existsSync, readFileSync } from 'fs'

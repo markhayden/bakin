@@ -28,13 +28,19 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { unregisterPlugin } from '@bakin/sdk'
 import { assertReactInstance } from '../lib/react-identity'
+import {
+  installVersionMismatchDetector,
+  VERSION_MISMATCH_EVENT,
+  type VersionMismatchDetail,
+} from './version-mismatch-detector'
 
 interface ManifestPlugin {
   id: string
   name: string
   version: string
-  clientEntry: string
+  clientEntry?: string
   clientCss?: string
+  status?: 'active' | 'failed'
 }
 
 interface Manifest {
@@ -77,6 +83,7 @@ function swapPluginCss(plugin: ManifestPlugin, version: string): void {
 }
 
 async function loadPluginClient(plugin: ManifestPlugin): Promise<void> {
+  if (plugin.status === 'failed' || !plugin.clientEntry) return
   injectPluginCss(plugin)
   try {
     const mod = await import(/* @vite-ignore */ plugin.clientEntry) as LoadedPluginModule
@@ -144,6 +151,27 @@ export function PluginHost({ children }: { children: ReactNode }) {
     return () => {
       delete (window as unknown as { __bakinHotSwapPlugin?: unknown }).__bakinHotSwapPlugin
     }
+  }, [])
+
+  // Install the version-mismatch detector + listen for its events
+  // (Phase 2 P2.C6). The detector wraps fetch; on header drift it fires
+  // a CustomEvent that we react to by triggering the same hot-swap path
+  // SSE events use. Dev-mode only — production never wraps fetch.
+  useEffect(() => {
+    if (!isDevModeActive()) return
+    installVersionMismatchDetector()
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<VersionMismatchDetail>).detail
+      if (!detail) return
+      const plugin = latestManifest?.plugins.find((p) => p.id === detail.pluginId)
+      if (!plugin?.clientEntry) return
+      console.info(
+        `[bakin] Plugin "${detail.pluginId}" version drifted (${detail.oldVersion} → ${detail.newVersion}); reloading client bundle.`,
+      )
+      void hotSwapPlugin(detail.pluginId, plugin.clientEntry, String(detail.newVersion))
+    }
+    window.addEventListener(VERSION_MISMATCH_EVENT, handler)
+    return () => window.removeEventListener(VERSION_MISMATCH_EVENT, handler)
   }, [])
 
   if (!ready) return null

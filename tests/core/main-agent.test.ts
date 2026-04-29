@@ -45,9 +45,9 @@ mock.module('fs', () => {
 
 import { readFileSync, statSync } from 'fs'
 
-let getMainAgentId: typeof import('../../packages/core/src/main-agent').getMainAgentId
-let tryGetMainAgentId: typeof import('../../packages/core/src/main-agent').tryGetMainAgentId
-let getMainAgentName: typeof import('../../packages/core/src/main-agent').getMainAgentName
+let getMainAgentId: typeof import('../../packages/adapter-openclaw/src/main-agent').getMainAgentId
+let tryGetMainAgentId: typeof import('../../packages/adapter-openclaw/src/main-agent').tryGetMainAgentId
+let getMainAgentName: typeof import('../../packages/adapter-openclaw/src/main-agent').getMainAgentName
 
 function openclawConfig(list: Array<Record<string, unknown>>): string {
   return JSON.stringify({ agents: { list } })
@@ -64,13 +64,13 @@ describe('main-agent', () => {
     vi.mocked(readFileSync).mockImplementation(() => { throw new Error('ENOENT') })
     vi.mocked(statSync).mockImplementation(() => { throw new Error('ENOENT') })
 
-    const mod = await import('../../packages/core/src/main-agent')
+    const mod = await import('../../packages/adapter-openclaw/src/main-agent')
     getMainAgentId = mod.getMainAgentId
     tryGetMainAgentId = mod.tryGetMainAgentId
     getMainAgentName = mod.getMainAgentName
 
     // bun:test has no vi.resetModules; reset the upstream cache explicitly
-    const { resetOpenClawConfigCache } = await import('../../packages/core/src/openclaw-config')
+    const { resetOpenClawConfigCache } = await import('../../packages/adapter-openclaw/src/config')
     resetOpenClawConfigCache()
   })
 
@@ -89,7 +89,7 @@ describe('main-agent', () => {
         { id: 'patch', workspace: '/tmp/ws/patch' },
       ]))
       expect(() => getMainAgentId()).toThrow(/openclaw\.json has no agent with id 'main'/)
-      expect(() => getMainAgentId()).toThrow(/bakin check openclaw/)
+      expect(() => getMainAgentId()).toThrow(/bakin check runtime/)
     })
 
     it('throws when openclaw.json is missing entirely', () => {

@@ -2,7 +2,7 @@
  * Tests for team plugin agent lifecycle MCP exec tools.
  *
  * Covers the 4 new tools: create_agent, update_identity, delete_agent, set_permissions.
- * All OpenClaw-touching modules are stubbed.
+ * All runtime-facing modules are stubbed.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, readFileSync, writeFileSync } from 'fs'
@@ -59,25 +59,18 @@ mock.module('../../../src/core/watcher', () => ({
   registerUnlinkHook: mock(),
 }))
 
-mock.module('../../../src/core/openclaw-client', () => ({
-  sendMessage: mock(async () => 'ok'),
-  invokeTool: mock(async () => ({ ok: true })),
-  sendChannelMessage: mock(async () => 'ok'),
-  restartGateway: mock(async () => {}),
-  ping: mock(async () => true),
-  getAgentLastReply: mock(() => null),
-}))
-
 mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
     mainAgentId: 'main',
-    antfly: { enabled: false, auditTtl: undefined },
+    search: { adapter: 'antfly', settings: { enabled: false, auditTtl: undefined } },
   }),
   resetSettingsCache: mock(),
 }))
 
-mock.module('../../../src/core/main-agent', () => ({
+mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
   getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
 }))
 
 mock.module('../../../src/core/mcporter', () => ({
@@ -97,7 +90,7 @@ mock.module('../../../src/lib/agents', () => ({
   stopAgent: mock(async () => {}),
 }))
 
-mock.module('../../../src/lib/content', () => ({
+mock.module('../../../src/lib/content-files', () => ({
   readHeartbeats: mock(() => ({})),
 }))
 
@@ -112,59 +105,120 @@ const { rosterAgents } = (() => ({
   },
 }))()
 
-const { adapterMocks } = (() => ({
-  adapterMocks: {
-    addAgent: mock(async (input: Record<string, unknown>) => ({ id: input.id, workspace: `/tmp/ws/${input.id}` })),
-    removeAgent: mock(async () => true),
-    addToAllowLists: mock(),
-    removeFromAllowLists: mock(),
-    setSubagentPermissions: mock(),
-    updateAgentIdentity: mock(async () => ['name', 'role']),
-    getAgentIds: mock(() => rosterAgents.current.map((a) => a.id)),
+const { runtimeMocks } = (() => ({
+  runtimeMocks: {
+    create: mock(async (input: Record<string, unknown>) => ({
+      id: input.id,
+      name: input.name,
+      role: input.role,
+      model: input.model,
+      status: 'active',
+      metadata: { ...(input.metadata as Record<string, unknown> | undefined), workspacePath: `/tmp/ws/${input.id}` },
+    })),
+    remove: mock(async () => {}),
+    update: mock(async (agentId: string, input: Record<string, unknown>) => ({
+      id: agentId,
+      name: input.name ?? agentId,
+      role: input.role,
+      status: 'active',
+      metadata: input.metadata,
+    })),
+    updateAllowlist: mock(async () => {}),
+    readWorkspaceFile: mock(async (): Promise<{ path: string; content: string; updatedAt?: string } | null> => null),
+    writeWorkspaceFile: mock(async () => {}),
   },
 }))()
 
-function makeAdapterMock() {
+function makeRuntimeMock() {
   return {
-    listAgents: mock(() => rosterAgents.current),
-    getAgentIds: adapterMocks.getAgentIds,
-    getAgentModel: mock(() => 'claude-opus-4'),
-    getAgentProfile: mock((id: string) => ({
-      id, name: id, emoji: '🤖', role: '', headshot: '',
-      model: 'claude-opus-4', workspacePath: '/tmp/ws',
-      soul: '', identity: null, rules: null, tools: null,
-      heartbeatMd: null, subagentPerms: null,
-    })),
-    listWorkspaceFiles: mock(() => []),
-    readWorkspaceFile: mock(() => null),
-    writeWorkspaceFile: mock(() => {}),
-    listSkills: mock(() => []),
-    readSkillFile: mock(() => null),
-    listMemoryFiles: mock(() => []),
-    readMemoryFile: mock(() => null),
-    addAgent: adapterMocks.addAgent,
-    removeAgent: adapterMocks.removeAgent,
-    removeFromAllowLists: adapterMocks.removeFromAllowLists,
-    addToAllowLists: adapterMocks.addToAllowLists,
-    setSubagentPermissions: adapterMocks.setSubagentPermissions,
-    updateAgentIdentity: adapterMocks.updateAgentIdentity,
-    updateAgentField: mock(),
-    getOpenClawConfig: mock(() => ({ agents: { list: [] } })),
-    openclawExec: mock(async () => '{}'),
-    synthesizeIdentityMd: mock(() => '# IDENTITY.md\n'),
+    name: 'test-runtime',
+    version: '0.0.0',
+    requiredCoreVersion: '*',
+    initialize: async () => {},
+    shutdown: async () => {},
+    ping: async () => true,
+    restart: async () => {},
+    getHealthChecks: () => [],
+    agents: {
+      list: async () => rosterAgents.current.map((agent) => ({
+        id: agent.id,
+        name: agent.name,
+        role: agent.role,
+        status: 'active',
+        metadata: { emoji: agent.emoji, workspacePath: `/tmp/ws/${agent.id}`, subagentAllowAgents: null },
+      })),
+      get: async (agentId: string) => {
+        const agent = rosterAgents.current.find((entry) => entry.id === agentId)
+        return agent ? {
+          id: agent.id,
+          name: agent.name,
+          role: agent.role,
+          status: 'active',
+          metadata: { emoji: agent.emoji, workspacePath: `/tmp/ws/${agent.id}`, subagentAllowAgents: null },
+        } : null
+      },
+      create: runtimeMocks.create,
+      update: runtimeMocks.update,
+      remove: runtimeMocks.remove,
+      listWorkspaceFiles: async () => [],
+      readWorkspaceFile: runtimeMocks.readWorkspaceFile,
+      writeWorkspaceFile: runtimeMocks.writeWorkspaceFile,
+      updatePermissions: async () => {},
+      updateAllowlist: runtimeMocks.updateAllowlist,
+      heartbeat: async () => false,
+    },
+    messaging: { send: async () => ({ id: 'msg-1' }), stream: async function* () {} },
+    tools: { invoke: async () => ({ ok: true }), list: async () => [] },
+    channels: {
+      list: async () => [],
+      sendNotification: async () => ({ deliveries: [] }),
+      sendMessage: async () => ({ deliveries: [] }),
+      deliverContent: async () => ({ deliveries: [] }),
+      createApproval: async () => ({ deliveries: [] }),
+      editApproval: async (args: { deliveries: unknown[] }) => ({ deliveries: args.deliveries }),
+      cancelApproval: async () => {},
+      resolveApproval: async () => {},
+      subscribeApprovalResponses: () => () => {},
+      onMessage: () => () => {},
+      onInteraction: () => () => {},
+    },
+    skills: { list: async () => [], get: async () => null, write: async () => {}, remove: async () => {} },
+    sessions: { list: async () => [], get: async () => null },
+    memory: { listTiers: async () => [], listEntries: async () => [], getEntry: async () => null },
+    tasks: {
+      dispatch: async (args: { bakinTaskId: string }) => ({ flowId: `flow-${args.bakinTaskId}` }),
+      getExecutionStatus: async (flowId: string) => ({ flowId, state: 'unknown' }),
+      listExecutions: async () => [],
+      cancelExecution: async () => {},
+      subscribeExecutionUpdates: () => () => {},
+    },
+    cron: {
+      list: async () => [],
+      get: async () => null,
+      create: async (input: Record<string, unknown>) => ({ id: input.id ?? 'cron-1', ...input }),
+      update: async (id: string, patch: Record<string, unknown>) => ({ id, ...patch }),
+      remove: async () => {},
+      runNow: async (jobId: string) => ({ id: 'run-1', jobId, status: 'succeeded' }),
+      listRuns: async () => [],
+    },
+    config: {
+      get: async () => ({ agents: { defaults: { model: { primary: 'claude-opus-4' } } } }),
+      update: async () => {},
+      raw: async () => undefined,
+    },
   }
 }
 
-mock.module('@bakin/team/lib/openclaw-adapter', () => makeAdapterMock())
-mock.module('../../../plugins/team/lib/openclaw-adapter', () => makeAdapterMock())
+mock.module('@bakin/core/adapters/runtime/testing', () => ({
+  createMockRuntimeAdapter: () => makeRuntimeMock(),
+}))
 
 // ---------------------------------------------------------------------------
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
 
 import { activatePlugin, findTool, callTool } from '../test-helpers'
-// Dynamic require — ES imports are hoisted above top-level env setup above.
-const teamPlugin = require('../../../plugins/team/index').default as typeof import('../../../plugins/team/index').default
+const teamPlugin = (await import('../../../plugins/team/index')).default as typeof import('../../../plugins/team/index').default
 import type { ActivatedPlugin } from '../test-helpers'
 
 // ---------------------------------------------------------------------------
@@ -181,7 +235,7 @@ beforeAll(async () => {
 })
 
 beforeEach(() => {
-  Object.values(adapterMocks).forEach((m) => m.mockClear())
+  Object.values(runtimeMocks).forEach((m) => m.mockClear())
   rosterAgents.current = [
     { id: 'main', name: 'Main', emoji: '🤖', role: 'Orchestrator', headshot: '' },
     { id: 'basil', name: 'Basil', emoji: '🌿', role: 'Cook', headshot: '' },
@@ -214,10 +268,13 @@ describe('bakin_exec_team_create_agent', () => {
     expect(result.ok).toBe(true)
     expect(result.id).toBe('jessica-fetcher')
     expect(result.instructions).toBeDefined()
-    expect(adapterMocks.addAgent).toHaveBeenCalledWith(expect.objectContaining({
+    expect(runtimeMocks.create).toHaveBeenCalledWith(expect.objectContaining({
       id: 'jessica-fetcher',
       name: 'Jessica Fetcher',
       role: 'Research Agent',
+      metadata: expect.objectContaining({
+        primaryFunction: 'Multi-source research',
+      }),
     }))
   })
 
@@ -247,16 +304,18 @@ describe('bakin_exec_team_create_agent', () => {
     expect(result.error).toMatch(/already exists/)
   })
 
-  it('calls addToAllowLists with "main" by default', async () => {
+  it('adds the new agent to main allowlist by default', async () => {
     const tool = findTool(activated.execTools, 'bakin_exec_team_create_agent')!
     await callTool(tool, { name: 'New Agent' })
-    expect(adapterMocks.addToAllowLists).toHaveBeenCalledWith('new-agent', 'main')
+    expect(runtimeMocks.updateAllowlist).toHaveBeenCalledWith('main', { add: ['new-agent'] })
   })
 
-  it('calls addToAllowLists with "all" when dispatchable="all"', async () => {
+  it('adds the new agent to all allowlists when dispatchable="all"', async () => {
     const tool = findTool(activated.execTools, 'bakin_exec_team_create_agent')!
     await callTool(tool, { name: 'Public Agent', dispatchable: 'all' })
-    expect(adapterMocks.addToAllowLists).toHaveBeenCalledWith('public-agent', 'all')
+    expect(runtimeMocks.updateAllowlist).toHaveBeenCalledWith('main', { add: ['public-agent'] })
+    expect(runtimeMocks.updateAllowlist).toHaveBeenCalledWith('basil', { add: ['public-agent'] })
+    expect(runtimeMocks.updateAllowlist).toHaveBeenCalledWith('pixel', { add: ['public-agent'] })
   })
 
   it('writes teamId to display settings', async () => {
@@ -276,7 +335,7 @@ describe('bakin_exec_team_update_identity', () => {
     expect(findTool(activated.execTools, 'bakin_exec_team_update_identity')).toBeDefined()
   })
 
-  it('calls updateAgentIdentity with provided fields', async () => {
+  it('updates identity with provided fields through the runtime adapter', async () => {
     const tool = findTool(activated.execTools, 'bakin_exec_team_update_identity')!
     const result = await callTool(tool, {
       agentId: 'basil',
@@ -285,14 +344,13 @@ describe('bakin_exec_team_update_identity', () => {
     })
     expect(result.ok).toBe(true)
     expect(result.updated).toEqual(['name', 'role'])
-    expect(adapterMocks.updateAgentIdentity).toHaveBeenCalledWith('basil', expect.objectContaining({
+    expect(runtimeMocks.update).toHaveBeenCalledWith('basil', expect.objectContaining({
       name: 'Basil v2',
       role: 'Head Chef',
     }))
   })
 
   it('returns error when agent not found', async () => {
-    adapterMocks.updateAgentIdentity.mockRejectedValueOnce(new Error('Agent "ghost" not found in roster'))
     const tool = findTool(activated.execTools, 'bakin_exec_team_update_identity')!
     await expect(callTool(tool, { agentId: 'ghost', name: 'Ghost' })).rejects.toThrow(/not found/)
   })
@@ -312,8 +370,8 @@ describe('bakin_exec_team_delete_agent', () => {
     const result = await callTool(tool, { agentId: 'basil', confirm: true })
     expect(result.ok).toBe(true)
     expect(result.trashed).toBe(true)
-    expect(adapterMocks.removeAgent).toHaveBeenCalledWith('basil')
-    expect(adapterMocks.removeFromAllowLists).toHaveBeenCalledWith('basil')
+    expect(runtimeMocks.remove).toHaveBeenCalledWith('basil')
+    expect(runtimeMocks.updateAllowlist).toHaveBeenCalledWith('main', { remove: ['basil'] })
   })
 
   it('rejects deletion without confirm=true', async () => {
@@ -331,7 +389,6 @@ describe('bakin_exec_team_delete_agent', () => {
   })
 
   it('returns error when agent not found', async () => {
-    adapterMocks.removeAgent.mockResolvedValueOnce(false)
     const tool = findTool(activated.execTools, 'bakin_exec_team_delete_agent')!
     const result = await callTool(tool, { agentId: 'ghost', confirm: true })
     expect(result.ok).toBe(false)
@@ -352,7 +409,7 @@ describe('bakin_exec_team_set_permissions', () => {
     const tool = findTool(activated.execTools, 'bakin_exec_team_set_permissions')!
     const result = await callTool(tool, { agentId: 'main', allowAgents: ['basil', 'pixel'] })
     expect(result.ok).toBe(true)
-    expect(adapterMocks.setSubagentPermissions).toHaveBeenCalledWith('main', ['basil', 'pixel'])
+    expect(runtimeMocks.updateAllowlist).toHaveBeenCalledWith('main', { replace: ['basil', 'pixel'] })
   })
 
   it('rejects unknown agent ID in source', async () => {

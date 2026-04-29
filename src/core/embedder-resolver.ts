@@ -7,7 +7,7 @@
  *
  * Keep this pure — no globalThis, no logging, no filesystem access. The
  * caller passes settings in. This makes it trivially testable and avoids
- * order-of-initialization problems with the Antfly client.
+ * order-of-initialization problems with the active search adapter.
  */
 import type { BakinSettings } from '../../packages/core/src/settings'
 
@@ -22,7 +22,7 @@ export interface EmbedderConfig {
  * mistake quickly.
  */
 export function resolveEmbedder(ref: string, settings: BakinSettings): EmbedderConfig {
-  const embedders = settings.antfly.embedders
+  const embedders = settings.search.settings.embedders
   const match = embedders[ref]
   if (!match) {
     const available = Object.keys(embedders).join(', ')
@@ -32,13 +32,13 @@ export function resolveEmbedder(ref: string, settings: BakinSettings): EmbedderC
 }
 
 /**
- * Stable hash of the whole embedders map. Used by the Antfly client to
+ * Stable hash of the whole embedders map. Used by the search adapter to
  * detect config changes that require index rebuilds. The hash includes
  * every configured embedder so changing *any* embedder triggers a rebuild,
  * not just the default one.
  */
 export function embeddersHash(settings: BakinSettings): string {
-  const entries = Object.entries(settings.antfly.embedders)
+  const entries = Object.entries(settings.search.settings.embedders)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, cfg]) => `${name}:${cfg.provider}:${cfg.model}`)
   return entries.join('|')

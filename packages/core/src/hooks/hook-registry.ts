@@ -27,7 +27,6 @@ export class HookRegistry {
    * during plugin remove (#119). Core modules pass nothing and stay
    * untagged so they're never swept by plugin removal.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   register(name: string, handler: (data: any) => any, pluginId?: string): () => void {
     if (!this.handlers.has(name)) {
       this.handlers.set(name, [])

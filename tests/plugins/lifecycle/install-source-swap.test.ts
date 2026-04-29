@@ -31,7 +31,7 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
   resetOpenClawHome: () => {},
@@ -54,7 +54,15 @@ const sourceB = join(testDir, 'source-b')
 function writeFixture(dir: string, opts: { id: string; version: string; permissions: string[] }): void {
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'bakin-plugin.json'),
-    JSON.stringify({ id: opts.id, name: opts.id, version: opts.version, permissions: opts.permissions }, null, 2),
+    JSON.stringify({
+      id: opts.id,
+      name: opts.id,
+      version: opts.version,
+      bakin: '>=1.0.0',
+      description: `${opts.id} test plugin`,
+      entry: { server: 'index.ts' },
+      permissions: opts.permissions,
+    }, null, 2),
     'utf-8')
   writeFileSync(join(dir, 'index.ts'), `export default { id: '${opts.id}', activate() {} }`, 'utf-8')
 }

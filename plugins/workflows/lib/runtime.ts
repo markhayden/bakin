@@ -22,24 +22,54 @@ import type {
   WorkflowInstance,
   WorkflowStep,
   StepState,
-  StepHistoryEntry,
   ParallelStep,
   AgentStep,
   GateStep,
   OutputStep,
   NestedWorkflowStep,
-  SkillDefinition,
 } from '../types'
 import { loadDefinition } from './parser'
 import { loadSkill } from './skill-loader'
 import { validateStepOutput, detectRejectionRepeat } from './schema-validator'
-import { notifyGateReached, notifyGateApproved, notifyGateRejected, notifyWorkflowComplete, notifyStepDispatched, notifyStepComplete, sendDiscordGateAlert, getDiscordGateSettings } from './notifications'
+import { notifyGateReached, notifyGateApproved, notifyGateRejected, notifyWorkflowComplete, notifyStepDispatched, notifyStepComplete, sendGateApprovalRequest, getGateNotificationSettings } from './notifications'
 import { getContentDir } from './content-dir'
 import { isPluginKind } from './node-type-registry'
 import { getHookRegistry } from '../../../src/lib/plugin-registry'
 import { createLogger } from '@bakin/core/logger'
+import {
+  addTaskLog,
+  createTask,
+  getTask,
+  moveTask,
+} from '../../../src/core/task-store'
 
 const log = createLogger('workflow-runtime')
+
+type BoardTask = { id: string; title?: string; description?: string }
+async function findTaskFromStore(taskId: string): Promise<BoardTask | null> {
+  return getTask(taskId)
+}
+
+async function addTaskLogToStore(identifier: string, author: string, message: string): Promise<void> {
+  await addTaskLog(identifier, author, message)
+}
+
+async function moveTaskInStore(identifier: string, to: string, from?: string): Promise<void> {
+  await moveTask(identifier, to, from)
+}
+
+async function completeTaskViaHooks(instance: WorkflowInstance, from: string): Promise<void> {
+  const task = await findTaskFromStore(instance.taskId).catch(() => null)
+  await addTaskLogToStore(instance.taskId, 'workflow', `Workflow "${instance.workflowId}" completed - all steps done.`)
+  await moveTaskInStore(instance.taskId, 'done', from)
+  const { appendAudit } = await import('../../../src/core/audit')
+  await appendAudit(getContentDir(), 'task.moved', 'workflow', {
+    id: instance.taskId,
+    ...(task?.title ? { title: task.title } : {}),
+    from,
+    to: 'done',
+  })
+}
 
 /**
  * Create a board task for a nested workflow so it's visible in the UI.
@@ -60,8 +90,8 @@ function createBoardTaskForChild(
   childDef: WorkflowDefinition | null,
   assignee?: string,
 ) {
-  import('../../tasks/lib/flow-store').then(({ createTask, addTaskLog, getTask }) => {
-    if (getTask(childTaskId)) {
+  void (async () => {
+    if (await findTaskFromStore(childTaskId)) {
       log.debug(`Skipping duplicate child task for ${childTaskId} — already on board`)
       return
     }
@@ -73,7 +103,7 @@ function createBoardTaskForChild(
     const agent = childAgent ? (childAgent as AgentStep).agent : assignee
     const resolvedAgent = agent === '$assigned' ? assignee : agent
 
-    createTask(
+    await createTask(
       title,
       'inProgress',
       resolvedAgent,
@@ -81,13 +111,10 @@ function createBoardTaskForChild(
       nestedStep.workflow_id,
       'workflow',
       childTaskId,
-    ).then(() => {
-      addTaskLog(childTaskId, 'workflow', `Sub-workflow of task ${parentTaskId}`).catch(() => {})
-    }).catch((err) => {
-      log.error(`Failed to create board task for child ${childTaskId}`, err)
-    })
-  }).catch((err) => {
-    log.error(`Failed to import flow-store for child task ${childTaskId}`, err)
+    )
+    await addTaskLogToStore(childTaskId, 'workflow', `Sub-workflow of task ${parentTaskId}`)
+  })().catch((err) => {
+    log.error(`Failed to create board task for child ${childTaskId}`, err)
   })
 }
 
@@ -128,21 +155,6 @@ function findStep(def: WorkflowDefinition, stepId: string): WorkflowStep | null 
     if (step.type === 'parallel') {
       for (const child of (step as ParallelStep).steps) {
         if (child.id === stepId) return child
-      }
-    }
-  }
-  return null
-}
-
-/**
- * Find the parent parallel step for a child step.
- */
-function findParentParallel(def: WorkflowDefinition, stepId: string): ParallelStep | null {
-  for (const step of def.steps) {
-    if (step.type === 'parallel') {
-      const parallel = step as ParallelStep
-      for (const child of parallel.steps) {
-        if (child.id === stepId) return parallel
       }
     }
   }
@@ -612,7 +624,7 @@ export function completeStep(
   notifyStepComplete(instance, stepId, step.label || stepId)
 
   // Advance the workflow
-  const advanced = advanceWorkflow(instance, def, dir)
+  advanceWorkflow(instance, def, dir)
   saveInstance(instance, dir)
 
   if (instance.status === 'complete') {
@@ -624,25 +636,10 @@ export function completeStep(
       return { success: true, workflowComplete: true }
     }
 
-    // Auto-move the task to done on the taskboard + emit audit event
-    Promise.all([
-      import('../../tasks/lib/flow-store'),
-      import('../../../src/core/audit'),
-    ]).then(([{ moveTask, addTaskLog, readTaskboard }, { appendAudit }]) => {
-      // Resolve task title for the audit message
-      let title = instance.taskId
-      try {
-        const { columns } = readTaskboard()
-        for (const col of Object.values(columns)) {
-          const found = (col as Array<{ id: string; title: string }>).find(t => t.id === instance.taskId)
-          if (found) { title = found.title; break }
-        }
-      } catch { /* best effort */ }
-      addTaskLog(instance.taskId, 'workflow', `Workflow "${instance.workflowId}" completed — all steps done.`)
-        .then(() => moveTask(instance.taskId, 'done'))
-        .then(() => appendAudit(getContentDir(), 'task.moved', 'workflow', { id: instance.taskId, title, from: 'inProgress', to: 'done' }))
-        .catch(() => {})
-    }).catch(() => {})
+    // Auto-move the task to done on the taskboard + emit audit event.
+    completeTaskViaHooks(instance, 'inProgress').catch((err) => {
+      log.warn('Failed to complete task after workflow completion', err)
+    })
     return { success: true, workflowComplete: true }
   }
 
@@ -694,12 +691,10 @@ function propagateChildCompletion(childInstance: WorkflowInstance, contentDir: s
     output: stepState.output,
   })
 
-  // Move the child's board task to Done
-  import('../../tasks/lib/flow-store').then(({ moveTask, addTaskLog }) => {
-    addTaskLog(childInstance.taskId, 'workflow', `Sub-workflow "${childInstance.workflowId}" completed.`)
-      .then(() => moveTask(childInstance.taskId, 'done'))
-      .catch(() => {})
-  }).catch(() => {})
+  // Move the child's board task to Done.
+  addTaskLogToStore(childInstance.taskId, 'workflow', `Sub-workflow "${childInstance.workflowId}" completed.`)
+    .then(() => moveTaskInStore(childInstance.taskId, 'done'))
+    .catch((err) => { log.warn('Failed to complete child workflow task', err) })
 
   advanceWorkflow(parentInstance, parentDef, contentDir)
   saveInstance(parentInstance, contentDir)
@@ -710,23 +705,9 @@ function propagateChildCompletion(childInstance: WorkflowInstance, contentDir: s
       propagateChildCompletion(parentInstance, contentDir)
     } else {
       notifyWorkflowComplete(parentInstance)
-      Promise.all([
-        import('../../tasks/lib/flow-store'),
-        import('../../../src/core/audit'),
-      ]).then(([{ moveTask, addTaskLog, readTaskboard }, { appendAudit }]) => {
-        let title = parentInstance.taskId
-        try {
-          const { columns } = readTaskboard()
-          for (const col of Object.values(columns)) {
-            const found = (col as Array<{ id: string; title: string }>).find(t => t.id === parentInstance.taskId)
-            if (found) { title = found.title; break }
-          }
-        } catch { /* best effort */ }
-        addTaskLog(parentInstance.taskId, 'workflow', `Workflow "${parentInstance.workflowId}" completed — all steps done.`)
-          .then(() => moveTask(parentInstance.taskId, 'done'))
-          .then(() => appendAudit(getContentDir(), 'task.moved', 'workflow', { id: parentInstance.taskId, title, from: 'inProgress', to: 'done' }))
-          .catch(() => {})
-      }).catch(() => {})
+      completeTaskViaHooks(parentInstance, 'inProgress').catch((err) => {
+        log.warn('Failed to complete parent workflow task', err)
+      })
     }
   }
 }
@@ -807,22 +788,8 @@ function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinition, co
       }
     }
 
-    // Always include parent task metadata so child has full context
-    let parentTaskTitle: string | undefined
-    let parentTaskDescription: string | undefined
-    try {
-      const { getTask } = require('../../tasks/lib/flow-store')
-      const found = getTask(instance.taskId)
-      if (found) {
-        parentTaskTitle = found.title
-        parentTaskDescription = found.description
-      }
-    } catch { /* best effort */ }
-
     const childParentContext: Record<string, unknown> = {
       ...(priorStepOutput || {}),
-      _parentTaskTitle: parentTaskTitle,
-      _parentTaskDescription: parentTaskDescription,
     }
 
     const childInstance = createInstance(childTaskId, nested.workflow_id, contentDir, instance.resolvedAgent, childParentContext)
@@ -835,8 +802,8 @@ function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinition, co
     const childDef = loadDefinition(nested.workflow_id, contentDir)
     createBoardTaskForChild(childTaskId, instance.taskId, nested, childDef, instance.resolvedAgent)
   } else if (nextStep.type === 'gate') {
-    // Gates go to pending_approval — record requestedAt so the decision
-    // timeline (and Discord summary duration) can be computed later.
+    // Gates go to pending_approval and record requestedAt so the decision
+    // timeline can be computed later.
     instance.stepStates[nextStep.id] = {
       status: 'pending_approval',
       startedAt: now,
@@ -849,27 +816,26 @@ function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinition, co
     const priorOutput = priorStep ? instance.stepStates[priorStep.id]?.output : undefined
     notifyGateReached(instance, nextStep.id, nextStep.label || nextStep.id, priorOutput)
 
-    // Send Discord gate alert with approve/reject buttons (fire-and-forget)
-    const dSettings = getDiscordGateSettings()
-    if (dSettings?.discordGateAlerts) {
-      sendDiscordGateAlert(instance, nextStep.id, nextStep.label || nextStep.id, priorOutput, dSettings)
-        .then((messageId) => {
-          if (messageId) {
-            // Reload instance from disk to avoid overwriting concurrent changes
-            const fresh = loadInstance(instance.taskId, contentDir)
-            if (fresh) {
-              fresh.stepStates[nextStep.id].discordMessageId = messageId
-              saveInstance(fresh, contentDir)
-            }
+    // Send a runtime-rendered gate approval alert (fire-and-forget).
+    const channelSettings = getGateNotificationSettings()
+    if (channelSettings?.approvalChannelAlerts) {
+      sendGateApprovalRequest(instance, nextStep.id, nextStep.label || nextStep.id, priorOutput, channelSettings)
+        .then((approvalRef) => {
+          if (!approvalRef) return
+          // Reload instance from disk to avoid overwriting concurrent changes.
+          const fresh = loadInstance(instance.taskId, contentDir)
+          if (fresh) {
+            fresh.stepStates[nextStep.id].approvalRef = approvalRef
+            saveInstance(fresh, contentDir)
           }
         })
-        .catch((err) => { log.warn('Discord gate alert failed', err) })
+        .catch((err) => { log.warn('Gate approval alert failed', err) })
     }
 
-    // Move the task to the review column while awaiting approval
-    import('../../tasks/lib/flow-store').then(({ moveTask }) => {
-      moveTask(instance.taskId, 'review').catch(() => {})
-    }).catch(() => {})
+    // Move the task to the review column while awaiting approval.
+    moveTaskInStore(instance.taskId, 'review').catch((err) => {
+      log.warn('Failed to move workflow task to review', err)
+    })
   } else if (isPluginKind(nextStep.type)) {
     // Plugin-owned node kind — mark in_progress and dispatch via hook.
     // The owning plugin is responsible for driving completion.
@@ -900,7 +866,7 @@ export interface RejectGateOptions {
   contentDir?: string
 }
 
-/** Decision record returned by approveGate/rejectGate so callers (Discord
+/** Decision record returned by approveGate/rejectGate so callers
  * summary, audit) don't have to reload the instance. requestedAt may be
  * undefined for older instances created before #91 landed. */
 export interface GateDecisionRecord {
@@ -971,15 +937,13 @@ export function approveGate(
 
   // Log gate approval to the task so watchdog sees recent activity
   // and move it back to inProgress (from review) unless the workflow just completed
-  import('../../tasks/lib/flow-store').then(({ addTaskLog, moveTask }) => {
-    addTaskLog(taskId, 'workflow', `Gate "${step.label || stepId}" approved — advancing workflow.`)
-      .then(() => {
-        if ((instance.status as string) !== 'complete') {
-          return moveTask(taskId, 'inProgress').catch(() => {})
-        }
-      })
-      .catch(() => {})
-  }).catch(() => {})
+  addTaskLogToStore(taskId, 'workflow', `Gate "${step.label || stepId}" approved - advancing workflow.`)
+    .then(() => {
+      if ((instance.status as string) !== 'complete') {
+        return moveTaskInStore(taskId, 'inProgress')
+      }
+    })
+    .catch((err) => { log.warn('Failed to log gate approval', err) })
 
   if ((instance.status as string) === 'complete') {
     notifyWorkflowComplete(instance)
@@ -990,16 +954,10 @@ export function approveGate(
       return { success: true, nextStep: { status: 'complete' }, decision }
     }
 
-    // Auto-move the task to done on the taskboard + emit audit event
-    Promise.all([
-      import('../../tasks/lib/flow-store'),
-      import('../../../src/core/audit'),
-    ]).then(([{ moveTask, addTaskLog }, { appendAudit }]) => {
-      addTaskLog(instance.taskId, 'workflow', `Workflow "${instance.workflowId}" completed — all steps done.`)
-        .then(() => moveTask(instance.taskId, 'done'))
-        .then(() => appendAudit(getContentDir(), 'task.moved', 'workflow', { id: instance.taskId, from: 'review', to: 'done' }))
-        .catch(() => {})
-    }).catch(() => {})
+    // Auto-move the task to done on the taskboard + emit audit event.
+    completeTaskViaHooks(instance, 'review').catch((err) => {
+      log.warn('Failed to complete task after gate approval', err)
+    })
     return { success: true, nextStep: { status: 'complete' }, decision }
   }
 
@@ -1116,11 +1074,9 @@ export function rejectGate(
   clearGateNotified(taskId, stepId, dir)
 
   // Log gate rejection and move task back to inProgress (from review)
-  import('../../tasks/lib/flow-store').then(({ addTaskLog, moveTask }) => {
-    addTaskLog(taskId, 'workflow', `Gate "${step.label || stepId}" rejected: ${reason}`)
-      .then(() => moveTask(taskId, 'inProgress'))
-      .catch(() => {})
-  }).catch(() => {})
+  addTaskLogToStore(taskId, 'workflow', `Gate "${step.label || stepId}" rejected: ${reason}`)
+    .then(() => moveTaskInStore(taskId, 'inProgress'))
+    .catch((err) => { log.warn('Failed to log gate rejection', err) })
 
   return { success: true, rewoundTo: targetId, decision }
 }
@@ -1142,10 +1098,10 @@ export function cancelInstance(taskId: string, contentDir?: string): void {
   for (const [, state] of Object.entries(instance.stepStates)) {
     if (state.childTaskId && state.status === 'in_progress') {
       cancelInstance(state.childTaskId, dir)
-      // Remove the child's board task
-      import('../../tasks/lib/flow-store').then(({ moveTask }) => {
-        moveTask(state.childTaskId!, 'done').catch(() => {})
-      }).catch(() => {})
+      // Remove the child from active work.
+      moveTaskInStore(state.childTaskId, 'done').catch((err) => {
+        log.warn('Failed to move cancelled child workflow task', err)
+      })
     }
   }
 
@@ -1209,17 +1165,6 @@ export function getActiveAgents(
     // Delegate to child instance — child results include effectiveTaskId
     const stepState = instance.stepStates[currentStep.id]
     if (stepState?.childTaskId) {
-      // Check if the child task has been blocked — if so, don't dispatch.
-      // Avoids an infinite retry loop where dispatch keeps re-dispatching
-      // a blocked child (e.g., API spending cap, external service down).
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { readTaskboard } = require('../../tasks/lib/flow-store') as { readTaskboard: () => { columns: { blocked: Array<{ id: string }> } } }
-        const { columns } = readTaskboard()
-        if (columns.blocked.some(t => t.id === stepState.childTaskId)) return []
-      } catch {
-        // If taskboard read fails, fall through to normal delegation
-      }
       return getActiveAgents(stepState.childTaskId, dir).map(a => ({
         ...a,
         effectiveTaskId: a.effectiveTaskId || stepState.childTaskId,

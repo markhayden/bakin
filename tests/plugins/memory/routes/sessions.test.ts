@@ -8,11 +8,8 @@
  *   GET /turns                                 — turns by (agent, sessionId)
  *
  * Data flow mirrors the indexer:
- *   - Session list/detail: gatewayCall('sessions.list') first, FS fallback
+ *   - Session list/detail: runtime memory session-store reads
  *   - Turn list: ctx.search.query against the indexed `bakin_memory` table
- *
- * Both openclaw-adapter and openclaw-gateway are mocked so these tests never
- * touch ~/.openclaw/ or open a real WebSocket.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'fs'
@@ -38,27 +35,16 @@ mock.module('../../../../packages/core/src/content-dir', () => ({
 mock.module('../../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
-mock.module('../../../../packages/core/src/openclaw-home', () => ({
+mock.module('../../../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => join(testDir, '.openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
 }))
 
 const {
   mockReadSessionStore,
-  mockGatewayCall,
 } = (() => ({
   mockReadSessionStore: mock<(agent: string) => unknown>(),
-  mockGatewayCall: mock<(method: string, params: unknown) => Promise<unknown>>(),
 }))()
-
-mock.module('../../../../plugins/memory/lib/openclaw-adapter', () => ({
-  readSessionStore: mockReadSessionStore,
-  sessionStorePath: (agent: string) => `/fake/${agent}/sessions.json`,
-}))
-
-mock.module('../../../../plugins/memory/lib/openclaw-gateway', () => ({
-  gatewayCall: mockGatewayCall,
-}))
 
 import {
   sessionsListRoute,
@@ -66,7 +52,7 @@ import {
   sessionTurnsRoute,
   turnsListRoute,
 } from '../../../../plugins/memory/lib/routes/sessions'
-import type { PluginContext, SearchResponse } from '../../../../src/lib/plugin-types'
+import type { PluginContext, SearchResponse } from '@bakin/core/plugin-types'
 
 interface CtxHarness {
   ctx: PluginContext
@@ -93,6 +79,24 @@ function makeCtx(): CtxHarness {
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: mock(),
     activity: { log: mock(), audit: mock() },
+    runtime: {
+      memory: {
+        listTiers: mock(async () => [{ id: 'sessions-tier', label: 'Sessions', metadata: { sourceKind: 'session_store' } }]),
+        getEntry: mock(async (_tierId: string, id: string, opts?: { agentId?: string }) => {
+          const agent = opts?.agentId ?? ''
+          const value = id === 'sessions.json' ? mockReadSessionStore(agent) : null
+          return value === null || value === undefined
+            ? null
+            : {
+                id,
+                tierId: 'sessions-tier',
+                agentId: agent,
+                path: `/fake/${agent}/sessions.json`,
+                content: JSON.stringify(value),
+              }
+        }),
+      },
+    },
     search: {
       registerContentType: mock(),
       registerFileBackedContentType: mock(),
@@ -140,7 +144,6 @@ beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
   mockReadSessionStore.mockReset()
-  mockGatewayCall.mockReset()
 })
 
 afterAll(() => {
@@ -163,8 +166,8 @@ describe('sessionsListRoute — handler', () => {
     expect(res.status).toBe(400)
   })
 
-  it('lists sessions from the gateway sorted by updatedAt desc', async () => {
-    mockGatewayCall.mockResolvedValue({
+  it('lists sessions from the runtime store sorted by updatedAt desc', async () => {
+    mockReadSessionStore.mockReturnValue({
       sessions: {
         'agent:basil:main': session({ updatedAt: 1000 }),
         'agent:basil:openai:xyz': session({ updatedAt: 2000 }),
@@ -182,8 +185,7 @@ describe('sessionsListRoute — handler', () => {
     expect(body.sessions[1].kind).toBe('main')
   })
 
-  it('falls back to FS when gateway rejects', async () => {
-    mockGatewayCall.mockRejectedValue(new Error('down'))
+  it('reads plain session maps from the runtime store', async () => {
     mockReadSessionStore.mockReturnValue({ 'agent:basil:main': session() })
     const { ctx } = makeCtx()
     const res = await sessionsListRoute.handler(req('/sessions', { agent: 'basil' }), ctx)
@@ -192,7 +194,7 @@ describe('sessionsListRoute — handler', () => {
   })
 
   it('filters by kind query param', async () => {
-    mockGatewayCall.mockResolvedValue({
+    mockReadSessionStore.mockReturnValue({
       'agent:basil:main': session({ sessionId: 'a' }),
       'agent:basil:openai:xyz': session({ sessionId: 'b' }),
       'agent:basil:discord:42': session({ sessionId: 'c' }),
@@ -207,8 +209,7 @@ describe('sessionsListRoute — handler', () => {
     expect(body.sessions[0].sessionKey).toBe('agent:basil:openai:xyz')
   })
 
-  it('returns empty when neither gateway nor FS has data', async () => {
-    mockGatewayCall.mockRejectedValue(new Error('down'))
+  it('returns empty when the runtime store has no data', async () => {
     mockReadSessionStore.mockReturnValue(null)
     const { ctx } = makeCtx()
     const res = await sessionsListRoute.handler(req('/sessions', { agent: 'orphan' }), ctx)
@@ -231,7 +232,7 @@ describe('sessionDetailRoute — handler', () => {
   })
 
   it('returns 404 for unknown session key', async () => {
-    mockGatewayCall.mockResolvedValue({ 'agent:basil:main': session() })
+    mockReadSessionStore.mockReturnValue({ 'agent:basil:main': session() })
     const { ctx } = makeCtx()
     const res = await sessionDetailRoute.handler(
       req('/sessions/basil/missing', { agent: 'basil', sessionKey: 'agent:basil:missing' }),
@@ -241,7 +242,7 @@ describe('sessionDetailRoute — handler', () => {
   })
 
   it('returns the session with kind extracted', async () => {
-    mockGatewayCall.mockResolvedValue({ 'agent:basil:main': session({ sessionId: 'x' }) })
+    mockReadSessionStore.mockReturnValue({ 'agent:basil:main': session({ sessionId: 'x' }) })
     const { ctx } = makeCtx()
     const res = await sessionDetailRoute.handler(
       req('/sessions/basil/main', { agent: 'basil', sessionKey: 'agent:basil:main' }),
@@ -257,11 +258,11 @@ describe('sessionDetailRoute — handler', () => {
 // ─── sessionTurnsRoute + turnsListRoute ────────────────────────────────────
 
 describe('sessionTurnsRoute — handler', () => {
-  it('queries Antfly with tier=turn filter scoped by sessionKey', async () => {
+  it('queries search with tier=turn filter scoped by sessionKey', async () => {
     const h = makeCtx()
     h.queryImpl({
       results: [{ id: 'turn:abc', table: 'bakin_memory', score: 0.5, fields: { title: 'hi' } }],
-      meta: { query: 'agent:basil:main', total: 1, took_ms: 1, source: 'antfly' },
+      meta: { query: 'agent:basil:main', total: 1, took_ms: 1, source: 'search' },
     })
     const res = await sessionTurnsRoute.handler(
       req('/sessions/basil/main/turns', {

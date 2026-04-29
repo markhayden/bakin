@@ -2,7 +2,7 @@
  * Tests for plugins/memory/lib/routes/status.ts.
  *
  * GET /status returns indexer health at a glance:
- *   - countsByTier: one query per tier, using meta.total from Antfly
+ *   - countsByTier: one query per tier, using meta.total from search
  *   - offsetsTracked: number of files with a persisted byte-offset
  *   - lastUpdated: ms timestamp the route captured the snapshot
  */
@@ -30,14 +30,14 @@ mock.module('../../../../packages/core/src/content-dir', () => ({
 mock.module('../../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
-mock.module('../../../../packages/core/src/openclaw-home', () => ({
+mock.module('../../../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => join(testDir, '.openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
 }))
 
 import { statusRoute } from '../../../../plugins/memory/lib/routes/status'
 import { setOffset, clearAllOffsets } from '../../../../plugins/memory/lib/offsets'
-import type { PluginContext, SearchResponse } from '../../../../src/lib/plugin-types'
+import type { PluginContext, SearchResponse } from '@bakin/core/plugin-types'
 
 function makeCtx(
   perTierTotals: Partial<Record<string, number>>,
@@ -71,7 +71,7 @@ function makeCtx(
         const total = (typeof tier === 'string' && perTierTotals[tier]) || 0
         const resp: SearchResponse = {
           results: [],
-          meta: { query: '', total, took_ms: 0, source: 'antfly' },
+          meta: { query: '', total, took_ms: 0, source: 'search' },
         }
         return resp
       }),
@@ -107,7 +107,7 @@ describe('statusRoute — shape', () => {
 })
 
 describe('statusRoute — handler', () => {
-  it('returns counts for all 7 tiers from Antfly queries', async () => {
+  it('returns counts for all 7 tiers from search queries', async () => {
     const { ctx, queryCalls } = makeCtx({
       audit: 10,
       durable: 4,

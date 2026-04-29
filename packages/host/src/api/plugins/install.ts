@@ -36,6 +36,8 @@ import {
   type PluginLockEntry,
 } from '@bakin/core/plugins/lockfile'
 import { parseManifestPermissions } from '@bakin/core/plugins/permissions'
+import { PLUGIN_ID_RE, readPluginManifestJson, PluginManifestError } from '@bakin/core/plugins/manifest'
+import { parseGithubSource, InvalidGithubSourceError } from '@bakin/core/plugins/source'
 import { computeSourceTreeSha } from '@/core/plugins/upgrade'
 import { signConsentToken, verifyConsentToken } from '@/core/plugins/consent-token'
 import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
@@ -143,7 +145,7 @@ function recordInstall(args: {
       }
     }
 
-    // Record the OpenClaw skills this plugin shipped — used as the
+    // Record the runtime skills this plugin shipped — used as the
     // authoritative allowlist at uninstall time.
     let installedSkills: string[] = []
     try {
@@ -227,27 +229,20 @@ function resolveAndContainLocalSource(rawSource: string): { ok: true; path: stri
 
 /**
  * Validate a github install source string before it reaches `git clone`.
- * Rejects anything that looks like a smuggled option (leading `-`, control
- * chars, whitespace, suspicious schemes). Returns the canonical clone URL.
+ * Thin adapter over the shared `parseGithubSource` parser — kept as a
+ * named function returning the result/error tuple so the caller's
+ * existing branching shape doesn't change.
  */
-function resolveGithubCloneUrl(rawSource: string): { ok: true; url: string } | { ok: false; error: string } {
-  const stripped = rawSource.startsWith('github:') ? rawSource.slice(7) : rawSource
-  if (stripped.length === 0) return { ok: false, error: 'empty github source' }
-  if (/[\s\x00-\x1f]/.test(stripped)) return { ok: false, error: 'github source contains control characters or whitespace' }
-  if (stripped.startsWith('-')) return { ok: false, error: 'github source must not start with "-"' }
-  let url: string
-  if (stripped.startsWith('http://') || stripped.startsWith('https://')) {
-    url = stripped
-  } else if (stripped.startsWith('git@')) {
-    url = stripped
-  } else {
-    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*(\.git)?$/.test(stripped)) {
-      return { ok: false, error: `invalid github user/repo shorthand: ${stripped}` }
-    }
-    url = `https://github.com/${stripped}.git`
+function resolveGithubCloneUrl(
+  rawSource: string,
+): { ok: true; url: string; subpath: string } | { ok: false; error: string } {
+  try {
+    const parsed = parseGithubSource(rawSource)
+    return { ok: true, url: parsed.cloneUrl, subpath: parsed.subpath }
+  } catch (err) {
+    if (err instanceof InvalidGithubSourceError) return { ok: false, error: err.message }
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
-  if (url.length > 2048) return { ok: false, error: 'github source URL is suspiciously long' }
-  return { ok: true, url }
 }
 
 export async function post(req: Request, _url: URL): Promise<Response> {
@@ -273,7 +268,22 @@ export async function post(req: Request, _url: URL): Promise<Response> {
     mkdirSync(stagingDir, { recursive: true })
 
     try {
+      // `effectivePluginDir` points at the directory whose `bakin-plugin.json`
+      // we read and whose contents we copy into `~/.bakin/plugins/<id>/`.
+      // For local installs and github installs without a subpath this is the
+      // staging dir itself; for github monorepo installs
+      // (`github:user/repo#plugins/foo`) it is `<stagingDir>/<subpath>`.
+      let effectivePluginDir: string = stagingDir
+
       if (body.type === 'local') {
+        if (body.source.includes('#')) {
+          rmSync(stagingDir, { recursive: true, force: true })
+          auditInstallRejected('local_subpath_unsupported', body.source)
+          return Response.json({
+            ok: false,
+            error: 'local install paths cannot use `#subpath`; point directly at the plugin directory instead',
+          }, { status: 400 })
+        }
         const contained = resolveAndContainLocalSource(body.source)
         if (!contained.ok) {
           rmSync(stagingDir, { recursive: true, force: true })
@@ -294,16 +304,44 @@ export async function post(req: Request, _url: URL): Promise<Response> {
           stdio: 'pipe',
           maxBuffer: 10 * 1024 * 1024,
         })
+
+        if (parsedUrl.subpath) {
+          // `parseGithubSource` already rejects `..` segments and leading
+          // slashes, so this `join` cannot escape `stagingDir`. Belt + suspenders:
+          // re-confirm containment before reading files from it.
+          const candidate = join(stagingDir, parsedUrl.subpath)
+          const stagingReal = realpathSync(stagingDir)
+          let candidateReal: string
+          try {
+            candidateReal = realpathSync(candidate)
+          } catch {
+            rmSync(stagingDir, { recursive: true, force: true })
+            auditInstallRejected('subpath_missing', body.source, { subpath: parsedUrl.subpath })
+            return Response.json({
+              ok: false,
+              error: `subpath "${parsedUrl.subpath}" not found in repository`,
+            }, { status: 400 })
+          }
+          if (!candidateReal.startsWith(stagingReal + sep) && candidateReal !== stagingReal) {
+            rmSync(stagingDir, { recursive: true, force: true })
+            auditInstallRejected('subpath_traversal', body.source, { subpath: parsedUrl.subpath })
+            return Response.json({
+              ok: false,
+              error: `subpath "${parsedUrl.subpath}" escapes the cloned repository`,
+            }, { status: 400 })
+          }
+          effectivePluginDir = candidateReal
+        }
       }
 
       // Validate manifest
-      const manifestPath = join(stagingDir, 'bakin-plugin.json')
+      const manifestPath = join(effectivePluginDir, 'bakin-plugin.json')
       if (!existsSync(manifestPath)) {
         rmSync(stagingDir, { recursive: true, force: true })
-        return Response.json({
-          ok: false,
-          error: 'Plugin source is missing bakin-plugin.json',
-        }, { status: 400 })
+        const where = effectivePluginDir === stagingDir
+          ? 'Plugin source is missing bakin-plugin.json'
+          : `subpath "${body.source.split('#')[1] ?? ''}" is missing bakin-plugin.json`
+        return Response.json({ ok: false, error: where }, { status: 400 })
       }
 
       // Bound manifest size before reading — otherwise a hostile source can
@@ -318,17 +356,18 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         }, { status: 400 })
       }
 
-      let manifest: Record<string, unknown>
+      let manifest: Record<string, unknown> & { id: string; version: string }
       try {
-        manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
-      } catch {
+        manifest = readPluginManifestJson(readFileSync(manifestPath, 'utf-8')) as unknown as Record<string, unknown> & { id: string; version: string }
+      } catch (err) {
         rmSync(stagingDir, { recursive: true, force: true })
-        return Response.json({ ok: false, error: 'Invalid bakin-plugin.json' }, { status: 400 })
+        return Response.json({
+          ok: false,
+          error: err instanceof PluginManifestError ? err.message : 'Invalid bakin-plugin.json',
+        }, { status: 400 })
       }
 
-      const id = typeof manifest.id === 'string' && manifest.id.length > 0
-        ? manifest.id
-        : basename(body.source.replace(/\.git$/, ''))
+      const id = manifest.id || basename(body.source.replace(/\.git$/, ''))
 
       // Tightened from /^[a-z0-9][a-z0-9-_]{0,39}$/i — the case-insensitive
       // flag allowed mixed case which collides with case-insensitive macOS
@@ -336,7 +375,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       // between plugins like `foo_bar` + action `baz` vs `foo` + action
       // `bar_baz` (both produce bakin_exec_foo_bar_baz). Lowercase letters,
       // digits, and hyphen only; must start with a letter.
-      if (!/^[a-z][a-z0-9-]{0,39}$/.test(id)) {
+      if (!PLUGIN_ID_RE.test(id)) {
         rmSync(stagingDir, { recursive: true, force: true })
         auditInstallRejected('invalid_plugin_id', body.source, { id })
         return Response.json({
@@ -465,7 +504,12 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       if (existsSync(targetDir)) {
         rmSync(targetDir, { recursive: true, force: true })
       }
-      cpSync(stagingDir, targetDir, { recursive: true })
+      // Copy from the effective plugin dir (the subpath for monorepo
+      // installs, the staging root otherwise). This intentionally drops
+      // the rest of the cloned repo + its `.git/` for subpath installs;
+      // the subpath upgrade flow re-clones to staging since there's no
+      // local `.git/` to fetch into.
+      cpSync(effectivePluginDir, targetDir, { recursive: true, dereference: false })
       rmSync(stagingDir, { recursive: true, force: true })
 
       // Compile the plugin to dist/ so the runtime loader (Phase F) and

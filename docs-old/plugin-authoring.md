@@ -112,13 +112,17 @@ const plugin: BakinPlugin = {
       handler: async (_params, _agent) => ({ ok: true }),
     })
 
-    // Read from another plugin via hooks — never import directly
-    const board = await ctx.hooks.invoke('tasks.readTaskboard', {})
+    // Read from another plugin via hooks — never import plugin files directly
+    const workflow = await ctx.hooks.invoke('workflows.loadDefinition', { name: 'publish-flow' })
 
     // Register a hook so other plugins can call into us
     ctx.hooks.register('my-plugin.someOperation', async (data) => {
       return { result: 'ok', input: data }
     })
+
+    // Use adapter-backed services through ctx, never provider packages.
+    const agents = await ctx.runtime.agents.list()
+    await ctx.search.index('thing-1', { title: 'Thing', agentCount: agents.length })
 
     // Optional health check — surfaces on /health
     ctx.registerHealthCheck?.({
@@ -137,6 +141,21 @@ export default plugin
 Server routes are Web Fetch-shaped: `(req: Request, ctx?) => Promise<Response>`.
 They run on Bun, dispatched by the plugin catch-all at
 `/api/plugins/{pluginId}/{path}`.
+
+## Runtime and search adapters
+
+Plugins access external systems through `PluginContext`:
+
+- `ctx.runtime` for agents, messaging, channels, cron, workspace files, skills,
+  sessions, memory, models, and runtime execution status.
+- `ctx.search` for registering content types, indexing, transforms, removal,
+  and queries.
+- `ctx.tasks` for Bakin-owned task metadata.
+
+Do not import `@bakin/adapter-openclaw`, `@bakin/adapter-antfly`, OpenClaw
+home/config/client helpers, provider SQLite files, or `@antfly/sdk` from a
+plugin. If the context does not expose the capability you need, add it to the
+adapter contract first.
 
 ## Client entry (`client.tsx`)
 
@@ -222,6 +241,9 @@ bakin plugins install /path/to/my-plugin
 # GitHub — clones + builds
 bakin plugins install github:your-user/my-plugin
 
+# GitHub monorepo — install one plugin from a multi-plugin repo via #subpath
+bakin plugins install github:your-user/bakin-bits-official#plugins/messaging
+
 # Skip the consent prompt (CI / scripted installs)
 bakin plugins install /path/to/my-plugin --yes
 
@@ -237,6 +259,13 @@ bakin plugins upgrade my-plugin --yes   # skip consent prompt for new permission
 
 # Remove (refuses core plugins; full teardown sweep + tarball backup)
 bakin plugins remove my-plugin
+
+# Dev mode — symlink your local source tree as a plugin (Phase 2)
+bakin plugins link ~/dev/my-plugin
+bakin plugins link ~/dev/my-plugin --force   # override id collision
+
+# Dev mode — remove the symlink
+bakin plugins unlink my-plugin
 ```
 
 What happens under the hood:
@@ -265,6 +294,144 @@ User plugins with the same id as a core plugin **override** the core
 plugin (`~/.bakin/plugins/` is scanned after the built-in table). Use
 this to fork and customize any core plugin without touching the repo.
 
+### Monorepo `#subpath` syntax
+
+Multi-plugin repositories ship more than one plugin from the same git
+source — `bakin-bits-official` is the reference example. Append
+`#path/to/plugin` to the source string to install just one of them:
+
+```sh
+bakin plugins install github:madeinwyo/bakin-bits-official#plugins/messaging
+bakin plugins install github:your-user/your-monorepo#packages/foo
+```
+
+Rules for the subpath portion:
+
+- Non-empty after `#`, must match `/^[A-Za-z0-9._/-]+$/`
+- No leading or trailing `/`
+- No `..` or `.` segments (path-traversal guard)
+- Only one `#` per source string
+
+The install flow clones the parent repo to a staging directory, copies
+the subpath contents to `~/.bakin/plugins/<id>/`, and drops the rest of
+the repo (including its `.git/`). The lockfile records the full source
+string so `bakin plugins upgrade <id>` re-resolves it correctly — the
+upgrade flow re-clones to staging on each upgrade since there's no
+local `.git/` to fetch into.
+
+`#subpath` only applies to `github:` (or full URL) sources. Local
+installs should point directly at the plugin directory; using `#subpath`
+on a local install returns a clear error.
+
+### Linked plugins + hot reload
+
+`bakin plugins link <localPath>` registers a developer-owned source
+tree as a plugin via a `fs.symlink` at `~/.bakin/plugins/<id>/`. Unlike
+`install`, it doesn't copy — your working tree IS the plugin. Combined
+with the hot-reload coordinator, file saves swap the plugin's code in
+the running bakin process without a restart.
+
+```sh
+# Start bakin with the hot-reload coordinator enabled.
+BAKIN_DEV_HOTRELOAD=1 bakin start
+
+# In another terminal, link your plugin source.
+bakin plugins link ~/dev/my-plugin
+
+# Edit ~/dev/my-plugin/index.ts and save. Within ~100ms:
+#   - The coordinator detects the change.
+#   - buildUserPlugin runs.
+#   - The reload pipeline tears down old hooks/routes/exec-tools etc.
+#   - The new module is imported with cache-bust (`?v=N`).
+#   - activate(ctx) re-runs against the same context.
+#   - The browser receives an SSE event and re-fetches client.js?v=N.
+#   - registerPlugin re-runs; the React tree re-mounts.
+```
+
+#### Watching the right files
+
+The coordinator watches a curated default set inside your plugin
+directory:
+
+- `index.ts` / `index.tsx` (server entry)
+- `client.ts` / `client.tsx` (client entry)
+- `bakin-plugin.json` (manifest)
+- `package.json` (deps)
+- `components/` (UI tree)
+- `lib/` (plugin-internal modules)
+- `hooks/` (custom hooks)
+
+Override via `bakin-plugin.json#devWatch`:
+
+```json
+{
+  "id": "my-plugin",
+  "name": "My Plugin",
+  "version": "0.1.0",
+  "devWatch": ["src", "templates", "schema.ts"]
+}
+```
+
+`node_modules/`, `dist/`, dotfiles, and `.tsbuildinfo` are always
+ignored. Saves arriving in a burst (cmd-S spam, multi-file refactor)
+are debounced (~80ms) into a single rebuild cycle. While a rebuild
+is in flight, additional saves coalesce into ONE follow-up cycle —
+not a queue.
+
+#### Designing for hot reload
+
+Your `activate(ctx)` runs on every reload. State arrays
+(routes/slots/hooks/etc.) are cleared between reloads, so registrations
+re-land cleanly on every cycle without piling up.
+
+What's NOT cleared automatically:
+
+- **Module-level side effects** outside of `activate()`. A top-level
+  `setInterval`, `fs.watch`, `process.on(...)`, or external WebSocket
+  connection will leak on reload — the OLD module's timers/listeners
+  keep running while the new module also installs its own. **Put all
+  side effects inside `activate(ctx)` and tear them down in
+  `onShutdown()`.** The dev loop calls `onShutdown` (errors logged
+  but ignored — a buggy shutdown can't brick the loop).
+
+- **Hooks invoked during in-flight requests.** A request that landed
+  in the old plugin's route handler completes against the old code;
+  the next request hits the new code. Plan your migrations
+  accordingly — forward-compatible response shapes survive a reload
+  in flight; breaking shape changes can leak a stale response.
+
+- **Closures captured BEFORE the reload.** Anything outside the
+  plugin process (a browser-side WebSocket, a worker that already
+  imported a now-stale function reference) keeps the old handle.
+  This is fine for normal request handling; mostly relevant for
+  test fixtures that cache references.
+
+#### Build errors
+
+If `Bun.build()` fails (TS error, syntax error), the coordinator
+broadcasts `dev:plugin:error` and the dev client renders a fixed-
+position overlay at the top of the viewport. The OLD plugin keeps
+responding correctly — the build failure doesn't sweep registries.
+Fix the error and save; the next successful build emits
+`dev:plugin:recover` (clears the overlay) and `dev:plugin:reload`
+(swaps the module).
+
+#### Activate errors
+
+If `activate(ctx)` throws, the coordinator sweeps registries (so
+the partial-state from a half-successful activate is gone) and
+broadcasts `dev:plugin:error`. The plugin enters an effective
+"disabled" state until the next reload succeeds — every route
+returns 404, hooks aren't registered, exec tools missing.
+
+#### Production
+
+Hot reload is dev-only. The compiled production binary doesn't import
+chokidar; the coordinator's import is gated behind
+`process.env.BAKIN_DEV_HOTRELOAD === '1'`. Production plugins behave
+exactly as before: install copies source to `~/.bakin/plugins/<id>/`,
+activate runs on next restart, restart-required for code changes.
+
 ### Permissions field
 
 `bakin-plugin.json` declares the capabilities your plugin uses. The
@@ -274,7 +441,7 @@ locked to:
 | Permission | Capability |
 |---|---|
 | `events.emit` | Broadcast Server-Sent Events to connected browsers |
-| `openclaw.read` | Read agent identity/skills/state from `~/.openclaw/` |
+| `runtime.read` | Read agent identity, skills, and workspace state from the runtime adapter |
 | `storage.read` | Read files in `~/.bakin/` |
 | `storage.write` | Write files in `~/.bakin/` |
 
@@ -293,7 +460,7 @@ needing them — not pre-emptively.
 ### `onUninstall(ctx)` hook
 
 Optional. Bakin calls it BEFORE tearing down its own bookkeeping
-(plugin dir, settings JSON, registry entries, owned OpenClaw skills).
+(plugin dir, settings JSON, registry entries, owned runtime skills).
 Use it to clean up data your plugin wrote OUTSIDE its own dir:
 
 ```ts
@@ -316,7 +483,7 @@ Bakin handles all of the following itself — you do NOT need to:
 - Hook handlers, exec tools, workflow node types, notification
   channels, health checks, and search content types your plugin
   registered
-- OpenClaw skills your plugin shipped via `defaults/openclaw-skills/`
+- Runtime skills your plugin shipped via `defaults/runtime-skills/`
   (Bakin honors `.userEdited` sentinels — those stay in place)
 
 Errors thrown from `onUninstall` are logged and audited but do NOT
@@ -334,7 +501,7 @@ packages lockfile pattern.
 ### Backup tarballs — `~/.bakin/.uninstalled/`
 
 `bakin plugins remove <id>` snapshots everything Bakin removes (plugin
-dir + settings JSON + owned OpenClaw skills minus `.userEdited` ones)
+dir + settings JSON + owned runtime skills minus `.userEdited` ones)
 into `~/.bakin/.uninstalled/<id>-<ISO>.tar.gz` BEFORE deleting. No
 auto-retention in this release; tarballs accumulate. Inspect with
 `tar -tzf <file>` or restore manually with `tar -xzf <file> -C ~/`.

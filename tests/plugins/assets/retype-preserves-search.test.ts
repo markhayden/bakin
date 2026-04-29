@@ -12,9 +12,11 @@ import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import type { PluginContext, FileBackedContentTypeDefinition, APIRoute } from '../../../src/lib/plugin-types'
+import type { PluginContext, FileBackedContentTypeDefinition, APIRoute } from '@bakin/core/plugin-types'
 import { BakinEventBus } from '../../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../../src/lib/storage/markdown-adapter'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 
 const testDir = join(tmpdir(), `bakin-test-retype-preserves-${Date.now()}`)
 const assetsDir = join(testDir, 'assets')
@@ -80,6 +82,14 @@ function makeCtx(): Captured {
     storage,
     events,
     pluginId: 'assets',
+    runtime: createMockRuntimeAdapter(),
+    tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
+    assets: {
+      getByFilename: mock(async () => null),
+      list: mock(async () => []),
+      exists: mock(async () => false),
+      fileRef: mock(async (filename: string) => ({ kind: 'asset' as const, filename })),
+    },
     registerNav: mock(),
     registerRoute: mock((def: APIRoute) => {
       handlers[def.method] ??= {}
@@ -110,6 +120,8 @@ function makeCtx(): Captured {
     },
     hooks: {
       register: mock(() => () => {}),
+      call: mock(async (_name, data) => data),
+      callAll: mock(async () => undefined),
       has: mock(() => false),
       invoke: mock(async () => undefined),
     },

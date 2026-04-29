@@ -46,7 +46,7 @@ export function SchedulePage() {
 
   const {
     jobs, loading, refresh,
-    pauseJob, resumeJob, deleteJob, runNow, updateJob, skipNext, duplicateJob,
+    pauseJob, resumeJob, deleteJob, runNow, updateJob, skipNext,
   } = useScheduleJobs({
     agent: agentFilter === 'all' ? undefined : agentFilter,
   })

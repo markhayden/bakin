@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { mkdirSync, rmSync, existsSync, readFileSync } from 'fs'
+import { mkdirSync, rmSync, existsSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -92,7 +92,6 @@ describe('schedule/sidecar', () => {
 
     it('handles corrupt JSON gracefully', () => {
       const path = join(testDir, 'schedule', 'sidecar.json')
-      const { writeFileSync } = require('fs')
       writeFileSync(path, 'not json at all')
       const sidecar = readSidecar()
       expect(sidecar.version).toBe(1)
@@ -101,7 +100,6 @@ describe('schedule/sidecar', () => {
 
     it('handles invalid version gracefully', () => {
       const path = join(testDir, 'schedule', 'sidecar.json')
-      const { writeFileSync } = require('fs')
       writeFileSync(path, JSON.stringify({ version: 99, jobs: {} }))
       const sidecar = readSidecar()
       expect(sidecar.version).toBe(1)
@@ -143,8 +141,8 @@ describe('schedule/sidecar', () => {
   describe('withDefaults', () => {
     it('applies default owner, maxFailures, allowOverlap, requireTriage', () => {
       const meta = makeMeta()
-      const d = withDefaults(meta)
-      expect(d.owner).toBe('main')
+      const d = withDefaults(meta, 'boss')
+      expect(d.owner).toBe('boss')
       expect(d.maxFailures).toBe(3)
       expect(d.allowOverlap).toBe(false)
       expect(d.requireTriage).toBe(false)
@@ -157,7 +155,7 @@ describe('schedule/sidecar', () => {
         allowOverlap: true,
         requireTriage: true,
       })
-      const d = withDefaults(meta)
+      const d = withDefaults(meta, 'boss')
       expect(d.owner).toBe('basil')
       expect(d.maxFailures).toBe(5)
       expect(d.allowOverlap).toBe(true)

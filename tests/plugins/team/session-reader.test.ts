@@ -1,91 +1,68 @@
 /**
  * Pure-function tests for plugins/team/lib/session-reader.ts.
  *
- * Strategy: write fixture JSONL files into a tmp OpenClaw home, point
- * the openclaw-home resolver at it, then call readLatestSessionTranscript
- * directly. No HTTP, no React.
+ * Strategy: feed fixture JSONL through a mock runtime memory adapter and call
+ * readLatestSessionTranscript directly. No HTTP, no React, no runtime files.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { mkdirSync, writeFileSync, rmSync } from 'fs'
-import { join } from 'path'
-import { tmpdir } from 'os'
-import { randomUUID } from 'crypto'
-
-const testDir = join(tmpdir(), `bakin-test-session-reader-${Date.now()}-${randomUUID()}`)
-const openclawHome = join(testDir, 'openclaw')
-const agentsDir = join(openclawHome, 'agents')
-
-process.env.OPENCLAW_HOME = openclawHome
-process.env.BAKIN_HOME = testDir
-
-mock.module('@/core/content-dir', () => ({
-  getContentDir: () => testDir,
-  getBakinPaths: () => ({}),
-}))
-mock.module('../../../src/core/content-dir', () => ({
-  getContentDir: () => testDir,
-  getBakinPaths: () => ({}),
-}))
-mock.module('../../../packages/core/src/content-dir', () => ({
-  getContentDir: () => testDir,
-  getBakinPaths: () => ({}),
-}))
-
-mock.module('@bakin/core/openclaw-home', () => ({
-  getOpenClawHome: () => openclawHome,
-  getOpenClawPath: (...parts: string[]) => join(openclawHome, ...parts),
-  resetOpenClawHome: () => {},
-}))
-mock.module('../../../packages/core/src/openclaw-home', () => ({
-  getOpenClawHome: () => openclawHome,
-  getOpenClawPath: (...parts: string[]) => join(openclawHome, ...parts),
-  resetOpenClawHome: () => {},
-}))
+import { describe, expect, it } from 'bun:test'
+import type { RuntimeMemoryEntry } from '@bakin/core/adapters/runtime'
 
 import { readLatestSessionTranscript } from '../../../plugins/team/lib/session-reader'
 
-function writeSession(agentId: string, filename: string, lines: object[]) {
-  const sessionDir = join(agentsDir, agentId, 'sessions')
-  mkdirSync(sessionDir, { recursive: true })
-  writeFileSync(
-    join(sessionDir, filename),
-    lines.map((l) => JSON.stringify(l)).join('\n') + '\n',
-  )
+interface FixtureSession {
+  id: string
+  content: string
+  updatedAt?: string
 }
 
-beforeAll(() => {
-  mkdirSync(agentsDir, { recursive: true })
-})
+function lines(entries: object[]): string {
+  return entries.map((entry) => JSON.stringify(entry)).join('\n') + '\n'
+}
 
-beforeEach(() => {
-  // Clean per-test agent dirs so fixtures don't leak between cases.
-  rmSync(agentsDir, { recursive: true, force: true })
-  mkdirSync(agentsDir, { recursive: true })
-})
-
-afterAll(() => {
-  try { rmSync(testDir, { recursive: true, force: true }) } catch {}
-})
+function runtimeMemory(sessions: FixtureSession[]) {
+  return {
+    listTiers: async () => [{
+      id: 'runtime-session-jsonl',
+      label: 'Session transcripts',
+      metadata: { sourceKind: 'session_jsonl' },
+    }],
+    listEntries: async (tierId: string, opts?: { agentId?: string }): Promise<RuntimeMemoryEntry[]> => sessions.map((session) => ({
+      id: session.id,
+      tierId,
+      agentId: opts?.agentId,
+      content: '',
+      updatedAt: session.updatedAt,
+    })),
+    getEntry: async (tierId: string, id: string, opts?: { agentId?: string }): Promise<RuntimeMemoryEntry | null> => {
+      const session = sessions.find((entry) => entry.id === id)
+      if (!session) return null
+      return {
+        id: session.id,
+        tierId,
+        agentId: opts?.agentId,
+        content: session.content,
+        updatedAt: session.updatedAt,
+      }
+    },
+  }
+}
 
 describe('readLatestSessionTranscript', () => {
-  it('returns null when the agent has no sessions directory', () => {
-    expect(readLatestSessionTranscript('ghost')).toBeNull()
+  it('returns null when the agent has no runtime session entries', async () => {
+    expect(await readLatestSessionTranscript(runtimeMemory([]), 'ghost')).toBeNull()
   })
 
-  it('returns null when the sessions directory is empty', () => {
-    mkdirSync(join(agentsDir, 'pixel', 'sessions'), { recursive: true })
-    expect(readLatestSessionTranscript('pixel')).toBeNull()
-  })
+  it('parses a happy-path session into a structured transcript', async () => {
+    const transcript = await readLatestSessionTranscript(runtimeMemory([{
+      id: '2026-04-25',
+      content: lines([
+        { type: 'session', id: 'sess-123', timestamp: '2026-04-25T10:00:00Z' },
+        { type: 'message', timestamp: '2026-04-25T10:00:01Z', message: { role: 'system', content: 'You are Pixel.' } },
+        { type: 'message', timestamp: '2026-04-25T10:00:05Z', message: { role: 'user', content: 'Hello.' } },
+        { type: 'message', timestamp: '2026-04-25T10:00:10Z', message: { role: 'assistant', model: 'claude-opus-4-7', content: 'Hi Mark!' } },
+      ]),
+    }]), 'pixel')
 
-  it('parses a happy-path session into a structured transcript', () => {
-    writeSession('pixel', '2026-04-25.jsonl', [
-      { type: 'session', id: 'sess-123', timestamp: '2026-04-25T10:00:00Z' },
-      { type: 'message', timestamp: '2026-04-25T10:00:01Z', message: { role: 'system', content: 'You are Pixel.' } },
-      { type: 'message', timestamp: '2026-04-25T10:00:05Z', message: { role: 'user', content: 'Hello.' } },
-      { type: 'message', timestamp: '2026-04-25T10:00:10Z', message: { role: 'assistant', model: 'claude-opus-4-7', content: 'Hi Mark!' } },
-    ])
-
-    const transcript = readLatestSessionTranscript('pixel')
     expect(transcript).not.toBeNull()
     expect(transcript!.sessionId).toBe('sess-123')
     expect(transcript!.sessionStarted).toBe('2026-04-25T10:00:00Z')
@@ -96,67 +73,97 @@ describe('readLatestSessionTranscript', () => {
     expect(transcript!.messages[2]).toMatchObject({ role: 'assistant', model: 'claude-opus-4-7', content: 'Hi Mark!' })
   })
 
-  it('skips malformed JSONL lines without breaking the whole transcript', () => {
-    const sessionDir = join(agentsDir, 'pixel', 'sessions')
-    mkdirSync(sessionDir, { recursive: true })
-    writeFileSync(
-      join(sessionDir, 'mixed.jsonl'),
-      [
+  it('skips malformed JSONL lines without breaking the whole transcript', async () => {
+    const transcript = await readLatestSessionTranscript(runtimeMemory([{
+      id: 'mixed',
+      content: [
         JSON.stringify({ type: 'session', id: 'sess-bad', timestamp: '2026-04-25T10:00:00Z' }),
         '{ this is not valid json',
         JSON.stringify({ type: 'message', timestamp: '2026-04-25T10:00:05Z', message: { role: 'user', content: 'survived' } }),
         '',
       ].join('\n'),
-    )
+    }]), 'pixel')
 
-    const transcript = readLatestSessionTranscript('pixel')
     expect(transcript!.messages).toHaveLength(1)
     expect(transcript!.messages[0].content).toBe('survived')
   })
 
-  it('truncates to the requested cap and sets truncated=true', () => {
-    const lines: object[] = [{ type: 'session', id: 'sess-big', timestamp: '2026-04-25T10:00:00Z' }]
+  it('truncates to the requested cap and sets truncated=true', async () => {
+    const entries: object[] = [{ type: 'session', id: 'sess-big', timestamp: '2026-04-25T10:00:00Z' }]
     for (let i = 0; i < 250; i++) {
-      lines.push({ type: 'message', timestamp: `2026-04-25T10:${String(i % 60).padStart(2, '0')}:00Z`, message: { role: 'user', content: `msg ${i}` } })
+      entries.push({ type: 'message', timestamp: `2026-04-25T10:${String(i % 60).padStart(2, '0')}:00Z`, message: { role: 'user', content: `msg ${i}` } })
     }
-    writeSession('pixel', 'big.jsonl', lines)
 
-    const transcript = readLatestSessionTranscript('pixel', { maxMessages: 50 })
+    const transcript = await readLatestSessionTranscript(runtimeMemory([
+      { id: 'big', content: lines(entries) },
+    ]), 'pixel', { maxMessages: 50 })
+
     expect(transcript!.totalMessages).toBe(250)
     expect(transcript!.messages).toHaveLength(50)
     expect(transcript!.truncated).toBe(true)
-    // Truncation keeps the most recent — first message in the slice should be msg 200
     expect(transcript!.messages[0].content).toBe('msg 200')
     expect(transcript!.messages[49].content).toBe('msg 249')
   })
 
-  it('picks the most recent session when multiple files exist', () => {
-    writeSession('pixel', 'old.jsonl', [
-      { type: 'session', id: 'sess-old', timestamp: '2026-04-20T10:00:00Z' },
-      { type: 'message', message: { role: 'user', content: 'old session' } },
-    ])
-    writeSession('pixel', 'new.jsonl', [
-      { type: 'session', id: 'sess-new', timestamp: '2026-04-25T10:00:00Z' },
-      { type: 'message', message: { role: 'user', content: 'new session' } },
-    ])
+  it('picks the most recent session by first JSONL timestamp', async () => {
+    const transcript = await readLatestSessionTranscript(runtimeMemory([
+      {
+        id: 'old',
+        content: lines([
+          { type: 'session', id: 'sess-old', timestamp: '2026-04-20T10:00:00Z' },
+          { type: 'message', message: { role: 'user', content: 'old session' } },
+        ]),
+      },
+      {
+        id: 'new',
+        content: lines([
+          { type: 'session', id: 'sess-new', timestamp: '2026-04-25T10:00:00Z' },
+          { type: 'message', message: { role: 'user', content: 'new session' } },
+        ]),
+      },
+    ]), 'pixel')
 
-    const transcript = readLatestSessionTranscript('pixel')
     expect(transcript!.sessionId).toBe('sess-new')
     expect(transcript!.messages[0].content).toBe('new session')
   })
 
-  it('serializes object content as pretty JSON for tool calls', () => {
-    writeSession('pixel', 'tool.jsonl', [
-      { type: 'session', id: 'sess-tool', timestamp: '2026-04-25T10:00:00Z' },
+  it('falls back to runtime updatedAt when the first JSONL line has no timestamp', async () => {
+    const transcript = await readLatestSessionTranscript(runtimeMemory([
       {
-        type: 'message',
-        timestamp: '2026-04-25T10:00:01Z',
-        toolName: 'bakin_exec_log',
-        message: { role: 'tool', content: { result: 'ok', payload: { nested: true } } },
+        id: 'old',
+        updatedAt: '2026-04-20T10:00:00Z',
+        content: lines([
+          { type: 'session', id: 'sess-old' },
+          { type: 'message', message: { role: 'user', content: 'old session' } },
+        ]),
       },
-    ])
+      {
+        id: 'new',
+        updatedAt: '2026-04-25T10:00:00Z',
+        content: lines([
+          { type: 'session', id: 'sess-new' },
+          { type: 'message', message: { role: 'user', content: 'new session' } },
+        ]),
+      },
+    ]), 'pixel')
 
-    const transcript = readLatestSessionTranscript('pixel')
+    expect(transcript!.sessionId).toBe('sess-new')
+  })
+
+  it('serializes object content as pretty JSON for tool calls', async () => {
+    const transcript = await readLatestSessionTranscript(runtimeMemory([{
+      id: 'tool',
+      content: lines([
+        { type: 'session', id: 'sess-tool', timestamp: '2026-04-25T10:00:00Z' },
+        {
+          type: 'message',
+          timestamp: '2026-04-25T10:00:01Z',
+          toolName: 'bakin_exec_log',
+          message: { role: 'tool', content: { result: 'ok', payload: { nested: true } } },
+        },
+      ]),
+    }]), 'pixel')
+
     expect(transcript!.messages).toHaveLength(1)
     const msg = transcript!.messages[0]
     expect(msg.role).toBe('tool')
@@ -165,14 +172,16 @@ describe('readLatestSessionTranscript', () => {
     expect(msg.content).toContain('"nested"')
   })
 
-  it('drops unknown roles silently (forward-compat with new role types)', () => {
-    writeSession('pixel', 'mystery.jsonl', [
-      { type: 'session', id: 'sess-x', timestamp: '2026-04-25T10:00:00Z' },
-      { type: 'message', message: { role: 'user', content: 'kept' } },
-      { type: 'message', message: { role: 'wizard', content: 'dropped' } },
-    ])
+  it('drops unknown roles silently', async () => {
+    const transcript = await readLatestSessionTranscript(runtimeMemory([{
+      id: 'mystery',
+      content: lines([
+        { type: 'session', id: 'sess-x', timestamp: '2026-04-25T10:00:00Z' },
+        { type: 'message', message: { role: 'user', content: 'kept' } },
+        { type: 'message', message: { role: 'wizard', content: 'dropped' } },
+      ]),
+    }]), 'pixel')
 
-    const transcript = readLatestSessionTranscript('pixel')
     expect(transcript!.messages).toHaveLength(1)
     expect(transcript!.messages[0].content).toBe('kept')
   })

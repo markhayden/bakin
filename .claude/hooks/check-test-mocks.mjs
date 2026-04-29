@@ -7,7 +7,7 @@
 //      both Bun's `mock.module(...)` and Vitest's `vi.mock(...)` so the
 //      checker works through the Next.js → Bun migration and any future shift.
 //   2. The test mocks src/core/content-dir (CLAUDE.md hard rule).
-//   3. If the test touches workflows/tasks/openclaw, it also mocks flow-store
+//   3. If the test touches workflows/tasks/openclaw, it also mocks task-store
 //      and openclaw-home.
 //
 // Broken paths set decision: "block" so Claude re-edits.
@@ -28,6 +28,10 @@ function readStdin() {
 
 function isTestFile(p) {
   return /\/tests\/.+\.test\.tsx?$/.test(p)
+}
+
+function isPureArchitectureTest(p) {
+  return /(^|\/)tests\/architecture\/.+\.test\.tsx?$/.test(p)
 }
 
 // Matches both `mock.module('...', ...)` (Bun) and `vi.mock('...', ...)` (Vitest).
@@ -58,7 +62,7 @@ function resolveRelativeMock(testFile, mockArg) {
 
 // REQUIRED_PATTERNS run against the *string argument* of vi.mock(...) calls,
 // so they need to match both relative paths ('../../../src/core/content-dir')
-// and aliases ('@/core/content-dir', '@bakin/core/openclaw-home').
+// and aliases ('@/core/content-dir', '@bakin/adapter-openclaw/home').
 const REQUIRED_PATTERNS = [
   {
     label: 'src/core/content-dir (or packages/core/src/content-dir)',
@@ -70,16 +74,20 @@ const REQUIRED_PATTERNS = [
     always: true,
   },
   {
-    label: 'plugins/tasks/lib/flow-store',
-    matches: (p) => /(^|\/)plugins\/tasks\/lib\/flow-store$/.test(p) || /@bakin\/tasks\/lib\/flow-store$/.test(p),
+    label: 'src/core/task-store',
+    matches: (p) =>
+      /(^|\/)src\/core\/task-store$/.test(p)
+      || /@\/core\/task-store$/.test(p),
     requiredIf: (src) =>
-      /flow-store|@bakin\/(tasks|workflows)|plugins\/(tasks|workflows)/.test(src),
+      /task-store|@bakin\/workflows|plugins\/(tasks|workflows)/.test(src),
   },
   {
-    label: 'packages/core/src/openclaw-home (or @bakin/core/openclaw-home)',
-    matches: (p) => /openclaw-home$/.test(p),
+    label: 'openclaw-home resolver (packages/adapter-openclaw/src/home or @bakin/adapter-openclaw/home)',
+    matches: (p) =>
+      /(^|\/)packages\/adapter-openclaw\/src\/home$/.test(p)
+      || /@bakin\/adapter-openclaw\/home$/.test(p),
     requiredIf: (src) =>
-      /openclaw-home|getOpenClawPath|getOpenClawHome|@bakin\/core\/openclaw/.test(src),
+      /openclaw-home|getOpenClawPath|getOpenClawHome|@bakin\/adapter-openclaw\/home/.test(src),
   },
   {
     label: 'src/core/openclaw-client',
@@ -122,14 +130,16 @@ function check(filePath) {
   }
 
   const missing = []
-  for (const req of REQUIRED_PATTERNS) {
-    const found = mockPaths.some(req.matches)
-    if (found) continue
-    if (isSelfTest(filePath, req.label)) continue
-    if (req.always) {
-      missing.push(req.label)
-    } else if (req.requiredIf && req.requiredIf(src)) {
-      missing.push(`${req.label} (referenced in this test file)`)
+  if (!isPureArchitectureTest(filePath)) {
+    for (const req of REQUIRED_PATTERNS) {
+      const found = mockPaths.some(req.matches)
+      if (found) continue
+      if (isSelfTest(filePath, req.label)) continue
+      if (req.always) {
+        missing.push(req.label)
+      } else if (req.requiredIf && req.requiredIf(src)) {
+        missing.push(`${req.label} (referenced in this test file)`)
+      }
     }
   }
 

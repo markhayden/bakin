@@ -74,3 +74,18 @@ export function yearMonthFromFilename(filename: string): string | null {
 export function isCanonicalFilename(filename: string): boolean {
   return yearMonthFromFilename(filename) !== null
 }
+
+/**
+ * True when a caller-supplied filename is safe to resolve through
+ * filename-as-identity. This is stricter than `isCanonicalFilename` because
+ * external inputs must not carry path separators or traversal segments.
+ */
+export function isSafeCanonicalFilename(filename: string): boolean {
+  return (
+    filename.length > 0 &&
+    !filename.includes('/') &&
+    !filename.includes('\\') &&
+    !filename.includes('..') &&
+    isCanonicalFilename(filename)
+  )
+}

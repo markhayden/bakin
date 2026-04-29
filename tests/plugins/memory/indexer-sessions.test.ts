@@ -2,10 +2,7 @@
  * Tests for MemoryIndexer.indexTier('session') and watcher routing for
  * OpenClaw session rosters.
  *
- * Source of truth:
- *   - Preferred: gateway RPC `sessions.list` (rich, live metadata).
- *   - Fallback: `agents/<id>/sessions/sessions.json` map, loaded via the
- *     openclaw-adapter, used when the gateway throws.
+ * Source of truth: runtime memory `session_store` entries.
  *
  * Additional behaviors covered here:
  *   - 30-day backfill window (skip sessions with updatedAt < cutoff).
@@ -37,75 +34,31 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 mock.module('../../../src/core/watcher', () => ({ watchFiles: mock() }))
-mock.module('../../../packages/core/src/openclaw-home', () => ({
+mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   getOpenClawHome: () => join(testDir, '.openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, '.openclaw', ...parts),
 }))
-mock.module('../../../src/core/main-agent', () => ({ tryGetMainAgentId: () => null }))
+mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
+  getMainAgentId: () => 'main',
+  tryGetMainAgentId: () => null,
+  getMainAgentName: () => 'Main',
+}))
 
 const {
   mockListAgentIds,
   mockReadSessionStore,
   mockMatchSessionStorePath,
-  mockGatewayCall,
+  mockRuntimeSessionList,
 } = (() => ({
   mockListAgentIds: mock<() => string[]>(),
   mockReadSessionStore: mock<(agent: string) => unknown>(),
   mockMatchSessionStorePath: mock<(path: string) => { agent: string } | null>(),
-  mockGatewayCall: mock<(method: string, params: unknown) => Promise<unknown>>(),
+  mockRuntimeSessionList: mock<(method: string, params: unknown) => Promise<unknown>>(),
 }))()
-
-mock.module('../../../plugins/memory/lib/openclaw-adapter', () => ({
-  listAgentIds: mockListAgentIds,
-  readSessionStore: mockReadSessionStore,
-  sessionStorePath: (agent: string) => `/fake/${agent}/sessions.json`,
-  matchSessionStorePath: mockMatchSessionStorePath,
-  // adjacent tiers — stubbed so fallthrough matchers don't blow up.
-  readDurableFile: mock(() => null),
-  durableFilePath: mock(() => ''),
-  matchDurablePath: mock(() => null),
-  CANONICAL_DURABLE_FILES: [] as const,
-  listDailyNotes: mock(() => []),
-  readDailyNote: mock(() => null),
-  dailyNotePath: mock(() => ''),
-  dailyNoteMtime: mock(() => null),
-  dailyNoteSize: mock(() => 0),
-  matchDailyNotePath: mock(() => null),
-  // turn tier — stubbed; indexer tests for turn live in indexer-turns.test.ts.
-  listSessionJsonlFiles: mock(() => []),
-  sessionJsonlPath: mock(() => ''),
-  sessionJsonlStat: mock(() => null),
-  matchSessionJsonlPath: mock(() => null),
-  // checkpoint tier (C7) — stubbed so handleWatcherEvent fallthrough doesn't blow up.
-  listCheckpointJsonlFiles: mock(() => []),
-  readCheckpoint: mock(() => null),
-  checkpointJsonlPath: mock(() => ''),
-  checkpointJsonlStat: mock(() => null),
-  matchCheckpointJsonlPath: mock(() => null),
-  // dream tier (C8) — stubs so handleWatcherEvent fallthrough doesn't blow up.
-  listPhaseDocs: mock(() => []),
-  listDreamSignalFiles: mock(() => []),
-  readPhaseDoc: mock(() => null),
-  readDreamSignal: mock(() => null),
-  matchPhaseDocPath: mock(() => null),
-  matchDreamSignalPath: mock(() => null),
-  // skills (tier=durable, kind=skill) — stubs so handleWatcherEvent fallthrough doesn't blow up.
-  DURABLE_KIND_BY_BASENAME: {} as Record<string, string>,
-  durableKindForBasename: mock(() => undefined),
-  listAgentSkills: mock(() => []),
-  readAgentSkill: mock(() => null),
-  skillFilePath: mock(() => ''),
-  skillFileMtime: mock(() => null),
-  matchSkillPath: mock(() => null),
-}))
-
-mock.module('../../../plugins/memory/lib/openclaw-gateway', () => ({
-  gatewayCall: mockGatewayCall,
-}))
 
 import { MemoryIndexer } from '../../../plugins/memory/lib/indexer'
 import { clearAllOffsets } from '../../../plugins/memory/lib/offsets'
-import type { PluginContext } from '../../../src/lib/plugin-types'
+import type { PluginContext } from '@bakin/core/plugin-types'
 
 interface IndexedDoc { key: string; doc: Record<string, unknown> }
 
@@ -125,6 +78,43 @@ function makeCtx(): { ctx: PluginContext; indexed: IndexedDoc[]; removed: string
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: mock(),
     activity: { log: mock(), audit: mock() },
+    runtime: {
+      agents: {
+        list: mock(async () => mockListAgentIds().map((id) => ({ id, name: id }))),
+      },
+      memory: {
+        listTiers: mock(async () => [{ id: 'sessions-tier', label: 'Sessions', metadata: { sourceKind: 'session_store' } }]),
+        getEntry: mock(async (_tierId: string, id: string, opts?: { agentId?: string }) => {
+          if (id !== 'sessions.json' || !opts?.agentId) return null
+          let value: unknown
+          try {
+            value = await mockRuntimeSessionList('sessions.list', { agentId: opts.agentId })
+          } catch {
+            value = mockReadSessionStore(opts.agentId)
+          }
+          if (value === null || value === undefined) return null
+          return {
+            id,
+            tierId: 'sessions-tier',
+            agentId: opts.agentId,
+            path: `/fake/${opts.agentId}/sessions.json`,
+            content: JSON.stringify(value),
+          }
+        }),
+        resolvePath: mock(async (path: string) => {
+          const match = mockMatchSessionStorePath(path)
+          return match
+            ? {
+                tierId: 'sessions-tier',
+                id: 'sessions.json',
+                agentId: match.agent,
+                path,
+                metadata: { sourceKind: 'session_store' },
+              }
+            : null
+        }),
+      },
+    },
     search: {
       registerContentType: mock(),
       registerFileBackedContentType: mock(),
@@ -168,7 +158,7 @@ beforeEach(() => {
   mockListAgentIds.mockReset()
   mockReadSessionStore.mockReset()
   mockMatchSessionStorePath.mockReset()
-  mockGatewayCall.mockReset()
+  mockRuntimeSessionList.mockReset()
   mockMatchSessionStorePath.mockReturnValue(null)
 })
 
@@ -176,10 +166,10 @@ afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-describe('MemoryIndexer.indexTier("session") — gateway path', () => {
-  it('indexes one row per session when gatewayCall succeeds', async () => {
+describe('MemoryIndexer.indexTier("session") — runtime memory path', () => {
+  it('indexes one row per session when runtime memory returns sessions', async () => {
     mockListAgentIds.mockReturnValue(['basil'])
-    mockGatewayCall.mockResolvedValue({
+    mockRuntimeSessionList.mockResolvedValue({
       sessions: {
         'agent:basil:main': session({ sessionId: 'a' }),
         'agent:basil:openai:xyz': session({ sessionId: 'b' }),
@@ -198,9 +188,9 @@ describe('MemoryIndexer.indexTier("session") — gateway path', () => {
     expect(mockReadSessionStore).not.toHaveBeenCalled()
   })
 
-  it('accepts the gateway returning a bare map (no "sessions" wrapper)', async () => {
+  it('accepts a bare session map (no "sessions" wrapper)', async () => {
     mockListAgentIds.mockReturnValue(['basil'])
-    mockGatewayCall.mockResolvedValue({
+    mockRuntimeSessionList.mockResolvedValue({
       'agent:basil:main': session({ sessionId: 'a' }),
     })
 
@@ -213,9 +203,9 @@ describe('MemoryIndexer.indexTier("session") — gateway path', () => {
 })
 
 describe('MemoryIndexer.indexTier("session") — FS fallback', () => {
-  it('falls back to readSessionStore when gatewayCall throws', async () => {
+  it('falls back to readSessionStore when runtime memory throws', async () => {
     mockListAgentIds.mockReturnValue(['basil'])
-    mockGatewayCall.mockRejectedValue(new Error('gateway unreachable'))
+    mockRuntimeSessionList.mockRejectedValue(new Error('runtime unavailable'))
     mockReadSessionStore.mockReturnValue({
       'agent:basil:main': session({ sessionId: 'fs-a' }),
     })
@@ -229,9 +219,9 @@ describe('MemoryIndexer.indexTier("session") — FS fallback', () => {
     expect(mockReadSessionStore).toHaveBeenCalledWith('basil')
   })
 
-  it('is a no-op for an agent with neither gateway nor FS data', async () => {
+  it('is a no-op for an agent with neither runtime nor FS data', async () => {
     mockListAgentIds.mockReturnValue(['basil'])
-    mockGatewayCall.mockRejectedValue(new Error('gateway unreachable'))
+    mockRuntimeSessionList.mockRejectedValue(new Error('runtime unavailable'))
     mockReadSessionStore.mockReturnValue(null)
 
     const { ctx, indexed } = makeCtx()
@@ -247,7 +237,7 @@ describe('MemoryIndexer.indexTier("session") — backfill window', () => {
     const now = Date.now()
     const day = 24 * 60 * 60 * 1000
     mockListAgentIds.mockReturnValue(['basil'])
-    mockGatewayCall.mockResolvedValue({
+    mockRuntimeSessionList.mockResolvedValue({
       'agent:basil:recent': session({ sessionId: 'r', updatedAt: now - 5 * day }),
       'agent:basil:old': session({ sessionId: 'o', updatedAt: now - 60 * day }),
     })
@@ -264,7 +254,7 @@ describe('MemoryIndexer.indexTier("session") — backfill window', () => {
 describe('MemoryIndexer.indexTier("session") — orphan removal', () => {
   it('removes rows for sessions that disappear from the roster between runs', async () => {
     mockListAgentIds.mockReturnValue(['basil'])
-    mockGatewayCall
+    mockRuntimeSessionList
       .mockResolvedValueOnce({
         'agent:basil:a': session({ sessionId: 'sa' }),
         'agent:basil:b': session({ sessionId: 'sb' }),
@@ -287,7 +277,7 @@ describe('MemoryIndexer.indexTier("session") — orphan removal', () => {
 describe('MemoryIndexer.handleWatcherEvent — sessions.json', () => {
   it('routes a sessions.json change to indexTier("session") for that agent', async () => {
     mockListAgentIds.mockReturnValue(['basil'])
-    mockGatewayCall.mockResolvedValue({
+    mockRuntimeSessionList.mockResolvedValue({
       'agent:basil:main': session({ sessionId: 'a' }),
     })
     mockMatchSessionStorePath.mockImplementation((p) =>

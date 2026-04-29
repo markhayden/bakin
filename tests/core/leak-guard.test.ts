@@ -17,21 +17,17 @@ import { join } from 'path'
 
 describe('leak guard — content-dir', () => {
   const origBakinHome = process.env.BAKIN_HOME
-  const origContentDir = process.env.CONTENT_DIR
   const origHome = process.env.HOME
 
   beforeEach(() => {
     const { resetContentDir } = require('../../packages/core/src/content-dir')
     resetContentDir()
     delete process.env.BAKIN_HOME
-    delete process.env.CONTENT_DIR
   })
 
   afterEach(() => {
     if (origBakinHome !== undefined) process.env.BAKIN_HOME = origBakinHome
     else delete process.env.BAKIN_HOME
-    if (origContentDir !== undefined) process.env.CONTENT_DIR = origContentDir
-    else delete process.env.CONTENT_DIR
     if (origHome !== undefined) process.env.HOME = origHome
     const { resetContentDir } = require('../../packages/core/src/content-dir')
     resetContentDir()
@@ -90,7 +86,7 @@ describe('leak guard — openclaw-home', () => {
     process.env.HOME = '/tmp/bakin-leak-guard-fake-home'
     process.env.OPENCLAW_HOME = join(process.env.HOME, '.openclaw')
 
-    const { getOpenClawHome } = require('../../packages/core/src/openclaw-home') as typeof import('../../packages/core/src/openclaw-home')
+    const { getOpenClawHome } = require('../../packages/adapter-openclaw/src/home') as typeof import('../../packages/adapter-openclaw/src/home')
     expect(() => getOpenClawHome()).toThrow(/real OpenClaw home/)
   })
 
@@ -98,7 +94,7 @@ describe('leak guard — openclaw-home', () => {
     process.env.HOME = '/tmp/bakin-leak-guard-fake-home'
     process.env.OPENCLAW_HOME = join(tmpdir(), `openclaw-leak-guard-safe-${Date.now()}`)
 
-    const { getOpenClawHome } = require('../../packages/core/src/openclaw-home') as typeof import('../../packages/core/src/openclaw-home')
+    const { getOpenClawHome } = require('../../packages/adapter-openclaw/src/home') as typeof import('../../packages/adapter-openclaw/src/home')
     expect(() => getOpenClawHome()).not.toThrow()
   })
 
@@ -106,21 +102,21 @@ describe('leak guard — openclaw-home', () => {
     process.env.HOME = '/tmp/bakin-leak-guard-fake-home'
     process.env.OPENCLAW_HOME = join(process.env.HOME, '.openclaw')
 
-    const { getOpenClawPath } = require('../../packages/core/src/openclaw-home') as typeof import('../../packages/core/src/openclaw-home')
-    expect(() => getOpenClawPath('flows', 'registry.sqlite')).toThrow(/real OpenClaw home/)
+    const { getOpenClawPath } = require('../../packages/adapter-openclaw/src/home') as typeof import('../../packages/adapter-openclaw/src/home')
+    expect(() => getOpenClawPath('agents', 'main', 'agent', 'auth-profiles.json')).toThrow(/real OpenClaw home/)
   })
 
   it('guard message includes remediation instructions', async () => {
     process.env.HOME = '/tmp/bakin-leak-guard-fake-home'
     process.env.OPENCLAW_HOME = join(process.env.HOME, '.openclaw')
 
-    const { getOpenClawHome } = require('../../packages/core/src/openclaw-home') as typeof import('../../packages/core/src/openclaw-home')
+    const { getOpenClawHome } = require('../../packages/adapter-openclaw/src/home') as typeof import('../../packages/adapter-openclaw/src/home')
     try {
       getOpenClawHome()
       throw new Error('expected throw')
     } catch (err) {
       const msg = (err as Error).message
-      expect(msg).toContain('mock @bakin/core/openclaw-home')
+      expect(msg).toContain('OpenClaw adapter home')
       expect(msg).toContain('OPENCLAW_HOME')
       expect(msg).toContain('CLAUDE.md')
     }

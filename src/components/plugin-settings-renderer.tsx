@@ -16,7 +16,7 @@ import type {
   SelectSettingsField,
   ListSettingsField,
   PluginSettingsSchema,
-} from '@/lib/plugin-types'
+} from '@bakin/core/plugin-types'
 
 export type { PluginSettingsSchema }
 

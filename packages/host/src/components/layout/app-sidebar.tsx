@@ -21,7 +21,6 @@ import {
 } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import { getAllNavItems, getRegistryVersion, subscribeRegistry } from '@bakin/sdk'
-import type { NavItem } from '@bakin/sdk'
 import { useSidebarContext } from '@/context/sidebar-context'
 import { usePathname } from '../../hooks/use-pathname'
 import {

@@ -50,7 +50,7 @@ describe('MEMORY_TIERS', () => {
 describe('SourceRefSchema', () => {
   it('requires backend and path', () => {
     const ok = SourceRefSchema.safeParse({
-      backend: 'openclaw',
+      backend: 'runtime',
       path: '/tmp/foo.md',
       file: 'foo.md',
     })
@@ -64,7 +64,7 @@ describe('SourceRefSchema', () => {
 
   it('accepts optional session/event/checkpoint ids and byte offset', () => {
     const parsed = SourceRefSchema.safeParse({
-      backend: 'openclaw',
+      backend: 'runtime',
       path: '/tmp/s.jsonl',
       file: 's.jsonl',
       sessionId: 'sess-1',
@@ -205,13 +205,13 @@ describe('CheckpointMetaSchema', () => {
 })
 
 describe('DailyNoteMetaSchema', () => {
-  it('accepts a note with openclawIndexed flag', () => {
+  it('accepts a note with runtimeIndexed flag', () => {
     expect(
       DailyNoteMetaSchema.safeParse({
         file: '2026-04-17.md',
         date: '2026-04-17',
         sizeBytes: 1024,
-        openclawIndexed: true,
+        runtimeIndexed: true,
       }).success
     ).toBe(true)
   })

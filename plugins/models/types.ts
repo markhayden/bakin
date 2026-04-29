@@ -39,7 +39,7 @@ export interface AvailableModel {
   /** Display-only cost summary, e.g. '$3 in / $15 out per 1M'. */
   costRange?: string
   /** Display-only context-window string override (e.g. '200K', '1M'). Distinct
-   *  from the numeric `contextWindow` which is OpenClaw-sourced. */
+   *  from the numeric `contextWindow` which is runtime-sourced. */
   contextWindowDisplay?: string
   /** 'llm' | 'image' | 'video' — gives the UI a reason to cluster differently. */
   kind?: 'llm' | 'image' | 'video'
@@ -58,7 +58,7 @@ export interface AvailableModelsResponse {
   cachedAt: number | null
   /** True when cached data is older than the TTL; UI should trigger a background refresh. */
   stale?: boolean
-  /** Populated when the live OpenClaw fetch failed AND no cache is available. */
+  /** Populated when the live runtime fetch failed AND no cache is available. */
   error?: string
 }
 

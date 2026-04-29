@@ -3,7 +3,7 @@
  *
  * Reverses an install. Removes projected files, strips knowledge markers,
  * decrements ref-counts on dependencies (recursively removing dep packs
- * that drop to zero), optionally deletes the OpenClaw agent, and updates
+ * that drop to zero), optionally deletes the runtime agent, and updates
  * the lockfile.
  *
  * Refuses to remove a package that still has active dependents (pack
@@ -29,15 +29,29 @@ import {
   acquireInstallLock,
   releaseInstallLock,
 } from './install-lock'
-import { removeAgent, removeFromAllowLists } from '@bakin/team/lib/openclaw-adapter'
+import { getAppServices } from '../app-services'
 
 const log = createLogger('agent-pkg:uninstall')
+
+async function removeRuntimeAgent(agentId: string): Promise<void> {
+  await getAppServices().runtime.agents.remove(agentId)
+}
+
+async function removeRuntimeAllowListReferences(agentId: string): Promise<void> {
+  const runtime = getAppServices().runtime
+  const agents = await runtime.agents.list()
+  await Promise.all(
+    agents
+      .filter((agent) => agent.id !== agentId)
+      .map((agent) => runtime.agents.updateAllowlist(agent.id, { remove: [agentId] })),
+  )
+}
 
 export interface RemoveOptions {
   packageId: string
   /** When true, leave knowledge-marker projections in place — only strip files. */
   keepBlocks?: boolean
-  /** When true (kind:"agent" only), also call OpenClaw to delete the agent. */
+  /** When true (kind:"agent" only), also call the runtime to delete the agent. */
   deleteAgent?: boolean
   /** When true, refuse-on-dependents is downgraded to a warning + force-remove. */
   force?: boolean
@@ -76,7 +90,7 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
 
     // 1. Unproject parent
     if (entry.projections && entry.projections.length > 0) {
-      unprojectPackage(entry.projections, { keepBlocks: options.keepBlocks })
+      await unprojectPackage(entry.projections, { keepBlocks: options.keepBlocks })
     }
 
     // 2. Remove the install dir under ~/.bakin/packages/<kind>s/<id>@<ver>/
@@ -98,11 +112,11 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
     // Cascade recurses N levels: when a dep's refCount hits 0 we remove it
     // AND walk its own `dependencies`, decrementing each by the now-removed
     // intermediate. This handles 3+-deep chains correctly.
-    const cascadeRemove = (
+    const cascadeRemove = async (
       currentLock: typeof lock,
       depKeys: string[],
       dependentKey: string,
-    ): typeof lock => {
+    ): Promise<typeof lock> => {
       let l = currentLock
       for (const depKey of depKeys) {
         l = decrementRefCount(l, depKey, dependentKey)
@@ -112,7 +126,7 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
           // Orphaned — unproject + remove install dir + recurse into its
           // own deps before dropping the lockfile entry.
           if (depEntry.projections && depEntry.projections.length > 0) {
-            unprojectPackage(depEntry.projections, { keepBlocks: options.keepBlocks })
+            await unprojectPackage(depEntry.projections, { keepBlocks: options.keepBlocks })
           }
           const depInstallDir = getPackageSourceDir(
             getContentDir(),
@@ -133,7 +147,7 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
           // Recurse — the orphaned dep's transitive deps cascade with the
           // orphan as the dependent (NOT the original package being removed).
           if (depEntry.dependencies && depEntry.dependencies.length > 0) {
-            l = cascadeRemove(l, depEntry.dependencies, depKey)
+            l = await cascadeRemove(l, depEntry.dependencies, depKey)
           }
           l = removePackage(l, depKey)
           removed.push(depKey)
@@ -146,19 +160,19 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
 
     lock = removePackage(lock, options.packageId)
     removed.push(options.packageId)
-    lock = cascadeRemove(lock, entry.dependencies ?? [], options.packageId)
+    lock = await cascadeRemove(lock, entry.dependencies ?? [], options.packageId)
 
     writeLockfile(lock)
 
-    // 4. Optionally delete the OpenClaw agent for kind:"agent"
+    // 4. Optionally delete the runtime agent for kind:"agent"
     let deletedAgent = false
     if (entry.kind === 'agent' && entry.agentId && options.deleteAgent) {
       try {
-        await removeAgent(entry.agentId)
-        removeFromAllowLists(entry.agentId)
+        await removeRuntimeAgent(entry.agentId)
+        await removeRuntimeAllowListReferences(entry.agentId)
         deletedAgent = true
       } catch (err) {
-        log.warn('Failed to delete OpenClaw agent', {
+        log.warn('Failed to delete runtime agent', {
           agentId: entry.agentId,
           error: err instanceof Error ? err.message : String(err),
         })

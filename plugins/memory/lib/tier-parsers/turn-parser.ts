@@ -1,5 +1,5 @@
 /**
- * Turn tier parser — one OpenClaw JSONL line → one `MemoryRow | null`.
+ * Turn tier parser — one runtime JSONL line → one `MemoryRow | null`.
  *
  * Skipped event types (null):
  *   - `session` (session header; exposed via session tier instead)
@@ -95,7 +95,7 @@ export function parseTurnLine(
     snippet: content.length > 2048 ? content.slice(0, 2048) : content,
     content,
     sourceRef: {
-      backend: 'openclaw',
+      backend: 'runtime',
       path: '',
       file: `${sessionId}.jsonl`,
       offset: lineByteOffset,

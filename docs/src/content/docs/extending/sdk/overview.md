@@ -20,6 +20,17 @@ Public SDK exports require TSDoc and stability metadata before launch.
 | `@bakin/sdk/utils` | shared utilities |
 | `@bakin/sdk/metadata` | planned metadata helpers for standalone plugins |
 
+## Notable Type Exports
+
+| Type | Description |
+| --- | --- |
+| `HealthCheckResult` | Doctor check result row: `{ check, status, message, autoFixable }`. Returned from any function registered via `ctx.registerHealthCheck()`. |
+| `PluginHealthCheckInput` | Input shape for `ctx.registerHealthCheck()`: `{ id, name, run, autoFix? }`. |
+| `PluginContext` | The runtime handle passed to `activate(ctx)`. |
+| `BakinPlugin` | The default-exported plugin object shape. |
+
+All types are importable from `@bakin/sdk` (or `@bakin/sdk/types`).
+
 ## Component Guidance
 
 Prefer SDK components for plugin UI. Custom UI is allowed for domain-specific needs, but it should preserve Bakin's accessibility, spacing, and interaction patterns.

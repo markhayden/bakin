@@ -3,7 +3,7 @@
  *
  *   GET  /daily-notes?agent=<id>                → { files: [{ name, date }] }
  *   GET  /daily-notes/:agent/:filename          → { agent, file, content }
- *   POST /daily-notes/compare-search            → { antfly: [...], lancedb: [...] }
+ *   POST /daily-notes/compare-search            → { search: [...], runtime: [...] }
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync } from 'fs'
@@ -40,31 +40,16 @@ const {
   mockMemorySearch: mock<(q: string, opts?: unknown) => Promise<unknown>>(),
 }))()
 
-mock.module('../../../../plugins/memory/lib/openclaw-adapter', () => ({
-  listDailyNotes: mockListDailyNotes,
-  readDailyNote: mockReadDailyNote,
-}))
-
-mock.module('../../../../plugins/memory/lib/openclaw-cli', () => ({
-  memorySearch: mockMemorySearch,
-  MemoryCliError: class MemoryCliError extends Error {
-    constructor(msg: string, public cause?: unknown, public stderr?: string) {
-      super(msg)
-      this.name = 'MemoryCliError'
-    }
-  },
-}))
-
 import {
   dailyNotesListRoute,
   dailyNotesDetailRoute,
   dailyNotesCompareSearchRoute,
 } from '../../../../plugins/memory/lib/routes/daily-notes'
-import type { PluginContext, SearchQueryParams } from '../../../../src/lib/plugin-types'
+import type { PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
 
 interface Recorder { queries: SearchQueryParams[] }
 
-function makeCtx(antflyResults: Record<string, unknown>[] = []): { ctx: PluginContext; recorder: Recorder } {
+function makeCtx(searchResults: Record<string, unknown>[] = []): { ctx: PluginContext; recorder: Recorder } {
   const recorder: Recorder = { queries: [] }
   const ctx = {
     pluginId: 'memory',
@@ -79,6 +64,30 @@ function makeCtx(antflyResults: Record<string, unknown>[] = []): { ctx: PluginCo
     getSettings: (() => ({})) as PluginContext['getSettings'],
     updateSettings: mock(),
     activity: { log: mock(), audit: mock() },
+    runtime: {
+      memory: {
+        listTiers: mock(async () => [{ id: 'daily-tier', label: 'Daily notes', metadata: { sourceKind: 'daily_note' } }]),
+        listEntries: mock(async (_tierId: string, opts?: { agentId?: string }) =>
+          mockListDailyNotes(opts?.agentId ?? '').map((name) => ({
+            id: name,
+            tierId: 'daily-tier',
+            agentId: opts?.agentId,
+            path: `/fake/${opts?.agentId ?? 'agent'}/memory/${name}`,
+            content: '',
+          })),
+        ),
+        getEntry: mock(async (_tierId: string, id: string, opts?: { agentId?: string }) => {
+          const content = mockReadDailyNote(opts?.agentId ?? '', id)
+          return content === null || content === undefined
+            ? null
+            : { id, tierId: 'daily-tier', agentId: opts?.agentId, path: `/fake/${id}`, content }
+        }),
+        search: mock(async (query: string, opts?: { agentId?: string; limit?: number }) => {
+          const result = await mockMemorySearch(query, { agent: opts?.agentId, limit: opts?.limit })
+          return result as { results: unknown[] }
+        }),
+      },
+    },
     search: {
       registerContentType: mock(),
       registerFileBackedContentType: mock(),
@@ -88,13 +97,13 @@ function makeCtx(antflyResults: Record<string, unknown>[] = []): { ctx: PluginCo
       query: mock(async (params: SearchQueryParams) => {
         recorder.queries.push(params)
         return {
-          results: antflyResults.map((fields, i) => ({
+          results: searchResults.map((fields, i) => ({
             id: `daily_note:${i}`,
             table: 'bakin_memory',
             score: 1,
             fields,
           })),
-          meta: { query: params.q, total: antflyResults.length, took_ms: 1, source: 'fallback' as const },
+          meta: { query: params.q, total: searchResults.length, took_ms: 1, source: 'fallback' as const },
         }
       }),
     },
@@ -213,7 +222,7 @@ describe('dailyNotesCompareSearchRoute', () => {
     expect(res.status).toBe(400)
   })
 
-  it('returns { antfly, lancedb } arrays', async () => {
+  it('returns { search, runtime } arrays', async () => {
     mockMemorySearch.mockResolvedValue({
       results: [{ path: '2026-04-18.md', score: 0.9, snippet: 'hello' }],
     })
@@ -226,13 +235,13 @@ describe('dailyNotesCompareSearchRoute', () => {
       { id: 'x', tier: 'daily_note', agent: 'main', title: '2026-04-17.md', snippet: 'hello world' },
     ])
     const res = await dailyNotesCompareSearchRoute.handler(req, ctx)
-    const body = await res.json() as { antfly: unknown[]; lancedb: unknown[] }
+    const body = await res.json() as { search: unknown[]; runtime: unknown[] }
     expect(res.status).toBe(200)
-    expect(body.antfly).toHaveLength(1)
-    expect(body.lancedb).toHaveLength(1)
+    expect(body.search).toHaveLength(1)
+    expect(body.runtime).toHaveLength(1)
   })
 
-  it('antfly query is scoped to tier=daily_note (+ agent when provided)', async () => {
+  it('search query is scoped to tier=daily_note (+ agent when provided)', async () => {
     mockMemorySearch.mockResolvedValue({ results: [] })
     const req = new Request('http://localhost/daily-notes/compare-search', {
       method: 'POST',
@@ -246,7 +255,7 @@ describe('dailyNotesCompareSearchRoute', () => {
     expect(recorder.queries[0].filters?.agent).toBe('main')
   })
 
-  it('returns lancedb as empty array with a status=no_index flag when CLI returns zero results', async () => {
+  it('returns runtime as empty array with a status=no_index flag when runtime returns zero results', async () => {
     mockMemorySearch.mockResolvedValue({ results: [] })
     const req = new Request('http://localhost/daily-notes/compare-search', {
       method: 'POST',
@@ -254,13 +263,13 @@ describe('dailyNotesCompareSearchRoute', () => {
       headers: { 'content-type': 'application/json' },
     })
     const res = await dailyNotesCompareSearchRoute.handler(req, makeCtx().ctx)
-    const body = await res.json() as { lancedb: unknown[]; lancedbStatus?: string }
-    expect(body.lancedb).toEqual([])
-    expect(body.lancedbStatus).toBe('no_index_or_no_match')
+    const body = await res.json() as { runtime: unknown[]; runtimeStatus?: string }
+    expect(body.runtime).toEqual([])
+    expect(body.runtimeStatus).toBe('no_index_or_no_match')
   })
 
-  it('when LanceDB shell-out throws, lancedbStatus=error and antfly still returns', async () => {
-    mockMemorySearch.mockRejectedValue(new Error('openclaw timeout'))
+  it('when runtime search throws, runtimeStatus=error and search still returns', async () => {
+    mockMemorySearch.mockRejectedValue(new Error('runtime timeout'))
     const req = new Request('http://localhost/daily-notes/compare-search', {
       method: 'POST',
       body: JSON.stringify({ query: 'hello', agent: 'main' }),
@@ -270,11 +279,11 @@ describe('dailyNotesCompareSearchRoute', () => {
       { id: 'x', tier: 'daily_note', agent: 'main', title: 'ok', snippet: 'y' },
     ])
     const res = await dailyNotesCompareSearchRoute.handler(req, ctx)
-    const body = await res.json() as { antfly: unknown[]; lancedb: unknown[]; lancedbStatus?: string; lancedbError?: string }
+    const body = await res.json() as { search: unknown[]; runtime: unknown[]; runtimeStatus?: string; runtimeError?: string }
     expect(res.status).toBe(200)
-    expect(body.antfly).toHaveLength(1)
-    expect(body.lancedb).toEqual([])
-    expect(body.lancedbStatus).toBe('error')
-    expect(body.lancedbError).toContain('timeout')
+    expect(body.search).toHaveLength(1)
+    expect(body.runtime).toEqual([])
+    expect(body.runtimeStatus).toBe('error')
+    expect(body.runtimeError).toContain('timeout')
   })
 })

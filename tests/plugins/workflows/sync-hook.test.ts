@@ -16,9 +16,11 @@ import { tmpdir } from 'os'
 import type {
   PluginContext,
   FileBackedContentTypeDefinition,
-} from '../../../src/lib/plugin-types'
+} from '@bakin/core/plugin-types'
 import { BakinEventBus } from '../../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../../src/lib/storage/markdown-adapter'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import { createMockBakinTaskStore } from '@bakin/core/tasks/testing'
 
 const testDir = join(tmpdir(), `bakin-test-workflows-sync-${Date.now()}`)
 const defsDir = join(testDir, 'workflows', 'definitions')
@@ -51,18 +53,7 @@ mock.module('../../../src/core/audit', () => ({
   appendAudit: mock(),
 }))
 
-mock.module('../../../src/core/discord-gateway', () => ({
-  startGateway: mock(),
-  stopGateway: mock(),
-  onGateInteraction: mock(),
-  isGatewayConnected: mock(() => false),
-}))
-
-mock.module('../../../scripts/lib/post-discord', () => ({
-  loadDiscordConfig: mock(() => null),
-}))
-
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   createTask: mock(() => Promise.resolve({ id: 'mock-task' })),
   addTaskLog: mock(() => Promise.resolve()),
   moveTask: mock(() => Promise.resolve()),
@@ -101,6 +92,14 @@ function makeCtx(): CapturedCtx {
     storage,
     events,
     pluginId: 'workflows',
+    runtime: createMockRuntimeAdapter(),
+    tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
+    assets: {
+      getByFilename: mock(async () => null),
+      list: mock(async () => []),
+      exists: mock(async () => false),
+      fileRef: mock(async (filename: string) => ({ kind: 'asset' as const, filename })),
+    },
     registerNav: mock(),
     registerRoute: mock(),
     registerSlot: mock(),
@@ -126,6 +125,8 @@ function makeCtx(): CapturedCtx {
     },
     hooks: {
       register: mock(() => () => {}),
+      call: mock(async (_name, data) => data),
+      callAll: mock(async () => undefined),
       has: mock(() => false),
       invoke: mock(async () => undefined),
     },

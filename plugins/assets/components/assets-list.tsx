@@ -41,7 +41,7 @@ export type SortDir = 'asc' | 'desc'
 interface AssetsListProps {
   assets: AssetMeta[]
   onSelect: (asset: AssetMeta) => void
-  onDelete: (path: string) => void
+  onDelete: (filename: string) => void
   sort?: SortField
   sortDir?: SortDir
   onSort?: (field: SortField) => void
@@ -71,7 +71,7 @@ function SortableHeader({ field, label, activeField, dir, onSort, className }: {
   )
 }
 
-function AssetRow({ asset, onClick, onDelete }: { asset: AssetMeta; onClick: () => void; onDelete: (path: string) => void }) {
+function AssetRow({ asset, onClick, onDelete }: { asset: AssetMeta; onClick: () => void; onDelete: (filename: string) => void }) {
   const [imgError, setImgError] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
 
@@ -156,7 +156,7 @@ function AssetRow({ asset, onClick, onDelete }: { asset: AssetMeta; onClick: () 
       <DeleteAssetDialog
         open={confirmOpen}
         filename={asset.filename}
-        onConfirm={() => { setConfirmOpen(false); onDelete(asset.path) }}
+        onConfirm={() => { setConfirmOpen(false); onDelete(asset.filename) }}
         onCancel={() => setConfirmOpen(false)}
       />
     </>

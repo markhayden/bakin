@@ -36,6 +36,11 @@ interface PluginRegistration {
   id: string
   navItems?: NavItem[]
   /**
+   * Route path pattern -> page component. Patterns support exact paths and
+   * dynamic segments in either `:id`, `[id]`, or `$id` form.
+   */
+  routes?: Record<string, ComponentType<any>>
+  /**
    * Map of slot name → component. Registered with the default order (100).
    * Components are typed as `ComponentType<any>` because different slots
    * accept different prop shapes (e.g. `page:/team/[id]` takes `agentId`,
@@ -43,12 +48,18 @@ interface PluginRegistration {
    * For fine-grained ordering, call `registerSlot(name, Component, order, id)`
    * directly from the plugin's client.tsx alongside registerPlugin.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   slots?: Record<string, ComponentType<any>>
+}
+
+interface ClientRouteEntry {
+  path: string
+  component: ComponentType<Record<string, unknown>>
+  owner: string
 }
 
 interface ClientRegistry {
   navByPlugin: Map<string, NavItem[]>
+  routesByPlugin: Map<string, ClientRouteEntry[]>
   cleanupByPlugin: Map<string, Array<() => void>>
   version: number
   listeners: Set<() => void>
@@ -59,6 +70,7 @@ function getRegistry(): ClientRegistry {
   if (!g.__bakinClientRegistry) {
     g.__bakinClientRegistry = {
       navByPlugin: new Map<string, NavItem[]>(),
+      routesByPlugin: new Map<string, ClientRouteEntry[]>(),
       cleanupByPlugin: new Map<string, Array<() => void>>(),
       version: 0,
       listeners: new Set<() => void>(),
@@ -84,6 +96,14 @@ export function registerPlugin(reg: PluginRegistration): void {
 
   if (reg.navItems?.length) {
     registry.navByPlugin.set(reg.id, reg.navItems)
+  }
+
+  if (reg.routes) {
+    registry.routesByPlugin.set(reg.id, Object.entries(reg.routes).map(([path, component]) => ({
+      path,
+      component: component as ComponentType<Record<string, unknown>>,
+      owner: reg.id,
+    })))
   }
 
   if (reg.slots) {
@@ -113,6 +133,7 @@ export function unregisterPlugin(id: string): void {
   }
 
   registry.navByPlugin.delete(id)
+  registry.routesByPlugin.delete(id)
   clearSlotsOwnedBy(id)
 
   bumpVersion()
@@ -169,4 +190,69 @@ export function getPluginNavItems(pluginId: string): ReadonlyArray<NavItem> {
   return getRegistry().navByPlugin.get(pluginId) ?? []
 }
 
-export type { NavItem, PluginRegistration }
+function normalizePattern(pattern: string): string[] {
+  return pattern.split('/').filter(Boolean)
+}
+
+function matchRoutePattern(pattern: string, pathname: string): { params: Record<string, string>; score: number } | null {
+  const patternSegments = normalizePattern(pattern)
+  const pathSegments = normalizePattern(pathname)
+  if (patternSegments.length !== pathSegments.length) return null
+
+  const params: Record<string, string> = {}
+  let score = 0
+  for (let i = 0; i < patternSegments.length; i++) {
+    const patternSegment = patternSegments[i]
+    const pathSegment = pathSegments[i]
+    const bracket = patternSegment.match(/^\[([^\]]+)\]$/)
+    const isColon = patternSegment.startsWith(':')
+    const isDollar = patternSegment.startsWith('$')
+    if (bracket || isColon || isDollar) {
+      const key = bracket?.[1] ?? patternSegment.slice(1)
+      params[key] = decodeURIComponent(pathSegment)
+      continue
+    }
+    if (patternSegment !== pathSegment) return null
+    score += 1
+  }
+
+  return { params, score }
+}
+
+export interface MatchedPluginRoute {
+  pluginId: string
+  path: string
+  component: ComponentType<Record<string, unknown>>
+  params: Record<string, string>
+}
+
+export function getPluginRoute(pathname: string): MatchedPluginRoute | null {
+  const registry = getRegistry()
+  let best: (MatchedPluginRoute & { score: number }) | null = null
+  for (const [pluginId, routes] of registry.routesByPlugin.entries()) {
+    for (const route of routes) {
+      const match = matchRoutePattern(route.path, pathname)
+      if (!match) continue
+      if (!best || match.score > best.score) {
+        best = {
+          pluginId,
+          path: route.path,
+          component: route.component,
+          params: match.params,
+          score: match.score,
+        }
+      }
+    }
+  }
+  if (!best) return null
+  const { score: _score, ...route } = best
+  return route
+}
+
+export function getPluginRoutes(pluginId?: string): ReadonlyArray<ClientRouteEntry> {
+  const registry = getRegistry()
+  if (pluginId) return registry.routesByPlugin.get(pluginId) ?? []
+  return [...registry.routesByPlugin.values()].flat()
+}
+
+export type { NavItem, PluginRegistration, ClientRouteEntry }

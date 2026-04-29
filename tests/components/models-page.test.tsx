@@ -17,15 +17,15 @@ mock.module('@/hooks/use-query-state', () => ({
   },
 }))
 
-const gatewayState = {
+const runtimeState = {
   restartNeeded: false,
   restarting: false,
   restart: mock(),
   markDirty: mock(),
 }
 
-mock.module('@/hooks/use-gateway-status', () => ({
-  useGatewayStatus: () => gatewayState,
+mock.module('@/hooks/use-runtime-status', () => ({
+  useRuntimeStatus: () => runtimeState,
 }))
 
 mock.module('@/components/plugin-header', () => ({
@@ -91,7 +91,7 @@ describe('ModelsPage component', () => {
   beforeEach(() => {
     cleanup()
     mock.restore()
-    gatewayState.markDirty.mockReset()
+    runtimeState.markDirty.mockReset()
     fetchCalls = []
     availableFetchCount = 0
     configState = {
@@ -236,7 +236,7 @@ describe('ModelsPage component', () => {
         agentId: 'patch',
         ownModel: 'google/gemini-2.5-pro',
       })
-      expect(gatewayState.markDirty).toHaveBeenCalled()
+      expect(runtimeState.markDirty).toHaveBeenCalled()
     })
   })
 

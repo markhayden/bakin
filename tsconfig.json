@@ -18,6 +18,10 @@
       "@/*": ["./src/*"],
       "@bakin/core": ["./packages/core/src/index.ts"],
       "@bakin/core/*": ["./packages/core/src/*"],
+      "@bakin/adapter-openclaw": ["./packages/adapter-openclaw/src/index.ts"],
+      "@bakin/adapter-openclaw/*": ["./packages/adapter-openclaw/src/*"],
+      "@bakin/adapter-antfly": ["./packages/adapter-antfly/src/index.ts"],
+      "@bakin/adapter-antfly/*": ["./packages/adapter-antfly/src/*"],
       "@bakin/sdk": ["./packages/sdk/src/index.ts"],
       "@bakin/sdk/ui": ["./packages/sdk/src/ui/index.ts"],
       "@bakin/sdk/hooks": ["./packages/sdk/src/hooks/index.ts"],
@@ -33,8 +37,6 @@
       "@bakin/memory/*": ["./plugins/memory/*"],
       "@bakin/models": ["./plugins/models"],
       "@bakin/models/*": ["./plugins/models/*"],
-      "@bakin/messaging": ["./plugins/messaging"],
-      "@bakin/messaging/*": ["./plugins/messaging/*"],
       "@bakin/workflows": ["./plugins/workflows"],
       "@bakin/workflows/*": ["./plugins/workflows/*"],
       "@bakin/assets": ["./plugins/assets"],
@@ -43,8 +45,6 @@
       "@bakin/health/*": ["./plugins/health/*"],
       "@bakin/schedule": ["./plugins/schedule"],
       "@bakin/schedule/*": ["./plugins/schedule/*"],
-      "@bakin/projects": ["./plugins/projects"],
-      "@bakin/projects/*": ["./plugins/projects/*"],
       "@bakin/team": ["./plugins/team"],
       "@bakin/team/*": ["./plugins/team/*"]
     }

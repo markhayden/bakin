@@ -29,7 +29,7 @@ mock.module('@/core/logger', () => ({
 }))
 
 import { loadPluginSkills } from '@/lib/plugin-skill-loader'
-import type { PluginContext, SkillDefinition } from '@/lib/plugin-types'
+import type { PluginContext, SkillDefinition } from '@bakin/core/plugin-types'
 
 const fakeLog = { warn: mock(), info: mock(), error: mock(), debug: mock() }
 

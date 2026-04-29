@@ -15,7 +15,7 @@
  * assets without special-casing.
  */
 import { existsSync, mkdirSync, readdirSync, renameSync, statSync, writeFileSync } from 'fs'
-import { basename, dirname, extname, join } from 'path'
+import { basename, extname, join } from 'path'
 import { getContentDir } from '../../../src/core/content-dir'
 import { ASSET_TYPES, type AssetType } from './constants'
 import { generateConventionalFilename, slugify } from './filename-id'

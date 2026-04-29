@@ -15,14 +15,14 @@
  * include them via an explicit filter chip — the route treats any explicit
  * tier list as an override of the debug-hidden defaults.
  *
- * Antfly has no native sort-by-field, so we fan out per-tier with a generous
+ * The search adapter has no native sort-by-field contract, so we fan out per-tier with a generous
  * overshoot (`OVERSHOOT_PER_TIER`) using the match-all / full-text-only
  * strategy, then merge and sort by `updated_at` desc client-side before
  * trimming to the requested limit. The response shape matches SearchResponse
  * (`results`, `aggregations`, `meta`) so the client can reuse `useSearch`'s
  * result renderer without a second type.
  */
-import type { APIRoute, PluginContext, SearchQueryParams } from '../../../../src/lib/plugin-types'
+import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
 import { MEMORY_TIERS, type MemoryTier } from '../types'
 
 const DEFAULT_LIMIT = 30
@@ -31,7 +31,7 @@ const MAX_LIMIT = 100
 // window even when BM25 on `q: '*'` returns results in arbitrary order.
 const OVERSHOOT_PER_TIER = 100
 // Defensive cap on fan-out so a crafted URL (or legacy CSV agent bookmark)
-// can't explode into hundreds of Antfly queries. Worst case at the cap is
+// can't explode into hundreds of search queries. Worst case at the cap is
 // 50 × 100 = 5000 rows materialized server-side before merge+sort.
 const MAX_FANOUT = 50
 
@@ -86,7 +86,7 @@ export const recentRoute: APIRoute = {
       return Response.json({
         results: [],
         aggregations: {},
-        meta: { query: '', total: 0, took_ms: 0, source: 'antfly' },
+        meta: { query: '', total: 0, took_ms: 0, source: 'search' },
       })
     }
 
@@ -146,7 +146,7 @@ export const recentRoute: APIRoute = {
         query: '',
         total: merged.length,
         took_ms: Date.now() - started,
-        source: 'antfly',
+        source: 'search',
       },
     })
   },

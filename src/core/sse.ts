@@ -50,6 +50,69 @@ export function broadcastAuditEvent(entry: Record<string, unknown>): void {
   broadcast({ type: 'audit', entry, timestamp: new Date().toISOString() })
 }
 
+// ─── Hot-reload events (Phase 2 P2.C5) ───────────────────────────────────────
+//
+// Emitted by the hot-reload coordinator (P2.C8) whenever a linked plugin
+// rebuilds. The browser-side PluginHost (P2.C9) subscribes to these via
+// the existing `useSSE` infrastructure, re-fetches the affected plugin's
+// client bundle with `?v=<version>` and re-mounts the plugin's React tree.
+//
+// Defined here so server-side coordinator + future client subscribers
+// have a single canonical event-name source.
+
+export type PluginReloadEvent = {
+  type: 'dev:plugin:reload'
+  pluginId: string
+  /** New monotonic version from `bumpVersion(pluginId)`. */
+  version: number
+  /** Set when the build pipeline emitted a fresh dist/client.css too. */
+  hasClientCss?: boolean
+  timestamp: string
+}
+
+export type PluginErrorEvent = {
+  type: 'dev:plugin:error'
+  pluginId: string
+  message: string
+  /** Trimmed compiler/runtime output for the dev overlay. */
+  stderr?: string
+  timestamp: string
+}
+
+export type PluginRecoverEvent = {
+  type: 'dev:plugin:recover'
+  pluginId: string
+  timestamp: string
+}
+
+export function broadcastPluginReload(pluginId: string, version: number, opts: { hasClientCss?: boolean } = {}): void {
+  broadcast({
+    type: 'dev:plugin:reload',
+    pluginId,
+    version,
+    ...(opts.hasClientCss !== undefined ? { hasClientCss: opts.hasClientCss } : {}),
+    timestamp: new Date().toISOString(),
+  } satisfies PluginReloadEvent)
+}
+
+export function broadcastPluginError(pluginId: string, message: string, stderr?: string): void {
+  broadcast({
+    type: 'dev:plugin:error',
+    pluginId,
+    message,
+    ...(stderr ? { stderr } : {}),
+    timestamp: new Date().toISOString(),
+  } satisfies PluginErrorEvent)
+}
+
+export function broadcastPluginRecover(pluginId: string): void {
+  broadcast({
+    type: 'dev:plugin:recover',
+    pluginId,
+    timestamp: new Date().toISOString(),
+  } satisfies PluginRecoverEvent)
+}
+
 // Expose broadcast on globalThis so Next.js API routes (which get a separate
 // module instance due to webpack bundling) can still reach the real SSE clients.
 ;(globalThis as any).__bakinBroadcastAudit = broadcastAuditEvent

@@ -5,6 +5,7 @@
 
 import type { ZodRawShape, ZodType } from 'zod'
 import type { ContractStability, ContractVisibility, DocsExample, SchemaLike, SourceLocation } from './docs'
+import type { AgentRuntimeAdapter } from './adapters/runtime'
 
 // ---------------------------------------------------------------------------
 // Approval actor — identifies who decided a gate (or any reviewable action)
@@ -12,7 +13,7 @@ import type { ContractStability, ContractVisibility, DocsExample, SchemaLike, So
 export interface ApprovalActor {
   id: string
   displayName?: string
-  source: 'discord' | 'web' | 'system'
+  source: 'channel' | 'web' | 'system'
 }
 
 // ---------------------------------------------------------------------------
@@ -24,6 +25,24 @@ export interface StorageAdapter {
   append(path: string, content: string): void
   exists(path: string): boolean
   readAll(): Record<string, string>
+  list?(path?: string): string[]
+  remove?(path: string): void
+  rename?(from: string, to: string): void
+  stat?(path: string): {
+    path: string
+    size: number
+    mtimeMs: number
+    isFile: boolean
+    isDirectory: boolean
+  } | null
+  readJson?<T = unknown>(path: string): T | null
+  writeJson?(path: string, value: unknown): void
+  /**
+   * Convert a plugin-storage-relative path or glob to the content-dir-relative
+   * path seen by file-backed search/watch APIs. Implementations never return
+   * absolute host paths.
+   */
+  searchPath?(path: string): string
 }
 
 // ---------------------------------------------------------------------------
@@ -92,6 +111,10 @@ export interface PluginToolContext {
   storage: StorageAdapter
   events: EventBus
   pluginId: string
+  runtime: AgentRuntimeAdapter
+  tasks: PluginTaskService
+  assets: AssetsAPI
+  search: SearchAPI
   hooks: HookAPI
   activity: ActivityAPI
   getSettings<T = Record<string, unknown>>(): T
@@ -155,8 +178,11 @@ export interface ActivityAPI {
 // ---------------------------------------------------------------------------
 export interface HookAPI {
   /** Register a handler for a named hook. Returns unsubscribe function. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   register(name: string, handler: (data: any) => any): () => void
+  /** Run registered handlers as a waterfall and return the final value. */
+  call<T>(name: string, data: T): Promise<T>
+  /** Run every registered handler and ignore return values. */
+  callAll(name: string, data: Record<string, unknown>): Promise<void>
   /** Check if any handlers are registered for a hook. */
   has(name: string): boolean
   /** Invoke a hook and return its result (RPC-style). */
@@ -220,10 +246,9 @@ export interface PluginNodeTypeInput<T = unknown> {
 /**
  * Input shape plugins pass to `ctx.registerNotificationChannel`. The plugin id
  * is prepended to `id` automatically (`{pluginId}.{id}`), matching the node-
- * type precedent. Built-in workflows-plugin channels (discord, slack, email,
- * instagram, twitter, youtube, tiktok) self-register at module load in
- * `plugins/workflows/lib/notification-channel-registry.ts` and keep their
- * short ids for backwards compat with existing workflow YAML.
+ * type precedent. Built-in workflows-plugin runtime channels (general,
+ * announcements, alerts, email) self-register at module load in
+ * `plugins/workflows/lib/notification-channel-registry.ts`.
  */
 export interface PluginNotificationChannelInput {
   id: string
@@ -245,10 +270,7 @@ export interface NotificationChannelDef extends PluginNotificationChannelInput {
 // ---------------------------------------------------------------------------
 
 /**
- * Canonical result shape for a single doctor check row. Shape-identical to
- * the existing `DiagnosticResult` in `src/core/doctor.ts` — they will be
- * collapsed into this one name once all builtin checks migrate out of core
- * (see follow-up tracked alongside #137).
+ * Canonical result shape for a single doctor check row.
  */
 export interface HealthCheckResult {
   check: string
@@ -290,6 +312,9 @@ export interface PluginContext {
   storage: StorageAdapter
   events: EventBus
   pluginId: string
+  runtime: AgentRuntimeAdapter
+  tasks: PluginTaskService
+  assets: AssetsAPI
   registerNav(items: NavItem[]): void
   registerRoute(route: APIRoute): void
   registerSlot(registration: UISlotRegistration): void
@@ -336,12 +361,136 @@ export interface PluginContext {
   activity: ActivityAPI
   /** Cross-plugin hook registration */
   hooks: HookAPI
-  /** Antfly-backed search — register content types, index, query */
+  /** Adapter-backed search — register content types, index, query */
   search: SearchAPI
 }
 
 // ---------------------------------------------------------------------------
-// Search API (Antfly-backed vector + full-text search)
+// Public task service
+// ---------------------------------------------------------------------------
+
+export type PluginTaskColumn =
+  | 'backlog'
+  | 'todo'
+  | 'inProgress'
+  | 'review'
+  | 'done'
+  | 'blocked'
+  | 'archived'
+
+export interface PluginTask {
+  id: string
+  title: string
+  agent?: string
+  createdBy?: string
+  checked: boolean
+  column: PluginTaskColumn
+  date?: string
+  blockedReason?: string
+  description?: string
+  log?: TaskLogEntry[]
+  dependsOn?: string
+  parentId?: string | null
+  workflowId?: string
+  scheduleJobId?: string
+  projectId?: string
+  order?: number
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface TaskLogEntry {
+  timestamp: string
+  author: string
+  message: string
+  data?: Record<string, unknown>
+}
+
+export interface PluginTaskCreateInput {
+  id?: string
+  title: string
+  description?: string
+  agent?: string
+  createdBy?: string
+  column?: PluginTaskColumn
+  date?: string
+  workflowId?: string
+  projectId?: string
+  parentId?: string | null
+  skipWorkflowReason?: string
+}
+
+export interface PluginTaskUpdateInput {
+  title?: string
+  description?: string
+  agent?: string
+  createdBy?: string
+  checked?: boolean
+  column?: PluginTaskColumn
+  date?: string
+  blockedReason?: string
+  workflowId?: string
+  scheduleJobId?: string
+  projectId?: string
+  parentId?: string | null
+}
+
+export interface PluginTaskService {
+  create(input: PluginTaskCreateInput): Promise<PluginTask>
+  update(id: string, patch: PluginTaskUpdateInput): Promise<PluginTask>
+  move(id: string, column: PluginTaskColumn, order?: number): Promise<PluginTask>
+  remove(id: string): Promise<void>
+  get(id: string): Promise<PluginTask | null>
+  list(filter?: { column?: PluginTaskColumn; agent?: string; projectId?: string }): Promise<PluginTask[]>
+  appendLog(id: string, entry: TaskLogEntry): Promise<void>
+}
+
+// ---------------------------------------------------------------------------
+// Public assets service
+// ---------------------------------------------------------------------------
+
+export interface AssetVariantMeta {
+  role: 'thumbnail' | 'optimized' | 'webp'
+  path: string
+  filename: string
+  size: number
+  mimeType: string
+}
+
+export interface AssetMeta {
+  path: string
+  filename: string
+  type: 'text' | 'images' | 'video' | 'audio' | 'plans' | 'research' | 'pdf' | 'data' | 'other'
+  mimeType: string
+  size: number
+  mtimeMs?: number
+  metadata: {
+    agent: string
+    taskId: string | null
+    created: string
+    tool?: string
+    description?: string
+    tags?: string[]
+    originalFilename?: string
+  }
+  variants?: AssetVariantMeta[]
+}
+
+export interface AssetFileRef {
+  kind: 'asset'
+  filename: string
+  mimeType?: string
+}
+
+export interface AssetsAPI {
+  getByFilename(filename: string): Promise<AssetMeta | null>
+  list(filter?: { type?: AssetMeta['type']; taskId?: string | null }): Promise<AssetMeta[]>
+  exists(filename: string): Promise<boolean>
+  fileRef(filename: string): Promise<AssetFileRef>
+}
+
+// ---------------------------------------------------------------------------
+// Search API (adapter-backed vector + full-text search)
 // ---------------------------------------------------------------------------
 
 /** Field type for search content type schemas */
@@ -353,16 +502,21 @@ export interface SearchSchemaField {
  * One vector index on a search table. A content type can declare multiple
  * indexes to embed the same document into several vector spaces — e.g. a
  * text index using BGE and a visual index using CLIP on the assets table.
- * Each index has its own embedder (resolved via embedderRef), template,
- * and optional chunker config.
+ * Each index has its own embedder (resolved via embedderRef), input
+ * declaration, and optional chunker config.
  */
 export interface SearchIndexDefinition {
-  /** Index name as stored in Antfly. Must be stable across restarts. */
+  /** Index name as stored by the search adapter. Must be stable across restarts. */
   name: string
-  /** Ref into settings.antfly.embedders — 'default', 'visual', or custom. */
+  /** Ref into settings.search.settings.embedders — 'default', 'visual', or custom. */
   embedderRef: string
-  /** Handlebars template for this index's embedding input. */
-  embeddingTemplate: string
+  /** Handlebars template for this index's text embedding input. */
+  embeddingTemplate?: string
+  /**
+   * Document field containing a URL to media bytes for visual/multimodal
+   * embedding input. The search adapter owns provider-specific helper syntax.
+   */
+  mediaUrlField?: string
   /** Per-index chunker config, overrides any table-level default. */
   chunker?: {
     enabled: boolean
@@ -396,12 +550,9 @@ export interface SearchContentTypeDefinition {
   facets?: string[]
   /**
    * Document field to use as input for the cross-encoder reranker. When
-   * set, queries against this content type attach Antfly's reranker
-   * (configured in settings.antfly.search.reranker) and score the
-   * query-document pair using the value at this field. When unset,
-   * queries skip reranking for this content type — Antfly requires a
-   * `field` or `template` in the reranker config, and passing an
-   * unconfigured reranker produces a 400 from the server.
+   * set, queries against this content type attach the configured reranker
+   * and score the query-document pair using the value at this field.
+   * When unset, queries skip reranking for this content type.
    */
   rerankField?: string
   /** TTL duration (Go format: '24h', '7d', '30d') */
@@ -446,16 +597,16 @@ export interface SearchQueryParams {
    */
   rerank?: boolean
   /**
-   * Raw Antfly aggregations passed through unchanged to QueryRequest.
+   * Raw adapter-specific aggregations passed through unchanged to the query layer.
    * Use for date histograms, range buckets, stats aggregations, or any
    * other shape beyond the term-facet convenience in `facets`. Merged
    * with facet-derived aggregations (these win on key collision).
-   * See Antfly API docs for the aggregation schema.
+   * See the active search adapter docs for the aggregation schema.
    */
   aggregations?: Record<string, unknown>
   /**
-   * Search strategy override. Defaults to the site-wide strategy from
-   * `antfly.search.strategy`. Pass 'full_text_only' for filter-driven
+   * Search strategy override. Defaults to the site-wide search strategy.
+   * Pass 'full_text_only' for filter-driven
    * counts or ID lookups — semantic search rejects `limit: 0` queries
    * with the "semantic search requires topk limit to be positive" error.
    */
@@ -481,7 +632,7 @@ export interface SearchResponse {
    */
   aggregations?: Record<string, Array<{ value: string; count: number }>>
   /**
-   * Raw aggregation response from Antfly, unmodified. Populated whenever
+   * Raw aggregation response from the search adapter, unmodified. Populated whenever
    * the underlying query returned aggregations — use this for non-term
    * shapes like date_histogram, range, stats, etc.
    */
@@ -490,8 +641,31 @@ export interface SearchResponse {
     query: string
     total: number
     took_ms: number
-    source: 'antfly' | 'fallback'
+    source: 'search' | 'fallback'
   }
+}
+
+export interface SearchHealthIndex {
+  name: string
+  type: string
+  totalIndexed: number
+  walBacklog: number
+  error?: string
+  rebuilding: boolean
+  backfillProgress?: number
+}
+
+export interface SearchHealthTable {
+  table: string
+  pluginId: string
+  stats: Record<string, unknown> | null
+  indexHealth?: SearchHealthIndex[]
+  healthy: boolean
+}
+
+export interface SearchHealthSnapshot {
+  enabled: boolean
+  tables: SearchHealthTable[]
 }
 
 /** Atomic transform operation (update fields without re-embedding) */
@@ -537,7 +711,7 @@ export interface FilePatternMapper {
  *
  * Plugins should reach for this helper first. Use raw `registerContentType`
  * only when the source of truth is NOT the filesystem (e.g. SQLite,
- * external API, OpenClaw adapter).
+ * external API, runtime adapter).
  */
 export interface FileBackedContentTypeDefinition extends SearchContentTypeDefinition {
   /**
@@ -580,12 +754,12 @@ export interface FileBackedContentTypeDefinition extends SearchContentTypeDefini
 export interface SearchAPI {
   /**
    * Register a content type this plugin will index.
-   * Must be called during activate(). Creates the Antfly table if needed.
+   * Must be called during activate(). Creates the search table if needed.
    *
    * Prefer `registerFileBackedContentType` when the source of truth is
    * a file under `~/.bakin/` — it wires up watcher hooks and startup
    * reconcile automatically. Use this raw form only for non-filesystem
-   * sources (SQLite, external APIs, OpenClaw adapters).
+   * sources (SQLite, external APIs, runtime adapters).
    */
   registerContentType(def: SearchContentTypeDefinition): void
 
@@ -609,6 +783,30 @@ export interface SearchAPI {
 
   /** Search this plugin's content type. */
   query(params: SearchQueryParams): Promise<SearchResponse>
+
+  /** Global search adapter and registered-table health snapshot. */
+  health?(): Promise<SearchHealthSnapshot>
+
+  /**
+   * Plugin-scoped maintenance operations for indexers that own non-file-backed
+   * tables. This is intentionally narrower than the raw adapter: callers can
+   * only touch their own registered content type.
+   */
+  maintenance?: SearchMaintenanceAPI
+}
+
+export interface SearchMaintenanceAPI {
+  /** Whether the backing search service is reachable. */
+  available(): Promise<boolean>
+
+  /** Iterate every document in this plugin's registered content type. */
+  scan(): AsyncIterable<{ key: string; document: Record<string, unknown> }>
+
+  /** Remove several documents from this plugin's registered content type. */
+  batchRemove(keys: string[]): Promise<number>
+
+  /** Drop and recreate this plugin's registered content type table. */
+  resetContentType(): Promise<void>
 }
 
 // ---------------------------------------------------------------------------

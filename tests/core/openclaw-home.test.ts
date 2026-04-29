@@ -8,7 +8,7 @@ import { describe, it, expect, afterEach, mock } from 'bun:test'
 // → /tmp/module/.openclaw. Guard compares against /tmp/guard/.openclaw.
 // Paths differ → no guard trip.
 //
-// We deliberately do NOT mock @bakin/core/openclaw-home — that is the
+// We deliberately do NOT mock @bakin/adapter-openclaw/home — that is the
 // module under test. The test-mock hook skips this via its self-test
 // exception (basename of the test file matches the pattern label).
 //
@@ -21,12 +21,13 @@ mock.module('os', () => {
   return { ...actual, homedir: () => '/tmp/bakin-test-module-home-fake' }
 })
 
+const actualContentDir = require('../../packages/core/src/content-dir') as typeof import('../../packages/core/src/content-dir')
+
 // Satisfy the content-dir mock requirement even though these tests don't
-// touch it — any transitive import could reach it otherwise.
+// touch it. Keep this as a pass-through so the mock cannot leak fake storage
+// paths into later files that intentionally exercise the real guard.
 mock.module('../../packages/core/src/content-dir', () => ({
-  getContentDir: () => '/tmp/bakin-test-guard-home-fake',
-  getBakinPaths: () => ({ home: '/tmp/bakin-test-guard-home-fake' }),
-  resetContentDir: mock(),
+  ...actualContentDir,
 }))
 
 describe('openclaw-home', () => {
@@ -40,14 +41,14 @@ describe('openclaw-home', () => {
   describe('getOpenClawHome', () => {
     it('returns OPENCLAW_HOME when set', async () => {
       process.env.OPENCLAW_HOME = '/tmp/mock-openclaw'
-      const { getOpenClawHome } = require('../../packages/core/src/openclaw-home') as typeof import('../../packages/core/src/openclaw-home')
+      const { getOpenClawHome } = require('../../packages/adapter-openclaw/src/home') as typeof import('../../packages/adapter-openclaw/src/home')
       expect(getOpenClawHome()).toBe('/tmp/mock-openclaw')
     })
 
     it('falls back to ~/.openclaw when OPENCLAW_HOME is not set', async () => {
       delete process.env.OPENCLAW_HOME
       process.env.HOME = '/tmp/bakin-test-guard-home-fake'
-      const { getOpenClawHome } = require('../../packages/core/src/openclaw-home') as typeof import('../../packages/core/src/openclaw-home')
+      const { getOpenClawHome } = require('../../packages/adapter-openclaw/src/home') as typeof import('../../packages/adapter-openclaw/src/home')
       const result = getOpenClawHome()
       expect(result).toMatch(/\.openclaw$/)
       expect(result).not.toContain('undefined')
@@ -57,29 +58,29 @@ describe('openclaw-home', () => {
   describe('getOpenClawPath', () => {
     it('joins segments onto OPENCLAW_HOME', async () => {
       process.env.OPENCLAW_HOME = '/tmp/mock-openclaw'
-      const { getOpenClawPath } = require('../../packages/core/src/openclaw-home') as typeof import('../../packages/core/src/openclaw-home')
+      const { getOpenClawPath } = require('../../packages/adapter-openclaw/src/home') as typeof import('../../packages/adapter-openclaw/src/home')
       expect(getOpenClawPath('openclaw.json')).toBe('/tmp/mock-openclaw/openclaw.json')
     })
 
     it('handles multiple path segments', async () => {
       process.env.OPENCLAW_HOME = '/tmp/mock-openclaw'
-      const { getOpenClawPath } = require('../../packages/core/src/openclaw-home') as typeof import('../../packages/core/src/openclaw-home')
+      const { getOpenClawPath } = require('../../packages/adapter-openclaw/src/home') as typeof import('../../packages/adapter-openclaw/src/home')
       expect(getOpenClawPath('agents', 'main', 'agent', 'auth-profiles.json'))
         .toBe('/tmp/mock-openclaw/agents/main/agent/auth-profiles.json')
     })
 
     it('returns home when called with no segments', async () => {
       process.env.OPENCLAW_HOME = '/tmp/mock-openclaw'
-      const { getOpenClawPath } = require('../../packages/core/src/openclaw-home') as typeof import('../../packages/core/src/openclaw-home')
+      const { getOpenClawPath } = require('../../packages/adapter-openclaw/src/home') as typeof import('../../packages/adapter-openclaw/src/home')
       expect(getOpenClawPath()).toBe('/tmp/mock-openclaw')
     })
 
     it('uses default home when OPENCLAW_HOME is not set', async () => {
       delete process.env.OPENCLAW_HOME
       process.env.HOME = '/tmp/bakin-test-guard-home-fake'
-      const { getOpenClawPath } = require('../../packages/core/src/openclaw-home') as typeof import('../../packages/core/src/openclaw-home')
-      const result = getOpenClawPath('flows', 'registry.sqlite')
-      expect(result).toMatch(/\.openclaw\/flows\/registry\.sqlite$/)
+      const { getOpenClawPath } = require('../../packages/adapter-openclaw/src/home') as typeof import('../../packages/adapter-openclaw/src/home')
+      const result = getOpenClawPath('agents', 'main', 'agent', 'auth-profiles.json')
+      expect(result).toMatch(/\.openclaw\/agents\/main\/agent\/auth-profiles\.json$/)
     })
   })
 })

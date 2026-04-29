@@ -12,12 +12,14 @@
  *   - The component exposes the OnboardingComponent shape the dispatcher expects.
  *   - `check()` returns ok with "0 plugin assets" when nothing ships S-B skills.
  */
-import { describe, it, expect, mock } from 'bun:test'
-import { readFileSync } from 'fs'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
+import { mkdirSync, readFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { installFilesystemRuntimeAppServices } from '../helpers/runtime-app-services'
 
 const testDir = join(tmpdir(), `bakin-test-cli-plugin-assets-${Date.now()}`)
+const openClawDir = join(testDir, 'openclaw')
 
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
@@ -29,15 +31,26 @@ mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
 }))
-mock.module('@bakin/core/openclaw-home', () => ({
-  getOpenClawHome: () => join(testDir, 'openclaw'),
-  getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
+mock.module('@bakin/adapter-openclaw/home', () => ({
+  getOpenClawHome: () => openClawDir,
+  getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
 }))
 mock.module('@/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
 describe('CLI: bakin install/check plugin-assets', () => {
+  beforeEach(() => {
+    rmSync(testDir, { recursive: true, force: true })
+    mkdirSync(testDir, { recursive: true })
+    mkdirSync(openClawDir, { recursive: true })
+    installFilesystemRuntimeAppServices({ openClawDir })
+  })
+
+  afterAll(() => {
+    rmSync(testDir, { recursive: true, force: true })
+  })
+
   it('cli/bakin.ts dispatches install plugin-assets to the onboarding component', () => {
     const cli = readFileSync(join(process.cwd(), 'cli', 'bakin.ts'), 'utf-8')
     expect(cli).toMatch(/sub === 'plugin-assets'/)

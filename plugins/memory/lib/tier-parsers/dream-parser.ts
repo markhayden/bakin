@@ -9,7 +9,7 @@
  *   events_log         — workspace/memory/.dreams/events.jsonl
  *   session_corpus     — workspace/memory/.dreams/session-corpus/<YYYY-MM-DD>.{md,txt}
  *
- * Dreaming starts dormant on a fresh OpenClaw install — `short-term-recall.json`
+ * Dreaming starts dormant on a fresh runtime install — `short-term-recall.json`
  * and `events.jsonl` exist but are empty. The parser still emits rows for those
  * (empty content) so the UI can surface "dormant" copy rather than a mysterious
  * absence. Unknown filenames under `.dreams/` return null.
@@ -61,7 +61,7 @@ export function parsePhaseDoc(
     snippet,
     content: body,
     sourceRef: {
-      backend: 'openclaw',
+      backend: 'runtime',
       path: sourcePath,
       file: filename,
     },
@@ -98,7 +98,7 @@ export function parseDreamSignal(
     snippet,
     content: body,
     sourceRef: {
-      backend: 'openclaw',
+      backend: 'runtime',
       path: sourcePath,
       file: basename(relPath),
     },

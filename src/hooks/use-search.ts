@@ -19,7 +19,7 @@ export interface SearchResponse {
     query: string
     total: number
     took_ms: number
-    source: 'antfly' | 'fallback'
+    source: 'search' | 'fallback'
   }
 }
 

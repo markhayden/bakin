@@ -1,5 +1,5 @@
 /**
- * DELETE /api/plugins/assets/?path=... — soft-delete an asset.
+ * DELETE /api/plugins/assets/?filename=... — soft-delete an asset.
  * Moves asset + sidecar + any variants to .trash/ directory.
  */
 import { join, dirname } from 'path'
@@ -7,23 +7,30 @@ import { existsSync, readdirSync } from 'fs'
 import { getContentDir } from '../../../src/core/content-dir'
 import { softDelete } from '../lib/trash'
 import { removeAsset, detectVariant } from '../lib/asset-index'
+import { isSafeCanonicalFilename, pathForFilename } from '../lib/path-for-filename'
 
 export async function handleDelete(req: Request): Promise<Response> {
   const url = new URL(req.url, 'http://localhost')
-  const assetPath = url.searchParams.get('path') || url.searchParams.get('assetPath')
+  const filenameParam = url.searchParams.get('filename')
 
-  if (!assetPath) {
-    return Response.json({ error: 'path parameter required' }, { status: 400 })
+  if (!filenameParam) {
+    return Response.json({ error: 'filename parameter required' }, { status: 400 })
   }
 
-  // Prevent path traversal
-  if (assetPath.includes('..') || !assetPath.startsWith('assets/')) {
-    return Response.json({ error: 'Invalid path' }, { status: 400 })
+  if (!isSafeCanonicalFilename(filenameParam)) {
+    return Response.json({ error: 'Invalid filename' }, { status: 400 })
   }
+
+  const assetPath = pathForFilename(filenameParam)
+  if (!assetPath) return Response.json({ error: 'Invalid filename' }, { status: 400 })
 
   const contentDir = getContentDir()
   const fullPath = join(contentDir, assetPath)
   const assetsRoot = join(contentDir, 'assets')
+
+  if (!existsSync(fullPath)) {
+    return Response.json({ error: 'Asset not found' }, { status: 404 })
+  }
 
   const success = softDelete(fullPath, assetsRoot)
   if (!success) {
@@ -55,5 +62,5 @@ export async function handleDelete(req: Request): Promise<Response> {
     }
   } catch { /* directory may not exist after primary delete */ }
 
-  return Response.json({ ok: true, trashed })
+  return Response.json({ ok: true, filename: filenameParam, trashed })
 }

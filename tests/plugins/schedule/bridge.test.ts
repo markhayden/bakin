@@ -1,14 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs'
+import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import type { BakinJobMeta, ScheduleSidecar } from '@bakin/schedule/types'
+import type { BakinJobMeta } from '@bakin/schedule/types'
 
 const testDir = join(tmpdir(), `bakin-test-bridge-${Date.now()}`)
 const sidecarDir = join(testDir, 'schedule')
-const sidecarPath = join(sidecarDir, 'sidecar.json')
 const openclawDir = join(testDir, 'openclaw')
-const openclawCronDir = join(openclawDir, 'cron')
 
 // Mock external deps
 mock.module('@bakin/core/main-agent', () => ({
@@ -24,7 +22,7 @@ mock.module('../../../src/core/content-dir', () => ({
   initBakinHome: () => {},
 }))
 
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => openclawDir,
   getOpenClawPath: (...segments: string[]) => join(openclawDir, ...segments),
 }))
@@ -38,7 +36,10 @@ mock.module('../../../src/core/logger', () => ({
   }),
 }))
 
-const mockCreateTask = mock((_opts?: unknown) => Promise.resolve({ id: 'task-abc', workflowId: undefined }))
+const mockCreateTask = mock((opts?: unknown) => {
+  void opts
+  return Promise.resolve({ id: 'task-abc', workflowId: undefined })
+})
 mock.module('../../../src/core/task-service', () => ({
   createTaskWithEffects: (opts: unknown) => mockCreateTask(opts),
 }))
@@ -60,7 +61,7 @@ const mockTaskboard = {
   },
 }
 
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   getTask: mock((id: string) => {
     for (const col of Object.values(mockTaskboard.columns)) {
       const t = col.find(task => task.id === id)
@@ -72,12 +73,17 @@ mock.module('../../../plugins/tasks/lib/flow-store', () => ({
   createTask: mock(() => Promise.resolve({ id: 'task-abc' })),
   addTaskLog: mock(() => Promise.resolve()),
 }))
+mock.module('../../../src/core/task-store', () => ({
+  readTaskboard: mock(() => mockTaskboard),
+}))
+mock.module('@/core/task-store', () => ({
+  readTaskboard: mock(() => mockTaskboard),
+}))
 
-// Mock the hook registry so getHookRegistry().invoke() routes to the taskboard mock
+// Mock the hook registry for workflow/project side effects. Schedule reads and
+// creates task metadata through task-store/task-service mocks.
 const mockHookRegistry = {
   invoke: mock(async <R>(name: string, _data: unknown): Promise<R | undefined> => {
-    if (name === 'tasks.readTaskboard') return mockTaskboard as R
-    if (name === 'tasks.createTask') return mockCreateTask(_data) as R
     return undefined
   }),
   register: mock(),
@@ -88,16 +94,8 @@ mock.module('../../../src/lib/plugin-registry', () => ({
   getHookRegistry: () => mockHookRegistry,
 }))
 
-// Mock OpenClaw cron wrappers
-mock.module('@bakin/schedule/lib/openclaw-cron', () => ({
-  cronAdd: mock(() => Promise.resolve('new-job')),
-  cronEdit: mock(() => Promise.resolve()),
-  cronRemove: mock(() => Promise.resolve()),
-  cronRun: mock(() => Promise.resolve()),
-  cronList: mock(() => Promise.resolve([])),
-}))
-
-import { readSidecar, writeSidecar, upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
+import { readSidecar, upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
+import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 
 function makeMeta(overrides: Partial<BakinJobMeta> = {}): BakinJobMeta {
   return {
@@ -115,10 +113,6 @@ function makeMeta(overrides: Partial<BakinJobMeta> = {}): BakinJobMeta {
     updatedAt: '2026-03-27T00:00:00Z',
     ...overrides,
   }
-}
-
-function writeSidecarFile(sidecar: ScheduleSidecar) {
-  writeFileSync(sidecarPath, JSON.stringify(sidecar))
 }
 
 // 64-char hex matches the length of a real randomBytes(32).toString('hex')
@@ -160,10 +154,12 @@ async function callBridge(
     registerNav: mock(),
     registerSlot: mock(),
     registerSkill: mock(),
+    registerHealthCheck: mock(),
     watchFiles: mock(),
-    storage: {} as any,
-    events: {} as any,
+    storage: {},
+    events: {},
     pluginId: 'schedule',
+    runtime: makeBridgeRuntime(),
     activity: {
       log: mock((agent: string, message: string, opts?: { taskId?: string }) => {
         const broadcastFn = (globalThis as Record<string, unknown>).__bakinBroadcast as ((...args: unknown[]) => void) | undefined
@@ -198,7 +194,7 @@ async function callBridge(
     },
   }
 
-  await plugin.activate(ctx as any)
+  await plugin.activate(ctx as unknown as Parameters<typeof plugin.activate>[0])
 
   if (!bridgeHandler) throw new Error('Bridge handler not found')
 
@@ -217,18 +213,25 @@ async function callBridge(
   return { status: res.status, body }
 }
 
+function makeBridgeRuntime() {
+  const runtime = createMockRuntimeAdapter()
+  runtime.cron.list = async () => Object.values(readSidecar().jobs).map((job) => ({
+    id: job.jobId,
+    name: job.displayName ?? job.jobId,
+    schedule: '0 9 * * *',
+    command: job.taskPrompt ?? `bakin:schedule:${job.displayName ?? job.jobId}`,
+    enabled: true,
+    metadata: { tz: job.tz, createdAt: job.createdAt, updatedAt: job.updatedAt },
+  }))
+  return runtime
+}
+
 describe('schedule/bridge', () => {
   let mockBroadcast: ReturnType<typeof mock>
 
   beforeEach(() => {
     mock.clearAllMocks()
     mkdirSync(sidecarDir, { recursive: true })
-    mkdirSync(openclawCronDir, { recursive: true })
-    // Write a minimal OpenClaw jobs file so readMergedJobs doesn't wipe sidecar entries as stale
-    writeFileSync(join(openclawCronDir, 'jobs.json'), JSON.stringify({
-      version: 1,
-      jobs: [{ id: 'test-job', name: 'Test Job', schedule: { kind: 'cron', expr: '0 9 * * *' }, enabled: true }],
-    }))
     mockCreateTask.mockResolvedValue({ id: 'task-abc', workflowId: undefined })
 
     // Reset taskboard

@@ -1,8 +1,8 @@
 /**
- * Tests for the models onboarding component (Termite model downloads).
+ * Tests for the Antfly search-model setup component (Termite model downloads).
  *
  * Strategy mirrors the antfly test suite:
- *   - Mock antfly-server so the test can assert what happens when the
+ *   - Mock the search adapter binary helper so the test can assert what happens when the
  *     antfly binary is present vs missing
  *   - Mock child_process.spawn to fire configurable exit codes without
  *     launching real processes
@@ -13,6 +13,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { EventEmitter } from 'events'
+import * as actualFs from 'fs'
 import { homedir } from 'os'
 import { join } from 'path'
 
@@ -59,14 +60,12 @@ function virtualInstall(modelDir: string) {
   virtualSizes.set(weightsPath, 42)
 }
 
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
-
-mock.module('../../../src/core/antfly-server', () => ({
-  findBinary: () => antflyBinary,
+mock.module('../../../packages/adapter-antfly/src/server', () => ({
+  findAntflyBinary: () => antflyBinary,
+  isAntflyInstalled: () => antflyBinary !== null,
+  isAntflyRunning: () => false,
+  startAntflyServer: () => Promise.resolve(false),
+  stopAntflyServer: () => {},
 }))
 
 mock.module('../../../src/core/logger', () => ({
@@ -79,19 +78,18 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 mock.module('fs', () => {
-  const actual = require('fs') as typeof import('fs')
   return {
-    ...actual,
+    ...actualFs,
     existsSync: (p: unknown) => existingPaths.has(String(p)),
     readFileSync: (p: unknown, ...rest: unknown[]) => {
       const key = String(p)
       if (virtualFiles.has(key)) return virtualFiles.get(key)!
-      return (actual.readFileSync as unknown as (...args: unknown[]) => unknown)(p, ...rest)
+      return (actualFs.readFileSync as unknown as (...args: unknown[]) => unknown)(p, ...rest)
     },
     statSync: (p: unknown, ...rest: unknown[]) => {
       const key = String(p)
       if (virtualSizes.has(key)) return { size: virtualSizes.get(key)! }
-      return (actual.statSync as unknown as (...args: unknown[]) => unknown)(p, ...rest)
+      return (actualFs.statSync as unknown as (...args: unknown[]) => unknown)(p, ...rest)
     },
   }
 })
@@ -128,15 +126,10 @@ mock.module('child_process', () => ({
   },
 }))
 
-mock.module('../../../src/core/onboarding/prompts', () => ({
-  askYesNo: () => Promise.resolve(askYesNoReturn),
-  readLine: () => Promise.resolve(''),
-}))
-
-describe('onboarding models component', () => {
-  let modelsComponent: typeof import('../../../src/core/onboarding/models').modelsComponent
-  let REQUIRED_MODELS: typeof import('../../../src/core/onboarding/models').REQUIRED_MODELS
-  let termiteModelsRoot: typeof import('../../../src/core/onboarding/models').termiteModelsRoot
+describe('Antfly search-model setup component', () => {
+  let searchModelsComponent: NonNullable<ReturnType<typeof import('../../../packages/adapter-antfly/src/setup').createAntflySearchSetup>['models']>
+  let REQUIRED_MODELS: typeof import('../../../packages/adapter-antfly/src/setup').REQUIRED_MODELS
+  let termiteModelsRoot: typeof import('../../../packages/adapter-antfly/src/setup').termiteModelsRoot
 
   beforeEach(async () => {
     antflyBinary = '/opt/homebrew/bin/antfly'
@@ -149,8 +142,8 @@ describe('onboarding models component', () => {
     askYesNoReturn = true
     spawnCreatesFiles = true
     vi.resetModules()
-    const mod = await import('../../../src/core/onboarding/models')
-    modelsComponent = mod.modelsComponent
+    const mod = await import('../../../packages/adapter-antfly/src/setup')
+    searchModelsComponent = mod.createAntflySearchSetup().models!
     REQUIRED_MODELS = mod.REQUIRED_MODELS
     termiteModelsRoot = mod.termiteModelsRoot
   })
@@ -165,6 +158,7 @@ describe('onboarding models component', () => {
     json: false,
     checkOnly: false,
     force: false,
+    askYesNo: () => Promise.resolve(askYesNoReturn),
   }
   const optsInteractive = {
     interactive: true,
@@ -172,6 +166,7 @@ describe('onboarding models component', () => {
     json: false,
     checkOnly: false,
     force: false,
+    askYesNo: () => Promise.resolve(askYesNoReturn),
   }
   const optsNonInteractiveNoYes = {
     interactive: false,
@@ -179,6 +174,7 @@ describe('onboarding models component', () => {
     json: false,
     checkOnly: false,
     force: false,
+    askYesNo: () => Promise.resolve(askYesNoReturn),
   }
 
   /** Seed every required model as a complete virtual install. */
@@ -203,13 +199,13 @@ describe('onboarding models component', () => {
   describe('check()', () => {
     it('reports ok when all three models are present', async () => {
       seedAllModelsPresent()
-      const result = await modelsComponent.check()
+      const result = await searchModelsComponent.check()
       expect(result.status).toBe('ok')
       expect(result.message).toContain('3 Termite models')
     })
 
     it('reports missing with details when all models are absent', async () => {
-      const result = await modelsComponent.check()
+      const result = await searchModelsComponent.check()
       expect(result.status).toBe('missing')
       expect(result.message).toContain('3 of 3')
       const missing = result.details?.missing as Array<{ model: string }>
@@ -219,7 +215,7 @@ describe('onboarding models component', () => {
     it('reports missing with partial list when only some are absent', async () => {
       // Seed just the BGE embedder as fully installed
       virtualInstall(join(termiteModelsRoot(), 'embedders', 'BAAI/bge-small-en-v1.5'))
-      const result = await modelsComponent.check()
+      const result = await searchModelsComponent.check()
       expect(result.status).toBe('missing')
       expect(result.message).toContain('2 of 3')
       const missing = result.details?.missing as Array<{ model: string }>
@@ -231,7 +227,7 @@ describe('onboarding models component', () => {
       // Half-pulled state — directory there, no manifest. This is the
       // exact failure mode that bit us in production with BGE.
       existingPaths.add(join(termiteModelsRoot(), 'embedders', 'BAAI/bge-small-en-v1.5'))
-      const result = await modelsComponent.check()
+      const result = await searchModelsComponent.check()
       expect(result.status).toBe('missing')
       const missing = result.details?.missing as Array<{ model: string; reason: string }>
       const bge = missing.find((m) => m.model === 'BAAI/bge-small-en-v1.5')
@@ -244,7 +240,7 @@ describe('onboarding models component', () => {
       const dir = join(termiteModelsRoot(), 'embedders', 'BAAI/bge-small-en-v1.5')
       virtualInstall(dir)
       virtualSizes.set(join(dir, 'model.onnx'), 7)
-      const result = await modelsComponent.check()
+      const result = await searchModelsComponent.check()
       expect(result.status).toBe('missing')
       const missing = result.details?.missing as Array<{ model: string; reason: string }>
       const bge = missing.find((m) => m.model === 'BAAI/bge-small-en-v1.5')
@@ -255,7 +251,7 @@ describe('onboarding models component', () => {
   describe('install()', () => {
     it('fails cleanly when the antfly binary is missing', async () => {
       antflyBinary = null
-      const result = await modelsComponent.install(optsAutoYes)
+      const result = await searchModelsComponent.install(optsAutoYes)
       expect(result.status).toBe('failed')
       expect(result.message).toContain('antfly binary not found')
       expect(spawnCalls).toHaveLength(0)
@@ -263,13 +259,13 @@ describe('onboarding models component', () => {
 
     it('is a noop when all models are already present', async () => {
       seedAllModelsPresent()
-      const result = await modelsComponent.install(optsAutoYes)
+      const result = await searchModelsComponent.install(optsAutoYes)
       expect(result.status).toBe('noop')
       expect(spawnCalls).toHaveLength(0)
     })
 
     it('pulls each missing model via antfly termite pull', async () => {
-      const result = await modelsComponent.install(optsAutoYes)
+      const result = await searchModelsComponent.install(optsAutoYes)
       expect(result.status).toBe('installed')
       expect(spawnCalls).toHaveLength(3)
       for (const call of spawnCalls) {
@@ -285,7 +281,7 @@ describe('onboarding models component', () => {
 
     it('pulls only the missing subset when some models already exist', async () => {
       virtualInstall(join(termiteModelsRoot(), 'embedders', 'BAAI/bge-small-en-v1.5'))
-      const result = await modelsComponent.install(optsAutoYes)
+      const result = await searchModelsComponent.install(optsAutoYes)
       expect(result.status).toBe('installed')
       expect(spawnCalls).toHaveLength(2)
       const pulledIds = spawnCalls.map((c) => c.args[2])
@@ -294,7 +290,7 @@ describe('onboarding models component', () => {
 
     it('stops on the first failed pull and returns failed', async () => {
       spawnExitCode = 1
-      const result = await modelsComponent.install(optsAutoYes)
+      const result = await searchModelsComponent.install(optsAutoYes)
       expect(result.status).toBe('failed')
       expect(result.message).toContain('exited with code 1')
       // Bailed after the first failure — no retries of the other two
@@ -304,7 +300,7 @@ describe('onboarding models component', () => {
     it('reports failed when spawn succeeds but the model directory is still empty', async () => {
       spawnExitCode = 0
       spawnCreatesFiles = false
-      const result = await modelsComponent.install(optsAutoYes)
+      const result = await searchModelsComponent.install(optsAutoYes)
       expect(result.status).toBe('failed')
       // modelComplete reports the specific reason — directory missing,
       // manifest missing, file missing, or size mismatch.
@@ -313,13 +309,13 @@ describe('onboarding models component', () => {
 
     it('skips install when user declines the interactive prompt', async () => {
       askYesNoReturn = false
-      const result = await modelsComponent.install(optsInteractive)
+      const result = await searchModelsComponent.install(optsInteractive)
       expect(result.status).toBe('skipped')
       expect(spawnCalls).toHaveLength(0)
     })
 
     it('skips install in non-interactive mode without --yes', async () => {
-      const result = await modelsComponent.install(optsNonInteractiveNoYes)
+      const result = await searchModelsComponent.install(optsNonInteractiveNoYes)
       expect(result.status).toBe('skipped')
       expect(result.message).toContain('Non-interactive')
       expect(spawnCalls).toHaveLength(0)
@@ -327,7 +323,7 @@ describe('onboarding models component', () => {
 
     it('reports failed when spawn emits an error event', async () => {
       spawnError = new Error('EPIPE')
-      const result = await modelsComponent.install(optsAutoYes)
+      const result = await searchModelsComponent.install(optsAutoYes)
       expect(result.status).toBe('failed')
       expect(result.message).toContain('EPIPE')
     })

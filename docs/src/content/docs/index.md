@@ -15,7 +15,7 @@ hero:
       icon: external
 ---
 
-Bakin is a local-first dashboard, backend, CLI, and extension system for running agent work with OpenClaw.
+Bakin is a local-first dashboard, backend, CLI, and extension system for running agent work through a configured runtime adapter.
 
 ## Start
 
@@ -23,7 +23,7 @@ Install the released `bakin` binary, complete initial setup, start the server, a
 
 ## Core
 
-Use tasks, workflows, projects, assets, schedule, messaging, memory, models, team, and health.
+Use tasks, workflows, assets, schedule, memory, models, team, and health. Official plugins such as Messaging and Projects can be installed during onboarding or later with `bakin plugins install`.
 
 ## Extend Bakin
 

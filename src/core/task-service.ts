@@ -3,7 +3,7 @@
  *
  * Shared functions that both REST route handlers and MCP tool handlers call.
  * Each function wraps core task mutations with their required side effects:
- * SSE broadcast, audit logging, continuation triggers, Antfly indexing, etc.
+ * SSE broadcast, audit logging, continuation triggers, search indexing, etc.
  *
  * This prevents logic duplication and drift between the REST and MCP paths.
  */
@@ -13,9 +13,20 @@ import { createLogger } from './logger'
 import { recordUsage } from './usage'
 // indexCompletedTask removed — tasks plugin now handles indexing via ctx.search
 import { checkAndContinueDependents } from './continuation'
-import * as openclaw from './openclaw-client'
-import { getMainAgentId } from './main-agent'
+import { getAppServices } from './app-services'
+import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { getHookRegistry } from '../lib/plugin-registry'
+import {
+  addTaskLog as appendTaskLog,
+  blockTask as blockStoredTask,
+  createTask as createStoredTask,
+  getTaskWithColumn,
+  moveTask as moveStoredTask,
+  readTaskboard,
+  setDependency as setStoredDependency,
+  type Task as StoredTask,
+  updateTask as updateStoredTask,
+} from './task-store'
 
 const log = createLogger('task-service')
 const hooks = () => getHookRegistry()
@@ -25,18 +36,16 @@ const hooks = () => getHookRegistry()
 // ---------------------------------------------------------------------------
 
 function broadcast(data: Record<string, unknown>): void {
-  const fn = (globalThis as any).__bakinBroadcast
+  const fn = (globalThis as { __bakinBroadcast?: (data: Record<string, unknown>) => void }).__bakinBroadcast
   if (fn) fn(data)
 }
 
 async function resolveTitle(id: string): Promise<string> {
   try {
-    const board = await hooks().invoke<{ columns: Record<string, Array<{ id: string; title: string }>> }>('tasks.readTaskboard', {})
-    if (board) {
-      for (const col of Object.values(board.columns)) {
-        const found = col.find(t => t.id === id)
-        if (found) return found.title
-      }
+    const board = readTaskboard()
+    for (const col of Object.values(board.columns) as StoredTask[][]) {
+      const found = col.find(t => t.id === id)
+      if (found) return found.title
     }
   } catch { /* best effort */ }
   return id
@@ -68,12 +77,12 @@ export async function logProgress(
 ): Promise<void> {
   // Broadcast to live activity feed first (never block on persistence)
   broadcast({ type: 'activity', agent, message, ts: new Date().toISOString(), taskId, ...(channel ? { channel } : {}) })
-  await hooks().invoke<void>('tasks.addTaskLog', { identifier: taskId, author: agent, message })
+  await appendTaskLog(taskId, agent, message)
 }
 
 /**
  * Move a task between columns with all side effects.
- * Includes: audit, workflow done-guard, continuation trigger, Antfly indexing.
+ * Includes: audit, workflow done-guard, continuation trigger, search indexing.
  */
 export async function moveTaskWithEffects(
   taskId: string,
@@ -84,22 +93,21 @@ export async function moveTaskWithEffects(
   // Workflow done-guard: workflow tasks can only reach Done via the workflow engine
   // Human channel bypasses this guard — the operator can force any state
   if (to.toLowerCase() === 'done' && !opts?.skipDoneGuard && opts?.channel !== 'human') {
-    const board = await hooks().invoke<{ columns: Record<string, Array<{ id: string; workflowId?: string }>> }>('tasks.readTaskboard', {})
-    if (board) {
-      for (const col of Object.values(board.columns)) {
-        const task = col.find(t => t.id === taskId)
-        if (task?.workflowId) {
-          const instance = await hooks().invoke<Record<string, unknown>>('workflows.loadInstance', { taskId: task.id })
-          if (instance && instance.status !== 'complete') {
-            throw new Error('Workflow tasks cannot be moved to Done directly. Use bakin_exec_submit_step — the workflow engine manages task completion.')
-          }
-          break
+    const board = readTaskboard()
+    for (const col of Object.values(board.columns) as StoredTask[][]) {
+      const task = col.find(t => t.id === taskId)
+      if (task?.workflowId) {
+        const instance = await hooks().invoke<Record<string, unknown>>('workflows.loadInstance', { taskId: task.id })
+        if (instance && instance.status !== 'complete') {
+          throw new Error('Workflow tasks cannot be moved to Done directly. Use bakin_exec_submit_step — the workflow engine manages task completion.')
         }
+        break
       }
     }
   }
 
-  await hooks().invoke<void>('tasks.moveTask', { identifier: taskId, to, from: opts?.from, channel: opts?.channel })
+  const taskBeforeMove = getTaskWithColumn(taskId)?.task
+  await moveStoredTask(taskId, to, opts?.from, opts?.channel)
 
   const title = await resolveTitle(taskId)
   appendAudit(getContentDir(), 'task.moved', agent, { id: taskId, title, from: opts?.from, to }, opts?.channel)
@@ -112,19 +120,26 @@ export async function moveTaskWithEffects(
     meta: { taskId, previousStatus: opts?.from, title },
   })
 
+  hooks().callAll('tasks.statusChanged', {
+    taskId,
+    title,
+    from: opts?.from,
+    to,
+    agent,
+    channel: opts?.channel,
+    task: taskBeforeMove,
+  }).catch((err) => {
+    log.debug('Task status extension hook failed', { taskId, err: err instanceof Error ? err.message : String(err) })
+  })
+
   // Side effects when moved to done
   if (to.toLowerCase() === 'done') {
     // Search indexing handled by tasks plugin via ctx.search
-    checkAndContinueDependents(taskId, title, getContentDir(), getPort()).catch((err) => {
+    checkAndContinueDependents(taskId, title, getContentDir()).catch((err) => {
       log.error('Continuation trigger failed', err)
     })
     // Purge clipboard-source assets if the setting is enabled
     hooks().invoke('assets.purgeClipboardForTask', { taskId }).catch(() => {})
-  }
-
-  // Auto-check project checklist items when task reaches done or archived
-  if (to.toLowerCase() === 'done' || to.toLowerCase() === 'archived') {
-    hooks().invoke<void>('projects.autoCheckLinkedItem', { taskId }).catch(() => {})
   }
 
   // Auto-unblock parent when a child workflow task moves out of blocked
@@ -136,11 +151,11 @@ export async function moveTaskWithEffects(
       if (fromLower === 'blocked') {
         const parentTaskId = taskId.slice(0, dashIdx)
         try {
-          const board2 = await hooks().invoke<{ columns: Record<string, Array<{ id: string; blockedReason?: string }>> }>('tasks.readTaskboard', {})
+          const board2 = readTaskboard()
           const parentBlocked = (board2?.columns.blocked || [])
             .find(t => t.id === parentTaskId)
           if (parentBlocked?.blockedReason?.startsWith('Child workflow blocked:')) {
-            await hooks().invoke<void>('tasks.moveTask', { identifier: parentTaskId, to: 'todo', from: 'blocked' })
+            await moveStoredTask(parentTaskId, 'todo', 'blocked')
             const parentTitle = await resolveTitle(parentTaskId)
             appendAudit(getContentDir(), 'task.moved', 'system', {
               id: parentTaskId, title: parentTitle, from: 'blocked', to: 'todo',
@@ -167,7 +182,7 @@ export async function blockTaskWithEffects(
   agent: string,
   channel?: Channel,
 ): Promise<void> {
-  await hooks().invoke<void>('tasks.blockTask', { identifier: taskId, reason, agent })
+  await blockStoredTask(taskId, reason, agent)
   const title = await resolveTitle(taskId)
   const contentDir = getContentDir()
   appendAudit(contentDir, 'task.blocked', agent, { id: taskId, title, reason }, channel)
@@ -187,7 +202,7 @@ export async function blockTaskWithEffects(
     const parentTitle = await resolveTitle(parentTaskId)
     const childReason = `Child workflow blocked: ${reason}`
     try {
-      await hooks().invoke<void>('tasks.blockTask', { identifier: parentTaskId, reason: childReason, agent: 'system' })
+      await blockStoredTask(parentTaskId, childReason, 'system')
       appendAudit(contentDir, 'task.blocked', 'system', { id: parentTaskId, title: parentTitle, reason: childReason, blockedBy: taskId }, channel)
       log.info('Parent task blocked due to child', { parentTaskId, childTaskId: taskId })
     } catch (err) {
@@ -233,29 +248,27 @@ export async function createTaskWithEffects(opts: {
     }
   }
 
-  const task = await hooks().invoke<{ id: string }>('tasks.createTask', {
-    id: opts.id,
-    title: opts.title,
-    column: opts.column,
-    assignee: opts.assignee,
-    description: opts.description,
-    workflowId: effectiveWorkflowId,
-    createdBy: opts.createdBy,
-    parentId: opts.parentId,
-    projectId: opts.projectId,
-  })
-  if (!task) throw new Error('Failed to create task')
+  const task = await createStoredTask(
+    opts.title,
+    opts.column,
+    opts.assignee,
+    opts.description,
+    effectiveWorkflowId,
+    opts.createdBy,
+    opts.id,
+    opts.parentId,
+    opts.projectId,
+  )
 
   // Start workflow instance if one was specified
   if (effectiveWorkflowId) {
     try {
-      const contentDir = getContentDir()
       await hooks().invoke<void>('workflows.createInstance', { taskId: task.id, workflowId: effectiveWorkflowId, assignee: opts.assignee })
       log.info('Started workflow', { taskId: task.id, workflowId: effectiveWorkflowId })
       broadcast({ type: 'workflow_started', taskId: task.id, workflowId: effectiveWorkflowId })
     } catch (err) {
       log.error('Failed to start workflow', { taskId: task.id, workflowId: effectiveWorkflowId, error: (err as Error).message })
-      await hooks().invoke<void>('tasks.updateTask', { identifier: task.id, updates: { workflowId: undefined } })
+      await updateStoredTask(task.id, { workflowId: undefined })
     }
   }
 
@@ -290,27 +303,30 @@ export async function reportComplete(
   channel?: Channel,
 ): Promise<void> {
   // Reject workflow tasks
-  const board = await hooks().invoke<{ columns: Record<string, Array<{ id: string; workflowId?: string }>> }>('tasks.readTaskboard', {})
-  if (board) {
-    for (const col of Object.values(board.columns)) {
-      const task = col.find(t => t.id === taskId)
-      if (task?.workflowId) {
-        const instance = await hooks().invoke<Record<string, unknown>>('workflows.loadInstance', { taskId: task.id })
-        if (instance && instance.status !== 'complete') {
-          throw new Error('This is a workflow task — use bakin_exec_submit_step to submit your step output instead of bakin_exec_tasks_complete.')
-        }
-        break
+  const board = readTaskboard()
+  for (const col of Object.values(board.columns) as StoredTask[][]) {
+    const task = col.find(t => t.id === taskId)
+    if (task?.workflowId) {
+      const instance = await hooks().invoke<Record<string, unknown>>('workflows.loadInstance', { taskId: task.id })
+      if (instance && instance.status !== 'complete') {
+        throw new Error('This is a workflow task — use bakin_exec_submit_step to submit your step output instead of bakin_exec_tasks_complete.')
       }
+      break
     }
   }
 
-  await hooks().invoke<void>('tasks.addTaskLog', { identifier: taskId, author: agent, message: `Task complete: ${summary}` })
+  await appendTaskLog(taskId, agent, `Task complete: ${summary}`)
   await moveTaskWithEffects(taskId, 'done', agent, { skipDoneGuard: true, channel })
 
   // Notify orchestrator
   const title = await resolveTitle(taskId)
   try {
-    await openclaw.sendMessage(getMainAgentId(), `TASK COMPLETE: ${title} — ${summary}`)
+    const runtime = getAppServices().runtime
+    const orchestratorId = await getRuntimeMainAgentId(runtime)
+    await runtime.messaging.send({
+      agentId: orchestratorId,
+      content: `TASK COMPLETE: ${title} — ${summary}`,
+    })
   } catch (err) {
     log.warn('Failed to notify orchestrator of task completion', err)
   }
@@ -324,7 +340,7 @@ export async function setDependencyWithEffects(
   dependsOn: string,
   channel?: Channel,
 ): Promise<void> {
-  await hooks().invoke<void>('tasks.setDependency', { taskId, dependsOnId: dependsOn })
+  await setStoredDependency(taskId, dependsOn)
   appendAudit(getContentDir(), 'task.dependency_set', 'api', { id: taskId, dependsOn }, channel)
 }
 
@@ -336,15 +352,8 @@ export async function getTaskDetails(taskId: string): Promise<{
   task: Record<string, unknown>
   column: string
 } | null> {
-  const board = await hooks().invoke<{ columns: Record<string, Array<{ id: string } & Record<string, unknown>>> }>('tasks.readTaskboard', {})
-  if (!board) return null
-  for (const [colName, tasks] of Object.entries(board.columns)) {
-    const task = tasks.find(t => t.id === taskId)
-    if (task) {
-      return { task: task as Record<string, unknown>, column: colName }
-    }
-  }
-  return null
+  const result = getTaskWithColumn(taskId)
+  return result ? { task: result.task as unknown as Record<string, unknown>, column: result.column } : null
 }
 
 /**

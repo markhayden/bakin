@@ -10,11 +10,12 @@
  * dependency is mocked to a temp dir / mock so this test never reads
  * or writes ~/.bakin/.
  */
-import { describe, it, expect, beforeEach, afterAll, mock, type Mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach, afterAll, mock } from 'bun:test'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { rmSync } from 'fs'
 import type { APIRoute } from '../../packages/core/src/plugin-types'
+import { clearSearchAdapter, createSearchAdapterHarness, installSearchAdapter } from '../helpers/search-adapter'
 
 const testDir = join(tmpdir(), `bakin-test-search-autoreg-${Date.now()}`)
 
@@ -47,45 +48,25 @@ mock.module('@/core/watcher', () => ({
   registerUnlinkHook: mock(),
 }))
 
-// Mock antfly so api.query() returns a deterministic stub instead of
-// hitting the real backend.
-mock.module('@/core/antfly', () => ({
-  enabled: mock(() => true),
-  available: mock(() => true),
-  createTable: mock(async () => true),
-  listTables: mock(async () => []),
-  indexDocument: mock(async () => {}),
-  removeDocument: mock(async () => {}),
-  transformDocument: mock(async () => {}),
-  rebuildIndexes: mock(async () => {}),
-  batchIndex: mock(async (_t: string, docs: Record<string, unknown>) => Object.keys(docs).length),
-  multiQuery: mock(async () => ({ results: [], total: 0, took: 0 })),
-  queryTable: mock(async () => ({
-    results: [{ id: 'doc-1', table: 'bakin_widgets', score: 0.9, fields: { title: 'Hi' } }],
-    aggregations: undefined,
-    took: 7,
-    total: 1,
-  })),
-  getIndexHealth: mock(async () => null),
-  getTableStats: mock(async () => null),
-}))
-
 mock.module('@/core/settings', () => ({
   getSettings: mock(() => ({
-    antfly: {
-      enabled: true,
-      url: 'http://localhost:8080/api/v1',
-      search: {
-        strategy: 'rrf',
-        defaultLimit: 20,
-        reranker: { enabled: false, provider: 'termite', model: 'm', threshold: 0 },
+    search: {
+      adapter: 'antfly',
+      settings: {
+        enabled: true,
+        url: 'http://localhost:8080/api/v1',
+        search: {
+          strategy: 'rrf',
+          defaultLimit: 20,
+          reranker: { enabled: false, provider: 'termite', model: 'm', threshold: 0 },
+        },
+        embedders: {
+          default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
+        },
+        chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
+        auditTtl: '90d',
+        cleanupInterval: '24h',
       },
-      embedders: {
-        default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
-      },
-      chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
-      auditTtl: '90d',
-      cleanupInterval: '24h',
     },
   })),
 }))
@@ -95,7 +76,6 @@ mock.module('@/core/sse', () => ({
 }))
 
 import { buildSearchAPI, resetSearchRegistry } from '@/core/search-registry'
-import * as antfly from '@/core/antfly'
 import * as watcher from '@/core/watcher'
 
 afterAll(() => {
@@ -103,10 +83,17 @@ afterAll(() => {
 })
 
 describe('search-registry buildSearchAPI auto-registration', () => {
+  let searchHarness: ReturnType<typeof createSearchAdapterHarness>
+
   beforeEach(() => {
     resetSearchRegistry()
+    searchHarness = createSearchAdapterHarness()
+    installSearchAdapter(searchHarness.adapter)
     mock.clearAllMocks()
-    vi.mocked(antfly.enabled).mockReturnValue(true)
+  })
+
+  afterEach(() => {
+    clearSearchAdapter()
   })
 
   function makeDef(table = 'widgets') {
@@ -215,9 +202,11 @@ describe('search-registry buildSearchAPI auto-registration', () => {
       {} as never,
     )
     expect(res.status).toBe(200)
-    expect(antfly.queryTable).toHaveBeenCalledWith(
+    expect(searchHarness.calls.query).toHaveBeenCalledWith(
       'bakin_widgets',
-      'hello',
+      expect.objectContaining({ text: 'hello' }),
+    )
+    expect(searchHarness.calls.query.mock.calls[0][1].adapterOptions).toEqual(
       expect.objectContaining({ indexes: ['embeddings'] }),
     )
   })
@@ -232,17 +221,13 @@ describe('search-registry buildSearchAPI auto-registration', () => {
       {} as never,
     )
 
-    expect(antfly.queryTable).toHaveBeenCalledWith(
+    expect(searchHarness.calls.query).toHaveBeenCalledWith(
       'bakin_widgets',
-      'foo',
       expect.objectContaining({
+        text: 'foo',
         limit: 7,
         offset: 14,
-        aggregations: expect.objectContaining({
-          status: { type: 'terms', field: 'status', size: 50 },
-          owner: { type: 'terms', field: 'owner', size: 50 },
-          tags: { type: 'terms', field: 'tags', size: 50 },
-        }),
+        facets: ['status', 'owner', 'tags'],
       }),
     )
   })
@@ -259,7 +244,13 @@ describe('search-registry buildSearchAPI auto-registration', () => {
     // Comma-split with `.filter(Boolean)` on empty string yields []. The
     // handler should not 500; query should still fire.
     expect(res.status).toBe(200)
-    expect(antfly.queryTable).toHaveBeenCalled()
+    expect(searchHarness.calls.query).toHaveBeenCalledWith(
+      'bakin_widgets',
+      expect.objectContaining({
+        text: 'foo',
+        facets: [],
+      }),
+    )
   })
 
   // ── skipFileBackedWiring escape hatch ───────────────────────────────

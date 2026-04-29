@@ -25,7 +25,7 @@ Scaffold a new Bakin plugin with all required files following the established pa
 
 3. Create `plugins/{id}/index.ts`:
 ```typescript
-import type { BakinPlugin, PluginContext } from '../../src/lib/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { createLogger } from '../../src/core/logger'
 
 const log = createLogger('{id}')
@@ -70,7 +70,7 @@ export default plugin
 
 4. Create `plugins/{id}/client.tsx`:
 ```typescript
-import type { NavItem } from '../../src/lib/plugin-types'
+import type { NavItem } from '@bakin/core/plugin-types'
 
 export const navItems: NavItem[] = [
   { id: '{id}', label: '{name}', icon: '{icon}', href: '/{id}', order: 50 },

@@ -6,7 +6,7 @@
  * messages) plus at least one `type=compaction` event — the compaction's
  * `summary` is the human-readable payload, `tokensBefore` the header
  * stat, and `fromHook` tells us whether the compaction was auto-triggered
- * or manual. Real OpenClaw files never carry `tokensAfter`, so the
+ * or manual. Runtime checkpoint files never carry `tokensAfter`, so the
  * parser leaves it null.
  *
  * One row per checkpoint file — multiple compaction events in a single

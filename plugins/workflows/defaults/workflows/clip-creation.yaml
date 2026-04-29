@@ -17,13 +17,13 @@ steps:
       - id: start-frame
         type: agent
         label: Start Frame
-        agent: pixel
+        agent: $assigned
         description: Generate the opening frame image from the clip prompt
 
       - id: end-frame
         type: agent
         label: End Frame
-        agent: pixel
+        agent: $assigned
         description: Generate the closing frame image from the clip prompt
 
   - id: frames-gate
@@ -39,7 +39,7 @@ steps:
   - id: generate-video
     type: agent
     label: Generate Video
-    agent: rolo
+    agent: $assigned
     description: Generate video clip using image-to-video from start frame to end frame
 
   - id: video-gate

@@ -47,10 +47,7 @@ mock.module('../../../src/core/logger', () => ({
 mock.module('../../../src/core/watcher', () => ({
   watchFiles: mock(),
 }))
-mock.module('../../../src/core/openclaw-client', () => ({
-  sendMessage: mock(),
-}))
-mock.module('../../../packages/core/src/openclaw-home', () => {
+mock.module('../../../packages/adapter-openclaw/src/home', () => {
   const { join: j } = require('path') as typeof import('path')
   const { tmpdir: t } = require('os') as typeof import('os')
   const base = j(t(), `bakin-test-memory-global-search-mock`, 'openclaw')
@@ -59,20 +56,24 @@ mock.module('../../../packages/core/src/openclaw-home', () => {
     getOpenClawPath: (...parts: string[]) => j(base, ...parts),
   }
 })
-mock.module('../../../packages/core/src/main-agent', () => ({
+mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
   getMainAgentId: () => 'main',
   tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
 }))
 mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
-    openclaw: { binaryPath: '/fake/openclaw', gatewayUrl: 'http://localhost', gatewayPort: 18789 },
-    antfly: { auditTtl: null },
+    runtime: {
+      adapter: 'openclaw',
+      settings: {},
+    },
+    search: { adapter: 'antfly', settings: { auditTtl: null } },
   }),
 }))
 
 import { activatePlugin, callSearchRoute } from '../test-helpers'
 import memoryPlugin from '../../../plugins/memory/index'
-import type { SearchResult } from '../../../src/lib/plugin-types'
+import type { SearchResult } from '@bakin/core/plugin-types'
 
 beforeAll(() => {
   mkdirSync(testDir, { recursive: true })

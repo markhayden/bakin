@@ -7,10 +7,9 @@ import { appendAudit } from './audit'
 import * as sse from './sse'
 import * as dispatch from './dispatch'
 import * as watchdog from './watchdog'
-import * as messagingCron from './messaging-cron'
 import * as watcher from './watcher'
 import * as doctor from './doctor'
-import * as antflyServer from './antfly-server'
+import { maybeGetAppServices } from './app-services'
 import { pluginRegistry } from '../lib/plugin-registry'
 
 const log = createLogger('lifecycle')
@@ -35,14 +34,13 @@ export function registerShutdownHandlers(server: Server, contentDir: string): vo
     // Stop accepting new work
     dispatch.stop()
     watchdog.stop()
-    messagingCron.stop()
     doctor.stop()
 
     // Stop file watching
     await watcher.stop()
 
-    // Stop Antfly server (if we started it)
-    antflyServer.stop()
+    // Shut down adapter-owned resources.
+    await maybeGetAppServices()?.search.shutdown()
 
     // Drain SSE clients
     sse.stop()

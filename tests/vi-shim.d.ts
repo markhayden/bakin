@@ -7,7 +7,6 @@
  * production code, and tightening type safety here forces per-test rewrites
  * that don't change behavior.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 declare const vi: {
   fn: (...args: any[]) => any
   spyOn: (...args: any[]) => any

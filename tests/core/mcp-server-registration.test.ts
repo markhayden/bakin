@@ -63,18 +63,6 @@ mock.module('../../src/core/watcher', () => ({
   registerUnlinkHook: mock(() => () => {}),
 }))
 
-mock.module('../../src/core/openclaw-client', () => ({
-  sendChannelMessage: mock(async () => ({ ok: true })),
-  sendMessage: mock(async () => ({ ok: true })),
-  streamMessage: mock(async () => new Response('', { headers: { 'Content-Type': 'text/event-stream' } })),
-  chatCompletion: mock(async () => ''),
-  isHealthy: mock(async () => true),
-  callGateway: mock(async () => ({ ok: true })),
-  restartGateway: mock(async () => true),
-  invokeTool: mock(async () => ({ ok: true })),
-  ping: mock(async () => true),
-}))
-
 beforeAll(() => {
   if (!existsSync(TEST_DIR)) mkdirSync(TEST_DIR, { recursive: true })
   if (!existsSync(TEST_OPENCLAW_HOME)) mkdirSync(TEST_OPENCLAW_HOME, { recursive: true })
@@ -103,9 +91,11 @@ describe('MCP server tool registration', () => {
     const config = (await import('../../bakin.config')).default
     const { MarkdownStorageAdapter } = require('../../src/lib/storage/markdown-adapter') as typeof import('../../src/lib/storage/markdown-adapter')
     const { BakinEventBus } = require('../../src/lib/events/event-bus') as typeof import('../../src/lib/events/event-bus')
+    const { createMockRuntimeAdapter } = require('@bakin/core/adapters/runtime/testing') as typeof import('@bakin/core/adapters/runtime/testing')
 
     const storage = new MarkdownStorageAdapter(TEST_DIR)
     const events = new BakinEventBus(() => {})
+    const runtime = createMockRuntimeAdapter()
 
     for (const entry of config.plugins) {
       const mod = await import(/* @vite-ignore */ `../../${entry.path}/index`)
@@ -119,7 +109,7 @@ describe('MCP server tool registration', () => {
         registerNav: () => {},
         registerRoute: () => {},
         registerSlot: () => {},
-        registerExecTool: (tool: import('../../src/lib/plugin-types').ExecToolDefinition) => {
+        registerExecTool: (tool: import('@bakin/core/plugin-types').ExecToolDefinition) => {
           tool.source = `plugin:${plugin.id}`
           addExecTool(tool)
         },
@@ -145,6 +135,7 @@ describe('MCP server tool registration', () => {
           has: () => false,
           invoke: async () => undefined,
         },
+        runtime,
       }
 
       await plugin.activate(ctx)

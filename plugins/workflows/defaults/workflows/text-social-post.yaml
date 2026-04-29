@@ -25,17 +25,17 @@ steps:
   - id: publish
     type: output
     label: Publish
-    agent: roscoe
+    agent: $assigned
     description: >
-      Post the text-only content using bakin_exec_post_discord.
+      Post the text-only content using bakin_exec_post_channel.
 
       From stepOutputs, extract the caption from stepOutputs['write-copy'].caption.
 
-      Call bakin_exec_post_discord with:
-        - channel: the appropriate Discord channel
+      Call bakin_exec_post_channel with:
+        - channel: the appropriate runtime channel
         - content: the caption text
         - taskId: your task ID
 
       After posting, submit output with the returned messageId and channel.
     channels:
-      - discord
+      - general

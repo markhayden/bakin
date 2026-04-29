@@ -4,27 +4,162 @@ import tseslint from "typescript-eslint";
 import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 
+// Bakin runs across Bun server code, browser UI code, CLI scripts, and tests.
+// TypeScript owns undefined checks; this keeps ESLint from misclassifying
+// shared runtime globals as undefined in mixed execution contexts.
+const bunGlobals = {
+  Bun: "readonly",
+  console: "readonly",
+  crypto: "readonly",
+  CustomEvent: "readonly",
+  Event: "readonly",
+  EventTarget: "readonly",
+  fetch: "readonly",
+  Headers: "readonly",
+  localStorage: "readonly",
+  MessageChannel: "readonly",
+  MessageEvent: "readonly",
+  navigator: "readonly",
+  process: "readonly",
+  Request: "readonly",
+  Response: "readonly",
+  setInterval: "readonly",
+  setTimeout: "readonly",
+  clearInterval: "readonly",
+  clearTimeout: "readonly",
+  URL: "readonly",
+  URLSearchParams: "readonly",
+  window: "readonly",
+  document: "readonly",
+  WebSocket: "readonly",
+};
+
+const adapterBoundaryImportRestrictions = {
+  paths: [
+    {
+      name: "@antfly/sdk",
+      message: "Search provider SDK access belongs in packages/adapter-antfly. Use ctx.search/AppServices instead.",
+    },
+    {
+      name: "bun:sqlite",
+      message: "Raw SQLite access is not allowed outside adapter/storage ownership boundaries. Use the adapter or Bakin store contract.",
+    },
+  ],
+  patterns: [
+    {
+      group: [
+        "@bakin/adapter-openclaw",
+        "@bakin/adapter-openclaw/*",
+        "@bakin/adapter-antfly",
+        "@bakin/adapter-antfly/*",
+      ],
+      message: "Concrete adapter packages may only be imported by adapter factories. Use @bakin/core adapter interfaces, ctx.runtime, ctx.search, or AppServices.",
+    },
+    {
+      group: [
+        "@/core/antfly",
+        "@/core/antfly/*",
+        "src/core/antfly",
+        "src/core/antfly/*",
+        "**/core/antfly-server",
+        "**/core/openclaw-client",
+        "**/core/openclaw-home",
+        "**/core/openclaw-config",
+        "**/discord-gateway",
+      ],
+      message: "Legacy provider internals are behind the adapter layer. Route through the runtime/search adapter contract.",
+    },
+  ],
+};
+
 const eslintConfig = defineConfig([
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    languageOptions: {
+      globals: bunGlobals,
+    },
     plugins: { react, "react-hooks": reactHooks },
     settings: { react: { version: "detect" } },
     rules: {
+      "no-undef": "off",
+      "no-control-regex": "off",
+      "no-empty": "off",
+      "no-useless-assignment": "off",
+      "preserve-caught-error": "off",
       "react/react-in-jsx-scope": "off",
       "react/prop-types": "off",
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
+      // The plugin and CLI surfaces intentionally use dynamic values and
+      // lazy require() in a few places; typecheck/tests are the enforcement
+      // layer for those contracts.
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-require-imports": "off",
+      "@typescript-eslint/no-unused-vars": ["error", {
+        argsIgnorePattern: "^_",
+        caughtErrorsIgnorePattern: "^_",
+        destructuredArrayIgnorePattern: "^_",
+        varsIgnorePattern: "^_",
+      }],
     },
   },
   globalIgnores([
     "node_modules/**",
+    "coverage/**",
+    "packages/*/.turbo/**",
+    "packages/*/dist/**",
     "packages/host/dist/**",
+    "packages/host/src/api/_embedded-assets-static.ts",
+    "packages/host/public/**",
     "packages/host/public/vendor/**",
     "plugins/**/dist/**",
     "dist/**",
     "bun-env.d.ts",
   ]),
+  {
+    files: [
+      "tests/**/*.{ts,tsx,js,mjs,cjs}",
+      "**/*.test.{ts,tsx,js,mjs,cjs}",
+      "dev/**/*.{ts,tsx,js,mjs,cjs}",
+    ],
+    rules: {
+      "no-empty": "off",
+      "no-unassigned-vars": "off",
+      "@typescript-eslint/no-unassigned-vars": "off",
+      "@typescript-eslint/no-unsafe-function-type": "off",
+      "@typescript-eslint/no-unused-expressions": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+    },
+  },
+  {
+    files: ["**/*.d.ts"],
+    rules: {
+      "@typescript-eslint/no-empty-object-type": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+    },
+  },
+  // Adapter boundary: production code talks to runtime/search providers only
+  // through AppServices and adapter contracts. Concrete adapter factories are
+  // the only non-adapter modules allowed to import adapter packages directly.
+  {
+    files: [
+      "src/**/*.{ts,tsx,js,mjs,mts}",
+      "packages/core/src/**/*.{ts,tsx,js,mjs,mts}",
+      "packages/host/src/**/*.{ts,tsx,js,mjs,mts}",
+      "plugins/**/*.{ts,tsx,js,mjs,mts}",
+      "cli/**/*.{ts,tsx,js,mjs,mts}",
+      "scripts/**/*.{ts,tsx,js,mjs,mts}",
+      "server.ts",
+    ],
+    ignores: [
+      "src/core/runtime-adapter-factory.ts",
+      "src/core/search-adapter-factory.ts",
+    ],
+    rules: {
+      "no-restricted-imports": ["error", adapterBoundaryImportRestrictions],
+    },
+  },
   // Plugin isolation: every plugin talks to Bakin's shell and to other
   // plugins exclusively through @bakin/sdk/*. Direct imports from another
   // plugin's internals or from Bakin's src/ components/hooks are banned so
@@ -35,18 +170,18 @@ const eslintConfig = defineConfig([
     files: ["plugins/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-imports": ["error", {
+        paths: adapterBoundaryImportRestrictions.paths,
         patterns: [
+          ...adapterBoundaryImportRestrictions.patterns,
           {
             group: [
               "@bakin/tasks/*",
               "@bakin/team/*",
               "@bakin/workflows/*",
               "@bakin/assets/*",
-              "@bakin/projects/*",
               "@bakin/schedule/*",
               "@bakin/health/*",
               "@bakin/memory/*",
-              "@bakin/messaging/*",
               "@bakin/models/*",
             ],
             message: "Plugins cannot import from other plugins. Use @bakin/sdk/* instead.",

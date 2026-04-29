@@ -13,14 +13,14 @@ Two registries make plugin-shipped workflows possible without breaking the exist
 
 The workflows surface uses the word "skill" in two different places. They are unrelated systems:
 
-| | S-A — Workflow step skills | S-B — OpenClaw runtime skills |
+| | S-A — Workflow step skills | S-B — runtime skills |
 |---|---|---|
-| **Where it lives** | In-memory `pluginSkills` map + `~/.bakin/workflows/skills/*.md` | `~/.openclaw/skills/{name}/SKILL.md` (+ `scripts/`) |
-| **Who reads it** | Bakin's workflow runtime (injects body into agent prompt) | OpenClaw agents at runtime |
-| **How it ships** | `defaults/workflow-skills/*.md` → auto-registered by plugin loader at activation (`ctx.registerSkill`) | `defaults/openclaw-skills/{name}/` → installed to disk by `bakin install plugin-assets` |
+| **Where it lives** | In-memory `pluginSkills` map + `~/.bakin/workflows/skills/*.md` | Runtime adapter skill store (+ `scripts/`) |
+| **Who reads it** | Bakin's workflow runtime (injects body into agent prompt) | Runtime agents |
+| **How it ships** | `defaults/workflow-skills/*.md` → auto-registered by plugin loader at activation (`ctx.registerSkill`) | `defaults/runtime-skills/{name}/` → installed to disk by `bakin install plugin-assets` |
 | **Drift detection** | None — rebuilt every server boot | `.installedBy` JSON marker (sha256), `.userEdited` sentinel, `bakin doctor` surface |
 
-**Rule of thumb:** if it's a workflow `step.skill: write-copy`, it's S-A. If it's something an agent invokes via `/skill foo` inside OpenClaw, it's S-B.
+**Rule of thumb:** if it's a workflow `step.skill: write-copy`, it's S-A. If it's something an agent invokes through the runtime skill mechanism, it's S-B.
 
 ## Plugin Authoring Contract
 
@@ -31,7 +31,7 @@ plugins/<id>/
   defaults/
     workflows/             # *.yaml — registered via ctx.registerWorkflow at activate()
     workflow-skills/       # *.md   — auto-registered via ctx.registerSkill at load (S-A, in-memory)
-    openclaw-skills/       # {name}/SKILL.md (+ scripts/) — installed by `bakin install plugin-assets` (S-B, on disk)
+    runtime-skills/       # {name}/SKILL.md (+ scripts/) — installed by `bakin install plugin-assets` (S-B, on disk)
 ```
 
 None of the three are required. A plugin can ship any subset.
@@ -42,9 +42,9 @@ None of the three are required. A plugin can ship any subset.
 |-----------|--------|---------|
 | `defaults/workflows/` | `plugins/workflows/lib/load-defaults.ts` (called from the workflows plugin's `activate()`) | Server boot, every startup |
 | `defaults/workflow-skills/` | `src/lib/plugin-skill-loader.ts` (invoked by `src/lib/plugin-registry.ts` after every `activate()`) | Server boot, every startup, generic across all plugins |
-| `defaults/openclaw-skills/` | `src/core/onboarding/plugin-assets.ts` (`scanPluginAssets` + `installPluginAssets`) | `bakin install plugin-assets` (manual), or surfaced by `bakin doctor` |
+| `defaults/runtime-skills/` | `src/core/onboarding/plugin-assets.ts` (`scanPluginAssets` + `installPluginAssets`) | `bakin install plugin-assets` (manual), or surfaced by `bakin doctor` |
 
-The first two paths are in-memory only — every reboot rebuilds them from disk. The third writes to the OpenClaw home and needs explicit drift management.
+The first two paths are in-memory only — every reboot rebuilds them from disk. The third writes to the runtime skill store and needs explicit drift management.
 
 ## Source Registry
 
@@ -70,6 +70,18 @@ The user copy at `~/.bakin/workflows/definitions/{id}.yaml` always shadows a plu
 2. Manually dropping a YAML at `~/.bakin/workflows/definitions/{same-id}.yaml` (advanced; shadow happens automatically).
 
 Cross-plugin id collisions are an activation-time error, but the loader catches the throw and continues with other plugins.
+
+## Portable Default Workflows
+
+Plugin-shipped workflow YAML under `plugins/*/defaults/workflows/` must be
+portable across runtime rosters. Do not hardcode local OpenClaw agent ids such
+as `basil`, `pixel`, `rolo`, or `roscoe` in default definitions. Use the
+symbolic `$assigned` token for every shipped `agent:` value until Bakin grows a
+provider-neutral role/capability selector.
+
+User-owned workflow YAML under `~/.bakin/workflows/definitions/` can still use
+local agent ids. The portability rule applies only to defaults committed with a
+plugin.
 
 ## Node-Type Registry
 
@@ -101,7 +113,7 @@ The client-side node renderer map is owned by the workflows plugin's `lib/node-r
 
 ## Notification Channel Registry
 
-`plugins/workflows/lib/notification-channel-registry.ts`. Same shape as the node-type registry — `Map<id, NotificationChannelDef>` with 7 builtins (`discord`, `slack`, `email`, `instagram`, `twitter`, `youtube`, `tiktok`) self-registering at module load. Plugins add more via `ctx.registerNotificationChannel`:
+`plugins/workflows/lib/notification-channel-registry.ts`. Same shape as the node-type registry — `Map<id, NotificationChannelDef>` with 4 built-in runtime channel ids (`general`, `announcements`, `alerts`, `email`) self-registering at module load. Plugins add more via `ctx.registerNotificationChannel`:
 
 ```ts
 ctx.registerNotificationChannel({
@@ -113,20 +125,28 @@ ctx.registerNotificationChannel({
 // returns namespaced id: 'socialstack.mastodon'
 ```
 
-Plugin ids are auto-namespaced as `{pluginId}.{id}`; builtins keep their short ids (`discord`, `slack`, ...) so existing workflow YAML with `notify: { channel: discord, target: ... }` validates unchanged. `NotifyChannel.channel` in `plugins/workflows/types.ts` is `string` (widened from the old `'discord' | 'slack'` union) and the zod schema at `notifyChannelSchema` uses `z.string().min(1)`.
+Plugin ids are auto-namespaced as `{pluginId}.{id}`; builtins keep their short runtime-channel ids (`general`, `alerts`, etc.). `NotifyChannel.channel` in `plugins/workflows/types.ts` is `string` and the zod schema at `notifyChannelSchema` uses `z.string().min(1)`.
 
 **Cross-plugin read surfaces:**
 - `workflows.listNotificationChannels` — HookRegistry, returns `NotificationChannelDef[]`
 - `workflows.getNotificationChannel` — HookRegistry, takes `{ id }`, returns `NotificationChannelDef | null`
 - `GET /api/plugins/workflows/notification-channels` — REST, returns `{ channels: NotificationChannelDef[] }`
 
-**Client consumers** use `useNotificationChannels()` from `plugins/workflows/hooks/use-notification-channels.ts` — module-level promise cache with single-flight coalescing so concurrent mounts share one fetch. Paired helpers `getChannelLabel(id, channels)` + `getChannelInitials(id, channels)` return raw-id fallbacks for orphan refs (channel ids that were removed from the registry but still appear in legacy markdown frontmatter).
+**Client consumers** use `useNotificationChannels()` from `plugins/workflows/hooks/use-notification-channels.ts` — module-level promise cache with single-flight coalescing so concurrent mounts share one fetch. Paired helpers `getChannelLabel(id, channels)` + `getChannelInitials(id, channels)` return raw-id fallbacks for orphan refs (channel ids that were removed from the registry but still appear in persisted workflow definitions).
 
-**Icon rendering** goes through `<ChannelIcon channelId="..." />` in `plugins/workflows/hooks/channel-icon.tsx`, which holds an explicit 7-entry lucide map (`MessageSquare`, `Mail`, `Instagram`, `Twitter`, `Youtube`, `Music2`, `HelpCircle`). `import * as Lucide` is deliberately avoided to keep the client bundle small — unknown icon names silently fall back to `HelpCircle`. Widening the map (or switching to an `IconSpec` discriminator that accepts emoji/URL/SVG) is a future concern when a plugin actually needs non-lucide icons.
+**Icon rendering** goes through `<ChannelIcon channelId="..." />` in `plugins/workflows/hooks/channel-icon.tsx`, which holds an explicit lucide map. `import * as Lucide` is deliberately avoided to keep the client bundle small — unknown icon names silently fall back to `HelpCircle`. Widening the map (or switching to an `IconSpec` discriminator that accepts emoji/URL/SVG) is a future concern when a plugin actually needs non-lucide icons.
 
 Teardown: `unregisterPluginNotificationChannels(pluginId)` is called by `src/lib/plugin-registry.ts` in the user-plugin-overrides-builtin path alongside `unregisterPluginNodeTypes`, so hot reload of a plugin that registered channels doesn't leak `{pluginId}.{id}` entries.
 
-Messaging's drawer + calendar resolve channels through this registry (see `plugins/messaging/components/item-detail-drawer.tsx` + `content-calendar.tsx`); the old `CHANNEL_LABELS` / `CHANNEL_INITIALS` / `CHANNEL_ICONS` maps in `plugins/messaging/constants.ts` are gone.
+The official Messaging plugin resolves channels through this registry from `bakin-bits-official/plugins/messaging`; the old hardcoded channel label/icon maps are gone.
+
+## Runtime Gate Approvals
+
+Workflow gate channel approvals are Bakin-owned durable records, not provider-owned state. `plugins/workflows/lib/approval-store.ts` persists records under `~/.bakin/workflows/approvals/` before `runtime.channels.createApproval()` renders provider messages.
+
+The approval record contains the `approvalId`, workflow/run/task/step owner, request body/options/context, delivery refs, response data, and timestamps. Runtime channel message ids are stored only as delivery refs. Channel interaction payloads carry `approvalId`; the workflows plugin loads the durable record and gets task/step identity from Bakin state before approving or rejecting a gate.
+
+Startup calls `rehydratePendingApprovals()` from `plugins/workflows/lib/approval-rehydration.ts`. It reattaches stored delivery refs to pending workflow instances and retries `runtime.channels.createApproval()` for pending records that were written before rendering completed. Duplicate render windows are tolerated; the durable Bakin approval record remains the source of truth.
 
 ## CRUD Routes
 
@@ -167,7 +187,7 @@ When a definition has no `layout.positions`, the editor runs `layoutNodes` from 
 ## Plugin-Assets Install Pipeline (S-B)
 
 ```
-~/.openclaw/skills/{name}/
+runtime skill store:
   SKILL.md
   scripts/...
   .installedBy        ← {"pluginId": "<id>", "sha256": "<hex>"}
@@ -182,7 +202,7 @@ installPluginAssets(plugins) → InstallReport // {installed, unchanged, skipped
 pluginAssetsComponent: OnboardingComponent   // .check() + .install() following the standard interface
 ```
 
-`discoverPlugins()` reads `bakin.config.ts` (built-in plugins) and walks `~/.bakin/plugins/{id}/bakin-plugin.json` (user plugins). Every OpenClaw path resolves through `getOpenClawPath()` from `packages/core/src/openclaw-home.ts` — the installer never hardcodes `~/.openclaw/`.
+`discoverPlugins()` reads `bakin.config.ts` (built-in plugins) and walks `~/.bakin/plugins/{id}/bakin-plugin.json` (user plugins). Runtime skill projection goes through the active runtime adapter; the installer never reaches provider storage directly.
 
 Drift rules:
 - **Missing** — no `SKILL.md` at the install path → `install` will copy.
@@ -210,7 +230,7 @@ Both are wired through `cmdOnboardingInstallSingle` / `cmdOnboardingCheckSingle`
 Same non-negotiable rules as the rest of the codebase:
 
 - Every test mocks `getContentDir` to a temp dir.
-- Every test that touches OpenClaw paths mocks `@bakin/core/openclaw-home` (`getOpenClawHome`, `getOpenClawPath`).
+- Every test that needs runtime skill storage mocks the runtime adapter.
 - The plugin-assets tests use a synthetic in-memory plugin under a temp dir — no checked-in fixture plugin.
 - Source-registry tests call `clearSourceRegistry()` in `beforeEach`/`afterEach` so global state stays clean across cases.
 
@@ -219,6 +239,9 @@ Same non-negotiable rules as the rest of the codebase:
 | File | Purpose |
 |------|---------|
 | `plugins/workflows/lib/runtime.ts` | Workflow execution. **READ-ONLY in this overhaul.** |
+| `plugins/workflows/lib/approval-store.ts` | File-backed durable workflow approval records |
+| `plugins/workflows/lib/approval-rehydration.ts` | Startup reattachment/retry for pending workflow approvals |
+| `plugins/workflows/lib/notifications.ts` | Runtime channel notifications and gate approval rendering |
 | `plugins/workflows/lib/parser.ts` | `loadDefinition` + `listDefinitions` — consults the source registry first, falls back to disk |
 | `plugins/workflows/lib/source-registry.ts` | Per-id source index with user-wins precedence |
 | `plugins/workflows/lib/node-type-registry.ts` | Zod schemas + form metadata for the 5 builtins |

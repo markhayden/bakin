@@ -115,9 +115,9 @@ describe('parseSkillFile — meta', () => {
 })
 
 describe('parseSkillFile — sourceRef + timestamps', () => {
-  it('sourceRef.backend=openclaw with the full SKILL.md path', () => {
+  it('sourceRef.backend=runtime with the full SKILL.md path', () => {
     const rows = parseSkillFile('main', 'research', '# A\nbody', sourcePath, updatedAt)
-    expect(rows[0].sourceRef.backend).toBe('openclaw')
+    expect(rows[0].sourceRef.backend).toBe('runtime')
     expect(rows[0].sourceRef.path).toBe(sourcePath)
     expect(rows[0].sourceRef.file).toBe('SKILL.md')
   })

@@ -2,22 +2,26 @@
 
 Two layers of defense against transient network blips (issue #115).
 
-## Layer 1: HTTP retry inside the OpenClaw client
+## Layer 1: Runtime adapter send retry
 
-`openclaw-client.sendMessage` wraps `fetch` in a 3-attempt retry loop with 1 s / 2 s backoff, retrying **only** on transient errors:
+Agent delivery goes through `getAppServices().runtime` and the active runtime
+adapter. Adapter implementations may retry transport-level failures, but Bakin
+treats retry policy as an adapter concern. The OpenClaw adapter keeps
+provider-specific HTTP details behind `packages/adapter-openclaw`.
 
 - `TypeError('fetch failed')`
 - `ECONNRESET`-class socket errors (detected via `err.cause.code`)
 - `AbortError`
 
-HTTP responses (including 4xx/5xx) **never** retry — those represent a real upstream decision and should propagate immediately.
+HTTP responses (including 4xx/5xx) are structural adapter failures from
+Bakin's point of view and should propagate immediately.
 
 ## Layer 2: Cooldown classification in the dispatch loop
 
 When a failure reaches `dispatch.ts`, `classifyDispatchError()` splits it into:
 
 - **`transient`** — fetch/network errors that escaped the inner retry
-- **`structural`** — any `OpenClaw sendMessage failed (<status>)` error (real HTTP failure)
+- **`structural`** — runtime adapter failures that are not transient network errors
 
 Cooldown chosen by class:
 
@@ -36,5 +40,7 @@ Legacy plain-number entries are migrated to `{ kind: 'structural' }` by `getFail
 
 ## Where to look
 
-- `src/core/openclaw-client.ts` — inner retry loop
+- `src/core/app-services.ts` — boot-created runtime/search/task service object
+- `packages/adapter-openclaw/src/runtime.ts` — OpenClaw adapter transport
 - `src/core/dispatch.ts` — `classifyDispatchError`, cooldown selection, blocked escalation
+- `.claude/knowledge/adapter-architecture.md` — adapter boundaries and task/runtime ownership

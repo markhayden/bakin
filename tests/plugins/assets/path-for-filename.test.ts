@@ -24,6 +24,7 @@ import {
   relPathForFilename,
   yearMonthFromFilename,
   isCanonicalFilename,
+  isSafeCanonicalFilename,
 } from '@bakin/assets/lib/path-for-filename'
 
 describe('assets/path-for-filename', () => {
@@ -127,6 +128,24 @@ describe('assets/path-for-filename', () => {
       expect(isCanonicalFilename('hero.png')).toBe(false)
       expect(isCanonicalFilename('20261301-x-a1b2c3d4.png')).toBe(false)
       expect(isCanonicalFilename('')).toBe(false)
+    })
+  })
+
+  describe('isSafeCanonicalFilename', () => {
+    it('accepts canonical filenames without path syntax', () => {
+      expect(isSafeCanonicalFilename('20260401-hero-a1b2c3d4.png')).toBe(true)
+      expect(isSafeCanonicalFilename('20260401-hero-a1b2c3d4.thumb.jpg')).toBe(true)
+    })
+
+    it('rejects path-shaped and traversal filenames', () => {
+      expect(isSafeCanonicalFilename('assets/store/2026-04/20260401-hero-a1b2c3d4.png')).toBe(false)
+      expect(isSafeCanonicalFilename('assets\\store\\2026-04\\20260401-hero-a1b2c3d4.png')).toBe(false)
+      expect(isSafeCanonicalFilename('20260401-../hero-a1b2c3d4.png')).toBe(false)
+    })
+
+    it('rejects non-canonical names', () => {
+      expect(isSafeCanonicalFilename('hero.png')).toBe(false)
+      expect(isSafeCanonicalFilename('20261301-hero-a1b2c3d4.png')).toBe(false)
     })
   })
 })

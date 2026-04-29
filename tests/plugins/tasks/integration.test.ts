@@ -3,7 +3,6 @@
  * position ordering, two-tier permissions, and state transitions.
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { Database } from 'bun:sqlite'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -13,43 +12,15 @@ import { tmpdir } from 'os'
 // ---------------------------------------------------------------------------
 
 const testHome = join(tmpdir(), `bakin-integration-test-${Date.now()}`)
-const flowsDir = join(testHome, '.openclaw', 'flows')
-const dbPath = join(flowsDir, 'registry.sqlite')
+const tasksDir = join(testHome, 'tasks')
 
-mkdirSync(flowsDir, { recursive: true })
+process.env.BAKIN_HOME = testHome
 
-function initTestDb() {
-  const db = new Database(dbPath)
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS flow_runs (
-      flow_id TEXT PRIMARY KEY,
-      shape TEXT,
-      sync_mode TEXT DEFAULT 'managed',
-      owner_key TEXT NOT NULL,
-      requester_origin_json TEXT,
-      controller_id TEXT,
-      revision INTEGER DEFAULT 0,
-      status TEXT NOT NULL,
-      notify_policy TEXT DEFAULT 'silent',
-      goal TEXT,
-      current_step TEXT,
-      blocked_task_id TEXT,
-      blocked_summary TEXT,
-      state_json TEXT,
-      wait_json TEXT,
-      cancel_requested_at INTEGER,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL,
-      ended_at INTEGER
-    )
-  `)
-  db.close()
-}
+mkdirSync(tasksDir, { recursive: true })
 
-function clearTestDb() {
-  const db = new Database(dbPath)
-  db.exec(`DELETE FROM flow_runs`)
-  db.close()
+function clearTaskStore() {
+  rmSync(tasksDir, { recursive: true, force: true })
+  mkdirSync(tasksDir, { recursive: true })
 }
 
 // ---------------------------------------------------------------------------
@@ -61,11 +32,6 @@ mock.module('@bakin/core/main-agent', () => ({
   tryGetMainAgentId: () => 'main',
   getMainAgentName: () => 'Main',
 }))
-
-mock.module('os', () => {
-  const actual = require('os') as typeof import('os')
-  return { ...actual, homedir: () => testHome }
-})
 
 mock.module('../../../plugins/workflows/lib/runtime', () => ({
   cancelInstance: mock(),
@@ -92,12 +58,10 @@ import {
   reorderTasks,
   getTask,
   getTaskWithColumn,
-} from '../../../plugins/tasks/lib/flow-store'
-
-initTestDb()
+} from '@/core/task-store'
 
 beforeEach(() => {
-  clearTestDb()
+  clearTaskStore()
   mock.clearAllMocks()
 })
 
@@ -210,8 +174,8 @@ describe('integration: move between columns preserves other order', () => {
 
 describe('integration: moveTask always appends, reorder sets final order', () => {
   it('moveTask appends to end of inProgress', async () => {
-    const t1 = await createTask('First', 'inProgress')
-    const t2 = await createTask('Second', 'inProgress')
+    await createTask('First', 'inProgress')
+    await createTask('Second', 'inProgress')
     const mover = await createTask('Mover', 'todo')
 
     await moveTask(mover.id, 'inProgress', 'todo', 'human')

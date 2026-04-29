@@ -3,9 +3,6 @@
  * Bakin CLI — command-line interface for Bakin orchestration platform.
  * All commands are thin wrappers around the Bakin HTTP API.
  */
-import { getAgentIds } from '@bakin/core/openclaw-config'
-import { getMainAgentId } from '@bakin/core/main-agent'
-import { getOpenClawPath } from '@bakin/core/openclaw-home'
 import {
   cmdScheduleList, cmdScheduleAdd, cmdSchedulePause,
   cmdScheduleResume, cmdScheduleRemove, cmdScheduleRun, cmdScheduleRuns,
@@ -15,12 +12,20 @@ import { renderCliUsage } from '../src/core/cli/registry'
 const BASE_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 
 // Lazy so importing this module (e.g. from src/core/cli.ts when the
-// compiled binary delegates unknown commands here) doesn't read
-// ~/.openclaw/ at binary startup. Resolved once on first use.
+// compiled binary delegates unknown commands here) does not initialize
+// runtime services at binary startup. Resolved once on first use.
 let __cliAgent: string | undefined
-function getCliAgent(): string {
-  if (__cliAgent === undefined) __cliAgent = getMainAgentId()
+async function getCliAgent(): Promise<string> {
+  if (__cliAgent === undefined) {
+    const roster = await getCliRoster()
+    __cliAgent = roster.mainAgentId ?? roster.agentIds[0] ?? 'main'
+  }
   return __cliAgent
+}
+
+interface CliRoster {
+  agentIds: string[]
+  mainAgentId?: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -43,6 +48,19 @@ async function api(path: string, options?: RequestInit): Promise<unknown> {
 
 async function apiGet(path: string): Promise<unknown> {
   return api(path)
+}
+
+async function getCliRoster(): Promise<CliRoster> {
+  const result = await apiGet('/api/plugins/team/') as {
+    agents?: Array<{ id?: unknown }>
+    mainAgentId?: string | null
+  }
+  return {
+    agentIds: (result.agents ?? [])
+      .map((agent) => agent.id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0),
+    mainAgentId: result.mainAgentId,
+  }
 }
 
 async function apiPost(path: string, body?: unknown): Promise<unknown> {
@@ -89,13 +107,14 @@ function printTable(rows: Record<string, unknown>[], columns?: string[]): void {
 // ---------------------------------------------------------------------------
 async function cmdStatus(): Promise<void> {
   const dispatch = await apiGet('/api/dispatch') as Record<string, unknown>
+  const roster = await getCliRoster()
 
   console.log('=== Bakin Status ===')
   console.log(`Dispatch interval: ${dispatch.intervalMin}min`)
   console.log(`Last run: ${dispatch.lastRun || 'never'}`)
   console.log(`Next run: ${dispatch.nextRun} (${dispatch.secondsUntilNext}s)`)
   console.log(`Tasks dispatched: ${dispatch.dispatchedCount}`)
-  console.log(`Agents: ${getAgentIds().join(', ')}`)
+  console.log(`Agents: ${roster.agentIds.join(', ')}`)
 }
 
 async function cmdDispatch(): Promise<void> {
@@ -147,7 +166,7 @@ async function cmdTasksCreate(title: string, assignee?: string, workflowId?: str
 }
 
 async function cmdTasksMove(id: string, to: string): Promise<void> {
-  const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to, agent: getCliAgent() })
+  const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to, agent: await getCliAgent() })
   print(result)
 }
 
@@ -193,7 +212,7 @@ async function cmdSettingsGet(key?: string): Promise<void> {
 
 async function cmdSettingsSet(key: string, value: string): Promise<void> {
   const parts = key.split('.')
-  let obj: Record<string, unknown> = {}
+  const obj: Record<string, unknown> = {}
   let current = obj
   for (let i = 0; i < parts.length - 1; i++) {
     current[parts[i]] = {}
@@ -224,12 +243,23 @@ async function cmdPluginsList(): Promise<void> {
   }
 }
 
-async function cmdPluginsInstall(source: string): Promise<void> {
-  if (source.startsWith('github:') || source.includes('/') && !source.startsWith('.') && !source.startsWith('/')) {
-    const result = await apiPost('/api/plugins/install', { source, type: 'github' })
-    print(result)
+async function cmdPluginsInstall(source: string, opts: { yes?: boolean } = {}): Promise<void> {
+  const type = source.startsWith('github:') || source.includes('/') && !source.startsWith('.') && !source.startsWith('/')
+    ? 'github'
+    : 'local'
+  const result = await apiPost('/api/plugins/install', { source, type, accepted: false }) as {
+    awaitingConsent?: boolean
+    consentToken?: string
+  }
+  if (opts.yes && result.awaitingConsent && result.consentToken) {
+    const accepted = await apiPost('/api/plugins/install', {
+      source,
+      type,
+      accepted: true,
+      consentToken: result.consentToken,
+    })
+    print(accepted)
   } else {
-    const result = await apiPost('/api/plugins/install', { source, type: 'local' })
     print(result)
   }
 }
@@ -424,66 +454,6 @@ async function cmdDocs(): Promise<void> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Setup commands (run shell commands, not API wrappers)
-// ---------------------------------------------------------------------------
-
-async function cmdSetupAntfly(): Promise<void> {
-  const { execSync } = await import('child_process')
-  const { existsSync } = await import('fs')
-
-  // Step 1: Check if binary exists
-  const binaryPaths = [
-    '/opt/homebrew/bin/antfly',
-    '/usr/local/bin/antfly',
-    `${process.env.HOME}/.antfly/bin/antfly`,
-  ]
-  const installed = binaryPaths.some(p => existsSync(p))
-
-  if (installed) {
-    console.log('[OK] Antfly binary already installed')
-  } else {
-    console.log('[..] Installing AntflyDB via Homebrew...')
-    try {
-      execSync('brew install --cask antflydb/antfly/antfly', { stdio: 'inherit' })
-      console.log('[OK] Antfly installed')
-    } catch (err) {
-      console.error('[FAIL] Homebrew install failed. Install manually:')
-      console.error('  brew install --cask antflydb/antfly/antfly')
-      process.exit(1)
-    }
-  }
-
-  // Step 2: Enable in settings
-  console.log('[..] Enabling Antfly in Bakin settings...')
-  try {
-    await apiPost('/api/settings', { antfly: { enabled: true, url: 'http://localhost:8080/api/v1' } })
-    console.log('[OK] Antfly enabled')
-  } catch {
-    console.log('[WARN] Could not reach Bakin API — is the server running?')
-    console.log('  Start Bakin first: npm run dev')
-    console.log('  Then re-run: bakin setup antfly')
-    process.exit(1)
-  }
-
-  // Step 3: Reindex
-  console.log('[..] Reindexing content (this may take a moment on first run)...')
-  try {
-    // Give Antfly time to start and create tables
-    await new Promise(r => setTimeout(r, 5000))
-    const result = await apiPost('/api/reindex', {}) as { indexed?: number }
-    console.log(`[OK] Indexed ${result?.indexed || 0} documents`)
-  } catch (err) {
-    console.log('[WARN] Reindex failed — Antfly may still be starting. Try: bakin reindex')
-  }
-
-  console.log('')
-  console.log('Antfly setup complete! Bakin will auto-start Antfly on boot.')
-  console.log('  Search:     bakin search "your query"')
-  console.log('  Dashboard:  http://localhost:11433')
-  console.log('  Reindex:    bakin reindex')
-}
-
 async function cmdSearch(query: string, options: { table?: string; limit?: number; agent?: string; facets?: string } = {}): Promise<void> {
   let url = `/api/search?q=${encodeURIComponent(query)}`
   if (options.table) url += `&table=${encodeURIComponent(options.table)}`
@@ -518,7 +488,7 @@ async function cmdSearch(query: string, options: { table?: string; limit?: numbe
 }
 
 async function cmdSearchStats(): Promise<void> {
-  const result = await apiGet('/api/plugins/health/antfly-status') as {
+  const result = await apiGet('/api/plugins/health/search-status') as {
     enabled: boolean
     tables: Array<{
       table: string
@@ -528,7 +498,7 @@ async function cmdSearchStats(): Promise<void> {
       healthy?: boolean
     }>
   }
-  console.log(`Antfly: ${result.enabled ? 'enabled' : 'disabled'}`)
+  console.log(`Search: ${result.enabled ? 'enabled' : 'disabled'}`)
   if (result.tables?.length) {
     for (const t of result.tables) {
       const docs = (t.stats as any)?.num_docs ?? '?'
@@ -573,25 +543,33 @@ async function cmdDoctor(): Promise<void> {
 // Agent Rules
 // ---------------------------------------------------------------------------
 
-// Orchestrator rules block constants and template are owned by src/core/doctor.ts.
-// Imported lazily inside cmdAgentRules so the CLI stays a pure entry point.
+// Orchestrator rules block constants and template are owned by
+// plugins/health/lib/managed-blocks.ts. Imported lazily inside
+// cmdAgentRules so the CLI stays a pure entry point.
 
 async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyAll?: boolean; checkAll?: boolean } = {}): Promise<void> {
-  const { readFileSync, writeFileSync, existsSync } = await import('fs')
   const {
     AGENT_RULES_BLOCK_START,
     AGENT_RULES_BLOCK_END,
     resolveOrchestratorRules,
-  } = await import('../src/core/doctor')
+  } = await import('../plugins/health/lib/managed-blocks')
+  const { createAppServices, maybeGetAppServices } = await import('../src/core/app-services')
+  const { selectRuntimeMainAgent } = await import('@bakin/core/adapters/runtime')
 
-  const agentsPath = getOpenClawPath('workspace', 'AGENTS.md')
-
-  if (!existsSync(agentsPath)) {
-    console.error(`[FAIL] AGENTS.md not found at ${agentsPath}`)
+  const runtime = (maybeGetAppServices() ?? await createAppServices()).runtime
+  const mainAgent = selectRuntimeMainAgent(await runtime.agents.list())
+  if (!mainAgent) {
+    console.error('[FAIL] No runtime agents found')
     process.exit(1)
   }
 
-  const current = readFileSync(agentsPath, 'utf-8')
+  const agentsFile = await runtime.agents.readWorkspaceFile(mainAgent.id, 'AGENTS.md')
+  if (!agentsFile) {
+    console.error(`[FAIL] AGENTS.md not found for orchestrator agent ${mainAgent.id}`)
+    process.exit(1)
+  }
+
+  const current = agentsFile.content
   const hasBlock = current.includes(AGENT_RULES_BLOCK_START)
   const resolvedContent = await resolveOrchestratorRules()
 
@@ -629,8 +607,8 @@ async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyA
 
   // Handle --apply-all and --check-all for all agents
   if (options.applyAll || options.checkAll) {
-    const { applyAllManagedBlocks } = await import('../src/core/doctor')
-    const results = applyAllManagedBlocks(!!options.applyAll)
+    const { applyAllManagedBlocks } = await import('../plugins/health/lib/managed-blocks')
+    const results = await applyAllManagedBlocks(!!options.applyAll)
     const errors = results.filter(r => r.status === 'error')
     const warnings = results.filter(r => r.status === 'warn')
     const fixes = results.filter(r => r.status === 'fixed')
@@ -665,7 +643,7 @@ async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyA
     console.log('[OK] Added orchestrator rules block to AGENTS.md')
   }
 
-  writeFileSync(agentsPath, updated, 'utf-8')
+  await runtime.agents.writeWorkspaceFile(mainAgent.id, { path: 'AGENTS.md', content: updated })
 }
 
 async function cmdPaths(key?: string): Promise<void> {
@@ -685,25 +663,7 @@ async function cmdPaths(key?: string): Promise<void> {
   }
 }
 
-async function cmdInit(): Promise<void> {
-  const { initBakinHome } = await import('../src/core/content-dir')
-  const targetDir = process.env.BAKIN_HOME || undefined
-  console.log(`Initializing Bakin home directory${targetDir ? ` at ${targetDir}` : ''}...`)
-  const { created, seeded } = initBakinHome(targetDir)
-
-  if (created.length > 0) {
-    console.log(`Created ${created.length} directories/files`)
-  }
-  if (seeded.length > 0) {
-    console.log(`Seeded ${seeded.length} default files: ${seeded.join(', ')}`)
-  }
-  if (created.length === 0 && seeded.length === 0) {
-    console.log('Already initialized — nothing to do')
-  }
-  console.log('Done.')
-}
-
-const SERVICE_LABEL = 'com.openclaw.mc'
+const SERVICE_LABEL = 'com.bakin.mc'
 
 // ---------------------------------------------------------------------------
 // LaunchAgent auto-start — commented out for now, run manually instead.
@@ -959,7 +919,7 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): 
   if (options.rebuild) params.push('rebuild=true')
   if (params.length) url += `?${params.join('&')}`
 
-  console.log(`Reindexing ${options.table || 'all content'} to Antfly${options.rebuild ? ' (rebuild indexes)' : ''}...`)
+  console.log(`Reindexing ${options.table || 'all content'} into search${options.rebuild ? ' (rebuild indexes)' : ''}...`)
   const result = await apiPost(url) as {
     ok: boolean
     total: number
@@ -1018,7 +978,7 @@ async function cmdStart(): Promise<void> {
 
   // Step 2: Sync mcporter config
   console.log('[..] Syncing mcporter config...')
-  const changes = mcporter.syncConfig(port)
+  const changes = await mcporter.syncConfig(port)
   if (changes.length > 0) {
     for (const c of changes) console.log(`  ${c}`)
     console.log(`[OK] mcporter config updated (${changes.length} changes)`)
@@ -1066,8 +1026,8 @@ async function cmdStart(): Promise<void> {
         console.log(`[OK] Bakin is up (${data.version})`)
         console.log('')
         console.log('MCP endpoints:')
-        const agents = getAgentIds()
-        for (const agent of agents) {
+        const roster = await getCliRoster()
+        for (const agent of roster.agentIds) {
           console.log(`  ${agent}: mcporter call bakin-${agent}.<tool> ...`)
         }
         console.log('')
@@ -1155,47 +1115,6 @@ async function cmdStop(): Promise<void> {
   }
 }
 
-async function cmdSetupMcporter(): Promise<void> {
-  const port = Number(process.env.PORT || 3737)
-  const mcporter = await import('../src/core/mcporter')
-
-  console.log('[..] Checking mcporter installation...')
-  if (!mcporter.isMcporterInstalled()) {
-    console.log('[..] Installing mcporter...')
-    if (!mcporter.installMcporter()) {
-      console.error('[FAIL] Could not install mcporter. Run manually: npm i -g mcporter')
-      process.exit(1)
-    }
-    console.log('[OK] mcporter installed')
-  } else {
-    console.log('[OK] mcporter already installed')
-  }
-
-  console.log('[..] Syncing mcporter config...')
-  const changes = mcporter.syncConfig(port)
-  if (changes.length > 0) {
-    for (const c of changes) console.log(`  ${c}`)
-    console.log(`[OK] Config updated`)
-  } else {
-    console.log('[OK] Config already up to date')
-  }
-
-  // Verify
-  const status = mcporter.verifyConfig(port)
-  console.log('')
-  console.log('Agent MCP entries:')
-  for (const entry of status.agentEntries) {
-    console.log(`  ${entry.correct ? '[OK]' : '[!!]'} ${entry.name} → ${entry.url}`)
-  }
-  if (status.staleEntries.length > 0) {
-    console.log(`\nStale entries removed: ${status.staleEntries.join(', ')}`)
-  }
-
-  console.log('')
-  console.log('Test with:')
-  console.log('  mcporter call bakin-pixel.bakin_get_paths --allow-http')
-}
-
 // ---------------------------------------------------------------------------
 // CLI router
 // ---------------------------------------------------------------------------
@@ -1204,12 +1123,12 @@ async function cmdSetupMcporter(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function cmdTasksLog(id: string, message: string): Promise<void> {
-  const result = await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: getCliAgent(), message })
+  const result = await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: await getCliAgent(), message })
   print(result)
 }
 
 async function cmdTasksBlock(id: string, reason: string): Promise<void> {
-  const result = await apiPost(`/api/plugins/tasks/${id}/block`, { id, reason, agent: getCliAgent() })
+  const result = await apiPost(`/api/plugins/tasks/${id}/block`, { id, reason, agent: await getCliAgent() })
   print(result)
 }
 
@@ -1219,9 +1138,10 @@ async function cmdTasksDepend(id: string, dependsOn: string): Promise<void> {
 }
 
 async function cmdTasksComplete(id: string, summary: string): Promise<void> {
+  const agent = await getCliAgent()
   // Log the summary, then move to done
-  await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: getCliAgent(), message: `Task complete: ${summary}` })
-  const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to: 'done', agent: getCliAgent() })
+  await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: agent, message: `Task complete: ${summary}` })
+  const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to: 'done', agent })
   print(result)
 }
 
@@ -1268,7 +1188,7 @@ async function cmdWorkflowsSubmit(taskId: string, stepId: string, outputJson: st
     console.error('Invalid JSON for output. Usage: bakin workflows submit <taskId> <stepId> \'{"key":"value"}\'')
     process.exit(1)
   }
-  const result = await apiPost(`/api/plugins/workflows/steps/${encodeURIComponent(taskId)}/complete`, { stepId, agentId: getCliAgent(), output })
+  const result = await apiPost(`/api/plugins/workflows/steps/${encodeURIComponent(taskId)}/complete`, { stepId, agentId: await getCliAgent(), output })
   print(result)
 }
 
@@ -1326,149 +1246,139 @@ async function cmdTrashEmpty(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Messaging commands
+// Plugin-contributed CLI commands
 // ---------------------------------------------------------------------------
 
-function parseFlag(args: string[], flag: string): string | undefined {
-  const f = args.find(a => a.startsWith(`--${flag}=`))
-  return f ? f.split('=').slice(1).join('=') : undefined
-}
-
-async function cmdMessagingList(opts: { month?: string; status?: string; agent?: string; channel?: string }): Promise<void> {
-  const params = new URLSearchParams()
-  if (opts.month) params.set('month', opts.month)
-  if (opts.status) params.set('status', opts.status)
-  if (opts.agent) params.set('agent', opts.agent)
-  if (opts.channel) params.set('channel', opts.channel)
-  const qs = params.toString()
-  const result = await apiGet(`/api/plugins/messaging/${qs ? `?${qs}` : ''}`) as { items: Array<Record<string, unknown>> }
-  printTable(result.items, ['id', 'title', 'agent', 'status', 'scheduledAt', 'contentType'])
-}
-
-async function cmdMessagingGet(id: string): Promise<void> {
-  const result = await apiGet(`/api/plugins/messaging/${id}`)
-  print(result)
-}
-
-async function cmdMessagingCreate(args: string[]): Promise<void> {
-  const positional = args.filter(a => !a.startsWith('--'))
-  const title = positional[0]
-  const agent = positional[1] || 'basil'
-  const scheduledAt = positional[2] || new Date().toISOString()
-  if (!title) { console.error('Usage: bakin messaging create <title> [agent] [scheduledAt] [--channels=dc,ig] [--type=recipe] [--tone=calm]'); process.exit(1) }
-  const channelsStr = parseFlag(args, 'channels')
-  const body: Record<string, unknown> = {
-    title,
-    agent,
-    scheduledAt,
-    contentType: parseFlag(args, 'type') || 'tip',
-    tone: parseFlag(args, 'tone') || 'conversational',
-    brief: parseFlag(args, 'brief') || '',
+interface PluginCliCommand {
+  name: string
+  usage: string
+  summary: string
+  aliases?: string[]
+  dispatch: {
+    type: 'execTool'
+    name: string
+  } | {
+    type: 'apiRoute'
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+    path: string
   }
-  if (channelsStr) body.channels = channelsStr.split(',')
-  const result = await apiPost('/api/plugins/messaging/', body)
-  print(result)
 }
 
-async function cmdMessagingUpdate(id: string, args: string[]): Promise<void> {
-  const body: Record<string, unknown> = {}
-  const title = parseFlag(args, 'title')
-  const status = parseFlag(args, 'status')
-  const scheduledAt = parseFlag(args, 'scheduledAt')
-  const brief = parseFlag(args, 'brief')
-  const tone = parseFlag(args, 'tone')
-  if (title) body.title = title
-  if (status) body.status = status
-  if (scheduledAt) body.scheduledAt = scheduledAt
-  if (brief) body.brief = brief
-  if (tone) body.tone = tone
-  const result = await api(`/api/plugins/messaging/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(body),
-  })
-  print(result)
+interface PluginManifestRow {
+  id: string
+  contributes?: {
+    cliCommands?: PluginCliCommand[]
+  }
 }
 
-async function cmdMessagingDelete(id: string): Promise<void> {
-  const result = await apiDelete(`/api/plugins/messaging/${id}`)
-  print(result)
+function parsePluginCliValue(value: string): unknown {
+  if (value === 'true') return true
+  if (value === 'false') return false
+  if (value === 'null') return null
+  if (value.startsWith('[') || value.startsWith('{')) {
+    try { return JSON.parse(value) } catch { return value }
+  }
+  if (value.includes(',') && !value.includes(' ')) {
+    return value.split(',').filter(Boolean)
+  }
+  return value
 }
 
-async function cmdMessagingApprove(id: string): Promise<void> {
-  const result = await apiPost(`/api/plugins/messaging/${id}/approve`)
-  print(result)
+function parsePluginCliArgs(args: string[]): { flags: Record<string, unknown>; positionals: string[] } {
+  const flags: Record<string, unknown> = {}
+  const positionals: string[] = []
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (!arg.startsWith('--')) {
+      positionals.push(arg)
+      continue
+    }
+    const raw = arg.slice(2)
+    const eq = raw.indexOf('=')
+    if (eq >= 0) {
+      flags[raw.slice(0, eq)] = parsePluginCliValue(raw.slice(eq + 1))
+      continue
+    }
+    const next = args[i + 1]
+    if (next && !next.startsWith('--')) {
+      flags[raw] = parsePluginCliValue(next)
+      i++
+    } else {
+      flags[raw] = true
+    }
+  }
+  return { flags, positionals }
 }
 
-async function cmdMessagingReject(id: string, note?: string): Promise<void> {
-  const result = await apiPost(`/api/plugins/messaging/${id}/reject`, note ? { note } : undefined)
-  print(result)
+function commandWords(command: PluginCliCommand): string[] {
+  const words = command.usage.trim().split(/\s+/)
+  return words[0] === 'bakin' ? words.slice(1) : words
 }
 
-// Session commands
-async function cmdSessionList(opts: { status?: string; agent?: string }): Promise<void> {
-  const params = new URLSearchParams()
-  if (opts.status) params.set('status', opts.status)
-  if (opts.agent) params.set('agentId', opts.agent)
-  const qs = params.toString()
-  const result = await apiGet(`/api/plugins/messaging/sessions${qs ? `?${qs}` : ''}`) as { sessions: Array<Record<string, unknown>> }
-  printTable(result.sessions, ['id', 'agentId', 'title', 'status', 'proposalCount', 'approvedCount', 'updatedAt'])
+function isPlaceholder(word: string): boolean {
+  return /^<[^>]+>$/.test(word)
 }
 
-async function cmdSessionGet(id: string): Promise<void> {
-  const result = await apiGet(`/api/plugins/messaging/sessions/${id}`)
-  print(result)
+function placeholderName(word: string): string {
+  return word.slice(1, -1).replace(/\?$/, '')
 }
 
-async function cmdSessionCreate(agentId: string, title?: string): Promise<void> {
-  const body: Record<string, string> = { agentId }
-  if (title) body.title = title
-  const result = await apiPost('/api/plugins/messaging/sessions', body)
-  print(result)
+function matchPluginCliCommand(command: PluginCliCommand, cmd: string, rawArgs: string[]): Record<string, unknown> | null {
+  const usage = commandWords(command)
+  const parsed = parsePluginCliArgs(rawArgs)
+  const provided = [cmd, ...parsed.positionals]
+  let providedIndex = 0
+
+  for (let usageIndex = 0; usageIndex < usage.length; usageIndex++) {
+    const word = usage[usageIndex]
+    if (word.startsWith('[')) continue
+    if (isPlaceholder(word)) break
+
+    const actual = provided[providedIndex]
+    if (actual === undefined) {
+      if (word === 'list' && providedIndex === 1 && command.name.endsWith(':list')) continue
+      return null
+    }
+    if (actual !== word) return null
+    providedIndex++
+  }
+
+  const params: Record<string, unknown> = { ...parsed.flags }
+  const placeholders = usage.filter(isPlaceholder)
+  for (const placeholder of placeholders) {
+    const value = provided[providedIndex]
+    if (value === undefined) return null
+    params[placeholderName(placeholder)] = parsePluginCliValue(value)
+    providedIndex++
+  }
+
+  return params
 }
 
-async function cmdSessionUpdate(id: string, args: string[]): Promise<void> {
-  const body: Record<string, unknown> = {}
-  const title = parseFlag(args, 'title')
-  if (title) body.title = title
-  const result = await api(`/api/plugins/messaging/sessions/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(body),
-  })
-  print(result)
-}
+async function dispatchPluginCliCommand(cmd: string, args: string[]): Promise<boolean> {
+  const manifest = await apiGet('/api/plugins/manifest') as { plugins: PluginManifestRow[] }
+  const commands = manifest.plugins.flatMap(plugin => plugin.contributes?.cliCommands ?? [])
+  for (const command of commands) {
+    const params = matchPluginCliCommand(command, cmd, args)
+    if (!params) continue
 
-async function cmdSessionDelete(id: string): Promise<void> {
-  const result = await apiDelete(`/api/plugins/messaging/sessions/${id}`)
-  print(result)
-}
+    if (command.dispatch.type === 'execTool') {
+      const result = await apiPost(`/api/exec-tools/${encodeURIComponent(command.dispatch.name)}`, {
+        params,
+        agent: 'cli',
+      })
+      print(result)
+      return true
+    }
 
-async function cmdSessionMessage(id: string, message: string): Promise<void> {
-  const result = await apiPost(`/api/plugins/messaging/sessions/${id}/messages`, { message })
-  // This returns an SSE stream; for CLI we just print what we get
-  print(result)
-}
-
-async function cmdSessionConfirm(id: string): Promise<void> {
-  const result = await apiPost(`/api/plugins/messaging/sessions/${id}/confirm`)
-  print(result)
-}
-
-async function cmdProposalUpdate(sessionId: string, proposalId: string, args: string[]): Promise<void> {
-  const body: Record<string, unknown> = {}
-  const status = parseFlag(args, 'status')
-  const title = parseFlag(args, 'title')
-  const note = parseFlag(args, 'note')
-  if (status) body.status = status
-  if (title) body.title = title
-  if (note) body.rejectionNote = note
-  // Convenience flags
-  if (args.includes('--approve')) body.status = 'approved'
-  if (args.includes('--reject')) body.status = 'rejected'
-  const result = await api(`/api/plugins/messaging/sessions/${sessionId}/proposals/${proposalId}`, {
-    method: 'PUT',
-    body: JSON.stringify(body),
-  })
-  print(result)
+    const result = await api(`/api/plugins/${cmd}${command.dispatch.path}`, {
+      method: command.dispatch.method,
+      body: command.dispatch.method === 'GET' ? undefined : JSON.stringify(params),
+    })
+    print(result)
+    return true
+  }
+  return false
 }
 
 const USAGE = renderCliUsage({ bakinUrl: BASE_URL })
@@ -1517,13 +1427,16 @@ async function cmdOnboardingSettingsInit(): Promise<void> {
   if (result.status === 'failed') process.exit(1)
 }
 
-async function cmdOnboardingCheckSingle(target: 'openclaw' | 'llm' | 'channels' | 'plugin-assets' | 'agent-assets'): Promise<void> {
+async function cmdOnboardingCheckSingle(target: 'runtime' | 'search' | 'search-models' | 'llm' | 'channels' | 'plugin-assets' | 'agent-assets' | 'recommended-plugins'): Promise<void> {
   const componentMap: Record<string, () => Promise<{ check(): Promise<import('../src/core/onboarding/types').CheckResult> }>> = {
-    openclaw: async () => (await import('../src/core/onboarding/openclaw')).openclawComponent,
+    runtime: async () => (await import('../src/core/onboarding/runtime')).runtimeComponent,
+    search: async () => (await import('../src/core/onboarding/search')).searchComponent,
+    'search-models': async () => (await import('../src/core/onboarding/search-models')).searchModelsComponent,
     llm: async () => (await import('../src/core/onboarding/credentials')).llmComponent,
     channels: async () => (await import('../src/core/onboarding/credentials')).channelsComponent,
     'plugin-assets': async () => (await import('../src/core/onboarding/plugin-assets')).pluginAssetsComponent,
     'agent-assets': async () => (await import('../src/core/onboarding/agent-assets')).agentAssetsComponent,
+    'recommended-plugins': async () => (await import('../src/core/onboarding/recommended-plugins')).recommendedPluginsComponent,
   }
   const component = await componentMap[target]()
   const result = await component.check()
@@ -1547,11 +1460,12 @@ async function cmdOnboardingCheckAll(): Promise<void> {
 
 async function cmdOnboardingInstallSingle(target: string, args: string[]): Promise<void> {
   const componentMap: Record<string, () => Promise<import('../src/core/onboarding/types').OnboardingComponent>> = {
-    antfly: async () => (await import('../src/core/onboarding/antfly')).antflyComponent,
-    models: async () => (await import('../src/core/onboarding/models')).modelsComponent,
+    search: async () => (await import('../src/core/onboarding/search')).searchComponent,
+    'search-models': async () => (await import('../src/core/onboarding/search-models')).searchModelsComponent,
     mcporter: async () => (await import('../src/core/onboarding/mcporter')).mcporterComponent,
     'plugin-assets': async () => (await import('../src/core/onboarding/plugin-assets')).pluginAssetsComponent,
     'agent-assets': async () => (await import('../src/core/onboarding/agent-assets')).agentAssetsComponent,
+    'recommended-plugins': async () => (await import('../src/core/onboarding/recommended-plugins')).recommendedPluginsComponent,
   }
   const component = await componentMap[target]()
   const isTTY = Boolean(process.stdout.isTTY)
@@ -1772,8 +1686,8 @@ export async function main(): Promise<void> {
         if (sub === 'list') {
           await cmdPluginsList()
         } else if (sub === 'install') {
-          if (!args[2]) { console.error('Usage: bakin plugins install <path|github:user/repo>'); process.exit(1) }
-          await cmdPluginsInstall(args[2])
+          if (!args[2]) { console.error('Usage: bakin plugins install <path|github:user/repo[#subpath]> [--yes]'); process.exit(1) }
+          await cmdPluginsInstall(args[2], { yes: args.includes('--yes') })
         } else if (sub === 'remove') {
           if (!args[2]) { console.error('Usage: bakin plugins remove <id>'); process.exit(1) }
           await cmdPluginsRemove(args[2])
@@ -1818,15 +1732,9 @@ export async function main(): Promise<void> {
         if (sub === 'service') {
           const uninstall = args.includes('--uninstall')
           await cmdSetupService({ uninstall })
-        } else if (sub === 'antfly') {
-          console.error('[deprecated] `bakin setup antfly` is now `bakin install antfly`. Delegating...')
-          await cmdOnboardingInstallSingle('antfly', args)
-        } else if (sub === 'mcporter') {
-          console.error('[deprecated] `bakin setup mcporter` is now `bakin install mcporter`. Delegating...')
-          await cmdOnboardingInstallSingle('mcporter', args)
         } else {
           console.error(`Unknown setup target: ${sub}`)
-          console.error('Available: bakin setup service | bakin setup antfly | bakin setup mcporter')
+          console.error('Available: bakin setup service')
           process.exit(1)
         }
         break
@@ -1849,23 +1757,23 @@ export async function main(): Promise<void> {
         break
 
       case 'check':
-        if (sub === 'openclaw' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-assets') {
+        if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-assets' || sub === 'recommended-plugins') {
           await cmdOnboardingCheckSingle(sub)
         } else if (sub === 'all') {
           await cmdOnboardingCheckAll()
         } else {
           console.error(`Unknown check target: ${sub}`)
-          console.error('Available: bakin check openclaw | llm | channels | plugin-assets | agent-assets | all')
+          console.error('Available: bakin check runtime | search | search-models | llm | channels | plugin-assets | agent-assets | all')
           process.exit(1)
         }
         break
 
       case 'install':
-        if (sub === 'antfly' || sub === 'models' || sub === 'mcporter' || sub === 'plugin-assets' || sub === 'agent-assets') {
+        if (sub === 'search' || sub === 'search-models' || sub === 'mcporter' || sub === 'plugin-assets' || sub === 'agent-assets' || sub === 'recommended-plugins') {
           await cmdOnboardingInstallSingle(sub, args)
         } else {
           console.error(`Unknown install target: ${sub}`)
-          console.error('Available: bakin install antfly | models | mcporter | plugin-assets | agent-assets')
+          console.error('Available: bakin install search | search-models | mcporter | plugin-assets | agent-assets | recommended-plugins')
           process.exit(1)
         }
         break
@@ -1988,64 +1896,10 @@ export async function main(): Promise<void> {
         }
         break
 
-      case 'messaging':
-        if (!sub || sub === 'list') {
-          await cmdMessagingList({
-            month: parseFlag(args, 'month'),
-            status: parseFlag(args, 'status'),
-            agent: parseFlag(args, 'agent'),
-            channel: parseFlag(args, 'channel'),
-          })
-        } else if (sub === 'get') {
-          if (!args[2]) { console.error('Usage: bakin messaging get <id>'); process.exit(1) }
-          await cmdMessagingGet(args[2])
-        } else if (sub === 'create') {
-          await cmdMessagingCreate(args.slice(2))
-        } else if (sub === 'update') {
-          if (!args[2]) { console.error('Usage: bakin messaging update <id> [--title=X --status=Y]'); process.exit(1) }
-          await cmdMessagingUpdate(args[2], args.slice(3))
-        } else if (sub === 'delete') {
-          if (!args[2]) { console.error('Usage: bakin messaging delete <id>'); process.exit(1) }
-          await cmdMessagingDelete(args[2])
-        } else if (sub === 'approve') {
-          if (!args[2]) { console.error('Usage: bakin messaging approve <id>'); process.exit(1) }
-          await cmdMessagingApprove(args[2])
-        } else if (sub === 'reject') {
-          if (!args[2]) { console.error('Usage: bakin messaging reject <id> [note]'); process.exit(1) }
-          await cmdMessagingReject(args[2], args[3])
-        } else if (sub === 'sessions') {
-          await cmdSessionList({
-            status: parseFlag(args, 'status'),
-            agent: parseFlag(args, 'agent'),
-          })
-        } else if (sub === 'session') {
-          if (!args[2]) { console.error('Usage: bakin messaging session <id>'); process.exit(1) }
-          await cmdSessionGet(args[2])
-        } else if (sub === 'session-create') {
-          if (!args[2]) { console.error('Usage: bakin messaging session-create <agentId> [title]'); process.exit(1) }
-          await cmdSessionCreate(args[2], args[3])
-        } else if (sub === 'session-update') {
-          if (!args[2]) { console.error('Usage: bakin messaging session-update <id> --title=X'); process.exit(1) }
-          await cmdSessionUpdate(args[2], args.slice(3))
-        } else if (sub === 'session-delete') {
-          if (!args[2]) { console.error('Usage: bakin messaging session-delete <id>'); process.exit(1) }
-          await cmdSessionDelete(args[2])
-        } else if (sub === 'message') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin messaging message <sessionId> <text>'); process.exit(1) }
-          await cmdSessionMessage(args[2], args.slice(3).join(' '))
-        } else if (sub === 'confirm') {
-          if (!args[2]) { console.error('Usage: bakin messaging confirm <sessionId>'); process.exit(1) }
-          await cmdSessionConfirm(args[2])
-        } else if (sub === 'proposal') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin messaging proposal <sessionId> <proposalId> [--approve|--reject|--status=X]'); process.exit(1) }
-          await cmdProposalUpdate(args[2], args[3], args.slice(4))
-        } else {
-          console.error(`Unknown messaging subcommand: ${sub}`)
-          process.exit(1)
-        }
-        break
-
       default:
+        if (await dispatchPluginCliCommand(cmd, args.slice(1))) {
+          break
+        }
         console.error(`Unknown command: ${cmd}`)
         console.log(USAGE.trim())
         process.exit(1)

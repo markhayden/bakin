@@ -3,7 +3,7 @@
  */
 
 // ---------------------------------------------------------------------------
-// Sidecar — Bakin-owned metadata for OpenClaw cron jobs
+// Sidecar - Bakin-owned metadata for runtime cron jobs
 // ---------------------------------------------------------------------------
 
 export interface ScheduleSidecar {
@@ -37,14 +37,13 @@ export interface BakinJobMeta {
 }
 
 // ---------------------------------------------------------------------------
-// OpenClaw job shape (from ~/.openclaw/cron/jobs.json)
+// Runtime cron job shape, normalized for schedule display/merge logic.
 // ---------------------------------------------------------------------------
 
-export interface OpenClawJob {
+export interface RuntimeCronJobSnapshot {
   id: string
   name: string
   schedule: {
-    // OpenClaw uses "kind"/"expr"; we normalise to type/value in mergeJob
     kind?: 'cron' | 'every' | 'at'
     type?: 'cron' | 'every' | 'at'
     expr?: string
@@ -65,22 +64,22 @@ export interface OpenClawJob {
   updatedAtMs?: number
 }
 
-export interface OpenClawJobsFile {
+export interface RuntimeCronJobsSnapshot {
   version: number
-  jobs: OpenClawJob[]
+  jobs: RuntimeCronJobSnapshot[]
 }
 
 // ---------------------------------------------------------------------------
-// Merged view — OpenClaw job + Bakin sidecar
+// Merged view - runtime cron job + Bakin sidecar
 // ---------------------------------------------------------------------------
 
 export interface MergedJob {
-  // From OpenClaw
+  // From runtime cron
   id: string
   name: string
   schedule: { type: 'cron' | 'every' | 'at'; value: string; tz?: string }
   enabled: boolean
-  delivery?: OpenClawJob['delivery']
+  delivery?: RuntimeCronJobSnapshot['delivery']
 
   // From Bakin sidecar (defaults applied)
   isBakinJob: boolean
@@ -112,7 +111,7 @@ export interface MergedJob {
 }
 
 // ---------------------------------------------------------------------------
-// Run history (from ~/.openclaw/cron/runs/<jobId>.jsonl)
+// Run history from the runtime cron adapter.
 // ---------------------------------------------------------------------------
 
 export interface RunEntry {

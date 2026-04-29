@@ -16,8 +16,8 @@ mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
 }))
-mock.module('@bakin/tasks/lib/flow-store', () => ({}))
-mock.module('@bakin/core/openclaw-home', () => ({
+mock.module('@/core/task-store', () => ({}))
+mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
 }))
@@ -96,7 +96,7 @@ describe('node-type-registry', () => {
         task: 'do the thing',
         dependsOn: ['otherStep'],
         outputs: [{ id: 'script', type: 'string' }],
-        deny_tools: ['post_discord'],
+        deny_tools: ['post_channel'],
       })
       expect(result.success).toBe(true)
     })
@@ -154,7 +154,7 @@ describe('node-type-registry', () => {
         id: 'out',
         type: 'output',
         label: 'Publish',
-        channels: ['discord'],
+        channels: ['general'],
         content: { message: 'hi' },
       })
       expect(result.success).toBe(true)

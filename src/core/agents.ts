@@ -4,10 +4,10 @@
  */
 import { readFileSync, existsSync, readdirSync } from 'fs'
 import { join } from 'path'
+import { getAppServices } from './app-services'
 import { createLogger } from './logger'
-import { getAgentIds } from '@bakin/core/openclaw-config'
-import * as openclaw from './openclaw-client'
-import { readTaskboard } from '@bakin/tasks/lib/flow-store'
+import { createFileBakinTaskStore } from '@bakin/core/tasks/store'
+import { getBakinPaths } from './content-dir'
 
 const log = createLogger('agents')
 
@@ -30,10 +30,8 @@ interface AgentTask {
  * Get status for a specific agent — their current tasks and last activity.
  */
 export async function getAgentStatus(agentId: string, contentDir: string): Promise<AgentStatus> {
-  const agents = getAgentIds()
-
-  // Resolve name (agents list uses short names)
-  const name = agents.includes(agentId) ? agentId : agentId
+  const agent = await getAppServices().runtime.agents.get(agentId)
+  const name = agent?.name ?? agentId
 
   // Get tasks assigned to this agent
   const tasks = getAgentTasks(agentId, contentDir)
@@ -56,33 +54,14 @@ export async function getAgentStatus(agentId: string, contentDir: string): Promi
  * Get all tasks assigned to an agent across all columns.
  */
 export function getAgentTasks(agentId: string, _contentDir: string): AgentTask[] {
-  const board = readTaskboard()
-  const tasks: AgentTask[] = []
-
-  const columnMap: Record<string, string> = {
-    todo: 'todo',
-    inProgress: 'in-progress',
-    blocked: 'blocked',
-    done: 'done',
-    backlog: 'backlog',
-    review: 'review',
-    archived: 'archived',
-  }
-
-  for (const [colName, colTasks] of Object.entries(board.columns)) {
-    for (const task of colTasks as Array<{ id: string; title: string; agent?: string; description?: string }>) {
-      if (task.agent === agentId) {
-        tasks.push({
-          id: task.id,
-          title: task.title,
-          column: columnMap[colName] || colName,
-          description: task.description,
-        })
-      }
-    }
-  }
-
-  return tasks
+  void _contentDir
+  const store = createFileBakinTaskStore(getBakinPaths().tasks)
+  return store.listSync({ agent: agentId }).map((task) => ({
+    id: task.id,
+    title: task.title,
+    column: task.column === 'inProgress' ? 'in-progress' : task.column,
+    description: task.description,
+  }))
 }
 
 /**
@@ -93,8 +72,8 @@ export async function sendMessageToAgent(
   message: string
 ): Promise<{ ok: boolean; reply?: string; error?: string }> {
   try {
-    const reply = await openclaw.sendMessage(agentId, message)
-    return { ok: true, reply }
+    const result = await getAppServices().runtime.messaging.send({ agentId, content: message })
+    return { ok: true, reply: result.content ?? '' }
   } catch (err) {
     log.error(`Failed to send message to agent ${agentId}`, err)
     return { ok: false, error: err instanceof Error ? err.message : String(err) }
@@ -107,8 +86,8 @@ export async function sendMessageToAgent(
 export async function listAgents(contentDir: string): Promise<AgentStatus[]> {
   const statuses: AgentStatus[] = []
 
-  for (const agentId of getAgentIds()) {
-    statuses.push(await getAgentStatus(agentId, contentDir))
+  for (const agent of await getAppServices().runtime.agents.list()) {
+    statuses.push(await getAgentStatus(agent.id, contentDir))
   }
 
   return statuses

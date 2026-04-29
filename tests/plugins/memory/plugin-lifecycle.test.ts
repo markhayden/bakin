@@ -4,7 +4,7 @@
  * The memory plugin used to kick off its backfill with `void indexer.backfill`
  * inside `activate()`. Server startup in `server.ts` runs:
  *   pluginRegistry.initialize()     ← activate() here
- *   antfly.initialize()
+ *   search adapter initialization
  *   createRegisteredTables()        ← bakin_memory created here
  *   runPendingReconciles()
  *   pluginRegistry.onAllReady()     ← onReady() here
@@ -50,8 +50,7 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 mock.module('../../../src/core/watcher', () => ({ watchFiles: mock() }))
-mock.module('../../../src/core/openclaw-client', () => ({ sendMessage: mock() }))
-mock.module('../../../packages/core/src/openclaw-home', () => {
+mock.module('../../../packages/adapter-openclaw/src/home', () => {
   const { join: j } = require('path') as typeof import('path')
   const { tmpdir: t } = require('os') as typeof import('os')
   const base = j(t(), `bakin-test-memory-lifecycle-mock`, 'openclaw')
@@ -60,23 +59,20 @@ mock.module('../../../packages/core/src/openclaw-home', () => {
     getOpenClawPath: (...parts: string[]) => j(base, ...parts),
   }
 })
-mock.module('../../../packages/core/src/main-agent', () => ({
+mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
   getMainAgentId: () => 'main',
   tryGetMainAgentId: () => 'main',
+  getMainAgentName: () => 'Main',
 }))
 mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
-    openclaw: { binaryPath: '/fake/openclaw', gatewayUrl: 'http://localhost', gatewayPort: 18789 },
-    antfly: { auditTtl: null },
+    runtime: {
+      adapter: 'openclaw',
+      settings: {},
+    },
+    search: { adapter: 'antfly', settings: { auditTtl: null } },
   }),
 }))
-// The gateway subscribe only runs after onReady. Stub it so we don't try to
-// open a real WebSocket during the test.
-mock.module('../../../plugins/memory/lib/openclaw-gateway', () => ({
-  gatewaySubscribe: mock(async () => () => {}),
-  gatewayCall: mock(async () => ({})),
-}))
-
 import { activatePlugin } from '../test-helpers'
 import memoryPlugin from '../../../plugins/memory/index'
 import { MemoryIndexer } from '../../../plugins/memory/lib/indexer'
@@ -131,7 +127,7 @@ describe('memory plugin lifecycle — activate vs onReady', () => {
     await flush()
 
     // We don't assert that index() was called — the test harness has no
-    // OpenClaw agents to backfill from, so the indexer has nothing to do.
+    // runtime agents to backfill from, so the indexer has nothing to do.
     // The point is: onReady ran and the plugin is still alive.
     expect(activated.ctx).toBeDefined()
   })

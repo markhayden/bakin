@@ -53,27 +53,11 @@ mock.module('../../../src/core/watcher', () => ({
   registerUnlinkHook: mock(),
 }))
 
-mock.module('../../../src/core/openclaw-client', () => ({
-  sendToAgent: mock(),
-  sendMessage: mock(),
-}))
-
 mock.module('../../../src/core/audit', () => ({
   appendAudit: mock(),
 }))
 
-mock.module('../../../src/core/discord-gateway', () => ({
-  startGateway: mock(),
-  stopGateway: mock(),
-  onGateInteraction: mock(),
-  isGatewayConnected: mock(() => false),
-}))
-
-mock.module('../../../scripts/lib/post-discord', () => ({
-  loadDiscordConfig: mock(() => null),
-}))
-
-mock.module('../../../plugins/tasks/lib/flow-store', () => ({
+mock.module('@/core/task-store', () => ({
   createTask: mock(() => Promise.resolve({ id: 'mock-task' })),
   addTaskLog: mock(() => Promise.resolve()),
   moveTask: mock(() => Promise.resolve()),

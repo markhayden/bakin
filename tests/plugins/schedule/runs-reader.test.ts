@@ -1,31 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-
-const { hoistedBakinHome } = (() => {
-  const { mkdtempSync } = require('fs')
-  const { tmpdir } = require('os')
-  const { join } = require('path')
-  const bakinHome = mkdtempSync(join(tmpdir(), 'bakin-test-home-'))
-  process.env.BAKIN_HOME = bakinHome
-  process.env.OPENCLAW_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-openclaw-'))
-  return { hoistedBakinHome: bakinHome }
-})()
-
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { describe, it, expect, mock } from 'bun:test'
+import { mkdtempSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import type { CronRun } from '@bakin/core/adapters/runtime'
 
-mock.module('@bakin/core/main-agent', () => ({
-  getMainAgentId: () => 'main',
-  tryGetMainAgentId: () => 'main',
-  getMainAgentName: () => 'Main',
-}))
-
-mock.module('../../../src/core/content-dir', () => ({
-  getContentDir: () => hoistedBakinHome,
-  isUsingBakinHome: () => true,
-  resetContentDir: () => {},
-  initBakinHome: () => {},
-}))
+process.env.BAKIN_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-home-'))
 
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({
@@ -36,101 +15,83 @@ mock.module('../../../src/core/logger', () => ({
   }),
 }))
 
-const { readRuns, getLastRun } = require('@bakin/schedule/lib/runs-reader') as typeof import('@bakin/schedule/lib/runs-reader')
+const {
+  readRuns,
+  getLastRun,
+  runtimeRunToEntry,
+} = await import('@bakin/schedule/lib/runs-reader')
 
-const testDir = join(tmpdir(), `bakin-test-runs-${Date.now()}`)
+function makeRun(overrides: Partial<CronRun> = {}): CronRun {
+  return {
+    id: 'r1',
+    jobId: 'j1',
+    status: 'succeeded',
+    startedAt: '2026-03-27T09:00:00Z',
+    ...overrides,
+  }
+}
+
+function cronReader(runs: CronRun[], shouldThrow = false) {
+  return {
+    listRuns: async () => {
+      if (shouldThrow) throw new Error('adapter unavailable')
+      return runs
+    },
+  }
+}
 
 describe('schedule/runs-reader', () => {
-  beforeEach(() => {
-    mkdirSync(testDir, { recursive: true })
-  })
-
-  afterEach(() => {
-    rmSync(testDir, { recursive: true, force: true })
-  })
-
-  it('returns empty array for nonexistent file', () => {
-    const runs = readRuns('nonexistent', 50, testDir)
+  it('returns empty array when the runtime adapter fails', async () => {
+    const runs = await readRuns(cronReader([], true), 'j1')
     expect(runs).toEqual([])
   })
 
-  it('parses valid JSONL entries', () => {
-    const lines = [
-      JSON.stringify({ runId: 'r1', jobId: 'j1', timestamp: '2026-03-27T09:00:00Z', status: 'success' }),
-      JSON.stringify({ runId: 'r2', jobId: 'j1', timestamp: '2026-03-26T09:00:00Z', status: 'failure', error: 'timeout' }),
-    ]
-    writeFileSync(join(testDir, 'j1.jsonl'), lines.join('\n'))
+  it('maps valid runtime runs', async () => {
+    const runs = await readRuns(cronReader([
+      makeRun({ id: 'r1', status: 'succeeded', startedAt: '2026-03-27T09:00:00Z' }),
+      makeRun({ id: 'r2', status: 'failed', startedAt: '2026-03-26T09:00:00Z', error: 'timeout' }),
+    ]), 'j1')
 
-    const runs = readRuns('j1', 50, testDir)
     expect(runs).toHaveLength(2)
-    expect(runs[0].runId).toBe('r1') // newest first
+    expect(runs[0].runId).toBe('r1')
+    expect(runs[0].status).toBe('success')
     expect(runs[1].runId).toBe('r2')
+    expect(runs[1].status).toBe('failure')
+    expect(runs[1].error).toBe('timeout')
   })
 
-  it('sorts newest-first', () => {
-    const lines = [
-      JSON.stringify({ runId: 'old', jobId: 'j1', timestamp: '2026-03-25T09:00:00Z', status: 'success' }),
-      JSON.stringify({ runId: 'new', jobId: 'j1', timestamp: '2026-03-27T09:00:00Z', status: 'success' }),
-    ]
-    writeFileSync(join(testDir, 'j1.jsonl'), lines.join('\n'))
-
-    const runs = readRuns('j1', 50, testDir)
-    expect(runs[0].runId).toBe('new')
-    expect(runs[1].runId).toBe('old')
-  })
-
-  it('respects limit parameter', () => {
-    const lines = Array.from({ length: 10 }, (_, i) =>
-      JSON.stringify({ runId: `r${i}`, jobId: 'j1', timestamp: `2026-03-${(20 + i).toString().padStart(2, '0')}T09:00:00Z`, status: 'success' })
+  it('respects limit parameter', async () => {
+    const runs = Array.from({ length: 10 }, (_, i) =>
+      makeRun({ id: `r${i}`, startedAt: `2026-03-${(20 + i).toString().padStart(2, '0')}T09:00:00Z` })
     )
-    writeFileSync(join(testDir, 'j1.jsonl'), lines.join('\n'))
 
-    const runs = readRuns('j1', 3, testDir)
-    expect(runs).toHaveLength(3)
+    const limited = await readRuns(cronReader(runs), 'j1', 3)
+    expect(limited).toHaveLength(3)
   })
 
-  it('skips malformed lines', () => {
-    const lines = [
-      JSON.stringify({ runId: 'r1', jobId: 'j1', timestamp: '2026-03-27T09:00:00Z', status: 'success' }),
-      'not json at all',
-      JSON.stringify({ runId: 'r2', jobId: 'j1', timestamp: '2026-03-26T09:00:00Z', status: 'success' }),
-    ]
-    writeFileSync(join(testDir, 'j1.jsonl'), lines.join('\n'))
-
-    const runs = readRuns('j1', 50, testDir)
-    expect(runs).toHaveLength(2)
+  it('maps cancelled runtime runs to skipped schedule runs', () => {
+    const run = runtimeRunToEntry(makeRun({ status: 'cancelled' }))
+    expect(run.status).toBe('skipped')
   })
 
-  it('skips entries missing required fields', () => {
-    const lines = [
-      JSON.stringify({ runId: 'r1', jobId: 'j1', timestamp: '2026-03-27T09:00:00Z', status: 'success' }),
-      JSON.stringify({ runId: 'r2' }), // missing jobId and timestamp
-    ]
-    writeFileSync(join(testDir, 'j1.jsonl'), lines.join('\n'))
-
-    const runs = readRuns('j1', 50, testDir)
-    expect(runs).toHaveLength(1)
-  })
-
-  it('handles empty file', () => {
-    writeFileSync(join(testDir, 'j1.jsonl'), '')
-    const runs = readRuns('j1', 50, testDir)
-    expect(runs).toEqual([])
+  it('includes duration when runtime run has start and end timestamps', () => {
+    const run = runtimeRunToEntry(makeRun({
+      startedAt: '2026-03-27T09:00:00Z',
+      endedAt: '2026-03-27T09:02:00Z',
+    }))
+    expect(run.duration).toBe(120000)
   })
 
   describe('getLastRun', () => {
-    it('returns null for nonexistent job', () => {
-      expect(getLastRun('nonexistent', testDir)).toBeNull()
+    it('returns null when no runs exist', async () => {
+      expect(await getLastRun(cronReader([]), 'j1')).toBeNull()
     })
 
-    it('returns the most recent run', () => {
-      const lines = [
-        JSON.stringify({ runId: 'old', jobId: 'j1', timestamp: '2026-03-25T09:00:00Z', status: 'failure' }),
-        JSON.stringify({ runId: 'new', jobId: 'j1', timestamp: '2026-03-27T09:00:00Z', status: 'success' }),
-      ]
-      writeFileSync(join(testDir, 'j1.jsonl'), lines.join('\n'))
-
-      const last = getLastRun('j1', testDir)
+    it('returns the first runtime run', async () => {
+      const last = await getLastRun(cronReader([
+        makeRun({ id: 'new', startedAt: '2026-03-27T09:00:00Z' }),
+        makeRun({ id: 'old', startedAt: '2026-03-25T09:00:00Z', status: 'failed' }),
+      ]), 'j1')
       expect(last).not.toBeNull()
       expect(last!.runId).toBe('new')
       expect(last!.status).toBe('success')

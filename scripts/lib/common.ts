@@ -3,7 +3,7 @@
  * Every scripts/lib/ module imports from here.
  */
 import { execSync } from 'child_process'
-import type { ExecToolResult } from '../../src/lib/plugin-types'
+import type { ExecToolResult } from '@bakin/core/plugin-types'
 
 // ---------------------------------------------------------------------------
 // Result helpers
