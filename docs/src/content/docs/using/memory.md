@@ -15,6 +15,10 @@ The runtime owns the data, this just shows you what's there.
 
 Type a query, get ranked hits across every tier in one list. Hybrid scoring (keyword + semantic) so "launch plan" finds the document titled exactly that AND the session where you talked about going to market. Click any row for the full content in a side drawer.
 
+<figure class="screenshot-frame">
+  <figcaption>Search across every tier in one ranked list, with the agent strip and tier chips above the results.</figcaption>
+</figure>
+
 Three filters narrow the result set:
 
 - **Agent**: avatar strip on the left. Click an avatar to scope to one agent.
@@ -24,29 +28,24 @@ Three filters narrow the result set:
 What it's good at:
 
 - *"What did we decide about the brand voice?"* → durable + sessions + daily notes, scoped to the agent that owns it.
-- *"Why is patch acting weird today?"* → clear the search, agent filter set to `patch`, scan the recent feed.
+- *"Why is Roscoe acting weird today?"* → clear the search, agent filter set to `Roscoe`, scan the recent feed.
 - *"Where did this rule come from?"* → tier `durable`, kind `rules`, search the keyword.
-
-Filters live in the URL. Bookmark a view, share the link, your teammate lands on the same answer.
 
 When the search bar is empty, the page shows a recent feed across the same filters so you can browse without a query. Overview cards up top give live row counts per tier.
 
 ## What's in there
 
-Five tiers in the default view, each with its own shape and use:
+| Tier | What it holds |
+| --- | --- |
+| **Sessions** | Chat threads, by agent. Token counts, model, status, and the back-link to the conversation itself. |
+| **Daily Notes** | End-of-day summaries an agent writes for itself. Quick way to scan what's been on their mind without scrolling through every session. |
+| **Durable** | Long-term knowledge. Soul, identity, rules, tools, skills, MEMORY-LOG, the stuff that defines who the agent is. Filter by `Kind` to zoom in on just the soul, just the skills, just the rules. |
+| **Dreams** | Background reflection an agent does between active work. Phase docs, signals, the agent's own theories about what's going on. |
+| **Checkpoints** | Compaction snapshots. When a session gets too big, the agent compresses it into a checkpoint and starts fresh. The checkpoint is what carries forward. |
+| **Turns** *(System Logs)* | Every individual message inside a session. |
+| **Audit** *(System Logs)* | Every Bakin event in the system. |
 
-- **Sessions**: chat threads, by agent. Each one carries token counts, model, status, and the back-link to the conversation itself.
-- **Daily Notes**: end-of-day summaries an agent writes for itself. Quick way to scan what's been on their mind without scrolling through every session.
-- **Durable**: long-term knowledge. Soul, identity, rules, tools, skills, MEMORY-LOG, the stuff that defines who the agent is. Filter by `Kind` to zoom in on just the soul, just the skills, just the rules.
-- **Dreams**: background reflection an agent does between active work. Phase docs, signals, the agent's own theories about what's going on.
-- **Checkpoints**: compaction snapshots. When a session gets too big, the agent compresses it into a checkpoint and starts fresh. The checkpoint is what carries forward.
-
-Two more tiers exist for when you're debugging, both hidden behind the `System Logs` toggle in the page header:
-
-- **Turns**: every individual message inside a session.
-- **Audit**: every Bakin event in the system.
-
-Flip the toggle on when you're chasing something specific. Otherwise they stay out of the way so the dashboard reads as "what this agent knows" rather than a wall of operational noise.
+Turns and Audit are noisy by default. Flip the `System Logs` toggle in the page header to bring them into the dashboard.
 
 ## Settings
 
