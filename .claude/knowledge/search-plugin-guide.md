@@ -47,7 +47,7 @@ Pick fields that users and agents will search or filter by. Each field has a typ
 ```typescript
 activate(ctx: PluginContext) {
   ctx.search.registerFileBackedContentType({
-    table: 'projects',
+    table: 'notes',
     schema: {
       title: { type: 'text' },
       status: { type: 'keyword' },
@@ -61,26 +61,26 @@ activate(ctx: PluginContext) {
     // ─── File-backed wiring ─────────────────────────────────────
     filePatterns: [
       {
-        pattern: 'projects/*.md',
-        fileToId: (rel) => rel.replace(/^projects\//, '').replace(/\.md$/, ''),
+        pattern: 'data/*.md',
+        fileToId: (rel) => rel.replace(/^data\//, '').replace(/\.md$/, ''),
         fileToDoc: async (rel) => {
-          const id = rel.replace(/^projects\//, '').replace(/\.md$/, '')
-          const project = readProject(id)
-          return project ? projectToSearchDoc(project) : null
+          const id = rel.replace(/^data\//, '').replace(/\.md$/, '')
+          const note = readNote(id)
+          return note ? noteToSearchDoc(note) : null
         },
       },
     ],
-    // excludePatterns: ['projects/**/.trash/**'],  // optional
+    // excludePatterns: ['data/**/.trash/**'],  // optional
 
     // Required: full reindex generator (used by `/api/reindex`)
     reindex: async function* () {
-      for (const project of listAllProjects()) {
-        yield { key: project.id, doc: projectToSearchDoc(project) }
+      for (const note of listAllNotes()) {
+        yield { key: note.id, doc: noteToSearchDoc(note) }
       }
     },
 
     // Required: source-of-truth check (used by orphan backstop scan)
-    verifyExists: async (key) => existsSync(join(contentDir, 'projects', `${key}.md`)),
+    verifyExists: async (key) => ctx.storage.exists(`data/${key}.md`),
   })
 
   // The plugin's REST/MCP routes still call ctx.search.index() directly
@@ -110,9 +110,9 @@ Patterns are matched against paths relative to the content dir. Supported syntax
 - Anything else is a literal
 
 Examples:
-- `projects/*.md` — top-level project markdown files
 - `workflows/definitions/*.{yaml,yml}` — both yaml extensions
 - `assets/**/*` — every file under assets, recursively
+- `plugins/<plugin-id>/data/*.md` — plugin-scoped markdown files
 
 `excludePatterns` use the same syntax. Useful for `.trash/` and other
 non-canonical locations.
@@ -183,7 +183,7 @@ The watcher path is the safety net for writes that bypass REST entirely
 
 ## Patterns by Data Source
 
-### Filesystem-backed (assets, projects, workflows)
+### Filesystem-backed (assets, workflows, file-backed external plugins)
 - Use `registerFileBackedContentType()`
 - `filePatterns` for the file shapes
 - `reindex()` scans directories, yields docs
@@ -208,10 +208,11 @@ The watcher path is the safety net for writes that bypass REST entirely
   longer a synthetic plugin id)
 - TTL configured via `settings.search.settings.auditTtl`
 
-### Messaging plugin (brainstorm sessions)
-- Registered by the **messaging** plugin via `ctx.search.registerFileBackedContentType()`
-- Indexes brainstorm planning sessions; calendar items get a local
-  substring filter and are not indexed
+### Official external plugins
+- Messaging and Projects live in `bakin-bits-official`. When installed,
+  they register search content types through the same `ctx.search` API.
+- Their file patterns are relative to their scoped `plugin-data/<id>/`
+  storage root, not top-level core paths.
 
 ## Currently Registered Content Types
 
@@ -219,12 +220,12 @@ The watcher path is the safety net for writes that bypass REST entirely
 |--------|-------|--------|---|
 | tasks | `bakin_tasks` | Bakin task JSON store | `registerContentType` |
 | assets | `bakin_assets` | `.meta.json` sidecars + binaries | `registerFileBackedContentType` (escape hatches) |
-| projects | `bakin_projects` | Markdown files | `registerFileBackedContentType` (default flow) |
 | workflows | `bakin_workflows` | YAML defs + JSON instances | `registerFileBackedContentType` (two filePatterns) |
 | schedule | `bakin_schedule` | runtime cron jobs | `registerContentType` |
 | team | `bakin_team` | runtime agents | `registerContentType` |
 | memory | `bakin_memory` | `audit.jsonl` + runtime sessions/workspace memory | `registerContentType` (single table, `tier` facet discriminates across 7 memory tiers) |
-| messaging | `bakin_messaging_brainstorm` | brainstorm session JSON files | `registerFileBackedContentType` |
+
+Official plugins add their own tables when installed; for example Projects registers `bakin_projects` and Messaging registers `bakin_messaging_brainstorm`.
 
 ## Common Pitfalls
 

@@ -25,7 +25,7 @@ interface ScriptedComponent {
   installCalls: number
 }
 
-const COMPONENT_NAMES = ['mkdir', 'settings', 'runtime', 'search', 'search-models', 'mcporter', 'plugin-assets', 'agent-assets', 'llm', 'channels'] as const
+const COMPONENT_NAMES = ['mkdir', 'settings', 'runtime', 'search', 'search-models', 'mcporter', 'plugin-assets', 'agent-assets', 'llm', 'channels', 'recommended-plugins'] as const
 
 let scripts: Record<(typeof COMPONENT_NAMES)[number], ScriptedComponent>
 
@@ -63,6 +63,9 @@ mock.module('../../../src/core/onboarding/agent-assets', () => ({ agentAssetsCom
 mock.module('../../../src/core/onboarding/credentials', () => ({
   llmComponent: makeMock('llm'),
   channelsComponent: makeMock('channels'),
+}))
+mock.module('../../../src/core/onboarding/recommended-plugins', () => ({
+  recommendedPluginsComponent: makeMock('recommended-plugins'),
 }))
 
 mock.module('../../../src/core/onboarding/state', () => ({
@@ -155,7 +158,7 @@ describe('runOnboard orchestrator', () => {
   // ---------------------------------------------------------------------------
 
   describe('COMPONENT_ORDER', () => {
-    it('contains exactly the 10 expected components in the spec order', () => {
+    it('contains exactly the 11 expected components in the spec order', () => {
       expect(COMPONENT_ORDER.map((c) => c.name)).toEqual([
         'mkdir',
         'settings',
@@ -167,6 +170,7 @@ describe('runOnboard orchestrator', () => {
         'agent-assets',
         'llm',
         'channels',
+        'recommended-plugins',
       ])
     })
   })
@@ -181,7 +185,7 @@ describe('runOnboard orchestrator', () => {
       expect(result.exitCode).toBe(0)
       expect(result.markerWritten).toBe(true)
       expect(result.outcomes.map((o) => o.finalStatus)).toEqual([
-        'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok',
+        'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok',
       ])
       // check() was called on every component
       for (const n of COMPONENT_NAMES) {
@@ -203,6 +207,7 @@ describe('runOnboard orchestrator', () => {
         'agent-assets': 'ok',
         llm: 'ok',
         channels: 'ok',
+        'recommended-plugins': 'ok',
       })
     })
   })
@@ -318,8 +323,8 @@ describe('runOnboard orchestrator', () => {
       expect(scripts.mcporter.checkCalls).toBe(0)
       expect(scripts.llm.checkCalls).toBe(0)
       expect(scripts.channels.checkCalls).toBe(0)
-      // All 8 components still appear in outcomes
-      expect(result.outcomes).toHaveLength(10)
+      // All components still appear in outcomes
+      expect(result.outcomes).toHaveLength(11)
       // Runtime is error (missing prerequisite), downstream all skipped
       expect(result.outcomes.find((o) => o.name === 'runtime')?.finalStatus).toBe('error')
       expect(result.outcomes.find((o) => o.name === 'search')?.finalStatus).toBe('skipped')
@@ -396,7 +401,7 @@ describe('runOnboard orchestrator', () => {
   describe('json output', () => {
     it('emits one JSON line per outcome', async () => {
       await runOnboard({ ...opts, json: true })
-      expect(stdoutLines).toHaveLength(10)
+      expect(stdoutLines).toHaveLength(11)
       for (const line of stdoutLines) {
         const parsed = JSON.parse(line)
         expect(COMPONENT_NAMES).toContain(parsed.component)
@@ -408,8 +413,8 @@ describe('runOnboard orchestrator', () => {
       scripts.runtime.check = { name: 'runtime', status: 'missing', message: 'runtime missing' }
       scripts.runtime.install = { name: 'runtime', status: 'noop', message: 'required', durationMs: 0 }
       await runOnboard({ ...opts, json: true })
-      // Should emit 8 lines total: 3 that actually ran + 5 cascade-skipped
-      expect(stdoutLines).toHaveLength(10)
+      // Should emit every component: those before runtime plus downstream cascade-skips.
+      expect(stdoutLines).toHaveLength(11)
     })
 
     it('does not emit JSON when json flag is false', async () => {
@@ -426,7 +431,7 @@ describe('runOnboard orchestrator', () => {
     it('calls check() on every component and never install()', async () => {
       scripts.search.check = { name: 'search', status: 'missing', message: 'search missing' }
       const results = await checkAll()
-      expect(results).toHaveLength(10)
+      expect(results).toHaveLength(11)
       expect(results.map((r) => r.name)).toEqual([...COMPONENT_NAMES])
       for (const n of COMPONENT_NAMES) {
         expect(scripts[n].checkCalls).toBe(1)

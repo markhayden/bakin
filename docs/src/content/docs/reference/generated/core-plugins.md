@@ -40,17 +40,6 @@ Observability dashboard over runtime memory tiers plus Bakin's audit log
 - Dependencies: `none`
 - Permissions: `storage.read`, `events.emit`, `runtime.read`
 
-## Messaging
-
-Content messaging with scheduling, brainstorming, and multi-agent content pipeline
-
-- ID: `messaging`
-- Version: `1.0.0`
-- Bakin compatibility: `>=1.0.0`
-- Manifest: `plugins/messaging/bakin-plugin.json`
-- Dependencies: `tasks`
-- Permissions: `storage.read`, `storage.write`, `events.emit`
-
 ## Models
 
 Agent model configuration — per-agent models, aliases, task profiles, available models from Anthropic API
@@ -60,17 +49,6 @@ Agent model configuration — per-agent models, aliases, task profiles, availabl
 - Bakin compatibility: `>=1.0.0`
 - Manifest: `plugins/models/bakin-plugin.json`
 - Dependencies: `team`
-- Permissions: `storage.read`, `storage.write`, `events.emit`
-
-## Projects
-
-Project management with specs, checklists, task linking, and agent access via MCP tools
-
-- ID: `projects`
-- Version: `1.0.0`
-- Bakin compatibility: `>=1.0.0`
-- Manifest: `plugins/projects/bakin-plugin.json`
-- Dependencies: `tasks`, `assets`
 - Permissions: `storage.read`, `storage.write`, `events.emit`
 
 ## Schedule

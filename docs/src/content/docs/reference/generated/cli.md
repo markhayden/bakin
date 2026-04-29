@@ -753,7 +753,7 @@ bakin init
 Example test mode: `illustrative`
 Reason: Writes local home directory state.
 
-### `bakin check <runtime|search|search-models|llm|channels|plugin-assets|agent-assets|all>`
+### `bakin check <runtime|search|search-models|llm|channels|plugin-assets|agent-assets|recommended-plugins|all>`
 
 Runs one or all first-run readiness checks.
 
@@ -769,9 +769,9 @@ bakin check all
 Example test mode: `illustrative`
 Reason: Depends on local environment.
 
-### `bakin install <search|search-models|mcporter|plugin-assets|agent-assets>`
+### `bakin install <search|search-models|mcporter|plugin-assets|agent-assets|recommended-plugins>`
 
-Installs Bakin dependencies or plugin/agent assets.
+Installs Bakin dependencies, plugin/agent assets, or official recommended plugins.
 
 - Visibility: `public`
 - Stability: `stable`
@@ -833,7 +833,7 @@ bakin agent-rules --check
 Example test mode: `illustrative`
 Reason: Depends on local agent files.
 
-## Schedule and messaging
+## Schedule
 
 ### `bakin schedule [list|add|pause|resume|remove|run|runs] ...`
 
@@ -846,22 +846,6 @@ Example:
 
 ```sh
 bakin schedule list
-```
-
-Example test mode: `illustrative`
-Reason: Requires running server data.
-
-### `bakin messaging <list|get|create|update|delete|approve|reject|sessions|session|session-create|session-update|session-delete|message|confirm|proposal> ...`
-
-Works with content calendar items, planning sessions, proposals, and approvals.
-
-- Visibility: `public`
-- Stability: `stable`
-
-Example:
-
-```sh
-bakin messaging list --status=draft
 ```
 
 Example test mode: `illustrative`

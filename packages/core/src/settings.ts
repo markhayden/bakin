@@ -102,9 +102,6 @@ export interface BakinSettings {
     restMinSamples: number
     restAlertCooldownMs: number
   }
-  messaging: {
-    intervalMs: number
-  }
   sse: {
     maxClients: number
     keepAliveMs: number
@@ -203,9 +200,6 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     restErrorThreshold: 0.5,
     restMinSamples: 3,
     restAlertCooldownMs: 5 * 60 * 1000,
-  },
-  messaging: {
-    intervalMs: 5 * 60 * 1000,
   },
   sse: {
     maxClients: 50,

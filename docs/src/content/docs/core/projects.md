@@ -1,9 +1,9 @@
 ---
 title: Projects
-description: Use Bakin projects to group tasks, checklists, context, and linked assets.
+description: Install the official Projects plugin to group tasks, checklists, context, and linked assets.
 ---
 
-Projects group related work and context. They are useful when a task is too small to hold the full picture or when multiple tasks contribute to a shared outcome.
+Projects is an official plugin distributed from `markhayden/bakin-bits-official`, not a core plugin bundled inside Bakin. Once installed, it contributes project routes, MCP/exec tools, task-context hooks, and CLI commands from its plugin manifest.
 
 ## How to Use Projects
 

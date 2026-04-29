@@ -189,6 +189,8 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
     },
     hooks: {
       register: vi.fn(() => () => {}),
+      call: vi.fn(async (_name: string, data: unknown) => data),
+      callAll: vi.fn(async () => undefined),
       has: vi.fn(() => false),
       invoke: vi.fn(async () => undefined),
     },

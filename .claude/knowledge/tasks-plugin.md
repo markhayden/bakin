@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Tasks plugin provides a kanban-style task management system backed by Bakin's file task store under `~/.bakin/tasks/`. Tasks are organized into 7 columns with enforced state transitions, assigned to agents, and tracked with timestamped log entries. The plugin integrates with workflows (gated multi-step pipelines), projects (checklist auto-check), and the dispatch engine (auto-assignment to agents).
+The Tasks plugin provides a kanban-style task management system backed by Bakin's file task store under `~/.bakin/tasks/`. Tasks are organized into 7 columns with enforced state transitions, assigned to agents, and tracked with timestamped log entries. The plugin integrates with workflows (gated multi-step pipelines), generic task extension hooks for installed plugins, and the dispatch engine (auto-assignment to agents).
 
 **Plugin ID:** `tasks`
 **Dependencies:** none (other plugins depend on it)
@@ -232,7 +232,7 @@ All routes are registered at `/api/plugins/tasks/{path}` via the plugin route sy
 Task metadata is owned by Bakin core, not the plugin hook registry. The shared
 store lives in `src/core/task-store.ts`; the old
 `plugins/tasks/lib/flow-store.ts` compatibility shim is deleted and must not be
-reintroduced. Core, workflows, projects, schedule, dispatch, and task-service
+reintroduced. Core, workflows, installed official plugins, schedule, dispatch, and task-service
 call the task store directly instead of invoking `tasks.*` hooks.
 
 Main store operations: `readTaskboard`, `createTask`, `moveTask`, `blockTask`,
@@ -282,8 +282,8 @@ When `autoArchiveDays > 0`, the plugin moves old Done tasks to Archived. `archiv
 - Workflow completion moves the task to Done via `moveTaskWithEffects` with `skipDoneGuard: true`
 
 ### Projects Plugin
-- Tasks can be linked to projects via `projectId`
-- When a task moves to done or archived, `projects.autoCheckLinkedItem` hook is invoked
+- Tasks can carry plugin-owned metadata such as `projectId`
+- When a task status changes, core emits `tasks.statusChanged`; installed plugins can react to it without Bakin core naming that plugin
 
 ### Dispatch Engine
 - `src/core/dispatch.ts` reads todo tasks through `src/core/task-store.ts` and assigns them to available runtime agents

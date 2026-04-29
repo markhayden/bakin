@@ -622,7 +622,7 @@ Same pattern is used for the plugin registry
 
 ### Hook naming convention
 `{pluginId}.{operation}` — e.g., `workflows.loadInstance`,
-`workflows.getCurrentStep`, `projects.readProject`.
+`workflows.getCurrentStep`, `tasks.enrichDetails`.
 
 ### Current hook registrations
 
@@ -633,7 +633,7 @@ Same pattern is used for the plugin registry
 | assets | 8 | `assets.validateSidecar`, `assets.getSidecarPath`, `assets.createStub`, `assets.detectVariant`, `assets.getAssetTypes`, `assets.listTrash`, `assets.restoreAsset`, `assets.emptyTrash` |
 | team | 7 | `team.listAgents`, `team.getAgent`, `team.getAgentIds`, `team.resolveProfile`, `team.getTeamMembers`, `team.getAgentTeam`, `team.getOrgStructure` |
 | models | 5 | `models.configChanged`, `models.getEffectiveModel`, `models.getAvailableModels`, `models.markConfigDirty`, `models.markGatewayRestarted` |
-| projects | 2 | `projects.readProject`, `projects.autoCheckLinkedItem` |
+| tasks extensions | 2 | `tasks.statusChanged`, `tasks.enrichDetails` |
 
 ### Invoking hooks from core
 ```typescript

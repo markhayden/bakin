@@ -179,6 +179,10 @@ export interface ActivityAPI {
 export interface HookAPI {
   /** Register a handler for a named hook. Returns unsubscribe function. */
   register(name: string, handler: (data: any) => any): () => void
+  /** Run registered handlers as a waterfall and return the final value. */
+  call<T>(name: string, data: T): Promise<T>
+  /** Run every registered handler and ignore return values. */
+  callAll(name: string, data: Record<string, unknown>): Promise<void>
   /** Check if any handlers are registered for a hook. */
   has(name: string): boolean
   /** Invoke a hook and return its result (RPC-style). */

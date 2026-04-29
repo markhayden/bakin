@@ -467,21 +467,15 @@ const tasksPlugin: BakinPlugin = {
         const result = await getTaskDetails(params.taskId as string)
         if (!result) return { ok: false, error: `Task ${params.taskId} not found` }
 
-        // Enrich with project context if task has projectId
-        const pId = (result.task as Record<string, unknown>).projectId as string | undefined
-        if (pId) {
-          try {
-            const project = await ctx.hooks.invoke<{ title: string; status: string; progress: number; body: string }>('projects.readProject', { projectId: pId })
-            if (project) {
-              ;(result as Record<string, unknown>).projectTitle = project.title
-              ;(result as Record<string, unknown>).projectStatus = project.status
-              ;(result as Record<string, unknown>).projectProgress = project.progress
-              ;(result as Record<string, unknown>).projectExcerpt = project.body.slice(0, 500)
-            }
-          } catch { /* project plugin may not be available */ }
+        let enriched = result as Record<string, unknown>
+        try {
+          enriched = await ctx.hooks.call<Record<string, unknown>>('tasks.enrichDetails', enriched)
+        } catch {
+          // Detail enrichment is optional plugin behavior; task reads should
+          // still work if an installed plugin's extension is unavailable.
         }
 
-        return { ok: true, ...result }
+        return { ok: true, ...enriched }
       },
     })
 

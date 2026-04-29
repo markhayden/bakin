@@ -18,11 +18,9 @@ import teamPlugin from '../../plugins/team'
 import tasksPlugin from '../../plugins/tasks'
 import memoryPlugin from '../../plugins/memory'
 import modelsPlugin from '../../plugins/models'
-import messagingPlugin from '../../plugins/messaging'
 import workflowsPlugin from '../../plugins/workflows'
 import assetsPlugin from '../../plugins/assets'
 import schedulePlugin from '../../plugins/schedule'
-import projectsPlugin from '../../plugins/projects'
 import healthPlugin from '../../plugins/health'
 
 import type { BakinPlugin } from '@bakin/core/plugin-types'
@@ -32,10 +30,8 @@ export const CORE_PLUGIN_IMPORTS: Readonly<Record<string, BakinPlugin>> = {
   'plugins/tasks': tasksPlugin,
   'plugins/memory': memoryPlugin,
   'plugins/models': modelsPlugin,
-  'plugins/messaging': messagingPlugin,
   'plugins/workflows': workflowsPlugin,
   'plugins/assets': assetsPlugin,
   'plugins/schedule': schedulePlugin,
-  'plugins/projects': projectsPlugin,
   'plugins/health': healthPlugin,
 }

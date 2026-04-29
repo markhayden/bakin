@@ -49,11 +49,6 @@ interface PluginErrorEvent {
   message: string
   stderr?: string
 }
-interface PluginRecoverEvent {
-  type: 'dev:plugin:recover'
-  pluginId: string
-}
-
 type HotSwapFn = (id: string, clientEntry: string, version: string) => Promise<void>
 
 const OVERLAY_ID = '__bakin-dev-overlay'
