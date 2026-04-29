@@ -111,7 +111,7 @@ const hookHandlers: Record<string, (...args: unknown[]) => unknown> = {
   'workflows.createInstance': (data: any) => mockCreateInstance(data),
   'workflows.matchWorkflow': () => null,
   'workflows.loadDefinition': (data: any) => mockLoadDefinition(data),
-  'workflows.listDefinitions': () => mockListDefinitions(),
+  'workflows.definitions.list': () => mockListDefinitions(),
 }
 
 const mockHookRegistry = {
