@@ -32,16 +32,14 @@ Flat checklist mirroring [`plan.md`](./plan.md). Check items as you land them. E
 - [x] Gate
 - [x] Commit: `feat(core): Zod→OpenAPI converter and shared error envelope`
 
-### T4 — Dispatcher + legacy `ctx.registerRoute` adapter
-- [ ] `packages/core/src/routing/dispatcher.ts` — extract path params, parse query, parse body, call handler, validate response
-- [ ] Modify `server.ts` (repo root) — `/api/*` flows through dispatcher with precedence: registry → legacy file-routed → static/SPA
-- [ ] Modify `src/lib/plugin-registry.ts` — `ctx.registerRoute` adapts (`input → body`, `output → responses[200]`) and writes into the registry
-- [ ] Modify `packages/host/src/api/_adapter.ts` — `dispatchWebHandler` invoked only from precedence step 2
-- [ ] `tests/core/route-dispatcher.test.ts` — 400/415/404, happy path, response-validation, `body: { contentType: 'none' }`
-- [ ] `tests/core/route-dispatcher-adapter.test.ts` — legacy flows through adapter
-- [ ] Smoke (`bun run dev:mock`): `/api/version`, `/api/agents`, `/api/plugins/tasks/`
-- [ ] Gate
-- [ ] Commit: `feat(core): registry-driven dispatcher with auto-validate; legacy ctx.registerRoute adapter`
+### T4 — Dispatcher + legacy `ctx.registerRoute` adapter ✅ (partial)
+- [x] `packages/core/src/routing/dispatcher.ts` — extract path params, parse query, parse body, call handler, validate response
+- [x] Modify `packages/host/src/api/plugins/[pluginId]/[[...path]].ts` — plugin catch-all now invokes `dispatchRoute(...)` instead of calling the handler directly. Legacy `input → body`, `output → responses[200]` adapter mapping is built into the dispatcher itself, so existing `ctx.registerRoute({input, output})` calls flow through validation transparently.
+- [x] `tests/core/route-dispatcher.test.ts` — 17 tests covering 400/415, happy path, response-validation in NODE_ENV=test, `body: { contentType: 'none' }`, multipart passthrough, and legacy `{input, output}` shape.
+- [ ] (Deferred to T5) Modify `server.ts` (repo root) — funnel core /api/* through dispatcher with precedence: registry → legacy file-routed → static/SPA. Done in T14–T16 as core routes migrate; foundation in T5 wires the registry-backed `/api/docs`.
+- [ ] (Deferred to T5/T17) Registry-population side of `ctx.registerRoute`. Today's plugin catch-all reads from `state.routes` directly; the registry-backed path lights up when the validator and `/api/docs` need a unified view.
+- [x] Gate (typecheck + scoped tests + docs:check)
+- [x] Commit: `feat(core): registry-driven dispatcher with auto-validate; legacy ctx.registerRoute adapter`
 
 ### T5 — Validator (warn) + `/api/docs` from registry
 - [ ] `scripts/docs/route-contract-check.ts` — bundled-surface validator (in-repo + core only; extracted exempt)

@@ -32,3 +32,6 @@ export { RouteRegistry } from './registry'
 export type { RouteScope, RegisteredRoute, RouteMatch } from './registry'
 
 export { operationIdFor } from './operation-id'
+
+export { dispatchRoute } from './dispatcher'
+export type { DispatchInput } from './dispatcher'
