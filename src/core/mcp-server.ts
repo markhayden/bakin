@@ -21,11 +21,18 @@ import type { IncomingMessage, ServerResponse } from 'http'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js'
+import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { createLogger } from './logger'
 import { getContentDir } from './content-dir'
 import { appendAudit } from './audit'
 import { recordUsage } from '@/core/usage'
-import { getAllExecTools, getToolContext } from '../../scripts/lib/registry'
+import { getAllExecTools, getExecTool, getToolContext } from '../../scripts/lib/registry'
+import {
+  describeMcpToolDenial,
+  isToolAllowedByPolicy,
+  resolveMcpToolPolicy,
+  type McpToolPolicy,
+} from './mcp-tool-policy'
 
 // Script execution tools that stay in scripts/lib/ — self-register on import.
 // Must be imported AFTER registry.ts so the Map is initialized.
@@ -115,8 +122,9 @@ setInterval(() => {
 // ---------------------------------------------------------------------------
 
 export function registerTools(server: McpServer, getAgent: () => string): void {
+  const policy = resolveMcpToolPolicy(getAgent())
   for (const tool of getAllExecTools()) {
-    server.tool(
+    const registered = server.tool(
       tool.name,
       tool.description,
       tool.parameters,
@@ -126,6 +134,12 @@ export function registerTools(server: McpServer, getAgent: () => string): void {
         log.info('Exec tool called', { tool: tool.name, agent, taskId })
 
         const start = Date.now()
+        if (!isToolAllowedByPolicy(policy, tool.name)) {
+          const durationMs = Date.now() - start
+          log.warn('Exec tool denied by MCP policy', { tool: tool.name, agent, taskId })
+          return buildDeniedToolResult(tool.name, agent, policy, tool.label, taskId, durationMs)
+        }
+
         try {
           const toolCtx = getToolContext(tool.name)
           const result = await tool.handler(params as Record<string, unknown>, agent, toolCtx)
@@ -172,7 +186,83 @@ export function registerTools(server: McpServer, getAgent: () => string): void {
         }
       },
     )
+    if (!isToolAllowedByPolicy(policy, tool.name)) {
+      registered?.disable?.()
+    }
   }
+  installPolicyCallGuard(server, getAgent, policy)
+}
+
+function buildDeniedToolResult(
+  toolName: string,
+  agent: string,
+  policy: McpToolPolicy,
+  label: string | undefined,
+  taskId: string | undefined,
+  durationMs: number,
+): { content: Array<{ type: 'text'; text: string }>; isError: true } {
+  const reason = describeMcpToolDenial(policy)
+  recordUsage({
+    kind: 'mcp',
+    name: toolName,
+    agent,
+    durationMs,
+    status: 'error',
+    meta: {
+      taskId,
+      label,
+      reason,
+      denied: true,
+    },
+  })
+  appendAudit(
+    getContentDir(),
+    `exec.${toolName}.denied`,
+    agent,
+    { taskId, label, reason, denied: true },
+    'mcp',
+  )
+  return {
+    content: [{
+      type: 'text',
+      text: `ERROR: MCP tool "${toolName}" is denied for agent "${agent}": ${reason}`,
+    }],
+    isError: true,
+  }
+}
+
+type RawMcpRequestHandler = (request: unknown, extra: unknown) => unknown
+type RawMcpServerWithHandlers = {
+  _requestHandlers?: Map<string, RawMcpRequestHandler>
+  setRequestHandler?: (schema: unknown, handler: RawMcpRequestHandler) => void
+}
+
+function installPolicyCallGuard(
+  server: McpServer,
+  getAgent: () => string,
+  policy: McpToolPolicy,
+): void {
+  // The MCP SDK hides disabled tools from tools/list, but its default
+  // tools/call handler returns "disabled" before reaching our tool callback.
+  // Wrap that handler so forged direct calls to hidden Bakin tools are audited.
+  const rawServer = (server.server as unknown as RawMcpServerWithHandlers | undefined)
+  const original = rawServer?._requestHandlers?.get('tools/call')
+  if (!rawServer?.setRequestHandler || !original) return
+
+  rawServer.setRequestHandler(CallToolRequestSchema, async (request: unknown, extra: unknown) => {
+    const params = (request as { params?: { name?: string; arguments?: Record<string, unknown> } }).params
+    const toolName = params?.name
+    if (toolName && !isToolAllowedByPolicy(policy, toolName)) {
+      const tool = getExecTool(toolName)
+      if (tool) {
+        const agent = getAgent()
+        const taskId = params?.arguments?.taskId as string | undefined
+        log.warn('Exec tool denied by MCP policy', { tool: toolName, agent, taskId })
+        return buildDeniedToolResult(toolName, agent, policy, tool.label, taskId, 0)
+      }
+    }
+    return original(request, extra)
+  })
 }
 
 // ---------------------------------------------------------------------------
