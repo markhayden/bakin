@@ -857,6 +857,8 @@ const schedulePlugin: BakinPlugin = {
             paused: j.paused,
             isBakinJob: j.isBakinJob,
             lastTaskId: j.lastTaskId,
+            ...(j.toolsAllow?.length ? { toolsAllow: j.toolsAllow } : {}),
+            ...(j.toolsAllowMissing ? { toolsAllowMissing: true } : {}),
           })),
         }
       },
