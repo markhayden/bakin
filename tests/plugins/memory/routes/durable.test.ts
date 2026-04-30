@@ -119,7 +119,7 @@ describe('durableListRoute — shape', () => {
 
 describe('durableListRoute — handler', () => {
   it('requires ?agent= and returns 400 if missing', async () => {
-    const res = await durableListRoute.handler(makeListReq(), makeCtx(), {})
+    const res = await durableListRoute.handler(makeListReq(), makeCtx(), {} as any)
     expect(res.status).toBe(400)
   })
 
@@ -127,7 +127,7 @@ describe('durableListRoute — handler', () => {
     mockReadDurableFile.mockImplementation((_a, file) =>
       file === 'SOUL.md' || file === 'MEMORY.md' ? 'body' : null,
     )
-    const res = await durableListRoute.handler(makeListReq('main'), makeCtx(), {})
+    const res = await durableListRoute.handler(makeListReq('main'), makeCtx(), {} as any)
     const body = await res.json() as { files: { name: string }[] }
     expect(res.status).toBe(200)
     expect(body.files.map((f) => f.name).sort()).toEqual(['MEMORY.md', 'SOUL.md'])
@@ -135,7 +135,7 @@ describe('durableListRoute — handler', () => {
 
   it('returns empty list when no canonical files exist for the agent', async () => {
     mockReadDurableFile.mockReturnValue(null)
-    const res = await durableListRoute.handler(makeListReq('orphan'), makeCtx(), {})
+    const res = await durableListRoute.handler(makeListReq('orphan'), makeCtx(), {} as any)
     const body = await res.json() as { files: unknown[] }
     expect(res.status).toBe(200)
     expect(body.files).toEqual([])
@@ -152,19 +152,19 @@ describe('durableDetailRoute — shape', () => {
 describe('durableDetailRoute — handler', () => {
   it('returns 400 if agent or basename is missing', async () => {
     const url = new URL('http://localhost/durable//')
-    const res = await durableDetailRoute.handler(new Request(url, { method: 'GET' }), makeCtx(), {})
+    const res = await durableDetailRoute.handler(new Request(url, { method: 'GET' }), makeCtx(), {} as any)
     expect(res.status).toBe(400)
   })
 
   it('returns 404 when file is absent (adapter returns null)', async () => {
     mockReadDurableFile.mockReturnValue(null)
-    const res = await durableDetailRoute.handler(makeDetailReq('main', 'SOUL.md'), makeCtx(), {})
+    const res = await durableDetailRoute.handler(makeDetailReq('main', 'SOUL.md'), makeCtx(), {} as any)
     expect(res.status).toBe(404)
   })
 
   it('returns { agent, file, content } when file exists', async () => {
     mockReadDurableFile.mockReturnValue('# hello\nbody')
-    const res = await durableDetailRoute.handler(makeDetailReq('main', 'SOUL.md'), makeCtx(), {})
+    const res = await durableDetailRoute.handler(makeDetailReq('main', 'SOUL.md'), makeCtx(), {} as any)
     const body = await res.json() as { agent: string; file: string; content: string }
     expect(res.status).toBe(200)
     expect(body.agent).toBe('main')
@@ -174,7 +174,7 @@ describe('durableDetailRoute — handler', () => {
 
   it('rejects non-canonical basenames with 404 (adapter guards, we pass through)', async () => {
     mockReadDurableFile.mockReturnValue(null)
-    const res = await durableDetailRoute.handler(makeDetailReq('main', 'RANDOM.md'), makeCtx(), {})
+    const res = await durableDetailRoute.handler(makeDetailReq('main', 'RANDOM.md'), makeCtx(), {} as any)
     expect(res.status).toBe(404)
   })
 })

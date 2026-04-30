@@ -15,9 +15,13 @@
  * indexed `bakin_memory` table — the indexer already enforces the 32 KB
  * truncation / head-only chunking rules, so the route is a pure query.
  */
+import { z } from 'zod'
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
 import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
+
+const passthrough = z.object({}).passthrough()
+const errorResponse = z.object({ error: z.string() })
 import { getRuntimeMemoryEntry } from '../runtime-memory'
 
 type SessionMap = Record<string, unknown>
@@ -56,6 +60,8 @@ export const sessionsListRoute = defineRoute({
   path: '/sessions',
   method: 'GET',
   description: 'List sessions for an agent',
+  summary: 'List sessions for an agent',
+  responses: { 200: passthrough, 400: errorResponse },
   handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
@@ -87,6 +93,9 @@ export const sessionDetailRoute = defineRoute({
   path: '/sessions/:agent/:sessionKey',
   method: 'GET',
   description: 'Read one session by key',
+  summary: 'Read one session by key',
+  params: z.object({ agent: z.string(), sessionKey: z.string() }),
+  responses: { 200: passthrough, 400: errorResponse, 404: errorResponse },
   handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
@@ -141,6 +150,9 @@ export const sessionTurnsRoute = defineRoute({
   path: '/sessions/:agent/:sessionKey/turns',
   method: 'GET',
   description: 'List turns belonging to one session (indexed)',
+  summary: 'List turns belonging to one session (indexed)',
+  params: z.object({ agent: z.string(), sessionKey: z.string() }),
+  responses: { 200: passthrough, 400: errorResponse, 404: errorResponse },
   handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
@@ -170,6 +182,8 @@ export const turnsListRoute = defineRoute({
   path: '/turns',
   method: 'GET',
   description: 'List turns by (agent, sessionId)',
+  summary: 'List turns by (agent, sessionId)',
+  responses: { 200: passthrough, 400: errorResponse },
   handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')

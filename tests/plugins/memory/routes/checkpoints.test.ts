@@ -131,7 +131,7 @@ describe('checkpointsListRoute — handler', () => {
     const res = await checkpointsListRoute.handler(
       req('/checkpoints', { agent: 'main' }),
       h.ctx,
-      {},
+      {} as any,
     )
     const body = await res.json() as { checkpoints: Array<Record<string, unknown>>; total: number }
     expect(res.status).toBe(200)
@@ -146,7 +146,7 @@ describe('checkpointsListRoute — handler', () => {
     await checkpointsListRoute.handler(
       req('/checkpoints', { agent: 'main', sessionId: 'sess-1' }),
       h.ctx,
-      {},
+      {} as any,
     )
     expect(h.queryCalls[0].q).toBe('sess-1')
     expect(h.queryCalls[0].filters).toEqual({ tier: 'checkpoint', agent: 'main' })
@@ -157,7 +157,7 @@ describe('checkpointsListRoute — handler', () => {
     await checkpointsListRoute.handler(
       req('/checkpoints', { agent: 'main', limit: '99999' }),
       h.ctx,
-      {},
+      {} as any,
     )
     expect(h.queryCalls[0].limit).toBe(100)
   })
@@ -167,7 +167,7 @@ describe('checkpointsListRoute — handler', () => {
     await checkpointsListRoute.handler(
       req('/checkpoints', { agent: 'main', limit: '25' }),
       h.ctx,
-      {},
+      {} as any,
     )
     expect(h.queryCalls[0].limit).toBe(25)
   })
@@ -188,7 +188,7 @@ describe('checkpointDetailRoute — handler', () => {
     const res = await checkpointDetailRoute.handler(
       req('/checkpoints/main/sess-1', { agent: 'main', sessionId: 'sess-1' }),
       ctx,
-      {},
+      {} as any,
     )
     expect(res.status).toBe(400)
   })
@@ -225,7 +225,7 @@ describe('checkpointDetailRoute — handler', () => {
         checkpointId: 'cp-a',
       }),
       h.ctx,
-      {},
+      {} as any,
     )
     const body = await res.json() as Record<string, unknown>
     expect(res.status).toBe(200)
@@ -256,7 +256,7 @@ describe('checkpointDetailRoute — handler', () => {
         checkpointId: 'cp-a',
       }),
       h.ctx,
-      {},
+      {} as any,
     )
     expect(res.status).toBe(404)
   })
@@ -276,7 +276,7 @@ describe('checkpointDetailRoute — handler', () => {
         checkpointId: 'cp-a',
       }),
       h.ctx,
-      {},
+      {} as any,
     )
     expect(res.status).toBe(404)
   })

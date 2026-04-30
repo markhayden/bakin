@@ -22,9 +22,13 @@
  * (`results`, `aggregations`, `meta`) so the client can reuse `useSearch`'s
  * result renderer without a second type.
  */
+import { z } from 'zod'
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
 import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
+
+const passthrough = z.object({}).passthrough()
+const errorResponse = z.object({ error: z.string() })
 import { MEMORY_TIERS, type MemoryTier } from '../types'
 
 const DEFAULT_LIMIT = 30
@@ -75,6 +79,8 @@ export const recentRoute = defineRoute({
   path: '/recent',
   method: 'GET',
   description: 'Recent memory items across tiers, sorted by updated_at desc',
+  summary: 'Recent memory items across tiers, sorted by updated_at desc',
+  responses: { 200: passthrough, 400: errorResponse },
   handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const limit = parseLimit(url.searchParams.get('limit'))

@@ -10,9 +10,13 @@
  * Both endpoints read from the `bakin_memory` table (tier=checkpoint). The
  * indexer is the single source of truth — routes never re-parse files.
  */
+import { z } from 'zod'
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
 import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
+
+const passthrough = z.object({}).passthrough()
+const errorResponse = z.object({ error: z.string() })
 
 function parseLimitOffset(url: URL): { limit: number; offset: number } {
   const l = Number(url.searchParams.get('limit'))
@@ -29,6 +33,8 @@ export const checkpointsListRoute = defineRoute({
   path: '/checkpoints',
   method: 'GET',
   description: 'List compaction checkpoints for an agent (optionally by session)',
+  summary: 'List compaction checkpoints for an agent (optionally by session)',
+  responses: { 200: passthrough, 400: errorResponse },
   handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
@@ -55,6 +61,9 @@ export const checkpointDetailRoute = defineRoute({
   path: '/checkpoints/:agent/:sessionId/:checkpointId',
   method: 'GET',
   description: 'Read one checkpoint by (agent, sessionId, checkpointId)',
+  summary: 'Read one checkpoint by (agent, sessionId, checkpointId)',
+  params: z.object({ agent: z.string(), sessionId: z.string(), checkpointId: z.string() }),
+  responses: { 200: passthrough, 400: errorResponse, 404: errorResponse },
   handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
