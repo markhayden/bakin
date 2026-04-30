@@ -178,7 +178,7 @@ export interface ActivityAPI {
 // ---------------------------------------------------------------------------
 export interface HookAPI {
   /** Register a handler for a named hook. Returns unsubscribe function. */
-  register(name: string, handler: (data: any) => any): () => void
+  register(name: string, handler: (data: any) => any, metadata?: HookRegistrationMetadata): () => void
   /** Run registered handlers as a waterfall and return the final value. */
   call<T>(name: string, data: T): Promise<T>
   /** Run every registered handler and ignore return values. */
@@ -188,6 +188,20 @@ export interface HookAPI {
   /** Invoke a hook and return its result (RPC-style). */
   invoke<R>(name: string, data: unknown): Promise<R | undefined>
 }
+
+export interface HookRegistrationMetadata {
+  label?: string
+  summary: string
+  description?: string
+  hookKind?: ContractHookKind
+  input?: SchemaLike
+  output?: SchemaLike
+  visibility?: ContractVisibility
+  stability?: ContractStability
+  examples?: DocsExample[]
+}
+
+export type ContractHookKind = 'rpc' | 'event' | 'waterfall'
 
 // ---------------------------------------------------------------------------
 // Workflow node-type registration

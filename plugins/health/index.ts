@@ -79,11 +79,11 @@ const healthPlugin: BakinPlugin = {
       autoFix: !!def.autoFix,
     })
 
-    ctx.hooks.register('health.list', () => listHealthChecks().map(stripRun))
+    ctx.hooks.register('health.list', () => listHealthChecks().map(stripRun), { label: 'List health checks.', summary: 'Returns the health checks registered by core and plugins without executing them. Use it when another surface needs to show the available diagnostics or autofix support.', hookKind: 'rpc' })
     ctx.hooks.register('health.getCheck', (d: Record<string, unknown>) => {
       const def = getHealthCheck(d.id as string)
       return def ? stripRun(def) : null
-    })
+    }, { label: 'Get a health check.', summary: 'Returns metadata for one registered health check by id, without running the check. Use it when a plugin needs the check name, owner, and autofix capability before deciding what to show or run.', hookKind: 'rpc' })
 
     ctx.registerRoute({
       path: '/checks',

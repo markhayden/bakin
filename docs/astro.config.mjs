@@ -66,49 +66,6 @@ export default defineConfig({
 })();
           `,
         },
-        {
-          tag: 'script',
-          content: `
-(function () {
-  function fallbackCopy(text) {
-    var field = document.createElement("textarea");
-    field.value = text;
-    field.setAttribute("readonly", "");
-    field.style.position = "fixed";
-    field.style.opacity = "0";
-    document.body.appendChild(field);
-    field.select();
-    try {
-      document.execCommand("copy");
-    } finally {
-      document.body.removeChild(field);
-    }
-  }
-
-  document.addEventListener("click", function (event) {
-    var button = event.target instanceof Element ? event.target.closest("[data-cli-copy]") : null;
-    if (!button) return;
-    var command = button.getAttribute("data-cli-copy") || "";
-    var original = button.textContent || "Copy";
-    var done = function () {
-      button.textContent = "Copied";
-      window.setTimeout(function () {
-        button.textContent = original;
-      }, 1400);
-    };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(command).then(done).catch(function () {
-        fallbackCopy(command);
-        done();
-      });
-    } else {
-      fallbackCopy(command);
-      done();
-    }
-  });
-})();
-          `,
-        },
         ...(gtmId
           ? [
               {
@@ -283,7 +240,7 @@ document.addEventListener("click", function (event) {
           items: [
             { label: 'CLI', slug: 'reference/generated/cli' },
             { label: 'API Reference', slug: 'reference/generated/api' },
-            { label: 'Hook Reference', slug: 'reference/generated/hooks' },
+            { label: 'Hooks', slug: 'reference/generated/hooks' },
             { label: 'Exec/MCP Tools', slug: 'reference/generated/exec-tools' },
             { label: 'Core Plugins', slug: 'reference/generated/core-plugins' },
             { label: 'Settings', slug: 'reference/generated/settings' },

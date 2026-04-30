@@ -140,6 +140,8 @@ Source: `packages/sdk/src/types/index.ts`
 | `export interface EventBus {` |
 | `export interface ActivityAPI {` |
 | `export interface HookAPI {` |
+| `export interface HookRegistrationMetadata {` |
+| `export type HookKind = 'rpc' \| 'event' \| 'waterfall'` |
 | `export interface NavItem {` |
 | `export interface APIRoute {` |
 | `export interface UISlotRegistration {` |
@@ -248,7 +250,5 @@ Source: `packages/sdk/src/metadata/index.ts`
 | `export const definePluginRoute = defineApiRoute` |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated from <code>packages/sdk/package.json + SDK barrel files</code>.</span>
-  <span>Bakin 1.0.0.</span>
-  <span>Full TypeDoc output will replace this audit view once public TSDoc coverage is complete.</span>
+  <span>Generated Apr 29, 2026 · Bakin 1.0.0</span>
 </aside>

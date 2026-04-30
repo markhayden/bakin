@@ -862,28 +862,28 @@ const teamPlugin: BakinPlugin = {
 
     // ─── Cross-Plugin Hooks ────────────────────────────────────────────
 
-    ctx.hooks.register('team.list', () => listRuntimeAgentMetas(ctx.runtime))
+    ctx.hooks.register('team.list', () => listRuntimeAgentMetas(ctx.runtime), { label: 'List agents.', summary: 'Returns runtime agents with their display and team metadata attached. Use it when another plugin needs the agent roster as Bakin presents it.', hookKind: 'rpc' })
     ctx.hooks.register('team.getAgent', async (d: Record<string, unknown>) => {
       const id = d.id as string
       const agents = await listRuntimeAgentMetas(ctx.runtime)
       return agents.find((a) => a.id === id) ?? null
-    })
-    ctx.hooks.register('team.getAgentIds', () => getRuntimeAgentIds(ctx.runtime))
+    }, { label: 'Get an agent.', summary: 'Returns one runtime agent by id, including team-aware metadata when available. Use it when a plugin already has an agent id and needs the full display record.', hookKind: 'rpc' })
+    ctx.hooks.register('team.getAgentIds', () => getRuntimeAgentIds(ctx.runtime), { label: 'List agent ids.', summary: 'Returns the ids of agents currently known to the runtime. Use it for lightweight validation, assignment pickers, or loops that do not need full agent metadata.', hookKind: 'rpc' })
     ctx.hooks.register('team.resolveProfile', (d: Record<string, unknown>) => {
       return getRuntimeAgentProfile(ctx.runtime, d.id as string)
-    })
+    }, { label: 'Resolve agent profile.', summary: 'Returns the runtime profile for an agent id. Use it when a plugin needs the lower-level profile data behind an agent display record.', hookKind: 'rpc' })
     ctx.hooks.register('team.getTeamMembers', (d: Record<string, unknown>) => {
       return getTeamMembers(ctx.runtime, d.teamId as string)
-    })
+    }, { label: 'List team members.', summary: 'Returns the agents assigned to one team. Use it for team dashboards, routing rules, or workflow logic that needs team membership.', hookKind: 'rpc' })
     ctx.hooks.register('team.getAgentTeam', async (d: Record<string, unknown>) => {
       const ds = await mergeDisplayDefaults(ctx.runtime, readDisplaySettings())
       const teamId = ds[d.id as string]?.teamId
       if (!teamId) return null
       return readTeams().find((t) => t.id === teamId) ?? null
-    })
+    }, { label: 'Get agent team.', summary: 'Returns the team currently assigned to an agent, or null when the agent is unassigned. Use it to add team context to task, workflow, or activity views.', hookKind: 'rpc' })
     ctx.hooks.register('team.getOrgStructure', () => {
       return getOrgStructure(ctx.runtime)
-    })
+    }, { label: 'Get org structure.', summary: 'Returns the current organization structure for teams and agents. Use it when a plugin needs the full hierarchy instead of individual team or agent records.', hookKind: 'rpc' })
 
     // ─── REST Routes ───────────────────────────────────────────────────
 

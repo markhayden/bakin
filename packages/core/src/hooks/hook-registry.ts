@@ -6,12 +6,20 @@
  * directly across plugin boundaries.
  */
 
+import type { HookRegistrationMetadata } from '../plugin-types'
+
 type HookHandler = (data: unknown) => unknown | Promise<unknown>
 
 interface HookEntry {
   handler: HookHandler
   /** Plugin id that registered this handler — null when registered by core. */
   pluginId: string | null
+  metadata?: HookRegistrationMetadata
+}
+
+type RegisterOptions = {
+  pluginId?: string
+  metadata?: HookRegistrationMetadata
 }
 
 export class HookRegistry {
@@ -27,13 +35,22 @@ export class HookRegistry {
    * during plugin remove (#119). Core modules pass nothing and stay
    * untagged so they're never swept by plugin removal.
    */
-  register(name: string, handler: (data: any) => any, pluginId?: string): () => void {
+  register(
+    name: string,
+    handler: (data: any) => any,
+    pluginIdOrOptions?: string | RegisterOptions,
+    metadata?: HookRegistrationMetadata,
+  ): () => void {
     if (!this.handlers.has(name)) {
       this.handlers.set(name, [])
     }
+    const options = typeof pluginIdOrOptions === 'string'
+      ? { pluginId: pluginIdOrOptions, metadata }
+      : pluginIdOrOptions
     const entry: HookEntry = {
       handler: handler as HookHandler,
-      pluginId: pluginId ?? null,
+      pluginId: options?.pluginId ?? null,
+      metadata: options?.metadata,
     }
     this.handlers.get(name)!.push(entry)
     return () => {
@@ -95,6 +112,13 @@ export class HookRegistry {
   /** List all registered hook names (for diagnostics). */
   getRegisteredHooks(): string[] {
     return [...this.handlers.keys()]
+  }
+
+  /** Return hook metadata collected from registered handlers. */
+  getHookMetadata(): Array<{ name: string; pluginId: string | null; metadata?: HookRegistrationMetadata }> {
+    return [...this.handlers.entries()].flatMap(([name, entries]) =>
+      entries.map(entry => ({ name, pluginId: entry.pluginId, metadata: entry.metadata })),
+    )
   }
 
   /**

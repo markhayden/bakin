@@ -194,12 +194,26 @@ export interface ActivityAPI {
 }
 
 export interface HookAPI {
-  register(name: string, handler: (data: unknown) => unknown): () => void
+  register(name: string, handler: (data: unknown) => unknown, metadata?: HookRegistrationMetadata): () => void
   call<T>(name: string, data: T): Promise<T>
   callAll(name: string, data: Record<string, unknown>): Promise<void>
   has(name: string): boolean
   invoke<R>(name: string, data: unknown): Promise<R | undefined>
 }
+
+export interface HookRegistrationMetadata {
+  label?: string
+  summary: string
+  description?: string
+  hookKind?: HookKind
+  input?: SchemaLike
+  output?: SchemaLike
+  visibility?: ContractVisibility
+  stability?: ContractStability
+  examples?: DocsExample[]
+}
+
+export type HookKind = 'rpc' | 'event' | 'waterfall'
 
 // ---------------------------------------------------------------------------
 // Navigation, API routes, UI slots

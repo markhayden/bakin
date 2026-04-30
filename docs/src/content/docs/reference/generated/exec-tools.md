@@ -437,7 +437,7 @@ Source: `scripts/lib/post-channel.ts:104`
 
 Add a new checklist item to a project.
 
-Source: `bakin-bits-official/plugins/projects/index.ts:606`
+Source: `bakin-bits-official/plugins/projects/index.ts:614`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -447,7 +447,7 @@ Source: `bakin-bits-official/plugins/projects/index.ts:606`
 
 Ask an agent a question about a project. Sends the project context (spec, checklist, assets) along with the message to the agent for brainstorming.
 
-Source: `bakin-bits-official/plugins/projects/index.ts:796`
+Source: `bakin-bits-official/plugins/projects/index.ts:804`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -457,7 +457,7 @@ Source: `bakin-bits-official/plugins/projects/index.ts:796`
 
 Attach an existing asset to a project by filename. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in project_get — use asset tools to read full content when needed.
 
-Source: `bakin-bits-official/plugins/projects/index.ts:708`
+Source: `bakin-bits-official/plugins/projects/index.ts:716`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -467,7 +467,7 @@ Source: `bakin-bits-official/plugins/projects/index.ts:708`
 
 Create a new project with title, markdown body, and optional initial checklist items. Returns project ID and generated task item IDs.
 
-Source: `bakin-bits-official/plugins/projects/index.ts:539`
+Source: `bakin-bits-official/plugins/projects/index.ts:547`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -477,7 +477,7 @@ Source: `bakin-bits-official/plugins/projects/index.ts:539`
 
 Delete a project by ID.
 
-Source: `bakin-bits-official/plugins/projects/index.ts:588`
+Source: `bakin-bits-official/plugins/projects/index.ts:596`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -487,7 +487,7 @@ Source: `bakin-bits-official/plugins/projects/index.ts:588`
 
 Remove an asset reference from a project by filename. Does not delete the asset itself.
 
-Source: `bakin-bits-official/plugins/projects/index.ts:728`
+Source: `bakin-bits-official/plugins/projects/index.ts:736`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -497,7 +497,7 @@ Source: `bakin-bits-official/plugins/projects/index.ts:728`
 
 Get a project by ID including full spec, checklist, progress, and linked board task statuses.
 
-Source: `bakin-bits-official/plugins/projects/index.ts:525`
+Source: `bakin-bits-official/plugins/projects/index.ts:533`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -507,7 +507,7 @@ Source: `bakin-bits-official/plugins/projects/index.ts:525`
 
 Link an existing board task to a project checklist item. Use this when a task was created separately and should be associated with a project.
 
-Source: `bakin-bits-official/plugins/projects/index.ts:660`
+Source: `bakin-bits-official/plugins/projects/index.ts:668`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -517,7 +517,7 @@ Source: `bakin-bits-official/plugins/projects/index.ts:660`
 
 List all projects with optional status filter. Returns summaries with id, title, status, progress, taskCount.
 
-Source: `bakin-bits-official/plugins/projects/index.ts:509`
+Source: `bakin-bits-official/plugins/projects/index.ts:517`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -527,7 +527,7 @@ Source: `bakin-bits-official/plugins/projects/index.ts:509`
 
 Mark a checklist item as checked (done) or unchecked. Returns updated progress percentage.
 
-Source: `bakin-bits-official/plugins/projects/index.ts:621`
+Source: `bakin-bits-official/plugins/projects/index.ts:629`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -537,7 +537,7 @@ Source: `bakin-bits-official/plugins/projects/index.ts:621`
 
 Create a NEW board task from a project checklist item and automatically link it. The task appears on the task board with the item title and projectId set.
 
-Source: `bakin-bits-official/plugins/projects/index.ts:684`
+Source: `bakin-bits-official/plugins/projects/index.ts:692`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -547,7 +547,7 @@ Source: `bakin-bits-official/plugins/projects/index.ts:684`
 
 Remove a checklist item from a project.
 
-Source: `bakin-bits-official/plugins/projects/index.ts:641`
+Source: `bakin-bits-official/plugins/projects/index.ts:649`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -557,7 +557,7 @@ Source: `bakin-bits-official/plugins/projects/index.ts:641`
 
 Toggle a checklist item checked/unchecked by item ID. Returns updated progress percentage.
 
-Source: `bakin-bits-official/plugins/projects/index.ts:747`
+Source: `bakin-bits-official/plugins/projects/index.ts:755`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -567,7 +567,7 @@ Source: `bakin-bits-official/plugins/projects/index.ts:747`
 
 Update a project's title, status, body, or owner. Cannot set status to "completed" if unchecked items remain.
 
-Source: `bakin-bits-official/plugins/projects/index.ts:561`
+Source: `bakin-bits-official/plugins/projects/index.ts:569`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -577,7 +577,7 @@ Source: `bakin-bits-official/plugins/projects/index.ts:561`
 
 Update a checklist item's title and/or description.
 
-Source: `bakin-bits-official/plugins/projects/index.ts:768`
+Source: `bakin-bits-official/plugins/projects/index.ts:776`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -1064,7 +1064,5 @@ Source: `plugins/workflows/index.ts:1119`
 - Contract status: `audited`
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated from <code>source audit</code>.</span>
-  <span>Bakin 1.0.0.</span>
-  <span>A later contract pass will replace audited tool entries with explicit metadata and schemas.</span>
+  <span>Generated Apr 29, 2026 · Bakin 1.0.0</span>
 </aside>
