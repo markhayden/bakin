@@ -128,6 +128,10 @@ Source: `packages/sdk/src/types/index.ts`
 | `export type RuntimeCapability =` |
 | `export interface PluginEntryPoints {` |
 | `export interface ApiRouteContribution {` |
+| `export type JsonSchemaContribution = Record<string, unknown>` |
+| `export interface ApiParameterContribution {` |
+| `export interface ApiRequestBodyContribution {` |
+| `export interface ApiResponseContribution {` |
 | `export interface ClientRouteContribution {` |
 | `export interface ExecToolContribution {` |
 | `export interface CliCommandContribution {` |

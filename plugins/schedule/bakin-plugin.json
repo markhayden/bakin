@@ -51,7 +51,7 @@
       {
         "method": "PUT",
         "path": "/:jobId",
-        "summary": "PUT /:jobId"
+        "summary": "Update an existing scheduled job"
       },
       {
         "method": "POST",

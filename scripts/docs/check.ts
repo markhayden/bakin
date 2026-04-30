@@ -8,9 +8,11 @@ import {
   extractPluginSettings,
   getApiRoutes,
   getCliCommands,
+  listPluginManifests,
   locateExtractedPlugin,
   renderExecToolsSnippet,
 } from './source-scan'
+import { getAllRoutes } from '../../src/core/api-docs'
 
 const repoRoot = new URL('../..', import.meta.url).pathname
 const docsRoot = join(repoRoot, 'docs')
@@ -58,6 +60,10 @@ function parseFrontmatter(file: string): Frontmatter {
 function fail(message: string): never {
   console.error(message)
   process.exit(1)
+}
+
+function openApiPath(path: string): string {
+  return path.replace(/:([A-Za-z0-9_]+)/g, '{$1}')
 }
 
 const cliCommandNames = new Set(CLI_COMMANDS.map(command => command.name))
@@ -230,6 +236,19 @@ function validateApiRouteBlocks(file: string, text: string): void {
   }
 }
 
+function validateApiRouteContributions(): void {
+  for (const manifest of listPluginManifests()) {
+    for (const route of getApiRoutes(manifest.id)) {
+      if (/^(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)\s+\//.test(route.summary.trim())) {
+        errors.push(`${manifest.manifestPath}: ${route.method} ${route.path} has a placeholder API summary`)
+      }
+      if (!route.summary.trim().includes(' ') && route.summary.trim().length < 12) {
+        errors.push(`${manifest.manifestPath}: ${route.method} ${route.path} API summary is too terse`)
+      }
+    }
+  }
+}
+
 function validateSettingsBlocks(file: string, text: string): void {
   const rel = file.replace(repoRoot, '').replace(/^\//, '')
   const markerPattern = /<!-- docs:settings ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:settings -->/g
@@ -358,6 +377,7 @@ const requiredPublicFiles = [
   '.generated/coverage.json',
   'public/robots.txt',
   'public/_redirects',
+  'public/openapi.json',
   'public/llms.txt',
   'public/llms-full.txt',
   'public/llms/plugin-authoring.md',
@@ -380,6 +400,38 @@ const requiredSnippetFiles = [
 
 for (const file of requiredPublicFiles) {
   if (!existsSync(join(docsRoot, file))) errors.push(`docs/${file}: required docs asset missing`)
+}
+
+validateApiRouteContributions()
+
+const openApiPathOnDisk = join(docsRoot, 'public/openapi.json')
+if (existsSync(openApiPathOnDisk)) {
+  try {
+    const spec = JSON.parse(readFileSync(openApiPathOnDisk, 'utf8')) as {
+      openapi?: string
+      info?: { title?: string }
+      paths?: Record<string, Record<string, unknown>>
+    }
+    if (spec.openapi !== '3.1.0') errors.push('docs/public/openapi.json: openapi must be 3.1.0')
+    if (spec.info?.title !== 'Bakin API') errors.push('docs/public/openapi.json: info.title must be "Bakin API"')
+    if (!spec.paths || Object.keys(spec.paths).length === 0) errors.push('docs/public/openapi.json: paths must not be empty')
+    const expectedRoutes = [
+      ...getAllRoutes().filter(route => route.pluginId === 'core').map(route => ({ method: route.method, path: route.fullPath })),
+      ...listPluginManifests().flatMap(manifest => getApiRoutes(manifest.id).map(route => ({
+        method: route.method,
+        path: `/api/plugins/${manifest.id}${route.path}`,
+      }))),
+    ]
+    for (const route of expectedRoutes) {
+      const path = openApiPath(route.path)
+      const method = route.method.toLowerCase()
+      if (!spec.paths?.[path]?.[method]) {
+        errors.push(`docs/public/openapi.json: missing ${route.method} ${path}`)
+      }
+    }
+  } catch (err) {
+    errors.push(`docs/public/openapi.json: invalid JSON (${err instanceof Error ? err.message : String(err)})`)
+  }
 }
 
 for (const file of requiredSnippetFiles) {

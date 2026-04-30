@@ -29,32 +29,32 @@
       {
         "method": "GET",
         "path": "/doctor",
-        "summary": "GET /doctor"
+        "summary": "Run or read cached doctor diagnostics"
       },
       {
         "method": "GET",
         "path": "/registry",
-        "summary": "GET /registry"
+        "summary": "Inspect registered plugin and runtime surfaces"
       },
       {
         "method": "GET",
         "path": "/search-status",
-        "summary": "GET /search-status"
+        "summary": "Read search indexing health and adapter status"
       },
       {
         "method": "GET",
         "path": "/summary",
-        "summary": "GET /summary"
+        "summary": "Get a compact system health summary"
       },
       {
         "method": "GET",
         "path": "/usage",
-        "summary": "GET /usage"
+        "summary": "Get current token and cost usage metrics"
       },
       {
         "method": "GET",
         "path": "/usage-feed",
-        "summary": "GET /usage-feed"
+        "summary": "Stream usage updates for the health dashboard"
       }
     ],
     "execTools": [
