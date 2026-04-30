@@ -15,7 +15,7 @@ import {
   listHealthChecks,
   getHealthCheck,
   type HealthCheckDef,
-} from './lib/health-check-registry'
+} from '../../src/core/health-check-registry'
 import { checkContentDir } from './lib/system-checks/content-dir'
 import { checkService } from './lib/system-checks/service'
 import { checkMcporter } from './lib/system-checks/mcporter'
@@ -25,7 +25,7 @@ import { checkSearchAdapter } from './lib/system-checks/search'
 import { checkOrchestratorRules } from './lib/system-checks/orchestrator-rules'
 import { checkAndSyncSkill } from './lib/system-checks/sync-skill'
 import { checkPluginAssets } from './lib/system-checks/plugin-assets'
-import { applyAllManagedBlocksForRuntime } from './lib/managed-blocks'
+import { applyAllManagedBlocksForRuntime } from '../../src/core/agent-rules/managed-blocks'
 // Registry accessors live on globalThis because Next.js API routes get
 // separate webpack-compiled module instances with empty Maps. The custom
 // server (server.ts) registers the real accessors after plugin init.

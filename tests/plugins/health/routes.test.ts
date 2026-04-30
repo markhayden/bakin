@@ -82,8 +82,8 @@ mock.module('../../../src/core/search-registry', () => ({
   })),
   getContentTypes: mock(() => []),
   purgeContentType: mock(async () => {}),
-  // plugin-registry.ts (transitively imported by health/managed-blocks via
-  // getHookRegistry) re-imports buildSearchAPI; provide a no-op stub.
+  // plugin-registry.ts can be reached by core agent-rules when rendering
+  // workflow catalog snapshots; provide a no-op search API stub.
   buildSearchAPI: () => ({
     registerContentType: mock(),
     registerFileBackedContentType: mock(),
