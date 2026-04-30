@@ -19,6 +19,8 @@ Search is semantic and reaches text and pixels at the same time. Type "italian f
 
 Bakin classifies files by extension into nine types:
 
+<div class="table-light-fit table-label">
+
 | Type | Extensions |
 | --- | --- |
 | `text` | `.md` `.txt` `.rtf` |
@@ -30,6 +32,8 @@ Bakin classifies files by extension into nine types:
 | `data` | `.json` `.csv` `.tsv` `.xml` |
 | `other` | anything else |
 | `research` | retype-only (no auto-classification) |
+
+</div>
 
 `other` is a real type. Files outside the whitelist still upload and get all the same metadata, indexing, and trash treatment. `research` doesn't claim any extension automatically, but you can retype anything into it from the detail modal when the content fits the role. Default size limit is 50 MB per file, configurable in Settings.
 
@@ -125,7 +129,7 @@ Plugins compose by filename (`/api/assets/{filename}` is a stable URL) or by slo
 ## Settings
 
 <!-- docs:settings assets -->
-<div class="settings-table">
+<div class="table-light-full table-settings">
 
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
@@ -141,9 +145,13 @@ Plugins compose by filename (`/api/assets/{filename}` is a stable URL) or by slo
 Most asset workflows happen in the UI or through agents. Trash is CLI-friendly:
 
 <!-- docs:cli-commands assets -->
+<div class="table-light-full table-label">
+
 | Command | Purpose |
 | --- | --- |
 | `bakin trash [list\|restore\|empty] ...` | Manage trashed assets. |
+
+</div>
 <!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).

@@ -30,6 +30,8 @@ Source: `docs/snippets/plugin-basic/bakin-plugin.json`
 
 ## Required Fields
 
+<div class="table-light-full table-label">
+
 | Field | Meaning |
 | --- | --- |
 | `id` | Stable machine id. Use lowercase letters, numbers, dashes, and underscores. |
@@ -39,7 +41,11 @@ Source: `docs/snippets/plugin-basic/bakin-plugin.json`
 | `description` | Short public summary. |
 | `entry.server` | Server entry loaded by the plugin runtime. |
 
+</div>
+
 ## Optional Fields
+
+<div class="table-light-full table-label">
 
 | Field | Meaning |
 | --- | --- |
@@ -49,6 +55,8 @@ Source: `docs/snippets/plugin-basic/bakin-plugin.json`
 | `tests` | Plugin-local test command. |
 | `dependencies` | Other Bakin plugin IDs that must be available before this plugin loads. |
 | `permissions` | Capability labels used for review and future policy enforcement. |
+
+</div>
 
 ## Authoring Rules
 

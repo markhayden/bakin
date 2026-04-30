@@ -51,7 +51,7 @@ Projects index into search (table `bakin_projects`) on `title` and `body`, facet
 ## Settings
 
 <!-- docs:settings projects -->
-<div class="settings-table">
+<div class="table-light-full table-settings">
 
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
@@ -64,6 +64,8 @@ Projects index into search (table `bakin_projects`) on `title` and `body`, facet
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
 
 <!-- docs:cli-commands projects -->
+<div class="table-light-full table-label">
+
 | Command | Purpose |
 | --- | --- |
 | `bakin projects list` | List projects |
@@ -80,6 +82,8 @@ Projects index into search (table `bakin_projects`) on `title` and `body`, facet
 | `bakin projects attach-asset <projectId> <filename>` | Attach an asset to a project |
 | `bakin projects detach-asset <projectId> <filename>` | Detach an asset from a project |
 | `bakin projects ask <projectId> <message>` | Ask an agent about a project |
+
+</div>
 <!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).

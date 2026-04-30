@@ -72,6 +72,8 @@ The filter bar above the board narrows by column, owner, tag, or attached workfl
 
 The seven columns and what they mean:
 
+<div class="table-light-fit table-label">
+
 | Column | Meaning |
 | --- | --- |
 | Backlog | Captured but not yet approved or scheduled |
@@ -82,7 +84,11 @@ The seven columns and what they mean:
 | Done | Approved and complete |
 | Archived | Cleared off the active board, history preserved |
 
+</div>
+
 <p class="gap-top">Tasks move along a fixed state machine. Allowed transitions:</p>
+
+<div class="table-light-fit table-label">
 
 | From | To |
 | --- | --- |
@@ -94,12 +100,14 @@ The seven columns and what they mean:
 | Done | Archived, Todo, In Progress |
 | Archived | Done, Todo |
 
+</div>
+
 CLI moves and agent calls go through the same state machine.
 
 ## Settings
 
 <!-- docs:settings tasks -->
-<div class="settings-table">
+<div class="table-light-full table-settings">
 
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
@@ -116,6 +124,8 @@ CLI moves and agent calls go through the same state machine.
 Same operations are available from the terminal when you'd rather not click:
 
 <!-- docs:cli-commands tasks -->
+<div class="table-light-full table-label">
+
 | Command | Purpose |
 | --- | --- |
 | `bakin tasks list [--column=<column>]` | List tasks. |
@@ -126,6 +136,8 @@ Same operations are available from the terminal when you'd rather not click:
 | `bakin tasks block <id> <reason>` | Block a task. |
 | `bakin tasks depend <id> <dependsOn>` | Register a task dependency. |
 | `bakin tasks complete <id> <summary>` | Complete a task. |
+
+</div>
 <!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).

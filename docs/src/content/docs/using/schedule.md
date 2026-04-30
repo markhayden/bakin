@@ -64,7 +64,7 @@ Cron expressions and run logs live in the runtime home. Bakin reads them; the ru
 ## Settings
 
 <!-- docs:settings schedule -->
-<div class="settings-table">
+<div class="table-light-full table-settings">
 
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
@@ -81,9 +81,13 @@ Cron expressions and run logs live in the runtime home. Bakin reads them; the ru
 Same surface from the terminal:
 
 <!-- docs:cli-commands schedule -->
+<div class="table-light-full table-label">
+
 | Command | Purpose |
 | --- | --- |
 | `bakin schedule [list\|add\|pause\|resume\|remove\|run\|runs] ...` | Manage scheduled jobs. |
+
+</div>
 <!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
