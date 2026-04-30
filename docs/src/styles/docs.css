@@ -721,6 +721,17 @@ starlight-toc nav a[href="#for-agents"]::before {
   color: var(--sl-color-gray-1);
 }
 
+.runtime-paths-intro {
+  margin: 0.75rem 0 1.75rem;
+  color: var(--sl-color-gray-2);
+  font-size: 1.02rem;
+  line-height: 1.7;
+}
+
+.runtime-paths-intro p {
+  margin: 0;
+}
+
 .sl-markdown-content table.settings-defaults-table:not(:where(.not-content *)) {
   display: table;
   width: 100%;
@@ -729,7 +740,7 @@ starlight-toc nav a[href="#for-agents"]::before {
   overflow: hidden;
   border-collapse: collapse;
   border-radius: 0.55rem;
-  background: rgba(255, 255, 255, 0.035);
+  background: #1d1b1b;
 }
 
 .sl-markdown-content table.settings-defaults-table:not(:where(.not-content *)) th,
@@ -741,12 +752,13 @@ starlight-toc nav a[href="#for-agents"]::before {
 }
 
 .sl-markdown-content table.settings-defaults-table:not(:where(.not-content *)) th {
-  background: rgba(255, 255, 255, 0.045);
+  background: #242121;
   color: var(--sl-color-gray-1);
   font-size: 0.8rem;
 }
 
 .sl-markdown-content table.settings-defaults-table:not(:where(.not-content *)) td {
+  background: #1d1b1b;
   color: var(--sl-color-gray-2);
   font-size: 0.86rem;
 }
@@ -761,6 +773,61 @@ starlight-toc nav a[href="#for-agents"]::before {
 }
 
 .sl-markdown-content table.settings-defaults-table:not(:where(.not-content *)) code {
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--sl-color-gray-1);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.sl-markdown-content table.runtime-paths-table:not(:where(.not-content *)) {
+  display: table;
+  width: 100%;
+  margin: 0.95rem 0 2rem;
+  table-layout: fixed;
+  overflow: hidden;
+  border-collapse: collapse;
+  border-radius: 0.55rem;
+  background: #1d1b1b;
+}
+
+.sl-markdown-content table.runtime-paths-table:not(:where(.not-content *)) th,
+.sl-markdown-content table.runtime-paths-table:not(:where(.not-content *)) td {
+  padding: 0.68rem 0.8rem;
+  border: 0;
+  border-bottom: 1px solid rgba(120, 117, 116, 0.28);
+  vertical-align: top;
+}
+
+.sl-markdown-content table.runtime-paths-table:not(:where(.not-content *)) th {
+  background: #242121;
+  color: var(--sl-color-gray-1);
+  font-size: 0.8rem;
+}
+
+.sl-markdown-content table.runtime-paths-table:not(:where(.not-content *)) td {
+  background: #1d1b1b;
+  color: var(--sl-color-gray-2);
+  font-size: 0.86rem;
+}
+
+.sl-markdown-content table.runtime-paths-table:not(:where(.not-content *)) tr:last-child td {
+  border-bottom: 0;
+}
+
+.sl-markdown-content table.runtime-paths-table:not(:where(.not-content *)) th:first-child,
+.sl-markdown-content table.runtime-paths-table:not(:where(.not-content *)) td:first-child {
+  width: 30%;
+}
+
+.sl-markdown-content table.runtime-paths-table:not(:where(.not-content *)) code {
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--sl-color-gray-1);
   white-space: normal;
   overflow-wrap: anywhere;
 }
