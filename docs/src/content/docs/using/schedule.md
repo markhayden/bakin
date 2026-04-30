@@ -88,7 +88,7 @@ Same surface from the terminal:
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
-HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-schedule).
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#schedule).
 
 <div class="for-agents">
 

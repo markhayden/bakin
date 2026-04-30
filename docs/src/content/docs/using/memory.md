@@ -70,7 +70,7 @@ Turns and Audit are noisy by default. Flip the `System Logs` toggle in the page 
 
 Defaults are sensible. Most folks will never touch this.
 
-HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-memory).
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#memory).
 
 <div class="for-agents">
 

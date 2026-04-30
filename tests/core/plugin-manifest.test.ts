@@ -26,7 +26,36 @@ describe('plugin manifest schema', () => {
       contributes: {
         apiRoutes: [
           { method: 'GET', path: '/', summary: 'List messaging items' },
-          { method: 'POST', path: '/:itemId/approve', summary: 'Approve an item' },
+          {
+            method: 'POST',
+            path: '/:itemId/approve',
+            summary: 'Approve an item',
+            operationId: 'messaging-approve-item',
+            tags: ['Messaging'],
+            parameters: [
+              { name: 'itemId', in: 'path', required: true, schema: { type: 'string' } },
+            ],
+            requestBody: {
+              required: false,
+              schema: {
+                type: 'object',
+                properties: {
+                  note: { type: 'string' },
+                },
+              },
+            },
+            responses: {
+              200: {
+                description: 'Approved item.',
+                schema: {
+                  type: 'object',
+                  properties: {
+                    ok: { type: 'boolean' },
+                  },
+                },
+              },
+            },
+          },
         ],
         clientRoutes: [
           { path: '/messaging/calendar', summary: 'Messaging calendar' },
@@ -54,6 +83,9 @@ describe('plugin manifest schema', () => {
     expect(manifest.id).toBe('messaging')
     expect(manifest.entry.client).toBe('client.tsx')
     expect(manifest.contributes?.apiRoutes?.[1]?.path).toBe('/:itemId/approve')
+    expect(manifest.contributes?.apiRoutes?.[1]?.operationId).toBe('messaging-approve-item')
+    expect(manifest.contributes?.apiRoutes?.[1]?.parameters?.[0]?.name).toBe('itemId')
+    expect(manifest.contributes?.apiRoutes?.[1]?.responses?.[200]?.description).toBe('Approved item.')
     expect(manifest.contributes?.cliCommands?.[0]?.dispatch.type).toBe('apiRoute')
   })
 

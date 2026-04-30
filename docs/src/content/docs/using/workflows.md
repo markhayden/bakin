@@ -96,7 +96,7 @@ Definitions and instances both index into search (table `bakin_workflows`) on na
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
-HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-workflows).
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#workflows).
 
 <div class="for-agents">
 
