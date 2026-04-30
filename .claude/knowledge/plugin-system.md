@@ -782,6 +782,13 @@ shared utility, not a plugin-to-plugin dependency.
 4. `src/core/mcp-server.ts` imports core tool files, then calls
    `getAllExecTools()` to register all tools with the MCP server at
    startup.
+5. `src/core/mcp-tool-policy.ts` scopes each agent session. Disallowed tools
+   are hidden from `tools/list`; direct `tools/call` attempts are denied and
+   audited before the plugin handler can run.
+
+Plugin authors should use stable `bakin_exec_<pluginId>_<action>` names because
+agent-package `allowedTools` policies reference exact MCP tool names or
+wildcard patterns.
 
 ### PluginToolContext
 When the MCP server executes a tool handler, it builds a
