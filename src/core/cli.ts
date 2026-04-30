@@ -15,9 +15,17 @@
  *   1 — generic error (server unreachable, invalid input, etc.)
  *   2 — refusal (e.g. core-plugin removal)
  */
+import { readFileSync, writeFileSync } from 'node:fs'
 import { APP_VERSION } from '../../packages/core/src/constants'
 import { renderCliUsage } from './cli/registry'
 import { parsePluginInstallArgs, PLUGIN_INSTALL_USAGE } from './cli/plugin-install-args'
+import {
+  createPluginExportManifest,
+  installPluginExportManifest,
+  parsePluginExportManifest,
+  serializePluginExportManifest,
+  type PluginImportInstallRequest,
+} from './plugins/import-export'
 
 const BAKIN_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 
@@ -171,70 +179,131 @@ interface InstallApiResponse {
   message?: string
 }
 
-async function cmdPluginsInstall(source: string, opts: { yes: boolean; dev?: boolean; force?: boolean; ref?: string }): Promise<number> {
+async function runPluginsInstall(source: string, opts: { yes: boolean; dev?: boolean; force?: boolean; ref?: string; type?: 'github' | 'local' }): Promise<InstallApiResponse> {
   const isGithub = !opts.dev && (source.startsWith('github:') || (source.includes('/') && !source.startsWith('.') && !source.startsWith('/')))
-  const type: 'github' | 'local' = isGithub ? 'github' : 'local'
+  const type: 'github' | 'local' = opts.type ?? (isGithub ? 'github' : 'local')
   const ref = opts.ref
-  try {
-    // First call — preflight. With --yes the caller skips the consent
-    // round-trip entirely, but we still go through preflight first so the
-    // server can return a consentToken if it turns out the manifest needed
-    // one (--yes implies "accept whatever permissions show up").
-    let response = await api<InstallApiResponse>('/api/plugins/install', {
-      method: 'POST',
-      body: JSON.stringify({ source, type, ref, accepted: false, dev: opts.dev === true, force: opts.force === true }),
-    })
 
+  // First call — preflight. With --yes the caller skips the consent
+  // round-trip entirely, but we still go through preflight first so the
+  // server can return a consentToken if it turns out the manifest needed
+  // one (--yes implies "accept whatever permissions show up").
+  let response = await api<InstallApiResponse>('/api/plugins/install', {
+    method: 'POST',
+    body: JSON.stringify({ source, type, ref, accepted: false, dev: opts.dev === true, force: opts.force === true }),
+  })
+
+  if (response.error) return response
+
+  // Loop the prompt — if the server bounces back with manifestChanged,
+  // re-prompt with the new diff. Cap to a few iterations as a sanity
+  // bound against a pathological remote that flaps the manifest.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (!response.awaitingConsent) break
+    const { promptInstallConsent } = await import(/* @vite-ignore */ './cli/consent-prompt' as string) as typeof import('./cli/consent-prompt')
+    if (response.manifestChanged) {
+      console.error(`\nManifest changed between preflight and commit — re-confirming permissions.`)
+    }
+    const accepted = await promptInstallConsent({
+      pluginId: response.id ?? '?',
+      version: response.version ?? '0.0.0',
+      permissions: response.permissions ?? [],
+      yes: opts.yes,
+    })
+    if (!accepted) {
+      return { ok: false, error: 'install cancelled' }
+    }
+    response = await api<InstallApiResponse>('/api/plugins/install', {
+      method: 'POST',
+      body: JSON.stringify({
+        source,
+        type,
+        ref,
+        accepted: true,
+        consentToken: response.consentToken,
+        dev: opts.dev === true,
+        force: opts.force === true,
+      }),
+    })
+    if (response.error) return response
+  }
+
+  if (response.awaitingConsent) {
+    return { ok: false, error: 'manifest kept changing between preflight and commit; aborting' }
+  }
+
+  return response
+}
+
+async function cmdPluginsInstall(source: string, opts: { yes: boolean; dev?: boolean; force?: boolean; ref?: string }): Promise<number> {
+  try {
+    const response = await runPluginsInstall(source, opts)
     if (response.error) {
       console.error(`Install failed: ${response.error}`)
       return 1
     }
-
-    // Loop the prompt — if the server bounces back with manifestChanged,
-    // re-prompt with the new diff. Cap to a few iterations as a sanity
-    // bound against a pathological remote that flaps the manifest.
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (!response.awaitingConsent) break
-      const { promptInstallConsent } = await import(/* @vite-ignore */ './cli/consent-prompt' as string) as typeof import('./cli/consent-prompt')
-      if (response.manifestChanged) {
-        console.error(`\nManifest changed between preflight and commit — re-confirming permissions.`)
-      }
-      const accepted = await promptInstallConsent({
-        pluginId: response.id ?? '?',
-        version: response.version ?? '0.0.0',
-        permissions: response.permissions ?? [],
-        yes: opts.yes,
-      })
-      if (!accepted) {
-        console.error(`\nInstall cancelled.`)
-        return 1
-      }
-      response = await api<InstallApiResponse>('/api/plugins/install', {
-        method: 'POST',
-        body: JSON.stringify({
-          source,
-          type,
-          ref,
-          accepted: true,
-          consentToken: response.consentToken,
-          dev: opts.dev === true,
-          force: opts.force === true,
-        }),
-      })
-      if (response.error) {
-        console.error(`Install failed: ${response.error}`)
-        return 1
-      }
-    }
-    if (response.awaitingConsent) {
-      console.error(`Install failed: manifest kept changing between preflight and commit; aborting.`)
-      return 1
-    }
-
     console.log(response.message ?? `Installed "${response.id}".`)
     return 0
   } catch (err) {
     console.error(`Install failed: ${err instanceof Error ? err.message : String(err)}`)
+    return 1
+  }
+}
+
+async function cmdPluginsExport(file?: string): Promise<number> {
+  try {
+    const manifest = createPluginExportManifest()
+    const content = serializePluginExportManifest(manifest)
+    if (file) {
+      writeFileSync(file, content, 'utf-8')
+      console.log(`Exported ${manifest.plugins.length} plugin(s) to ${file}`)
+    } else {
+      process.stdout.write(content)
+    }
+    return 0
+  } catch (err) {
+    console.error(`Export failed: ${err instanceof Error ? err.message : String(err)}`)
+    return 1
+  }
+}
+
+async function installImportedPlugin(request: PluginImportInstallRequest, opts: { yes: boolean; force: boolean }): Promise<void> {
+  const refNote = request.ref ? ` @ ${request.ref.slice(0, 12)}` : ''
+  const modeNote = request.dev ? ' (dev)' : ''
+  console.log(`Installing ${request.id}${modeNote} from ${request.source}${refNote}`)
+  const response = await runPluginsInstall(request.source, {
+    yes: opts.yes,
+    dev: request.dev,
+    force: opts.force,
+    ref: request.ref,
+    type: request.type,
+  })
+  if (response.error) throw new Error(response.error)
+  console.log(response.message ?? `Installed "${response.id ?? request.id}".`)
+}
+
+async function cmdPluginsImport(file: string, opts: { yes: boolean; force: boolean }): Promise<number> {
+  try {
+    const manifest = parsePluginExportManifest(readFileSync(file, 'utf-8'))
+    if (manifest.plugins.length === 0) {
+      console.log('No plugins to import.')
+      return 0
+    }
+    const result = await installPluginExportManifest(
+      manifest,
+      request => installImportedPlugin(request, opts),
+    )
+    if (result.ok) {
+      console.log(`Imported ${result.installed.length} plugin(s).`)
+      return 0
+    }
+    console.error(`Import failed after installing ${result.installed.length} plugin(s).`)
+    for (const failure of result.failed) {
+      console.error(`  ${failure.id}: ${failure.error}`)
+    }
+    return 1
+  } catch (err) {
+    console.error(`Import failed: ${err instanceof Error ? err.message : String(err)}`)
     return 1
   }
 }
@@ -515,7 +584,7 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
 
       case 'plugins': {
         if (!sub) {
-          console.error('Usage: bakin plugins <list|install|upgrade|remove|scaffold|link|unlink>')
+          console.error('Usage: bakin plugins <list|install|export|import|upgrade|remove|scaffold|link|unlink>')
           return { startServer: false, exitCode: 1 }
         }
         if (sub === 'list') {
@@ -536,6 +605,39 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
               dev: parsed.dev,
               force: parsed.force,
               ref: parsed.ref,
+            }),
+          }
+        }
+        if (sub === 'export') {
+          if (args[2]?.startsWith('--')) {
+            console.error('Usage: bakin plugins export [file]')
+            return { startServer: false, exitCode: 1 }
+          }
+          return { startServer: false, exitCode: await cmdPluginsExport(args[2]) }
+        }
+        if (sub === 'import') {
+          if (!args[2]) {
+            console.error('Usage: bakin plugins import <file> [--yes] [--force]')
+            return { startServer: false, exitCode: 1 }
+          }
+          const flags = args.slice(3)
+          const extraArg = flags.find(arg => !arg.startsWith('--'))
+          if (extraArg) {
+            console.error(`Unexpected plugins import argument: ${extraArg}`)
+            console.error('Usage: bakin plugins import <file> [--yes] [--force]')
+            return { startServer: false, exitCode: 1 }
+          }
+          const unknown = flags.find(arg => arg.startsWith('--') && arg !== '--yes' && arg !== '--force')
+          if (unknown) {
+            console.error(`Unknown plugins import flag: ${unknown}`)
+            console.error('Usage: bakin plugins import <file> [--yes] [--force]')
+            return { startServer: false, exitCode: 1 }
+          }
+          return {
+            startServer: false,
+            exitCode: await cmdPluginsImport(args[2], {
+              yes: flags.includes('--yes'),
+              force: flags.includes('--force'),
             }),
           }
         }

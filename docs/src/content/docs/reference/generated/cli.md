@@ -718,6 +718,50 @@ description: Generated reference for public Bakin CLI commands.
   </table>
   </div>
 </section>
+<section class="cli-command" id="plugins-export">
+  <div class="cli-command__heading">
+    <code>plugins export</code>
+    <span class="cli-command__summary">Export installed user plugins.</span>
+    <a class="cli-command__anchor" href="#plugins-export" aria-label="Link to plugins export"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a>
+  </div>
+  <div class="cli-command__box">
+  <p class="cli-command__description">Writes a portable manifest for installed user plugins from ~/.bakin/plugins/lock.json. Without a file, prints JSON to stdout.</p>
+  <div class="cli-command__terminal">
+    <span class="cli-command__prompt">&gt;</span>
+    <code><span class="cli-token cli-token--binary">bakin</span> <span class="cli-token">plugins</span> <span class="cli-token">export</span> <span class="cli-token cli-token--option">[file]</span></code>
+    <button class="cli-command__copy" type="button" data-cli-copy="bakin plugins export [file]" aria-label="Copy bakin plugins export [file]">Copy</button>
+  </div>
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[file]</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+<section class="cli-command" id="plugins-import">
+  <div class="cli-command__heading">
+    <code>plugins import</code>
+    <span class="cli-command__summary">Import an exported plugin set.</span>
+    <a class="cli-command__anchor" href="#plugins-import" aria-label="Link to plugins import"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a>
+  </div>
+  <div class="cli-command__box">
+  <p class="cli-command__description">Installs every plugin in an exported manifest. GitHub plugins are pinned to the recorded commit SHA when present; linked dev plugins are restored as dev installs when their local source path exists.</p>
+  <div class="cli-command__terminal">
+    <span class="cli-command__prompt">&gt;</span>
+    <code><span class="cli-token cli-token--binary">bakin</span> <span class="cli-token">plugins</span> <span class="cli-token">import</span> <span class="cli-token cli-token--arg">&lt;file&gt;</span> <span class="cli-token cli-token--option">[--yes]</span> <span class="cli-token cli-token--option">[--force]</span></code>
+    <button class="cli-command__copy" type="button" data-cli-copy="bakin plugins import &lt;file&gt; [--yes] [--force]" aria-label="Copy bakin plugins import &lt;file&gt; [--yes] [--force]">Copy</button>
+  </div>
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;file&gt;</code></td><td>argument</td><td>yes</td><td>Required value.</td></tr>
+      <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
+      <tr><td><code>[--force]</code></td><td>option</td><td>no</td><td>Bypass the normal safety guard.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
 <section class="cli-command" id="plugins-upgrade">
   <div class="cli-command__heading">
     <code>plugins upgrade</code>
