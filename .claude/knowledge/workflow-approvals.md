@@ -49,12 +49,20 @@ and `runtime.channels.sendNotification()` where appropriate. These calls are
 fire-and-forget: channel delivery failures log but never block workflow
 progression. The workflow instance and audit log remain canonical.
 
-Current OpenClaw channel approvals are render-only. `createApproval()` posts a
-provider message, but channel replies/buttons do not feed approve/reject
-decisions back into Bakin yet. The OpenClaw adapter marks this in the rendered
-message and the health plugin warns until a runtime channel reports the
-`interactive-approval` capability. Humans must approve or reject gates in the
-Bakin UI for now.
+OpenClaw channel approvals are interactive only for configured channels that
+advertise `interactive-approval`. The OpenClaw adapter uses native
+`plugin.approval.*` gateway requests for those channels and maps provider
+decisions back to Bakin `approvalId` values. Channels without real runtime
+approval responses stay render-only and include a Bakin approval link.
+Requests that require a reject reason also stay on the Bakin fallback page
+unless the provider can collect a structured reason.
+
+Provider approval buttons are a convenience surface, not Bakin state. OpenClaw
+native approval requests can expire before a workflow gate does, and provider
+events may be missed if Bakin is offline. The durable Bakin approval record and
+the Bakin fallback approval URL remain canonical. Reject responses that require
+a reason must include one; no-reason channel rejects are ignored and the user is
+sent back to the Bakin approval link.
 
 ## Long Prior Outputs
 
