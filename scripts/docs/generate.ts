@@ -4,6 +4,7 @@ import {
   extractPluginSettings,
   getApiRoutes,
   getCliCommands,
+  externalSourceRoots,
   listPluginManifests,
   relativeSource,
   renderExecToolsSnippet,
@@ -289,6 +290,7 @@ interface PluginManifestDoc {
   bakin?: string
   permissions?: string[]
   dependencies?: string[]
+  origin: 'Core' | 'Official'
   file: string
 }
 
@@ -298,10 +300,10 @@ interface SdkExportDoc {
   exports: string[]
 }
 
-function readCorePluginManifests(): PluginManifestDoc[] {
-  const pluginsDir = join(repoRoot, 'plugins')
+function readPluginManifestDirectory(pluginsDir: string, origin: PluginManifestDoc['origin']): PluginManifestDoc[] {
   const manifests: PluginManifestDoc[] = []
   for (const entry of readdirSync(pluginsDir).sort()) {
+    if (entry.startsWith('_')) continue
     const manifestPath = join(pluginsDir, entry, 'bakin-plugin.json')
     try {
       const raw = readFileSync(manifestPath, 'utf8')
@@ -315,6 +317,7 @@ function readCorePluginManifests(): PluginManifestDoc[] {
         bakin: parsed.bakin,
         permissions: parsed.permissions ?? [],
         dependencies: parsed.dependencies ?? [],
+        origin,
         file: relativeSource(manifestPath),
       })
     } catch {
@@ -322,6 +325,28 @@ function readCorePluginManifests(): PluginManifestDoc[] {
     }
   }
   return manifests
+}
+
+function readCorePluginManifests(): PluginManifestDoc[] {
+  return readPluginManifestDirectory(join(repoRoot, 'plugins'), 'Core')
+}
+
+function readOfficialPluginManifests(): PluginManifestDoc[] {
+  const seen = new Set<string>()
+  const manifests: PluginManifestDoc[] = []
+  for (const root of externalSourceRoots()) {
+    for (const manifest of readPluginManifestDirectory(root, 'Official')) {
+      if (seen.has(manifest.id)) continue
+      seen.add(manifest.id)
+      manifests.push(manifest)
+    }
+  }
+  return manifests
+}
+
+function readOfficialPluginCatalog(): PluginManifestDoc[] {
+  return [...readCorePluginManifests(), ...readOfficialPluginManifests()]
+    .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
 }
 
 function readSdkExports(): SdkExportDoc[] {
@@ -1147,26 +1172,39 @@ function renderExecToolReference(): string {
 	}
 
 function renderPluginCatalog(): string {
-  const plugins = readCorePluginManifests()
+  const plugins = readOfficialPluginCatalog()
   const lines = [
     '---',
-    'title: Core Plugin Catalog',
-    'description: Generated catalog of core plugins shipped with Bakin.',
+    'title: Official Plugins',
+    'description: Generated catalog of official plugins supported by Bakin.',
 	    '---',
 	    '',
+    '<div class="plugin-catalog-intro">',
+    '  <p>Official plugins are maintained with Bakin and documented as supported product surfaces. Core plugins ship in this repo; official plugins can also live in the official plugin repo.</p>',
+    '</div>',
+    '',
+    '<table class="plugin-catalog-table">',
+    '  <thead>',
+    '    <tr><th>Plugin</th><th>ID</th><th>Source</th><th>Version</th><th>Depends On</th></tr>',
+    '  </thead>',
+    '  <tbody>',
 	  ]
 
 	  for (const plugin of plugins) {
-    lines.push(`## ${plugin.name}`, '')
-    lines.push(plugin.description ?? 'No description provided.', '')
-    lines.push(`- ID: \`${plugin.id}\``)
-    lines.push(`- Version: \`${plugin.version}\``)
-    if (plugin.bakin) lines.push(`- Bakin compatibility: \`${plugin.bakin}\``)
-    lines.push(`- Manifest: \`${plugin.file}\``)
-    lines.push(`- Dependencies: ${plugin.dependencies?.length ? plugin.dependencies.map(d => `\`${d}\``).join(', ') : '`none`'}`)
-    lines.push(`- Permissions: ${plugin.permissions?.length ? plugin.permissions.map(p => `\`${p}\``).join(', ') : '`none declared`'}`)
-    lines.push('')
+    const name = escapeHtml(plugin.name)
+    const description = plugin.description ? `<br/><span>${escapeHtml(plugin.description)}</span>` : ''
+    const deps = plugin.dependencies?.length ? plugin.dependencies.map(d => `<code>${escapeHtml(d)}</code>`).join(' ') : 'none'
+    lines.push(
+      '    <tr>',
+      `      <td>${name}${description}</td>`,
+      `      <td><code>${escapeHtml(plugin.id)}</code></td>`,
+      `      <td>${plugin.origin}</td>`,
+      `      <td><code>${escapeHtml(plugin.version)}</code></td>`,
+      `      <td>${deps}</td>`,
+      '    </tr>',
+    )
 	  }
+  lines.push('  </tbody>', '</table>', '')
 	  lines.push(generatedPageNote(), '')
 
 	  return lines.join('\n')
@@ -1484,8 +1522,8 @@ const bundles = {
     body: renderMcpLlmReference(),
   },
   'core-plugins.md': {
-    title: 'Bakin Core Plugins',
-    body: `The core plugin catalog is generated from shipped plugin manifests. Current core plugin count: ${readCorePluginManifests().length}. Public docs should pair this generated catalog with human-authored workflow pages for each plugin.`,
+    title: 'Bakin Official Plugins',
+    body: `The official plugin catalog is generated from supported plugin manifests. Current official plugin count: ${readOfficialPluginCatalog().length}. Core plugins ship in this repo; additional official plugins can live in the official plugin repo.`,
   },
   'settings.md': {
     title: 'Bakin Settings Reference',

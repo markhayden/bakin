@@ -242,7 +242,7 @@ document.addEventListener("click", function (event) {
             { label: 'API Reference', slug: 'reference/generated/api' },
             { label: 'Hooks', slug: 'reference/generated/hooks' },
             { label: 'MCP', slug: 'reference/generated/exec-tools' },
-            { label: 'Core Plugins', slug: 'reference/generated/core-plugins' },
+            { label: 'Official Plugins', slug: 'reference/generated/core-plugins' },
             { label: 'Settings', slug: 'reference/generated/settings' },
             { label: 'Runtime Paths', slug: 'reference/generated/runtime-paths' },
             { label: 'SDK Reference', slug: 'reference/generated/sdk' },
