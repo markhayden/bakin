@@ -6,6 +6,7 @@ import { existsSync } from 'fs'
 import { basename, join } from 'path'
 import { getContentDir } from '@/core/content-dir'
 import { getAppServices } from '@/core/app-services'
+import { assertWorkflowToolAllowed } from '@/core/workflow-tool-authorization'
 import { pathForFilename } from '@bakin/assets/lib/path-for-filename'
 import { succeed, fail } from './common'
 import { addExecTool } from './registry'
@@ -47,6 +48,12 @@ export async function postChannel(
   params: PostChannelParams,
   runtime: AgentRuntimeAdapter = getAppServices().runtime,
 ): Promise<ExecToolResult> {
+  try {
+    await assertWorkflowToolAllowed({ taskId: params.taskId, agent: params.agent, action: 'channel-post' })
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : String(err))
+  }
+
   const requestedChannel = params.channel
   const channel = normalizeChannelTarget(isTestMode() ? TEST_CHANNEL : requestedChannel)
   const { content, imageFilename, videoFilename, embed, taskId } = params

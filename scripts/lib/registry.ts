@@ -21,6 +21,7 @@ import {
   createPluginRuntimeFacade,
   createPluginTaskService,
 } from '../../src/lib/plugin-context-services'
+import { wrapPluginContextPermissions } from '../../src/lib/plugin-permissions'
 
 // ---------------------------------------------------------------------------
 // Registry state
@@ -32,6 +33,20 @@ import {
 
 const execTools: Map<string, ExecToolDefinition> =
   (globalThis as any).__bakinExecTools ??= new Map<string, ExecToolDefinition>()
+
+type RuntimePluginState = {
+  source?: 'core' | 'user'
+  manifest?: { permissions?: readonly string[] }
+}
+
+function getRuntimePluginState(pluginId: string): RuntimePluginState | undefined {
+  const registry = (globalThis as {
+    __bakinPluginRegistry?: {
+      getPluginState?: (id: string) => RuntimePluginState | undefined
+    }
+  }).__bakinPluginRegistry
+  return registry?.getPluginState?.(pluginId)
+}
 
 // ---------------------------------------------------------------------------
 // Registration
@@ -96,7 +111,8 @@ export function getToolContext(toolName: string): PluginToolContext | undefined 
     ? new MarkdownStorageAdapter(contentDir)
     : new ScopedPluginStorageAdapter(contentDir, pluginId)
 
-  return {
+  const state = getRuntimePluginState(pluginId)
+  const ctx: PluginToolContext = {
     storage,
     events: new BakinEventBus(broadcastFn),
     pluginId,
@@ -125,6 +141,12 @@ export function getToolContext(toolName: string): PluginToolContext | undefined 
       return {}
     }) as PluginToolContext['getSettings'],
   }
+
+  return wrapPluginContextPermissions(ctx, {
+    pluginId,
+    source: state?.source ?? (pluginId === 'core' ? 'core' : 'user'),
+    manifestPermissions: state?.manifest?.permissions ?? [],
+  })
 }
 
 // ---------------------------------------------------------------------------

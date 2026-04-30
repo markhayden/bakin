@@ -34,7 +34,6 @@ steps:
     label: Assemble Video
     workflow_id: assemble-video
     description: Nested video assembly workflow — voiceover, stitching, and final approval
-    dependsOn: script-video
 
   - id: publish
     type: output

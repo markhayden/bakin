@@ -68,7 +68,7 @@ The runtime owns the actual model assignment (it's what gets sent to the gateway
 ## Settings
 
 <!-- docs:settings models -->
-<div class="table-light-full table-settings">
+<div class="settings-table">
 
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |

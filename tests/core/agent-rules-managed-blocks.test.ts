@@ -1,10 +1,10 @@
 /**
- * Regression test for plugins/health/lib/managed-blocks.ts.
+ * Regression test for src/core/agent-rules/managed-blocks.ts.
  *
  * Migrated from tests/core/doctor-managed-blocks.test.ts in #139 C9.
- * Pins the existing managed-block flow byte-equal so the registered
- * health.managed-blocks check can be lifted in without changing
- * observed behavior. Cases:
+ * Pins the managed-block flow so the registered health checks and CLI can
+ * call the same core-owned infrastructure without changing marker behavior.
+ * Cases:
  *
  *   - Block missing + autoFix=true → block appended with one blank line
  *     of separation; trailing newline; rest of file untouched
@@ -14,7 +14,7 @@
  *     surrounding content preserved exactly
  *   - Block present + body drifted + autoFix=false → warn, no write
  *   - Start marker without end marker → error result, no write
- *   - main agent skipped (orchestrator owns its own AGENTS.md)
+ *   - orchestrator and subagent scopes target the right AGENTS.md files
  *
  * Test isolation per CC-6: mocks app services to a temp-backed runtime
  * adapter and seeds a synthetic roster. The doctor's other checks are
@@ -60,12 +60,23 @@ mock.module('@bakin/core/content-dir', () => ({
   getBakinPaths: () => ({}),
   isUsingBakinHome: () => true,
 }))
-mock.module('../../../src/core/app-services', () => ({
+mock.module('../../src/core/app-services', () => ({
+  getAppServices: () => ({ runtime: appRuntime }),
   maybeGetAppServices: () => ({ runtime: appRuntime }),
   createAppServices: async () => ({ runtime: appRuntime }),
 }))
+mock.module('../../src/lib/plugin-registry', () => ({
+  getHookRegistry: () => ({
+    invoke: async () => [],
+  }),
+}))
 
-import { applyAllManagedBlocks, applyAllManagedBlocksForRuntime } from '../../../plugins/health/lib/managed-blocks'
+import {
+  applyAllManagedBlocks,
+  applyAllManagedBlocksForRuntime,
+  applyManagedBlocks,
+  applyManagedBlocksForRuntime,
+} from '../../src/core/agent-rules/managed-blocks'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 
 afterAll(() => {
@@ -93,10 +104,15 @@ beforeEach(() => {
 
 describe('applyAllManagedBlocks — block missing', () => {
   it('with autoFix=true, appends every managed block with one-blank-line separation and trailing newline', async () => {
+    seedAgentsMd('main', '# Main\n')
     seedAgentsMd('pixel', '# Pixel — Image Artist\n\nResponsibilities go here.\n')
 
     const results = await applyAllManagedBlocks(true)
     expect(results.some((r) => r.status === 'fixed')).toBe(true)
+
+    const mainFinal = readFileSync(agentsMdPath('main'), 'utf-8')
+    expect(mainFinal).toContain('<!-- bakin:orchestrator-rules:start -->')
+    expect(mainFinal).toContain('<!-- bakin:orchestrator-rules:end -->')
 
     const final = readFileSync(agentsMdPath('pixel'), 'utf-8')
     expect(final.startsWith('# Pixel — Image Artist\n\nResponsibilities go here.\n\n<!-- bakin:'))
@@ -124,11 +140,13 @@ describe('applyAllManagedBlocks — block present', () => {
   it('with body matching expected, returns ok, leaves file byte-equal', async () => {
     // Seed both rostered subagents so applyAll doesn't return warn for
     // missing AGENTS.md on rolo.
+    seedAgentsMd('main', '# Main\n')
     seedAgentsMd('pixel', '# Pixel\n\nProse.\n')
     seedAgentsMd('rolo', '# Rolo\n')
 
     // First pass: write the blocks via autoFix
     await applyAllManagedBlocks(true)
+    const mainAfterFirst = readFileSync(agentsMdPath('main'), 'utf-8')
     const pixelAfterFirst = readFileSync(agentsMdPath('pixel'), 'utf-8')
     const roloAfterFirst = readFileSync(agentsMdPath('rolo'), 'utf-8')
 
@@ -141,6 +159,7 @@ describe('applyAllManagedBlocks — block present', () => {
     expect(okCount).toBeGreaterThan(0)
 
     // Files unchanged on second pass
+    expect(readFileSync(agentsMdPath('main'), 'utf-8')).toBe(mainAfterFirst)
     expect(readFileSync(agentsMdPath('pixel'), 'utf-8')).toBe(pixelAfterFirst)
     expect(readFileSync(agentsMdPath('rolo'), 'utf-8')).toBe(roloAfterFirst)
   })
@@ -213,20 +232,73 @@ describe('applyAllManagedBlocks — malformed file', () => {
   })
 })
 
-describe('applyAllManagedBlocks — main agent skip', () => {
-  it('does not touch main agent`s AGENTS.md', async () => {
+describe('applyManagedBlocks — scopes', () => {
+  it('subagents scope does not touch main agent`s AGENTS.md', async () => {
     seedAgentsMd('main', '# Main\n')
     seedAgentsMd('pixel', '# Pixel\n')
 
-    await applyAllManagedBlocks(true)
+    await applyManagedBlocks(true, { scope: 'subagents' })
 
     // main was not touched — still no markers
     const mainContent = readFileSync(agentsMdPath('main'), 'utf-8')
+    expect(mainContent).not.toContain('<!-- bakin:orchestrator-rules')
     expect(mainContent).not.toContain('<!-- bakin:mission-control')
 
     // pixel was touched
     const pixelContent = readFileSync(agentsMdPath('pixel'), 'utf-8')
     expect(pixelContent).toContain('<!-- bakin:mission-control:start -->')
+  })
+
+  it('orchestrator scope touches only the main agent`s AGENTS.md', async () => {
+    seedAgentsMd('main', '# Main\n')
+    seedAgentsMd('pixel', '# Pixel\n')
+
+    await applyManagedBlocks(true, { scope: 'orchestrator' })
+
+    const mainContent = readFileSync(agentsMdPath('main'), 'utf-8')
+    expect(mainContent).toContain('<!-- bakin:orchestrator-rules:start -->')
+
+    const pixelContent = readFileSync(agentsMdPath('pixel'), 'utf-8')
+    expect(pixelContent).not.toContain('<!-- bakin:mission-control:start -->')
+  })
+})
+
+describe('applyManagedBlocks — orchestrator rules', () => {
+  it('warns when the main AGENTS.md is missing', async () => {
+    const results = await applyManagedBlocks(false, { scope: 'orchestrator' })
+    expect(results[0].check).toBe('orchestrator-rules')
+    expect(results[0].status).toBe('warn')
+    expect(results[0].message).toMatch(/AGENTS.md not found/)
+  })
+
+  it('warns when the orchestrator block is missing without autoFix', async () => {
+    seedAgentsMd('main', '# Main\n\nNo block here.\n')
+    const results = await applyManagedBlocks(false, { scope: 'orchestrator' })
+    expect(results[0].check).toBe('orchestrator-rules')
+    expect(results[0].status).toBe('warn')
+    expect(results[0].autoFixable).toBe(true)
+    expect(results[0].message).toMatch(/missing from main\/AGENTS.md/)
+  })
+
+  it('adds the orchestrator block under autoFix when missing', async () => {
+    seedAgentsMd('main', '# Main\n')
+    const results = await applyManagedBlocks(true, { scope: 'orchestrator' })
+    expect(results[0].check).toBe('orchestrator-rules')
+    expect(results[0].status).toBe('fixed')
+    const after = readFileSync(agentsMdPath('main'), 'utf-8')
+    expect(after).toContain('<!-- bakin:orchestrator-rules:start -->')
+    expect(after).toContain('<!-- bakin:orchestrator-rules:end -->')
+  })
+
+  it('reports error when the orchestrator block has a start marker but no end marker', async () => {
+    seedAgentsMd(
+      'main',
+      '# Main\n\n<!-- bakin:orchestrator-rules:start -->\n(missing end)\n',
+    )
+    const results = await applyManagedBlocks(true, { scope: 'orchestrator' })
+    expect(results[0].check).toBe('orchestrator-rules')
+    expect(results[0].status).toBe('error')
+    expect(results[0].message).toMatch(/malformed markers/)
   })
 })
 
@@ -261,6 +333,31 @@ describe('applyAllManagedBlocksForRuntime', () => {
     }
 
     const results = await applyAllManagedBlocksForRuntime(runtime, true)
+
+    expect(results.some((r) => r.status === 'fixed')).toBe(true)
+    expect(files.get('pixel:AGENTS.md')).toContain('<!-- bakin:mission-control:start -->')
+    expect(files.get('main:AGENTS.md')).toContain('<!-- bakin:orchestrator-rules:start -->')
+  })
+
+  it('can scope runtime execution to subagents only', async () => {
+    const files = new Map<string, string>([
+      ['main:AGENTS.md', '# Main\n'],
+      ['pixel:AGENTS.md', '# Pixel\n'],
+    ])
+    const runtime = createMockRuntimeAdapter()
+    runtime.agents.list = async () => [
+      { id: 'main', name: 'Main', role: 'Orchestrator', status: 'active' },
+      { id: 'pixel', name: 'Pixel', role: 'Image', status: 'active' },
+    ]
+    runtime.agents.readWorkspaceFile = async (agentId, path) => {
+      const content = files.get(`${agentId}:${path}`)
+      return content === undefined ? null : { path, content }
+    }
+    runtime.agents.writeWorkspaceFile = async (agentId, file) => {
+      files.set(`${agentId}:${file.path}`, file.content)
+    }
+
+    const results = await applyManagedBlocksForRuntime(runtime, true, { scope: 'subagents' })
 
     expect(results.some((r) => r.status === 'fixed')).toBe(true)
     expect(files.get('pixel:AGENTS.md')).toContain('<!-- bakin:mission-control:start -->')

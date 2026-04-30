@@ -227,6 +227,32 @@ full no-checkout clone plus detached checkout so raw commit shas work.
 - `#subpath` is **not** supported for `type: 'local'` installs — point
   the local path directly at the plugin dir instead.
 
+### Import/export flow — `bakin plugins export|import`
+
+`bakin plugins export [file]` serializes the installed user-plugin set
+from `~/.bakin/plugins/lock.json` into a small portable manifest. With
+no file argument it prints JSON to stdout. The manifest stores the
+plugin id, source, type, requested ref, resolved commit SHA, version,
+and dev-link fields when the plugin was installed with
+`bakin plugins install --dev`.
+
+`bakin plugins import <file> [--yes] [--force]` reads that manifest and
+replays installs through the normal `/api/plugins/install` endpoint.
+This deliberately reuses the existing manifest validation, permission
+consent, dependency validation, build, activation, and lockfile write
+paths instead of writing directly to `lock.json`.
+
+GitHub imports prefer `commitSha` over `ref`, so exported plugin sets
+reinstall the exact commit when provenance exists. Local copied plugins
+use their recorded absolute source path. Linked dev plugins are restored
+as dev installs (`dev: true`) using `linkedSource`; if that path is not
+present on the target machine, import fails clearly for that plugin.
+
+Import does not add dependency metadata to the export format. Instead it
+does retry passes: plugins whose install fails are retried after later
+entries have had a chance to install. That covers dependency ordering
+without creating a second plugin package schema.
+
 ### Upgrade flow — `bakin plugins upgrade <id> [--yes]`
 
 `src/core/plugins/upgrade.ts`. Refuses core plugins. Reads the
@@ -366,23 +392,36 @@ Specific `plugin.upgrade.rejected` reasons (`data.reason` field):
 - `force_push_detected` — local HEAD is not an ancestor of the remote
   ref's new HEAD (history was rewritten)
 
-### Permissions (#142 layers 1+2)
+### Permissions (#142 layers 1-3)
 
 `packages/core/src/plugins/permissions.ts` — Zod enum locked to the
-4 currently-used strings:
+current runtime/data capability surface:
 
 ```ts
 PermissionSchema = z.enum([
   'events.emit',
+  'assets.read',
   'runtime.read',
+  'runtime.agents',
+  'runtime.messaging',
+  'runtime.channels',
+  'runtime.cron',
+  'runtime.skills',
+  'runtime.models',
+  'search.read',
+  'search.write',
   'storage.read',
   'storage.write',
+  'tasks.read',
+  'tasks.write',
 ])
 ```
 
 `PERMISSION_DESCRIPTIONS` provides human-readable strings for the
 consent prompt UX. Adding a new permission = one enum entry + one
 description entry, shipped alongside the capability that needs it.
+`PermissionDenied` is the named runtime error used when enforcement is
+enabled and a plugin calls an undeclared capability.
 
 **Layer 1 — audit on activate**: every plugin activation appends to
 `audit.jsonl` and `server.log`:
@@ -404,8 +443,34 @@ injected stdio for testability. Permissions removed at upgrade time
 do NOT trigger a prompt (no security concern); permissions added
 trigger the diff prompt.
 
-**Layer 3** (runtime capability gating) is deferred — see follow-up
-issue.
+**Layer 3 — runtime capability gating**: `src/lib/plugin-permissions.ts`
+wraps the live `PluginContext` at the registry boundary. The wrapper is
+centralized: plugin APIs do not scatter permission checks internally.
+Gated surfaces include `ctx.storage`, `ctx.events.emit`,
+`ctx.activity`, `ctx.tasks`, `ctx.assets`, `ctx.search`, and runtime
+adapter domains (`ctx.runtime.agents`, `.channels`, `.cron`, `.skills`,
+`.models`, `.messaging`, plus `.memory/.sessions/.config` under
+`runtime.read`). Registration APIs and `ctx.hooks.*` are intentionally
+not gated in this layer.
+
+Runtime mode lives in core settings:
+
+```json
+{ "plugins": { "runtimeCapabilityMode": "warn" } }
+```
+
+Allowed values:
+- `warn` (default) — allow the call, log once per plugin/method/permission,
+  and append `plugin.permission_missing` to audit.
+- `enforce` — same reporting, then throw `PermissionDenied`.
+- `off` — emergency bypass.
+
+Grant source:
+- User-installed plugins are checked against lockfile-accepted
+  permissions (`~/.bakin/plugins/lock.json`).
+- Built-in/core plugins are checked against their manifest permissions.
+- If a user plugin has no lockfile entry, Bakin falls back to its
+  manifest and logs that fallback.
 
 ## Core Interfaces
 
@@ -441,7 +506,7 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `registerSlot(reg)` | Register React component for a named UI slot (server-side) |
 | `registerExecTool(tool)` | Register MCP execution tool (agent-callable) |
 | `registerSkill(skill)` | Register AI skill definition (S-A, in-memory) |
-| `registerWorkflow(def, opts?)` | Register a plugin-shipped workflow definition. User definitions in `~/.bakin/workflows/definitions/` always win on collision; cross-plugin id collisions are logged but do not throw out of `activate()`. Same-plugin re-registration is idempotent. |
+| `registerWorkflow(def, opts?)` | Register a plugin-shipped workflow definition. Plugin definitions must be portable; use symbolic agents such as `$assigned` rather than local runtime ids. User definitions in `~/.bakin/workflows/definitions/` always win on collision; cross-plugin id collisions are logged but do not throw out of `activate()`. Same-plugin re-registration is idempotent. |
 | `registerNodeType(def)` | Register a custom xyflow node kind for the workflow canvas (namespaced to `{pluginId}.{kind}`) |
 | `registerNotificationChannel(def)` | Register a notification channel (namespaced to `{pluginId}.{id}`) |
 | `registerHealthCheck(def)` | Register a doctor check (namespaced to `{pluginId}.{id}`). Picked up by `runPluginHealthChecks` in `src/core/doctor.ts`. Per-check try/catch lives in the orchestrator. Deep ref: `.claude/knowledge/doctor-and-health-checks.md`. |
@@ -680,7 +745,7 @@ Same pattern is used for the plugin registry
 | Plugin | Hooks | Examples |
 |--------|-------|---------|
 | tasks | 0 task-metadata hooks | Task metadata is owned by `src/core/task-store.ts` and is not exposed through plugin hooks |
-| workflows | 13 | `workflows.loadInstance`, `workflows.createInstance`, `workflows.getCurrentStep`, `workflows.completeStep`, `workflows.matchWorkflow`, `workflows.definitions.list`, `workflows.loadDefinition`, `workflows.getActiveAgents`, `workflows.saveInstance`, etc. |
+| workflows | 17 | `workflows.loadInstance`, `workflows.createInstance`, `workflows.getCurrentStep`, `workflows.completeStep`, `workflows.authorizeToolUse`, `workflows.matchWorkflow`, `workflows.definitions.list`, `workflows.loadDefinition`, `workflows.getActiveAgents`, `workflows.saveInstance`, etc. |
 | assets | 8 | `assets.validateSidecar`, `assets.getSidecarPath`, `assets.createStub`, `assets.detectVariant`, `assets.getAssetTypes`, `assets.trash.list`, `assets.restoreAsset`, `assets.emptyTrash` |
 | team | 7 | `team.list`, `team.getAgent`, `team.getAgentIds`, `team.resolveProfile`, `team.getTeamMembers`, `team.getAgentTeam`, `team.getOrgStructure` |
 | models | 5 | `models.configChanged`, `models.getEffectiveModel`, `models.getAvailableModels`, `models.markConfigDirty`, `models.markGatewayRestarted` |
@@ -826,7 +891,7 @@ to drop files in place.
 
 | Directory | Loader | Behavior |
 |-----------|--------|----------|
-| `defaults/workflows/*.yaml` | The owning plugin's `activate()` (workflows plugin uses `lib/load-defaults.ts`) | Each YAML is parsed and registered via `ctx.registerWorkflow(def, { readOnly: true })`. User copies under `~/.bakin/workflows/definitions/` always shadow these. |
+| `defaults/workflows/*.yaml` | The owning plugin's `activate()` (workflows plugin uses `lib/load-defaults.ts`) | YAML files are parsed in two passes, validated against the runtime-supported workflow contract, then registered via `ctx.registerWorkflow(def, { readOnly: true })`. User copies under `~/.bakin/workflows/definitions/` always shadow these. |
 | `defaults/workflow-skills/*.md` | `src/lib/plugin-skill-loader.ts`, invoked by the plugin loader after every `activate()` | Each `.md` is parsed (YAML frontmatter for `name` + `output_schema`; body is the instruction) and registered via `ctx.registerSkill()`. In-memory only — no filesystem install. |
 | `defaults/runtime-skills/{name}/SKILL.md` (+ `scripts/`) | `src/core/onboarding/plugin-assets.ts` (`bakin install plugin-assets`) | Each skill dir is copied to `runtime skill store/` with a `.installedBy` marker (sha256). `.userEdited` sentinel locks a dir from overwrite. `bakin doctor` surfaces drift. |
 

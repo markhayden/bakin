@@ -17,11 +17,13 @@ Whichever path, kits install the same way. Inside, they can carry workflows, set
 
 ### Plugins
 
-Plugins extend Bakin. A plugin can ship pages, API endpoints, MCP tools agents can call, hooks other plugins can wire into, settings, and data shapes. Most ship a subset; plenty are pure backend with no UI at all. Every page in this section is a plugin. Once installed, Bakin picks it up on the next restart.
+Plugins extend Bakin. A plugin can ship pages, API endpoints, MCP tools agents can call, hooks other plugins can wire into, settings, and data shapes. Most ship a subset; plenty are pure backend with no UI at all. Every page in this section is a plugin. User plugins install into the running server when possible and otherwise activate on the next start.
 
 ```sh
 bakin plugins list                               # what's installed
 bakin plugins install <path|github:user/repo>    # add one
+bakin plugins export plugins.json                # back up user plugins
+bakin plugins import plugins.json --yes          # restore user plugins
 bakin plugins upgrade <id>                       # pull the latest
 bakin plugins remove <id>                        # uninstall
 ```

@@ -169,7 +169,7 @@ describe('doctor', () => {
     // Sanity check: when plugins ARE registered, runDiagnostics surfaces
     // their rows. Catches the regression "runPluginHealthChecks isn't being
     // awaited" — a class of bug invisible to the gate-only assertions below.
-    const registry = await import('../../plugins/health/lib/health-check-registry')
+    const registry = await import('../../src/core/health-check-registry')
     registry.registerHealthCheck({
       runtime: 'plugin',
       pluginId: 'doctor-test',
@@ -193,7 +193,7 @@ describe('doctor', () => {
   })
 
   it('notifies the runtime main agent about unfixable plugin issues', async () => {
-    const registry = await import('../../plugins/health/lib/health-check-registry')
+    const registry = await import('../../src/core/health-check-registry')
     registry.registerHealthCheck({
       runtime: 'plugin',
       pluginId: 'doctor-test',

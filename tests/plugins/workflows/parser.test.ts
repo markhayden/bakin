@@ -17,8 +17,23 @@ mock.module('@bakin/core/main-agent', () => ({
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
+  isUsingBakinHome: () => false,
 }))
-mock.module('@/core/task-store', () => ({}))
+mock.module('../../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
+  isUsingBakinHome: () => false,
+}))
+mock.module('@/core/task-store', () => ({
+  addTaskLog: mock(),
+  createTask: mock(),
+  getTask: mock(() => null),
+  moveTask: mock(),
+}))
 mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
@@ -125,6 +140,103 @@ steps:
       }
       const errors = validateDefinition(def)
       expect(errors.some(e => e.includes('missing'))).toBe(true)
+    })
+
+    it('rejects gate approval jumps that do not point to the next step', () => {
+      const def: WorkflowDefinition = {
+        name: 'Test',
+        description: 'Test',
+        version: 1,
+        steps: [
+          { id: 'write', type: 'agent', label: 'Write', agent: 'chef' },
+          { id: 'review', type: 'gate', label: 'Review', on_approve: 'publish' },
+          { id: 'revise', type: 'agent', label: 'Revise', agent: 'chef' },
+          { id: 'publish', type: 'output', label: 'Publish', agent: 'chef' },
+        ],
+      }
+
+      const errors = validateDefinition(def)
+      expect(errors.some(e => e.includes('on_approve must point to the next'))).toBe(true)
+    })
+
+    it('rejects gates inside parallel groups', () => {
+      const def: WorkflowDefinition = {
+        name: 'Test',
+        description: 'Test',
+        version: 1,
+        steps: [
+          {
+            id: 'fanout',
+            type: 'parallel',
+            label: 'Fan Out',
+            steps: [
+              { id: 'write', type: 'agent', label: 'Write', agent: 'chef' },
+              { id: 'review', type: 'gate', label: 'Review', on_approve: 'done' },
+            ],
+          },
+        ],
+      }
+
+      const errors = validateDefinition(def)
+      expect(errors.some(e => e.includes('parallel children must be agent steps'))).toBe(true)
+    })
+
+    it('requires plugin-shipped definitions to use symbolic agents', () => {
+      const def: WorkflowDefinition = {
+        name: 'Plugin Default',
+        description: 'Default workflow',
+        version: 1,
+        steps: [{ id: 'write', type: 'agent', label: 'Write', agent: 'chef' }],
+      }
+
+      const errors = validateDefinition(def, { source: 'plugin' })
+      expect(errors.some(e => e.includes('must use symbolic agents'))).toBe(true)
+    })
+
+    it('validates user literal agents against the runtime roster when supplied', () => {
+      const def: WorkflowDefinition = {
+        name: 'User Workflow',
+        description: 'Local workflow',
+        version: 1,
+        steps: [{ id: 'write', type: 'agent', label: 'Write', agent: 'pixel' }],
+      }
+
+      expect(validateDefinition(def, { source: 'user', runtimeAgents: ['pixel'] })).toEqual([])
+      const errors = validateDefinition(def, { source: 'user', runtimeAgents: ['trainer'] })
+      expect(errors.some(e => e.includes('unknown agent "pixel"'))).toBe(true)
+    })
+
+    it('fails $assigned when start-time validation has no assignee', () => {
+      const def: WorkflowDefinition = {
+        name: 'Assigned Workflow',
+        description: 'Needs assignee',
+        version: 1,
+        steps: [{ id: 'write', type: 'agent', label: 'Write', agent: '$assigned' }],
+      }
+
+      const errors = validateDefinition(def, {
+        source: 'user',
+        runtimeAgents: ['pixel'],
+        requireResolvedAgents: true,
+      })
+      expect(errors.some(e => e.includes('has no assignee'))).toBe(true)
+    })
+
+    it('rejects nested workflows that reference themselves', () => {
+      const def: WorkflowDefinition = {
+        name: 'Self Reference',
+        description: 'Invalid nested workflow',
+        version: 1,
+        steps: [
+          { id: 'loop', type: 'workflow', label: 'Loop', workflow_id: 'self-reference' },
+        ],
+      }
+
+      const errors = validateDefinition(def, {
+        definitionId: 'self-reference',
+        knownWorkflowIds: ['self-reference'],
+      })
+      expect(errors.some(e => e.includes('cannot reference its own workflow'))).toBe(true)
     })
 
     it('rejects definition with no steps', () => {

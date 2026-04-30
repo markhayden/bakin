@@ -1,18 +1,12 @@
 /**
  * Managed-block infrastructure for per-agent AGENTS.md blocks.
  *
- * The doctor runs `applyAllManagedBlocksForRuntime` to keep 7 marker-fenced blocks
- * (mission-control, hard-rules, dependency-pattern, media-delegation,
- * workflow-rules, scheduling-rules, asset-rules) in sync across every
- * non-main agent's workspace `AGENTS.md`. The
+ * The doctor runs `applyManagedBlocksForRuntime` to keep Bakin-owned
+ * marker-fenced blocks in sync across runtime agent workspace `AGENTS.md`
+ * files. The
  * marker primitives (extractBlock, getBlockState, injectBlock) live in
  * packages/core/src/agent-packages/managed-blocks.ts and are shared
  * with the agent-package installer/projector.
- *
- * The orchestrator-rules block targets the main agent's
- * workspace `AGENTS.md` and is owned by plugins/health/lib/system-checks/orchestrator-rules.ts
- * (which imports
- * AGENT_RULES_BLOCK_START/END + resolveOrchestratorRules from here).
  *
  * Migrated from src/core/doctor.ts in #139 C8 (orchestrator-rules
  * constants + template) and #139 C9 (MANAGED_BLOCKS + check helper +
@@ -24,8 +18,6 @@ import {
   getBlockState,
   injectBlock,
 } from '../../../packages/core/src/agent-packages/managed-blocks'
-import { createAppServices, maybeGetAppServices } from '../../../src/core/app-services'
-import { getHookRegistry } from '../../../src/lib/plugin-registry'
 import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
 import type { AgentRuntimeAdapter, RuntimeAgent } from '../../../packages/core/src/adapters/runtime'
 
@@ -132,6 +124,7 @@ The skip reason is logged to the audit trail for debugging. Always verify agains
 /** Build the workflow catalog from available definitions for embedding in rules */
 async function buildWorkflowCatalog(): Promise<string> {
   try {
+    const { getHookRegistry } = await import('../../lib/plugin-registry')
     const hooks = getHookRegistry()
     const defs = await hooks.invoke<Array<{ definition: Record<string, unknown>; name: string }>>('workflows.definitions.list', {}) ?? []
     if (defs.length === 0) return '   (no workflows defined yet)'
@@ -166,10 +159,19 @@ interface ManagedBlockContext {
   mainAgentName: string
 }
 
+export type ManagedBlockScope = 'all' | 'orchestrator' | 'subagents'
+
+export interface ManagedBlockRunOptions {
+  scope?: ManagedBlockScope
+}
+
 interface ManagedBlockDef {
   blockId: string
-  contentFn: (agentId: string, context: ManagedBlockContext) => string
-  agentFilter?: (agentId: string) => boolean // defaults to all non-orchestrator agents
+  checkId?: string
+  label?: string
+  target: 'orchestrator' | 'subagent'
+  contentFn: (agentId: string, context: ManagedBlockContext) => string | Promise<string>
+  agentFilter?: (agentId: string, context: ManagedBlockContext) => boolean
 }
 
 function runtimeManagedBlockContext(agents: RuntimeAgent[]): ManagedBlockContext {
@@ -190,49 +192,51 @@ async function checkManagedBlockRuntime(
   context: ManagedBlockContext,
 ): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = []
-  const checkName = `agent-${def.blockId}`
+  const checkName = def.checkId ?? `agent-${def.blockId}`
+  const label = def.label ?? def.blockId
 
   for (const agent of agents) {
     const agentId = agent.id
-    if (agentId === context.mainAgentId) continue
-    if (def.agentFilter && !def.agentFilter(agentId)) continue
+    if (def.target === 'orchestrator' && agentId !== context.mainAgentId) continue
+    if (def.target === 'subagent' && agentId === context.mainAgentId) continue
+    if (def.agentFilter && !def.agentFilter(agentId, context)) continue
 
     const file = await runtime.agents.readWorkspaceFile(agentId, 'AGENTS.md')
     if (!file) {
-      results.push(warn(checkName, `AGENTS.md not found for ${agentId} — cannot verify ${def.blockId}`))
+      results.push(warn(checkName, `AGENTS.md not found for ${agentId} — cannot verify ${label}`))
       continue
     }
 
     const current = file.content
-    const expectedBody = def.contentFn(agentId, context).trim()
+    const expectedBody = (await def.contentFn(agentId, context)).trim()
     const state = getBlockState(current, def.blockId)
 
     if (state === 'orphan-start' || state === 'orphan-end') {
       results.push(error(
         checkName,
-        `${def.blockId} block has malformed markers (${state}) in ${agentId}/AGENTS.md`,
+        `${label} block has malformed markers (${state}) in ${agentId}/AGENTS.md`,
       ))
       continue
     }
 
     if (state === 'absent') {
       if (!autoFix) {
-        results.push(warn(checkName, `${def.blockId} block missing from ${agentId}/AGENTS.md`, true))
+        results.push(warn(checkName, `${label} block missing from ${agentId}/AGENTS.md`, true))
         continue
       }
       await runtime.agents.writeWorkspaceFile(agentId, { path: 'AGENTS.md', content: injectBlock(current, def.blockId, expectedBody) })
-      results.push(fixed(checkName, `Added ${def.blockId} block to ${agentId}/AGENTS.md`))
+      results.push(fixed(checkName, `Added ${label} block to ${agentId}/AGENTS.md`))
       continue
     }
 
     const currentBody = extractBlock(current, def.blockId) ?? ''
     if (currentBody === expectedBody) {
-      results.push(ok(checkName, `${def.blockId} in ${agentId}/AGENTS.md is up to date`))
+      results.push(ok(checkName, `${label} block in ${agentId}/AGENTS.md is up to date`))
     } else if (autoFix) {
       await runtime.agents.writeWorkspaceFile(agentId, { path: 'AGENTS.md', content: injectBlock(current, def.blockId, expectedBody) })
-      results.push(fixed(checkName, `Updated ${def.blockId} block in ${agentId}/AGENTS.md`))
+      results.push(fixed(checkName, `Updated ${label} block in ${agentId}/AGENTS.md`))
     } else {
-      results.push(warn(checkName, `${def.blockId} block is outdated in ${agentId}/AGENTS.md`, true))
+      results.push(warn(checkName, `${label} block is outdated in ${agentId}/AGENTS.md`, true))
     }
   }
 
@@ -240,6 +244,7 @@ async function checkManagedBlockRuntime(
 }
 
 async function getRuntimeForManagedBlocks(): Promise<AgentRuntimeAdapter> {
+  const { createAppServices, maybeGetAppServices } = await import('../app-services')
   const existing = maybeGetAppServices()?.runtime
   if (existing) return existing
   return (await createAppServices()).runtime
@@ -249,7 +254,17 @@ async function getRuntimeForManagedBlocks(): Promise<AgentRuntimeAdapter> {
 
 const MANAGED_BLOCKS: ManagedBlockDef[] = [
   {
+    blockId: 'orchestrator-rules',
+    checkId: 'orchestrator-rules',
+    label: 'orchestrator-rules',
+    target: 'orchestrator',
+    contentFn: (_agentId: string, context: ManagedBlockContext) =>
+      resolveOrchestratorRulesForAgent(context.mainAgentId, context.mainAgentName),
+  },
+
+  {
     blockId: 'mission-control',
+    target: 'subagent',
     contentFn: (agentId: string) => `## Bakin Mission Control
 
 > Auto-managed by \`bakin doctor\`. Do not edit this block manually.
@@ -277,6 +292,7 @@ mcporter call bakin-${agentId}.bakin_exec_get_paths
 
   {
     blockId: 'hard-rules',
+    target: 'subagent',
     contentFn: (agentId: string) => `## Bakin Hard Rules
 
 > Auto-managed by \`bakin doctor\`. Do not edit this block manually.
@@ -291,6 +307,7 @@ mcporter call bakin-${agentId}.bakin_exec_get_paths
 
   {
     blockId: 'dependency-pattern',
+    target: 'subagent',
     contentFn: (agentId: string) => `## Bakin Dependency Pattern
 
 > Auto-managed by \`bakin doctor\`. Do not edit this block manually.
@@ -304,6 +321,7 @@ Then exit — you will be automatically re-dispatched when their task completes.
 
   {
     blockId: 'media-delegation',
+    target: 'subagent',
     contentFn: (agentId: string) => {
       const canImage = agentId === 'pixel'
       const canVideo = agentId === 'rolo'
@@ -338,6 +356,7 @@ Then exit — you will be automatically re-dispatched when their task completes.
 
   {
     blockId: 'workflow-rules',
+    target: 'subagent',
     contentFn: (agentId: string, context: ManagedBlockContext) => `## Bakin Workflow Rules
 
 > Auto-managed by \`bakin doctor\`. Do not edit this block manually.
@@ -359,6 +378,7 @@ When Bakin dispatches a workflow step to you, the dispatch message contains ever
 
   {
     blockId: 'scheduling-rules',
+    target: 'subagent',
     contentFn: (agentId: string) => `## Bakin Scheduling Rules
 
 > Auto-managed by \`bakin doctor\`. Do not edit this block manually.
@@ -387,6 +407,7 @@ mcporter call bakin-${agentId}.bakin_exec_schedule_create name="daily-recipe" sc
 
   {
     blockId: 'asset-rules',
+    target: 'subagent',
     contentFn: (agentId: string) => `## Bakin Asset Rules
 
 > Auto-managed by \`bakin doctor\`. Do not edit this block manually.
@@ -410,13 +431,30 @@ All created content (images, video, audio, text, plans, data) MUST go to the ass
  * Apply all managed blocks using the configured runtime adapter. Called by
  * the CLI's `bakin agent-rules` subcommand directly.
  */
-export async function applyAllManagedBlocks(autoFix: boolean): Promise<HealthCheckResult[]> {
-  return applyAllManagedBlocksForRuntime(await getRuntimeForManagedBlocks(), autoFix)
+export async function applyManagedBlocks(
+  autoFix: boolean,
+  options: ManagedBlockRunOptions = {},
+): Promise<HealthCheckResult[]> {
+  return applyManagedBlocksForRuntime(await getRuntimeForManagedBlocks(), autoFix, options)
 }
 
-export async function applyAllManagedBlocksForRuntime(
+export async function applyAllManagedBlocks(
+  autoFix: boolean,
+  options: ManagedBlockRunOptions = {},
+): Promise<HealthCheckResult[]> {
+  return applyManagedBlocks(autoFix, options)
+}
+
+function blockMatchesScope(def: ManagedBlockDef, scope: ManagedBlockScope): boolean {
+  if (scope === 'all') return true
+  if (scope === 'orchestrator') return def.target === 'orchestrator'
+  return def.target === 'subagent'
+}
+
+export async function applyManagedBlocksForRuntime(
   runtime: AgentRuntimeAdapter,
   autoFix: boolean,
+  options: ManagedBlockRunOptions = {},
 ): Promise<HealthCheckResult[]> {
   let agents: RuntimeAgent[]
   try {
@@ -425,10 +463,24 @@ export async function applyAllManagedBlocksForRuntime(
     return [error('agent-managed-blocks', `Failed to list runtime agents: ${err instanceof Error ? err.message : String(err)}`)]
   }
 
+  if (agents.length === 0) {
+    return [warn('agent-managed-blocks', 'No runtime agents found — cannot verify managed blocks')]
+  }
+
+  const scope = options.scope ?? 'all'
   const context = runtimeManagedBlockContext(agents)
   const results: HealthCheckResult[] = []
   for (const block of MANAGED_BLOCKS) {
+    if (!blockMatchesScope(block, scope)) continue
     results.push(...await checkManagedBlockRuntime(runtime, block, autoFix, agents, context))
   }
   return results
+}
+
+export async function applyAllManagedBlocksForRuntime(
+  runtime: AgentRuntimeAdapter,
+  autoFix: boolean,
+  options: ManagedBlockRunOptions = {},
+): Promise<HealthCheckResult[]> {
+  return applyManagedBlocksForRuntime(runtime, autoFix, options)
 }

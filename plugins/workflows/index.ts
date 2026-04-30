@@ -10,7 +10,7 @@ import { userInfo } from 'os'
 import yaml from 'js-yaml'
 import { z } from 'zod'
 import type { ApprovalActor, BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
-import { listDefinitions, loadDefinition } from './lib/parser'
+import { listDefinitions, loadDefinition, validateDefinition } from './lib/parser'
 import { loadDefaultWorkflows } from './lib/load-defaults'
 import { workflowDefinitionSchema, listNodeTypes } from './lib/node-type-registry'
 import {
@@ -33,10 +33,12 @@ import {
   rejectGate,
   listInstances,
   getActiveAgents,
+  authorizeWorkflowToolUse,
   isGateNotified,
   markGateNotified,
   cancelInstance,
   type GateDecisionRecord,
+  type WorkflowToolUseAction,
 } from './lib/runtime'
 import { matchWorkflow } from './lib/matcher'
 import { createLogger } from '../../src/core/logger'
@@ -335,6 +337,82 @@ const workflowsPlugin: BakinPlugin = {
     setGateNotificationSettings(gateNotificationSettings)
     const activeGateSettings = () => getGateNotificationSettings() ?? gateNotificationSettings
 
+    const getRuntimeAgentNames = async (): Promise<Set<string>> => {
+      const agents = await ctx.runtime.agents.list()
+      const names = new Set<string>()
+      for (const agent of agents) {
+        names.add(agent.id)
+        names.add(agent.name)
+      }
+      return names
+    }
+
+    const collectNestedWorkflowIds = (def: WorkflowDefinition, out: Set<string>): void => {
+      for (const step of def.steps) {
+        if (step.type === 'workflow') {
+          out.add((step as NestedWorkflowStep).workflow_id)
+        }
+      }
+    }
+
+    const validateWorkflowForStart = async (
+      workflowId: string,
+      assignee: string | undefined,
+      contentDir?: string,
+    ): Promise<string[]> => {
+      const errors: string[] = []
+      const runtimeAgents = await getRuntimeAgentNames()
+      const knownWorkflowIds = new Set(listDefinitions(contentDir).map((entry) => entry.name))
+      const visited = new Set<string>()
+
+      const visit = (id: string, path: string[]): void => {
+        if (path.includes(id)) {
+          errors.push(`Workflow nesting cycle detected: ${[...path, id].join(' -> ')}`)
+          return
+        }
+        if (visited.has(id)) return
+        visited.add(id)
+
+        const def = loadDefinition(id, contentDir)
+        if (!def) {
+          errors.push(`Workflow definition not found: ${id}`)
+          return
+        }
+
+        errors.push(...validateDefinition(def, {
+          definitionId: id,
+          source: def.source,
+          contentDir,
+          knownWorkflowIds,
+          runtimeAgents,
+          assignee,
+          requireResolvedAgents: true,
+        }).map((message) => `Workflow "${id}": ${message}`))
+
+        const nestedIds = new Set<string>()
+        collectNestedWorkflowIds(def, nestedIds)
+        for (const nestedId of nestedIds) visit(nestedId, [...path, id])
+      }
+
+      visit(workflowId, [])
+
+      return errors
+    }
+
+    const createValidatedInstance = async (
+      taskId: string,
+      workflowId: string,
+      assignee: string | undefined,
+      contentDir?: string,
+      parentContext?: Record<string, unknown>,
+    ) => {
+      const errors = await validateWorkflowForStart(workflowId, assignee, contentDir)
+      if (errors.length > 0) {
+        throw new Error(errors.join('; '))
+      }
+      return createInstance(taskId, workflowId, contentDir, assignee, parentContext)
+    }
+
     const approvalRehydration = await rehydratePendingApprovals({
       runtime: ctx.runtime,
       channel: activeGateSettings().approvalChannel || 'general',
@@ -437,10 +515,9 @@ const workflowsPlugin: BakinPlugin = {
       }
     })
 
-    // Register cross-plugin hooks
     ctx.hooks.register('workflows.loadInstance', (d: Record<string, unknown>) => loadInstance(d.taskId as string, d.contentDir as string | undefined), { label: 'Load workflow instance.', summary: 'Loads the workflow instance attached to a task. Use it when a plugin needs current workflow state without reading workflow files directly.', hookKind: 'rpc' })
     ctx.hooks.register('workflows.saveInstance', (d: Record<string, unknown>) => saveInstance(d.instance as Parameters<typeof saveInstance>[0], d.contentDir as string | undefined), { label: 'Save workflow instance.', summary: 'Persists a workflow instance after a plugin has changed its state. Use it to keep workflow updates routed through the workflow plugin storage layer.', hookKind: 'rpc' })
-    ctx.hooks.register('workflows.createInstance', (d: Record<string, unknown>) => createInstance(d.taskId as string, d.workflowId as string, d.contentDir as string | undefined, d.assignee as string | undefined, d.parentContext as Record<string, unknown> | undefined), { label: 'Create workflow instance.', summary: 'Creates a workflow instance for a task and optional assignee context. Use it when task creation or routing should immediately attach a workflow.', hookKind: 'rpc' })
+    ctx.hooks.register('workflows.createInstance', (d: Record<string, unknown>) => createValidatedInstance(d.taskId as string, d.workflowId as string, d.assignee as string | undefined, d.contentDir as string | undefined, d.parentContext as Record<string, unknown> | undefined), { label: 'Create workflow instance.', summary: 'Creates a workflow instance for a task and optional assignee context. Use it when task creation or routing should immediately attach a workflow.', hookKind: 'rpc' })
     ctx.hooks.register('workflows.instances.list', (d: Record<string, unknown>) => listInstances(d.statusFilter as string | undefined, d.contentDir as string | undefined), { label: 'List workflow instances.', summary: 'Returns workflow instances, optionally filtered by status. Use it for dashboards, queues, and maintenance flows that need a broad view of active workflow state.', hookKind: 'rpc' })
     ctx.hooks.register('workflows.getCurrentStep', (d: Record<string, unknown>) => getCurrentStep(d.taskId as string, d.agentId as string | undefined, d.contentDir as string | undefined), { label: 'Get current step.', summary: 'Returns the current workflow step for a task, optionally scoped to an agent. Use it when a plugin needs to know what work is currently actionable.', hookKind: 'rpc' })
     ctx.hooks.register('workflows.completeStep', (d: Record<string, unknown>) => completeStep(d.taskId as string, d.stepId as string, d.output as Record<string, unknown>, d.callerAgentId as string | undefined, d.contentDir as string | undefined), { label: 'Complete workflow step.', summary: 'Submits output for a workflow step and advances the instance when validation passes. Use it from agents or tools that finish a workflow action.', hookKind: 'rpc' })
@@ -448,6 +525,7 @@ const workflowsPlugin: BakinPlugin = {
     ctx.hooks.register('workflows.definitions.list', (d: Record<string, unknown>) => listDefinitions(d.contentDir as string | undefined), { label: 'List workflow definitions.', summary: 'Returns available workflow definitions from the configured content directory. Use it to populate workflow selectors or validate workflow ids before creating instances.', hookKind: 'rpc' })
     ctx.hooks.register('workflows.loadDefinition', (d: Record<string, unknown>) => loadDefinition(d.name as string, d.contentDir as string | undefined), { label: 'Load workflow definition.', summary: 'Loads one workflow definition by name. Use it when a plugin needs the template shape, steps, or metadata behind a workflow id.', hookKind: 'rpc' })
     ctx.hooks.register('workflows.getActiveAgents', (d: Record<string, unknown>) => getActiveAgents(d.taskId as string, d.contentDir as string | undefined), { label: 'List active workflow agents.', summary: 'Returns agents currently active in a workflow task. Use it for coordination, notification, or assignment views that need live workflow participants.', hookKind: 'rpc' })
+    ctx.hooks.register('workflows.authorizeToolUse', (d: Record<string, unknown>) => authorizeWorkflowToolUse(d.taskId as string, d.agent as string, d.action as WorkflowToolUseAction, d.contentDir as string | undefined), { label: 'Authorize workflow tool use.', summary: 'Checks whether an agent may perform a workflow-scoped tool action for a task. Use it before executing workflow-sensitive automation.', hookKind: 'rpc' })
     ctx.hooks.register('workflows.isGateNotified', (d: Record<string, unknown>) => isGateNotified(d.taskId as string, d.stepId as string, d.contentDir as string | undefined), { label: 'Check gate notification.', summary: 'Checks whether a workflow gate notification has already been sent. Use it to avoid duplicate alerts for the same task and gate step.', hookKind: 'rpc' })
     ctx.hooks.register('workflows.markGateNotified', (d: Record<string, unknown>) => markGateNotified(d.taskId as string, d.stepId as string, d.contentDir as string | undefined), { label: 'Mark gate notified.', summary: 'Records that a workflow gate notification was sent. Use it immediately after notifying a reviewer or channel so future checks can suppress duplicates.', hookKind: 'rpc' })
     ctx.hooks.register('workflows.validateStepOutput', (d: Record<string, unknown>) => validateStepOutput(d.schema as Record<string, unknown> | undefined, d.output as Record<string, unknown>), { label: 'Validate step output.', summary: 'Validates workflow step output against the step schema. Use it before accepting agent or tool output that should advance a workflow.', hookKind: 'rpc' })
@@ -606,9 +684,21 @@ const workflowsPlugin: BakinPlugin = {
           { status: 400 },
         )
       }
+      const definition = parsed.data as WorkflowDefinition
+      const semanticErrors = validateDefinition(definition, {
+        definitionId: id,
+        source: 'user',
+        knownWorkflowIds: new Set([...listDefinitions().map((entry) => entry.name), id]),
+      })
+      if (semanticErrors.length > 0) {
+        return Response.json(
+          { error: 'validation failed', errors: semanticErrors },
+          { status: 400 },
+        )
+      }
 
-      writeUserDefinition(id, parsed.data)
-      return Response.json({ id, source: 'user', definition: parsed.data }, { status: 201 })
+      writeUserDefinition(id, definition)
+      return Response.json({ id, source: 'user', definition }, { status: 201 })
     }
     ctx.registerRoute({ path: '/definitions', method: 'POST', description: 'Create a new user-owned workflow definition', handler: createDefinitionHandler })
 
@@ -636,9 +726,21 @@ const workflowsPlugin: BakinPlugin = {
           { status: 400 },
         )
       }
+      const definition = parsed.data as WorkflowDefinition
+      const semanticErrors = validateDefinition(definition, {
+        definitionId: name,
+        source: 'user',
+        knownWorkflowIds: new Set([...listDefinitions().map((entry) => entry.name), name]),
+      })
+      if (semanticErrors.length > 0) {
+        return Response.json(
+          { error: 'validation failed', errors: semanticErrors },
+          { status: 400 },
+        )
+      }
 
-      writeUserDefinition(name, parsed.data)
-      return Response.json({ id: name, source: 'user', definition: parsed.data })
+      writeUserDefinition(name, definition)
+      return Response.json({ id: name, source: 'user', definition })
     }
     ctx.registerRoute({ path: '/definitions/:name', method: 'PUT', description: 'Update or shadow a workflow definition (writes user YAML)', handler: updateDefinitionHandler })
 
@@ -1055,7 +1157,7 @@ const workflowsPlugin: BakinPlugin = {
           assignee = getTask(taskId)?.agent
         } catch { /* best effort */ }
 
-        const instance = createInstance(taskId, workflowId, undefined, assignee)
+        const instance = await createValidatedInstance(taskId, workflowId, assignee)
 
         // Ensure the task's workflowId is persisted in Bakin task metadata
         try {
@@ -1134,7 +1236,7 @@ const workflowsPlugin: BakinPlugin = {
             assignee = getTask(taskId)?.agent
           } catch { /* best effort */ }
 
-          const instance = createInstance(taskId, workflowId, undefined, assignee)
+          const instance = await createValidatedInstance(taskId, workflowId, assignee)
 
           try {
             await updateTask(taskId, { workflowId })
@@ -1183,11 +1285,10 @@ const workflowsPlugin: BakinPlugin = {
       description: 'Get the current workflow step for a task. Returns only the current step (information gating — future steps are hidden). Critical for agents to know what to do next.',
       parameters: {
         taskId: z.string().describe('Task ID'),
-        agentId: z.string().optional().describe('Agent ID requesting the step'),
       },
-      handler: async (params: Record<string, unknown>) => {
-        const step = getCurrentStep(params.taskId as string, params.agentId as string | undefined)
-        if (!step) return { ok: false, error: `No workflow instance found for task: ${params.taskId}` }
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        const step = getCurrentStep(params.taskId as string, agent)
+        if (!step) return { ok: false, error: `No active workflow step found for task "${params.taskId}" owned by agent "${agent}"` }
         return { ok: true, ...step }
       },
     })
@@ -1200,13 +1301,12 @@ const workflowsPlugin: BakinPlugin = {
       parameters: {
         taskId: z.string().describe('Task ID'),
         stepId: z.string().describe('Step ID to complete'),
-        agentId: z.string().describe('Agent ID submitting the output'),
         output: z.record(z.string(), z.unknown()).describe('Step output object'),
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
         const taskId = params.taskId as string
         const stepId = params.stepId as string
-        const agentId = (params.agentId as string) || agent
+        const agentId = agent
         const output = params.output as Record<string, unknown>
 
         const result = completeStep(taskId, stepId, output, agentId)

@@ -9,9 +9,25 @@ mock.module('../../scripts/lib/registry', () => ({
 }))
 
 let mockContentDir = tmpdir()
-mock.module('../../src/core/content-dir', () => ({
+const contentDirMock = {
   getContentDir: () => mockContentDir,
   getBakinPaths: () => ({ assets: join(mockContentDir, 'assets') }),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
+  isUsingBakinHome: () => false,
+}
+mock.module('../../src/core/content-dir', () => contentDirMock)
+mock.module('@/core/content-dir', () => contentDirMock)
+
+let mockWorkflowAuthorizationError: Error | null = null
+const mockAssertWorkflowToolAllowed = mock(async (..._args: unknown[]) => {
+  if (mockWorkflowAuthorizationError) throw mockWorkflowAuthorizationError
+})
+mock.module('@/core/workflow-tool-authorization', () => ({
+  assertWorkflowToolAllowed: (...args: unknown[]) => mockAssertWorkflowToolAllowed(...args),
+}))
+mock.module('../../src/core/workflow-tool-authorization', () => ({
+  assertWorkflowToolAllowed: (...args: unknown[]) => mockAssertWorkflowToolAllowed(...args),
 }))
 
 import { postChannel } from '../../scripts/lib/post-channel'
@@ -27,6 +43,8 @@ describe('postChannel', () => {
 
   beforeEach(() => {
     deliverContent.mockClear()
+    mockAssertWorkflowToolAllowed.mockClear()
+    mockWorkflowAuthorizationError = null
     mockContentDir = tmpdir()
   })
 
@@ -75,6 +93,21 @@ describe('postChannel', () => {
 
     expect(result.ok).toBe(false)
     expect(result.error).toContain('channel offline')
+  })
+
+  it('returns a failed exec result when workflow policy denies posting', async () => {
+    mockWorkflowAuthorizationError = new Error('Workflow channel posts are only allowed from the active output step.')
+
+    const result = await postChannel({
+      channel: 'general',
+      content: 'test',
+      agent: 'chef',
+      taskId: 'task-123',
+    }, runtime)
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('only allowed')
+    expect(deliverContent).not.toHaveBeenCalled()
   })
 
   it('attaches image and video files resolved via pathForFilename', async () => {

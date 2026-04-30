@@ -107,7 +107,7 @@ CLI moves and agent calls go through the same state machine.
 ## Settings
 
 <!-- docs:settings tasks -->
-<div class="table-light-full table-settings">
+<div class="settings-table">
 
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
@@ -124,8 +124,6 @@ CLI moves and agent calls go through the same state machine.
 Same operations are available from the terminal when you'd rather not click:
 
 <!-- docs:cli-commands tasks -->
-<div class="table-light-full table-label">
-
 | Command | Purpose |
 | --- | --- |
 | `bakin tasks list [--column=<column>]` | List tasks. |
@@ -136,8 +134,6 @@ Same operations are available from the terminal when you'd rather not click:
 | `bakin tasks block <id> <reason>` | Block a task. |
 | `bakin tasks depend <id> <dependsOn>` | Register a task dependency. |
 | `bakin tasks complete <id> <summary>` | Complete a task. |
-
-</div>
 <!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).

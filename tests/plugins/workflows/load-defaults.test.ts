@@ -15,8 +15,23 @@ mock.module('@bakin/core/main-agent', () => ({
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
+  isUsingBakinHome: () => false,
 }))
-mock.module('@/core/task-store', () => ({}))
+mock.module('../../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
+  resetContentDir: mock(),
+  initBakinHome: mock(),
+  isUsingBakinHome: () => false,
+}))
+mock.module('@/core/task-store', () => ({
+  addTaskLog: mock(),
+  createTask: mock(),
+  getTask: mock(() => null),
+  moveTask: mock(),
+}))
 mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => join(testDir, 'openclaw'),
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
@@ -47,7 +62,7 @@ steps:
   - id: s1
     type: agent
     label: Do
-    agent: chef
+    agent: $assigned
 `
 
 const invalidYaml = `name: Bad
@@ -99,6 +114,56 @@ describe('loadDefaultWorkflows', () => {
     await activatePlugin(makeHostPlugin(fakeDefaultsDir), testDir)
 
     expect(getDefinition('my-cool-flow')).toBeDefined()
+  })
+
+  it('keeps repository default workflows valid and portable', () => {
+    const realDefaultsDir = join(process.cwd(), 'plugins', 'workflows', 'defaults', 'workflows')
+    const registered: string[] = []
+    const result = loadDefaultWorkflows({
+      registerWorkflow: (definition: { id?: string; name: string }) => {
+        registered.push(definition.id ?? definition.name)
+      },
+    } as unknown as PluginContext, realDefaultsDir, fakeLog)
+
+    expect(result.skipped).toEqual([])
+    expect(registered).toContain('text-social-post')
+    expect(registered).toContain('image-social-post')
+    expect(registered).toContain('video-social-post')
+  })
+
+  it('loads nested defaults independent of filesystem order', async () => {
+    writeFileSync(join(fakeDefaultsDir, 'parent.yaml'), `name: Parent
+description: Parent workflow
+version: 1
+steps:
+  - id: run-child
+    type: workflow
+    label: Run Child
+    workflow_id: child
+`)
+    writeFileSync(join(fakeDefaultsDir, 'child.yaml'), validYaml)
+
+    await activatePlugin(makeHostPlugin(fakeDefaultsDir), testDir)
+
+    expect(getDefinition('parent')).toBeDefined()
+    expect(getDefinition('child')).toBeDefined()
+  })
+
+  it('skips defaults with truly missing nested workflow refs', async () => {
+    writeFileSync(join(fakeDefaultsDir, 'parent.yaml'), `name: Parent
+description: Parent workflow
+version: 1
+steps:
+  - id: run-child
+    type: workflow
+    label: Run Child
+    workflow_id: missing-child
+`)
+
+    await activatePlugin(makeHostPlugin(fakeDefaultsDir), testDir)
+
+    expect(getDefinition('parent')).toBeUndefined()
+    expect(fakeLog.warn).toHaveBeenCalled()
   })
 
   it('returns an empty result when the defaults dir does not exist', async () => {

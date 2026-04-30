@@ -66,7 +66,7 @@ const healthPlugin = require('../../../plugins/health/index').default as typeof 
 import {
   registerPluginHealthCheck,
   unregisterPluginHealthChecks,
-} from '../../../plugins/health/lib/health-check-registry'
+} from '../../../src/core/health-check-registry'
 import { activatePlugin, findRoute, callRoute } from '../test-helpers'
 import type { ActivatedPlugin } from '../test-helpers'
 

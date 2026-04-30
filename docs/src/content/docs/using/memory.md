@@ -54,7 +54,7 @@ Turns and Audit are noisy by default. Flip the `System Logs` toggle in the page 
 ## Settings
 
 <!-- docs:settings memory -->
-<div class="table-light-full table-settings">
+<div class="settings-table">
 
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |

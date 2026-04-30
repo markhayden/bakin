@@ -77,6 +77,20 @@ description: Generated reference for Bakin core settings defaults.
   </tbody>
 </table>
 
+## Plugins
+
+<table class="settings-defaults-table">
+  <thead>
+    <tr><th>Key</th><th>Default</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>plugins.runtimeCapabilityMode</code></td>
+      <td><code>&quot;warn&quot;</code></td>
+    </tr>
+  </tbody>
+</table>
+
 ## Runtime
 
 <table class="settings-defaults-table">

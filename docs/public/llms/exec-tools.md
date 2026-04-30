@@ -2060,7 +2060,6 @@ Purpose: Complete a workflow step with output. Validates output against the step
 | --- | --- | --- | --- |
 | `taskId` | string | yes | Task ID |
 | `stepId` | string | yes | Step ID to complete |
-| `agentId` | string | yes | Agent ID submitting the output |
 | `output` | record | yes | Step output object |
 
 Example:
@@ -2069,7 +2068,6 @@ Example:
 mcporter call bakin-<agent>.bakin_exec_workflows_complete_step --args '{
   "taskId": "value",
   "stepId": "value",
-  "agentId": "value",
   "output": {
     "key": "value"
   }
@@ -2118,14 +2116,12 @@ Purpose: Get the current workflow step for a task. Returns only the current step
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
 | `taskId` | string | yes | Task ID |
-| `agentId` | string | no | Agent ID requesting the step |
 
 Example:
 
 ```sh
 mcporter call bakin-<agent>.bakin_exec_workflows_get_step --args '{
-  "taskId": "value",
-  "agentId": "value"
+  "taskId": "value"
 }'
 ```
 
