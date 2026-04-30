@@ -92,6 +92,5 @@ Workflow runtime — enforces step-by-step agent execution with gated delivery, 
 - Permissions: `storage.read`, `storage.write`, `events.emit`
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated from <code>plugins/*/bakin-plugin.json</code>.</span>
-  <span>Bakin 1.0.0.</span>
+  <span>Generated Apr 29, 2026 · Bakin 1.0.0</span>
 </aside>

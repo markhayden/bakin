@@ -753,10 +753,10 @@ class PluginRegistryImpl {
       },
       search: buildSearchAPI(pluginId, { registerRoute }),
       hooks: {
-        register: (name: string, handler: (data: any) => any) => {
+        register: (name: string, handler: (data: any) => any, metadata) => {
           // Forward the plugin id so unregisterByPlugin can sweep this
           // handler when the plugin is removed (#119).
-          return hookRegistry.register(name, handler, pluginId)
+          return hookRegistry.register(name, handler, { pluginId, metadata })
         },
         call: <T>(name: string, data: T) => hookRegistry.call<T>(name, data),
         callAll: (name: string, data: Record<string, unknown>) => hookRegistry.callAll(name, data),

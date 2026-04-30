@@ -122,11 +122,11 @@ function buildCtx(pluginId: string): PluginContext {
     },
     search: buildSearchAPI(pluginId, { registerRoute: noopRegisterRoute, skipFileBackedWiring: true }),
     hooks: {
-      register: (name, handler) => {
+      register: (name, handler, metadata) => {
         const registry = (globalThis as Record<string, unknown>).__bakinHookRegistry as
-          | { register: (n: string, h: (data: unknown) => unknown) => () => void }
+          | { register: (n: string, h: (data: unknown) => unknown, options?: unknown) => () => void }
           | undefined
-        if (registry) return registry.register(name, handler as (data: unknown) => unknown)
+        if (registry) return registry.register(name, handler as (data: unknown) => unknown, { pluginId, metadata })
         return () => {}
       },
       call: async <T>(name: string, data: T) => {

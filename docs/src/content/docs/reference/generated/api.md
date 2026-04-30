@@ -971,7 +971,5 @@ Submit step output, validates against schema, advances workflow
 
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated from <code>src/core/api-docs.ts + plugin manifests</code>.</span>
-  <span>Bakin 1.0.0.</span>
-  <span>Includes source-scan fallback for plugins without manifest route contracts.</span>
+  <span>Generated Apr 29, 2026 · Bakin 1.0.0</span>
 </aside>

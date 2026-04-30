@@ -57,6 +57,5 @@ Bakin reads settings from `settings.json` in the resolved Bakin home directory a
 | `workflow.enforceWorkflowDoneGuard` | `true` |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated from <code>packages/core/src/settings.ts</code>.</span>
-  <span>Bakin 1.0.0.</span>
+  <span>Generated Apr 29, 2026 · Bakin 1.0.0</span>
 </aside>

@@ -219,14 +219,43 @@ function updateGeneratedContentBlocks(): void {
   }
 }
 
-function extractHookRegistrations(): Array<{ name: string; file: string; line: number }> {
-  const hooks: Array<{ name: string; file: string; line: number }> = []
+type HookRegistrationDoc = {
+  name: string
+  file: string
+  line: number
+  label?: string
+  summary?: string
+  description?: string
+  hookKind?: string
+  visibility?: string
+  stability?: string
+}
+
+function extractHookRegistrations(): HookRegistrationDoc[] {
+  const hooks: HookRegistrationDoc[] = []
   for (const file of sourceFiles()) {
     const text = readFileSync(file, 'utf8')
     const lines = text.split('\n')
     for (let i = 0; i < lines.length; i++) {
       const match = lines[i].match(/hooks\.register\(['"`]([^'"`]+)['"`]/)
-      if (match) hooks.push({ name: match[1], file: relativeSource(file), line: i + 1 })
+      if (match) {
+        const block = lines.slice(i, Math.min(lines.length, i + 45)).join('\n')
+        const label = block.match(/label:\s*(["'`])((?:\\[\s\S]|(?!\1)[\s\S])*)\1/)?.[2]
+        const summary = block.match(/summary:\s*(["'`])((?:\\[\s\S]|(?!\1)[\s\S])*)\1/)?.[2]
+        const hookKind = block.match(/hookKind:\s*['"`]([^'"`]+)['"`]/)?.[1]
+        const visibility = block.match(/visibility:\s*['"`]([^'"`]+)['"`]/)?.[1]
+        const stability = block.match(/stability:\s*['"`]([^'"`]+)['"`]/)?.[1]
+        hooks.push({
+          name: match[1],
+          file: relativeSource(file),
+          line: i + 1,
+          label: label?.replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\`/g, '`').trim(),
+          summary: summary?.replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\`/g, '`').trim(),
+          hookKind,
+          visibility,
+          stability,
+        })
+      }
     }
   }
   return hooks.sort((a, b) => a.name.localeCompare(b.name) || a.file.localeCompare(b.file))
@@ -325,14 +354,15 @@ function flattenObject(value: unknown, prefix = ''): Array<{ key: string; value:
 }
 
 const versionLine = `Docs version: Bakin ${APP_VERSION}`
-function generatedPageNote(source: string, note?: string): string {
-  const escapedSource = source.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const escapedNote = note?.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+function generatedPageNote(): string {
+  const generatedDate = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date())
   return [
     '<aside class="generated-page-note" aria-label="Generated page metadata">',
-    `  <span>Generated from <code>${escapedSource}</code>.</span>`,
-    `  <span>Bakin ${APP_VERSION}.</span>`,
-    escapedNote ? `  <span>${escapedNote}</span>` : '',
+    `  <span>Generated ${generatedDate} · Bakin ${APP_VERSION}</span>`,
     '</aside>',
   ].filter(Boolean).join('\n')
 }
@@ -463,25 +493,6 @@ function describeCliPart(token: string, kind: 'argument' | 'option' | 'choice', 
   if (kind === 'choice') return 'Choose one of these values.'
   if (kind === 'option') return normalized.includes(' <') || normalized.includes('=') ? 'Optional flag with a value.' : 'Optional flag.'
   return required ? 'Required value.' : 'Optional value.'
-}
-
-function renderCliUsageLine(command: CliCommand): string {
-  const tokens = command.usage.match(/\[[^\]]+\]|<[^>]+>|\S+/g) ?? []
-  return tokens.map((token, index) => {
-    const inner = token.replace(/^\[/, '').replace(/\]$/, '').replace(/^</, '').replace(/>$/, '')
-    const hasChoice = inner.includes('|')
-    const required = token.startsWith('<')
-    const optional = token.startsWith('[')
-    const displayToken = hasChoice ? displayCliPartToken(inner, 'choice', required && !optional, optional) : token
-    const className = index === 0
-      ? 'cli-token cli-token--binary'
-      : token.startsWith('[') || token.startsWith('--') || token.startsWith('-')
-        ? 'cli-token cli-token--option'
-        : token.startsWith('<')
-          ? 'cli-token cli-token--arg'
-          : 'cli-token'
-    return `<span class="${className}">${escapeHtml(displayToken)}</span>`
-  }).join(' ')
 }
 
 function buildCoverageReport(): Record<string, unknown> {
@@ -635,21 +646,18 @@ function renderCliCommandBlock(command: CliCommand): string {
     command.stability !== 'stable' ? `Stability: <code>${escapeHtml(command.stability)}</code>` : '',
     command.aliases?.length ? `Aliases: ${command.aliases.map(alias => `<code>${escapeHtml(alias)}</code>`).join(' ')}` : '',
   ].filter(Boolean)
+  const props = [
+    `id="${commandId}"`,
+    `name="${escapeHtml(command.name)}"`,
+    `summary="${escapeHtml(command.summary)}"`,
+    `description="${escapeHtml(command.description)}"`,
+  ].join(' ')
 
   return [
-    `<section class="cli-command" id="${commandId}">`,
-    '  <div class="cli-command__heading">',
-    `    <code>${escapeHtml(command.name)}</code>`,
-    `    <span class="cli-command__summary">${escapeHtml(command.summary)}</span>`,
-    `    <a class="cli-command__anchor" href="#${commandId}" aria-label="Link to ${escapeHtml(command.name)}"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a>`,
-    '  </div>',
-    '  <div class="cli-command__box">',
-    `  <p class="cli-command__description">${escapeHtml(command.description)}</p>`,
-    '  <div class="cli-command__terminal">',
-    '    <span class="cli-command__prompt">&gt;</span>',
-    `    <code>${renderCliUsageLine(command)}</code>`,
-    `    <button class="cli-command__copy" type="button" data-cli-copy="${escapeHtml(command.usage)}" aria-label="Copy ${escapeHtml(command.usage)}">Copy</button>`,
-    '  </div>',
+    `<CliCommandCard ${props}>`,
+    '```sh frame="terminal"',
+    command.usage,
+    '```',
     usageParts.length ? [
       '  <table class="cli-command__args">',
       '    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>',
@@ -659,8 +667,7 @@ function renderCliCommandBlock(command: CliCommand): string {
       '  </table>',
     ].join('\n') : '',
     commandNotes.length ? `  <p class="cli-command__meta">${commandNotes.join(' · ')}</p>` : '',
-    '  </div>',
-    '</section>',
+    '</CliCommandCard>',
   ].filter(Boolean).join('\n')
 }
 
@@ -690,6 +697,8 @@ function renderCliReference(): string {
 	    'description: Generated reference for public Bakin CLI commands.',
 		    '---',
 		    '',
+    "import CliCommandCard from '../../../../components/CliCommandCard.astro'",
+    '',
     '<div class="cli-reference-intro">',
     '  <p>The Bakin CLI is the fastest way to run local setup, check health, manage tasks, install plugins, and script repeatable work. Use it when you want a direct command instead of clicking through the dashboard, or when you need Bakin actions inside shell scripts and automation.</p>',
     '</div>',
@@ -721,7 +730,7 @@ function renderCliReference(): string {
     }
     lines.push('</div>', '')
 		  }
-		  lines.push(generatedPageNote('src/core/cli/registry.ts'), '')
+		  lines.push(generatedPageNote(), '')
 
 	  return lines.join('\n')
 	}
@@ -765,29 +774,175 @@ function renderApiReference(): string {
       lines.push('')
     }
 	  }
-	  lines.push(generatedPageNote('src/core/api-docs.ts + plugin manifests', 'Includes source-scan fallback for plugins without manifest route contracts.'), '')
+	  lines.push(generatedPageNote(), '')
 
 	  return lines.join('\n')
 	}
 
+type HookRegistration = ReturnType<typeof extractHookRegistrations>[number]
+
+const hookGroupDescriptions: Record<string, string> = {
+  assets: 'Asset hooks expose file, sidecar, variant, and trash helpers for plugins that need to work with Bakin-managed files.',
+  health: 'Health hooks expose registered readiness and diagnostic checks so other surfaces can list or inspect them.',
+  models: 'Model hooks expose the effective model configuration and notify dependent surfaces when runtime model state changes.',
+  tasks: 'Task hooks let plugins enrich task details and react to task lifecycle changes.',
+  team: 'Team hooks expose runtime agent and team metadata for plugins that need agent-aware behavior.',
+  workflows: 'Workflow hooks expose workflow definitions, instances, steps, gates, and notification helpers for task automation.',
+}
+
+function hookId(name: string): string {
+  return name
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase()
+}
+
+function hookNamespace(name: string): string {
+  return name.split('.')[0] || 'other'
+}
+
+type HookExamplePayload = Record<string, unknown>
+
+const hookExamplePayloads: Record<string, HookExamplePayload> = {
+  'assets.validateSidecar': { metaPath: '~/.bakin/assets/store/task-123/image.json' },
+  'assets.getSidecarPath': { assetPath: '~/.bakin/assets/store/task-123/image.png' },
+  'assets.createStub': { assetPath: '~/.bakin/assets/store/task-123/image.png' },
+  'assets.detectVariant': { filename: 'task-123.after.png' },
+  'assets.getAssetTypes': {},
+  'assets.pathForFilename': { filename: 'task-123.after.png' },
+  'assets.purgeClipboardForTask': { taskId: 'task-123' },
+  'assets.trash.list': { assetsRoot: '~/.bakin/assets' },
+  'assets.restoreAsset': { trashFilename: 'task-123.after.png', assetsRoot: '~/.bakin/assets' },
+  'assets.emptyTrash': { assetsRoot: '~/.bakin/assets' },
+  'health.list': {},
+  'health.getCheck': { id: 'runtime' },
+  'models.configChanged': { agentId: 'patch', oldModel: 'gpt-5.4', newModel: 'gpt-5.5' },
+  'models.getEffectiveModel': { agentId: 'patch' },
+  'models.markConfigDirty': {},
+  'models.markRuntimeRestarted': {},
+  'models.getAvailableModels': {},
+  'tasks.statusChanged': { taskId: 'task-123', from: 'doing', to: 'done' },
+  'tasks.enrichDetails': { task: { id: 'task-123', projectId: 'launch-docs' } },
+  'team.list': {},
+  'team.getAgent': { id: 'patch' },
+  'team.getAgentIds': {},
+  'team.resolveProfile': { id: 'patch' },
+  'team.getTeamMembers': { teamId: 'docs' },
+  'team.getAgentTeam': { id: 'patch' },
+  'team.getOrgStructure': {},
+  'workflows.loadInstance': { taskId: 'task-123' },
+  'workflows.saveInstance': { instance: { taskId: 'task-123', workflowId: 'docs-review' } },
+  'workflows.createInstance': { taskId: 'task-123', workflowId: 'docs-review', assignee: 'patch' },
+  'workflows.instances.list': { statusFilter: 'in_progress' },
+  'workflows.getCurrentStep': { taskId: 'task-123', agentId: 'patch' },
+  'workflows.completeStep': { taskId: 'task-123', stepId: 'review', output: { ok: true } },
+  'workflows.matchWorkflow': { title: 'Improve hook docs', description: 'Add generated examples' },
+  'workflows.definitions.list': {},
+  'workflows.loadDefinition': { name: 'docs-review' },
+  'workflows.getActiveAgents': { taskId: 'task-123' },
+  'workflows.isGateNotified': { taskId: 'task-123', stepId: 'approval' },
+  'workflows.markGateNotified': { taskId: 'task-123', stepId: 'approval' },
+  'workflows.validateStepOutput': { schema: { type: 'object' }, output: { approved: true } },
+  'workflows.cancelInstance': { taskId: 'task-123' },
+  'workflows.notificationChannels.list': {},
+  'workflows.getNotificationChannel': { id: 'slack' },
+}
+
+function formatHookExampleValue(value: unknown, indent = 0): string {
+  const pad = ' '.repeat(indent)
+  const childPad = ' '.repeat(indent + 2)
+  if (typeof value === 'string') return `'${value.replace(/'/g, "\\'")}'`
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) {
+    if (!value.length) return '[]'
+    return `[\n${value.map(item => `${childPad}${formatHookExampleValue(item, indent + 2)}`).join(',\n')}\n${pad}]`
+  }
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+    if (!entries.length) return '{}'
+    return `{\n${entries.map(([key, item]) => `${childPad}${key}: ${formatHookExampleValue(item, indent + 2)}`).join(',\n')}\n${pad}}`
+  }
+  return 'null'
+}
+
+function renderHookExample(hook: HookRegistration): string {
+  const payload = formatHookExampleValue(hookExamplePayloads[hook.name] ?? {}, 2)
+  const method = hook.hookKind === 'event'
+    ? 'callAll'
+    : hook.hookKind === 'waterfall'
+      ? 'call'
+      : 'invoke'
+  if (hook.hookKind === 'event') {
+    return `await ctx.hooks.${method}(\n  '${hook.name}',\n  ${payload},\n)`
+  }
+  if (hook.hookKind === 'waterfall') {
+    return `const next = await ctx.hooks.${method}(\n  '${hook.name}',\n  ${payload},\n)`
+  }
+  return `const result = await ctx.hooks.${method}(\n  '${hook.name}',\n  ${payload},\n)`
+}
+
+function renderHookCard(hook: HookRegistration): string {
+  const id = hookId(hook.name)
+  const label = hook.label ?? hook.summary ?? hook.name
+  const badges = [
+    hook.hookKind,
+    hook.visibility && hook.visibility !== 'public' ? hook.visibility : '',
+    hook.stability && hook.stability !== 'stable' ? hook.stability : '',
+  ].filter(Boolean)
+  const props = [
+    `id="${id}"`,
+    `name="${escapeHtml(hook.name)}"`,
+    `label="${escapeHtml(label)}"`,
+    hook.summary ? `summary="${escapeHtml(hook.summary)}"` : '',
+    `source="${escapeHtml(`${hook.file}:${hook.line}`)}"`,
+    badges.length ? `badges={${JSON.stringify(badges)}}` : '',
+  ].filter(Boolean).join(' ')
+  return [
+    `<HookCard ${props}>`,
+    '```ts frame="terminal"',
+    renderHookExample(hook),
+    '```',
+    '</HookCard>',
+  ].filter(Boolean).join('\n')
+}
+
 function renderHookReference(): string {
   const hooks = extractHookRegistrations()
+  const grouped = new Map<string, HookRegistration[]>()
+  for (const hook of hooks) {
+    const namespace = hookNamespace(hook.name)
+    const existing = grouped.get(namespace) ?? []
+    existing.push(hook)
+    grouped.set(namespace, existing)
+  }
+
   const lines = [
     '---',
-    'title: Hook Reference',
+    'title: Hooks',
     'description: Generated audit reference for Bakin hook registrations.',
 	    '---',
 	    '',
+    "import HookCard from '../../../../components/HookCard.astro'",
+    '',
+    '<div class="hook-reference-intro">',
+    '  <p>Hooks are the integration points plugins use to share Bakin state and behavior. Reach for them when you need task context, agent details, model choices, workflow state, assets, or health checks owned by another plugin.</p>',
+    '  <p>This reference shows the hook key to call, what it returns or changes, and the registration that owns the contract.</p>',
+    '</div>',
+    '',
 	  ]
 
-	  for (const hook of hooks) {
-    lines.push(`## \`${hook.name}\``, '')
-    lines.push(`Source: \`${hook.file}:${hook.line}\``, '')
-    lines.push('- Visibility: `public` until explicitly marked otherwise')
-    lines.push('- Stability: `beta` until a hook contract declares stability')
-    lines.push('- Contract status: `audited`', '')
+  for (const namespace of [...grouped.keys()].sort((a, b) => a.localeCompare(b))) {
+    const namespaceHooks = [...(grouped.get(namespace) ?? [])].sort((a, b) => a.name.localeCompare(b.name))
+    const title = namespace === 'other' ? 'Other' : `${namespace[0].toUpperCase()}${namespace.slice(1)}`
+    lines.push(`## ${title}`, '')
+    lines.push(`<p class="hook-section-description">${escapeHtml(hookGroupDescriptions[namespace] ?? 'Hooks discovered from source registration audit.')}</p>`, '')
+    lines.push('<div class="hook-card-list">')
+    for (const hook of namespaceHooks) {
+      lines.push(renderHookCard(hook))
+    }
+    lines.push('</div>', '')
 	  }
-	  lines.push(generatedPageNote('source audit', 'A later contract pass will replace audited hook entries with explicit metadata.'), '')
+	  lines.push(generatedPageNote(), '')
 
 	  return lines.join('\n')
 	}
@@ -810,7 +965,7 @@ function renderExecToolReference(): string {
     lines.push('- Stability: `beta` until a tool contract declares stability')
     lines.push('- Contract status: `audited`', '')
 	  }
-	  lines.push(generatedPageNote('source audit', 'A later contract pass will replace audited tool entries with explicit metadata and schemas.'), '')
+	  lines.push(generatedPageNote(), '')
 
 	  return lines.join('\n')
 	}
@@ -836,7 +991,7 @@ function renderPluginCatalog(): string {
     lines.push(`- Permissions: ${plugin.permissions?.length ? plugin.permissions.map(p => `\`${p}\``).join(', ') : '`none declared`'}`)
     lines.push('')
 	  }
-	  lines.push(generatedPageNote('plugins/*/bakin-plugin.json'), '')
+	  lines.push(generatedPageNote(), '')
 
 	  return lines.join('\n')
 	}
@@ -857,7 +1012,7 @@ function renderSettingsReference(): string {
 	  for (const setting of settings) {
 	    lines.push(`| \`${setting.key}\` | \`${JSON.stringify(setting.value)}\` |`)
 	  }
-	  lines.push('', generatedPageNote('packages/core/src/settings.ts'), '')
+	  lines.push('', generatedPageNote(), '')
 	  return lines.join('\n')
 	}
 
@@ -899,7 +1054,7 @@ function renderRuntimePathsReference(): string {
 	  for (const [key, description] of paths) {
 	    lines.push(`| \`${key}\` | ${description} |`)
 	  }
-	  lines.push('', generatedPageNote('packages/core/src/content-dir.ts'), '')
+	  lines.push('', generatedPageNote(), '')
 	  return lines.join('\n')
 	}
 
@@ -927,7 +1082,7 @@ function renderSdkReference(): string {
     }
     lines.push('')
 	  }
-	  lines.push(generatedPageNote('packages/sdk/package.json + SDK barrel files', 'Full TypeDoc output will replace this audit view once public TSDoc coverage is complete.'), '')
+	  lines.push(generatedPageNote(), '')
 
 	  return lines.join('\n')
 	}
@@ -986,7 +1141,7 @@ function renderCoverageReference(): string {
     '- plugin routes should use the same route metadata helpers as core routes',
     '- SDK exports need complete TSDoc and stability annotations',
     '',
-    generatedPageNote('scripts/docs/generate.ts', 'Maintainer-only launch coverage and CI comparison output.'),
+    generatedPageNote(),
     '',
   ].join('\n')
 }
@@ -997,7 +1152,7 @@ writeStableFile(
 )
 
 writeStableFile(
-  join(docsRoot, 'src/content/docs/reference/generated/cli.md'),
+  join(docsRoot, 'src/content/docs/reference/generated/cli.mdx'),
   renderCliReference(),
 )
 
@@ -1007,7 +1162,7 @@ writeStableFile(
 )
 
 writeStableFile(
-  join(docsRoot, 'src/content/docs/reference/generated/hooks.md'),
+  join(docsRoot, 'src/content/docs/reference/generated/hooks.mdx'),
   renderHookReference(),
 )
 

@@ -30,6 +30,5 @@ Resolution order:
 | `workflows` | Workflow definitions, skills, and instances. |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated from <code>packages/core/src/content-dir.ts</code>.</span>
-  <span>Bakin 1.0.0.</span>
+  <span>Generated Apr 29, 2026 · Bakin 1.0.0</span>
 </aside>
