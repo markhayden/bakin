@@ -13,6 +13,8 @@
  * Both endpoints read from the `bakin_memory` table (tier=dream). The indexer
  * is the single source of truth — routes never re-parse files.
  */
+import { defineRoute } from '@bakin/core/routing'
+import type { PluginContextLite } from '@bakin/core/routing'
 import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
 
 function parseLimitOffset(url: URL): { limit: number; offset: number } {
@@ -35,11 +37,11 @@ function parseMeta(raw: unknown): Record<string, unknown> | null {
 
 // ─── List dreams ─────────────────────────────────────────────────────────
 
-export const dreamsListRoute: APIRoute = {
+export const dreamsListRoute = defineRoute({
   path: '/dreams',
   method: 'GET',
   description: 'List dream artifacts for an agent (optional phase/date/artifactType filters)',
-  handler: async (req: Request, ctx: PluginContext) => {
+  handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
     if (!agent) return Response.json({ error: 'agent required' }, { status: 400 })
@@ -71,15 +73,15 @@ export const dreamsListRoute: APIRoute = {
     const dreams = filtered.map((r) => ({ id: r.id, score: r.score, ...r.fields }))
     return Response.json({ dreams, total: filtered.length })
   },
-}
+})
 
 // ─── Dream detail ────────────────────────────────────────────────────────
 
-export const dreamDetailRoute: APIRoute = {
+export const dreamDetailRoute = defineRoute({
   path: '/dreams/:agent/:artifactType',
   method: 'GET',
   description: 'Read one dream artifact by (agent, artifactType[, phase, date])',
-  handler: async (req: Request, ctx: PluginContext) => {
+  handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
     const artifactType = url.searchParams.get('artifactType')
@@ -112,4 +114,4 @@ export const dreamDetailRoute: APIRoute = {
     if (!match) return Response.json({ error: 'not found' }, { status: 404 })
     return Response.json({ id: match.id, ...match.fields })
   },
-}
+})

@@ -165,14 +165,19 @@ export interface APIRoute<
 > {
   path: string
   method: HttpMethod
-  summary: string
+  // `summary` is optional during the migration window so legacy `description`-only
+  // routes can be wrapped via defineRoute() without restructuring. The validator
+  // (T18 fail-closed) flags public bundled routes that lack summary.
+  summary?: string
   description?: string
 
   params?: z.ZodType<P>
   query?: z.ZodType<Q>
   body?: P extends never ? never : BodySpec<B>
 
-  responses: Partial<Record<HttpStatus, ResponseSpec>>
+  // Optional during migration; the validator (T18) flags public bundled routes
+  // that lack any 2xx response declaration.
+  responses?: Partial<Record<HttpStatus, ResponseSpec>>
 
   visibility?: ContractVisibility
   stability?: ContractStability

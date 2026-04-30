@@ -26,7 +26,7 @@ import { globalErrorResponses } from './errors'
 interface AnyAPIRoute {
   path: string
   method: string
-  summary: string
+  summary?: string
   description?: string
   params?: z.ZodType<unknown>
   query?: z.ZodType<unknown>
@@ -96,7 +96,7 @@ export function buildOperation(
 
   const operation: OpenApiOperation = {
     operationId,
-    summary: route.summary,
+    summary: route.summary ?? route.description ?? `${route.method} ${route.path}`,
     responses: buildResponses(route),
     tags: route.tags ?? [defaultTag(ctx)],
   }

@@ -15,13 +15,15 @@
  * indexed `bakin_memory` table — the indexer already enforces the 32 KB
  * truncation / head-only chunking rules, so the route is a pure query.
  */
+import { defineRoute } from '@bakin/core/routing'
+import type { PluginContextLite } from '@bakin/core/routing'
 import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
 import { getRuntimeMemoryEntry } from '../runtime-memory'
 
 type SessionMap = Record<string, unknown>
 
 async function loadSessionMap(ctx: PluginContext, agent: string): Promise<{ map: SessionMap; sourcePath?: string } | null> {
-  const entry = await getRuntimeMemoryEntry(ctx, 'session_store', 'sessions.json', agent)
+  const entry = await getRuntimeMemoryEntry(ctx as unknown as PluginContext, 'session_store', 'sessions.json', agent)
   if (!entry) return null
   try {
     const parsed = JSON.parse(entry.content) as unknown
@@ -50,17 +52,17 @@ function extractKind(key: string): string {
 
 // ─── List sessions ────────────────────────────────────────────────────────
 
-export const sessionsListRoute: APIRoute = {
+export const sessionsListRoute = defineRoute({
   path: '/sessions',
   method: 'GET',
   description: 'List sessions for an agent',
-  handler: async (req: Request, ctx: PluginContext) => {
+  handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
     if (!agent) return Response.json({ error: 'agent required' }, { status: 400 })
 
     const kindFilter = url.searchParams.get('kind')
-    const loaded = await loadSessionMap(ctx, agent)
+    const loaded = await loadSessionMap(ctx as unknown as PluginContext, agent)
     if (loaded === null) return Response.json({ sessions: [], sourcePath: null })
 
     const sessions: Array<Record<string, unknown>> = []
@@ -77,22 +79,22 @@ export const sessionsListRoute: APIRoute = {
     })
     return Response.json({ sessions, sourcePath: loaded.sourcePath ?? null })
   },
-}
+})
 
 // ─── Session detail ───────────────────────────────────────────────────────
 
-export const sessionDetailRoute: APIRoute = {
+export const sessionDetailRoute = defineRoute({
   path: '/sessions/:agent/:sessionKey',
   method: 'GET',
   description: 'Read one session by key',
-  handler: async (req: Request, ctx: PluginContext) => {
+  handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
     const sessionKey = url.searchParams.get('sessionKey')
     if (!agent || !sessionKey) {
       return Response.json({ error: 'agent and sessionKey required' }, { status: 400 })
     }
-    const loaded = await loadSessionMap(ctx, agent)
+    const loaded = await loadSessionMap(ctx as unknown as PluginContext, agent)
     const match = loaded ? loaded.map[sessionKey] : null
     if (!match || typeof match !== 'object') {
       return Response.json({ error: 'not found' }, { status: 404 })
@@ -104,7 +106,7 @@ export const sessionDetailRoute: APIRoute = {
       ...(match as Record<string, unknown>),
     })
   },
-}
+})
 
 // ─── Turns for a session ──────────────────────────────────────────────────
 
@@ -135,11 +137,11 @@ async function queryTurns(
   return Response.json({ turns, total: res.meta.total })
 }
 
-export const sessionTurnsRoute: APIRoute = {
+export const sessionTurnsRoute = defineRoute({
   path: '/sessions/:agent/:sessionKey/turns',
   method: 'GET',
   description: 'List turns belonging to one session (indexed)',
-  handler: async (req: Request, ctx: PluginContext) => {
+  handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
     const sessionKey = url.searchParams.get('sessionKey')
@@ -162,13 +164,13 @@ export const sessionTurnsRoute: APIRoute = {
     const turns = res.results.map((r) => ({ id: r.id, score: r.score, ...r.fields }))
     return Response.json({ turns, total: res.meta.total })
   },
-}
+})
 
-export const turnsListRoute: APIRoute = {
+export const turnsListRoute = defineRoute({
   path: '/turns',
   method: 'GET',
   description: 'List turns by (agent, sessionId)',
-  handler: async (req: Request, ctx: PluginContext) => {
+  handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
     const sessionId = url.searchParams.get('sessionId')
@@ -179,6 +181,6 @@ export const turnsListRoute: APIRoute = {
     const filters: Record<string, string> = { agent }
     const eventType = url.searchParams.get('eventType')
     if (eventType) filters.eventType = eventType
-    return queryTurns(ctx, filters, limit, offset)
+    return queryTurns(ctx as unknown as PluginContext, filters, limit, offset)
   },
-}
+})

@@ -23,7 +23,7 @@ Asset hooks expose file, sidecar, variant, and trash helpers for plugins that ne
 Label: Create sidecar stub.
 Purpose: Creates a starter sidecar for an asset file and returns the written metadata. Use it when adopting a file into Bakin-managed asset state.
 Kind: rpc
-Source: plugins/assets/index.ts:306
+Source: plugins/assets/index.ts:522
 
 Example:
 
@@ -41,7 +41,7 @@ const result = await ctx.hooks.invoke(
 Label: Detect asset variant.
 Purpose: Infers the asset variant represented by a filename, such as before, after, or reference. Use it to keep imported assets grouped and labeled consistently.
 Kind: rpc
-Source: plugins/assets/index.ts:307
+Source: plugins/assets/index.ts:523
 
 Example:
 
@@ -59,7 +59,7 @@ const result = await ctx.hooks.invoke(
 Label: Empty asset trash.
 Purpose: Permanently removes every asset currently in trash for the provided asset root. Use it for explicit cleanup actions where restore is no longer expected.
 Kind: rpc
-Source: plugins/assets/index.ts:342
+Source: plugins/assets/index.ts:558
 
 Example:
 
@@ -77,7 +77,7 @@ const result = await ctx.hooks.invoke(
 Label: List asset types.
 Purpose: Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories.
 Kind: rpc
-Source: plugins/assets/index.ts:308
+Source: plugins/assets/index.ts:524
 
 Example:
 
@@ -93,7 +93,7 @@ const result = await ctx.hooks.invoke(
 Label: Get sidecar path.
 Purpose: Resolves the metadata sidecar path for a managed asset file. Use it when another plugin has an asset path and needs to read or write the matching metadata.
 Kind: rpc
-Source: plugins/assets/index.ts:305
+Source: plugins/assets/index.ts:521
 
 Example:
 
@@ -111,7 +111,7 @@ const result = await ctx.hooks.invoke(
 Label: Resolve asset path.
 Purpose: Calculates the managed asset path for a filename. Use it when a plugin needs to place or reference a file using Bakin asset storage conventions.
 Kind: rpc
-Source: plugins/assets/index.ts:309
+Source: plugins/assets/index.ts:525
 
 Example:
 
@@ -129,7 +129,7 @@ const result = await ctx.hooks.invoke(
 Label: Purge task clipboard assets.
 Purpose: Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized.
 Kind: rpc
-Source: plugins/assets/index.ts:312
+Source: plugins/assets/index.ts:528
 
 Example:
 
@@ -147,7 +147,7 @@ const result = await ctx.hooks.invoke(
 Label: Restore trashed asset.
 Purpose: Restores one soft-deleted asset from the trash back into managed asset storage. Use it when a plugin needs undo behavior for asset deletion.
 Kind: rpc
-Source: plugins/assets/index.ts:341
+Source: plugins/assets/index.ts:557
 
 Example:
 
@@ -166,7 +166,7 @@ const result = await ctx.hooks.invoke(
 Label: List trashed assets.
 Purpose: Returns soft-deleted assets currently available for restore or permanent removal. Use it to power trash views without duplicating filesystem conventions.
 Kind: rpc
-Source: plugins/assets/index.ts:340
+Source: plugins/assets/index.ts:556
 
 Example:
 
@@ -184,7 +184,7 @@ const result = await ctx.hooks.invoke(
 Label: Validate sidecar metadata.
 Purpose: Checks an asset sidecar JSON file and returns validation details. Use it before trusting metadata created by imports, repairs, or external tools.
 Kind: rpc
-Source: plugins/assets/index.ts:304
+Source: plugins/assets/index.ts:520
 
 Example:
 
@@ -206,7 +206,7 @@ Health hooks expose registered readiness and diagnostic checks so other surfaces
 Label: Get a health check.
 Purpose: Returns metadata for one registered health check by id, without running the check. Use it when a plugin needs the check name, owner, and autofix capability before deciding what to show or run.
 Kind: rpc
-Source: plugins/health/index.ts:83
+Source: plugins/health/index.ts:272
 
 Example:
 
@@ -224,7 +224,7 @@ const result = await ctx.hooks.invoke(
 Label: List health checks.
 Purpose: Returns the health checks registered by core and plugins without executing them. Use it when another surface needs to show the available diagnostics or autofix support.
 Kind: rpc
-Source: plugins/health/index.ts:82
+Source: plugins/health/index.ts:271
 
 Example:
 
@@ -244,7 +244,7 @@ Model hooks expose the effective model configuration and notify dependent surfac
 Label: Model config changed.
 Purpose: Notifies listeners after an agent model assignment changes. Use it to refresh dependent state, update UI, or invalidate plugin caches that depend on model routing.
 Kind: event
-Source: plugins/models/index.ts:370
+Source: plugins/models/index.ts:685
 
 Example:
 
@@ -264,7 +264,7 @@ await ctx.hooks.callAll(
 Label: List available models.
 Purpose: Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config.
 Kind: rpc
-Source: plugins/models/index.ts:386
+Source: plugins/models/index.ts:701
 
 Example:
 
@@ -280,7 +280,7 @@ const result = await ctx.hooks.invoke(
 Label: Get effective model.
 Purpose: Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent.
 Kind: rpc
-Source: plugins/models/index.ts:374
+Source: plugins/models/index.ts:689
 
 Example:
 
@@ -298,7 +298,7 @@ const result = await ctx.hooks.invoke(
 Label: Mark config dirty.
 Purpose: Marks model configuration as changed so the runtime knows a refresh is needed. Use it after writing model settings that should not be treated as live yet.
 Kind: event
-Source: plugins/models/index.ts:382
+Source: plugins/models/index.ts:697
 
 Example:
 
@@ -314,7 +314,7 @@ await ctx.hooks.callAll(
 Label: Mark runtime refreshed.
 Purpose: Records that the runtime has picked up the latest model configuration. Use it after restart or reload flows so stale dirty-state warnings can clear.
 Kind: event
-Source: plugins/models/index.ts:384
+Source: plugins/models/index.ts:699
 
 Example:
 

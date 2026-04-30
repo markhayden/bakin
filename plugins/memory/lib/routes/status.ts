@@ -13,6 +13,8 @@
  * whole response; the status view is for at-a-glance diagnostics, not a
  * source of truth.
  */
+import { defineRoute } from '@bakin/core/routing'
+import type { PluginContextLite } from '@bakin/core/routing'
 import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
 import { MEMORY_TIERS, type MemoryTier } from '../types'
 import { getOffsetsFilePath } from '../offsets'
@@ -60,13 +62,13 @@ function offsetsTracked(): number {
   return 0
 }
 
-export const statusRoute: APIRoute = {
+export const statusRoute = defineRoute({
   path: '/status',
   method: 'GET',
   description: 'Indexer health: per-tier row counts + offset snapshot',
-  handler: async (_req: Request, ctx: PluginContext) => {
+  handler: async (_req: Request, ctx: PluginContextLite) => {
     const entries = await Promise.all(
-      MEMORY_TIERS.map(async (t) => [t, await countForTier(ctx, t)] as const),
+      MEMORY_TIERS.map(async (t) => [t, await countForTier(ctx as unknown as PluginContext, t)] as const),
     )
     const countsByTier = Object.fromEntries(entries) as Record<MemoryTier, number>
     const totalRows = entries.reduce((sum, [, n]) => sum + n, 0)
@@ -77,4 +79,4 @@ export const statusRoute: APIRoute = {
       lastUpdated: Date.now(),
     })
   },
-}
+})

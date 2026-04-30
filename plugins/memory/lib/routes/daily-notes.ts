@@ -9,6 +9,8 @@
  * active runtime's own memory search in one response so the UI can compare
  * substrate behavior without naming provider internals.
  */
+import { defineRoute } from '@bakin/core/routing'
+import type { PluginContextLite } from '@bakin/core/routing'
 import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
 import { getRuntimeMemoryEntry, listRuntimeMemoryEntries } from '../runtime-memory'
 
@@ -16,16 +18,16 @@ const DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})([-.].*)?\.md$/
 
 // ─── List ─────────────────────────────────────────────────────────────────
 
-export const dailyNotesListRoute: APIRoute = {
+export const dailyNotesListRoute = defineRoute({
   path: '/daily-notes',
   method: 'GET',
   description: 'List daily notes for an agent (sorted by date desc)',
-  handler: async (req: Request, ctx: PluginContext) => {
+  handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
     if (!agent) return Response.json({ error: 'agent required' }, { status: 400 })
 
-    const files = (await listRuntimeMemoryEntries(ctx, 'daily_note', agent))
+    const files = (await listRuntimeMemoryEntries(ctx as unknown as PluginContext, 'daily_note', agent))
       .map((entry) => entry.path?.split('/').pop() ?? entry.id)
       .map((name) => {
         const m = DATE_PREFIX_RE.exec(name)
@@ -36,26 +38,26 @@ export const dailyNotesListRoute: APIRoute = {
 
     return Response.json({ files })
   },
-}
+})
 
 // ─── Detail ───────────────────────────────────────────────────────────────
 
-export const dailyNotesDetailRoute: APIRoute = {
+export const dailyNotesDetailRoute = defineRoute({
   path: '/daily-notes/:agent/:filename',
   method: 'GET',
   description: 'Read one daily note',
-  handler: async (req: Request, ctx: PluginContext) => {
+  handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
     const filename = url.searchParams.get('filename')
     if (!agent || !filename) return Response.json({ error: 'agent and filename required' }, { status: 400 })
 
-    const entry = await getRuntimeMemoryEntry(ctx, 'daily_note', filename, agent)
+    const entry = await getRuntimeMemoryEntry(ctx as unknown as PluginContext, 'daily_note', filename, agent)
     if (!entry) return Response.json({ error: 'not found' }, { status: 404 })
 
     return Response.json({ agent, file: filename, content: entry.content })
   },
-}
+})
 
 // ─── Compare search ───────────────────────────────────────────────────────
 
@@ -65,11 +67,11 @@ interface CompareSearchBody {
   limit?: unknown
 }
 
-export const dailyNotesCompareSearchRoute: APIRoute = {
+export const dailyNotesCompareSearchRoute = defineRoute({
   path: '/daily-notes/compare-search',
   method: 'POST',
   description: 'Run the same query against Bakin search and runtime memory search',
-  handler: async (req: Request, ctx: PluginContext) => {
+  handler: async (req: Request, ctx: PluginContextLite) => {
     let body: CompareSearchBody
     try {
       body = (await req.json()) as CompareSearchBody
@@ -109,4 +111,4 @@ export const dailyNotesCompareSearchRoute: APIRoute = {
 
     return Response.json({ search, runtime, runtimeStatus, runtimeError })
   },
-}
+})

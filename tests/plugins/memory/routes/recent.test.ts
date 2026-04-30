@@ -118,7 +118,7 @@ describe('recentRoute — shape', () => {
 describe('recentRoute — default behavior', () => {
   it('excludes turn + audit tiers by default (noise suppression)', async () => {
     const { ctx, recorder } = makeCtx(() => [])
-    await recentRoute.handler(makeReq(), ctx)
+    await recentRoute.handler(makeReq(), ctx, {})
     const tiersQueried = recorder.calls.map(tierOf)
     expect(tiersQueried).not.toContain('turn')
     expect(tiersQueried).not.toContain('audit')
@@ -130,7 +130,7 @@ describe('recentRoute — default behavior', () => {
 
   it('includes every tier when ?debug=1 is set', async () => {
     const { ctx, recorder } = makeCtx(() => [])
-    await recentRoute.handler(makeReq({ debug: '1' }), ctx)
+    await recentRoute.handler(makeReq({ debug: '1' }), ctx, {})
     const tiersQueried = new Set(recorder.calls.map(tierOf))
     expect(tiersQueried).toEqual(
       new Set(['session', 'turn', 'checkpoint', 'daily_note', 'dream', 'durable', 'audit']),
@@ -139,14 +139,14 @@ describe('recentRoute — default behavior', () => {
 
   it('explicit ?tier=turn overrides the default exclusion even when debug is off', async () => {
     const { ctx, recorder } = makeCtx(() => [])
-    await recentRoute.handler(makeReq({ tier: 'turn' }), ctx)
+    await recentRoute.handler(makeReq({ tier: 'turn' }), ctx, {})
     const tiersQueried = recorder.calls.map(tierOf)
     expect(tiersQueried).toEqual(['turn'])
   })
 
   it('uses full_text_only strategy and match-all q', async () => {
     const { ctx, recorder } = makeCtx(() => [])
-    await recentRoute.handler(makeReq(), ctx)
+    await recentRoute.handler(makeReq(), ctx, {})
     for (const call of recorder.calls) {
       expect(call.strategy).toBe('full_text_only')
       expect(call.q).toBe('*')
@@ -158,7 +158,7 @@ describe('recentRoute — default behavior', () => {
       const tier = tierOf(p) ?? 'audit'
       return [{ id: `${tier}:0`, fields: { tier, updated_at: 1 } }]
     })
-    const res = await recentRoute.handler(makeReq(), ctx)
+    const res = await recentRoute.handler(makeReq(), ctx, {})
     const body = await res.json() as {
       results: unknown[]
       aggregations: unknown
@@ -187,7 +187,7 @@ describe('recentRoute — sorting', () => {
       const ts = tsByTier[tier] ?? 0
       return [{ id: `${tier}:row`, fields: { tier, updated_at: ts } }]
     })
-    const res = await recentRoute.handler(makeReq(), ctx)
+    const res = await recentRoute.handler(makeReq(), ctx, {})
     const body = await res.json() as {
       results: Array<{ id: string; fields: { updated_at: number } }>
     }
@@ -201,21 +201,21 @@ describe('recentRoute — sorting', () => {
 describe('recentRoute — filters', () => {
   it('honors explicit tier filter (includes turns when asked)', async () => {
     const { ctx, recorder } = makeCtx(() => [])
-    await recentRoute.handler(makeReq({ tier: 'turn,session' }), ctx)
+    await recentRoute.handler(makeReq({ tier: 'turn,session' }), ctx, {})
     const tiers = new Set(recorder.calls.map(tierOf))
     expect(tiers).toEqual(new Set(['turn', 'session']))
   })
 
   it('ignores unknown tier values', async () => {
     const { ctx, recorder } = makeCtx(() => [])
-    await recentRoute.handler(makeReq({ tier: 'turn,not_a_tier' }), ctx)
+    await recentRoute.handler(makeReq({ tier: 'turn,not_a_tier' }), ctx, {})
     const tiers = recorder.calls.map(tierOf)
     expect(tiers).toEqual(['turn'])
   })
 
   it('fans out per agent when multiple ?agent= values are supplied', async () => {
     const { ctx, recorder } = makeCtx(() => [])
-    await recentRoute.handler(makeReq({ tier: 'session', agent: 'patch,scout' }), ctx)
+    await recentRoute.handler(makeReq({ tier: 'session', agent: 'patch,scout' }), ctx, {})
     // One tier × two agents = two queries, each with its own agent filter.
     expect(recorder.calls).toHaveLength(2)
     const agents = recorder.calls.map((c) => c.filters?.agent)
@@ -224,7 +224,7 @@ describe('recentRoute — filters', () => {
 
   it('omits agent filter when ?agent= is absent', async () => {
     const { ctx, recorder } = makeCtx(() => [])
-    await recentRoute.handler(makeReq({ tier: 'session' }), ctx)
+    await recentRoute.handler(makeReq({ tier: 'session' }), ctx, {})
     expect(recorder.calls).toHaveLength(1)
     expect(recorder.calls[0].filters?.agent).toBeUndefined()
   })
@@ -239,14 +239,14 @@ describe('recentRoute — limit', () => {
         fields: { tier, updated_at: i },
       }))
     })
-    const res = await recentRoute.handler(makeReq({ limit: '10' }), ctx)
+    const res = await recentRoute.handler(makeReq({ limit: '10' }), ctx, {})
     const body = await res.json() as { results: unknown[] }
     expect(body.results).toHaveLength(10)
   })
 
   it('returns 400 for invalid ?limit=', async () => {
     const { ctx } = makeCtx(() => [])
-    const res = await recentRoute.handler(makeReq({ limit: 'nope' }), ctx)
+    const res = await recentRoute.handler(makeReq({ limit: 'nope' }), ctx, {})
     expect(res.status).toBe(400)
   })
 
@@ -258,7 +258,7 @@ describe('recentRoute — limit', () => {
         fields: { tier, updated_at: i },
       }))
     })
-    const res = await recentRoute.handler(makeReq({ limit: '500' }), ctx)
+    const res = await recentRoute.handler(makeReq({ limit: '500' }), ctx, {})
     const body = await res.json() as { results: unknown[] }
     expect(body.results.length).toBeLessThanOrEqual(100)
   })
@@ -274,6 +274,7 @@ describe('recentRoute — fan-out cap', () => {
         agent: 'a,b,c,d,e,f,g,h',
       }),
       ctx,
+      {},
     )
     expect(res.status).toBe(400)
     const body = await res.json() as { error: string }
@@ -291,6 +292,7 @@ describe('recentRoute — fan-out cap', () => {
         agent: 'a,b,c,d,e,f,g',
       }),
       ctx,
+      {},
     )
     expect(res.status).toBe(200)
     expect(recorder.calls).toHaveLength(49)
@@ -305,7 +307,7 @@ describe('recentRoute — resilience', () => {
       }
       return [{ id: `${tierOf(p)}:ok`, fields: { tier: tierOf(p), updated_at: 1 } }]
     })
-    const res = await recentRoute.handler(makeReq(), ctx)
+    const res = await recentRoute.handler(makeReq(), ctx, {})
     const body = await res.json() as { results: Array<{ id: string }> }
     expect(res.status).toBe(200)
     // 4 surviving tiers (excluded by default: turn + audit; failed: session).

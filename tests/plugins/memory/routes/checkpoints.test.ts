@@ -116,7 +116,7 @@ describe('checkpointsListRoute — shape', () => {
 describe('checkpointsListRoute — handler', () => {
   it('returns 400 when agent is missing', async () => {
     const { ctx } = makeCtx()
-    const res = await checkpointsListRoute.handler(req('/checkpoints', {}), ctx)
+    const res = await checkpointsListRoute.handler(req('/checkpoints', {}), ctx, {})
     expect(res.status).toBe(400)
   })
 
@@ -131,6 +131,7 @@ describe('checkpointsListRoute — handler', () => {
     const res = await checkpointsListRoute.handler(
       req('/checkpoints', { agent: 'main' }),
       h.ctx,
+      {},
     )
     const body = await res.json() as { checkpoints: Array<Record<string, unknown>>; total: number }
     expect(res.status).toBe(200)
@@ -145,6 +146,7 @@ describe('checkpointsListRoute — handler', () => {
     await checkpointsListRoute.handler(
       req('/checkpoints', { agent: 'main', sessionId: 'sess-1' }),
       h.ctx,
+      {},
     )
     expect(h.queryCalls[0].q).toBe('sess-1')
     expect(h.queryCalls[0].filters).toEqual({ tier: 'checkpoint', agent: 'main' })
@@ -155,6 +157,7 @@ describe('checkpointsListRoute — handler', () => {
     await checkpointsListRoute.handler(
       req('/checkpoints', { agent: 'main', limit: '99999' }),
       h.ctx,
+      {},
     )
     expect(h.queryCalls[0].limit).toBe(100)
   })
@@ -164,6 +167,7 @@ describe('checkpointsListRoute — handler', () => {
     await checkpointsListRoute.handler(
       req('/checkpoints', { agent: 'main', limit: '25' }),
       h.ctx,
+      {},
     )
     expect(h.queryCalls[0].limit).toBe(25)
   })
@@ -184,6 +188,7 @@ describe('checkpointDetailRoute — handler', () => {
     const res = await checkpointDetailRoute.handler(
       req('/checkpoints/main/sess-1', { agent: 'main', sessionId: 'sess-1' }),
       ctx,
+      {},
     )
     expect(res.status).toBe(400)
   })
@@ -220,6 +225,7 @@ describe('checkpointDetailRoute — handler', () => {
         checkpointId: 'cp-a',
       }),
       h.ctx,
+      {},
     )
     const body = await res.json() as Record<string, unknown>
     expect(res.status).toBe(200)
@@ -250,6 +256,7 @@ describe('checkpointDetailRoute — handler', () => {
         checkpointId: 'cp-a',
       }),
       h.ctx,
+      {},
     )
     expect(res.status).toBe(404)
   })
@@ -269,6 +276,7 @@ describe('checkpointDetailRoute — handler', () => {
         checkpointId: 'cp-a',
       }),
       h.ctx,
+      {},
     )
     expect(res.status).toBe(404)
   })

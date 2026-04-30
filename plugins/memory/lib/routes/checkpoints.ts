@@ -10,6 +10,8 @@
  * Both endpoints read from the `bakin_memory` table (tier=checkpoint). The
  * indexer is the single source of truth — routes never re-parse files.
  */
+import { defineRoute } from '@bakin/core/routing'
+import type { PluginContextLite } from '@bakin/core/routing'
 import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
 
 function parseLimitOffset(url: URL): { limit: number; offset: number } {
@@ -23,11 +25,11 @@ function parseLimitOffset(url: URL): { limit: number; offset: number } {
 
 // ─── List checkpoints ────────────────────────────────────────────────────
 
-export const checkpointsListRoute: APIRoute = {
+export const checkpointsListRoute = defineRoute({
   path: '/checkpoints',
   method: 'GET',
   description: 'List compaction checkpoints for an agent (optionally by session)',
-  handler: async (req: Request, ctx: PluginContext) => {
+  handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
     if (!agent) return Response.json({ error: 'agent required' }, { status: 400 })
@@ -45,15 +47,15 @@ export const checkpointsListRoute: APIRoute = {
     const checkpoints = res.results.map((r) => ({ id: r.id, score: r.score, ...r.fields }))
     return Response.json({ checkpoints, total: res.meta.total })
   },
-}
+})
 
 // ─── Checkpoint detail ───────────────────────────────────────────────────
 
-export const checkpointDetailRoute: APIRoute = {
+export const checkpointDetailRoute = defineRoute({
   path: '/checkpoints/:agent/:sessionId/:checkpointId',
   method: 'GET',
   description: 'Read one checkpoint by (agent, sessionId, checkpointId)',
-  handler: async (req: Request, ctx: PluginContext) => {
+  handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
     const sessionId = url.searchParams.get('sessionId')
@@ -86,4 +88,4 @@ export const checkpointDetailRoute: APIRoute = {
     if (!match) return Response.json({ error: 'not found' }, { status: 404 })
     return Response.json({ id: match.id, ...match.fields })
   },
-}
+})
