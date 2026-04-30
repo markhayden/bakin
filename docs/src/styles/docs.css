@@ -1144,35 +1144,186 @@ starlight-toc nav a[href="#for-agents"]::before {
 }
 
 .api-reference-intro {
-  margin: 0 0 1.5rem;
+  margin: 0 0 1.75rem;
   color: var(--sl-color-gray-2);
 }
 
+.api-reference-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.9rem;
+}
+
+.api-reference-meta span,
+.api-reference-meta a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.75rem;
+  padding: 0.18rem 0.5rem;
+  border: 1px solid rgba(120, 117, 116, 0.28);
+  border-radius: 0.35rem;
+  color: var(--sl-color-gray-2);
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+
+.api-reference-groups {
+  display: grid;
+  gap: 2.5rem;
+}
+
+.api-group {
+  scroll-margin-top: 6rem;
+}
+
+.api-group__heading {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.35rem;
+}
+
+.api-group__heading h2 {
+  margin: 0;
+}
+
+.api-group__heading span {
+  color: var(--sl-color-gray-3);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.api-group__description {
+  max-width: 60rem;
+  margin-top: 0;
+  color: var(--sl-color-gray-2);
+}
+
+.api-operation-list {
+  display: grid;
+  gap: 0.9rem;
+}
+
 .api-operation {
-  margin: 1.4rem 0 2rem;
-  padding-bottom: 1.6rem;
-  border-bottom: 1px solid rgba(120, 117, 116, 0.28);
+  margin: 0;
+  padding: 1rem;
+  border: 1px solid rgba(120, 117, 116, 0.26);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.018);
+  scroll-margin-top: 6rem;
+}
+
+.api-operation__header {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.api-operation__eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+  margin: 0 0 0.45rem;
+}
+
+.api-operation__eyebrow code {
+  overflow-wrap: anywhere;
+}
+
+.api-method {
+  display: inline-flex;
+  align-items: center;
+  min-width: 4.2rem;
+  justify-content: center;
+  padding: 0.16rem 0.42rem;
+  border-radius: 0.28rem;
+  background: #f5f442;
+  color: #14120f;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.api-method--get {
+  background: #93e6b5;
+}
+
+.api-method--post {
+  background: #f5f442;
+}
+
+.api-method--put,
+.api-method--patch {
+  background: #8fd7ff;
+}
+
+.api-method--delete {
+  background: #ff9a8f;
 }
 
 .api-operation h3 {
-  margin-top: 0;
+  margin: 0;
+  font-size: 1.08rem;
 }
 
-.api-operation dl {
+.api-operation__anchor {
+  color: var(--sl-color-gray-3);
+  text-decoration: none;
+}
+
+.api-operation__description {
+  margin: 0.75rem 0 0;
+  color: var(--sl-color-gray-2);
+  font-size: 0.95rem;
+}
+
+.api-operation__meta {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
   gap: 0.45rem 0.9rem;
-  margin: 1rem 0;
+  margin: 1rem 0 0;
 }
 
-.api-operation dt {
+.api-operation__meta dt {
   color: var(--sl-color-gray-3);
   font-size: 0.82rem;
 }
 
-.api-operation dd {
+.api-operation__meta dd {
   margin: 0;
   min-width: 0;
+}
+
+.api-operation__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.api-operation__section {
+  margin-top: 1rem;
+}
+
+.api-operation__section h4 {
+  margin: 0 0 0.5rem;
+  color: var(--sl-color-gray-1);
+  font-size: 0.88rem;
+}
+
+.api-operation__section p {
+  margin: 0;
+  color: var(--sl-color-gray-3);
+  font-size: 0.9rem;
+}
+
+.api-operation__split {
+  display: grid;
+  gap: 0.9rem;
 }
 
 .api-operation pre {
@@ -1180,9 +1331,41 @@ starlight-toc nav a[href="#for-agents"]::before {
   overflow: auto;
 }
 
+.api-schema {
+  border: 1px solid rgba(120, 117, 116, 0.22);
+  border-radius: 0.45rem;
+}
+
+.api-schema summary {
+  cursor: pointer;
+  padding: 0.58rem 0.7rem;
+  color: var(--sl-color-gray-2);
+  font-size: 0.86rem;
+}
+
+.api-schema pre,
+.api-curl {
+  margin: 0;
+  border-radius: 0.45rem;
+}
+
+.api-schema pre {
+  border-top: 1px solid rgba(120, 117, 116, 0.22);
+}
+
+.api-curl {
+  padding: 0.85rem;
+}
+
 .sl-markdown-content table.api-parameters-table:not(:where(.not-content *)),
 .sl-markdown-content table.api-responses-table:not(:where(.not-content *)) {
   width: 100%;
+}
+
+@media (min-width: 58rem) {
+  .api-operation__split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
 }
 
 .sl-link-button.cta-sm {

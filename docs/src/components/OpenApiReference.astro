@@ -1,0 +1,272 @@
+---
+import { readFileSync } from 'node:fs'
+
+type OpenApiSpec = {
+  openapi: string
+  info: { title: string; version: string; description?: string }
+  servers?: Array<{ url: string; description?: string }>
+  tags?: Array<{ name: string; description?: string }>
+  paths: Record<string, Record<string, OpenApiOperation>>
+}
+
+type OpenApiOperation = {
+  operationId?: string
+  tags?: string[]
+  summary?: string
+  description?: string
+  parameters?: OpenApiParameter[]
+  requestBody?: {
+    description?: string
+    required?: boolean
+    content?: Record<string, { schema?: unknown; example?: unknown }>
+  }
+  responses?: Record<string, {
+    description?: string
+    content?: Record<string, { schema?: unknown; example?: unknown }>
+  }>
+  security?: Array<Record<string, string[]>>
+  'x-bakin-visibility'?: string
+  'x-bakin-stability'?: string
+}
+
+type OpenApiParameter = {
+  name: string
+  in: string
+  required?: boolean
+  description?: string
+  schema?: unknown
+  example?: unknown
+}
+
+type OperationView = {
+  id: string
+  method: string
+  path: string
+  tag: string
+  summary: string
+  description?: string
+  parameters: OpenApiParameter[]
+  requestBody?: OpenApiOperation['requestBody']
+  responses: NonNullable<OpenApiOperation['responses']>
+  permissions: string[]
+  visibility: string
+  stability: string
+  curl: string
+}
+
+function slug(value: string): string {
+  return value
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase()
+}
+
+function methodRank(method: string): number {
+  return ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'].indexOf(method)
+}
+
+function displayPath(path: string): string {
+  return path.replace(/\{([^}]+)\}/g, ':$1')
+}
+
+function sampleValue(schema: unknown): unknown {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return 'value'
+  const record = schema as Record<string, unknown>
+  if (record.example !== undefined) return record.example
+  if (Array.isArray(record.enum) && record.enum.length > 0) return record.enum[0]
+  switch (record.type) {
+    case 'boolean':
+      return true
+    case 'integer':
+    case 'number':
+      return 1
+    case 'array':
+      return [sampleValue(record.items)]
+    case 'object': {
+      const properties = record.properties
+      if (!properties || typeof properties !== 'object' || Array.isArray(properties)) return {}
+      return Object.fromEntries(Object.entries(properties).map(([key, value]) => [key, sampleValue(value)]))
+    }
+    case 'string':
+    default:
+      return 'value'
+  }
+}
+
+function firstContent(content?: Record<string, { schema?: unknown; example?: unknown }>): { contentType: string; schema?: unknown; example?: unknown } | undefined {
+  if (!content) return undefined
+  const [contentType, value] = Object.entries(content)[0] ?? []
+  if (!contentType || !value) return undefined
+  return { contentType, ...value }
+}
+
+function curlFor(method: string, path: string, operation: OpenApiOperation): string {
+  const params = operation.parameters ?? []
+  let urlPath = path.replace(/\{([^}]+)\}/g, (_match, name) => `<${name}>`)
+  const query = params.filter(param => param.in === 'query')
+  if (query.length) {
+    urlPath += `?${query.map(param => `${param.name}=<${param.name}>`).join('&')}`
+  }
+  const lines = ['curl -sS']
+  if (method !== 'GET') lines.push(`  -X ${method}`)
+  lines.push(`  'http://localhost:3737${urlPath}'`)
+  const body = firstContent(operation.requestBody?.content)
+  if (body) {
+    const sample = body.example ?? sampleValue(body.schema)
+    lines.push(`  -H 'Content-Type: ${body.contentType}'`)
+    lines.push(`  --data '${JSON.stringify(sample, null, 2)}'`)
+  }
+  return lines.join(' \\\n')
+}
+
+function schemaPreview(schema: unknown): string {
+  return JSON.stringify(schema ?? { type: 'object', additionalProperties: true }, null, 2)
+}
+
+const specPath = new URL('../../public/openapi.json', import.meta.url)
+const spec = JSON.parse(readFileSync(specPath, 'utf8')) as OpenApiSpec
+const tagDescriptions = new Map((spec.tags ?? []).map(tag => [tag.name, tag.description]))
+const operations: OperationView[] = []
+
+for (const [path, methods] of Object.entries(spec.paths)) {
+  for (const [methodKey, operation] of Object.entries(methods)) {
+    const method = methodKey.toUpperCase()
+    const tag = operation.tags?.[0] ?? 'Other'
+    operations.push({
+      id: operation.operationId ?? slug(`${method}-${path}`),
+      method,
+      path,
+      tag,
+      summary: operation.summary ?? `${method} ${path}`,
+      description: operation.description,
+      parameters: operation.parameters ?? [],
+      requestBody: operation.requestBody,
+      responses: operation.responses ?? {},
+      permissions: (operation.security ?? []).flatMap(entry => Object.values(entry)).flat(),
+      visibility: operation['x-bakin-visibility'] ?? 'public',
+      stability: operation['x-bakin-stability'] ?? 'stable',
+      curl: curlFor(method, path, operation),
+    })
+  }
+}
+
+operations.sort((a, b) =>
+  (a.tag === 'Core' ? '00 Core' : `10 ${a.tag}`).localeCompare(b.tag === 'Core' ? '00 Core' : `10 ${b.tag}`) ||
+  a.path.localeCompare(b.path) ||
+  methodRank(a.method) - methodRank(b.method),
+)
+
+const groups = new Map<string, OperationView[]>()
+for (const operation of operations) {
+  const existing = groups.get(operation.tag) ?? []
+  existing.push(operation)
+  groups.set(operation.tag, existing)
+}
+
+const serverUrl = spec.servers?.[0]?.url ?? 'http://localhost:3737'
+---
+
+<div class="api-reference-intro">
+  <p>{spec.info.description ?? 'Generated HTTP API reference for Bakin core and official plugin routes.'}</p>
+  <div class="api-reference-meta">
+    <span>OpenAPI {spec.openapi}</span>
+    <span>Base URL <code>{serverUrl}</code></span>
+    <a href="/docs/openapi.json">OpenAPI JSON</a>
+  </div>
+</div>
+
+<div class="api-reference-groups">
+  {[...groups.entries()].map(([tag, tagOperations]) => (
+    <section class="api-group" id={`plugin-${slug(tag)}`}>
+      <div class="api-group__heading">
+        <h2>{tag}</h2>
+        <span>{tagOperations.length} endpoint{tagOperations.length === 1 ? '' : 's'}</span>
+      </div>
+      {tagDescriptions.get(tag) && <p class="api-group__description">{tagDescriptions.get(tag)}</p>}
+      <div class="api-operation-list">
+        {tagOperations.map(operation => {
+          const requestContent = firstContent(operation.requestBody?.content)
+          const primaryResponse = Object.entries(operation.responses)[0]
+          const primaryResponseContent = firstContent(primaryResponse?.[1]?.content)
+          return (
+            <article class="api-operation" id={operation.id}>
+              <header class="api-operation__header">
+                <div>
+                  <p class="api-operation__eyebrow">
+                    <span class={`api-method api-method--${operation.method.toLowerCase()}`}>{operation.method}</span>
+                    <code>{displayPath(operation.path)}</code>
+                  </p>
+                  <h3>{operation.summary}</h3>
+                </div>
+                <a class="api-operation__anchor" href={`#${operation.id}`} aria-label={`Link to ${operation.summary}`}>#</a>
+              </header>
+              {operation.description && <p class="api-operation__description">{operation.description}</p>}
+              <dl class="api-operation__meta">
+                <dt>Operation</dt><dd><code>{operation.id}</code></dd>
+                <dt>Stability</dt><dd><code>{operation.stability}</code></dd>
+                <dt>Visibility</dt><dd><code>{operation.visibility}</code></dd>
+                {operation.permissions.length > 0 && (
+                  <>
+                    <dt>Permissions</dt>
+                    <dd class="api-operation__chips">{operation.permissions.map(permission => <code>{permission}</code>)}</dd>
+                  </>
+                )}
+              </dl>
+
+              {operation.parameters.length > 0 && (
+                <section class="api-operation__section">
+                  <h4>Parameters</h4>
+                  <table class="api-parameters-table">
+                    <thead><tr><th>Name</th><th>In</th><th>Required</th><th>Description</th></tr></thead>
+                    <tbody>
+                      {operation.parameters.map(param => (
+                        <tr>
+                          <td><code>{param.name}</code></td>
+                          <td>{param.in}</td>
+                          <td>{param.required ? 'yes' : 'no'}</td>
+                          <td>{param.description ?? ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+              )}
+
+              <section class="api-operation__section api-operation__split">
+                <div>
+                  <h4>Request</h4>
+                  {requestContent ? (
+                    <details class="api-schema">
+                      <summary>{requestContent.contentType}</summary>
+                      <pre><code>{schemaPreview(requestContent.schema)}</code></pre>
+                    </details>
+                  ) : (
+                    <p>No request body.</p>
+                  )}
+                </div>
+                <div>
+                  <h4>Response</h4>
+                  {primaryResponse ? (
+                    <details class="api-schema">
+                      <summary><code>{primaryResponse[0]}</code> {primaryResponse[1]?.description ?? ''}</summary>
+                      {primaryResponseContent && <pre><code>{schemaPreview(primaryResponseContent.schema)}</code></pre>}
+                    </details>
+                  ) : (
+                    <p>No response schema documented.</p>
+                  )}
+                </div>
+              </section>
+
+              <section class="api-operation__section">
+                <div class="api-code-heading">
+                  <h4>cURL</h4>
+                </div>
+                <pre class="api-curl"><code>{operation.curl}</code></pre>
+              </section>
+            </article>
+          )
+        })}
+      </div>
+    </section>
+  ))}
+</div>

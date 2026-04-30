@@ -963,84 +963,20 @@ function buildOpenApiDocument(): Record<string, unknown> {
 }
 
 function renderApiReference(): string {
-  const entries = allApiDocRoutes()
-  const grouped = new Map<string, typeof entries>()
-  for (const entry of entries) {
-    const group = grouped.get(entry.tag) ?? []
-    group.push(entry)
-    grouped.set(entry.tag, group)
-  }
-
-  const lines = [
+  return [
     '---',
     'title: API',
     'description: Generated OpenAPI-backed reference for documented Bakin HTTP API routes.',
     '---',
     '',
-    '<div class="api-reference-intro">',
-    '  <p>This reference is generated from Bakin route contracts and the OpenAPI document emitted at <code>/docs/openapi.json</code>.</p>',
-    '</div>',
+    "import OpenApiReference from '../../../../components/OpenApiReference.astro'",
     '',
-  ]
-
-  for (const [tag, routes] of grouped) {
-    lines.push(`## ${tag}`, '')
-    const description = routes.find(route => route.manifestDescription)?.manifestDescription
-    if (description) lines.push(description, '')
-    for (const { route, fullPath, scope } of routes) {
-      const operation = routeOperation(route, scope, fullPath, tag)
-      const requestBody = operation.requestBody as { description?: string } | undefined
-      const responses = operation.responses as Record<string, { description?: string }>
-      lines.push(`<section class="api-operation" id="${operation.operationId}">`)
-      lines.push(`  <h3><code>${route.method} ${fullPath}</code></h3>`)
-      lines.push(`  <p>${escapeHtml(route.summary)}</p>`)
-      if (route.description) lines.push(`  <p>${escapeHtml(route.description)}</p>`)
-      lines.push('  <dl>')
-      lines.push(`    <dt>Operation ID</dt><dd><code>${operation.operationId}</code></dd>`)
-      lines.push(`    <dt>Stability</dt><dd><code>${route.stability ?? 'stable'}</code></dd>`)
-      lines.push(`    <dt>Visibility</dt><dd><code>${route.visibility ?? 'public'}</code></dd>`)
-      if (route.permissions?.length) lines.push(`    <dt>Permissions</dt><dd>${route.permissions.map(p => `<code>${escapeHtml(p)}</code>`).join(' ')}</dd>`)
-      lines.push('  </dl>')
-      const params = operation.parameters as Array<{ name: string; in: string; required: boolean; description?: string }> | undefined
-      if (params?.length) {
-        lines.push('  <h4>Parameters</h4>')
-        lines.push('  <table class="api-parameters-table"><thead><tr><th>Name</th><th>In</th><th>Required</th><th>Description</th></tr></thead><tbody>')
-        for (const param of params) {
-          lines.push(`    <tr><td><code>${escapeHtml(param.name)}</code></td><td>${escapeHtml(param.in)}</td><td>${param.required ? 'yes' : 'no'}</td><td>${escapeHtml(param.description ?? '')}</td></tr>`)
-        }
-        lines.push('  </tbody></table>')
-      }
-      if (requestBody) {
-        const content = (requestBody as { content?: Record<string, { schema?: unknown }> }).content
-        const schema = content ? Object.values(content)[0]?.schema : undefined
-        lines.push('  <h4>Request Body</h4>')
-        lines.push(`  <p>${escapeHtml(requestBody.description ?? 'JSON request body.')}</p>`)
-        if (schema) {
-          lines.push('  <pre><code class="language-json">')
-          lines.push(escapeHtml(JSON.stringify(schema, null, 2)))
-          lines.push('  </code></pre>')
-        }
-      }
-      lines.push('  <h4>Responses</h4>')
-      lines.push('  <table class="api-responses-table"><thead><tr><th>Status</th><th>Description</th></tr></thead><tbody>')
-      for (const [status, response] of Object.entries(responses)) {
-        lines.push(`    <tr><td><code>${escapeHtml(status)}</code></td><td>${escapeHtml(response.description ?? '')}</td></tr>`)
-      }
-      lines.push('  </tbody></table>')
-      const firstResponse = Object.values(operation.responses as Record<string, { content?: Record<string, { schema?: unknown }> }>)[0]
-      const firstResponseSchema = firstResponse?.content ? Object.values(firstResponse.content)[0]?.schema : undefined
-      if (firstResponseSchema) {
-        lines.push('  <pre><code class="language-json">')
-        lines.push(escapeHtml(JSON.stringify(firstResponseSchema, null, 2)))
-        lines.push('  </code></pre>')
-      }
-      lines.push('</section>', '')
-    }
-	  }
-	  lines.push(generatedPageNote(), '')
-
-	  return lines.join('\n')
-	}
+    '<OpenApiReference />',
+    '',
+    generatedPageNote(),
+    '',
+  ].join('\n')
+}
 
 type HookRegistration = ReturnType<typeof extractHookRegistrations>[number]
 
@@ -1664,7 +1600,7 @@ writeStableFile(
 )
 
 writeStableFile(
-  join(docsRoot, 'src/content/docs/reference/generated/api.md'),
+  join(docsRoot, 'src/content/docs/reference/generated/api.mdx'),
   renderApiReference(),
 )
 
