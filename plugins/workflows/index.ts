@@ -477,7 +477,19 @@ const workflowsPlugin: BakinPlugin = {
           ).catch(() => {})
         }
       } else if (selected === 'reject') {
-        const rejectReason = event.response.comment || 'Rejected via runtime channel'
+        const channelComment = event.response.comment?.trim()
+        const requiresRejectReason = approvalRecord.request.context?.requireRejectReason === true
+        if (requiresRejectReason && !channelComment) {
+          log.warn('Channel reject ignored: this gate requires a reject reason', {
+            approvalId: event.approvalId,
+            taskId,
+            stepId,
+            channelId: event.channelId,
+          })
+          ctx.activity.log('channel', `Gate "${stepId}" reject ignored because a reason is required. Use the Bakin approval link to reject with a reason.`, { taskId })
+          return
+        }
+        const rejectReason = channelComment || 'Rejected via runtime channel'
         const approvalRef = approvalRefFromRecord(approvalRecord)
         const result = rejectGate(taskId, stepId, rejectReason, { approver })
         if (!result.success) {
@@ -1017,6 +1029,148 @@ const workflowsPlugin: BakinPlugin = {
     }
     ctx.registerRoute({ path: '/gates/:taskId/reject', method: 'POST', description: 'Reject a gate step, rewinds workflow', handler: rejectHandler })
 
+    const gateDecisionPageHandler = async (req: Request) => {
+      const url = new URL(req.url)
+      const taskId = url.searchParams.get('taskId')
+      const stepId = url.searchParams.get('stepId')
+      const approvalId = url.searchParams.get('approvalId')
+      if (!taskId || !stepId || !approvalId) {
+        return gateDecisionHtmlResponse('Approval Link Error', '<p>taskId, stepId, and approvalId are required.</p>', 400)
+      }
+
+      const approvalRecord = getApprovalRecord(approvalId)
+      if (!approvalRecord || approvalRecord.owner.taskId !== taskId || approvalRecord.owner.stepId !== stepId) {
+        return gateDecisionHtmlResponse('Approval Not Found', '<p>This approval link no longer matches a pending workflow gate.</p>', 404)
+      }
+
+      const escapedTitle = escapeHtml(approvalRecord.request.title)
+      const escapedBody = escapeHtml(approvalRecord.request.body)
+      const statusText = approvalRecord.status === 'pending'
+        ? ''
+        : `<p class="notice">This approval has already been marked ${escapeHtml(approvalRecord.status)}.</p>`
+      const disabled = approvalRecord.status === 'pending' ? '' : ' disabled'
+      return gateDecisionHtmlResponse(approvalRecord.request.title, `
+        <p class="eyebrow">Workflow Approval</p>
+        <h1>${escapedTitle}</h1>
+        <pre>${escapedBody}</pre>
+        ${statusText}
+        <form method="POST">
+          <input type="hidden" name="approvalId" value="${escapeHtml(approvalId)}" />
+          <input type="hidden" name="taskId" value="${escapeHtml(taskId)}" />
+          <input type="hidden" name="stepId" value="${escapeHtml(stepId)}" />
+          <button name="decision" value="approve"${disabled}>Approve</button>
+        </form>
+        <form method="POST">
+          <input type="hidden" name="approvalId" value="${escapeHtml(approvalId)}" />
+          <input type="hidden" name="taskId" value="${escapeHtml(taskId)}" />
+          <input type="hidden" name="stepId" value="${escapeHtml(stepId)}" />
+          <label for="reason">Reject reason</label>
+          <textarea id="reason" name="reason" rows="4"${disabled}></textarea>
+          <button class="danger" name="decision" value="reject"${disabled}>Reject</button>
+        </form>
+      `)
+    }
+    ctx.registerRoute({ path: '/gates/:taskId/decision', method: 'GET', description: 'Render a durable Bakin gate approval fallback page', handler: gateDecisionPageHandler })
+
+    const gateDecisionActionHandler = async (req: Request) => {
+      const url = new URL(req.url)
+      let form: FormData
+      try {
+        form = await req.formData()
+      } catch {
+        return gateDecisionHtmlResponse('Approval Link Error', '<p>Invalid form submission.</p>', 400)
+      }
+
+      const taskId = url.searchParams.get('taskId') || formValue(form, 'taskId')
+      const stepId = url.searchParams.get('stepId') || formValue(form, 'stepId')
+      const approvalId = url.searchParams.get('approvalId') || formValue(form, 'approvalId')
+      const decision = formValue(form, 'decision')
+      if (!taskId || !stepId || !approvalId || !decision) {
+        return gateDecisionHtmlResponse('Approval Link Error', '<p>taskId, stepId, approvalId, and decision are required.</p>', 400)
+      }
+
+      const approvalRecord = getApprovalRecord(approvalId)
+      if (!approvalRecord || approvalRecord.owner.taskId !== taskId || approvalRecord.owner.stepId !== stepId) {
+        return gateDecisionHtmlResponse('Approval Not Found', '<p>This approval link no longer matches a pending workflow gate.</p>', 404)
+      }
+      if (approvalRecord.status !== 'pending') {
+        return gateDecisionHtmlResponse('Approval Already Decided', `<p>This approval is already ${escapeHtml(approvalRecord.status)}.</p>`)
+      }
+
+      const approvalRef = approvalRefFromRecord(approvalRecord)
+      const approver = webApprover()
+      if (decision === 'approve') {
+        const result = approveGate(taskId, stepId, { approver })
+        if (!result.success) {
+          return gateDecisionHtmlResponse('Approval Failed', `<p>${escapeHtml(result.errors?.[0] || 'Unknown approval failure')}</p>`, 400)
+        }
+
+        ctx.activity.audit('gate.approved', 'web', buildGateAuditPayload(taskId, stepId, result.decision))
+        ctx.activity.log('web', `Gate "${stepId}" approved from approval link`, { taskId })
+        indexInstance(taskId).catch(() => {})
+        triggerDispatch()
+
+        const settings = activeGateSettings()
+        const instance = loadInstance(taskId)
+        if (settings.approvalChannelAlerts && result.decision && instance) {
+          resolveGateApproval(approvalRef, 'approved', approver, result.decision.decidedAt).catch(() => {})
+          sendGateDecisionSummary(
+            instance,
+            stepId,
+            result.decision.gateLabel,
+            getGateDescription(instance.workflowId, stepId),
+            'approved',
+            approver,
+            result.decision.requestedAt,
+            result.decision.decidedAt,
+            undefined,
+            settings,
+          ).catch(() => {})
+        }
+
+        return gateDecisionHtmlResponse('Gate Approved', '<p>The workflow gate was approved. You can close this tab.</p>')
+      }
+
+      if (decision === 'reject') {
+        const reason = formValue(form, 'reason')?.trim()
+        if (!reason) {
+          return gateDecisionHtmlResponse('Reject Reason Required', '<p>A reject reason is required.</p>', 400)
+        }
+
+        const result = rejectGate(taskId, stepId, reason, { approver })
+        if (!result.success) {
+          return gateDecisionHtmlResponse('Reject Failed', `<p>${escapeHtml(result.errors?.[0] || 'Unknown rejection failure')}</p>`, 400)
+        }
+
+        ctx.activity.audit('gate.rejected', 'web', buildGateAuditPayload(taskId, stepId, result.decision, reason))
+        ctx.activity.log('web', `Gate "${stepId}" rejected from approval link: ${reason}`, { taskId })
+        indexInstance(taskId).catch(() => {})
+
+        const settings = activeGateSettings()
+        const instance = loadInstance(taskId)
+        if (settings.approvalChannelAlerts && result.decision && instance) {
+          resolveGateApproval(approvalRef, 'rejected', approver, result.decision.decidedAt, reason).catch(() => {})
+          sendGateDecisionSummary(
+            instance,
+            stepId,
+            result.decision.gateLabel,
+            getGateDescription(instance.workflowId, stepId),
+            'rejected',
+            approver,
+            result.decision.requestedAt,
+            result.decision.decidedAt,
+            reason,
+            settings,
+          ).catch(() => {})
+        }
+
+        return gateDecisionHtmlResponse('Gate Rejected', '<p>The workflow gate was rejected. You can close this tab.</p>')
+      }
+
+      return gateDecisionHtmlResponse('Approval Link Error', '<p>decision must be approve or reject.</p>', 400)
+    }
+    ctx.registerRoute({ path: '/gates/:taskId/decision', method: 'POST', description: 'Approve or reject a gate through the durable Bakin approval fallback page', handler: gateDecisionActionHandler })
+
 
     // GET /instances — list active workflow instances
     ctx.registerRoute({
@@ -1485,6 +1639,51 @@ const workflowsPlugin: BakinPlugin = {
       log.warn(`Shutting down with ${active.length} active workflow instance(s)`)
     }
   },
+}
+
+function formValue(form: FormData, key: string): string | undefined {
+  const value = form.get(key)
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function gateDecisionHtmlResponse(title: string, body: string, status = 200): Response {
+  return new Response(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(title)}</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f0f10; color: #f2f2f3; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+    main { width: min(720px, 100%); border: 1px solid #2b2b2f; border-radius: 8px; background: #151517; padding: 24px; }
+    h1 { margin: 0 0 16px; font-size: 24px; line-height: 1.2; }
+    pre { white-space: pre-wrap; word-break: break-word; color: #c6c6cc; background: #101012; border: 1px solid #29292d; border-radius: 6px; padding: 16px; }
+    form { margin-top: 16px; display: grid; gap: 10px; }
+    label, .eyebrow { color: #8f8f98; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0; }
+    textarea { resize: vertical; border-radius: 6px; border: 1px solid #35353a; background: #101012; color: #f2f2f3; padding: 10px; font: inherit; }
+    button { width: fit-content; border: 0; border-radius: 6px; background: #2f6fed; color: white; padding: 10px 14px; font: inherit; font-weight: 700; cursor: pointer; }
+    button.danger { background: #b42318; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .notice { color: #f6c343; }
+  </style>
+</head>
+<body>
+  <main>${body}</main>
+</body>
+</html>`, {
+    status,
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  })
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
 }
 
 export default workflowsPlugin

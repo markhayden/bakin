@@ -1510,6 +1510,21 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="workflows-get-gates-by-taskId-decision">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/workflows/gates/<taskId>/decision'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows-post-gates-by-taskId-decision">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/workflows/gates/<taskId>/decision'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="workflows-post-gates-by-taskId-reject">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -1584,5 +1599,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Apr 29, 2026 · Bakin 1.0.0</span>
+  <span>Generated Apr 30, 2026 · Bakin 1.0.0</span>
 </aside>

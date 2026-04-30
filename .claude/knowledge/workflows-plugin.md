@@ -174,6 +174,8 @@ Workflow gate channel approvals are Bakin-owned durable records, not provider-ow
 
 The approval record contains the `approvalId`, workflow/run/task/step owner, request body/options/context, delivery refs, response data, and timestamps. Runtime channel message ids are stored only as delivery refs. Channel interaction payloads carry `approvalId`; the workflows plugin loads the durable record and gets task/step identity from Bakin state before approving or rejecting a gate.
 
+Channel approval requests include a Bakin-owned fallback URL in the request context. Provider-native buttons may expire or fail independently of the workflow gate; the fallback page posts back to the workflows plugin and uses the same durable approval record, audit trail, summary notification, and render resolution path as the Bakin UI. Gates that require reject reasons must use the fallback page unless the provider can return a structured reason.
+
 Startup calls `rehydratePendingApprovals()` from `plugins/workflows/lib/approval-rehydration.ts`. It reattaches stored delivery refs to pending workflow instances and retries `runtime.channels.createApproval()` for pending records that were written before rendering completed. Duplicate render windows are tolerated; the durable Bakin approval record remains the source of truth.
 
 ## CRUD Routes

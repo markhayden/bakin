@@ -10258,6 +10258,118 @@
         "x-bakin-full-path": "/api/plugins/workflows/gates/:taskId/approve"
       }
     },
+    "/api/plugins/workflows/gates/{taskId}/decision": {
+      "get": {
+        "operationId": "workflows-get-gates-by-taskId-decision",
+        "tags": [
+          "Workflows"
+        ],
+        "summary": "Render a durable Bakin gate approval fallback page",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        },
+        "x-bakin-visibility": "public",
+        "x-bakin-stability": "stable",
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/workflows/gates/:taskId/decision"
+      },
+      "post": {
+        "operationId": "workflows-post-gates-by-taskId-decision",
+        "tags": [
+          "Workflows"
+        ],
+        "summary": "Approve or reject a gate through the durable Bakin approval fallback page",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        },
+        "x-bakin-visibility": "public",
+        "x-bakin-stability": "stable",
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "x-bakin-full-path": "/api/plugins/workflows/gates/:taskId/decision"
+      }
+    },
     "/api/plugins/workflows/gates/{taskId}/reject": {
       "post": {
         "operationId": "workflows-post-gates-by-taskId-reject",

@@ -125,6 +125,12 @@ Workflow approvals persist as Bakin-owned durable records. Runtime channel
 message ids are delivery refs. A lost provider message must not destroy the
 approval decision history.
 
+Adapters may expose `interactive-approval` only when the provider/runtime can
+return structured approval decisions. Provider decisions are normalized into
+`runtime.channels.subscribeApprovalResponses()` events; provider TTLs and
+message ids never become the source of truth. Durable Bakin approval links stay
+available as the provider-agnostic fallback.
+
 Channel operations go through `runtime.channels.*`. Cron operations go through
 `runtime.cron.*`. Plugin notification channel definitions still belong to the
 Bakin workflow/channel registry; provider delivery is adapter-backed.

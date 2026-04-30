@@ -94,10 +94,19 @@ mock.module('../../../src/core/search-registry', () => ({
   }),
 }))
 
+const taskStoreMock = {
+  readTaskboard: () => ({ columns: { inProgress: [] } }),
+  getAllTasks: () => ({ columns: { inProgress: [] } }),
+  getTask: () => null,
+  addTaskLog: mock(async () => {}),
+  blockTask: mock(async () => {}),
+  moveTask: mock(async () => {}),
+}
 // Defensive stub — the test isolation hook scans for plugin refs in text
 // and flags any mention of plugins/tasks even though we never import the
 // module. Usage-feed assertions contain /api/plugins/tasks/* strings.
-mock.module('@/core/task-store', () => ({}))
+mock.module('@/core/task-store', () => taskStoreMock)
+mock.module('../../../src/core/task-store', () => taskStoreMock)
 
 // Registry snapshot accessor (plugins list only — exec tool stats are gone).
 ;(globalThis as unknown as { __bakinGetRegistrySnapshot: () => unknown[] }).__bakinGetRegistrySnapshot = () => [

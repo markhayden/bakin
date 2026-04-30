@@ -12,7 +12,7 @@ description: Coverage report for generated Bakin documentation surfaces.
 | Slots | SDK slot contract plus source scan | Documented: 6 public slot names, 1 audited registrations |
 | Exec/MCP tools | Source scan for `registerExecTool(...)` | Audited: 106 tools |
 | Core plugins | `plugins/*/bakin-plugin.json` | Active: 8 plugin manifests |
-| Settings | `packages/core/src/settings.ts` | Active: 49 flattened settings |
+| Settings | `packages/core/src/settings.ts` | Active: 50 flattened settings |
 | Runtime paths | `packages/core/src/content-dir.ts` | Active: documented path contract |
 | SDK exports | `packages/sdk/package.json` and barrel files | Audited: 8 subpaths |
 | Agent package kinds | `packages/core/src/agent-packages/manifest.ts` | Active: agent, skill-pack, workflow-pack, knowledge-pack |
@@ -39,5 +39,5 @@ The current generated docs distinguish active structured metadata from audited s
 - SDK exports need complete TSDoc and stability annotations
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Apr 29, 2026 · Bakin 1.0.0</span>
+  <span>Generated Apr 30, 2026 · Bakin 1.0.0</span>
 </aside>
