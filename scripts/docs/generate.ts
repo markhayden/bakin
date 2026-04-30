@@ -10,11 +10,13 @@ import {
   renderExecToolsSnippet,
   sourceFiles,
 } from './source-scan'
+import type { ApiRouteContribution } from './source-scan'
 import { dirname, join } from 'node:path'
 import { APP_VERSION } from '../../packages/core/src/constants'
 import { DEFAULT_SETTINGS } from '../../packages/core/src/settings'
 import { CLI_COMMANDS } from '../../src/core/cli/registry'
 import { getAllRoutes } from '../../src/core/api-docs'
+import type { RouteDoc } from '../../src/core/api-docs'
 
 const repoRoot = new URL('../..', import.meta.url).pathname
 const docsRoot = join(repoRoot, 'docs')
@@ -764,43 +766,275 @@ function renderCliReference(): string {
 	  return lines.join('\n')
 	}
 
+type OpenApiSchema = Record<string, unknown>
+type OpenApiOperation = Record<string, unknown>
+
+function methodOrder(method: string): number {
+  return ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'].indexOf(method)
+}
+
+function tagOrder(tag: string): string {
+  return tag === 'Core' ? '00 Core' : `10 ${tag}`
+}
+
+function openApiPath(path: string): string {
+  return path.replace(/:([A-Za-z0-9_]+)/g, '{$1}')
+}
+
+function operationIdFor(scope: string, method: string, path: string): string {
+  const slug = path
+    .replace(/^\/+/, '')
+    .replace(/:([A-Za-z0-9_]+)/g, 'by-$1')
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return [scope, method.toLowerCase(), slug || 'root']
+    .join('-')
+    .replace(/-+/g, '-')
+}
+
+function pathParameters(path: string, declared: ApiRouteContribution['parameters'] = []): NonNullable<ApiRouteContribution['parameters']> {
+  const declaredByName = new Map(declared.map(param => [`${param.in}:${param.name}`, param]))
+  const params: NonNullable<ApiRouteContribution['parameters']> = []
+  for (const match of path.matchAll(/:([A-Za-z0-9_]+)/g)) {
+    const name = match[1]
+    params.push({
+      name,
+      in: 'path',
+      required: true,
+      schema: { type: 'string' },
+      ...declaredByName.get(`path:${name}`),
+    })
+  }
+  for (const param of declared) {
+    if (param.in !== 'path' || !params.some(existing => existing.name === param.name)) {
+      params.push(param)
+    }
+  }
+  return params
+}
+
+function schemaOrObject(schema: unknown): OpenApiSchema {
+  if (schema && typeof schema === 'object' && !Array.isArray(schema)) return schema as OpenApiSchema
+  return { type: 'object', additionalProperties: true }
+}
+
+function openApiContent(contentType: string, schema: unknown, example?: unknown): Record<string, unknown> {
+  const content: Record<string, unknown> = {
+    schema: schemaOrObject(schema),
+  }
+  if (example !== undefined) content.example = example
+  return { [contentType]: content }
+}
+
+function openApiResponses(route: ApiRouteContribution | RouteDoc): Record<string, unknown> {
+  const declared = 'responses' in route ? route.responses : undefined
+  if (declared && Object.keys(declared).length > 0) {
+    return Object.fromEntries(Object.entries(declared).map(([status, response]) => {
+      const out: Record<string, unknown> = { description: response.description }
+      if (response.schema || response.example !== undefined) {
+        out.content = openApiContent(response.contentType ?? 'application/json', response.schema, response.example)
+      }
+      return [status, out]
+    }))
+  }
+  return {
+    200: {
+      description: 'Successful response.',
+      content: openApiContent('application/json', { type: 'object', additionalProperties: true }),
+    },
+    default: {
+      description: 'Error response.',
+      content: openApiContent('application/json', {
+        type: 'object',
+        properties: {
+          error: { type: 'string' },
+        },
+        additionalProperties: true,
+      }),
+    },
+  }
+}
+
+function defaultRequestBody(route: ApiRouteContribution | RouteDoc): Record<string, unknown> | undefined {
+  if (['GET', 'DELETE'].includes(route.method)) return undefined
+  return {
+    description: 'JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.',
+    required: true,
+    content: openApiContent('application/json', { type: 'object', additionalProperties: true }),
+  }
+}
+
+function routeOperation(route: ApiRouteContribution | RouteDoc, scope: string, fullPath: string, tag: string): OpenApiOperation {
+  const parameters = pathParameters(route.path, 'parameters' in route ? route.parameters : undefined).map(param => {
+    const out: Record<string, unknown> = {
+      name: param.name,
+      in: param.in,
+      required: param.in === 'path' ? true : param.required ?? false,
+      schema: schemaOrObject(param.schema ?? { type: 'string' }),
+    }
+    if (param.description) out.description = param.description
+    if (param.example !== undefined) out.example = param.example
+    return out
+  })
+  const operation: OpenApiOperation = {
+    operationId: ('operationId' in route && route.operationId) ? route.operationId : operationIdFor(scope, route.method, route.path),
+    tags: ('tags' in route && route.tags?.length) ? route.tags : [tag],
+    summary: route.summary,
+    responses: openApiResponses(route),
+    'x-bakin-visibility': route.visibility ?? 'public',
+    'x-bakin-stability': route.stability ?? 'stable',
+  }
+  if (route.description) operation.description = route.description
+  if (parameters.length) operation.parameters = parameters
+  const requestBody = 'requestBody' in route ? route.requestBody : undefined
+  if (requestBody) {
+    operation.requestBody = {
+      description: requestBody.description,
+      required: requestBody.required ?? !['GET', 'DELETE'].includes(route.method),
+      content: openApiContent(requestBody.contentType ?? 'application/json', requestBody.schema, requestBody.example),
+    }
+  } else if ('params' in route && route.params && !route.params.startsWith('?')) {
+    operation.requestBody = {
+      description: route.params,
+      required: !['GET', 'DELETE'].includes(route.method),
+      content: openApiContent('application/json', { type: 'object', additionalProperties: true }),
+    }
+  } else {
+    const body = defaultRequestBody(route)
+    if (body) operation.requestBody = body
+  }
+  if (route.permissions?.length) operation.security = [{ pluginPermissions: route.permissions }]
+  operation['x-bakin-full-path'] = fullPath
+  return operation
+}
+
+function allApiDocRoutes(): Array<{ scope: string; tag: string; fullPath: string; route: ApiRouteContribution | RouteDoc; manifestDescription?: string }> {
+  const coreRoutes = getAllRoutes()
+    .filter(r => r.pluginId === 'core')
+    .map(route => ({ scope: 'core', tag: 'Core', fullPath: route.fullPath, route }))
+  const pluginRoutes = listPluginManifests()
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .flatMap(manifest => getApiRoutes(manifest.id).map(route => ({
+      scope: manifest.id,
+      tag: manifest.name,
+      fullPath: `/api/plugins/${manifest.id}${route.path}`,
+      route,
+      manifestDescription: manifest.description,
+    })))
+  return [...coreRoutes, ...pluginRoutes].sort((a, b) =>
+    tagOrder(a.tag).localeCompare(tagOrder(b.tag)) ||
+    a.fullPath.localeCompare(b.fullPath) ||
+    methodOrder(a.route.method) - methodOrder(b.route.method),
+  )
+}
+
+function buildOpenApiDocument(): Record<string, unknown> {
+  const paths: Record<string, Record<string, unknown>> = {}
+  const tags = new Map<string, string | undefined>()
+  for (const entry of allApiDocRoutes()) {
+    tags.set(entry.tag, entry.manifestDescription)
+    const path = openApiPath(entry.fullPath)
+    paths[path] ??= {}
+    paths[path][entry.route.method.toLowerCase()] = routeOperation(entry.route, entry.scope, entry.fullPath, entry.tag)
+  }
+  return {
+    openapi: '3.1.0',
+    info: {
+      title: 'Bakin API',
+      version: APP_VERSION,
+      description: 'Generated OpenAPI contract for Bakin core and official plugin HTTP routes.',
+    },
+    servers: [
+      { url: 'http://localhost:3737', description: 'Local Bakin server' },
+    ],
+    tags: [...tags.entries()].map(([name, description]) => ({ name, ...(description ? { description } : {}) })),
+    paths,
+    components: {
+      securitySchemes: {
+        pluginPermissions: {
+          type: 'apiKey',
+          in: 'header',
+          name: 'X-Bakin-Plugin-Permission',
+          description: 'Documents plugin permission requirements. The local runtime currently enforces route access through Bakin plugin registration and runtime policy.',
+        },
+      },
+    },
+  }
+}
+
 function renderApiReference(): string {
-  const coreRoutes = getAllRoutes().filter(r => r.pluginId === 'core')
+  const entries = allApiDocRoutes()
+  const grouped = new Map<string, typeof entries>()
+  for (const entry of entries) {
+    const group = grouped.get(entry.tag) ?? []
+    group.push(entry)
+    grouped.set(entry.tag, group)
+  }
 
   const lines = [
     '---',
-    'title: API Reference',
-    'description: Generated reference for documented Bakin HTTP API routes.',
+    'title: API',
+    'description: Generated OpenAPI-backed reference for documented Bakin HTTP API routes.',
     '---',
     '',
-    '## Core Routes',
+    '<div class="api-reference-intro">',
+    '  <p>This reference is generated from Bakin route contracts and the OpenAPI document emitted at <code>/docs/openapi.json</code>.</p>',
+    '</div>',
     '',
   ]
 
-  for (const route of coreRoutes) {
-    lines.push(`### \`${route.method} ${route.fullPath}\``, '')
-    lines.push(route.summary, '')
-    if (route.description) lines.push(route.description, '')
-    if (route.params) lines.push(`Parameters: \`${route.params}\``, '')
-    lines.push(`- Visibility: \`${route.visibility}\``)
-    lines.push(`- Stability: \`${route.stability}\``)
-    if (route.permissions?.length) lines.push(`- Permissions: ${route.permissions.map(p => `\`${p}\``).join(', ')}`)
-    lines.push('')
-  }
-
-  // Plugin routes — manifest contract first, source-scan fallback.
-  const manifests = listPluginManifests().sort((a, b) => a.id.localeCompare(b.id))
-	  for (const manifest of manifests) {
-    const routes = getApiRoutes(manifest.id)
-    if (!routes.length) continue
-    lines.push(`## Plugin: ${manifest.id}`, '')
-    if (manifest.description) lines.push(manifest.description, '')
-    for (const route of routes) {
-      const fullPath = `/api/plugins/${manifest.id}${route.path}`
-      lines.push(`### \`${route.method} ${fullPath}\``, '')
-      lines.push(route.summary, '')
-      if (route.permissions?.length) lines.push(`- Permissions: ${route.permissions.map(p => `\`${p}\``).join(', ')}`)
-      lines.push('')
+  for (const [tag, routes] of grouped) {
+    lines.push(`## ${tag}`, '')
+    const description = routes.find(route => route.manifestDescription)?.manifestDescription
+    if (description) lines.push(description, '')
+    for (const { route, fullPath, scope } of routes) {
+      const operation = routeOperation(route, scope, fullPath, tag)
+      const requestBody = operation.requestBody as { description?: string } | undefined
+      const responses = operation.responses as Record<string, { description?: string }>
+      lines.push(`<section class="api-operation" id="${operation.operationId}">`)
+      lines.push(`  <h3><code>${route.method} ${fullPath}</code></h3>`)
+      lines.push(`  <p>${escapeHtml(route.summary)}</p>`)
+      if (route.description) lines.push(`  <p>${escapeHtml(route.description)}</p>`)
+      lines.push('  <dl>')
+      lines.push(`    <dt>Operation ID</dt><dd><code>${operation.operationId}</code></dd>`)
+      lines.push(`    <dt>Stability</dt><dd><code>${route.stability ?? 'stable'}</code></dd>`)
+      lines.push(`    <dt>Visibility</dt><dd><code>${route.visibility ?? 'public'}</code></dd>`)
+      if (route.permissions?.length) lines.push(`    <dt>Permissions</dt><dd>${route.permissions.map(p => `<code>${escapeHtml(p)}</code>`).join(' ')}</dd>`)
+      lines.push('  </dl>')
+      const params = operation.parameters as Array<{ name: string; in: string; required: boolean; description?: string }> | undefined
+      if (params?.length) {
+        lines.push('  <h4>Parameters</h4>')
+        lines.push('  <table class="api-parameters-table"><thead><tr><th>Name</th><th>In</th><th>Required</th><th>Description</th></tr></thead><tbody>')
+        for (const param of params) {
+          lines.push(`    <tr><td><code>${escapeHtml(param.name)}</code></td><td>${escapeHtml(param.in)}</td><td>${param.required ? 'yes' : 'no'}</td><td>${escapeHtml(param.description ?? '')}</td></tr>`)
+        }
+        lines.push('  </tbody></table>')
+      }
+      if (requestBody) {
+        const content = (requestBody as { content?: Record<string, { schema?: unknown }> }).content
+        const schema = content ? Object.values(content)[0]?.schema : undefined
+        lines.push('  <h4>Request Body</h4>')
+        lines.push(`  <p>${escapeHtml(requestBody.description ?? 'JSON request body.')}</p>`)
+        if (schema) {
+          lines.push('  <pre><code class="language-json">')
+          lines.push(escapeHtml(JSON.stringify(schema, null, 2)))
+          lines.push('  </code></pre>')
+        }
+      }
+      lines.push('  <h4>Responses</h4>')
+      lines.push('  <table class="api-responses-table"><thead><tr><th>Status</th><th>Description</th></tr></thead><tbody>')
+      for (const [status, response] of Object.entries(responses)) {
+        lines.push(`    <tr><td><code>${escapeHtml(status)}</code></td><td>${escapeHtml(response.description ?? '')}</td></tr>`)
+      }
+      lines.push('  </tbody></table>')
+      const firstResponse = Object.values(operation.responses as Record<string, { content?: Record<string, { schema?: unknown }> }>)[0]
+      const firstResponseSchema = firstResponse?.content ? Object.values(firstResponse.content)[0]?.schema : undefined
+      if (firstResponseSchema) {
+        lines.push('  <pre><code class="language-json">')
+        lines.push(escapeHtml(JSON.stringify(firstResponseSchema, null, 2)))
+        lines.push('  </code></pre>')
+      }
+      lines.push('</section>', '')
     }
 	  }
 	  lines.push(generatedPageNote(), '')
@@ -1435,6 +1669,11 @@ writeStableFile(
 )
 
 writeStableFile(
+  join(docsRoot, 'public/openapi.json'),
+  `${JSON.stringify(buildOpenApiDocument(), null, 2)}\n`,
+)
+
+writeStableFile(
   join(docsRoot, 'src/content/docs/reference/generated/hooks.mdx'),
   renderHookReference(),
 )
@@ -1565,8 +1804,8 @@ const bundles = {
     body: 'Agent-facing docs are explicit and labeled. Explain runtime-specific concepts only when a package depends on them. Agent package examples must be validated before publication.',
   },
   'api.md': {
-    title: 'Bakin API Reference',
-    body: 'HTTP API docs are generated from docs-aware route definitions. Public inputs are validated with Zod at runtime. Structured outputs are validated in tests, docs generation, or development checks where practical.',
+    title: 'Bakin API',
+    body: 'HTTP API docs are generated from docs-aware route definitions and emitted as OpenAPI 3.1 at /docs/openapi.json. Public inputs are validated with Zod at runtime where handlers define schemas. Structured outputs are validated in tests, docs generation, or development checks where practical.',
   },
   'cli.md': {
     title: 'Bakin CLI Reference',

@@ -76,6 +76,27 @@ function stringArrayField(obj: Record<string, unknown>, key: string): string[] |
   return out
 }
 
+function recordField(obj: Record<string, unknown>, key: string, label: string): Record<string, unknown> | undefined {
+  const value = obj[key]
+  if (value === undefined || value === null) return undefined
+  if (!isRecord(value)) {
+    throw new PluginManifestError(`${label}.${key} must be an object`)
+  }
+  return value
+}
+
+function recordArrayField(obj: Record<string, unknown>, key: string, label: string): Record<string, unknown>[] | undefined {
+  const value = obj[key]
+  if (value === undefined || value === null) return undefined
+  if (!Array.isArray(value)) {
+    throw new PluginManifestError(`${label}.${key} must be an array`)
+  }
+  return value.map((item, itemIndex) => {
+    if (!isRecord(item)) throw new PluginManifestError(`${label}.${key}[${itemIndex}] must be an object`)
+    return item
+  })
+}
+
 function validatePluginRelativePath(path: string, label: string): void {
   if (!path.startsWith('/')) {
     throw new PluginManifestError(`${label} path "${path}" must start with "/"`)
@@ -90,18 +111,26 @@ function validatePluginRelativePath(path: string, label: string): void {
 
 function parseApiRoute(raw: unknown, index: number): ApiRouteContribution {
   if (!isRecord(raw)) throw new PluginManifestError(`contributes.apiRoutes[${index}] must be an object`)
+  const label = `contributes.apiRoutes[${index}]`
   const method = stringField(raw, 'method', { required: true })!.toUpperCase()
   if (!HTTP_METHODS.has(method as HttpMethod)) {
     throw new PluginManifestError(`contributes.apiRoutes[${index}].method "${method}" is not supported`)
   }
   const path = stringField(raw, 'path', { required: true })!
-  validatePluginRelativePath(path, `contributes.apiRoutes[${index}]`)
+  validatePluginRelativePath(path, label)
   const summary = stringField(raw, 'summary', { required: true })!
   return {
     method: method as HttpMethod,
     path,
     summary,
     description: stringField(raw, 'description'),
+    operationId: stringField(raw, 'operationId'),
+    tags: stringArrayField(raw, 'tags'),
+    visibility: stringField(raw, 'visibility') as ApiRouteContribution['visibility'],
+    stability: stringField(raw, 'stability') as ApiRouteContribution['stability'],
+    parameters: recordArrayField(raw, 'parameters', label) as ApiRouteContribution['parameters'],
+    requestBody: recordField(raw, 'requestBody', label) as ApiRouteContribution['requestBody'],
+    responses: recordField(raw, 'responses', label) as ApiRouteContribution['responses'],
     permissions: stringArrayField(raw, 'permissions') as PluginPermission[] | undefined,
   }
 }

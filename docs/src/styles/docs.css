@@ -1143,6 +1143,48 @@ starlight-toc nav a[href="#for-agents"]::before {
   font-size: 0.78rem;
 }
 
+.api-reference-intro {
+  margin: 0 0 1.5rem;
+  color: var(--sl-color-gray-2);
+}
+
+.api-operation {
+  margin: 1.4rem 0 2rem;
+  padding-bottom: 1.6rem;
+  border-bottom: 1px solid rgba(120, 117, 116, 0.28);
+}
+
+.api-operation h3 {
+  margin-top: 0;
+}
+
+.api-operation dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.45rem 0.9rem;
+  margin: 1rem 0;
+}
+
+.api-operation dt {
+  color: var(--sl-color-gray-3);
+  font-size: 0.82rem;
+}
+
+.api-operation dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.api-operation pre {
+  max-height: 28rem;
+  overflow: auto;
+}
+
+.sl-markdown-content table.api-parameters-table:not(:where(.not-content *)),
+.sl-markdown-content table.api-responses-table:not(:where(.not-content *)) {
+  width: 100%;
+}
+
 .sl-link-button.cta-sm {
   font-size: var(--sl-text-sm);
   padding: 0.375rem 0.875rem;
