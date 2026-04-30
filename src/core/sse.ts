@@ -6,6 +6,7 @@ import type { IncomingMessage, ServerResponse } from 'http'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
 import { broadcastDev } from '../../packages/host/src/api/dev/events'
+import { invalidateDocsCache as invalidateRuntimeOpenApi } from '../../packages/host/src/api/docs-runtime'
 
 const log = createLogger('sse')
 
@@ -102,6 +103,8 @@ export function broadcastPluginReload(pluginId: string, version: number, opts: {
     timestamp: new Date().toISOString(),
   } satisfies PluginReloadEvent)
   broadcastDev({ type: 'dev:hot-swap', scope: 'plugin', id: pluginId, version: String(version) })
+  // Invalidate the cached OpenAPI document — routes may have changed.
+  invalidateRuntimeOpenApi()
 }
 
 export function broadcastPluginManifestChanged(pluginId: string, action: PluginManifestChangedEvent['action']): void {
