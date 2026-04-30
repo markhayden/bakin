@@ -9,7 +9,8 @@ import { fileURLToPath } from 'url'
 import { userInfo } from 'os'
 import yaml from 'js-yaml'
 import { z } from 'zod'
-import type { ApprovalActor, BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
+import type { ApprovalActor, APIRoute, BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
+import { defineRoute, definePlugin } from '@bakin/core/routing'
 import { listDefinitions, loadDefinition, validateDefinition } from './lib/parser'
 import { loadDefaultWorkflows } from './lib/load-defaults'
 import { workflowDefinitionSchema, listNodeTypes } from './lib/node-type-registry'
@@ -159,7 +160,12 @@ function countSteps(steps: { type: string; steps?: unknown[] }[]): number {
   return count
 }
 
-const workflowsPlugin: BakinPlugin = {
+// Mutable array — populated during activate() via push, registered into
+// state.routes by the plugin loader after activate completes (T13+).
+const workflowRoutes: any[] = []
+
+const workflowsPlugin: BakinPlugin = definePlugin({
+  routes: workflowRoutes as unknown as Parameters<typeof definePlugin>[0]['routes'],
   id: 'workflows',
   name: 'Workflows',
   version: '2.0.0',
@@ -182,6 +188,9 @@ const workflowsPlugin: BakinPlugin = {
   contentFiles: [],
 
   async activate(ctx: PluginContext) {
+    // Reset routes on every activate (hot-reload safety).
+    workflowRoutes.length = 0
+
     // ─── Search Content Type Registration ─────────────────────────────
 
     /** Convert a workflow definition to a search document */
@@ -552,7 +561,7 @@ const workflowsPlugin: BakinPlugin = {
     }, { label: 'Get notification channel.', summary: 'Returns one workflow notification channel by id. Use it before sending or configuring alerts that depend on a specific channel implementation.', hookKind: 'rpc' })
 
     // ─── Notification Channels Route ─────────────────────────────────
-    ctx.registerRoute({
+    workflowRoutes.push(defineRoute({
       path: '/notification-channels',
       method: 'GET',
       description: 'List registered notification channels',
@@ -560,7 +569,7 @@ const workflowsPlugin: BakinPlugin = {
         JSON.stringify({ channels: listNotificationChannels() }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       ),
-    })
+    }))
 
     // ─── Health checks (migrated out of core/doctor.ts per #137) ─────
     ctx.registerHealthCheck({
@@ -620,7 +629,7 @@ const workflowsPlugin: BakinPlugin = {
 
     // GET /definitions — list all workflow templates
     const listHandler = async () => Response.json(buildTemplateList())
-    ctx.registerRoute({ path: '/definitions', method: 'GET', description: 'List all workflow templates with step counts and resolved sub-workflows', handler: listHandler })
+    workflowRoutes.push(defineRoute({ path: '/definitions', method: 'GET', description: 'List all workflow templates with step counts and resolved sub-workflows', handler: listHandler }))
 
     // GET /definitions/:name — get a specific definition with resolved sub-workflows
     const getDefinitionHandler = async (req: Request) => {
@@ -647,7 +656,7 @@ const workflowsPlugin: BakinPlugin = {
         pluginId: definition.pluginId,
       })
     }
-    ctx.registerRoute({ path: '/definitions/:name', method: 'GET', description: 'Get a specific workflow definition by name', handler: getDefinitionHandler })
+    workflowRoutes.push(defineRoute({ path: '/definitions/:name', method: 'GET', description: 'Get a specific workflow definition by name', handler: getDefinitionHandler }))
 
     // ─── CRUD Routes (user definitions only) ──────────────────────────
     // User YAML files live at ~/.bakin/workflows/definitions/{id}.yaml.
@@ -712,7 +721,7 @@ const workflowsPlugin: BakinPlugin = {
       writeUserDefinition(id, definition)
       return Response.json({ id, source: 'user', definition }, { status: 201 })
     }
-    ctx.registerRoute({ path: '/definitions', method: 'POST', description: 'Create a new user-owned workflow definition', handler: createDefinitionHandler })
+    workflowRoutes.push(defineRoute({ path: '/definitions', method: 'POST', description: 'Create a new user-owned workflow definition', handler: createDefinitionHandler }))
 
     // PUT /definitions/:name — update or create a user-owned workflow YAML
     const updateDefinitionHandler = async (req: Request) => {
@@ -754,7 +763,7 @@ const workflowsPlugin: BakinPlugin = {
       writeUserDefinition(name, definition)
       return Response.json({ id: name, source: 'user', definition })
     }
-    ctx.registerRoute({ path: '/definitions/:name', method: 'PUT', description: 'Update or shadow a workflow definition (writes user YAML)', handler: updateDefinitionHandler })
+    workflowRoutes.push(defineRoute({ path: '/definitions/:name', method: 'PUT', description: 'Update or shadow a workflow definition (writes user YAML)', handler: updateDefinitionHandler }))
 
     // DELETE /definitions/:name — remove the user-owned YAML for this id
     const deleteDefinitionHandler = async (req: Request) => {
@@ -785,7 +794,7 @@ const workflowsPlugin: BakinPlugin = {
       unlinkSync(existing)
       return Response.json({ id: name, deleted: true })
     }
-    ctx.registerRoute({ path: '/definitions/:name', method: 'DELETE', description: 'Delete a user-owned workflow definition', handler: deleteDefinitionHandler })
+    workflowRoutes.push(defineRoute({ path: '/definitions/:name', method: 'DELETE', description: 'Delete a user-owned workflow definition', handler: deleteDefinitionHandler }))
 
     // GET /node-types — palette data source. Returns the registered node-type
     // metadata (builtin + plugin-registered) minus the Zod schemas (which
@@ -800,7 +809,7 @@ const workflowsPlugin: BakinPlugin = {
       }))
       return Response.json({ nodeTypes: items })
     }
-    ctx.registerRoute({ path: '/node-types', method: 'GET', description: 'List registered workflow node types (builtin + plugin-registered) for the canvas palette', handler: nodeTypesHandler })
+    workflowRoutes.push(defineRoute({ path: '/node-types', method: 'GET', description: 'List registered workflow node types (builtin + plugin-registered) for the canvas palette', handler: nodeTypesHandler }))
 
     // ─── Runtime Routes ───────────────────────────────────────────────
 
@@ -821,7 +830,7 @@ const workflowsPlugin: BakinPlugin = {
 
       return Response.json(step)
     }
-    ctx.registerRoute({ path: '/steps/:taskId', method: 'GET', description: 'Get current workflow step for a task', handler: getStepHandler })
+    workflowRoutes.push(defineRoute({ path: '/steps/:taskId', method: 'GET', description: 'Get current workflow step for a task', handler: getStepHandler }))
 
     // POST /steps/:taskId/complete — submit step output
     const completeStepHandler = async (req: Request) => {
@@ -860,7 +869,7 @@ const workflowsPlugin: BakinPlugin = {
 
       return Response.json(result)
     }
-    ctx.registerRoute({ path: '/steps/:taskId/complete', method: 'POST', description: 'Submit step output, validates against schema, advances workflow', handler: completeStepHandler })
+    workflowRoutes.push(defineRoute({ path: '/steps/:taskId/complete', method: 'POST', description: 'Submit step output, validates against schema, advances workflow', handler: completeStepHandler }))
 
 
     // Web-source approver: REST endpoints come from the Bakin UI, which is
@@ -963,7 +972,7 @@ const workflowsPlugin: BakinPlugin = {
 
       return Response.json(result)
     }
-    ctx.registerRoute({ path: '/gates/:taskId/approve', method: 'POST', description: 'Approve a human gate step', handler: approveHandler })
+    workflowRoutes.push(defineRoute({ path: '/gates/:taskId/approve', method: 'POST', description: 'Approve a human gate step', handler: approveHandler }))
 
 
     // POST /gates/:taskId/reject — reject a gate step
@@ -1027,7 +1036,7 @@ const workflowsPlugin: BakinPlugin = {
 
       return Response.json(result)
     }
-    ctx.registerRoute({ path: '/gates/:taskId/reject', method: 'POST', description: 'Reject a gate step, rewinds workflow', handler: rejectHandler })
+    workflowRoutes.push(defineRoute({ path: '/gates/:taskId/reject', method: 'POST', description: 'Reject a gate step, rewinds workflow', handler: rejectHandler }))
 
     const gateDecisionPageHandler = async (req: Request) => {
       const url = new URL(req.url)
@@ -1070,7 +1079,7 @@ const workflowsPlugin: BakinPlugin = {
         </form>
       `)
     }
-    ctx.registerRoute({ path: '/gates/:taskId/decision', method: 'GET', description: 'Render a durable Bakin gate approval fallback page', handler: gateDecisionPageHandler })
+    workflowRoutes.push(defineRoute({ path: '/gates/:taskId/decision', method: 'GET', description: 'Render a durable Bakin gate approval fallback page', handler: gateDecisionPageHandler }))
 
     const gateDecisionActionHandler = async (req: Request) => {
       const url = new URL(req.url)
@@ -1169,11 +1178,11 @@ const workflowsPlugin: BakinPlugin = {
 
       return gateDecisionHtmlResponse('Approval Link Error', '<p>decision must be approve or reject.</p>', 400)
     }
-    ctx.registerRoute({ path: '/gates/:taskId/decision', method: 'POST', description: 'Approve or reject a gate through the durable Bakin approval fallback page', handler: gateDecisionActionHandler })
+    workflowRoutes.push(defineRoute({ path: '/gates/:taskId/decision', method: 'POST', description: 'Approve or reject a gate through the durable Bakin approval fallback page', handler: gateDecisionActionHandler }))
 
 
     // GET /instances — list active workflow instances
-    ctx.registerRoute({
+    workflowRoutes.push(defineRoute({
       path: '/instances',
       method: 'GET',
       description: 'List active workflow instances. Optional status filter.',
@@ -1183,7 +1192,7 @@ const workflowsPlugin: BakinPlugin = {
         const instances = listInstances(status)
         return Response.json({ instances })
       },
-    })
+    }))
 
     // GET /instances/:taskId ��� get full instance state
     const getInstanceHandler = async (req: Request) => {
@@ -1201,7 +1210,7 @@ const workflowsPlugin: BakinPlugin = {
 
       return Response.json({ instance })
     }
-    ctx.registerRoute({ path: '/instances/:taskId', method: 'GET', description: 'Get full workflow instance state for a task', handler: getInstanceHandler })
+    workflowRoutes.push(defineRoute({ path: '/instances/:taskId', method: 'GET', description: 'Get full workflow instance state for a task', handler: getInstanceHandler }))
 
 
     // GET /gates/pending — list all gates awaiting approval
@@ -1246,7 +1255,7 @@ const workflowsPlugin: BakinPlugin = {
 
       return Response.json({ gates })
     }
-    ctx.registerRoute({ path: '/gates/pending', method: 'GET', description: 'List all gates awaiting approval', handler: pendingGatesHandler })
+    workflowRoutes.push(defineRoute({ path: '/gates/pending', method: 'GET', description: 'List all gates awaiting approval', handler: pendingGatesHandler }))
 
 
     // GET /gates/status — batch check gate status for tasks
@@ -1287,7 +1296,7 @@ const workflowsPlugin: BakinPlugin = {
 
       return Response.json({ gates: result })
     }
-    ctx.registerRoute({ path: '/gates/status', method: 'GET', description: 'Batch check gate status for tasks', handler: gateStatusHandler })
+    workflowRoutes.push(defineRoute({ path: '/gates/status', method: 'GET', description: 'Batch check gate status for tasks', handler: gateStatusHandler }))
 
 
     // POST /instances/start — start a workflow for a task
@@ -1329,7 +1338,7 @@ const workflowsPlugin: BakinPlugin = {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 400 })
       }
     }
-    ctx.registerRoute({ path: '/instances/start', method: 'POST', description: 'Start a workflow instance for a task', handler: startHandler })
+    workflowRoutes.push(defineRoute({ path: '/instances/start', method: 'POST', description: 'Start a workflow instance for a task', handler: startHandler }))
 
 
     // ─── MCP Exec Tools ────────────────────────────────────────────────
@@ -1639,7 +1648,7 @@ const workflowsPlugin: BakinPlugin = {
       log.warn(`Shutting down with ${active.length} active workflow instance(s)`)
     }
   },
-}
+}) as unknown as BakinPlugin
 
 function formValue(form: FormData, key: string): string | undefined {
   const value = form.get(key)
