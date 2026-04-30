@@ -35,6 +35,8 @@ When the search bar is empty, the page shows a recent feed across the same filte
 
 ## What's in there
 
+<div class="table-light-full table-label">
+
 | Tier | What it holds |
 | --- | --- |
 | **Sessions** | Chat threads, by agent. Token counts, model, status, and the back-link to the conversation itself. |
@@ -45,12 +47,14 @@ When the search bar is empty, the page shows a recent feed across the same filte
 | **Turns** *(System Logs)* | Every individual message inside a session. |
 | **Audit** *(System Logs)* | Every Bakin event in the system. |
 
+</div>
+
 Turns and Audit are noisy by default. Flip the `System Logs` toggle in the page header to bring them into the dashboard.
 
 ## Settings
 
 <!-- docs:settings memory -->
-<div class="settings-table">
+<div class="table-light-full table-settings">
 
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |

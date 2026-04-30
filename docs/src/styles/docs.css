@@ -121,49 +121,168 @@ pre {
   text-underline-offset: 0.2em;
 }
 
-.sl-markdown-content table:not(:where(.not-content *)) {
-  font-size: 0.9rem;
+.sl-markdown-content .table-dark-fit,
+.sl-markdown-content .table-light-fit,
+.sl-markdown-content .table-dark-full,
+.sl-markdown-content .table-light-full {
+  margin: 1rem 0 1.5rem;
+}
+
+.sl-markdown-content .table-dark-fit,
+.sl-markdown-content .table-light-fit {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  vertical-align: top;
+}
+
+.sl-markdown-content .table-dark-full,
+.sl-markdown-content .table-light-full {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+}
+
+.sl-markdown-content table:not(:where(.not-content *)),
+.sl-markdown-content .table-dark-fit table:not(:where(.not-content *)),
+.sl-markdown-content .table-light-fit table:not(:where(.not-content *)),
+.sl-markdown-content .table-dark-full table:not(:where(.not-content *)),
+.sl-markdown-content .table-light-full table:not(:where(.not-content *)) {
+  display: table;
+  width: 100%;
+  margin: 1rem 0 1.5rem;
   border-collapse: separate;
   border-spacing: 0;
-  border-radius: 0.75rem;
+  border-radius: 0.55rem;
   overflow: hidden;
+  font-size: 0.88rem;
 }
 
-.sl-markdown-content th:first-child:not(:where(.not-content *)) {
-  border-top-left-radius: 0.75rem;
+.sl-markdown-content .table-dark-fit table:not(:where(.not-content *)),
+.sl-markdown-content .table-light-fit table:not(:where(.not-content *)),
+.sl-markdown-content .table-dark-full table:not(:where(.not-content *)),
+.sl-markdown-content .table-light-full table:not(:where(.not-content *)) {
+  margin: 0;
 }
 
-.sl-markdown-content th:last-child:not(:where(.not-content *)) {
-  border-top-right-radius: 0.75rem;
+.sl-markdown-content .table-dark-fit table:not(:where(.not-content *)),
+.sl-markdown-content .table-light-fit table:not(:where(.not-content *)) {
+  width: max-content;
+  min-width: 0;
+}
+
+.sl-markdown-content .table-dark-full table:not(:where(.not-content *)),
+.sl-markdown-content .table-light-full table:not(:where(.not-content *)) {
+  table-layout: fixed;
+}
+
+.sl-markdown-content table:not(:where(.not-content *)) {
+  background: #1d1b1b;
 }
 
 .sl-markdown-content th:not(:where(.not-content *)),
 .sl-markdown-content td:not(:where(.not-content *)) {
-  padding: 0.6rem 1rem;
+  padding: 0.62rem 0.85rem;
+  border: 0;
+  border-bottom: 1px solid rgba(120, 117, 116, 0.28);
+  vertical-align: top;
 }
 
 .sl-markdown-content th:not(:where(.not-content *)) {
-  background: #1a1818;
+  background: #242121;
+  color: var(--sl-color-gray-1);
   font-weight: 600;
   text-align: left;
 }
 
+.sl-markdown-content td:not(:where(.not-content *)) {
+  background: #1d1b1b;
+  color: var(--sl-color-gray-2);
+}
+
+.sl-markdown-content tr:last-child td:not(:where(.not-content *)) {
+  border-bottom: 0;
+}
+
+.sl-markdown-content .table-light-fit table:not(:where(.not-content *)),
+.sl-markdown-content .table-light-full table:not(:where(.not-content *)) {
+  background: #1d1b1b;
+}
+
+.sl-markdown-content .table-light-fit th:not(:where(.not-content *)),
+.sl-markdown-content .table-light-full th:not(:where(.not-content *)) {
+  border-bottom-color: rgba(120, 117, 116, 0.28);
+  background: #242121;
+  color: var(--sl-color-gray-1);
+}
+
+.sl-markdown-content .table-light-fit td:not(:where(.not-content *)),
+.sl-markdown-content .table-light-full td:not(:where(.not-content *)) {
+  border-bottom-color: rgba(120, 117, 116, 0.28);
+  background: #1d1b1b;
+  color: var(--sl-color-gray-2);
+}
+
+.sl-markdown-content .table-light-fit code:not(:where(.not-content *)),
+.sl-markdown-content .table-light-full code:not(:where(.not-content *)) {
+  border-color: rgba(74, 71, 71, 0.35);
+  background: #211f1f;
+  color: var(--sl-color-gray-1);
+}
+
 /* Keep the Type and Default columns of plugin Settings tables on one line.
    Code-formatted defaults like `10 * 1024 * 1024` look broken when wrapped. */
-.sl-markdown-content .settings-table table td:nth-child(2):not(:where(.not-content *)),
-.sl-markdown-content .settings-table table td:nth-child(3):not(:where(.not-content *)),
-.sl-markdown-content .settings-table table th:nth-child(2):not(:where(.not-content *)),
-.sl-markdown-content .settings-table table th:nth-child(3):not(:where(.not-content *)) {
+.sl-markdown-content .settings-table table:not(:where(.not-content *)),
+.sl-markdown-content .table-settings table:not(:where(.not-content *)) {
+  table-layout: auto;
+}
+
+.sl-markdown-content .settings-table table td:nth-child(-n + 3):not(:where(.not-content *)),
+.sl-markdown-content .settings-table table th:nth-child(-n + 3):not(:where(.not-content *)),
+.sl-markdown-content .table-settings table td:nth-child(-n + 3):not(:where(.not-content *)),
+.sl-markdown-content .table-settings table th:nth-child(-n + 3):not(:where(.not-content *)) {
+  width: 1%;
   white-space: nowrap;
+}
+
+.sl-markdown-content .settings-table table td:nth-child(4):not(:where(.not-content *)),
+.sl-markdown-content .settings-table table th:nth-child(4):not(:where(.not-content *)),
+.sl-markdown-content .table-settings table td:nth-child(4):not(:where(.not-content *)),
+.sl-markdown-content .table-settings table th:nth-child(4):not(:where(.not-content *)) {
+  width: auto;
 }
 
 /* Two-column "label : description" tables. Keep the label column on one line
    so short bold labels like **Context Usage** don't wrap mid-name when the
    description squeezes them. */
+.sl-markdown-content .label-table table:not(:where(.not-content *)),
+.sl-markdown-content .table-label table:not(:where(.not-content *)) {
+  table-layout: auto;
+}
+
 .sl-markdown-content .label-table table td:first-child:not(:where(.not-content *)),
-.sl-markdown-content .label-table table th:first-child:not(:where(.not-content *)) {
+.sl-markdown-content .label-table table th:first-child:not(:where(.not-content *)),
+.sl-markdown-content .table-label table td:first-child:not(:where(.not-content *)),
+.sl-markdown-content .table-label table th:first-child:not(:where(.not-content *)) {
   white-space: nowrap;
   width: 1%;
+}
+
+.sl-markdown-content .table-label-wrap table:not(:where(.not-content *)) {
+  table-layout: auto;
+  width: 100%;
+}
+
+.sl-markdown-content .table-label-wrap table td:first-child:not(:where(.not-content *)),
+.sl-markdown-content .table-label-wrap table th:first-child:not(:where(.not-content *)) {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.sl-markdown-content .table-label-wrap table td:not(:first-child):not(:where(.not-content *)),
+.sl-markdown-content .table-label-wrap table th:not(:first-child):not(:where(.not-content *)) {
+  width: auto;
+  white-space: normal;
 }
 
 /* Right-sidebar TOC: distinguish passive scroll-spy from intentional click.
@@ -991,7 +1110,7 @@ starlight-toc nav a[href="#for-agents"]::before {
   overflow: hidden;
   border-collapse: collapse;
   border-radius: 0.55rem;
-  background: rgba(255, 255, 255, 0.035);
+  background: #1d1b1b;
 }
 
 .sl-markdown-content table.mcp-tool__params:not(:where(.not-content *)) th,
@@ -1003,12 +1122,13 @@ starlight-toc nav a[href="#for-agents"]::before {
 }
 
 .sl-markdown-content table.mcp-tool__params:not(:where(.not-content *)) th {
-  background: rgba(255, 255, 255, 0.045);
+  background: #242121;
   color: var(--sl-color-gray-1);
   font-size: 0.8rem;
 }
 
 .sl-markdown-content table.mcp-tool__params:not(:where(.not-content *)) td {
+  background: #1d1b1b;
   color: var(--sl-color-gray-2);
   font-size: 0.86rem;
 }

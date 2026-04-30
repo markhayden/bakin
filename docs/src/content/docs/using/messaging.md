@@ -19,6 +19,8 @@ Items in the calendar are color-coded by status; cells get a subtle tint of the 
 
 Items move through seven statuses:
 
+<div class="table-light-fit table-label">
+
 | Status | What it means |
 | --- | --- |
 | `draft` | Captured but not approved |
@@ -28,6 +30,8 @@ Items move through seven statuses:
 | `review` | Work done, your sign-off needed before publish |
 | `published` | Sent to the channel |
 | `failed` | Something broke |
+
+</div>
 
 Approval flow: drafts approve to `scheduled`; review items approve to `published` (or reject back to `draft` with an optional note for the agent). Everything else is workflow-driven.
 
@@ -124,7 +128,7 @@ Sessions index into search (table `bakin_messaging_brainstorm`) so they reach ac
 ## Settings
 
 <!-- docs:settings messaging -->
-<div class="settings-table">
+<div class="table-light-full table-settings">
 
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
@@ -139,6 +143,8 @@ Sessions index into search (table `bakin_messaging_brainstorm`) so they reach ac
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
 
 <!-- docs:cli-commands messaging -->
+<div class="table-light-full table-label">
+
 | Command | Purpose |
 | --- | --- |
 | `bakin messaging list` | List messaging items |
@@ -156,6 +162,8 @@ Sessions index into search (table `bakin_messaging_brainstorm`) so they reach ac
 | `bakin messaging message <sessionId> <message>` | Message a planning session |
 | `bakin messaging confirm <sessionId>` | Confirm planning-session proposals |
 | `bakin messaging proposal <sessionId> <proposalId>` | Update a planning-session proposal |
+
+</div>
 <!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).

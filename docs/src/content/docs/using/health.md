@@ -19,7 +19,7 @@ Two cards anchor the top of the dashboard side by side. They cover the questions
   <figcaption>Context usage on the left (tokens in each agent's latest session), session cost on the right with the day's running total.</figcaption>
 </figure>
 
-<div class="label-table">
+<div class="table-light-full table-label-wrap">
 
 | Card | What it answers |
 | --- | --- |
@@ -40,7 +40,7 @@ Three tabs sit below the cost cards, all feeding from the same in-memory recorde
   <figcaption>The usage panel: tool, endpoint, and agent tabs, windowed to 5m, 1h, or 24h.</figcaption>
 </figure>
 
-<div class="label-table">
+<div class="table-light-full table-label-wrap">
 
 | Tab | What it counts |
 | --- | --- |
@@ -64,7 +64,7 @@ Run it before you start the day or any time something feels off. Results cache s
 
 Live state of the Bakin process and what it's connected to:
 
-<div class="label-table">
+<div class="table-light-full table-label-wrap">
 
 | Section | What's there |
 | --- | --- |
@@ -84,7 +84,7 @@ Any plugin can register a health check that surfaces here alongside the built-in
 ## Settings
 
 <!-- docs:settings health -->
-<div class="settings-table">
+<div class="table-light-full table-settings">
 
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
@@ -97,10 +97,14 @@ Any plugin can register a health check that surfaces here alongside the built-in
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
 
 <!-- docs:cli-commands health -->
+<div class="table-light-full table-label">
+
 | Command | Purpose |
 | --- | --- |
 | `bakin status` | Show dispatch and server status. |
 | `bakin doctor` | Run health checks. |
+
+</div>
 <!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
