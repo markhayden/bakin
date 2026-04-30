@@ -51,7 +51,6 @@ type OperationView = {
   permissions: string[]
   visibility: string
   stability: string
-  curl: string
 }
 
 function slug(value: string): string {
@@ -69,30 +68,6 @@ function displayPath(path: string): string {
   return path.replace(/\{([^}]+)\}/g, ':$1')
 }
 
-function sampleValue(schema: unknown): unknown {
-  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return 'value'
-  const record = schema as Record<string, unknown>
-  if (record.example !== undefined) return record.example
-  if (Array.isArray(record.enum) && record.enum.length > 0) return record.enum[0]
-  switch (record.type) {
-    case 'boolean':
-      return true
-    case 'integer':
-    case 'number':
-      return 1
-    case 'array':
-      return [sampleValue(record.items)]
-    case 'object': {
-      const properties = record.properties
-      if (!properties || typeof properties !== 'object' || Array.isArray(properties)) return {}
-      return Object.fromEntries(Object.entries(properties).map(([key, value]) => [key, sampleValue(value)]))
-    }
-    case 'string':
-    default:
-      return 'value'
-  }
-}
-
 function firstContent(content?: Record<string, { schema?: unknown; example?: unknown }>): { contentType: string; schema?: unknown; example?: unknown } | undefined {
   if (!content) return undefined
   const [contentType, value] = Object.entries(content)[0] ?? []
@@ -100,27 +75,25 @@ function firstContent(content?: Record<string, { schema?: unknown; example?: unk
   return { contentType, ...value }
 }
 
-function curlFor(method: string, path: string, operation: OpenApiOperation): string {
-  const params = operation.parameters ?? []
-  let urlPath = path.replace(/\{([^}]+)\}/g, (_match, name) => `<${name}>`)
-  const query = params.filter(param => param.in === 'query')
-  if (query.length) {
-    urlPath += `?${query.map(param => `${param.name}=<${param.name}>`).join('&')}`
-  }
-  const lines = ['curl -sS']
-  if (method !== 'GET') lines.push(`  -X ${method}`)
-  lines.push(`  'http://localhost:3737${urlPath}'`)
-  const body = firstContent(operation.requestBody?.content)
-  if (body) {
-    const sample = body.example ?? sampleValue(body.schema)
-    lines.push(`  -H 'Content-Type: ${body.contentType}'`)
-    lines.push(`  --data '${JSON.stringify(sample, null, 2)}'`)
-  }
-  return lines.join(' \\\n')
-}
-
 function schemaPreview(schema: unknown): string {
   return JSON.stringify(schema ?? { type: 'object', additionalProperties: true }, null, 2)
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function highlightedJson(schema: unknown): string {
+  return escapeHtml(schemaPreview(schema))
+    .replace(/(&quot;[^&]*?&quot;)(\s*:)/g, '<span class="api-json__key">$1</span>$2')
+    .replace(/(:\s*)(&quot;[^&]*?&quot;)/g, '$1<span class="api-json__string">$2</span>')
+    .replace(/\b(true|false|null)\b/g, '<span class="api-json__literal">$1</span>')
+    .replace(/\b(-?\d+(?:\.\d+)?)\b/g, '<span class="api-json__number">$1</span>')
 }
 
 const specPath = new URL('../../public/openapi.json', import.meta.url)
@@ -145,7 +118,6 @@ for (const [path, methods] of Object.entries(spec.paths)) {
       permissions: (operation.security ?? []).flatMap(entry => Object.values(entry)).flat(),
       visibility: operation['x-bakin-visibility'] ?? 'public',
       stability: operation['x-bakin-stability'] ?? 'stable',
-      curl: curlFor(method, path, operation),
     })
   }
 }
@@ -164,27 +136,34 @@ for (const operation of operations) {
 }
 
 const serverUrl = spec.servers?.[0]?.url ?? 'http://localhost:3737'
+const { tag: selectedTag, operationId, intro = false, summary = false } = Astro.props as { tag?: string; operationId?: string; intro?: boolean; summary?: boolean }
+const visibleGroups = selectedTag
+  ? [...groups.entries()].filter(([tag]) => tag === selectedTag)
+  : [...groups.entries()]
+const selectedOperation = operationId ? operations.find(operation => operation.id === operationId) : undefined
 ---
 
-<div class="api-reference-intro">
-  <p>{spec.info.description ?? 'Generated HTTP API reference for Bakin core and official plugin routes.'}</p>
-  <div class="api-reference-meta">
-    <span>OpenAPI {spec.openapi}</span>
-    <span>Base URL <code>{serverUrl}</code></span>
-    <a href="/docs/openapi.json">OpenAPI JSON</a>
+{intro && (
+  <div class="api-reference-intro">
+    <p>{spec.info.description ?? 'Generated HTTP API reference for Bakin core and official plugin routes.'}</p>
+    <div class="api-reference-meta">
+      <span>OpenAPI {spec.openapi}</span>
+      <span>Base URL <code>{serverUrl}</code></span>
+      <a href="/docs/openapi.json">OpenAPI JSON</a>
+    </div>
   </div>
-</div>
+)}
 
-<div class="api-reference-groups">
-  {[...groups.entries()].map(([tag, tagOperations]) => (
-    <section class="api-group" id={`plugin-${slug(tag)}`}>
-      <div class="api-group__heading">
-        <h2>{tag}</h2>
-        <span>{tagOperations.length} endpoint{tagOperations.length === 1 ? '' : 's'}</span>
-      </div>
-      {tagDescriptions.get(tag) && <p class="api-group__description">{tagDescriptions.get(tag)}</p>}
-      <div class="api-operation-list">
-        {tagOperations.map(operation => {
+{summary && visibleGroups.map(([tag, tagOperations]) => (
+  <div class="api-group-summary">
+    <div class="api-group__count">{tagOperations.length} endpoint{tagOperations.length === 1 ? '' : 's'}</div>
+    {tagDescriptions.get(tag) && <p class="api-group__description">{tagDescriptions.get(tag)}</p>}
+  </div>
+))}
+
+{selectedOperation && (
+  <div class="api-operation-list">
+    {[selectedOperation].map(operation => {
           const requestContent = firstContent(operation.requestBody?.content)
           const primaryResponse = Object.entries(operation.responses)[0]
           const primaryResponseContent = firstContent(primaryResponse?.[1]?.content)
@@ -201,17 +180,19 @@ const serverUrl = spec.servers?.[0]?.url ?? 'http://localhost:3737'
                 <a class="api-operation__anchor" href={`#${operation.id}`} aria-label={`Link to ${operation.summary}`}>#</a>
               </header>
               {operation.description && <p class="api-operation__description">{operation.description}</p>}
-              <dl class="api-operation__meta">
-                <dt>Operation</dt><dd><code>{operation.id}</code></dd>
-                <dt>Stability</dt><dd><code>{operation.stability}</code></dd>
-                <dt>Visibility</dt><dd><code>{operation.visibility}</code></dd>
-                {operation.permissions.length > 0 && (
-                  <>
-                    <dt>Permissions</dt>
-                    <dd class="api-operation__chips">{operation.permissions.map(permission => <code>{permission}</code>)}</dd>
-                  </>
-                )}
-              </dl>
+              <table class="api-meta-table">
+                <tbody>
+                  <tr><th>Operation</th><td><code>{operation.id}</code></td></tr>
+                  <tr><th>Stability</th><td><code>{operation.stability}</code></td></tr>
+                  <tr><th>Visibility</th><td><code>{operation.visibility}</code></td></tr>
+                  {operation.permissions.length > 0 && (
+                    <tr>
+                      <th>Permissions</th>
+                      <td class="api-operation__chips">{operation.permissions.map(permission => <code>{permission}</code>)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
 
               {operation.parameters.length > 0 && (
                 <section class="api-operation__section">
@@ -232,25 +213,33 @@ const serverUrl = spec.servers?.[0]?.url ?? 'http://localhost:3737'
                 </section>
               )}
 
-              <section class="api-operation__section api-operation__split">
-                <div>
-                  <h4>Request</h4>
+              <section class="api-operation__section api-tabs">
+                <input class="api-tabs__input" type="radio" name={`${operation.id}-schema-tabs`} id={`${operation.id}-request-tab`} checked />
+                <input class="api-tabs__input" type="radio" name={`${operation.id}-schema-tabs`} id={`${operation.id}-response-tab`} />
+                <div class="api-tabs__labels">
+                  <label for={`${operation.id}-request-tab`}>Request</label>
+                  <label for={`${operation.id}-response-tab`}>Response</label>
+                </div>
+                <div class="api-tabs__panel api-tabs__panel--request">
                   {requestContent ? (
-                    <details class="api-schema">
-                      <summary>{requestContent.contentType}</summary>
-                      <pre><code>{schemaPreview(requestContent.schema)}</code></pre>
-                    </details>
+                    <>
+                      <p class="api-schema__caption">{requestContent.contentType}</p>
+                      <pre class="api-schema"><code set:html={highlightedJson(requestContent.schema)} /></pre>
+                    </>
                   ) : (
                     <p>No request body.</p>
                   )}
                 </div>
-                <div>
-                  <h4>Response</h4>
+                <div class="api-tabs__panel api-tabs__panel--response">
                   {primaryResponse ? (
-                    <details class="api-schema">
-                      <summary><code>{primaryResponse[0]}</code> {primaryResponse[1]?.description ?? ''}</summary>
-                      {primaryResponseContent && <pre><code>{schemaPreview(primaryResponseContent.schema)}</code></pre>}
-                    </details>
+                    <>
+                      <p class="api-schema__caption"><code>{primaryResponse[0]}</code>{' '}{primaryResponse[1]?.description ?? ''}</p>
+                      {primaryResponseContent ? (
+                        <pre class="api-schema"><code set:html={highlightedJson(primaryResponseContent.schema)} /></pre>
+                      ) : (
+                        <p>No response schema documented.</p>
+                      )}
+                    </>
                   ) : (
                     <p>No response schema documented.</p>
                   )}
@@ -261,12 +250,10 @@ const serverUrl = spec.servers?.[0]?.url ?? 'http://localhost:3737'
                 <div class="api-code-heading">
                   <h4>cURL</h4>
                 </div>
-                <pre class="api-curl"><code>{operation.curl}</code></pre>
+                <slot />
               </section>
             </article>
           )
-        })}
-      </div>
-    </section>
-  ))}
-</div>
+    })}
+  </div>
+)}

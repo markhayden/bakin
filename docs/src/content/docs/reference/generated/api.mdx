@@ -5,7 +5,1725 @@ description: Generated OpenAPI-backed reference for documented Bakin HTTP API ro
 
 import OpenApiReference from '../../../../components/OpenApiReference.astro'
 
-<OpenApiReference />
+<OpenApiReference intro />
+
+## Core
+
+<OpenApiReference tag="Core" summary />
+
+<OpenApiReference operationId="core-get-api-activity">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/activity'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-activity-emit">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/activity/emit' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-agent-packages">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/agent-packages'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-delete-api-agent-packages-by-agentId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/agent-packages/<agentId>' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-agent-packages-by-agentId-knowledge">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/agent-packages/<agentId>/knowledge'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-agent-packages-by-agentId-knowledge-by-lessonId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/agent-packages/<agentId>/knowledge/<lessonId>' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-agent-packages-by-agentId-update">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/agent-packages/<agentId>/update' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-agent-packages-install">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/agent-packages/install' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-agents">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/agents'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-agents-by-id">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/agents/<id>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-agents-by-id-message">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/agents/<id>/message' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-agents-by-id-status">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/agents/<id>/status'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-agents-by-id-tasks">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/agents/<id>/tasks'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-agents-avatar">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/agents/avatar'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-agents-health">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/agents/health'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-agents-restart">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/agents/restart' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-agents-settings">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/agents/settings'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-put-api-agents-settings">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/agents/settings' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-agents-start">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/agents/start' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-agents-stop">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/agents/stop' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-assets-by-path">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/assets/<path>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-curated">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/curated'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-dev-events">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/dev/events'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-dev-notify">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/dev/notify' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-dispatch">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/dispatch'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-dispatch">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/dispatch' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-docs">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/docs'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-events">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/events'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-exec-tools-by-toolName">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/exec-tools/<toolName>' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-internal-continuation">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/internal/continuation' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-memory-log">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/memory/log' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-packages">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/packages'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-delete-api-packages-by-packageId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/packages/<packageId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-packages-by-packageId-update">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/packages/<packageId>/update' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-packages-install">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/packages/install' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-paths">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/paths'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-plugin-settings-by-pluginId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugin-settings/<pluginId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-put-api-plugin-settings-by-pluginId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugin-settings/<pluginId>' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-plugin-settings-schemas">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugin-settings/schemas'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-plugins-by-pluginId-assets-by-path">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/<pluginId>/assets/<path>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-plugins-install">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/install' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-plugins-link">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/link' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-plugins-manifest">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/manifest'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-plugins-memory-audit">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/memory/audit'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-plugins-memory-workspace">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/memory/workspace'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-plugins-remove">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/remove' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-plugins-unlink">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/unlink' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-plugins-upgrade">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/upgrade' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-reindex">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/reindex' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-search">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/search'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-settings">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/settings'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-post-api-settings">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/settings' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-state">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/state'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-version">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/version'
+```
+</OpenApiReference>
+
+## Assets
+
+<OpenApiReference tag="Assets" summary />
+
+<OpenApiReference operationId="assets-get-root">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/assets/'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets-delete-root">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/assets/'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets-put-content">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/assets/content' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets-get-file">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/assets/file'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets-patch-link">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PATCH \
+  'http://localhost:3737/api/plugins/assets/link' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets-patch-retype">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PATCH \
+  'http://localhost:3737/api/plugins/assets/retype' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets-get-trash">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/assets/trash'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets-delete-trash">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/assets/trash'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets-delete-trash-by-file">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/assets/trash/<file>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets-post-trash-by-file-restore">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/trash/<file>/restore' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets-post-upload">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/upload' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+## Health
+
+<OpenApiReference tag="Health" summary />
+
+<OpenApiReference operationId="health-get-checks">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/health/checks'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health-get-doctor">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/health/doctor'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health-get-registry">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/health/registry'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health-get-search-status">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/health/search-status'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health-get-summary">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/health/summary'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health-get-usage">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/health/usage'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health-get-usage-feed">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/health/usage-feed'
+```
+</OpenApiReference>
+
+## Memory
+
+<OpenApiReference tag="Memory" summary />
+
+<OpenApiReference operationId="memory-get-audit">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/memory/audit'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="memory-get-checkpoints">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/memory/checkpoints'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="memory-get-checkpoints-by-agent-by-sessionId-by-checkpointId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/memory/checkpoints/<agent>/<sessionId>/<checkpointId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="memory-get-daily-notes">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/memory/daily-notes'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="memory-get-daily-notes-by-agent-by-filename">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/memory/daily-notes/<agent>/<filename>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="memory-post-daily-notes-compare-search">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/memory/daily-notes/compare-search' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="memory-get-dreams">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/memory/dreams'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="memory-get-dreams-by-agent-by-artifactType">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/memory/dreams/<agent>/<artifactType>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="memory-get-durable">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/memory/durable'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="memory-get-durable-by-agent-by-basename">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/memory/durable/<agent>/<basename>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="memory-get-recent">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/memory/recent'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="memory-get-sessions">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/memory/sessions'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="memory-get-sessions-by-agent-by-sessionKey">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/memory/sessions/<agent>/<sessionKey>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="memory-get-sessions-by-agent-by-sessionKey-turns">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/memory/sessions/<agent>/<sessionKey>/turns'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="memory-get-status">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/memory/status'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="memory-get-turns">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/memory/turns'
+```
+</OpenApiReference>
+
+## Messaging
+
+<OpenApiReference tag="Messaging" summary />
+
+<OpenApiReference operationId="messaging-get-root">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/messaging/'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="messaging-post-root">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/messaging/' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="messaging-get-by-itemId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/messaging/<itemId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="messaging-put-by-itemId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/messaging/<itemId>' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="messaging-delete-by-itemId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/messaging/<itemId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="messaging-post-by-itemId-approve">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/messaging/<itemId>/approve' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="messaging-post-by-itemId-reject">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/messaging/<itemId>/reject' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="messaging-post-by-itemId-unapprove">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/messaging/<itemId>/unapprove' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="messaging-post-brainstorm">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/messaging/brainstorm' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="messaging-get-search">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/messaging/search'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="messaging-get-sessions">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/messaging/sessions'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="messaging-post-sessions">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/messaging/sessions' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="messaging-get-sessions-by-id">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/messaging/sessions/<id>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="messaging-put-sessions-by-id">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/messaging/sessions/<id>' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="messaging-delete-sessions-by-id">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/messaging/sessions/<id>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="messaging-post-sessions-by-id-confirm">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/messaging/sessions/<id>/confirm' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="messaging-post-sessions-by-id-messages">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/messaging/sessions/<id>/messages' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="messaging-put-sessions-by-id-proposals-by-proposalId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/messaging/sessions/<id>/proposals/<proposalId>' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+## Models
+
+<OpenApiReference tag="Models" summary />
+
+<OpenApiReference operationId="models-get-aliases">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/models/aliases'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models-post-aliases">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/models/aliases' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models-get-available">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/models/available'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models-get-config">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/models/config'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models-post-config">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/models/config' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models-post-defaults">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/models/defaults' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models-get-profiles">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/models/profiles'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models-put-profiles">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/models/profiles' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models-post-refresh">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/models/refresh' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models-post-runtime-restart">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/models/runtime/restart' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="models-get-runtime-status">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/models/runtime/status'
+```
+</OpenApiReference>
+
+## Projects
+
+<OpenApiReference tag="Projects" summary />
+
+<OpenApiReference operationId="projects-get-root">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/projects/'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="projects-post-root">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/projects/' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="projects-get-by-projectId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/projects/<projectId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="projects-put-by-projectId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/projects/<projectId>' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="projects-delete-by-projectId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/projects/<projectId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="projects-post-by-projectId-ask">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/projects/<projectId>/ask' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="projects-post-by-projectId-assets">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/projects/<projectId>/assets' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="projects-delete-by-projectId-assets-by-filename">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/projects/<projectId>/assets/<filename>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="projects-post-by-projectId-checklist">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/projects/<projectId>/checklist' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="projects-put-by-projectId-checklist-by-itemId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/projects/<projectId>/checklist/<itemId>' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="projects-delete-by-projectId-checklist-by-itemId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/projects/<projectId>/checklist/<itemId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="projects-post-by-projectId-checklist-by-itemId-link">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/projects/<projectId>/checklist/<itemId>/link' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="projects-post-by-projectId-checklist-by-itemId-promote">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/projects/<projectId>/checklist/<itemId>/promote' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="projects-put-by-projectId-checklist-by-itemId-toggle">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/projects/<projectId>/checklist/<itemId>/toggle' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="projects-get-search">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/projects/search'
+```
+</OpenApiReference>
+
+## Schedule
+
+<OpenApiReference tag="Schedule" summary />
+
+<OpenApiReference operationId="schedule-get-root">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/schedule/'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="schedule-post-root">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/schedule/' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="schedule-get-by-jobId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/schedule/<jobId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="schedule-put-by-jobId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/schedule/<jobId>' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="schedule-delete-by-jobId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/schedule/<jobId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="schedule-post-by-jobId-pause">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/schedule/<jobId>/pause' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="schedule-post-by-jobId-run">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/schedule/<jobId>/run' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="schedule-get-by-jobId-runs">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/schedule/<jobId>/runs'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="schedule-post-bridge">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/schedule/bridge' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="schedule-post-parse">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/schedule/parse' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+## Tasks
+
+<OpenApiReference tag="Tasks" summary />
+
+<OpenApiReference operationId="tasks-get-root">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/tasks/'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="tasks-post-root">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/tasks/' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="tasks-get-by-taskId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/tasks/<taskId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="tasks-put-by-taskId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/tasks/<taskId>' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="tasks-delete-by-taskId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/tasks/<taskId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="tasks-post-by-taskId-assign">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/tasks/<taskId>/assign' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="tasks-post-by-taskId-block">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/tasks/<taskId>/block' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="tasks-post-by-taskId-complete">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/tasks/<taskId>/complete' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="tasks-post-by-taskId-dependency">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/tasks/<taskId>/dependency' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="tasks-post-by-taskId-log">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/tasks/<taskId>/log' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="tasks-post-by-taskId-move">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/tasks/<taskId>/move' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="tasks-post-reorder">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/tasks/reorder' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+## Team
+
+<OpenApiReference tag="Team" summary />
+
+<OpenApiReference operationId="team-get-root">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/team/'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-post-root">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/team/' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-get-by-agentId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/team/<agentId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-delete-by-agentId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/team/<agentId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-get-by-agentId-active-context">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/team/<agentId>/active-context'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-get-by-agentId-avatar">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/team/<agentId>/avatar'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-post-by-agentId-avatar">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/team/<agentId>/avatar' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-get-by-agentId-files">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/team/<agentId>/files'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-get-by-agentId-files-by-filename">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/team/<agentId>/files/<filename>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-put-by-agentId-files-by-filename">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/team/<agentId>/files/<filename>' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-get-by-agentId-heartbeat">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/team/<agentId>/heartbeat'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-put-by-agentId-identity">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/team/<agentId>/identity' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-get-by-agentId-memory">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/team/<agentId>/memory'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-get-by-agentId-memory-by-date">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/team/<agentId>/memory/<date>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-put-by-agentId-permissions">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/team/<agentId>/permissions' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-get-by-agentId-recent-activity">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/team/<agentId>/recent-activity'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-get-by-agentId-skills">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/team/<agentId>/skills'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-get-by-agentId-skills-by-skillId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/team/<agentId>/skills/<skillId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-post-by-agentId-start">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/team/<agentId>/start' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-get-by-agentId-stats">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/team/<agentId>/stats'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-post-by-agentId-stop">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/team/<agentId>/stop' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-put-by-agentId-team">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/team/<agentId>/team' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-get-settings">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/team/settings'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-put-settings">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/team/settings' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-get-teams">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/team/teams'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-post-teams">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/team/teams' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-put-teams-by-teamId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/team/teams/<teamId>' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-delete-teams-by-teamId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/team/teams/<teamId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="team-get-teams-by-teamId-members">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/team/teams/<teamId>/members'
+```
+</OpenApiReference>
+
+## Workflows
+
+<OpenApiReference tag="Workflows" summary />
+
+<OpenApiReference operationId="workflows-get-definitions">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/workflows/definitions'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows-post-definitions">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/workflows/definitions' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows-get-definitions-by-name">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/workflows/definitions/<name>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows-put-definitions-by-name">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PUT \
+  'http://localhost:3737/api/plugins/workflows/definitions/<name>' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows-delete-definitions-by-name">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/workflows/definitions/<name>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows-post-gates-by-taskId-approve">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/workflows/gates/<taskId>/approve' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows-post-gates-by-taskId-reject">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/workflows/gates/<taskId>/reject' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows-get-gates-pending">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/workflows/gates/pending'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows-get-gates-status">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/workflows/gates/status'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows-get-instances">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/workflows/instances'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows-get-instances-by-taskId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/workflows/instances/<taskId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows-post-instances-start">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/workflows/instances/start' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows-get-node-types">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/workflows/node-types'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows-get-notification-channels">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/workflows/notification-channels'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows-get-steps-by-taskId">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/workflows/steps/<taskId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="workflows-post-steps-by-taskId-complete">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/workflows/steps/<taskId>/complete' \
+  -H 'Content-Type: application/json' \
+  --data '{}'
+```
+</OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
   <span>Generated Apr 29, 2026 · Bakin 1.0.0</span>

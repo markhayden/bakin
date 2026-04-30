@@ -138,7 +138,7 @@ Same operations are available from the terminal when you'd rather not click:
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
-HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-tasks).
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#tasks).
 
 <div class="for-agents">
 
