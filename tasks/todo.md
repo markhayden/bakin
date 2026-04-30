@@ -41,16 +41,14 @@ Flat checklist mirroring [`plan.md`](./plan.md). Check items as you land them. E
 - [x] Gate (typecheck + scoped tests + docs:check)
 - [x] Commit: `feat(core): registry-driven dispatcher with auto-validate; legacy ctx.registerRoute adapter`
 
-### T5 — Validator (warn) + `/api/docs` from registry
-- [ ] `scripts/docs/route-contract-check.ts` — bundled-surface validator (in-repo + core only; extracted exempt)
-- [ ] Wire into `bun run docs:check`
-- [ ] `packages/host/src/api/docs-runtime.ts` — live OpenAPI from registry, cached at boot, invalidated on `dev:plugin:reload`
-- [ ] Update `src/core/api-docs.ts` `/api/docs` route to delegate
-- [ ] Declare `/api/docs` route's own response with `openApiDocumentSchema` (avoid self-reference recursion)
-- [ ] `tests/docs/route-contract-check.test.ts`
-- [ ] `tests/api/api-docs-runtime.test.ts`
-- [ ] Gate (warnings expected; exit 0)
-- [ ] Commit: `feat(docs): route-contract validator (warn); /api/docs from runtime registry`
+### T5 — Validator (warn) + `/api/docs` from registry ✅
+- [x] `scripts/docs/route-contract-check.ts` (CLI) + `route-contract-check-lib.ts` (validator core) — bundled-surface validator (in-repo + core only; extracted exempt)
+- [x] Wire into `bun run docs:check` via new `docs:validate:routes` script
+- [x] `packages/host/src/api/docs-runtime.ts` — runtime OpenAPI builder from a passed-in route source list. Cache + `invalidateDocsCache()` exposed for hot-reload integration. (Wiring into `server.ts`'s `/api/docs` route is deferred to T17 cleanup, when the legacy `getAllRoutes()` shape is removed; for now the new builder is dormant + tested in isolation.)
+- [x] `tests/docs/route-contract-check.test.ts` — 7 tests covering 2xx requirement, :param-without-schema, internal exemption, multipart-without-schema, mode flip
+- [x] `tests/api/api-docs-runtime.test.ts` — 3 tests covering empty doc envelope, path normalization (:id → {id}), tag grouping
+- [x] Gate (warnings expected; exit 0)
+- [x] Commit: `feat(docs): route-contract validator (warn); /api/docs runtime builder`
 
 ### CHECKPOINT — Foundation complete
 - [ ] `bun run dev` smoke: tasks UI, settings, agents start/stop
