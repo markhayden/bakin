@@ -1316,10 +1316,10 @@ starlight-toc nav a[href="#for-agents"]::before {
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  margin: 0.45rem 0.5rem 0;
-  padding: 0.18rem;
-  border: 1px solid rgba(120, 117, 116, 0.28);
-  border-radius: 0.42rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   background: #111010;
   line-height: 1;
 }
@@ -1334,7 +1334,7 @@ starlight-toc nav a[href="#for-agents"]::before {
   min-width: 5.5rem;
   margin: 0;
   padding: 0 0.78rem;
-  border-radius: 0.3rem;
+  border-radius: 0;
   color: var(--sl-color-gray-3);
   font-size: 0.82rem;
   font-weight: 600;
@@ -1350,7 +1350,7 @@ starlight-toc nav a[href="#for-agents"]::before {
 
 .api-tabs__panel {
   display: none;
-  padding: 0.55rem 0.5rem 0.5rem;
+  padding: 10px 0.5rem 0.5rem;
   background: #171515;
 }
 
@@ -1373,7 +1373,6 @@ starlight-toc nav a[href="#for-agents"]::before {
 .api-schema {
   margin: 0;
   padding: 0.85rem 0.95rem;
-  border: 1px solid rgba(120, 117, 116, 0.42);
   border-radius: 0.45rem;
   background: #111010;
   color: var(--sl-color-gray-1);
