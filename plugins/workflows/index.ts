@@ -1116,9 +1116,6 @@ const workflowsPlugin: BakinPlugin = definePlugin({
   contentFiles: [],
 
   async activate(ctx: PluginContext) {
-    // Reset routes on every activate (hot-reload safety).
-    workflowRoutes.length = 0
-
     // ─── Search Content Type Registration ─────────────────────────────
 
     /** Convert a workflow definition to a search document */
