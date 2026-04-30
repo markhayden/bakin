@@ -55,6 +55,16 @@
       },
       {
         "method": "POST",
+        "path": "/:jobId/adopt",
+        "summary": "Adopt a runtime cron into Bakin"
+      },
+      {
+        "method": "POST",
+        "path": "/:jobId/restore-native",
+        "summary": "Restore an adopted cron to native runtime behavior"
+      },
+      {
+        "method": "POST",
         "path": "/:jobId/pause",
         "summary": "Pause/resume/skip a job"
       },

@@ -65,6 +65,8 @@ export function mergeJob(
 
   // For orphaned jobs (no sidecar), extract what we can from the payload
   const orphanContext = !meta ? extractOrphanContext(job) : {}
+  const source = meta?.source ?? (meta?.isBakinJob ? 'bakin' : 'runtime')
+  const normalizedSource = source === 'adopted' || meta?.originalRuntimeCron ? 'adopted' : source
 
   return {
     // Runtime cron fields (normalised)
@@ -73,6 +75,9 @@ export function mergeJob(
     schedule: normalised,
     enabled: job.enabled,
     delivery: job.delivery,
+    source: normalizedSource,
+    canAdopt: !meta?.isBakinJob,
+    canRestoreNative: Boolean(meta?.isBakinJob && meta.originalRuntimeCron),
 
     // Bakin sidecar (with defaults)
     isBakinJob: meta?.isBakinJob ?? false,

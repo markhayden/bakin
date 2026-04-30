@@ -363,6 +363,12 @@ export interface CreateCronJobInput {
 
 export type UpdateCronJobInput = Partial<Omit<CreateCronJobInput, 'id'>>
 
+export interface RawCronSnapshot {
+  provider: string
+  capturedAt: string
+  snapshot: unknown
+}
+
 export interface RuntimeConfigAccess {
   get<T = Record<string, unknown>>(): Promise<T>
   update(patch: Record<string, unknown>): Promise<void>
@@ -467,6 +473,8 @@ export interface AgentRuntimeAdapter {
     remove(id: string): Promise<void>
     runNow(id: string): Promise<CronRun>
     listRuns(jobId: string): Promise<CronRun[]>
+    getRaw(id: string, reason: string): Promise<unknown | null>
+    restoreRaw(id: string, snapshot: unknown, reason: string): Promise<CronJob>
   }
 
   config: RuntimeConfigAccess
