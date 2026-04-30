@@ -593,6 +593,25 @@ class PluginRegistryImpl {
     }
   }
 
+  /**
+   * Register declarative routes from `plugin.routes` into state.routes.
+   * Called after `plugin.activate()` so any side-effect-only setup runs
+   * first. Routes registered through the legacy `ctx.registerRoute`
+   * adapter during activate() are already in state.routes; this only
+   * adds the declarative entries.
+   */
+  private registerDeclarativeRoutes(plugin: BakinPlugin, state: PluginState): void {
+    const declarative = plugin.routes ?? []
+    if (declarative.length === 0) return
+    for (const route of declarative) {
+      // Cast: declarative APIRoute<C, P, Q, B> is structurally compatible
+      // with the legacy APIRoute used by state.routes — same path/method/
+      // handler primary fields, plus extra typed schemas the dispatcher
+      // adapter knows how to read.
+      state.routes.push(route as unknown as APIRoute)
+    }
+  }
+
   private assertRouteDeclared(pluginId: string, state: PluginState, route: APIRoute): void {
     if (state.source !== 'user') return
     const declared = state.manifest?.contributes?.apiRoutes ?? []
@@ -839,6 +858,11 @@ class PluginRegistryImpl {
       const ctx = this.buildContext(plugin.id, state, storage, events, services)
       await plugin.activate(ctx)
       state.ctx = ctx
+      // T6+: register declarative routes from `plugin.routes` into the
+      // per-plugin route table. The catch-all dispatcher reads from
+      // state.routes regardless of whether routes came from
+      // `ctx.registerRoute` (legacy) or the declarative array (new).
+      this.registerDeclarativeRoutes(plugin, state)
       const skillResult = loadPluginSkills(pluginPath, ctx, log)
       if (skillResult.registered.length > 0) {
         log.info(`Auto-registered ${skillResult.registered.length} workflow skill(s) for "${plugin.id}"`, {
@@ -922,6 +946,7 @@ class PluginRegistryImpl {
     const ctx = this.buildContext(plugin.id, state, storage, events, services)
     await plugin.activate(ctx)
     state.ctx = ctx
+    this.registerDeclarativeRoutes(plugin, state)
     // #142 layer 1 — surface user-plugin permissions to the audit log.
     // Source is read from the lockfile (github vs local) by the helper.
     logPluginActivation({ plugin, source: 'user', manifestPath })

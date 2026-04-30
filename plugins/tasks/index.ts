@@ -1,9 +1,10 @@
 /**
  * Tasks plugin — server entry point.
- * Registers API routes and MCP exec tools for task operations.
+ * Registers API routes (declarative) and MCP exec tools for task operations.
  */
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
+import { definePlugin, defineRoute, type PluginContextLite } from '@bakin/core/routing'
 import {
   readTaskboard,
   deleteTask,
@@ -45,10 +46,436 @@ function clearMaintenanceTimers(): void {
   maintenanceTimers = []
 }
 
-const tasksPlugin: BakinPlugin = {
+// ─── Search-document helpers (module scope) ──────────────────────────────
+
+function taskToSearchDoc(task: Task, column: ColumnId): Record<string, unknown> {
+  const logText = task.log?.map(l => `[${l.timestamp} ${l.author}] ${l.message}`).join('\n') || ''
+  return {
+    title: task.title,
+    description: task.description || '',
+    agent: task.agent || '',
+    created_by: task.createdBy || '',
+    status: column,
+    project_id: task.projectId || '',
+    workflow_id: task.workflowId || '',
+    log_text: logText,
+    blocked_reason: task.blockedReason || '',
+    updated_at: new Date().toISOString(),
+  }
+}
+
+async function indexTask(ctx: PluginContextLite, taskId: string): Promise<void> {
+  try {
+    const board = readTaskboard()
+    const columns = board.columns as unknown as Record<string, Task[]>
+    for (const [colName, tasks] of Object.entries(columns)) {
+      const task = tasks.find(t => t.id === taskId)
+      if (task) {
+        await ctx.search.index(taskId, taskToSearchDoc(task, colName as ColumnId))
+        return
+      }
+    }
+  } catch (err) {
+    log.warn('Failed to index task', { taskId, error: err instanceof Error ? err.message : String(err) })
+  }
+}
+
+// ─── Schemas (module scope) ──────────────────────────────────────────────
+
+const taskIdParams = z.object({ taskId: z.string() })
+
+const okResponse = z.object({ ok: z.literal(true) })
+const errorResponse = z.object({ error: z.string() })
+
+const taskBoardResponse = z.object({}).passthrough()  // structural; defined elsewhere
+
+const createTaskBody = z.object({
+  id: z.string().optional(),
+  title: z.string().min(1),
+  description: z.string().optional(),
+  column: z.enum(COLUMNS).optional(),
+  assignee: z.string().optional(),
+  workflowId: z.string().optional(),
+  skipWorkflowReason: z.string().optional(),
+  createdBy: z.string().optional(),
+  parentId: z.string().optional(),
+  projectId: z.string().optional(),
+})
+const createTaskResponse = z.object({
+  ok: z.literal(true),
+  id: z.string(),
+  workflowId: z.string().optional(),
+  suggestedWorkflow: z.string().optional(),
+})
+
+const updateTaskBody = z.object({
+  id: z.string().optional(),
+  originalTitle: z.string().optional(),
+  title: z.string().optional(),
+  description: z.string().optional(),
+  agent: z.string().optional(),
+  column: z.string().optional(),
+  workflowId: z.string().optional(),
+})
+
+const deleteTaskBody = z.object({
+  id: z.string().optional(),
+  title: z.string().optional(),
+}).optional()
+
+const moveTaskBody = z.object({
+  id: z.string().optional(),
+  title: z.string().optional(),
+  from: z.string().optional(),
+  to: z.string(),
+  agent: z.string(),
+  reason: z.string().optional(),
+  channel: z.string().optional(),
+})
+
+const assignTaskBody = z.object({
+  id: z.string().optional(),
+  title: z.string().optional(),
+  agent: z.string().optional(),
+})
+
+const logEntryBody = z.object({
+  id: z.string().optional(),
+  title: z.string().optional(),
+  author: z.string().optional(),
+  agent: z.string().optional(),
+  message: z.string().min(1),
+})
+
+const blockTaskBody = z.object({
+  id: z.string().optional(),
+  title: z.string().optional(),
+  agent: z.string().optional(),
+  reason: z.string().min(1),
+})
+
+const dependencyBody = z.object({
+  id: z.string().optional(),
+  dependsOn: z.string().min(1),
+})
+
+const reorderBody = z.object({
+  columnId: z.string().min(1),
+  orderedIds: z.array(z.string()),
+})
+
+const completeTaskBody = z.object({
+  id: z.string().optional(),
+  agent: z.string().optional(),
+  summary: z.string().optional(),
+})
+
+// ─── Routes (declarative) ────────────────────────────────────────────────
+
+const routes = [
+  defineRoute({
+    path: '/',
+    method: 'GET',
+    summary: 'List all tasks',
+    description: 'Returns the full kanban board state, grouped by column.',
+    responses: { 200: taskBoardResponse, 500: errorResponse },
+    handler: async () => {
+      try {
+        const board = await readTaskboard()
+        return Response.json(board)
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/:taskId',
+    method: 'GET',
+    summary: 'Get a task by ID',
+    params: taskIdParams,
+    responses: { 200: z.object({}).passthrough(), 404: errorResponse, 500: errorResponse },
+    handler: async (_req, _ctx, { params }) => {
+      const result = await getTaskDetails(params.taskId)
+      if (!result) {
+        return Response.json({ error: 'Task not found' }, { status: 404 })
+      }
+      return Response.json(result)
+    },
+  }),
+
+  defineRoute({
+    path: '/',
+    method: 'POST',
+    summary: 'Create a task',
+    description: 'Creates a task on the kanban board. Auto-matches a workflow by title when workflowId is omitted.',
+    body: createTaskBody,
+    responses: { 200: createTaskResponse, 500: errorResponse },
+    handler: async (_req, ctx, { body }) => {
+      try {
+        const result = await createTaskWithEffects({
+          id: body.id,
+          title: body.title,
+          column: body.column as ColumnId | undefined,
+          assignee: body.assignee,
+          description: body.description,
+          workflowId: body.workflowId,
+          skipWorkflowReason: body.skipWorkflowReason,
+          createdBy: body.createdBy || 'system',
+          parentId: body.parentId,
+          projectId: body.projectId,
+          channel: 'rest',
+        })
+        ctx.activity.log(body.createdBy || 'system', `Created task "${body.title}"`, { taskId: result.id })
+        indexTask(ctx, result.id).catch(() => {})
+        return Response.json({ ok: true as const, id: result.id, workflowId: result.workflowId, suggestedWorkflow: result.suggestedWorkflow })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/:taskId',
+    method: 'PUT',
+    summary: 'Update a task',
+    params: taskIdParams,
+    body: updateTaskBody,
+    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { params, body }) => {
+      const identifier = params.taskId || body.id || body.originalTitle
+      if (!identifier) {
+        return Response.json({ error: 'taskId required' }, { status: 400 })
+      }
+      try {
+        await updateTask(identifier, {
+          title: body.title,
+          description: body.description,
+          agent: body.agent,
+          column: body.column as ColumnId | undefined,
+          workflowId: body.workflowId,
+        })
+        const agent = body.agent || 'system'
+        ctx.activity.audit('updated', agent, { taskId: identifier })
+        ctx.activity.log(agent, `Updated task "${identifier}"`, { taskId: identifier })
+        indexTask(ctx, identifier).catch(() => {})
+        return Response.json({ ok: true as const })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/:taskId',
+    method: 'DELETE',
+    summary: 'Delete a task',
+    params: taskIdParams,
+    body: { contentType: '*/*' },  // optional body fallback (id/title)
+    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    handler: async (req, ctx, { params }) => {
+      let body: any = {}
+      try { body = await req.clone().json() } catch { /* no body is fine */ }
+      const identifier = params.taskId || body.id || body.title
+      if (!identifier) {
+        return Response.json({ error: 'taskId required' }, { status: 400 })
+      }
+      try {
+        await deleteTask(identifier as string)
+        ctx.activity.audit('deleted', 'system', { taskId: identifier })
+        ctx.activity.log('system', `Deleted task "${identifier}"`, { taskId: identifier as string })
+        ctx.search.remove(identifier as string).catch(() => {})
+        return Response.json({ ok: true as const })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/:taskId/move',
+    method: 'POST',
+    summary: 'Move a task to a different column',
+    params: taskIdParams,
+    body: moveTaskBody,
+    responses: { 200: okResponse, 400: errorResponse, 403: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { params, body }) => {
+      const identifier = params.taskId || body.id || body.title
+      if (!identifier) {
+        return Response.json({ error: 'taskId and to required' }, { status: 400 })
+      }
+      const { from, to, agent, reason } = body
+      if (to === 'blocked') {
+        if (!reason) {
+          return Response.json({ error: 'reason required when moving to blocked' }, { status: 400 })
+        }
+        try {
+          await blockTaskWithEffects(identifier, reason, agent, (body.channel === 'human' && agent === 'human') ? 'human' : 'rest')
+          ctx.activity.log(agent, `Blocked task: ${reason}`, { taskId: identifier })
+          indexTask(ctx, identifier).catch(() => {})
+          return Response.json({ ok: true as const })
+        } catch (err) {
+          return Response.json({ error: (err as Error).message }, { status: 500 })
+        }
+      }
+      try {
+        const effectiveChannel = (body.channel === 'human' && agent === 'human') ? 'human' as const : 'rest' as const
+        await moveTaskWithEffects(identifier, to, agent, { from, channel: effectiveChannel })
+        ctx.activity.log(agent, `Moved task to "${to}"`, { taskId: identifier })
+        indexTask(ctx, identifier).catch(() => {})
+        return Response.json({ ok: true as const })
+      } catch (err) {
+        const msg = (err as Error).message
+        if (msg.includes('Workflow tasks cannot be moved')) {
+          return Response.json({ error: msg }, { status: 403 })
+        }
+        return Response.json({ error: msg }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/:taskId/assign',
+    method: 'POST',
+    summary: 'Assign a task to an agent',
+    params: taskIdParams,
+    body: assignTaskBody,
+    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { params, body }) => {
+      const identifier = params.taskId || body.id || body.title
+      if (!identifier) {
+        return Response.json({ error: 'taskId required' }, { status: 400 })
+      }
+      try {
+        await assignTask(identifier, body.agent || '')
+        ctx.activity.audit('assigned', 'system', { taskId: identifier, agent: body.agent || '' })
+        ctx.activity.log('system', `Assigned task to "${body.agent || 'unassigned'}"`, { taskId: identifier })
+        ctx.search.transform(identifier, [{ op: '$set', field: 'agent', value: body.agent || '' }]).catch(() => {})
+        return Response.json({ ok: true as const })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/:taskId/log',
+    method: 'POST',
+    summary: 'Add a log entry to a task',
+    params: taskIdParams,
+    body: logEntryBody,
+    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { params, body }) => {
+      const identifier = params.taskId || body.id || body.title
+      if (!identifier) {
+        return Response.json({ error: 'taskId required' }, { status: 400 })
+      }
+      try {
+        await logProgress(identifier, body.author || 'system', body.message, 'rest')
+        ctx.activity.log(body.agent || body.author || 'system', `Logged progress on task ${identifier}`, { taskId: identifier })
+        return Response.json({ ok: true as const })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/:taskId/block',
+    method: 'POST',
+    summary: 'Mark a task as blocked',
+    params: taskIdParams,
+    body: blockTaskBody,
+    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { params, body }) => {
+      const identifier = params.taskId || body.id || body.title
+      if (!identifier) {
+        return Response.json({ error: 'taskId required' }, { status: 400 })
+      }
+      try {
+        await blockTaskWithEffects(identifier, body.reason, body.agent || 'system', 'rest')
+        ctx.activity.log(body.agent || 'system', `Blocked task: ${body.reason}`, { taskId: identifier })
+        indexTask(ctx, identifier).catch(() => {})
+        return Response.json({ ok: true as const })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/:taskId/dependency',
+    method: 'POST',
+    summary: 'Set a dependency between tasks',
+    params: taskIdParams,
+    body: dependencyBody,
+    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { params, body }) => {
+      const taskId = params.taskId || body.id
+      if (!taskId) {
+        return Response.json({ error: 'taskId required' }, { status: 400 })
+      }
+      try {
+        await setDependencyWithEffects(taskId, body.dependsOn, 'rest')
+        ctx.activity.log('system', `Set dependency on ${body.dependsOn}`, { taskId })
+        return Response.json({ ok: true as const })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/reorder',
+    method: 'POST',
+    summary: 'Reorder tasks within a column',
+    body: reorderBody,
+    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { body }) => {
+      try {
+        await reorderTasks(body.columnId as ColumnId, body.orderedIds)
+        ctx.activity.audit('reordered', 'system', { columnId: body.columnId, orderedIds: body.orderedIds })
+        ctx.activity.log('system', `Reordered tasks in ${body.columnId}`)
+        return Response.json({ ok: true as const })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/:taskId/complete',
+    method: 'POST',
+    summary: 'Mark a task as complete',
+    params: taskIdParams,
+    body: completeTaskBody,
+    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { params, body }) => {
+      const taskId = params.taskId || body.id
+      if (!taskId) {
+        return Response.json({ error: 'taskId required' }, { status: 400 })
+      }
+      const agent = body.agent || 'system'
+      const summary = body.summary || ''
+      try {
+        await reportComplete(taskId, agent, summary, 'rest')
+        ctx.activity.log(agent, `Completed task: ${summary}`, { taskId })
+        indexTask(ctx, taskId).catch(() => {})
+        return Response.json({ ok: true as const })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+]
+
+// ─── Plugin definition ───────────────────────────────────────────────────
+
+const tasksPlugin: BakinPlugin = definePlugin({
   id: 'tasks',
   name: 'Tasks',
   version: '2.1.0',
+  routes,
 
   settingsSchema: {
     fields: [
@@ -98,339 +525,6 @@ const tasksPlugin: BakinPlugin = {
       },
       verifyExists: async (key: string) => {
         return getTask(key) !== null
-      },
-    })
-
-    /** Convert a task to a search document */
-    function taskToSearchDoc(task: Task, column: ColumnId): Record<string, unknown> {
-      const logText = task.log?.map(l => `[${l.timestamp} ${l.author}] ${l.message}`).join('\n') || ''
-      return {
-        title: task.title,
-        description: task.description || '',
-        agent: task.agent || '',
-        created_by: task.createdBy || '',
-        status: column,
-        project_id: task.projectId || '',
-        workflow_id: task.workflowId || '',
-        log_text: logText,
-        blocked_reason: task.blockedReason || '',
-        updated_at: new Date().toISOString(),
-      }
-    }
-
-    /** Index a task by looking it up and indexing its current state */
-    async function indexTask(taskId: string): Promise<void> {
-      try {
-        const board = readTaskboard()
-        const columns = board.columns as unknown as Record<string, Task[]>
-        for (const [colName, tasks] of Object.entries(columns)) {
-          const task = tasks.find(t => t.id === taskId)
-          if (task) {
-            await ctx.search.index(taskId, taskToSearchDoc(task, colName as ColumnId))
-            return
-          }
-        }
-      } catch (err) {
-        log.warn('Failed to index task', { taskId, error: err instanceof Error ? err.message : String(err) })
-      }
-    }
-
-    // ─── REST API Routes ───────────────────────────────────────────────
-
-    // GET / — list all tasks
-    ctx.registerRoute({
-      path: '/',
-      method: 'GET',
-      description: 'List all tasks',
-      handler: async () => {
-        try {
-          const board = await readTaskboard()
-          return Response.json(board)
-        } catch (err) {
-          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
-      },
-    })
-
-    // GET /:taskId — get single task details
-    ctx.registerRoute({
-      path: '/:taskId',
-      method: 'GET',
-      description: 'Get a single task by ID',
-      handler: async (req: Request) => {
-        const url = new URL(req.url)
-        const taskId = url.searchParams.get('taskId')
-        if (!taskId) {
-          return Response.json({ error: 'taskId required' }, { status: 400 })
-        }
-        const result = await getTaskDetails(taskId)
-        if (!result) {
-          return Response.json({ error: 'Task not found' }, { status: 404 })
-        }
-        return Response.json(result)
-      },
-    })
-
-    // POST / — create task
-    ctx.registerRoute({
-      path: '/',
-      method: 'POST',
-      description: 'Create a new task',
-      handler: async (req: Request) => {
-        const body = await req.json()
-        const { id, title, description, column, assignee, workflowId, skipWorkflowReason, createdBy, parentId, projectId } = body
-        if (!title) {
-          return Response.json({ error: 'title required' }, { status: 400 })
-        }
-        try {
-          const result = await createTaskWithEffects({
-            id, title, column, assignee, description, workflowId, skipWorkflowReason,
-            createdBy: createdBy || 'system', parentId, projectId, channel: 'rest',
-          })
-          ctx.activity.log(createdBy || 'system', `Created task "${title}"`, { taskId: result.id })
-          indexTask(result.id).catch(() => {})
-          return Response.json({ ok: true, id: result.id, workflowId: result.workflowId, suggestedWorkflow: result.suggestedWorkflow })
-        } catch (err) {
-          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
-      },
-    })
-
-    // PUT /:taskId — update task
-    ctx.registerRoute({
-      path: '/:taskId',
-      method: 'PUT',
-      description: 'Update a task',
-      handler: async (req: Request) => {
-        const url = new URL(req.url)
-        const taskId = url.searchParams.get('taskId')
-        const body = await req.json()
-        const identifier = taskId || body.id || body.originalTitle
-        if (!identifier) {
-          return Response.json({ error: 'taskId required' }, { status: 400 })
-        }
-        try {
-          const { title, description, agent, column, workflowId } = body
-          await updateTask(identifier, { title, description, agent, column, workflowId })
-          ctx.activity.audit('updated', agent || 'system', { taskId: identifier })
-          ctx.activity.log(agent || 'system', `Updated task "${identifier}"`, { taskId: identifier })
-          indexTask(identifier).catch(() => {})
-          return Response.json({ ok: true })
-        } catch (err) {
-          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
-      },
-    })
-
-    // DELETE /:taskId — delete task
-    ctx.registerRoute({
-      path: '/:taskId',
-      method: 'DELETE',
-      description: 'Delete a task',
-      handler: async (req: Request) => {
-        const url = new URL(req.url)
-        const taskId = url.searchParams.get('taskId')
-        const body = await req.json().catch(() => ({}))
-        const identifier = taskId || (body as Record<string, unknown>).id || (body as Record<string, unknown>).title
-        if (!identifier) {
-          return Response.json({ error: 'taskId required' }, { status: 400 })
-        }
-        try {
-          await deleteTask(identifier as string)
-          ctx.activity.audit('deleted', 'system', { taskId: identifier })
-          ctx.activity.log('system', `Deleted task "${identifier}"`, { taskId: identifier as string })
-          ctx.search.remove(identifier as string).catch(() => {})
-          return Response.json({ ok: true })
-        } catch (err) {
-          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
-      },
-    })
-
-    // POST /:taskId/move — move task to column
-    ctx.registerRoute({
-      path: '/:taskId/move',
-      method: 'POST',
-      description: 'Move a task to a different column',
-      handler: async (req: Request) => {
-        const url = new URL(req.url)
-        const body = await req.json()
-        const identifier = url.searchParams.get('taskId') || body.id || body.title
-        const { from, to, agent, reason } = body
-        if (!identifier || !to) {
-          return Response.json({ error: 'taskId and to required' }, { status: 400 })
-        }
-        if (!agent) {
-          return Response.json({ error: 'agent field required — who is moving this task?' }, { status: 400 })
-        }
-        // Blocked column requires a reason — use blockTaskWithEffects
-        if (to === 'blocked') {
-          if (!reason) {
-            return Response.json({ error: 'reason required when moving to blocked' }, { status: 400 })
-          }
-          try {
-            await blockTaskWithEffects(identifier, reason, agent, (body.channel === 'human' && agent === 'human') ? 'human' : 'rest')
-            ctx.activity.log(agent, `Blocked task: ${reason}`, { taskId: identifier })
-            indexTask(identifier).catch(() => {})
-            return Response.json({ ok: true })
-          } catch (err) {
-            return Response.json({ error: (err as Error).message }, { status: 500 })
-          }
-        }
-        try {
-          // Channel determines guard bypass: 'human' skips transition/log guards.
-          // Only accept 'human' from REST when the caller explicitly identifies as the
-          // UI operator (agent === 'human'). MCP tools hardcode 'mcp' server-side.
-          const effectiveChannel = (body.channel === 'human' && agent === 'human') ? 'human' as const : 'rest' as const
-          await moveTaskWithEffects(identifier, to, agent, { from, channel: effectiveChannel })
-          ctx.activity.log(agent, `Moved task to "${to}"`, { taskId: identifier })
-          indexTask(identifier).catch(() => {})
-          return Response.json({ ok: true })
-        } catch (err) {
-          const msg = (err as Error).message
-          if (msg.includes('Workflow tasks cannot be moved')) {
-            return Response.json({ error: msg }, { status: 403 })
-          }
-          return Response.json({ error: msg }, { status: 500 })
-        }
-      },
-    })
-
-    // POST /:taskId/assign — assign task to agent
-    ctx.registerRoute({
-      path: '/:taskId/assign',
-      method: 'POST',
-      description: 'Assign a task to an agent',
-      handler: async (req: Request) => {
-        const url = new URL(req.url)
-        const body = await req.json()
-        const identifier = url.searchParams.get('taskId') || body.id || body.title
-        if (!identifier) {
-          return Response.json({ error: 'taskId required' }, { status: 400 })
-        }
-        try {
-          await assignTask(identifier, body.agent || '')
-          ctx.activity.audit('assigned', 'system', { taskId: identifier, agent: body.agent || '' })
-          ctx.activity.log('system', `Assigned task to "${body.agent || 'unassigned'}"`, { taskId: identifier })
-          ctx.search.transform(identifier, [{ op: '$set', field: 'agent', value: body.agent || '' }]).catch(() => {})
-          return Response.json({ ok: true })
-        } catch (err) {
-          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
-      },
-    })
-
-    // POST /:taskId/log — add log entry
-    ctx.registerRoute({
-      path: '/:taskId/log',
-      method: 'POST',
-      description: 'Add a log entry to a task',
-      handler: async (req: Request) => {
-        const url = new URL(req.url)
-        const body = await req.json()
-        const identifier = url.searchParams.get('taskId') || body.id || body.title
-        if (!identifier || !body.message) {
-          return Response.json({ error: 'taskId and message required' }, { status: 400 })
-        }
-        try {
-          await logProgress(identifier, body.author || 'system', body.message, 'rest')
-          ctx.activity.log(body.agent || body.author || 'system', `Logged progress on task ${identifier}`, { taskId: identifier })
-          return Response.json({ ok: true })
-        } catch (err) {
-          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
-      },
-    })
-
-    // POST /:taskId/block — block task
-    ctx.registerRoute({
-      path: '/:taskId/block',
-      method: 'POST',
-      description: 'Mark a task as blocked',
-      handler: async (req: Request) => {
-        const url = new URL(req.url)
-        const body = await req.json()
-        const identifier = url.searchParams.get('taskId') || body.id || body.title
-        if (!identifier || !body.reason) {
-          return Response.json({ error: 'taskId and reason required' }, { status: 400 })
-        }
-        try {
-          await blockTaskWithEffects(identifier, body.reason, body.agent || 'system', 'rest')
-          ctx.activity.log(body.agent || 'system', `Blocked task: ${body.reason}`, { taskId: identifier })
-          indexTask(identifier).catch(() => {})
-          return Response.json({ ok: true })
-        } catch (err) {
-          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
-      },
-    })
-
-    // POST /:taskId/dependency — set dependency
-    ctx.registerRoute({
-      path: '/:taskId/dependency',
-      method: 'POST',
-      description: 'Set a dependency between tasks',
-      handler: async (req: Request) => {
-        const url = new URL(req.url)
-        const body = await req.json()
-        const taskId = url.searchParams.get('taskId') || body.id
-        if (!taskId || !body.dependsOn) {
-          return Response.json({ error: 'taskId and dependsOn required' }, { status: 400 })
-        }
-        try {
-          await setDependencyWithEffects(taskId, body.dependsOn, 'rest')
-          ctx.activity.log('system', `Set dependency on ${body.dependsOn}`, { taskId })
-          return Response.json({ ok: true })
-        } catch (err) {
-          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
-      },
-    })
-
-    // POST /:taskId/reorder — reorder tasks in a column
-    ctx.registerRoute({
-      path: '/reorder',
-      method: 'POST',
-      description: 'Reorder tasks within a column',
-      handler: async (req: Request) => {
-        const body = await req.json()
-        const { columnId, orderedIds } = body
-        if (!columnId || !Array.isArray(orderedIds)) {
-          return Response.json({ error: 'columnId and orderedIds[] required' }, { status: 400 })
-        }
-        try {
-          await reorderTasks(columnId, orderedIds)
-          ctx.activity.audit('reordered', 'system', { columnId, orderedIds })
-          ctx.activity.log('system', `Reordered tasks in ${columnId}`)
-          return Response.json({ ok: true })
-        } catch (err) {
-          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
-      },
-    })
-
-    // POST /:taskId/complete — mark task as complete
-    ctx.registerRoute({
-      path: '/:taskId/complete',
-      method: 'POST',
-      description: 'Mark a task as complete',
-      handler: async (req: Request) => {
-        const url = new URL(req.url)
-        const body = await req.json()
-        const taskId = url.searchParams.get('taskId') || body.id
-        if (!taskId) {
-          return Response.json({ error: 'taskId required' }, { status: 400 })
-        }
-        const agent = body.agent || 'system'
-        const summary = body.summary || ''
-        try {
-          await reportComplete(taskId, agent, summary, 'rest')
-          ctx.activity.log(agent, `Completed task: ${summary}`, { taskId })
-          indexTask(taskId).catch(() => {})
-          return Response.json({ ok: true })
-        } catch (err) {
-          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
       },
     })
 
@@ -515,9 +609,8 @@ const tasksPlugin: BakinPlugin = {
             createdBy: agent, parentId, projectId, channel: 'mcp',
           })
           if (parentId || assignee) triggerDispatch()
-          indexTask(result.id).catch(() => {})
+          indexTask(ctx, result.id).catch(() => {})
 
-          // Nudge: if no workflow was matched or provided, let the agent know
           const notice = (!parentId && !result.workflowId && !skipWorkflowReason)
             ? 'No workflow attached. Consider providing workflowId next time — use bakin_exec_workflows_list to see options.'
             : undefined
@@ -552,7 +645,7 @@ const tasksPlugin: BakinPlugin = {
         }
         try {
           await moveTaskWithEffects(taskId, to, agent, { channel: 'mcp' })
-          indexTask(taskId).catch(() => {})
+          indexTask(ctx, taskId).catch(() => {})
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -572,7 +665,7 @@ const tasksPlugin: BakinPlugin = {
       handler: async (params: Record<string, unknown>, agent: string) => {
         try {
           await blockTaskWithEffects(params.taskId as string, params.reason as string, agent, 'mcp')
-          indexTask(params.taskId as string).catch(() => {})
+          indexTask(ctx, params.taskId as string).catch(() => {})
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -592,7 +685,7 @@ const tasksPlugin: BakinPlugin = {
       handler: async (params: Record<string, unknown>, agent: string) => {
         try {
           await reportComplete(params.taskId as string, agent, params.summary as string, 'mcp')
-          indexTask(params.taskId as string).catch(() => {})
+          indexTask(ctx, params.taskId as string).catch(() => {})
           return { ok: true }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -660,7 +753,7 @@ const tasksPlugin: BakinPlugin = {
           if (assignee !== undefined) updates.agent = assignee
           const result = await updateTask(taskId, updates)
           ctx.activity.audit('updated', agent, { taskId })
-          indexTask(taskId).catch(() => {})
+          indexTask(ctx, taskId).catch(() => {})
           return { ok: true, result }
         } catch (err) {
           return { ok: false, error: (err as Error).message }
@@ -769,6 +862,6 @@ const tasksPlugin: BakinPlugin = {
     clearMaintenanceTimers()
     log.info('Shutting down tasks plugin')
   },
-}
+}) as unknown as BakinPlugin
 
 export default tasksPlugin
