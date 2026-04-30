@@ -167,7 +167,7 @@ Source: `plugins/workflows/index.ts:1334`
 
 Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results.
 
-Source: `plugins/health/index.ts:260`
+Source: `plugins/health/index.ts:259`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
@@ -177,7 +177,7 @@ Source: `plugins/health/index.ts:260`
 
 Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work.
 
-Source: `plugins/health/index.ts:231`
+Source: `plugins/health/index.ts:230`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a tool contract declares stability
