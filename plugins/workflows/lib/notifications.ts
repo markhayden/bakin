@@ -209,6 +209,7 @@ export async function sendGateApprovalRequest(
       taskId: instance.taskId,
       stepId,
       requireRejectReason: settings.requireRejectReason,
+      approvalUrl: buildGateApprovalUrl(instance.taskId, stepId, approvalId),
     },
   }
 
@@ -240,6 +241,14 @@ export async function sendGateApprovalRequest(
     log.warn('Gate approval alert failed', err)
     return null
   }
+}
+
+function buildGateApprovalUrl(taskId: string, stepId: string, approvalId: string): string {
+  const base = process.env.BAKIN_URL || 'http://localhost:3737'
+  const url = new URL(`/api/plugins/workflows/gates/${encodeURIComponent(taskId)}/decision`, base)
+  url.searchParams.set('stepId', stepId)
+  url.searchParams.set('approvalId', approvalId)
+  return url.toString()
 }
 
 export async function resolveGateApproval(
