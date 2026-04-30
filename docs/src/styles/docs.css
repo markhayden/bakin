@@ -1289,6 +1289,7 @@ starlight-toc nav a[href="#for-agents"]::before {
 
 .api-operation__section p {
   margin: 0;
+  padding-bottom: 10px;
   color: var(--sl-color-gray-3);
   font-size: 0.9rem;
 }
@@ -1373,6 +1374,7 @@ starlight-toc nav a[href="#for-agents"]::before {
 .api-schema {
   margin: 0;
   padding: 0.85rem 0.95rem;
+  border-width: 0;
   border-radius: 0.45rem;
   background: #111010;
   color: var(--sl-color-gray-1);
