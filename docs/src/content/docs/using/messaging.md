@@ -164,7 +164,7 @@ Sessions index into search (table `bakin_messaging_brainstorm`) so they reach ac
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
-HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-messaging).
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#messaging).
 
 <div class="for-agents">
 

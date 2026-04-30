@@ -826,6 +826,57 @@ function openApiContent(contentType: string, schema: unknown, example?: unknown)
   return { [contentType]: content }
 }
 
+function sampleOpenApiValue(schema: unknown): unknown {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return 'value'
+  const record = schema as Record<string, unknown>
+  if (record.example !== undefined) return record.example
+  if (Array.isArray(record.enum) && record.enum.length > 0) return record.enum[0]
+  switch (record.type) {
+    case 'boolean':
+      return true
+    case 'integer':
+    case 'number':
+      return 1
+    case 'array':
+      return [sampleOpenApiValue(record.items)]
+    case 'object': {
+      const properties = record.properties
+      if (!properties || typeof properties !== 'object' || Array.isArray(properties)) return {}
+      return Object.fromEntries(Object.entries(properties).map(([key, value]) => [key, sampleOpenApiValue(value)]))
+    }
+    case 'string':
+    default:
+      return 'value'
+  }
+}
+
+function firstOpenApiContent(content?: Record<string, { schema?: unknown; example?: unknown }>): { contentType: string; schema?: unknown; example?: unknown } | undefined {
+  if (!content) return undefined
+  const [contentType, value] = Object.entries(content)[0] ?? []
+  if (!contentType || !value) return undefined
+  return { contentType, ...value }
+}
+
+function curlForOperation(method: string, path: string, operation: OpenApiOperation): string {
+  const params = (operation.parameters as Array<{ name: string; in: string }> | undefined) ?? []
+  let urlPath = path.replace(/\{([^}]+)\}/g, (_match, name) => `<${name}>`)
+  const query = params.filter(param => param.in === 'query')
+  if (query.length) {
+    urlPath += `?${query.map(param => `${param.name}=<${param.name}>`).join('&')}`
+  }
+  const lines = ['curl -sS']
+  if (method !== 'GET') lines.push(`  -X ${method}`)
+  lines.push(`  'http://localhost:3737${urlPath}'`)
+  const requestBody = operation.requestBody as { content?: Record<string, { schema?: unknown; example?: unknown }> } | undefined
+  const body = firstOpenApiContent(requestBody?.content)
+  if (body) {
+    const sample = body.example ?? sampleOpenApiValue(body.schema)
+    lines.push(`  -H 'Content-Type: ${body.contentType}'`)
+    lines.push(`  --data '${JSON.stringify(sample, null, 2)}'`)
+  }
+  return lines.join(' \\\n')
+}
+
 function openApiResponses(route: ApiRouteContribution | RouteDoc): Record<string, unknown> {
   const declared = 'responses' in route ? route.responses : undefined
   if (declared && Object.keys(declared).length > 0) {
@@ -963,6 +1014,35 @@ function buildOpenApiDocument(): Record<string, unknown> {
 }
 
 function renderApiReference(): string {
+  const groups = new Map<string, Array<{ operationId: string; curl: string }>>()
+  for (const entry of allApiDocRoutes()) {
+    const operation = routeOperation(entry.route, entry.scope, entry.fullPath, entry.tag)
+    const operationId = String(operation.operationId)
+    const curl = curlForOperation(entry.route.method, openApiPath(entry.fullPath), operation)
+    const existing = groups.get(entry.tag) ?? []
+    existing.push({ operationId, curl })
+    groups.set(entry.tag, existing)
+  }
+  const groupLines = [...groups.keys()]
+    .sort((a, b) => tagOrder(a).localeCompare(tagOrder(b)))
+    .flatMap(tag => {
+      const operations = groups.get(tag) ?? []
+      return [
+        `## ${tag}`,
+        '',
+        `<OpenApiReference tag="${escapeHtml(tag)}" summary />`,
+        '',
+        ...operations.flatMap(operation => [
+          `<OpenApiReference operationId="${escapeHtml(operation.operationId)}">`,
+          '```sh frame="terminal" showLineNumbers',
+          operation.curl,
+          '```',
+          '</OpenApiReference>',
+          '',
+        ]),
+      ]
+    })
+
   return [
     '---',
     'title: API',
@@ -971,8 +1051,9 @@ function renderApiReference(): string {
     '',
     "import OpenApiReference from '../../../../components/OpenApiReference.astro'",
     '',
-    '<OpenApiReference />',
+    '<OpenApiReference intro />',
     '',
+    ...groupLines,
     generatedPageNote(),
     '',
   ].join('\n')
