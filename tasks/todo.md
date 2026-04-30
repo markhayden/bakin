@@ -24,13 +24,13 @@ Flat checklist mirroring [`plan.md`](./plan.md). Check items as you land them. E
 - [x] Gate
 - [x] Commit: `feat(core): route registry with duplicate detection and path matching`
 
-### T3 — Zod→OpenAPI converter + error envelope
-- [ ] `packages/core/src/openapi/zod-to-openapi.ts` — wraps `z.toJSONSchema`; `:id` → `{id}`
-- [ ] `packages/core/src/openapi/errors.ts` — `errorEnvelope`, global `400`/`415` builders
-- [ ] `packages/core/src/openapi/operation.ts` — single-route Operation builder
-- [ ] `tests/docs/zod-to-openapi.test.ts` — golden snapshots covering JSON, multipart, none-body, SSE, mixed-status
-- [ ] Gate
-- [ ] Commit: `feat(core): Zod→OpenAPI converter and shared error envelope`
+### T3 — Zod→OpenAPI converter + error envelope ✅
+- [x] `packages/core/src/openapi/zod-to-openapi.ts` — wraps `z.toJSONSchema`; `:id` → `{id}`
+- [x] `packages/core/src/openapi/errors.ts` — `errorEnvelope`, global `400`/`415` builders
+- [x] `packages/core/src/openapi/operation.ts` — single-route Operation builder
+- [x] `tests/docs/zod-to-openapi.test.ts` — golden snapshots covering JSON, multipart, none-body, SSE, mixed-status
+- [x] Gate
+- [x] Commit: `feat(core): Zod→OpenAPI converter and shared error envelope`
 
 ### T4 — Dispatcher + legacy `ctx.registerRoute` adapter
 - [ ] `packages/core/src/routing/dispatcher.ts` — extract path params, parse query, parse body, call handler, validate response
