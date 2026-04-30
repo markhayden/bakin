@@ -3,26 +3,26 @@
 Flat checklist mirroring [`plan.md`](./plan.md). Check items as you land them. Each task = one commit on `feat/route-contracts`.
 
 ## Branch setup
-- [ ] Cut `feat/route-contracts` from `main`
+- [x] Cut `feat/route-contracts` from `main`
 
 ## Foundation (T1–T5)
 
-### T1 — Types, helpers, plugin shape
-- [ ] `packages/core/src/routing/types.ts` — `RouteContext`, `APIRoute<C, P, Q, B>`, `ParsedInput<P, Q, B>`, `JsonResponseSpec`, `NoContentResponseSpec`, `NonJsonResponseSpec`
-- [ ] `packages/core/src/routing/define.ts` — `defineRoute`, `defineCoreRoute`, `definePlugin`
-- [ ] `packages/core/src/plugin-types.ts` — add `routes?: APIRoute[]` to `BakinPlugin`
-- [ ] Consolidate `RouteContract` between `packages/core/src/docs/metadata.ts` and `packages/sdk/src/metadata/index.ts`
-- [ ] `packages/sdk/src/index.ts` — re-export `definePlugin`, `defineRoute`, `searchRoute`
-- [ ] `tests/core/routing-types.test.ts` — type-level inference assertions
-- [ ] Gate
-- [ ] Commit: `refactor(core): RouteContext/PluginContext/CoreContext hierarchy + definePlugin/defineRoute helpers`
+### T1 — Types, helpers, plugin shape ✅
+- [x] `packages/core/src/routing/types.ts` — `RouteContext`, `APIRoute<C, P, Q, B>`, `ParsedInput<P, Q, B>`, `JsonResponseSpec`, `NoContentResponseSpec`, `NonJsonResponseSpec`
+- [x] `packages/core/src/routing/define.ts` — `defineRoute`, `defineCoreRoute`, `definePlugin`
+- [x] `packages/core/src/plugin-types.ts` — add `routes?: APIRoute[]` to `BakinPlugin`
+- [x] Consolidate `RouteContract` between `packages/core/src/docs/metadata.ts` and `packages/sdk/src/metadata/index.ts`
+- [x] `packages/sdk/src/index.ts` — re-export `definePlugin`, `defineRoute`, `searchRoute` (note: `searchRoute` lands in T3 with the converter)
+- [x] `tests/core/routing-types.test.ts` — type-level inference assertions
+- [x] Gate
+- [x] Commit: `refactor(core): RouteContext/PluginContext/CoreContext hierarchy + definePlugin/defineRoute helpers` (495e155)
 
-### T2 — Route registry
-- [ ] `packages/core/src/routing/registry.ts` — `RouteRegistry` with radix matching, duplicate detection, `clear()`, `match()`, `all()`
-- [ ] `packages/core/src/routing/operation-id.ts`
-- [ ] `tests/core/route-registry.test.ts`
-- [ ] Gate
-- [ ] Commit: `feat(core): route registry with duplicate detection and path matching`
+### T2 — Route registry ✅
+- [x] `packages/core/src/routing/registry.ts` — `RouteRegistry` with radix matching, duplicate detection, `clear()`, `match()`, `all()`
+- [x] `packages/core/src/routing/operation-id.ts`
+- [x] `tests/core/route-registry.test.ts`
+- [x] Gate
+- [x] Commit: `feat(core): route registry with duplicate detection and path matching`
 
 ### T3 — Zod→OpenAPI converter + error envelope
 - [ ] `packages/core/src/openapi/zod-to-openapi.ts` — wraps `z.toJSONSchema`; `:id` → `{id}`

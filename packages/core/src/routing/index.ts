@@ -27,3 +27,8 @@ export type {
 
 export { defineRoute, defineCoreRoute, definePlugin } from './define'
 export type { DefinePluginInput } from './define'
+
+export { RouteRegistry } from './registry'
+export type { RouteScope, RegisteredRoute, RouteMatch } from './registry'
+
+export { operationIdFor } from './operation-id'
