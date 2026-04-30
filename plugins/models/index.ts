@@ -6,6 +6,7 @@
 import { z } from 'zod'
 // Internal
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
+import { definePlugin, defineRoute } from '@bakin/core/routing'
 // Relative
 import type { AgentModelConfig, AvailableModel, TaskProfile, ModelsPluginSettings } from './types'
 import {
@@ -92,7 +93,7 @@ async function updateConfig(
   reason: string,
   updater: (config: RuntimeModelConfig) => void,
 ): Promise<void> {
-  const config = await readConfig(ctx)
+  const config = await readConfig(ctx as unknown as PluginContext)
   updater(config)
   await writeConfig(ctx, config, reason)
 }
@@ -101,7 +102,7 @@ async function updateConfig(
 // Resolve agents from config + team hook metadata
 // ---------------------------------------------------------------------------
 async function resolveAgents(ctx: PluginContext): Promise<AgentModelConfig[]> {
-  const config = await readConfig(ctx)
+  const config = await readConfig(ctx as unknown as PluginContext)
   const teamAgents = await getAgentMeta(ctx)
   const defaultModel = config.agents.defaults.model.primary
   const defaultSubagentModel = config.agents.defaults.subagents?.model
@@ -183,7 +184,7 @@ function sortModels(a: AvailableModel, b: AvailableModel): number {
 
 async function loadConfiguredModelsFromRuntime(ctx: PluginContext): Promise<AvailableModel[]> {
   const runtimeModels = await ctx.runtime.models.listAvailable({ includeUnavailable: true })
-  const config = await readConfig(ctx)
+  const config = await readConfig(ctx as unknown as PluginContext)
   const defaultModel = normalizeModelId(config.agents.defaults.model.primary)
   const fallbackModels = (config.agents.defaults.model.fallbacks ?? []).map(normalizeModelId)
 
@@ -262,7 +263,7 @@ async function fetchAvailableModels(ctx: PluginContext): Promise<FetchResult> {
   if (inflightFetch) return inflightFetch
   inflightFetch = (async (): Promise<FetchResult> => {
     try {
-      const models = await loadConfiguredModelsFromRuntime(ctx)
+      const models = await loadConfiguredModelsFromRuntime(ctx as unknown as PluginContext)
       const now = Date.now()
       setModelsCache({ models, fetchedAt: now })
       writePersistedCache({ models, fetchedAt: now, source: 'runtime' })
@@ -347,12 +348,326 @@ const TaskProfilesUpdateSchema = z.object({
 })
 
 // ---------------------------------------------------------------------------
+// Response shapes
+// ---------------------------------------------------------------------------
+const okResponse = z.object({ ok: z.literal(true) }).passthrough()
+const errorResponse = z.object({ error: z.string() }).passthrough()
+const passthrough = z.object({}).passthrough()
+
+// ---------------------------------------------------------------------------
+// Routes (declarative)
+// ---------------------------------------------------------------------------
+const routes = [
+  defineRoute({
+    path: '/available',
+    method: 'GET',
+    summary: 'List available models',
+    description: 'Returns the model catalog from the configured runtime adapter. Cached on disk; the response signals freshness.',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async (_req, ctx) => {
+      try {
+        const result = await fetchAvailableModels(ctx as unknown as PluginContext)
+        return Response.json(result)
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/refresh',
+    method: 'POST',
+    summary: 'Refresh model list (bypass cache)',
+    description: 'Forces a fresh fetch from the runtime adapter, bypassing both cache layers. Falls back to last-known-good cache on failure.',
+    body: { contentType: 'none' },
+    responses: { 200: passthrough, 502: passthrough },
+    handler: async (_req, ctx) => {
+      try {
+        const models = await loadConfiguredModelsFromRuntime(ctx as unknown as PluginContext)
+        const now = Date.now()
+        setModelsCache({ models, fetchedAt: now })
+        writePersistedCache({ models, fetchedAt: now, source: 'runtime' })
+        return Response.json({ ok: true, models, cached: false, cachedAt: now, stale: false })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        const fallbackCache = readPersistedCache()
+        if (fallbackCache) {
+          return Response.json({
+            ok: false,
+            error: message,
+            models: fallbackCache.models,
+            cached: true,
+            cachedAt: fallbackCache.fetchedAt,
+            stale: true,
+          }, { status: 502 })
+        }
+        return Response.json({
+          ok: false,
+          error: message,
+          models: [],
+          cached: false,
+          cachedAt: null,
+          stale: false,
+        }, { status: 502 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/config',
+    method: 'GET',
+    summary: 'Get model config',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async (_req, ctx) => {
+      try {
+        const agents = await resolveAgents(ctx as unknown as PluginContext)
+        const config = await readConfig(ctx as unknown as PluginContext)
+        return Response.json({
+          agents,
+          defaultModel: normalizeModelId(config.agents.defaults.model.primary),
+          defaultSubagentModel: config.agents.defaults.subagents?.model
+            ? normalizeModelId(config.agents.defaults.subagents.model)
+            : null,
+          fallbackModels: (config.agents.defaults.model.fallbacks ?? []).map(normalizeModelId),
+        })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/config',
+    method: 'POST',
+    summary: 'Update agent model config',
+    body: ConfigUpdateSchema,
+    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { body }) => {
+      try {
+        const { agentId } = body
+        const agentsBefore = await resolveAgents(ctx as unknown as PluginContext)
+        const before = agentsBefore.find((a) => a.agentId === agentId)
+        const oldModel = before?.effectiveModel ?? null
+
+        await updateConfig(ctx as unknown as PluginContext, 'models.update-agent-config', (config) => {
+          const agent = config.agents.list.find((a) => a.id === agentId)
+          if (!agent) throw new Error(`Agent "${agentId}" not found`)
+          if (body.ownModel !== undefined) {
+            if (body.ownModel) {
+              agent.model = { primary: normalizeModelId(body.ownModel) }
+            } else {
+              delete agent.model
+            }
+          }
+          if (body.subagentModel !== undefined) {
+            if (body.subagentModel) {
+              if (!agent.subagents) agent.subagents = {}
+              agent.subagents.model = normalizeModelId(body.subagentModel)
+            } else if (agent.subagents) {
+              delete agent.subagents.model
+            }
+          }
+        })
+
+        const agentsAfter = await resolveAgents(ctx as unknown as PluginContext)
+        const after = agentsAfter.find((a) => a.agentId === agentId)
+        const newModel = after?.effectiveModel ?? null
+
+        markConfigDirty()
+        setModelsCache(null)
+        ctx.activity.audit('config.updated', 'system', { agentId, ownModel: body.ownModel, subagentModel: body.subagentModel })
+        ctx.activity.log('system', `Updated model config for ${agentId}`, { category: 'models' })
+
+        if (oldModel !== newModel) {
+          try { await ctx.hooks.invoke('models.configChanged', { agentId, oldModel, newModel }) } catch { /* no subscribers */ }
+        }
+
+        return Response.json({ ok: true })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/defaults',
+    method: 'POST',
+    summary: 'Update default models',
+    body: DefaultsUpdateSchema,
+    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { body }) => {
+      try {
+        await updateConfig(ctx as unknown as PluginContext, 'models.update-defaults', (config) => {
+          if (body.defaultModel) {
+            config.agents.defaults.model.primary = normalizeModelId(body.defaultModel)
+          }
+          if (body.fallbackModels) {
+            const fallbackSet = body.fallbackModels
+              .map(normalizeModelId)
+              .filter((id) => id !== normalizeModelId(config.agents.defaults.model.primary))
+            config.agents.defaults.model.fallbacks = [...new Set(fallbackSet)]
+          }
+          if (body.defaultSubagentModel !== undefined) {
+            if (!config.agents.defaults.subagents) {
+              config.agents.defaults.subagents = {}
+            }
+            if (body.defaultSubagentModel) {
+              config.agents.defaults.subagents.model = body.defaultSubagentModel
+            } else {
+              delete config.agents.defaults.subagents.model
+            }
+          }
+        })
+
+        markConfigDirty()
+        setModelsCache(null)
+        ctx.activity.audit('defaults.updated', 'system', { defaultModel: body.defaultModel, defaultSubagentModel: body.defaultSubagentModel, fallbackModels: body.fallbackModels })
+        ctx.activity.log('system', `Updated model defaults${body.defaultModel ? ` to ${body.defaultModel}` : ''}`, { category: 'models' })
+        return Response.json({ ok: true })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/aliases',
+    method: 'GET',
+    summary: 'List model aliases',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async (_req, ctx) => {
+      try {
+        const config = await readConfig(ctx as unknown as PluginContext)
+        const aliases = readAliases(config)
+        return Response.json({ aliases })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/aliases',
+    method: 'POST',
+    summary: 'Add/delete/prepopulate model aliases',
+    body: AliasActionSchema,
+    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { body }) => {
+      try {
+        await updateConfig(ctx as unknown as PluginContext, 'models.update-aliases', (config) => {
+          if (!config.agents.defaults.models) {
+            config.agents.defaults.models = {}
+          }
+          if ('aliases' in body) {
+            const newModels: Record<string, unknown> = {}
+            for (const [alias, target] of Object.entries(body.aliases)) {
+              newModels[alias] = { alias: normalizeModelId(target) }
+            }
+            config.agents.defaults.models = newModels
+          } else if ('action' in body) {
+            if (body.action === 'add') {
+              (config.agents.defaults.models as Record<string, unknown>)[body.name] = { alias: normalizeModelId(body.target) }
+            } else if (body.action === 'delete') {
+              delete (config.agents.defaults.models as Record<string, unknown>)[body.name]
+            } else if (body.action === 'prepopulate') {
+              const models = config.agents.defaults.models as Record<string, unknown>
+              for (const [alias, target] of Object.entries(DEFAULT_ALIASES)) {
+                if (!(alias in models)) {
+                  models[alias] = { alias: target }
+                }
+              }
+            }
+          }
+        })
+
+        setModelsCache(null)
+        ctx.activity.audit('aliases.updated', 'system')
+        ctx.activity.log('system', 'Updated model aliases', { category: 'models' })
+        return Response.json({ ok: true })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/profiles',
+    method: 'GET',
+    summary: 'List task profiles',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async (_req, ctx) => {
+      try {
+        const settings = ctx.getSettings<ModelsPluginSettings>()
+        const profiles = settings.taskProfiles ?? DEFAULT_TASK_PROFILES
+        return Response.json({ profiles })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/profiles',
+    method: 'PUT',
+    summary: 'Replace task profiles',
+    body: TaskProfilesUpdateSchema,
+    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { body }) => {
+      try {
+        (ctx as unknown as PluginContext).updateSettings({ taskProfiles: body.profiles })
+        ctx.activity.audit('profiles.updated', 'system', { count: body.profiles.length })
+        ctx.activity.log('system', `Updated ${body.profiles.length} task profiles`, { category: 'models' })
+        return Response.json({ ok: true })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/runtime/status',
+    method: 'GET',
+    summary: 'Runtime config sync status',
+    description: 'Reports whether the runtime config is out of sync with disk and needs a restart.',
+    responses: { 200: passthrough },
+    handler: async () => {
+      const sync = getRuntimeSync()
+      const restartNeeded = sync.lastConfigChangeAt !== null &&
+        (sync.lastRestartAt === null || sync.lastConfigChangeAt > sync.lastRestartAt)
+      return Response.json({ restartNeeded, ...sync })
+    },
+  }),
+
+  defineRoute({
+    path: '/runtime/restart',
+    method: 'POST',
+    summary: 'Restart the runtime',
+    body: { contentType: 'none' },
+    responses: { 200: okResponse, 500: errorResponse },
+    handler: async (_req, ctx) => {
+      try {
+        await (ctx as unknown as PluginContext).runtime.restart()
+        markRuntimeRestarted()
+        setModelsCache(null)
+        clearPersistedCache()
+        ctx.activity.audit('runtime.restarted', 'system')
+        ctx.activity.log('system', 'Runtime restarted', { category: 'models' })
+        return Response.json({ ok: true, message: 'Restart initiated' })
+      } catch (err) {
+        return Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+]
+
+// ---------------------------------------------------------------------------
 // Plugin definition
 // ---------------------------------------------------------------------------
-const modelsPlugin: BakinPlugin = {
+const modelsPlugin: BakinPlugin = definePlugin({
   id: 'models',
   name: 'Models',
   version: '2.1.0',
+  routes,
 
   settingsSchema: {
     fields: [
@@ -374,7 +689,7 @@ const modelsPlugin: BakinPlugin = {
     ctx.hooks.register('models.getEffectiveModel', async (data: Record<string, unknown>) => {
       const agentId = data.agentId as string
       if (!agentId) return null
-      const agents = await resolveAgents(ctx)
+      const agents = await resolveAgents(ctx as unknown as PluginContext)
       const agent = agents.find((a) => a.agentId === agentId)
       return agent?.effectiveModel ?? null
     }, { label: 'Get effective model.', summary: 'Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent.', hookKind: 'rpc' })
@@ -384,348 +699,10 @@ const modelsPlugin: BakinPlugin = {
     ctx.hooks.register('models.markRuntimeRestarted', () => { markRuntimeRestarted() }, { label: 'Mark runtime refreshed.', summary: 'Records that the runtime has picked up the latest model configuration. Use it after restart or reload flows so stale dirty-state warnings can clear.', hookKind: 'event' })
 
     ctx.hooks.register('models.getAvailableModels', async () => {
-      const result = await fetchAvailableModels(ctx)
+      const result = await fetchAvailableModels(ctx as unknown as PluginContext)
       return result.models
     }, { label: 'List available models.', summary: 'Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config.', hookKind: 'rpc' })
 
-    // -------------------------------------------------------------------
-    // GET /api/plugins/models/available
-    // -------------------------------------------------------------------
-    ctx.registerRoute({
-      path: '/available',
-      method: 'GET',
-      handler: async () => {
-        try {
-          const result = await fetchAvailableModels(ctx)
-          return Response.json(result)
-        } catch (err) {
-          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
-      },
-    })
-
-    // -------------------------------------------------------------------
-    // POST /api/plugins/models/refresh
-    // -------------------------------------------------------------------
-    // Force a fresh fetch, bypassing both cache layers. Used by the
-    // manual Refresh button on the models page and by the stale-auto-
-    // refresh path. On runtime failure we fall back to the last-known-
-    // good cache (if any) — never fake data.
-    ctx.registerRoute({
-      path: '/refresh',
-      method: 'POST',
-      description: 'Bypass cache and fetch the model list fresh from the runtime adapter',
-      handler: async () => {
-        try {
-          const models = await loadConfiguredModelsFromRuntime(ctx)
-          const now = Date.now()
-          setModelsCache({ models, fetchedAt: now })
-          writePersistedCache({ models, fetchedAt: now, source: 'runtime' })
-          return Response.json({ ok: true, models, cached: false, cachedAt: now, stale: false })
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err)
-          const fallbackCache = readPersistedCache()
-          if (fallbackCache) {
-            return Response.json({
-              ok: false,
-              error: message,
-              models: fallbackCache.models,
-              cached: true,
-              cachedAt: fallbackCache.fetchedAt,
-              stale: true,
-            }, { status: 502 })
-          }
-          return Response.json({
-            ok: false,
-            error: message,
-            models: [],
-            cached: false,
-            cachedAt: null,
-            stale: false,
-          }, { status: 502 })
-        }
-      },
-    })
-
-    // -------------------------------------------------------------------
-    // GET /api/plugins/models/config
-    // -------------------------------------------------------------------
-    ctx.registerRoute({
-      path: '/config',
-      method: 'GET',
-      handler: async () => {
-        try {
-          const agents = await resolveAgents(ctx)
-          const config = await readConfig(ctx)
-          return Response.json({
-            agents,
-            defaultModel: normalizeModelId(config.agents.defaults.model.primary),
-            defaultSubagentModel: config.agents.defaults.subagents?.model
-              ? normalizeModelId(config.agents.defaults.subagents.model)
-              : null,
-            fallbackModels: (config.agents.defaults.model.fallbacks ?? []).map(normalizeModelId),
-          })
-        } catch (err) {
-          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
-      },
-    })
-
-    // -------------------------------------------------------------------
-    // POST /api/plugins/models/config
-    // -------------------------------------------------------------------
-    ctx.registerRoute({
-      path: '/config',
-      method: 'POST',
-      handler: async (req: Request) => {
-        try {
-          const raw = await req.json()
-          const body = ConfigUpdateSchema.parse(raw)
-          const { agentId } = body
-
-          // Capture old model for hook notification
-          const agentsBefore = await resolveAgents(ctx)
-          const before = agentsBefore.find((a) => a.agentId === agentId)
-          const oldModel = before?.effectiveModel ?? null
-
-          await updateConfig(ctx, 'models.update-agent-config', (config) => {
-            const agent = config.agents.list.find((a) => a.id === agentId)
-            if (!agent) throw new Error(`Agent "${agentId}" not found`)
-
-            if (body.ownModel !== undefined) {
-              if (body.ownModel) {
-                agent.model = { primary: normalizeModelId(body.ownModel) }
-              } else {
-                delete agent.model
-              }
-            }
-
-            if (body.subagentModel !== undefined) {
-              if (body.subagentModel) {
-                if (!agent.subagents) agent.subagents = {}
-                agent.subagents.model = normalizeModelId(body.subagentModel)
-              } else if (agent.subagents) {
-                delete agent.subagents.model
-              }
-            }
-          })
-
-          const agentsAfter = await resolveAgents(ctx)
-          const after = agentsAfter.find((a) => a.agentId === agentId)
-          const newModel = after?.effectiveModel ?? null
-
-          markConfigDirty()
-          setModelsCache(null)
-          ctx.activity.audit('config.updated', 'system', { agentId, ownModel: body.ownModel, subagentModel: body.subagentModel })
-          ctx.activity.log('system', `Updated model config for ${agentId}`, { category: 'models' })
-
-          // Fire notification hook if model changed
-          if (oldModel !== newModel) {
-            try { await ctx.hooks.invoke('models.configChanged', { agentId, oldModel, newModel }) } catch { /* no subscribers */ }
-          }
-
-          return Response.json({ ok: true })
-        } catch (err) {
-          if (err instanceof z.ZodError) {
-            return Response.json({ error: err.issues[0]?.message ?? 'Validation failed' }, { status: 400 })
-          }
-          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
-      },
-    })
-
-    // -------------------------------------------------------------------
-    // POST /api/plugins/models/defaults
-    // -------------------------------------------------------------------
-    ctx.registerRoute({
-      path: '/defaults',
-      method: 'POST',
-      handler: async (req: Request) => {
-        try {
-          const raw = await req.json()
-          const body = DefaultsUpdateSchema.parse(raw)
-
-          await updateConfig(ctx, 'models.update-defaults', (config) => {
-            if (body.defaultModel) {
-              config.agents.defaults.model.primary = normalizeModelId(body.defaultModel)
-            }
-            if (body.fallbackModels) {
-              const fallbackSet = body.fallbackModels
-                .map(normalizeModelId)
-                .filter((id) => id !== normalizeModelId(config.agents.defaults.model.primary))
-              config.agents.defaults.model.fallbacks = [...new Set(fallbackSet)]
-            }
-            if (body.defaultSubagentModel !== undefined) {
-              if (!config.agents.defaults.subagents) {
-                config.agents.defaults.subagents = {}
-              }
-              if (body.defaultSubagentModel) {
-                config.agents.defaults.subagents.model = body.defaultSubagentModel
-              } else {
-                delete config.agents.defaults.subagents.model
-              }
-            }
-          })
-
-          markConfigDirty()
-          setModelsCache(null)
-          ctx.activity.audit('defaults.updated', 'system', { defaultModel: body.defaultModel, defaultSubagentModel: body.defaultSubagentModel, fallbackModels: body.fallbackModels })
-          ctx.activity.log('system', `Updated model defaults${body.defaultModel ? ` to ${body.defaultModel}` : ''}`, { category: 'models' })
-          return Response.json({ ok: true })
-        } catch (err) {
-          if (err instanceof z.ZodError) {
-            return Response.json({ error: err.issues[0]?.message ?? 'Validation failed' }, { status: 400 })
-          }
-          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
-      },
-    })
-
-    // -------------------------------------------------------------------
-    // GET /api/plugins/models/aliases
-    // -------------------------------------------------------------------
-    ctx.registerRoute({
-      path: '/aliases',
-      method: 'GET',
-      handler: async () => {
-        try {
-          const config = await readConfig(ctx)
-          const aliases = readAliases(config)
-          return Response.json({ aliases })
-        } catch (err) {
-          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
-      },
-    })
-
-    // -------------------------------------------------------------------
-    // POST /api/plugins/models/aliases
-    // -------------------------------------------------------------------
-    ctx.registerRoute({
-      path: '/aliases',
-      method: 'POST',
-      handler: async (req: Request) => {
-        try {
-          const raw = await req.json()
-          const body = AliasActionSchema.parse(raw)
-
-          await updateConfig(ctx, 'models.update-aliases', (config) => {
-            if (!config.agents.defaults.models) {
-              config.agents.defaults.models = {}
-            }
-
-            if ('aliases' in body) {
-              const newModels: Record<string, unknown> = {}
-              for (const [alias, target] of Object.entries(body.aliases)) {
-                newModels[alias] = { alias: normalizeModelId(target) }
-              }
-              config.agents.defaults.models = newModels
-            } else if ('action' in body) {
-              if (body.action === 'add') {
-                (config.agents.defaults.models as Record<string, unknown>)[body.name] = { alias: normalizeModelId(body.target) }
-              } else if (body.action === 'delete') {
-                delete (config.agents.defaults.models as Record<string, unknown>)[body.name]
-              } else if (body.action === 'prepopulate') {
-                const models = config.agents.defaults.models as Record<string, unknown>
-                for (const [alias, target] of Object.entries(DEFAULT_ALIASES)) {
-                  if (!(alias in models)) {
-                    models[alias] = { alias: target }
-                  }
-                }
-              }
-            }
-          })
-
-          setModelsCache(null)
-          ctx.activity.audit('aliases.updated', 'system')
-          ctx.activity.log('system', 'Updated model aliases', { category: 'models' })
-          return Response.json({ ok: true })
-        } catch (err) {
-          if (err instanceof z.ZodError) {
-            return Response.json({ error: err.issues[0]?.message ?? 'Validation failed' }, { status: 400 })
-          }
-          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
-      },
-    })
-
-    // -------------------------------------------------------------------
-    // GET /api/plugins/models/profiles
-    // -------------------------------------------------------------------
-    ctx.registerRoute({
-      path: '/profiles',
-      method: 'GET',
-      handler: async () => {
-        try {
-          const settings = ctx.getSettings<ModelsPluginSettings>()
-          const profiles = settings.taskProfiles ?? DEFAULT_TASK_PROFILES
-          return Response.json({ profiles })
-        } catch (err) {
-          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
-      },
-    })
-
-    // -------------------------------------------------------------------
-    // PUT /api/plugins/models/profiles
-    // -------------------------------------------------------------------
-    ctx.registerRoute({
-      path: '/profiles',
-      method: 'PUT',
-      handler: async (req: Request) => {
-        try {
-          const raw = await req.json()
-          const body = TaskProfilesUpdateSchema.parse(raw)
-          ctx.updateSettings({ taskProfiles: body.profiles })
-          ctx.activity.audit('profiles.updated', 'system', { count: body.profiles.length })
-          ctx.activity.log('system', `Updated ${body.profiles.length} task profiles`, { category: 'models' })
-          return Response.json({ ok: true })
-        } catch (err) {
-          if (err instanceof z.ZodError) {
-            return Response.json({ error: err.issues[0]?.message ?? 'Validation failed' }, { status: 400 })
-          }
-          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
-      },
-    })
-
-    // -------------------------------------------------------------------
-    // GET /api/plugins/models/runtime/status
-    // -------------------------------------------------------------------
-    ctx.registerRoute({
-      path: '/runtime/status',
-      method: 'GET',
-      description: 'Check if runtime config is out of sync (needs restart)',
-      handler: async () => {
-        const sync = getRuntimeSync()
-        const restartNeeded = sync.lastConfigChangeAt !== null &&
-          (sync.lastRestartAt === null || sync.lastConfigChangeAt > sync.lastRestartAt)
-        return Response.json({ restartNeeded, ...sync })
-      },
-    })
-
-    // -------------------------------------------------------------------
-    // POST /api/plugins/models/runtime/restart
-    // -------------------------------------------------------------------
-    ctx.registerRoute({
-      path: '/runtime/restart',
-      method: 'POST',
-      handler: async () => {
-        try {
-          await ctx.runtime.restart()
-          markRuntimeRestarted()
-          // Runtime restart invalidates both cache layers — the user
-          // expects fresh data on the next /available hit.
-          setModelsCache(null)
-          clearPersistedCache()
-          ctx.activity.audit('runtime.restarted', 'system')
-          ctx.activity.log('system', 'Runtime restarted', { category: 'models' })
-          return Response.json({ ok: true, message: 'Restart initiated' })
-        } catch (err) {
-          return Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
-      },
-    })
 
     // -------------------------------------------------------------------
     // MCP Exec Tools — read-only agent access
@@ -739,7 +716,7 @@ const modelsPlugin: BakinPlugin = {
       },
       handler: async (params: Record<string, unknown>) => {
         try {
-          const result = await fetchAvailableModels(ctx)
+          const result = await fetchAvailableModels(ctx as unknown as PluginContext)
           const tier = params.tier as string | undefined
           const models = tier ? result.models.filter((m) => m.tier === tier) : result.models
           return { ok: true, models, cached: result.cached }
@@ -758,7 +735,7 @@ const modelsPlugin: BakinPlugin = {
       },
       handler: async (params: Record<string, unknown>) => {
         try {
-          const agents = await resolveAgents(ctx)
+          const agents = await resolveAgents(ctx as unknown as PluginContext)
           const agentId = params.agentId as string | undefined
           if (agentId) {
             const agent = agents.find((a) => a.agentId === agentId)
@@ -772,6 +749,6 @@ const modelsPlugin: BakinPlugin = {
       },
     })
   },
-}
+}) as unknown as BakinPlugin
 
 export default modelsPlugin

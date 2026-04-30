@@ -220,20 +220,16 @@ describe('GET /config', () => {
 describe('POST /config', () => {
   it('rejects missing agentId', async () => {
     const route = findRoute(activated.routes, 'POST', '/config')!
-    const req = makeRequest('/config', { method: 'POST', body: { ownModel: 'claude-haiku-4-5' } })
-    const res = await route.handler(req, activated.ctx)
-    expect(res.status).toBe(400)
+    const { status } = await callRoute(route, activated.ctx, { body: { ownModel: 'claude-haiku-4-5' } })
+    expect(status).toBe(400)
   })
 
   it('updates agent own model', async () => {
     writeRuntimeConfig() // reset
     const route = findRoute(activated.routes, 'POST', '/config')!
-    const req = makeRequest('/config', {
-      method: 'POST',
+    const { body: data } = await callRoute(route, activated.ctx, {
       body: { agentId: 'patch', ownModel: 'anthropic/claude-opus-4-6' },
     })
-    const res = await route.handler(req, activated.ctx)
-    const data = await res.json()
     expect(data.ok).toBe(true)
 
     // Verify the change persisted
@@ -257,15 +253,13 @@ describe('POST /config', () => {
   it('clears agent model when set to null', async () => {
     // First set a model
     const route = findRoute(activated.routes, 'POST', '/config')!
-    await route.handler(
-      makeRequest('/config', { method: 'POST', body: { agentId: 'patch', ownModel: 'test-model' } }),
-      activated.ctx
-    )
+    await callRoute(route, activated.ctx, {
+      body: { agentId: 'patch', ownModel: 'test-model' },
+    })
     // Now clear it
-    await route.handler(
-      makeRequest('/config', { method: 'POST', body: { agentId: 'patch', ownModel: null } }),
-      activated.ctx
-    )
+    await callRoute(route, activated.ctx, {
+      body: { agentId: 'patch', ownModel: null },
+    })
 
     const getRoute = findRoute(activated.routes, 'GET', '/config')!
     const { body } = await callRoute(getRoute, activated.ctx)
@@ -279,12 +273,9 @@ describe('POST /config', () => {
 describe('POST /defaults', () => {
   it('updates default model', async () => {
     const route = findRoute(activated.routes, 'POST', '/defaults')!
-    const req = makeRequest('/defaults', {
-      method: 'POST',
+    const { body: data } = await callRoute(route, activated.ctx, {
       body: { defaultModel: 'anthropic/claude-opus-4-6' },
     })
-    const res = await route.handler(req, activated.ctx)
-    const data = await res.json()
     expect(data.ok).toBe(true)
     expect(activated.ctx.activity.audit).toHaveBeenCalledWith(
       'defaults.updated',
@@ -297,12 +288,9 @@ describe('POST /defaults', () => {
 
   it('updates fallback models', async () => {
     const route = findRoute(activated.routes, 'POST', '/defaults')!
-    const req = makeRequest('/defaults', {
-      method: 'POST',
+    const { body: data } = await callRoute(route, activated.ctx, {
       body: { fallbackModels: ['anthropic/claude-opus-4-6', 'anthropic/claude-haiku-4-5'] },
     })
-    const res = await route.handler(req, activated.ctx)
-    const data = await res.json()
     expect(data.ok).toBe(true)
 
     const getRoute = findRoute(activated.routes, 'GET', '/config')!
@@ -463,12 +451,9 @@ describe('POST /aliases', () => {
   it('adds a new alias', async () => {
     writeRuntimeConfig()
     const route = findRoute(activated.routes, 'POST', '/aliases')!
-    const req = makeRequest('/aliases', {
-      method: 'POST',
+    const { body: data } = await callRoute(route, activated.ctx, {
       body: { action: 'add', name: 'fast', target: 'claude-haiku-4-5' },
     })
-    const res = await route.handler(req, activated.ctx)
-    const data = await res.json()
     expect(data.ok).toBe(true)
 
     // Verify it persisted
@@ -482,12 +467,9 @@ describe('POST /aliases', () => {
   it('deletes an alias', async () => {
     writeRuntimeConfig()
     const route = findRoute(activated.routes, 'POST', '/aliases')!
-    const req = makeRequest('/aliases', {
-      method: 'POST',
+    const { body: data } = await callRoute(route, activated.ctx, {
       body: { action: 'delete', name: 'haiku' },
     })
-    const res = await route.handler(req, activated.ctx)
-    const data = await res.json()
     expect(data.ok).toBe(true)
 
     const getRoute = findRoute(activated.routes, 'GET', '/aliases')!
@@ -504,12 +486,9 @@ describe('POST /aliases', () => {
     writeRuntimeConfig(emptyConfig)
 
     const route = findRoute(activated.routes, 'POST', '/aliases')!
-    const req = makeRequest('/aliases', {
-      method: 'POST',
+    const { body: data } = await callRoute(route, activated.ctx, {
       body: { action: 'prepopulate' },
     })
-    const res = await route.handler(req, activated.ctx)
-    const data = await res.json()
     expect(data.ok).toBe(true)
 
     const getRoute = findRoute(activated.routes, 'GET', '/aliases')!
@@ -539,12 +518,10 @@ describe('GET /profiles', () => {
 describe('PUT /profiles', () => {
   it('validates profile structure', async () => {
     const route = findRoute(activated.routes, 'PUT', '/profiles')!
-    const req = makeRequest('/profiles', {
-      method: 'PUT',
+    const { status } = await callRoute(route, activated.ctx, {
       body: { profiles: [{ taskType: '', recommendedModel: 'test', notes: 'x' }] },
     })
-    const res = await route.handler(req, activated.ctx)
-    expect(res.status).toBe(400)
+    expect(status).toBe(400)
   })
 
   it('saves valid profiles', async () => {
@@ -552,12 +529,9 @@ describe('PUT /profiles', () => {
     const newProfiles = [
       { taskType: 'Testing', recommendedModel: 'claude-haiku-4-5', notes: 'Quick iteration' },
     ]
-    const req = makeRequest('/profiles', {
-      method: 'PUT',
+    const { body: data } = await callRoute(route, activated.ctx, {
       body: { profiles: newProfiles },
     })
-    const res = await route.handler(req, activated.ctx)
-    const data = await res.json()
     expect(data.ok).toBe(true)
     expect(activated.ctx.updateSettings).toHaveBeenCalledWith({ taskProfiles: newProfiles })
   })
@@ -575,10 +549,9 @@ describe('GET /runtime/status', () => {
     // Trigger a config change
     writeRuntimeConfig()
     const configRoute = findRoute(activated.routes, 'POST', '/config')!
-    await configRoute.handler(
-      makeRequest('/config', { method: 'POST', body: { agentId: 'patch', ownModel: 'test-model' } }),
-      activated.ctx
-    )
+    await callRoute(configRoute, activated.ctx, {
+      body: { agentId: 'patch', ownModel: 'test-model' },
+    })
 
     const statusRoute = findRoute(activated.routes, 'GET', '/runtime/status')!
     const { body } = await callRoute(statusRoute, activated.ctx)
