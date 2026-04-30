@@ -331,6 +331,14 @@ export interface PluginContext {
   tasks: PluginTaskService
   assets: AssetsAPI
   registerNav(items: NavItem[]): void
+  /**
+   * @deprecated Use `definePlugin({ routes: [defineRoute({...})] })` to declare
+   * routes. This adapter remains during the migration window for any
+   * out-of-tree plugin that still calls `ctx.registerRoute(...)` from
+   * `activate()`. In-repo plugins migrated in T6–T13 / T20 — none of them
+   * call this. The dispatcher adapts the legacy shape (input → body,
+   * output → responses[200]) when invoked through this path.
+   */
   registerRoute(route: APIRoute): void
   registerSlot(registration: UISlotRegistration): void
   registerExecTool(tool: ExecToolDefinition): void

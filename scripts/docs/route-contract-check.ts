@@ -153,10 +153,10 @@ async function main(): Promise<number> {
     pluginRoutes[id] = scan.declarativeRoutes
   }
 
-  const totalDeclarative = coreRoutes.length
-    + Object.values(pluginScan).reduce((acc, s) => acc + s.declarativeRoutes.length, 0)
+  const totalPluginDeclarative = Object.values(pluginScan).reduce((acc, s) => acc + s.declarativeRoutes.length, 0)
+  const totalDeclarative = coreRoutes.length + totalPluginDeclarative
   const totalLegacy = Object.values(pluginScan).reduce((acc, s) => acc + s.legacyRouteCount, 0)
-  const totalDefineRouteCalls = Object.values(pluginScan).reduce((acc, s) => acc + s.defineRouteCount, 0)
+  const totalPluginDefineRouteCalls = Object.values(pluginScan).reduce((acc, s) => acc + s.defineRouteCount, 0)
 
   const result = validateRouteContracts({
     pluginRoutes,
@@ -189,7 +189,15 @@ async function main(): Promise<number> {
     }
   }
 
-  console.log(`route-contract-check: scanned ${totalDeclarative} static declarative route(s) (+ ${totalDefineRouteCalls - totalDeclarative} mutable-array defineRoute call(s)) + detected ${totalLegacy} legacy registration(s) across ${Object.keys(pluginScan).length} plugin(s) + ${coreRoutes.length} core`)
+  // Plugin-only comparison: how many defineRoute() calls in plugin source vs.
+  // how many show up statically in plugin.default.routes. A positive delta
+  // means a plugin builds routes via a runtime side effect that the static
+  // analyzer can't see — flag it.
+  const mutableDelta = totalPluginDefineRouteCalls - totalPluginDeclarative
+  const mutableNote = mutableDelta > 0
+    ? ` (warning: ${mutableDelta} plugin-source defineRoute() call(s) not visible in static plugin.routes — runtime population)`
+    : ''
+  console.log(`route-contract-check: scanned ${totalDeclarative} static declarative route(s)${mutableNote} + detected ${totalLegacy} legacy registration(s) across ${Object.keys(pluginScan).length} plugin(s) + ${coreRoutes.length} core`)
 
   const errors = [...result.errors, ...(args.mode === 'error' ? legacyFindings : [])]
   const warnings = [...result.warnings, ...(args.mode === 'warn' ? legacyFindings : [])]
