@@ -647,6 +647,13 @@ class PluginRegistryImpl {
     // auto-route wiring land routes in the same place (and share the
     // same docs registration side effect).
     const registerRoute = (route: APIRoute) => {
+      // Dedup against declarative routes already registered before
+      // activate(). Without this, plugins that declare a route via
+      // `routes: [searchRoute(...)]` AND trigger the auto-wire path
+      // (ctx.search.registerContentType → opts.registerRoute) would
+      // double-register `<method, path>`.
+      const exists = state.routes.some(r => r.method === route.method && r.path === route.path)
+      if (exists) return
       this.assertRouteDeclared(pluginId, state, route)
       state.routes.push(route)
       registerRouteDoc(pluginId, route)
@@ -856,13 +863,14 @@ class PluginRegistryImpl {
       }
 
       const ctx = this.buildContext(plugin.id, state, storage, events, services)
+      // T6+: register declarative routes BEFORE activate() so handlers
+      // cannot close over module-scope state initialized inside
+      // activate(). The catch-all dispatcher reads from state.routes
+      // regardless of whether routes came from `ctx.registerRoute`
+      // (legacy) or the declarative array.
+      this.registerDeclarativeRoutes(plugin, state)
       await plugin.activate(ctx)
       state.ctx = ctx
-      // T6+: register declarative routes from `plugin.routes` into the
-      // per-plugin route table. The catch-all dispatcher reads from
-      // state.routes regardless of whether routes came from
-      // `ctx.registerRoute` (legacy) or the declarative array (new).
-      this.registerDeclarativeRoutes(plugin, state)
       const skillResult = loadPluginSkills(pluginPath, ctx, log)
       if (skillResult.registered.length > 0) {
         log.info(`Auto-registered ${skillResult.registered.length} workflow skill(s) for "${plugin.id}"`, {
@@ -944,9 +952,9 @@ class PluginRegistryImpl {
     }
 
     const ctx = this.buildContext(plugin.id, state, storage, events, services)
+    this.registerDeclarativeRoutes(plugin, state)
     await plugin.activate(ctx)
     state.ctx = ctx
-    this.registerDeclarativeRoutes(plugin, state)
     // #142 layer 1 — surface user-plugin permissions to the audit log.
     // Source is read from the lockfile (github vs local) by the helper.
     logPluginActivation({ plugin, source: 'user', manifestPath })
@@ -1089,6 +1097,21 @@ class PluginRegistryImpl {
 
   getPluginIds(): string[] {
     return [...this.plugins.keys()]
+  }
+
+  /**
+   * Enumerate every registered route across every active plugin, paired
+   * with the plugin id (scope) for OpenAPI / docs generation. Used by the
+   * runtime `/api/docs` builder.
+   */
+  getAllPluginRoutes(): Array<{ pluginId: string; route: APIRoute }> {
+    const out: Array<{ pluginId: string; route: APIRoute }> = []
+    for (const [pluginId, state] of this.plugins.entries()) {
+      for (const route of state.routes) {
+        out.push({ pluginId, route })
+      }
+    }
+    return out
   }
 
   getPluginState(pluginId: string): PluginState | undefined {

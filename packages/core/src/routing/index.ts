@@ -35,3 +35,5 @@ export { operationIdFor } from './operation-id'
 
 export { dispatchRoute } from './dispatcher'
 export type { DispatchInput } from './dispatcher'
+
+export { searchRoute } from './search-route'

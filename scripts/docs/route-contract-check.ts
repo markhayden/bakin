@@ -33,8 +33,13 @@ function parseArgs(): CliArgs {
   return { mode }
 }
 
-async function loadPluginRoutes(): Promise<Record<string, ReadonlyArray<APIRoute<any, any, any, any>>>> {
-  const out: Record<string, ReadonlyArray<APIRoute<any, any, any, any>>> = {}
+interface PluginScanResult {
+  declarativeRoutes: ReadonlyArray<APIRoute<any, any, any, any>>
+  legacyRouteCount: number
+}
+
+async function loadPluginRoutes(): Promise<Record<string, PluginScanResult>> {
+  const out: Record<string, PluginScanResult> = {}
   const pluginsDir = join(repoRoot, 'plugins')
   if (!existsSync(pluginsDir)) return out
 
@@ -46,18 +51,46 @@ async function loadPluginRoutes(): Promise<Record<string, ReadonlyArray<APIRoute
     if (!existsSync(indexPath)) continue
     try {
       const mod = await import(indexPath) as { default?: { routes?: ReadonlyArray<APIRoute<any, any, any, any>> } }
-      const routes = mod.default?.routes ?? []
-      out[id] = routes
+      const declarativeRoutes = mod.default?.routes ?? []
+      // Source-side legacy detection: count `ctx.registerRoute(...)` calls
+      // that are not yet in plugin.routes. This catches plugins still
+      // using the imperative legacy shape so the validator surfaces them
+      // as "needs migration" rather than silently passing.
+      const legacyRouteCount = countLegacyRouteRegistrations(indexPath)
+      out[id] = { declarativeRoutes, legacyRouteCount }
     } catch (err) {
-      // Best-effort: an import failure here means the plugin can't be
-      // statically read (T1–T16 plugins haven't migrated yet). Report it
-      // as a single "no declarative routes" finding rather than blowing
-      // up the validator.
       console.warn(`[validator] could not statically import plugins/${id}/index.ts: ${err instanceof Error ? err.message : String(err)}`)
-      out[id] = []
+      out[id] = { declarativeRoutes: [], legacyRouteCount: 0 }
     }
   }
   return out
+}
+
+/**
+ * Count `ctx.registerRoute(...)` and `: APIRoute = {...}` patterns in a
+ * plugin's source tree. Used by the validator to surface unmigrated
+ * routes that don't yet appear in `plugin.routes`.
+ */
+function countLegacyRouteRegistrations(entryPath: string): number {
+  const fs = require('fs') as typeof import('fs')
+  const path = require('path') as typeof import('path')
+  const dir = path.dirname(entryPath)
+  let count = 0
+  const visit = (target: string) => {
+    if (!fs.existsSync(target)) return
+    const stat = fs.statSync(target)
+    if (stat.isDirectory()) {
+      if (target.endsWith('/dist') || target.endsWith('/node_modules')) return
+      for (const entry of fs.readdirSync(target)) visit(path.join(target, entry))
+      return
+    }
+    if (!target.endsWith('.ts') && !target.endsWith('.tsx')) return
+    const text = fs.readFileSync(target, 'utf8')
+    count += (text.match(/ctx\.registerRoute\s*\(/g) ?? []).length
+    count += (text.match(/(?:export\s+)?const\s+\w+\s*:\s*APIRoute\s*=\s*\{/g) ?? []).length
+  }
+  visit(dir)
+  return count
 }
 
 async function loadCoreRoutes(): Promise<ReadonlyArray<APIRoute<any, any, any, any>>> {
@@ -77,11 +110,18 @@ function formatFinding(f: RouteFinding): string {
 
 async function main(): Promise<number> {
   const args = parseArgs()
-  const pluginRoutes = await loadPluginRoutes()
+  const pluginScan = await loadPluginRoutes()
   const coreRoutes = await loadCoreRoutes()
 
-  const totalRoutes = coreRoutes.length
-    + Object.values(pluginRoutes).reduce((acc, rs) => acc + rs.length, 0)
+  // Build pluginRoutes for the validator from the declarative slice only.
+  const pluginRoutes: Record<string, ReadonlyArray<APIRoute<any, any, any, any>>> = {}
+  for (const [id, scan] of Object.entries(pluginScan)) {
+    pluginRoutes[id] = scan.declarativeRoutes
+  }
+
+  const totalDeclarative = coreRoutes.length
+    + Object.values(pluginScan).reduce((acc, s) => acc + s.declarativeRoutes.length, 0)
+  const totalLegacy = Object.values(pluginScan).reduce((acc, s) => acc + s.legacyRouteCount, 0)
 
   const result = validateRouteContracts({
     pluginRoutes,
@@ -90,21 +130,48 @@ async function main(): Promise<number> {
     mode: args.mode,
   })
 
-  console.log(`route-contract-check: scanned ${totalRoutes} declarative route(s) across ${Object.keys(pluginRoutes).length} plugin(s) + ${coreRoutes.length} core`)
+  // Surface plugins that still have legacy ctx.registerRoute calls. During
+  // the migration window (T6–T16) these become warnings rather than errors;
+  // T18 flips this to fail-closed via --fail-closed.
+  const legacyFindings: { scope: string; method: string; path: string; issue: string }[] = []
+  for (const [id, scan] of Object.entries(pluginScan)) {
+    if (scan.legacyRouteCount === 0) continue
+    if (scan.declarativeRoutes.length === 0) {
+      // Whole plugin still on the legacy shape.
+      legacyFindings.push({
+        scope: id,
+        method: '*',
+        path: '*',
+        issue: `plugin has ${scan.legacyRouteCount} legacy ctx.registerRoute / APIRoute literal(s); migrate to defineRoute`,
+      })
+    } else {
+      legacyFindings.push({
+        scope: id,
+        method: '*',
+        path: '*',
+        issue: `plugin partially migrated: ${scan.declarativeRoutes.length} declarative + ${scan.legacyRouteCount} legacy registration(s) remain`,
+      })
+    }
+  }
 
-  if (result.errors.length > 0) {
-    console.error(`\n${result.errors.length} error(s):`)
-    for (const f of result.errors) console.error(formatFinding(f))
+  console.log(`route-contract-check: scanned ${totalDeclarative} declarative route(s) + detected ${totalLegacy} legacy registration(s) across ${Object.keys(pluginScan).length} plugin(s) + ${coreRoutes.length} core`)
+
+  const errors = [...result.errors, ...(args.mode === 'error' ? legacyFindings : [])]
+  const warnings = [...result.warnings, ...(args.mode === 'warn' ? legacyFindings : [])]
+
+  if (errors.length > 0) {
+    console.error(`\n${errors.length} error(s):`)
+    for (const f of errors) console.error(formatFinding(f))
   }
-  if (result.warnings.length > 0) {
-    console.warn(`\n${result.warnings.length} warning(s) — public routes missing schemas:`)
-    for (const f of result.warnings) console.warn(formatFinding(f))
+  if (warnings.length > 0) {
+    console.warn(`\n${warnings.length} warning(s) — public routes / plugins needing migration:`)
+    for (const f of warnings) console.warn(formatFinding(f))
   }
-  if (result.errors.length === 0 && result.warnings.length === 0) {
+  if (errors.length === 0 && warnings.length === 0) {
     console.log('\nall public routes have typed contracts.')
   }
 
-  return result.errors.length > 0 ? 1 : 0
+  return errors.length > 0 ? 1 : 0
 }
 
 main().then(code => process.exit(code)).catch(err => {

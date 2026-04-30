@@ -74,10 +74,12 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
     seededAggregations = aggregations
   }
 
-  let searchRouteRegistered = false
+  // Mirror the production de-dup behavior: if a plugin already declared
+  // /search via `searchRoute({ table })` (T6+), skip the auto-wire so the
+  // route table stays canonical with no duplicates. Plugins still on the
+  // legacy auto-wire path (pre-migration) get the legacy route shape.
   const maybeAutoRegisterSearchRoute = () => {
-    if (searchRouteRegistered) return
-    searchRouteRegistered = true
+    if (routes.some(r => r.path === '/search' && r.method === 'GET')) return
     routes.push({
       path: '/search',
       method: 'GET',

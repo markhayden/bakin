@@ -111,6 +111,40 @@ describe('dispatchRoute — input validation', () => {
     expect(Array.isArray(json.issues)).toBe(true)
   })
 
+  it('preserves repeated query keys as arrays', async () => {
+    const route = defineRoute({
+      path: '/list',
+      method: 'GET',
+      summary: 'List',
+      query: z.object({ facet: z.array(z.string()) }),
+      responses: { 200: z.array(z.string()) },
+      handler: async (_req, _ctx, parsed) => {
+        return Response.json(parsed.query.facet)
+      },
+    })
+    const req = new Request('http://x/list?facet=a&facet=b&facet=c')
+    const res = await dispatchRoute({ req, ctx: stubCtx, route, params: {} })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual(['a', 'b', 'c'])
+  })
+
+  it('passes single-occurrence query keys as scalars', async () => {
+    const route = defineRoute({
+      path: '/list',
+      method: 'GET',
+      summary: 'List',
+      query: z.object({ q: z.string() }),
+      responses: { 200: z.string() },
+      handler: async (_req, _ctx, parsed) => {
+        return Response.json(parsed.query.q)
+      },
+    })
+    const req = new Request('http://x/list?q=hello')
+    const res = await dispatchRoute({ req, ctx: stubCtx, route, params: {} })
+    expect(res.status).toBe(200)
+    expect(await res.json()).toBe('hello')
+  })
+
   it('returns 400 when query fails Zod parse', async () => {
     const route = defineRoute({
       path: '/list',

@@ -74,7 +74,14 @@ export async function dispatchRoute(input: DispatchInput): Promise<Response> {
   // ─── 4. Parse query ──────────────────────────────────────────────────────
   let parsedQuery: unknown
   if (route.query) {
-    const queryObj = Object.fromEntries(url.searchParams.entries())
+    // Preserve repeated keys as arrays — `?facet=a&facet=b` becomes
+    // { facet: ['a', 'b'] }. Single occurrences become scalars so the
+    // common case (`z.string()`) doesn't trip on a one-element array.
+    const queryObj: Record<string, string | string[]> = {}
+    for (const key of new Set([...url.searchParams.keys()])) {
+      const all = url.searchParams.getAll(key)
+      queryObj[key] = all.length === 1 ? all[0] : all
+    }
     const r = (route.query as z.ZodType).safeParse(queryObj)
     if (!r.success) return jsonError(400, 'invalid input', r.error.issues)
     parsedQuery = r.data

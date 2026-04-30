@@ -4,7 +4,7 @@
  */
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
-import { definePlugin, defineRoute, type PluginContextLite } from '@bakin/core/routing'
+import { definePlugin, defineRoute, searchRoute, type PluginContextLite } from '@bakin/core/routing'
 import {
   readTaskboard,
   deleteTask,
@@ -467,6 +467,12 @@ const routes = [
       }
     },
   }),
+
+  // Declarative search route — replaces the auto-wired `/search` that
+  // `ctx.search.registerContentType` historically created as a side
+  // effect during activate(). Schemas live in @bakin/core/routing;
+  // handler uses ctx.search at request time.
+  searchRoute({ table: 'tasks', description: 'Full-text search across tasks (title, description, log entries, blocked reasons).' }),
 ]
 
 // ─── Plugin definition ───────────────────────────────────────────────────

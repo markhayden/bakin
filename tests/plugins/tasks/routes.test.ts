@@ -138,6 +138,44 @@ beforeEach(() => {
   ]) m.mockReset()
 })
 
+// ─── Routing — :taskId requirement (replaces 6 legacy skipped cases) ───────
+//
+// Pre-T6, plugin handlers manually checked `url.searchParams.get('taskId')`
+// and returned 400 when absent. Post-T6 the dispatcher's path-param
+// validation owns this — the path itself encodes the taskId. The tests
+// below assert routing-level behavior: the route exists at the right path
+// shape, and matchRoute (used by the catch-all) requires the segment.
+
+describe('Tasks Plugin — :taskId path-param routing', () => {
+  it('GET / and /:taskId are distinct routes', () => {
+    const list = findRoute(activated.routes, 'GET', '/')
+    const get = findRoute(activated.routes, 'GET', '/:taskId')
+    expect(list).toBeDefined()
+    expect(get).toBeDefined()
+    expect(list).not.toBe(get)
+  })
+
+  it('PUT /:taskId, DELETE /:taskId, and POST /:taskId/{assign,log,move,block,complete,dependency} all require the path segment', () => {
+    const requireParam = [
+      ['PUT', '/:taskId'],
+      ['DELETE', '/:taskId'],
+      ['POST', '/:taskId/assign'],
+      ['POST', '/:taskId/log'],
+      ['POST', '/:taskId/move'],
+      ['POST', '/:taskId/block'],
+      ['POST', '/:taskId/complete'],
+      ['POST', '/:taskId/dependency'],
+    ] as const
+    for (const [method, path] of requireParam) {
+      const route = findRoute(activated.routes, method, path)
+      expect(route).toBeDefined()
+      // Routing assertion: the route declares :taskId as a path segment.
+      // Without it in the URL, the catch-all would not match this route at all.
+      expect(route?.path).toContain(':taskId')
+    }
+  })
+})
+
 // ─── Route Registration ────────────────────────────────────────────────────
 
 describe('Tasks Plugin — Route Registration', () => {
@@ -1179,7 +1217,7 @@ describe('Tasks Plugin — GET /search', () => {
     const { status, body } = await callSearchRoute(activated, '')
 
     expect(status).toBe(400)
-    expect(body.error).toBe('Missing ?q= parameter')
+    expect(body.error).toBe('invalid input')
   })
 
   it('returns 200 with empty results when no matches', async () => {
