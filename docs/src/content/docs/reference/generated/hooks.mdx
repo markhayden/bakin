@@ -15,7 +15,7 @@ import HookCard from '../../../../components/HookCard.astro'
 <p class="hook-section-description">Asset hooks expose file, sidecar, variant, and trash helpers for plugins that need to work with Bakin-managed files.</p>
 
 <div class="hook-card-list">
-<HookCard id="assets-createstub" name="assets.createStub" label="Create sidecar stub." summary="Creates a starter sidecar for an asset file and returns the written metadata. Use it when adopting a file into Bakin-managed asset state." source="plugins/assets/index.ts:306" badges={["rpc"]}>
+<HookCard id="assets-createstub" name="assets.createStub" label="Create sidecar stub." summary="Creates a starter sidecar for an asset file and returns the written metadata. Use it when adopting a file into Bakin-managed asset state." source="plugins/assets/index.ts:522" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.createStub',
@@ -25,7 +25,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-detectvariant" name="assets.detectVariant" label="Detect asset variant." summary="Infers the asset variant represented by a filename, such as before, after, or reference. Use it to keep imported assets grouped and labeled consistently." source="plugins/assets/index.ts:307" badges={["rpc"]}>
+<HookCard id="assets-detectvariant" name="assets.detectVariant" label="Detect asset variant." summary="Infers the asset variant represented by a filename, such as before, after, or reference. Use it to keep imported assets grouped and labeled consistently." source="plugins/assets/index.ts:523" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.detectVariant',
@@ -35,7 +35,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-emptytrash" name="assets.emptyTrash" label="Empty asset trash." summary="Permanently removes every asset currently in trash for the provided asset root. Use it for explicit cleanup actions where restore is no longer expected." source="plugins/assets/index.ts:342" badges={["rpc"]}>
+<HookCard id="assets-emptytrash" name="assets.emptyTrash" label="Empty asset trash." summary="Permanently removes every asset currently in trash for the provided asset root. Use it for explicit cleanup actions where restore is no longer expected." source="plugins/assets/index.ts:558" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.emptyTrash',
@@ -45,7 +45,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-getassettypes" name="assets.getAssetTypes" label="List asset types." summary="Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories." source="plugins/assets/index.ts:308" badges={["rpc"]}>
+<HookCard id="assets-getassettypes" name="assets.getAssetTypes" label="List asset types." summary="Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories." source="plugins/assets/index.ts:524" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.getAssetTypes',
@@ -53,7 +53,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-getsidecarpath" name="assets.getSidecarPath" label="Get sidecar path." summary="Resolves the metadata sidecar path for a managed asset file. Use it when another plugin has an asset path and needs to read or write the matching metadata." source="plugins/assets/index.ts:305" badges={["rpc"]}>
+<HookCard id="assets-getsidecarpath" name="assets.getSidecarPath" label="Get sidecar path." summary="Resolves the metadata sidecar path for a managed asset file. Use it when another plugin has an asset path and needs to read or write the matching metadata." source="plugins/assets/index.ts:521" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.getSidecarPath',
@@ -63,7 +63,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-pathforfilename" name="assets.pathForFilename" label="Resolve asset path." summary="Calculates the managed asset path for a filename. Use it when a plugin needs to place or reference a file using Bakin asset storage conventions." source="plugins/assets/index.ts:309" badges={["rpc"]}>
+<HookCard id="assets-pathforfilename" name="assets.pathForFilename" label="Resolve asset path." summary="Calculates the managed asset path for a filename. Use it when a plugin needs to place or reference a file using Bakin asset storage conventions." source="plugins/assets/index.ts:525" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.pathForFilename',
@@ -73,7 +73,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-purgeclipboardfortask" name="assets.purgeClipboardForTask" label="Purge task clipboard assets." summary="Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized." source="plugins/assets/index.ts:312" badges={["rpc"]}>
+<HookCard id="assets-purgeclipboardfortask" name="assets.purgeClipboardForTask" label="Purge task clipboard assets." summary="Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized." source="plugins/assets/index.ts:528" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.purgeClipboardForTask',
@@ -83,7 +83,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-restoreasset" name="assets.restoreAsset" label="Restore trashed asset." summary="Restores one soft-deleted asset from the trash back into managed asset storage. Use it when a plugin needs undo behavior for asset deletion." source="plugins/assets/index.ts:341" badges={["rpc"]}>
+<HookCard id="assets-restoreasset" name="assets.restoreAsset" label="Restore trashed asset." summary="Restores one soft-deleted asset from the trash back into managed asset storage. Use it when a plugin needs undo behavior for asset deletion." source="plugins/assets/index.ts:557" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.restoreAsset',
@@ -94,7 +94,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-trash-list" name="assets.trash.list" label="List trashed assets." summary="Returns soft-deleted assets currently available for restore or permanent removal. Use it to power trash views without duplicating filesystem conventions." source="plugins/assets/index.ts:340" badges={["rpc"]}>
+<HookCard id="assets-trash-list" name="assets.trash.list" label="List trashed assets." summary="Returns soft-deleted assets currently available for restore or permanent removal. Use it to power trash views without duplicating filesystem conventions." source="plugins/assets/index.ts:556" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.trash.list',
@@ -104,7 +104,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-validatesidecar" name="assets.validateSidecar" label="Validate sidecar metadata." summary="Checks an asset sidecar JSON file and returns validation details. Use it before trusting metadata created by imports, repairs, or external tools." source="plugins/assets/index.ts:304" badges={["rpc"]}>
+<HookCard id="assets-validatesidecar" name="assets.validateSidecar" label="Validate sidecar metadata." summary="Checks an asset sidecar JSON file and returns validation details. Use it before trusting metadata created by imports, repairs, or external tools." source="plugins/assets/index.ts:520" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.validateSidecar',
@@ -121,7 +121,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Health hooks expose registered readiness and diagnostic checks so other surfaces can list or inspect them.</p>
 
 <div class="hook-card-list">
-<HookCard id="health-getcheck" name="health.getCheck" label="Get a health check." summary="Returns metadata for one registered health check by id, without running the check. Use it when a plugin needs the check name, owner, and autofix capability before deciding what to show or run." source="plugins/health/index.ts:83" badges={["rpc"]}>
+<HookCard id="health-getcheck" name="health.getCheck" label="Get a health check." summary="Returns metadata for one registered health check by id, without running the check. Use it when a plugin needs the check name, owner, and autofix capability before deciding what to show or run." source="plugins/health/index.ts:272" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'health.getCheck',
@@ -131,7 +131,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="health-list" name="health.list" label="List health checks." summary="Returns the health checks registered by core and plugins without executing them. Use it when another surface needs to show the available diagnostics or autofix support." source="plugins/health/index.ts:82" badges={["rpc"]}>
+<HookCard id="health-list" name="health.list" label="List health checks." summary="Returns the health checks registered by core and plugins without executing them. Use it when another surface needs to show the available diagnostics or autofix support." source="plugins/health/index.ts:271" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'health.list',
@@ -146,7 +146,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Model hooks expose the effective model configuration and notify dependent surfaces when runtime model state changes.</p>
 
 <div class="hook-card-list">
-<HookCard id="models-configchanged" name="models.configChanged" label="Model config changed." summary="Notifies listeners after an agent model assignment changes. Use it to refresh dependent state, update UI, or invalidate plugin caches that depend on model routing." source="plugins/models/index.ts:370" badges={["event"]}>
+<HookCard id="models-configchanged" name="models.configChanged" label="Model config changed." summary="Notifies listeners after an agent model assignment changes. Use it to refresh dependent state, update UI, or invalidate plugin caches that depend on model routing." source="plugins/models/index.ts:685" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'models.configChanged',
@@ -158,7 +158,7 @@ await ctx.hooks.callAll(
 )
 ```
 </HookCard>
-<HookCard id="models-getavailablemodels" name="models.getAvailableModels" label="List available models." summary="Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config." source="plugins/models/index.ts:386" badges={["rpc"]}>
+<HookCard id="models-getavailablemodels" name="models.getAvailableModels" label="List available models." summary="Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config." source="plugins/models/index.ts:701" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getAvailableModels',
@@ -166,7 +166,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-geteffectivemodel" name="models.getEffectiveModel" label="Get effective model." summary="Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent." source="plugins/models/index.ts:374" badges={["rpc"]}>
+<HookCard id="models-geteffectivemodel" name="models.getEffectiveModel" label="Get effective model." summary="Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent." source="plugins/models/index.ts:689" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'models.getEffectiveModel',
@@ -176,7 +176,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="models-markconfigdirty" name="models.markConfigDirty" label="Mark config dirty." summary="Marks model configuration as changed so the runtime knows a refresh is needed. Use it after writing model settings that should not be treated as live yet." source="plugins/models/index.ts:382" badges={["event"]}>
+<HookCard id="models-markconfigdirty" name="models.markConfigDirty" label="Mark config dirty." summary="Marks model configuration as changed so the runtime knows a refresh is needed. Use it after writing model settings that should not be treated as live yet." source="plugins/models/index.ts:697" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'models.markConfigDirty',
@@ -184,7 +184,7 @@ await ctx.hooks.callAll(
 )
 ```
 </HookCard>
-<HookCard id="models-markruntimerestarted" name="models.markRuntimeRestarted" label="Mark runtime refreshed." summary="Records that the runtime has picked up the latest model configuration. Use it after restart or reload flows so stale dirty-state warnings can clear." source="plugins/models/index.ts:384" badges={["event"]}>
+<HookCard id="models-markruntimerestarted" name="models.markRuntimeRestarted" label="Mark runtime refreshed." summary="Records that the runtime has picked up the latest model configuration. Use it after restart or reload flows so stale dirty-state warnings can clear." source="plugins/models/index.ts:699" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'models.markRuntimeRestarted',

@@ -116,7 +116,7 @@ describe('dreamsListRoute — shape', () => {
 describe('dreamsListRoute — handler', () => {
   it('returns 400 when agent is missing', async () => {
     const { ctx } = makeCtx()
-    const res = await dreamsListRoute.handler(req('/dreams', {}), ctx)
+    const res = await dreamsListRoute.handler(req('/dreams', {}), ctx, {})
     expect(res.status).toBe(400)
   })
 
@@ -136,7 +136,7 @@ describe('dreamsListRoute — handler', () => {
       ],
       meta: { query: '', total: 1, took_ms: 1, source: 'search' },
     })
-    const res = await dreamsListRoute.handler(req('/dreams', { agent: 'main' }), h.ctx)
+    const res = await dreamsListRoute.handler(req('/dreams', { agent: 'main' }), h.ctx, {})
     const body = await res.json() as { dreams: Array<Record<string, unknown>>; total: number }
     expect(res.status).toBe(200)
     expect(body.total).toBe(1)
@@ -147,7 +147,7 @@ describe('dreamsListRoute — handler', () => {
 
   it('passes phase as part of q-string when provided', async () => {
     const h = makeCtx()
-    await dreamsListRoute.handler(req('/dreams', { agent: 'main', phase: 'light' }), h.ctx)
+    await dreamsListRoute.handler(req('/dreams', { agent: 'main', phase: 'light' }), h.ctx, {})
     expect(h.queryCalls[0].q).toContain('light')
     expect(h.queryCalls[0].filters).toEqual({ tier: 'dream', agent: 'main' })
   })
@@ -178,6 +178,7 @@ describe('dreamsListRoute — handler', () => {
     const res = await dreamsListRoute.handler(
       req('/dreams', { agent: 'main', phase: 'light' }),
       h.ctx,
+      {},
     )
     const body = await res.json() as { dreams: Array<Record<string, unknown>> }
     expect(body.dreams).toHaveLength(1)
@@ -206,6 +207,7 @@ describe('dreamsListRoute — handler', () => {
     const res = await dreamsListRoute.handler(
       req('/dreams', { agent: 'main', date: '2026-04-17' }),
       h.ctx,
+      {},
     )
     const body = await res.json() as { dreams: Array<Record<string, unknown>> }
     expect(body.dreams).toHaveLength(1)
@@ -214,7 +216,7 @@ describe('dreamsListRoute — handler', () => {
 
   it('clamps excessive limits to the 100 default', async () => {
     const h = makeCtx()
-    await dreamsListRoute.handler(req('/dreams', { agent: 'main', limit: '99999' }), h.ctx)
+    await dreamsListRoute.handler(req('/dreams', { agent: 'main', limit: '99999' }), h.ctx, {})
     expect(h.queryCalls[0].limit).toBe(100)
   })
 })
@@ -234,6 +236,7 @@ describe('dreamDetailRoute — handler', () => {
     const res = await dreamDetailRoute.handler(
       req('/dreams/main/phase_doc', { agent: 'main' }),
       ctx,
+      {},
     )
     expect(res.status).toBe(400)
   })
@@ -271,6 +274,7 @@ describe('dreamDetailRoute — handler', () => {
         date: '2026-04-17',
       }),
       h.ctx,
+      {},
     )
     const body = await res.json() as Record<string, unknown>
     expect(res.status).toBe(200)
@@ -300,6 +304,7 @@ describe('dreamDetailRoute — handler', () => {
         artifactType: 'short_term_recall',
       }),
       h.ctx,
+      {},
     )
     const body = await res.json() as Record<string, unknown>
     expect(res.status).toBe(200)
@@ -329,6 +334,7 @@ describe('dreamDetailRoute — handler', () => {
         date: '2026-04-17',
       }),
       h.ctx,
+      {},
     )
     expect(res.status).toBe(404)
   })
@@ -349,6 +355,7 @@ describe('dreamDetailRoute — handler', () => {
         date: '2026-04-17',
       }),
       h.ctx,
+      {},
     )
     expect(res.status).toBe(404)
   })

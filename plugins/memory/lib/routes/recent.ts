@@ -22,6 +22,8 @@
  * (`results`, `aggregations`, `meta`) so the client can reuse `useSearch`'s
  * result renderer without a second type.
  */
+import { defineRoute } from '@bakin/core/routing'
+import type { PluginContextLite } from '@bakin/core/routing'
 import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
 import { MEMORY_TIERS, type MemoryTier } from '../types'
 
@@ -69,11 +71,11 @@ function tsOf(fields: Record<string, unknown>): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0
 }
 
-export const recentRoute: APIRoute = {
+export const recentRoute = defineRoute({
   path: '/recent',
   method: 'GET',
   description: 'Recent memory items across tiers, sorted by updated_at desc',
-  handler: async (req: Request, ctx: PluginContext) => {
+  handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const limit = parseLimit(url.searchParams.get('limit'))
     if (Number.isNaN(limit)) {
@@ -150,4 +152,4 @@ export const recentRoute: APIRoute = {
       },
     })
   },
-}
+})

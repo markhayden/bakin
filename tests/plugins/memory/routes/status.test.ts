@@ -117,7 +117,7 @@ describe('statusRoute — handler', () => {
       checkpoint: 1,
       dream: 5,
     })
-    const res = await statusRoute.handler(req('/status'), ctx)
+    const res = await statusRoute.handler(req('/status'), ctx, {})
     const body = await res.json() as {
       countsByTier: Record<string, number>
       offsetsTracked: number
@@ -147,7 +147,7 @@ describe('statusRoute — handler', () => {
     setOffset('/tmp/a.jsonl', 1234)
     setOffset('/tmp/b.jsonl', 5678)
     const { ctx } = makeCtx({})
-    const res = await statusRoute.handler(req('/status'), ctx)
+    const res = await statusRoute.handler(req('/status'), ctx, {})
     const body = await res.json() as { offsetsTracked: number }
     expect(body.offsetsTracked).toBe(2)
   })
@@ -155,7 +155,7 @@ describe('statusRoute — handler', () => {
   it('sets lastUpdated to a fresh ms timestamp', async () => {
     const before = Date.now()
     const { ctx } = makeCtx({})
-    const res = await statusRoute.handler(req('/status'), ctx)
+    const res = await statusRoute.handler(req('/status'), ctx, {})
     const body = await res.json() as { lastUpdated: number }
     const after = Date.now()
     expect(body.lastUpdated).toBeGreaterThanOrEqual(before)
@@ -173,7 +173,7 @@ describe('statusRoute — handler', () => {
       }
       return originalQuery(p)
     })
-    const res = await statusRoute.handler(req('/status'), ctx)
+    const res = await statusRoute.handler(req('/status'), ctx, {})
     const body = await res.json() as { countsByTier: Record<string, number> }
     expect(body.countsByTier.turn).toBe(0)
     expect(body.countsByTier.audit).toBe(10)

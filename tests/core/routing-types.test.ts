@@ -147,9 +147,9 @@ describe('routing types', () => {
       responses: { 200: z.object({ a: z.number() }) },
       handler: async () => Response.json({ a: 1 }),
     })
-    expect(r1.responses[200]).toEqual({ contentType: 'text/event-stream' })
-    expect(r2.responses[204]).toEqual({ contentType: 'none' })
-    expect(r3.responses[200]).toBeDefined()
+    expect(r1.responses?.[200]).toEqual({ contentType: 'text/event-stream' })
+    expect(r2.responses?.[204]).toEqual({ contentType: 'none' })
+    expect(r3.responses?.[200]).toBeDefined()
   })
 
   it('handler types reflect ctx narrowing — RouteContext is the common base', () => {
