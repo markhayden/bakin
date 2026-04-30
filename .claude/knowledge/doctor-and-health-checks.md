@@ -46,7 +46,7 @@ The orchestrator is intentionally trivial — it has no opinion about what's bei
 
 (Plus 3 workflow checks already migrated under #137: `definitions`, `stale-instances`, `skills`.)
 
-### System-owned (9 checks, all in health plugin)
+### System-owned (10 checks, registered by health plugin)
 
 | File | Registered id |
 |---|---|
@@ -54,10 +54,11 @@ The orchestrator is intentionally trivial — it has no opinion about what's bei
 | `plugins/health/lib/system-checks/service.ts` | `service` |
 | `plugins/health/lib/system-checks/mcporter.ts` | `mcporter` |
 | `plugins/health/lib/system-checks/runtime.ts` | `runtime` |
+| `plugins/health/lib/system-checks/channel-approvals.ts` | `channel-approvals` |
 | `plugins/health/lib/system-checks/search.ts` | `search` |
-| `plugins/health/lib/system-checks/orchestrator-rules.ts` | `orchestrator-rules` |
 | `plugins/health/lib/system-checks/sync-skill.ts` | `skill` |
 | `plugins/health/lib/system-checks/plugin-assets.ts` | `plugin-assets` |
+| `src/core/agent-rules/managed-blocks.ts` | `orchestrator-rules` |
 | `src/core/agent-rules/managed-blocks.ts` | `managed-blocks` |
 
 Health plugin is the natural home for system-level checks because it already orchestrates the doctor UI (`/api/plugins/health/doctor` route + `bakin_exec_health_doctor` MCP tool) and imports `runDiagnostics` / `getLastResults`. The inversion is complete: health plugin both produces and consumes the doctor results.
@@ -108,13 +109,14 @@ Same pattern, lives at `plugins/health/lib/system-checks/{your-check}.ts`. Regis
 ## Managed-block infrastructure
 
 `src/core/agent-rules/managed-blocks.ts` holds:
-- `MANAGED_BLOCKS` — the 7 block definitions (mission-control, hard-rules, dependency-pattern, media-delegation, workflow-rules, scheduling-rules, asset-rules)
-- `applyAllManagedBlocks(autoFix)` — iterates all blocks, calls `checkManagedBlock` per (block × non-main-agent), returns the union of result rows
-- `AGENT_RULES_BLOCK_START/END` + `ORCHESTRATOR_RULES_CONTENT` + `resolveOrchestratorRules` — the orchestrator-rules block (lives separately because it targets the **main** agent, not subagents)
+- `MANAGED_BLOCKS` — the orchestrator-rules block plus the 7 subagent block definitions (mission-control, hard-rules, dependency-pattern, media-delegation, workflow-rules, scheduling-rules, asset-rules)
+- `applyManagedBlocks(autoFix, { scope })` — iterates scoped blocks and calls the shared managed-block checker per target agent
+- `applyAllManagedBlocks(autoFix)` — compatibility wrapper for all scopes
+- `AGENT_RULES_BLOCK_START/END` + `ORCHESTRATOR_RULES_CONTENT` + `resolveOrchestratorRules` — the orchestrator-rules block content for the **main** agent
 
 The marker primitives (`extractBlock`, `getBlockState`, `injectBlock`) live in `packages/core/src/agent-packages/managed-blocks.ts` and are shared with the agent-package installer/projector. Don't reimplement them.
 
-The CLI's `bakin agent-rules --apply / --apply-all / --check / --check-all` imports directly from `src/core/agent-rules/managed-blocks.ts` (not via HTTP — works when the server is down).
+The CLI's `bakin agent-rules --apply / --apply-all / --check / --check-all` imports directly from `src/core/agent-rules/managed-blocks.ts` (not via HTTP — works when the server is down). `--apply` / `--check` run the `orchestrator` scope; `--apply-all` / `--check-all` run the `all` scope.
 
 **Marker text in user files is bit-identical to pre-migration**: `<!-- bakin:{blockId}:start/end -->` strings live in `~/.openclaw/workspaces/{agentId}/AGENTS.md` and `~/.openclaw/workspace/AGENTS.md`. Renaming them would orphan existing user state. Don't touch.
 
@@ -169,7 +171,8 @@ The orchestrator (`runPluginHealthChecks` in `src/core/doctor.ts`) wraps each `d
 - **#137 (PR #138)**: First 3 checks moved out — workflow definitions, stale instances, skills. Established the registry + ctx.registerHealthCheck precedent.
 - **#139**: Migrated the remaining 15 checks across 9 commits, collapsed `DiagnosticResult` → `HealthCheckResult` (one canonical type), relocated managed-block infrastructure out of the doctor monolith, swung CLI imports.
 - **#174**: Moved health-check registry and managed-block infrastructure into `src/core/*`; health plugin now contributes checks without owning core doctor/CLI primitives.
+- **#172**: Unified `bakin agent-rules` and health orchestrator-rules checks with the core managed-block engine.
 
 ## Follow-ups
 
-- **#172** — unify `bakin agent-rules --apply` with `applyAllManagedBlocks`. Today the CLI has a separate orchestrator-rules-only path; `applyAllManagedBlocks` covers the 7 subagent blocks but skips the main agent. Cleaner: one entry point with `agentFilter` selecting target agent(s).
+- **#208** — compact Bakin-managed `AGENTS.md` context blocks. Keep current marker format until that dedicated projection redesign.

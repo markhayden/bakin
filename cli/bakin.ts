@@ -567,61 +567,11 @@ async function cmdDoctor(): Promise<void> {
 // Agent Rules
 // ---------------------------------------------------------------------------
 
-// Orchestrator rules block constants and template are owned by
-// src/core/agent-rules/managed-blocks.ts. Imported lazily inside
-// cmdAgentRules so the CLI stays a pure entry point.
+// Agent-rules block management is owned by src/core/agent-rules/managed-blocks.ts.
+// Imported lazily inside cmdAgentRules so the CLI stays a pure entry point.
 
 async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyAll?: boolean; checkAll?: boolean } = {}): Promise<void> {
-  const {
-    AGENT_RULES_BLOCK_START,
-    AGENT_RULES_BLOCK_END,
-    resolveOrchestratorRules,
-  } = await import('../src/core/agent-rules/managed-blocks')
-  const { createAppServices, maybeGetAppServices } = await import('../src/core/app-services')
-  const { selectRuntimeMainAgent } = await import('@bakin/core/adapters/runtime')
-
-  const runtime = (maybeGetAppServices() ?? await createAppServices()).runtime
-  const mainAgent = selectRuntimeMainAgent(await runtime.agents.list())
-  if (!mainAgent) {
-    console.error('[FAIL] No runtime agents found')
-    process.exit(1)
-  }
-
-  const agentsFile = await runtime.agents.readWorkspaceFile(mainAgent.id, 'AGENTS.md')
-  if (!agentsFile) {
-    console.error(`[FAIL] AGENTS.md not found for orchestrator agent ${mainAgent.id}`)
-    process.exit(1)
-  }
-
-  const current = agentsFile.content
-  const hasBlock = current.includes(AGENT_RULES_BLOCK_START)
-  const resolvedContent = await resolveOrchestratorRules()
-
-  if (options.check) {
-    if (hasBlock) {
-      // Verify content matches
-      const startIdx = current.indexOf(AGENT_RULES_BLOCK_START)
-      const endIdx = current.indexOf(AGENT_RULES_BLOCK_END)
-      if (startIdx === -1 || endIdx === -1) {
-        console.log('[WARN] Orchestrator rules block is malformed — run: bakin agent-rules --apply')
-        process.exit(1)
-      }
-      const blockContent = current.slice(startIdx + AGENT_RULES_BLOCK_START.length, endIdx).trim()
-      const expected = resolvedContent.trim()
-      if (blockContent === expected) {
-        console.log('[OK] Orchestrator rules block is present and up to date')
-      } else {
-        console.log('[WARN] Orchestrator rules block is outdated — run: bakin agent-rules --apply')
-        process.exit(1)
-      }
-    } else {
-      console.log('[WARN] Orchestrator rules block not found in AGENTS.md — run: bakin agent-rules --apply')
-      process.exit(1)
-    }
-    return
-  }
-
-  if (!options.apply && !options.applyAll && !options.checkAll) {
+  if (!options.apply && !options.check && !options.applyAll && !options.checkAll) {
     console.log('Usage: bakin agent-rules --apply       # Write orchestrator rules block to AGENTS.md')
     console.log('       bakin agent-rules --check       # Check if rules block is present and current')
     console.log('       bakin agent-rules --apply-all   # Apply all managed blocks to all agent AGENTS.md files')
@@ -629,45 +579,22 @@ async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyA
     return
   }
 
-  // Handle --apply-all and --check-all for all agents
-  if (options.applyAll || options.checkAll) {
-    const { applyAllManagedBlocks } = await import('../src/core/agent-rules/managed-blocks')
-    const results = await applyAllManagedBlocks(!!options.applyAll)
-    const errors = results.filter(r => r.status === 'error')
-    const warnings = results.filter(r => r.status === 'warn')
-    const fixes = results.filter(r => r.status === 'fixed')
-    const oks = results.filter(r => r.status === 'ok')
+  const { applyManagedBlocks } = await import('../src/core/agent-rules/managed-blocks')
+  const scope = options.apply || options.check ? 'orchestrator' : 'all'
+  const autoFix = !!(options.apply || options.applyAll)
+  const results = await applyManagedBlocks(autoFix, { scope })
+  const errors = results.filter(r => r.status === 'error')
+  const warnings = results.filter(r => r.status === 'warn')
+  const fixes = results.filter(r => r.status === 'fixed')
+  const oks = results.filter(r => r.status === 'ok')
 
-    for (const r of results) {
-      const icon = r.status === 'ok' ? '[OK]' : r.status === 'fixed' ? '[FIXED]' : r.status === 'warn' ? '[WARN]' : '[ERROR]'
-      console.log(`${icon} ${r.check}: ${r.message}`)
-    }
-
-    console.log(`\n${oks.length} up to date, ${fixes.length} fixed, ${warnings.length} warnings, ${errors.length} errors`)
-    if (errors.length > 0 || warnings.length > 0) process.exit(1)
-    return
+  for (const r of results) {
+    const icon = r.status === 'ok' ? '[OK]' : r.status === 'fixed' ? '[FIXED]' : r.status === 'warn' ? '[WARN]' : '[ERROR]'
+    console.log(`${icon} ${r.check}: ${r.message}`)
   }
 
-  const block = `${AGENT_RULES_BLOCK_START}\n${resolvedContent}\n${AGENT_RULES_BLOCK_END}`
-
-  let updated: string
-  if (hasBlock) {
-    // Replace existing block
-    const startIdx = current.indexOf(AGENT_RULES_BLOCK_START)
-    const endIdx = current.indexOf(AGENT_RULES_BLOCK_END)
-    if (endIdx === -1) {
-      console.error('[FAIL] Found start marker but no end marker — AGENTS.md may be corrupt')
-      process.exit(1)
-    }
-    updated = current.slice(0, startIdx) + block + current.slice(endIdx + AGENT_RULES_BLOCK_END.length)
-    console.log('[OK] Updated orchestrator rules block in AGENTS.md')
-  } else {
-    // Append to end of file
-    updated = current.trimEnd() + '\n\n' + block + '\n'
-    console.log('[OK] Added orchestrator rules block to AGENTS.md')
-  }
-
-  await runtime.agents.writeWorkspaceFile(mainAgent.id, { path: 'AGENTS.md', content: updated })
+  console.log(`\n${oks.length} up to date, ${fixes.length} fixed, ${warnings.length} warnings, ${errors.length} errors`)
+  if (errors.length > 0 || warnings.length > 0) process.exit(1)
 }
 
 async function cmdPaths(key?: string): Promise<void> {
