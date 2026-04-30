@@ -595,10 +595,13 @@ class PluginRegistryImpl {
 
   /**
    * Register declarative routes from `plugin.routes` into state.routes.
-   * Called after `plugin.activate()` so any side-effect-only setup runs
-   * first. Routes registered through the legacy `ctx.registerRoute`
-   * adapter during activate() are already in state.routes; this only
-   * adds the declarative entries.
+   * T20: called BEFORE `plugin.activate()` (the spec invariant). Every
+   * in-repo plugin populates `plugin.routes` at module-load time so the
+   * static analyzer + the docs generator see the full surface without
+   * needing to invoke activate(). Routes registered through the legacy
+   * `ctx.registerRoute` adapter during activate() are appended to
+   * state.routes after this runs; this only adds the declarative
+   * entries.
    */
   private registerDeclarativeRoutes(plugin: BakinPlugin, state: PluginState): void {
     const declarative = plugin.routes ?? []
