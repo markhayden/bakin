@@ -98,7 +98,7 @@ for (const method of ['initialize', 'shutdown', 'ping', 'restart', 'getHealthChe
 }
 
 for (const [domain, permission] of Object.entries(RUNTIME_DOMAIN_PERMISSIONS)) {
-  for (const method of ['list', 'get', 'create', 'update', 'remove', 'listWorkspaceFiles', 'readWorkspaceFile', 'writeWorkspaceFile', 'removeWorkspaceFile', 'updatePermissions', 'updateAllowlist', 'heartbeat', 'send', 'stream', 'invoke', 'sendNotification', 'sendMessage', 'deliverContent', 'createApproval', 'editApproval', 'cancelApproval', 'resolveApproval', 'subscribeApprovalResponses', 'onMessage', 'onInteraction', 'write', 'listTiers', 'listEntries', 'getEntry', 'statEntry', 'readEntryRange', 'resolvePath', 'watchPaths', 'search', 'listAvailable', 'dispatch', 'getExecutionStatus', 'listExecutions', 'cancelExecution', 'subscribeExecutionUpdates', 'runNow', 'listRuns', 'replace', 'raw']) {
+  for (const method of ['list', 'get', 'create', 'update', 'remove', 'listWorkspaceFiles', 'readWorkspaceFile', 'writeWorkspaceFile', 'removeWorkspaceFile', 'updatePermissions', 'updateAllowlist', 'heartbeat', 'send', 'stream', 'invoke', 'sendNotification', 'sendMessage', 'deliverContent', 'createApproval', 'editApproval', 'cancelApproval', 'resolveApproval', 'subscribeApprovalResponses', 'onMessage', 'onInteraction', 'write', 'listTiers', 'listEntries', 'getEntry', 'statEntry', 'readEntryRange', 'resolvePath', 'watchPaths', 'search', 'listAvailable', 'dispatch', 'getExecutionStatus', 'listExecutions', 'cancelExecution', 'subscribeExecutionUpdates', 'runNow', 'listRuns', 'getRaw', 'restoreRaw', 'replace', 'raw']) {
     METHOD_PERMISSIONS[`runtime.${domain}.${method}`] = permission
   }
 }

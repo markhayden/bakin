@@ -116,6 +116,7 @@ export type {
   RuntimeMemoryTier,
   RuntimeMetadata,
   RuntimePermissionPatch,
+  RawCronSnapshot,
   RuntimeSession,
   RuntimeSkill,
   TaskDispatchArgs,
