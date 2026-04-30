@@ -29,7 +29,11 @@ interface CliArgs {
 
 function parseArgs(): CliArgs {
   const argv = process.argv.slice(2)
-  const mode = argv.includes('--fail-closed') ? 'error' : 'warn'
+  // T18: default is fail-closed. The validator was warn-mode through the
+  // migration window (T6–T16); now that every public route declares
+  // typed contracts, missing schemas become hard errors. Pass --warn to
+  // get the legacy behavior (used during incremental development).
+  const mode = argv.includes('--warn') ? 'warn' : 'error'
   return { mode }
 }
 

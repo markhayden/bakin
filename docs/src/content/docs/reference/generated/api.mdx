@@ -22,9 +22,7 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/activity/emit' \
-  -H 'Content-Type: application/json' \
-  --data '{"agent":"value","message":"value","ts":"value"}'
+  'http://localhost:3737/api/activity/emit'
 ```
 </OpenApiReference>
 
@@ -39,9 +37,7 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X DELETE \
-  'http://localhost:3737/api/agent-packages/<agentId>' \
-  -H 'Content-Type: application/json' \
-  --data '{"keepBlocks":true,"deleteAgent":true,"force":true}'
+  'http://localhost:3737/api/agent-packages/<agentId>'
 ```
 </OpenApiReference>
 
@@ -56,9 +52,7 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/agent-packages/<agentId>/knowledge/<lessonId>' \
-  -H 'Content-Type: application/json' \
-  --data '{"enabled":true}'
+  'http://localhost:3737/api/agent-packages/<agentId>/knowledge/<lessonId>'
 ```
 </OpenApiReference>
 
@@ -66,9 +60,7 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/agent-packages/<agentId>/update' \
-  -H 'Content-Type: application/json' \
-  --data '{"refreshTemplate":true}'
+  'http://localhost:3737/api/agent-packages/<agentId>/update'
 ```
 </OpenApiReference>
 
@@ -76,9 +68,7 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/agent-packages/install' \
-  -H 'Content-Type: application/json' \
-  --data '{"source":"value","adopt":true,"installAs":"value"}'
+  'http://localhost:3737/api/agent-packages/install'
 ```
 </OpenApiReference>
 
@@ -100,9 +90,7 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/agents/<id>/message' \
-  -H 'Content-Type: application/json' \
-  --data '{"message":"value"}'
+  'http://localhost:3737/api/agents/<id>/message'
 ```
 </OpenApiReference>
 
@@ -138,9 +126,7 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/agents/restart' \
-  -H 'Content-Type: application/json' \
-  --data '{"agentId":"value"}'
+  'http://localhost:3737/api/agents/restart'
 ```
 </OpenApiReference>
 
@@ -163,9 +149,7 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/agents/start' \
-  -H 'Content-Type: application/json' \
-  --data '{"agentId":"value"}'
+  'http://localhost:3737/api/agents/start'
 ```
 </OpenApiReference>
 
@@ -173,9 +157,7 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/agents/stop' \
-  -H 'Content-Type: application/json' \
-  --data '{"agentId":"value"}'
+  'http://localhost:3737/api/agents/stop'
 ```
 </OpenApiReference>
 
@@ -204,9 +186,7 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/dev/notify' \
-  -H 'Content-Type: application/json' \
-  --data '{"type":"value"}'
+  'http://localhost:3737/api/dev/notify'
 ```
 </OpenApiReference>
 
@@ -251,9 +231,7 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/internal/continuation' \
-  -H 'Content-Type: application/json' \
-  --data '{"completedTaskId":"value","completedTitle":"value"}'
+  'http://localhost:3737/api/internal/continuation'
 ```
 </OpenApiReference>
 
@@ -261,9 +239,14 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/memory/log' \
-  -H 'Content-Type: application/json' \
-  --data '{"type":"decision","message":"value"}'
+  'http://localhost:3737/api/memory/log'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="core-get-api-openapi">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/openapi'
 ```
 </OpenApiReference>
 
@@ -294,9 +277,7 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/packages/install' \
-  -H 'Content-Type: application/json' \
-  --data '{"source":"value"}'
+  'http://localhost:3737/api/packages/install'
 ```
 </OpenApiReference>
 
@@ -340,9 +321,7 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/plugins/install' \
-  -H 'Content-Type: application/json' \
-  --data '{"source":"value","type":"local"}'
+  'http://localhost:3737/api/plugins/install'
 ```
 </OpenApiReference>
 
@@ -350,9 +329,7 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/plugins/link' \
-  -H 'Content-Type: application/json' \
-  --data '{"path":"value"}'
+  'http://localhost:3737/api/plugins/link'
 ```
 </OpenApiReference>
 
@@ -381,9 +358,7 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/plugins/remove' \
-  -H 'Content-Type: application/json' \
-  --data '{"pluginId":"value"}'
+  'http://localhost:3737/api/plugins/remove'
 ```
 </OpenApiReference>
 
@@ -391,9 +366,7 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/plugins/unlink' \
-  -H 'Content-Type: application/json' \
-  --data '{"pluginId":"value"}'
+  'http://localhost:3737/api/plugins/unlink'
 ```
 </OpenApiReference>
 
@@ -401,9 +374,7 @@ curl -sS \
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/plugins/upgrade' \
-  -H 'Content-Type: application/json' \
-  --data '{"pluginId":"value"}'
+  'http://localhost:3737/api/plugins/upgrade'
 ```
 </OpenApiReference>
 
