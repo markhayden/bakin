@@ -243,7 +243,6 @@ describe('GET /:taskId — Get Task', () => {
     expect(mockGetTaskDetails).toHaveBeenCalledWith('abc123')
   })
 
-  it.skip('returns 400 when taskId is missing — legacy: pre-T6 the handler read url.searchParams.get; now routing fails to match a path without :taskId, so this case never reaches the handler.', () => {})
 
   it('returns 404 when task not found', async () => {
     mockGetTaskDetails.mockResolvedValue(null)
@@ -338,9 +337,7 @@ describe('PUT /:taskId — Update Task', () => {
     expect(activated.ctx.activity.audit).toHaveBeenCalledWith('updated', 'pixel', { taskId: 'task-1' })
   })
 
-  it.skip('falls back to body.id when taskId param is missing — legacy fallback; under T6+ the route requires :taskId in the path, body.id fallback only fires when the handler still runs through the literal `:taskId` placeholder.', () => {})
 
-  it.skip('returns 400 when no identifier is provided — legacy: handler hand-validated; routing now requires :taskId in path so this case never reaches the handler.', () => {})
 
   it('returns 500 on update error', async () => {
     mockUpdateTask.mockRejectedValue(new Error('update failed'))
@@ -373,7 +370,6 @@ describe('DELETE /:taskId — Delete Task', () => {
     expect(activated.ctx.activity.audit).toHaveBeenCalledWith('deleted', 'system', { taskId: 'task-del' })
   })
 
-  it.skip('returns 400 when no identifier is provided — legacy: handler hand-validated; routing now requires :taskId in path.', () => {})
 
   it('returns 500 on delete error', async () => {
     mockDeleteTask.mockRejectedValue(new Error('delete failed'))
@@ -554,7 +550,6 @@ describe('POST /:taskId/assign — Assign Task', () => {
     expect(mockAssignTask).toHaveBeenCalledWith('task-a', '')
   })
 
-  it.skip('returns 400 when taskId is missing — legacy: handler hand-validated; routing now requires :taskId in path.', () => {})
 
   it('returns 500 on assign error', async () => {
     mockAssignTask.mockRejectedValue(new Error('assign failed'))
@@ -610,7 +605,6 @@ describe('POST /:taskId/log — Add Log Entry', () => {
     expect(body.error).toBe('invalid input')
   })
 
-  it.skip('returns 400 when taskId is missing — legacy: handler hand-validated; routing now requires :taskId in path.', () => {})
 
   it('returns 500 on log error', async () => {
     mockLogProgress.mockRejectedValue(new Error('log failed'))

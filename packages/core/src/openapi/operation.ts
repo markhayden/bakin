@@ -205,13 +205,22 @@ function buildRequestBody(
 function buildResponses(
   route: AnyAPIRoute,
 ): Record<string, OpenApiResponse> {
-  // Adapter: legacy `output` (no `responses`) synthesizes a 200.
-  const responsesMap: Partial<Record<string | number, ResponseSpec>> =
-    route.responses ?? (route.output ? { 200: route.output as ResponseSpec } : {})
+  // Adapter for legacy routes:
+  //   - declarative `responses` always wins
+  //   - legacy `output` synthesizes { 200: output } (full schema)
+  //   - otherwise emit a description-only 200 (no content) so the doc
+  //     stays structurally valid OpenAPI. The route still appears in the
+  //     validator's "needs migration" warnings via the source-scan layer.
   const out: Record<string, OpenApiResponse> = {}
-  for (const [statusKey, spec] of Object.entries(responsesMap)) {
-    if (!spec) continue
-    out[statusKey] = buildResponseSpec(spec as ResponseSpec, statusKey)
+  if (route.responses) {
+    for (const [statusKey, spec] of Object.entries(route.responses)) {
+      if (!spec) continue
+      out[statusKey] = buildResponseSpec(spec as ResponseSpec, statusKey)
+    }
+  } else if (route.output) {
+    out['200'] = buildResponseSpec(route.output as ResponseSpec, '200')
+  } else {
+    out['200'] = { description: 'Successful response. (Schema not declared — legacy route awaiting migration.)' }
   }
   // Auto-emit global 400/415 from declared inputs.
   const effectiveBody = route.body ?? route.input
