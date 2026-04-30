@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Play, Pencil, Copy, Trash2, SkipForward, MoreHorizontal, Clock, Timer, Workflow, Terminal, CirclePlus, Undo2, Power } from 'lucide-react'
+import { Play, Pencil, Copy, Trash2, SkipForward, MoreHorizontal, Clock, Timer, Workflow, Terminal, CirclePlus, Undo2, Power, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { BakinDrawer } from "@bakin/sdk/components"
 import { AgentAvatar } from "@bakin/sdk/components"
 import { Badge } from "@bakin/sdk/ui"
@@ -220,6 +220,17 @@ export function JobDrawer({
             <div className="rounded-lg bg-surface p-3 space-y-1">
               <div className="text-[11px] text-muted-foreground uppercase tracking-wider">Last Task</div>
               <div className="text-sm font-medium font-mono">{job.lastTaskId.slice(0, 8)}</div>
+            </div>
+          )}
+          {(job.toolsAllow?.length || job.toolsAllowMissing) && (
+            <div className="rounded-lg bg-surface p-3 space-y-1 col-span-2">
+              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground uppercase tracking-wider">
+                {job.toolsAllowMissing ? <ShieldAlert className="size-3 text-amber-400" /> : <ShieldCheck className="size-3 text-emerald-400" />}
+                Cron tools
+              </div>
+              <div className={job.toolsAllowMissing ? 'text-sm font-medium text-amber-400' : 'text-sm font-medium font-mono'}>
+                {job.toolsAllow?.length ? job.toolsAllow.join(', ') : 'Missing allowlist'}
+              </div>
             </div>
           )}
           <div className="rounded-lg bg-surface p-3 space-y-1 col-span-2">

@@ -339,6 +339,7 @@ export interface CronJob {
   schedule: string
   command: string
   enabled: boolean
+  toolsAllow?: string[]
   metadata?: RuntimeMetadata
 }
 
@@ -358,10 +359,13 @@ export interface CreateCronJobInput {
   schedule: string
   command: string
   enabled?: boolean
+  toolsAllow?: string[]
   metadata?: RuntimeMetadata
 }
 
-export type UpdateCronJobInput = Partial<Omit<CreateCronJobInput, 'id'>>
+export type UpdateCronJobInput = Partial<Omit<CreateCronJobInput, 'id' | 'toolsAllow'>> & {
+  toolsAllow?: string[] | null
+}
 
 export interface RawCronSnapshot {
   provider: string

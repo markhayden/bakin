@@ -1,6 +1,6 @@
 'use client'
 
-import { MoreHorizontal, Play, Pause, RotateCcw, Trash2, Pencil, Copy, SkipForward, CirclePlus, Undo2 } from 'lucide-react'
+import { MoreHorizontal, Play, Pause, RotateCcw, Trash2, Pencil, Copy, SkipForward, CirclePlus, Undo2, ShieldAlert } from 'lucide-react'
 import { TableRow, TableCell } from "@bakin/sdk/ui"
 import { Badge } from "@bakin/sdk/ui"
 import {
@@ -78,6 +78,12 @@ export function JobRow({
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
             {job.source === 'adopted' ? 'Adopted' : job.isBakinJob ? 'Bakin schedule' : 'Runtime cron'}
           </span>
+          {job.toolsAllowMissing && (
+            <span className="inline-flex items-center gap-1 text-[10px] text-amber-400">
+              <ShieldAlert className="size-3" />
+              Missing cron tools
+            </span>
+          )}
           {scoreInfo && (
             <span className="flex items-center gap-2 font-mono text-[10px] mt-0.5">
               <span className="text-amber-400">RRF {scoreInfo.score.toFixed(3)}</span>
