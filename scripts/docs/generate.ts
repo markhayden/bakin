@@ -1730,10 +1730,77 @@ writeStableFile(
   renderApiReference(),
 )
 
-writeStableFile(
-  join(docsRoot, 'public/openapi.json'),
-  `${JSON.stringify(buildOpenApiDocument(), null, 2)}\n`,
-)
+// T20: openapi.json is now generated from typed route contracts (the same
+// buildOperation used by /api/openapi). Imports each in-repo plugin
+// statically (no activate() invocation), reads plugin.default.routes,
+// combines with packages/host/src/core-routes/coreRoutes, runs the typed
+// builder. Replaces the legacy buildOpenApiDocument() that used
+// manifest + source-scan with generic-object fallbacks.
+{
+  const { buildOperation, normalizeOpenApiPath } = await import('../../packages/core/src/openapi')
+  const { coreRoutes: typedCoreRoutes } = await import('../../packages/host/src/core-routes')
+
+  const inRepoPluginIds = ['assets', 'health', 'memory', 'models', 'schedule', 'tasks', 'team', 'workflows']
+  const sources: Array<{ scope: string; tag: string; fullPath: string; route: any }> = []
+  for (const id of inRepoPluginIds) {
+    const mod = await import(join(repoRoot, 'plugins', id, 'index.ts')) as { default?: { name?: string; routes?: any[] } }
+    const routes = mod.default?.routes ?? []
+    const tag = mod.default?.name ?? id
+    for (const route of routes) {
+      sources.push({
+        scope: id,
+        tag,
+        fullPath: `/api/plugins/${id}${route.path}`,
+        route,
+      })
+    }
+  }
+  for (const route of typedCoreRoutes) {
+    sources.push({
+      scope: 'core',
+      tag: 'Core',
+      fullPath: route.path,
+      route,
+    })
+  }
+
+  const paths: Record<string, Record<string, unknown>> = {}
+  const tags = new Map<string, string | undefined>()
+  for (const entry of sources) {
+    tags.set(entry.tag, undefined)
+    const op = buildOperation(entry.route, { scope: entry.scope, fullPath: entry.fullPath, tag: entry.tag })
+    const openApiPath = normalizeOpenApiPath(entry.fullPath)
+    paths[openApiPath] ??= {}
+    paths[openApiPath][entry.route.method.toLowerCase()] = op
+  }
+
+  const typedDoc = {
+    openapi: '3.1.0',
+    info: {
+      title: 'Bakin API',
+      version: APP_VERSION,
+      description: 'Generated from typed route contracts (defineRoute / defineCoreRoute) — same builder as /api/openapi.',
+    },
+    servers: [{ url: 'http://localhost:3737', description: 'Local Bakin server' }],
+    tags: [...tags.entries()].map(([name, description]) => ({ name, ...(description ? { description } : {}) })),
+    paths,
+    components: {
+      securitySchemes: {
+        pluginPermissions: {
+          type: 'apiKey',
+          in: 'header',
+          name: 'X-Bakin-Plugin-Permission',
+          description: 'Documents plugin permission requirements.',
+        },
+      },
+    },
+  }
+
+  writeStableFile(
+    join(docsRoot, 'public/openapi.json'),
+    `${JSON.stringify(typedDoc, null, 2)}\n`,
+  )
+}
 
 writeStableFile(
   join(docsRoot, 'src/content/docs/reference/generated/hooks.mdx'),

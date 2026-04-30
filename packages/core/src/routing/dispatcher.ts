@@ -101,10 +101,29 @@ export async function dispatchRoute(input: DispatchInput): Promise<Response> {
   if (parsedQuery !== undefined) parsed.query = parsedQuery
   if (parsedBody !== undefined) parsed.body = parsedBody
 
-  // ─── 7. Invoke handler ───────────────────────────────────────────────────
-  const res = await route.handler(req, ctx as any, parsed as any)
+  // ─── 7. Legacy compat: inject path params into searchParams so handlers
+  // that read `url.searchParams.get('foo')` continue to work alongside
+  // those using `parsed.params.foo`. Removed in T20+ once every handler
+  // is migrated to the typed parsed argument.
+  let dispatchReq = req
+  if (Object.keys(pathParams).length > 0) {
+    const newUrl = new URL(req.url)
+    for (const [key, value] of Object.entries(pathParams)) {
+      if (!newUrl.searchParams.has(key)) newUrl.searchParams.set(key, value)
+    }
+    dispatchReq = new Request(newUrl.toString(), {
+      method: req.method,
+      headers: req.headers,
+      body: req.method === 'GET' || req.method === 'HEAD' ? undefined : req.body,
+      // @ts-expect-error duplex needed for streaming bodies
+      duplex: 'half',
+    })
+  }
 
-  // ─── 8. Validate response in dev / test ─────────────────────────────────
+  // ─── 8. Invoke handler ───────────────────────────────────────────────────
+  const res = await route.handler(dispatchReq, ctx as any, parsed as any)
+
+  // ─── 9. Validate response in dev / test ─────────────────────────────────
   if (shouldValidateResponses() && responses) {
     await validateResponse(res, responses)
   }

@@ -863,15 +863,15 @@ class PluginRegistryImpl {
       }
 
       const ctx = this.buildContext(plugin.id, state, storage, events, services)
+      // T20: declarative routes register BEFORE activate() runs (the spec
+      // invariant restored). Every plugin now has its routes array
+      // populated at module load — team and workflows use a
+      // populateXRoutes() helper called at module scope. Handlers receive
+      // ctx via the dispatcher at request time and never close over
+      // activate-internal state.
+      this.registerDeclarativeRoutes(plugin, state)
       await plugin.activate(ctx)
       state.ctx = ctx
-      // T6+: register declarative routes AFTER activate() so plugins like
-      // team / workflows that build their routes array via a mutable
-      // module-scope helper (and populate it during activate) work without
-      // restructuring. The handler-must-use-ctx invariant is enforced by
-      // code review, not by ordering — the dispatcher passes ctx at
-      // request time regardless.
-      this.registerDeclarativeRoutes(plugin, state)
       const skillResult = loadPluginSkills(pluginPath, ctx, log)
       if (skillResult.registered.length > 0) {
         log.info(`Auto-registered ${skillResult.registered.length} workflow skill(s) for "${plugin.id}"`, {
@@ -953,9 +953,9 @@ class PluginRegistryImpl {
     }
 
     const ctx = this.buildContext(plugin.id, state, storage, events, services)
+    this.registerDeclarativeRoutes(plugin, state)
     await plugin.activate(ctx)
     state.ctx = ctx
-    this.registerDeclarativeRoutes(plugin, state)
     // #142 layer 1 — surface user-plugin permissions to the audit log.
     // Source is read from the lockfile (github vs local) by the helper.
     logPluginActivation({ plugin, source: 'user', manifestPath })
