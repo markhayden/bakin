@@ -214,20 +214,17 @@ const selectedOperation = operationId ? operations.find(operation => operation.i
               )}
 
               <section class="api-operation__section api-tabs">
-                <input class="api-tabs__input" type="radio" name={`${operation.id}-schema-tabs`} id={`${operation.id}-request-tab`} checked />
-                <input class="api-tabs__input" type="radio" name={`${operation.id}-schema-tabs`} id={`${operation.id}-response-tab`} />
+                <input class="api-tabs__input" type="radio" name={`${operation.id}-schema-tabs`} id={`${operation.id}-request-tab`} checked={Boolean(requestContent)} />
+                <input class="api-tabs__input" type="radio" name={`${operation.id}-schema-tabs`} id={`${operation.id}-response-tab`} checked={!requestContent} />
                 <div class="api-tabs__labels">
                   <label for={`${operation.id}-request-tab`}>Request</label>
                   <label for={`${operation.id}-response-tab`}>Response</label>
                 </div>
                 <div class="api-tabs__panel api-tabs__panel--request">
                   {requestContent ? (
-                    <>
-                      <p class="api-schema__caption">{requestContent.contentType}</p>
-                      <pre class="api-schema"><code set:html={highlightedJson(requestContent.schema)} /></pre>
-                    </>
+                    <pre class="api-schema"><code set:html={highlightedJson(requestContent.schema)} /></pre>
                   ) : (
-                    <p>No request body.</p>
+                    <p class="api-tabs__empty">No request body.</p>
                   )}
                 </div>
                 <div class="api-tabs__panel api-tabs__panel--response">
@@ -247,9 +244,6 @@ const selectedOperation = operationId ? operations.find(operation => operation.i
               </section>
 
               <section class="api-operation__section">
-                <div class="api-code-heading">
-                  <h4>cURL</h4>
-                </div>
                 <slot />
               </section>
             </article>
