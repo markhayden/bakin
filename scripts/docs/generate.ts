@@ -4,6 +4,7 @@ import {
   extractPluginSettings,
   getApiRoutes,
   getCliCommands,
+  externalSourceRoots,
   listPluginManifests,
   relativeSource,
   renderExecToolsSnippet,
@@ -219,14 +220,43 @@ function updateGeneratedContentBlocks(): void {
   }
 }
 
-function extractHookRegistrations(): Array<{ name: string; file: string; line: number }> {
-  const hooks: Array<{ name: string; file: string; line: number }> = []
+type HookRegistrationDoc = {
+  name: string
+  file: string
+  line: number
+  label?: string
+  summary?: string
+  description?: string
+  hookKind?: string
+  visibility?: string
+  stability?: string
+}
+
+function extractHookRegistrations(): HookRegistrationDoc[] {
+  const hooks: HookRegistrationDoc[] = []
   for (const file of sourceFiles()) {
     const text = readFileSync(file, 'utf8')
     const lines = text.split('\n')
     for (let i = 0; i < lines.length; i++) {
       const match = lines[i].match(/hooks\.register\(['"`]([^'"`]+)['"`]/)
-      if (match) hooks.push({ name: match[1], file: relativeSource(file), line: i + 1 })
+      if (match) {
+        const block = lines.slice(i, Math.min(lines.length, i + 45)).join('\n')
+        const label = block.match(/label:\s*(["'`])((?:\\[\s\S]|(?!\1)[\s\S])*)\1/)?.[2]
+        const summary = block.match(/summary:\s*(["'`])((?:\\[\s\S]|(?!\1)[\s\S])*)\1/)?.[2]
+        const hookKind = block.match(/hookKind:\s*['"`]([^'"`]+)['"`]/)?.[1]
+        const visibility = block.match(/visibility:\s*['"`]([^'"`]+)['"`]/)?.[1]
+        const stability = block.match(/stability:\s*['"`]([^'"`]+)['"`]/)?.[1]
+        hooks.push({
+          name: match[1],
+          file: relativeSource(file),
+          line: i + 1,
+          label: label?.replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\`/g, '`').trim(),
+          summary: summary?.replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\`/g, '`').trim(),
+          hookKind,
+          visibility,
+          stability,
+        })
+      }
     }
   }
   return hooks.sort((a, b) => a.name.localeCompare(b.name) || a.file.localeCompare(b.file))
@@ -260,6 +290,7 @@ interface PluginManifestDoc {
   bakin?: string
   permissions?: string[]
   dependencies?: string[]
+  origin: 'Core' | 'Official'
   file: string
 }
 
@@ -269,10 +300,10 @@ interface SdkExportDoc {
   exports: string[]
 }
 
-function readCorePluginManifests(): PluginManifestDoc[] {
-  const pluginsDir = join(repoRoot, 'plugins')
+function readPluginManifestDirectory(pluginsDir: string, origin: PluginManifestDoc['origin']): PluginManifestDoc[] {
   const manifests: PluginManifestDoc[] = []
   for (const entry of readdirSync(pluginsDir).sort()) {
+    if (entry.startsWith('_')) continue
     const manifestPath = join(pluginsDir, entry, 'bakin-plugin.json')
     try {
       const raw = readFileSync(manifestPath, 'utf8')
@@ -286,6 +317,7 @@ function readCorePluginManifests(): PluginManifestDoc[] {
         bakin: parsed.bakin,
         permissions: parsed.permissions ?? [],
         dependencies: parsed.dependencies ?? [],
+        origin,
         file: relativeSource(manifestPath),
       })
     } catch {
@@ -293,6 +325,28 @@ function readCorePluginManifests(): PluginManifestDoc[] {
     }
   }
   return manifests
+}
+
+function readCorePluginManifests(): PluginManifestDoc[] {
+  return readPluginManifestDirectory(join(repoRoot, 'plugins'), 'Core')
+}
+
+function readOfficialPluginManifests(): PluginManifestDoc[] {
+  const seen = new Set<string>()
+  const manifests: PluginManifestDoc[] = []
+  for (const root of externalSourceRoots()) {
+    for (const manifest of readPluginManifestDirectory(root, 'Official')) {
+      if (seen.has(manifest.id)) continue
+      seen.add(manifest.id)
+      manifests.push(manifest)
+    }
+  }
+  return manifests
+}
+
+function readOfficialPluginCatalog(): PluginManifestDoc[] {
+  return [...readCorePluginManifests(), ...readOfficialPluginManifests()]
+    .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
 }
 
 function readSdkExports(): SdkExportDoc[] {
@@ -325,14 +379,15 @@ function flattenObject(value: unknown, prefix = ''): Array<{ key: string; value:
 }
 
 const versionLine = `Docs version: Bakin ${APP_VERSION}`
-function generatedPageNote(source: string, note?: string): string {
-  const escapedSource = source.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  const escapedNote = note?.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+function generatedPageNote(): string {
+  const generatedDate = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date())
   return [
     '<aside class="generated-page-note" aria-label="Generated page metadata">',
-    `  <span>Generated from <code>${escapedSource}</code>.</span>`,
-    `  <span>Bakin ${APP_VERSION}.</span>`,
-    escapedNote ? `  <span>${escapedNote}</span>` : '',
+    `  <span>Generated ${generatedDate} · Bakin ${APP_VERSION}</span>`,
     '</aside>',
   ].filter(Boolean).join('\n')
 }
@@ -343,6 +398,10 @@ function escapeHtml(value: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+}
+
+function escapeMarkdownTableCell(value: string): string {
+  return value.replace(/\|/g, '\\|').replace(/\n/g, ' ')
 }
 
 function parseCliUsage(command: CliCommand): Array<{ token: string; displayToken: string; choices: string[]; kind: 'argument' | 'option' | 'choice'; required: boolean; description: string }> {
@@ -463,25 +522,6 @@ function describeCliPart(token: string, kind: 'argument' | 'option' | 'choice', 
   if (kind === 'choice') return 'Choose one of these values.'
   if (kind === 'option') return normalized.includes(' <') || normalized.includes('=') ? 'Optional flag with a value.' : 'Optional flag.'
   return required ? 'Required value.' : 'Optional value.'
-}
-
-function renderCliUsageLine(command: CliCommand): string {
-  const tokens = command.usage.match(/\[[^\]]+\]|<[^>]+>|\S+/g) ?? []
-  return tokens.map((token, index) => {
-    const inner = token.replace(/^\[/, '').replace(/\]$/, '').replace(/^</, '').replace(/>$/, '')
-    const hasChoice = inner.includes('|')
-    const required = token.startsWith('<')
-    const optional = token.startsWith('[')
-    const displayToken = hasChoice ? displayCliPartToken(inner, 'choice', required && !optional, optional) : token
-    const className = index === 0
-      ? 'cli-token cli-token--binary'
-      : token.startsWith('[') || token.startsWith('--') || token.startsWith('-')
-        ? 'cli-token cli-token--option'
-        : token.startsWith('<')
-          ? 'cli-token cli-token--arg'
-          : 'cli-token'
-    return `<span class="${className}">${escapeHtml(displayToken)}</span>`
-  }).join(' ')
 }
 
 function buildCoverageReport(): Record<string, unknown> {
@@ -635,21 +675,18 @@ function renderCliCommandBlock(command: CliCommand): string {
     command.stability !== 'stable' ? `Stability: <code>${escapeHtml(command.stability)}</code>` : '',
     command.aliases?.length ? `Aliases: ${command.aliases.map(alias => `<code>${escapeHtml(alias)}</code>`).join(' ')}` : '',
   ].filter(Boolean)
+  const props = [
+    `id="${commandId}"`,
+    `name="${escapeHtml(command.name)}"`,
+    `summary="${escapeHtml(command.summary)}"`,
+    `description="${escapeHtml(command.description)}"`,
+  ].join(' ')
 
   return [
-    `<section class="cli-command" id="${commandId}">`,
-    '  <div class="cli-command__heading">',
-    `    <code>${escapeHtml(command.name)}</code>`,
-    `    <span class="cli-command__summary">${escapeHtml(command.summary)}</span>`,
-    `    <a class="cli-command__anchor" href="#${commandId}" aria-label="Link to ${escapeHtml(command.name)}"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></a>`,
-    '  </div>',
-    '  <div class="cli-command__box">',
-    `  <p class="cli-command__description">${escapeHtml(command.description)}</p>`,
-    '  <div class="cli-command__terminal">',
-    '    <span class="cli-command__prompt">&gt;</span>',
-    `    <code>${renderCliUsageLine(command)}</code>`,
-    `    <button class="cli-command__copy" type="button" data-cli-copy="${escapeHtml(command.usage)}" aria-label="Copy ${escapeHtml(command.usage)}">Copy</button>`,
-    '  </div>',
+    `<CliCommandCard ${props}>`,
+    '```sh frame="terminal"',
+    command.usage,
+    '```',
     usageParts.length ? [
       '  <table class="cli-command__args">',
       '    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>',
@@ -659,8 +696,7 @@ function renderCliCommandBlock(command: CliCommand): string {
       '  </table>',
     ].join('\n') : '',
     commandNotes.length ? `  <p class="cli-command__meta">${commandNotes.join(' · ')}</p>` : '',
-    '  </div>',
-    '</section>',
+    '</CliCommandCard>',
   ].filter(Boolean).join('\n')
 }
 
@@ -690,6 +726,8 @@ function renderCliReference(): string {
 	    'description: Generated reference for public Bakin CLI commands.',
 		    '---',
 		    '',
+    "import CliCommandCard from '../../../../components/CliCommandCard.astro'",
+    '',
     '<div class="cli-reference-intro">',
     '  <p>The Bakin CLI is the fastest way to run local setup, check health, manage tasks, install plugins, and script repeatable work. Use it when you want a direct command instead of clicking through the dashboard, or when you need Bakin actions inside shell scripts and automation.</p>',
     '</div>',
@@ -721,7 +759,7 @@ function renderCliReference(): string {
     }
     lines.push('</div>', '')
 		  }
-		  lines.push(generatedPageNote('src/core/cli/registry.ts'), '')
+		  lines.push(generatedPageNote(), '')
 
 	  return lines.join('\n')
 	}
@@ -733,9 +771,9 @@ function renderApiReference(): string {
     '---',
     'title: API Reference',
     'description: Generated reference for documented Bakin HTTP API routes.',
-	    '---',
-	    '',
-	    '## Core Routes',
+    '---',
+    '',
+    '## Core Routes',
     '',
   ]
 
@@ -765,143 +803,533 @@ function renderApiReference(): string {
       lines.push('')
     }
 	  }
-	  lines.push(generatedPageNote('src/core/api-docs.ts + plugin manifests', 'Includes source-scan fallback for plugins without manifest route contracts.'), '')
+	  lines.push(generatedPageNote(), '')
 
 	  return lines.join('\n')
 	}
 
+type HookRegistration = ReturnType<typeof extractHookRegistrations>[number]
+
+const hookGroupDescriptions: Record<string, string> = {
+  assets: 'Asset hooks expose file, sidecar, variant, and trash helpers for plugins that need to work with Bakin-managed files.',
+  health: 'Health hooks expose registered readiness and diagnostic checks so other surfaces can list or inspect them.',
+  models: 'Model hooks expose the effective model configuration and notify dependent surfaces when runtime model state changes.',
+  tasks: 'Task hooks let plugins enrich task details and react to task lifecycle changes.',
+  team: 'Team hooks expose runtime agent and team metadata for plugins that need agent-aware behavior.',
+  workflows: 'Workflow hooks expose workflow definitions, instances, steps, gates, and notification helpers for task automation.',
+}
+
+function hookId(name: string): string {
+  return name
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase()
+}
+
+function hookNamespace(name: string): string {
+  return name.split('.')[0] || 'other'
+}
+
+type HookExamplePayload = Record<string, unknown>
+
+const hookExamplePayloads: Record<string, HookExamplePayload> = {
+  'assets.validateSidecar': { metaPath: '~/.bakin/assets/store/task-123/image.json' },
+  'assets.getSidecarPath': { assetPath: '~/.bakin/assets/store/task-123/image.png' },
+  'assets.createStub': { assetPath: '~/.bakin/assets/store/task-123/image.png' },
+  'assets.detectVariant': { filename: 'task-123.after.png' },
+  'assets.getAssetTypes': {},
+  'assets.pathForFilename': { filename: 'task-123.after.png' },
+  'assets.purgeClipboardForTask': { taskId: 'task-123' },
+  'assets.trash.list': { assetsRoot: '~/.bakin/assets' },
+  'assets.restoreAsset': { trashFilename: 'task-123.after.png', assetsRoot: '~/.bakin/assets' },
+  'assets.emptyTrash': { assetsRoot: '~/.bakin/assets' },
+  'health.list': {},
+  'health.getCheck': { id: 'runtime' },
+  'models.configChanged': { agentId: 'patch', oldModel: 'gpt-5.4', newModel: 'gpt-5.5' },
+  'models.getEffectiveModel': { agentId: 'patch' },
+  'models.markConfigDirty': {},
+  'models.markRuntimeRestarted': {},
+  'models.getAvailableModels': {},
+  'tasks.statusChanged': { taskId: 'task-123', from: 'doing', to: 'done' },
+  'tasks.enrichDetails': { task: { id: 'task-123', projectId: 'launch-docs' } },
+  'team.list': {},
+  'team.getAgent': { id: 'patch' },
+  'team.getAgentIds': {},
+  'team.resolveProfile': { id: 'patch' },
+  'team.getTeamMembers': { teamId: 'docs' },
+  'team.getAgentTeam': { id: 'patch' },
+  'team.getOrgStructure': {},
+  'workflows.loadInstance': { taskId: 'task-123' },
+  'workflows.saveInstance': { instance: { taskId: 'task-123', workflowId: 'docs-review' } },
+  'workflows.createInstance': { taskId: 'task-123', workflowId: 'docs-review', assignee: 'patch' },
+  'workflows.instances.list': { statusFilter: 'in_progress' },
+  'workflows.getCurrentStep': { taskId: 'task-123', agentId: 'patch' },
+  'workflows.completeStep': { taskId: 'task-123', stepId: 'review', output: { ok: true } },
+  'workflows.matchWorkflow': { title: 'Improve hook docs', description: 'Add generated examples' },
+  'workflows.definitions.list': {},
+  'workflows.loadDefinition': { name: 'docs-review' },
+  'workflows.getActiveAgents': { taskId: 'task-123' },
+  'workflows.isGateNotified': { taskId: 'task-123', stepId: 'approval' },
+  'workflows.markGateNotified': { taskId: 'task-123', stepId: 'approval' },
+  'workflows.validateStepOutput': { schema: { type: 'object' }, output: { approved: true } },
+  'workflows.cancelInstance': { taskId: 'task-123' },
+  'workflows.notificationChannels.list': {},
+  'workflows.getNotificationChannel': { id: 'slack' },
+}
+
+function formatHookExampleValue(value: unknown, indent = 0): string {
+  const pad = ' '.repeat(indent)
+  const childPad = ' '.repeat(indent + 2)
+  if (typeof value === 'string') return `'${value.replace(/'/g, "\\'")}'`
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) {
+    if (!value.length) return '[]'
+    return `[\n${value.map(item => `${childPad}${formatHookExampleValue(item, indent + 2)}`).join(',\n')}\n${pad}]`
+  }
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+    if (!entries.length) return '{}'
+    return `{\n${entries.map(([key, item]) => `${childPad}${key}: ${formatHookExampleValue(item, indent + 2)}`).join(',\n')}\n${pad}}`
+  }
+  return 'null'
+}
+
+function renderHookExample(hook: HookRegistration): string {
+  const payload = formatHookExampleValue(hookExamplePayloads[hook.name] ?? {}, 2)
+  const method = hook.hookKind === 'event'
+    ? 'callAll'
+    : hook.hookKind === 'waterfall'
+      ? 'call'
+      : 'invoke'
+  if (hook.hookKind === 'event') {
+    return `await ctx.hooks.${method}(\n  '${hook.name}',\n  ${payload},\n)`
+  }
+  if (hook.hookKind === 'waterfall') {
+    return `const next = await ctx.hooks.${method}(\n  '${hook.name}',\n  ${payload},\n)`
+  }
+  return `const result = await ctx.hooks.${method}(\n  '${hook.name}',\n  ${payload},\n)`
+}
+
+function renderHookCard(hook: HookRegistration): string {
+  const id = hookId(hook.name)
+  const label = hook.label ?? hook.summary ?? hook.name
+  const badges = [
+    hook.hookKind,
+    hook.visibility && hook.visibility !== 'public' ? hook.visibility : '',
+    hook.stability && hook.stability !== 'stable' ? hook.stability : '',
+  ].filter(Boolean)
+  const props = [
+    `id="${id}"`,
+    `name="${escapeHtml(hook.name)}"`,
+    `label="${escapeHtml(label)}"`,
+    hook.summary ? `summary="${escapeHtml(hook.summary)}"` : '',
+    `source="${escapeHtml(`${hook.file}:${hook.line}`)}"`,
+    badges.length ? `badges={${JSON.stringify(badges)}}` : '',
+  ].filter(Boolean).join(' ')
+  return [
+    `<HookCard ${props}>`,
+    '```ts frame="terminal"',
+    renderHookExample(hook),
+    '```',
+    '</HookCard>',
+  ].filter(Boolean).join('\n')
+}
+
+function renderHookLlmReference(): string {
+  const hooks = extractHookRegistrations()
+  const grouped = new Map<string, HookRegistration[]>()
+  for (const hook of hooks) {
+    const namespace = hookNamespace(hook.name)
+    const existing = grouped.get(namespace) ?? []
+    existing.push(hook)
+    grouped.set(namespace, existing)
+  }
+
+  const lines = [
+    'Hooks are plugin integration points. Use them from plugin code through `ctx.hooks`.',
+    '',
+    'Invocation style depends on `kind`:',
+    '',
+    '- `rpc`: `await ctx.hooks.invoke(name, payload)`',
+    '- `event`: `await ctx.hooks.callAll(name, payload)`',
+    '- `waterfall`: `await ctx.hooks.call(name, payload)`',
+    '',
+  ]
+
+  for (const namespace of [...grouped.keys()].sort((a, b) => a.localeCompare(b))) {
+    const title = namespace === 'other' ? 'Other' : `${namespace[0].toUpperCase()}${namespace.slice(1)}`
+    lines.push(`## ${title}`, '')
+    const description = hookGroupDescriptions[namespace]
+    if (description) lines.push(description, '')
+    for (const hook of [...(grouped.get(namespace) ?? [])].sort((a, b) => a.name.localeCompare(b.name))) {
+      lines.push(`### ${hook.name}`, '')
+      lines.push(`Label: ${hook.label ?? hook.summary ?? hook.name}`)
+      if (hook.summary) lines.push(`Purpose: ${hook.summary}`)
+      lines.push(`Kind: ${hook.hookKind ?? 'rpc'}`)
+      lines.push(`Source: ${hook.file}:${hook.line}`)
+      lines.push('', 'Example:', '', '```ts', renderHookExample(hook), '```', '')
+    }
+  }
+
+  return lines.join('\n')
+}
+
+type ExecToolDoc = ReturnType<typeof extractExecTools>[number]
+
+const mcpGroupDescriptions: Record<string, string> = {
+  assets: 'Asset tools let agents list, inspect, save, link, restore, and clean up files managed by Bakin.',
+  gen: 'Generation tools create or import media through Bakin so outputs land in the asset pipeline with task context.',
+  get: 'Runtime lookup tools return local Bakin paths and state agents should not hardcode.',
+  health: 'Health tools let agents check whether Bakin is running correctly before or during work.',
+  heartbeat: 'Heartbeat tools let agents publish lightweight status so Bakin can show who is active and what they are doing.',
+  log: 'Logging tools record progress updates in Bakin task history and audit surfaces.',
+  memory: 'Memory tools expose indexed runtime memory, sessions, turns, checkpoints, and status to agents.',
+  messaging: 'Messaging tools let agents create, update, approve, reject, and inspect human-facing messages and sessions.',
+  models: 'Model tools expose model configuration and available model choices to agents.',
+  post: 'Publishing tools send completed work to configured channels through Bakin adapters.',
+  project: 'Project tools let agents create, update, read, and maintain project specs and linked checklist items.',
+  schedule: 'Schedule tools let agents create, inspect, pause, run, and update recurring Bakin jobs.',
+  search: 'Search tools query Bakin-indexed content across plugins or inside a specific surface.',
+  submit: 'Workflow submission tools let agents submit step output back to the workflow engine.',
+  tasks: 'Task tools are the main agent interface for creating, reading, moving, logging, blocking, and completing work.',
+  team: 'Team tools expose agent roster, identity, status, messaging, and permission operations.',
+  workflows: 'Workflow tools expose workflow definitions, active instances, current steps, and step completion.',
+}
+
+function mcpToolId(name: string): string {
+  return name.replace(/^bakin_exec_/, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase()
+}
+
+function mcpToolNamespace(name: string): string {
+  return name.replace(/^bakin_exec_/, '').split('_')[0] || 'other'
+}
+
+function mcpToolLabel(name: string): string {
+  const words = name.replace(/^bakin_exec_/, '').split('_').filter(Boolean)
+  return `${words.map(word => word[0]?.toUpperCase() + word.slice(1)).join(' ')}.`
+}
+
+function mcpExampleValue(type: string): unknown {
+  if (type === 'number') return 20
+  if (type === 'boolean') return true
+  if (type === 'choice') return 'value'
+  if (type === 'record' || type === 'object') return { key: 'value' }
+  if (type === 'array') return ['value']
+  return 'value'
+}
+
+function renderMcpExample(tool: ExecToolDoc): string {
+  const args = Object.fromEntries(tool.parameters.map(param => [param.name, mcpExampleValue(param.type)]))
+  const json = JSON.stringify(args, null, 2)
+  if (tool.parameters.length === 0) return `mcporter call bakin-<agent>.${tool.name}`
+  return `mcporter call bakin-<agent>.${tool.name} --args '${json}'`
+}
+
+function renderMcpToolCard(tool: ExecToolDoc): string {
+  const id = mcpToolId(tool.name)
+  const props = [
+    `id="${id}"`,
+    `name="${escapeHtml(tool.name)}"`,
+    `label="${escapeHtml(tool.label ?? mcpToolLabel(tool.name))}"`,
+    tool.description ? `description="${escapeHtml(tool.description.trim())}"` : '',
+    `source="${escapeHtml(`${tool.file}:${tool.line}`)}"`,
+    tool.parameters.length ? `parameters={${JSON.stringify(tool.parameters)}}` : '',
+  ].filter(Boolean).join(' ')
+  return [
+    `<McpToolCard ${props}>`,
+    '```sh frame="terminal"',
+    renderMcpExample(tool),
+    '```',
+    '</McpToolCard>',
+  ].join('\n')
+}
+
+function renderMcpLlmReference(): string {
+  const tools = extractExecTools()
+  const grouped = new Map<string, ExecToolDoc[]>()
+  for (const tool of tools) {
+    const namespace = mcpToolNamespace(tool.name)
+    const existing = grouped.get(namespace) ?? []
+    existing.push(tool)
+    grouped.set(namespace, existing)
+  }
+
+  const lines = [
+    'Use MCP tools through `mcporter`:',
+    '',
+    '```sh',
+    "mcporter call bakin-<agent>.<tool_name> --args '<json>'",
+    '```',
+    '',
+    'Use the exact tool name shown below. Omit `--args` only for tools with no parameters.',
+    '',
+  ]
+
+  for (const namespace of [...grouped.keys()].sort((a, b) => a.localeCompare(b))) {
+    const title = namespace === 'other' ? 'Other' : `${namespace[0].toUpperCase()}${namespace.slice(1)}`
+    lines.push(`## ${title}`, '')
+    const description = mcpGroupDescriptions[namespace]
+    if (description) lines.push(description, '')
+    for (const tool of [...(grouped.get(namespace) ?? [])].sort((a, b) => a.name.localeCompare(b.name))) {
+      lines.push(`### ${tool.name}`, '')
+      lines.push(`Label: ${tool.label ?? mcpToolLabel(tool.name)}`)
+      if (tool.description) lines.push(`Purpose: ${tool.description.trim()}`)
+      if (tool.parameters.length) {
+        lines.push('', '| Argument | Type | Required | Description |', '| --- | --- | --- | --- |')
+        for (const param of tool.parameters) {
+          lines.push(`| \`${escapeMarkdownTableCell(param.name)}\` | ${escapeMarkdownTableCell(param.type)} | ${param.required ? 'yes' : 'no'} | ${escapeMarkdownTableCell(param.description ?? '')} |`)
+        }
+      } else {
+        lines.push('', 'Arguments: none.')
+      }
+      lines.push('', 'Example:', '', '```sh', renderMcpExample(tool), '```', '')
+    }
+  }
+
+  return lines.join('\n')
+}
+
 function renderHookReference(): string {
   const hooks = extractHookRegistrations()
+  const grouped = new Map<string, HookRegistration[]>()
+  for (const hook of hooks) {
+    const namespace = hookNamespace(hook.name)
+    const existing = grouped.get(namespace) ?? []
+    existing.push(hook)
+    grouped.set(namespace, existing)
+  }
+
   const lines = [
     '---',
-    'title: Hook Reference',
+    'title: Hooks',
     'description: Generated audit reference for Bakin hook registrations.',
 	    '---',
 	    '',
+    "import HookCard from '../../../../components/HookCard.astro'",
+    '',
+    '<div class="hook-reference-intro">',
+    '  <p>Hooks are the integration points plugins use to share Bakin state and behavior. Reach for them when you need task context, agent details, model choices, workflow state, assets, or health checks owned by another plugin.</p>',
+    '  <p>This reference shows the hook key to call, what it returns or changes, and the registration that owns the contract.</p>',
+    '</div>',
+    '',
 	  ]
 
-	  for (const hook of hooks) {
-    lines.push(`## \`${hook.name}\``, '')
-    lines.push(`Source: \`${hook.file}:${hook.line}\``, '')
-    lines.push('- Visibility: `public` until explicitly marked otherwise')
-    lines.push('- Stability: `beta` until a hook contract declares stability')
-    lines.push('- Contract status: `audited`', '')
+  for (const namespace of [...grouped.keys()].sort((a, b) => a.localeCompare(b))) {
+    const namespaceHooks = [...(grouped.get(namespace) ?? [])].sort((a, b) => a.name.localeCompare(b.name))
+    const title = namespace === 'other' ? 'Other' : `${namespace[0].toUpperCase()}${namespace.slice(1)}`
+    lines.push(`## ${title}`, '')
+    lines.push(`<p class="hook-section-description">${escapeHtml(hookGroupDescriptions[namespace] ?? 'Hooks discovered from source registration audit.')}</p>`, '')
+    lines.push('<div class="hook-card-list">')
+    for (const hook of namespaceHooks) {
+      lines.push(renderHookCard(hook))
+    }
+    lines.push('</div>', '')
 	  }
-	  lines.push(generatedPageNote('source audit', 'A later contract pass will replace audited hook entries with explicit metadata.'), '')
+	  lines.push(generatedPageNote(), '')
 
 	  return lines.join('\n')
 	}
 
 function renderExecToolReference(): string {
   const tools = extractExecTools()
+  const grouped = new Map<string, ExecToolDoc[]>()
+  for (const tool of tools) {
+    const namespace = mcpToolNamespace(tool.name)
+    const existing = grouped.get(namespace) ?? []
+    existing.push(tool)
+    grouped.set(namespace, existing)
+  }
+
   const lines = [
     '---',
-    'title: Exec and MCP Tool Reference',
-    'description: Generated audit reference for Bakin exec/MCP tools exposed to agents.',
+    'title: MCP',
+    'description: Generated reference for Bakin MCP tools exposed to agents.',
 	    '---',
 	    '',
+    "import McpToolCard from '../../../../components/McpToolCard.astro'",
+    '',
+    '<div class="mcp-reference-intro">',
+    '  <p>MCP tools are how agents get work done in Bakin. They create and move tasks, advance workflows, manage assets and projects, search local state, send messages, schedule recurring work, and check system health.</p>',
+    '  <p>Use this reference when you need the exact tool name, the arguments it accepts, and a copyable call shape.</p>',
+    '</div>',
+    '',
 	  ]
 
-	  for (const tool of tools) {
-    lines.push(`## \`${tool.name}\``, '')
-    if (tool.description) lines.push(tool.description, '')
-    lines.push(`Source: \`${tool.file}:${tool.line}\``, '')
-    lines.push('- Visibility: `public` until explicitly marked otherwise')
-    lines.push('- Stability: `beta` until a tool contract declares stability')
-    lines.push('- Contract status: `audited`', '')
+  for (const namespace of [...grouped.keys()].sort((a, b) => a.localeCompare(b))) {
+    const namespaceTools = [...(grouped.get(namespace) ?? [])].sort((a, b) => a.name.localeCompare(b.name))
+    const title = namespace === 'other' ? 'Other' : `${namespace[0].toUpperCase()}${namespace.slice(1)}`
+    lines.push(`## ${title}`, '')
+    lines.push(`<p class="mcp-section-description">${escapeHtml(mcpGroupDescriptions[namespace] ?? 'MCP tools discovered from registered exec tool definitions.')}</p>`, '')
+    lines.push('<div class="mcp-tool-list">')
+    for (const tool of namespaceTools) {
+      lines.push(renderMcpToolCard(tool))
+    }
+    lines.push('</div>', '')
 	  }
-	  lines.push(generatedPageNote('source audit', 'A later contract pass will replace audited tool entries with explicit metadata and schemas.'), '')
+	  lines.push(generatedPageNote(), '')
 
 	  return lines.join('\n')
 	}
 
 function renderPluginCatalog(): string {
-  const plugins = readCorePluginManifests()
+  const plugins = readOfficialPluginCatalog()
   const lines = [
     '---',
-    'title: Core Plugin Catalog',
-    'description: Generated catalog of core plugins shipped with Bakin.',
+    'title: Official Plugins',
+    'description: Generated catalog of official plugins supported by Bakin.',
 	    '---',
 	    '',
+    '<div class="plugin-catalog-intro">',
+    '  <p>Official plugins are maintained with Bakin and documented as supported product surfaces. Core plugins ship in this repo; official plugins can also live in the official plugin repo.</p>',
+    '</div>',
+    '',
+    '<table class="plugin-catalog-table">',
+    '  <thead>',
+    '    <tr><th>Plugin</th><th>ID</th><th>Source</th><th>Version</th><th>Depends On</th></tr>',
+    '  </thead>',
+    '  <tbody>',
 	  ]
 
 	  for (const plugin of plugins) {
-    lines.push(`## ${plugin.name}`, '')
-    lines.push(plugin.description ?? 'No description provided.', '')
-    lines.push(`- ID: \`${plugin.id}\``)
-    lines.push(`- Version: \`${plugin.version}\``)
-    if (plugin.bakin) lines.push(`- Bakin compatibility: \`${plugin.bakin}\``)
-    lines.push(`- Manifest: \`${plugin.file}\``)
-    lines.push(`- Dependencies: ${plugin.dependencies?.length ? plugin.dependencies.map(d => `\`${d}\``).join(', ') : '`none`'}`)
-    lines.push(`- Permissions: ${plugin.permissions?.length ? plugin.permissions.map(p => `\`${p}\``).join(', ') : '`none declared`'}`)
-    lines.push('')
+    const name = escapeHtml(plugin.name)
+    const description = plugin.description ? `<br/><span>${escapeHtml(plugin.description)}</span>` : ''
+    const deps = plugin.dependencies?.length ? plugin.dependencies.map(d => `<code>${escapeHtml(d)}</code>`).join(' ') : 'none'
+    lines.push(
+      '    <tr>',
+      `      <td>${name}${description}</td>`,
+      `      <td><code>${escapeHtml(plugin.id)}</code></td>`,
+      `      <td>${plugin.origin}</td>`,
+      `      <td><code>${escapeHtml(plugin.version)}</code></td>`,
+      `      <td>${deps}</td>`,
+      '    </tr>',
+    )
 	  }
-	  lines.push(generatedPageNote('plugins/*/bakin-plugin.json'), '')
+  lines.push('  </tbody>', '</table>', '')
+	  lines.push(generatedPageNote(), '')
 
 	  return lines.join('\n')
 	}
 
 function renderSettingsReference(): string {
   const settings = flattenObject(DEFAULT_SETTINGS)
+  const grouped = new Map<string, Array<{ key: string; value: unknown }>>()
+  for (const setting of settings) {
+    const namespace = setting.key.split('.')[0] || 'other'
+    const existing = grouped.get(namespace) ?? []
+    existing.push(setting)
+    grouped.set(namespace, existing)
+  }
+
   const lines = [
     '---',
-    'title: Settings Reference',
-    'description: Generated reference for Bakin settings keys and default values.',
+    'title: Defaults',
+    'description: Generated reference for Bakin core settings defaults.',
 	    '---',
-	    '',
-	    'Bakin reads settings from `settings.json` in the resolved Bakin home directory and deep-merges user values over these defaults.',
     '',
-    '| Key | Default |',
-    '| --- | --- |',
+    '<div class="settings-reference-intro">',
+    '  <p>Bakin starts with these values, then deep-merges anything you set in <code>settings.json</code>. Use this page when you need the exact key for CLI updates, automation, or troubleshooting.</p>',
+    '</div>',
+    '',
   ]
-	  for (const setting of settings) {
-	    lines.push(`| \`${setting.key}\` | \`${JSON.stringify(setting.value)}\` |`)
-	  }
-	  lines.push('', generatedPageNote('packages/core/src/settings.ts'), '')
-	  return lines.join('\n')
-	}
+
+  const settingGroupTitles: Record<string, string> = { sse: 'SSE' }
+
+  for (const namespace of [...grouped.keys()].sort((a, b) => a.localeCompare(b))) {
+    const title = settingGroupTitles[namespace] ?? (namespace === 'other' ? 'Other' : `${namespace[0].toUpperCase()}${namespace.slice(1)}`)
+    lines.push(`## ${title}`, '')
+    lines.push(
+      '<table class="settings-defaults-table">',
+      '  <thead>',
+      '    <tr><th>Key</th><th>Default</th></tr>',
+      '  </thead>',
+      '  <tbody>',
+    )
+    for (const setting of [...(grouped.get(namespace) ?? [])].sort((a, b) => a.key.localeCompare(b.key))) {
+      lines.push(
+        '    <tr>',
+        `      <td><code>${escapeHtml(setting.key)}</code></td>`,
+        `      <td><code>${escapeHtml(JSON.stringify(setting.value))}</code></td>`,
+        '    </tr>',
+      )
+    }
+    lines.push('  </tbody>', '</table>', '')
+  }
+  lines.push('', generatedPageNote(), '')
+  return lines.join('\n')
+}
 
 function renderRuntimePathsReference(): string {
+  const resolution = [
+    ['BAKIN_HOME', 'Used when the environment variable is set.'],
+    ['~/.bakin/', 'Default location when no override is present.'],
+  ]
   const paths = [
-    ['home', 'Resolved Bakin home/content directory.'],
-    ['settings', 'Runtime settings JSON file.'],
-    ['memoryLog', 'Bakin memory log markdown file.'],
+    ['home', 'Resolved Bakin home directory.'],
+    ['settings', 'Runtime settings file.'],
+    ['memoryLog', 'Shared memory log.'],
     ['audit', 'Append-only audit log.'],
-    ['logs', 'Server and runtime log directory.'],
-    ['assets', 'Asset plugin root.'],
-    ['assets.store', 'Month-sharded asset storage.'],
+    ['logs', 'Server and runtime logs.'],
+    ['assets', 'Asset runtime root.'],
+    ['assets.store', 'Month-sharded asset files.'],
     ['assets.inbox', 'Asset ingestion inbox.'],
-    ['assets.trash', 'Soft-deleted assets.'],
-    ['agents', 'Agent UI/runtime assets.'],
-    ['team', 'Team plugin runtime data.'],
+    ['assets.trash', 'Soft-deleted asset files.'],
+    ['agents', 'Agent runtime assets.'],
+    ['team', 'Team runtime data.'],
     ['personas', 'Agent persona files.'],
     ['heartbeats', 'Agent heartbeat files.'],
     ['inbox', 'General inbox directory.'],
-    ['tasks', 'Bakin-owned task metadata store.'],
+    ['tasks', 'Task metadata store.'],
     ['workflows', 'Workflow definitions, skills, and instances.'],
   ]
   const lines = [
     '---',
     'title: Runtime Paths',
     'description: Reference for Bakin runtime files under the resolved Bakin home directory.',
-	    '---',
-	    '',
-	    'This page documents the well-known paths returned by `getBakinPaths()` in `packages/core/src/content-dir.ts`.',
+    '---',
     '',
-    'Resolution order:',
+    '<div class="runtime-paths-intro">',
+    '  <p>Bakin keeps local state under one home directory. Use these keys when you need to find logs, settings, assets, task metadata, workflow state, or other files created by the runtime.</p>',
+    '</div>',
     '',
-    '1. `BAKIN_HOME` environment variable.',
-    '2. `~/.bakin/`.',
+    '## Home Resolution',
     '',
-    '| Key | Purpose |',
-    '| --- | --- |',
+    '<table class="runtime-paths-table">',
+    '  <thead>',
+    '    <tr><th>Source</th><th>When Used</th></tr>',
+    '  </thead>',
+    '  <tbody>',
   ]
-	  for (const [key, description] of paths) {
-	    lines.push(`| \`${key}\` | ${description} |`)
-	  }
-	  lines.push('', generatedPageNote('packages/core/src/content-dir.ts'), '')
-	  return lines.join('\n')
-	}
+  for (const [source, description] of resolution) {
+    lines.push(
+      '    <tr>',
+      `      <td><code>${escapeHtml(source)}</code></td>`,
+      `      <td>${escapeHtml(description)}</td>`,
+      '    </tr>',
+    )
+  }
+  lines.push(
+    '  </tbody>',
+    '</table>',
+    '',
+    '## Path Keys',
+    '',
+    '<table class="runtime-paths-table">',
+    '  <thead>',
+    '    <tr><th>Key</th><th>Purpose</th></tr>',
+    '  </thead>',
+    '  <tbody>',
+  )
+  for (const [key, description] of paths) {
+    lines.push(
+      '    <tr>',
+      `      <td><code>${escapeHtml(key)}</code></td>`,
+      `      <td>${escapeHtml(description)}</td>`,
+      '    </tr>',
+    )
+  }
+  lines.push('  </tbody>', '</table>', '', generatedPageNote(), '')
+  return lines.join('\n')
+}
 
 function renderSdkReference(): string {
   const entries = readSdkExports()
@@ -927,7 +1355,7 @@ function renderSdkReference(): string {
     }
     lines.push('')
 	  }
-	  lines.push(generatedPageNote('packages/sdk/package.json + SDK barrel files', 'Full TypeDoc output will replace this audit view once public TSDoc coverage is complete.'), '')
+	  lines.push(generatedPageNote(), '')
 
 	  return lines.join('\n')
 	}
@@ -986,7 +1414,7 @@ function renderCoverageReference(): string {
     '- plugin routes should use the same route metadata helpers as core routes',
     '- SDK exports need complete TSDoc and stability annotations',
     '',
-    generatedPageNote('scripts/docs/generate.ts', 'Maintainer-only launch coverage and CI comparison output.'),
+    generatedPageNote(),
     '',
   ].join('\n')
 }
@@ -997,7 +1425,7 @@ writeStableFile(
 )
 
 writeStableFile(
-  join(docsRoot, 'src/content/docs/reference/generated/cli.md'),
+  join(docsRoot, 'src/content/docs/reference/generated/cli.mdx'),
   renderCliReference(),
 )
 
@@ -1007,12 +1435,12 @@ writeStableFile(
 )
 
 writeStableFile(
-  join(docsRoot, 'src/content/docs/reference/generated/hooks.md'),
+  join(docsRoot, 'src/content/docs/reference/generated/hooks.mdx'),
   renderHookReference(),
 )
 
 writeStableFile(
-  join(docsRoot, 'src/content/docs/reference/generated/exec-tools.md'),
+  join(docsRoot, 'src/content/docs/reference/generated/exec-tools.mdx'),
   renderExecToolReference(),
 )
 
@@ -1145,16 +1573,16 @@ const bundles = {
     body: `The CLI reference is generated from src/core/cli/registry.ts. Current public command count: ${CLI_COMMANDS.length}. Help output and generated docs use the same registry.`,
   },
   'hooks.md': {
-    title: 'Bakin Hook Reference',
-    body: `The hook reference currently comes from source audit. Current hook registration count: ${extractHookRegistrations().length}. Public hooks should migrate to explicit contract objects with kind, schemas, examples, visibility, and stability.`,
+    title: 'Bakin Hooks',
+    body: renderHookLlmReference(),
   },
   'exec-tools.md': {
-    title: 'Bakin Exec and MCP Tools',
-    body: `The exec/MCP tool reference currently comes from source audit. Current tool registration count: ${extractExecTools().length}. Public tools should migrate to explicit contract objects with schemas, examples, visibility, and stability.`,
+    title: 'Bakin MCP Tools',
+    body: renderMcpLlmReference(),
   },
   'core-plugins.md': {
-    title: 'Bakin Core Plugins',
-    body: `The core plugin catalog is generated from shipped plugin manifests. Current core plugin count: ${readCorePluginManifests().length}. Public docs should pair this generated catalog with human-authored workflow pages for each plugin.`,
+    title: 'Bakin Official Plugins',
+    body: `The official plugin catalog is generated from supported plugin manifests. Current official plugin count: ${readOfficialPluginCatalog().length}. Core plugins ship in this repo; additional official plugins can live in the official plugin repo.`,
   },
   'settings.md': {
     title: 'Bakin Settings Reference',

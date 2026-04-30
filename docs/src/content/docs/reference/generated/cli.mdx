@@ -1,0 +1,736 @@
+---
+title: CLI
+description: Generated reference for public Bakin CLI commands.
+---
+
+import CliCommandCard from '../../../../components/CliCommandCard.astro'
+
+<div class="cli-reference-intro">
+  <p>The Bakin CLI is the fastest way to run local setup, check health, manage tasks, install plugins, and script repeatable work. Use it when you want a direct command instead of clicking through the dashboard, or when you need Bakin actions inside shell scripts and automation.</p>
+</div>
+
+## Popular
+
+<div class="cli-common-grid">
+<a class="cli-common-card" href="#start">
+  <code>bakin start</code>
+  <span>Start the Bakin server.</span>
+</a>
+<a class="cli-common-card" href="#onboard">
+  <code>bakin onboard</code>
+  <span>Run first-time onboarding.</span>
+</a>
+<a class="cli-common-card" href="#doctor">
+  <code>bakin doctor</code>
+  <span>Run health checks.</span>
+</a>
+<a class="cli-common-card" href="#tasks-list">
+  <code>bakin tasks list</code>
+  <span>List tasks.</span>
+</a>
+<a class="cli-common-card" href="#tasks-create">
+  <code>bakin tasks create &lt;title&gt;</code>
+  <span>Create a task.</span>
+</a>
+<a class="cli-common-card" href="#plugins-install">
+  <code>bakin plugins install &lt;source&gt;</code>
+  <span>Install a plugin.</span>
+</a>
+<a class="cli-common-card" href="#search">
+  <code>bakin search &lt;query&gt;</code>
+  <span>Search indexed content.</span>
+</a>
+</div>
+
+## Agent Packages
+
+<p class="cli-section-description">Agent package commands install and maintain reusable agent definitions, bundled knowledge, prompts, and rules that Bakin manages as local agent state.</p>
+
+<div class="cli-command-list">
+<CliCommandCard id="agents-install" name="agents install" summary="Install an agent package." description="Installs or adopts an agent package into Bakin/runtime-managed agent state.">
+```sh frame="terminal"
+bakin agents install <path|github:user/repo[@ref]> [--adopt] [--install-as <id>] [--replace]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;source&gt;</code><span class="cli-command__choices"><span>path</span><span>github:user/repo[@ref]</span></span></td><td>choice</td><td>yes</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>[--adopt]</code></td><td>option</td><td>no</td><td>Adopt an existing runtime agent.</td></tr>
+      <tr><td><code>[--install-as &lt;id&gt;]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[--replace]</code></td><td>option</td><td>no</td><td>Replace an existing install.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="agents-remove" name="agents remove" summary="Remove an agent package." description="Removes an installed agent package and optionally deletes the runtime agent.">
+```sh frame="terminal"
+bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--force]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;agent-id&gt;</code></td><td>argument</td><td>yes</td><td>Agent id to install, update, remove, or inspect.</td></tr>
+      <tr><td><code>[--keep-blocks]</code></td><td>option</td><td>no</td><td>Leave managed blocks on disk.</td></tr>
+      <tr><td><code>[--delete-agent]</code></td><td>option</td><td>no</td><td>Delete the runtime agent too.</td></tr>
+      <tr><td><code>[--force]</code></td><td>option</td><td>no</td><td>Bypass the normal safety guard.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="agents-update" name="agents update" summary="Update agent packages." description="Updates one or all installed agent packages.">
+```sh frame="terminal"
+bakin agents update [agent-id] [--refresh-template]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[agent-id]</code></td><td>argument</td><td>no</td><td>Agent id to install, update, remove, or inspect.</td></tr>
+      <tr><td><code>[--refresh-template]</code></td><td>option</td><td>no</td><td>Refresh generated package template files.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="agents-knowledge" name="agents knowledge" summary="Manage agent knowledge toggles." description="Lists or toggles lesson/knowledge blocks for an agent package.">
+```sh frame="terminal"
+bakin agents knowledge <list|enable|disable> ...
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;action&gt;</code><span class="cli-command__choices"><span>list</span><span>enable</span><span>disable</span></span></td><td>choice</td><td>yes</td><td>Knowledge action.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="packages-install" name="packages install" summary="Install a package." description="Installs a standalone package.">
+```sh frame="terminal"
+bakin packages install <path|github:user/repo[@ref]> [--install-as <id>] [--replace]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;source&gt;</code><span class="cli-command__choices"><span>path</span><span>github:user/repo[@ref]</span></span></td><td>choice</td><td>yes</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>[--install-as &lt;id&gt;]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[--replace]</code></td><td>option</td><td>no</td><td>Replace an existing install.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="packages-list" name="packages list" summary="List packages." description="Lists installed packages.">
+```sh frame="terminal"
+bakin packages list
+```
+</CliCommandCard>
+<CliCommandCard id="packages-remove" name="packages remove" summary="Remove a package." description="Removes an installed package.">
+```sh frame="terminal"
+bakin packages remove <package-id> [--force] [--keep-blocks]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;package-id&gt;</code></td><td>argument</td><td>yes</td><td>Package id.</td></tr>
+      <tr><td><code>[--force]</code></td><td>option</td><td>no</td><td>Bypass the normal safety guard.</td></tr>
+      <tr><td><code>[--keep-blocks]</code></td><td>option</td><td>no</td><td>Leave managed blocks on disk.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="packages-update" name="packages update" summary="Update a package." description="Updates an installed package.">
+```sh frame="terminal"
+bakin packages update <package-id> [--refresh-template]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;package-id&gt;</code></td><td>argument</td><td>yes</td><td>Package id.</td></tr>
+      <tr><td><code>[--refresh-template]</code></td><td>option</td><td>no</td><td>Refresh generated package template files.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+</div>
+
+## Agents
+
+<p class="cli-section-description">Use these commands to inspect registered agents, review their status and assignments, and send direct messages without opening the dashboard.</p>
+
+<div class="cli-command-list">
+<CliCommandCard id="agents-list" name="agents list" summary="List agents." description="Lists runtime agents, or package state when `--packages` is set.">
+```sh frame="terminal"
+bakin agents list [--packages]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--packages]</code></td><td>option</td><td>no</td><td>Show package state instead of the runtime roster.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="agents-status" name="agents status" summary="Get agent status." description="Fetches detailed status for an agent.">
+```sh frame="terminal"
+bakin agents status <id>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="agents-tasks" name="agents tasks" summary="List tasks assigned to an agent." description="Lists tasks currently assigned to an agent.">
+```sh frame="terminal"
+bakin agents tasks <id>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="agents-send" name="agents send" summary="Send a message to an agent." description="Sends a message through the running server to an agent.">
+```sh frame="terminal"
+bakin agents send <id> <message>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+      <tr><td><code>&lt;message&gt;</code></td><td>argument</td><td>yes</td><td>Message text.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+</div>
+
+## Assets
+
+<p class="cli-section-description">Asset maintenance currently focuses on the trash flow: reviewing soft-deleted assets, restoring them, or purging them permanently.</p>
+
+<div class="cli-command-list">
+<CliCommandCard id="trash" name="trash" summary="Manage trashed assets." description="Lists, restores, or permanently empties soft-deleted assets.">
+```sh frame="terminal"
+bakin trash [list|restore|empty] ...
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[action]</code><span class="cli-command__choices"><span>list</span><span>restore</span><span>empty</span></span></td><td>choice</td><td>no</td><td>Trash action.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+</div>
+
+## Diagnostics and Paths
+
+<p class="cli-section-description">Diagnostics commands expose the information needed when something is not behaving as expected: logs, resolved paths, health checks, API docs, and generated agent rules.</p>
+
+<div class="cli-command-list">
+<CliCommandCard id="doctor" name="doctor" summary="Run health checks." description="Runs Bakin diagnostics for local dependencies, server state, agents, plugin assets, runtime behavior, and recoverable issues.">
+```sh frame="terminal"
+bakin doctor
+```
+</CliCommandCard>
+<CliCommandCard id="paths" name="paths" summary="Show content directory paths." description="Prints Bakin runtime paths, optionally for one key.">
+```sh frame="terminal"
+bakin paths [key]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[key]</code></td><td>argument</td><td>no</td><td>Dot-notation settings key.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="agent-rules" name="agent-rules" summary="Manage orchestrator rules blocks." description="Applies or checks managed AGENTS.md rule blocks.">
+```sh frame="terminal"
+bakin agent-rules [--apply|--check|--apply-all|--check-all]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--apply]</code></td><td>option</td><td>no</td><td>Apply the managed block.</td></tr>
+      <tr><td><code>[--check]</code></td><td>option</td><td>no</td><td>Dry-run; report what would change.</td></tr>
+      <tr><td><code>[--apply-all]</code></td><td>option</td><td>no</td><td>Apply managed blocks for all agents.</td></tr>
+      <tr><td><code>[--check-all]</code></td><td>option</td><td>no</td><td>Check managed blocks for all agents.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="logs" name="logs" summary="Tail audit logs." description="Prints audit log entries, optionally filtered by event type or agent.">
+```sh frame="terminal"
+bakin logs [filter]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[filter]</code></td><td>argument</td><td>no</td><td>Optional log filter.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="docs" name="docs" summary="Print API documentation from the running server." description="Fetches current API route documentation from `/api/docs`.">
+```sh frame="terminal"
+bakin docs
+```
+</CliCommandCard>
+</div>
+
+## First-Time Setup
+
+<p class="cli-section-description">These commands create the local directories and baseline settings Bakin needs before normal operation. They are most useful on a fresh machine or when repairing a partially configured install.</p>
+
+<div class="cli-command-list">
+<CliCommandCard id="mkdir" name="mkdir" summary="Create the Bakin home directory tree." description="Creates or verifies the `~/.bakin` directory tree.">
+```sh frame="terminal"
+bakin mkdir
+```
+</CliCommandCard>
+<CliCommandCard id="check" name="check" summary="Run onboarding checks." description="Runs one or all first-run readiness checks.">
+```sh frame="terminal"
+bakin check <runtime|search|search-models|llm|channels|plugin-assets|agent-assets|recommended-plugins|all>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;target&gt;</code><span class="cli-command__choices"><span>runtime</span><span>search</span><span>search-models</span><span>llm</span><span>channels</span><span>plugin-assets</span><span>agent-assets</span><span>recommended-plugins</span><span>all</span></span></td><td>choice</td><td>yes</td><td>Check target.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="install" name="install" summary="Install onboarding components." description="Installs Bakin dependencies, plugin/agent assets, or official recommended plugins.">
+```sh frame="terminal"
+bakin install <search|search-models|mcporter|plugin-assets|agent-assets|recommended-plugins>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;component&gt;</code><span class="cli-command__choices"><span>search</span><span>search-models</span><span>mcporter</span><span>plugin-assets</span><span>agent-assets</span><span>recommended-plugins</span></span></td><td>choice</td><td>yes</td><td>Install target.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="onboard" name="onboard" summary="Run first-time onboarding." description="Runs the full first-run setup flow.">
+```sh frame="terminal"
+bakin onboard [--check] [--yes] [--json] [--force]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--check]</code></td><td>option</td><td>no</td><td>Dry-run; report what would change.</td></tr>
+      <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+      <tr><td><code>[--force]</code></td><td>option</td><td>no</td><td>Bypass the normal safety guard.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+</div>
+
+## Lifecycle
+
+<p class="cli-section-description">Use these commands to run the local server, check whether it is healthy, restart it after configuration changes, and keep the installed CLI current.</p>
+
+<div class="cli-command-list">
+<CliCommandCard id="start" name="start" summary="Start the Bakin server." description="Starts the Bakin HTTP server and dashboard. This is the default command when the compiled binary is launched without arguments.">
+```sh frame="terminal"
+bakin start
+```
+</CliCommandCard>
+<CliCommandCard id="stop" name="stop" summary="Stop a running Bakin server." description="Finds a running Bakin process and sends SIGTERM.">
+```sh frame="terminal"
+bakin stop
+```
+</CliCommandCard>
+<CliCommandCard id="restart" name="restart" summary="Restart the Bakin server." description="Restarts Bakin using the available service manager or standalone process behavior.">
+```sh frame="terminal"
+bakin restart
+```
+  <p class="cli-command__meta">Aliases: <code>reboot</code></p>
+</CliCommandCard>
+<CliCommandCard id="status" name="status" summary="Show dispatch and server status." description="Prints local server reachability, dispatch interval, last run, next run, and version information where available.">
+```sh frame="terminal"
+bakin status
+```
+</CliCommandCard>
+<CliCommandCard id="dev" name="dev" summary="Run the source-tree development loop." description="Runs Bakin in watch-mode development from a source checkout. The compiled binary refuses this command outside a repo clone.">
+```sh frame="terminal"
+bakin dev
+```
+</CliCommandCard>
+<CliCommandCard id="version" name="version" summary="Print the Bakin version." description="Prints the version embedded in the running CLI/binary.">
+```sh frame="terminal"
+bakin version
+```
+  <p class="cli-command__meta">Aliases: <code>--version</code> <code>-v</code></p>
+</CliCommandCard>
+<CliCommandCard id="update" name="update" summary="Replace the current binary with the latest release." description="Downloads the latest release binary and verifies checksums before replacing the installed executable.">
+```sh frame="terminal"
+bakin update
+```
+</CliCommandCard>
+<CliCommandCard id="setup-service" name="setup service" summary="Install or remove macOS service integration." description="Installs or removes the LaunchAgent used for auto-start behavior on macOS.">
+```sh frame="terminal"
+bakin setup service [--uninstall]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--uninstall]</code></td><td>option</td><td>no</td><td>Remove the installed service.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+</div>
+
+## Plugins
+
+<p class="cli-section-description">Plugin commands manage Bakin extensions from the command line, including installing official packages, linking local development plugins, and scaffolding new plugin projects.</p>
+
+<div class="cli-command-list">
+<CliCommandCard id="plugins-list" name="plugins list" summary="List installed plugins." description="Lists installed plugins and versions. Pass --check to probe remote/source for available upgrades.">
+```sh frame="terminal"
+bakin plugins list [--check]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--check]</code></td><td>option</td><td>no</td><td>Dry-run; report what would change.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="plugins-install" name="plugins install" summary="Install a plugin." description="Installs a plugin from a local path or GitHub source. Append #subpath to install from a monorepo directory, or pin a GitHub install with @ref / --ref. --dev symlinks a local source tree for live development. --yes skips the consent prompt. --force replaces an existing install when used with --dev.">
+```sh frame="terminal"
+bakin plugins install [--dev] <path|github:user/repo[@ref][#subpath]> [--ref <ref>] [--yes] [--force]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--dev]</code></td><td>option</td><td>no</td><td>Install in local development mode.</td></tr>
+      <tr><td><code>&lt;source&gt;</code><span class="cli-command__choices"><span>path</span><span>github:user/repo[@ref][#subpath]</span></span></td><td>choice</td><td>yes</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>[--ref &lt;ref&gt;]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
+      <tr><td><code>[--force]</code></td><td>option</td><td>no</td><td>Bypass the normal safety guard.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="plugins-export" name="plugins export" summary="Export installed user plugins." description="Writes a portable manifest for installed user plugins from ~/.bakin/plugins/lock.json. Without a file, prints JSON to stdout.">
+```sh frame="terminal"
+bakin plugins export [file]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[file]</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="plugins-import" name="plugins import" summary="Import an exported plugin set." description="Installs every plugin in an exported manifest. GitHub plugins are pinned to the recorded commit SHA when present; linked dev plugins are restored as dev installs when their local source path exists.">
+```sh frame="terminal"
+bakin plugins import <file> [--yes] [--force]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;file&gt;</code></td><td>argument</td><td>yes</td><td>Required value.</td></tr>
+      <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
+      <tr><td><code>[--force]</code></td><td>option</td><td>no</td><td>Bypass the normal safety guard.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="plugins-upgrade" name="plugins upgrade" summary="Upgrade a user plugin." description="Re-pulls a user plugin from its source and rebuilds. --yes skips the consent prompt.">
+```sh frame="terminal"
+bakin plugins upgrade <id> [--yes]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+      <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="plugins-remove" name="plugins remove" summary="Remove a plugin." description="Removes an installed non-core plugin.">
+```sh frame="terminal"
+bakin plugins remove <id>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="plugins-scaffold" name="plugins scaffold" summary="Create a plugin scaffold." description="Creates a starter plugin source tree.">
+```sh frame="terminal"
+bakin plugins scaffold <name>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;name&gt;</code></td><td>argument</td><td>yes</td><td>Name to create.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="plugins-link" name="plugins link" summary="Symlink a local plugin source tree for dev mode." description="Registers a local source tree as a developer-mode plugin via a symlink at ~/.bakin/plugins/&lt;id&gt;/. Used with the hot-reload coordinator. --force overrides id collisions with copied installs or core plugins, but already-linked plugins must be unlinked first.">
+```sh frame="terminal"
+bakin plugins link <localPath> [--force]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;localPath&gt;</code></td><td>argument</td><td>yes</td><td>Local filesystem path.</td></tr>
+      <tr><td><code>[--force]</code></td><td>option</td><td>no</td><td>Bypass the normal safety guard.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="plugins-unlink" name="plugins unlink" summary="Remove a linked plugin symlink." description="Removes the dev-mode symlink and lockfile entry. Refuses installed (non-linked) plugins — use `bakin plugins remove` for those.">
+```sh frame="terminal"
+bakin plugins unlink <id>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+</div>
+
+## Schedule
+
+<p class="cli-section-description">Use the schedule command to list and manage recurring jobs that create tasks automatically on a configured cadence.</p>
+
+<div class="cli-command-list">
+<CliCommandCard id="schedule" name="schedule" summary="Manage scheduled jobs." description="Lists, creates, pauses, resumes, removes, triggers, or inspects scheduled jobs.">
+```sh frame="terminal"
+bakin schedule [list|add|pause|resume|remove|run|runs] ...
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[action]</code><span class="cli-command__choices"><span>list</span><span>add</span><span>pause</span><span>resume</span><span>remove</span><span>run</span><span>runs</span></span></td><td>choice</td><td>no</td><td>Schedule action.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+</div>
+
+## Search
+
+<p class="cli-section-description">Search commands query indexed Bakin content, report index health, and rebuild indexes after adapter or data changes.</p>
+
+<div class="cli-command-list">
+<CliCommandCard id="reindex" name="reindex" summary="Reindex content." description="Triggers content indexing through the search adapter.">
+```sh frame="terminal"
+bakin reindex [--table=<name>] [--rebuild]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--table=&lt;name&gt;]</code></td><td>option</td><td>no</td><td>Optional flag with a value.</td></tr>
+      <tr><td><code>[--rebuild]</code></td><td>option</td><td>no</td><td>Drop and rebuild indexes.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="search" name="search" summary="Search indexed content." description="Searches indexed Bakin content.">
+```sh frame="terminal"
+bakin search <query> [--table=<name>] [--agent=<id>] [--limit=<n>] [--facets=<list>]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;query&gt;</code></td><td>argument</td><td>yes</td><td>Search query.</td></tr>
+      <tr><td><code>[--table=&lt;name&gt;]</code></td><td>option</td><td>no</td><td>Optional flag with a value.</td></tr>
+      <tr><td><code>[--agent=&lt;id&gt;]</code></td><td>option</td><td>no</td><td>Optional flag with a value.</td></tr>
+      <tr><td><code>[--limit=&lt;n&gt;]</code></td><td>option</td><td>no</td><td>Optional flag with a value.</td></tr>
+      <tr><td><code>[--facets=&lt;list&gt;]</code></td><td>option</td><td>no</td><td>Optional flag with a value.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="search-stats" name="search:stats" summary="Show search index stats." description="Prints registered search table/index health and counts.">
+```sh frame="terminal"
+bakin search:stats
+```
+</CliCommandCard>
+</div>
+
+## Settings
+
+<p class="cli-section-description">Settings commands are the scriptable path for reading, changing, and seeding local configuration values.</p>
+
+<div class="cli-command-list">
+<CliCommandCard id="settings-get" name="settings get" summary="Read settings." description="Reads all settings or one dot-notation key.">
+```sh frame="terminal"
+bakin settings get [key]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[key]</code></td><td>argument</td><td>no</td><td>Dot-notation settings key.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="settings-set" name="settings set" summary="Update a setting." description="Updates one setting using dot notation.">
+```sh frame="terminal"
+bakin settings set <key> <value>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;key&gt;</code></td><td>argument</td><td>yes</td><td>Dot-notation settings key.</td></tr>
+      <tr><td><code>&lt;value&gt;</code></td><td>argument</td><td>yes</td><td>Value to write.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="settings-init" name="settings init" summary="Seed default settings." description="Creates default settings if missing.">
+```sh frame="terminal"
+bakin settings init
+```
+</CliCommandCard>
+</div>
+
+## Task Management
+
+<p class="cli-section-description">Task commands cover the day-to-day board workflow: creating work, changing status, recording notes, expressing dependencies, and sending ready tasks to agents.</p>
+
+<div class="cli-command-list">
+<CliCommandCard id="dispatch" name="dispatch" summary="Trigger immediate task dispatch." description="Asks the running Bakin server to run the task dispatch cycle immediately.">
+```sh frame="terminal"
+bakin dispatch
+```
+</CliCommandCard>
+<CliCommandCard id="tasks-list" name="tasks list" summary="List tasks." description="Lists tasks from the task board, optionally filtered by column.">
+```sh frame="terminal"
+bakin tasks list [--column=<column>]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--column=&lt;column&gt;]</code></td><td>option</td><td>no</td><td>Optional flag with a value.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="tasks-get" name="tasks get" summary="Get task details." description="Fetches one task by id from the running server.">
+```sh frame="terminal"
+bakin tasks get <id>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="tasks-create" name="tasks create" summary="Create a task." description="Creates a task and optionally assigns an agent or workflow.">
+```sh frame="terminal"
+bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow=<reason>]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;title&gt;</code></td><td>argument</td><td>yes</td><td>Human-readable title.</td></tr>
+      <tr><td><code>[agent]</code></td><td>argument</td><td>no</td><td>Agent id to assign or target.</td></tr>
+      <tr><td><code>[--workflow=&lt;id&gt;]</code></td><td>option</td><td>no</td><td>Optional flag with a value.</td></tr>
+      <tr><td><code>[--no-workflow=&lt;reason&gt;]</code></td><td>option</td><td>no</td><td>Optional flag with a value.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="tasks-move" name="tasks move" summary="Move a task." description="Moves a task to a different board column.">
+```sh frame="terminal"
+bakin tasks move <id> <column>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+      <tr><td><code>&lt;column&gt;</code></td><td>argument</td><td>yes</td><td>Task board column.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="tasks-log" name="tasks log" summary="Log task progress." description="Adds a progress log entry to a task.">
+```sh frame="terminal"
+bakin tasks log <id> <message>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+      <tr><td><code>&lt;message&gt;</code></td><td>argument</td><td>yes</td><td>Message text.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="tasks-block" name="tasks block" summary="Block a task." description="Marks a task blocked with a reason.">
+```sh frame="terminal"
+bakin tasks block <id> <reason>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+      <tr><td><code>&lt;reason&gt;</code></td><td>argument</td><td>yes</td><td>Human-readable reason.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="tasks-depend" name="tasks depend" summary="Register a task dependency." description="Sets a task dependency relationship.">
+```sh frame="terminal"
+bakin tasks depend <id> <dependsOn>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+      <tr><td><code>&lt;dependsOn&gt;</code></td><td>argument</td><td>yes</td><td>Task id this task depends on.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="tasks-complete" name="tasks complete" summary="Complete a task." description="Marks a task complete with a completion summary.">
+```sh frame="terminal"
+bakin tasks complete <id> <summary>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+      <tr><td><code>&lt;summary&gt;</code></td><td>argument</td><td>yes</td><td>Completion summary.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+</div>
+
+## Workflows
+
+<p class="cli-section-description">Workflow commands are for guided, multi-step task execution. Use them to discover available flows, start one against a task, advance steps, and submit required inputs.</p>
+
+<div class="cli-command-list">
+<CliCommandCard id="workflows-list" name="workflows list" summary="List workflow definitions." description="Lists available workflow definitions.">
+```sh frame="terminal"
+bakin workflows list
+```
+</CliCommandCard>
+<CliCommandCard id="workflows-start" name="workflows start" summary="Start a workflow." description="Starts a workflow instance for a task.">
+```sh frame="terminal"
+bakin workflows start <taskId> <workflowId>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;taskId&gt;</code></td><td>argument</td><td>yes</td><td>Task id.</td></tr>
+      <tr><td><code>&lt;workflowId&gt;</code></td><td>argument</td><td>yes</td><td>Workflow definition id.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="workflows-step" name="workflows step" summary="Get current workflow step." description="Fetches current workflow step details for a task.">
+```sh frame="terminal"
+bakin workflows step <taskId>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;taskId&gt;</code></td><td>argument</td><td>yes</td><td>Task id.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="workflows-submit" name="workflows submit" summary="Submit workflow step output." description="Submits JSON output for a workflow step.">
+```sh frame="terminal"
+bakin workflows submit <taskId> <stepId> <json>
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;taskId&gt;</code></td><td>argument</td><td>yes</td><td>Task id.</td></tr>
+      <tr><td><code>&lt;stepId&gt;</code></td><td>argument</td><td>yes</td><td>Workflow step id.</td></tr>
+      <tr><td><code>&lt;json&gt;</code></td><td>argument</td><td>yes</td><td>JSON payload.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+</div>
+
+<aside class="generated-page-note" aria-label="Generated page metadata">
+  <span>Generated Apr 29, 2026 · Bakin 1.0.0</span>
+</aside>

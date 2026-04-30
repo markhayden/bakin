@@ -19,7 +19,7 @@ Two cards anchor the top of the dashboard side by side. They cover the questions
   <figcaption>Context usage on the left (tokens in each agent's latest session), session cost on the right with the day's running total.</figcaption>
 </figure>
 
-<div class="label-table">
+<div class="table-light-full table-label-wrap">
 
 | Card | What it answers |
 | --- | --- |
@@ -40,7 +40,7 @@ Three tabs sit below the cost cards, all feeding from the same in-memory recorde
   <figcaption>The usage panel: tool, endpoint, and agent tabs, windowed to 5m, 1h, or 24h.</figcaption>
 </figure>
 
-<div class="label-table">
+<div class="table-light-full table-label-wrap">
 
 | Tab | What it counts |
 | --- | --- |
@@ -64,7 +64,7 @@ Run it before you start the day or any time something feels off. Results cache s
 
 Live state of the Bakin process and what it's connected to:
 
-<div class="label-table">
+<div class="table-light-full table-label-wrap">
 
 | Section | What's there |
 | --- | --- |

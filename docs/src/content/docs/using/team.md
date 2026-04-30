@@ -25,6 +25,8 @@ Each agent is a card connected by reporting and team structure. Cards show name,
 
 Click an agent and their profile opens. Ten tabs across the top:
 
+<div class="table-light-fit table-label">
+
 | Tab | What's there |
 | --- | --- |
 | **Overview** | Name, role, model, current status, recent activity. |
@@ -37,6 +39,8 @@ Click an agent and their profile opens. Ten tabs across the top:
 | **Skills** | Domain-specific skill packs they've been given. |
 | **Knowledge** | Lesson toggles for the agent's knowledge pack. Flip individual lessons on or off without uninstalling. |
 | **Active Context** | What the agent is working on right now. |
+
+</div>
 
 Edits to any markdown tab save back to the runtime. Avatars upload separately and live in `~/.bakin/agents/<id>/` (UI-only, doesn't touch the runtime).
 
@@ -51,6 +55,8 @@ Two paths into the roster:
 
 Each agent in the chart carries a state badge:
 
+<div class="table-light-fit table-label">
+
 | State | Meaning |
 | --- | --- |
 | `managed` | Bakin owns the install. Came from a package, lifecycle tracked. |
@@ -58,6 +64,8 @@ Each agent in the chart carries a state badge:
 | `unmanaged` | Exists in the runtime but isn't tracked yet. |
 | `drifted` | The package shipped changes the local agent hasn't picked up. |
 | `update-available` | A newer version of the package is ready to pull. |
+
+</div>
 
 ## Where state lives
 

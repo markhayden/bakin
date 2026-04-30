@@ -301,12 +301,12 @@ const assetsPlugin: BakinPlugin = {
 
     // ─── Cross-Plugin Hooks ────────────────────────────────────────────
 
-    ctx.hooks.register('assets.validateSidecar', (d: Record<string, unknown>) => validateSidecar(d.metaPath as string))
-    ctx.hooks.register('assets.getSidecarPath', (d: Record<string, unknown>) => getSidecarPath(d.assetPath as string))
-    ctx.hooks.register('assets.createStub', (d: Record<string, unknown>) => createStub(d.assetPath as string))
-    ctx.hooks.register('assets.detectVariant', (d: Record<string, unknown>) => detectVariant(d.filename as string))
-    ctx.hooks.register('assets.getAssetTypes', () => ASSET_TYPES)
-    ctx.hooks.register('assets.pathForFilename', (d: Record<string, unknown>) => pathForFilename(d.filename as string))
+    ctx.hooks.register('assets.validateSidecar', (d: Record<string, unknown>) => validateSidecar(d.metaPath as string), { label: 'Validate sidecar metadata.', summary: 'Checks an asset sidecar JSON file and returns validation details. Use it before trusting metadata created by imports, repairs, or external tools.', hookKind: 'rpc' })
+    ctx.hooks.register('assets.getSidecarPath', (d: Record<string, unknown>) => getSidecarPath(d.assetPath as string), { label: 'Get sidecar path.', summary: 'Resolves the metadata sidecar path for a managed asset file. Use it when another plugin has an asset path and needs to read or write the matching metadata.', hookKind: 'rpc' })
+    ctx.hooks.register('assets.createStub', (d: Record<string, unknown>) => createStub(d.assetPath as string), { label: 'Create sidecar stub.', summary: 'Creates a starter sidecar for an asset file and returns the written metadata. Use it when adopting a file into Bakin-managed asset state.', hookKind: 'rpc' })
+    ctx.hooks.register('assets.detectVariant', (d: Record<string, unknown>) => detectVariant(d.filename as string), { label: 'Detect asset variant.', summary: 'Infers the asset variant represented by a filename, such as before, after, or reference. Use it to keep imported assets grouped and labeled consistently.', hookKind: 'rpc' })
+    ctx.hooks.register('assets.getAssetTypes', () => ASSET_TYPES, { label: 'List asset types.', summary: 'Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories.', hookKind: 'rpc' })
+    ctx.hooks.register('assets.pathForFilename', (d: Record<string, unknown>) => pathForFilename(d.filename as string), { label: 'Resolve asset path.', summary: 'Calculates the managed asset path for a filename. Use it when a plugin needs to place or reference a file using Bakin asset storage conventions.', hookKind: 'rpc' })
 
     // Purge clipboard-source assets when a task completes (if enabled)
     ctx.hooks.register('assets.purgeClipboardForTask', async (d: Record<string, unknown>) => {
@@ -336,10 +336,10 @@ const assetsPlugin: BakinPlugin = {
         ctx.activity.log('system', `Purged ${purged} clipboard asset(s) for task ${taskId}`)
       }
       return { purged }
-    })
-    ctx.hooks.register('assets.trash.list', (d: Record<string, unknown>) => listTrash(d.assetsRoot as string))
-    ctx.hooks.register('assets.restoreAsset', (d: Record<string, unknown>) => restoreAsset(d.trashFilename as string, d.assetsRoot as string))
-    ctx.hooks.register('assets.emptyTrash', (d: Record<string, unknown>) => emptyTrash(d.assetsRoot as string))
+    }, { label: 'Purge task clipboard assets.', summary: 'Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized.', hookKind: 'rpc' })
+    ctx.hooks.register('assets.trash.list', (d: Record<string, unknown>) => listTrash(d.assetsRoot as string), { label: 'List trashed assets.', summary: 'Returns soft-deleted assets currently available for restore or permanent removal. Use it to power trash views without duplicating filesystem conventions.', hookKind: 'rpc' })
+    ctx.hooks.register('assets.restoreAsset', (d: Record<string, unknown>) => restoreAsset(d.trashFilename as string, d.assetsRoot as string), { label: 'Restore trashed asset.', summary: 'Restores one soft-deleted asset from the trash back into managed asset storage. Use it when a plugin needs undo behavior for asset deletion.', hookKind: 'rpc' })
+    ctx.hooks.register('assets.emptyTrash', (d: Record<string, unknown>) => emptyTrash(d.assetsRoot as string), { label: 'Empty asset trash.', summary: 'Permanently removes every asset currently in trash for the provided asset root. Use it for explicit cleanup actions where restore is no longer expected.', hookKind: 'rpc' })
 
     // Drain the inbox first — anything a user dropped while the watcher
     // wasn't running gets canonicalized into store/ before the index is

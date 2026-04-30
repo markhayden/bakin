@@ -1,0 +1,27 @@
+---
+type Props = {
+  id: string
+  name: string
+  summary: string
+  description: string
+}
+
+const { id, name, summary, description } = Astro.props
+---
+
+<section class="cli-command" id={id}>
+  <div class="cli-command__heading">
+    <code>{name}</code>
+    <span class="cli-command__summary">{summary}</span>
+    <a class="cli-command__anchor" href={`#${id}`} aria-label={`Link to ${name}`}>
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+      </svg>
+    </a>
+  </div>
+  <div class="cli-command__box">
+    <p class="cli-command__description">{description}</p>
+    <slot />
+  </div>
+</section>

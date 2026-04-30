@@ -1,0 +1,56 @@
+---
+type Param = {
+  name: string
+  type: string
+  required: boolean
+  description?: string
+}
+
+type Props = {
+  id: string
+  name: string
+  label?: string
+  description?: string
+  source: string
+  parameters?: Param[]
+}
+
+const { id, name, label, description, source, parameters = [] } = Astro.props
+---
+
+<section class="mcp-tool" id={id}>
+  <div class="mcp-tool__heading">
+    <code>{name}</code>
+    {label && <span class="mcp-tool__label">{label}</span>}
+    <a class="mcp-tool__anchor" href={`#${id}`} aria-label={`Link to ${name}`}>
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+      </svg>
+    </a>
+  </div>
+  <div class="mcp-tool__box">
+    {description && <p class="mcp-tool__description">{description}</p>}
+    <slot />
+    {parameters.length > 0 && (
+      <table class="mcp-tool__params">
+        <thead>
+          <tr><th>Parameter</th><th>Type</th><th>Required</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          {parameters.map((param) => (
+            <tr>
+              <td><code>{param.name}</code></td>
+              <td>{param.type}</td>
+              <td>{param.required ? 'yes' : 'no'}</td>
+              <td>{param.description ?? ''}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )}
+    <div class="mcp-tool__meta">
+      <code>{source}</code>
+    </div>
+  </div>
+</section>

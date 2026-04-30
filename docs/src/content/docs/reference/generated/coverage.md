@@ -39,7 +39,5 @@ The current generated docs distinguish active structured metadata from audited s
 - SDK exports need complete TSDoc and stability annotations
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated from <code>scripts/docs/generate.ts</code>.</span>
-  <span>Bakin 1.0.0.</span>
-  <span>Maintainer-only launch coverage and CI comparison output.</span>
+  <span>Generated Apr 29, 2026 · Bakin 1.0.0</span>
 </aside>
