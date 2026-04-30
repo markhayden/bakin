@@ -299,7 +299,7 @@ describe('Health Plugin Routes', () => {
         searchParams: { kind: 'bogus', window: '1h' },
       })
       expect(status).toBe(400)
-      expect(body.error).toBe('Invalid query')
+      expect(body.error).toBe('invalid input')
     })
 
     it('rejects invalid window with 400', async () => {
