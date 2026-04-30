@@ -3,12 +3,20 @@
  * Bakin CLI — command-line interface for Bakin orchestration platform.
  * All commands are thin wrappers around the Bakin HTTP API.
  */
+import { readFileSync, writeFileSync } from 'node:fs'
 import {
   cmdScheduleList, cmdScheduleAdd, cmdSchedulePause,
   cmdScheduleResume, cmdScheduleRemove, cmdScheduleRun, cmdScheduleRuns,
 } from '../src/cli/schedule'
 import { renderCliUsage } from '../src/core/cli/registry'
 import { parsePluginInstallArgs, PLUGIN_INSTALL_USAGE } from '../src/core/cli/plugin-install-args'
+import {
+  createPluginExportManifest,
+  installPluginExportManifest,
+  parsePluginExportManifest,
+  serializePluginExportManifest,
+  type PluginImportInstallRequest,
+} from '../src/core/plugins/import-export'
 
 const BASE_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 
@@ -273,6 +281,77 @@ async function cmdPluginsInstall(source: string, opts: { yes?: boolean; dev?: bo
   } else {
     print(result)
   }
+}
+
+async function cmdPluginsExport(file?: string): Promise<void> {
+  const manifest = createPluginExportManifest()
+  const content = serializePluginExportManifest(manifest)
+  if (file) {
+    writeFileSync(file, content, 'utf-8')
+    console.log(`Exported ${manifest.plugins.length} plugin(s) to ${file}`)
+  } else {
+    process.stdout.write(content)
+  }
+}
+
+async function installImportedPluginLegacy(
+  request: PluginImportInstallRequest,
+  opts: { yes: boolean; force: boolean },
+): Promise<void> {
+  console.log(`Installing ${request.id} from ${request.source}${request.ref ? ` @ ${request.ref.slice(0, 12)}` : ''}`)
+  let result = await apiPost('/api/plugins/install', {
+    source: request.source,
+    type: request.type,
+    ref: request.ref,
+    accepted: false,
+    dev: request.dev,
+    force: opts.force,
+  }) as {
+    error?: string
+    awaitingConsent?: boolean
+    consentToken?: string
+    message?: string
+    id?: string
+  }
+  if (result.error) throw new Error(result.error)
+
+  for (let attempt = 0; attempt < 3 && result.awaitingConsent; attempt++) {
+    if (!opts.yes) {
+      throw new Error(`plugin "${request.id}" requires permission consent; rerun with --yes or install it directly`)
+    }
+    result = await apiPost('/api/plugins/install', {
+      source: request.source,
+      type: request.type,
+      ref: request.ref,
+      accepted: true,
+      consentToken: result.consentToken,
+      dev: request.dev,
+      force: opts.force,
+    }) as typeof result
+    if (result.error) throw new Error(result.error)
+  }
+
+  if (result.awaitingConsent) {
+    throw new Error(`plugin "${request.id}" manifest kept changing between preflight and commit`)
+  }
+  console.log(result.message ?? `Installed "${result.id ?? request.id}".`)
+}
+
+async function cmdPluginsImport(file: string, opts: { yes: boolean; force: boolean }): Promise<void> {
+  const manifest = parsePluginExportManifest(readFileSync(file, 'utf-8'))
+  const result = await installPluginExportManifest(
+    manifest,
+    request => installImportedPluginLegacy(request, opts),
+  )
+  if (result.ok) {
+    console.log(`Imported ${result.installed.length} plugin(s).`)
+    return
+  }
+  console.error(`Import failed after installing ${result.installed.length} plugin(s).`)
+  for (const failure of result.failed) {
+    console.error(`  ${failure.id}: ${failure.error}`)
+  }
+  process.exit(1)
 }
 
 async function cmdPluginsRemove(pluginId: string): Promise<void> {
@@ -1649,6 +1728,25 @@ export async function main(): Promise<void> {
             force: parsed.force,
             ref: parsed.ref,
           })
+        } else if (sub === 'export') {
+          if (args[2]?.startsWith('--')) { console.error('Usage: bakin plugins export [file]'); process.exit(1) }
+          await cmdPluginsExport(args[2])
+        } else if (sub === 'import') {
+          if (!args[2]) { console.error('Usage: bakin plugins import <file> [--yes] [--force]'); process.exit(1) }
+          const flags = args.slice(3)
+          const extraArg = flags.find(arg => !arg.startsWith('--'))
+          if (extraArg) {
+            console.error(`Unexpected plugins import argument: ${extraArg}`)
+            console.error('Usage: bakin plugins import <file> [--yes] [--force]')
+            process.exit(1)
+          }
+          const unknown = flags.find(arg => arg.startsWith('--') && arg !== '--yes' && arg !== '--force')
+          if (unknown) {
+            console.error(`Unknown plugins import flag: ${unknown}`)
+            console.error('Usage: bakin plugins import <file> [--yes] [--force]')
+            process.exit(1)
+          }
+          await cmdPluginsImport(args[2], { yes: flags.includes('--yes'), force: flags.includes('--force') })
         } else if (sub === 'remove') {
           if (!args[2]) { console.error('Usage: bakin plugins remove <id>'); process.exit(1) }
           await cmdPluginsRemove(args[2])
