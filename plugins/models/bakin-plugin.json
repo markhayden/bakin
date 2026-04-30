@@ -28,12 +28,12 @@
       {
         "method": "GET",
         "path": "/aliases",
-        "summary": "GET /aliases"
+        "summary": "List model aliases"
       },
       {
         "method": "POST",
         "path": "/aliases",
-        "summary": "POST /aliases"
+        "summary": "Create or update a model alias"
       },
       {
         "method": "GET",
@@ -43,22 +43,22 @@
       {
         "method": "GET",
         "path": "/config",
-        "summary": "GET /config"
+        "summary": "Get effective agent model configuration"
       },
       {
         "method": "POST",
         "path": "/config",
-        "summary": "POST /config"
+        "summary": "Update agent model configuration"
       },
       {
         "method": "POST",
         "path": "/defaults",
-        "summary": "POST /defaults"
+        "summary": "Update default model selections"
       },
       {
         "method": "GET",
         "path": "/profiles",
-        "summary": "GET /profiles"
+        "summary": "List model task profiles"
       },
       {
         "method": "PUT",

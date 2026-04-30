@@ -128,6 +128,10 @@ Source: `packages/sdk/src/types/index.ts`
 | `export type RuntimeCapability =` |
 | `export interface PluginEntryPoints {` |
 | `export interface ApiRouteContribution {` |
+| `export type JsonSchemaContribution = Record<string, unknown>` |
+| `export interface ApiParameterContribution {` |
+| `export interface ApiRequestBodyContribution {` |
+| `export interface ApiResponseContribution {` |
 | `export interface ClientRouteContribution {` |
 | `export interface ExecToolContribution {` |
 | `export interface CliCommandContribution {` |
@@ -250,5 +254,5 @@ Source: `packages/sdk/src/metadata/index.ts`
 | `export const definePluginRoute = defineApiRoute` |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Apr 29, 2026 · Bakin 1.0.0</span>
+  <span>Generated Apr 30, 2026 · Bakin 1.0.0</span>
 </aside>

@@ -105,7 +105,7 @@ Any plugin can register a health check that surfaces here alongside the built-in
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
-HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-health).
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#health).
 
 <div class="for-agents">
 

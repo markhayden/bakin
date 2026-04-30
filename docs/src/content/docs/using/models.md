@@ -78,7 +78,7 @@ The runtime owns the actual model assignment (it's what gets sent to the gateway
 </div>
 <!-- /docs:settings -->
 
-HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-models).
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#models).
 
 <div class="for-agents">
 

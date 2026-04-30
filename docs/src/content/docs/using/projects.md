@@ -84,7 +84,7 @@ Projects index into search (table `bakin_projects`) on `title` and `body`, facet
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
-HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-projects).
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#projects).
 
 <div class="for-agents">
 

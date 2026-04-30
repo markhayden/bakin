@@ -106,7 +106,7 @@ Everything else (soul, identity, rules, tools, skills, sessions) lives in the ru
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
-HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-team).
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#team).
 
 <div class="for-agents">
 

@@ -1,0 +1,319 @@
+---
+import { readFileSync } from 'node:fs'
+
+type OpenApiSpec = {
+  openapi: string
+  info: { title: string; version: string; description?: string }
+  servers?: Array<{ url: string; description?: string }>
+  tags?: Array<{ name: string; description?: string }>
+  paths: Record<string, Record<string, OpenApiOperation>>
+}
+
+type OpenApiOperation = {
+  operationId?: string
+  tags?: string[]
+  summary?: string
+  description?: string
+  parameters?: OpenApiParameter[]
+  requestBody?: {
+    description?: string
+    required?: boolean
+    content?: Record<string, { schema?: unknown; example?: unknown }>
+  }
+  responses?: Record<string, {
+    description?: string
+    content?: Record<string, { schema?: unknown; example?: unknown }>
+  }>
+  security?: Array<Record<string, string[]>>
+  'x-bakin-visibility'?: string
+  'x-bakin-stability'?: string
+}
+
+type OpenApiParameter = {
+  name: string
+  in: string
+  required?: boolean
+  description?: string
+  schema?: unknown
+  example?: unknown
+}
+
+type OperationView = {
+  id: string
+  method: string
+  path: string
+  tag: string
+  summary: string
+  description?: string
+  parameters: OpenApiParameter[]
+  requestBody?: OpenApiOperation['requestBody']
+  responses: NonNullable<OpenApiOperation['responses']>
+  permissions: string[]
+  visibility: string
+  stability: string
+}
+
+function slug(value: string): string {
+  return value
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase()
+}
+
+function methodRank(method: string): number {
+  return ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'HEAD'].indexOf(method)
+}
+
+function displayPath(path: string): string {
+  return path.replace(/\{([^}]+)\}/g, ':$1')
+}
+
+function firstContent(content?: Record<string, { schema?: unknown; example?: unknown }>): { contentType: string; schema?: unknown; example?: unknown } | undefined {
+  if (!content) return undefined
+  const [contentType, value] = Object.entries(content)[0] ?? []
+  if (!contentType || !value) return undefined
+  return { contentType, ...value }
+}
+
+function schemaPreview(schema: unknown): string {
+  return JSON.stringify(schema ?? { type: 'object', additionalProperties: true }, null, 2)
+}
+
+function payloadPreview(content: { schema?: unknown; example?: unknown }): unknown {
+  return content.example !== undefined ? content.example : content.schema
+}
+
+function isGenericObjectSchema(schema: unknown): boolean {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return false
+  const record = schema as Record<string, unknown>
+  const properties = record.properties
+  return record.type === 'object' &&
+    record.additionalProperties === true &&
+    (!properties || (typeof properties === 'object' && !Array.isArray(properties) && Object.keys(properties).length === 0))
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function highlightedJson(schema: unknown): string {
+  return escapeHtml(schemaPreview(schema))
+    .replace(/(&quot;[^&]*?&quot;)(\s*:)/g, '<span class="api-json__key">$1</span>$2')
+    .replace(/(:\s*)(&quot;[^&]*?&quot;)/g, '$1<span class="api-json__string">$2</span>')
+    .replace(/\b(true|false|null)\b/g, '<span class="api-json__literal">$1</span>')
+    .replace(/\b(-?\d+(?:\.\d+)?)\b/g, '<span class="api-json__number">$1</span>')
+}
+
+function responseTone(status: string): string {
+  if (status.startsWith('2')) return 'success'
+  if (status.startsWith('4')) return 'client-error'
+  if (status.startsWith('5') || status === 'default') return 'server-error'
+  return 'neutral'
+}
+
+const specPath = new URL('../../public/openapi.json', import.meta.url)
+const spec = JSON.parse(readFileSync(specPath, 'utf8')) as OpenApiSpec
+const tagDescriptions = new Map((spec.tags ?? []).map(tag => [tag.name, tag.description]))
+const operations: OperationView[] = []
+
+for (const [path, methods] of Object.entries(spec.paths)) {
+  for (const [methodKey, operation] of Object.entries(methods)) {
+    const method = methodKey.toUpperCase()
+    const tag = operation.tags?.[0] ?? 'Other'
+    operations.push({
+      id: operation.operationId ?? slug(`${method}-${path}`),
+      method,
+      path,
+      tag,
+      summary: operation.summary ?? `${method} ${path}`,
+      description: operation.description,
+      parameters: operation.parameters ?? [],
+      requestBody: operation.requestBody,
+      responses: operation.responses ?? {},
+      permissions: (operation.security ?? []).flatMap(entry => Object.values(entry)).flat(),
+      visibility: operation['x-bakin-visibility'] ?? 'public',
+      stability: operation['x-bakin-stability'] ?? 'stable',
+    })
+  }
+}
+
+operations.sort((a, b) =>
+  (a.tag === 'Core' ? '00 Core' : `10 ${a.tag}`).localeCompare(b.tag === 'Core' ? '00 Core' : `10 ${b.tag}`) ||
+  a.path.localeCompare(b.path) ||
+  methodRank(a.method) - methodRank(b.method),
+)
+
+const groups = new Map<string, OperationView[]>()
+for (const operation of operations) {
+  const existing = groups.get(operation.tag) ?? []
+  existing.push(operation)
+  groups.set(operation.tag, existing)
+}
+
+const serverUrl = spec.servers?.[0]?.url ?? 'http://localhost:3737'
+const { tag: selectedTag, operationId, intro = false, summary = false } = Astro.props as { tag?: string; operationId?: string; intro?: boolean; summary?: boolean }
+const visibleGroups = selectedTag
+  ? [...groups.entries()].filter(([tag]) => tag === selectedTag)
+  : [...groups.entries()]
+const selectedOperation = operationId ? operations.find(operation => operation.id === operationId) : undefined
+---
+
+{intro && (
+  <div class="api-reference-intro">
+    <p>{spec.info.description ?? 'Generated HTTP API reference for Bakin core and official plugin routes.'}</p>
+    <div class="api-reference-meta">
+      <span>OpenAPI {spec.openapi}</span>
+      <span>Base URL <code>{serverUrl}</code></span>
+      <a href="/docs/openapi.json">OpenAPI JSON</a>
+    </div>
+  </div>
+)}
+
+{summary && visibleGroups.map(([tag, tagOperations]) => (
+  <div class="api-group-summary">
+    <div class="api-group__count">{tagOperations.length} endpoint{tagOperations.length === 1 ? '' : 's'}</div>
+    {tagDescriptions.get(tag) && <p class="api-group__description">{tagDescriptions.get(tag)}</p>}
+  </div>
+))}
+
+{selectedOperation && (
+  <div class="api-operation-list">
+    {[selectedOperation].map(operation => {
+          const requestContent = firstContent(operation.requestBody?.content)
+          const responseEntries = Object.entries(operation.responses)
+          return (
+            <article class="api-operation" id={operation.id}>
+              <header class="api-operation__header">
+                <div>
+                  <p class="api-operation__eyebrow">
+                    <span class={`api-method api-method--${operation.method.toLowerCase()}`}>{operation.method}</span>
+                    <code>{displayPath(operation.path)}</code>
+                  </p>
+                  <h3>{operation.summary}</h3>
+                </div>
+                <a class="api-operation__anchor" href={`#${operation.id}`} aria-label={`Link to ${operation.summary}`}>#</a>
+              </header>
+              {operation.description && <p class="api-operation__description">{operation.description}</p>}
+              <table class="api-meta-table">
+                <tbody>
+                  <tr><th>Operation</th><td><code>{operation.id}</code></td></tr>
+                  <tr><th>Stability</th><td><code>{operation.stability}</code></td></tr>
+                  <tr><th>Visibility</th><td><code>{operation.visibility}</code></td></tr>
+                  {operation.permissions.length > 0 && (
+                    <tr>
+                      <th>Permissions</th>
+                      <td class="api-operation__chips">{operation.permissions.map(permission => <code>{permission}</code>)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+
+              {operation.parameters.length > 0 && (
+                <section class="api-operation__section">
+                  <h4>Parameters</h4>
+                  <table class="api-parameters-table">
+                    <thead><tr><th>Name</th><th>In</th><th>Required</th><th>Description</th></tr></thead>
+                    <tbody>
+                      {operation.parameters.map(param => (
+                        <tr>
+                          <td><code>{param.name}</code></td>
+                          <td>{param.in}</td>
+                          <td>{param.required ? 'yes' : 'no'}</td>
+                          <td>{param.description ?? ''}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </section>
+              )}
+
+              <section class="api-operation__section api-tabs">
+                <input class="api-tabs__input" type="radio" name={`${operation.id}-schema-tabs`} id={`${operation.id}-request-tab`} checked />
+                <input class="api-tabs__input" type="radio" name={`${operation.id}-schema-tabs`} id={`${operation.id}-response-tab`} />
+                <div class="api-tabs__labels">
+                  <label for={`${operation.id}-request-tab`}>Request</label>
+                  <label for={`${operation.id}-response-tab`}>Response</label>
+                </div>
+                <div class="api-tabs__panel api-tabs__panel--request">
+                  {requestContent ? (
+                    isGenericObjectSchema(requestContent.schema) ? (
+                      <p class="api-tabs__empty">Request body schema is not documented for this route yet.</p>
+                    ) : (
+                      <pre class="api-schema"><code set:html={highlightedJson(payloadPreview(requestContent))} /></pre>
+                    )
+                  ) : (
+                    <p class="api-tabs__empty">No request body.</p>
+                  )}
+                </div>
+                <div class="api-tabs__panel api-tabs__panel--response">
+                  {responseEntries.length > 0 ? (
+                    <>
+                      {responseEntries.length > 1 && (
+                        <label class="api-response-picker">
+                          <code
+                            class="api-response-picker__status"
+                            data-api-response-status={operation.id}
+                            data-response-tone={responseTone(responseEntries[0][0])}
+                          >
+                            {responseEntries[0][0]}
+                          </code>
+                          <select data-api-response-select={operation.id}>
+                            {responseEntries.map(([status, response]) => (
+                              <option value={`${operation.id}-response-${status}`} data-response-status={status} data-response-tone={responseTone(status)}>{response.description ?? status}</option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                      {responseEntries.map(([status, response], index) => {
+                        const responseContent = firstContent(response?.content)
+                        return (
+                          <div class="api-response-panel" id={`${operation.id}-response-${status}`} hidden={index > 0}>
+                            {responseEntries.length === 1 && <p class="api-schema__caption"><code>{status}</code>{' '}{response.description ?? ''}</p>}
+                            {responseContent ? (
+                              <pre class="api-schema"><code set:html={highlightedJson(payloadPreview(responseContent))} /></pre>
+                            ) : (
+                              <p>No response schema documented.</p>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </>
+                  ) : (
+                    <p>No response schema documented.</p>
+                  )}
+                </div>
+              </section>
+
+              <section class="api-operation__section">
+                <slot />
+              </section>
+            </article>
+          )
+    })}
+  </div>
+)}
+
+<script>
+  document.addEventListener('change', event => {
+    const select = event.target instanceof HTMLSelectElement && event.target.matches('[data-api-response-select]')
+      ? event.target
+      : null
+    if (!select) return
+    const operationId = select.dataset.apiResponseSelect
+    if (!operationId) return
+    const selectedOption = select.selectedOptions[0]
+    const status = document.querySelector<HTMLElement>(`[data-api-response-status="${CSS.escape(operationId)}"]`)
+    if (status) {
+      status.textContent = selectedOption?.dataset.responseStatus ?? ''
+      status.dataset.responseTone = selectedOption?.dataset.responseTone ?? 'neutral'
+    }
+    document.querySelectorAll<HTMLElement>(`#${CSS.escape(operationId)} .api-response-panel`).forEach(panel => {
+      panel.hidden = panel.id !== select.value
+    })
+  })
+</script>

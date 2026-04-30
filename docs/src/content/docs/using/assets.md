@@ -152,7 +152,7 @@ Most asset workflows happen in the UI or through agents. Trash is CLI-friendly:
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
 
-HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#plugin-assets).
+HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#assets).
 
 <div class="for-agents">
 

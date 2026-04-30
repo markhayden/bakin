@@ -194,7 +194,41 @@ export interface ApiRouteContribution {
   method: HttpMethod
   path: string
   summary: string
+  description?: string
+  operationId?: string
+  tags?: string[]
+  visibility?: 'public' | 'internal' | 'experimental'
+  stability?: 'stable' | 'beta' | 'experimental' | 'deprecated'
+  parameters?: ApiParameterContribution[]
+  requestBody?: ApiRequestBodyContribution
+  responses?: Record<string, ApiResponseContribution>
   permissions?: string[]
+}
+
+export type JsonSchemaContribution = Record<string, unknown>
+
+export interface ApiParameterContribution {
+  name: string
+  in: 'path' | 'query' | 'header' | 'cookie'
+  required?: boolean
+  description?: string
+  schema?: JsonSchemaContribution
+  example?: unknown
+}
+
+export interface ApiRequestBodyContribution {
+  description?: string
+  required?: boolean
+  contentType?: string
+  schema?: JsonSchemaContribution
+  example?: unknown
+}
+
+export interface ApiResponseContribution {
+  description: string
+  contentType?: string
+  schema?: JsonSchemaContribution
+  example?: unknown
 }
 
 export interface ExecToolContribution {
