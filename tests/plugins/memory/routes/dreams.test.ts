@@ -178,7 +178,7 @@ describe('dreamsListRoute — handler', () => {
     const res = await dreamsListRoute.handler(
       req('/dreams', { agent: 'main', phase: 'light' }),
       h.ctx,
-      {},
+      {} as any,
     )
     const body = await res.json() as { dreams: Array<Record<string, unknown>> }
     expect(body.dreams).toHaveLength(1)
@@ -207,7 +207,7 @@ describe('dreamsListRoute — handler', () => {
     const res = await dreamsListRoute.handler(
       req('/dreams', { agent: 'main', date: '2026-04-17' }),
       h.ctx,
-      {},
+      {} as any,
     )
     const body = await res.json() as { dreams: Array<Record<string, unknown>> }
     expect(body.dreams).toHaveLength(1)
@@ -236,7 +236,7 @@ describe('dreamDetailRoute — handler', () => {
     const res = await dreamDetailRoute.handler(
       req('/dreams/main/phase_doc', { agent: 'main' }),
       ctx,
-      {},
+      {} as any,
     )
     expect(res.status).toBe(400)
   })
@@ -274,7 +274,7 @@ describe('dreamDetailRoute — handler', () => {
         date: '2026-04-17',
       }),
       h.ctx,
-      {},
+      {} as any,
     )
     const body = await res.json() as Record<string, unknown>
     expect(res.status).toBe(200)
@@ -304,7 +304,7 @@ describe('dreamDetailRoute — handler', () => {
         artifactType: 'short_term_recall',
       }),
       h.ctx,
-      {},
+      {} as any,
     )
     const body = await res.json() as Record<string, unknown>
     expect(res.status).toBe(200)
@@ -334,7 +334,7 @@ describe('dreamDetailRoute — handler', () => {
         date: '2026-04-17',
       }),
       h.ctx,
-      {},
+      {} as any,
     )
     expect(res.status).toBe(404)
   })
@@ -355,7 +355,7 @@ describe('dreamDetailRoute — handler', () => {
         date: '2026-04-17',
       }),
       h.ctx,
-      {},
+      {} as any,
     )
     expect(res.status).toBe(404)
   })

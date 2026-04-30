@@ -7,16 +7,22 @@
  * Both delegate to the runtime memory adapter. Routes never touch provider
  * files directly.
  */
+import { z } from 'zod'
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
 import type { APIRoute, PluginContext } from '@bakin/core/plugin-types'
 import { CANONICAL_DURABLE_FILES } from '../durable-kinds'
 import { getRuntimeMemoryEntry } from '../runtime-memory'
 
+const passthrough = z.object({}).passthrough()
+const errorResponse = z.object({ error: z.string() })
+
 export const durableListRoute = defineRoute({
   path: '/durable',
   method: 'GET',
+  summary: 'List canonical durable files',
   description: 'List canonical durable files present for an agent',
+  responses: { 200: z.object({ files: z.array(z.object({ name: z.string() })) }), 400: errorResponse },
   handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
@@ -33,7 +39,10 @@ export const durableListRoute = defineRoute({
 export const durableDetailRoute = defineRoute({
   path: '/durable/:agent/:basename',
   method: 'GET',
+  summary: 'Read one durable file',
   description: 'Read one canonical durable file for an agent',
+  params: z.object({ agent: z.string(), basename: z.string() }),
+  responses: { 200: passthrough, 400: errorResponse, 404: errorResponse },
   handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')

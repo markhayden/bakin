@@ -9,9 +9,13 @@
  * active runtime's own memory search in one response so the UI can compare
  * substrate behavior without naming provider internals.
  */
+import { z } from 'zod'
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
 import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
+
+const passthrough = z.object({}).passthrough()
+const errorResponse = z.object({ error: z.string() })
 import { getRuntimeMemoryEntry, listRuntimeMemoryEntries } from '../runtime-memory'
 
 const DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})([-.].*)?\.md$/
@@ -22,6 +26,8 @@ export const dailyNotesListRoute = defineRoute({
   path: '/daily-notes',
   method: 'GET',
   description: 'List daily notes for an agent (sorted by date desc)',
+  summary: 'List daily notes for an agent (sorted by date desc)',
+  responses: { 200: passthrough, 400: errorResponse },
   handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
@@ -46,6 +52,9 @@ export const dailyNotesDetailRoute = defineRoute({
   path: '/daily-notes/:agent/:filename',
   method: 'GET',
   description: 'Read one daily note',
+  summary: 'Read one daily note',
+  params: z.object({ agent: z.string(), filename: z.string() }),
+  responses: { 200: passthrough, 400: errorResponse, 404: errorResponse },
   handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
@@ -71,6 +80,8 @@ export const dailyNotesCompareSearchRoute = defineRoute({
   path: '/daily-notes/compare-search',
   method: 'POST',
   description: 'Run the same query against Bakin search and runtime memory search',
+  summary: 'Run the same query against Bakin search and runtime memory search',
+  responses: { 200: passthrough, 400: errorResponse },
   handler: async (req: Request, ctx: PluginContextLite) => {
     let body: CompareSearchBody
     try {

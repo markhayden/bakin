@@ -13,9 +13,13 @@
  * Both endpoints read from the `bakin_memory` table (tier=dream). The indexer
  * is the single source of truth — routes never re-parse files.
  */
+import { z } from 'zod'
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
 import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
+
+const passthrough = z.object({}).passthrough()
+const errorResponse = z.object({ error: z.string() })
 
 function parseLimitOffset(url: URL): { limit: number; offset: number } {
   const l = Number(url.searchParams.get('limit'))
@@ -41,6 +45,8 @@ export const dreamsListRoute = defineRoute({
   path: '/dreams',
   method: 'GET',
   description: 'List dream artifacts for an agent (optional phase/date/artifactType filters)',
+  summary: 'List dream artifacts for an agent (optional phase/date/artifactType filters)',
+  responses: { 200: passthrough, 400: errorResponse },
   handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
@@ -81,6 +87,9 @@ export const dreamDetailRoute = defineRoute({
   path: '/dreams/:agent/:artifactType',
   method: 'GET',
   description: 'Read one dream artifact by (agent, artifactType[, phase, date])',
+  summary: 'Read one dream artifact by (agent, artifactType[, phase, date])',
+  params: z.object({ agent: z.string(), artifactType: z.string() }),
+  responses: { 200: passthrough, 400: errorResponse, 404: errorResponse },
   handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent')
