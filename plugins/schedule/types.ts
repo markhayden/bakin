@@ -66,6 +66,8 @@ export interface RuntimeCronJobSnapshot {
     channel?: string
   }
   payload?: Record<string, unknown>
+  toolsAllow?: string[]
+  toolsAllowMissing?: boolean
   createdAt?: string
   updatedAt?: string
   createdAtMs?: number
@@ -102,6 +104,8 @@ export interface MergedJob {
   workflowId?: string
   taskPrompt?: string
   taskTitle?: string
+  toolsAllow?: string[]
+  toolsAllowMissing?: boolean
   paused: boolean
   pauseUntil?: string
   pauseReason?: string

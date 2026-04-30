@@ -44,6 +44,105 @@ describe('OpenClaw runtime cron adapter', () => {
     expect(typeof store.jobs[0].createdAtMs).toBe('number')
   })
 
+  it('persists toolsAllow on native isolated cron jobs and returns it from list/get', async () => {
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    await runtime.cron.create({
+      id: 'native-tools',
+      name: 'Native Tools',
+      schedule: '0 7 * * *',
+      command: 'Post the daily recipe',
+      toolsAllow: ['message', 'image_generate'],
+    })
+
+    const store = JSON.parse(readFileSync(join(testDir, 'cron', 'jobs.json'), 'utf-8'))
+    expect(store.jobs[0].payload).toEqual(expect.objectContaining({
+      kind: 'agentTurn',
+      message: 'Post the daily recipe',
+      toolsAllow: ['message', 'image_generate'],
+    }))
+
+    await expect(runtime.cron.get('native-tools')).resolves.toEqual(expect.objectContaining({
+      id: 'native-tools',
+      toolsAllow: ['message', 'image_generate'],
+    }))
+    await expect(runtime.cron.list()).resolves.toEqual([
+      expect.objectContaining({ id: 'native-tools', toolsAllow: ['message', 'image_generate'] }),
+    ])
+  })
+
+  it('updates and clears toolsAllow without dropping native cron payload fields', async () => {
+    mkdirSync(join(testDir, 'cron'), { recursive: true })
+    writeFileSync(join(testDir, 'cron', 'jobs.json'), JSON.stringify({
+      version: 1,
+      jobs: [{
+        id: 'native-update-tools',
+        name: 'Native Update Tools',
+        enabled: true,
+        schedule: { kind: 'cron', expr: '0 8 * * *' },
+        sessionTarget: 'isolated',
+        payload: {
+          kind: 'agentTurn',
+          message: 'Original native command',
+          model: 'openai/gpt-5.4',
+          toolsAllow: ['message'],
+        },
+        delivery: { mode: 'none' },
+      }],
+    }), 'utf-8')
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    await runtime.cron.update('native-update-tools', { toolsAllow: ['message', 'exec'] })
+
+    const updatedStore = JSON.parse(readFileSync(join(testDir, 'cron', 'jobs.json'), 'utf-8'))
+    expect(updatedStore.jobs[0].payload).toEqual(expect.objectContaining({
+      kind: 'agentTurn',
+      message: 'Original native command',
+      model: 'openai/gpt-5.4',
+      toolsAllow: ['message', 'exec'],
+    }))
+
+    await expect(runtime.cron.get('native-update-tools')).resolves.toEqual(expect.objectContaining({
+      toolsAllow: ['message', 'exec'],
+    }))
+
+    await runtime.cron.update('native-update-tools', { toolsAllow: null })
+
+    const clearedStore = JSON.parse(readFileSync(join(testDir, 'cron', 'jobs.json'), 'utf-8'))
+    expect(clearedStore.jobs[0].payload).toEqual(expect.objectContaining({
+      kind: 'agentTurn',
+      message: 'Original native command',
+      model: 'openai/gpt-5.4',
+    }))
+    expect(clearedStore.jobs[0].payload.toolsAllow).toBeUndefined()
+    await expect(runtime.cron.get('native-update-tools')).resolves.toEqual(expect.objectContaining({
+      toolsAllow: undefined,
+    }))
+  })
+
+  it('does not attach toolsAllow to Bakin schedule system-event cron jobs', async () => {
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    await runtime.cron.create({
+      id: 'schedule-tools',
+      name: 'Schedule Tools',
+      schedule: '0 9 * * *',
+      command: 'bakin:schedule:schedule-tools',
+      metadata: { bakinSchedule: true },
+      toolsAllow: ['message'],
+    })
+
+    const store = JSON.parse(readFileSync(join(testDir, 'cron', 'jobs.json'), 'utf-8'))
+    expect(store.jobs[0].payload).toEqual({ kind: 'systemEvent', text: 'bakin:schedule:schedule-tools' })
+    await expect(runtime.cron.get('schedule-tools')).resolves.toEqual(expect.objectContaining({
+      toolsAllow: undefined,
+    }))
+  })
+
   it('captures and restores raw cron snapshots without dropping provider-specific fields', async () => {
     mkdirSync(join(testDir, 'cron'), { recursive: true })
     writeFileSync(join(testDir, 'cron', 'jobs.json'), JSON.stringify({

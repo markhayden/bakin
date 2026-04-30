@@ -27,6 +27,8 @@ export interface ScheduleJob {
   workflowId?: string
   taskPrompt?: string
   taskTitle?: string
+  toolsAllow?: string[]
+  toolsAllowMissing?: boolean
   tz?: string
   lastTaskId?: string
   nextRun?: string

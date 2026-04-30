@@ -9,12 +9,14 @@ import type {
   ChannelInfo,
   CronJob,
   CronRun,
+  CreateCronJobInput,
   CreateRuntimeAgentInput,
   RuntimeAgent,
   RuntimeAvailableModel,
   RuntimeMetadata,
   RuntimeMemorySearchResult,
   RuntimeSkill,
+  UpdateCronJobInput,
   WorkspaceFile,
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
@@ -104,7 +106,7 @@ interface OpenClawCronStoreJob {
   sessionTarget?: string
   wakeMode?: string
   delivery?: { mode?: string; url?: string; to?: string; token?: string; channel?: string; threadId?: string; accountId?: string; bestEffort?: boolean; failureDestination?: unknown }
-  payload?: { kind?: string; message?: string; text?: string } & Record<string, unknown>
+  payload?: { kind?: string; message?: string; text?: string; toolsAllow?: string[] } & Record<string, unknown>
   failureAlert?: unknown
   state?: Record<string, unknown>
   createdAt?: string
@@ -734,7 +736,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       const job = readCronJobs().find((entry) => entry.id === id)
       return job ? cronStoreJobToRuntime(job) : null
     },
-    create: async (input: { id?: string; name: string; schedule: string; command: string; enabled?: boolean; metadata?: RuntimeMetadata }): Promise<CronJob> => {
+    create: async (input: CreateCronJobInput): Promise<CronJob> => {
       const store = readCronStore()
       const jobs = store.jobs ?? []
       const id = input.id ?? uniqueCronId(input.name, jobs)
@@ -742,6 +744,9 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       const nowMs = Date.now()
       const now = new Date(nowMs).toISOString()
       const bakinSchedule = isBakinScheduleMetadata(input.metadata)
+      const payload = bakinSchedule
+        ? { kind: 'systemEvent', text: input.command }
+        : withCronToolsAllow({ kind: 'agentTurn', message: input.command }, input.toolsAllow)
       const job: OpenClawCronStoreJob = {
         id,
         name: input.name,
@@ -750,9 +755,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         sessionTarget: bakinSchedule ? 'main' : 'isolated',
         wakeMode: 'now',
         delivery: cronDeliveryFromMetadata(input.metadata) ?? { mode: 'none' },
-        payload: bakinSchedule
-          ? { kind: 'systemEvent', text: input.command }
-          : { kind: 'agentTurn', message: input.command },
+        payload,
         createdAt: now,
         updatedAt: now,
         createdAtMs: nowMs,
@@ -763,7 +766,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       writeCronStore({ ...store, jobs: [...jobs, job] })
       return cronStoreJobToRuntime(job)
     },
-    update: async (id: string, patch: { name?: string; schedule?: string; command?: string; enabled?: boolean; metadata?: RuntimeMetadata }): Promise<CronJob> => {
+    update: async (id: string, patch: UpdateCronJobInput): Promise<CronJob> => {
       const store = readCronStore()
       const jobs = store.jobs ?? []
       const index = jobs.findIndex((job) => job.id === id)
@@ -773,6 +776,9 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       const bakinSchedule = isBakinScheduleMetadata(metadata)
       const command = patch.command ?? cronStoreJobToRuntime(current).command
       const nowMs = Date.now()
+      const payload = bakinSchedule || patch.command !== undefined || patch.toolsAllow !== undefined
+        ? withCronToolsAllow(cronPayloadForCommand(command, current.payload, bakinSchedule), patch.toolsAllow)
+        : current.payload
       const next: OpenClawCronStoreJob = {
         ...current,
         name: patch.name ?? current.name,
@@ -783,9 +789,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         delivery: bakinSchedule
           ? { mode: 'none' }
           : patch.metadata ? cronDeliveryFromMetadata(patch.metadata) ?? current.delivery ?? { mode: 'none' } : current.delivery,
-        payload: bakinSchedule || patch.command !== undefined
-          ? cronPayloadForCommand(command, current.payload, bakinSchedule)
-          : current.payload,
+        payload,
         metadata,
         updatedAt: new Date(nowMs).toISOString(),
         updatedAtMs: nowMs,
@@ -1212,6 +1216,7 @@ function cronStoreJobToRuntime(job: OpenClawCronStoreJob): CronJob {
         ? job.payload.text
         : '',
     enabled: job.enabled ?? true,
+    toolsAllow: normalizeCronToolsAllow(job.payload?.toolsAllow),
     metadata: job.metadata,
   }
 }
@@ -1234,6 +1239,32 @@ function cronPayloadForCommand(
     return { kind: 'systemEvent', text: command }
   }
   return { ...(current ?? {}), kind: 'agentTurn', message: command }
+}
+
+function withCronToolsAllow(
+  payload: OpenClawCronStoreJob['payload'],
+  toolsAllow: string[] | null | undefined,
+): OpenClawCronStoreJob['payload'] {
+  if (payload?.kind !== 'agentTurn' || toolsAllow === undefined) return payload
+  const next = { ...payload }
+  const normalized = normalizeCronToolsAllow(toolsAllow)
+  if (normalized) next.toolsAllow = normalized
+  else delete next.toolsAllow
+  return next
+}
+
+function normalizeCronToolsAllow(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const seen = new Set<string>()
+  const tools: string[] = []
+  for (const entry of value) {
+    if (typeof entry !== 'string') continue
+    const tool = entry.trim()
+    if (!tool || seen.has(tool)) continue
+    seen.add(tool)
+    tools.push(tool)
+  }
+  return tools.length > 0 ? tools : undefined
 }
 
 function cronScheduleToString(schedule: OpenClawCronStoreJob['schedule']): string {

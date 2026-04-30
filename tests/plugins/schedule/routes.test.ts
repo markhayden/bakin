@@ -84,6 +84,7 @@ function mergedJobToCronJob(job: MergedJob): CronJob {
     schedule: job.schedule.value,
     command: job.taskPrompt || job.taskTitle || `bakin:schedule:${job.displayName || job.name || job.id}`,
     enabled: job.enabled,
+    toolsAllow: job.toolsAllow,
     metadata: { tz: job.tz, createdAt: job.createdAt },
   }
 }
@@ -148,7 +149,11 @@ const mockCronUpdate = mock(async (id: string, patch: UpdateCronJobInput): Promi
   const current = index === -1
     ? { id, name: id, schedule: '* * * * *', command: '', enabled: true }
     : mockRuntimeCronJobs[index]
-  const next = { ...current, ...patch }
+  const next = {
+    ...current,
+    ...patch,
+    toolsAllow: patch.toolsAllow === null ? undefined : patch.toolsAllow ?? current.toolsAllow,
+  }
   if (index === -1) mockRuntimeCronJobs.push(next)
   else mockRuntimeCronJobs[index] = next
   return next
@@ -178,6 +183,7 @@ const mockCronRestoreRaw = mock(async (id: string, snapshot: unknown): Promise<C
     schedule: raw.schedule ?? '* * * * *',
     command: raw.command ?? '',
     enabled: raw.enabled ?? true,
+    toolsAllow: raw.toolsAllow,
     metadata: raw.metadata,
   }
   const index = mockRuntimeCronJobs.findIndex(job => job.id === id)
@@ -370,6 +376,30 @@ describe('schedule routes', () => {
       expect(jobs).toHaveLength(2)
       expect(jobs[0].cron).toBe('0 9 * * *')
       expect(jobs[1].cron).toBeUndefined() // 'every' type has no cron field
+    })
+
+    it('returns cron tool allowlist audit fields for runtime jobs', async () => {
+      mockMergedJobs.push(makeMergedJob({
+        id: 'native-tools',
+        isBakinJob: false,
+        source: 'runtime',
+        toolsAllow: ['message'],
+        toolsAllowMissing: false,
+      }), makeMergedJob({
+        id: 'native-missing-tools',
+        isBakinJob: false,
+        source: 'runtime',
+        toolsAllowMissing: true,
+      }))
+
+      const route = findRoute(plugin.routes, 'GET', '/')!
+      const { status, body } = await callRoute(route, plugin.ctx)
+
+      expect(status).toBe(200)
+      const jobs = body.jobs as Array<Record<string, unknown>>
+      expect(jobs.find(job => job.id === 'native-tools')?.toolsAllow).toEqual(['message'])
+      expect(jobs.find(job => job.id === 'native-tools')?.toolsAllowMissing).toBe(false)
+      expect(jobs.find(job => job.id === 'native-missing-tools')?.toolsAllowMissing).toBe(true)
     })
   })
 
@@ -1116,6 +1146,27 @@ describe('schedule exec tools', () => {
         isBakinJob: true,
         lastTaskId: 'task-99',
       })
+    })
+
+    it('includes cron tool allowlist audit fields when present', async () => {
+      mockMergedJobs.push(makeMergedJob({
+        id: 'native-tools',
+        displayName: 'Native Tools',
+        isBakinJob: false,
+        toolsAllow: ['message'],
+      }), makeMergedJob({
+        id: 'native-missing-tools',
+        displayName: 'Native Missing Tools',
+        isBakinJob: false,
+        toolsAllowMissing: true,
+      }))
+
+      const tool = findTool(plugin.execTools, 'bakin_exec_schedule_list')!
+      const result = await callTool(tool, {})
+
+      const jobs = result.jobs as Array<Record<string, unknown>>
+      expect(jobs.find(job => job.id === 'native-tools')?.toolsAllow).toEqual(['message'])
+      expect(jobs.find(job => job.id === 'native-missing-tools')?.toolsAllowMissing).toBe(true)
     })
   })
 
