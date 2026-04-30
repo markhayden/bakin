@@ -102,6 +102,14 @@ export interface BakinSettings {
     restMinSamples: number
     restAlertCooldownMs: number
   }
+  restartRecovery: {
+    /**
+     * One-shot startup repair for in-progress tasks whose active agent
+     * heartbeat is missing/stale after a server restart. Uses the same
+     * maxAutoRecoveries cap as the watchdog.
+     */
+    enabled: boolean
+  }
   sse: {
     maxClients: number
     keepAliveMs: number
@@ -203,6 +211,9 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     restErrorThreshold: 0.5,
     restMinSamples: 3,
     restAlertCooldownMs: 5 * 60 * 1000,
+  },
+  restartRecovery: {
+    enabled: true,
   },
   sse: {
     maxClients: 50,

@@ -925,6 +925,16 @@ Approve a human gate step
 Reject a gate step, rewinds workflow
 
 
+### `GET /api/plugins/workflows/gates/:taskId/decision`
+
+Render a durable Bakin gate approval fallback page
+
+
+### `POST /api/plugins/workflows/gates/:taskId/decision`
+
+Approve or reject a gate through the durable Bakin approval fallback page
+
+
 ### `GET /api/plugins/workflows/gates/pending`
 
 List all gates awaiting approval
