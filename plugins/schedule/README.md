@@ -50,6 +50,7 @@ The UI always works with "merged jobs" — a combination of runtime cron data an
 | Source | Fields |
 |--------|--------|
 | Runtime cron | `id`, `name`, `schedule` (type/value/tz), `enabled` |
+| Runtime cron policy | `toolsAllow`, `toolsAllowMissing` |
 | Sidecar | `source`, `agentId`, `owner`, `taskPrompt`, `taskTitle`, `workflowId`, `paused`, `pauseUntil`, `pauseReason`, `allowOverlap`, `maxFailures`, `consecutiveFailures`, `processedRunIds`, `originalRuntimeCron`, `createdAt` |
 | Computed | `humanSchedule`, `nextRun`, `lastRun` |
 
@@ -80,6 +81,8 @@ Calendar views respect each job's `createdAt` date — jobs don't render on days
 
 - **Job detail** (`job-drawer.tsx`): Shows job config, run history, pause controls. Actions menu (duplicate, delete) via `BakinDrawer` actions prop.
 - **Job form** (`job-form.tsx`): Create/edit/duplicate form with schedule input, agent select, advanced options (workflow, title template, overlap, max failures).
+
+Native or legacy runtime cron jobs can carry a runtime tool allowlist. When the runtime adapter reports `toolsAllow`, Schedule shows it in the detail drawer. When a non-Bakin runtime timer has no allowlist, Schedule marks it with a missing cron-tools warning so the operator can decide whether to repair the native cron policy.
 
 ### Schedule Input
 
@@ -145,6 +148,20 @@ When the reconciler or bridge processes a successful runtime run, the shared tas
 6. **Overlap?** — If `allowOverlap: false`, skip if the previous task is still active (todo/inProgress/review/blocked)
 7. **Track outcomes** — Check if last task succeeded (done/archived) or failed (blocked) to update failure counter
 8. **Create task** — Title from template, assign agent (unless `requireTriage`), attach workflow
+
+## Runtime Cron Tool Allowlists
+
+OpenClaw supports per-cron tool policy on native isolated agent-turn jobs through `payload.toolsAllow` (`openclaw cron add/edit --tools`). The OpenClaw runtime adapter maps that field to `CronJob.toolsAllow` so Schedule can display and audit it without shelling out to the provider CLI.
+
+Bakin-owned schedules are different: runtime cron acts as a timer and Bakin creates tasks after successful runs are reconciled. Those jobs do not rely on cron `toolsAllow` for the eventual task's MCP permissions. Hard scoping of `bakin_exec_*` MCP tools is a separate Bakin routing-layer concern tracked outside this plugin.
+
+Common native cron examples:
+
+| Job shape | Typical allowlist |
+|-----------|-------------------|
+| Posting-only reminder | `message` |
+| Script runner | `exec` |
+| Content/image job | `message,image_generate` when both are required |
 
 ## Settings
 

@@ -135,6 +135,7 @@ export function createMockRuntimeAdapter(
         schedule: input.schedule,
         command: input.command,
         enabled: input.enabled ?? true,
+        toolsAllow: input.toolsAllow,
         metadata: input.metadata,
       }),
       update: async (id, patch) => ({
@@ -143,6 +144,7 @@ export function createMockRuntimeAdapter(
         schedule: patch.schedule ?? '* * * * *',
         command: patch.command ?? '',
         enabled: patch.enabled ?? true,
+        toolsAllow: patch.toolsAllow === null ? undefined : patch.toolsAllow,
         metadata: patch.metadata,
       }),
       remove: async () => {},
@@ -166,6 +168,7 @@ export function createMockRuntimeAdapter(
           schedule: string | { expr?: string; value?: string }
           command: string
           payload: { message?: string; text?: string }
+          toolsAllow: string[]
           enabled: boolean
           metadata: Record<string, unknown>
         }> : {}
@@ -178,6 +181,7 @@ export function createMockRuntimeAdapter(
           schedule,
           command: raw.command ?? raw.payload?.message ?? raw.payload?.text ?? '',
           enabled: raw.enabled ?? true,
+          toolsAllow: raw.toolsAllow,
           metadata: raw.metadata,
         }
       },
