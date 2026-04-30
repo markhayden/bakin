@@ -145,7 +145,23 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "properties": {
+                  "agent": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "ts": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "agent",
+                  "message",
+                  "ts"
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -251,7 +267,18 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "properties": {
+                  "keepBlocks": {
+                    "type": "boolean"
+                  },
+                  "deleteAgent": {
+                    "type": "boolean"
+                  },
+                  "force": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
               }
             }
           }
@@ -375,7 +402,15 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled"
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -439,7 +474,12 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "properties": {
+                  "refreshTemplate": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
               }
             }
           }
@@ -493,7 +533,21 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "properties": {
+                  "source": {
+                    "type": "string"
+                  },
+                  "adopt": {
+                    "type": "boolean"
+                  },
+                  "installAs": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "source"
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -651,7 +705,15 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "properties": {
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "message"
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -893,7 +955,15 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "properties": {
+                  "agentId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "agentId"
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -1041,7 +1111,15 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "properties": {
+                  "agentId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "agentId"
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -1095,7 +1173,15 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "properties": {
+                  "agentId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "agentId"
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -1285,7 +1371,20 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "type",
+                  "payload"
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -1581,7 +1680,19 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "properties": {
+                  "completedTaskId": {
+                    "type": "string"
+                  },
+                  "completedTitle": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "completedTaskId",
+                  "completedTitle"
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -1635,7 +1746,24 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "decision",
+                      "learned",
+                      "note"
+                    ]
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "type",
+                  "message"
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -1847,7 +1975,15 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "properties": {
+                  "source": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "source"
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -2159,7 +2295,23 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "properties": {
+                  "source": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "local",
+                      "github"
+                    ]
+                  }
+                },
+                "required": [
+                  "source",
+                  "type"
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -2213,7 +2365,15 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -2392,7 +2552,15 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId"
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -2446,7 +2614,15 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId"
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -2500,7 +2676,15 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "pluginId"
+                ],
+                "additionalProperties": false
               }
             }
           }

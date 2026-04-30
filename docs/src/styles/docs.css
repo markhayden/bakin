@@ -1371,6 +1371,45 @@ starlight-toc nav a[href="#for-agents"]::before {
   padding: 0.25rem 0.35rem 0.35rem;
 }
 
+.api-response-picker {
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.api-response-picker select {
+  min-height: 2rem;
+  max-width: min(100%, 28rem);
+  padding: 0.2rem 2rem 0.2rem 0.55rem;
+  border: 1px solid rgba(120, 117, 116, 0.35);
+  border-radius: 0.32rem;
+  background: #111010;
+  color: var(--sl-color-gray-1);
+  font: inherit;
+}
+
+.api-response-picker__status {
+  min-width: 2.6rem;
+  text-align: center;
+}
+
+.api-response-picker__status[data-response-tone="success"] {
+  color: #93e6b5;
+}
+
+.api-response-picker__status[data-response-tone="client-error"] {
+  color: #8fd7ff;
+}
+
+.api-response-picker__status[data-response-tone="server-error"] {
+  color: #ff9a8f;
+}
+
+.api-response-panel[hidden] {
+  display: none;
+}
+
 .api-schema {
   margin: 0;
   padding: 0.85rem 0.95rem;

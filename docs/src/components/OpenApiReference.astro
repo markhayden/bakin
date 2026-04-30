@@ -79,6 +79,15 @@ function schemaPreview(schema: unknown): string {
   return JSON.stringify(schema ?? { type: 'object', additionalProperties: true }, null, 2)
 }
 
+function isGenericObjectSchema(schema: unknown): boolean {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return false
+  const record = schema as Record<string, unknown>
+  const properties = record.properties
+  return record.type === 'object' &&
+    record.additionalProperties === true &&
+    (!properties || (typeof properties === 'object' && !Array.isArray(properties) && Object.keys(properties).length === 0))
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -94,6 +103,13 @@ function highlightedJson(schema: unknown): string {
     .replace(/(:\s*)(&quot;[^&]*?&quot;)/g, '$1<span class="api-json__string">$2</span>')
     .replace(/\b(true|false|null)\b/g, '<span class="api-json__literal">$1</span>')
     .replace(/\b(-?\d+(?:\.\d+)?)\b/g, '<span class="api-json__number">$1</span>')
+}
+
+function responseTone(status: string): string {
+  if (status.startsWith('2')) return 'success'
+  if (status.startsWith('4')) return 'client-error'
+  if (status.startsWith('5') || status === 'default') return 'server-error'
+  return 'neutral'
 }
 
 const specPath = new URL('../../public/openapi.json', import.meta.url)
@@ -165,8 +181,7 @@ const selectedOperation = operationId ? operations.find(operation => operation.i
   <div class="api-operation-list">
     {[selectedOperation].map(operation => {
           const requestContent = firstContent(operation.requestBody?.content)
-          const primaryResponse = Object.entries(operation.responses)[0]
-          const primaryResponseContent = firstContent(primaryResponse?.[1]?.content)
+          const responseEntries = Object.entries(operation.responses)
           return (
             <article class="api-operation" id={operation.id}>
               <header class="api-operation__header">
@@ -214,28 +229,55 @@ const selectedOperation = operationId ? operations.find(operation => operation.i
               )}
 
               <section class="api-operation__section api-tabs">
-                <input class="api-tabs__input" type="radio" name={`${operation.id}-schema-tabs`} id={`${operation.id}-request-tab`} checked={Boolean(requestContent)} />
-                <input class="api-tabs__input" type="radio" name={`${operation.id}-schema-tabs`} id={`${operation.id}-response-tab`} checked={!requestContent} />
+                <input class="api-tabs__input" type="radio" name={`${operation.id}-schema-tabs`} id={`${operation.id}-request-tab`} checked />
+                <input class="api-tabs__input" type="radio" name={`${operation.id}-schema-tabs`} id={`${operation.id}-response-tab`} />
                 <div class="api-tabs__labels">
                   <label for={`${operation.id}-request-tab`}>Request</label>
                   <label for={`${operation.id}-response-tab`}>Response</label>
                 </div>
                 <div class="api-tabs__panel api-tabs__panel--request">
                   {requestContent ? (
-                    <pre class="api-schema"><code set:html={highlightedJson(requestContent.schema)} /></pre>
+                    isGenericObjectSchema(requestContent.schema) ? (
+                      <p class="api-tabs__empty">Request body schema is not documented for this route yet.</p>
+                    ) : (
+                      <pre class="api-schema"><code set:html={highlightedJson(requestContent.schema)} /></pre>
+                    )
                   ) : (
                     <p class="api-tabs__empty">No request body.</p>
                   )}
                 </div>
                 <div class="api-tabs__panel api-tabs__panel--response">
-                  {primaryResponse ? (
+                  {responseEntries.length > 0 ? (
                     <>
-                      <p class="api-schema__caption"><code>{primaryResponse[0]}</code>{' '}{primaryResponse[1]?.description ?? ''}</p>
-                      {primaryResponseContent ? (
-                        <pre class="api-schema"><code set:html={highlightedJson(primaryResponseContent.schema)} /></pre>
-                      ) : (
-                        <p>No response schema documented.</p>
+                      {responseEntries.length > 1 && (
+                        <label class="api-response-picker">
+                          <code
+                            class="api-response-picker__status"
+                            data-api-response-status={operation.id}
+                            data-response-tone={responseTone(responseEntries[0][0])}
+                          >
+                            {responseEntries[0][0]}
+                          </code>
+                          <select data-api-response-select={operation.id}>
+                            {responseEntries.map(([status, response]) => (
+                              <option value={`${operation.id}-response-${status}`} data-response-status={status} data-response-tone={responseTone(status)}>{response.description ?? status}</option>
+                            ))}
+                          </select>
+                        </label>
                       )}
+                      {responseEntries.map(([status, response], index) => {
+                        const responseContent = firstContent(response?.content)
+                        return (
+                          <div class="api-response-panel" id={`${operation.id}-response-${status}`} hidden={index > 0}>
+                            {responseEntries.length === 1 && <p class="api-schema__caption"><code>{status}</code>{' '}{response.description ?? ''}</p>}
+                            {responseContent ? (
+                              <pre class="api-schema"><code set:html={highlightedJson(responseContent.schema)} /></pre>
+                            ) : (
+                              <p>No response schema documented.</p>
+                            )}
+                          </div>
+                        )
+                      })}
                     </>
                   ) : (
                     <p>No response schema documented.</p>
@@ -251,3 +293,23 @@ const selectedOperation = operationId ? operations.find(operation => operation.i
     })}
   </div>
 )}
+
+<script>
+  document.addEventListener('change', event => {
+    const select = event.target instanceof HTMLSelectElement && event.target.matches('[data-api-response-select]')
+      ? event.target
+      : null
+    if (!select) return
+    const operationId = select.dataset.apiResponseSelect
+    if (!operationId) return
+    const selectedOption = select.selectedOptions[0]
+    const status = document.querySelector<HTMLElement>(`[data-api-response-status="${CSS.escape(operationId)}"]`)
+    if (status) {
+      status.textContent = selectedOption?.dataset.responseStatus ?? ''
+      status.dataset.responseTone = selectedOption?.dataset.responseTone ?? 'neutral'
+    }
+    document.querySelectorAll<HTMLElement>(`#${CSS.escape(operationId)} .api-response-panel`).forEach(panel => {
+      panel.hidden = panel.id !== select.value
+    })
+  })
+</script>
