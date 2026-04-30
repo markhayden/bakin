@@ -695,6 +695,36 @@ starlight-toc nav a[href="#for-agents"]::before {
   margin: 0 0 0.65rem;
 }
 
+.plugin-catalog-intro {
+  margin: 0.75rem 0 1.25rem;
+  color: var(--sl-color-gray-2);
+  font-size: 1.02rem;
+  line-height: 1.7;
+}
+
+.plugin-catalog-intro p {
+  margin: 0;
+}
+
+.sl-markdown-content table.plugin-catalog-table:not(:where(.not-content *)) {
+  width: 100%;
+}
+
+.sl-markdown-content table.plugin-catalog-table:not(:where(.not-content *)) td span {
+  color: var(--sl-color-gray-3);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.sl-markdown-content table.plugin-catalog-table:not(:where(.not-content *)) th:nth-child(2),
+.sl-markdown-content table.plugin-catalog-table:not(:where(.not-content *)) th:nth-child(3),
+.sl-markdown-content table.plugin-catalog-table:not(:where(.not-content *)) th:nth-child(4),
+.sl-markdown-content table.plugin-catalog-table:not(:where(.not-content *)) td:nth-child(2),
+.sl-markdown-content table.plugin-catalog-table:not(:where(.not-content *)) td:nth-child(3),
+.sl-markdown-content table.plugin-catalog-table:not(:where(.not-content *)) td:nth-child(4) {
+  white-space: nowrap;
+}
+
 .hook-section-description,
 .mcp-section-description {
   max-width: 100%;
