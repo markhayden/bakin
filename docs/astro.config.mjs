@@ -241,7 +241,7 @@ document.addEventListener("click", function (event) {
             { label: 'CLI', slug: 'reference/generated/cli' },
             { label: 'API Reference', slug: 'reference/generated/api' },
             { label: 'Hooks', slug: 'reference/generated/hooks' },
-            { label: 'Exec/MCP Tools', slug: 'reference/generated/exec-tools' },
+            { label: 'MCP', slug: 'reference/generated/exec-tools' },
             { label: 'Core Plugins', slug: 'reference/generated/core-plugins' },
             { label: 'Settings', slug: 'reference/generated/settings' },
             { label: 'Runtime Paths', slug: 'reference/generated/runtime-paths' },
