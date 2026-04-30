@@ -771,9 +771,9 @@ function renderApiReference(): string {
     '---',
     'title: API Reference',
     'description: Generated reference for documented Bakin HTTP API routes.',
-	    '---',
-	    '',
-	    '## Core Routes',
+    '---',
+    '',
+    '## Core Routes',
     '',
   ]
 
@@ -1212,23 +1212,51 @@ function renderPluginCatalog(): string {
 
 function renderSettingsReference(): string {
   const settings = flattenObject(DEFAULT_SETTINGS)
+  const grouped = new Map<string, Array<{ key: string; value: unknown }>>()
+  for (const setting of settings) {
+    const namespace = setting.key.split('.')[0] || 'other'
+    const existing = grouped.get(namespace) ?? []
+    existing.push(setting)
+    grouped.set(namespace, existing)
+  }
+
   const lines = [
     '---',
-    'title: Settings Reference',
-    'description: Generated reference for Bakin settings keys and default values.',
+    'title: Defaults',
+    'description: Generated reference for Bakin core settings defaults.',
 	    '---',
-	    '',
-	    'Bakin reads settings from `settings.json` in the resolved Bakin home directory and deep-merges user values over these defaults.',
     '',
-    '| Key | Default |',
-    '| --- | --- |',
+    '<div class="settings-reference-intro">',
+    '  <p>Bakin starts with these values, then deep-merges anything you set in <code>settings.json</code>. Use this page when you need the exact key for CLI updates, automation, or troubleshooting.</p>',
+    '</div>',
+    '',
   ]
-	  for (const setting of settings) {
-	    lines.push(`| \`${setting.key}\` | \`${JSON.stringify(setting.value)}\` |`)
-	  }
-	  lines.push('', generatedPageNote(), '')
-	  return lines.join('\n')
-	}
+
+  const settingGroupTitles: Record<string, string> = { sse: 'SSE' }
+
+  for (const namespace of [...grouped.keys()].sort((a, b) => a.localeCompare(b))) {
+    const title = settingGroupTitles[namespace] ?? (namespace === 'other' ? 'Other' : `${namespace[0].toUpperCase()}${namespace.slice(1)}`)
+    lines.push(`## ${title}`, '')
+    lines.push(
+      '<table class="settings-defaults-table">',
+      '  <thead>',
+      '    <tr><th>Key</th><th>Default</th></tr>',
+      '  </thead>',
+      '  <tbody>',
+    )
+    for (const setting of [...(grouped.get(namespace) ?? [])].sort((a, b) => a.key.localeCompare(b.key))) {
+      lines.push(
+        '    <tr>',
+        `      <td><code>${escapeHtml(setting.key)}</code></td>`,
+        `      <td><code>${escapeHtml(JSON.stringify(setting.value))}</code></td>`,
+        '    </tr>',
+      )
+    }
+    lines.push('  </tbody>', '</table>', '')
+  }
+  lines.push('', generatedPageNote(), '')
+  return lines.join('\n')
+}
 
 function renderRuntimePathsReference(): string {
   const paths = [
