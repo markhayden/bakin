@@ -13,7 +13,7 @@ Every knob Bakin gives you, in one panel. System-wide stuff (dispatch, watchdog,
 
 The built-in tab covers the runtime knobs that don't belong to any single plugin. A grab bag of small things, organized by what they affect:
 
-<div class="label-table">
+<div class="table-light-full table-label">
 
 | Group | What it controls |
 | --- | --- |

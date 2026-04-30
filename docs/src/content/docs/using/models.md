@@ -15,10 +15,14 @@ One row per agent. Pick a concrete model, an alias, or a task profile. The dropd
 
 Two slots per agent:
 
+<div class="table-light-full table-label-wrap">
+
 | Slot | What it does |
 | --- | --- |
 | **Primary** | The model the agent itself runs on. |
 | **Subagent** | The model used when this agent dispatches work to others. Set the orchestrator to premium and its helpers to budget here, instead of upgrading every agent. |
+
+</div>
 
 Defaults apply to anyone without an override. Fallback models cover provider outages: when the primary doesn't respond, the runtime walks the fallback list in order.
 
@@ -26,11 +30,15 @@ Defaults apply to anyone without an override. Fallback models cover provider out
 
 The catalog from every configured provider, merged with a curated metadata layer that adds what the APIs don't return: tier (budget / standard / premium), best-for hint, cost summary, context window. Refresh from the provider anytime; results cache to disk so the page loads instantly.
 
+<div class="table-light-fit table-label">
+
 | Tier | Use it for |
 | --- | --- |
 | **Budget** | Heartbeats, status pings, simple parsing, anything high-volume and low-stakes. |
 | **Standard** | Day-to-day agent work. Writing, planning, most tool use. |
 | **Premium** | Hard problems. Long-context analysis, multi-step reasoning, work where the model's mistakes are expensive. |
+
+</div>
 
 Configure provider keys in [Settings](/docs/using/settings/) and they show up here automatically.
 

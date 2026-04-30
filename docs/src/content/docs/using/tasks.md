@@ -72,6 +72,8 @@ The filter bar above the board narrows by column, owner, tag, or attached workfl
 
 The seven columns and what they mean:
 
+<div class="table-light-fit table-label">
+
 | Column | Meaning |
 | --- | --- |
 | Backlog | Captured but not yet approved or scheduled |
@@ -82,7 +84,11 @@ The seven columns and what they mean:
 | Done | Approved and complete |
 | Archived | Cleared off the active board, history preserved |
 
+</div>
+
 <p class="gap-top">Tasks move along a fixed state machine. Allowed transitions:</p>
+
+<div class="table-light-fit table-label">
 
 | From | To |
 | --- | --- |
@@ -93,6 +99,8 @@ The seven columns and what they mean:
 | Review | Done, In Progress, Todo |
 | Done | Archived, Todo, In Progress |
 | Archived | Done, Todo |
+
+</div>
 
 CLI moves and agent calls go through the same state machine.
 

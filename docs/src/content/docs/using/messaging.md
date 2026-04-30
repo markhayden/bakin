@@ -19,6 +19,8 @@ Items in the calendar are color-coded by status; cells get a subtle tint of the 
 
 Items move through seven statuses:
 
+<div class="table-light-fit table-label">
+
 | Status | What it means |
 | --- | --- |
 | `draft` | Captured but not approved |
@@ -28,6 +30,8 @@ Items move through seven statuses:
 | `review` | Work done, your sign-off needed before publish |
 | `published` | Sent to the channel |
 | `failed` | Something broke |
+
+</div>
 
 Approval flow: drafts approve to `scheduled`; review items approve to `published` (or reject back to `draft` with an optional note for the agent). Everything else is workflow-driven.
 

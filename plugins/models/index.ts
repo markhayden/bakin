@@ -369,7 +369,7 @@ const modelsPlugin: BakinPlugin = {
     // -------------------------------------------------------------------
     ctx.hooks.register('models.configChanged', () => {
       // Notification hook — handlers subscribe externally
-    })
+    }, { label: 'Model config changed.', summary: 'Notifies listeners after an agent model assignment changes. Use it to refresh dependent state, update UI, or invalidate plugin caches that depend on model routing.', hookKind: 'event' })
 
     ctx.hooks.register('models.getEffectiveModel', async (data: Record<string, unknown>) => {
       const agentId = data.agentId as string
@@ -377,16 +377,16 @@ const modelsPlugin: BakinPlugin = {
       const agents = await resolveAgents(ctx)
       const agent = agents.find((a) => a.agentId === agentId)
       return agent?.effectiveModel ?? null
-    })
+    }, { label: 'Get effective model.', summary: 'Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent.', hookKind: 'rpc' })
 
-    ctx.hooks.register('models.markConfigDirty', () => { markConfigDirty() })
+    ctx.hooks.register('models.markConfigDirty', () => { markConfigDirty() }, { label: 'Mark config dirty.', summary: 'Marks model configuration as changed so the runtime knows a refresh is needed. Use it after writing model settings that should not be treated as live yet.', hookKind: 'event' })
 
-    ctx.hooks.register('models.markRuntimeRestarted', () => { markRuntimeRestarted() })
+    ctx.hooks.register('models.markRuntimeRestarted', () => { markRuntimeRestarted() }, { label: 'Mark runtime refreshed.', summary: 'Records that the runtime has picked up the latest model configuration. Use it after restart or reload flows so stale dirty-state warnings can clear.', hookKind: 'event' })
 
     ctx.hooks.register('models.getAvailableModels', async () => {
       const result = await fetchAvailableModels(ctx)
       return result.models
-    })
+    }, { label: 'List available models.', summary: 'Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config.', hookKind: 'rpc' })
 
     // -------------------------------------------------------------------
     // GET /api/plugins/models/available

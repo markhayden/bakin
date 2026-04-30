@@ -121,7 +121,7 @@ export function getToolContext(toolName: string): PluginToolContext | undefined 
     assets,
     search: buildSearchAPI(pluginId, { skipFileBackedWiring: true }),
     hooks: {
-      register: (name: string, handler: (data: any) => any) => hookReg.register(name, handler),
+      register: (name: string, handler: (data: any) => any, metadata) => hookReg.register(name, handler, { metadata }),
       call: <T>(name: string, data: T) => hookReg.call<T>(name, data),
       callAll: (name: string, data: Record<string, unknown>) => hookReg.callAll(name, data),
       has: (name: string) => hookReg.has(name),
