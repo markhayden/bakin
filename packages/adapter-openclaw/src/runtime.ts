@@ -29,6 +29,11 @@ import { getOpenClawHome, getOpenClawPath } from './home'
 import { tryGetMainAgentId } from './main-agent'
 import type { OpenClawRuntimeAdapterOptions } from './index'
 import {
+  OpenClawApprovalGatewayClient,
+  type OpenClawPluginApprovalDecision,
+  type OpenClawPluginApprovalResolvedPayload,
+} from './approval-gateway'
+import {
   getOpenClawMemoryEntry,
   getOpenClawMemoryWatchPaths,
   listOpenClawMemoryEntries,
@@ -64,10 +69,23 @@ const TRANSIENT_FETCH_CODES = new Set([
 ])
 
 const SEND_MESSAGE_RETRY_BACKOFF_MS = [1000, 2000]
+const OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS = 600000
+const OPENCLAW_PLUGIN_APPROVAL_REF_PREFIX = 'openclaw-plugin-approval:'
+const OPENCLAW_PLUGIN_ID = 'bakin'
+const OPENCLAW_WORKFLOW_GATE_TOOL = 'workflow.gate'
 const RENDER_ONLY_APPROVAL_NOTICE = [
-  'Runtime channel approvals are render-only in the current OpenClaw adapter.',
-  'Approve or reject this gate in the Bakin UI; channel replies and buttons are not wired back yet.',
+  'This channel cannot return approval decisions to Bakin.',
+  'Use the Bakin approval link or approve/reject this gate in the Bakin UI.',
 ].join(' ')
+const REJECT_REASON_APPROVAL_NOTICE = [
+  'This gate requires a reject reason.',
+  'Use the Bakin approval link so reject decisions include the required reason.',
+].join(' ')
+const NATIVE_APPROVAL_NOTICE = [
+  'Channel buttons are a convenience path and may expire before the Bakin gate does.',
+  'The durable Bakin approval record remains canonical.',
+].join(' ')
+const NATIVE_APPROVAL_PROVIDERS = new Set(['discord', 'telegram', 'slack', 'matrix', 'qqbot'])
 
 interface OpenClawCronStore {
   version?: number
@@ -121,6 +139,9 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   private logger: AdapterLogger = noopLogger
   private approvalResponsesWarningLogged = false
   private approvalResolveWarningLogged = false
+  private approvalGatewayClient: OpenClawApprovalGatewayClient | null = null
+  private emittedApprovalResponseKeys: string[] = []
+  private emittedApprovalResponseKeySet = new Set<string>()
 
   constructor(options: OpenClawRuntimeAdapterOptions = {}) {
     this.settings = mergeSettings(options.settings)
@@ -131,7 +152,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     this.settings = mergeSettings(opts.settings ?? (this.settings as unknown as Record<string, unknown>))
   }
 
-  async shutdown(): Promise<void> {}
+  async shutdown(): Promise<void> {
+    this.approvalGatewayClient?.close()
+    this.approvalGatewayClient = null
+  }
 
   async ping(): Promise<boolean> {
     for (const path of ['/health', '/healthz']) {
@@ -167,12 +191,18 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       {
         id: 'channel-approval-responses',
         name: 'OpenClaw channel approval responses',
-        run: async () => [{
-          check: 'openclaw.channel-approval-responses',
-          status: 'warn',
-          message: 'OpenClaw channel approval requests are render-only. Approve/reject workflow gates in the Bakin UI until interactive channel responses are implemented.',
-          autoFixable: false,
-        }],
+        run: async () => {
+          const channels = await this.channels.list()
+          const interactive = channels.filter(channel => channel.capabilities.includes('interactive-approval'))
+          return [{
+            check: 'openclaw.channel-approval-responses',
+            status: interactive.length > 0 ? 'ok' : 'warn',
+            message: interactive.length > 0
+              ? `OpenClaw channel approval responses are enabled for ${interactive.map(channel => channel.id).join(', ')}.`
+              : 'OpenClaw channel approval requests are render-only for configured channels. Approve/reject workflow gates in the Bakin UI until a channel advertises interactive-approval support.',
+            autoFixable: false,
+          }]
+        },
       },
     ]
   }
@@ -386,37 +416,173 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       })
     },
     createApproval: async (args: { approvalId: string; channels: string[]; request: { title: string; body: string; options: Array<{ id: string; label: string }>; context?: RuntimeMetadata } }) => {
-      const optionText = args.request.options.map((option) => `- ${option.label} (${option.id})`).join('\n')
-      return this.channels.sendMessage({
-        channels: args.channels,
-        message: {
-          title: args.request.title,
-          body: `${args.request.title}\n\n${args.request.body}\n\n${optionText}\n\n${RENDER_ONLY_APPROVAL_NOTICE}`,
-          metadata: { ...(args.request.context ?? {}), approvalId: args.approvalId },
-        },
-      })
+      const renderedAt = new Date().toISOString()
+      const deliveries = []
+      const context = args.request.context ?? {}
+      for (const channel of args.channels) {
+        if (
+          channelHasInteractiveApproval(channel)
+          && !requiresRejectReason(context)
+          && supportsNativeApprovalOptions(args.request.options)
+        ) {
+          const delivery = await this.tryCreateNativeApproval(channel, args, renderedAt)
+          if (delivery) {
+            deliveries.push(delivery)
+            continue
+          }
+        }
+        const fallback = await this.renderApprovalMessage(channel, args, context)
+        deliveries.push(...fallback.deliveries)
+      }
+      return { deliveries }
     },
     editApproval: async (args: { deliveries: Array<{ channelId: string; ref: string; renderedAt: string }> }) => ({ deliveries: args.deliveries }),
     cancelApproval: async () => {},
-    resolveApproval: async () => {
-      if (!this.approvalResolveWarningLogged) {
+    resolveApproval: async (args: { deliveries: Array<{ channelId: string; ref: string; renderedAt: string }>; response: { selectedOption: string } }) => {
+      let sawNativeDelivery = false
+      let sawRenderOnlyDelivery = false
+      for (const delivery of args.deliveries) {
+        const openClawApprovalId = parseNativeApprovalRef(delivery.ref)
+        if (!openClawApprovalId) {
+          sawRenderOnlyDelivery = true
+          continue
+        }
+        sawNativeDelivery = true
+        const decision = openClawDecisionFromBakinOption(args.response.selectedOption)
+        if (!decision) continue
+        try {
+          await this.approvalGateway().resolvePluginApproval(openClawApprovalId, decision)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          if (isExpectedNativeApprovalResolveMiss(message)) {
+            this.logger.debug('OpenClaw native approval was already resolved or expired', {
+              openClawApprovalId,
+              response: args.response.selectedOption,
+            })
+          } else {
+            this.logger.warn('OpenClaw native approval resolve failed; durable Bakin approval remains canonical', {
+              openClawApprovalId,
+              error: message,
+            })
+          }
+        }
+      }
+
+      if (!sawNativeDelivery && sawRenderOnlyDelivery && !this.approvalResolveWarningLogged) {
         this.logger.warn(
           'OpenClaw approval resolve is render-only; provider approval messages are not edited or resolved. The durable Bakin approval record remains canonical.'
         )
         this.approvalResolveWarningLogged = true
       }
     },
-    subscribeApprovalResponses: (_handler: (event: ApprovalResolveEvent) => void) => {
-      if (!this.approvalResponsesWarningLogged) {
-        this.logger.warn(
-          'OpenClaw channel approval responses are not implemented; approval requests are render-only. Approve/reject workflow gates in the Bakin UI.'
-        )
-        this.approvalResponsesWarningLogged = true
+    subscribeApprovalResponses: (handler: (event: ApprovalResolveEvent) => void) => {
+      if (!hasAnyInteractiveApprovalChannel()) {
+        if (!this.approvalResponsesWarningLogged) {
+          this.logger.warn(
+            'OpenClaw channel approval responses are render-only for configured channels. Approve/reject workflow gates in the Bakin UI.'
+          )
+          this.approvalResponsesWarningLogged = true
+        }
+        return () => {}
       }
-      return () => {}
+      return this.approvalGateway().subscribeResolved((payload) => {
+        const event = approvalEventFromOpenClawPayload(payload)
+        if (!event) return
+        if (!this.markApprovalResponseEmitted(event)) return
+        handler(event)
+      })
     },
     onMessage: () => () => {},
     onInteraction: () => () => {},
+  }
+
+  private async tryCreateNativeApproval(
+    channel: string,
+    args: { approvalId: string; request: { title: string; body: string; context?: RuntimeMetadata } },
+    renderedAt: string,
+  ): Promise<{ channelId: string; ref: string; renderedAt: string } | null> {
+    const ref = splitChannelRef(channel, args.request.context)
+    const approvalUrl = metadataValue(args.request.context, 'approvalUrl')
+      ?? metadataValue(args.request.context, 'approvalDecisionUrl')
+    try {
+      const result = await this.approvalGateway().requestPluginApproval({
+        pluginId: OPENCLAW_PLUGIN_ID,
+        title: truncate(args.request.title, 80),
+        description: renderNativeApprovalDescription(args.request.body, approvalUrl),
+        severity: 'warning',
+        toolName: OPENCLAW_WORKFLOW_GATE_TOOL,
+        toolCallId: args.approvalId,
+        turnSourceChannel: ref.channel,
+        ...(ref.target ? { turnSourceTo: ref.target } : {}),
+        timeoutMs: OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS,
+        twoPhase: true,
+      })
+      if (!result.id || result.decision === null) {
+        this.logger.warn('OpenClaw native approval request had no approval route; falling back to render-only message', {
+          approvalId: args.approvalId,
+          channel,
+        })
+        return null
+      }
+      return {
+        channelId: channel,
+        ref: `${OPENCLAW_PLUGIN_APPROVAL_REF_PREFIX}${result.id}`,
+        renderedAt,
+      }
+    } catch (err) {
+      this.logger.warn('OpenClaw native approval request failed; falling back to render-only message', {
+        approvalId: args.approvalId,
+        channel,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      return null
+    }
+  }
+
+  private async renderApprovalMessage(
+    channel: string,
+    args: { approvalId: string; request: { title: string; body: string; options: Array<{ id: string; label: string }>; context?: RuntimeMetadata } },
+    context: RuntimeMetadata,
+  ): Promise<{ deliveries: Array<{ channelId: string; ref: string; renderedAt: string }> }> {
+    const optionText = args.request.options.map((option) => `- ${option.label} (${option.id})`).join('\n')
+    const approvalUrl = metadataValue(context, 'approvalUrl') ?? metadataValue(context, 'approvalDecisionUrl')
+    return this.channels.sendMessage({
+      channels: [channel],
+      message: {
+        title: args.request.title,
+        body: [
+          args.request.title,
+          args.request.body,
+          optionText,
+          approvalUrl ? `Open in Bakin: ${approvalUrl}` : undefined,
+          approvalNoticeForMessage(channel, context),
+        ].filter(Boolean).join('\n\n'),
+        metadata: { ...context, approvalId: args.approvalId },
+      },
+    })
+  }
+
+  private approvalGateway(): OpenClawApprovalGatewayClient {
+    if (!this.approvalGatewayClient) {
+      this.approvalGatewayClient = new OpenClawApprovalGatewayClient({
+        url: gatewayWebSocketUrl(this.settings),
+        token: readGatewayToken,
+        logger: this.logger,
+      })
+    }
+    return this.approvalGatewayClient
+  }
+
+  private markApprovalResponseEmitted(event: ApprovalResolveEvent): boolean {
+    const key = `${event.approvalId}:${event.response.selectedOption}:${event.response.respondedAt}`
+    if (this.emittedApprovalResponseKeySet.has(key)) return false
+    this.emittedApprovalResponseKeySet.add(key)
+    this.emittedApprovalResponseKeys.push(key)
+    while (this.emittedApprovalResponseKeys.length > 1000) {
+      const old = this.emittedApprovalResponseKeys.shift()
+      if (old) this.emittedApprovalResponseKeySet.delete(old)
+    }
+    return true
   }
 
   skills = {
@@ -779,14 +945,154 @@ function readChannelInfos(): ChannelInfo[] {
 
   return Object.entries(channels as Record<string, unknown>).map(([id, raw]): ChannelInfo => {
     const entry = isRecord(raw) ? raw : {}
+    const interactive = channelEntrySupportsInteractiveApproval(id, entry)
+    const capabilities: ChannelInfo['capabilities'] = ['message', 'rich-content']
+    if (interactive) capabilities.push('interactive-approval')
     return {
       id,
       platform: typeof entry.platform === 'string' ? entry.platform : id,
       label: typeof entry.label === 'string' ? entry.label : humanizeChannelId(id),
-      capabilities: ['message', 'rich-content'],
-      metadata: { approvalResponses: 'render-only' },
+      capabilities,
+      metadata: {
+        approvalResponses: interactive ? 'interactive' : 'render-only',
+        approvalMode: interactive ? 'openclaw-plugin-approval' : 'render-only',
+        ...(interactive
+          ? {
+              approvalTimeoutMs: OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS,
+              rejectReason: 'bakin-fallback-link',
+            }
+          : {}),
+      },
     }
   })
+}
+
+function hasAnyInteractiveApprovalChannel(): boolean {
+  return readChannelInfos().some(channel => channel.capabilities.includes('interactive-approval'))
+}
+
+function channelHasInteractiveApproval(channelId: string): boolean {
+  const ref = splitChannelRef(channelId, undefined)
+  return readChannelInfos().some(channel => (
+    channel.id === ref.channel && channel.capabilities.includes('interactive-approval')
+  ))
+}
+
+function channelEntrySupportsInteractiveApproval(id: string, entry: Record<string, unknown>): boolean {
+  if (entry.enabled === false) return false
+  const provider = typeof entry.platform === 'string' ? entry.platform : id
+  if (!NATIVE_APPROVAL_PROVIDERS.has(provider)) return false
+
+  const approvalConfig = isRecord(entry.execApprovals)
+    ? entry.execApprovals
+    : isRecord(entry.approvals)
+      ? entry.approvals
+      : null
+  if (!approvalConfig) return false
+  const enabled = approvalConfig.enabled
+  if (!(enabled === true || enabled === 'auto')) return false
+
+  const eventKinds = approvalConfig.eventKinds
+  if (Array.isArray(eventKinds) && !eventKinds.includes('plugin')) return false
+  return true
+}
+
+function gatewayWebSocketUrl(settings: OpenClawSettings): string {
+  const url = new URL(`${settings.gatewayUrl}:${settings.gatewayPort}`)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  return url.toString().replace(/\/$/, '')
+}
+
+function renderNativeApprovalDescription(body: string, approvalUrl: string | undefined): string {
+  const compactBody = body.replace(/\s+/g, ' ').trim()
+  const footer = [
+    approvalUrl ? `Bakin fallback: ${approvalUrl}` : undefined,
+    NATIVE_APPROVAL_NOTICE,
+  ].filter(Boolean).join('\n\n')
+  if (!footer) return truncate(compactBody, 256)
+  const bodyLimit = 256 - footer.length - 2
+  const bodyPart = bodyLimit > 20 ? truncate(compactBody, bodyLimit) : undefined
+  return [bodyPart, footer].filter(Boolean).join('\n\n').slice(0, 256)
+}
+
+function approvalNoticeForMessage(channelId: string, context: RuntimeMetadata): string {
+  return channelHasInteractiveApproval(channelId) && requiresRejectReason(context)
+    ? REJECT_REASON_APPROVAL_NOTICE
+    : RENDER_ONLY_APPROVAL_NOTICE
+}
+
+function supportsNativeApprovalOptions(options: Array<{ id: string }>): boolean {
+  const ids = new Set(options.map(option => option.id))
+  return ids.size === 2 && ids.has('approve') && ids.has('reject')
+}
+
+function requiresRejectReason(context: RuntimeMetadata | undefined): boolean {
+  return context?.requireRejectReason === true
+}
+
+function approvalEventFromOpenClawPayload(payload: OpenClawPluginApprovalResolvedPayload): ApprovalResolveEvent | null {
+  const request = payload.request
+  if (!request) return null
+  if (request.pluginId !== OPENCLAW_PLUGIN_ID) return null
+  if (request.toolName !== OPENCLAW_WORKFLOW_GATE_TOOL) return null
+  const approvalId = typeof request.toolCallId === 'string' ? request.toolCallId : ''
+  if (!approvalId) return null
+
+  const selectedOption = bakinOptionFromOpenClawDecision(payload.decision)
+  if (!selectedOption) return null
+
+  const actorId = payload.resolvedBy?.trim() || 'openclaw-channel'
+  return {
+    approvalId,
+    channelId: channelIdFromOpenClawRequest(request),
+    response: {
+      selectedOption,
+      respondedAt: typeof payload.ts === 'number' ? new Date(payload.ts).toISOString() : new Date().toISOString(),
+      actor: {
+        type: 'human',
+        id: actorId,
+        displayName: actorId,
+      },
+    },
+  }
+}
+
+function channelIdFromOpenClawRequest(request: Record<string, unknown>): string {
+  const channel = typeof request.turnSourceChannel === 'string' && request.turnSourceChannel.length > 0
+    ? request.turnSourceChannel
+    : 'runtime-channel'
+  const target = typeof request.turnSourceTo === 'string' && request.turnSourceTo.length > 0
+    ? request.turnSourceTo
+    : undefined
+  return target ? `${channel}:${target}` : channel
+}
+
+function openClawDecisionFromBakinOption(option: string): OpenClawPluginApprovalDecision | null {
+  if (option === 'approve') return 'allow-once'
+  if (option === 'reject') return 'deny'
+  return null
+}
+
+function bakinOptionFromOpenClawDecision(decision: string | undefined): 'approve' | 'reject' | null {
+  if (decision === 'allow-once' || decision === 'allow-always') return 'approve'
+  if (decision === 'deny') return 'reject'
+  return null
+}
+
+function parseNativeApprovalRef(ref: string): string | null {
+  return ref.startsWith(OPENCLAW_PLUGIN_APPROVAL_REF_PREFIX)
+    ? ref.slice(OPENCLAW_PLUGIN_APPROVAL_REF_PREFIX.length)
+    : null
+}
+
+function isExpectedNativeApprovalResolveMiss(message: string): boolean {
+  return /expired|not found|unknown/i.test(message)
+}
+
+function truncate(value: string, maxLength: number): string {
+  if (value.length <= maxLength) return value
+  if (maxLength <= 1) return value.slice(0, maxLength)
+  return `${value.slice(0, Math.max(0, maxLength - 3))}...`
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
