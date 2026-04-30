@@ -36,6 +36,7 @@ import { writeCrossPluginSearchResponse } from './src/core/api-search-handler'
 import * as watcher from './src/core/watcher'
 import * as dispatch from './src/core/dispatch'
 import * as watchdog from './src/core/watchdog'
+import { runRestartRecovery } from './src/core/restart-recovery'
 import { registerShutdownHandlers } from './src/core/lifecycle'
 import { checkAndContinueDependents } from './src/core/continuation'
 import { getAllRoutes, generateDocs } from './src/core/api-docs'
@@ -625,12 +626,9 @@ const eventBus = new BakinEventBus(broadcast)
     log.warn('mcporter setup failed — agents can still use REST/CLI', err)
   }
 
-  // Start all subsystems
+  // Start file watching before the server loops. Dispatch/watchdog wait until
+  // restart recovery has taken the first look at stale in-progress tasks.
   watcher.start({ contentDir: CONTENT_DIR, eventBus, onInboxFile: handleInboxFile })
-  dispatch.start(CONTENT_DIR, port)
-  dispatch.reconcileOnStartup(CONTENT_DIR)
-  watchdog.start(CONTENT_DIR)
-  doctor.start(CONTENT_DIR, process.cwd())
 
   // Notify all plugins that every plugin is now active
   await pluginRegistry.onAllReady()
@@ -645,6 +643,29 @@ const eventBus = new BakinEventBus(broadcast)
   server.listen(port, '0.0.0.0', () => {
     log.info(`Bakin ready on http://localhost:${port}`)
     log.info(`Listening on 0.0.0.0:${port} (Tailscale: http://100.91.112.69:${port})`)
+
+    void (async () => {
+      let recovered = 0
+      try {
+        const result = await runRestartRecovery(CONTENT_DIR)
+        recovered = result.recovered
+      } catch (err) {
+        log.error('Restart recovery failed', err)
+      } finally {
+        dispatch.start(CONTENT_DIR, port)
+        watchdog.start(CONTENT_DIR)
+      }
+
+      try {
+        if (recovered > 0) {
+          await dispatch.dispatchTasks(CONTENT_DIR, port)
+        }
+      } catch (err) {
+        log.error('Post-recovery dispatch failed', err)
+      } finally {
+        doctor.start(CONTENT_DIR, process.cwd())
+      }
+    })()
   })
 
   // Hot-reload coordinator (Phase 2 P2.C8). Enabled by `bakin dev`
