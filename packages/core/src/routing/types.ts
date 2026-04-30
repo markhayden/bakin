@@ -11,8 +11,7 @@
 import type { z } from 'zod'
 import type { ContractStability, ContractVisibility, DocsExample, SourceLocation } from '../docs'
 import type { AgentRuntimeAdapter } from '../adapters/runtime'
-import type { SearchAdapter } from '../adapters/search'
-import type { StorageAdapter, EventBus } from '../plugin-types'
+import type { StorageAdapter, EventBus, SearchAPI, ActivityAPI, HookAPI, AssetsAPI, PluginTaskService } from '../plugin-types'
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
@@ -29,12 +28,20 @@ export type HttpStatus =
 /**
  * Common surface every route handler can rely on, regardless of origin.
  * `PluginContext` and `CoreContext` extend this with their own additions.
+ *
+ * Types here mirror the plugin-context surface so a plugin handler that
+ * declares `ctx: PluginContextLite` can call `ctx.search.index(...)`,
+ * `ctx.activity.log(...)`, etc. without casting.
  */
 export interface RouteContext {
   runtime: AgentRuntimeAdapter
-  search: SearchAdapter
+  search: SearchAPI
   storage: StorageAdapter
   events: EventBus
+  activity: ActivityAPI
+  hooks: HookAPI
+  assets: AssetsAPI
+  tasks: PluginTaskService
 }
 
 /**

@@ -201,12 +201,24 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
 
 /**
  * Activate a plugin and return the captured routes and exec tools.
+ *
+ * Routes are collected from two sources:
+ *   1. The declarative `plugin.routes` array (T6+ pattern).
+ *   2. Any `ctx.registerRoute(...)` calls inside `activate()` (legacy).
+ *
+ * Both populate the same `routes` array so test code can find a route
+ * regardless of how the plugin declares it.
  */
 export async function activatePlugin(
   plugin: BakinPlugin,
   testDir: string
 ): Promise<ActivatedPlugin> {
   const result = createTestContext(plugin.id, testDir)
+  if (plugin.routes) {
+    for (const route of plugin.routes) {
+      result.routes.push(route as unknown as APIRoute)
+    }
+  }
   await plugin.activate(result.ctx)
   return result
 }
@@ -283,6 +295,13 @@ export function makeRequest(
  * JSON). Pass `rawResponse: true` to also receive the unconsumed Response —
  * essential for streaming endpoints where the caller needs to read the body
  * themselves.
+ *
+ * Routes that declare typed contracts (`params`/`query`/`body` schemas) are
+ * dispatched through the runtime dispatcher so input validation, content-type
+ * gating, and the (req, ctx, parsed) handler signature all behave the same
+ * in tests as in production. Path-param values are extracted from
+ * `opts.path` against `route.path`; pass `opts.path: '/abc-1/move'` to bind
+ * `:taskId` to `'abc-1'` for a route declared at `/:taskId/move`.
  */
 export async function callRoute(
   route: APIRoute,
@@ -294,13 +313,62 @@ export async function callRoute(
     rawResponse?: boolean
   } = {}
 ): Promise<{ status: number; body: Record<string, unknown>; response: Response }> {
-  const req = makeRequest(opts.path || route.path, {
+  // If opts.path is given, use it verbatim. Otherwise resolve `:param`
+  // placeholders in route.path against opts.searchParams (legacy
+  // convention — the catch-all dispatcher previously injected path
+  // params into searchParams). Remaining searchParams entries flow into
+  // the URL as query string.
+  let callPath: string
+  let queryEntries: Record<string, string> = {}
+  if (opts.path) {
+    callPath = opts.path
+    queryEntries = opts.searchParams ?? {}
+  } else {
+    const placeholderNames = (route.path.match(/:([A-Za-z_][\w]*)/g) ?? []).map(s => s.slice(1))
+    const sp = { ...(opts.searchParams ?? {}) }
+    callPath = route.path.replace(/:([A-Za-z_][\w]*)/g, (_match, name) => {
+      const value = sp[name]
+      if (value !== undefined) {
+        delete sp[name]
+        return value
+      }
+      return `:${name}`
+    })
+    void placeholderNames
+    queryEntries = sp
+  }
+
+  const req = makeRequest(callPath, {
     method: route.method,
     body: opts.body,
-    searchParams: opts.searchParams,
+    searchParams: queryEntries,
   })
 
-  const res = await route.handler(req, ctx)
+  // Extract path params by matching the resolved callPath against route.path.
+  const params = extractPathParams(route.path, callPath)
+
+  // Tests run under NODE_ENV=test which makes the dispatcher's response
+  // validator throw on unmatched status codes. Fall back to direct
+  // handler invocation when the route declares no schemas (legacy shape)
+  // OR when explicitly opting out via rawResponse mode.
+  const declarative = (route as { params?: unknown; query?: unknown; body?: unknown; responses?: unknown })
+  const isDeclarative =
+    !!declarative.params || !!declarative.query
+    || !!declarative.body || !!declarative.responses
+
+  let res: Response
+  if (isDeclarative) {
+    const { dispatchRoute } = await import('../../packages/core/src/routing')
+    res = await dispatchRoute({
+      req,
+      ctx,
+      route: route as unknown as Parameters<typeof dispatchRoute>[0]['route'],
+      params,
+    })
+  } else {
+    res = await route.handler(req, ctx)
+  }
+
   if (opts.rawResponse) {
     return { status: res.status, body: {}, response: res }
   }
@@ -311,6 +379,22 @@ export async function callRoute(
     // Some responses may not have JSON body
   }
   return { status: res.status, body, response: res }
+}
+
+/**
+ * Extract path-param values from `actualPath` matched against `routePath`.
+ * Supports `:param` segments. Returns `{}` when there are no params.
+ */
+function extractPathParams(routePath: string, actualPath: string): Record<string, string> {
+  const routeSegments = routePath.split('/').filter(Boolean)
+  const actualSegments = actualPath.split('?')[0].split('/').filter(Boolean)
+  if (routeSegments.length !== actualSegments.length) return {}
+  const out: Record<string, string> = {}
+  for (let i = 0; i < routeSegments.length; i++) {
+    const r = routeSegments[i]
+    if (r.startsWith(':')) out[r.slice(1)] = actualSegments[i]
+  }
+  return out
 }
 
 /**

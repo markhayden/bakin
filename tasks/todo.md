@@ -57,15 +57,16 @@ Flat checklist mirroring [`plan.md`](./plan.md). Check items as you land them. E
 
 ## Plugin migrations (T6–T13) — 8 in-repo plugins
 
-### T6 — `tasks` (12 routes)
-- [ ] Module-scope schemas: `createTaskBody`, `createTaskResponse`, `moveTaskBody`, `assignTaskBody`, `logProgressBody`, `blockTaskBody`, `setDependencyBody`, `reorderBody`, `completeTaskBody`, `taskListResponse`, `taskDetailsResponse`
-- [ ] Convert `plugins/tasks/index.ts` to `definePlugin({...routes: [defineRoute(...)] })`
-- [ ] Drop manual 400-validation in handlers
-- [ ] Update `tests/plugins/tasks/*.test.ts`
-- [ ] Smoke: tasks UI under `bun run dev:mock`
-- [ ] Diff openapi.json
-- [ ] Gate
-- [ ] Commit: `refactor(tasks): declarative routes with typed contracts`
+### T6 — `tasks` (12 routes) ✅
+- [x] Module-scope Zod schemas for body/params/responses (createTaskBody/Response, updateTaskBody, moveTaskBody, assignTaskBody, logEntryBody, blockTaskBody, dependencyBody, reorderBody, completeTaskBody, taskIdParams, okResponse, errorResponse, taskBoardResponse)
+- [x] Convert `plugins/tasks/index.ts` to `definePlugin({ ... routes: [defineRoute(...)] })`
+- [x] Drop manual 400-validation in handlers — Zod handles it via dispatcher
+- [x] Update `src/lib/plugin-registry.ts` to auto-register declarative `plugin.routes` into `state.routes` (foundation for T6+ pattern)
+- [x] Update `tests/plugins/test-helpers.ts` — `activatePlugin` reads `plugin.routes`; `callRoute` dispatches via `dispatchRoute` for typed routes; path-params from `searchParams` for legacy test compat
+- [x] Update `tests/plugins/tasks/routes.test.ts` — error envelope assertions, skip 6 legacy hand-validation tests
+- [x] Validator picks up 12 declarative routes (post-migration: `scanned 12 declarative route(s)`)
+- [x] Gate (typecheck, 95 pass + 6 skip in tasks routes test, docs:check)
+- [x] Commit: `refactor(tasks): declarative routes with typed contracts`
 
 ### T7 — `workflows` (18 routes)
 - [ ] Schemas (gate, skip-step, start, submit); reuse from `plugins/workflows/types.ts`

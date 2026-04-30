@@ -763,7 +763,7 @@ mcporter call bakin-<agent>.bakin_exec_submit_step --args '{
 <p class="mcp-section-description">Task tools are the main agent interface for creating, reading, moving, logging, blocking, and completing work.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="tasks-assign" name="bakin_exec_tasks_assign" label="Assigned a task" description="Assign a task to an agent." source="plugins/tasks/index.ts:693" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"agent","type":"string","required":true,"description":"Agent to assign the task to"}]}>
+<McpToolCard id="tasks-assign" name="bakin_exec_tasks_assign" label="Assigned a task" description="Assign a task to an agent." source="plugins/tasks/index.ts:786" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"agent","type":"string","required":true,"description":"Agent to assign the task to"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_tasks_assign --args '{
   "taskId": "value",
@@ -771,7 +771,7 @@ mcporter call bakin-<agent>.bakin_exec_tasks_assign --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="tasks-block" name="bakin_exec_tasks_block" label="Blocked a task" description="Mark a task as blocked with a reason. Use when you cannot proceed." source="plugins/tasks/index.ts:564" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"reason","type":"string","required":true,"description":"Why the task is blocked"}]}>
+<McpToolCard id="tasks-block" name="bakin_exec_tasks_block" label="Blocked a task" description="Mark a task as blocked with a reason. Use when you cannot proceed." source="plugins/tasks/index.ts:657" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"reason","type":"string","required":true,"description":"Why the task is blocked"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_tasks_block --args '{
   "taskId": "value",
@@ -779,7 +779,7 @@ mcporter call bakin-<agent>.bakin_exec_tasks_block --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="tasks-complete" name="bakin_exec_tasks_complete" label="Completed a task" description="Report that your task is complete. Moves the task to Done and notifies the orchestrator." source="plugins/tasks/index.ts:584" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"summary","type":"string","required":true,"description":"Summary of what you accomplished"}]}>
+<McpToolCard id="tasks-complete" name="bakin_exec_tasks_complete" label="Completed a task" description="Report that your task is complete. Moves the task to Done and notifies the orchestrator." source="plugins/tasks/index.ts:677" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"summary","type":"string","required":true,"description":"Summary of what you accomplished"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_tasks_complete --args '{
   "taskId": "value",
@@ -787,7 +787,7 @@ mcporter call bakin-<agent>.bakin_exec_tasks_complete --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="tasks-create" name="bakin_exec_tasks_create" label="Created a task" description="Create a new task on the task board. Workflows are auto-matched by title when workflowId is not provided. Provide workflowId to force a specific workflow, or skipWorkflowReason to explicitly skip." source="plugins/tasks/index.ts:493" parameters={[{"name":"title","type":"string","required":true,"description":"Task title"},{"name":"assignee","type":"string","required":false,"description":"Agent to assign (basil, pixel, rolo, patch, nemo, etc.)"},{"name":"description","type":"string","required":false,"description":"Task description and context"},{"name":"parentId","type":"string","required":false,"description":"Parent task ID if this is a subtask"},{"name":"workflowId","type":"string","required":false,"description":"Workflow to start (e.g. image-social-post, video-script). Use bakin_exec_workflows_list to see options."},{"name":"skipWorkflowReason","type":"string","required":false,"description":"Reason no workflow applies (required if workflowId is not set and this is not a subtask)"},{"name":"projectId","type":"string","required":false,"description":"Project ID to link this task to"}]}>
+<McpToolCard id="tasks-create" name="bakin_exec_tasks_create" label="Created a task" description="Create a new task on the task board. Workflows are auto-matched by title when workflowId is not provided. Provide workflowId to force a specific workflow, or skipWorkflowReason to explicitly skip." source="plugins/tasks/index.ts:587" parameters={[{"name":"title","type":"string","required":true,"description":"Task title"},{"name":"assignee","type":"string","required":false,"description":"Agent to assign (basil, pixel, rolo, patch, nemo, etc.)"},{"name":"description","type":"string","required":false,"description":"Task description and context"},{"name":"parentId","type":"string","required":false,"description":"Parent task ID if this is a subtask"},{"name":"workflowId","type":"string","required":false,"description":"Workflow to start (e.g. image-social-post, video-script). Use bakin_exec_workflows_list to see options."},{"name":"skipWorkflowReason","type":"string","required":false,"description":"Reason no workflow applies (required if workflowId is not set and this is not a subtask)"},{"name":"projectId","type":"string","required":false,"description":"Project ID to link this task to"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_tasks_create --args '{
   "title": "value",
@@ -800,21 +800,21 @@ mcporter call bakin-<agent>.bakin_exec_tasks_create --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="tasks-delete" name="bakin_exec_tasks_delete" label="Deleted a task" description="Delete a task from the board." source="plugins/tasks/index.ts:672" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"}]}>
+<McpToolCard id="tasks-delete" name="bakin_exec_tasks_delete" label="Deleted a task" description="Delete a task from the board." source="plugins/tasks/index.ts:765" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_tasks_delete --args '{
   "taskId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="tasks-get" name="bakin_exec_tasks_get" label="Read task details" description="Get details about a task — title, description, current column, logs, dependencies, project context." source="plugins/tasks/index.ts:470" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"}]}>
+<McpToolCard id="tasks-get" name="bakin_exec_tasks_get" label="Read task details" description="Get details about a task — title, description, current column, logs, dependencies, project context." source="plugins/tasks/index.ts:564" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_tasks_get --args '{
   "taskId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="tasks-list" name="bakin_exec_tasks_list" label="Listed tasks" description="List all tasks on the board. Optionally filter by column or agent." source="plugins/tasks/index.ts:440" parameters={[{"name":"column","type":"choice","required":false,"description":"Filter by column"},{"name":"agent","type":"string","required":false,"description":"Filter by assigned agent"}]}>
+<McpToolCard id="tasks-list" name="bakin_exec_tasks_list" label="Listed tasks" description="List all tasks on the board. Optionally filter by column or agent." source="plugins/tasks/index.ts:534" parameters={[{"name":"column","type":"choice","required":false,"description":"Filter by column"},{"name":"agent","type":"string","required":false,"description":"Filter by assigned agent"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_tasks_list --args '{
   "column": "value",
@@ -822,7 +822,7 @@ mcporter call bakin-<agent>.bakin_exec_tasks_list --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="tasks-log-progress" name="bakin_exec_tasks_log_progress" label="Logged progress" description="Log a human-readable progress update to the live activity feed. Call this at every significant step." source="plugins/tasks/index.ts:604" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID (e.g. \"fe84ac51\")"},{"name":"message","type":"string","required":true,"description":"Human-readable status update"}]}>
+<McpToolCard id="tasks-log-progress" name="bakin_exec_tasks_log_progress" label="Logged progress" description="Log a human-readable progress update to the live activity feed. Call this at every significant step." source="plugins/tasks/index.ts:697" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID (e.g. \"fe84ac51\")"},{"name":"message","type":"string","required":true,"description":"Human-readable status update"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_tasks_log_progress --args '{
   "taskId": "value",
@@ -830,7 +830,7 @@ mcporter call bakin-<agent>.bakin_exec_tasks_log_progress --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="tasks-move" name="bakin_exec_tasks_move" label="Moved a task" description="Move a task to a different column on the task board." source="plugins/tasks/index.ts:539" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"to","type":"choice","required":true,"description":"Target column"},{"name":"reason","type":"string","required":false,"description":"Required when moving to \"blocked\""}]}>
+<McpToolCard id="tasks-move" name="bakin_exec_tasks_move" label="Moved a task" description="Move a task to a different column on the task board." source="plugins/tasks/index.ts:632" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"to","type":"choice","required":true,"description":"Target column"},{"name":"reason","type":"string","required":false,"description":"Required when moving to \"blocked\""}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_tasks_move --args '{
   "taskId": "value",
@@ -839,7 +839,7 @@ mcporter call bakin-<agent>.bakin_exec_tasks_move --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="tasks-set-dependency" name="bakin_exec_tasks_set_dependency" label="Set task dependency" description="Register a dependency between tasks. Your task will be auto-re-dispatched when the dependency completes. After registering, exit — do not wait." source="plugins/tasks/index.ts:623" parameters={[{"name":"taskId","type":"string","required":true,"description":"Your task ID (the one that depends)"},{"name":"dependsOn","type":"string","required":true,"description":"Task ID you depend on"}]}>
+<McpToolCard id="tasks-set-dependency" name="bakin_exec_tasks_set_dependency" label="Set task dependency" description="Register a dependency between tasks. Your task will be auto-re-dispatched when the dependency completes. After registering, exit — do not wait." source="plugins/tasks/index.ts:716" parameters={[{"name":"taskId","type":"string","required":true,"description":"Your task ID (the one that depends)"},{"name":"dependsOn","type":"string","required":true,"description":"Task ID you depend on"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_tasks_set_dependency --args '{
   "taskId": "value",
@@ -847,7 +847,7 @@ mcporter call bakin-<agent>.bakin_exec_tasks_set_dependency --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="tasks-update" name="bakin_exec_tasks_update" label="Updated a task" description="Update a task on the board — change title, description, or assigned agent." source="plugins/tasks/index.ts:642" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"title","type":"string","required":false,"description":"New task title"},{"name":"description","type":"string","required":false,"description":"New task description"},{"name":"agent","type":"string","required":false,"description":"New assigned agent"}]}>
+<McpToolCard id="tasks-update" name="bakin_exec_tasks_update" label="Updated a task" description="Update a task on the board — change title, description, or assigned agent." source="plugins/tasks/index.ts:735" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"title","type":"string","required":false,"description":"New task title"},{"name":"description","type":"string","required":false,"description":"New task description"},{"name":"agent","type":"string","required":false,"description":"New assigned agent"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_tasks_update --args '{
   "taskId": "value",
