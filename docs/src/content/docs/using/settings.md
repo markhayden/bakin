@@ -19,6 +19,7 @@ The built-in tab covers the runtime knobs that don't belong to any single plugin
 | --- | --- |
 | **Dispatch** | How often the dispatch loop fires, retry counts, cooldowns after structural and transient failures, the max number of in-flight dispatches. |
 | **Watchdog** | Stuck-task thresholds, auto-recovery toggle, MCP and REST error-rate alerts (window, threshold, sample size, alert cooldown). |
+| **Restart recovery** | Whether Bakin repairs stale `inProgress` tasks on server startup before kicking a dispatch cycle. |
 | **Models** | Global allowlist and blocklist. Models on the blocklist never get assigned, even by alias or profile. |
 | **Doctor** | Diagnostic interval, auto-fix toggle for skill drift, require-onboard guard so doctor stays quiet on fresh installs. |
 | **Notifications** | Default notification channel and gate-alert toggle. |
@@ -37,7 +38,7 @@ Every plugin can declare its own settings. When it does, a tab shows up here wit
 
 ## On disk
 
-Prefer a text editor? Go straight to the JSON. System settings live at `~/.bakin/settings.json`; per-plugin values at `~/.bakin/plugin-settings/<id>.json`. Same rules: the watchdog picks up changes within one cycle, no restart needed.
+Prefer a text editor? Go straight to the JSON. System settings live at `~/.bakin/settings.json`; per-plugin values at `~/.bakin/plugin-settings/<id>.json`. Same rules: live services pick up settings on their next cycle; startup-only settings apply on the next server boot.
 
 ## Related
 
