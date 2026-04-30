@@ -1,10 +1,10 @@
 /**
- * Regression test for plugins/health/lib/managed-blocks.ts.
+ * Regression test for src/core/agent-rules/managed-blocks.ts.
  *
  * Migrated from tests/core/doctor-managed-blocks.test.ts in #139 C9.
  * Pins the existing managed-block flow byte-equal so the registered
- * health.managed-blocks check can be lifted in without changing
- * observed behavior. Cases:
+ * health.managed-blocks check can call core-owned infrastructure without
+ * changing observed behavior. Cases:
  *
  *   - Block missing + autoFix=true → block appended with one blank line
  *     of separation; trailing newline; rest of file untouched
@@ -60,12 +60,12 @@ mock.module('@bakin/core/content-dir', () => ({
   getBakinPaths: () => ({}),
   isUsingBakinHome: () => true,
 }))
-mock.module('../../../src/core/app-services', () => ({
+mock.module('../../src/core/app-services', () => ({
   maybeGetAppServices: () => ({ runtime: appRuntime }),
   createAppServices: async () => ({ runtime: appRuntime }),
 }))
 
-import { applyAllManagedBlocks, applyAllManagedBlocksForRuntime } from '../../../plugins/health/lib/managed-blocks'
+import { applyAllManagedBlocks, applyAllManagedBlocksForRuntime } from '../../src/core/agent-rules/managed-blocks'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 
 afterAll(() => {

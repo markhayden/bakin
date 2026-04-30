@@ -9,10 +9,9 @@
  * packages/core/src/agent-packages/managed-blocks.ts and are shared
  * with the agent-package installer/projector.
  *
- * The orchestrator-rules block targets the main agent's
- * workspace `AGENTS.md` and is owned by plugins/health/lib/system-checks/orchestrator-rules.ts
- * (which imports
- * AGENT_RULES_BLOCK_START/END + resolveOrchestratorRules from here).
+ * The orchestrator-rules block targets the main agent's workspace
+ * `AGENTS.md`. The health plugin verifies it, but the block contract is
+ * core-owned so the CLI can apply/check it without importing plugins.
  *
  * Migrated from src/core/doctor.ts in #139 C8 (orchestrator-rules
  * constants + template) and #139 C9 (MANAGED_BLOCKS + check helper +
@@ -24,8 +23,6 @@ import {
   getBlockState,
   injectBlock,
 } from '../../../packages/core/src/agent-packages/managed-blocks'
-import { createAppServices, maybeGetAppServices } from '../../../src/core/app-services'
-import { getHookRegistry } from '../../../src/lib/plugin-registry'
 import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
 import type { AgentRuntimeAdapter, RuntimeAgent } from '../../../packages/core/src/adapters/runtime'
 
@@ -132,6 +129,7 @@ The skip reason is logged to the audit trail for debugging. Always verify agains
 /** Build the workflow catalog from available definitions for embedding in rules */
 async function buildWorkflowCatalog(): Promise<string> {
   try {
+    const { getHookRegistry } = await import('../../lib/plugin-registry')
     const hooks = getHookRegistry()
     const defs = await hooks.invoke<Array<{ definition: Record<string, unknown>; name: string }>>('workflows.definitions.list', {}) ?? []
     if (defs.length === 0) return '   (no workflows defined yet)'
@@ -240,6 +238,7 @@ async function checkManagedBlockRuntime(
 }
 
 async function getRuntimeForManagedBlocks(): Promise<AgentRuntimeAdapter> {
+  const { createAppServices, maybeGetAppServices } = await import('../app-services')
   const existing = maybeGetAppServices()?.runtime
   if (existing) return existing
   return (await createAppServices()).runtime

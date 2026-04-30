@@ -39,7 +39,7 @@ import { pluginRegistry, getHookRegistry, removePluginSkillsByPlugin } from '@/l
 import { removeExecToolsByPlugin } from '../../../scripts/lib/registry'
 import { unregisterPluginNodeTypes } from '../../../plugins/workflows/lib/node-type-registry'
 import { unregisterPluginNotificationChannels } from '../../../plugins/workflows/lib/notification-channel-registry'
-import { unregisterPluginHealthChecks } from '../../../plugins/health/lib/health-check-registry'
+import { unregisterPluginHealthChecks } from '../health-check-registry'
 import { ensurePluginSearchReady, unregisterContentTypesByPlugin } from '@/core/search-registry'
 import {
   bumpVersion,

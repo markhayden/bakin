@@ -8,7 +8,7 @@ import { getSettings } from '../../../../src/core/settings'
 import type { AgentRuntimeAdapter, RuntimeAgent } from '../../../../packages/core/src/adapters/runtime'
 import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
 
-import { AGENT_RULES_BLOCK_END, AGENT_RULES_BLOCK_START, resolveOrchestratorRulesForAgent } from '../managed-blocks'
+import { AGENT_RULES_BLOCK_END, AGENT_RULES_BLOCK_START, resolveOrchestratorRulesForAgent } from '../../../../src/core/agent-rules/managed-blocks'
 
 function ok(message: string): HealthCheckResult {
   return { check: 'orchestrator-rules', status: 'ok', message, autoFixable: false }

@@ -29,7 +29,7 @@ import {
 import {
   registerPluginHealthCheck,
   unregisterPluginHealthChecks,
-} from '../../plugins/health/lib/health-check-registry'
+} from '../core/health-check-registry'
 import type {
   PluginNotificationChannelInput,
   PluginHealthCheckInput,

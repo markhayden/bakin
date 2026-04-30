@@ -17,15 +17,15 @@ mock.module('@bakin/core/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
-mock.module('../../../src/core/content-dir', () => ({
+mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-mock.module('../../../packages/core/src/content-dir', () => ({
+mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ root: testDir }),
 }))
-mock.module('../../../src/core/logger', () => ({
+mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 mock.module('@/core/task-store', () => ({
@@ -41,7 +41,7 @@ import {
   unregisterHealthCheck,
   registerPluginHealthCheck,
   unregisterPluginHealthChecks,
-} from '../../../plugins/health/lib/health-check-registry'
+} from '../../src/core/health-check-registry'
 
 // Track ids we add per-test so we can clean up between tests.
 const added: string[] = []
