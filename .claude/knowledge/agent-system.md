@@ -154,6 +154,30 @@ Agents interact with Bakin through MCP tools served by `src/core/mcp-server.ts`:
 ### Agent identity
 MCP sessions bind agent identity via `?agent=chef` query param at connection time. All tool calls carry the agent ID for audit attribution.
 
+### MCP tool policy
+
+`src/core/mcp-tool-policy.ts` resolves the effective tool policy when a Bakin
+MCP session is created:
+
+- Unmanaged runtime agents have legacy unrestricted access.
+- Managed agent-package agents must have a non-empty
+  `agent.allowedTools` policy in their installed `bakin-package.json`; missing
+  or malformed package policy fails closed.
+- Adopted package agents with an explicit `allowedTools` policy are scoped by
+  that policy. Adopted agents without a policy remain unrestricted until
+  configured.
+- Patterns are tool-name based and support exact names plus `*` wildcards, e.g.
+  `bakin_exec_assets_*`.
+
+The MCP server still registers every exec tool internally, but disallowed tools
+are disabled so they do not appear in `tools/list`. Direct calls to a hidden
+but registered tool return an audited denial (`exec.<tool>.denied`) instead of
+running the handler.
+
+This is distinct from workflow `deny_tools`, which is step prompt guidance, and
+from OpenClaw cron `toolsAllow`, which belongs to native isolated runtime cron
+jobs.
+
 ## Activity Logging
 
 ### Live activity feed
