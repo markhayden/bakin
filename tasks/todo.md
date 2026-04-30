@@ -97,9 +97,12 @@ Flat checklist mirroring [`plan.md`](./plan.md). Check items as you land them. E
 - [ ] Schemas + convert + tests + smoke (models picker) + gate
 - [ ] Commit: `refactor(models): declarative routes with typed contracts`
 
-### T13 — `health` (7 routes)
-- [ ] Schemas + convert + tests + smoke (doctor page) + gate
-- [ ] Commit: `refactor(health): declarative routes with typed contracts`
+### T13 — `health` (7 routes) ✅ — moved earlier in order
+- [x] All 7 GET routes converted to `defineRoute`. Module-scope schemas (checksResponse, summaryResponse, usageFeedQuery, doctorQuery, doctorResponse, searchStatusResponse, registryResponse). Note: `errors1h` is `z.unknown()` because `getErrorCount` returns `{ total, byKind }`, not a number.
+- [x] Updated 1 test assertion (error envelope: 'invalid input' replaces 'Invalid query').
+- [x] Validator: 20 declarative routes total (12 tasks + 1 search + 7 health); 6 warnings remaining for unmigrated plugins.
+- [x] Gate (typecheck, 54 health tests pass, docs:check)
+- [x] Commit: `refactor(health): declarative routes with typed contracts`
 
 ### CHECKPOINT — All in-repo plugins migrated
 - [ ] Diff `docs/public/openapi.json` — every plugin path typed
@@ -140,6 +143,8 @@ Flat checklist mirroring [`plan.md`](./plan.md). Check items as you land them. E
 ## Cleanup + flip (T17–T18)
 
 ### T17 — Cleanup
+- [ ] Rename `packages/host/src/api/docs-runtime.ts` references and tests (`tests/api/api-docs-runtime.test.ts`) to align with the final endpoint name (`/api/openapi`). The current naming refers to an interim stage where the runtime builder backed `/api/docs`.
+
 - [ ] Delete `src/core/api-docs.ts` (`CORE_ROUTES`, `coreRoute()`, `routeDocs[]`, `registerRouteDoc()`, `getAllRoutes()`, `generateDocs(contentDir)`, `RouteDoc`)
 - [ ] Delete `dispatchWebHandler` from `packages/host/src/api/_adapter.ts`. If the file is empty after the deletion, remove the file too.
 - [ ] Delete file-routed core handlers under `packages/host/src/api/**/*.ts` (after deletions, only `_static.ts` and `_embedded-assets*.ts` should remain — and `_adapter.ts` only if it still has live exports)
