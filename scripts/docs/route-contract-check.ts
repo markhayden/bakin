@@ -36,6 +36,7 @@ function parseArgs(): CliArgs {
 interface PluginScanResult {
   declarativeRoutes: ReadonlyArray<APIRoute<any, any, any, any>>
   legacyRouteCount: number
+  defineRouteCount: number
 }
 
 async function loadPluginRoutes(): Promise<Record<string, PluginScanResult>> {
@@ -57,10 +58,11 @@ async function loadPluginRoutes(): Promise<Record<string, PluginScanResult>> {
       // using the imperative legacy shape so the validator surfaces them
       // as "needs migration" rather than silently passing.
       const legacyRouteCount = countLegacyRouteRegistrations(indexPath)
-      out[id] = { declarativeRoutes, legacyRouteCount }
+      const defineRouteCount = countDefineRouteCalls(indexPath)
+      out[id] = { declarativeRoutes, legacyRouteCount, defineRouteCount }
     } catch (err) {
       console.warn(`[validator] could not statically import plugins/${id}/index.ts: ${err instanceof Error ? err.message : String(err)}`)
-      out[id] = { declarativeRoutes: [], legacyRouteCount: 0 }
+      out[id] = { declarativeRoutes: [], legacyRouteCount: 0, defineRouteCount: 0 }
     }
   }
   return out
@@ -88,6 +90,34 @@ function countLegacyRouteRegistrations(entryPath: string): number {
     const text = fs.readFileSync(target, 'utf8')
     count += (text.match(/ctx\.registerRoute\s*\(/g) ?? []).length
     count += (text.match(/(?:export\s+)?const\s+\w+\s*:\s*APIRoute\s*=\s*\{/g) ?? []).length
+  }
+  visit(dir)
+  return count
+}
+
+/**
+ * Count `defineRoute(...)` and `defineCoreRoute(...)` calls in a plugin's
+ * source tree — including ones inside `activate()` (e.g. team plugin uses
+ * a mutable-array pattern, pushing defineRoute() calls during activation).
+ * Used as a secondary signal alongside the static `plugin.routes` scan.
+ */
+function countDefineRouteCalls(entryPath: string): number {
+  const fs = require('fs') as typeof import('fs')
+  const path = require('path') as typeof import('path')
+  const dir = path.dirname(entryPath)
+  let count = 0
+  const visit = (target: string) => {
+    if (!fs.existsSync(target)) return
+    const stat = fs.statSync(target)
+    if (stat.isDirectory()) {
+      if (target.endsWith('/dist') || target.endsWith('/node_modules')) return
+      for (const entry of fs.readdirSync(target)) visit(path.join(target, entry))
+      return
+    }
+    if (!target.endsWith('.ts') && !target.endsWith('.tsx')) return
+    const text = fs.readFileSync(target, 'utf8')
+    count += (text.match(/\bdefineRoute\s*\(\s*\{/g) ?? []).length
+    count += (text.match(/\bdefineCoreRoute\s*\(\s*\{/g) ?? []).length
   }
   visit(dir)
   return count
@@ -122,6 +152,7 @@ async function main(): Promise<number> {
   const totalDeclarative = coreRoutes.length
     + Object.values(pluginScan).reduce((acc, s) => acc + s.declarativeRoutes.length, 0)
   const totalLegacy = Object.values(pluginScan).reduce((acc, s) => acc + s.legacyRouteCount, 0)
+  const totalDefineRouteCalls = Object.values(pluginScan).reduce((acc, s) => acc + s.defineRouteCount, 0)
 
   const result = validateRouteContracts({
     pluginRoutes,
@@ -136,7 +167,7 @@ async function main(): Promise<number> {
   const legacyFindings: { scope: string; method: string; path: string; issue: string }[] = []
   for (const [id, scan] of Object.entries(pluginScan)) {
     if (scan.legacyRouteCount === 0) continue
-    if (scan.declarativeRoutes.length === 0) {
+    if (scan.declarativeRoutes.length === 0 && scan.defineRouteCount === 0) {
       // Whole plugin still on the legacy shape.
       legacyFindings.push({
         scope: id,
@@ -149,12 +180,12 @@ async function main(): Promise<number> {
         scope: id,
         method: '*',
         path: '*',
-        issue: `plugin partially migrated: ${scan.declarativeRoutes.length} declarative + ${scan.legacyRouteCount} legacy registration(s) remain`,
+        issue: `plugin partially migrated: ${scan.declarativeRoutes.length + scan.defineRouteCount} defineRoute call(s) + ${scan.legacyRouteCount} legacy registration(s) remain`,
       })
     }
   }
 
-  console.log(`route-contract-check: scanned ${totalDeclarative} declarative route(s) + detected ${totalLegacy} legacy registration(s) across ${Object.keys(pluginScan).length} plugin(s) + ${coreRoutes.length} core`)
+  console.log(`route-contract-check: scanned ${totalDeclarative} static declarative route(s) (+ ${totalDefineRouteCalls - totalDeclarative} mutable-array defineRoute call(s)) + detected ${totalLegacy} legacy registration(s) across ${Object.keys(pluginScan).length} plugin(s) + ${coreRoutes.length} core`)
 
   const errors = [...result.errors, ...(args.mode === 'error' ? legacyFindings : [])]
   const warnings = [...result.warnings, ...(args.mode === 'warn' ? legacyFindings : [])]

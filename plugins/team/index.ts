@@ -20,7 +20,8 @@ import {
   writeFileSync,
 } from 'fs'
 import { basename, dirname, join, relative } from 'path'
-import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
+import type { APIRoute, BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
+import { defineRoute, definePlugin } from '@bakin/core/routing'
 import { createLogger } from '../../src/core/logger'
 import { readHeartbeats } from '../../src/lib/content-files'
 import { getContentDir, getBakinPaths } from '../../packages/core/src/content-dir'
@@ -730,7 +731,12 @@ void dirname
 
 // ─── Plugin Definition ───────────────────────────────────────────────────────
 
-const teamPlugin: BakinPlugin = {
+// Mutable array — populated during activate() via push, registered into
+// state.routes by the plugin loader after activate completes (T11+).
+const teamRoutes: any[] = []
+
+const teamPlugin: BakinPlugin = definePlugin({
+  routes: teamRoutes as unknown as Parameters<typeof definePlugin>[0]['routes'],
   id: 'team',
   name: 'Team',
   version: '1.0.0',
@@ -752,6 +758,8 @@ const teamPlugin: BakinPlugin = {
   ],
 
   activate(ctx: PluginContext) {
+    // Reset routes on every activate (hot-reload safety).
+    teamRoutes.length = 0
     staleSettingsCtx = ctx
 
     // ─── Search Content Type Registration ─────────────────────────────
@@ -888,7 +896,7 @@ const teamPlugin: BakinPlugin = {
     // ─── REST Routes ───────────────────────────────────────────────────
 
     // GET / — List all agents with status
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/',
       method: 'GET',
       description: 'List all agents with runtime status',
@@ -933,10 +941,10 @@ const teamPlugin: BakinPlugin = {
           return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
-    })
+    }))
 
     // POST / — Create a new agent
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/',
       method: 'POST',
       description: 'Create a new agent in the active runtime',
@@ -1004,10 +1012,10 @@ const teamPlugin: BakinPlugin = {
           return Response.json({ error: msg }, { status })
         }
       },
-    })
+    }))
 
     // DELETE /:agentId — Remove an agent from the active runtime
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId',
       method: 'DELETE',
       description: 'Remove an agent from the active runtime and move workspace to trash',
@@ -1055,10 +1063,10 @@ const teamPlugin: BakinPlugin = {
           return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
-    })
+    }))
 
     // PUT /:agentId/identity — Update agent identity fields
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId/identity',
       method: 'PUT',
       description: 'Update agent identity fields and persona files',
@@ -1090,10 +1098,10 @@ const teamPlugin: BakinPlugin = {
           return Response.json({ error: msg }, { status })
         }
       },
-    })
+    }))
 
     // PUT /:agentId/permissions — Update dispatch permissions
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId/permissions',
       method: 'PUT',
       description: 'Update agent dispatch permissions (subagents.allowAgents)',
@@ -1127,10 +1135,10 @@ const teamPlugin: BakinPlugin = {
           return Response.json({ error: msg }, { status })
         }
       },
-    })
+    }))
 
     // POST /:agentId/avatar — Upload avatar image
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId/avatar',
       method: 'POST',
       description: 'Upload agent avatar image',
@@ -1168,10 +1176,10 @@ const teamPlugin: BakinPlugin = {
           return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
-    })
+    }))
 
     // GET /:agentId — Full agent profile
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId',
       method: 'GET',
       description: 'Get full agent profile merged from runtime state',
@@ -1185,10 +1193,10 @@ const teamPlugin: BakinPlugin = {
 
         return Response.json(profile)
       },
-    })
+    }))
 
     // GET /:agentId/files — List workspace files
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId/files',
       method: 'GET',
       description: 'List workspace files for an agent',
@@ -1200,10 +1208,10 @@ const teamPlugin: BakinPlugin = {
         const files = await ctx.runtime.agents.listWorkspaceFiles(agentId)
         return Response.json({ files })
       },
-    })
+    }))
 
     // GET /:agentId/files/:filename — Read a workspace file
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId/files/:filename',
       method: 'GET',
       description: 'Read a specific workspace file',
@@ -1218,10 +1226,10 @@ const teamPlugin: BakinPlugin = {
 
         return Response.json({ filename, content: file.content })
       },
-    })
+    }))
 
     // PUT /:agentId/files/:filename — Write a workspace file
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId/files/:filename',
       method: 'PUT',
       description: 'Write a workspace file through the active runtime',
@@ -1243,10 +1251,10 @@ const teamPlugin: BakinPlugin = {
           return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
-    })
+    }))
 
     // GET /:agentId/skills — List installed skills
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId/skills',
       method: 'GET',
       description: 'List installed skills for an agent',
@@ -1258,10 +1266,10 @@ const teamPlugin: BakinPlugin = {
         const skills = await listRuntimeSkills(ctx.runtime, agentId)
         return Response.json({ skills })
       },
-    })
+    }))
 
     // GET /:agentId/skills/:skillId — Read SKILL.md
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId/skills/:skillId',
       method: 'GET',
       description: 'Read SKILL.md for a specific skill',
@@ -1276,10 +1284,10 @@ const teamPlugin: BakinPlugin = {
 
         return Response.json({ skillId, content })
       },
-    })
+    }))
 
     // GET /:agentId/memory — List memory files
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId/memory',
       method: 'GET',
       description: 'List memory files for an agent',
@@ -1291,10 +1299,10 @@ const teamPlugin: BakinPlugin = {
         const files = await listRuntimeMemoryFiles(ctx.runtime, agentId)
         return Response.json({ files })
       },
-    })
+    }))
 
     // GET /:agentId/memory/:date — Read a memory file
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId/memory/:date',
       method: 'GET',
       description: 'Read a specific memory file',
@@ -1309,10 +1317,10 @@ const teamPlugin: BakinPlugin = {
 
         return Response.json({ date, content })
       },
-    })
+    }))
 
     // GET /:agentId/stats — Token usage and cost
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId/stats',
       method: 'GET',
       description: 'Get token usage and cost stats for an agent',
@@ -1326,10 +1334,10 @@ const teamPlugin: BakinPlugin = {
 
         return Response.json({ usage: usage ?? null })
       },
-    })
+    }))
 
     // GET /:agentId/heartbeat — Raw HEARTBEAT.md content + lastUpdated
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId/heartbeat',
       method: 'GET',
       description: 'Read the agent\'s HEARTBEAT.md narrative + file mtime',
@@ -1346,10 +1354,10 @@ const teamPlugin: BakinPlugin = {
           return Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
-    })
+    }))
 
     // GET /:agentId/active-context — Latest session transcript (read-only)
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId/active-context',
       method: 'GET',
       description: 'Read the most recent session JSONL parsed into a message stream',
@@ -1369,10 +1377,10 @@ const teamPlugin: BakinPlugin = {
           return Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
-    })
+    }))
 
     // GET /:agentId/recent-activity — In-memory dispatch counts per window
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId/recent-activity',
       method: 'GET',
       description: 'Per-agent dispatch + error counts across 5m / 1h / 24h windows (resets on server restart)',
@@ -1397,10 +1405,10 @@ const teamPlugin: BakinPlugin = {
           return Response.json({ ok: false, error: err instanceof Error ? err.message : String(err) }, { status: 500 })
         }
       },
-    })
+    }))
 
     // GET /:agentId/avatar — Serve avatar JPEG
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId/avatar',
       method: 'GET',
       description: 'Serve agent avatar image',
@@ -1424,10 +1432,10 @@ const teamPlugin: BakinPlugin = {
           },
         })
       },
-    })
+    }))
 
     // POST /:agentId/start — Start agent
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId/start',
       method: 'POST',
       description: 'Start an agent via the active runtime',
@@ -1443,10 +1451,10 @@ const teamPlugin: BakinPlugin = {
         }
         return Response.json(result)
       },
-    })
+    }))
 
     // POST /:agentId/stop — Stop agent
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId/stop',
       method: 'POST',
       description: 'Stop an agent',
@@ -1458,10 +1466,10 @@ const teamPlugin: BakinPlugin = {
         const result = await stopAgent(agentId)
         return Response.json(result)
       },
-    })
+    }))
 
     // GET /settings — Display settings
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/settings',
       method: 'GET',
       description: 'Get agent display settings',
@@ -1469,10 +1477,10 @@ const teamPlugin: BakinPlugin = {
         const raw = readDisplaySettings()
         return Response.json(await mergeDisplayDefaults(ctx.runtime, raw))
       },
-    })
+    }))
 
     // PUT /settings — Update display settings
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/settings',
       method: 'PUT',
       description: 'Update agent display settings',
@@ -1481,22 +1489,22 @@ const teamPlugin: BakinPlugin = {
         writeDisplaySettings(body)
         return Response.json({ ok: true })
       },
-    })
+    }))
 
     // ─── Team (Org) Routes ──────────────────────────────────────────────
 
     // GET /teams — List all org teams
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/teams',
       method: 'GET',
       description: 'List organizational teams',
       handler: async () => {
         return Response.json({ teams: readTeams() })
       },
-    })
+    }))
 
     // POST /teams — Create a team
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/teams',
       method: 'POST',
       description: 'Create an organizational team',
@@ -1525,10 +1533,10 @@ const teamPlugin: BakinPlugin = {
         ctx.activity.audit('team.org.created', 'system', { teamId: id, label: team.label })
         return Response.json({ ok: true, team })
       },
-    })
+    }))
 
     // PUT /teams/:teamId — Update a team
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/teams/:teamId',
       method: 'PUT',
       description: 'Update an organizational team',
@@ -1552,10 +1560,10 @@ const teamPlugin: BakinPlugin = {
         writeTeams(teams)
         return Response.json({ ok: true, team: teams[idx] })
       },
-    })
+    }))
 
     // DELETE /teams/:teamId — Delete a team (unassigns agents)
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/teams/:teamId',
       method: 'DELETE',
       description: 'Delete an organizational team',
@@ -1584,10 +1592,10 @@ const teamPlugin: BakinPlugin = {
         ctx.activity.audit('team.org.deleted', 'system', { teamId })
         return Response.json({ ok: true })
       },
-    })
+    }))
 
     // GET /teams/:teamId/members — List agents in a team
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/teams/:teamId/members',
       method: 'GET',
       description: 'List agents belonging to a team',
@@ -1606,10 +1614,10 @@ const teamPlugin: BakinPlugin = {
 
         return Response.json({ team, members })
       },
-    })
+    }))
 
     // PUT /:agentId/team — Assign agent to a team
-    ctx.registerRoute({
+    teamRoutes.push(defineRoute({
       path: '/:agentId/team',
       method: 'PUT',
       description: 'Assign an agent to an organizational team',
@@ -1639,7 +1647,7 @@ const teamPlugin: BakinPlugin = {
         writeDisplaySettings(ds)
         return Response.json({ ok: true })
       },
-    })
+    }))
 
     // ─── MCP Exec Tools ────────────────────────────────────────────────
 
@@ -1987,6 +1995,6 @@ const teamPlugin: BakinPlugin = {
   onShutdown() {
     log.info('Shutting down team plugin')
   },
-}
+}) as unknown as BakinPlugin
 
 export default teamPlugin
