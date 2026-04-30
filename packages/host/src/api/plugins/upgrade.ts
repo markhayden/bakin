@@ -7,7 +7,7 @@
  * Body: { pluginId: string, yes?: boolean }
  *
  * Response shape:
- *   { ok: true, id, before, after, noop, awaitingConsent, newPermissions }
+ *   { ok: true, id, before, after, noop, awaitingConsent, newPermissions, pluginAssets? }
  *   { ok: false, error: string, core?: boolean }    on refusal/4xx
  *
  * The upgraded plugin is activated immediately after a successful rebuild.
