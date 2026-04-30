@@ -14,7 +14,7 @@ description: Coverage report for generated Bakin documentation surfaces.
 | Core plugins | `plugins/*/bakin-plugin.json` | Active: 8 plugin manifests |
 | Settings | `packages/core/src/settings.ts` | Active: 50 flattened settings |
 | Runtime paths | `packages/core/src/content-dir.ts` | Active: documented path contract |
-| SDK exports | `packages/sdk/package.json` and barrel files | Audited: 8 subpaths |
+| SDK exports | `packages/sdk/package.json` and barrel files | Audited: 9 subpaths |
 | Agent package kinds | `packages/core/src/agent-packages/manifest.ts` | Active: agent, skill-pack, workflow-pack, knowledge-pack |
 | Tested snippets | `docs/snippets` | Active: 4 required fixtures |
 | LLM docs | `docs/public/llms*` | Active: 11 public bundles |
