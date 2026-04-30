@@ -22,10 +22,9 @@ import { checkMcporter } from './lib/system-checks/mcporter'
 import { checkRuntime } from './lib/system-checks/runtime'
 import { checkChannelApprovals } from './lib/system-checks/channel-approvals'
 import { checkSearchAdapter } from './lib/system-checks/search'
-import { checkOrchestratorRules } from './lib/system-checks/orchestrator-rules'
 import { checkAndSyncSkill } from './lib/system-checks/sync-skill'
 import { checkPluginAssets } from './lib/system-checks/plugin-assets'
-import { applyAllManagedBlocksForRuntime } from '../../src/core/agent-rules/managed-blocks'
+import { applyManagedBlocksForRuntime } from '../../src/core/agent-rules/managed-blocks'
 // Registry accessors live on globalThis because Next.js API routes get
 // separate webpack-compiled module instances with empty Maps. The custom
 // server (server.ts) registers the real accessors after plugin init.
@@ -322,7 +321,7 @@ const healthPlugin: BakinPlugin = {
       id: 'orchestrator-rules',
       name: 'Main agent AGENTS.md orchestrator-rules block',
       autoFix: true,
-      run: () => checkOrchestratorRules(ctx.runtime),
+      run: () => applyManagedBlocksForRuntime(ctx.runtime, getSettings().doctor.autoFixSkill, { scope: 'orchestrator' }),
     })
     ctx.registerHealthCheck({
       id: 'skill',
@@ -339,7 +338,7 @@ const healthPlugin: BakinPlugin = {
       id: 'managed-blocks',
       name: 'Per-agent managed blocks in AGENTS.md',
       autoFix: true,
-      run: () => applyAllManagedBlocksForRuntime(ctx.runtime, getSettings().doctor.autoFixSkill),
+      run: () => applyManagedBlocksForRuntime(ctx.runtime, getSettings().doctor.autoFixSkill, { scope: 'subagents' }),
     })
   },
 
