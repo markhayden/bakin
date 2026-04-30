@@ -34,7 +34,7 @@ export function JobForm({
   onCancel: () => void
   submitting: boolean
   initial?: Partial<JobFormData>
-  mode?: 'create' | 'edit' | 'duplicate'
+  mode?: 'create' | 'edit' | 'duplicate' | 'adopt'
 }) {
   const mainAgentId = useMainAgentId()
   const [name, setName] = useState(initial?.name ?? '')
@@ -48,7 +48,7 @@ export function JobForm({
   const [requireTriage, setRequireTriage] = useState(initial?.requireTriage ?? false)
   const [allowOverlap, setAllowOverlap] = useState(initial?.allowOverlap ?? false)
   const [maxFailures, setMaxFailures] = useState(initial?.maxFailures ?? 3)
-  const [parsedOk, setParsedOk] = useState(mode === 'edit') // edit mode: assume current schedule is valid
+  const [parsedOk, setParsedOk] = useState(mode === 'edit' || mode === 'adopt') // existing runtime schedules are already valid
 
   // Reset form when initial changes (e.g. switching between jobs)
   useEffect(() => {
@@ -63,7 +63,7 @@ export function JobForm({
       setRequireTriage(initial.requireTriage ?? false)
       setAllowOverlap(initial.allowOverlap ?? false)
       setMaxFailures(initial.maxFailures ?? 3)
-      setParsedOk(mode === 'edit')
+      setParsedOk(mode === 'edit' || mode === 'adopt')
     }
   }, [initial, mode])
 
@@ -80,6 +80,7 @@ export function JobForm({
     create: { submit: 'Create Job', submitting: 'Creating...' },
     edit: { submit: 'Save Changes', submitting: 'Saving...' },
     duplicate: { submit: 'Create Copy', submitting: 'Creating...' },
+    adopt: { submit: 'Adopt into Bakin', submitting: 'Adopting...' },
   }
 
   const handleSubmit = async (e: React.FormEvent) => {

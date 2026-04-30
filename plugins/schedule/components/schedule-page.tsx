@@ -46,7 +46,7 @@ export function SchedulePage() {
 
   const {
     jobs, loading, refresh,
-    pauseJob, resumeJob, deleteJob, runNow, updateJob, skipNext,
+    pauseJob, resumeJob, deleteJob, runNow, updateJob, adoptJob, restoreNative, skipNext,
   } = useScheduleJobs({
     agent: agentFilter === 'all' ? undefined : agentFilter,
   })
@@ -88,7 +88,7 @@ export function SchedulePage() {
 
   // Derive drawer/form visibility from URL state
   const selectedJob = jobIdParam ? jobs.find(j => j.id === jobIdParam) ?? null : null
-  const showForm = mode === 'create' || ((mode === 'edit' || mode === 'duplicate') && !!selectedJob)
+  const showForm = mode === 'create' || ((mode === 'edit' || mode === 'duplicate' || mode === 'adopt') && !!selectedJob)
   const showDetail = !!selectedJob && !showForm
 
   // --- Transitions ---
@@ -107,6 +107,7 @@ export function SchedulePage() {
 
   const openEdit = () => pushMode('edit')
   const openDuplicate = () => pushMode('duplicate')
+  const openAdopt = () => pushMode('adopt')
 
   // Atomic: set both jobId and mode in a single push (used from list/row context)
   const openEditFor = (job: ScheduleJob) => {
@@ -130,7 +131,21 @@ export function SchedulePage() {
   const handleFormSubmit = async (data: JobFormData) => {
     setSubmitting(true)
     try {
-      if (mode === 'edit' && selectedJob) {
+      if (mode === 'adopt' && selectedJob) {
+        const ok = await adoptJob(selectedJob.id, {
+          name: data.name,
+          schedule: data.schedule,
+          agentId: data.agentId || null,
+          taskPrompt: data.taskPrompt || null,
+          taskTitle: data.taskTitle || null,
+          workflowId: data.workflowId || null,
+          owner: data.owner || null,
+          requireTriage: data.requireTriage,
+          allowOverlap: data.allowOverlap,
+          maxFailures: data.maxFailures,
+        })
+        if (ok) closeForm()
+      } else if (mode === 'edit' && selectedJob) {
         const ok = await updateJob(selectedJob.id, {
           name: data.name,
           displayName: data.name,
@@ -161,9 +176,9 @@ export function SchedulePage() {
   }
 
   // Derive form initial data from URL state
-  const formInitial = (mode === 'edit' || mode === 'duplicate') && selectedJob ? {
+  const formInitial = (mode === 'edit' || mode === 'duplicate' || mode === 'adopt') && selectedJob ? {
     name: mode === 'duplicate' ? `${selectedJob.displayName} (copy)` : selectedJob.displayName,
-    schedule: selectedJob.humanSchedule,
+    schedule: selectedJob.cron || selectedJob.humanSchedule,
     agentId: selectedJob.agentId,
     taskPrompt: selectedJob.taskPrompt,
     taskTitle: selectedJob.taskTitle,
@@ -178,7 +193,9 @@ export function SchedulePage() {
     ? `Edit: ${selectedJob?.displayName}`
     : mode === 'duplicate'
       ? `Duplicate: ${selectedJob?.displayName}`
-      : 'New Scheduled Job'
+      : mode === 'adopt'
+        ? `Adopt: ${selectedJob?.displayName}`
+        : 'New Scheduled Job'
 
   return (
     <div className="p-6 flex flex-col h-full min-h-0 gap-4">
@@ -237,6 +254,13 @@ export function SchedulePage() {
             onDelete={(id) => deleteJob(id)}
             onEdit={openEditFor}
             onDuplicate={openDuplicateFor}
+            onAdopt={(job) => {
+              const params = new URLSearchParams(searchParams.toString())
+              params.set('jobId', job.id)
+              params.set('mode', 'adopt')
+              router.push(`${pathname}?${params.toString()}`, { scroll: false })
+            }}
+            onRestoreNative={restoreNative}
             onSkipNext={(id) => skipNext(id)}
             scoreMap={scoreMap}
             showScores={debug && !!search.trim()}
@@ -261,6 +285,8 @@ export function SchedulePage() {
         onRunNow={runNow}
         onEdit={openEdit}
         onDuplicate={openDuplicate}
+        onAdopt={openAdopt}
+        onRestoreNative={restoreNative}
         onSkipNext={skipNext}
       />
 
@@ -276,7 +302,7 @@ export function SchedulePage() {
           onCancel={closeForm}
           submitting={submitting}
           initial={formInitial}
-          mode={mode === 'duplicate' ? 'duplicate' : mode === 'edit' ? 'edit' : 'create'}
+          mode={mode === 'duplicate' ? 'duplicate' : mode === 'edit' ? 'edit' : mode === 'adopt' ? 'adopt' : 'create'}
         />
       </BakinDrawer>
     </div>

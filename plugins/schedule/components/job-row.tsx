@@ -1,6 +1,6 @@
 'use client'
 
-import { MoreHorizontal, Play, Pause, RotateCcw, Trash2, Pencil, Copy, SkipForward } from 'lucide-react'
+import { MoreHorizontal, Play, Pause, RotateCcw, Trash2, Pencil, Copy, SkipForward, CirclePlus, Undo2 } from 'lucide-react'
 import { TableRow, TableCell } from "@bakin/sdk/ui"
 import { Badge } from "@bakin/sdk/ui"
 import {
@@ -48,6 +48,8 @@ export function JobRow({
   onDelete,
   onEdit,
   onDuplicate,
+  onAdopt,
+  onRestoreNative,
   onSkipNext,
   scoreInfo,
 }: {
@@ -59,6 +61,8 @@ export function JobRow({
   onDelete: () => void
   onEdit: () => void
   onDuplicate: () => void
+  onAdopt: () => void
+  onRestoreNative: () => void
   onSkipNext: () => void
   scoreInfo?: JobScoreInfo
 }) {
@@ -71,9 +75,9 @@ export function JobRow({
       <TableCell>
         <div className="flex flex-col gap-0.5">
           <span className="text-sm font-medium text-foreground">{job.displayName || job.id}</span>
-          {job.isBakinJob && (
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Bakin</span>
-          )}
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+            {job.source === 'adopted' ? 'Adopted' : job.isBakinJob ? 'Bakin schedule' : 'Runtime cron'}
+          </span>
           {scoreInfo && (
             <span className="flex items-center gap-2 font-mono text-[10px] mt-0.5">
               <span className="text-amber-400">RRF {scoreInfo.score.toFixed(3)}</span>
@@ -111,24 +115,43 @@ export function JobRow({
             <DropdownMenuItem onClick={onRunNow}>
               <Play className="size-3.5 mr-2" /> Run Now
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={onEdit}>
-              <Pencil className="size-3.5 mr-2" /> Edit
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onDuplicate}>
-              <Copy className="size-3.5 mr-2" /> Duplicate
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onSkipNext}>
-              <SkipForward className="size-3.5 mr-2" /> Skip Next
-            </DropdownMenuItem>
+            {job.isBakinJob ? (
+              <>
+                <DropdownMenuItem onClick={onEdit}>
+                  <Pencil className="size-3.5 mr-2" /> Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onDuplicate}>
+                  <Copy className="size-3.5 mr-2" /> Duplicate
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onSkipNext}>
+                  <SkipForward className="size-3.5 mr-2" /> Skip Next
+                </DropdownMenuItem>
+              </>
+            ) : (
+              <DropdownMenuItem onClick={onAdopt}>
+                <CirclePlus className="size-3.5 mr-2" /> Adopt into Bakin
+              </DropdownMenuItem>
+            )}
+            {job.canRestoreNative && (
+              <DropdownMenuItem onClick={onRestoreNative}>
+                <Undo2 className="size-3.5 mr-2" /> Restore Native
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             {job.paused ? (
               <DropdownMenuItem onClick={onResume}>
                 <RotateCcw className="size-3.5 mr-2" /> Resume
               </DropdownMenuItem>
             ) : (
-              <DropdownMenuItem onClick={onPause}>
-                <Pause className="size-3.5 mr-2" /> Pause
-              </DropdownMenuItem>
+              job.enabled ? (
+                <DropdownMenuItem onClick={onPause}>
+                  <Pause className="size-3.5 mr-2" /> {job.isBakinJob ? 'Pause' : 'Disable'}
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={onResume}>
+                  <RotateCcw className="size-3.5 mr-2" /> {job.isBakinJob ? 'Resume' : 'Enable'}
+                </DropdownMenuItem>
+              )
             )}
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onDelete} className="text-red-400 focus:text-red-400">
