@@ -30,7 +30,11 @@ import {
 } from '@bakin/core/plugins/lockfile'
 import { parseManifestPermissions, type Permission } from '@bakin/core/plugins/permissions'
 import { parseGithubSource } from '@bakin/core/plugins/source'
-import { findSkillsForPlugin } from '@/core/onboarding/plugin-assets'
+import {
+  findSkillsForPlugin,
+  installPluginAssets,
+  type InstallReport,
+} from '@/core/onboarding/plugin-assets'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
 
 const log = createLogger('plugin-upgrade')
@@ -55,6 +59,8 @@ export interface UpgradeResult {
    * the user accepts.
    */
   awaitingConsent: boolean
+  /** Runtime skills projected from defaults/runtime-skills during a committed upgrade. */
+  pluginAssets?: InstallReport
 }
 
 /** Tag for refusal errors so the API layer can map them to HTTP 400. */
@@ -211,6 +217,22 @@ function manifestVersion(manifest: Record<string, unknown>, fallback: string): s
 function diffNewPermissions(prev: string[], next: string[]): string[] {
   const prevSet = new Set(prev)
   return next.filter(p => !prevSet.has(p))
+}
+
+async function installUpgradedPluginAssets(
+  id: string,
+  pluginDir: string,
+): Promise<{ installedSkills: string[]; pluginAssets: InstallReport }> {
+  const installedSkills = findSkillsForPlugin({ id, path: pluginDir }).map(s => s.name).sort()
+  if (installedSkills.length === 0) {
+    return {
+      installedSkills,
+      pluginAssets: { installed: [], unchanged: [], skipped: [] },
+    }
+  }
+
+  const pluginAssets = await installPluginAssets([{ id, path: pluginDir }])
+  return { installedSkills, pluginAssets }
 }
 
 // ─── Upgrade-available detection (C5) ────────────────────────────────────────
@@ -498,7 +520,7 @@ async function upgradeGithub(
 
   await buildUserPlugin(pluginDir)
 
-  const installedSkills = findSkillsForPlugin({ id, path: pluginDir }).map(s => s.name)
+  const assets = await installUpgradedPluginAssets(id, pluginDir)
 
   const updated = updatePlugin(readPluginLockfile(), id, {
     upgradedAt: new Date().toISOString(),
@@ -506,7 +528,7 @@ async function upgradeGithub(
     commitSha: remoteSha,
     manifestSha,
     permissions: newPerms,
-    installedSkills,
+    installedSkills: assets.installedSkills,
   })
   writePluginLockfile(updated)
 
@@ -517,6 +539,7 @@ async function upgradeGithub(
     noop: false,
     newPermissions: widened,
     awaitingConsent: false,
+    pluginAssets: assets.pluginAssets,
   }
 }
 
@@ -612,7 +635,7 @@ async function upgradeGithubSubpath(
 
     await buildUserPlugin(pluginDir)
 
-    const installedSkills = findSkillsForPlugin({ id, path: pluginDir }).map(s => s.name)
+    const assets = await installUpgradedPluginAssets(id, pluginDir)
 
     const updated = updatePlugin(readPluginLockfile(), id, {
       upgradedAt: new Date().toISOString(),
@@ -620,7 +643,7 @@ async function upgradeGithubSubpath(
       commitSha: remoteSha,
       manifestSha,
       permissions: newPerms,
-      installedSkills,
+      installedSkills: assets.installedSkills,
     })
     writePluginLockfile(updated)
 
@@ -631,6 +654,7 @@ async function upgradeGithubSubpath(
       noop: false,
       newPermissions: widened,
       awaitingConsent: false,
+      pluginAssets: assets.pluginAssets,
     }
   } finally {
     rmSync(stagingDir, { recursive: true, force: true })
@@ -692,7 +716,7 @@ async function upgradeLocal(
 
   await buildUserPlugin(pluginDir)
 
-  const installedSkills = findSkillsForPlugin({ id, path: pluginDir }).map(s => s.name)
+  const assets = await installUpgradedPluginAssets(id, pluginDir)
 
   const updated = updatePlugin(readPluginLockfile(), id, {
     upgradedAt: new Date().toISOString(),
@@ -700,7 +724,7 @@ async function upgradeLocal(
     manifestSha,
     permissions: newPerms,
     sourceTreeSha: newTreeSha,
-    installedSkills,
+    installedSkills: assets.installedSkills,
   })
   writePluginLockfile(updated)
 
@@ -711,5 +735,6 @@ async function upgradeLocal(
     noop: false,
     newPermissions: widened,
     awaitingConsent: false,
+    pluginAssets: assets.pluginAssets,
   }
 }

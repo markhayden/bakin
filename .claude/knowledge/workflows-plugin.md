@@ -244,9 +244,12 @@ Drift rules:
 ```bash
 bakin install plugin-assets [--yes]    # apply pending installs
 bakin check plugin-assets              # report drift, never write
+bakin plugins upgrade <id>             # also reapplies that plugin's runtime skills
 ```
 
-Both are wired through `cmdOnboardingInstallSingle` / `cmdOnboardingCheckSingle` in `cli/bakin.ts`. `pluginAssetsComponent` is also part of `COMPONENT_ORDER` in `src/core/onboarding/index.ts`, so `bakin onboard --yes` covers it as a side effect on a fresh machine.
+The install/check commands are wired through `cmdOnboardingInstallSingle` / `cmdOnboardingCheckSingle` in `cli/bakin.ts`. `pluginAssetsComponent` is also part of `COMPONENT_ORDER` in `src/core/onboarding/index.ts`, so `bakin onboard --yes` covers it as a side effect on a fresh machine.
+
+The plugin upgrade flow calls `installPluginAssets([{ id, path }])` after a committed rebuild and before marking the upgrade complete in the lockfile. Unexpected asset install failures fail the upgrade response. `.userEdited` runtime skills remain protected and are reported as skipped.
 
 ### Doctor Surface
 
@@ -295,7 +298,7 @@ Same non-negotiable rules as the rest of the codebase:
 
 Tracked as separate GitHub issues:
 
-- **2C — Plugin distribution**: `bakin plugin install <name>` from a registry/git, signature verification, automatic `plugin-assets install` after upgrade.
+- **2C — Plugin distribution**: `bakin plugin install <name>` from a registry/git and signature verification.
 - **2D — Skill rebase UX**: replace `.userEdited` warn-and-skip with 3-way merge and a UI for resolving conflicts.
 
 Phases 2A (plugin-registered node types) and 2B (visual canvas editor) shipped together — see the Node-Type Registry and Canvas Editor sections above and `.claude/specs/workflows-phase-2-plugin-nodes-and-canvas.md` for the original spec.
