@@ -66,6 +66,16 @@
       },
       {
         "method": "GET",
+        "path": "/gates/:taskId/decision",
+        "summary": "Render a durable Bakin gate approval fallback page"
+      },
+      {
+        "method": "POST",
+        "path": "/gates/:taskId/decision",
+        "summary": "Approve or reject a gate through the durable Bakin approval fallback page"
+      },
+      {
+        "method": "GET",
         "path": "/gates/pending",
         "summary": "List all gates awaiting approval"
       },

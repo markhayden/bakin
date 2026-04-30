@@ -43,7 +43,7 @@ Agents creating a task pick the workflow that fits, or skip with a reason. Bakin
 
 ### Approve a gate
 
-Gates pause the workflow until you decide. The task's detail panel shows the gate and the prior step's output for context. Approve and the workflow advances; reject and it rewinds. If notifications are configured, they ping you when one's waiting; with Discord gate alerts on, you can also approve or reject straight from the message.
+Gates pause the workflow until you decide. The task's detail panel shows the gate and the prior step's output for context. Approve and the workflow advances; reject and it rewinds. If notifications are configured, they ping you when one's waiting. Runtime channels that support interactive approvals can approve or reject straight from the message when a structured reject reason is not required; every gate alert also includes a Bakin approval link so provider button expiry does not expire the workflow gate.
 
 ### Cancel a workflow
 

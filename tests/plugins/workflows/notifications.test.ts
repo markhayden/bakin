@@ -122,7 +122,7 @@ describe('runtime gate notifications', () => {
       },
     }))
     expect(createApproval).toHaveBeenCalledTimes(1)
-    const [call] = createApproval.mock.calls[0] as unknown as [Record<string, unknown> & { request: { options: unknown } }]
+    const [call] = createApproval.mock.calls[0] as unknown as [Record<string, unknown> & { request: { options: unknown; context: unknown } }]
     expect(call).toEqual(expect.objectContaining({
       approvalId: expectedApprovalId,
       channels: ['approvals'],
@@ -131,6 +131,9 @@ describe('runtime gate notifications', () => {
       { id: 'approve', label: 'Approve', variant: 'primary' },
       { id: 'reject', label: 'Reject', variant: 'destructive' },
     ])
+    expect(call.request.context).toEqual(expect.objectContaining({
+      approvalUrl: expect.stringContaining('/api/plugins/workflows/gates/task-42/decision'),
+    }))
   })
 
   it('skips approval creation when channel alerts are disabled', async () => {
