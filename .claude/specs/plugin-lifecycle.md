@@ -31,7 +31,7 @@ This work introduces the missing primitive (`~/.bakin/plugins/lock.json`, modele
 | Tarball retention / cleanup / `bakin plugins restore` | `.uninstalled/` tarballs accumulate without expiry in this PR. Punt to its own UX conversation. | New issue: "feat(plugins): .uninstalled tarball retention + restore command" |
 | Permissions layer 3 (runtime capability gating) | Pervasive SDK surface change. Locks plugins out on enforcement bugs. Needs disable-toggle for rollout. | New sub-issue under #142: "feat(plugins): permissions layer 3 — runtime capability gating" |
 | `@ref` syntax in install URL (`github:user/repo@v1.2.0`) | Different feature with its own UX surface. Lockfile field is already a string — additive when added. | New issue: "feat(plugins): pin install ref (tag/branch/commit)" |
-| Reproducible install manifest (export/import all installed plugins at exact refs) | Depends on @ref pinning. | New issue: "feat(plugins): bakin plugins import/export" |
+| Reproducible install manifest (export/import all installed plugins at exact refs) | Cut from original lifecycle PR; later unblocked by @ref pinning. | Shipped by #168: `bakin plugins export [file]` / `bakin plugins import <file> [--yes] [--force]` |
 
 ---
 

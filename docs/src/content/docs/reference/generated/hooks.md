@@ -85,7 +85,7 @@ Source: `plugins/assets/index.ts:304`
 
 ## `health.getCheck`
 
-Source: `plugins/health/index.ts:83`
+Source: `plugins/health/index.ts:82`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability
@@ -93,7 +93,7 @@ Source: `plugins/health/index.ts:83`
 
 ## `health.list`
 
-Source: `plugins/health/index.ts:82`
+Source: `plugins/health/index.ts:81`
 
 - Visibility: `public` until explicitly marked otherwise
 - Stability: `beta` until a hook contract declares stability

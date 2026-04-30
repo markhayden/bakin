@@ -227,6 +227,32 @@ full no-checkout clone plus detached checkout so raw commit shas work.
 - `#subpath` is **not** supported for `type: 'local'` installs — point
   the local path directly at the plugin dir instead.
 
+### Import/export flow — `bakin plugins export|import`
+
+`bakin plugins export [file]` serializes the installed user-plugin set
+from `~/.bakin/plugins/lock.json` into a small portable manifest. With
+no file argument it prints JSON to stdout. The manifest stores the
+plugin id, source, type, requested ref, resolved commit SHA, version,
+and dev-link fields when the plugin was installed with
+`bakin plugins install --dev`.
+
+`bakin plugins import <file> [--yes] [--force]` reads that manifest and
+replays installs through the normal `/api/plugins/install` endpoint.
+This deliberately reuses the existing manifest validation, permission
+consent, dependency validation, build, activation, and lockfile write
+paths instead of writing directly to `lock.json`.
+
+GitHub imports prefer `commitSha` over `ref`, so exported plugin sets
+reinstall the exact commit when provenance exists. Local copied plugins
+use their recorded absolute source path. Linked dev plugins are restored
+as dev installs (`dev: true`) using `linkedSource`; if that path is not
+present on the target machine, import fails clearly for that plugin.
+
+Import does not add dependency metadata to the export format. Instead it
+does retry passes: plugins whose install fails are retried after later
+entries have had a chance to install. That covers dependency ordering
+without creating a second plugin package schema.
+
 ### Upgrade flow — `bakin plugins upgrade <id> [--yes]`
 
 `src/core/plugins/upgrade.ts`. Refuses core plugins. Reads the
