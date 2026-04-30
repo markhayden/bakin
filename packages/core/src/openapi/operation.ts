@@ -7,7 +7,7 @@
  */
 
 import { z } from 'zod'
-import type { APIRoute, BodySpec, ResponseSpec } from '../routing/types'
+import type { BodySpec, ResponseSpec } from '../routing/types'
 import { operationIdFor } from '../routing/operation-id'
 import { zodToOpenApi, type OpenApiSchema } from './zod-to-openapi'
 import { globalErrorResponses } from './errors'
@@ -16,8 +16,32 @@ import { globalErrorResponses } from './errors'
  * `buildOperation` accepts any APIRoute regardless of bound context, since it
  * only reads schemas and metadata — it never invokes the handler. We use this
  * loose alias to sidestep the contravariant handler-context type check.
+ *
+ * The shape also accepts the *legacy* `APIRoute` fields (`input`, `output`,
+ * `description`) so the runtime OpenAPI builder can include unmigrated
+ * routes. Adapter mapping: `input → body` (assumed application/json),
+ * `output → responses[200]`. Legacy routes register through
+ * `ctx.registerRoute(...)` during the migration window (T1–T16).
  */
-type AnyAPIRoute = APIRoute<any, any, any, any>
+interface AnyAPIRoute {
+  path: string
+  method: string
+  summary: string
+  description?: string
+  params?: z.ZodType<unknown>
+  query?: z.ZodType<unknown>
+  body?: unknown
+  responses?: Partial<Record<string | number, ResponseSpec>>
+  visibility?: string
+  stability?: string
+  permissions?: string[]
+  examples?: unknown[]
+  operationId?: string
+  tags?: string[]
+  // Legacy fields (migration window only)
+  input?: z.ZodType<unknown>
+  output?: z.ZodType<unknown>
+}
 
 export interface OpenApiOperation {
   operationId: string
@@ -129,7 +153,9 @@ function queryParameters(route: AnyAPIRoute): OpenApiParameter[] {
 function buildRequestBody(
   route: AnyAPIRoute,
 ): OpenApiRequestBody | undefined {
-  const body = route.body as BodySpec<unknown> | undefined
+  // Adapter: legacy `input` (no `body`) → JSON body schema.
+  const body = (route.body as BodySpec<unknown> | undefined)
+    ?? (route.input ? (route.input as unknown as BodySpec<unknown>) : undefined)
   if (!body) return undefined
   // Zod shorthand → JSON
   if (isZodType(body)) {
@@ -179,15 +205,23 @@ function buildRequestBody(
 function buildResponses(
   route: AnyAPIRoute,
 ): Record<string, OpenApiResponse> {
+  // Adapter: legacy `output` (no `responses`) synthesizes a 200.
+  const responsesMap: Partial<Record<string | number, ResponseSpec>> =
+    route.responses ?? (route.output ? { 200: route.output as ResponseSpec } : {})
   const out: Record<string, OpenApiResponse> = {}
-  for (const [statusKey, spec] of Object.entries(route.responses)) {
+  for (const [statusKey, spec] of Object.entries(responsesMap)) {
     if (!spec) continue
     out[statusKey] = buildResponseSpec(spec as ResponseSpec, statusKey)
   }
   // Auto-emit global 400/415 from declared inputs.
+  const effectiveBody = route.body ?? route.input
+  const hasNoneBody = !!route.body
+    && typeof route.body === 'object'
+    && 'contentType' in (route.body as object)
+    && (route.body as { contentType: string }).contentType === 'none'
   const globals = globalErrorResponses({
-    hasInput: !!(route.params || route.query || route.body),
-    hasBody: !!route.body && !(typeof route.body === 'object' && 'contentType' in route.body && route.body.contentType === 'none'),
+    hasInput: !!(route.params || route.query || effectiveBody),
+    hasBody: !!effectiveBody && !hasNoneBody,
   })
   for (const [k, v] of Object.entries(globals)) {
     if (!out[k]) out[k] = v as OpenApiResponse

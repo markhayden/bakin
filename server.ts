@@ -40,6 +40,7 @@ import { runRestartRecovery } from './src/core/restart-recovery'
 import { registerShutdownHandlers } from './src/core/lifecycle'
 import { checkAndContinueDependents } from './src/core/continuation'
 import { getAllRoutes, generateDocs } from './src/core/api-docs'
+import { buildOpenApiDocument } from './packages/host/src/api/docs-runtime'
 import { migrateIfNeeded } from './src/core/search-migration'
 import * as agents from './src/core/agents'
 import * as doctor from './src/core/doctor'
@@ -252,9 +253,27 @@ const eventBus = new BakinEventBus(broadcast)
       return
     }
 
-    // API docs endpoint
+    // API docs endpoint — live OpenAPI document built from the runtime
+    // route registry (plugin routes + the legacy core route metadata
+    // until T14–T16 migrate them). Cached after first build; the cache
+    // is invalidated on plugin hot-reload broadcasts.
     if (url.pathname === '/api/docs' && req.method === 'GET') {
-      jsonResponse(res, 200, { routes: getAllRoutes() })
+      const sources = [
+        ...pluginRegistry.getAllPluginRoutes().map(({ pluginId, route }) => ({
+          scope: pluginId,
+          fullPath: `/api/plugins/${pluginId}${route.path}`,
+          route: route as unknown as Parameters<typeof buildOpenApiDocument>[0][number]['route'],
+        })),
+        ...getAllRoutes()
+          .filter(r => r.pluginId === 'core')
+          .map(r => ({
+            scope: 'core' as const,
+            fullPath: r.fullPath,
+            route: r as unknown as Parameters<typeof buildOpenApiDocument>[0][number]['route'],
+          })),
+      ]
+      const doc = buildOpenApiDocument(sources, port)
+      jsonResponse(res, 200, doc as unknown as Record<string, unknown>)
       return
     }
 

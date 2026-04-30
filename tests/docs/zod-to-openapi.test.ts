@@ -259,6 +259,24 @@ describe('buildOperation', () => {
     expect(op2.operationId).toBe('tasks.get.y')
   })
 
+  it('adapter-maps legacy `input` to JSON requestBody and `output` to responses[200]', () => {
+    const legacyRoute = {
+      path: '/legacy',
+      method: 'POST',
+      summary: 'Legacy create',
+      input: z.object({ title: z.string() }),
+      output: z.object({ id: z.string() }),
+      handler: async () => Response.json({ id: 'a' }),
+    } as unknown as Parameters<typeof buildOperation>[0]
+    const op = buildOperation(legacyRoute, { scope: 'legacy', fullPath: '/api/plugins/legacy/legacy' })
+    expect(op.requestBody).toBeDefined()
+    expect((op.requestBody as any).content['application/json'].schema.type).toBe('object')
+    expect(op.responses['200']).toBeDefined()
+    expect((op.responses['200'] as any).content['application/json'].schema.type).toBe('object')
+    expect(op.responses['400']).toBeDefined()  // hasInput → global 400
+    expect(op.responses['415']).toBeDefined()  // hasBody → global 415
+  })
+
   it('passes through visibility and stability as x- extensions', () => {
     const r = defineCoreRoute({
       path: '/api/dev/notify',
