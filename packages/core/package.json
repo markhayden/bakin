@@ -28,6 +28,7 @@
     "./content-dir": "./src/content-dir.ts",
     "./plugin-types": "./src/plugin-types.ts",
     "./routing": "./src/routing/index.ts",
+    "./openapi": "./src/openapi/index.ts",
     "./plugins/manifest": "./src/plugins/manifest.ts",
     "./plugins/permissions": "./src/plugins/permissions.ts",
     "./constants": "./src/constants.ts",
