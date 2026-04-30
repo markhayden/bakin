@@ -79,6 +79,10 @@ function schemaPreview(schema: unknown): string {
   return JSON.stringify(schema ?? { type: 'object', additionalProperties: true }, null, 2)
 }
 
+function payloadPreview(content: { schema?: unknown; example?: unknown }): unknown {
+  return content.example !== undefined ? content.example : content.schema
+}
+
 function isGenericObjectSchema(schema: unknown): boolean {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return false
   const record = schema as Record<string, unknown>
@@ -240,7 +244,7 @@ const selectedOperation = operationId ? operations.find(operation => operation.i
                     isGenericObjectSchema(requestContent.schema) ? (
                       <p class="api-tabs__empty">Request body schema is not documented for this route yet.</p>
                     ) : (
-                      <pre class="api-schema"><code set:html={highlightedJson(requestContent.schema)} /></pre>
+                      <pre class="api-schema"><code set:html={highlightedJson(payloadPreview(requestContent))} /></pre>
                     )
                   ) : (
                     <p class="api-tabs__empty">No request body.</p>
@@ -271,7 +275,7 @@ const selectedOperation = operationId ? operations.find(operation => operation.i
                           <div class="api-response-panel" id={`${operation.id}-response-${status}`} hidden={index > 0}>
                             {responseEntries.length === 1 && <p class="api-schema__caption"><code>{status}</code>{' '}{response.description ?? ''}</p>}
                             {responseContent ? (
-                              <pre class="api-schema"><code set:html={highlightedJson(responseContent.schema)} /></pre>
+                              <pre class="api-schema"><code set:html={highlightedJson(payloadPreview(responseContent))} /></pre>
                             ) : (
                               <p>No response schema documented.</p>
                             )}
