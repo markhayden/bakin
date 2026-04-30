@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Play, Pencil, Copy, Trash2, SkipForward, MoreHorizontal, Clock, Timer, Workflow, Terminal } from 'lucide-react'
+import { Play, Pencil, Copy, Trash2, SkipForward, MoreHorizontal, Clock, Timer, Workflow, Terminal, CirclePlus, Undo2, Power } from 'lucide-react'
 import { BakinDrawer } from "@bakin/sdk/components"
 import { AgentAvatar } from "@bakin/sdk/components"
 import { Badge } from "@bakin/sdk/ui"
@@ -30,6 +30,8 @@ export function JobDrawer({
   onRunNow,
   onEdit,
   onDuplicate,
+  onAdopt,
+  onRestoreNative,
   onSkipNext,
 }: {
   job: ScheduleJob | null
@@ -41,6 +43,8 @@ export function JobDrawer({
   onRunNow: (jobId: string) => Promise<boolean>
   onEdit: () => void
   onDuplicate: () => void
+  onAdopt: () => void
+  onRestoreNative: (jobId: string) => Promise<boolean>
   onSkipNext: (jobId: string, n?: number) => Promise<boolean>
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -70,9 +74,9 @@ export function JobDrawer({
       title={
         <span className="flex items-center gap-2">
           {job.displayName || job.id}
-          {job.isBakinJob && (
-            <Badge variant="outline" className="text-[10px] uppercase tracking-wider">Bakin</Badge>
-          )}
+          <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
+            {job.source === 'adopted' ? 'Adopted' : job.isBakinJob ? 'Bakin schedule' : 'Runtime cron'}
+          </Badge>
         </span>
       }
       actions={
@@ -81,10 +85,23 @@ export function JobDrawer({
             <MoreHorizontal className="size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-36">
-            <DropdownMenuItem onClick={onDuplicate}>
-              <Copy className="size-3.5 mr-2" />
-              Duplicate
-            </DropdownMenuItem>
+            {job.isBakinJob ? (
+              <DropdownMenuItem onClick={onDuplicate}>
+                <Copy className="size-3.5 mr-2" />
+                Duplicate
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem onClick={onAdopt}>
+                <CirclePlus className="size-3.5 mr-2" />
+                Adopt into Bakin
+              </DropdownMenuItem>
+            )}
+            {job.canRestoreNative && (
+              <DropdownMenuItem onClick={() => onRestoreNative(job.id)}>
+                <Undo2 className="size-3.5 mr-2" />
+                Restore Native
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={handleDelete}
@@ -118,9 +135,9 @@ export function JobDrawer({
                   ) : (
                     <Badge className="bg-zinc-500/20 text-zinc-400">Disabled</Badge>
                   )}
-                  {job.isBakinJob && (
-                    <Badge variant="outline" className="text-[10px] uppercase tracking-wider">Bakin</Badge>
-                  )}
+                  <Badge variant="outline" className="text-[10px] uppercase tracking-wider">
+                    {job.source === 'adopted' ? 'Adopted' : job.isBakinJob ? 'Bakin schedule' : 'Runtime cron'}
+                  </Badge>
                   {job.nextRun && (
                     <span className="text-xs text-muted-foreground">
                       Next: {new Date(job.nextRun).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
@@ -137,12 +154,30 @@ export function JobDrawer({
           <Button variant="outline" size="sm" onClick={() => onRunNow(job.id)}>
             <Play className="size-3.5 mr-1.5" /> Run Now
           </Button>
-          <Button variant="outline" size="sm" onClick={() => onSkipNext(job.id, 1)}>
-            <SkipForward className="size-3.5 mr-1.5" /> Skip Next
-          </Button>
-          <Button variant="outline" size="sm" onClick={onEdit}>
-            <Pencil className="size-3.5 mr-1.5" /> Edit
-          </Button>
+          {job.isBakinJob ? (
+            <>
+              <Button variant="outline" size="sm" onClick={() => onSkipNext(job.id, 1)}>
+                <SkipForward className="size-3.5 mr-1.5" /> Skip Next
+              </Button>
+              <Button variant="outline" size="sm" onClick={onEdit}>
+                <Pencil className="size-3.5 mr-1.5" /> Edit
+              </Button>
+            </>
+          ) : (
+            <Button variant="outline" size="sm" onClick={onAdopt}>
+              <CirclePlus className="size-3.5 mr-1.5" /> Adopt into Bakin
+            </Button>
+          )}
+          {job.canRestoreNative && (
+            <Button variant="outline" size="sm" onClick={() => onRestoreNative(job.id)}>
+              <Undo2 className="size-3.5 mr-1.5" /> Restore Native
+            </Button>
+          )}
+          {!job.isBakinJob && (
+            <Button variant="outline" size="sm" onClick={() => job.enabled ? onPause(job.id) : onResume(job.id)}>
+              <Power className="size-3.5 mr-1.5" /> {job.enabled ? 'Disable' : 'Enable'}
+            </Button>
+          )}
         </div>
 
         {/* Metadata grid */}
@@ -219,13 +254,16 @@ export function JobDrawer({
 
         <Separator />
 
-        {/* Pause controls */}
-        <div>
-          <h3 className="text-[11px] text-muted-foreground uppercase tracking-wider mb-3">Pause / Resume</h3>
-          <PauseControls job={job} onPause={onPause} onResume={onResume} />
-        </div>
+        {job.isBakinJob && (
+          <>
+            <div>
+              <h3 className="text-[11px] text-muted-foreground uppercase tracking-wider mb-3">Pause / Resume</h3>
+              <PauseControls job={job} onPause={onPause} onResume={onResume} />
+            </div>
 
-        <Separator />
+            <Separator />
+          </>
+        )}
 
         {/* Run history */}
         <div>

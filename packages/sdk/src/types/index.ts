@@ -391,6 +391,8 @@ export interface AgentRuntimeAdapter {
     remove(id: string): Promise<void>
     runNow(id: string): Promise<CronRun>
     listRuns(jobId: string): Promise<CronRun[]>
+    getRaw(id: string, reason: string): Promise<unknown | null>
+    restoreRaw(id: string, snapshot: unknown, reason: string): Promise<CronJob>
   }
   skills?: {
     list(): Promise<RuntimeSkill[]>

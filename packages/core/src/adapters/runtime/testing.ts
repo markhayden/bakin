@@ -154,6 +154,33 @@ export function createMockRuntimeAdapter(
         endedAt: new Date().toISOString(),
       }),
       listRuns: async () => [],
+      getRaw: async (id, reason) => {
+        if (!reason) throw new Error('cron.getRaw requires a reason')
+        return adapter.cron.get(id)
+      },
+      restoreRaw: async (id, snapshot, reason) => {
+        if (!reason) throw new Error('cron.restoreRaw requires a reason')
+        const raw = snapshot && typeof snapshot === 'object' ? snapshot as Partial<{
+          id: string
+          name: string
+          schedule: string | { expr?: string; value?: string }
+          command: string
+          payload: { message?: string; text?: string }
+          enabled: boolean
+          metadata: Record<string, unknown>
+        }> : {}
+        const schedule = typeof raw.schedule === 'string'
+          ? raw.schedule
+          : raw.schedule?.expr ?? raw.schedule?.value ?? '* * * * *'
+        return {
+          id,
+          name: raw.name ?? raw.id ?? id,
+          schedule,
+          command: raw.command ?? raw.payload?.message ?? raw.payload?.text ?? '',
+          enabled: raw.enabled ?? true,
+          metadata: raw.metadata,
+        }
+      },
     },
 
     config: {

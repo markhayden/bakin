@@ -140,8 +140,8 @@ describe('checkScheduleSync - orphan detection', () => {
   })
 })
 
-describe('checkScheduleSync - auto-adopt', () => {
-  it('auto-adopts orphaned runtime cron jobs into the sidecar without guessing the agent', async () => {
+describe('checkScheduleSync - auto-track', () => {
+  it('tracks orphaned runtime cron jobs in the sidecar without guessing the agent', async () => {
     mockAutoFix = true
     runtimeJobs = [makeCronJob({ id: 'orphan-1', name: 'rogue-cron' })]
     writeFileSync(sidecarPath, JSON.stringify({ version: 1, jobs: {} }))
@@ -149,11 +149,12 @@ describe('checkScheduleSync - auto-adopt', () => {
     const results = await checkScheduleSync(testDir, cronReader, 'boss')
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('fixed')
-    expect(results[0].message).toMatch(/Auto-adopted/)
+    expect(results[0].message).toMatch(/Tracked/)
 
     const updated = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
     expect(updated.jobs['orphan-1']).toBeDefined()
     expect(updated.jobs['orphan-1'].isBakinJob).toBe(false)
+    expect(updated.jobs['orphan-1'].source).toBe('runtime')
     expect(updated.jobs['orphan-1'].requireTriage).toBe(true)
     expect(updated.jobs['orphan-1'].displayName).toBe('rogue-cron')
     expect(updated.jobs['orphan-1'].owner).toBe('boss')
