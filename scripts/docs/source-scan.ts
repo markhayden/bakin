@@ -100,9 +100,53 @@ export function relativeSource(path: string): string {
 
 export interface ExecTool {
   name: string
+  label?: string
   description?: string
+  parameters: ExecToolParameter[]
   file: string
   line: number
+}
+
+export interface ExecToolParameter {
+  name: string
+  type: string
+  required: boolean
+  description?: string
+}
+
+function extractBalancedBlock(text: string, startIndex: number): string {
+  const open = text.indexOf('{', startIndex)
+  if (open === -1) return ''
+  let depth = 0
+  for (let i = open; i < text.length; i++) {
+    const char = text[i]
+    if (char === '{') depth++
+    else if (char === '}') {
+      depth--
+      if (depth === 0) return text.slice(open + 1, i)
+    }
+  }
+  return ''
+}
+
+function extractExecToolParameters(block: string): ExecToolParameter[] {
+  const parametersIndex = block.indexOf('parameters:')
+  if (parametersIndex === -1) return []
+  const parametersBlock = extractBalancedBlock(block, parametersIndex)
+  if (!parametersBlock.trim()) return []
+  const params: ExecToolParameter[] = []
+  const paramPattern = /([A-Za-z0-9_]+):\s*z\.([A-Za-z]+)([\s\S]*?)(?=\n\s*[A-Za-z0-9_]+:\s*z\.|\n\s*handler:|\n\s*},|\n\s*}\s*,|(?![\s\S]))/g
+  for (const match of parametersBlock.matchAll(paramPattern)) {
+    const [, name, rawType, expression] = match
+    const desc = expression.match(/\.describe\(\s*(["'`])((?:\\[\s\S]|(?!\1)[\s\S])*)\1\s*,?\s*\)/)?.[2]
+    params.push({
+      name,
+      type: rawType === 'enum' ? 'choice' : rawType,
+      required: !expression.includes('.optional()') && !expression.includes('.default('),
+      description: desc?.replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\`/g, '`').trim(),
+    })
+  }
+  return params
 }
 
 export function extractExecTools(): ExecTool[] {
@@ -118,10 +162,13 @@ export function extractExecTools(): ExecTool[] {
       const key = `${name}:${file}`
       if (seen.has(key)) continue
       seen.add(key)
-      const block = lines.slice(i, Math.min(lines.length, i + 35)).join('\n')
+      const block = lines.slice(i, Math.min(lines.length, i + 95)).join('\n')
+      const labelMatch = block.match(/label:\s*(["'`])((?:\\[\s\S]|(?!\1)[\s\S])*)\1/)
       const descMatch = block.match(/description:\s*(["'`])((?:\\[\s\S]|(?!\1)[\s\S])*)\1/)
+      const label = labelMatch?.[2]?.replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\`/g, '`')
       const description = descMatch?.[2]?.replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\`/g, '`')
-      tools.push({ name, description, file: relativeSource(file), line: i + 1 })
+      const parameters = extractExecToolParameters(block)
+      tools.push({ name, label, description, parameters, file: relativeSource(file), line: i + 1 })
     }
   }
   return tools.sort((a, b) => a.name.localeCompare(b.name) || a.file.localeCompare(b.file))

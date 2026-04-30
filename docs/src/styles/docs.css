@@ -554,7 +554,8 @@ starlight-toc nav a[href="#for-agents"]::before {
 }
 
 .cli-command__heading code,
-.hook-card__heading code {
+.hook-card__heading code,
+.mcp-tool__heading code {
   flex: 0 0 auto;
   padding: 0.26rem 0.5rem;
   border: 0;
@@ -680,7 +681,8 @@ starlight-toc nav a[href="#for-agents"]::before {
   line-height: 1.35;
 }
 
-.hook-reference-intro {
+.hook-reference-intro,
+.mcp-reference-intro {
   max-width: 100%;
   margin: 0.75rem 0 1.5rem;
   color: var(--sl-color-gray-2);
@@ -688,11 +690,13 @@ starlight-toc nav a[href="#for-agents"]::before {
   line-height: 1.7;
 }
 
-.hook-reference-intro p {
+.hook-reference-intro p,
+.mcp-reference-intro p {
   margin: 0 0 0.65rem;
 }
 
-.hook-section-description {
+.hook-section-description,
+.mcp-section-description {
   max-width: 100%;
   margin: -0.15rem 0 1.45rem;
   padding-bottom: 1.25rem;
@@ -701,25 +705,29 @@ starlight-toc nav a[href="#for-agents"]::before {
   line-height: 1.65;
 }
 
-.hook-card-list {
+.hook-card-list,
+.mcp-tool-list {
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
   margin: 0 0 2.5rem;
 }
 
-.hook-card {
+.hook-card,
+.mcp-tool {
   scroll-margin-top: 5rem;
 }
 
-.hook-card__heading {
+.hook-card__heading,
+.mcp-tool__heading {
   display: flex;
   align-items: center;
   gap: 0.8rem;
   margin-bottom: 0.5rem;
 }
 
-.hook-card__label {
+.hook-card__label,
+.mcp-tool__label {
   min-width: 0;
   color: var(--sl-color-gray-2);
   font-family: var(--font-heading);
@@ -728,7 +736,8 @@ starlight-toc nav a[href="#for-agents"]::before {
   line-height: 1.25;
 }
 
-.hook-card__anchor {
+.hook-card__anchor,
+.mcp-tool__anchor {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -741,11 +750,14 @@ starlight-toc nav a[href="#for-agents"]::before {
 }
 
 .hook-card:hover .hook-card__anchor,
-.hook-card__anchor:focus {
+.hook-card__anchor:focus,
+.mcp-tool:hover .mcp-tool__anchor,
+.mcp-tool__anchor:focus {
   opacity: 1;
 }
 
-.hook-card__anchor svg {
+.hook-card__anchor svg,
+.mcp-tool__anchor svg {
   width: 100%;
   height: 100%;
   fill: none;
@@ -755,14 +767,16 @@ starlight-toc nav a[href="#for-agents"]::before {
   stroke-width: 2.5;
 }
 
-.hook-card__box {
+.hook-card__box,
+.mcp-tool__box {
   padding: 0.85rem 1rem;
   border: 1px solid var(--sl-color-hairline);
   border-radius: 0.7rem;
   background: rgba(255, 255, 255, 0.025);
 }
 
-.hook-card__summary {
+.hook-card__summary,
+.mcp-tool__description {
   min-width: 0;
   margin: 0 0 0.8rem;
   color: var(--sl-color-gray-2);
@@ -770,14 +784,16 @@ starlight-toc nav a[href="#for-agents"]::before {
   line-height: 1.55;
 }
 
-.hook-card__box p {
+.hook-card__box p,
+.mcp-tool__box p {
   margin: 0 0 0.65rem;
   color: var(--sl-color-gray-3);
   font-size: 0.9rem;
   line-height: 1.55;
 }
 
-.hook-card__meta {
+.hook-card__meta,
+.mcp-tool__meta {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
@@ -785,7 +801,8 @@ starlight-toc nav a[href="#for-agents"]::before {
   margin: 20px 0 0;
 }
 
-.hook-card__meta code {
+.hook-card__meta code,
+.mcp-tool__meta code {
   overflow-wrap: anywhere;
   padding: 0.18rem 0.38rem;
   border-color: rgba(120, 117, 116, 0.32);
@@ -809,6 +826,39 @@ starlight-toc nav a[href="#for-agents"]::before {
   color: var(--sl-color-gray-3);
   font-family: var(--font-mono);
   font-size: 0.74rem;
+}
+
+.sl-markdown-content table.mcp-tool__params:not(:where(.not-content *)) {
+  display: table;
+  width: 100%;
+  margin: 0.85rem 0 0;
+  overflow: hidden;
+  border-collapse: collapse;
+  border-radius: 0.55rem;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.sl-markdown-content table.mcp-tool__params:not(:where(.not-content *)) th,
+.sl-markdown-content table.mcp-tool__params:not(:where(.not-content *)) td {
+  padding: 0.68rem 0.8rem;
+  border: 0;
+  border-bottom: 1px solid rgba(120, 117, 116, 0.28);
+  vertical-align: top;
+}
+
+.sl-markdown-content table.mcp-tool__params:not(:where(.not-content *)) th {
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--sl-color-gray-1);
+  font-size: 0.8rem;
+}
+
+.sl-markdown-content table.mcp-tool__params:not(:where(.not-content *)) td {
+  color: var(--sl-color-gray-2);
+  font-size: 0.86rem;
+}
+
+.sl-markdown-content table.mcp-tool__params:not(:where(.not-content *)) tr:last-child td {
+  border-bottom: 0;
 }
 
 .cli-command__meta {
