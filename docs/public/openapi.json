@@ -137,31 +137,14 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Emits an activity event via SSE.",
         "requestBody": {
-          "description": "{\"agent\":\"string\",\"message\":\"string\",\"ts\":\"string\"}",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "agent": {
-                    "type": "string"
-                  },
-                  "message": {
-                    "type": "string"
-                  },
-                  "ts": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "agent",
-                  "message",
-                  "ts"
-                ],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             }
           }
@@ -207,7 +190,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Lists installed agent packages.",
         "x-bakin-full-path": "/api/agent-packages"
       }
     },
@@ -249,7 +231,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Removes an installed agent package.",
         "parameters": [
           {
             "name": "agentId",
@@ -260,29 +241,6 @@
             }
           }
         ],
-        "requestBody": {
-          "description": "{\"keepBlocks\":\"boolean?\",\"deleteAgent\":\"boolean?\",\"force\":\"boolean?\"}",
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "keepBlocks": {
-                    "type": "boolean"
-                  },
-                  "deleteAgent": {
-                    "type": "boolean"
-                  },
-                  "force": {
-                    "type": "boolean"
-                  }
-                },
-                "additionalProperties": false
-              }
-            }
-          }
-        },
         "x-bakin-full-path": "/api/agent-packages/:agentId"
       }
     },
@@ -324,7 +282,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Lists knowledge lessons and enablement state for an installed agent package.",
         "parameters": [
           {
             "name": "agentId",
@@ -376,7 +333,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Enables or disables one knowledge lesson for an installed agent package.",
         "parameters": [
           {
             "name": "agentId",
@@ -396,21 +352,13 @@
           }
         ],
         "requestBody": {
-          "description": "{\"enabled\":\"boolean\"}",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "enabled": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "enabled"
-                ],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             }
           }
@@ -456,7 +404,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Updates an installed agent package from its recorded source.",
         "parameters": [
           {
             "name": "agentId",
@@ -468,18 +415,13 @@
           }
         ],
         "requestBody": {
-          "description": "{\"refreshTemplate\":\"boolean?\"}",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "refreshTemplate": {
-                    "type": "boolean"
-                  }
-                },
-                "additionalProperties": false
+                "additionalProperties": true
               }
             }
           }
@@ -525,29 +467,14 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Installs an agent package from a local path or GitHub source.",
         "requestBody": {
-          "description": "{\"source\":\"string\",\"adopt\":\"boolean?\",\"installAs\":\"string?\"}",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "source": {
-                    "type": "string"
-                  },
-                  "adopt": {
-                    "type": "boolean"
-                  },
-                  "installAs": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "source"
-                ],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             }
           }
@@ -635,7 +562,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Returns agent status.",
         "parameters": [
           {
             "name": "id",
@@ -687,7 +613,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Sends a message to an agent.",
         "parameters": [
           {
             "name": "id",
@@ -699,21 +624,13 @@
           }
         ],
         "requestBody": {
-          "description": "{\"message\":\"string\"}",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "message": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "message"
-                ],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             }
           }
@@ -759,7 +676,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Returns detailed status for one agent.",
         "parameters": [
           {
             "name": "id",
@@ -811,7 +727,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Returns tasks assigned to an agent.",
         "parameters": [
           {
             "name": "id",
@@ -947,23 +862,14 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Restarts an agent through the active runtime.",
         "requestBody": {
-          "description": "{\"agentId\":\"string\"}",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "agentId": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "agentId"
-                ],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             }
           }
@@ -1051,7 +957,7 @@
         "x-bakin-stability": "stable",
         "description": "Updates host display and behavior settings for agents.",
         "requestBody": {
-          "description": "JSON object with agent settings keys to update",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
@@ -1103,23 +1009,14 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Starts an agent through the active runtime.",
         "requestBody": {
-          "description": "{\"agentId\":\"string\"}",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "agentId": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "agentId"
-                ],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             }
           }
@@ -1165,23 +1062,14 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Stops an agent through the active runtime.",
         "requestBody": {
-          "description": "{\"agentId\":\"string\"}",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "agentId": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "agentId"
-                ],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             }
           }
@@ -1227,7 +1115,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Serves a runtime asset file by canonical path.",
         "parameters": [
           {
             "name": "path",
@@ -1279,7 +1166,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Lists curated packages available for installation.",
         "x-bakin-full-path": "/api/curated"
       }
     },
@@ -1320,7 +1206,7 @@
           }
         },
         "x-bakin-visibility": "internal",
-        "x-bakin-stability": "experimental",
+        "x-bakin-stability": "stable",
         "description": "Development-only browser reload and notification event stream.",
         "x-bakin-full-path": "/api/dev/events"
       }
@@ -1362,29 +1248,16 @@
           }
         },
         "x-bakin-visibility": "internal",
-        "x-bakin-stability": "experimental",
+        "x-bakin-stability": "stable",
         "description": "Development-only watcher bridge for browser rebuild notifications.",
         "requestBody": {
-          "description": "{\"type\":\"string\",\"payload\":\"object\"}",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string"
-                  },
-                  "payload": {
-                    "type": "object",
-                    "additionalProperties": true
-                  }
-                },
-                "required": [
-                  "type",
-                  "payload"
-                ],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             }
           }
@@ -1524,7 +1397,7 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Returns API route documentation as JSON.",
+        "description": "Legacy endpoint — returns route metadata in the {routes} shape for CLI consumers.",
         "x-bakin-full-path": "/api/docs"
       }
     },
@@ -1608,7 +1481,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Invokes a registered Bakin execution tool.",
         "parameters": [
           {
             "name": "toolName",
@@ -1620,7 +1492,7 @@
           }
         ],
         "requestBody": {
-          "description": "Tool-specific JSON object.",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
@@ -1671,28 +1543,15 @@
           }
         },
         "x-bakin-visibility": "internal",
-        "x-bakin-stability": "experimental",
-        "description": "Triggers dependency continuation checks.",
+        "x-bakin-stability": "stable",
         "requestBody": {
-          "description": "{\"completedTaskId\":\"string\",\"completedTitle\":\"string\"}",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "completedTaskId": {
-                    "type": "string"
-                  },
-                  "completedTitle": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "completedTaskId",
-                  "completedTitle"
-                ],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             }
           }
@@ -1738,37 +1597,61 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Appends a decision, learned item, or note to the shared memory log.",
         "requestBody": {
-          "description": "{\"type\":\"decision|learned|note\",\"message\":\"string\"}",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "enum": [
-                      "decision",
-                      "learned",
-                      "note"
-                    ]
-                  },
-                  "message": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "type",
-                  "message"
-                ],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             }
           }
         },
         "x-bakin-full-path": "/api/memory/log"
+      }
+    },
+    "/api/openapi": {
+      "get": {
+        "operationId": "core-get-api-openapi",
+        "tags": [
+          "Core"
+        ],
+        "summary": "Get live OpenAPI document",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        },
+        "x-bakin-visibility": "public",
+        "x-bakin-stability": "stable",
+        "description": "Returns the OpenAPI 3.1 document built from the runtime route registry.",
+        "x-bakin-full-path": "/api/openapi"
       }
     },
     "/api/packages": {
@@ -1809,7 +1692,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Lists installed reusable agent packages.",
         "x-bakin-full-path": "/api/packages"
       }
     },
@@ -1851,7 +1733,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Removes an installed reusable package when it is not referenced by agents.",
         "parameters": [
           {
             "name": "packageId",
@@ -1903,7 +1784,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Updates a reusable package from its recorded source.",
         "parameters": [
           {
             "name": "packageId",
@@ -1967,23 +1847,14 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Installs a reusable agent package from a local path or GitHub source.",
         "requestBody": {
-          "description": "{\"source\":\"string\"}",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "source": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "source"
-                ],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             }
           }
@@ -2071,7 +1942,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Returns persisted settings for one plugin.",
         "parameters": [
           {
             "name": "pluginId",
@@ -2121,7 +1991,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Updates persisted settings for one plugin.",
         "parameters": [
           {
             "name": "pluginId",
@@ -2133,7 +2002,7 @@
           }
         ],
         "requestBody": {
-          "description": "Plugin settings JSON object.",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
@@ -2185,7 +2054,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Returns settings schemas registered by plugins.",
         "x-bakin-full-path": "/api/plugin-settings/schemas"
       }
     },
@@ -2227,7 +2095,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Serves a plugin client JavaScript, CSS, or static asset file.",
         "parameters": [
           {
             "name": "pluginId",
@@ -2287,31 +2154,14 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Installs a plugin.",
         "requestBody": {
-          "description": "{\"source\":\"string\",\"type\":\"local|github\"}",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "source": {
-                    "type": "string"
-                  },
-                  "type": {
-                    "type": "string",
-                    "enum": [
-                      "local",
-                      "github"
-                    ]
-                  }
-                },
-                "required": [
-                  "source",
-                  "type"
-                ],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             }
           }
@@ -2357,23 +2207,14 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Registers a developer-owned plugin source tree as a live linked plugin.",
         "requestBody": {
-          "description": "{\"path\":\"string\"}",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "path": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "path"
-                ],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             }
           }
@@ -2419,7 +2260,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Returns the aggregated plugin manifest used by the host UI.",
         "x-bakin-full-path": "/api/plugins/manifest"
       }
     },
@@ -2502,7 +2342,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Returns workspace memory files for one agent.",
         "x-bakin-full-path": "/api/plugins/memory/workspace"
       }
     },
@@ -2544,23 +2383,14 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Removes an installed plugin.",
         "requestBody": {
-          "description": "{\"pluginId\":\"string\"}",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "pluginId": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "pluginId"
-                ],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             }
           }
@@ -2606,23 +2436,14 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Removes a linked plugin symlink and lockfile entry.",
         "requestBody": {
-          "description": "{\"pluginId\":\"string\"}",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "pluginId": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "pluginId"
-                ],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             }
           }
@@ -2668,23 +2489,14 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Updates a user plugin from its recorded source.",
         "requestBody": {
-          "description": "{\"pluginId\":\"string\"}",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {
-                  "pluginId": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "pluginId"
-                ],
-                "additionalProperties": false
+                "additionalProperties": true
               }
             }
           }
@@ -2730,7 +2542,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Triggers a full content reindex through the search adapter.",
         "requestBody": {
           "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
@@ -2868,7 +2679,7 @@
         "x-bakin-stability": "stable",
         "description": "Updates Bakin settings with a partial merge.",
         "requestBody": {
-          "description": "JSON object with settings keys to update",
+          "description": "JSON request body. See route handler and examples for accepted fields until this route declares a specific request schema.",
           "required": true,
           "content": {
             "application/json": {
@@ -2920,7 +2731,6 @@
         },
         "x-bakin-visibility": "public",
         "x-bakin-stability": "stable",
-        "description": "Returns the current host dashboard state.",
         "x-bakin-full-path": "/api/state"
       }
     },

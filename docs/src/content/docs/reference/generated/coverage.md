@@ -6,7 +6,7 @@ description: Coverage report for generated Bakin documentation surfaces.
 | Surface | Source | Status |
 | --- | --- | --- |
 | CLI commands | `src/core/cli/registry.ts` | Active: 59 commands, 60 examples |
-| HTTP routes | `src/core/api-docs.ts` and route metadata | Active: 54 routes, 0 input schemas, 0 output schemas, 0 routes with examples |
+| HTTP routes | `src/core/api-docs.ts` and route metadata | Active: 55 routes, 0 input schemas, 0 output schemas, 0 routes with examples |
 | Plugin routes | Runtime route registration metadata | Partial: 0 documented plugin routes |
 | Hooks | Source scan for `hooks.register(...)` | Audited: 43 registrations |
 | Slots | SDK slot contract plus source scan | Documented: 6 public slot names, 1 audited registrations |
