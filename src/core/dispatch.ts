@@ -10,12 +10,10 @@ import { appendAudit } from './audit'
 import { recordUsage } from './usage'
 import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
-import { isStale } from '../lib/format'
 import { getHookRegistry } from '../lib/plugin-registry'
 import {
   addTaskLog as appendTaskLog,
   blockTask as blockStoredTask,
-  moveTask as moveStoredTask,
   readTaskboard,
   updateTask as updateStoredTask,
 } from './task-store'
@@ -95,10 +93,6 @@ async function addTaskLog(taskId: string, author: string, message: string): Prom
 
 async function moveTaskToInProgress(taskId: string, agent: string): Promise<void> {
   await updateStoredTask(taskId, { column: 'inProgress', agent })
-}
-
-async function moveTask(taskId: string, to: string, from?: string): Promise<void> {
-  await moveStoredTask(taskId, to, from)
 }
 
 const TRANSIENT_CODES = new Set([
@@ -904,58 +898,6 @@ function buildWorkflowDispatchMessage(
   lines.push('- Move the task to Done (the workflow engine handles this)')
 
   return lines.join('\n')
-}
-
-/**
- * Run once on server startup to recover orphaned in-progress tasks.
- * If an agent's heartbeat is stale and the task has no recent logs, move back to todo.
- */
-export async function reconcileOnStartup(contentDir: string): Promise<void> {
-  const settings = getSettings()
-  try {
-    const { columns } = readTaskboard() as unknown as { columns: Record<string, Array<{ id: string; title: string; agent?: string; workflowId?: string; description?: string; projectId?: string; log?: Array<{ timestamp: string }> }>> }
-    let recovered = 0
-
-    for (const task of [...columns.inProgress]) {
-      const agentStale = isAgentHeartbeatStale(contentDir, task.agent)
-      const hasRecentLog = task.log?.some(e => {
-        const ts = new Date(e.timestamp).getTime()
-        return !isNaN(ts) && (Date.now() - ts) < settings.watchdog.stuckThresholdMs
-      })
-
-      if (agentStale && !hasRecentLog) {
-        try {
-          await addTaskLog(task.id, 'system', 'Recovered on server restart: agent heartbeat stale and no recent task logs.')
-          await moveTask(task.id, 'todo', 'inProgress')
-          appendAudit(contentDir, 'task.startup_recovered', 'system', { id: task.id, title: task.title, agent: task.agent })
-          recovered++
-          log.info('Startup recovery: task moved to todo', { id: task.id, title: task.title })
-        } catch (err) {
-          log.error('Startup recovery failed for task', err, { id: task.id })
-        }
-      }
-    }
-
-    if (recovered > 0) {
-      log.info('Startup reconciliation complete', { recovered })
-    }
-  } catch (err) {
-    log.error('Startup reconciliation failed', err)
-  }
-}
-
-function isAgentHeartbeatStale(contentDir: string, agent: string | undefined): boolean {
-  if (!agent) return true
-  const heartbeatPath = join(contentDir, 'heartbeats', `${agent}.json`)
-  try {
-    if (!existsSync(heartbeatPath)) return true
-    const data = JSON.parse(readFileSync(heartbeatPath, 'utf-8'))
-    const ts = data.timestamp || data.ts
-    if (!ts) return true
-    return isStale(ts, 15 * 60 * 1000)
-  } catch {
-    return true
-  }
 }
 
 export function getDispatchInfo(contentDir: string): Record<string, unknown> {

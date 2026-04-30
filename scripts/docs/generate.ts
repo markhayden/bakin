@@ -1232,7 +1232,7 @@ function renderSettingsReference(): string {
     '',
   ]
 
-  const settingGroupTitles: Record<string, string> = { sse: 'SSE' }
+  const settingGroupTitles: Record<string, string> = { restartRecovery: 'Restart Recovery', sse: 'SSE' }
 
   for (const namespace of [...grouped.keys()].sort((a, b) => a.localeCompare(b))) {
     const title = settingGroupTitles[namespace] ?? (namespace === 'other' ? 'Other' : `${namespace[0].toUpperCase()}${namespace.slice(1)}`)

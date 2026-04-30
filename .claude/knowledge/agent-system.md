@@ -202,6 +202,26 @@ Monitors agent and MCP server health:
 - Alert delivery via `settings.notifications.channel` (runtime channel ID; blank means in-app only) — configurable in the **System & Alerts** settings tab
 - Re-reads settings every cycle, so channel/threshold changes apply without a restart
 
+## Restart Recovery (`src/core/restart-recovery.ts`)
+
+Runs once after server boot, after plugins are active and the HTTP server is
+listening, before the normal dispatch/watchdog loops start. It repairs
+`inProgress` tasks whose active agent heartbeat is missing/stale after a crash
+or restart:
+
+- Plain tasks use the card assignee heartbeat.
+- Workflow tasks use `workflows.getActiveAgents` so the current workflow step
+  owner is authoritative.
+- Workflow gates waiting on approval are skipped.
+- Partial parallel heartbeat loss and workflow states with no active agents
+  are surfaced through the health plugin's `restart-recovery` doctor check
+  instead of being mutated automatically.
+- Recovered tasks move back to `todo` through `src/core/task-store.ts`; Bakin
+  starts the normal loops and immediately triggers a dispatch cycle so the
+  normal dispatcher reassigns them.
+- The retry cap is shared with watchdog recovery via
+  `settings.watchdog.maxAutoRecoveries`; exhausted tasks move to `blocked`.
+
 ## Key Files
 
 | File | Purpose |
@@ -214,6 +234,7 @@ Monitors agent and MCP server health:
 | `plugins/team/hooks/use-agent-store.ts` | Client-side Zustand store for agent data |
 | `src/core/agents.ts` | Agent status resolution and communication |
 | `src/core/dispatch.ts` | Task dispatch engine. Roster from `getAppServices().runtime.agents` |
+| `src/core/restart-recovery.ts` | One-shot boot repair for orphaned `inProgress` tasks |
 | `src/core/mcp-server.ts` | MCP tool server |
 | `packages/adapter-openclaw/src/runtime.ts` | OpenClaw runtime adapter implementation |
 | `src/core/task-service.ts` | Task mutations with side effects |
