@@ -1259,46 +1259,77 @@ function renderSettingsReference(): string {
 }
 
 function renderRuntimePathsReference(): string {
+  const resolution = [
+    ['BAKIN_HOME', 'Used when the environment variable is set.'],
+    ['~/.bakin/', 'Default location when no override is present.'],
+  ]
   const paths = [
-    ['home', 'Resolved Bakin home/content directory.'],
-    ['settings', 'Runtime settings JSON file.'],
-    ['memoryLog', 'Bakin memory log markdown file.'],
+    ['home', 'Resolved Bakin home directory.'],
+    ['settings', 'Runtime settings file.'],
+    ['memoryLog', 'Shared memory log.'],
     ['audit', 'Append-only audit log.'],
-    ['logs', 'Server and runtime log directory.'],
-    ['assets', 'Asset plugin root.'],
-    ['assets.store', 'Month-sharded asset storage.'],
+    ['logs', 'Server and runtime logs.'],
+    ['assets', 'Asset runtime root.'],
+    ['assets.store', 'Month-sharded asset files.'],
     ['assets.inbox', 'Asset ingestion inbox.'],
-    ['assets.trash', 'Soft-deleted assets.'],
-    ['agents', 'Agent UI/runtime assets.'],
-    ['team', 'Team plugin runtime data.'],
+    ['assets.trash', 'Soft-deleted asset files.'],
+    ['agents', 'Agent runtime assets.'],
+    ['team', 'Team runtime data.'],
     ['personas', 'Agent persona files.'],
     ['heartbeats', 'Agent heartbeat files.'],
     ['inbox', 'General inbox directory.'],
-    ['tasks', 'Bakin-owned task metadata store.'],
+    ['tasks', 'Task metadata store.'],
     ['workflows', 'Workflow definitions, skills, and instances.'],
   ]
   const lines = [
     '---',
     'title: Runtime Paths',
     'description: Reference for Bakin runtime files under the resolved Bakin home directory.',
-	    '---',
-	    '',
-	    'This page documents the well-known paths returned by `getBakinPaths()` in `packages/core/src/content-dir.ts`.',
+    '---',
     '',
-    'Resolution order:',
+    '<div class="runtime-paths-intro">',
+    '  <p>Bakin keeps local state under one home directory. Use these keys when you need to find logs, settings, assets, task metadata, workflow state, or other files created by the runtime.</p>',
+    '</div>',
     '',
-    '1. `BAKIN_HOME` environment variable.',
-    '2. `~/.bakin/`.',
+    '## Home Resolution',
     '',
-    '| Key | Purpose |',
-    '| --- | --- |',
+    '<table class="runtime-paths-table">',
+    '  <thead>',
+    '    <tr><th>Source</th><th>When Used</th></tr>',
+    '  </thead>',
+    '  <tbody>',
   ]
-	  for (const [key, description] of paths) {
-	    lines.push(`| \`${key}\` | ${description} |`)
-	  }
-	  lines.push('', generatedPageNote(), '')
-	  return lines.join('\n')
-	}
+  for (const [source, description] of resolution) {
+    lines.push(
+      '    <tr>',
+      `      <td><code>${escapeHtml(source)}</code></td>`,
+      `      <td>${escapeHtml(description)}</td>`,
+      '    </tr>',
+    )
+  }
+  lines.push(
+    '  </tbody>',
+    '</table>',
+    '',
+    '## Path Keys',
+    '',
+    '<table class="runtime-paths-table">',
+    '  <thead>',
+    '    <tr><th>Key</th><th>Purpose</th></tr>',
+    '  </thead>',
+    '  <tbody>',
+  )
+  for (const [key, description] of paths) {
+    lines.push(
+      '    <tr>',
+      `      <td><code>${escapeHtml(key)}</code></td>`,
+      `      <td>${escapeHtml(description)}</td>`,
+      '    </tr>',
+    )
+  }
+  lines.push('  </tbody>', '</table>', '', generatedPageNote(), '')
+  return lines.join('\n')
+}
 
 function renderSdkReference(): string {
   const entries = readSdkExports()
