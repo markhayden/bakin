@@ -56,7 +56,7 @@ Three tabs sit below the cost cards, all feeding from the same in-memory recorde
 
 ## Doctor
 
-A green-light scan of every moving part in the stack. Agent roster, runtime adapter, search adapter, taskboard, assets, channel approvals, the works. Red means broken, yellow means drifting, and most rows have a one-click auto-fix so you don't have to know what went wrong to fix it.
+A green-light scan of every moving part in the stack. Agent roster, runtime adapter, search adapter, taskboard, assets, channel approvals, restart-recovery candidates, the works. Red means broken, yellow means drifting, and most rows have a one-click auto-fix so you don't have to know what went wrong to fix it.
 
 Run it before you start the day or any time something feels off. Results cache so the dashboard reads fast; the refresh button (or `bakin doctor` from the CLI) forces a fresh sweep.
 

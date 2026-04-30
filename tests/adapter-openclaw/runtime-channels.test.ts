@@ -7,11 +7,14 @@ describe('OpenClaw runtime channels', () => {
   let testDir: string
   let originalOpenClawHome: string | undefined
   let originalFetch: typeof globalThis.fetch
+  let originalWebSocket: typeof globalThis.WebSocket
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), 'bakin-openclaw-channel-test-'))
     originalOpenClawHome = process.env.OPENCLAW_HOME
     originalFetch = globalThis.fetch
+    originalWebSocket = globalThis.WebSocket
+    FakeWebSocket.instances.length = 0
     process.env.OPENCLAW_HOME = testDir
     mkdirSync(testDir, { recursive: true })
     writeFileSync(join(testDir, 'openclaw.json'), JSON.stringify({
@@ -24,6 +27,7 @@ describe('OpenClaw runtime channels', () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch
+    globalThis.WebSocket = originalWebSocket
     if (originalOpenClawHome === undefined) delete process.env.OPENCLAW_HOME
     else process.env.OPENCLAW_HOME = originalOpenClawHome
     rmSync(testDir, { recursive: true, force: true })
@@ -37,7 +41,32 @@ describe('OpenClaw runtime channels', () => {
     expect(channels).toEqual([expect.objectContaining({
       id: 'discord',
       capabilities: ['message', 'rich-content'],
-      metadata: { approvalResponses: 'render-only' },
+      metadata: expect.objectContaining({ approvalResponses: 'render-only' }),
+    })])
+  })
+
+  it('advertises interactive approvals only for configured native approval channels', async () => {
+    writeFileSync(join(testDir, 'openclaw.json'), JSON.stringify({
+      gateway: { auth: { token: 'test-token' } },
+      channels: {
+        discord: {
+          token: 'discord-token',
+          execApprovals: { enabled: true, approvers: ['202168845362921483'], target: 'both' },
+        },
+      },
+    }), 'utf-8')
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const channels = await runtime.channels.list()
+    expect(channels).toEqual([expect.objectContaining({
+      id: 'discord',
+      capabilities: ['message', 'rich-content', 'interactive-approval'],
+      metadata: expect.objectContaining({
+        approvalResponses: 'interactive',
+        approvalMode: 'openclaw-plugin-approval',
+      }),
     })])
   })
 
@@ -64,8 +93,237 @@ describe('OpenClaw runtime channels', () => {
 
     expect(calls).toHaveLength(1)
     const args = calls[0]!.args as Record<string, unknown>
-    expect(args.message).toContain('Runtime channel approvals are render-only')
-    expect(args.message).toContain('Approve or reject this gate in the Bakin UI')
+    expect(args.message).toContain('This channel cannot return approval decisions to Bakin')
+    expect(args.message).toContain('approve/reject this gate in the Bakin UI')
+  })
+
+  it('creates native OpenClaw plugin approvals for interactive channels', async () => {
+    writeFileSync(join(testDir, 'openclaw.json'), JSON.stringify({
+      gateway: { auth: { token: 'test-token' } },
+      channels: {
+        discord: {
+          token: 'discord-token',
+          execApprovals: { enabled: true, approvers: ['202168845362921483'], target: 'both' },
+        },
+      },
+    }), 'utf-8')
+    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+    await runtime.initialize({ contentDir: testDir })
+
+    const result = await runtime.channels.createApproval({
+      approvalId: 'approval-1',
+      channels: ['discord:channel-1'],
+      request: {
+        title: 'Gate: Review',
+        body: 'Review the post.',
+        options: [
+          { id: 'approve', label: 'Approve' },
+          { id: 'reject', label: 'Reject' },
+        ],
+        context: {
+          approvalUrl: 'http://localhost:3737/api/plugins/workflows/gates/task-1/decision',
+        },
+      },
+    })
+
+    expect(result.deliveries).toEqual([expect.objectContaining({
+      channelId: 'discord:channel-1',
+      ref: 'openclaw-plugin-approval:plugin:test-approval',
+    })])
+    const approvalRequest = FakeWebSocket.instances[0]!.sentFrames.find(frame => frame.method === 'plugin.approval.request')
+    const connectRequest = FakeWebSocket.instances[0]!.sentFrames.find(frame => frame.method === 'connect')
+    expect(connectRequest?.params).toEqual(expect.objectContaining({
+      client: expect.objectContaining({
+        id: 'gateway-client',
+        mode: 'backend',
+      }),
+      role: 'operator',
+      scopes: ['operator.approvals'],
+    }))
+    expect(approvalRequest?.params).toEqual(expect.objectContaining({
+      pluginId: 'bakin',
+      toolName: 'workflow.gate',
+      toolCallId: 'approval-1',
+      turnSourceChannel: 'discord',
+      turnSourceTo: 'channel-1',
+      timeoutMs: 600000,
+      twoPhase: true,
+    }))
+    expect(String((approvalRequest?.params as Record<string, unknown>).description)).toContain('Bakin fallback:')
+  })
+
+  it('uses the Bakin fallback link instead of native approvals when reject reasons are required', async () => {
+    writeFileSync(join(testDir, 'openclaw.json'), JSON.stringify({
+      gateway: { auth: { token: 'test-token' } },
+      channels: {
+        discord: {
+          token: 'discord-token',
+          execApprovals: { enabled: true, approvers: ['202168845362921483'], target: 'both' },
+        },
+      },
+    }), 'utf-8')
+    const calls: Array<Record<string, unknown>> = []
+    globalThis.fetch = mock(async (_url: string | URL | Request, init?: RequestInit) => {
+      calls.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>)
+      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+    }) as unknown as typeof fetch
+    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+    await runtime.initialize({ contentDir: testDir })
+
+    await runtime.channels.createApproval({
+      approvalId: 'approval-1',
+      channels: ['discord:channel-1'],
+      request: {
+        title: 'Gate: Review',
+        body: 'Review the post.',
+        options: [
+          { id: 'approve', label: 'Approve' },
+          { id: 'reject', label: 'Reject' },
+        ],
+        context: {
+          requireRejectReason: true,
+          approvalUrl: 'http://localhost:3737/api/plugins/workflows/gates/task-1/decision',
+        },
+      },
+    })
+
+    expect(FakeWebSocket.instances).toHaveLength(0)
+    expect(calls).toHaveLength(1)
+    const args = calls[0]!.args as Record<string, unknown>
+    expect(args.message).toContain('This gate requires a reject reason')
+    expect(args.message).toContain('Open in Bakin:')
+  })
+
+  it('falls back to render-only messages when approval options are not approve/reject', async () => {
+    writeFileSync(join(testDir, 'openclaw.json'), JSON.stringify({
+      gateway: { auth: { token: 'test-token' } },
+      channels: {
+        discord: {
+          token: 'discord-token',
+          execApprovals: { enabled: true, approvers: ['202168845362921483'], target: 'both' },
+        },
+      },
+    }), 'utf-8')
+    const calls: Array<Record<string, unknown>> = []
+    globalThis.fetch = mock(async (_url: string | URL | Request, init?: RequestInit) => {
+      calls.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>)
+      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+    }) as unknown as typeof fetch
+    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+    await runtime.initialize({ contentDir: testDir })
+
+    await runtime.channels.createApproval({
+      approvalId: 'approval-1',
+      channels: ['discord:channel-1'],
+      request: {
+        title: 'Gate: Review',
+        body: 'Review the post.',
+        options: [
+          { id: 'approve', label: 'Approve' },
+          { id: 'needs_changes', label: 'Needs changes' },
+        ],
+        context: {
+          approvalUrl: 'http://localhost:3737/api/plugins/workflows/gates/task-1/decision',
+        },
+      },
+    })
+
+    expect(FakeWebSocket.instances).toHaveLength(0)
+    expect(calls).toHaveLength(1)
+    const args = calls[0]!.args as Record<string, unknown>
+    expect(args.message).toContain('Needs changes')
+    expect(args.message).toContain('Open in Bakin:')
+  })
+
+  it('maps OpenClaw plugin approval resolved events into Bakin approval events', async () => {
+    writeFileSync(join(testDir, 'openclaw.json'), JSON.stringify({
+      gateway: { auth: { token: 'test-token' } },
+      channels: {
+        discord: {
+          token: 'discord-token',
+          execApprovals: { enabled: true, approvers: ['202168845362921483'], target: 'both' },
+        },
+      },
+    }), 'utf-8')
+    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+    await runtime.initialize({ contentDir: testDir })
+    const events: unknown[] = []
+    const unsubscribe = runtime.channels.subscribeApprovalResponses(event => events.push(event))
+    await tick()
+
+    FakeWebSocket.instances[0]!.emitMessage({
+      type: 'event',
+      event: 'plugin.approval.resolved',
+      payload: {
+        id: 'plugin:test-approval',
+        decision: 'allow-once',
+        resolvedBy: 'Roscoe',
+        ts: Date.parse('2026-04-28T12:00:00Z'),
+        request: {
+          pluginId: 'bakin',
+          toolName: 'workflow.gate',
+          toolCallId: 'approval-1',
+          turnSourceChannel: 'discord',
+          turnSourceTo: 'channel-1',
+        },
+      },
+    })
+    unsubscribe()
+
+    expect(events).toEqual([{
+      approvalId: 'approval-1',
+      channelId: 'discord:channel-1',
+      response: {
+        selectedOption: 'approve',
+        respondedAt: '2026-04-28T12:00:00.000Z',
+        actor: { type: 'human', id: 'Roscoe', displayName: 'Roscoe' },
+      },
+    }])
+  })
+
+  it('resolves native approval deliveries through OpenClaw', async () => {
+    writeFileSync(join(testDir, 'openclaw.json'), JSON.stringify({
+      gateway: { auth: { token: 'test-token' } },
+      channels: {
+        discord: {
+          token: 'discord-token',
+          execApprovals: { enabled: true, approvers: ['202168845362921483'], target: 'both' },
+        },
+      },
+    }), 'utf-8')
+    globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+    await runtime.initialize({ contentDir: testDir })
+
+    await runtime.channels.resolveApproval({
+      approvalId: 'approval-1',
+      deliveries: [{ channelId: 'discord', ref: 'openclaw-plugin-approval:plugin:test-approval', renderedAt: '2026-04-28T12:00:00Z' }],
+      response: {
+        selectedOption: 'reject',
+        respondedAt: '2026-04-28T12:00:00Z',
+        actor: { type: 'human', id: 'roscoe' },
+      },
+    })
+
+    const resolveRequest = FakeWebSocket.instances[0]!.sentFrames.find(frame => frame.method === 'plugin.approval.resolve')
+    expect(resolveRequest?.params).toEqual({
+      id: 'plugin:test-approval',
+      decision: 'deny',
+    })
   })
 
   it('warns instead of silently no-oping approval response hooks', async () => {
@@ -85,7 +343,7 @@ describe('OpenClaw runtime channels', () => {
     const unsubscribe = runtime.channels.subscribeApprovalResponses(() => {})
     await runtime.channels.resolveApproval({
       approvalId: 'approval-1',
-      deliveries: [],
+      deliveries: [{ channelId: 'discord', ref: 'message:1', renderedAt: '2026-04-28T12:00:00Z' }],
       response: {
         selectedOption: 'approve',
         respondedAt: '2026-04-28T12:00:00Z',
@@ -95,7 +353,83 @@ describe('OpenClaw runtime channels', () => {
     unsubscribe()
 
     expect(warn).toHaveBeenCalledTimes(2)
-    expect(warn.mock.calls[0]![0]).toContain('approval responses are not implemented')
+    expect(warn.mock.calls[0]![0]).toContain('approval responses are render-only')
     expect(warn.mock.calls[1]![0]).toContain('approval resolve is render-only')
   })
 })
+
+interface FakeGatewayFrame {
+  type: 'req'
+  id: string
+  method: string
+  params: Record<string, unknown>
+}
+
+class FakeWebSocket {
+  static instances: FakeWebSocket[] = []
+  readyState = 0
+  sentFrames: FakeGatewayFrame[] = []
+  private listeners = new Map<string, Set<(event: { data?: string }) => void>>()
+
+  constructor(readonly url: string) {
+    FakeWebSocket.instances.push(this)
+    queueMicrotask(() => {
+      this.readyState = 1
+      this.emit('open', {})
+      this.emitMessage({
+        type: 'event',
+        event: 'connect.challenge',
+        payload: { nonce: 'nonce-1' },
+      })
+    })
+  }
+
+  addEventListener(type: string, listener: (event: { data?: string }) => void): void {
+    const listeners = this.listeners.get(type) ?? new Set()
+    listeners.add(listener)
+    this.listeners.set(type, listeners)
+  }
+
+  removeEventListener(type: string, listener: (event: { data?: string }) => void): void {
+    this.listeners.get(type)?.delete(listener)
+  }
+
+  send(raw: string): void {
+    const frame = JSON.parse(raw) as FakeGatewayFrame
+    this.sentFrames.push(frame)
+    if (frame.method === 'connect') {
+      this.emitMessage({ type: 'res', id: frame.id, ok: true, payload: { auth: { scopes: ['operator.approvals'] } } })
+    } else if (frame.method === 'plugin.approval.request') {
+      this.emitMessage({
+        type: 'res',
+        id: frame.id,
+        ok: true,
+        payload: {
+          status: 'accepted',
+          id: 'plugin:test-approval',
+          createdAtMs: Date.parse('2026-04-28T12:00:00Z'),
+          expiresAtMs: Date.parse('2026-04-28T12:10:00Z'),
+        },
+      })
+    } else if (frame.method === 'plugin.approval.resolve') {
+      this.emitMessage({ type: 'res', id: frame.id, ok: true, payload: { ok: true } })
+    }
+  }
+
+  close(): void {
+    this.readyState = 3
+    this.emit('close', {})
+  }
+
+  emitMessage(frame: Record<string, unknown>): void {
+    this.emit('message', { data: JSON.stringify(frame) })
+  }
+
+  private emit(type: string, event: { data?: string }): void {
+    for (const listener of this.listeners.get(type) ?? []) listener(event)
+  }
+}
+
+async function tick(): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, 0))
+}

@@ -55,11 +55,16 @@ mock.module('../../../src/core/watcher', () => ({
   start: mock(),
   stop: mock(),
 }))
-mock.module('@/core/task-store', () => ({
+const taskStoreMock = {
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,
-}))
+  addTaskLog: mock(async () => {}),
+  blockTask: mock(async () => {}),
+  moveTask: mock(async () => {}),
+}
+mock.module('@/core/task-store', () => taskStoreMock)
+mock.module('../../../src/core/task-store', () => taskStoreMock)
 ;(globalThis as any).__bakinBroadcast = mock()
 
 const healthPlugin = require('../../../plugins/health/index').default as typeof import('../../../plugins/health/index').default

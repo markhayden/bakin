@@ -91,6 +91,20 @@ description: Generated reference for Bakin core settings defaults.
   </tbody>
 </table>
 
+## Restart Recovery
+
+<table class="settings-defaults-table">
+  <thead>
+    <tr><th>Key</th><th>Default</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>restartRecovery.enabled</code></td>
+      <td><code>true</code></td>
+    </tr>
+  </tbody>
+</table>
+
 ## Runtime
 
 <table class="settings-defaults-table">
@@ -305,5 +319,5 @@ description: Generated reference for Bakin core settings defaults.
 
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Apr 29, 2026 · Bakin 1.0.0</span>
+  <span>Generated Apr 30, 2026 · Bakin 1.0.0</span>
 </aside>
