@@ -394,7 +394,7 @@ describe('schedule routes', () => {
         body: { schedule: '0 9 * * *' },
       })
       expect(status).toBe(400)
-      expect(body.error).toContain('name and schedule are required')
+      expect(body.error).toBe('invalid input')
     })
 
     it('returns 400 when schedule is missing', async () => {
@@ -403,7 +403,7 @@ describe('schedule routes', () => {
         body: { name: 'Test' },
       })
       expect(status).toBe(400)
-      expect(body.error).toContain('name and schedule are required')
+      expect(body.error).toBe('invalid input')
     })
 
     it('returns 400 for unparseable schedule expression', async () => {
@@ -480,14 +480,10 @@ describe('schedule routes', () => {
       expect(meta!.taskPrompt).toBe('New prompt')
     })
 
-    it('returns 400 when jobId is not provided', async () => {
-      const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
-      const { status, body } = await callRoute(route, plugin.ctx, {
-        body: { displayName: 'Updated' },
-      })
-      expect(status).toBe(400)
-      expect(body.error).toContain('jobId required')
-    })
+    // Legacy hand-validation: pre-T8 the handler returned 400 when neither
+    // url.searchParams.get('jobId') nor body.jobId was set. T8+ routing
+    // requires :jobId in the path, so this case never reaches the handler.
+    it.skip('returns 400 when jobId is not provided — legacy', () => {})
 
     it('returns 404 for non-existent job', async () => {
       const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
@@ -535,19 +531,7 @@ describe('schedule routes', () => {
       expect(body.error).toContain('Could not parse')
     })
 
-    it('reads jobId from body when not in searchParams', async () => {
-      upsertJob(makeMeta({ jobId: 'job-123' }))
-
-      const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
-      const { status, body } = await callRoute(route, plugin.ctx, {
-        body: { jobId: 'job-123', displayName: 'From Body' },
-      })
-      expect(status).toBe(200)
-      expect(body.ok).toBe(true)
-
-      const meta = getJob('job-123')
-      expect(meta!.displayName).toBe('From Body')
-    })
+    it.skip('reads jobId from body when not in searchParams — legacy fallback; routing requires :jobId in path', () => {})
 
     it('audits and logs the update', async () => {
       upsertJob(makeMeta({ jobId: 'job-123' }))
@@ -584,26 +568,9 @@ describe('schedule routes', () => {
       expect(getJob('job-del')).toBeNull()
     })
 
-    it('returns 400 when jobId is not provided', async () => {
-      const route = findRoute(plugin.routes, 'DELETE', '/:jobId')!
-      const { status, body } = await callRoute(route, plugin.ctx, {
-        body: {},
-      })
-      expect(status).toBe(400)
-      expect(body.error).toContain('jobId required')
-    })
+    it.skip('returns 400 when jobId is not provided — legacy: routing requires :jobId in path', () => {})
 
-    it('reads jobId from body when not in searchParams', async () => {
-      upsertJob(makeMeta({ jobId: 'job-body-del' }))
-
-      const route = findRoute(plugin.routes, 'DELETE', '/:jobId')!
-      const { status, body } = await callRoute(route, plugin.ctx, {
-        body: { jobId: 'job-body-del' },
-      })
-      expect(status).toBe(200)
-      expect(body.ok).toBe(true)
-      expect(mockCronRemove).toHaveBeenCalledWith('job-body-del')
-    })
+    it.skip('reads jobId from body when not in searchParams — legacy fallback; routing requires :jobId in path', () => {})
 
     it('audits and logs the deletion', async () => {
       upsertJob(makeMeta({ jobId: 'job-audit-del' }))
@@ -709,22 +676,15 @@ describe('schedule routes', () => {
       expect(meta!.skipNextN).toBe(1)
     })
 
-    it('returns 400 when jobId or action is missing', async () => {
+    it('returns 400 when action is missing from body', async () => {
       const route = findRoute(plugin.routes, 'POST', '/:jobId/pause')!
-
-      const { status: s1, body: b1 } = await callRoute(route, plugin.ctx, {
-        body: { action: 'pause' },
-      })
-      expect(s1).toBe(400)
-      expect(b1.error).toContain('jobId and action required')
-
       upsertJob(makeMeta({ jobId: 'job-no-action' }))
-      const { status: s2, body: b2 } = await callRoute(route, plugin.ctx, {
+      const { status, body } = await callRoute(route, plugin.ctx, {
         searchParams: { jobId: 'job-no-action' },
         body: {},
       })
-      expect(s2).toBe(400)
-      expect(b2.error).toContain('jobId and action required')
+      expect(status).toBe(400)
+      expect(body.error).toBe('invalid input')
     })
 
     it('returns 404 for non-existent job', async () => {
@@ -768,23 +728,9 @@ describe('schedule routes', () => {
       expect(mockCronRunNow).toHaveBeenCalledWith('job-run')
     })
 
-    it('returns 400 when jobId is missing', async () => {
-      const route = findRoute(plugin.routes, 'POST', '/:jobId/run')!
-      const { status, body } = await callRoute(route, plugin.ctx, {
-        body: {},
-      })
-      expect(status).toBe(400)
-      expect(body.error).toContain('jobId required')
-    })
+    it.skip('returns 400 when jobId is missing — legacy: routing requires :jobId in path', () => {})
 
-    it('reads jobId from body when not in searchParams', async () => {
-      const route = findRoute(plugin.routes, 'POST', '/:jobId/run')!
-      const { status } = await callRoute(route, plugin.ctx, {
-        body: { jobId: 'job-from-body' },
-      })
-      expect(status).toBe(200)
-      expect(mockCronRunNow).toHaveBeenCalledWith('job-from-body')
-    })
+    it.skip('reads jobId from body when not in searchParams — legacy fallback; routing requires :jobId in path', () => {})
 
     it('audits and logs the run_now action', async () => {
       const route = findRoute(plugin.routes, 'POST', '/:jobId/run')!
@@ -821,12 +767,7 @@ describe('schedule routes', () => {
       expect(runs[0].runId).toBe('r1')
     })
 
-    it('returns 400 when jobId is missing', async () => {
-      const route = findRoute(plugin.routes, 'GET', '/:jobId/runs')!
-      const { status, body } = await callRoute(route, plugin.ctx)
-      expect(status).toBe(400)
-      expect(body.error).toContain('jobId query param required')
-    })
+    it.skip('returns 400 when jobId is missing — legacy: routing requires :jobId in path', () => {})
 
     it('returns empty array when no runs exist', async () => {
       const route = findRoute(plugin.routes, 'GET', '/:jobId/runs')!
@@ -871,7 +812,7 @@ describe('schedule routes', () => {
         body: {},
       })
       expect(status).toBe(400)
-      expect(body.error).toContain('input required')
+      expect(body.error).toBe('invalid input')
     })
 
     it('returns 400 for unparseable expression', async () => {
@@ -1472,7 +1413,7 @@ describe('GET /search', () => {
     expect(route).toBeDefined()
     const { status, body } = await callRoute(route, activated.ctx)
     expect(status).toBe(400)
-    expect(body.error).toMatch(/q=/i)
+    expect(body.error).toBe('invalid input')
   })
 
   it('passes ?facets=agent,enabled through to ctx.search.query', async () => {
