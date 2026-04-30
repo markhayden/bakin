@@ -818,12 +818,54 @@ function schemaOrObject(schema: unknown): OpenApiSchema {
   return { type: 'object', additionalProperties: true }
 }
 
+function schemaForParamHint(hint: string): OpenApiSchema {
+  const optional = hint.endsWith('?')
+  const normalized = optional ? hint.slice(0, -1) : hint
+  if (normalized.includes('|')) {
+    return { type: 'string', enum: normalized.split('|').filter(Boolean) }
+  }
+  if (normalized === 'boolean') return { type: 'boolean' }
+  if (normalized === 'number') return { type: 'number' }
+  if (normalized === 'integer') return { type: 'integer' }
+  if (normalized === 'object') return { type: 'object', additionalProperties: true }
+  return { type: 'string' }
+}
+
+function schemaFromParamsHint(params?: string): OpenApiSchema | undefined {
+  const trimmed = params?.trim()
+  if (!trimmed || !trimmed.startsWith('{') || !trimmed.endsWith('}')) return undefined
+
+  const properties: Record<string, OpenApiSchema> = {}
+  const required: string[] = []
+  for (const match of trimmed.matchAll(/"([^"]+)"\s*:\s*"([^"]+)"/g)) {
+    const [, name, hint] = match
+    properties[name] = schemaForParamHint(hint)
+    if (!hint.endsWith('?')) required.push(name)
+  }
+  if (Object.keys(properties).length === 0) return undefined
+  return {
+    type: 'object',
+    properties,
+    ...(required.length ? { required } : {}),
+    additionalProperties: false,
+  }
+}
+
 function openApiContent(contentType: string, schema: unknown, example?: unknown): Record<string, unknown> {
   const content: Record<string, unknown> = {
     schema: schemaOrObject(schema),
   }
   if (example !== undefined) content.example = example
   return { [contentType]: content }
+}
+
+function isGenericObjectSchema(schema: unknown): boolean {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return false
+  const record = schema as Record<string, unknown>
+  const properties = record.properties
+  return record.type === 'object' &&
+    record.additionalProperties === true &&
+    (!properties || (typeof properties === 'object' && !Array.isArray(properties) && Object.keys(properties).length === 0))
 }
 
 function sampleOpenApiValue(schema: unknown): unknown {
@@ -841,7 +883,7 @@ function sampleOpenApiValue(schema: unknown): unknown {
       return [sampleOpenApiValue(record.items)]
     case 'object': {
       const properties = record.properties
-      if (!properties || typeof properties !== 'object' || Array.isArray(properties)) return {}
+      if (!properties || typeof properties !== 'object' || Array.isArray(properties)) return undefined
       return Object.fromEntries(Object.entries(properties).map(([key, value]) => [key, sampleOpenApiValue(value)]))
     }
     case 'string':
@@ -870,9 +912,11 @@ function curlForOperation(method: string, path: string, operation: OpenApiOperat
   const requestBody = operation.requestBody as { content?: Record<string, { schema?: unknown; example?: unknown }> } | undefined
   const body = firstOpenApiContent(requestBody?.content)
   if (body) {
+    if (body.example === undefined && isGenericObjectSchema(body.schema)) return lines.join(' \\\n')
     const sample = body.example ?? sampleOpenApiValue(body.schema)
+    if (sample === undefined) return lines.join(' \\\n')
     lines.push(`  -H 'Content-Type: ${body.contentType}'`)
-    lines.push(`  --data '${JSON.stringify(sample, null, 2)}'`)
+    lines.push(`  --data '${JSON.stringify(sample)}'`)
   }
   return lines.join(' \\\n')
 }
@@ -945,10 +989,11 @@ function routeOperation(route: ApiRouteContribution | RouteDoc, scope: string, f
       content: openApiContent(requestBody.contentType ?? 'application/json', requestBody.schema, requestBody.example),
     }
   } else if ('params' in route && route.params && !route.params.startsWith('?')) {
+    const paramsSchema = schemaFromParamsHint(route.params)
     operation.requestBody = {
       description: route.params,
       required: !['GET', 'DELETE'].includes(route.method),
-      content: openApiContent('application/json', { type: 'object', additionalProperties: true }),
+      content: openApiContent('application/json', paramsSchema ?? { type: 'object', additionalProperties: true }),
     }
   } else {
     const body = defaultRequestBody(route)
