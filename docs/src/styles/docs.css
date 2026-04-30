@@ -1314,8 +1314,9 @@ starlight-toc nav a[href="#for-agents"]::before {
 .api-tabs__labels {
   width: fit-content;
   display: flex;
+  align-items: center;
   gap: 0.25rem;
-  margin: 0.5rem 0.5rem 0;
+  margin: 0.45rem 0.5rem 0;
   padding: 0.18rem;
   border: 1px solid rgba(120, 117, 116, 0.28);
   border-radius: 0.42rem;
@@ -1324,14 +1325,20 @@ starlight-toc nav a[href="#for-agents"]::before {
 }
 
 .api-tabs__labels label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   cursor: pointer;
+  height: 2.05rem;
   min-width: 5.5rem;
-  padding: 0.46rem 0.72rem;
+  margin: 0;
+  padding: 0 0.78rem;
   border-radius: 0.3rem;
   color: var(--sl-color-gray-3);
   font-size: 0.82rem;
   font-weight: 600;
-  line-height: 1.1;
+  line-height: 1;
   text-align: center;
 }
 
@@ -1343,7 +1350,7 @@ starlight-toc nav a[href="#for-agents"]::before {
 
 .api-tabs__panel {
   display: none;
-  padding: 0.65rem 0.5rem 0.5rem;
+  padding: 0.55rem 0.5rem 0.5rem;
   background: #171515;
 }
 
@@ -1353,9 +1360,10 @@ starlight-toc nav a[href="#for-agents"]::before {
 }
 
 .api-schema__caption {
-  margin: 0 0 0.55rem;
+  margin: 0 0 0.85rem;
   color: var(--sl-color-gray-2);
   font-size: 0.86rem;
+  line-height: 1.35;
 }
 
 .api-tabs__empty {
