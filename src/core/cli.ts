@@ -320,6 +320,11 @@ async function cmdPluginsUpgrade(pluginId: string, opts: { yes: boolean }): Prom
       newPermissions?: string[]
       before?: { version: string; commitSha: string }
       after?: { version: string; commitSha: string }
+      pluginAssets?: {
+        installed?: Array<{ pluginId: string; name: string }>
+        unchanged?: Array<{ pluginId: string; name: string }>
+        skipped?: Array<{ pluginId: string; name: string; reason: string }>
+      }
     }>('/api/plugins/upgrade', {
       method: 'POST',
       body: JSON.stringify({ pluginId, yes: opts.yes }),
@@ -359,6 +364,12 @@ async function cmdPluginsUpgrade(pluginId: string, opts: { yes: boolean }): Prom
     const toSha = (res.after?.commitSha ?? '').slice(0, 8)
     const shaPart = fromSha && toSha ? ` (sha ${fromSha}...${toSha})` : ''
     console.log(`Upgraded ${pluginId} v${fromV} → v${toV}${shaPart} and activated it.`)
+    const installedAssets = res.pluginAssets?.installed?.length ?? 0
+    const skippedAssets = res.pluginAssets?.skipped?.length ?? 0
+    if (installedAssets > 0 || skippedAssets > 0) {
+      const skippedPart = skippedAssets > 0 ? `, ${skippedAssets} user-edited skipped` : ''
+      console.log(`  Runtime skills: ${installedAssets} applied${skippedPart}`)
+    }
     return 0
   } catch (err) {
     console.error(`Upgrade failed: ${err instanceof Error ? err.message : String(err)}`)
