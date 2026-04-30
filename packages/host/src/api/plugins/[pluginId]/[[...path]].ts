@@ -30,6 +30,7 @@ import {
   createPluginRuntimeFacade,
   createPluginTaskService,
 } from '@/lib/plugin-context-services'
+import { wrapPluginContextPermissions } from '@/lib/plugin-permissions'
 import { stampPluginResponse } from '@/core/plugin-host/version-stamp'
 import type { PluginContext, APIRoute } from '@bakin/core/plugin-types'
 
@@ -55,7 +56,7 @@ function buildCtx(pluginId: string): PluginContext {
   })
   const noopRegisterRoute = () => {}
   const assets = createPluginAssetsAPI()
-  return {
+  const ctx: PluginContext = {
     storage,
     events,
     pluginId,
@@ -155,6 +156,11 @@ function buildCtx(pluginId: string): PluginContext {
       },
     },
   }
+  return wrapPluginContextPermissions(ctx, {
+    pluginId,
+    source: state?.source ?? 'user',
+    manifestPermissions: state?.manifest?.permissions ?? [],
+  })
 }
 
 /**

@@ -14,7 +14,7 @@
 import type {
   HealthCheckDef,
   PluginHealthCheckInput,
-} from '../../../packages/core/src/plugin-types'
+} from '../../packages/core/src/plugin-types'
 
 export type { HealthCheckDef, PluginHealthCheckInput }
 

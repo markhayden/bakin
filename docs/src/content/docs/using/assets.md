@@ -129,7 +129,7 @@ Plugins compose by filename (`/api/assets/{filename}` is a stable URL) or by slo
 ## Settings
 
 <!-- docs:settings assets -->
-<div class="table-light-full table-settings">
+<div class="settings-table">
 
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
@@ -145,13 +145,9 @@ Plugins compose by filename (`/api/assets/{filename}` is a stable URL) or by slo
 Most asset workflows happen in the UI or through agents. Trash is CLI-friendly:
 
 <!-- docs:cli-commands assets -->
-<div class="table-light-full table-label">
-
 | Command | Purpose |
 | --- | --- |
 | `bakin trash [list\|restore\|empty] ...` | Manage trashed assets. |
-
-</div>
 <!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).

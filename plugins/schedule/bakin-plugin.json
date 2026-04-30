@@ -20,7 +20,11 @@
   "permissions": [
     "storage.read",
     "storage.write",
-    "events.emit"
+    "events.emit",
+    "runtime.read",
+    "runtime.cron",
+    "search.read",
+    "search.write"
   ],
   "contributes": {
     "apiRoutes": [

@@ -114,7 +114,7 @@ mcporter call bakin-<agent>.bakin_exec_assets_update_content --args '{
 <p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="check-gates" name="bakin_exec_check_gates" label="Checked workflow gates" description="Get a human-readable overview of all gate statuses in a workflow. Shows which gates are approved, waiting, or pending." source="plugins/workflows/index.ts:1309" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID (or workflow instance ID)"}]}>
+<McpToolCard id="check-gates" name="bakin_exec_check_gates" label="Checked workflow gates" description="Get a human-readable overview of all gate statuses in a workflow. Shows which gates are approved, waiting, or pending." source="plugins/workflows/index.ts:1409" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID (or workflow instance ID)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_check_gates --args '{
   "taskId": "value"
@@ -154,7 +154,7 @@ mcporter call bakin-<agent>.bakin_exec_gen_image --args '{
 mcporter call bakin-<agent>.bakin_exec_get_paths
 ```
 </McpToolCard>
-<McpToolCard id="get-step" name="bakin_exec_get_step" label="Read workflow step" description="Get the current workflow step as human-readable formatted text. Includes instructions, prior outputs, schema, and rejection context in a clear structure." source="plugins/workflows/index.ts:1233" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"}]}>
+<McpToolCard id="get-step" name="bakin_exec_get_step" label="Read workflow step" description="Get the current workflow step as human-readable formatted text. Includes instructions, prior outputs, schema, and rejection context in a clear structure." source="plugins/workflows/index.ts:1333" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_get_step --args '{
   "taskId": "value"
@@ -168,14 +168,14 @@ mcporter call bakin-<agent>.bakin_exec_get_step --args '{
 <p class="mcp-section-description">Health tools let agents check whether Bakin is running correctly before or during work.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="health-doctor" name="bakin_exec_health_doctor" label="Ran diagnostics" description="Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results." source="plugins/health/index.ts:260" parameters={[{"name":"fresh","type":"boolean","required":false,"description":"Force fresh diagnostics instead of cached results"}]}>
+<McpToolCard id="health-doctor" name="bakin_exec_health_doctor" label="Ran diagnostics" description="Run system diagnostics (agent roster, skill sync, runtime, taskboard, assets, etc.). Returns detailed check results. Use fresh=true to force a full re-check instead of returning cached results." source="plugins/health/index.ts:259" parameters={[{"name":"fresh","type":"boolean","required":false,"description":"Force fresh diagnostics instead of cached results"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_health_doctor --args '{
   "fresh": true
 }'
 ```
 </McpToolCard>
-<McpToolCard id="health-status" name="bakin_exec_health_status" label="Checked system health" description="Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work." source="plugins/health/index.ts:231">
+<McpToolCard id="health-status" name="bakin_exec_health_status" label="Checked system health" description="Get a quick system health summary — uptime, memory, active MCP sessions, and doctor error/warning counts. Useful for checking system state before starting work." source="plugins/health/index.ts:230">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_health_status
 ```
@@ -429,7 +429,7 @@ mcporter call bakin-<agent>.bakin_exec_models_list --args '{
 <p class="mcp-section-description">Publishing tools send completed work to configured channels through Bakin adapters.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="post-channel" name="bakin_exec_post_channel" label="Posted to channel" description="Post a message through the active runtime channel adapter. Supports image/video attachments when the adapter supports rich content." source="scripts/lib/post-channel.ts:104" parameters={[{"name":"channel","type":"string","required":true,"description":"Channel name or runtime channel target"},{"name":"content","type":"string","required":true,"description":"Message text / caption"},{"name":"imageFilename","type":"string","required":false,"description":"Asset filename resolved via the assets index."},{"name":"videoFilename","type":"string","required":false,"description":"Asset filename resolved via the assets index."},{"name":"embed","type":"record","required":false,"description":"Optional rich metadata for adapters that support it"},{"name":"taskId","type":"string","required":false,"description":"Task ID for audit trail"}]}>
+<McpToolCard id="post-channel" name="bakin_exec_post_channel" label="Posted to channel" description="Post a message through the active runtime channel adapter. Supports image/video attachments when the adapter supports rich content." source="scripts/lib/post-channel.ts:111" parameters={[{"name":"channel","type":"string","required":true,"description":"Channel name or runtime channel target"},{"name":"content","type":"string","required":true,"description":"Message text / caption"},{"name":"imageFilename","type":"string","required":false,"description":"Asset filename resolved via the assets index."},{"name":"videoFilename","type":"string","required":false,"description":"Asset filename resolved via the assets index."},{"name":"embed","type":"record","required":false,"description":"Optional rich metadata for adapters that support it"},{"name":"taskId","type":"string","required":false,"description":"Task ID for audit trail"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_post_channel --args '{
   "channel": "value",
@@ -745,7 +745,7 @@ mcporter call bakin-<agent>.bakin_exec_search_table --args '{
 <p class="mcp-section-description">Workflow submission tools let agents submit step output back to the workflow engine.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="submit-step" name="bakin_exec_submit_step" label="Submitted workflow step" description="Submit workflow step output with local pre-validation. Validates against the step schema BEFORE hitting the server, giving you detailed field-level errors without a round trip." source="plugins/workflows/index.ts:1253" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"stepId","type":"string","required":true,"description":"Step ID to submit for"},{"name":"output","type":"record","required":true,"description":"JSON output matching the step schema"}]}>
+<McpToolCard id="submit-step" name="bakin_exec_submit_step" label="Submitted workflow step" description="Submit workflow step output with local pre-validation. Validates against the step schema BEFORE hitting the server, giving you detailed field-level errors without a round trip." source="plugins/workflows/index.ts:1353" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"stepId","type":"string","required":true,"description":"Step ID to submit for"},{"name":"output","type":"record","required":true,"description":"JSON output matching the step schema"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_submit_step --args '{
   "taskId": "value",
@@ -976,53 +976,51 @@ mcporter call bakin-<agent>.bakin_exec_team_update_identity --args '{
 <p class="mcp-section-description">Workflow tools expose workflow definitions, active instances, current steps, and step completion.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="workflows-complete-step" name="bakin_exec_workflows_complete_step" label="Completed workflow step" description="Complete a workflow step with output. Validates output against the step schema, advances the workflow to the next step. Returns success status and whether the workflow is complete." source="plugins/workflows/index.ts:1196" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"stepId","type":"string","required":true,"description":"Step ID to complete"},{"name":"agentId","type":"string","required":true,"description":"Agent ID submitting the output"},{"name":"output","type":"record","required":true,"description":"Step output object"}]}>
+<McpToolCard id="workflows-complete-step" name="bakin_exec_workflows_complete_step" label="Completed workflow step" description="Complete a workflow step with output. Validates output against the step schema, advances the workflow to the next step. Returns success status and whether the workflow is complete." source="plugins/workflows/index.ts:1297" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"stepId","type":"string","required":true,"description":"Step ID to complete"},{"name":"output","type":"record","required":true,"description":"Step output object"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_workflows_complete_step --args '{
   "taskId": "value",
   "stepId": "value",
-  "agentId": "value",
   "output": {
     "key": "value"
   }
 }'
 ```
 </McpToolCard>
-<McpToolCard id="workflows-get-definition" name="bakin_exec_workflows_get_definition" label="Read workflow definition" description="Get a workflow definition by filename. Returns the full definition with steps, inputs, and resolved sub-workflows." source="plugins/workflows/index.ts:1101" parameters={[{"name":"name","type":"string","required":true,"description":"Workflow definition filename (e.g. \"content-pipeline\")"}]}>
+<McpToolCard id="workflows-get-definition" name="bakin_exec_workflows_get_definition" label="Read workflow definition" description="Get a workflow definition by filename. Returns the full definition with steps, inputs, and resolved sub-workflows." source="plugins/workflows/index.ts:1203" parameters={[{"name":"name","type":"string","required":true,"description":"Workflow definition filename (e.g. \"content-pipeline\")"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_workflows_get_definition --args '{
   "name": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="workflows-get-instance" name="bakin_exec_workflows_get_instance" label="Read workflow instance" description="Get the full state of a workflow instance for a task, including step states and history." source="plugins/workflows/index.ts:1167" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"}]}>
+<McpToolCard id="workflows-get-instance" name="bakin_exec_workflows_get_instance" label="Read workflow instance" description="Get the full state of a workflow instance for a task, including step states and history." source="plugins/workflows/index.ts:1269" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_workflows_get_instance --args '{
   "taskId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="workflows-get-step" name="bakin_exec_workflows_get_step" label="Read workflow step" description="Get the current workflow step for a task. Returns only the current step (information gating — future steps are hidden). Critical for agents to know what to do next." source="plugins/workflows/index.ts:1181" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"},{"name":"agentId","type":"string","required":false,"description":"Agent ID requesting the step"}]}>
+<McpToolCard id="workflows-get-step" name="bakin_exec_workflows_get_step" label="Read workflow step" description="Get the current workflow step for a task. Returns only the current step (information gating — future steps are hidden). Critical for agents to know what to do next." source="plugins/workflows/index.ts:1283" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_workflows_get_step --args '{
-  "taskId": "value",
-  "agentId": "value"
+  "taskId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="workflows-list" name="bakin_exec_workflows_list" label="Listed workflows" description="List all workflow definitions (templates). Returns name, filename, description, and step count for each." source="plugins/workflows/index.ts:1082">
+<McpToolCard id="workflows-list" name="bakin_exec_workflows_list" label="Listed workflows" description="List all workflow definitions (templates). Returns name, filename, description, and step count for each." source="plugins/workflows/index.ts:1184">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_workflows_list
 ```
 </McpToolCard>
-<McpToolCard id="workflows-list-instances" name="bakin_exec_workflows_list_instances" label="Listed workflow runs" description="List workflow instances. Optionally filter by status (in_progress, pending_approval, complete, failed, cancelled)." source="plugins/workflows/index.ts:1154" parameters={[{"name":"status","type":"choice","required":false,"description":"Filter by instance status"}]}>
+<McpToolCard id="workflows-list-instances" name="bakin_exec_workflows_list_instances" label="Listed workflow runs" description="List workflow instances. Optionally filter by status (in_progress, pending_approval, complete, failed, cancelled)." source="plugins/workflows/index.ts:1256" parameters={[{"name":"status","type":"choice","required":false,"description":"Filter by instance status"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_workflows_list_instances --args '{
   "status": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="workflows-start" name="bakin_exec_workflows_start" label="Started a workflow" description="Start a workflow instance for a task. The task must exist on the board. Returns the created instance." source="plugins/workflows/index.ts:1119" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID to start workflow for"},{"name":"workflowId","type":"string","required":true,"description":"Workflow definition filename"}]}>
+<McpToolCard id="workflows-start" name="bakin_exec_workflows_start" label="Started a workflow" description="Start a workflow instance for a task. The task must exist on the board. Returns the created instance." source="plugins/workflows/index.ts:1221" parameters={[{"name":"taskId","type":"string","required":true,"description":"Task ID to start workflow for"},{"name":"workflowId","type":"string","required":true,"description":"Workflow definition filename"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_workflows_start --args '{
   "taskId": "value",

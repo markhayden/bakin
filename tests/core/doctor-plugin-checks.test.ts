@@ -44,7 +44,7 @@ mock.module('@/core/task-store', () => ({
 import {
   registerPluginHealthCheck,
   unregisterPluginHealthChecks,
-} from '../../plugins/health/lib/health-check-registry'
+} from '../../src/core/health-check-registry'
 import { runPluginHealthChecks } from '../../src/core/doctor'
 
 beforeEach(() => {

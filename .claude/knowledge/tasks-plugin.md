@@ -116,7 +116,7 @@ archived   → done, todo
 - `todo` cannot go directly to `review` (must pass through `inProgress`)
 - `review` cannot go to `blocked` (send back to `inProgress` or `todo` first)
 - Moving to `done` requires at least one log entry (agents must document their work)
-- Workflow tasks cannot be moved to `done` directly — the workflow engine manages completion via `bakin_submit_step`
+- Workflow tasks cannot be moved to `done` directly — the workflow engine manages completion via `bakin_exec_submit_step`
 
 ## Architecture
 
@@ -248,11 +248,11 @@ documents that fallback; ID is preferred.
 
 | Function | Side effects |
 |----------|-------------|
-| `logProgress` | SSE broadcast → persist log entry |
+| `logProgress` | Workflow owner authorization → SSE broadcast → persist log entry |
 | `moveTaskWithEffects` | Workflow done-guard → move → audit → Antfly index → continuation trigger → project auto-check → parent unblock |
-| `blockTaskWithEffects` | Block task → audit → propagate to parent (for child workflow tasks) |
+| `blockTaskWithEffects` | Workflow owner authorization → block task → audit → propagate to parent (for child workflow tasks) |
 | `createTaskWithEffects` | Auto-match workflow → create → start workflow instance → audit |
-| `reportComplete` | Reject workflow tasks → log → move to done → notify orchestrator |
+| `reportComplete` | Workflow active-task authorization → log → move to done → notify orchestrator |
 | `setDependencyWithEffects` | Set dependency → audit |
 | `getTaskDetails` | Read board → find task by ID |
 | `triggerDispatch` | Fire-and-forget POST to `/api/dispatch` |
@@ -277,6 +277,7 @@ When `autoArchiveDays > 0`, the plugin moves old Done tasks to Archived. `archiv
 ### Workflows Plugin
 - Tasks with `workflowId` are managed by the workflow engine
 - Workflow tasks cannot be moved to Done directly (done-guard in `moveTaskWithEffects`)
+- Workflow progress logs and block calls are only accepted from the current workflow step owner
 - Child workflow tasks use compound IDs: `parentId--stepId`
 - Blocking a child task propagates the block to the parent
 - Workflow completion moves the task to Done via `moveTaskWithEffects` with `skipDoneGuard: true`

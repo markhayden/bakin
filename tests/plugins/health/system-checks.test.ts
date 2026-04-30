@@ -142,7 +142,6 @@ import { checkMcporter } from '../../../plugins/health/lib/system-checks/mcporte
 import { checkRuntime } from '../../../plugins/health/lib/system-checks/runtime'
 import { checkChannelApprovals } from '../../../plugins/health/lib/system-checks/channel-approvals'
 import { checkSearchAdapter } from '../../../plugins/health/lib/system-checks/search'
-import { checkOrchestratorRules } from '../../../plugins/health/lib/system-checks/orchestrator-rules'
 import { checkAndSyncSkill } from '../../../plugins/health/lib/system-checks/sync-skill'
 import { checkPluginAssets } from '../../../plugins/health/lib/system-checks/plugin-assets'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
@@ -171,14 +170,6 @@ function makeHealthRuntime(): AgentRuntimeAdapter {
     runtimeSkill = skill
   }
   return runtime
-}
-
-function seedMainAgentsMd(content: string): void {
-  runtimeWorkspaceFiles.set(runtimeFileKey('main', 'AGENTS.md'), content)
-}
-
-function readMainAgentsMd(): string {
-  return runtimeWorkspaceFiles.get(runtimeFileKey('main', 'AGENTS.md')) ?? ''
 }
 
 beforeEach(() => {
@@ -456,44 +447,6 @@ describe('checkSearchAdapter', () => {
   })
 })
 
-// ─── checkOrchestratorRules ───────────────────────────────────────────────
-
-describe('checkOrchestratorRules', () => {
-  it('warns when AGENTS.md is missing', async () => {
-    const results = await checkOrchestratorRules(mockRuntime)
-    expect(results[0].check).toBe('orchestrator-rules')
-    expect(results[0].status).toBe('warn')
-    expect(results[0].message).toMatch(/AGENTS.md not found/)
-  })
-
-  it('warns when block is missing without autoFix', async () => {
-    seedMainAgentsMd('# Main\n\nNo block here.\n')
-    const results = await checkOrchestratorRules(mockRuntime)
-    expect(results[0].status).toBe('warn')
-    expect(results[0].autoFixable).toBe(true)
-    expect(results[0].message).toMatch(/missing from AGENTS.md/)
-  })
-
-  it('adds the block under autoFix when missing', async () => {
-    mockAutoFix = true
-    seedMainAgentsMd('# Main\n')
-    const results = await checkOrchestratorRules(mockRuntime)
-    expect(results[0].status).toBe('fixed')
-    const after = readMainAgentsMd()
-    expect(after).toContain('<!-- bakin:orchestrator-rules:start -->')
-    expect(after).toContain('<!-- bakin:orchestrator-rules:end -->')
-  })
-
-  it('reports error when block has start marker but no end marker', async () => {
-    seedMainAgentsMd(
-      '# Main\n\n<!-- bakin:orchestrator-rules:start -->\n(missing end)\n',
-    )
-    const results = await checkOrchestratorRules(mockRuntime)
-    expect(results[0].status).toBe('error')
-    expect(results[0].message).toMatch(/no end marker/)
-  })
-})
-
 // ─── checkAndSyncSkill ────────────────────────────────────────────────────
 
 describe('checkAndSyncSkill', () => {
@@ -599,7 +552,7 @@ describe('plugin registration', () => {
     }
     await healthPlugin.activate(ctx as unknown as Parameters<typeof healthPlugin.activate>[0])
 
-    // 10 system checks (C6: 3, C7: 3, C8: 3, C9: 1)
+    // 10 health checks: 8 health-owned checks plus the 2 core managed-block scopes.
     expect(registeredIds).toContain('content-dir')
     expect(registeredIds).toContain('service')
     expect(registeredIds).toContain('mcporter')

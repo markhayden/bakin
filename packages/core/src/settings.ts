@@ -136,6 +136,9 @@ export interface BakinSettings {
     enforceAgentScoping: boolean
     enforceWorkflowDoneGuard: boolean
   }
+  plugins: {
+    runtimeCapabilityMode: 'off' | 'warn' | 'enforce'
+  }
 }
 
 export const DEFAULT_SETTINGS: BakinSettings = {
@@ -224,6 +227,9 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     rejectRepeatThreshold: 0.95,
     enforceAgentScoping: true,
     enforceWorkflowDoneGuard: true,
+  },
+  plugins: {
+    runtimeCapabilityMode: 'warn',
   },
 }
 

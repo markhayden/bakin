@@ -12,7 +12,12 @@
   "tests": "tests/",
   "dependencies": [],
   "permissions": [
-    "storage.read"
+    "storage.read",
+    "runtime.read",
+    "runtime.agents",
+    "runtime.channels",
+    "runtime.skills",
+    "search.read"
   ],
   "contributes": {
     "apiRoutes": [

@@ -80,7 +80,7 @@ Everything else (soul, identity, rules, tools, skills, sessions) lives in the ru
 ## Settings
 
 <!-- docs:settings team -->
-<div class="table-light-full table-settings">
+<div class="settings-table">
 
 | Setting | Type | Default | What it does |
 | --- | --- | --- | --- |
@@ -92,8 +92,6 @@ Everything else (soul, identity, rules, tools, skills, sessions) lives in the ru
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 7 11 12 5 17"/><line x1="13" y1="17" x2="19" y2="17"/></svg>From the CLI
 
 <!-- docs:cli-commands team -->
-<div class="table-light-full table-label">
-
 | Command | Purpose |
 | --- | --- |
 | `bakin agents list [--packages]` | List agents. |
@@ -104,8 +102,6 @@ Everything else (soul, identity, rules, tools, skills, sessions) lives in the ru
 | `bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--force]` | Remove an agent package. |
 | `bakin agents update [agent-id] [--refresh-template]` | Update agent packages. |
 | `bakin agents knowledge <list\|enable\|disable> ...` | Manage agent knowledge toggles. |
-
-</div>
 <!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).

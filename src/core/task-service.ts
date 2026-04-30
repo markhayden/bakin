@@ -16,6 +16,7 @@ import { checkAndContinueDependents } from './continuation'
 import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { getHookRegistry } from '../lib/plugin-registry'
+import { assertWorkflowToolAllowed } from './workflow-tool-authorization'
 import {
   addTaskLog as appendTaskLog,
   blockTask as blockStoredTask,
@@ -75,6 +76,7 @@ export async function logProgress(
   message: string,
   channel?: Channel,
 ): Promise<void> {
+  await assertWorkflowToolAllowed({ taskId, agent, action: 'progress-log' })
   // Broadcast to live activity feed first (never block on persistence)
   broadcast({ type: 'activity', agent, message, ts: new Date().toISOString(), taskId, ...(channel ? { channel } : {}) })
   await appendTaskLog(taskId, agent, message)
@@ -182,6 +184,7 @@ export async function blockTaskWithEffects(
   agent: string,
   channel?: Channel,
 ): Promise<void> {
+  await assertWorkflowToolAllowed({ taskId, agent, action: 'task-block' })
   await blockStoredTask(taskId, reason, agent)
   const title = await resolveTitle(taskId)
   const contentDir = getContentDir()
@@ -269,6 +272,7 @@ export async function createTaskWithEffects(opts: {
     } catch (err) {
       log.error('Failed to start workflow', { taskId: task.id, workflowId: effectiveWorkflowId, error: (err as Error).message })
       await updateStoredTask(task.id, { workflowId: undefined })
+      throw new Error(`Failed to start workflow "${effectiveWorkflowId}": ${(err as Error).message}`)
     }
   }
 
@@ -302,6 +306,7 @@ export async function reportComplete(
   summary: string,
   channel?: Channel,
 ): Promise<void> {
+  await assertWorkflowToolAllowed({ taskId, agent, action: 'task-complete' })
   // Reject workflow tasks
   const board = readTaskboard()
   for (const col of Object.values(board.columns) as StoredTask[][]) {

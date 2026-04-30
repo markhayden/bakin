@@ -14,7 +14,9 @@
   "permissions": [
     "storage.read",
     "storage.write",
-    "events.emit"
+    "events.emit",
+    "search.read",
+    "search.write"
   ],
   "contributes": {
     "apiRoutes": [

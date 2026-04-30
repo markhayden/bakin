@@ -15,7 +15,7 @@ import { appendAudit } from './audit'
 import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { isOnboarded } from './onboarding/state'
-import { listHealthChecks } from '../../plugins/health/lib/health-check-registry'
+import { listHealthChecks } from './health-check-registry'
 import type { HealthCheckResult } from '../../packages/core/src/plugin-types'
 
 const log = createLogger('doctor')

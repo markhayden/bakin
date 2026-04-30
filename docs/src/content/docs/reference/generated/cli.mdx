@@ -400,6 +400,30 @@ bakin plugins install [--dev] <path|github:user/repo[@ref][#subpath]> [--ref <re
     </tbody>
   </table>
 </CliCommandCard>
+<CliCommandCard id="plugins-export" name="plugins export" summary="Export installed user plugins." description="Writes a portable manifest for installed user plugins from ~/.bakin/plugins/lock.json. Without a file, prints JSON to stdout.">
+```sh frame="terminal"
+bakin plugins export [file]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[file]</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="plugins-import" name="plugins import" summary="Import an exported plugin set." description="Installs every plugin in an exported manifest. GitHub plugins are pinned to the recorded commit SHA when present; linked dev plugins are restored as dev installs when their local source path exists.">
+```sh frame="terminal"
+bakin plugins import <file> [--yes] [--force]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;file&gt;</code></td><td>argument</td><td>yes</td><td>Required value.</td></tr>
+      <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
+      <tr><td><code>[--force]</code></td><td>option</td><td>no</td><td>Bypass the normal safety guard.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
 <CliCommandCard id="plugins-upgrade" name="plugins upgrade" summary="Upgrade a user plugin." description="Re-pulls a user plugin from its source and rebuilds. --yes skips the consent prompt.">
 ```sh frame="terminal"
 bakin plugins upgrade <id> [--yes]
