@@ -46,6 +46,7 @@ Use [Ingredients](/docs/extending/ingredients/) for deeper notes on why each ing
 ## Related
 
 - [Bakin' Core](/docs/extending/development-workflow/): source setup, local loops, docs checks, and PR shape
+- [Quality Control](/docs/extending/quality-control/): review expectations, generated docs, examples, and source-link rules
 - [Ingredients](/docs/extending/ingredients/): the parts a plugin or agent kit can ship
 - [Plugin Manifest](/docs/extending/plugins/manifest/): the install-time contract for plugins
 - [Server Contracts](/docs/extending/plugins/server-contracts/): server routes, exec tools, hooks, health checks, and cleanup
