@@ -16,6 +16,9 @@
       "name": "Assets"
     },
     {
+      "name": "Git"
+    },
+    {
       "name": "Health"
     },
     {
@@ -946,6 +949,323 @@
           }
         ],
         "x-bakin-full-path": "/api/plugins/assets/search"
+      }
+    },
+    "/api/plugins/git/worktrees": {
+      "get": {
+        "operationId": "git.get.worktrees",
+        "summary": "List tracked git worktrees",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Git"
+        ],
+        "parameters": [
+          {
+            "name": "repoPath",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "taskId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "includeReleased",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/git/worktrees"
+      }
+    },
+    "/api/plugins/git/worktrees/prepare": {
+      "post": {
+        "operationId": "git.post.worktrees-prepare",
+        "summary": "Create or reuse an isolated git worktree for a task",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type — body content type does not match the declared content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Git"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "repoPath": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "taskId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "branch": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "baseRef": {
+                    "default": "HEAD",
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  "agent": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "repoPath",
+                  "taskId",
+                  "baseRef"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-bakin-full-path": "/api/plugins/git/worktrees/prepare"
+      }
+    },
+    "/api/plugins/git/worktrees/release": {
+      "post": {
+        "operationId": "git.post.worktrees-release",
+        "summary": "Release a tracked git worktree",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type — body content type does not match the declared content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Git"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "worktreePath": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "repoPath": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "taskId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "force": {
+                        "default": false,
+                        "type": "boolean"
+                      }
+                    },
+                    "required": [
+                      "force"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "agent": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "x-bakin-full-path": "/api/plugins/git/worktrees/release"
       }
     },
     "/api/plugins/health/checks": {
