@@ -17,6 +17,7 @@ export const CORE_PLUGIN_IDS = new Set([
   'assets',
   'schedule',
   'health',
+  'git',
 ])
 
 export interface DependencyPlanInput {
