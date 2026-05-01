@@ -107,20 +107,27 @@ beforeEach(() => {
 
 describe('useAgentStore — package state plumbing', () => {
   it('fires both fetches in parallel during load()', async () => {
-    const calls: Array<{ url: string; ts: number }> = []
-    global.fetch = makeFetchSpy({
-      onCall: (url, ts) => calls.push({ url, ts }),
+    const calls: string[] = []
+    const roster = deferred<Response>()
+    const packages = deferred<Response>()
+    global.fetch = mock((url: RequestInfo | URL) => {
+      const u = String(url)
+      calls.push(u)
+      if (u === '/api/plugins/team/') return roster.promise
+      if (u === '/api/agent-packages') return packages.promise
+      return Promise.reject(new Error(`unexpected fetch: ${u}`))
     }) as unknown as typeof global.fetch
 
-    await useAgentStore.getState().load()
+    const loadPromise = useAgentStore.getState().load()
+    await Promise.resolve()
 
-    expect(calls.map((c) => c.url).sort()).toEqual(
+    expect(calls.sort()).toEqual(
       ['/api/agent-packages', '/api/plugins/team/'],
     )
-    // Parallel == both calls landed before either resolved. Timestamps will
-    // be within microseconds of each other; we assert <5ms which is generous.
-    const span = Math.abs(calls[0].ts - calls[1].ts)
-    expect(span).toBeLessThan(5)
+
+    roster.resolve(response(ROSTER_OK))
+    packages.resolve(response(PKG_OK))
+    await loadPromise
   })
 
   it('merges package state into a map keyed by agentId', async () => {
@@ -218,3 +225,24 @@ describe('useAgentStore — package state plumbing', () => {
     expect(state.packageStates).toEqual({})
   })
 })
+
+function deferred<T>(): {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (error: unknown) => void
+} {
+  let resolve!: (value: T) => void
+  let reject!: (error: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+function response(body: unknown, status = 200): Response {
+  return {
+    ok: status < 400,
+    json: () => Promise.resolve(body),
+  } as Response
+}
