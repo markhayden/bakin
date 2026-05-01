@@ -1,22 +1,36 @@
 # Schedule Plugin
 
-Cron job scheduling through the active runtime adapter with automatic task creation. Manages recurring jobs that create tasks on the Bakin task board when they fire.
+Cron job visibility and Bakin task scheduling through the active runtime adapter. The schedule page shows all runtime cron jobs, but only Bakin-owned or explicitly adopted jobs create Bakin tasks when they fire.
 
 ## How It Works
 
 The schedule plugin sits between the **runtime cron adapter** and **Bakin's task board**:
 
-1. **Runtime cron** manages timing and fires webhooks when jobs trigger
-2. **Bakin sidecar** (`~/.bakin/schedule/sidecar.json`) stores metadata that the runtime cron adapter doesn't own — agent assignment, task prompts, pause state, failure tracking
-3. **Bridge endpoint** receives the webhook, checks pause/skip/overlap rules, and creates a task on the board
+1. **Runtime cron** manages timing and records run history.
+2. **Bakin sidecar** (`~/.bakin/schedule/sidecar.json`) stores metadata that the runtime cron adapter doesn't own: ownership, agent assignment, task prompts, pause state, failure tracking, processed run IDs, and reversible native-cron snapshots.
+3. **Run reconciler** watches successful runtime cron runs for Bakin-owned jobs, checks pause/skip/overlap rules, and creates tasks on the board exactly once per run.
 
 ```
-Runtime cron fires   →  POST /api/plugins/schedule/bridge?secret=<hex>
-                         ├── Auth: bridgeEnabled setting + shared-secret gate
-                         ├── Check: paused? skip? overlap? failure limit?
+Runtime cron fires   →  OpenClaw records a cron run
+                         ├── Bakin reconciler reads successful runs
+                         ├── Skip if runtime-only, already processed, paused, skipped, overlapping, or auto-paused
                          ├── Create task on board (via task-service)
-                         └── Update sidecar (lastTaskId, failure count, etc.)
+                         └── Update sidecar (lastTaskId, processedRunIds, failure count, etc.)
 ```
+
+The `/bridge` endpoint remains as a private callback path for future runtimes or explicit webhook callers, but OpenClaw webhook delivery is not the canonical path for task creation.
+
+### Runtime vs Bakin Ownership
+
+Schedule jobs have three user-visible states:
+
+| State | Meaning |
+|-------|---------|
+| Runtime cron | Native runtime cron. Bakin lists it and can run/enable/disable/delete it, but it does not create Bakin tasks. |
+| Bakin schedule | Created by Bakin. Runtime cron is the timer; Bakin creates tasks when successful runs appear. |
+| Adopted | Originally native runtime cron, converted into a Bakin schedule. The original runtime cron snapshot is preserved so it can be restored. |
+
+Adopting a runtime cron is explicit. The UI opens a conversion form, captures the original raw runtime cron, writes Bakin sidecar metadata, and updates future runtime runs to a Bakin sentinel event. Restoring native behavior writes the preserved raw cron snapshot back to the runtime and marks the job as runtime-only again.
 
 ### Bridge Authentication
 
@@ -25,7 +39,7 @@ The `/bridge` endpoint is gated on two things:
 1. **`bridgeEnabled` setting** — set to `false` to kill-switch the bridge without deleting crons. Rejects with `503`.
 2. **Shared secret** — a 32-byte hex token stored in plugin settings as `bridgeSecret`, passed as a `?secret=...` query param. Compared with `timingSafeEqual`. Rejects with `401`.
 
-The secret is auto-generated on first access (`getOrCreateBridgeSecret`) and persisted to `~/.bakin/plugin-settings/schedule.json`. Every cron registered via `bakin_exec_schedule_create` or `POST /api/plugins/schedule/` builds its webhook URL through `buildBridgeWebhookUrl()`, which embeds the current secret — agents and UI code never see or handle it directly. `bridgeSecret` is intentionally absent from `settingsSchema` so the settings UI doesn't expose it.
+The secret is auto-generated on first access (`getOrCreateBridgeSecret`) and persisted to `~/.bakin/plugin-settings/schedule.json`. `bridgeSecret` is intentionally absent from `settingsSchema` so the settings UI doesn't expose it.
 
 ## Data Model
 
@@ -36,12 +50,13 @@ The UI always works with "merged jobs" — a combination of runtime cron data an
 | Source | Fields |
 |--------|--------|
 | Runtime cron | `id`, `name`, `schedule` (type/value/tz), `enabled` |
-| Sidecar | `agentId`, `owner`, `taskPrompt`, `taskTitle`, `workflowId`, `paused`, `pauseUntil`, `pauseReason`, `allowOverlap`, `maxFailures`, `consecutiveFailures`, `createdAt` |
+| Runtime cron policy | `toolsAllow`, `toolsAllowMissing` |
+| Sidecar | `source`, `agentId`, `owner`, `taskPrompt`, `taskTitle`, `workflowId`, `paused`, `pauseUntil`, `pauseReason`, `allowOverlap`, `maxFailures`, `consecutiveFailures`, `processedRunIds`, `originalRuntimeCron`, `createdAt` |
 | Computed | `humanSchedule`, `nextRun`, `lastRun` |
 
 ### Schedule Sidecar
 
-Stored at `~/.bakin/schedule/sidecar.json`. Maps job IDs to `BakinJobMeta` records. Only Bakin-created jobs have `isBakinJob: true` — runtime-only jobs appear in the list but lack Bakin metadata.
+Stored at `~/.bakin/schedule/sidecar.json`. Maps job IDs to `BakinJobMeta` records. Only Bakin-created or adopted jobs have `isBakinJob: true` — runtime-only jobs appear in the list but do not create tasks.
 
 ### Run History
 
@@ -66,6 +81,8 @@ Calendar views respect each job's `createdAt` date — jobs don't render on days
 
 - **Job detail** (`job-drawer.tsx`): Shows job config, run history, pause controls. Actions menu (duplicate, delete) via `BakinDrawer` actions prop.
 - **Job form** (`job-form.tsx`): Create/edit/duplicate form with schedule input, agent select, advanced options (workflow, title template, overlap, max failures).
+
+Native or legacy runtime cron jobs can carry a runtime tool allowlist. When the runtime adapter reports `toolsAllow`, Schedule shows it in the detail drawer. When a non-Bakin runtime timer has no allowlist, Schedule marks it with a missing cron-tools warning so the operator can decide whether to repair the native cron policy.
 
 ### Schedule Input
 
@@ -99,12 +116,14 @@ All routes are prefixed with `/api/plugins/schedule/`.
 | POST | `/` | Create a new job |
 | GET | `/:jobId` | Get single job details |
 | PUT | `/:jobId` | Update job fields |
+| POST | `/:jobId/adopt` | Adopt a native runtime cron into Bakin task scheduling |
+| POST | `/:jobId/restore-native` | Restore an adopted job to its original native runtime cron behavior |
 | DELETE | `/:jobId` | Delete a job |
 | POST | `/:jobId/pause` | Pause, resume, or skip runs |
 | POST | `/:jobId/run` | Trigger immediate run |
 | GET | `/:jobId/runs` | Get run history for a job |
 | POST | `/parse` | Parse NL/cron schedule expression |
-| POST | `/bridge?secret=<hex>` | Webhook endpoint (called by runtime cron). Requires `bridgeEnabled=true` and a matching `bridgeSecret`. See [Bridge Authentication](#bridge-authentication). |
+| POST | `/bridge?secret=<hex>` | Private webhook endpoint. Requires `bridgeEnabled=true` and a matching `bridgeSecret`. See [Bridge Authentication](#bridge-authentication). |
 
 ## Exec Tools (Agent-Facing)
 
@@ -119,15 +138,30 @@ All routes are prefixed with `/api/plugins/schedule/`.
 
 ## Bridge Logic
 
-When runtime cron fires a job, the bridge endpoint runs these checks in order:
+When the reconciler or bridge processes a successful runtime run, the shared task-creation path runs these checks in order:
 
 1. **Is Bakin job?** — Skip if not managed by Bakin
-2. **Paused?** — Check manual pause + `pauseUntil` auto-resume
-3. **Skip count?** — Decrement `skipNextN` if active
-4. **Failure limit?** — Auto-pause if `consecutiveFailures >= maxFailures`
-5. **Overlap?** — If `allowOverlap: false`, skip if the previous task is still active (todo/inProgress/review/blocked)
-6. **Track outcomes** — Check if last task succeeded (done/archived) or failed (blocked) to update failure counter
-7. **Create task** — Title from template, assign agent (unless `requireTriage`), attach workflow
+2. **Already processed?** — Skip if this run ID is already recorded in `processedRunIds`
+3. **Paused?** — Check manual pause + `pauseUntil` auto-resume
+4. **Skip count?** — Decrement `skipNextN` if active
+5. **Failure limit?** — Auto-pause if `consecutiveFailures >= maxFailures`
+6. **Overlap?** — If `allowOverlap: false`, skip if the previous task is still active (todo/inProgress/review/blocked)
+7. **Track outcomes** — Check if last task succeeded (done/archived) or failed (blocked) to update failure counter
+8. **Create task** — Title from template, assign agent (unless `requireTriage`), attach workflow
+
+## Runtime Cron Tool Allowlists
+
+OpenClaw supports per-cron tool policy on native isolated agent-turn jobs through `payload.toolsAllow` (`openclaw cron add/edit --tools`). The OpenClaw runtime adapter maps that field to `CronJob.toolsAllow` so Schedule can display and audit it without shelling out to the provider CLI.
+
+Bakin-owned schedules are different: runtime cron acts as a timer and Bakin creates tasks after successful runs are reconciled. Those jobs do not rely on cron `toolsAllow` for the eventual task's MCP permissions. Hard scoping of `bakin_exec_*` MCP tools is a separate Bakin routing-layer concern tracked outside this plugin.
+
+Common native cron examples:
+
+| Job shape | Typical allowlist |
+|-----------|-------------------|
+| Posting-only reminder | `message` |
+| Script runner | `exec` |
+| Content/image job | `message,image_generate` when both are required |
 
 ## Settings
 
@@ -139,10 +173,11 @@ Configurable via `/settings` page:
 | `failureCooldownMs` | number | 300000 | Wait time after failure before retry |
 | `maxFailures` | number | 3 | Consecutive failures before auto-pause |
 | `bridgeEnabled` | boolean | true | Allow bridge to create tasks |
+| `reconcileLookbackHours` | number | 24 | On startup, create missed scheduled tasks only for successful runtime cron runs newer than this many hours. Set to 0 to disable startup backfill. |
 
 ## Dependencies
 
-- Bakin task store — Bridge creates tasks via `task-service` and checks task status via the shared task-store service
+- Bakin task store — Shared schedule run processing creates tasks via `task-service` and checks task status via the shared task-store service
 - **runtime cron adapter** — Provides cron CRUD, immediate runs, and run history
 
 ## File Structure

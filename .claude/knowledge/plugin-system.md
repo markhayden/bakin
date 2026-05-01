@@ -275,14 +275,18 @@ lockfile entry to determine source type:
      `{ awaitingConsent: true, newPermissions }` WITHOUT mutating disk
      or lockfile.
   7. Force-push detection via `git merge-base --is-ancestor` then
-     `git merge --ff-only`. Build. Write lockfile.
+     `git merge --ff-only`. Build. Project the upgraded plugin's
+     `defaults/runtime-skills/` assets into the runtime skill store.
+     Unexpected asset install errors fail the upgrade; `.userEdited`
+     skills are skipped and reported. Write lockfile.
 
 - **local**: re-resolve recorded source path; error if missing.
   Compute deterministic source-tree sha (skip `node_modules`/`dist`/
   `.git`, content + path only — no mtimes). No-op if unchanged.
   Read source manifest directly (no copy yet), assert manifest.id
   stable, compute permission diff, run consent gate. Only then wipe +
-  cpSync + rebuild + write lockfile.
+  cpSync + rebuild + project plugin runtime-skill assets + write
+  lockfile.
 
 Permission widening: if the new manifest declares permissions not in
 the lockfile entry AND `--yes` is unset, return
@@ -290,9 +294,13 @@ the lockfile entry AND `--yes` is unset, return
 the lockfile. CLI runs the upgrade prompt; on accept, recursively
 re-invokes with `yes: true` to commit.
 
-Both branches read the manifest BEFORE any disk mutation so a
-declined upgrade leaves the plugin dir + lockfile exactly as they
-were.
+All upgrade branches read the target manifest BEFORE committed disk
+mutation so a declined upgrade leaves the plugin dir + lockfile
+exactly as they were.
+
+Committed upgrades return a `pluginAssets` report with installed,
+unchanged, and `.userEdited`-skipped runtime skills. No-op and
+awaiting-consent responses do not project assets.
 
 ### Upgrade-available detection — `bakin plugins list --check`
 
@@ -774,6 +782,13 @@ shared utility, not a plugin-to-plugin dependency.
 4. `src/core/mcp-server.ts` imports core tool files, then calls
    `getAllExecTools()` to register all tools with the MCP server at
    startup.
+5. `src/core/mcp-tool-policy.ts` scopes each agent session. Disallowed tools
+   are hidden from `tools/list`; direct `tools/call` attempts are denied and
+   audited before the plugin handler can run.
+
+Plugin authors should use stable `bakin_exec_<pluginId>_<action>` names because
+agent-package `allowedTools` policies reference exact MCP tool names or
+wildcard patterns.
 
 ### PluginToolContext
 When the MCP server executes a tool handler, it builds a

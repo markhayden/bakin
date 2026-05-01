@@ -135,6 +135,14 @@ Channel operations go through `runtime.channels.*`. Cron operations go through
 `runtime.cron.*`. Plugin notification channel definitions still belong to the
 Bakin workflow/channel registry; provider delivery is adapter-backed.
 
+Cron adapter policy fields should be normalized at the runtime boundary. For
+OpenClaw, native isolated agent-turn cron tool allowlists live on
+`payload.toolsAllow`; the adapter exposes that as `CronJob.toolsAllow`. Schedule
+can display or audit that policy, but Bakin-owned schedules still use runtime
+cron as a timer and create Bakin tasks through the schedule reconciler. Hard
+scoping of `bakin_exec_*` MCP tools is a separate MCP routing-layer concern, not
+a runtime cron concern.
+
 ## Boundary Enforcement
 
 Run:

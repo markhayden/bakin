@@ -14,6 +14,7 @@ export interface ScheduleSidecar {
 export interface BakinJobMeta {
   jobId: string
   isBakinJob: boolean
+  source?: 'bakin' | 'runtime' | 'adopted'
   displayName?: string
   description?: string
   agentId?: string
@@ -34,6 +35,13 @@ export interface BakinJobMeta {
   createdAt: string
   updatedAt: string
   lastTaskId?: string
+  processedRunIds?: string[]
+  lastProcessedRunAt?: string
+  originalRuntimeCron?: {
+    provider: string
+    capturedAt: string
+    snapshot: unknown
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -58,6 +66,8 @@ export interface RuntimeCronJobSnapshot {
     channel?: string
   }
   payload?: Record<string, unknown>
+  toolsAllow?: string[]
+  toolsAllowMissing?: boolean
   createdAt?: string
   updatedAt?: string
   createdAtMs?: number
@@ -80,6 +90,9 @@ export interface MergedJob {
   schedule: { type: 'cron' | 'every' | 'at'; value: string; tz?: string }
   enabled: boolean
   delivery?: RuntimeCronJobSnapshot['delivery']
+  source: 'bakin' | 'runtime' | 'adopted'
+  canAdopt: boolean
+  canRestoreNative: boolean
 
   // From Bakin sidecar (defaults applied)
   isBakinJob: boolean
@@ -91,6 +104,8 @@ export interface MergedJob {
   workflowId?: string
   taskPrompt?: string
   taskTitle?: string
+  toolsAllow?: string[]
+  toolsAllowMissing?: boolean
   paused: boolean
   pauseUntil?: string
   pauseReason?: string
@@ -151,5 +166,6 @@ export interface BridgePayload {
 export interface BridgeResult {
   ok: boolean
   taskId?: string
-  skipped?: string // reason: 'overlap' | 'paused' | 'auto-paused' | 'skip-count' | 'not-bakin'
+  error?: string
+  skipped?: string // reason: 'overlap' | 'paused' | 'auto-paused' | 'skip-count' | 'not-bakin' | 'already-processed'
 }

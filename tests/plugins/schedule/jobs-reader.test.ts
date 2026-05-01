@@ -95,6 +95,7 @@ describe('schedule/jobs-reader', () => {
   describe('runtimeCronToScheduleJob', () => {
     it('normalizes runtime cron jobs for schedule merging', () => {
       const job = runtimeCronToScheduleJob(makeCronJob({
+        toolsAllow: ['message'],
         metadata: {
           tz: 'America/Denver',
           webhookUrl: 'http://localhost:3737/api/plugins/schedule/bridge',
@@ -110,12 +111,30 @@ describe('schedule/jobs-reader', () => {
       expect(job.payload?.message).toBe('Post a daily recipe')
       expect(job.delivery?.mode).toBe('webhook')
       expect(job.createdAt).toBe('2026-03-27T00:00:00Z')
+      expect(job.toolsAllow).toEqual(['message'])
+      expect(job.toolsAllowMissing).toBe(false)
+    })
+
+    it('flags non-Bakin runtime cron jobs that are missing a toolsAllow policy', () => {
+      const job = runtimeCronToScheduleJob(makeCronJob())
+
+      expect(job.toolsAllow).toBeUndefined()
+      expect(job.toolsAllowMissing).toBe(true)
+    })
+
+    it('does not flag Bakin schedule timer cron jobs without toolsAllow', () => {
+      const job = runtimeCronToScheduleJob(makeCronJob({
+        command: 'bakin:schedule:j1',
+        metadata: { bakinSchedule: true },
+      }))
+
+      expect(job.toolsAllowMissing).toBe(false)
     })
   })
 
   describe('mergeJob', () => {
     it('merges runtime job without sidecar entry', () => {
-      const job = makeRuntimeJob({ id: 'j1', name: 'Raw Job' })
+      const job = makeRuntimeJob({ id: 'j1', name: 'Raw Job', toolsAllowMissing: true })
       const merged = mergeJob(job, undefined, 'boss')
 
       expect(merged.id).toBe('j1')
@@ -125,6 +144,20 @@ describe('schedule/jobs-reader', () => {
       expect(merged.owner).toBe('boss')
       expect(merged.paused).toBe(false)
       expect(merged.humanSchedule).toBe('Daily at 9am')
+      expect(merged.toolsAllowMissing).toBe(true)
+    })
+
+    it('carries runtime cron toolsAllow into the merged job', () => {
+      const job = makeRuntimeJob({
+        id: 'j1',
+        name: 'Raw Job',
+        toolsAllow: ['message', 'exec'],
+        toolsAllowMissing: false,
+      })
+      const merged = mergeJob(job, undefined, defaultOwner)
+
+      expect(merged.toolsAllow).toEqual(['message', 'exec'])
+      expect(merged.toolsAllowMissing).toBe(false)
     })
 
     it('merges runtime job with sidecar entry', () => {

@@ -6,9 +6,10 @@ import { randomBytes, timingSafeEqual } from 'crypto'
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute, searchRoute } from '@bakin/core/routing'
+import type { CronRun } from '@bakin/core/adapters/runtime'
 import { readMergedJobs } from './lib/jobs-reader'
 import { getLastRun, readRuns } from './lib/runs-reader'
-import { upsertJob, removeJob, getJob, isPaused, shouldSkip, recordFailure, recordSuccess, withDefaults } from './lib/sidecar'
+import { upsertJob, removeJob, getJob, isPaused, shouldSkip, recordFailure, recordSuccess, withDefaults, hasProcessedRun, recordProcessedRun } from './lib/sidecar'
 import { parseSchedule } from './lib/cron-parser'
 import { createTaskWithEffects } from '../../src/core/task-service'
 import { getContentDir } from '../../src/core/content-dir'
@@ -56,6 +57,7 @@ function expandTemplate(template: string, vars: Record<string, string>): string 
 interface ScheduleSettings {
   bridgeEnabled?: boolean
   bridgeSecret?: string
+  reconcileLookbackHours?: number
 }
 
 /** Constant-time string comparison. Returns false for any length mismatch. */
@@ -81,14 +83,6 @@ function getOrCreateBridgeSecret(): string | null {
   return fresh
 }
 
-/** Build the webhook URL the runtime cron will POST to, with secret attached. */
-function buildBridgeWebhookUrl(): string {
-  const port = process.env.PORT || '3737'
-  const base = `${process.env.BAKIN_URL || `http://localhost:${port}`}/api/plugins/schedule/bridge`
-  const secret = getOrCreateBridgeSecret()
-  return secret ? `${base}?secret=${secret}` : base
-}
-
 async function getScheduleDefaultOwner(): Promise<string> {
   return pluginCtx?.runtime ? getRuntimeMainAgentId(pluginCtx.runtime) : 'main'
 }
@@ -99,6 +93,10 @@ async function getScheduleDefaultOwner(): Promise<string> {
 
 /** Module-level ctx set during activate(), used by handleBridge + routes */
 let pluginCtx: PluginContext | null = null
+let reconcileTimer: ReturnType<typeof setInterval> | null = null
+let reconcileRunning = false
+
+const RECONCILE_INTERVAL_MS = 60_000
 
 // ─── Module-scope helpers (use pluginCtx for runtime access) ─────────────
 
@@ -187,6 +185,25 @@ const bridgeQuery = z.object({
   secret: z.string().optional(),
 })
 
+const adoptJobBody = z.object({
+  jobId: z.string().optional(),
+  name: z.string().optional(),
+  schedule: z.string().optional(),
+  agentId: z.string().nullable().optional(),
+  workflowId: z.string().nullable().optional(),
+  taskPrompt: z.string().nullable().optional(),
+  taskTitle: z.string().nullable().optional(),
+  owner: z.string().nullable().optional(),
+  requireTriage: z.boolean().optional(),
+  allowOverlap: z.boolean().optional(),
+  maxFailures: z.number().optional(),
+  tz: z.string().optional(),
+}).passthrough()
+
+const restoreNativeBody = z.object({
+  jobId: z.string().optional(),
+}).passthrough().optional()
+
 async function handleBridge(req: Request): Promise<Response> {
   // Gate 1: feature flag. The bridge setting defaults to enabled, but admins
   // can disable it to stop ALL cron-driven task creation without tearing down
@@ -198,8 +215,7 @@ async function handleBridge(req: Request): Promise<Response> {
   }
 
   // Gate 2: shared-secret auth. Runtime cron calls the webhook with ?secret=<hex>
-  // from the URL we registered when the cron was created (see
-  // buildBridgeWebhookUrl). We require a match so a stale cron from a
+  // from the URL used by future direct webhook callers. We require a match so a stale cron from a
   // previous install — or any unauthorized caller — cannot create tasks.
   const expected = getOrCreateBridgeSecret()
   if (!expected) {
@@ -214,11 +230,24 @@ async function handleBridge(req: Request): Promise<Response> {
   }
 
   const payload = await readBody<BridgePayload>(req)
-  const { jobId, runId } = payload
+  const result = await processScheduledRun(payload)
+  return json(result.body, result.status)
+}
 
+interface ProcessRunResult {
+  status: number
+  body: BridgeResult
+}
+
+async function processScheduledRun(payload: BridgePayload): Promise<ProcessRunResult> {
+  const { jobId, runId } = payload
   const meta = getJob(jobId)
   if (!meta || !meta.isBakinJob) {
-    return json({ ok: true, skipped: 'not-bakin' } satisfies BridgeResult)
+    return { status: 200, body: { ok: true, skipped: 'not-bakin' } }
+  }
+
+  if (runId && hasProcessedRun(meta, runId)) {
+    return { status: 200, body: { ok: true, skipped: 'already-processed' } }
   }
 
   const defaults = withDefaults(meta, await getScheduleDefaultOwner())
@@ -226,22 +255,25 @@ async function handleBridge(req: Request): Promise<Response> {
   // Check pause state
   const pauseState = isPaused(meta)
   if (pauseState.paused) {
+    if (runId) recordProcessedRun(meta, runId, payload.timestamp)
     upsertJob(meta) // persist any auto-resume changes
-    return json({ ok: true, skipped: 'paused' } satisfies BridgeResult)
+    return { status: 200, body: { ok: true, skipped: 'paused' } }
   }
 
   // Check skip-next-N
   if (shouldSkip(meta)) {
+    if (runId) recordProcessedRun(meta, runId, payload.timestamp)
     upsertJob(meta)
-    return json({ ok: true, skipped: 'skip-count' } satisfies BridgeResult)
+    return { status: 200, body: { ok: true, skipped: 'skip-count' } }
   }
 
   // Check failure auto-pause
   if ((defaults.consecutiveFailures ?? 0) >= (defaults.maxFailures ?? 3)) {
     meta.paused = true
     meta.pauseReason = 'auto-failures'
+    if (runId) recordProcessedRun(meta, runId, payload.timestamp)
     upsertJob(meta)
-    return json({ ok: true, skipped: 'auto-paused' } satisfies BridgeResult)
+    return { status: 200, body: { ok: true, skipped: 'auto-paused' } }
   }
 
   // Check overlap
@@ -252,7 +284,11 @@ async function handleBridge(req: Request): Promise<Response> {
       for (const col of activeColumns) {
         const tasks = board.columns[col] ?? []
         if (tasks.some(t => t.id === meta.lastTaskId)) {
-          return json({ ok: true, skipped: 'overlap' } satisfies BridgeResult)
+          if (runId) {
+            recordProcessedRun(meta, runId, payload.timestamp)
+            upsertJob(meta)
+          }
+          return { status: 200, body: { ok: true, skipped: 'overlap' } }
         }
       }
     } catch {
@@ -273,8 +309,9 @@ async function handleBridge(req: Request): Promise<Response> {
         if (blocked.some(t => t.id === meta.lastTaskId)) {
           const autoPaused = recordFailure(meta)
           if (autoPaused) {
+            if (runId) recordProcessedRun(meta, runId, payload.timestamp)
             upsertJob(meta)
-            return json({ ok: true, skipped: 'auto-paused' } satisfies BridgeResult)
+            return { status: 200, body: { ok: true, skipped: 'auto-paused' } }
           }
         }
       }
@@ -311,6 +348,7 @@ async function handleBridge(req: Request): Promise<Response> {
     const taskId = result.id
 
     meta.lastTaskId = taskId
+    if (runId) recordProcessedRun(meta, runId, payload.timestamp)
     upsertJob(meta)
 
     // Audit + activity feed
@@ -319,13 +357,83 @@ async function handleBridge(req: Request): Promise<Response> {
       pluginCtx.activity.log('system', `Schedule "${meta.displayName ?? jobId}" created task ${taskId}${meta.agentId ? ` for ${meta.agentId}` : ''}`, { taskId })
     }
 
-    return json({ ok: true, taskId } satisfies BridgeResult)
+    return { status: 200, body: { ok: true, taskId } }
   } catch (err) {
     log.error('Bridge failed to create task', err)
     recordFailure(meta)
     upsertJob(meta)
-    return json({ ok: false, error: (err as Error).message }, 500)
+    return { status: 500, body: { ok: false, error: (err as Error).message } }
   }
+}
+
+function runTimestamp(run: CronRun): string {
+  return run.startedAt ?? run.endedAt ?? new Date().toISOString()
+}
+
+function runTimeMs(run: CronRun): number {
+  const parsed = Date.parse(runTimestamp(run))
+  return Number.isFinite(parsed) ? parsed : Date.now()
+}
+
+function reconcileLookbackMs(startup: boolean): number {
+  if (!startup) return 0
+  const settings = pluginCtx?.getSettings<ScheduleSettings>() ?? {}
+  const rawHours = typeof settings.reconcileLookbackHours === 'number' ? settings.reconcileLookbackHours : 24
+  const hours = Math.max(0, Math.min(rawHours, 168))
+  return hours * 60 * 60 * 1000
+}
+
+async function reconcileScheduleRuns(startup = false): Promise<void> {
+  if (!pluginCtx || reconcileRunning) return
+  reconcileRunning = true
+  try {
+    const cutoffMs = reconcileLookbackMs(startup)
+    const cutoff = startup
+      ? cutoffMs > 0 ? Date.now() - cutoffMs : Number.POSITIVE_INFINITY
+      : 0
+    const jobs = await readMergedJobs(pluginCtx.runtime.cron, await getScheduleDefaultOwner())
+    for (const job of jobs) {
+      if (!job.isBakinJob) continue
+      const meta = getJob(job.id)
+      if (!meta?.isBakinJob) continue
+      const runs = await pluginCtx.runtime.cron.listRuns(job.id).catch((err) => {
+        log.warn('Failed to read schedule run history', { jobId: job.id, error: err instanceof Error ? err.message : String(err) })
+        return [] as CronRun[]
+      })
+      const jobCreatedAtMs = Number.isFinite(Date.parse(meta.createdAt)) ? Date.parse(meta.createdAt) : 0
+      const candidates = runs
+        .filter(run => run.status === 'succeeded')
+        .filter(run => runTimeMs(run) >= jobCreatedAtMs)
+        .filter(run => startup ? runTimeMs(run) >= cutoff : true)
+        .sort((a, b) => runTimeMs(a) - runTimeMs(b))
+      for (const run of candidates) {
+        const latest = getJob(job.id)
+        if (!latest?.isBakinJob || hasProcessedRun(latest, run.id)) continue
+        await processScheduledRun({
+          jobId: job.id,
+          runId: run.id,
+          timestamp: runTimestamp(run),
+        })
+      }
+    }
+  } finally {
+    reconcileRunning = false
+  }
+}
+
+function startReconciler(): void {
+  if (reconcileTimer) clearInterval(reconcileTimer)
+  reconcileScheduleRuns(true).catch(err => log.warn('Startup schedule reconcile failed', err))
+  reconcileTimer = setInterval(() => {
+    reconcileScheduleRuns(false).catch(err => log.warn('Schedule reconcile failed', err))
+  }, RECONCILE_INTERVAL_MS)
+  reconcileTimer.unref?.()
+}
+
+function stopReconciler(): void {
+  if (!reconcileTimer) return
+  clearInterval(reconcileTimer)
+  reconcileTimer = null
 }
 
 // ---------------------------------------------------------------------------
@@ -366,13 +474,14 @@ const routes = [
         name: body.name,
         schedule: parsed.cron,
         command: `bakin:schedule:${body.name}`,
-        metadata: { tz, webhookUrl: buildBridgeWebhookUrl() },
+        metadata: { tz, bakinSchedule: true, scheduleType: 'cron' },
       })
       const jobId = created.id
       const owner = body.owner ?? await getRuntimeMainAgentId(ctx.runtime)
       const meta: BakinJobMeta = {
         jobId,
         isBakinJob: true,
+        source: 'bakin',
         displayName: body.name,
         agentId: body.agentId,
         owner,
@@ -490,6 +599,120 @@ const routes = [
   }),
 
   defineRoute({
+    path: '/:jobId/adopt',
+    method: 'POST',
+    summary: 'Adopt a runtime cron job into Bakin task scheduling',
+    params: jobIdParams,
+    body: adoptJobBody,
+    responses: { 200: passthrough, 400: errorResponse, 404: errorResponse, 409: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { params, body }) => {
+      const jobId = params.jobId || body.jobId
+      if (!jobId) return json({ error: 'jobId required' }, 400)
+
+      const runtimeJob = await ctx.runtime.cron.get(jobId)
+      if (!runtimeJob) return json({ error: 'Runtime cron job not found' }, 404)
+
+      const existing = getJob(jobId)
+      if (existing?.isBakinJob) return json({ error: 'Job is already managed by Bakin' }, 409)
+
+      const raw = await ctx.runtime.cron.getRaw(jobId, 'schedule adopt: preserve native cron before Bakin takes ownership')
+      if (!raw) return json({ error: 'Runtime cron snapshot not found' }, 404)
+
+      const parsed = body.schedule ? parseSchedule(body.schedule) : { cron: runtimeJob.schedule }
+      if (!parsed) return json({ error: 'Could not parse schedule' }, 400)
+
+      const now = new Date().toISOString()
+      const tz = body.tz || existing?.tz || getSystemTimezone()
+      const displayName = body.name || existing?.displayName || runtimeJob.name
+      const owner = (body.owner ?? undefined) || existing?.owner || await getRuntimeMainAgentId(ctx.runtime)
+      const taskPrompt = (body.taskPrompt ?? undefined) || existing?.taskPrompt || runtimeJob.command
+
+      await ctx.runtime.cron.update(jobId, {
+        name: displayName,
+        schedule: parsed.cron,
+        command: `bakin:schedule:${jobId}`,
+        metadata: {
+          ...(runtimeJob.metadata ?? {}),
+          tz,
+          scheduleType: 'cron',
+          bakinSchedule: true,
+          adoptedByBakin: true,
+        },
+      })
+
+      const meta: BakinJobMeta = {
+        ...(existing ?? {}),
+        jobId,
+        isBakinJob: true,
+        source: 'adopted',
+        displayName,
+        agentId: body.agentId === null ? undefined : body.agentId ?? existing?.agentId,
+        owner,
+        requireTriage: body.requireTriage ?? existing?.requireTriage ?? false,
+        workflowId: body.workflowId === null ? undefined : body.workflowId ?? existing?.workflowId,
+        taskPrompt,
+        taskTitle: body.taskTitle === null ? undefined : body.taskTitle ?? existing?.taskTitle,
+        allowOverlap: body.allowOverlap ?? existing?.allowOverlap ?? false,
+        maxFailures: body.maxFailures ?? existing?.maxFailures ?? 3,
+        consecutiveFailures: existing?.consecutiveFailures ?? 0,
+        tz,
+        originalRuntimeCron: {
+          provider: ctx.runtime.name,
+          capturedAt: now,
+          snapshot: raw,
+        },
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      }
+      upsertJob(meta)
+      indexJob(jobId)
+
+      ctx.activity.audit('job.adopted', 'system', { jobId })
+      ctx.activity.log('system', `Adopted runtime cron "${displayName}" into Bakin`)
+      return json({ ok: true, jobId })
+    },
+  }),
+
+  defineRoute({
+    path: '/:jobId/restore-native',
+    method: 'POST',
+    summary: 'Restore an adopted Bakin schedule back to its native runtime cron behavior',
+    params: jobIdParams,
+    body: restoreNativeBody,
+    responses: { 200: passthrough, 400: errorResponse, 404: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { params }) => {
+      const jobId = params.jobId
+      if (!jobId) return json({ error: 'jobId required' }, 400)
+
+      const meta = getJob(jobId)
+      if (!meta?.originalRuntimeCron) return json({ error: 'No native cron snapshot available' }, 404)
+
+      const restored = await ctx.runtime.cron.restoreRaw(
+        jobId,
+        meta.originalRuntimeCron.snapshot,
+        'schedule restore: return adopted cron to native runtime behavior',
+      )
+      const now = new Date().toISOString()
+      const runtimeMeta: BakinJobMeta = {
+        jobId,
+        isBakinJob: false,
+        source: 'runtime',
+        displayName: restored.name,
+        owner: meta.owner ?? await getRuntimeMainAgentId(ctx.runtime),
+        requireTriage: true,
+        createdAt: meta.createdAt ?? now,
+        updatedAt: now,
+      }
+      upsertJob(runtimeMeta)
+      indexJob(jobId)
+
+      ctx.activity.audit('job.restored_native', 'system', { jobId })
+      ctx.activity.log('system', `Restored schedule "${restored.name}" to native runtime cron behavior`)
+      return json({ ok: true, jobId })
+    },
+  }),
+
+  defineRoute({
     path: '/:jobId/pause',
     method: 'POST',
     summary: 'Pause/resume/skip a scheduled job',
@@ -500,12 +723,22 @@ const routes = [
       const jobId = params.jobId || body.jobId
       if (!jobId) return json({ error: 'jobId required' }, 400)
       const meta = getJob(jobId)
-      if (!meta) return json({ error: 'Job not found' }, 404)
+      if (!meta) {
+        if (body.action === 'skip') return json({ error: 'Skip is only available for Bakin schedules' }, 400)
+        const runtimeJob = await ctx.runtime.cron.get(jobId)
+        if (!runtimeJob) return json({ error: 'Job not found' }, 404)
+        await ctx.runtime.cron.update(jobId, { enabled: body.action === 'resume' })
+        indexJob(jobId)
+        ctx.activity.audit(`job.${body.action === 'pause' ? 'disabled' : 'enabled'}`, 'system', { jobId })
+        ctx.activity.log('system', `Runtime cron "${jobId}" ${body.action === 'pause' ? 'disabled' : 'enabled'}`)
+        return json({ ok: true })
+      }
       switch (body.action) {
         case 'pause':
           meta.paused = true
           meta.pauseReason = 'manual'
           meta.pauseUntil = body.pauseUntil
+          await ctx.runtime.cron.update(jobId, { enabled: false })
           break
         case 'resume':
           meta.paused = false
@@ -514,8 +747,10 @@ const routes = [
           meta.skipNextN = undefined
           meta.skippedCount = undefined
           meta.consecutiveFailures = 0
+          await ctx.runtime.cron.update(jobId, { enabled: true })
           break
         case 'skip':
+          if (!meta.isBakinJob) return json({ error: 'Skip is only available for Bakin schedules' }, 400)
           meta.skipNextN = body.skipN ?? 1
           meta.skippedCount = 0
           break
@@ -534,10 +769,15 @@ const routes = [
     summary: 'Trigger immediate run',
     params: jobIdParams,
     body: runNowBody,
-    responses: { 200: okResponse, 400: errorResponse },
+    responses: { 200: okResponse, 400: errorResponse, 404: errorResponse },
     handler: async (_req, ctx, { params }) => {
       const jobId = params.jobId
-      await ctx.runtime.cron.runNow(jobId)
+      const runtimeJob = await ctx.runtime.cron.get(jobId)
+      if (!runtimeJob) return json({ error: 'Job not found' }, 404)
+      const run = await ctx.runtime.cron.runNow(jobId)
+      if (run.status === 'succeeded') {
+        await processScheduledRun({ jobId, runId: run.id, timestamp: runTimestamp(run) })
+      }
       ctx.activity.audit('job.run_now', 'system', { jobId })
       ctx.activity.log('system', `Triggered immediate run for "${jobId}"`)
       return json({ ok: true })
@@ -601,6 +841,7 @@ const schedulePlugin: BakinPlugin = definePlugin({
       { key: 'failureCooldownMs', type: 'number', label: 'Failure cooldown (ms)', description: 'Wait time after failure before retrying', default: 300000 },
       { key: 'maxFailures', type: 'number', label: 'Max consecutive failures', description: 'Pause job after this many consecutive failures', default: 3 },
       { key: 'bridgeEnabled', type: 'boolean', label: 'Bridge enabled', description: 'Allow cron jobs to create tasks via the bridge', default: true },
+      { key: 'reconcileLookbackHours', type: 'number', label: 'Startup reconciliation window', description: 'Create missed scheduled tasks only for successful runtime cron runs newer than this many hours. Set to 0 to disable startup backfill.', default: 24 },
     ],
   },
   // bridgeSecret is stored alongside settings but not exposed in the UI —
@@ -674,6 +915,8 @@ const schedulePlugin: BakinPlugin = definePlugin({
             paused: j.paused,
             isBakinJob: j.isBakinJob,
             lastTaskId: j.lastTaskId,
+            ...(j.toolsAllow?.length ? { toolsAllow: j.toolsAllow } : {}),
+            ...(j.toolsAllowMissing ? { toolsAllowMissing: true } : {}),
           })),
         }
       },
@@ -704,13 +947,14 @@ const schedulePlugin: BakinPlugin = definePlugin({
           name: params.name as string,
           schedule: parsed.cron,
           command: `bakin:schedule:${params.name as string}`,
-          metadata: { tz, webhookUrl: buildBridgeWebhookUrl() },
+          metadata: { tz, bakinSchedule: true, scheduleType: 'cron' },
         })
         const jobId = created.id
 
         const meta: BakinJobMeta = {
           jobId,
           isBakinJob: true,
+          source: 'bakin',
           displayName: params.name as string,
           agentId: params.agentId as string | undefined,
           owner: await getRuntimeMainAgentId(ctx.runtime),
@@ -783,13 +1027,20 @@ const schedulePlugin: BakinPlugin = definePlugin({
         if (!params.jobId || !params.action) return { ok: false, error: 'jobId and action required' }
 
         const meta = getJob(params.jobId as string)
-        if (!meta) return { ok: false, error: 'Job not found' }
+        if (!meta) {
+          if (params.action === 'skip') return { ok: false, error: 'Skip is only available for Bakin schedules' }
+          const runtimeJob = await ctx.runtime.cron.get(params.jobId as string)
+          if (!runtimeJob) return { ok: false, error: 'Job not found' }
+          await ctx.runtime.cron.update(params.jobId as string, { enabled: params.action === 'resume' })
+          return { ok: true }
+        }
 
         switch (params.action) {
           case 'pause':
             meta.paused = true
             meta.pauseReason = 'manual'
             if (params.pauseUntil) meta.pauseUntil = params.pauseUntil as string
+            await ctx.runtime.cron.update(params.jobId as string, { enabled: false })
             break
           case 'resume':
             meta.paused = false
@@ -798,8 +1049,10 @@ const schedulePlugin: BakinPlugin = definePlugin({
             meta.skipNextN = undefined
             meta.skippedCount = undefined
             meta.consecutiveFailures = 0
+            await ctx.runtime.cron.update(params.jobId as string, { enabled: true })
             break
           case 'skip':
+            if (!meta.isBakinJob) return { ok: false, error: 'Skip is only available for Bakin schedules' }
             meta.skipNextN = (params.skipN as number) ?? 1
             meta.skippedCount = 0
             break
@@ -874,9 +1127,12 @@ const schedulePlugin: BakinPlugin = definePlugin({
       },
       handler: async (params: Record<string, unknown>) => {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
-        const meta = getJob(params.jobId as string)
-        if (!meta) return { ok: false, error: 'Job not found' }
-        await ctx.runtime.cron.runNow(params.jobId as string)
+        const runtimeJob = await ctx.runtime.cron.get(params.jobId as string)
+        if (!runtimeJob) return { ok: false, error: 'Job not found' }
+        const run = await ctx.runtime.cron.runNow(params.jobId as string)
+        if (run.status === 'succeeded') {
+          await processScheduledRun({ jobId: params.jobId as string, runId: run.id, timestamp: runTimestamp(run) })
+        }
         ctx.activity.audit('job.run_now', 'system', { jobId: params.jobId })
         return { ok: true, jobId: params.jobId }
       },
@@ -965,6 +1221,7 @@ const schedulePlugin: BakinPlugin = definePlugin({
     })
 
     log.info('Schedule plugin activated')
+    startReconciler()
   },
 
   async onReady() {
@@ -977,6 +1234,7 @@ const schedulePlugin: BakinPlugin = definePlugin({
   },
 
   onShutdown() {
+    stopReconciler()
     log.info('Schedule plugin shutting down')
   },
 }) as unknown as BakinPlugin

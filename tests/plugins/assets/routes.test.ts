@@ -1,6 +1,6 @@
 /**
  * Comprehensive tests for the assets plugin routes and exec tools.
- * Tests all 7 API routes and 9 MCP exec tools registered by the plugin.
+ * Tests all API routes and MCP exec tools registered by the plugin.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync, existsSync, readdirSync, readFileSync, renameSync } from 'fs'
@@ -195,13 +195,14 @@ describe('route registration', () => {
 // ===========================================================================
 
 describe('exec tool registration', () => {
-  it('registers all 12 exec tools', () => {
-    expect(plugin.execTools.length).toBe(12)
+  it('registers all 13 exec tools', () => {
+    expect(plugin.execTools.length).toBe(13)
   })
 
   it.each([
     'bakin_exec_assets_list',
     'bakin_exec_assets_get',
+    'bakin_exec_assets_open',
     'bakin_exec_assets_save',
     'bakin_exec_assets_delete',
     'bakin_exec_assets_link',
@@ -742,6 +743,93 @@ describe('exec tool: bakin_exec_assets_list', () => {
     for (const a of assets) {
       expect(a.type).toBe('data')
     }
+  })
+})
+
+// ===========================================================================
+// Exec tool: bakin_exec_assets_open
+// ===========================================================================
+
+describe('exec tool: bakin_exec_assets_open', () => {
+  it('returns sidecar metadata plus extracted content for text-like assets', async () => {
+    const filename = '20260325-tool-open-abcd1234.md'
+    createAssetFixture(filename, '# Open Me\n\nReadable content.', {
+      agent: 'scribe',
+      taskId: 'task-tool-open',
+      created: '2026-03-25T00:00:00Z',
+      type: 'text',
+      description: 'Open tool markdown fixture',
+    })
+
+    const tool = findTool(plugin.execTools, 'bakin_exec_assets_open')!
+    const result = await callTool(tool, { filename }, 'scribe')
+    const asset = result.asset as {
+      filename: string
+      path: string
+      sidecar: { taskId: string; description: string }
+      content: { mode: string; text: string; available: boolean }
+    }
+
+    expect(result.ok).toBe(true)
+    expect(asset.filename).toBe(filename)
+    expect(asset.path).toBe(relPathFor(filename))
+    expect(asset.sidecar.taskId).toBe('task-tool-open')
+    expect(asset.sidecar.description).toBe('Open tool markdown fixture')
+    expect(asset.content.mode).toBe('text')
+    expect(asset.content.available).toBe(true)
+    expect(asset.content.text).toContain('Readable content.')
+  })
+
+  it('returns metadata-only content status for binary assets', async () => {
+    const filename = '20260325-tool-open-image-abcd1234.png'
+    createAssetFixture(filename, 'png-bytes', {
+      agent: 'pixel',
+      taskId: 'task-tool-open-image',
+      created: '2026-03-25T00:00:00Z',
+      type: 'images',
+    })
+
+    const tool = findTool(plugin.execTools, 'bakin_exec_assets_open')!
+    const result = await callTool(tool, { filename }, 'pixel')
+    const asset = result.asset as {
+      sidecar: { taskId: string }
+      content: { mode: string; text: string; available: boolean; note: string }
+    }
+
+    expect(result.ok).toBe(true)
+    expect(asset.sidecar.taskId).toBe('task-tool-open-image')
+    expect(asset.content.mode).toBe('metadata-only')
+    expect(asset.content.available).toBe(false)
+    expect(asset.content.text).toBe('')
+    expect(asset.content.note).toContain('no extractable text')
+  })
+
+  it('returns not found for a missing asset', async () => {
+    const tool = findTool(plugin.execTools, 'bakin_exec_assets_open')!
+    const result = await callTool(tool, {
+      filename: '20260325-missing-abcd1234.md',
+    }, 'scribe')
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/asset not found/i)
+  })
+
+  it('rejects missing filename input', async () => {
+    const tool = findTool(plugin.execTools, 'bakin_exec_assets_open')!
+    const result = await callTool(tool, {}, 'scribe')
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/invalid filename/i)
+  })
+
+  it('rejects path-shaped filenames', async () => {
+    const tool = findTool(plugin.execTools, 'bakin_exec_assets_open')!
+    const result = await callTool(tool, {
+      filename: 'assets/store/2026-03/20260325-tool-open-abcd1234.md',
+    }, 'scribe')
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/invalid filename/i)
   })
 })
 

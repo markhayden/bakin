@@ -252,12 +252,40 @@ These came up during spec/plan and the answers shape the system. From SPEC.md:
 4. **Adoption block scope** — adopting writes only the catalog block + lessons listed in `manifest.install.enableKnowledge`. All other lessons stay opt-in via UI/CLI toggle.
 5. **Update refresh of `defaultModel` / `dispatchableBy`** — only on fresh install. User controls models via the Models UI from then on.
 
+## MCP tool policy
+
+Agent-package `agent.allowedTools` is enforced by Bakin's MCP server, not by the
+runtime provider. `src/core/mcp-tool-policy.ts` reads the lockfile entry,
+loads the installed package's `bakin-package.json`, and resolves policy for the
+session agent:
+
+- No lockfile entry means an unmanaged legacy agent and remains unrestricted.
+- A managed package agent with no readable, non-empty `allowedTools` policy
+  fails closed.
+- An adopted package agent with `allowedTools` is scoped by that list; an adopted
+  package agent without a policy remains unrestricted until configured.
+- Allow entries are MCP tool-name patterns. Exact names and `*` wildcards are
+  supported, e.g. `bakin_exec_assets_get` or `bakin_exec_assets_*`.
+
+The MCP server hides disallowed tools from `tools/list`, denies forged direct
+calls at `tools/call`, records denied usage, and appends
+`exec.<tool>.denied` audit events.
+
+Do not confuse this with:
+
+- `workflow deny_tools`: prompt-level workflow step guidance, not hard routing.
+- OpenClaw cron `toolsAllow`: native runtime cron policy for isolated agent-turn
+  jobs, not Bakin MCP routing.
+- `allowedSkills`: still declarative/documentation-only until skill routing is
+  implemented.
+
 ## V1 explicit non-goals
 
 - **No hosted registry.** Curated catalog is a static JSON file shipped in the binary; bare-name install errors out.
 - **No trust levels enforcement.** The catalog has a `trust: "official"|"verified"|"community"` field but it's display-only.
 - **No dispatch-time knowledge retrieval.** All enabled lessons inject statically. Issue #157 covers V2 dispatch-time retrieval.
-- **No per-agent MCP-tool scoping enforcement.** Manifests declare `allowedTools` / `allowedSkills` but they're documentation-only. Issue #42 covers the routing-layer enforcement.
+- **No skill scoping enforcement.** Manifests declare `allowedSkills`, but the
+  skill-routing layer does not enforce it yet.
 - **No bundles.** `bakin install creative-team` (bundle of pixel + rolo + jessica + shared visual skills) is a future possibility, not V1.
 
 ## File layout
@@ -325,4 +353,3 @@ agents/                      In-repo reference packages (8 backfilled). NOT bund
 ## Companion future work (issues)
 
 - **#157** — V2 dispatch-time knowledge retrieval. Static block injection in V1; dynamic semantic-search-based at dispatch time in V2. Data model unchanged; only the injection path differs.
-- **#42** — Per-agent MCP-tool hard scoping. Agent manifests already declare `agent.allowedTools` / `allowedSkills`; #42's dispatch-routing layer reads them and enforces.

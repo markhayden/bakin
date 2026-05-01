@@ -31,7 +31,7 @@ import { ingestInboxFile, ingestInboxDir } from './lib/ingest-inbox'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { buildAssetFileUrl } from './lib/asset-url'
-import { extractAssetContent } from './lib/content-extractor'
+import { canExtractAssetContent, extractAssetContent } from './lib/content-extractor'
 import { checkAssets } from './lib/health-checks'
 
 /** Filename is the canonical identity under the filename-as-identity model. */
@@ -616,7 +616,7 @@ const assetsPlugin: BakinPlugin = definePlugin({
         filename: z.string().describe('Canonical asset filename (e.g. "20260401-hero-a1b2c3d4.png")'),
       },
       handler: async (params: Record<string, unknown>) => {
-        const filename = params.filename as string
+        const filename = typeof params.filename === 'string' ? params.filename : ''
         if (!isSafeCanonicalFilename(filename)) return { ok: false, error: 'Invalid filename' }
         const assetPath = pathForFilename(filename)
         if (!assetPath) return { ok: false, error: 'Invalid filename' }
@@ -634,6 +634,67 @@ const assetsPlugin: BakinPlugin = definePlugin({
           return { ok: true, asset: { filename, path: assetPath, ...sidecar } }
         } catch (err) {
           return { ok: false, error: `Failed to read sidecar: ${(err as Error).message}` }
+        }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_assets_open',
+      label: 'Opened an asset',
+      description: 'Open an attached asset by canonical filename. Returns sidecar metadata plus extracted text for text-like assets; non-extractable assets return metadata-only status.',
+      parameters: {
+        filename: z.string().describe('Canonical asset filename (e.g. "20260401-hero-a1b2c3d4.png")'),
+      },
+      handler: async (params: Record<string, unknown>) => {
+        const filename = typeof params.filename === 'string' ? params.filename : ''
+        if (!isSafeCanonicalFilename(filename)) return { ok: false, error: 'Invalid filename' }
+        const assetPath = pathForFilename(filename)
+        if (!assetPath) return { ok: false, error: 'Invalid filename' }
+
+        const contentDir = getContentDir()
+        const fullPath = join(contentDir, assetPath)
+        if (!existsSync(fullPath)) return { ok: false, error: 'Asset not found' }
+
+        const sidecarPath = getSidecarPath(fullPath)
+        let sidecar: Record<string, unknown> | null = null
+        if (existsSync(sidecarPath)) {
+          try {
+            sidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
+          } catch (err) {
+            return { ok: false, error: `Failed to read sidecar: ${(err as Error).message}` }
+          }
+        }
+
+        if (!canExtractAssetContent(filename)) {
+          return {
+            ok: true,
+            asset: {
+              filename,
+              path: assetPath,
+              sidecar,
+              content: {
+                mode: 'metadata-only',
+                available: false,
+                text: '',
+                note: 'This asset type has no extractable text content; use the metadata or asset preview UI for binary inspection.',
+              },
+            },
+          }
+        }
+
+        const text = await extractAssetContent(fullPath, filename)
+        return {
+          ok: true,
+          asset: {
+            filename,
+            path: assetPath,
+            sidecar,
+            content: {
+              mode: 'text',
+              available: text.length > 0,
+              text,
+            },
+          },
         }
       },
     })

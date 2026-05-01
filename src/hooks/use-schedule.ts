@@ -16,6 +16,9 @@ export interface ScheduleJob {
   skippedCount?: number
   enabled: boolean
   isBakinJob: boolean
+  source?: 'bakin' | 'runtime' | 'adopted'
+  canAdopt?: boolean
+  canRestoreNative?: boolean
   allowOverlap: boolean
   maxFailures: number
   consecutiveFailures: number
@@ -24,6 +27,8 @@ export interface ScheduleJob {
   workflowId?: string
   taskPrompt?: string
   taskTitle?: string
+  toolsAllow?: string[]
+  toolsAllowMissing?: boolean
   tz?: string
   lastTaskId?: string
   nextRun?: string
@@ -155,6 +160,29 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
     } catch { return false }
   }, [fetchJobs])
 
+  const adoptJob = useCallback(async (jobId: string, data: Record<string, unknown>) => {
+    try {
+      const res = await fetch(`/api/plugins/schedule/${jobId}/adopt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (res.ok) fetchJobs()
+      return res.ok
+    } catch { return false }
+  }, [fetchJobs])
+
+  const restoreNative = useCallback(async (jobId: string) => {
+    try {
+      const res = await fetch(`/api/plugins/schedule/${jobId}/restore-native`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      if (res.ok) fetchJobs()
+      return res.ok
+    } catch { return false }
+  }, [fetchJobs])
+
   const skipNext = useCallback(async (jobId: string, n = 1) => {
     try {
       const res = await fetch(`/api/plugins/schedule/${jobId}/pause`, {
@@ -196,7 +224,7 @@ export function useScheduleJobs(options: UseScheduleOptions = {}) {
 
   return {
     jobs: filtered, loading, refresh: fetchJobs,
-    pauseJob, resumeJob, deleteJob, runNow, updateJob, skipNext, duplicateJob,
+    pauseJob, resumeJob, deleteJob, runNow, updateJob, adoptJob, restoreNative, skipNext, duplicateJob,
   }
 }
 

@@ -16,6 +16,8 @@ const DEFAULTS = {
   requireTriage: false,
 } as const
 
+const MAX_PROCESSED_RUN_IDS = 100
+
 function getSidecarPath(): string {
   return `${getContentDir()}/schedule/sidecar.json`
 }
@@ -65,6 +67,16 @@ export function removeJob(jobId: string): boolean {
   delete sidecar.jobs[jobId]
   writeSidecar(sidecar)
   return true
+}
+
+export function hasProcessedRun(meta: BakinJobMeta, runId: string): boolean {
+  return (meta.processedRunIds ?? []).includes(runId)
+}
+
+export function recordProcessedRun(meta: BakinJobMeta, runId: string, processedAt = new Date().toISOString()): void {
+  const ids = meta.processedRunIds ?? []
+  meta.processedRunIds = [...ids.filter(id => id !== runId), runId].slice(-MAX_PROCESSED_RUN_IDS)
+  meta.lastProcessedRunAt = processedAt
 }
 
 /** Apply defaults to a sidecar entry for display. */

@@ -10,7 +10,7 @@ description: Coverage report for generated Bakin documentation surfaces.
 | Plugin routes | Runtime route registration metadata | Partial: 0 documented plugin routes |
 | Hooks | Source scan for `hooks.register(...)` | Audited: 43 registrations |
 | Slots | SDK slot contract plus source scan | Documented: 6 public slot names, 1 audited registrations |
-| Exec/MCP tools | Source scan for `registerExecTool(...)` | Audited: 106 tools |
+| Exec/MCP tools | Source scan for `registerExecTool(...)` | Audited: 107 tools |
 | Core plugins | `plugins/*/bakin-plugin.json` | Active: 8 plugin manifests |
 | Settings | `packages/core/src/settings.ts` | Active: 50 flattened settings |
 | Runtime paths | `packages/core/src/content-dir.ts` | Active: documented path contract |

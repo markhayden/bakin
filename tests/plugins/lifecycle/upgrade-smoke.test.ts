@@ -7,14 +7,17 @@
  * with C10's `upgrade-flow.integration.test.ts`.
  */
 import { describe, it, expect, afterAll, beforeEach, mock } from 'bun:test'
-import { mkdirSync, writeFileSync, rmSync, existsSync } from 'fs'
+import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
+import { installFilesystemRuntimeAppServices } from '../../helpers/runtime-app-services'
+import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
 const testDir = join(tmpdir(), `bakin-test-upgrade-smoke-${Date.now()}-${randomUUID()}`)
+const openClawDir = join(testDir, 'openclaw')
 process.env.BAKIN_HOME = testDir
-process.env.OPENCLAW_HOME = join(testDir, 'openclaw')
+process.env.OPENCLAW_HOME = openClawDir
 
 mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
@@ -55,6 +58,7 @@ import {
   readPluginLockfile,
   writePluginLockfile,
 } from '../../../packages/core/src/plugins/lockfile'
+import { installPluginAssets } from '../../../src/core/onboarding/plugin-assets'
 import { computeSourceTreeSha, upgradePlugin, UpgradeRefusedError } from '../../../src/core/plugins/upgrade'
 
 afterAll(() => {
@@ -64,6 +68,8 @@ afterAll(() => {
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
+  mkdirSync(openClawDir, { recursive: true })
+  installFilesystemRuntimeAppServices({ openClawDir })
 })
 
 const NOW = '2026-04-25T12:00:00Z'
@@ -76,6 +82,44 @@ function writeFixturePlugin(rootDir: string, opts: { id: string; version: string
     'utf-8',
   )
   writeFileSync(join(rootDir, 'index.ts'), `export default { id: '${opts.id}', activate() {} }`, 'utf-8')
+}
+
+function writeRuntimeSkill(pluginRoot: string, name: string, body: string): void {
+  const skillDir = join(pluginRoot, 'defaults', 'runtime-skills', name)
+  mkdirSync(skillDir, { recursive: true })
+  writeFileSync(join(skillDir, 'SKILL.md'), body, 'utf-8')
+}
+
+function readInstalledSkill(name: string): string {
+  return readFileSync(join(openClawDir, 'skills', name, 'SKILL.md'), 'utf-8')
+}
+
+const SKILL_V1 = `---
+name: upgrade-helper
+description: Upgrade helper v1
+---
+
+Use the original helper.
+`
+
+const SKILL_V2 = `---
+name: upgrade-helper
+description: Upgrade helper v2
+---
+
+Use the upgraded helper.
+`
+
+const FRESH_SKILL = `---
+name: fresh-helper
+description: Fresh helper
+---
+
+Use the newly shipped helper.
+`
+
+type TestGlobal = typeof globalThis & {
+  __bakinAppServices?: { runtime: AgentRuntimeAdapter }
 }
 
 function localEntry(opts: { id: string; sourcePath: string; version: string; sourceTreeSha?: string }): PluginLockEntry {
@@ -172,6 +216,102 @@ describe('upgradePlugin (local)', () => {
     expect(updated?.version).toBe('1.1.0')
     expect(updated?.sourceTreeSha).not.toBe(initialSha)
     expect(updated?.upgradedAt).toBeTruthy()
+  })
+
+  it('installs changed and new runtime skills from the upgraded local plugin', async () => {
+    const sourcePath = join(testDir, 'src-assets')
+    const pluginDir = join(testDir, 'plugins', 'asset-plugin')
+    writeFixturePlugin(sourcePath, { id: 'asset-plugin', version: '1.0.0' })
+    writeRuntimeSkill(sourcePath, 'upgrade-helper', SKILL_V1)
+    writeFixturePlugin(pluginDir, { id: 'asset-plugin', version: '1.0.0' })
+    writeRuntimeSkill(pluginDir, 'upgrade-helper', SKILL_V1)
+
+    const initialSha = computeSourceTreeSha(sourcePath)
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'asset-plugin', localEntry({
+      id: 'asset-plugin',
+      sourcePath,
+      version: '1.0.0',
+      sourceTreeSha: initialSha,
+    })))
+    await installPluginAssets([{ id: 'asset-plugin', path: pluginDir }])
+
+    writeFixturePlugin(sourcePath, { id: 'asset-plugin', version: '1.1.0' })
+    writeRuntimeSkill(sourcePath, 'upgrade-helper', SKILL_V2)
+    writeRuntimeSkill(sourcePath, 'fresh-helper', FRESH_SKILL)
+
+    const result = await upgradePlugin('asset-plugin')
+
+    expect(result.noop).toBe(false)
+    expect(readInstalledSkill('upgrade-helper')).toBe(SKILL_V2)
+    expect(readInstalledSkill('fresh-helper')).toBe(FRESH_SKILL)
+    expect(result.pluginAssets?.installed.map((s) => s.name).sort()).toEqual(['fresh-helper', 'upgrade-helper'])
+    expect(result.pluginAssets?.skipped).toEqual([])
+    expect(readPluginLockfile().plugins['asset-plugin']?.installedSkills?.sort()).toEqual([
+      'fresh-helper',
+      'upgrade-helper',
+    ])
+  })
+
+  it('reports and preserves user-edited runtime skills during local plugin upgrade', async () => {
+    const sourcePath = join(testDir, 'src-user-edited')
+    const pluginDir = join(testDir, 'plugins', 'locked-plugin')
+    writeFixturePlugin(sourcePath, { id: 'locked-plugin', version: '1.0.0' })
+    writeRuntimeSkill(sourcePath, 'upgrade-helper', SKILL_V1)
+    writeFixturePlugin(pluginDir, { id: 'locked-plugin', version: '1.0.0' })
+    writeRuntimeSkill(pluginDir, 'upgrade-helper', SKILL_V1)
+
+    const initialSha = computeSourceTreeSha(sourcePath)
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'locked-plugin', localEntry({
+      id: 'locked-plugin',
+      sourcePath,
+      version: '1.0.0',
+      sourceTreeSha: initialSha,
+    })))
+    await installPluginAssets([{ id: 'locked-plugin', path: pluginDir }])
+    writeFileSync(join(openClawDir, 'skills', 'upgrade-helper', '.userEdited'), '', 'utf-8')
+
+    writeFixturePlugin(sourcePath, { id: 'locked-plugin', version: '1.1.0' })
+    writeRuntimeSkill(sourcePath, 'upgrade-helper', SKILL_V2)
+
+    const result = await upgradePlugin('locked-plugin')
+
+    expect(result.noop).toBe(false)
+    expect(readInstalledSkill('upgrade-helper')).toBe(SKILL_V1)
+    expect(result.pluginAssets?.installed).toEqual([])
+    expect(result.pluginAssets?.skipped).toEqual([
+      { pluginId: 'locked-plugin', name: 'upgrade-helper', reason: 'userEdited' },
+    ])
+  })
+
+  it('fails loud and leaves lockfile upgrade markers unchanged when runtime skill install fails', async () => {
+    const sourcePath = join(testDir, 'src-install-fails')
+    const pluginDir = join(testDir, 'plugins', 'fail-assets')
+    writeFixturePlugin(sourcePath, { id: 'fail-assets', version: '1.0.0' })
+    writeFixturePlugin(pluginDir, { id: 'fail-assets', version: '1.0.0' })
+
+    const initialSha = computeSourceTreeSha(sourcePath)
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'fail-assets', localEntry({
+      id: 'fail-assets',
+      sourcePath,
+      version: '1.0.0',
+      sourceTreeSha: initialSha,
+    })))
+
+    writeFixturePlugin(sourcePath, { id: 'fail-assets', version: '1.1.0' })
+    writeRuntimeSkill(sourcePath, 'upgrade-helper', SKILL_V2)
+
+    const services = (globalThis as TestGlobal).__bakinAppServices
+    if (!services) throw new Error('test app services not installed')
+    services.runtime.skills.write = async () => {
+      throw new Error('runtime store unavailable')
+    }
+
+    await expect(upgradePlugin('fail-assets')).rejects.toThrow(/runtime store unavailable/)
+
+    const lockEntry = readPluginLockfile().plugins['fail-assets']
+    expect(lockEntry?.version).toBe('1.0.0')
+    expect(lockEntry?.sourceTreeSha).toBe(initialSha)
+    expect(lockEntry?.upgradedAt).toBeUndefined()
   })
 
   it('errors when no lockfile entry exists for the id', async () => {

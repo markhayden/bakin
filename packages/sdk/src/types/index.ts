@@ -334,6 +334,7 @@ export interface CronJob {
   schedule: string
   command: string
   enabled: boolean
+  toolsAllow?: string[]
   metadata?: Record<string, unknown>
 }
 
@@ -386,11 +387,13 @@ export interface AgentRuntimeAdapter {
   cron: {
     list(): Promise<CronJob[]>
     get(id: string): Promise<CronJob | null>
-    create(input: { id?: string; name: string; schedule: string; command: string; enabled?: boolean; metadata?: Record<string, unknown> }): Promise<CronJob>
-    update(id: string, patch: Partial<Omit<CronJob, 'id'>>): Promise<CronJob>
+    create(input: { id?: string; name: string; schedule: string; command: string; enabled?: boolean; toolsAllow?: string[]; metadata?: Record<string, unknown> }): Promise<CronJob>
+    update(id: string, patch: Partial<Omit<CronJob, 'id' | 'toolsAllow'>> & { toolsAllow?: string[] | null }): Promise<CronJob>
     remove(id: string): Promise<void>
     runNow(id: string): Promise<CronRun>
     listRuns(jobId: string): Promise<CronRun[]>
+    getRaw(id: string, reason: string): Promise<unknown | null>
+    restoreRaw(id: string, snapshot: unknown, reason: string): Promise<CronJob>
   }
   skills?: {
     list(): Promise<RuntimeSkill[]>

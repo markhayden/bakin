@@ -39,7 +39,7 @@ function fixed(check: string, message: string): HealthCheckResult {
 
 /**
  * Detect orphaned runtime cron jobs that aren't tracked in Bakin's
- * `schedule/sidecar.json`. Auto-adopts them when
+ * `schedule/sidecar.json`. Auto-tracks them when
  * settings.doctor.autoFixSkill is true - creates a minimal sidecar
  * entry flagged `requireTriage: true` and explicitly leaves agentId
  * unset (the user must triage rather than have a guessed assignment).
@@ -93,11 +93,13 @@ export async function checkScheduleSync(
 
   for (const orphan of orphans) {
     if (autoFix) {
-      // Auto-adopt: create minimal sidecar entry flagged for manual triage
+      // Auto-track: create minimal sidecar entry flagged for manual triage.
+      // This is not Bakin adoption; it only records runtime visibility state.
       const now = new Date().toISOString()
       const entry = {
         jobId: orphan.id,
         isBakinJob: false,
+        source: 'runtime',
         displayName: orphan.name,
         agentId: undefined, // Don't guess — flag for triage
         owner: defaultOwner,
@@ -106,14 +108,14 @@ export async function checkScheduleSync(
         updatedAt: now,
       }
       sidecar.jobs[orphan.id] = entry
-      results.push(fixed(checkName, `Auto-adopted orphan runtime cron job "${orphan.name}" (id: ${orphan.id})`))
-      log.info('Auto-adopted orphan cron job', { jobId: orphan.id, name: orphan.name })
+      results.push(fixed(checkName, `Tracked orphan runtime cron job "${orphan.name}" (id: ${orphan.id})`))
+      log.info('Tracked orphan cron job', { jobId: orphan.id, name: orphan.name })
     } else {
       results.push(warn(checkName, `Orphan runtime cron job "${orphan.name}" (id: ${orphan.id}) - not tracked in Bakin sidecar`, true))
     }
   }
 
-  // Write updated sidecar if we adopted anything
+  // Write updated sidecar if we tracked anything
   if (autoFix && results.some(r => r.status === 'fixed')) {
     try {
       const sidecarPath = join(contentDir, 'schedule', 'sidecar.json')

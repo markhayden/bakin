@@ -135,6 +135,7 @@ export function createMockRuntimeAdapter(
         schedule: input.schedule,
         command: input.command,
         enabled: input.enabled ?? true,
+        toolsAllow: input.toolsAllow,
         metadata: input.metadata,
       }),
       update: async (id, patch) => ({
@@ -143,6 +144,7 @@ export function createMockRuntimeAdapter(
         schedule: patch.schedule ?? '* * * * *',
         command: patch.command ?? '',
         enabled: patch.enabled ?? true,
+        toolsAllow: patch.toolsAllow === null ? undefined : patch.toolsAllow,
         metadata: patch.metadata,
       }),
       remove: async () => {},
@@ -154,6 +156,35 @@ export function createMockRuntimeAdapter(
         endedAt: new Date().toISOString(),
       }),
       listRuns: async () => [],
+      getRaw: async (id, reason) => {
+        if (!reason) throw new Error('cron.getRaw requires a reason')
+        return adapter.cron.get(id)
+      },
+      restoreRaw: async (id, snapshot, reason) => {
+        if (!reason) throw new Error('cron.restoreRaw requires a reason')
+        const raw = snapshot && typeof snapshot === 'object' ? snapshot as Partial<{
+          id: string
+          name: string
+          schedule: string | { expr?: string; value?: string }
+          command: string
+          payload: { message?: string; text?: string }
+          toolsAllow: string[]
+          enabled: boolean
+          metadata: Record<string, unknown>
+        }> : {}
+        const schedule = typeof raw.schedule === 'string'
+          ? raw.schedule
+          : raw.schedule?.expr ?? raw.schedule?.value ?? '* * * * *'
+        return {
+          id,
+          name: raw.name ?? raw.id ?? id,
+          schedule,
+          command: raw.command ?? raw.payload?.message ?? raw.payload?.text ?? '',
+          enabled: raw.enabled ?? true,
+          toolsAllow: raw.toolsAllow,
+          metadata: raw.metadata,
+        }
+      },
     },
 
     config: {
