@@ -41,7 +41,7 @@ if (isApiPage) {
       const method = methodKey.toUpperCase()
       const displayPath = path
         .replace(/\{([^}]+)\}/g, ':$1')
-        .replace(/^\/api(\/plugins\/[^/]+)?/, '') || '/'
+        .replace(/^\/api/, '') || '/'
       operations.push({
         operationId: op.operationId ?? `${method}-${path}`,
         method,
