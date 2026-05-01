@@ -32,7 +32,7 @@ type ApiOperation = {
 }
 
 type StemGroup = {
-  stem: string | null  // null when the entry should render inline (no subheader)
+  stem: string
   operations: Array<ApiOperation & { residual: string }>
 }
 
@@ -100,21 +100,9 @@ if (isApiPage) {
       list.push({ ...op, residual })
       buckets.set(stem, list)
     }
-    // Single-occupant stems collapse into one inline pseudo-group at the top
-    // (rendered without a subheader); multi-occupant stems get their own
-    // labeled subgroup.
-    const inline: Array<ApiOperation & { residual: string }> = []
-    const labeled: StemGroup[] = []
-    for (const [stem, items] of buckets) {
-      if (items.length === 1) {
-        inline.push({ ...items[0], residual: items[0].path })
-      } else {
-        labeled.push({ stem, operations: items })
-      }
-    }
-    const stems: StemGroup[] = []
-    if (inline.length > 0) stems.push({ stem: null, operations: inline })
-    stems.push(...labeled)
+    // Every stem gets its own labeled subgroup, even single-route stems —
+    // the consistent hierarchy reads better than a flat singleton block.
+    const stems: StemGroup[] = [...buckets.entries()].map(([stem, operations]) => ({ stem, operations }))
     return { tag, stems }
   })
 }
@@ -131,7 +119,7 @@ if (isApiPage) {
               <h2>{tag}</h2>
               {stems.map(stemGroup => (
                 <div class="api-toc-stem">
-                  {stemGroup.stem && <h4 class="api-toc-stem__heading"><code>{stemGroup.stem}</code></h4>}
+                  <h4 class="api-toc-stem__heading"><code>{stemGroup.stem}</code></h4>
                   <ul>
                     {stemGroup.operations.map(op => (
                       <li>
@@ -158,7 +146,7 @@ if (isApiPage) {
               <h3>{tag}</h3>
               {stems.map(stemGroup => (
                 <div class="api-toc-stem">
-                  {stemGroup.stem && <h4 class="api-toc-stem__heading"><code>{stemGroup.stem}</code></h4>}
+                  <h4 class="api-toc-stem__heading"><code>{stemGroup.stem}</code></h4>
                   <ul>
                     {stemGroup.operations.map(op => (
                       <li>

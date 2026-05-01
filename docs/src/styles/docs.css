@@ -1375,13 +1375,7 @@ starlight-toc nav a[href="#for-agents"]::before {
   padding: 0;
   border: none;
   color: inherit;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  /* Truncate from the start so the meaningful tail (`/move`, `/:id/tasks`)
-   * stays visible and the prefix gets the …. */
-  direction: rtl;
-  text-align: left;
+  overflow-wrap: anywhere;
 }
 
 .api-toc-mobile {
