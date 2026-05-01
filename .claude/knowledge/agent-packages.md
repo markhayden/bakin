@@ -99,11 +99,11 @@ For directory targets (skills): sidecars land **inside** the directory (`<target
 
 `packages/core/src/agent-packages/managed-blocks.ts` — primitive operations on `<!-- bakin:<blockId>:start --> ... <!-- bakin:<blockId>:end -->` regions in markdown files. Used by:
 - The agent-package projector (knowledge-catalog + per-lesson blocks in SOUL.md)
-- The doctor's existing 4 managed blocks (mission-control / hard-rules / dependency-pattern / media-delegation in AGENTS.md) — refactored in Phase D to delegate to this shared lib
+- The AGENTS.md managed-context projector (`src/core/agent-rules/managed-blocks.ts`), which uses one physical `managed-context` block per agent and tracks logical rule sections inside it
 
 Functions: `injectBlock`, `extractBlock`, `removeBlock`, `listBlocks`, `hasBlock`, `getBlockState`, `isValidBlockId`. Pure — string-in, string-out, no fs.
 
-`getBlockState` distinguishes `'absent' | 'present' | 'orphan-start' | 'orphan-end'` so the doctor can refuse to silently rewrite malformed marker pairs (the user's intent isn't clear; fail loud instead).
+`getBlockState` distinguishes `'absent' | 'present' | 'orphan-start' | 'orphan-end'` so the doctor can refuse to silently rewrite malformed marker pairs (the user's intent isn't clear; fail loud instead). For AGENTS.md, malformed compact markers or malformed legacy per-rule markers both stop auto-fix until the marker pair is corrected manually.
 
 ## Install flow
 

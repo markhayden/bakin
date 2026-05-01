@@ -2,19 +2,21 @@
  * Regression test for src/core/agent-rules/managed-blocks.ts.
  *
  * Migrated from tests/core/doctor-managed-blocks.test.ts in #139 C9.
- * Pins the managed-block flow so the registered health checks and CLI can
- * call the same core-owned infrastructure without changing marker behavior.
+ * Pins the managed-context flow so the registered health checks and CLI can
+ * call the same core-owned infrastructure while projecting one physical
+ * AGENTS.md marker block per agent.
+ *
  * Cases:
  *
- *   - Block missing + autoFix=true → block appended with one blank line
- *     of separation; trailing newline; rest of file untouched
- *   - Block missing + autoFix=false → no write, warn returned
- *   - Block present + body matches expected → ok, no write
- *   - Block present + body drifted + autoFix=true → in-place update,
- *     surrounding content preserved exactly
- *   - Block present + body drifted + autoFix=false → warn, no write
- *   - Start marker without end marker → error result, no write
- *   - orchestrator and subagent scopes target the right AGENTS.md files
+ *   - Compact block missing + autoFix=true -> block appended with one blank
+ *     line of separation; trailing newline; rest of file untouched
+ *   - Compact block missing + autoFix=false -> no write, warn returned
+ *   - Compact block present + logical sections match expected -> ok, no write
+ *   - Compact block present + logical section drifted + autoFix=true ->
+ *     in-place update, surrounding content preserved exactly
+ *   - Compact block present + logical section drifted + autoFix=false -> warn, no write
+ *   - Compact or legacy start marker without end marker -> error result, no write
+ *   - Orchestrator and subagent scopes target the right AGENTS.md files
  *
  * Test isolation per CC-6: mocks app services to a temp-backed runtime
  * adapter and seeds a synthetic roster. The doctor's other checks are
@@ -28,6 +30,13 @@ import { randomUUID } from 'crypto'
 
 const testDir = join(tmpdir(), `bakin-test-doctor-blocks-${Date.now()}-${randomUUID()}`)
 const runtimeDir = join(testDir, 'runtime')
+
+const COMPACT_START = '<!-- bakin:managed-context:start -->'
+const COMPACT_END = '<!-- bakin:managed-context:end -->'
+
+function sectionMarker(blockId: string): string {
+  return `<!-- bakin:managed-context:section ${blockId} -->`
+}
 
 const runtimeAgents = [
   { id: 'main', name: 'Main', role: 'Orchestrator', status: 'active' },
@@ -102,26 +111,31 @@ beforeEach(() => {
   mkdirSync(runtimeDir, { recursive: true })
 })
 
-describe('applyAllManagedBlocks — block missing', () => {
-  it('with autoFix=true, appends every managed block with one-blank-line separation and trailing newline', async () => {
+describe('applyAllManagedBlocks - compact block missing', () => {
+  it('with autoFix=true, appends one managed context block with one-blank-line separation and trailing newline', async () => {
     seedAgentsMd('main', '# Main\n')
-    seedAgentsMd('pixel', '# Pixel — Image Artist\n\nResponsibilities go here.\n')
+    seedAgentsMd('pixel', '# Pixel - Image Artist\n\nResponsibilities go here.\n')
 
     const results = await applyAllManagedBlocks(true)
     expect(results.some((r) => r.status === 'fixed')).toBe(true)
 
     const mainFinal = readFileSync(agentsMdPath('main'), 'utf-8')
-    expect(mainFinal).toContain('<!-- bakin:orchestrator-rules:start -->')
-    expect(mainFinal).toContain('<!-- bakin:orchestrator-rules:end -->')
+    expect(mainFinal).toContain(COMPACT_START)
+    expect(mainFinal).toContain(COMPACT_END)
+    expect(mainFinal).toContain(sectionMarker('orchestrator-rules'))
+    expect(mainFinal).not.toContain(sectionMarker('mission-control'))
+    expect(mainFinal).not.toContain('<!-- bakin:orchestrator-rules:start -->')
 
     const final = readFileSync(agentsMdPath('pixel'), 'utf-8')
-    expect(final.startsWith('# Pixel — Image Artist\n\nResponsibilities go here.\n\n<!-- bakin:'))
+    expect(final.startsWith('# Pixel - Image Artist\n\nResponsibilities go here.\n\n<!-- bakin:'))
       .toBe(true)
-    expect(final).toContain('<!-- bakin:mission-control:start -->')
-    expect(final).toContain('<!-- bakin:mission-control:end -->')
-    expect(final).toContain('<!-- bakin:hard-rules:start -->')
-    expect(final).toContain('<!-- bakin:dependency-pattern:start -->')
-    // Final byte should be a newline (matches doctor's append convention)
+    expect(final).toContain(COMPACT_START)
+    expect(final).toContain(COMPACT_END)
+    expect(final).toContain(sectionMarker('mission-control'))
+    expect(final).toContain(sectionMarker('hard-rules'))
+    expect(final).toContain(sectionMarker('dependency-pattern'))
+    expect(final).not.toContain('<!-- bakin:mission-control:start -->')
+    expect(final).not.toContain('<!-- bakin:hard-rules:start -->')
     expect(final.endsWith('\n')).toBe(true)
   })
 
@@ -136,42 +150,41 @@ describe('applyAllManagedBlocks — block missing', () => {
   })
 })
 
-describe('applyAllManagedBlocks — block present', () => {
+describe('applyAllManagedBlocks - compact block present', () => {
   it('with body matching expected, returns ok, leaves file byte-equal', async () => {
-    // Seed both rostered subagents so applyAll doesn't return warn for
-    // missing AGENTS.md on rolo.
     seedAgentsMd('main', '# Main\n')
     seedAgentsMd('pixel', '# Pixel\n\nProse.\n')
     seedAgentsMd('rolo', '# Rolo\n')
 
-    // First pass: write the blocks via autoFix
     await applyAllManagedBlocks(true)
     const mainAfterFirst = readFileSync(agentsMdPath('main'), 'utf-8')
     const pixelAfterFirst = readFileSync(agentsMdPath('pixel'), 'utf-8')
     const roloAfterFirst = readFileSync(agentsMdPath('rolo'), 'utf-8')
 
-    // Second pass: scoped to pixel + rolo, should be all-ok or fixed (no warn/error)
     const results = await applyAllManagedBlocks(true)
     expect(
       results.every((r) => r.status === 'ok' || r.status === 'fixed'),
     ).toBe(true)
-    const okCount = results.filter((r) => r.status === 'ok').length
-    expect(okCount).toBeGreaterThan(0)
+    expect(results.filter((r) => r.status === 'ok').length).toBeGreaterThan(0)
 
-    // Files unchanged on second pass
     expect(readFileSync(agentsMdPath('main'), 'utf-8')).toBe(mainAfterFirst)
     expect(readFileSync(agentsMdPath('pixel'), 'utf-8')).toBe(pixelAfterFirst)
     expect(readFileSync(agentsMdPath('rolo'), 'utf-8')).toBe(roloAfterFirst)
   })
 
-  it('with drifted body and autoFix=true, in-place updates while preserving surrounding content', async () => {
+  it('with drifted logical section and autoFix=true, in-place updates while preserving surrounding content', async () => {
     const stale = `# Pixel
 
 Prose before.
 
-<!-- bakin:mission-control:start -->
+${COMPACT_START}
+## Bakin Managed Context
+
+> Auto-managed by \`bakin doctor\`. Do not edit this block manually.
+
+${sectionMarker('mission-control')}
 this is some stale content
-<!-- bakin:mission-control:end -->
+${COMPACT_END}
 
 Prose after.
 `
@@ -180,20 +193,23 @@ Prose after.
     await applyAllManagedBlocks(true)
     const final = readFileSync(agentsMdPath('pixel'), 'utf-8')
 
-    // Surrounding content preserved
-    expect(final.startsWith('# Pixel\n\nProse before.\n\n<!-- bakin:mission-control:start -->')).toBe(true)
+    expect(final.startsWith('# Pixel\n\nProse before.\n\n<!-- bakin:managed-context:start -->')).toBe(true)
     expect(final).toContain('Prose after.')
-    // Stale content gone
     expect(final).not.toContain('this is some stale content')
-    // Mission-control markers still present
-    expect(final).toContain('<!-- bakin:mission-control:start -->')
-    expect(final).toContain('<!-- bakin:mission-control:end -->')
+    expect(final).toContain(sectionMarker('mission-control'))
+    expect(final).toContain(sectionMarker('hard-rules'))
+    expect(final).not.toContain('<!-- bakin:mission-control:start -->')
   })
 
-  it('with drifted body and autoFix=false, returns warn, no write', async () => {
-    const stale = `<!-- bakin:mission-control:start -->
+  it('with drifted logical section and autoFix=false, returns warn, no write', async () => {
+    const stale = `${COMPACT_START}
+## Bakin Managed Context
+
+> Auto-managed by \`bakin doctor\`. Do not edit this block manually.
+
+${sectionMarker('mission-control')}
 stale content
-<!-- bakin:mission-control:end -->
+${COMPACT_END}
 `
     seedAgentsMd('pixel', stale)
     const before = readFileSync(agentsMdPath('pixel'), 'utf-8')
@@ -208,45 +224,105 @@ stale content
   })
 })
 
-describe('applyAllManagedBlocks — malformed file', () => {
-  it('returns error for the malformed block, does not rewrite the orphan-start region', async () => {
+describe('applyAllManagedBlocks - malformed file', () => {
+  it('returns error for malformed compact markers and does not rewrite the file', async () => {
+    const broken = `# Pixel\n\n${COMPACT_START}\nstuck content with no end marker`
+    seedAgentsMd('pixel', broken)
+
+    const results = await applyAllManagedBlocks(true)
+
+    expect(
+      results.some((r) => r.status === 'error' && r.check === 'agent-managed-context'),
+    ).toBe(true)
+
+    const after = readFileSync(agentsMdPath('pixel'), 'utf-8')
+    expect(after).toBe(broken)
+    expect(after).not.toContain(COMPACT_END)
+  })
+
+  it('returns error for malformed legacy markers and refuses compact conversion', async () => {
     const broken = `# Pixel\n\n<!-- bakin:mission-control:start -->\nstuck content with no end marker`
     seedAgentsMd('pixel', broken)
 
     const results = await applyAllManagedBlocks(true)
 
-    // Mission-control specifically errors out — its orphan start marker stays
-    // untouched (no replacement, no end marker injected by the doctor's path).
     expect(
       results.some((r) => r.status === 'error' && r.check === 'agent-mission-control'),
     ).toBe(true)
 
     const after = readFileSync(agentsMdPath('pixel'), 'utf-8')
-    expect(after).toContain('<!-- bakin:mission-control:start -->\nstuck content with no end marker')
-    // Doctor must NOT silently inject an end marker for mission-control
-    expect(after).not.toContain('<!-- bakin:mission-control:end -->')
-
-    // OTHER managed blocks have no markers, so doctor still appends them.
-    expect(after).toContain('<!-- bakin:hard-rules:start -->')
-    expect(after).toContain('<!-- bakin:hard-rules:end -->')
+    expect(after).toBe(broken)
+    expect(after).not.toContain(COMPACT_START)
   })
 })
 
-describe('applyManagedBlocks — scopes', () => {
+describe('applyAllManagedBlocks - legacy multi-block conversion', () => {
+  it('converts legacy blocks into compact managed context and removes old markers', async () => {
+    const legacy = `# Pixel
+
+Prose before.
+
+<!-- bakin:mission-control:start -->
+legacy mission content
+<!-- bakin:mission-control:end -->
+
+<!-- bakin:hard-rules:start -->
+legacy hard-rule content
+<!-- bakin:hard-rules:end -->
+
+Prose after.
+`
+    seedAgentsMd('pixel', legacy)
+
+    const results = await applyAllManagedBlocks(true)
+    expect(results.some((r) => r.status === 'fixed')).toBe(true)
+
+    const final = readFileSync(agentsMdPath('pixel'), 'utf-8')
+    expect(final).toContain(COMPACT_START)
+    expect(final).toContain(sectionMarker('mission-control'))
+    expect(final).toContain(sectionMarker('hard-rules'))
+    expect(final).not.toContain('<!-- bakin:mission-control:start -->')
+    expect(final).not.toContain('<!-- bakin:hard-rules:start -->')
+    expect(final).toContain('Prose before.')
+    expect(final).toContain('Prose after.')
+  })
+
+  it('keeps role and capability targeted sections out of unrelated agents', async () => {
+    seedAgentsMd('main', '# Main\n')
+    seedAgentsMd('pixel', '# Pixel\n')
+    seedAgentsMd('rolo', '# Rolo\n')
+
+    await applyAllManagedBlocks(true)
+
+    const main = readFileSync(agentsMdPath('main'), 'utf-8')
+    expect(main).toContain(sectionMarker('orchestrator-rules'))
+    expect(main).not.toContain(sectionMarker('mission-control'))
+
+    const pixel = readFileSync(agentsMdPath('pixel'), 'utf-8')
+    expect(pixel).toContain(sectionMarker('media-delegation'))
+    expect(pixel).not.toContain('You cannot generate images. Ever.')
+    expect(pixel).toContain('You cannot generate video. Ever.')
+
+    const rolo = readFileSync(agentsMdPath('rolo'), 'utf-8')
+    expect(rolo).toContain(sectionMarker('media-delegation'))
+    expect(rolo).toContain('You cannot generate images. Ever.')
+    expect(rolo).not.toContain('You cannot generate video. Ever.')
+  })
+})
+
+describe('applyManagedBlocks - scopes', () => {
   it('subagents scope does not touch main agent`s AGENTS.md', async () => {
     seedAgentsMd('main', '# Main\n')
     seedAgentsMd('pixel', '# Pixel\n')
 
     await applyManagedBlocks(true, { scope: 'subagents' })
 
-    // main was not touched — still no markers
     const mainContent = readFileSync(agentsMdPath('main'), 'utf-8')
-    expect(mainContent).not.toContain('<!-- bakin:orchestrator-rules')
-    expect(mainContent).not.toContain('<!-- bakin:mission-control')
+    expect(mainContent).not.toContain(COMPACT_START)
 
-    // pixel was touched
     const pixelContent = readFileSync(agentsMdPath('pixel'), 'utf-8')
-    expect(pixelContent).toContain('<!-- bakin:mission-control:start -->')
+    expect(pixelContent).toContain(COMPACT_START)
+    expect(pixelContent).toContain(sectionMarker('mission-control'))
   })
 
   it('orchestrator scope touches only the main agent`s AGENTS.md', async () => {
@@ -256,55 +332,56 @@ describe('applyManagedBlocks — scopes', () => {
     await applyManagedBlocks(true, { scope: 'orchestrator' })
 
     const mainContent = readFileSync(agentsMdPath('main'), 'utf-8')
-    expect(mainContent).toContain('<!-- bakin:orchestrator-rules:start -->')
+    expect(mainContent).toContain(COMPACT_START)
+    expect(mainContent).toContain(sectionMarker('orchestrator-rules'))
 
     const pixelContent = readFileSync(agentsMdPath('pixel'), 'utf-8')
-    expect(pixelContent).not.toContain('<!-- bakin:mission-control:start -->')
+    expect(pixelContent).not.toContain(COMPACT_START)
   })
 })
 
-describe('applyManagedBlocks — orchestrator rules', () => {
+describe('applyManagedBlocks - orchestrator rules', () => {
   it('warns when the main AGENTS.md is missing', async () => {
     const results = await applyManagedBlocks(false, { scope: 'orchestrator' })
-    expect(results[0].check).toBe('orchestrator-rules')
-    expect(results[0].status).toBe('warn')
-    expect(results[0].message).toMatch(/AGENTS.md not found/)
+    const row = results.find((r) => r.check === 'orchestrator-rules')
+    expect(row?.status).toBe('warn')
+    expect(row?.message).toMatch(/AGENTS.md not found/)
   })
 
-  it('warns when the orchestrator block is missing without autoFix', async () => {
+  it('warns when the orchestrator logical section is missing without autoFix', async () => {
     seedAgentsMd('main', '# Main\n\nNo block here.\n')
     const results = await applyManagedBlocks(false, { scope: 'orchestrator' })
-    expect(results[0].check).toBe('orchestrator-rules')
-    expect(results[0].status).toBe('warn')
-    expect(results[0].autoFixable).toBe(true)
-    expect(results[0].message).toMatch(/missing from main\/AGENTS.md/)
+    const row = results.find((r) => r.check === 'orchestrator-rules')
+    expect(row?.status).toBe('warn')
+    expect(row?.autoFixable).toBe(true)
+    expect(row?.message).toMatch(/missing from main\/AGENTS.md managed context/)
   })
 
-  it('adds the orchestrator block under autoFix when missing', async () => {
+  it('adds the compact orchestrator managed context under autoFix when missing', async () => {
     seedAgentsMd('main', '# Main\n')
     const results = await applyManagedBlocks(true, { scope: 'orchestrator' })
-    expect(results[0].check).toBe('orchestrator-rules')
-    expect(results[0].status).toBe('fixed')
+    const row = results.find((r) => r.check === 'orchestrator-rules')
+    expect(row?.status).toBe('fixed')
     const after = readFileSync(agentsMdPath('main'), 'utf-8')
-    expect(after).toContain('<!-- bakin:orchestrator-rules:start -->')
-    expect(after).toContain('<!-- bakin:orchestrator-rules:end -->')
+    expect(after).toContain(COMPACT_START)
+    expect(after).toContain(sectionMarker('orchestrator-rules'))
+    expect(after).not.toContain('<!-- bakin:orchestrator-rules:start -->')
   })
 
-  it('reports error when the orchestrator block has a start marker but no end marker', async () => {
+  it('reports error when the legacy orchestrator block has a start marker but no end marker', async () => {
     seedAgentsMd(
       'main',
       '# Main\n\n<!-- bakin:orchestrator-rules:start -->\n(missing end)\n',
     )
     const results = await applyManagedBlocks(true, { scope: 'orchestrator' })
-    expect(results[0].check).toBe('orchestrator-rules')
-    expect(results[0].status).toBe('error')
-    expect(results[0].message).toMatch(/malformed markers/)
+    const row = results.find((r) => r.check === 'orchestrator-rules')
+    expect(row?.status).toBe('error')
+    expect(row?.message).toMatch(/malformed legacy markers/)
   })
 })
 
-describe('applyAllManagedBlocks — missing AGENTS.md', () => {
+describe('applyAllManagedBlocks - missing AGENTS.md', () => {
   it('returns warn when an agent has no AGENTS.md, does not create one', async () => {
-    // pixel is in the roster but we don't seed AGENTS.md
     mkdirSync(workspacePath('pixel'), { recursive: true })
 
     const results = await applyAllManagedBlocks(true)
@@ -335,8 +412,10 @@ describe('applyAllManagedBlocksForRuntime', () => {
     const results = await applyAllManagedBlocksForRuntime(runtime, true)
 
     expect(results.some((r) => r.status === 'fixed')).toBe(true)
-    expect(files.get('pixel:AGENTS.md')).toContain('<!-- bakin:mission-control:start -->')
-    expect(files.get('main:AGENTS.md')).toContain('<!-- bakin:orchestrator-rules:start -->')
+    expect(files.get('pixel:AGENTS.md')).toContain(COMPACT_START)
+    expect(files.get('pixel:AGENTS.md')).toContain(sectionMarker('mission-control'))
+    expect(files.get('main:AGENTS.md')).toContain(COMPACT_START)
+    expect(files.get('main:AGENTS.md')).toContain(sectionMarker('orchestrator-rules'))
   })
 
   it('can scope runtime execution to subagents only', async () => {
@@ -360,7 +439,8 @@ describe('applyAllManagedBlocksForRuntime', () => {
     const results = await applyManagedBlocksForRuntime(runtime, true, { scope: 'subagents' })
 
     expect(results.some((r) => r.status === 'fixed')).toBe(true)
-    expect(files.get('pixel:AGENTS.md')).toContain('<!-- bakin:mission-control:start -->')
+    expect(files.get('pixel:AGENTS.md')).toContain(COMPACT_START)
+    expect(files.get('pixel:AGENTS.md')).toContain(sectionMarker('mission-control'))
     expect(files.get('main:AGENTS.md')).toBe('# Main\n')
   })
 })

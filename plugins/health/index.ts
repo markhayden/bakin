@@ -325,7 +325,7 @@ const healthPlugin: BakinPlugin = {
     })
     ctx.registerHealthCheck({
       id: 'orchestrator-rules',
-      name: 'Main agent AGENTS.md orchestrator-rules block',
+      name: 'Main agent AGENTS.md managed context',
       autoFix: true,
       run: () => applyManagedBlocksForRuntime(ctx.runtime, getSettings().doctor.autoFixSkill, { scope: 'orchestrator' }),
     })
@@ -342,7 +342,7 @@ const healthPlugin: BakinPlugin = {
     })
     ctx.registerHealthCheck({
       id: 'managed-blocks',
-      name: 'Per-agent managed blocks in AGENTS.md',
+      name: 'Per-agent AGENTS.md managed context',
       autoFix: true,
       run: () => applyManagedBlocksForRuntime(ctx.runtime, getSettings().doctor.autoFixSkill, { scope: 'subagents' }),
     })

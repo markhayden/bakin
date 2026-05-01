@@ -1,9 +1,9 @@
 /**
- * Managed-block infrastructure for per-agent AGENTS.md blocks.
+ * Managed-context infrastructure for per-agent AGENTS.md projection.
  *
  * The doctor runs `applyManagedBlocksForRuntime` to keep Bakin-owned
- * marker-fenced blocks in sync across runtime agent workspace `AGENTS.md`
- * files. The
+ * logical rule sections in sync inside one marker-fenced managed-context
+ * block per runtime agent workspace `AGENTS.md` file. The
  * marker primitives (extractBlock, getBlockState, injectBlock) live in
  * packages/core/src/agent-packages/managed-blocks.ts and are shared
  * with the agent-package installer/projector.
@@ -17,6 +17,7 @@ import {
   extractBlock,
   getBlockState,
   injectBlock,
+  removeBlock,
 } from '../../../packages/core/src/agent-packages/managed-blocks'
 import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
 import type { AgentRuntimeAdapter, RuntimeAgent } from '../../../packages/core/src/adapters/runtime'
@@ -36,10 +37,17 @@ function fixed(check: string, message: string): HealthCheckResult {
   return { check, status: 'fixed', message, autoFixable: true }
 }
 
-// ─── Orchestrator rules block — constants written into user state ─────────
+// ─── Compact AGENTS.md managed-context projection ─────────────────────────
 
-export const AGENT_RULES_BLOCK_START = '<!-- bakin:orchestrator-rules:start -->'
-export const AGENT_RULES_BLOCK_END = '<!-- bakin:orchestrator-rules:end -->'
+export const MANAGED_CONTEXT_BLOCK_ID = 'managed-context'
+export const MANAGED_CONTEXT_BLOCK_START = '<!-- bakin:managed-context:start -->'
+export const MANAGED_CONTEXT_BLOCK_END = '<!-- bakin:managed-context:end -->'
+
+// Backward-compatible export names for older internal imports. These now
+// identify the physical compact context block, not the old logical
+// orchestrator-rules block.
+export const AGENT_RULES_BLOCK_START = MANAGED_CONTEXT_BLOCK_START
+export const AGENT_RULES_BLOCK_END = MANAGED_CONTEXT_BLOCK_END
 
 const ORCHESTRATOR_RULES_CONTENT = `## Bakin Orchestrator Rules
 
@@ -152,7 +160,7 @@ export async function resolveOrchestratorRulesForAgent(agentId: string, agentNam
     .replaceAll('AGENT_NAME_PLACEHOLDER', agentName)
 }
 
-// ─── Generic managed-block helper ─────────────────────────────────────────
+// ─── Generic managed-context helper ───────────────────────────────────────
 
 interface ManagedBlockContext {
   mainAgentId: string
@@ -184,59 +192,236 @@ function runtimeManagedBlockContext(agents: RuntimeAgent[]): ManagedBlockContext
   }
 }
 
-async function checkManagedBlockRuntime(
-  runtime: AgentRuntimeAdapter,
+interface ExpectedManagedContextSection {
+  def: ManagedBlockDef
+  checkName: string
+  label: string
+  expectedBody: string
+}
+
+const MANAGED_CONTEXT_SECTION_PATTERN = /^<!-- bakin:managed-context:section ([\w:.-]+) -->$/
+
+function managedContextSectionMarker(blockId: string): string {
+  return `<!-- bakin:managed-context:section ${blockId} -->`
+}
+
+function managedBlockCheckName(def: ManagedBlockDef): string {
+  return def.checkId ?? `agent-${def.blockId}`
+}
+
+function managedBlockLabel(def: ManagedBlockDef): string {
+  return def.label ?? def.blockId
+}
+
+function managedBlockTargetsAgent(
   def: ManagedBlockDef,
+  agentId: string,
+  context: ManagedBlockContext,
+): boolean {
+  if (def.target === 'orchestrator' && agentId !== context.mainAgentId) return false
+  if (def.target === 'subagent' && agentId === context.mainAgentId) return false
+  if (def.agentFilter && !def.agentFilter(agentId, context)) return false
+  return true
+}
+
+async function expectedManagedContextSections(
+  agentId: string,
+  scope: ManagedBlockScope,
+  context: ManagedBlockContext,
+): Promise<ExpectedManagedContextSection[]> {
+  const sections: ExpectedManagedContextSection[] = []
+  for (const def of MANAGED_BLOCKS) {
+    if (!blockMatchesScope(def, scope)) continue
+    if (!managedBlockTargetsAgent(def, agentId, context)) continue
+    sections.push({
+      def,
+      checkName: managedBlockCheckName(def),
+      label: managedBlockLabel(def),
+      expectedBody: (await def.contentFn(agentId, context)).trim(),
+    })
+  }
+  return sections
+}
+
+function renderManagedContextBody(sections: ExpectedManagedContextSection[]): string {
+  return [
+    '## Bakin Managed Context',
+    '',
+    '> Auto-managed by `bakin doctor`. Do not edit this block manually.',
+    '',
+    sections
+      .map((section) => `${managedContextSectionMarker(section.def.blockId)}\n${section.expectedBody}`)
+      .join('\n\n'),
+  ].join('\n').trim()
+}
+
+function parseManagedContextSections(body: string): Map<string, string> {
+  const sections = new Map<string, string>()
+  const lines = body.split('\n')
+  let currentBlockId: string | null = null
+  let currentLines: string[] = []
+
+  const flush = () => {
+    if (!currentBlockId) return
+    sections.set(currentBlockId, currentLines.join('\n').trim())
+  }
+
+  for (const line of lines) {
+    const match = line.match(MANAGED_CONTEXT_SECTION_PATTERN)
+    if (match) {
+      flush()
+      currentBlockId = match[1]
+      currentLines = []
+      continue
+    }
+    if (currentBlockId) currentLines.push(line)
+  }
+  flush()
+
+  return sections
+}
+
+function legacyBlockStates(content: string): Array<{ def: ManagedBlockDef; state: ReturnType<typeof getBlockState> }> {
+  return MANAGED_BLOCKS.map((def) => ({ def, state: getBlockState(content, def.blockId) }))
+}
+
+function removeLegacyManagedBlocks(content: string): string {
+  let next = content
+  for (const { def } of legacyBlockStates(content)) {
+    if (getBlockState(next, def.blockId) === 'present') {
+      next = removeBlock(next, def.blockId)
+    }
+  }
+  return next
+}
+
+async function checkManagedContextRuntime(
+  runtime: AgentRuntimeAdapter,
   autoFix: boolean,
   agents: RuntimeAgent[],
   context: ManagedBlockContext,
+  scope: ManagedBlockScope,
 ): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = []
-  const checkName = def.checkId ?? `agent-${def.blockId}`
-  const label = def.label ?? def.blockId
 
   for (const agent of agents) {
     const agentId = agent.id
-    if (def.target === 'orchestrator' && agentId !== context.mainAgentId) continue
-    if (def.target === 'subagent' && agentId === context.mainAgentId) continue
-    if (def.agentFilter && !def.agentFilter(agentId, context)) continue
+    const expectedSections = await expectedManagedContextSections(agentId, scope, context)
+    if (expectedSections.length === 0) continue
 
     const file = await runtime.agents.readWorkspaceFile(agentId, 'AGENTS.md')
     if (!file) {
-      results.push(warn(checkName, `AGENTS.md not found for ${agentId} — cannot verify ${label}`))
+      for (const section of expectedSections) {
+        results.push(warn(
+          section.checkName,
+          `AGENTS.md not found for ${agentId} — cannot verify ${section.label} managed context section`,
+        ))
+      }
       continue
     }
 
     const current = file.content
-    const expectedBody = (await def.contentFn(agentId, context)).trim()
-    const state = getBlockState(current, def.blockId)
+    const compactState = getBlockState(current, MANAGED_CONTEXT_BLOCK_ID)
 
-    if (state === 'orphan-start' || state === 'orphan-end') {
+    if (compactState === 'orphan-start' || compactState === 'orphan-end') {
       results.push(error(
-        checkName,
-        `${label} block has malformed markers (${state}) in ${agentId}/AGENTS.md`,
+        'agent-managed-context',
+        `managed-context block has malformed markers (${compactState}) in ${agentId}/AGENTS.md`,
       ))
       continue
     }
 
-    if (state === 'absent') {
-      if (!autoFix) {
-        results.push(warn(checkName, `${label} block missing from ${agentId}/AGENTS.md`, true))
-        continue
+    const malformedLegacy = legacyBlockStates(current)
+      .filter(({ state }) => state === 'orphan-start' || state === 'orphan-end')
+    if (malformedLegacy.length > 0) {
+      for (const { def, state } of malformedLegacy) {
+        results.push(error(
+          managedBlockCheckName(def),
+          `${managedBlockLabel(def)} legacy block has malformed legacy markers (${state}) in ${agentId}/AGENTS.md; refusing to rewrite managed context`,
+        ))
       }
-      await runtime.agents.writeWorkspaceFile(agentId, { path: 'AGENTS.md', content: injectBlock(current, def.blockId, expectedBody) })
-      results.push(fixed(checkName, `Added ${label} block to ${agentId}/AGENTS.md`))
       continue
     }
 
-    const currentBody = extractBlock(current, def.blockId) ?? ''
-    if (currentBody === expectedBody) {
-      results.push(ok(checkName, `${label} block in ${agentId}/AGENTS.md is up to date`))
-    } else if (autoFix) {
-      await runtime.agents.writeWorkspaceFile(agentId, { path: 'AGENTS.md', content: injectBlock(current, def.blockId, expectedBody) })
-      results.push(fixed(checkName, `Updated ${label} block in ${agentId}/AGENTS.md`))
-    } else {
-      results.push(warn(checkName, `${label} block is outdated in ${agentId}/AGENTS.md`, true))
+    const legacyPresentIds = new Set(
+      legacyBlockStates(current)
+        .filter(({ state }) => state === 'present')
+        .map(({ def }) => def.blockId),
+    )
+    const compactBody = compactState === 'present'
+      ? extractBlock(current, MANAGED_CONTEXT_BLOCK_ID) ?? ''
+      : ''
+    const actualSections = compactState === 'present'
+      ? parseManagedContextSections(compactBody)
+      : new Map<string, string>()
+    const expectedBody = renderManagedContextBody(expectedSections)
+    const expectedIds = new Set(expectedSections.map((section) => section.def.blockId))
+    const unexpectedIds = [...actualSections.keys()].filter((blockId) => !expectedIds.has(blockId))
+    let logicalNeedsWrite = compactState !== 'present'
+
+    for (const section of expectedSections) {
+      const actualBody = actualSections.get(section.def.blockId)
+      if (compactState !== 'present') {
+        logicalNeedsWrite = true
+        if (autoFix) {
+          results.push(fixed(section.checkName, `Added ${section.label} logical section to ${agentId}/AGENTS.md managed context`))
+        } else if (legacyPresentIds.has(section.def.blockId)) {
+          results.push(warn(section.checkName, `${section.label} logical section is still in legacy block projection in ${agentId}/AGENTS.md; run with --apply to convert to managed context`, true))
+        } else {
+          results.push(warn(section.checkName, `${section.label} logical section missing from ${agentId}/AGENTS.md managed context`, true))
+        }
+        continue
+      }
+
+      if (actualBody === undefined) {
+        logicalNeedsWrite = true
+        if (autoFix) {
+          results.push(fixed(section.checkName, `Added ${section.label} logical section to ${agentId}/AGENTS.md managed context`))
+        } else {
+          results.push(warn(section.checkName, `${section.label} logical section missing from ${agentId}/AGENTS.md managed context`, true))
+        }
+        continue
+      }
+
+      if (actualBody !== section.expectedBody) {
+        logicalNeedsWrite = true
+        if (autoFix) {
+          results.push(fixed(section.checkName, `Updated ${section.label} logical section in ${agentId}/AGENTS.md managed context`))
+        } else {
+          results.push(warn(section.checkName, `${section.label} logical section is outdated in ${agentId}/AGENTS.md managed context`, true))
+        }
+        continue
+      }
+
+      results.push(ok(section.checkName, `${section.label} logical section in ${agentId}/AGENTS.md managed context is up to date`))
+    }
+
+    const contextOnlyReasons: string[] = []
+    if (legacyPresentIds.size > 0) {
+      contextOnlyReasons.push(`legacy block(s): ${[...legacyPresentIds].join(', ')}`)
+    }
+    if (unexpectedIds.length > 0) {
+      contextOnlyReasons.push(`unexpected section(s): ${unexpectedIds.join(', ')}`)
+    }
+    if (!logicalNeedsWrite && compactState === 'present' && compactBody !== expectedBody) {
+      contextOnlyReasons.push('managed context wrapper')
+    }
+    if (contextOnlyReasons.length > 0) {
+      if (autoFix) {
+        const message = `Cleaned ${contextOnlyReasons.join('; ')} in ${agentId}/AGENTS.md managed context`
+        results.push(fixed('agent-managed-context', message))
+      } else {
+        const message = `Found ${contextOnlyReasons.join('; ')} in ${agentId}/AGENTS.md managed context; run with --apply to clean up`
+        results.push(warn('agent-managed-context', message, true))
+      }
+    }
+
+    if (autoFix && (logicalNeedsWrite || contextOnlyReasons.length > 0)) {
+      const withCompact = injectBlock(current, MANAGED_CONTEXT_BLOCK_ID, expectedBody)
+      const cleaned = removeLegacyManagedBlocks(withCompact)
+      if (cleaned !== current) {
+        await runtime.agents.writeWorkspaceFile(agentId, { path: 'AGENTS.md', content: cleaned })
+      }
     }
   }
 
@@ -428,8 +613,8 @@ All created content (images, video, audio, text, plans, data) MUST go to the ass
 ]
 
 /**
- * Apply all managed blocks using the configured runtime adapter. Called by
- * the CLI's `bakin agent-rules` subcommand directly.
+ * Apply the compact AGENTS.md managed context using the configured runtime
+ * adapter. Called by the CLI's `bakin agent-rules` subcommand directly.
  */
 export async function applyManagedBlocks(
   autoFix: boolean,
@@ -464,17 +649,12 @@ export async function applyManagedBlocksForRuntime(
   }
 
   if (agents.length === 0) {
-    return [warn('agent-managed-blocks', 'No runtime agents found — cannot verify managed blocks')]
+    return [warn('agent-managed-blocks', 'No runtime agents found — cannot verify managed context')]
   }
 
   const scope = options.scope ?? 'all'
   const context = runtimeManagedBlockContext(agents)
-  const results: HealthCheckResult[] = []
-  for (const block of MANAGED_BLOCKS) {
-    if (!blockMatchesScope(block, scope)) continue
-    results.push(...await checkManagedBlockRuntime(runtime, block, autoFix, agents, context))
-  }
-  return results
+  return checkManagedContextRuntime(runtime, autoFix, agents, context, scope)
 }
 
 export async function applyAllManagedBlocksForRuntime(

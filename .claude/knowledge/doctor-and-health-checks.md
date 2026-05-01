@@ -109,16 +109,20 @@ Same pattern, lives at `plugins/health/lib/system-checks/{your-check}.ts`. Regis
 ## Managed-block infrastructure
 
 `src/core/agent-rules/managed-blocks.ts` holds:
-- `MANAGED_BLOCKS` — the orchestrator-rules block plus the 7 subagent block definitions (mission-control, hard-rules, dependency-pattern, media-delegation, workflow-rules, scheduling-rules, asset-rules)
-- `applyManagedBlocks(autoFix, { scope })` — iterates scoped blocks and calls the shared managed-block checker per target agent
+- `MANAGED_BLOCKS` — logical rule-section definitions: orchestrator-rules plus the 7 subagent sections (mission-control, hard-rules, dependency-pattern, media-delegation, workflow-rules, scheduling-rules, asset-rules)
+- `applyManagedBlocks(autoFix, { scope })` — renders/checks those logical sections inside one physical `<!-- bakin:managed-context:start/end -->` block per targeted agent
 - `applyAllManagedBlocks(autoFix)` — compatibility wrapper for all scopes
-- `AGENT_RULES_BLOCK_START/END` + `ORCHESTRATOR_RULES_CONTENT` + `resolveOrchestratorRules` — the orchestrator-rules block content for the **main** agent
+- `MANAGED_CONTEXT_BLOCK_START/END` + `ORCHESTRATOR_RULES_CONTENT` + `resolveOrchestratorRules` — the compact projection marker plus the main-agent orchestrator section content
 
-The marker primitives (`extractBlock`, `getBlockState`, `injectBlock`) live in `packages/core/src/agent-packages/managed-blocks.ts` and are shared with the agent-package installer/projector. Don't reimplement them.
+The marker primitives (`extractBlock`, `getBlockState`, `injectBlock`, `removeBlock`) live in `packages/core/src/agent-packages/managed-blocks.ts` and are shared with the agent-package installer/projector. Don't reimplement them.
 
 The CLI's `bakin agent-rules --apply / --apply-all / --check / --check-all` imports directly from `src/core/agent-rules/managed-blocks.ts` (not via HTTP — works when the server is down). `--apply` / `--check` run the `orchestrator` scope; `--apply-all` / `--check-all` run the `all` scope.
 
-**Marker text in user files is bit-identical to pre-migration**: `<!-- bakin:{blockId}:start/end -->` strings live in `~/.openclaw/workspaces/{agentId}/AGENTS.md` and `~/.openclaw/workspace/AGENTS.md`. Renaming them would orphan existing user state. Don't touch.
+Projection shape after #208:
+- Each targeted `AGENTS.md` gets one physical Bakin-owned block: `<!-- bakin:managed-context:start --> ... <!-- bakin:managed-context:end -->`.
+- Logical sections are anchored inside that block with `<!-- bakin:managed-context:section {blockId} -->` comments so doctor can report stale/missing sections by logical check id.
+- Legacy physical blocks like `<!-- bakin:mission-control:start -->` and `<!-- bakin:orchestrator-rules:start -->` are converted and removed during auto-fix when well-formed.
+- Malformed compact or legacy markers are not repaired silently. The checker returns an error and refuses to rewrite that agent file until the marker pair is fixed by hand.
 
 ## Settings
 
@@ -172,7 +176,4 @@ The orchestrator (`runPluginHealthChecks` in `src/core/doctor.ts`) wraps each `d
 - **#139**: Migrated the remaining 15 checks across 9 commits, collapsed `DiagnosticResult` → `HealthCheckResult` (one canonical type), relocated managed-block infrastructure out of the doctor monolith, swung CLI imports.
 - **#174**: Moved health-check registry and managed-block infrastructure into `src/core/*`; health plugin now contributes checks without owning core doctor/CLI primitives.
 - **#172**: Unified `bakin agent-rules` and health orchestrator-rules checks with the core managed-block engine.
-
-## Follow-ups
-
-- **#208** — compact Bakin-managed `AGENTS.md` context blocks. Keep current marker format until that dedicated projection redesign.
+- **#208**: Changed AGENTS.md projection from one physical marker pair per logical rule to one compact `managed-context` marker pair per agent, while keeping logical diagnostics and legacy-marker conversion.
