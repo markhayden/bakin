@@ -6,6 +6,7 @@
 import type { ZodRawShape, ZodType } from 'zod'
 import type { ContractStability, ContractVisibility, DocsExample, SchemaLike, SourceLocation } from './docs'
 import type { AgentRuntimeAdapter } from './adapters/runtime'
+import type { APIRoute as DeclarativeAPIRoute, PluginContextLite } from './routing/types'
 
 // ---------------------------------------------------------------------------
 // Approval actor — identifies who decided a gate (or any reviewable action)
@@ -330,6 +331,14 @@ export interface PluginContext {
   tasks: PluginTaskService
   assets: AssetsAPI
   registerNav(items: NavItem[]): void
+  /**
+   * @deprecated Use `definePlugin({ routes: [defineRoute({...})] })` to declare
+   * routes. This adapter remains during the migration window for any
+   * out-of-tree plugin that still calls `ctx.registerRoute(...)` from
+   * `activate()`. In-repo plugins migrated in T6–T13 / T20 — none of them
+   * call this. The dispatcher adapts the legacy shape (input → body,
+   * output → responses[200]) when invoked through this path.
+   */
   registerRoute(route: APIRoute): void
   registerSlot(registration: UISlotRegistration): void
   registerExecTool(tool: ExecToolDefinition): void
@@ -918,6 +927,20 @@ export interface BakinPlugin {
   settingsSchema?: PluginSettingsSchema
   navItems?: NavItem[]
   contentFiles?: ContentFile[]
+  /**
+   * Declarative HTTP routes. Registered into the route table BEFORE
+   * `activate()` runs, so handlers must use `ctx` for services rather than
+   * closing over module-scope state initialized in `activate()`.
+   *
+   * Use `defineRoute()` from `@bakin/core/routing` to author entries —
+   * a bare `routes: APIRoute[]` annotation widens types and breaks the
+   * per-route inference that drives the dispatcher's typed `parsed` argument.
+   *
+   * Optional during the migration window (T1–T16); plugins still using
+   * `ctx.registerRoute(...)` from `activate()` continue to work via the
+   * dispatcher adapter.
+   */
+  routes?: ReadonlyArray<DeclarativeAPIRoute<PluginContextLite, any, any, any>>
 }
 
 // ---------------------------------------------------------------------------

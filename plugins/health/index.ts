@@ -5,6 +5,7 @@
 import { totalmem } from 'os'
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
+import { definePlugin, defineRoute } from '@bakin/core/routing'
 import { getLastResults, runDiagnostics } from '../../src/core/doctor'
 import { createLogger } from '../../src/core/logger'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
@@ -26,9 +27,7 @@ import { checkSearchAdapter } from './lib/system-checks/search'
 import { checkAndSyncSkill } from './lib/system-checks/sync-skill'
 import { checkPluginAssets } from './lib/system-checks/plugin-assets'
 import { applyManagedBlocksForRuntime } from '../../src/core/agent-rules/managed-blocks'
-// Registry accessors live on globalThis because Next.js API routes get
-// separate webpack-compiled module instances with empty Maps. The custom
-// server (server.ts) registers the real accessors after plugin init.
+
 type RegistryAccessor = () => Array<Record<string, unknown>>
 type McpSessionsAccessor = () => { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string }
 
@@ -44,16 +43,213 @@ function getMcpSessions(): { activeSessions: Array<{ agent: string; sessions: nu
 
 const log = createLogger('health')
 
+const stripRun = (def: HealthCheckDef) => ({
+  id: def.id,
+  name: def.name,
+  pluginId: def.pluginId,
+  autoFix: !!def.autoFix,
+})
+
 function buildDoctorResponse(results: Array<{ status: string }> & unknown[]) {
   const errors = results.filter(r => r.status === 'error').length
   const warnings = results.filter(r => r.status === 'warn').length
   return { results, summary: { total: results.length, errors, warnings } }
 }
 
-const healthPlugin: BakinPlugin = {
+// ─── Schemas ─────────────────────────────────────────────────────────────
+
+const passthrough = z.object({}).passthrough()
+const errorResponse = z.object({ error: z.string() }).passthrough()
+
+const checksResponse = z.object({
+  checks: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    pluginId: z.string().optional(),
+    autoFix: z.boolean(),
+  })),
+})
+
+const summaryResponse = z.object({
+  doctor: z.unknown().nullable(),
+  errors1h: z.unknown(),  // recorder returns { total, byKind } — keep loose
+  activeSessions: z.array(z.unknown()),
+  upSince: z.string(),
+  server: z.object({
+    port: z.number(),
+    pid: z.number(),
+    nodeVersion: z.string(),
+    memoryMB: z.number(),
+    totalMemoryMB: z.number(),
+  }),
+})
+
+const usageFeedQuery = z.object({
+  kind: z.enum(['mcp', 'rest', 'agent']).optional(),
+  window: z.enum(['5m', '1h', '24h']).default('1h'),
+  agent: z.string().min(1).optional(),
+})
+
+const doctorQuery = z.object({
+  fresh: z.union([z.literal('true'), z.literal('false')]).optional(),
+})
+
+const doctorResponse = z.object({
+  results: z.array(passthrough),
+  summary: z.object({
+    total: z.number(),
+    errors: z.number(),
+    warnings: z.number(),
+  }),
+  cachedAt: z.string().optional(),
+})
+
+const searchStatusResponse = z.object({
+  enabled: z.boolean(),
+  tables: z.array(passthrough),
+}).passthrough()
+
+const registryResponse = z.object({
+  plugins: z.array(passthrough),
+})
+
+// ─── Routes (declarative) ────────────────────────────────────────────────
+
+const routes = [
+  defineRoute({
+    path: '/checks',
+    method: 'GET',
+    summary: 'List registered plugin health checks',
+    description: 'Returns metadata only; does not execute the checks.',
+    responses: { 200: checksResponse },
+    handler: async () => {
+      return Response.json({ checks: listHealthChecks().map(stripRun) })
+    },
+  }),
+
+  defineRoute({
+    path: '/summary',
+    method: 'GET',
+    summary: 'Aggregated health summary',
+    description: 'Snapshot of doctor cache, recent error counts, MCP sessions, and host process metrics.',
+    responses: { 200: summaryResponse },
+    handler: async () => {
+      const port = process.env.PORT || 3737
+      const cached = getLastResults()
+      const doctor = cached ? {
+        results: cached.results,
+        summary: {
+          total: cached.results.length,
+          errors: cached.results.filter(r => r.status === 'error').length,
+          warnings: cached.results.filter(r => r.status === 'warn').length,
+        },
+        cachedAt: new Date(cached.timestamp).toISOString(),
+      } : null
+      const mcp = getMcpSessions()
+      const errors1h = getErrorCount(WINDOW_MS['1h'])
+      return Response.json({
+        doctor,
+        errors1h,
+        activeSessions: mcp.activeSessions,
+        upSince: mcp.upSince,
+        server: {
+          port: Number(port),
+          pid: process.pid,
+          nodeVersion: process.version,
+          memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+          totalMemoryMB: Math.round(totalmem() / 1024 / 1024),
+        },
+      })
+    },
+  }),
+
+  defineRoute({
+    path: '/usage-feed',
+    method: 'GET',
+    summary: 'Unified usage feed',
+    description: 'Backs the tabbed usage section on the health page. Filters by kind, time window, and agent.',
+    query: usageFeedQuery,
+    responses: { 200: passthrough, 400: errorResponse },
+    handler: async (_req, _ctx, { query }) => {
+      const { kind, window, agent } = query
+      return Response.json(getUsageFeed({
+        ...(kind ? { kind: kind as UsageKind } : {}),
+        window: window as WindowKey,
+        ...(agent ? { agent } : {}),
+      }))
+    },
+  }),
+
+  defineRoute({
+    path: '/search-status',
+    method: 'GET',
+    summary: 'Search adapter health',
+    description: 'Returns search adapter readiness and per-table index stats.',
+    responses: { 200: searchStatusResponse },
+    handler: async (_req, ctx) => {
+      const health = ctx.search.health ? await ctx.search.health() : { enabled: false, tables: [] }
+      return Response.json(health)
+    },
+  }),
+
+  defineRoute({
+    path: '/usage',
+    method: 'GET',
+    summary: 'Agent context/token usage',
+    description: 'Returns token + context usage per agent from runtime sessions.',
+    responses: { 200: z.array(passthrough) },
+    handler: async (_req, ctx) => {
+      return Response.json(await getAllAgentUsage(ctx.runtime))
+    },
+  }),
+
+  defineRoute({
+    path: '/registry',
+    method: 'GET',
+    summary: 'List registered plugins',
+    description: 'Returns the plugin registry snapshot — installed plugin metadata and route counts.',
+    responses: { 200: registryResponse },
+    handler: async () => {
+      return Response.json({ plugins: getRegistrySnapshot() })
+    },
+  }),
+
+  defineRoute({
+    path: '/doctor',
+    method: 'GET',
+    summary: 'Run system diagnostics',
+    description: 'Returns cached doctor results by default; pass ?fresh=true to force a fresh run.',
+    query: doctorQuery,
+    responses: { 200: doctorResponse, 500: errorResponse },
+    handler: async (_req, _ctx, { query }) => {
+      const fresh = query.fresh === 'true'
+      if (!fresh) {
+        const cached = getLastResults()
+        if (cached) {
+          return Response.json({
+            ...buildDoctorResponse(cached.results),
+            cachedAt: new Date(cached.timestamp).toISOString(),
+          })
+        }
+      }
+      try {
+        const results = await runDiagnostics(getContentDir(), process.cwd())
+        return Response.json({
+          ...buildDoctorResponse(results),
+          cachedAt: new Date().toISOString(),
+        })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+]
+
+const healthPlugin: BakinPlugin = definePlugin({
   id: 'health',
   name: 'Health',
   version: '1.0.0',
+  routes,
 
   settingsSchema: {
     fields: [
@@ -69,161 +265,14 @@ const healthPlugin: BakinPlugin = {
   contentFiles: [],
 
   activate(ctx: PluginContext) {
-    // ─── Health-check registry hooks + route ─────────────────────────
+    // ─── Health-check registry hooks ─────────────────────────────────
     // `run` is not serializable and isn't useful to consumers that only
     // want registry metadata. Strip it at the boundary.
-    const stripRun = (def: HealthCheckDef) => ({
-      id: def.id,
-      name: def.name,
-      pluginId: def.pluginId,
-      autoFix: !!def.autoFix,
-    })
-
     ctx.hooks.register('health.list', () => listHealthChecks().map(stripRun), { label: 'List health checks.', summary: 'Returns the health checks registered by core and plugins without executing them. Use it when another surface needs to show the available diagnostics or autofix support.', hookKind: 'rpc' })
     ctx.hooks.register('health.getCheck', (d: Record<string, unknown>) => {
       const def = getHealthCheck(d.id as string)
       return def ? stripRun(def) : null
     }, { label: 'Get a health check.', summary: 'Returns metadata for one registered health check by id, without running the check. Use it when a plugin needs the check name, owner, and autofix capability before deciding what to show or run.', hookKind: 'rpc' })
-
-    ctx.registerRoute({
-      path: '/checks',
-      method: 'GET',
-      description: 'List registered plugin health checks (metadata only; does not execute them).',
-      handler: async () => new Response(
-        JSON.stringify({ checks: listHealthChecks().map(stripRun) }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      ),
-    })
-
-    // Aggregated health summary
-    ctx.registerRoute({
-      path: '/summary',
-      method: 'GET',
-      handler: async () => {
-        const port = process.env.PORT || 3737
-
-        // Use cached doctor results instead of triggering a full re-run.
-        // The doctor timer runs every 30 minutes; this avoids re-running
-        // diagnostics on every dashboard poll (every 10s).
-        const cached = getLastResults()
-        const doctor = cached ? {
-          results: cached.results,
-          summary: {
-            total: cached.results.length,
-            errors: cached.results.filter(r => r.status === 'error').length,
-            warnings: cached.results.filter(r => r.status === 'warn').length,
-          },
-          cachedAt: new Date(cached.timestamp).toISOString(),
-        } : null
-
-        const mcp = getMcpSessions()
-        const errors1h = getErrorCount(WINDOW_MS['1h'])
-
-        return Response.json({
-          doctor,
-          errors1h,
-          activeSessions: mcp.activeSessions,
-          upSince: mcp.upSince,
-          server: {
-            port: Number(port),
-            pid: process.pid,
-            nodeVersion: process.version,
-            memoryMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
-            totalMemoryMB: Math.round(totalmem() / 1024 / 1024),
-          },
-        })
-      },
-    })
-
-    // Unified usage feed — backs the tabbed usage section on the health page.
-    // Query params: kind (mcp|rest|agent, optional), window (5m|1h|24h), agent (optional).
-    ctx.registerRoute({
-      path: '/usage-feed',
-      method: 'GET',
-      handler: async (req: Request) => {
-        const url = new URL(req.url)
-        const schema = z.object({
-          kind: z.enum(['mcp', 'rest', 'agent']).optional(),
-          window: z.enum(['5m', '1h', '24h']).default('1h'),
-          agent: z.string().min(1).optional(),
-        })
-        const parsed = schema.safeParse({
-          kind: url.searchParams.get('kind') ?? undefined,
-          window: url.searchParams.get('window') ?? undefined,
-          agent: url.searchParams.get('agent') ?? undefined,
-        })
-        if (!parsed.success) {
-          return Response.json({ error: 'Invalid query', details: parsed.error.flatten() }, { status: 400 })
-        }
-        const { kind, window, agent } = parsed.data
-        return Response.json(getUsageFeed({
-          ...(kind ? { kind: kind as UsageKind } : {}),
-          window: window as WindowKey,
-          ...(agent ? { agent } : {}),
-        }))
-      },
-    })
-
-    // Search adapter health + index stats
-    ctx.registerRoute({
-      path: '/search-status',
-      method: 'GET',
-      handler: async () => {
-        const health = ctx.search.health ? await ctx.search.health() : { enabled: false, tables: [] }
-        return Response.json(health)
-      },
-    })
-
-    // Agent context/token usage from runtime sessions
-    ctx.registerRoute({
-      path: '/usage',
-      method: 'GET',
-      handler: async () => {
-        return Response.json(await getAllAgentUsage(ctx.runtime))
-      },
-    })
-
-    // Registry: all registered plugins. Per-tool call counts are now
-    // available via the unified usage recorder (`/usage-feed?kind=mcp`).
-    ctx.registerRoute({
-      path: '/registry',
-      method: 'GET',
-      handler: async () => {
-        return Response.json({
-          plugins: getRegistrySnapshot(),
-        })
-      },
-    })
-
-    // Doctor — on-demand diagnostics, ?fresh=true forces re-run
-    ctx.registerRoute({
-      path: '/doctor',
-      method: 'GET',
-      handler: async (req: Request) => {
-        const url = new URL(req.url)
-        const fresh = url.searchParams.get('fresh') === 'true'
-
-        if (!fresh) {
-          const cached = getLastResults()
-          if (cached) {
-            return Response.json({
-              ...buildDoctorResponse(cached.results),
-              cachedAt: new Date(cached.timestamp).toISOString(),
-            })
-          }
-        }
-
-        try {
-          const results = await runDiagnostics(getContentDir(), process.cwd())
-          return Response.json({
-            ...buildDoctorResponse(results),
-            cachedAt: new Date().toISOString(),
-          })
-        } catch (err) {
-          return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
-        }
-      },
-    })
 
     // --- Exec tools (MCP) ---
 
@@ -358,6 +407,6 @@ const healthPlugin: BakinPlugin = {
       log.info('Ready — no cached doctor results yet')
     }
   },
-}
+}) as unknown as BakinPlugin
 
 export default healthPlugin

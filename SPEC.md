@@ -1,462 +1,460 @@
-# SPEC — Agent Packages
+# SPEC — OpenAPI from typed route contracts
 
-**Status:** Draft for review (kickoff phase, pre-plan)
-**Owner:** @markhayden
-**Tracks:** New primitive. Companion follow-up issue: [#157 — V2 dispatch-time knowledge retrieval](https://github.com/madeinwyo/bakin/issues/157)
+Branch: `feat/route-contracts` (cut fresh from `main`).
 
----
+## 1. Objective
 
-## Objective
+Replace the current OpenAPI generator's incomplete metadata + source-scan + manifest-list system with a single source of truth: every HTTP route — plugin and core — is declared as a typed, declarative route contract on the plugin definition. The same contract drives:
 
-Introduce **Agent Packages** as a new primitive in Bakin, distinct from plugins. Plugins ship code (routes, UI, MCP tools); agent packages ship **content** — identity, skills, workflows, knowledge — that personifies an agent in OpenClaw and gives it domain perspective.
+- runtime request validation (params/query/body, auto-parsed via Zod)
+- runtime response validation in dev/test (per declared status)
+- OpenAPI 3.1 generation (via `z.toJSONSchema`)
+- `docs:check` enforcement that public routes have non-fallback schemas
+- `/api/docs` returning the live OpenAPI document built from the **runtime** registry (reflects installed surface, including user plugins)
+- `docs/public/openapi.json` reflecting the **bundled** surface (core + 8 in-repo plugins) for the docs site. `messaging` and `projects` exist in this repo only as `plugins/{messaging,projects}/dist/` build artifacts — their source lives in `../bakin-bits-official/`. They continue to be emitted via the legacy `extractApiRoutes` source-scan fallback against the sibling repo, marked `x-bakin-source: "extracted"` in the OpenAPI document, and exempt from the validator's schema requirements until a sibling-repo follow-up migrates them.
 
-### Why now
+When done, both documents are accurate and `docs:check` fails closed if any public bundled route ships without typed schemas.
 
-Every agent on this machine (Pixel, Rolo, Jessica, Scout, Zen, Nemo) has been built ad-hoc:
-- Workspace files (`SOUL.md`, `IDENTITY.md`, `AGENTS.md`, `TOOLS.md`) hand-edited directly under `~/.openclaw/workspaces/`.
-- Skills installed globally to `~/.openclaw/skills/` with no per-agent ownership and no provenance.
-- Knowledge baked opaquely into SOUL.md prose — no toggling, no inspection, no diffing.
-- No install/update/drift story, no way to share an agent across machines, no separation between content and customization.
+Out of scope: backwards compatibility of the *final* shape, deprecation shims past the migration window, allow-lists for unmigrated routes. Single user, single machine — clean cut at the *end* of the migration. During the migration window (commits 1–16) the old `ctx.registerRoute` path coexists so every commit builds green.
 
-With **no production users**, this is the moment to formalize the model cleanly. Once we ship an initial release, the data model becomes load-bearing. So: full refactor now, no compatibility shims later.
+## 2. Architecture
 
-### Outcome
+### Source of truth: declarative routes
 
-- `bakin agents install github:madeinwyo/bakin-agent-pixel` produces a fully personified Pixel: workspace files seeded, skills projected to her workspace, workflows registered, knowledge available to enable per-lesson.
-- `bakin doctor` detects drift, missing projection, broken markers, and update-available status.
-- Teams UI surfaces install state per agent (`unmanaged | adopted | managed | drifted | update-available`), an Adopt flow for existing OpenClaw agents, knowledge toggles, and a curated catalog of suggested agents (ships as static JSON in the binary).
-- Existing OpenClaw agents (`roscoe`, etc.) can be **adopted** non-destructively — Bakin only injects managed blocks, never overwrites their files.
-- Tests cannot touch real `~/.bakin/` or `~/.openclaw/` — both directories must be mocked.
+Routes are **declarative**, not imperatively registered. Each plugin (and the synthetic core plugin) exposes a `routes` field of route contracts on its plugin definition (always authored via `defineRoute` / `defineCoreRoute` for inference — never as a bare `APIRoute[]` annotation). The host reads `plugin.routes` and registers them into the dispatcher table **before** `activate(ctx)` runs. `activate()` is reserved for side effects only (timers, watchers, exec tools, health checks, hook registrations, search content types).
 
----
+`ctx.registerRoute(...)` is **removed in commit 17** (after every plugin and every core route has migrated). Until then it remains as a thin adapter that funnels into the same registry. **Adapter mapping during migration:** legacy `route.input` is registered as `body` (assumed `application/json`); legacy `route.output` is registered as `responses[200]`; routes without `input`/`output` are still registered but appear in the validator's warning list until they migrate to the declarative shape. There is no permanent dual-API surface — only a migration-window coexistence.
 
-## Scope
+The synthetic core plugin lives at `packages/host/src/core-routes/` and exposes `coreRoutes: APIRoute[]`.
 
-### V1 ships (this spec)
+### Type hierarchy
 
-- **Four package kinds, full composition from day one:**
-  `agent` | `skill-pack` | `workflow-pack` | `knowledge-pack`
-- **Single manifest:** `bakin-package.json` with zod-validated schema. `kind` field discriminates.
-- **Sources:** local path or `github:user/repo[@ref]`. No registry, no bare-name resolution. Bare names error with `use github:user/repo or a local path`.
-- **Lockfile:** `~/.bakin/packages/lock.json` — resolved commit SHAs, transitive deps, ref-counts, adoption records, projection list w/ sha256.
-- **Three agent states:** `unmanaged` (in OpenClaw but no Bakin tracking), `adopted` (Bakin tracks managed-blocks-only attachments), `managed` (Bakin owns the package + projected files).
-- **SOUL.md template seeding** — written once on fresh install, agent owns the file from then on. Bakin owns only the markers within it (`<!-- bakin:knowledge-catalog:start -->` and per-lesson `<!-- bakin:knowledge:<package>:<lesson-id>:start -->`). Doctor never overwrites the template; surfaces `template-update-available` instead. `bakin agents update <id> --refresh-template` forces rewrite.
-- **Provenance markers:** `.installedBy` sidecar on every projected file (skills, avatars, workspace files) carrying `{package, version, ref, commitSha, sha256, installedAt}`. Mirrors the existing `plugin-assets.ts` pattern.
-- **`.userEdited` sentinel** locks any projected file from overwrites — including `--fix` and `--refresh-template`.
-- **Skill projection scopes** (settled rule, no exceptions):
-  - **Agent-package skills** (whether bundled in `contributions.skills` or pulled via the agent's `dependencies.skills`) → **per-agent** at `{workspace}/skills/<name>/` (OpenClaw's `workspaceSkills` tier — confirmed in `/opt/homebrew/lib/node_modules/openclaw/dist/skills-B5qdBn1G.js:584-592`). They live in *that* agent's workspace.
-  - **Standalone `kind: "skill-pack"` skills** (installed via `bakin packages install`) → **global** at `~/.openclaw/skills/<name>/`. Matches the plugin-shipped skill convention.
-  - **Plugin-shipped skills** (existing `defaults/openclaw-skills/*` pattern) → **global** at `~/.openclaw/skills/<name>/`. Unchanged.
-- **Workflows + workflow-skills projection** — agent packages do **not** register through the plugin registry. The workflows plugin's source registry gains a new `agent-package` source kind that resolves workflows from `~/.bakin/packages/agents/<id>/workflows/*.yaml` and workflow-skills from the same package's `workflow-skills/*.md`. Skill-loader (`plugins/workflows/lib/skill-loader.ts`) gains a parallel resolution tier between in-memory plugin skills and user files. Removing a package = lockfile entry deleted = source registry stops resolving the package's contributions. No fake plugin id, no restart-on-remove.
-- **Collision policy:**
-  - Same projection target + same sha256 → no-op.
-  - Same target + different sha → refuse install. Resolve via `installAs` (declarative in `dependencies[].installAs` for intra-package-graph collisions, OR imperative `--install-as` CLI flag for user-resolved collisions at install time — both feed the same resolved-id path in the installer).
-  - `--replace` overrides collision with explicit confirmation. Never automatic.
-  - `.userEdited` → never overwrite, always.
-- **CLI surface** (full list in **Commands** section).
-- **Curated install browser:** Teams UI reads a static `packages/host/src/data/curated-agents.json` baked into the binary. One-click install of suggested packages without committing to a hosted registry.
-- **Doctor checks** under `agent-assets`: drift (sha mismatch), missing projection, broken markers, template-update-available, lockfile vs filesystem desync.
-- **Migration:** rebuild Pixel, Rolo, Jessica, Scout, Zen, Nemo, Basil, Patch as packages in `agents/<id>/` in the monorepo. Roscoe and `main` (the orchestrator) stay unmanaged.
-- **Test isolation:** every test that touches agent-package code MUST mock both content-dir AND OpenClaw home. Mandatory rule, equal weight to the existing content-dir rule.
+```ts
+interface RouteContext {
+  runtime: AgentRuntimeAdapter
+  search: SearchAPI
+  tasks: PluginTaskService
+  hooks: HookAPI
+  activity: ActivityAPI
+  storage: StorageAdapter
+}
 
-### V1 explicitly does NOT ship
+interface PluginContext extends RouteContext {
+  pluginId: string
+  getSettings<T>(): T
+  registerExecTool(...): void
+  registerHealthCheck(...): void
+  // existing per-plugin surface
+}
 
-- Hosted registry (curated JSON only)
-- Trust levels / signature verification
-- Dispatch-time knowledge retrieval (issue #157)
-- Hard tool/skill scoping enforcement (#42 — `agent.allowedTools` / `agent.allowedSkills` are declarative-only in V1; the dispatch-routing layer that reads and enforces them is its own feature)
-- Bundles (e.g. `bakin install creative-team`)
-- Live remote fetch at agent runtime (only at install/update time)
-
----
-
-## Commands
-
-### Lifecycle (CLI)
-
-```text
-# Agent packages
-bakin agents install <path|github:user/repo[@ref]>
-bakin agents install <path|github:user/repo[@ref]> --adopt <agent-id>
-bakin agents list                              # all agents w/ state badges
-bakin agents update [<id>]                     # update one or all
-bakin agents update <id> --refresh-template    # overwrite SOUL.md template
-bakin agents remove <id>                       # remove tracking; keep agent
-bakin agents remove <id> --keep-blocks         # keep managed blocks
-bakin agents remove <id> --delete-agent        # also delete OpenClaw agent
-
-# Knowledge toggles
-bakin agents knowledge list <agent-id>
-bakin agents knowledge enable <agent-id> <lesson-id>
-bakin agents knowledge disable <agent-id> <lesson-id>
-
-# Standalone packs (skill-pack / workflow-pack / knowledge-pack)
-bakin packages list
-bakin packages install <path|github:user/repo[@ref]>
-bakin packages update [<id>]
-bakin packages remove <id>                     # blocked if refCount > 0
-
-# Doctor integration (mirrors plugin-assets)
-bakin check agent-assets
-bakin install agent-assets
-bakin doctor [--fix]                           # umbrella
-```
-
-### REST
-
-Top-level routes (not nested under `/api/plugins/team/...` — agent install lifecycle is its own primitive, not owned by the team plugin):
-
-```text
-# Agent-package surface
-GET    /api/agents                                     # all agents w/ state badges
-POST   /api/agents/install                             # body: { source, type, adopt?, replace?, installAs? }
-POST   /api/agents/{agentId}/adopt                     # body: { source }
-DELETE /api/agents/{agentId}                           # body: { keepBlocks?, deleteAgent? }
-POST   /api/agents/{agentId}/update                    # body: { refreshTemplate? }
-GET    /api/agents/{agentId}/knowledge                 # list + enabled state
-POST   /api/agents/{agentId}/knowledge/{lessonId}      # body: { enabled }
-
-# Standalone pack surface (skill-pack/workflow-pack/knowledge-pack)
-GET    /api/packages                                   # list all installed packages
-POST   /api/packages/install                           # body: { source, type }
-DELETE /api/packages/{pkgId}                           # refuses w/ refCount > 0
-POST   /api/packages/{pkgId}/update
-
-# Catalog
-GET    /api/curated                                    # static curated catalog
-```
-
----
-
-## Project Structure
-
-### In-repo (development)
-
-```text
-agents/                                # dev location for reference packages
-├── pixel/                             # canonical first package — drives schema
-│   ├── bakin-package.json
-│   ├── workspace/                     # template files seeded on install
-│   │   ├── SOUL.md                    # includes knowledge markers
-│   │   ├── IDENTITY.md
-│   │   ├── AGENTS.md
-│   │   └── TOOLS.md
-│   ├── skills/                        # → {workspace}/skills/
-│   │   └── image-generation/
-│   │       ├── SKILL.md
-│   │       └── scripts/
-│   ├── workflow-skills/               # → in-memory via workflows plugin
-│   ├── workflows/                     # → registered via workflows plugin
-│   ├── knowledge/                     # markdown w/ frontmatter (title, tags, defaultEnabled)
-│   │   ├── product-photography.md
-│   │   ├── editorial-photography.md
-│   │   └── prompt-style-system.md
-│   ├── assets/                        # → ~/.bakin/agents/{id}/
-│   │   ├── avatar.jpg
-│   │   └── avatar-full.png
-│   └── tests/
-├── rolo/                              # backfilled
-├── jessica-fetcher/
-├── scout/
-├── zen/
-└── nemo/
-
-packages/core/src/agent-packages/      # types + zod schemas (pure, no fs)
-├── manifest.ts                        # bakin-package.json zod schema
-├── lockfile.ts                        # lock.json schema + reader/writer
-├── markers.ts                         # .installedBy + .userEdited helpers
-├── managed-blocks.ts                  # SOUL.md marker insertion/extraction
-└── types.ts
-
-src/core/agent-packages/               # server-side install/projection logic
-├── installer.ts                       # fetch → validate → resolve deps → project
-├── projector.ts                       # writes to ~/.openclaw/* and ~/.bakin/agents/{id}/
-├── source-fetcher.ts                  # local + github (git clone --depth 1)
-├── dependency-resolver.ts             # transitive resolution + SHA pinning
-├── adoption.ts                        # attach to existing OpenClaw agent
-├── doctor-checks.ts                   # drift/missing/update-available
-└── curated.ts                         # reads curated-agents.json
-
-packages/host/src/api/agents/          # REST handlers
-├── install.ts | list.ts | remove.ts | update.ts | adopt.ts
-└── knowledge/{list,toggle}.ts
-
-packages/host/src/api/packages/        # standalone packs
-└── install.ts | list.ts | remove.ts | update.ts
-
-packages/host/src/data/
-└── curated-agents.json                # static catalog for UI install browser
-
-src/core/onboarding/agent-assets.ts    # `bakin {check,install} agent-assets`
-
-plugins/team/                          # extended with state UI
-└── components/
-    ├── package-state-badge.tsx
-    ├── adopt-dialog.tsx
-    ├── knowledge-toggle-list.tsx
-    └── curated-browser.tsx
-```
-
-### Runtime data (`~/.bakin/`)
-
-```text
-~/.bakin/
-├── packages/
-│   ├── lock.json                                # canonical install ledger
-│   ├── agents/
-│   │   └── pixel@0.1.0/                         # immutable installed package source
-│   ├── skill-packs/
-│   │   └── madeinwyo.bakin-skills-visual@0.3.1/
-│   ├── workflow-packs/
-│   └── knowledge-packs/
-└── agents/                                      # per-agent UI state (existing role)
-    └── pixel/
-        ├── avatar.jpg                           # projected from package
-        ├── avatar.jpg.installedBy               # provenance sidecar
-        ├── avatar-full.png
-        ├── avatar-full.png.installedBy
-        └── adoption.json                        # { state, package, agentId, ... }
-```
-
----
-
-## Manifest Schema (target shape)
-
-```jsonc
-{
-  "id": "pixel",
-  "kind": "agent",                                 // "agent" | "skill-pack" | "workflow-pack" | "knowledge-pack"
-  "name": "Pixel",
-  "version": "0.1.0",
-  "description": "Creative image and design agent.",
-  "bakin": "^1.0.0",
-  "author": "Made in Wyo",
-
-  // Present iff kind === "agent"
-  "agent": {
-    "identity": { "name": "Pixel", "emoji": "🎨" },
-    "role": "Creative content and design",
-    "defaultModel": "anthropic/claude-sonnet-4-20250514",
-    "dispatchableBy": ["main"],
-    "tags": ["creative", "image", "design", "brand"],
-    "allowedTools": ["bakin_exec_assets_*"],       // V1 doc-only; #42 enforces later
-    "allowedSkills": ["image-generation"]
-  },
-
-  // Present iff kind === "agent"
-  "install": {
-    "createIfMissing": true,
-    "adoptIfExists": true,
-    "writeWorkspaceFiles": true,
-    "installSkills": true,
-    "installWorkflows": true,
-    "enableKnowledge": ["prompt-style-system"]
-  },
-
-  // What the package contributes — paths are relative to package root
-  "contributions": {
-    "workspaceFiles": ["workspace/SOUL.md", "workspace/IDENTITY.md", "workspace/AGENTS.md", "workspace/TOOLS.md"],
-    "skills":         ["skills/image-generation"],
-    "workflows":      ["workflows/image-generation.yaml"],
-    "workflowSkills": ["workflow-skills/generate-image.md"],
-    "knowledge":      ["knowledge/product-photography.md", "knowledge/editorial-photography.md", "knowledge/prompt-style-system.md"],
-    "assets":         ["assets/avatar.jpg", "assets/avatar-full.png"]
-  },
-
-  // External dependencies — any kind can declare these
-  "dependencies": {
-    "skills":    [{ "source": "github:madeinwyo/bakin-skills-visual",   "ref": "v0.3.1", "items": ["image-generation"], "installAs": null }],
-    "workflows": [{ "source": "github:madeinwyo/bakin-workflows-creative", "ref": "v0.2.0", "items": ["image-generation"], "installAs": null }]
-  }
+interface CoreContext extends RouteContext {
+  pluginManifests: PluginRegistry
+  systemSettings: SystemSettingsAPI
+  // host-only surface
 }
 ```
 
-**Knowledge file frontmatter** (per D6 — metadata lives in the file, not the manifest):
+Plugin route handlers receive `PluginContext`. Core route handlers receive `CoreContext`. The dispatcher's route table is uniform; only the bound context differs by registration origin.
 
-```markdown
----
-title: Product Photography
-tags: [product, commerce, lighting]
-defaultEnabled: false
----
+### Route shape
 
-# Product Photography
+```ts
+type ParsedInput<P, Q, B> =
+  & (P extends undefined ? {} : { params: P })
+  & (Q extends undefined ? {} : { query: Q })
+  & (B extends undefined ? {} : { body: B })
 
-Pixel's lens for product work...
-```
+interface APIRoute<
+  C extends RouteContext = RouteContext,
+  P = undefined,
+  Q = undefined,
+  B = undefined,
+> {
+  path: string
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+  summary: string
+  description?: string
 
-The manifest's `contributions.knowledge` only lists paths.
+  params?: z.ZodType<P>
+  query?: z.ZodType<Q>
+  body?:
+    | z.ZodType<B>
+    | { contentType: 'application/json'; schema: z.ZodType<B> }
+    | { contentType: 'multipart/form-data'; schema?: z.ZodType }
+    | { contentType: '*/*'; schema?: z.ZodType }
+    | { contentType: 'none' }                       // explicit "no body consumed"
 
----
+  responses: Partial<Record<HttpStatus, ResponseSpec>>
 
-## Lockfile Schema
+  visibility?: 'public' | 'internal'                // default 'public'
+  stability?: 'stable' | 'beta' | 'experimental' | 'deprecated'   // default 'stable'
+  permissions?: string[]
+  examples?: DocsExample[]
+  operationId?: string
+  tags?: string[]
 
-```jsonc
-{
-  "version": 1,
-  "packages": {
-    "pixel": {
-      "kind": "agent",
-      "version": "0.1.0",
-      "source": "github:madeinwyo/bakin-agent-pixel",
-      "ref": "v0.1.0",
-      "commitSha": "abc123...",
-      "installedAt": "2026-04-24T12:34:56Z",
-      "state": "managed",                                // "managed" | "adopted"
-      "agentId": "pixel",                                // OpenClaw agent id
-      "projections": [
-        { "kind": "skill",             "target": "/Users/.../workspaces/pixel/skills/image-generation/", "sha256": "..." },
-        { "kind": "asset",             "target": "/Users/.../bakin/agents/pixel/avatar.jpg",             "sha256": "..." },
-        { "kind": "workspace-file",    "target": "/Users/.../workspaces/pixel/IDENTITY.md",              "sha256": "...", "templateOnly": true },
-        { "kind": "knowledge-marker",  "target": "/Users/.../workspaces/pixel/SOUL.md",                  "blockId": "knowledge:pixel:product-photography" }
-      ],
-      "knowledgeEnabled": ["prompt-style-system"],
-      "dependencies": ["madeinwyo.bakin-skills-visual@0.3.1"]
-    },
-    "madeinwyo.bakin-skills-visual@0.3.1": {
-      "kind": "skill-pack",
-      "version": "0.3.1",
-      "source": "github:madeinwyo/bakin-skills-visual",
-      "ref": "v0.3.1",
-      "commitSha": "def456...",
-      "refCount": 2,
-      "dependents": ["pixel", "rolo"]
-    }
-  }
+  handler: (
+    req: Request,
+    ctx: C,
+    parsed: ParsedInput<P, Q, B>,
+  ) => Response | Promise<Response>
 }
+
+interface JsonResponseSpec { contentType: 'application/json'; schema: z.ZodType }
+interface NoContentResponseSpec { contentType: 'none' }                            // 204, redirects
+interface NonJsonResponseSpec {
+  contentType:
+    | 'text/event-stream'
+    | 'text/html'
+    | 'text/plain'
+    | 'application/octet-stream'
+    | 'image/png' | 'image/jpeg' | 'image/svg+xml'
+    | (string & {})                                    // escape hatch, validator ignores
+  schema?: z.ZodType
+}
+
+type ResponseSpec =
+  | z.ZodType                                          // shorthand: equivalent to JsonResponseSpec with this schema
+  | JsonResponseSpec
+  | NoContentResponseSpec
+  | NonJsonResponseSpec
 ```
 
----
+Discriminated by `contentType`. JSON and "none" are exact literals; non-JSON enumerates the content types Bakin actually emits today plus an escape hatch for future types. The discriminant keeps TS narrowing honest and prevents the broad-string-overlap problem.
 
-## Code Style
+`ParsedInput<P, Q, B>` is a **conditional intersection**: only declared schemas appear as keys. A route with no `params`, only `query`, no `body` produces `parsed: { query: Q }`. Runtime construction of `parsed` matches this shape exactly — undeclared properties are omitted, not set to `undefined`. Type and runtime stay aligned.
 
-- TypeScript strict. No `any` across module boundaries.
-- Zod schemas at every I/O boundary: manifest, lockfile, install request body, adoption.json, `.installedBy` sidecar.
-- Functional preference: pure resolvers/validators in `packages/core/src/agent-packages/`, side-effecting installers/projectors in `src/core/agent-packages/`.
-- `createLogger('agent-pkg:<phase>')` for logging; phases: `manifest`, `fetch`, `resolve`, `project`, `lockfile`, `doctor`, `adopt`.
-- Atomic writes for the lockfile and any projected file (tmp + rename).
-- Staging-directory pattern for installs (mirrors `packages/host/src/api/plugins/install.ts`): clone/copy to `~/.bakin/packages/.staging-{ts}/` → validate → atomic rename to final location → cleanup staging on failure.
-- File naming: `kebab-case.ts` / `kebab-case.tsx`. Types `PascalCase`. Constants `UPPER_SNAKE_CASE`.
+The `R` (success-response) generic is intentionally absent. Output validation is runtime-only against `responses[status].schema`; compile-time response typing is not worth the type complexity.
 
----
+### Inference helpers (required)
 
-## Testing Strategy
+To get per-route type inference inside arrays, plugins are authored via const-generic helpers. Bare `routes: APIRoute[]` annotations are forbidden — they widen and break inference.
 
-### Mandatory mocks (every test in this feature)
+```ts
+// plugin authors
+import { definePlugin, defineRoute } from '@bakin/sdk'
 
-```typescript
-const testBakinDir = join(tmpdir(), `bakin-test-${Date.now()}-${randomUUID()}`)
-const testOpenClawDir = join(tmpdir(), `openclaw-test-${Date.now()}-${randomUUID()}`)
+export default definePlugin({
+  id: 'tasks',
+  name: 'Tasks',
+  version: '2.1.0',
+  routes: [
+    defineRoute({
+      path: '/',
+      method: 'POST',
+      body: createTaskBody,
+      responses: { 200: createTaskResponse },
+      handler: async (req, ctx, { body }) => { /* body is typed; ctx is PluginContext */ ... },
+    }),
+  ],
+  activate(ctx) { /* side effects */ },
+})
 
-// Existing rule (still required)
-mock.module('../../src/core/content-dir', () => ({
-  getContentDir: () => testBakinDir,
-  getBakinPaths: () => bakinPathsUnder(testBakinDir),
-}))
-mock.module('../../packages/core/src/content-dir', () => ({
-  getContentDir: () => testBakinDir,
-  getBakinPaths: () => bakinPathsUnder(testBakinDir),
-}))
+// core route subject modules
+import { defineCoreRoute } from '@bakin/host/core-routes'
 
-// NEW — mandatory for any agent-package test
-mock.module('../../packages/core/src/openclaw-home', () => ({
-  getOpenClawHome: () => testOpenClawDir,
-  getOpenClawPath: (...parts: string[]) => join(testOpenClawDir, ...parts),
-}))
+export const agentRoutes = [
+  defineCoreRoute({
+    path: '/api/agents/start',
+    method: 'POST',
+    body: startAgentBody,
+    responses: { 200: startAgentResponse },
+    handler: async (req, ctx, { body }) => { /* ctx is CoreContext */ ... },
+  }),
+]
+```
 
-// When testing agent runtime behavior, install a runtime adapter mock via
-// globalThis.__bakinFallbackRuntimeAdapter or the plugin test context.
+`defineRoute` binds `C = PluginContext`. `defineCoreRoute` binds `C = CoreContext`. Both are identity functions with const generics. Authors **must** use them.
 
-afterAll(() => {
-  rmSync(testBakinDir, { recursive: true, force: true })
-  rmSync(testOpenClawDir, { recursive: true, force: true })
+### Query coercion
+
+`query` schemas are parsed from `Record<string, string | string[]>` extracted from `URLSearchParams` (multiple identical keys → array). Authors who want numbers/booleans use `z.coerce.number()` / `z.coerce.boolean()`. The dispatcher does **not** auto-coerce.
+
+### Body content types
+
+| Declaration                                                        | Dispatcher behavior                                                |
+|--------------------------------------------------------------------|--------------------------------------------------------------------|
+| `body: someZodSchema` (shorthand)                                  | Parse `application/json` body via `someZodSchema`. Empty/wrong type → 400. |
+| `body: { contentType: 'application/json', schema }`                | Same as shorthand, explicit.                                       |
+| `body: { contentType: 'multipart/form-data', schema? }`            | No auto-parse. Handler reads `req.formData()`. If schema present, handler invokes `parseMultipart(req, schema)` helper. Public OK without schema (binary uploads). |
+| `body: { contentType: '*/*', schema? }`                            | Raw passthrough. Handler reads `req.body` / `req.arrayBuffer()`.   |
+| `body: { contentType: 'none' }`                                    | Dispatcher rejects any non-empty body with 415. No `parsed.body`.  |
+| `body` omitted                                                     | Dispatcher does not read body. Handler does not receive `parsed.body`. Incoming body is silently ignored. |
+
+**`{ contentType: 'none' }` is the explicit way to say "this route consumes no body"** (e.g., POST `/api/dispatch`). It documents intent in OpenAPI and is enforced by the dispatcher.
+
+### Response validation
+
+Dispatcher behavior after handler returns:
+
+1. Inspect `response.status`.
+2. Look up `responses[status]`.
+3. Not declared and `NODE_ENV !== 'production'` → log warning (test → fail).
+4. Declared as `{ contentType: 'none' }` or non-JSON → no validation, pass through.
+5. Declared as Zod schema or `{ schema }` with JSON content → `safeParse(await response.clone().json())`. On mismatch in non-prod → log warning (test → fail). Production never parses.
+
+Errors thrown inside handlers convert to `500 { error }` and validate against `responses[500]` if declared.
+
+### Auto-emitted error envelope
+
+Shared error schema in `packages/core/src/openapi/errors.ts`:
+
+```ts
+const errorEnvelope = z.object({
+  error: z.string(),
+  issues: z.array(z.unknown()).optional(),
 })
 ```
 
-A test that writes to a real `~/.openclaw/` is a P0 failure regardless of whether it crashes — same severity as a leak to `~/.bakin/`.
+The dispatcher emits `400 { error: 'invalid input', issues }` automatically on params/query/body parse failure, and `415 { error }` on body content-type mismatch. OpenAPI emits a global `400` response for every route that declares any of `params|query|body`. The global `415` is emitted **only** for routes with a `body` declaration (params/query-only routes can't trigger it). Authors don't repeat these per-route.
 
-### Pyramid
+### Search-generated routes
 
-- **Unit:** zod schemas, lockfile read/write, marker parse/inject, sha hashing, manifest validation. Pure functions, no fs.
-- **Integration:** install pipeline against fixtures in `tests/fixtures/agent-packages/`. Each gets temp content-dir + temp openclaw-home. Verify lockfile entries, projected files, sha markers, adoption.json, idempotency on re-install.
-- **E2E (manual smoke):** `bakin agents install ./agents/pixel` against temp homes; verify roundtrip works against the real Pixel package the user actually uses.
-- **Drift simulation:** mutate a projected file mid-test → assert doctor reports drift → assert `--fix` repairs → assert `.userEdited` blocks repair.
-- **Adoption:** pre-seed an OpenClaw agent → install with `--adopt` → assert only managed blocks written, existing files untouched, adoption.json recorded.
-- **Composition:** install agent w/ skill-pack dep → assert `refCount: 1` → install second agent w/ same dep → `refCount: 2` → remove first agent → `refCount: 1`, pack stays.
-- **Collision:** install two packages with same skill name + different sha → assert refusal → install with `installAs` alias → assert both projected, no overlap.
+Today `ctx.search.registerFileBackedContentType()` auto-wires a `GET /search` route. Replaced by a **route factory** plugins include in their `routes` array:
 
-CI: `bun test --isolate` (existing convention).
+```ts
+import { searchRoute } from '@bakin/sdk'
 
----
+routes: [
+  // ... domain routes
+  searchRoute({ table: 'tasks' }),
+],
+```
 
-## Boundaries
+`searchRoute` returns an `APIRoute<PluginContext, ...>` with `query` and `responses` schemas bound at module scope. The handler uses `ctx.search` at request time — no closure over `activate()`-initialized services. OpenAPI emission picks it up like any other route. Internal default for the search adapter's table-management routes (`registerContentType`-flavor) — they remain hooks, not HTTP.
 
-### Always do
+### Handler / activate ordering
 
-- Validate manifests with zod **before** any filesystem mutation.
-- Stage installs in a temp dir; atomic rename to final location only after success.
-- Write `.installedBy` sidecar with `{package, version, ref, commitSha, sha256, installedAt}` for **every** projected file.
-- Resolve `github:user/repo[@ref]` to a commit SHA at install time; record both source ref and SHA in the lockfile.
-- Topologically sort dependencies before install; install leaves first.
-- Refuse install on collision (same projection target, different sha) unless an `installAs` alias resolves it or `--replace` is passed.
-- Honor `.userEdited` always — never overwrite, even on `--fix` or `--refresh-template`.
-- Log every package mutation through `appendAudit()`.
-- Use `getOpenClawPath()` and `getContentDir()` everywhere — never hardcode `~/.openclaw/` or `~/.bakin/`.
+Routes are registered **before** `activate(ctx)` runs. Handlers must use `ctx` for every service — never close over module-scope state initialized in `activate()`. Module-scope schemas/factories are fine; module-scope service handles set up in `activate()` are forbidden.
 
-### Always ask first (UI confirm or CLI requires explicit flag)
+### Core route registration
 
-- `--delete-agent` (destructive — removes OpenClaw workspace).
-- `--refresh-template` (overwrites user-mutable SOUL.md template after install).
-- `--replace` for collision override.
-- Transitive github fetches when the dependency tree exceeds 5 packages or 25 MB total.
+Per-subject modules under `packages/host/src/core-routes/`:
 
-### Never do
+```
+packages/host/src/core-routes/
+  index.ts          — barrel, exports coreRoutes: APIRoute<CoreContext>[]
+  agents.ts         — /api/agents/*
+  agent-packages.ts — /api/agent-packages/*
+  packages.ts       — /api/packages/*
+  plugins.ts        — /api/plugins/{install,link,unlink,upgrade,remove,manifest,assets}
+  dispatch.ts       — /api/dispatch
+  settings.ts       — /api/settings, /api/plugin-settings/*
+  events.ts         — /api/events, /api/dev/events, /api/dev/notify
+  misc.ts           — /api/version, /api/paths, /api/state, /api/search, /api/reindex,
+                      /api/activity*, /api/internal/continuation, /api/exec-tools/:toolName,
+                      /api/memory/log, /api/curated, /api/assets/:path, /api/docs
+```
 
-- Write to real `~/.bakin/` or `~/.openclaw/` from any test.
-- Fetch a remote package at agent runtime — only at install/update.
-- Overwrite a `.userEdited` file.
-- Silently choose between competing package owners on collision.
-- Run skill scripts at install time — scripts execute only inside OpenClaw at agent runtime.
-- Hardcode `~/.openclaw/` or `~/.bakin/`.
-- Inline knowledge metadata (`title`, `tags`, `defaultEnabled`) in the manifest — must live in the knowledge file's frontmatter.
-- Bundle agent packages into the binary (no core agents — curated browser handles discovery).
+`server.ts` reads `coreRoutes` and registers them at boot, before user plugins. Files at `packages/host/src/api/**/*.ts` collapse: their handler bodies move into the matching subject module. `dispatchWebHandler` is replaced by registry lookup.
 
----
+### Registry & dispatch
 
-## Migration Plan (within V1)
+Single `RouteRegistry` at `packages/core/src/routing/registry.ts`.
 
-Each numbered step is a **commit checkpoint**. The plan-phase output will detail file-level changes per step.
+- **Storage:** radix-style `Map<method, RadixNode>` indexed by full path (plugin routes prefixed with `/api/plugins/<id>`).
+- **Insertion:** `register(route)` validates `<method, fullPath>` is not already registered. Duplicate → throws at boot.
+- **Path matching:** literal segments take precedence over `:param`. `:param` segments take precedence over wildcard. No ambiguity allowed at boot.
+- **Operation identity:** generated `operationId = <scope>.<methodLower>.<slug(path)>` unless declared. Duplicate operationIds → throws at boot.
+- **Path normalization for OpenAPI:** `:id` → `{id}`. Path params auto-emitted into OpenAPI `parameters` with type derived from the `params` schema. The `string` fallback for `:param` segments without a `params` schema applies only to **internal** routes and **unmigrated** routes (commits 1–16); the validator (Section "Validator") rejects this state for public bundled routes at commit 18.
+- **Tags:** plugin name (or `Core`); overridable via `route.tags`.
+- **Reset:** `clearRegistry()` for tests. Tests that exercise the dispatcher must call this in `beforeEach`.
+- **Visibility:** validator enforces `visibility !== 'internal'`. Internal routes are emitted to OpenAPI with `x-bakin-visibility: 'internal'` and skipped by the validator. Stability is orthogonal — `experimental` public routes still require schemas.
+- **Routing precedence in `server.ts`:** during the migration window the request handler tries paths in this order: (1) registry match for any registered route (plugin or core); (2) legacy file-routed fallback under `packages/host/src/api/**` for unmigrated core routes; (3) static asset / SPA shell fallback. Step 2 is deleted in commit 17 once every core route lives in the registry.
 
-1. **Manifest schema.** Zod schema for `bakin-package.json` + types in `packages/core/src/agent-packages/manifest.ts`. Unit tests against fixture manifests covering all four kinds. **Checkpoint commit.**
-2. **Lockfile + markers.** Zod schema for `lock.json`, atomic read/write, `.installedBy` and `.userEdited` helpers, managed-block marker injection/extraction (lifted/refactored from `src/core/doctor.ts:898`). **Checkpoint commit.**
-3. **Pixel as first package.** Restructure current Pixel workspace into `agents/pixel/` with full package shape. Knowledge files extracted from her current SOUL.md. Forces the schema to match reality, not a designed-from-scratch fantasy. **Checkpoint commit.**
-4. **Source fetcher + installer + projector.** Core install pipeline — local source path + github: cloning, manifest validation, dependency resolution (single-level for now), projection to `~/.openclaw/workspaces/pixel/` + `~/.bakin/agents/pixel/`, lockfile updates. End-to-end against real Pixel. **Checkpoint commit.**
-5. **CLI surface.** `bakin agents {install,list,remove,update,knowledge {list,enable,disable}}` and `bakin packages {install,list,remove,update}`. Wired through `cli/bakin.ts` (HTTP) and `src/core/cli.ts` (binary dispatcher). Doctor integration (`bakin check agent-assets` / `bakin install agent-assets`) added to `src/core/onboarding/agent-assets.ts`. **Checkpoint commit.**
-6. **Backfill agents.** Repackage Rolo, Jessica-fetcher, Scout, Zen, Nemo as `agents/<id>/` packages. Each becomes a checkpoint commit (5 commits — one per agent — so any single agent's regression rolls back independently). Roscoe stays unmanaged. Basil/patch decision deferred to plan phase.
-7. **Teams UI.** State badges, adopt dialog, knowledge toggle list, curated install browser. New `package-state-badge.tsx`, `adopt-dialog.tsx`, `knowledge-toggle-list.tsx`, `curated-browser.tsx`. **Checkpoint commit.**
-8. **Doctor checks + drift simulation.** Drift detection, `--fix` repair, template-update-available reporting, lockfile/filesystem desync detection. **Checkpoint commit.**
-9. **Composition.** Skill-pack / workflow-pack / knowledge-pack standalone install. Transitive dependency resolution. Lockfile ref-counting. `installAs` aliases. Cross-package collision tests. **Checkpoint commit.**
-10. **Curated catalog.** Populate `packages/host/src/data/curated-agents.json` with Pixel, Rolo, Jessica entries pointing at (eventual) standalone github repos. UI install browser hooked up. **Checkpoint commit.**
-11. **Documentation.** Update `CLAUDE.md` (Architecture + Plugin System sections), `.claude/knowledge/agent-system.md` (full overhaul), `docs/` with an `agent-packages-authoring.md` walkthrough mirroring `docs/plugin-authoring.md`. **Checkpoint commit.**
-12. **Final test pass.** `bun test --isolate` clean; manual smoke against real OpenClaw home (after backing it up); `bakin doctor` run. **Final commit.**
+### Docs generation: static vs live
 
-Each checkpoint is independently revertable. The plan phase will turn each step into a task list with acceptance criteria, file-level changes, and explicit commit boundaries.
+| Document                          | Built by                  | Includes                               |
+|-----------------------------------|---------------------------|----------------------------------------|
+| `docs/public/openapi.json`        | `scripts/docs/generate.ts`| Core + in-repo plugins (10).           |
+| `/api/docs` (HTTP route)          | runtime registry          | Core + every plugin actually installed (in-repo + linked + user-installed under `~/.bakin/plugins/`). |
 
----
+**Static** path:
+1. Import every in-repo plugin module (`plugins/<id>/index.ts`) statically. Read `plugin.routes`.
+2. Read `coreRoutes`.
+3. Build OpenAPI 3.1 doc via `z.toJSONSchema` + helpers. Run validator.
+4. Write `docs/public/openapi.json`.
 
-## Settled design decisions
+`activate()` is never invoked.
 
-These were open during spec refinement; landed values are below for traceability.
+**Runtime** path:
+1. At server boot, after every plugin (core + in-repo + user) has been registered into the same `RouteRegistry`, build the OpenAPI document **once** from the registry and cache it.
+2. `/api/docs` returns the cached document.
+3. On `dev:plugin:reload` (hot reload), invalidate cache and rebuild.
 
-1. **basil / patch / main / roscoe** — Basil and Patch get repackaged like the rest. `main` (orchestrator) and `roscoe` stay unmanaged. Total backfill: 8 packages (pixel, rolo, jessica-fetcher, scout, zen, nemo, basil, patch).
-2. **Workflow projection** — Extend the workflows plugin source registry with an `agent-package` source kind. Skill-loader gains a parallel tier. No synthetic plugin id, no plugin-registry mutation. Removal is natural — lockfile entry deleted, source stops resolving. Same plumbing serves `kind: "workflow-pack"` standalone packages.
-3. **`installAs` aliasing** — Both surfaces ship in V1. Declarative `dependencies[].installAs` is the canonical form (resolves intra-package-graph collisions at design time). Imperative `--install-as` CLI flag handles the rarer user-encounters-collision-at-install-time case. They share the resolved-id computation in the installer.
-4. **Adoption block scope** — Adoption writes only (a) the knowledge catalog block and (b) the lessons listed in `manifest.install.enableKnowledge`. All other lessons remain opt-in via UI/CLI toggle. Conservative — adopting an existing agent should not flood their SOUL.md with unsolicited content.
-5. **Update refresh of `defaultModel` / `dispatchableBy`** — Only on fresh install. `bakin agents update` does not re-write these into `openclaw.json`. The user controls models through the Models UI; respect that.
+The two are intentionally different — the static doc is for a fixed shipped surface; the live doc is for "what does this Bakin actually expose right now."
 
----
+### `generateDocs(contentDir)`
 
-## Companion future work (not in this spec)
+Deleted. The legacy markdown writer at `~/.bakin/docs/API.md` was tech debt; the docs site is the canonical view.
 
-- **#157** — V2 dispatch-time knowledge retrieval. V1 injects all enabled lessons statically; V2 picks 1–3 most relevant per task at dispatch time. Data model unchanged; only the injection path differs.
-- **#42** — Per-agent MCP tool scoping enforcement. Agent package manifests already declare `agent.allowedTools` / `agent.allowedSkills` in V1; #42's dispatch-routing layer reads them and enforces hard scoping.
+### Validator
+
+`scripts/docs/route-contract-check.ts` walks the **bundled** surface (`coreRoutes + everyInRepoPluginRoutes`) and reports any **public** route that:
+
+- Has a `body` declaration but the declaration is JSON-flavored (`z.ZodType` or `{ contentType: 'application/json', schema }`) without a schema (impossible by type but checked defensively).
+- Has zero declared `responses[2xx]` keys.
+- Has a `2xx` response with `application/json` content but no schema.
+- Has `:param` segments in `path` but no `params` schema.
+
+The validator does **not** require `body` based on method. Routes that consume no body simply omit `body` (or declare `{ contentType: 'none' }` for explicit documentation). DELETE routes that consume bodies declare `body` like any POST.
+
+`internal` routes exempt. During migration: warnings, exit 0. Final commit (18): errors, exit 1.
+
+`multipart/form-data` and `*/*` body declarations without schemas are **allowed** for public routes (binary uploads). They're emitted to OpenAPI with the appropriate content type and `format: binary`. The validator does not flag them.
+
+## 3. Commands
+
+```bash
+bun run build
+bun run docs:build
+bun run docs:check
+bun run typecheck
+
+bun test --isolate
+bun test tests/path/to/foo.test.ts --isolate
+
+bun run dev
+bun run dev:mock
+```
+
+No new top-level commands. `docs:check` gains the new validator output.
+
+## 4. Project structure changes
+
+### Added
+
+- `packages/host/src/core-routes/{index,agents,agent-packages,packages,plugins,dispatch,settings,events,misc}.ts`
+- `packages/core/src/routing/{registry,define,types}.ts` — `RouteRegistry`, `defineRoute`, `defineCoreRoute`, `definePlugin`, route types.
+- `packages/core/src/openapi/{generate,zod-to-openapi,errors}.ts` — converter + error envelope + OpenAPI doc builder.
+- `packages/core/src/search/route.ts` — `searchRoute({ table })` factory.
+- `scripts/docs/route-contract-check.ts` — bundled-surface walker / validator.
+- Re-exports of `definePlugin`, `defineRoute`, `searchRoute` from `@bakin/sdk`.
+
+### Modified
+
+- `packages/core/src/plugin-types.ts` — `BakinPlugin` gains `routes?: APIRoute[]` (optional during migration; required behavior post-17). `PluginContext.registerRoute` becomes a thin adapter into the registry until commit 17.
+- `packages/core/src/docs/metadata.ts` and `packages/sdk/src/metadata/index.ts` — duplicated `RouteContract` consolidated; SDK re-exports from core.
+- `scripts/docs/generate.ts` — replace OpenAPI emission with registry-driven path; delete `schemaFromParamsHint`, `defaultRequestBody`, `schemaForParamHint`, generic-fallback emission.
+- `server.ts` — read `coreRoutes` + plugin `.routes` + adapter-registered routes, build registry, dispatch via registry.
+- Every `plugins/<id>/index.ts` — convert to `export default definePlugin({...routes: [...] })` shape.
+- Every `plugins/<id>/bakin-plugin.json` — `contributes.apiRoutes` field removed (in commit 17 cleanup).
+
+### Deleted (commit 17)
+
+- `src/core/api-docs.ts` — `CORE_ROUTES`, `coreRoute()`, `routeDocs[]`, `registerRouteDoc()`, `getAllRoutes()`, `generateDocs(contentDir)`.
+- `scripts/docs/source-scan.ts` — `extractApiRoutes()` and `getApiRoutes()` (manifest-first + fallback). Plugin-manifest scanning stays for exec-tools and CLI commands; route extraction goes.
+- `packages/host/src/api/_adapter.ts` — `dispatchWebHandler` replaced by registry-based dispatcher.
+- `ctx.registerRoute` from `PluginContext`.
+
+## 5. Code style
+
+- Zod schemas live at module scope, named `<verb><resource>Body` / `<verb><resource>Response` (e.g., `createTaskBody`, `createTaskResponse`). Reuse across handlers freely.
+- One `defineRoute({...})` per route. No helper wrappers that hide the contract.
+- Handler body holds business logic only. Manual `if (!field) return 400` blocks delete; dispatcher handles it.
+- `summary` (≤80 chars) and `description` (one paragraph max) required on every public route. `visibility`, `stability`, `permissions` set explicitly when non-default.
+- `examples` strongly preferred for routes with non-trivial bodies.
+- Per CLAUDE.md: no comments unless explaining non-obvious *why*. The schema *is* the documentation.
+
+## 6. Testing strategy
+
+Per CLAUDE.md `Testing Rules — CRITICAL`. Every test mocks both content-dir resolvers and OpenClaw home before imports.
+
+### Per migration commit
+
+Each plugin migration updates its test file alongside the source:
+
+- Tests of route handlers now invoke through the dispatcher (with the registry populated from `plugin.routes`). Hand-built request bodies still work; manual 400-validation cases collapse to one dispatcher-level case.
+- Add per-plugin: registry contains the expected method+path entries with non-fallback schemas.
+- Output validation in test (`NODE_ENV=test`): mismatches fail the test.
+- Undeclared response status returned by a handler in test: fails the test.
+
+### New foundational tests
+
+- `tests/core/route-registry.test.ts` — duplicate registration throws; path precedence; clear works.
+- `tests/core/route-dispatcher.test.ts` — params/query/body parse failure → 400 with issues; body content-type mismatch → 415; response 200 mismatch in dev → warning; undeclared response status in dev → warning; happy path → typed `parsed` reaches handler with only declared keys present; missing route → 404; `body: { contentType: 'none' }` rejects non-empty bodies.
+- `tests/docs/openapi-from-contracts.test.ts` — given a stub plugin with typed contracts, generated OpenAPI document has correct `paths`, `parameters`, `requestBody`, `responses`, `tags`, `operationId`. Snapshot.
+- `tests/docs/route-contract-check.test.ts` — validator returns errors on missing schemas in public routes; ignores internal; clean registry passes; multipart with no schema passes; `:id` path with no `params` schema fails.
+
+### Final-commit gate
+
+`bun run docs:check` exits 0 only if every public bundled route has the required schemas. Single CI signal.
+
+## 7. Commit strategy
+
+Single feature branch `feat/route-contracts`. Eighteen atomic commits. Every commit: `bun run build && bun run typecheck && bun test --isolate && bun run docs:check` all pass (warnings allowed before commit 18).
+
+**Sequencing principle:** the legacy `ctx.registerRoute` path is preserved as a thin adapter into the registry through commits 1–16. It is removed in commit 17 only after every plugin and every core route has migrated. This keeps every intermediate commit green.
+
+| #  | Commit                                                                                                       | State at end                                                                       |
+|----|--------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------|
+| 1  | refactor(core): types, helpers, plugin shape — `RouteContext`/`PluginContext`/`CoreContext`, `defineRoute`/`defineCoreRoute`/`definePlugin`, optional `BakinPlugin.routes` | New types exist; runtime unchanged                                                 |
+| 2  | feat(core): route registry — radix matching, duplicate detection, operation-id derivation                    | Registry module exists, no callers yet                                             |
+| 3  | feat(core): Zod→OpenAPI converter + shared error envelope                                                    | Converter usable in tests; OpenAPI emission ready                                  |
+| 4  | feat(core): registry-driven dispatcher with auto-validate; legacy `ctx.registerRoute` adapts into registry   | All routes (old + new shape) flow through one dispatcher                           |
+| 5  | feat(docs): route-contract validator in warn mode; `/api/docs` from runtime registry                         | Validator surfaces unmigrated routes as warnings                                   |
+| 6  | refactor(tasks): declarative routes with typed contracts                                                     | First plugin migrated; warning count drops                                         |
+| 7  | refactor(workflows): declarative routes with typed contracts                                                 |                                                                                    |
+| 8  | refactor(schedule): declarative routes with typed contracts                                                  |                                                                                    |
+| 9  | refactor(assets): declarative routes with typed contracts                                                    |                                                                                    |
+| 10 | refactor(memory): declarative routes with typed contracts                                                    |                                                                                    |
+| 11 | refactor(team): declarative routes with typed contracts                                                      |                                                                                    |
+| 12 | refactor(models): declarative routes with typed contracts                                                    |                                                                                    |
+| 13 | refactor(health): declarative routes with typed contracts                                                    | All 8 in-repo plugins migrated                                                     |
+| 14 | refactor(core-routes): typed contracts for /api/agents/*                                                     |                                                                                    |
+| 15 | refactor(core-routes): typed contracts for dispatch, settings, agent-packages, packages                      |                                                                                    |
+| 16 | refactor(core-routes): typed contracts for plugins + misc                                                    | Every in-repo route registered declaratively; legacy path has zero callers         |
+| 17 | refactor(docs): retire `ctx.registerRoute`, `dispatchWebHandler`, `CORE_ROUTES`, manifest `apiRoutes`; scope `extractApiRoutes` to extracted plugins; delete `generateDocs(contentDir)` | Dead code removed; extracted-plugin scanner retained                               |
+| 18 | feat(docs): flip route-contract validator to fail-closed (in-repo + core only; extracted plugins exempt); regenerate `docs/public/openapi.json` | Enforcement on; pristine OpenAPI snapshot                                          |
+
+Natural rollback targets: any commit between 4–13 (revert one plugin), 14–16 (revert one core slice). Foundation (1–3) is interlocked but each commit is self-contained. Final flip (18) is one-line revert if downstream tooling breaks.
+
+## 8. Boundaries
+
+### Always
+- Use `definePlugin` + `defineRoute` (or `defineCoreRoute`) helpers. Never annotate `BakinPlugin` or `APIRoute[]` directly.
+- Mock both content-dir resolvers and OpenClaw home in every test that touches storage.
+- Keep route handlers free of manual input validation — dispatcher handles it via Zod.
+- Co-locate Zod schemas next to the route declaration. No schemas in side files unless reused across plugins.
+- Use `ctx` services inside handlers. Module-scope state initialized in `activate()` is unsafe — routes register first.
+- Run `bun run build`, `bun run typecheck`, `bun test --isolate`, `bun run docs:check` before each commit.
+- Update `.claude/knowledge/` docs that reference the old metadata/source-scan flow.
+- Update `docs/plugin-authoring.md` with the new declarative route shape.
+
+### Ask first
+- Anything that changes the on-disk shape of `~/.bakin/`. (This work shouldn't, but flag if it does.)
+- Adding a new top-level dependency. (Zod is already in.)
+
+### Never
+- Leave the `ctx.registerRoute` adapter in place past commit 17.
+- Use `any` to satisfy TypeScript when narrowing. Fix the type chain.
+- Hand-maintain a route list anywhere — declarative `routes` field is the only source.
+- Use the source-scan AST extractor for routes after commit 17. (Exec-tool / CLI extraction stays.)
+- Skip the `--isolate` flag on test runs.
+- Close over services initialized in `activate()` from a route handler.
+- Require `body` schemas based on HTTP method alone. Authors declare `body` (or `{ contentType: 'none' }`) explicitly.
+
+## 9. Knowledge / docs updates
+
+Touched as part of commit 17 or 18:
+
+- `.claude/knowledge/plugin-system.md` — update plugin route registration: `routes` array, `definePlugin`/`defineRoute`, removal of `ctx.registerRoute`.
+- `.claude/knowledge/repo-architecture.md` — note `packages/host/src/core-routes/` is the source of truth for core HTTP routes.
+- `.claude/knowledge/search-system.md` — replace `registerFileBackedContentType` auto-route description with `searchRoute({ table })` factory.
+- `docs/plugin-authoring.md` — show a real route example using `params`/`query`/`body`/`responses` Zod schemas with `ParsedInput` typing via `defineRoute`.
+- `CLAUDE.md` — append a Key Patterns entry for "Typed Route Contracts" pointing at the registry, `definePlugin`/`defineRoute`, and `z.toJSONSchema` flow.
+- `docs/public/openapi.json` — regenerated from contracts in commit 18.
+
+## 10. Acceptance criteria
+
+- `bun run build && bun run typecheck && bun test --isolate && bun run docs:check` all pass on commit 18.
+- `docs:check` exits non-zero if any public bundled route lacks request-side schemas (where applicable per the validator rules) or `responses[2xx]` schemas.
+- `docs/public/openapi.json` contains zero `additionalProperties: true` fallback emissions for in-repo routes (core + 8 in-repo plugins). Extracted plugins (`messaging`, `projects`) may still emit fallback schemas; their entries carry `x-bakin-source: "extracted"` and `x-bakin-validator-exempt: true`.
+- `src/core/api-docs.ts`, `extractApiRoutes()` in `source-scan.ts`, `dispatchWebHandler`, `ctx.registerRoute`, and every `contributes.apiRoutes` array in `bakin-plugin.json` are deleted.
+- Every plugin exports via `definePlugin({...})` with a `routes` array of `defineRoute(...)` entries.
+- A request with an invalid params/query/body returns `400 { error, issues }` from the dispatcher, not from a hand-coded check.
+- A request to a route declaring `body: { contentType: 'none' }` with a non-empty body returns `415` from the dispatcher.
+- A handler whose response shape diverges from its declared `responses[200]` schema fails its own test under `NODE_ENV=test`.
+- A handler that returns a status not declared in `responses` fails its own test under `NODE_ENV=test`.
+- `/api/docs` returns the live OpenAPI document built from the in-memory registry, cached at boot and rebuilt on `dev:plugin:reload`.
+- `docs/public/openapi.json` is built from the bundled surface only (core + in-repo plugins), without invoking `activate()`.

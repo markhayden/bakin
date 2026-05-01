@@ -5,6 +5,7 @@
 import { randomBytes, timingSafeEqual } from 'crypto'
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
+import { definePlugin, defineRoute, searchRoute } from '@bakin/core/routing'
 import type { CronRun } from '@bakin/core/adapters/runtime'
 import { readMergedJobs } from './lib/jobs-reader'
 import { getLastRun, readRuns } from './lib/runs-reader'
@@ -90,12 +91,118 @@ async function getScheduleDefaultOwner(): Promise<string> {
 // Bridge logic (cron → task)
 // ---------------------------------------------------------------------------
 
-/** Module-level ctx set during activate(), used by handleBridge */
+/** Module-level ctx set during activate(), used by handleBridge + routes */
 let pluginCtx: PluginContext | null = null
 let reconcileTimer: ReturnType<typeof setInterval> | null = null
 let reconcileRunning = false
 
 const RECONCILE_INTERVAL_MS = 60_000
+
+// ─── Module-scope helpers (use pluginCtx for runtime access) ─────────────
+
+async function readMergedRuntimeJobs(): Promise<MergedJob[]> {
+  if (!pluginCtx) throw new Error('schedule plugin not activated')
+  return readMergedJobs(pluginCtx.runtime.cron, await getRuntimeMainAgentId(pluginCtx.runtime))
+}
+
+function jobToSearchDoc(job: MergedJob): Record<string, unknown> {
+  return {
+    name: job.displayName || job.name || job.id,
+    schedule: job.humanSchedule || job.schedule.value || '',
+    command: job.taskPrompt || job.taskTitle || '',
+    agent: job.agentId || '',
+    enabled: job.paused ? 'false' : String(job.enabled !== false),
+    updated_at: job.createdAt || new Date().toISOString(),
+  }
+}
+
+function indexJob(jobId: string): void {
+  if (!pluginCtx) return
+  const ctx = pluginCtx
+  readMergedRuntimeJobs().then((jobs) => {
+    const job = jobs.find(j => j.id === jobId)
+    if (!job) return
+    return ctx.search.index(jobId, jobToSearchDoc(job))
+  }).catch((err) => {
+    log.warn('Failed to index job', { jobId, error: err instanceof Error ? err.message : String(err) })
+  })
+}
+
+// ─── Schemas ─────────────────────────────────────────────────────────────
+
+const jobIdParams = z.object({ jobId: z.string().min(1) })
+const okResponse = z.object({ ok: z.literal(true) }).passthrough()
+const errorResponse = z.object({ error: z.string() }).passthrough()
+const passthrough = z.object({}).passthrough()
+
+const createJobBody = z.object({
+  name: z.string().min(1),
+  schedule: z.string().min(1),
+  agentId: z.string().optional(),
+  workflowId: z.string().optional(),
+  taskPrompt: z.string().optional(),
+  taskTitle: z.string().optional(),
+  owner: z.string().optional(),
+  requireTriage: z.boolean().optional(),
+  allowOverlap: z.boolean().optional(),
+  maxFailures: z.number().optional(),
+  tz: z.string().optional(),
+})
+
+const updateJobBody = z.object({
+  jobId: z.string().optional(),
+}).passthrough()
+
+const deleteJobBody = z.object({
+  jobId: z.string().optional(),
+}).passthrough().optional()
+
+const pauseJobBody = z.object({
+  jobId: z.string().optional(),
+  action: z.enum(['pause', 'resume', 'skip']),
+  pauseUntil: z.string().optional(),
+  skipN: z.number().optional(),
+})
+
+const runNowBody = z.object({
+  jobId: z.string().optional(),
+}).passthrough().optional()
+
+const runsHistoryQuery = z.object({
+  limit: z.coerce.number().int().positive().optional(),
+})
+
+const parseBody = z.object({
+  input: z.string().min(1),
+})
+
+const bridgeBody = z.object({
+  jobId: z.string(),
+  runId: z.string().optional(),
+}).passthrough()
+
+const bridgeQuery = z.object({
+  secret: z.string().optional(),
+})
+
+const adoptJobBody = z.object({
+  jobId: z.string().optional(),
+  name: z.string().optional(),
+  schedule: z.string().optional(),
+  agentId: z.string().nullable().optional(),
+  workflowId: z.string().nullable().optional(),
+  taskPrompt: z.string().nullable().optional(),
+  taskTitle: z.string().nullable().optional(),
+  owner: z.string().nullable().optional(),
+  requireTriage: z.boolean().optional(),
+  allowOverlap: z.boolean().optional(),
+  maxFailures: z.number().optional(),
+  tz: z.string().optional(),
+}).passthrough()
+
+const restoreNativeBody = z.object({
+  jobId: z.string().optional(),
+}).passthrough().optional()
 
 async function handleBridge(req: Request): Promise<Response> {
   // Gate 1: feature flag. The bridge setting defaults to enabled, but admins
@@ -333,10 +440,400 @@ function stopReconciler(): void {
 // Plugin
 // ---------------------------------------------------------------------------
 
-const schedulePlugin: BakinPlugin = {
+// ─── Routes (declarative) ────────────────────────────────────────────────
+
+const routes = [
+  defineRoute({
+    path: '/',
+    method: 'GET',
+    summary: 'List all scheduled jobs',
+    description: 'Returns the merged runtime cron + Bakin sidecar view of all jobs.',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async () => {
+      const jobs = (await readMergedRuntimeJobs()).map(j => ({
+        ...j,
+        cron: j.schedule.type === 'cron' ? j.schedule.value : undefined,
+      }))
+      return json({ jobs })
+    },
+  }),
+
+  defineRoute({
+    path: '/',
+    method: 'POST',
+    summary: 'Create a scheduled job',
+    body: createJobBody,
+    responses: { 200: passthrough, 400: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { body }) => {
+      const parsed = parseSchedule(body.schedule)
+      if (!parsed) {
+        return json({ error: 'Could not parse schedule expression' }, 400)
+      }
+      const tz = body.tz || getSystemTimezone()
+      const created = await ctx.runtime.cron.create({
+        name: body.name,
+        schedule: parsed.cron,
+        command: `bakin:schedule:${body.name}`,
+        metadata: { tz, bakinSchedule: true, scheduleType: 'cron' },
+      })
+      const jobId = created.id
+      const owner = body.owner ?? await getRuntimeMainAgentId(ctx.runtime)
+      const meta: BakinJobMeta = {
+        jobId,
+        isBakinJob: true,
+        source: 'bakin',
+        displayName: body.name,
+        agentId: body.agentId,
+        owner,
+        requireTriage: body.requireTriage ?? false,
+        workflowId: body.workflowId,
+        taskPrompt: body.taskPrompt,
+        taskTitle: body.taskTitle,
+        allowOverlap: body.allowOverlap ?? false,
+        maxFailures: body.maxFailures ?? 3,
+        consecutiveFailures: 0,
+        tz,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+      upsertJob(meta)
+      indexJob(jobId)
+      ctx.activity.audit('job.created', body.owner ?? 'system', { jobId, name: body.name })
+      ctx.activity.log(body.owner ?? 'system', `Created schedule "${body.name}"`)
+      return json({ ok: true, jobId, cron: parsed.cron, human: parsed.human, tz })
+    },
+  }),
+
+  defineRoute({
+    path: '/:jobId',
+    method: 'PUT',
+    summary: 'Update a scheduled job',
+    params: jobIdParams,
+    body: updateJobBody,
+    responses: { 200: okResponse, 400: errorResponse, 404: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { params, body }) => {
+      const jobId = params.jobId || (body as { jobId?: string }).jobId
+      if (!jobId) return json({ error: 'jobId required' }, 400)
+      const meta = getJob(jobId)
+      if (!meta) return json({ error: 'Job not found in sidecar' }, 404)
+      const runtimePatch: { name?: string; schedule?: string } = {}
+      const b = body as Record<string, unknown>
+      if (b.schedule && typeof b.schedule === 'string') {
+        const parsed = parseSchedule(b.schedule)
+        if (!parsed) return json({ error: 'Could not parse schedule' }, 400)
+        runtimePatch.schedule = parsed.cron
+      }
+      if (b.name && typeof b.name === 'string') {
+        runtimePatch.name = b.name
+        meta.displayName = b.name
+      }
+      if (Object.keys(runtimePatch).length > 0) await ctx.runtime.cron.update(jobId, runtimePatch)
+      const sidecarFields = [
+        'displayName', 'description', 'agentId', 'owner', 'requireTriage',
+        'workflowId', 'taskPrompt', 'taskTitle', 'allowOverlap', 'maxFailures',
+      ]
+      for (const field of sidecarFields) {
+        if (b[field] !== undefined) {
+          ;(meta as unknown as Record<string, unknown>)[field] = b[field]
+        }
+      }
+      upsertJob(meta)
+      indexJob(jobId)
+      ctx.activity.audit('job.updated', 'system', { jobId })
+      ctx.activity.log('system', `Updated schedule "${meta.displayName || jobId}"`)
+      return json({ ok: true })
+    },
+  }),
+
+  defineRoute({
+    path: '/:jobId',
+    method: 'GET',
+    summary: 'Get scheduled job details',
+    params: jobIdParams,
+    responses: { 200: passthrough, 404: errorResponse },
+    handler: async (_req, ctx, { params }) => {
+      const meta = getJob(params.jobId)
+      if (!meta) return json({ error: 'Job not found' }, 404)
+      const defaults = withDefaults(meta, await getRuntimeMainAgentId(ctx.runtime))
+      const lastRun = await getLastRun(ctx.runtime.cron, params.jobId)
+      return json({
+        job: {
+          id: meta.jobId,
+          name: meta.displayName,
+          agent: meta.agentId,
+          owner: defaults.owner,
+          paused: meta.paused ?? false,
+          pauseReason: meta.pauseReason,
+          pauseUntil: meta.pauseUntil,
+          workflowId: meta.workflowId,
+          taskPrompt: meta.taskPrompt,
+          taskTitle: meta.taskTitle,
+          allowOverlap: defaults.allowOverlap,
+          maxFailures: defaults.maxFailures,
+          consecutiveFailures: meta.consecutiveFailures ?? 0,
+          lastTaskId: meta.lastTaskId,
+          lastRun: lastRun ?? null,
+          tz: meta.tz,
+          createdAt: meta.createdAt,
+        },
+      })
+    },
+  }),
+
+  defineRoute({
+    path: '/:jobId',
+    method: 'DELETE',
+    summary: 'Delete a scheduled job',
+    params: jobIdParams,
+    body: deleteJobBody,
+    responses: { 200: okResponse, 400: errorResponse },
+    handler: async (_req, ctx, { params }) => {
+      const jobId = params.jobId
+      await ctx.runtime.cron.remove(jobId)
+      removeJob(jobId)
+      ctx.search.remove(jobId).catch(() => {})
+      ctx.activity.audit('job.deleted', 'system', { jobId })
+      ctx.activity.log('system', `Deleted schedule "${jobId}"`)
+      return json({ ok: true })
+    },
+  }),
+
+  defineRoute({
+    path: '/:jobId/adopt',
+    method: 'POST',
+    summary: 'Adopt a runtime cron job into Bakin task scheduling',
+    params: jobIdParams,
+    body: adoptJobBody,
+    responses: { 200: passthrough, 400: errorResponse, 404: errorResponse, 409: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { params, body }) => {
+      const jobId = params.jobId || body.jobId
+      if (!jobId) return json({ error: 'jobId required' }, 400)
+
+      const runtimeJob = await ctx.runtime.cron.get(jobId)
+      if (!runtimeJob) return json({ error: 'Runtime cron job not found' }, 404)
+
+      const existing = getJob(jobId)
+      if (existing?.isBakinJob) return json({ error: 'Job is already managed by Bakin' }, 409)
+
+      const raw = await ctx.runtime.cron.getRaw(jobId, 'schedule adopt: preserve native cron before Bakin takes ownership')
+      if (!raw) return json({ error: 'Runtime cron snapshot not found' }, 404)
+
+      const parsed = body.schedule ? parseSchedule(body.schedule) : { cron: runtimeJob.schedule }
+      if (!parsed) return json({ error: 'Could not parse schedule' }, 400)
+
+      const now = new Date().toISOString()
+      const tz = body.tz || existing?.tz || getSystemTimezone()
+      const displayName = body.name || existing?.displayName || runtimeJob.name
+      const owner = (body.owner ?? undefined) || existing?.owner || await getRuntimeMainAgentId(ctx.runtime)
+      const taskPrompt = (body.taskPrompt ?? undefined) || existing?.taskPrompt || runtimeJob.command
+
+      await ctx.runtime.cron.update(jobId, {
+        name: displayName,
+        schedule: parsed.cron,
+        command: `bakin:schedule:${jobId}`,
+        metadata: {
+          ...(runtimeJob.metadata ?? {}),
+          tz,
+          scheduleType: 'cron',
+          bakinSchedule: true,
+          adoptedByBakin: true,
+        },
+      })
+
+      const meta: BakinJobMeta = {
+        ...(existing ?? {}),
+        jobId,
+        isBakinJob: true,
+        source: 'adopted',
+        displayName,
+        agentId: body.agentId === null ? undefined : body.agentId ?? existing?.agentId,
+        owner,
+        requireTriage: body.requireTriage ?? existing?.requireTriage ?? false,
+        workflowId: body.workflowId === null ? undefined : body.workflowId ?? existing?.workflowId,
+        taskPrompt,
+        taskTitle: body.taskTitle === null ? undefined : body.taskTitle ?? existing?.taskTitle,
+        allowOverlap: body.allowOverlap ?? existing?.allowOverlap ?? false,
+        maxFailures: body.maxFailures ?? existing?.maxFailures ?? 3,
+        consecutiveFailures: existing?.consecutiveFailures ?? 0,
+        tz,
+        originalRuntimeCron: {
+          provider: ctx.runtime.name,
+          capturedAt: now,
+          snapshot: raw,
+        },
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      }
+      upsertJob(meta)
+      indexJob(jobId)
+
+      ctx.activity.audit('job.adopted', 'system', { jobId })
+      ctx.activity.log('system', `Adopted runtime cron "${displayName}" into Bakin`)
+      return json({ ok: true, jobId })
+    },
+  }),
+
+  defineRoute({
+    path: '/:jobId/restore-native',
+    method: 'POST',
+    summary: 'Restore an adopted Bakin schedule back to its native runtime cron behavior',
+    params: jobIdParams,
+    body: restoreNativeBody,
+    responses: { 200: passthrough, 400: errorResponse, 404: errorResponse, 500: errorResponse },
+    handler: async (_req, ctx, { params }) => {
+      const jobId = params.jobId
+      if (!jobId) return json({ error: 'jobId required' }, 400)
+
+      const meta = getJob(jobId)
+      if (!meta?.originalRuntimeCron) return json({ error: 'No native cron snapshot available' }, 404)
+
+      const restored = await ctx.runtime.cron.restoreRaw(
+        jobId,
+        meta.originalRuntimeCron.snapshot,
+        'schedule restore: return adopted cron to native runtime behavior',
+      )
+      const now = new Date().toISOString()
+      const runtimeMeta: BakinJobMeta = {
+        jobId,
+        isBakinJob: false,
+        source: 'runtime',
+        displayName: restored.name,
+        owner: meta.owner ?? await getRuntimeMainAgentId(ctx.runtime),
+        requireTriage: true,
+        createdAt: meta.createdAt ?? now,
+        updatedAt: now,
+      }
+      upsertJob(runtimeMeta)
+      indexJob(jobId)
+
+      ctx.activity.audit('job.restored_native', 'system', { jobId })
+      ctx.activity.log('system', `Restored schedule "${restored.name}" to native runtime cron behavior`)
+      return json({ ok: true, jobId })
+    },
+  }),
+
+  defineRoute({
+    path: '/:jobId/pause',
+    method: 'POST',
+    summary: 'Pause/resume/skip a scheduled job',
+    params: jobIdParams,
+    body: pauseJobBody,
+    responses: { 200: okResponse, 400: errorResponse, 404: errorResponse },
+    handler: async (_req, ctx, { params, body }) => {
+      const jobId = params.jobId || body.jobId
+      if (!jobId) return json({ error: 'jobId required' }, 400)
+      const meta = getJob(jobId)
+      if (!meta) {
+        if (body.action === 'skip') return json({ error: 'Skip is only available for Bakin schedules' }, 400)
+        const runtimeJob = await ctx.runtime.cron.get(jobId)
+        if (!runtimeJob) return json({ error: 'Job not found' }, 404)
+        await ctx.runtime.cron.update(jobId, { enabled: body.action === 'resume' })
+        indexJob(jobId)
+        ctx.activity.audit(`job.${body.action === 'pause' ? 'disabled' : 'enabled'}`, 'system', { jobId })
+        ctx.activity.log('system', `Runtime cron "${jobId}" ${body.action === 'pause' ? 'disabled' : 'enabled'}`)
+        return json({ ok: true })
+      }
+      switch (body.action) {
+        case 'pause':
+          meta.paused = true
+          meta.pauseReason = 'manual'
+          meta.pauseUntil = body.pauseUntil
+          await ctx.runtime.cron.update(jobId, { enabled: false })
+          break
+        case 'resume':
+          meta.paused = false
+          meta.pauseReason = undefined
+          meta.pauseUntil = undefined
+          meta.skipNextN = undefined
+          meta.skippedCount = undefined
+          meta.consecutiveFailures = 0
+          await ctx.runtime.cron.update(jobId, { enabled: true })
+          break
+        case 'skip':
+          if (!meta.isBakinJob) return json({ error: 'Skip is only available for Bakin schedules' }, 400)
+          meta.skipNextN = body.skipN ?? 1
+          meta.skippedCount = 0
+          break
+      }
+      upsertJob(meta)
+      indexJob(jobId)
+      ctx.activity.audit(`job.${body.action}`, 'system', { jobId })
+      ctx.activity.log('system', `Schedule "${meta.displayName || jobId}" ${body.action}d`)
+      return json({ ok: true })
+    },
+  }),
+
+  defineRoute({
+    path: '/:jobId/run',
+    method: 'POST',
+    summary: 'Trigger immediate run',
+    params: jobIdParams,
+    body: runNowBody,
+    responses: { 200: okResponse, 400: errorResponse, 404: errorResponse },
+    handler: async (_req, ctx, { params }) => {
+      const jobId = params.jobId
+      const runtimeJob = await ctx.runtime.cron.get(jobId)
+      if (!runtimeJob) return json({ error: 'Job not found' }, 404)
+      const run = await ctx.runtime.cron.runNow(jobId)
+      if (run.status === 'succeeded') {
+        await processScheduledRun({ jobId, runId: run.id, timestamp: runTimestamp(run) })
+      }
+      ctx.activity.audit('job.run_now', 'system', { jobId })
+      ctx.activity.log('system', `Triggered immediate run for "${jobId}"`)
+      return json({ ok: true })
+    },
+  }),
+
+  defineRoute({
+    path: '/:jobId/runs',
+    method: 'GET',
+    summary: 'Get run history for a job',
+    params: jobIdParams,
+    query: runsHistoryQuery,
+    responses: { 200: passthrough },
+    handler: async (_req, ctx, { params, query }) => {
+      const limit = query.limit ?? 50
+      const runs = await readRuns(ctx.runtime.cron, params.jobId, limit)
+      return json({ runs })
+    },
+  }),
+
+  defineRoute({
+    path: '/parse',
+    method: 'POST',
+    summary: 'Parse a schedule expression',
+    description: 'Converts a natural-language or cron expression into structured schedule output.',
+    body: parseBody,
+    responses: { 200: passthrough, 400: errorResponse },
+    handler: async (_req, _ctx, { body }) => {
+      const result = parseSchedule(body.input)
+      if (!result) {
+        return json({ error: 'Could not parse schedule. Try a simpler expression or raw cron.' }, 400)
+      }
+      return json(result)
+    },
+  }),
+
+  defineRoute({
+    path: '/bridge',
+    method: 'POST',
+    summary: 'Cron bridge webhook',
+    description: 'Internal webhook the runtime cron POSTs to when a job fires. Auth via shared secret.',
+    visibility: 'internal',
+    body: bridgeBody,
+    query: bridgeQuery,
+    responses: { 200: passthrough, 401: errorResponse, 503: errorResponse, 500: errorResponse },
+    handler: async (req) => handleBridge(req),
+  }),
+
+  searchRoute({ table: 'schedule' }),
+]
+
+const schedulePlugin: BakinPlugin = definePlugin({
   id: 'schedule',
   name: 'Schedule',
   version: '2.0.0',
+  routes,
 
   settingsSchema: {
     fields: [
@@ -380,33 +877,6 @@ const schedulePlugin: BakinPlugin = {
       verifyExists: async () => true, // Jobs are ephemeral, managed by the runtime adapter.
     })
 
-    async function readMergedRuntimeJobs(): Promise<MergedJob[]> {
-      return readMergedJobs(ctx.runtime.cron, await getRuntimeMainAgentId(ctx.runtime))
-    }
-
-    /** Convert a merged job to a search document */
-    function jobToSearchDoc(job: MergedJob): Record<string, unknown> {
-      return {
-        name: job.displayName || job.name || job.id,
-        schedule: job.humanSchedule || job.schedule.value || '',
-        command: job.taskPrompt || job.taskTitle || '',
-        agent: job.agentId || '',
-        enabled: job.paused ? 'false' : String(job.enabled !== false),
-        updated_at: job.createdAt || new Date().toISOString(),
-      }
-    }
-
-    /** Index a job in the search index using the merged runtime view */
-    function indexJob(jobId: string): void {
-      readMergedRuntimeJobs().then((jobs) => {
-        const job = jobs.find(j => j.id === jobId)
-        if (!job) return
-        return ctx.search.index(jobId, jobToSearchDoc(job))
-      }).catch((err) => {
-        log.warn('Failed to index job', { jobId, error: err instanceof Error ? err.message : String(err) })
-      })
-    }
-
     /** Runtime jobs live in the cron adapter + sidecar, so sync them into search on plugin activation. */
     async function syncRuntimeJobsToSearch(): Promise<void> {
       const jobs = await readMergedRuntimeJobs()
@@ -419,419 +889,7 @@ const schedulePlugin: BakinPlugin = {
 
     await syncRuntimeJobsToSearch()
 
-    // ── API Routes ─────────────────────────────────────────────────────
-
-    // GET / — list all jobs (merged)
-    const listJobsHandler = async () => {
-      const jobs = (await readMergedRuntimeJobs()).map(j => ({
-        ...j,
-        cron: j.schedule.type === 'cron' ? j.schedule.value : undefined,
-      }))
-      return json({ jobs })
-    }
-    ctx.registerRoute({ path: '/', method: 'GET', description: 'List all scheduled jobs', handler: listJobsHandler })
-
-    // POST / — create a job
-    const createJobHandler = async (req: Request): Promise<Response> => {
-      const body = await readBody<{
-        name: string
-        schedule: string
-        agentId?: string
-        workflowId?: string
-        taskPrompt?: string
-        taskTitle?: string
-        owner?: string
-        requireTriage?: boolean
-        allowOverlap?: boolean
-        maxFailures?: number
-        tz?: string
-      }>(req)
-
-      if (!body.name || !body.schedule) {
-        return json({ error: 'name and schedule are required' }, 400)
-      }
-
-      const parsed = parseSchedule(body.schedule)
-      if (!parsed) {
-        return json({ error: 'Could not parse schedule expression' }, 400)
-      }
-
-      const tz = body.tz || getSystemTimezone()
-      const created = await ctx.runtime.cron.create({
-        name: body.name,
-        schedule: parsed.cron,
-        command: `bakin:schedule:${body.name}`,
-        metadata: { tz, bakinSchedule: true, scheduleType: 'cron' },
-      })
-      const jobId = created.id
-
-      const owner = body.owner ?? await getRuntimeMainAgentId(ctx.runtime)
-      const meta: BakinJobMeta = {
-        jobId,
-        isBakinJob: true,
-        source: 'bakin',
-        displayName: body.name,
-        agentId: body.agentId,
-        owner,
-        requireTriage: body.requireTriage ?? false,
-        workflowId: body.workflowId,
-        taskPrompt: body.taskPrompt,
-        taskTitle: body.taskTitle,
-        allowOverlap: body.allowOverlap ?? false,
-        maxFailures: body.maxFailures ?? 3,
-        consecutiveFailures: 0,
-        tz,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }
-      upsertJob(meta)
-      indexJob(jobId)
-
-      ctx.activity.audit('job.created', body.owner ?? 'system', { jobId, name: body.name })
-      ctx.activity.log(body.owner ?? 'system', `Created schedule "${body.name}"`)
-      return json({ ok: true, jobId, cron: parsed.cron, human: parsed.human, tz })
-    }
-    ctx.registerRoute({ path: '/', method: 'POST', description: 'Create a scheduled job', handler: createJobHandler })
-
-    // PUT /:jobId — update a job
-    ctx.registerRoute({
-      path: '/:jobId',
-      method: 'PUT',
-      handler: async (req: Request) => {
-        const url = new URL(req.url)
-        const body = await readBody<{ jobId?: string; [key: string]: unknown }>(req)
-        const jobId = url.searchParams.get('jobId') || body.jobId
-        if (!jobId) return json({ error: 'jobId required' }, 400)
-
-        const meta = getJob(jobId)
-        if (!meta) return json({ error: 'Job not found in sidecar' }, 404)
-
-        const runtimePatch: { name?: string; schedule?: string } = {}
-        if (body.schedule && typeof body.schedule === 'string') {
-          const parsed = parseSchedule(body.schedule)
-          if (!parsed) return json({ error: 'Could not parse schedule' }, 400)
-          runtimePatch.schedule = parsed.cron
-        }
-        if (body.name && typeof body.name === 'string') {
-          runtimePatch.name = body.name
-          meta.displayName = body.name
-        }
-        if (Object.keys(runtimePatch).length > 0) await ctx.runtime.cron.update(jobId, runtimePatch)
-
-        // Update sidecar fields
-        const sidecarFields = [
-          'displayName', 'description', 'agentId', 'owner', 'requireTriage',
-          'workflowId', 'taskPrompt', 'taskTitle', 'allowOverlap', 'maxFailures',
-        ]
-        for (const field of sidecarFields) {
-          if (body[field] !== undefined) {
-            ;(meta as unknown as Record<string, unknown>)[field] = body[field]
-          }
-        }
-        upsertJob(meta)
-        indexJob(jobId)
-
-        ctx.activity.audit('job.updated', 'system', { jobId })
-        ctx.activity.log('system', `Updated schedule "${meta.displayName || jobId}"`)
-        return json({ ok: true })
-      },
-    })
-    // GET /:jobId — get single job details
-
-    // POST /:jobId/adopt — convert a native runtime cron into a Bakin schedule
-    ctx.registerRoute({
-      path: '/:jobId/adopt',
-      method: 'POST',
-      description: 'Adopt a runtime cron job into Bakin task scheduling',
-      handler: async (req: Request) => {
-        const url = new URL(req.url)
-        const body = await readBody<{
-          jobId?: string
-          name?: string
-          schedule?: string
-          agentId?: string | null
-          workflowId?: string | null
-          taskPrompt?: string | null
-          taskTitle?: string | null
-          owner?: string | null
-          requireTriage?: boolean
-          allowOverlap?: boolean
-          maxFailures?: number
-          tz?: string
-        }>(req).catch(() => ({} as {
-          jobId?: string
-          name?: string
-          schedule?: string
-          agentId?: string | null
-          workflowId?: string | null
-          taskPrompt?: string | null
-          taskTitle?: string | null
-          owner?: string | null
-          requireTriage?: boolean
-          allowOverlap?: boolean
-          maxFailures?: number
-          tz?: string
-        }))
-        const jobId = url.searchParams.get('jobId') || body.jobId
-        if (!jobId) return json({ error: 'jobId required' }, 400)
-
-        const runtimeJob = await ctx.runtime.cron.get(jobId)
-        if (!runtimeJob) return json({ error: 'Runtime cron job not found' }, 404)
-
-        const existing = getJob(jobId)
-        if (existing?.isBakinJob) return json({ error: 'Job is already managed by Bakin' }, 409)
-
-        const raw = await ctx.runtime.cron.getRaw(jobId, 'schedule adopt: preserve native cron before Bakin takes ownership')
-        if (!raw) return json({ error: 'Runtime cron snapshot not found' }, 404)
-
-        const parsed = body.schedule ? parseSchedule(body.schedule) : { cron: runtimeJob.schedule }
-        if (!parsed) return json({ error: 'Could not parse schedule' }, 400)
-
-        const now = new Date().toISOString()
-        const tz = body.tz || existing?.tz || getSystemTimezone()
-        const displayName = body.name || existing?.displayName || runtimeJob.name
-        const owner = body.owner || existing?.owner || await getRuntimeMainAgentId(ctx.runtime)
-        const taskPrompt = body.taskPrompt || existing?.taskPrompt || runtimeJob.command
-
-        await ctx.runtime.cron.update(jobId, {
-          name: displayName,
-          schedule: parsed.cron,
-          command: `bakin:schedule:${jobId}`,
-          metadata: {
-            ...(runtimeJob.metadata ?? {}),
-            tz,
-            scheduleType: 'cron',
-            bakinSchedule: true,
-            adoptedByBakin: true,
-          },
-        })
-
-        const meta: BakinJobMeta = {
-          ...(existing ?? {}),
-          jobId,
-          isBakinJob: true,
-          source: 'adopted',
-          displayName,
-          agentId: body.agentId === null ? undefined : body.agentId ?? existing?.agentId,
-          owner,
-          requireTriage: body.requireTriage ?? existing?.requireTriage ?? false,
-          workflowId: body.workflowId === null ? undefined : body.workflowId ?? existing?.workflowId,
-          taskPrompt,
-          taskTitle: body.taskTitle === null ? undefined : body.taskTitle ?? existing?.taskTitle,
-          allowOverlap: body.allowOverlap ?? existing?.allowOverlap ?? false,
-          maxFailures: body.maxFailures ?? existing?.maxFailures ?? 3,
-          consecutiveFailures: existing?.consecutiveFailures ?? 0,
-          tz,
-          originalRuntimeCron: {
-            provider: ctx.runtime.name,
-            capturedAt: now,
-            snapshot: raw,
-          },
-          createdAt: existing?.createdAt ?? now,
-          updatedAt: now,
-        }
-        upsertJob(meta)
-        indexJob(jobId)
-
-        ctx.activity.audit('job.adopted', 'system', { jobId })
-        ctx.activity.log('system', `Adopted runtime cron "${displayName}" into Bakin`)
-        return json({ ok: true, jobId })
-      },
-    })
-
-    // POST /:jobId/restore-native — restore the native runtime cron captured during adoption
-    ctx.registerRoute({
-      path: '/:jobId/restore-native',
-      method: 'POST',
-      description: 'Restore an adopted Bakin schedule back to its native runtime cron behavior',
-      handler: async (req: Request) => {
-        const url = new URL(req.url)
-        const body = await readBody<{ jobId?: string }>(req).catch(() => ({} as { jobId?: string }))
-        const jobId = url.searchParams.get('jobId') || body.jobId
-        if (!jobId) return json({ error: 'jobId required' }, 400)
-
-        const meta = getJob(jobId)
-        if (!meta?.originalRuntimeCron) return json({ error: 'No native cron snapshot available' }, 404)
-
-        const restored = await ctx.runtime.cron.restoreRaw(
-          jobId,
-          meta.originalRuntimeCron.snapshot,
-          'schedule restore: return adopted cron to native runtime behavior',
-        )
-        const now = new Date().toISOString()
-        const runtimeMeta: BakinJobMeta = {
-          jobId,
-          isBakinJob: false,
-          source: 'runtime',
-          displayName: restored.name,
-          owner: meta.owner ?? await getRuntimeMainAgentId(ctx.runtime),
-          requireTriage: true,
-          createdAt: meta.createdAt ?? now,
-          updatedAt: now,
-        }
-        upsertJob(runtimeMeta)
-        indexJob(jobId)
-
-        ctx.activity.audit('job.restored_native', 'system', { jobId })
-        ctx.activity.log('system', `Restored schedule "${restored.name}" to native runtime cron behavior`)
-        return json({ ok: true, jobId })
-      },
-    })
-
-    ctx.registerRoute({
-      path: '/:jobId',
-      method: 'GET',
-      description: 'Get details for a single scheduled job',
-      handler: async (req: Request) => {
-        const url = new URL(req.url)
-        const jobId = url.searchParams.get('jobId')
-        if (!jobId) return json({ error: 'jobId required' }, 400)
-
-        const meta = getJob(jobId)
-        if (!meta) return json({ error: 'Job not found' }, 404)
-
-        const defaults = withDefaults(meta, await getRuntimeMainAgentId(ctx.runtime))
-        const lastRun = await getLastRun(ctx.runtime.cron, jobId)
-        return json({
-          job: {
-            id: meta.jobId,
-            name: meta.displayName,
-            agent: meta.agentId,
-            owner: defaults.owner,
-            paused: meta.paused ?? false,
-            pauseReason: meta.pauseReason,
-            pauseUntil: meta.pauseUntil,
-            workflowId: meta.workflowId,
-            taskPrompt: meta.taskPrompt,
-            taskTitle: meta.taskTitle,
-            allowOverlap: defaults.allowOverlap,
-            maxFailures: defaults.maxFailures,
-            consecutiveFailures: meta.consecutiveFailures ?? 0,
-            lastTaskId: meta.lastTaskId,
-            lastRun: lastRun ?? null,
-            tz: meta.tz,
-            createdAt: meta.createdAt,
-          },
-        })
-      },
-    })
-
-    // DELETE /:jobId — delete a job
-    const deleteJobHandler = async (req: Request) => {
-      const url = new URL(req.url)
-      const body = await readBody<{ jobId?: string }>(req).catch(() => ({}))
-      const jobId = url.searchParams.get('jobId') || (body as Record<string, unknown>).jobId as string | undefined
-      if (!jobId) return json({ error: 'jobId required' }, 400)
-
-      await ctx.runtime.cron.remove(jobId)
-      removeJob(jobId)
-      ctx.search.remove(jobId).catch(() => {})
-
-      ctx.activity.audit('job.deleted', 'system', { jobId })
-      ctx.activity.log('system', `Deleted schedule "${jobId}"`)
-      return json({ ok: true })
-    }
-    ctx.registerRoute({ path: '/:jobId', method: 'DELETE', description: 'Delete a scheduled job', handler: deleteJobHandler })
-
-    // POST /:jobId/pause — pause/resume/skip
-    const pauseHandler = async (req: Request) => {
-      const url = new URL(req.url)
-      const body = await readBody<{
-        jobId?: string
-        action: 'pause' | 'resume' | 'skip'
-        pauseUntil?: string
-        skipN?: number
-      }>(req)
-
-      const jobId = url.searchParams.get('jobId') || body.jobId
-      if (!jobId || !body.action) return json({ error: 'jobId and action required' }, 400)
-
-      const meta = getJob(jobId)
-      if (!meta) {
-        if (body.action === 'skip') return json({ error: 'Skip is only available for Bakin schedules' }, 400)
-        const runtimeJob = await ctx.runtime.cron.get(jobId)
-        if (!runtimeJob) return json({ error: 'Job not found' }, 404)
-        await ctx.runtime.cron.update(jobId, { enabled: body.action === 'resume' })
-        indexJob(jobId)
-        ctx.activity.audit(`job.${body.action === 'pause' ? 'disabled' : 'enabled'}`, 'system', { jobId })
-        ctx.activity.log('system', `Runtime cron "${jobId}" ${body.action === 'pause' ? 'disabled' : 'enabled'}`)
-        return json({ ok: true })
-      }
-
-      switch (body.action) {
-        case 'pause':
-          meta.paused = true
-          meta.pauseReason = 'manual'
-          meta.pauseUntil = body.pauseUntil
-          await ctx.runtime.cron.update(jobId, { enabled: false })
-          break
-        case 'resume':
-          meta.paused = false
-          meta.pauseReason = undefined
-          meta.pauseUntil = undefined
-          meta.skipNextN = undefined
-          meta.skippedCount = undefined
-          meta.consecutiveFailures = 0
-          await ctx.runtime.cron.update(jobId, { enabled: true })
-          break
-        case 'skip':
-          if (!meta.isBakinJob) return json({ error: 'Skip is only available for Bakin schedules' }, 400)
-          meta.skipNextN = body.skipN ?? 1
-          meta.skippedCount = 0
-          break
-      }
-      upsertJob(meta)
-      indexJob(jobId)
-
-      ctx.activity.audit(`job.${body.action}`, 'system', { jobId })
-      ctx.activity.log('system', `Schedule "${meta.displayName || jobId}" ${body.action}d`)
-      return json({ ok: true })
-    }
-    ctx.registerRoute({ path: '/:jobId/pause', method: 'POST', description: 'Pause/resume/skip a job', handler: pauseHandler })
-
-    // POST /:jobId/run — trigger immediate run
-    const runNowHandler = async (req: Request) => {
-      const url = new URL(req.url)
-      const body = await readBody<{ jobId?: string }>(req).catch(() => ({}))
-      const jobId = url.searchParams.get('jobId') || (body as Record<string, unknown>).jobId as string | undefined
-      if (!jobId) return json({ error: 'jobId required' }, 400)
-      const runtimeJob = await ctx.runtime.cron.get(jobId)
-      if (!runtimeJob) return json({ error: 'Job not found' }, 404)
-      const run = await ctx.runtime.cron.runNow(jobId)
-      if (run.status === 'succeeded') {
-        await processScheduledRun({ jobId, runId: run.id, timestamp: runTimestamp(run) })
-      }
-      ctx.activity.audit('job.run_now', 'system', { jobId })
-      ctx.activity.log('system', `Triggered immediate run for "${jobId}"`)
-      return json({ ok: true })
-    }
-    ctx.registerRoute({ path: '/:jobId/run', method: 'POST', description: 'Trigger immediate run', handler: runNowHandler })
-
-    // GET /:jobId/runs — run history
-    const runsHandler = async (req: Request) => {
-      const url = new URL(req.url)
-      const jobId = url.searchParams.get('jobId')
-      if (!jobId) return json({ error: 'jobId query param required' }, 400)
-      const limit = parseInt(url.searchParams.get('limit') ?? '50', 10)
-      const runs = await readRuns(ctx.runtime.cron, jobId, limit)
-      return json({ runs })
-    }
-    ctx.registerRoute({ path: '/:jobId/runs', method: 'GET', description: 'Get run history for a job', handler: runsHandler })
-
-    // POST /parse — parse schedule expression (NL → cron)
-    const parseHandler = async (req: Request) => {
-      const { input } = await readBody<{ input: string }>(req)
-      if (!input) return json({ error: 'input required' }, 400)
-      const result = parseSchedule(input)
-      if (!result) {
-        return json({ error: 'Could not parse schedule. Try a simpler expression or raw cron.' }, 400)
-      }
-      return json(result)
-    }
-    ctx.registerRoute({ path: '/parse', method: 'POST', description: 'Parse schedule expression', handler: parseHandler })
-
-    // POST /bridge - runtime cron webhook -> task creation
-    ctx.registerRoute({ path: '/bridge', method: 'POST', description: 'Cron bridge webhook', handler: handleBridge })
+    // ── API Routes are declarative on plugin.routes (see module scope). ──
 
     // ── Exec Tools (agent-facing) ──────────────────────────────────────
 
@@ -1179,6 +1237,6 @@ const schedulePlugin: BakinPlugin = {
     stopReconciler()
     log.info('Schedule plugin shutting down')
   },
-}
+}) as unknown as BakinPlugin
 
 export default schedulePlugin

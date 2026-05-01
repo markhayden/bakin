@@ -162,7 +162,7 @@ describe('sessionsListRoute — shape', () => {
 describe('sessionsListRoute — handler', () => {
   it('returns 400 when agent is missing', async () => {
     const { ctx } = makeCtx()
-    const res = await sessionsListRoute.handler(req('/sessions', {}), ctx)
+    const res = await sessionsListRoute.handler(req('/sessions', {} as any), ctx, {} as any)
     expect(res.status).toBe(400)
   })
 
@@ -174,7 +174,7 @@ describe('sessionsListRoute — handler', () => {
       },
     })
     const { ctx } = makeCtx()
-    const res = await sessionsListRoute.handler(req('/sessions', { agent: 'basil' }), ctx)
+    const res = await sessionsListRoute.handler(req('/sessions', { agent: 'basil' }), ctx, {} as any)
     const body = await res.json() as { sessions: Array<Record<string, unknown>> }
     expect(res.status).toBe(200)
     expect(body.sessions.map((s) => s.sessionKey)).toEqual([
@@ -188,7 +188,7 @@ describe('sessionsListRoute — handler', () => {
   it('reads plain session maps from the runtime store', async () => {
     mockReadSessionStore.mockReturnValue({ 'agent:basil:main': session() })
     const { ctx } = makeCtx()
-    const res = await sessionsListRoute.handler(req('/sessions', { agent: 'basil' }), ctx)
+    const res = await sessionsListRoute.handler(req('/sessions', { agent: 'basil' }), ctx, {} as any)
     const body = await res.json() as { sessions: unknown[] }
     expect(body.sessions).toHaveLength(1)
   })
@@ -203,6 +203,7 @@ describe('sessionsListRoute — handler', () => {
     const res = await sessionsListRoute.handler(
       req('/sessions', { agent: 'basil', kind: 'openai' }),
       ctx,
+      {} as any,
     )
     const body = await res.json() as { sessions: Array<Record<string, unknown>> }
     expect(body.sessions).toHaveLength(1)
@@ -212,7 +213,7 @@ describe('sessionsListRoute — handler', () => {
   it('returns empty when the runtime store has no data', async () => {
     mockReadSessionStore.mockReturnValue(null)
     const { ctx } = makeCtx()
-    const res = await sessionsListRoute.handler(req('/sessions', { agent: 'orphan' }), ctx)
+    const res = await sessionsListRoute.handler(req('/sessions', { agent: 'orphan' }), ctx, {} as any)
     const body = await res.json() as { sessions: unknown[] }
     expect(body.sessions).toEqual([])
   })
@@ -227,7 +228,7 @@ describe('sessionDetailRoute — handler', () => {
 
   it('returns 400 when either param missing', async () => {
     const { ctx } = makeCtx()
-    const res = await sessionDetailRoute.handler(req('/sessions/basil', { agent: 'basil' }), ctx)
+    const res = await sessionDetailRoute.handler(req('/sessions/basil', { agent: 'basil' }), ctx, {} as any)
     expect(res.status).toBe(400)
   })
 
@@ -237,6 +238,7 @@ describe('sessionDetailRoute — handler', () => {
     const res = await sessionDetailRoute.handler(
       req('/sessions/basil/missing', { agent: 'basil', sessionKey: 'agent:basil:missing' }),
       ctx,
+      {} as any,
     )
     expect(res.status).toBe(404)
   })
@@ -247,6 +249,7 @@ describe('sessionDetailRoute — handler', () => {
     const res = await sessionDetailRoute.handler(
       req('/sessions/basil/main', { agent: 'basil', sessionKey: 'agent:basil:main' }),
       ctx,
+      {} as any,
     )
     const body = await res.json() as Record<string, unknown>
     expect(res.status).toBe(200)
@@ -271,6 +274,7 @@ describe('sessionTurnsRoute — handler', () => {
         limit: '50',
       }),
       h.ctx,
+      {} as any,
     )
     const body = await res.json() as { turns: Array<Record<string, unknown>>; total: number }
     expect(res.status).toBe(200)
@@ -291,6 +295,7 @@ describe('sessionTurnsRoute — handler', () => {
         limit: '99999',
       }),
       h.ctx,
+      {} as any,
     )
     expect(h.queryCalls[0].filters?.eventType).toBe('tool_call')
     expect(h.queryCalls[0].limit).toBe(100) // clamps to default when out-of-range
@@ -303,13 +308,14 @@ describe('turnsListRoute — handler', () => {
     await turnsListRoute.handler(
       req('/turns', { agent: 'basil', sessionId: 'sess-a' }),
       h.ctx,
+      {} as any,
     )
     expect(h.queryCalls[0].filters).toEqual({ tier: 'turn', agent: 'basil' })
   })
 
   it('returns 400 when agent or sessionId missing', async () => {
     const { ctx } = makeCtx()
-    const res = await turnsListRoute.handler(req('/turns', { agent: 'basil' }), ctx)
+    const res = await turnsListRoute.handler(req('/turns', { agent: 'basil' }), ctx, {} as any)
     expect(res.status).toBe(400)
   })
 })

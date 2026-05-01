@@ -1465,7 +1465,7 @@ describe('Assets Plugin — GET /search', () => {
     const { status, body } = await callSearchRoute(plugin, '')
 
     expect(status).toBe(400)
-    expect(body.error).toBe('Missing ?q= parameter')
+    expect(body.error).toBe('invalid input')
   })
 
   it('passes parsed asset_type,agent facets to ctx.search.query', async () => {

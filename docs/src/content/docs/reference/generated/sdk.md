@@ -12,6 +12,8 @@ Source: `packages/sdk/src/index.ts`
 | `export * from './types'` |
 | `export {` |
 | `export type { ClientRouteEntry, MatchedPluginRoute, NavItem, PluginRegistration } from './register'` |
+| `export { defineRoute, defineCoreRoute, definePlugin } from './routing'` |
+| `export type {` |
 
 ## `@bakin/sdk/ui`
 
@@ -235,23 +237,17 @@ Source: `packages/sdk/src/metadata/index.ts`
 
 | Export declaration |
 | --- |
-| `export type { ContractStability, ContractVisibility, DocsExample, SchemaLike, SourceLocation }` |
-| `export type HookKind = 'rpc' \| 'event' \| 'waterfall'` |
-| `export interface ContractMetadata {` |
-| `export interface RouteContract<Input = unknown, Output = unknown> extends ContractMetadata {` |
-| `export interface CliCommandContract extends ContractMetadata {` |
-| `export interface HookContract<Input = unknown, Output = unknown> extends ContractMetadata {` |
-| `export interface SlotContract<Props = unknown> extends ContractMetadata {` |
-| `export interface ExecToolContract<Input = unknown, Output = unknown> extends ContractMetadata {` |
-| `export type PublicContract =` |
-| `export function defineRouteContract<const T extends RouteContract>(contract: T): T {` |
-| `export function defineCliCommandContract<const T extends CliCommandContract>(contract: T): T {` |
-| `export function defineHookContract<const T extends HookContract>(contract: T): T {` |
-| `export function defineSlotContract<const T extends SlotContract>(contract: T): T {` |
-| `export function defineExecToolContract<const T extends ExecToolContract>(contract: T): T {` |
-| `export interface DocsAwareAPIRoute<Input = unknown, Output = unknown> extends RouteContract<Input, Output> {` |
-| `export function defineApiRoute<const T extends DocsAwareAPIRoute>(route: T): T {` |
-| `export const definePluginRoute = defineApiRoute` |
+| `export type {` |
+| `export {` |
+
+## `@bakin/sdk/routing`
+
+Source: `packages/sdk/src/routing/index.ts`
+
+| Export declaration |
+| --- |
+| `export {` |
+| `export type {` |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
   <span>Generated Apr 30, 2026 · Bakin 1.0.0</span>

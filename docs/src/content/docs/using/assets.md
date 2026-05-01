@@ -168,6 +168,7 @@ Agents create, link, and curate assets through MCP exec tools.
 - `bakin_exec_assets_link`: Link an asset to a different task, or unlink it (set taskId to null). Sidecar-only edit — no file move.
 - `bakin_exec_assets_list`: List assets with optional type filter. Returns asset count, canonical filenames, and metadata.
 - `bakin_exec_assets_list_trash`: List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge.
+- `bakin_exec_assets_open`: Open an attached asset by canonical filename. Returns sidecar metadata plus extracted text for text-like assets; non-extractable assets return metadata-only status.
 - `bakin_exec_assets_permanent_delete`: Permanently delete a specific trashed asset. This cannot be undone.
 - `bakin_exec_assets_restore`: Restore a trashed asset back to its original location. Use bakin_exec_assets_list_trash first to get the filename.
 - `bakin_exec_assets_retype`: Change an asset's type classification. Sidecar-only edit — no file move.

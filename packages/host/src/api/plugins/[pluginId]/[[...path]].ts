@@ -33,6 +33,7 @@ import {
 import { wrapPluginContextPermissions } from '@/lib/plugin-permissions'
 import { stampPluginResponse } from '@/core/plugin-host/version-stamp'
 import type { PluginContext, APIRoute } from '@bakin/core/plugin-types'
+import { dispatchRoute } from '@bakin/core/routing'
 
 const log = createLogger('plugin-route')
 
@@ -226,8 +227,9 @@ async function handle(req: Request, url: URL): Promise<Response> {
   const actor = req.headers.get('x-bakin-agent') || 'human'
 
   try {
-    // Inject :param extractions into handlerReq's searchParams so handlers
-    // can read them the same way as query params.
+    // Inject :param extractions into handlerReq's searchParams so legacy
+    // handlers (those still using `url.searchParams.get('taskId')` style)
+    // continue to work alongside routes that consume `parsed.params`.
     let handlerReq = req
     if (Object.keys(routeMatch.params).length > 0) {
       const newUrl = new URL(req.url)
@@ -244,7 +246,16 @@ async function handle(req: Request, url: URL): Promise<Response> {
     }
 
     const ctx = buildCtx(pluginId)
-    const res = await routeMatch.route.handler(handlerReq, ctx)
+    // Run through the dispatcher: when the route declares typed
+    // params/query/body or legacy input/output schemas, the dispatcher
+    // validates and short-circuits with 400/415 on bad input. Routes with
+    // no schemas fall through to the handler unchanged.
+    const res = await dispatchRoute({
+      req: handlerReq,
+      ctx,
+      route: routeMatch.route as Parameters<typeof dispatchRoute>[0]['route'],
+      params: routeMatch.params,
+    })
 
     // Audit write methods + any failure.
     const durationMs = Date.now() - startedAt

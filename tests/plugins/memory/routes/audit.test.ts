@@ -121,7 +121,7 @@ describe('auditRoute — handler', () => {
         updated_at: 1,
       },
     ])
-    const res = await auditRoute.handler(makeReq(), ctx)
+    const res = await auditRoute.handler(makeReq(), ctx, {})
     const body = await res.json() as { entries: unknown[]; total: number }
     expect(res.status).toBe(200)
     expect(body.total).toBe(1)
@@ -135,21 +135,21 @@ describe('auditRoute — handler', () => {
 
   it('passes agent filter when ?agent= is set', async () => {
     const { ctx, recorder } = makeCtx()
-    await auditRoute.handler(makeReq({ agent: 'scout' }), ctx)
+    await auditRoute.handler(makeReq({ agent: 'scout' }), ctx, {})
     const call = recorder.calls[0]
     expect(call.filters?.agent).toBe('scout')
   })
 
   it('does NOT send an agent filter when the query param is absent', async () => {
     const { ctx, recorder } = makeCtx()
-    await auditRoute.handler(makeReq(), ctx)
+    await auditRoute.handler(makeReq(), ctx, {})
     const call = recorder.calls[0]
     expect(call.filters?.agent).toBeUndefined()
   })
 
   it('passes event filter via q field when ?event= is set', async () => {
     const { ctx, recorder } = makeCtx()
-    await auditRoute.handler(makeReq({ event: 'task.created' }), ctx)
+    await auditRoute.handler(makeReq({ event: 'task.created' }), ctx, {})
     const call = recorder.calls[0]
     // Event narrows results — either via q text or via facet.
     // Accept either "event" filter or event text embedded in q.
@@ -160,29 +160,29 @@ describe('auditRoute — handler', () => {
 
   it('respects ?limit= (capped at 500)', async () => {
     const { ctx, recorder } = makeCtx()
-    await auditRoute.handler(makeReq({ limit: '25' }), ctx)
+    await auditRoute.handler(makeReq({ limit: '25' }), ctx, {})
     expect(recorder.calls[0].limit).toBe(25)
 
-    await auditRoute.handler(makeReq({ limit: '99999' }), ctx)
+    await auditRoute.handler(makeReq({ limit: '99999' }), ctx, {})
     expect(recorder.calls[1].limit ?? 0).toBeLessThanOrEqual(500)
   })
 
   it('defaults limit when ?limit= is not set', async () => {
     const { ctx, recorder } = makeCtx()
-    await auditRoute.handler(makeReq(), ctx)
+    await auditRoute.handler(makeReq(), ctx, {})
     expect(typeof recorder.calls[0].limit).toBe('number')
     expect(recorder.calls[0].limit).toBeGreaterThan(0)
   })
 
   it('returns 400 on invalid limit', async () => {
     const { ctx } = makeCtx()
-    const res = await auditRoute.handler(makeReq({ limit: 'not-a-number' }), ctx)
+    const res = await auditRoute.handler(makeReq({ limit: 'not-a-number' }), ctx, {})
     expect(res.status).toBe(400)
   })
 
   it('passes ?q= free-text query through to search', async () => {
     const { ctx, recorder } = makeCtx()
-    await auditRoute.handler(makeReq({ q: 'taskboard' }), ctx)
+    await auditRoute.handler(makeReq({ q: 'taskboard' }), ctx, {})
     expect(recorder.calls[0].q).toContain('taskboard')
   })
 })

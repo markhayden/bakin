@@ -593,6 +593,28 @@ class PluginRegistryImpl {
     }
   }
 
+  /**
+   * Register declarative routes from `plugin.routes` into state.routes.
+   * T20: called BEFORE `plugin.activate()` (the spec invariant). Every
+   * in-repo plugin populates `plugin.routes` at module-load time so the
+   * static analyzer + the docs generator see the full surface without
+   * needing to invoke activate(). Routes registered through the legacy
+   * `ctx.registerRoute` adapter during activate() are appended to
+   * state.routes after this runs; this only adds the declarative
+   * entries.
+   */
+  private registerDeclarativeRoutes(plugin: BakinPlugin, state: PluginState): void {
+    const declarative = plugin.routes ?? []
+    if (declarative.length === 0) return
+    for (const route of declarative) {
+      // Cast: declarative APIRoute<C, P, Q, B> is structurally compatible
+      // with the legacy APIRoute used by state.routes — same path/method/
+      // handler primary fields, plus extra typed schemas the dispatcher
+      // adapter knows how to read.
+      state.routes.push(route as unknown as APIRoute)
+    }
+  }
+
   private assertRouteDeclared(pluginId: string, state: PluginState, route: APIRoute): void {
     if (state.source !== 'user') return
     const declared = state.manifest?.contributes?.apiRoutes ?? []
@@ -628,6 +650,13 @@ class PluginRegistryImpl {
     // auto-route wiring land routes in the same place (and share the
     // same docs registration side effect).
     const registerRoute = (route: APIRoute) => {
+      // Dedup against declarative routes already registered before
+      // activate(). Without this, plugins that declare a route via
+      // `routes: [searchRoute(...)]` AND trigger the auto-wire path
+      // (ctx.search.registerContentType → opts.registerRoute) would
+      // double-register `<method, path>`.
+      const exists = state.routes.some(r => r.method === route.method && r.path === route.path)
+      if (exists) return
       this.assertRouteDeclared(pluginId, state, route)
       state.routes.push(route)
       registerRouteDoc(pluginId, route)
@@ -837,6 +866,13 @@ class PluginRegistryImpl {
       }
 
       const ctx = this.buildContext(plugin.id, state, storage, events, services)
+      // T20: declarative routes register BEFORE activate() runs (the spec
+      // invariant restored). Every plugin now has its routes array
+      // populated at module load — team and workflows use a
+      // populateXRoutes() helper called at module scope. Handlers receive
+      // ctx via the dispatcher at request time and never close over
+      // activate-internal state.
+      this.registerDeclarativeRoutes(plugin, state)
       await plugin.activate(ctx)
       state.ctx = ctx
       const skillResult = loadPluginSkills(pluginPath, ctx, log)
@@ -920,6 +956,7 @@ class PluginRegistryImpl {
     }
 
     const ctx = this.buildContext(plugin.id, state, storage, events, services)
+    this.registerDeclarativeRoutes(plugin, state)
     await plugin.activate(ctx)
     state.ctx = ctx
     // #142 layer 1 — surface user-plugin permissions to the audit log.
@@ -1064,6 +1101,21 @@ class PluginRegistryImpl {
 
   getPluginIds(): string[] {
     return [...this.plugins.keys()]
+  }
+
+  /**
+   * Enumerate every registered route across every active plugin, paired
+   * with the plugin id (scope) for OpenAPI / docs generation. Used by the
+   * runtime `/api/docs` builder.
+   */
+  getAllPluginRoutes(): Array<{ pluginId: string; route: APIRoute }> {
+    const out: Array<{ pluginId: string; route: APIRoute }> = []
+    for (const [pluginId, state] of this.plugins.entries()) {
+      for (const route of state.routes) {
+        out.push({ pluginId, route })
+      }
+    }
+    return out
   }
 
   getPluginState(pluginId: string): PluginState | undefined {

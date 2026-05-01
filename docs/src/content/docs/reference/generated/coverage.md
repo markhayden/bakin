@@ -6,15 +6,15 @@ description: Coverage report for generated Bakin documentation surfaces.
 | Surface | Source | Status |
 | --- | --- | --- |
 | CLI commands | `src/core/cli/registry.ts` | Active: 59 commands, 60 examples |
-| HTTP routes | `src/core/api-docs.ts` and route metadata | Active: 54 routes, 0 input schemas, 0 output schemas, 0 routes with examples |
+| HTTP routes | `src/core/api-docs.ts` and route metadata | Active: 55 routes, 0 input schemas, 0 output schemas, 0 routes with examples |
 | Plugin routes | Runtime route registration metadata | Partial: 0 documented plugin routes |
 | Hooks | Source scan for `hooks.register(...)` | Audited: 43 registrations |
 | Slots | SDK slot contract plus source scan | Documented: 6 public slot names, 1 audited registrations |
-| Exec/MCP tools | Source scan for `registerExecTool(...)` | Audited: 106 tools |
+| Exec/MCP tools | Source scan for `registerExecTool(...)` | Audited: 107 tools |
 | Core plugins | `plugins/*/bakin-plugin.json` | Active: 8 plugin manifests |
 | Settings | `packages/core/src/settings.ts` | Active: 50 flattened settings |
 | Runtime paths | `packages/core/src/content-dir.ts` | Active: documented path contract |
-| SDK exports | `packages/sdk/package.json` and barrel files | Audited: 8 subpaths |
+| SDK exports | `packages/sdk/package.json` and barrel files | Audited: 9 subpaths |
 | Agent package kinds | `packages/core/src/agent-packages/manifest.ts` | Active: agent, skill-pack, workflow-pack, knowledge-pack |
 | Tested snippets | `docs/snippets` | Active: 4 required fixtures |
 | LLM docs | `docs/public/llms*` | Active: 11 public bundles |

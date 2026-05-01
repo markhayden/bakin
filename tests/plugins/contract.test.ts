@@ -80,6 +80,12 @@ mock.module('../../src/core/logger', () => ({
   }),
 }))
 
+mock.module('@bakin/adapter-openclaw/home', () => ({
+  getOpenClawHome: () => hoistedOpenClawHome,
+  getOpenClawPath: (...parts: string[]) => `${hoistedOpenClawHome}/${parts.join('/')}`,
+  resetOpenClawHome: () => {},
+}))
+
 import type { PluginContext, BakinPlugin, APIRoute, NavItem } from '@bakin/core/plugin-types'
 import { BakinEventBus } from '../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../src/lib/storage/markdown-adapter'
@@ -217,10 +223,14 @@ describe('Plugin Contract', () => {
         expect(typeof plugin.activate).toBe('function')
       })
 
-      it('activate registers at least one route', async () => {
+      it('exposes at least one route (declarative or via activate)', async () => {
         const { ctx, routes } = createMockContext(plugin.id)
         await plugin.activate(ctx)
-        expect(routes.length).toBeGreaterThan(0)
+        // T20: every in-repo plugin declares routes statically on
+        // `plugin.routes`. Older plugins may still use the legacy
+        // `ctx.registerRoute(...)` adapter during activate. Count both.
+        const declarative = (plugin as { routes?: unknown[] }).routes ?? []
+        expect(declarative.length + routes.length).toBeGreaterThan(0)
       })
 
       it('has a settingsSchema with valid fields', () => {

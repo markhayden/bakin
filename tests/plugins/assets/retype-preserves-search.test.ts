@@ -173,12 +173,12 @@ describe('retype handler preserves search index', () => {
     captured.indexCalls.length = 0
     captured.removeCalls.length = 0
 
-    const handler = captured.handlers['PATCH']['/retype']
-    const res = await handler(new Request('http://localhost/api/plugins/assets/retype', {
+    const route = (assetsPlugin.routes ?? []).find(r => r.method === 'PATCH' && r.path === '/retype')!
+    const res = await route.handler(new Request('http://localhost/api/plugins/assets/retype', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filename, type: 'research' }),
-    }), captured.ctx)
+    }), captured.ctx, { body: { filename, type: 'research' } })
 
     const data = await res.json()
     expect(data.ok).toBe(true)
@@ -219,12 +219,12 @@ describe('relink handler preserves search index', () => {
     captured.indexCalls.length = 0
     captured.removeCalls.length = 0
 
-    const handler = captured.handlers['PATCH']['/link']
-    const res = await handler(new Request('http://localhost/api/plugins/assets/link', {
+    const route = (assetsPlugin.routes ?? []).find(r => r.method === 'PATCH' && r.path === '/link')!
+    const res = await route.handler(new Request('http://localhost/api/plugins/assets/link', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ filename, taskId: 'task-2' }),
-    }), captured.ctx)
+    }), captured.ctx, { body: { filename, taskId: 'task-2' } })
 
     const data = await res.json()
     expect(data.ok).toBe(true)

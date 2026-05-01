@@ -144,12 +144,13 @@ async function callBridge(
 
   mockSettings = { bridgeEnabled: true, bridgeSecret: TEST_BRIDGE_SECRET, ...(opts.settings ?? {}) }
 
-  // Find the bridge route handler by activating the plugin
-  let bridgeHandler: ((req: Request) => Promise<Response>) | undefined
+  // T20: routes are declared on plugin.routes at module load — no longer
+  // registered via ctx.registerRoute. Pull /bridge directly from there.
+  const declarativeRoutes = (plugin as { routes?: Array<{ path: string; method: string; handler: (req: Request, ctx: unknown, parsed?: unknown) => Promise<Response> }> }).routes ?? []
+  const bridgeRoute = declarativeRoutes.find(r => r.path === '/bridge' && r.method === 'POST')
+  const bridgeHandler = bridgeRoute?.handler
   const ctx = {
-    registerRoute: (route: { path: string; method: string; handler: (req: Request) => Promise<Response> }) => {
-      if (route.path === '/bridge') bridgeHandler = route.handler
-    },
+    registerRoute: mock(),
     registerExecTool: mock(),
     registerNav: mock(),
     registerSlot: mock(),
@@ -208,7 +209,7 @@ async function callBridge(
     headers: { 'Content-Type': 'application/json' },
   })
 
-  const res = await bridgeHandler(req)
+  const res = await bridgeHandler(req, ctx as unknown as Parameters<typeof bridgeHandler>[1])
   const body = await res.json()
   return { status: res.status, body }
 }

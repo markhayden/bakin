@@ -38,6 +38,8 @@ import asset_api_plugins_tasks_assets_client_js from '../../../../plugins/tasks/
 import asset_api_plugins_tasks_assets_index_js from '../../../../plugins/tasks/dist/index.js' with { type: 'file' }
 import asset_api_plugins_memory_assets_client_js from '../../../../plugins/memory/dist/client.js' with { type: 'file' }
 import asset_api_plugins_memory_assets_index_js from '../../../../plugins/memory/dist/index.js' with { type: 'file' }
+import asset_api_plugins_projects_assets_client_js from '../../../../plugins/projects/dist/client.js' with { type: 'file' }
+import asset_api_plugins_projects_assets_index_js from '../../../../plugins/projects/dist/index.js' with { type: 'file' }
 import asset_api_plugins_health_assets_client_js from '../../../../plugins/health/dist/client.js' with { type: 'file' }
 import asset_api_plugins_health_assets_index_js from '../../../../plugins/health/dist/index.js' with { type: 'file' }
 import asset_api_plugins_workflows_assets_client_js from '../../../../plugins/workflows/dist/client.js' with { type: 'file' }
@@ -50,6 +52,9 @@ import asset_api_plugins_team_assets_index_js from '../../../../plugins/team/dis
 import asset_api_plugins_team_assets_client_css from '../../../../plugins/team/dist/client.css' with { type: 'file' }
 import asset_api_plugins_assets_assets_client_js from '../../../../plugins/assets/dist/client.js' with { type: 'file' }
 import asset_api_plugins_assets_assets_index_js from '../../../../plugins/assets/dist/index.js' with { type: 'file' }
+import asset_api_plugins_messaging_assets_client_js from '../../../../plugins/messaging/dist/client.js' with { type: 'file' }
+import asset_api_plugins_messaging_assets_index_js from '../../../../plugins/messaging/dist/index.js' with { type: 'file' }
+import asset_data_curated_agents_json from '../data/curated-agents.json' with { type: 'file' }
 
 /** URL path → embedded file path. Keys are the exact paths the HTTP
  *  handlers request (including leading slash). Both core static assets
@@ -78,6 +83,8 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/api/plugins/tasks/assets/index.js', asset_api_plugins_tasks_assets_index_js],
   ['/api/plugins/memory/assets/client.js', asset_api_plugins_memory_assets_client_js],
   ['/api/plugins/memory/assets/index.js', asset_api_plugins_memory_assets_index_js],
+  ['/api/plugins/projects/assets/client.js', asset_api_plugins_projects_assets_client_js],
+  ['/api/plugins/projects/assets/index.js', asset_api_plugins_projects_assets_index_js],
   ['/api/plugins/health/assets/client.js', asset_api_plugins_health_assets_client_js],
   ['/api/plugins/health/assets/index.js', asset_api_plugins_health_assets_index_js],
   ['/api/plugins/workflows/assets/client.js', asset_api_plugins_workflows_assets_client_js],
@@ -90,6 +97,9 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/api/plugins/team/assets/client.css', asset_api_plugins_team_assets_client_css],
   ['/api/plugins/assets/assets/client.js', asset_api_plugins_assets_assets_client_js],
   ['/api/plugins/assets/assets/index.js', asset_api_plugins_assets_assets_index_js],
+  ['/api/plugins/messaging/assets/client.js', asset_api_plugins_messaging_assets_client_js],
+  ['/api/plugins/messaging/assets/index.js', asset_api_plugins_messaging_assets_index_js],
+  ['/data/curated-agents.json', asset_data_curated_agents_json],
 ])
 
-export const EMBEDDED_ASSET_COUNT = 35
+export const EMBEDDED_ASSET_COUNT = 40

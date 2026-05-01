@@ -138,6 +138,44 @@ beforeEach(() => {
   ]) m.mockReset()
 })
 
+// ─── Routing — :taskId requirement (replaces 6 legacy skipped cases) ───────
+//
+// Pre-T6, plugin handlers manually checked `url.searchParams.get('taskId')`
+// and returned 400 when absent. Post-T6 the dispatcher's path-param
+// validation owns this — the path itself encodes the taskId. The tests
+// below assert routing-level behavior: the route exists at the right path
+// shape, and matchRoute (used by the catch-all) requires the segment.
+
+describe('Tasks Plugin — :taskId path-param routing', () => {
+  it('GET / and /:taskId are distinct routes', () => {
+    const list = findRoute(activated.routes, 'GET', '/')
+    const get = findRoute(activated.routes, 'GET', '/:taskId')
+    expect(list).toBeDefined()
+    expect(get).toBeDefined()
+    expect(list).not.toBe(get)
+  })
+
+  it('PUT /:taskId, DELETE /:taskId, and POST /:taskId/{assign,log,move,block,complete,dependency} all require the path segment', () => {
+    const requireParam = [
+      ['PUT', '/:taskId'],
+      ['DELETE', '/:taskId'],
+      ['POST', '/:taskId/assign'],
+      ['POST', '/:taskId/log'],
+      ['POST', '/:taskId/move'],
+      ['POST', '/:taskId/block'],
+      ['POST', '/:taskId/complete'],
+      ['POST', '/:taskId/dependency'],
+    ] as const
+    for (const [method, path] of requireParam) {
+      const route = findRoute(activated.routes, method, path)
+      expect(route).toBeDefined()
+      // Routing assertion: the route declares :taskId as a path segment.
+      // Without it in the URL, the catch-all would not match this route at all.
+      expect(route?.path).toContain(':taskId')
+    }
+  })
+})
+
 // ─── Route Registration ────────────────────────────────────────────────────
 
 describe('Tasks Plugin — Route Registration', () => {
@@ -205,13 +243,6 @@ describe('GET /:taskId — Get Task', () => {
     expect(mockGetTaskDetails).toHaveBeenCalledWith('abc123')
   })
 
-  it('returns 400 when taskId is missing', async () => {
-    const route = findRoute(activated.routes, 'GET', '/:taskId')!
-    const { status, body } = await callRoute(route, activated.ctx)
-
-    expect(status).toBe(400)
-    expect(body.error).toBe('taskId required')
-  })
 
   it('returns 404 when task not found', async () => {
     mockGetTaskDetails.mockResolvedValue(null)
@@ -259,7 +290,7 @@ describe('POST / — Create Task', () => {
     })
 
     expect(status).toBe(400)
-    expect(body.error).toBe('title required')
+    expect(body.error).toBe('invalid input')
   })
 
   it('defaults createdBy to system', async () => {
@@ -306,28 +337,7 @@ describe('PUT /:taskId — Update Task', () => {
     expect(activated.ctx.activity.audit).toHaveBeenCalledWith('updated', 'pixel', { taskId: 'task-1' })
   })
 
-  it('falls back to body.id when taskId param is missing', async () => {
-    mockUpdateTask.mockResolvedValue(undefined)
 
-    const route = findRoute(activated.routes, 'PUT', '/:taskId')!
-    const { status, body } = await callRoute(route, activated.ctx, {
-      body: { id: 'task-from-body', title: 'Updated' },
-    })
-
-    expect(status).toBe(200)
-    expect(body.ok).toBe(true)
-    expect(mockUpdateTask).toHaveBeenCalledWith('task-from-body', expect.anything())
-  })
-
-  it('returns 400 when no identifier is provided', async () => {
-    const route = findRoute(activated.routes, 'PUT', '/:taskId')!
-    const { status, body } = await callRoute(route, activated.ctx, {
-      body: { title: 'No ID' },
-    })
-
-    expect(status).toBe(400)
-    expect(body.error).toBe('taskId required')
-  })
 
   it('returns 500 on update error', async () => {
     mockUpdateTask.mockRejectedValue(new Error('update failed'))
@@ -360,13 +370,6 @@ describe('DELETE /:taskId — Delete Task', () => {
     expect(activated.ctx.activity.audit).toHaveBeenCalledWith('deleted', 'system', { taskId: 'task-del' })
   })
 
-  it('returns 400 when no identifier is provided', async () => {
-    const route = findRoute(activated.routes, 'DELETE', '/:taskId')!
-    const { status, body } = await callRoute(route, activated.ctx)
-
-    expect(status).toBe(400)
-    expect(body.error).toBe('taskId required')
-  })
 
   it('returns 500 on delete error', async () => {
     mockDeleteTask.mockRejectedValue(new Error('delete failed'))
@@ -408,7 +411,7 @@ describe('POST /:taskId/move — Move Task', () => {
     })
 
     expect(status).toBe(400)
-    expect(body.error).toContain('to required')
+    expect(body.error).toBe('invalid input')
   })
 
   it('returns 400 when agent is missing', async () => {
@@ -419,7 +422,7 @@ describe('POST /:taskId/move — Move Task', () => {
     })
 
     expect(status).toBe(400)
-    expect(body.error).toContain('agent field required')
+    expect(body.error).toBe('invalid input')
   })
 
   it('returns 403 for workflow-blocked moves', async () => {
@@ -547,15 +550,6 @@ describe('POST /:taskId/assign — Assign Task', () => {
     expect(mockAssignTask).toHaveBeenCalledWith('task-a', '')
   })
 
-  it('returns 400 when taskId is missing', async () => {
-    const route = findRoute(activated.routes, 'POST', '/:taskId/assign')!
-    const { status, body } = await callRoute(route, activated.ctx, {
-      body: { agent: 'rolo' },
-    })
-
-    expect(status).toBe(400)
-    expect(body.error).toBe('taskId required')
-  })
 
   it('returns 500 on assign error', async () => {
     mockAssignTask.mockRejectedValue(new Error('assign failed'))
@@ -608,18 +602,9 @@ describe('POST /:taskId/log — Add Log Entry', () => {
     })
 
     expect(status).toBe(400)
-    expect(body.error).toContain('message required')
+    expect(body.error).toBe('invalid input')
   })
 
-  it('returns 400 when taskId is missing', async () => {
-    const route = findRoute(activated.routes, 'POST', '/:taskId/log')!
-    const { status, body } = await callRoute(route, activated.ctx, {
-      body: { message: 'orphan log' },
-    })
-
-    expect(status).toBe(400)
-    expect(body.error).toContain('taskId')
-  })
 
   it('returns 500 on log error', async () => {
     mockLogProgress.mockRejectedValue(new Error('log failed'))
@@ -672,7 +657,7 @@ describe('POST /:taskId/block — Block Task', () => {
     })
 
     expect(status).toBe(400)
-    expect(body.error).toContain('reason required')
+    expect(body.error).toBe('invalid input')
   })
 
   it('returns 500 on block error', async () => {
@@ -714,7 +699,7 @@ describe('POST /:taskId/dependency — Set Dependency', () => {
     })
 
     expect(status).toBe(400)
-    expect(body.error).toContain('dependsOn required')
+    expect(body.error).toBe('invalid input')
   })
 
   it('returns 500 on dependency error', async () => {
@@ -754,7 +739,7 @@ describe('POST /reorder — Reorder Tasks', () => {
     })
 
     expect(status).toBe(400)
-    expect(body.error).toContain('columnId')
+    expect(body.error).toBe('invalid input')
   })
 
   it('returns 400 when orderedIds is not an array', async () => {
@@ -764,7 +749,7 @@ describe('POST /reorder — Reorder Tasks', () => {
     })
 
     expect(status).toBe(400)
-    expect(body.error).toContain('orderedIds')
+    expect(body.error).toBe('invalid input')
   })
 
   it('returns 500 on reorder error', async () => {
@@ -1226,7 +1211,7 @@ describe('Tasks Plugin — GET /search', () => {
     const { status, body } = await callSearchRoute(activated, '')
 
     expect(status).toBe(400)
-    expect(body.error).toBe('Missing ?q= parameter')
+    expect(body.error).toBe('invalid input')
   })
 
   it('returns 200 with empty results when no matches', async () => {

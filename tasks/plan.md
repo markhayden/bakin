@@ -1,304 +1,387 @@
-# Plan — IntegratedBrainstorm
+# PLAN — OpenAPI from typed route contracts
 
-Spec: [`.claude/specs/integrated-brainstorm.md`](../.claude/specs/integrated-brainstorm.md).
+Source: `SPEC.md`. Branch: `feat/route-contracts` cut from `main`.
 
-## Planning discoveries
+## 1. Surface area (verified)
 
-While reading the codebase to finalize this plan, three things from the spec's "known unknowns" were resolved and one spec detail is adjusted:
+- **In-repo plugins (8)** — migrated in this PR: `tasks`, `workflows`, `schedule`, `assets`, `memory`, `team`, `models`, `health`. Route counts: tasks 12, workflows 18, schedule 10, assets 11, memory 16 (split across `lib/routes/*.ts`), team 29 (largest), models 11, health 7. Total ~114 plugin routes.
+- **Extracted plugins** — `messaging`, `projects` exist in this repo only as `plugins/{messaging,projects}/dist/` build artifacts. Source lives in `../bakin-bits-official/plugins/`. Source not edited in this PR. `extractApiRoutes` scans the sibling repo and emits fallback schemas marked `x-bakin-source: "extracted"`. Validator exempts them until a sibling-repo follow-up.
+- **Core routes** — ~50 hand-listed in `src/core/api-docs.ts` `CORE_ROUTES`, plus the file-routed handlers under `packages/host/src/api/**/*.ts`. Migrated in T14–T16, organized by subject.
+- **Server entry** — `server.ts` at repo root (not `packages/host/src/server.ts`).
+- **Plugin route registration site** — `src/lib/plugin-registry.ts` (not `packages/core/src/plugin-host.ts`). This is where `ctx.registerRoute` is implemented today; the migration adapter goes here.
+- **Test infrastructure** — `tests/core/`, `tests/plugins/`, `tests/api/`, `tests/architecture/` exist. New foundation tests slot into `tests/core/` and a new `tests/docs/`.
 
-1. **Streaming helper**: `src/core/openclaw-client.ts:sendMessage` is non-streaming. The only streaming path today is `plugins/messaging/lib/gateway.ts:streamChatCompletion`, which posts to `POST /v1/chat/completions` with `stream: true` against `http://localhost:18789`. Plugins never cross-import (CLAUDE.md), so we **lift that helper into `src/core/openclaw-client.ts` as a new exported `streamMessage(agentId, message, { signal? })` returning `Response`**, and have both messaging and projects consume it. Messaging migrates to the lifted helper as part of this work. Duplication is not acceptable — no tech debt.
-2. **`useAgentColor`**: already exported from `@bakin/sdk/hooks` (`packages/sdk/src/hooks/index.ts:31`). No action.
-3. **`getMainAgentId`**: continues to be called server-side in projects `/ask` to default the agent. Preserved in the SSE handler.
-4. **Test location (spec adjustment)**: repo convention is `tests/components/*.test.tsx` with `// @vitest-environment jsdom`, `bun:test`, `@testing-library/react`. Component unit tests go to **`tests/components/integrated-brainstorm/`**, not `packages/sdk/src/components/integrated-brainstorm/__tests__/` as the spec stated. Plugin integration tests go to `tests/plugins/{projects,messaging}/`. The spec will be corrected in a follow-up commit.
-
-## Dependency graph
+## 2. Dependency graph
 
 ```
-A1 streamMessage helper ─┐
-                         ├──▶ C1 projects SSE backend ──▶ C2 projects client ─┐
-A2 component skeleton ───┘                                                     │
-       │                                                                       │
-       ▼                                                                       ▼
-  B1 collapse+empty ──▶ B2 messages ──▶ B3 send+streaming ──▶ B4 keyboard ──▶ B5 textarea ──▶ B6 resize ──▶ B7 remainder
-                                                                                                                │
-                                                                            C3 messaging client ◀───────────────┤
-                                                                                      │                         │
-                                                                                      ▼                         ▼
-                                                                                C4 delete dead code       D1 integration tests
-                                                                                                                │
-                                                                                                                ▼
-                                                                                                         D2 manual smoke
-                                                                                                                │
-                                                                                                                ▼
-                                                                                                         ✅ ship
+                   ┌────────────────────────────┐
+                   │ Foundation                 │
+                   │  T1: types + helpers       │
+                   │  T2: registry              │
+                   │  T3: Zod→OpenAPI converter │
+                   │  T4: dispatcher + adapter  │
+                   │  T5: validator + /api/docs │
+                   └────────────┬───────────────┘
+                                │
+        ┌──────────────────┬────┴────┬───────────────┬───────────┐
+        ▼                  ▼         ▼               ▼           ▼
+   T6:tasks           T7:workflows T8:schedule  T9:assets   T10:memory
+        │                  │         │               │           │
+        ▼                  ▼         ▼               ▼           ▼
+  T11:team           T12:models  T13:health
+        └──────────────────┴─────────┘
+                                │
+                                ▼
+                   ┌────────────────────────────┐
+                   │ Core route migration       │
+                   │  T14: agents/*             │
+                   │  T15: dispatch/settings/   │
+                   │       agent-packages/pkgs  │
+                   │  T16: plugins + misc       │
+                   └────────────┬───────────────┘
+                                │
+                                ▼
+                   ┌────────────────────────────┐
+                   │ T17: cleanup (delete       │
+                   │      legacy paths,         │
+                   │      retain extracted-     │
+                   │      plugin scan)          │
+                   └────────────┬───────────────┘
+                                │
+                                ▼
+                   ┌────────────────────────────┐
+                   │ T18: fail-closed flip      │
+                   │      regenerate openapi    │
+                   └────────────────────────────┘
 ```
 
-Parallelizable: A1 ∥ A2. B1–B7 are sequential (each builds on prior UI state). C2 and C3 can go in parallel once B7 is green.
+Plugin migrations (T6–T13) are independent. Execution order: `tasks` first (user priority), then size order. Each plugin migration is a complete vertical slice.
 
-## Phases & slices
+T3 (converter) is split out from T4 (dispatcher) so the largest commit doesn't bundle four concerns. Each is independently revertable.
 
-Each slice = one vertical cut: code + tests + type-check + runs green. No "build the whole component then bolt on tests at the end."
+## 3. Vertical slicing
 
-### Size key
+Every task delivers a runnable, testable, demoable end-to-end change. No horizontal "all schemas first, then all handlers" layering.
 
-- **XS** < 30 min · **S** 30–90 min · **M** 90 min–4 h · **L** 4–8 h
+- T1–T5: foundation. Each adds working machinery + a test demonstrating it.
+- T6–T13: each plugin. Schemas, handler refactor, tests, OpenAPI snapshot delta, validator warning count delta.
+- T14–T16: each core slice.
+- T17: cleanup. Verifiable by absence (deletes + scoped grep).
+- T18: enforcement. Verifiable by validator behavior + clean OpenAPI snapshot.
 
-### Phase A — Foundations
+## 4. Tasks
 
-#### A1. Lift `streamMessage` into `src/core/openclaw-client.ts` — **S**
+For each task: **Goal**, **Touched files**, **Acceptance criteria**, **Verification**, **Rollback significance**.
 
-Move streaming logic from `plugins/messaging/lib/gateway.ts` into core. Export `streamMessage(agentId: string, message: string, opts?: { signal?: AbortSignal; maxTokens?: number }): Promise<Response>` — returns the raw SSE response so the caller owns the reader loop. Keep the existing retry/error shape of `sendMessage` for transient failures on the initial fetch (not during the stream itself).
+Every task ends with the same gate: `bun run build && bun run typecheck && bun test --isolate && bun run docs:check`. Warnings allowed in T1–T17. T18 flips the validator to fail-closed.
 
-Update `plugins/messaging/index.ts` and `plugins/messaging/lib/gateway.ts` in the same commit to consume the lifted helper. Delete the now-redundant function definition in `gateway.ts` (but leave `getGatewayToken` + `chatCompletion` if still used — the lift is surgical).
+---
 
-**Acceptance**
-- [ ] `src/core/openclaw-client.ts` exports `streamMessage` with JSDoc matching `sendMessage`'s style.
-- [ ] `plugins/messaging/index.ts` imports `streamMessage` from `@/core/openclaw-client` instead of `./lib/gateway`.
-- [ ] `plugins/messaging/lib/gateway.ts` either has `streamChatCompletion` removed or re-exports from core (prefer remove — fewer layers).
-- [ ] Messaging session chat still streams end-to-end (spot-check in `bun run dev`).
-- [ ] `bun run build` passes.
-- [ ] Existing messaging tests still pass under `bun test --isolate`.
+### T1 — Types, helpers, plugin shape
 
-**Verification**
-```
+**Goal.** Introduce the new type hierarchy and authoring helpers without touching any plugin or dispatcher behavior.
+
+**Touched files.**
+- New: `packages/core/src/routing/types.ts` — `RouteContext`, `APIRoute<C, P, Q, B>`, `ParsedInput<P, Q, B>`, `ResponseSpec` discriminated union (`JsonResponseSpec`, `NoContentResponseSpec`, `NonJsonResponseSpec`).
+- New: `packages/core/src/routing/define.ts` — `defineRoute`, `defineCoreRoute`, `definePlugin` const-generic identity functions.
+- Modified: `packages/core/src/plugin-types.ts` — add `routes?: APIRoute[]` (optional during migration) to `BakinPlugin`. `PluginContext.registerRoute` retained for now.
+- Modified: `packages/core/src/docs/metadata.ts` and `packages/sdk/src/metadata/index.ts` — consolidate duplicated `RouteContract` (SDK re-exports core).
+- Modified: `packages/sdk/src/index.ts` — re-export `definePlugin`, `defineRoute`, `searchRoute`.
+
+**Acceptance.** Helpers compile; `BakinPlugin.routes` exists; existing plugin behavior unchanged.
+
+**Verification.** `tests/core/routing-types.test.ts` with type-level inference assertions. Full gate.
+
+**Rollback.** Self-contained additions.
+
+---
+
+### T2 — Route registry + duplicate detection + path matching
+
+**Goal.** Single `RouteRegistry` that owns the canonical method+path table.
+
+**Touched files.**
+- New: `packages/core/src/routing/registry.ts` — `RouteRegistry` with `register(route, scope)`, `match(method, url)`, `clear()`, `all()`.
+- New: `packages/core/src/routing/operation-id.ts` — `operationIdFor(scope, method, path)` slug helper.
+
+**Acceptance.** Radix match with literal-beats-param precedence; duplicate `<method, fullPath>` throws; duplicate operationId throws; `clear()` resets; plugin routes prefixed `/api/plugins/<id>`.
+
+**Verification.** `tests/core/route-registry.test.ts`. Full gate.
+
+**Rollback.** Pure additive module.
+
+---
+
+### T3 — Zod→OpenAPI converter + shared error envelope
+
+**Goal.** Build the schema-conversion layer in isolation. No dispatcher changes yet.
+
+**Touched files.**
+- New: `packages/core/src/openapi/zod-to-openapi.ts` — wraps `z.toJSONSchema` for parameters, request bodies, response bodies. Converts `:id` paths to `{id}`. Helpers for global `400`/`415` emission.
+- New: `packages/core/src/openapi/errors.ts` — `errorEnvelope` Zod schema + `400`/`415` builders.
+- New: `packages/core/src/openapi/operation.ts` — single-route OpenAPI Operation builder consuming `APIRoute<...>`.
+
+**Acceptance.** Given a `defineRoute({ params, query, body, responses })` literal, the converter emits a valid OpenAPI 3.1 Operation with correct `parameters`, `requestBody`, `responses`. Path `:id` segments emit as `{id}` with `parameters[in: 'path']`. Error envelope global `400`/`415` emit only when applicable (`415` only when `body` is declared).
+
+**Verification.** `tests/docs/zod-to-openapi.test.ts`: golden-snapshot a small set of routes covering JSON shorthand, multipart, none-body, SSE response, mixed status responses. Full gate.
+
+**Rollback.** Standalone module; revert deletes the file.
+
+---
+
+### T4 — Registry-driven dispatcher + legacy `ctx.registerRoute` adapter
+
+**Goal.** Wire the registry into the request path. Auto-validate inputs. Adapt the legacy registration call so existing plugins keep working.
+
+**Touched files.**
+- New: `packages/core/src/routing/dispatcher.ts` — `dispatchRoute(req, url, registry, ctxFactory)`: extract path params, parse query, parse body per content type, call handler, validate response in dev/test.
+- Modified: `server.ts` (repo root) — funnel `/api/*` through the dispatcher with the routing precedence rule from SPEC §Registry & dispatch:
+  1. Registry match for any registered route (plugin or core).
+  2. Legacy file-routed fallback under `packages/host/src/api/**` for unmigrated core routes (deleted in T17).
+  3. Static asset / SPA shell fallback.
+- Modified: `src/lib/plugin-registry.ts` — `ctx.registerRoute` now adapts the legacy `APIRoute` shape and writes into the registry. Adapter mapping: `input → body` (assumed `application/json`), `output → responses[200]`. Routes without schemas register as-is and surface in the validator (T5) as warnings.
+- Modified: `packages/host/src/api/_adapter.ts` `dispatchWebHandler` — kept for now; called only from step 2 of the precedence above.
+
+**Acceptance.** Every existing route still serves traffic. Routes registered through the new declarative shape work. Invalid body → `400 { error, issues }`. Wrong content type → `415`. `responses[status]` mismatch in dev → console warning; in test → throw. `/api/dispatch` (no body declared, no migrate yet) still works through the adapter.
+
+**Verification.**
+- `tests/core/route-dispatcher.test.ts` — 400/415/404/happy-path/none-body/dev-warn/test-fail.
+- `tests/core/route-dispatcher-adapter.test.ts` — legacy shape flows through adapter.
+- Smoke: `bun run dev:mock` then `curl http://localhost:3737/api/version`, `/api/agents`, `/api/plugins/tasks/`. All 200.
+- Full gate.
+
+**Rollback.** Largest commit. Revert restores file-routed dispatch path.
+
+---
+
+### T5 — Validator (warn mode) + `/api/docs` from registry
+
+**Goal.** Surface every public route's schema status as warnings; serve a live OpenAPI doc from the registry.
+
+**Touched files.**
+- New: `scripts/docs/route-contract-check.ts` — walks the in-repo bundled surface (core + 8 in-repo plugins; excludes extracted `messaging`/`projects`). Emits warnings/errors per the validator rules in SPEC §Validator.
+- Modified: `scripts/docs/check.ts` — invokes the new validator; mode flag controls warn-vs-fail.
+- New: `packages/host/src/api/docs-runtime.ts` — `/api/docs` handler builds OpenAPI from the runtime registry once at boot, caches, invalidates on `dev:plugin:reload` SSE events.
+- Modified: `src/core/api-docs.ts` — `/api/docs` route delegates to the new builder. Full deletion of `CORE_ROUTES` etc. happens in T17.
+
+**Acceptance.** `bun run docs:check` lists every public bundled route missing schemas; exit 0 (warnings only). Output is greppable. `/api/docs` returns OpenAPI 3.1 JSON; hot-reload rebuild works under `bun run dev`. `messaging`/`projects` are emitted to the static OpenAPI but skipped by the validator.
+
+**Note on `/api/docs` self-reference.** The `/api/docs` route is itself a registry-backed route. To avoid recursion: the OpenAPI document is built once from the registry **including** the `/api/docs` entry. Its own response schema is a passthrough OpenAPI document type (`{ contentType: 'application/json', schema: openApiDocumentSchema }`). The handler reads from the cache, never from a re-build.
+
+**Verification.**
+- `tests/docs/route-contract-check.test.ts`: missing schemas detected; internal/extracted ignored; multipart-without-schema accepted; `:id` path without `params` schema fails (when not migration-window-exempt).
+- `tests/api/api-docs-runtime.test.ts`: `/api/docs` returns valid OpenAPI; rebuild on registry change.
+- Manual: `bun run docs:check 2>&1 | head -40`.
+- Full gate.
+
+**Rollback.** Read-only diagnostics; clean revert.
+
+---
+
+### CHECKPOINT — Foundation complete
+
+After T1–T5: every route still works, every dev request flows through the registry-backed dispatcher, validator surfaces all unmigrated routes as warnings, `/api/docs` is live. **Stop and verify.** If anything regresses, fix before T6.
+
+Manual smoke checks:
+- `bun run dev` → http://localhost:3737, exercise tasks UI, settings, agents start/stop.
+- `curl http://localhost:3737/api/docs | jq '.paths | keys | length'`.
+- `bun run docs:check 2>&1 | grep -c "missing"` — record warning baseline.
+
+---
+
+### T6 — Migrate `tasks` plugin
+
+**Goal.** First plugin to declarative form. Establishes the migration pattern.
+
+**Touched files.**
+- `plugins/tasks/index.ts` — convert export to `definePlugin({ ... routes: [defineRoute(...)] })`. Module-scope Zod schemas (`createTaskBody`, `createTaskResponse`, `moveTaskBody`, etc.). Drop manual 400-validation in handlers.
+- `plugins/tasks/bakin-plugin.json` — leave `contributes.apiRoutes` for now (T17 deletes it project-wide).
+- `tests/plugins/tasks/*.test.ts` — drive routes via dispatcher; remove redundant manual-400 cases; assert registry presence.
+
+**Acceptance.** All 12 routes have `body` (where applicable), `responses[200]`, `params` (where path has `:id`). `bun run docs:check` warning count drops by 12. `docs/public/openapi.json` for tasks paths contains specific JSON Schema. Tasks UI works under `bun run dev:mock`.
+
+**Verification.** Full gate. Diff openapi.json.
+
+**Rollback.** Single-plugin revert.
+
+---
+
+### T7 — `workflows` (18 routes)
+### T8 — `schedule` (10 routes)
+### T9 — `assets` (11 routes; multipart upload route declares `body: { contentType: 'multipart/form-data' }`)
+### T10 — `memory` (16 routes; split across `lib/routes/*.ts` — each file exports `defineRoute(...)` entries; `index.ts` aggregates)
+### T11 — `team` (29 routes — largest; budget 1.5×; reuse schemas via `plugins/team/types.ts`)
+### T12 — `models` (11 routes)
+### T13 — `health` (7 routes)
+
+Each follows T6's shape: schemas → convert → tests → smoke → gate → commit.
+
+---
+
+### CHECKPOINT — All in-repo plugins migrated
+
+After T13: 8 plugins on declarative routes. Validator warnings reduced to core only. Extracted plugin warnings persist (exempt). Expected remaining count ≈ unmigrated core routes (~50).
+
+Manual smoke:
+- `bun run dev` → exercise each plugin's primary UI (tasks board, workflow start, schedule cron list, asset upload, memory dashboard, team settings, models picker, doctor).
+- Diff `docs/public/openapi.json`.
+
+---
+
+### T14 — Migrate `core/agents/*` routes
+
+**Goal.** Move handler bodies from `packages/host/src/api/agents/*.ts` into `packages/host/src/core-routes/agents.ts`. Express each route as `defineCoreRoute(...)`.
+
+**Touched files.**
+- New: `packages/host/src/core-routes/index.ts` — barrel exporting `coreRoutes: APIRoute<CoreContext>[]`.
+- New: `packages/host/src/core-routes/agents.ts` — exports `agentRoutes` array.
+- Modified: `server.ts` — register `coreRoutes` into the registry before any plugins activate (boot order: core → in-repo plugins → user plugins).
+- Legacy `packages/host/src/api/agents/*.ts` files remain for now; deleted in T17.
+
+**Acceptance.** Routes covered: `/api/agents`, `/api/agents/avatar`, `/api/agents/health`, `/api/agents/settings` (GET, PUT), `/api/agents/start`, `/api/agents/stop`, `/api/agents/restart`, `/api/agents/:id`, `/api/agents/:id/status`, `/api/agents/:id/message`, `/api/agents/:id/tasks`. All have schemas. Warning count drops by 11. `bun run dev:mock` agent-control UI works.
+
+**Verification.** Full gate. Smoke: agents start/stop/restart from UI.
+
+---
+
+### T15 — Migrate core/dispatch + settings + agent-packages + packages
+
+**Touched files.** `packages/host/src/core-routes/{dispatch,settings,agent-packages,packages}.ts`. Extend `server.ts` register block.
+
+**Routes (~16).** `/api/dispatch` (GET, POST), `/api/settings` (GET, POST), `/api/agent-packages*` (5), `/api/packages*` (4), `/api/plugin-settings/*` (3), `/api/curated`.
+
+Same shape as T14.
+
+---
+
+### T16 — Migrate core/plugins + misc
+
+**Touched files.** `packages/host/src/core-routes/{plugins,events,misc}.ts`.
+
+**Routes (~22).** `/api/plugins/{install,link,unlink,upgrade,remove,manifest,assets/*}` (~7), plus `/api/version`, `/api/paths`, `/api/state`, `/api/search`, `/api/reindex`, `/api/activity*` (2), `/api/internal/continuation`, `/api/exec-tools/:toolName`, `/api/memory/log`, `/api/assets/:path`, `/api/docs`, `/api/events`, `/api/dev/events`, `/api/dev/notify`.
+
+**Notes.**
+- SSE: `/api/events`, `/api/dev/events` declare `responses[200]: { contentType: 'text/event-stream' }`. Validator passes them as non-JSON.
+- Binary: `/api/agents/avatar`, `/api/assets/:path`, `/api/plugins/:pluginId/assets/:path` declare `responses[200]: { contentType: 'application/octet-stream' }` (or appropriate image type).
+- `/api/dev/*` declare `visibility: 'internal'`.
+- `/api/docs`: handler reads from the cached OpenAPI document built at boot. The route declares `responses[200]: { contentType: 'application/json', schema: openApiDocumentSchema }` where the schema is a permissive OpenAPI 3.1 document shape (no recursion into the live document).
+
+**Acceptance.** Every public route has schemas. Warning count for in-repo + core surface drops to 0. Only `messaging`/`projects` remain (exempt).
+
+**Verification.** Full gate. Smoke: SSE connection (`curl -N http://localhost:3737/api/events`), file fetch (`curl http://localhost:3737/api/agents/avatar?id=basil -o /tmp/avatar`), dev server reload, `/api/docs` returns valid OpenAPI without recursion.
+
+---
+
+### CHECKPOINT — Every in-repo route is declarative
+
+After T16: registry covers every route the host owns. Legacy `ctx.registerRoute` has zero in-repo callers (only the extracted-plugin source-scan path remains). Validator warnings → 0 for in-repo + core.
+
+---
+
+### T17 — Cleanup
+
+**Goal.** Delete the now-unused legacy paths.
+
+**Touched files.**
+- Delete: `src/core/api-docs.ts` `CORE_ROUTES`, `coreRoute()`, `routeDocs[]`, `registerRouteDoc()`, `getAllRoutes()`, `generateDocs(contentDir)`, `RouteDoc` type if unused.
+- Delete: `dispatchWebHandler` in `packages/host/src/api/_adapter.ts`. Verify no callers (should be none after T16).
+- Delete: file-routed core handlers under `packages/host/src/api/**/*.ts` whose subjects moved to `core-routes/`. Verify `packages/host/src/api/` collapses to `_adapter.ts`, `_static.ts`, `_embedded-assets*.ts` only (the static-asset path stays).
+- Delete: `ctx.registerRoute` from `PluginContext` and the adapter wiring in `src/lib/plugin-registry.ts`.
+- Delete: `contributes.apiRoutes` field from in-repo `bakin-plugin.json` files (the 8 migrated plugins).
+- Modified: `scripts/docs/source-scan.ts` — delete `getApiRoutes()` (manifest-first/source-fallback wrapper). **Keep** `extractApiRoutes()` but scope its call site in `generate.ts` to extracted plugins (`messaging`, `projects`) only.
+- Modified: `scripts/docs/generate.ts` — remove `schemaFromParamsHint`, `defaultRequestBody`, `schemaForParamHint`, fallback emission, legacy `routeOperation` overload reading from `RouteDoc`. Static OpenAPI: import in-repo plugin modules → read `plugin.routes` and `coreRoutes` → emit. Extracted plugins: emit from `extractApiRoutes()` against `../bakin-bits-official/`, marked `x-bakin-source: "extracted"` and `x-bakin-validator-exempt: true`.
+- Updated: knowledge files per SPEC §9.
+
+**Acceptance.**
+- Scoped grep against production source only — `grep -rln "ctx.registerRoute" plugins/ packages/ src/ server.ts` → zero hits.
+- `grep -rln "dispatchWebHandler" plugins/ packages/ src/ server.ts` → zero.
+- `grep -rln "CORE_ROUTES" packages/ src/ scripts/` → zero.
+- Docs/specs/tests *may* still mention the old API for historical reference; that is acceptable. Knowledge files (`.claude/knowledge/`) are updated to describe the new API.
+- `contributes.apiRoutes` only in `plugins/{messaging,projects}/dist/...` (build artifacts; ignore) and possibly the sibling repo. In-repo source `bakin-plugin.json` files no longer carry the field.
+- `bun run docs:check` warning count for in-repo + core: 0. Extracted-plugin warnings: still present, exempt.
+
+**Verification.**
+- Full gate.
+- `tests/docs/extracted-plugins.test.ts` (NEW) — verifies `extractApiRoutes()` emits routes for `messaging`/`projects` from `../bakin-bits-official/` with the `x-bakin-source: "extracted"` marker, and that the validator skips them. Required given the risk register flags this path.
+- Manual smoke: every primary UI path works. `curl /api/docs | jq '.paths | length'`.
+
+**Rollback.** Reverting deletions is straightforward.
+
+---
+
+### T18 — Fail-closed flip + final OpenAPI snapshot
+
+**Goal.** Validator becomes binary. Pristine OpenAPI committed.
+
+**Touched files.**
+- `scripts/docs/route-contract-check.ts` — flip warn → error. Exits non-zero if any in-repo + core public route fails. Extracted plugins remain exempt with a single-line stdout note.
+- `docs/public/openapi.json` — regenerated.
+- `CLAUDE.md` — "Typed Route Contracts" Key Patterns entry, if not already added in T17.
+
+**Acceptance.**
+- `bun run docs:check` exits 0 on a clean tree.
+- `bun run docs:check` exits non-zero on intentional regression (verified locally; not committed).
+- `docs/public/openapi.json` committed snapshot is golden.
+
+**Verification.** Full gate. Validate via local intentional regression → revert.
+
+**Rollback.** One-line revert.
+
+---
+
+## 5. Per-commit verification gate
+
+Every task ends with:
+
+```bash
 bun run build
-bun test tests/plugins/messaging --isolate
-# then: bun run dev, open a messaging session, send a message, confirm tokens stream
+bun run typecheck
+bun test --isolate
+bun run docs:check     # warnings allowed before T18
 ```
 
----
-
-#### A2. Component skeleton — **S**
-
-Create the directory and empty files listed under spec → Architecture → Placement. Export `IntegratedBrainstorm` and `BrainstormMessage` from `packages/sdk/src/components/index.ts`. Component renders a bordered empty div. No behavior yet, just wiring.
-
-**Acceptance**
-- [ ] `packages/sdk/src/components/integrated-brainstorm/{index.tsx,message-list.tsx,input-row.tsx,collapsed-header.tsx,empty-state.tsx,thinking-indicator.tsx,use-auto-grow.ts,use-brainstorm-state.ts,types.ts}` exist.
-- [ ] `IntegratedBrainstorm` + `BrainstormMessage` + `IntegratedBrainstormProps` exported from `@bakin/sdk/components`.
-- [ ] `<IntegratedBrainstorm messages={[]} onMessagesChange={() => {}} onSend={async () => ({ content: '' })} agentId="x" />` renders without error.
-- [ ] `bun run build` passes (types compile).
-
-**Verification**
-```
-bun run build
-```
-
-**Checkpoint A**: Foundations merged before starting B.
-
----
-
-### Phase B — Component feature slices
-
-Each slice is code + tests + green `bun test`. Tests use the convention from `tests/components/empty-state.test.tsx` (jsdom, bun:test, @testing-library/react, mock `@bakin/core/main-agent` and both content-dir paths even though the component doesn't touch fs — defensive).
-
-A shared test helper `tests/components/integrated-brainstorm/fake-on-send.ts` is built in B3 and reused by every subsequent slice.
-
-#### B1. Collapse chrome + empty state + types — **M**
-
-Render the collapsed header (icon + label + reply-count) and the default + custom empty states. Collapsing toggles via header click. `collapsible={false}` hides the chevron. Custom `icon` / `label` props respected. Empty state uses `<AgentAvatar size="xl">`.
-
-**Covers tests**: 1.1, 1.2, 1.3, 2.1–2.7, 14.1 (aria-expanded), 14.2 (drag handle role — placeholder handle now, wired in B6).
-
-**Acceptance**
-- [ ] Tests pass: `bun test tests/components/integrated-brainstorm/collapse.test.tsx --isolate`.
-- [ ] Tests pass: `bun test tests/components/integrated-brainstorm/empty-state.test.tsx --isolate`.
-- [ ] Header has `role="button"` + `aria-expanded`.
-- [ ] `bun run build` passes.
-
----
-
-#### B2. Message list rendering — **M**
-
-User and assistant bubbles. Markdown-render assistant content via `<MarkdownContent>`. Avatar + agent-color left border on assistant. Consecutive assistant grouping with `-mt-2`. Message-level `agentId` override. User messages NOT markdown-rendered.
-
-**Covers tests**: 1.4, 1.5, 1.6, 1.7, 1.8.
-
-**Acceptance**
-- [ ] Tests pass: `tests/components/integrated-brainstorm/messages.test.tsx`.
-- [ ] Renders 100 messages without console warnings (manual quick check).
-- [ ] `bun run build` passes.
-
----
-
-#### B3. Send state machine + streaming + thinking indicator — **L**
-
-Core of the component. `use-brainstorm-state.ts` implements the state machine: `idle → sending → streaming → idle`, with transitions for resolve / reject / abort. Thinking indicator with randomized culinary verb (stable per request). Streaming bubble replaced by final message on resolve. Error path appends error bubble. Concurrent-send guard. Optimistic user-message append + input clear.
-
-Also: ship the shared `fake-on-send.ts` test helper here.
-
-**Covers tests**: 4.1–4.12, 13.1–13.4, 14.5 (aria-live on thinking), 14.6 (role=alert on error).
-
-**Acceptance**
-- [ ] Tests pass: `tests/components/integrated-brainstorm/send-streaming.test.tsx`, `tests/components/integrated-brainstorm/thinking-indicator.test.tsx`.
-- [ ] `fake-on-send.ts` helper exposes `{ onSend, emitToken, emitCustom, resolve, reject }`.
-- [ ] All 27 verbs reachable with Math.random mock seeds (tested via property assertion, not 27 individual tests).
-- [ ] `bun run build` passes.
-
----
-
-#### B4. Keyboard + IME + abort — **M**
-
-Enter sends, Shift+Enter newline, Cmd/Ctrl+Enter sends, Esc aborts. IME composition suppresses Enter-sends during active composition. Abort preserves partial tokens. readOnly suppresses all keyboard actions (input row suppressed in B7, but the handlers must already respect the flag).
-
-**Covers tests**: 5.1–5.10.
-
-**Acceptance**
-- [ ] Tests pass: `tests/components/integrated-brainstorm/keyboard.test.tsx`, `tests/components/integrated-brainstorm/abort.test.tsx`.
-- [ ] `AbortController.abort()` actually called on Esc (verified via spy on controller).
-- [ ] IME test covers compositionstart → Enter → compositionend sequence.
-- [ ] `bun run build` passes.
-
----
-
-#### B5. Textarea auto-grow — **S**
-
-`use-auto-grow.ts` hook — listens to input change, sets height from `scrollHeight`, caps at `maxInputHeight`, sets `overflow-y: auto` past cap. Initial 2 rows. No `resize-y` CSS class.
-
-**Covers tests**: 6.1–6.7.
-
-**Acceptance**
-- [ ] Tests pass: `tests/components/integrated-brainstorm/auto-grow.test.tsx`.
-- [ ] No native `resize-y` class on the textarea (DOM assertion).
-- [ ] `bun run build` passes.
-
----
-
-#### B6. Outer panel resize + auto-expand + storage — **M**
-
-Wire `useVerticalResize` for the outer panel. Drag handle at top. Auto-expand on first send to `conversationStartHeight`, one-shot. `storageKey` persists height via the hook's existing localStorage support. Drag handle has the correct ARIA.
-
-**Covers tests**: 3.1–3.9, 14.2.
-
-**Acceptance**
-- [ ] Tests pass: `tests/components/integrated-brainstorm/resize.test.tsx`.
-- [ ] `storageKey` undefined → no `localStorage` calls (asserted via spy).
-- [ ] Touch drag path covered by test.
-- [ ] `bun run build` passes.
-
----
-
-#### B7. Everything else + readOnly + transformAssistant + onCustom + focus + a11y + edge cases — **L**
-
-Agent picker via `<AgentSelect>` when `onAgentChange` is present. readOnly input-row replacement (+ default "Chat is read-only" when no notice). `transformAssistantMessage` applied to streaming text AND final content. `onCustom` pass-through verified. Focus rules on expand/after-send. Auto-scroll to bottom on message/token. Edge cases: agentId mid-conversation, empty resolved content, rapid send/abort cycles, 10k-char message.
-
-**Covers tests**: 7.1, 7.3, 7.4, 8.1–8.6, 9.1–9.4, 10.1–10.5, 11.1–11.3, 12.1–12.4, 14.3, 14.4, 15.1–15.5.
-
-**Acceptance**
-- [ ] Tests pass: `tests/components/integrated-brainstorm/{read-only,transform,on-custom,focus,scroll,agent-picker,edge-cases,accessibility}.test.tsx`.
-- [ ] `bun run build` passes.
-- [ ] Every prop in `IntegratedBrainstormProps` has at least one test asserting a non-default behavior.
-- [ ] Every branch in `use-brainstorm-state.ts` exercised (eyeball coverage, not tooling — bakin doesn't have coverage wired).
-
-**Checkpoint B**: Component complete. Run `bun test tests/components/integrated-brainstorm --isolate` — all slices green. Run `bun run build` — no type errors. Run `bun run dev` and manually instantiate the component in a scratch page (or projects, once C2 lands). Stop and review before starting migrations.
-
----
-
-### Phase C — Migrations
-
-#### C1. Projects backend: `/ask` → SSE — **S**
-
-Rewrite `plugins/projects/index.ts:352-404` from JSON reply to SSE. Reuse the `streamMessage` helper from A1. Event shape mirrors messaging: `token` / `done` / `error`. No `proposal` events (projects doesn't do structured outputs yet). Final `done` emits `{ content, messageId? }`. `getMainAgentId` still defaults the agent.
-
-**Acceptance**
-- [ ] `POST /api/plugins/projects/:id/ask` responds with `Content-Type: text/event-stream`.
-- [ ] Event shape documented inline with a short comment pointing at the spec.
-- [ ] Legacy JSON response path removed; no fallback.
-- [ ] Automated test at `tests/plugins/projects/ask-sse.test.ts`: POST a prompt with mocked `streamMessage` returning a canned SSE body, consume stream, assert token + done events in order. Per CLAUDE.md rules: mock content-dir, logger, watcher, openclaw-client.
-- [ ] `bun test tests/plugins/projects --isolate` passes.
-- [ ] `bun run build` passes.
-
----
-
-#### C2. Projects client: `project-detail.tsx` uses `<IntegratedBrainstorm>` — **M**
-
-Delete brainstorm state (lines 124–160 area) and the bottom-panel JSX (lines 646–735). Add a local `projectAskOnSend` adapter (~30 lines) that opens SSE to the new `/ask` route, forwards tokens via `onToken`, and resolves with `{ content }` on `done`. Pass `<IntegratedBrainstorm messages={…} onMessagesChange={…} agentId={…} onAgentChange={…} onSend={projectAskOnSend} label="Brainstorm" icon={Sparkles} conversationStartHeight={400} />`.
-
-**Acceptance**
-- [ ] `project-detail.tsx` has no `useVerticalResize`, no `brainstormTextareaRef`, no `ResizeObserver`, no manual `brainstormMessages`/`agentLoading` state beyond what the adapter needs.
-- [ ] `projectAskOnSend` honors the `AbortSignal` — closes the reader when aborted.
-- [ ] Visual parity with current projects brainstorm (screenshot compare in dev).
-- [ ] End-to-end works in `bun run dev`: send a message, see tokens stream, reply lands, panel auto-expanded to 400px.
-- [ ] Esc mid-stream aborts cleanly.
-- [ ] No new type errors in `bun run build`.
-
----
-
-#### C3. Messaging client: `session-chat.tsx` uses `<IntegratedBrainstorm>` — **M**
-
-Refactor to a thin adapter. Extract the SSE-reading loop into `sessionOnSend(prompt, history, { signal, onToken, onCustom })` — internal to messaging. Replace `onProposalsReceived` call with `onCustom('proposal', proposal)`. Lift `handleProposalsReceived` one level to `planning-layout.tsx` via a passed callback from the component adapter. Wire `readOnly={isCompleted}` + `readOnlyNotice={<Badge variant="outline">Session completed — read-only</Badge>}`. Pass `transformAssistantMessage={stripJsonBlocks}` where `stripJsonBlocks` is the existing `stripAndSplit` helper adapted to the `{ text, extras? }` return shape — return `text` as the content without JSON blocks, return `extras` as the "N items proposed" badge.
-
-**Acceptance**
-- [ ] `session-chat.tsx` is < 150 lines (currently ~430).
-- [ ] `stripAndSplit` moved into a pure util under `plugins/messaging/lib/` or kept inline if trivial.
-- [ ] Proposals still appear in the review panel when streaming completes.
-- [ ] `isCompleted` sessions show the read-only badge.
-- [ ] No regressions in `bun test tests/plugins/messaging --isolate`.
-- [ ] `bun run build` passes.
-- [ ] Smoke: open an existing session in `bun run dev`, send a message, tokens stream, proposals arrive, review panel updates.
-
----
-
-#### C4. Delete dead brainstorm-panel.tsx — **XS**
-
-Remove `plugins/messaging/components/brainstorm-panel.tsx`. Run `grep -r BrainstormPanel plugins/ src/ packages/` to confirm no importers.
-
-**Acceptance**
-- [ ] File deleted.
-- [ ] Grep shows zero references to `BrainstormPanel` outside git history.
-- [ ] `bun run build` passes.
-
-**Checkpoint C**: Both plugins migrated. Run `bun test --isolate`. Run `bun run dev` and walk the full smoke checklist from the spec. Stop and review before ship.
-
----
-
-### Phase D — Integration tests + smoke
-
-#### D1. Plugin-level integration tests — **M**
-
-Two tests that exercise the full stack with mocked transports:
-
-1. `tests/plugins/projects/ask-sse-e2e.test.ts` — activates the projects plugin, POSTs to `/ask` with a mocked streaming `openclaw-client.streamMessage` returning a canned SSE body, consumes the response stream, asserts token events + final done.
-2. `tests/plugins/messaging/session-chat-proposals.test.ts` — activates the messaging plugin, simulates an SSE response containing an inline `json` proposal block, asserts that `onProposalsReceived` (or the new upstream equivalent) fires with the parsed proposal.
-
-Both tests follow CLAUDE.md rules: mock content-dir (both paths), logger, watcher, openclaw-client.
-
-**Acceptance**
-- [ ] `bun test tests/plugins/projects --isolate` passes.
-- [ ] `bun test tests/plugins/messaging --isolate` passes.
-- [ ] Neither test writes to `~/.bakin/` (asserted by tmp-dir check).
-
----
-
-#### D2. Manual smoke checklist — **S**
-
-Run through the 8-point checklist in the spec under "Manual smoke checklist." Record results as checkboxes in the PR description. Any failure returns the work to the relevant phase.
-
-**Acceptance**
-- [ ] All 8 boxes checked.
-- [ ] Any failures logged as follow-up issues or fixed in-flight.
-
-**Checkpoint D**: Ship.
-
----
-
-## Risks & mitigations
-
-| Risk | Likelihood | Mitigation |
-|---|---|---|
-| `streamMessage` regression breaks messaging SSE mid-migration | Medium | A1 migrates messaging + projects together in one commit with tests; rollback = revert the one commit. |
-| `scrollHeight` measurement behaves differently across browsers / jsdom shim | Medium | Use a pure CSS-based auto-grow where possible (e.g., `field-sizing: content` where supported, fall back to scrollHeight). Test in real browser during C2/C3 smoke. |
-| SSE handlers leak connections when user navigates away mid-stream | Low | `AbortController.abort()` on unmount — baked into the component's `use-brainstorm-state.ts`. |
-| `planning-layout.tsx` refactor breaks proposal threading | Low | Covered by D1 integration test + C3 smoke. |
-| Auto-expand fires twice after remount with persisted height | Low | Ref guard persists across renders but not remounts — on remount, if `storageKey` height > `minHeight`, skip auto-expand (height was persisted, user had it set). Document in B6. |
-
-## Rollout
-
-No feature flag. Single user, single machine. Ship behind whatever branch name you prefer (`ui/integrated-brainstorm` is an option given current branch naming). Merge to `main` after Checkpoint D passes.
-
-## Follow-ups (not in this plan)
-
-- Playwright E2E coverage.
-- `position="top"` / `position="side"` variants.
-- Shared visual regression harness.
-- SSE retry / resume for flaky networks.
-- Correct the test-location discrepancy in the spec (`tests/components/` vs `packages/sdk/src/...`).
+T1–T17: warnings are an OK exit code. T18: warnings → errors → exit non-zero on missing schemas.
+
+Smoke checks performed manually after **checkpoints only** (foundation, all-plugins-done, all-core-done): `bun run dev`, exercise primary UI paths.
+
+## 6. Out-of-scope explicitly
+
+- Migrating `messaging` and `projects` source (sibling-repo follow-up).
+- Adding new routes or new plugin features.
+- Changing the on-disk shape of `~/.bakin/`.
+- Backwards-compatibility shims past T17.
+- Renaming exec tools, hooks, or CLI commands.
+- Touching `packages/adapter-openclaw` or `packages/adapter-antfly` internals.
+
+## 7. Risk register
+
+| Risk                                                                                  | Likelihood | Mitigation                                                                                                         |
+|---------------------------------------------------------------------------------------|------------|--------------------------------------------------------------------------------------------------------------------|
+| Dispatcher refactor (T4) breaks an obscure route handler under hot-reload             | Medium     | T4 keeps both registry and legacy file-routed paths via the explicit precedence rule; smoke before checkpoint; per-plugin tests catch regressions. |
+| Zod 4 `z.toJSONSchema` quirks (refs, recursive types) trip up OpenAPI emission        | Medium     | T3 unit tests cover converter directly before any plugin migrates.                                                 |
+| `team` plugin (29 routes) reveals broad missing schemas across agent operations       | Low        | T11 budgeted 1.5×; schema reuse via `plugins/team/types.ts`.                                                       |
+| SSE / file routes break when output validation runs                                   | Low        | Validator only runs on JSON content types.                                                                         |
+| Hot reload (`dev:plugin:reload`) doesn't propagate schema changes to live OpenAPI     | Medium     | T5 wires `/api/docs` to invalidate cache on the SSE event; manual check at all-plugins-done checkpoint.            |
+| Extracted plugin docs regress when `extractApiRoutes` callers narrow                  | Medium     | T17 includes a dedicated test (`tests/docs/extracted-plugins.test.ts`) verifying scoped behavior.                  |
+| Adapter mapping (`input → body`, `output → responses[200]`) misroutes during T4–T16   | Low        | T4 has dedicated adapter test; per-plugin tests catch divergence.                                                  |
+| `/api/docs` self-reference produces recursive OpenAPI                                 | Low        | T5 + T16 declare a permissive `openApiDocumentSchema` for `/api/docs` response; cache-only handler.                |
+
+## 8. Doc / knowledge updates (anchored to T17/T18)
+
+Per SPEC §9:
+- `CLAUDE.md` — append Key Patterns entry "Typed Route Contracts."
+- `.claude/knowledge/plugin-system.md` — replace plugin route registration section.
+- `.claude/knowledge/repo-architecture.md` — note `packages/host/src/core-routes/`.
+- `.claude/knowledge/search-system.md` — `searchRoute({ table })` factory.
+- `docs/plugin-authoring.md` — full route example using `defineRoute`.
+
+## 9. Open questions before kickoff
+
+None blocking. Confirmed during interview:
+- Source-of-truth: declarative `routes` field + runtime registry.
+- Schema technology: Zod-only, validate input + dev-test output.
+- Type hierarchy: `RouteContext` → `PluginContext` / `CoreContext`.
+- Validation rollout: warn → fail-closed at T18.
+- Migration window: legacy `ctx.registerRoute` adapts during T1–T16, deleted in T17.
+- Extracted plugins: deferred to sibling-repo follow-up; emitted to OpenAPI via `extractApiRoutes` with explicit markers; exempt from validator.
+- Routing precedence in `server.ts`: registry → legacy file-routed (deleted T17) → static/SPA fallback.

@@ -40,6 +40,8 @@ import { runRestartRecovery } from './src/core/restart-recovery'
 import { registerShutdownHandlers } from './src/core/lifecycle'
 import { checkAndContinueDependents } from './src/core/continuation'
 import { getAllRoutes, generateDocs } from './src/core/api-docs'
+import { getCachedOrBuild } from './packages/host/src/api/docs-runtime'
+import type { buildOpenApiDocument } from './packages/host/src/api/docs-runtime'
 import { migrateIfNeeded } from './src/core/search-migration'
 import * as agents from './src/core/agents'
 import * as doctor from './src/core/doctor'
@@ -107,6 +109,29 @@ const BAKIN_VERSION = APP_VERSION
 
 const port = Number(process.env.PORT || 3737)
 const CONTENT_DIR = getContentDir()
+
+/**
+ * Build the source list the OpenAPI runtime builder consumes from the
+ * live route registry. Plugin routes come from pluginRegistry; legacy
+ * core routes still flow through src/core/api-docs.ts CORE_ROUTES until
+ * T14–T16 migrate them onto the declarative shape.
+ */
+function collectOpenApiSources(): Parameters<typeof buildOpenApiDocument>[0] {
+  return [
+    ...pluginRegistry.getAllPluginRoutes().map(({ pluginId, route }) => ({
+      scope: pluginId,
+      fullPath: `/api/plugins/${pluginId}${route.path}`,
+      route: route as unknown as Parameters<typeof buildOpenApiDocument>[0][number]['route'],
+    })),
+    ...getAllRoutes()
+      .filter(r => r.pluginId === 'core')
+      .map(r => ({
+        scope: 'core' as const,
+        fullPath: r.fullPath,
+        route: r as unknown as Parameters<typeof buildOpenApiDocument>[0][number]['route'],
+      })),
+  ]
+}
 
 // Ensure required directories exist
 for (const dir of [CONTENT_DIR, join(CONTENT_DIR, 'heartbeats'), join(CONTENT_DIR, 'inbox')]) {
@@ -252,9 +277,23 @@ const eventBus = new BakinEventBus(broadcast)
       return
     }
 
-    // API docs endpoint
+    // /api/docs — legacy { routes } shape. Stable contract for CLI
+    // consumers (bakin plugins list, bakin docs). Replaced at T17 when
+    // the new OpenAPI surface becomes the canonical endpoint and the
+    // CLI migrates over.
     if (url.pathname === '/api/docs' && req.method === 'GET') {
       jsonResponse(res, 200, { routes: getAllRoutes() })
+      return
+    }
+
+    // /api/openapi — live OpenAPI 3.1 document built from the runtime
+    // route registry (plugin routes + legacy core RouteDocs until T14–T16
+    // migrate them). Cached after first build; the cache is invalidated
+    // on plugin hot-reload broadcasts (see plugin-registry hot-reload
+    // path) — for now invalidation hooks are placeholders.
+    if (url.pathname === '/api/openapi' && req.method === 'GET') {
+      const doc = getCachedOrBuild(() => collectOpenApiSources(), port)
+      jsonResponse(res, 200, doc as unknown as Record<string, unknown>)
       return
     }
 

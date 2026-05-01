@@ -7,6 +7,7 @@ import { existsSync, readdirSync, statSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
+import { definePlugin, defineRoute, searchRoute, type PluginContextLite } from '@bakin/core/routing'
 import { handleList } from './routes/list'
 import { handleFile } from './routes/file'
 import { handleDelete } from './routes/delete'
@@ -40,6 +41,238 @@ function filenameFromRel(relPath: string): string {
 
 const log = createLogger('assets')
 
+// ─── Module-scope plugin ctx (set during activate) ──────────────────────
+let pluginCtx: PluginContext | null = null
+
+// ─── Module-scope helpers ────────────────────────────────────────────────
+
+async function indexAsset(relPath: string): Promise<void> {
+  if (!pluginCtx) return
+  try {
+    const contentDir = getContentDir()
+    const metaPath = join(contentDir, relPath + '.meta.json')
+    if (!existsSync(metaPath)) return
+    const filename = filenameFromRel(relPath)
+    if (!filename || detectVariant(filename)) return
+    const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
+    const parts = relPath.split('/')
+    const assetType = parts[1] || 'other'
+    const doc = await assetToSearchDocModule(raw, filename, assetType, relPath)
+    await pluginCtx.search.index(filename, doc)
+  } catch (err) {
+    log.warn('Failed to index asset for search', { path: relPath, error: err instanceof Error ? err.message : String(err) })
+  }
+}
+
+// Module-scope copy of assetToSearchDoc — same shape as the inner version
+// inside activate(). Mirrors the inner reindex helper but doesn't close
+// over activate-time variables.
+async function assetToSearchDocModule(meta: Record<string, unknown>, filename: string, assetType: string, assetRelPath: string): Promise<Record<string, unknown>> {
+  const metaType = typeof meta.type === 'string' && meta.type ? (meta.type as string) : assetType
+  const absPath = join(getContentDir(), assetRelPath)
+  const content = await extractAssetContent(absPath, filename).catch(() => '')
+  return {
+    description: (meta.description as string) || '',
+    tags: Array.isArray(meta.tags) ? (meta.tags as string[]).join(', ') : '',
+    agent: (meta.agent as string) || '',
+    task_id: (meta.taskId as string) || '',
+    asset_type: metaType,
+    file_name: filename,
+    tool: (meta.tool as string) || '',
+    updated_at: (meta.created as string) || new Date().toISOString(),
+    content,
+  }
+}
+
+// ─── Schemas ─────────────────────────────────────────────────────────────
+
+const passthrough = z.object({}).passthrough()
+const errorResponse = z.object({ error: z.string() }).passthrough()
+const okPassthrough = z.object({ ok: z.boolean() }).passthrough()
+const binaryResponse = { contentType: 'application/octet-stream' as const }
+
+// ─── Routes (declarative) ────────────────────────────────────────────────
+
+const routes = [
+  defineRoute({
+    path: '/',
+    method: 'GET',
+    summary: 'List assets',
+    description: 'List assets with optional filter parameters.',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async (req) => handleList(req),
+  }),
+
+  defineRoute({
+    path: '/upload',
+    method: 'POST',
+    summary: 'Upload asset files',
+    body: { contentType: 'multipart/form-data' },
+    responses: { 200: passthrough, 400: errorResponse, 500: errorResponse },
+    handler: async (req, ctx) => {
+      const res = await handleUpload(req, ctx as unknown as PluginContext)
+      if (res.ok) {
+        try {
+          const clone = await res.clone().json()
+          if (clone.saved && Array.isArray(clone.saved)) {
+            for (const saved of clone.saved) {
+              if (saved.path) indexAsset(saved.path).catch(() => {})
+            }
+          }
+        } catch { /* index best-effort */ }
+      }
+      return res
+    },
+  }),
+
+  defineRoute({
+    path: '/file',
+    method: 'GET',
+    summary: 'Serve asset file',
+    description: 'Streams an asset file by canonical filename for rendering.',
+    responses: {
+      200: { contentType: 'application/octet-stream', schema: undefined } as { contentType: string; schema?: undefined },
+      404: errorResponse,
+    },
+    handler: async (req) => handleFile(req),
+  }),
+
+  defineRoute({
+    path: '/',
+    method: 'DELETE',
+    summary: 'Soft-delete an asset',
+    body: { contentType: 'none' },
+    responses: { 200: okPassthrough, 404: errorResponse },
+    handler: async (req, ctx) => {
+      const url = new URL(req.url, 'http://localhost')
+      const filename = url.searchParams.get('filename') || ''
+      const res = await handleDelete(req)
+      if (res.ok) {
+        ctx.activity.audit('deleted', 'system')
+        ctx.activity.log('system', 'Asset deleted')
+        if (filename) ctx.search.remove(filename).catch(() => {})
+      }
+      return res
+    },
+  }),
+
+  defineRoute({
+    path: '/link',
+    method: 'PATCH',
+    summary: 'Relink or unlink an asset',
+    body: passthrough,
+    responses: { 200: okPassthrough, 400: errorResponse },
+    handler: async (req, ctx) => {
+      const res = await handleLink(req)
+      const data = await res.clone().json()
+      if (data.ok) {
+        ctx.activity.audit('asset.relinked', 'user', { filename: data.filename, newTaskId: data.newTaskId })
+        ctx.activity.log('user', `Relinked asset ${data.filename} to ${data.newTaskId ?? '(unlinked)'}`)
+        if (data.path) indexAsset(data.path).catch(() => {})
+      }
+      return res
+    },
+  }),
+
+  defineRoute({
+    path: '/retype',
+    method: 'PATCH',
+    summary: 'Change asset type classification',
+    body: passthrough,
+    responses: { 200: okPassthrough, 400: errorResponse },
+    handler: async (req, ctx) => {
+      const res = await handleRetype(req)
+      const data = await res.clone().json()
+      if (data.ok) {
+        ctx.activity.audit('asset.retyped', 'user', { filename: data.filename, newType: data.newType })
+        ctx.activity.log('user', `Retyped asset ${data.filename} to ${data.newType}`)
+        if (data.path) indexAsset(data.path).catch(() => {})
+      }
+      return res
+    },
+  }),
+
+  defineRoute({
+    path: '/content',
+    method: 'PUT',
+    summary: 'Update text content of an editable asset',
+    body: passthrough,
+    responses: { 200: okPassthrough, 400: errorResponse, 500: errorResponse },
+    handler: async (req) => {
+      const res = await handleContent(req)
+      try {
+        const data = await res.clone().json()
+        if (data.ok && data.path) indexAsset(data.path as string).catch(() => {})
+      } catch { /* best-effort reindex */ }
+      return res
+    },
+  }),
+
+  defineRoute({
+    path: '/trash',
+    method: 'GET',
+    summary: 'List trashed assets',
+    responses: { 200: passthrough },
+    handler: async (req) => handleListTrash(req),
+  }),
+
+  defineRoute({
+    path: '/trash/:file/restore',
+    method: 'POST',
+    summary: 'Restore a trashed asset',
+    params: z.object({ file: z.string().min(1) }),
+    body: { contentType: 'none' },
+    responses: { 200: okPassthrough, 404: errorResponse },
+    handler: async (req, ctx) => {
+      const res = await handleRestore(req)
+      if (res.ok) {
+        ctx.activity.audit('restored', 'system')
+        ctx.activity.log('system', 'Asset restored from trash')
+        try {
+          const data = await res.clone().json()
+          if (data.restoredPath) indexAsset(data.restoredPath).catch(() => {})
+        } catch { /* index best-effort */ }
+      }
+      return res
+    },
+  }),
+
+  defineRoute({
+    path: '/trash',
+    method: 'DELETE',
+    summary: 'Empty entire trash',
+    body: { contentType: 'none' },
+    responses: { 200: okPassthrough },
+    handler: async (req, ctx) => {
+      const res = await handleEmptyTrash(req)
+      if (res.ok) {
+        ctx.activity.audit('trash-emptied', 'system')
+        ctx.activity.log('system', 'Trash emptied')
+      }
+      return res
+    },
+  }),
+
+  defineRoute({
+    path: '/trash/:file',
+    method: 'DELETE',
+    summary: 'Permanently delete a trashed asset',
+    params: z.object({ file: z.string().min(1) }),
+    body: { contentType: 'none' },
+    responses: { 200: okPassthrough, 404: errorResponse },
+    handler: async (req, ctx) => {
+      const res = await handlePermanentDelete(req)
+      if (res.ok) {
+        ctx.activity.audit('permanent-deleted', 'system')
+        ctx.activity.log('system', 'Asset permanently deleted')
+      }
+      return res
+    },
+  }),
+
+  searchRoute({ table: 'assets' }),
+]
+
 // ---------------------------------------------------------------------------
 // Thumbnail helper for audit tool
 // ---------------------------------------------------------------------------
@@ -51,10 +284,11 @@ function generateThumbnail(inputPath: string, outputPath: string, widthPx = 400)
   } catch { return null }
 }
 
-const assetsPlugin: BakinPlugin = {
+const assetsPlugin: BakinPlugin = definePlugin({
   id: 'assets',
   name: 'Assets',
   version: '2.0.0',
+  routes,
 
   settingsSchema: {
     fields: [
@@ -68,6 +302,8 @@ const assetsPlugin: BakinPlugin = {
   contentFiles: [],
 
   activate(ctx: PluginContext) {
+    pluginCtx = ctx
+
     // ─── Search Content Type Registration ─────────────────────────────
 
     ctx.search.registerFileBackedContentType({
@@ -279,26 +515,6 @@ const assetsPlugin: BakinPlugin = {
       }
     }
 
-    /** Index an asset by reading its sidecar metadata. Keyed by filename. */
-    async function indexAsset(relPath: string): Promise<void> {
-      try {
-        const contentDir = getContentDir()
-        const metaPath = join(contentDir, relPath + '.meta.json')
-        if (!existsSync(metaPath)) return
-        const filename = filenameFromRel(relPath)
-        if (!filename || detectVariant(filename)) return
-        const raw = JSON.parse(readFileSync(metaPath, 'utf-8'))
-        const parts = relPath.split('/')
-        const assetType = parts[1] || 'other'
-        const doc = await assetToSearchDoc(raw, filename, assetType, relPath)
-        // Upsert by filename — retype/relink update doc contents while the
-        // key stays stable, so no remove-then-reindex churn is needed.
-        await ctx.search.index(filename, doc)
-      } catch (err) {
-        log.warn('Failed to index asset for search', { path: relPath, error: err instanceof Error ? err.message : String(err) })
-      }
-    }
-
     // ─── Cross-Plugin Hooks ────────────────────────────────────────────
 
     ctx.hooks.register('assets.validateSidecar', (d: Record<string, unknown>) => validateSidecar(d.metaPath as string), { label: 'Validate sidecar metadata.', summary: 'Checks an asset sidecar JSON file and returns validation details. Use it before trusting metadata created by imports, repairs, or external tools.', hookKind: 'rpc' })
@@ -357,157 +573,6 @@ const assetsPlugin: BakinPlugin = {
     // Build the in-memory tracker on startup. (Search index reconcile is
     // owned by registerFileBackedContentType above and runs separately.)
     buildIndex()
-
-    // ─── REST API Routes ───────────────────────────────────────────────
-
-    // GET / — list assets with filters
-    ctx.registerRoute({ path: '/', method: 'GET', description: 'List assets with filters', handler: handleList })
-
-    // POST /upload — multipart file upload
-    ctx.registerRoute({
-      path: '/upload',
-      method: 'POST',
-      description: 'Upload asset files',
-      handler: async (req: Request) => {
-        const res = await handleUpload(req, ctx)
-        if (res.ok) {
-          try {
-            const clone = await res.clone().json()
-            if (clone.saved && Array.isArray(clone.saved)) {
-              for (const saved of clone.saved) {
-                if (saved.path) indexAsset(saved.path).catch(() => {})
-              }
-            }
-          } catch { /* index best-effort */ }
-        }
-        return res
-      },
-    })
-
-    // GET /file — serve asset file for rendering
-    ctx.registerRoute({ path: '/file', method: 'GET', description: 'Serve asset file', handler: handleFile })
-
-    // DELETE / — soft-delete an asset by canonical filename
-    ctx.registerRoute({
-      path: '/',
-      method: 'DELETE',
-      description: 'Soft-delete an asset',
-      handler: async (req: Request) => {
-        const url = new URL(req.url, 'http://localhost')
-        const filename = url.searchParams.get('filename') || ''
-        const res = await handleDelete(req)
-        if (res.ok) {
-          ctx.activity.audit('deleted', 'system')
-          ctx.activity.log('system', 'Asset deleted')
-          if (filename) ctx.search.remove(filename).catch(() => {})
-        }
-        return res
-      },
-    })
-
-    // PATCH /link — relink or unlink an asset from a task
-    ctx.registerRoute({
-      path: '/link',
-      method: 'PATCH',
-      description: 'Relink or unlink an asset',
-      handler: async (req: Request) => {
-        const res = await handleLink(req)
-        const data = await res.clone().json()
-        if (data.ok) {
-          ctx.activity.audit('asset.relinked', 'user', { filename: data.filename, newTaskId: data.newTaskId })
-          ctx.activity.log('user', `Relinked asset ${data.filename} to ${data.newTaskId ?? '(unlinked)'}`)
-          // Metadata-only — file stays put; just reindex the search doc to
-          // pick up the new taskId under the same filename key.
-          if (data.path) indexAsset(data.path).catch(() => {})
-        }
-        return res
-      },
-    })
-
-    // PATCH /retype — change asset type
-    ctx.registerRoute({
-      path: '/retype',
-      method: 'PATCH',
-      description: 'Change asset type classification',
-      handler: async (req: Request) => {
-        const res = await handleRetype(req)
-        const data = await res.clone().json()
-        if (data.ok) {
-          ctx.activity.audit('asset.retyped', 'user', { filename: data.filename, newType: data.newType })
-          ctx.activity.log('user', `Retyped asset ${data.filename} to ${data.newType}`)
-          // Metadata-only — see /link for rationale.
-          if (data.path) indexAsset(data.path).catch(() => {})
-        }
-        return res
-      },
-    })
-
-    // PUT /content — update text content of an editable asset
-    ctx.registerRoute({
-      path: '/content',
-      method: 'PUT',
-      description: 'Update text content of an editable asset',
-      handler: async (req: Request) => {
-        const res = await handleContent(req)
-        try {
-          const data = await res.clone().json()
-          if (data.ok && data.path) indexAsset(data.path as string).catch(() => {})
-        } catch { /* best-effort reindex */ }
-        return res
-      },
-    })
-
-    // GET /trash — list trashed assets
-    ctx.registerRoute({ path: '/trash', method: 'GET', description: 'List trashed assets', handler: handleListTrash })
-
-    // POST /trash/:file/restore — restore a trashed asset
-    ctx.registerRoute({
-      path: '/trash/:file/restore',
-      method: 'POST',
-      description: 'Restore a trashed asset',
-      handler: async (req: Request) => {
-        const res = await handleRestore(req)
-        if (res.ok) {
-          ctx.activity.audit('restored', 'system')
-          ctx.activity.log('system', 'Asset restored from trash')
-          try {
-            const data = await res.clone().json()
-            if (data.restoredPath) indexAsset(data.restoredPath).catch(() => {})
-          } catch { /* index best-effort */ }
-        }
-        return res
-      },
-    })
-
-    // DELETE /trash — empty entire trash
-    ctx.registerRoute({
-      path: '/trash',
-      method: 'DELETE',
-      description: 'Empty entire trash',
-      handler: async (req: Request) => {
-        const res = await handleEmptyTrash(req)
-        if (res.ok) {
-          ctx.activity.audit('trash-emptied', 'system')
-          ctx.activity.log('system', 'Trash emptied')
-        }
-        return res
-      },
-    })
-
-    // DELETE /trash/:file — permanently delete a trashed asset
-    ctx.registerRoute({
-      path: '/trash/:file',
-      method: 'DELETE',
-      description: 'Permanently delete a trashed asset',
-      handler: async (req: Request) => {
-        const res = await handlePermanentDelete(req)
-        if (res.ok) {
-          ctx.activity.audit('permanent-deleted', 'system')
-          ctx.activity.log('system', 'Asset permanently deleted')
-        }
-        return res
-      },
-    })
 
     // ─── MCP Exec Tools ────────────────────────────────────────────────
 
@@ -979,6 +1044,6 @@ const assetsPlugin: BakinPlugin = {
   onShutdown() {
     log.info('Shutting down assets plugin')
   },
-}
+}) as unknown as BakinPlugin
 
 export default assetsPlugin

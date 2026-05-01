@@ -141,7 +141,7 @@ describe('dailyNotesListRoute', () => {
   })
 
   it('returns 400 when agent is missing', async () => {
-    const res = await dailyNotesListRoute.handler(makeReq('/daily-notes'), makeCtx().ctx)
+    const res = await dailyNotesListRoute.handler(makeReq('/daily-notes'), makeCtx().ctx, {})
     expect(res.status).toBe(400)
   })
 
@@ -154,6 +154,7 @@ describe('dailyNotesListRoute', () => {
     const res = await dailyNotesListRoute.handler(
       makeReq('/daily-notes', { agent: 'main' }),
       makeCtx().ctx,
+      {} as any,
     )
     const body = await res.json() as { files: { name: string; date: string }[] }
     expect(res.status).toBe(200)
@@ -165,6 +166,7 @@ describe('dailyNotesListRoute', () => {
     const res = await dailyNotesListRoute.handler(
       makeReq('/daily-notes', { agent: 'main' }),
       makeCtx().ctx,
+      {} as any,
     )
     const body = await res.json() as { files: { name: string }[] }
     expect(body.files.map((f) => f.name)).toEqual(['2026-04-18.md', '2026-04-17.md'])
@@ -181,6 +183,7 @@ describe('dailyNotesDetailRoute', () => {
     const res = await dailyNotesDetailRoute.handler(
       makeReq('/daily-notes//'),
       makeCtx().ctx,
+      {} as any,
     )
     expect(res.status).toBe(400)
   })
@@ -190,6 +193,7 @@ describe('dailyNotesDetailRoute', () => {
     const res = await dailyNotesDetailRoute.handler(
       makeReq('/daily-notes/main/2026-04-18.md', { agent: 'main', filename: '2026-04-18.md' }),
       makeCtx().ctx,
+      {} as any,
     )
     expect(res.status).toBe(404)
   })
@@ -199,6 +203,7 @@ describe('dailyNotesDetailRoute', () => {
     const res = await dailyNotesDetailRoute.handler(
       makeReq('/daily-notes/main/2026-04-18.md', { agent: 'main', filename: '2026-04-18.md' }),
       makeCtx().ctx,
+      {} as any,
     )
     const body = await res.json() as { agent: string; file: string; content: string }
     expect(res.status).toBe(200)
@@ -218,7 +223,7 @@ describe('dailyNotesCompareSearchRoute', () => {
       body: JSON.stringify({ agent: 'main' }),
       headers: { 'content-type': 'application/json' },
     })
-    const res = await dailyNotesCompareSearchRoute.handler(req, makeCtx().ctx)
+    const res = await dailyNotesCompareSearchRoute.handler(req, makeCtx().ctx, {})
     expect(res.status).toBe(400)
   })
 
@@ -234,7 +239,7 @@ describe('dailyNotesCompareSearchRoute', () => {
     const { ctx } = makeCtx([
       { id: 'x', tier: 'daily_note', agent: 'main', title: '2026-04-17.md', snippet: 'hello world' },
     ])
-    const res = await dailyNotesCompareSearchRoute.handler(req, ctx)
+    const res = await dailyNotesCompareSearchRoute.handler(req, ctx, {} as any)
     const body = await res.json() as { search: unknown[]; runtime: unknown[] }
     expect(res.status).toBe(200)
     expect(body.search).toHaveLength(1)
@@ -249,7 +254,7 @@ describe('dailyNotesCompareSearchRoute', () => {
       headers: { 'content-type': 'application/json' },
     })
     const { ctx, recorder } = makeCtx()
-    await dailyNotesCompareSearchRoute.handler(req, ctx)
+    await dailyNotesCompareSearchRoute.handler(req, ctx, {} as any)
     expect(recorder.queries).toHaveLength(1)
     expect(recorder.queries[0].filters?.tier).toBe('daily_note')
     expect(recorder.queries[0].filters?.agent).toBe('main')
@@ -262,7 +267,7 @@ describe('dailyNotesCompareSearchRoute', () => {
       body: JSON.stringify({ query: 'nothing', agent: 'main' }),
       headers: { 'content-type': 'application/json' },
     })
-    const res = await dailyNotesCompareSearchRoute.handler(req, makeCtx().ctx)
+    const res = await dailyNotesCompareSearchRoute.handler(req, makeCtx().ctx, {})
     const body = await res.json() as { runtime: unknown[]; runtimeStatus?: string }
     expect(body.runtime).toEqual([])
     expect(body.runtimeStatus).toBe('no_index_or_no_match')
@@ -278,7 +283,7 @@ describe('dailyNotesCompareSearchRoute', () => {
     const { ctx } = makeCtx([
       { id: 'x', tier: 'daily_note', agent: 'main', title: 'ok', snippet: 'y' },
     ])
-    const res = await dailyNotesCompareSearchRoute.handler(req, ctx)
+    const res = await dailyNotesCompareSearchRoute.handler(req, ctx, {} as any)
     const body = await res.json() as { search: unknown[]; runtime: unknown[]; runtimeStatus?: string; runtimeError?: string }
     expect(res.status).toBe(200)
     expect(body.search).toHaveLength(1)

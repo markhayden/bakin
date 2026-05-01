@@ -5,16 +5,24 @@
  * tier='audit' and maps URL query params to filters. Result shape is
  * `{ entries, total }` so the UI doesn't have to learn search hit shape.
  */
+import { z } from 'zod'
+import { defineRoute } from '@bakin/core/routing'
+import type { PluginContextLite } from '@bakin/core/routing'
 import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
+
+const passthrough = z.object({}).passthrough()
+const errorResponse = z.object({ error: z.string() })
 
 const DEFAULT_LIMIT = 100
 const MAX_LIMIT = 500
 
-export const auditRoute: APIRoute = {
+export const auditRoute = defineRoute({
   path: '/audit',
   method: 'GET',
   description: 'List indexed audit entries with optional filters',
-  handler: async (req: Request, ctx: PluginContext) => {
+  summary: 'List indexed audit entries with optional filters',
+  responses: { 200: passthrough, 400: errorResponse },
+  handler: async (req: Request, ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const agent = url.searchParams.get('agent') ?? undefined
     const event = url.searchParams.get('event') ?? undefined
@@ -47,4 +55,4 @@ export const auditRoute: APIRoute = {
       total: result.meta.total ?? result.results.length,
     })
   },
-}
+})
