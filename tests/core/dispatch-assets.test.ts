@@ -125,4 +125,23 @@ describe('buildDispatchMessage — attached assets', () => {
     const msg = buildDispatchMessage(task, 'main', testDir, 3737)
     expect(msg).toContain('## Attached Assets')
   })
+
+  it('can include retrieved package knowledge in dispatch messages', () => {
+    const task = {
+      id: 'task-knowledge',
+      title: 'Use package knowledge',
+      agent: 'pixel',
+    }
+    const msg = buildDispatchMessage(
+      task,
+      'pixel',
+      testDir,
+      3737,
+      'main',
+      '## Relevant Package Knowledge\n\nSelected lesson body.',
+    )
+    expect(msg).toContain('## Relevant Package Knowledge')
+    expect(msg).toContain('Selected lesson body.')
+    expect(msg).toContain('## PROGRESS LOGGING')
+  })
 })
