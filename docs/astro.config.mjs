@@ -3,7 +3,6 @@ import starlight from '@astrojs/starlight'
 import rehypeExternalLinks from 'rehype-external-links'
 
 const gtmId = process.env.PUBLIC_GTM_ID ?? 'GTM-KZQK989V'
-const showMaintainerDocs = process.env.NODE_ENV !== 'production' || process.env.BAKIN_DOCS_MAINTAINER === '1'
 
 export default defineConfig({
   site: 'https://makinbakin.com',
@@ -275,14 +274,6 @@ document.addEventListener("click", function (event) {
             { label: 'Data and Security', slug: 'security/data-and-security' },
           ],
         },
-        ...(showMaintainerDocs
-          ? [{
-              label: 'Maintainer',
-              items: [
-                { label: 'Generated Coverage', slug: 'reference/generated/coverage' },
-              ],
-            }]
-          : []),
       ],
     }),
   ],
