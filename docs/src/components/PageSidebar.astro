@@ -39,10 +39,13 @@ if (isApiPage) {
   for (const [path, methods] of Object.entries(spec.paths)) {
     for (const [methodKey, op] of Object.entries(methods)) {
       const method = methodKey.toUpperCase()
+      const displayPath = path
+        .replace(/\{([^}]+)\}/g, ':$1')
+        .replace(/^\/api(\/plugins\/[^/]+)?/, '') || '/'
       operations.push({
         operationId: op.operationId ?? `${method}-${path}`,
         method,
-        path: path.replace(/\{([^}]+)\}/g, ':$1'),
+        path: displayPath,
         tag: op.tags?.[0] ?? 'Other',
         summary: op.summary ?? `${method} ${path}`,
       })
