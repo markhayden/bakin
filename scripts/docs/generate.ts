@@ -1058,16 +1058,7 @@ function buildOpenApiDocument(): Record<string, unknown> {
   }
 }
 
-function renderApiReference(): string {
-  const groups = new Map<string, Array<{ operationId: string; curl: string }>>()
-  for (const entry of allApiDocRoutes()) {
-    const operation = routeOperation(entry.route, entry.scope, entry.fullPath, entry.tag)
-    const operationId = String(operation.operationId)
-    const curl = curlForOperation(entry.route.method, openApiPath(entry.fullPath), operation)
-    const existing = groups.get(entry.tag) ?? []
-    existing.push({ operationId, curl })
-    groups.set(entry.tag, existing)
-  }
+function renderApiReference(groups: Map<string, Array<{ operationId: string; curl: string }>>): string {
   const groupLines = [...groups.keys()]
     .sort((a, b) => tagOrder(a).localeCompare(tagOrder(b)))
     .flatMap(tag => {
@@ -1725,17 +1716,17 @@ writeStableFile(
   renderCliReference(),
 )
 
-writeStableFile(
-  join(docsRoot, 'src/content/docs/reference/generated/api.mdx'),
-  renderApiReference(),
-)
-
-// T20: openapi.json is now generated from typed route contracts (the same
-// buildOperation used by /api/openapi). Imports each in-repo plugin
-// statically (no activate() invocation), reads plugin.default.routes,
+// T20: openapi.json + api.mdx are now generated from typed route contracts
+// (the same buildOperation used by /api/openapi). Imports each in-repo
+// plugin statically (no activate() invocation), reads plugin.default.routes,
 // combines with packages/host/src/core-routes/coreRoutes, runs the typed
 // builder. Replaces the legacy buildOpenApiDocument() that used
 // manifest + source-scan with generic-object fallbacks.
+//
+// The api.mdx wrapper-list MUST share operationIds with openapi.json or the
+// renderer can't find the operation by id. Shared `apiReferenceGroups` is
+// the bridge.
+const apiReferenceGroups = new Map<string, Array<{ operationId: string; curl: string }>>()
 {
   const { buildOperation, normalizeOpenApiPath } = await import('../../packages/core/src/openapi')
   const { coreRoutes: typedCoreRoutes } = await import('../../packages/host/src/core-routes')
@@ -1768,10 +1759,15 @@ writeStableFile(
   const tags = new Map<string, string | undefined>()
   for (const entry of sources) {
     tags.set(entry.tag, undefined)
-    const op = buildOperation(entry.route, { scope: entry.scope, fullPath: entry.fullPath, tag: entry.tag })
+    const op = buildOperation(entry.route, { scope: entry.scope, fullPath: entry.fullPath, tag: entry.tag }) as OpenApiOperation
     const openApiPath = normalizeOpenApiPath(entry.fullPath)
     paths[openApiPath] ??= {}
     paths[openApiPath][entry.route.method.toLowerCase()] = op
+    const operationId = String(op.operationId)
+    const curl = curlForOperation(entry.route.method, openApiPath, op)
+    const existing = apiReferenceGroups.get(entry.tag) ?? []
+    existing.push({ operationId, curl })
+    apiReferenceGroups.set(entry.tag, existing)
   }
 
   const typedDoc = {
@@ -1801,6 +1797,11 @@ writeStableFile(
     `${JSON.stringify(typedDoc, null, 2)}\n`,
   )
 }
+
+writeStableFile(
+  join(docsRoot, 'src/content/docs/reference/generated/api.mdx'),
+  renderApiReference(apiReferenceGroups),
+)
 
 writeStableFile(
   join(docsRoot, 'src/content/docs/reference/generated/hooks.mdx'),
