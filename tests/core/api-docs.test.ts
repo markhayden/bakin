@@ -1,7 +1,26 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'fs'
+import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
+import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+
+const tempStub = mkdtempSync(join(tmpdir(), 'bakin-api-docs-content-'))
+process.env.BAKIN_HOME = tempStub
+process.env.OPENCLAW_HOME = join(tempStub, 'openclaw')
+
+const contentDirMock = {
+  getContentDir: () => tempStub,
+  getBakinPaths: () => ({ home: tempStub }),
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
+  initBakinHome: () => ({ created: [], seeded: [] }),
+}
+mock.module('../../src/core/content-dir', () => contentDirMock)
+mock.module('../../packages/core/src/content-dir', () => contentDirMock)
+mock.module('@bakin/adapter-openclaw/home', () => ({
+  getOpenClawHome: () => join(tempStub, 'openclaw'),
+  getOpenClawPath: (...parts: string[]) => join(tempStub, 'openclaw', ...parts),
+  resetOpenClawHome: () => {},
+}))
 
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
@@ -21,23 +40,18 @@ mock.module('../../src/core/logger', () => ({
 // We need fresh module state per test since routeDocs is module-level
 let registerRouteDoc: typeof import('../../src/core/api-docs').registerRouteDoc
 let getAllRoutes: typeof import('../../src/core/api-docs').getAllRoutes
-let generateDocs: typeof import('../../src/core/api-docs').generateDocs
 
 describe('api-docs', () => {
-  let tempDir: string
-
   beforeEach(async () => {
-    tempDir = mkdtempSync(join(tmpdir(), 'bakin-api-docs-'))
     const mod = await import('../../src/core/api-docs')
     registerRouteDoc = mod.registerRouteDoc
     getAllRoutes = mod.getAllRoutes
-    generateDocs = mod.generateDocs
     // bun:test has no vi.resetModules; reset via the module's test hook
     mod._resetRouteDocsForTests()
   })
 
-  afterEach(() => {
-    rmSync(tempDir, { recursive: true, force: true })
+  afterAll(() => {
+    rmSync(tempStub, { recursive: true, force: true })
   })
 
   // -------------------------------------------------------------------------
@@ -107,63 +121,8 @@ describe('api-docs', () => {
     })
   })
 
-  // -------------------------------------------------------------------------
-  // generateDocs
-  // -------------------------------------------------------------------------
-
-  describe('generateDocs', () => {
-    it('creates docs/API.md in the content directory', () => {
-      generateDocs(tempDir)
-
-      const docsPath = join(tempDir, 'docs', 'API.md')
-      expect(existsSync(docsPath)).toBe(true)
-    })
-
-    it('creates the docs/ directory if it does not exist', () => {
-      expect(existsSync(join(tempDir, 'docs'))).toBe(false)
-      generateDocs(tempDir)
-      expect(existsSync(join(tempDir, 'docs'))).toBe(true)
-    })
-
-    it('includes header and base URL', () => {
-      generateDocs(tempDir)
-
-      const content = readFileSync(join(tempDir, 'docs', 'API.md'), 'utf-8')
-      expect(content).toContain('# Bakin API Documentation')
-      expect(content).toContain('**Base URL:**')
-    })
-
-    it('groups routes by plugin with section headers', () => {
-      registerRouteDoc('tasks', { path: '/list', method: 'GET', description: 'List tasks' })
-      registerRouteDoc('schedule', { path: '/jobs', method: 'GET', description: 'List jobs' })
-      generateDocs(tempDir)
-
-      const content = readFileSync(join(tempDir, 'docs', 'API.md'), 'utf-8')
-      expect(content).toContain('## Core Routes')
-      expect(content).toContain('## Plugin: tasks')
-      expect(content).toContain('## Plugin: schedule')
-    })
-
-    it('renders route method and full path', () => {
-      registerRouteDoc('tasks', { path: '/list', method: 'GET' })
-      generateDocs(tempDir)
-
-      const content = readFileSync(join(tempDir, 'docs', 'API.md'), 'utf-8')
-      expect(content).toContain('`GET /api/plugins/tasks/list`')
-    })
-
-    it('renders description and params when present', () => {
-      registerRouteDoc('tasks', {
-        path: '/:id',
-        method: 'PUT',
-        description: 'Update a task',
-        params: '{"title":"string"}',
-      })
-      generateDocs(tempDir)
-
-      const content = readFileSync(join(tempDir, 'docs', 'API.md'), 'utf-8')
-      expect(content).toContain('Update a task')
-      expect(content).toContain('**Parameters:** `{"title":"string"}`')
-    })
-  })
+  // generateDocs(contentDir) was removed in T17 — `~/.bakin/docs/API.md` is
+  // no longer generated; the docs site is the canonical view. The function
+  // remains as a no-op stub to avoid breaking imports, so there is nothing
+  // to test here.
 })
