@@ -123,9 +123,9 @@ if (isApiPage) {
                   <ul>
                     {stemGroup.operations.map(op => (
                       <li>
-                        <a href={`#${op.operationId}`} title={op.path}>
+                        <a href={`#${op.operationId}`} title={`${op.method} ${op.path}`}>
                           <span class={`api-toc-method api-toc-method--${op.method.toLowerCase()}`}>{op.method}</span>
-                          <code class="api-toc-path">{op.residual}</code>
+                          <span class="api-toc-summary">{op.summary}</span>
                         </a>
                       </li>
                     ))}
@@ -150,9 +150,9 @@ if (isApiPage) {
                   <ul>
                     {stemGroup.operations.map(op => (
                       <li>
-                        <a href={`#${op.operationId}`} title={op.path}>
+                        <a href={`#${op.operationId}`} title={`${op.method} ${op.path}`}>
                           <span class={`api-toc-method api-toc-method--${op.method.toLowerCase()}`}>{op.method}</span>
-                          <code class="api-toc-path">{op.residual}</code>
+                          <span class="api-toc-summary">{op.summary}</span>
                         </a>
                       </li>
                     ))}

@@ -1378,6 +1378,14 @@ starlight-toc nav a[href="#for-agents"]::before {
   overflow-wrap: anywhere;
 }
 
+.api-toc-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.68rem;
+  line-height: 1.3;
+  color: inherit;
+}
+
 .api-toc-mobile {
   margin: 0 0 1rem;
   border: 1px solid var(--sl-color-hairline);
