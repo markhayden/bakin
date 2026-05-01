@@ -118,8 +118,8 @@ if (isApiPage) {
             <div class="api-toc-group">
               <h2>{tag}</h2>
               {stems.map(stemGroup => (
-                <div class="api-toc-stem">
-                  <h4 class="api-toc-stem__heading"><code>{stemGroup.stem}</code></h4>
+                <details class="api-toc-stem">
+                  <summary class="api-toc-stem__heading"><code>{stemGroup.stem}</code></summary>
                   <ul>
                     {stemGroup.operations.map(op => (
                       <li>
@@ -130,7 +130,7 @@ if (isApiPage) {
                       </li>
                     ))}
                   </ul>
-                </div>
+                </details>
               ))}
             </div>
           ))}
@@ -145,8 +145,8 @@ if (isApiPage) {
             <div class="api-toc-group">
               <h3>{tag}</h3>
               {stems.map(stemGroup => (
-                <div class="api-toc-stem">
-                  <h4 class="api-toc-stem__heading"><code>{stemGroup.stem}</code></h4>
+                <details class="api-toc-stem">
+                  <summary class="api-toc-stem__heading"><code>{stemGroup.stem}</code></summary>
                   <ul>
                     {stemGroup.operations.map(op => (
                       <li>
@@ -157,7 +157,7 @@ if (isApiPage) {
                       </li>
                     ))}
                   </ul>
-                </div>
+                </details>
               ))}
             </div>
           ))}

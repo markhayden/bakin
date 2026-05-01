@@ -1286,11 +1286,39 @@ starlight-toc nav a[href="#for-agents"]::before {
 }
 
 .api-toc-stem__heading {
-  margin: 0 0 0.15rem;
-  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0.12rem 0;
   font-size: 0.62rem;
   font-weight: 600;
   color: var(--sl-color-gray-4);
+  cursor: pointer;
+  list-style: none;
+}
+
+.api-toc-stem__heading::-webkit-details-marker {
+  display: none;
+}
+
+.api-toc-stem__heading::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0.22rem 0 0.22rem 0.28rem;
+  border-color: transparent transparent transparent currentColor;
+  transition: transform 120ms ease;
+}
+
+.api-toc-stem[open] > .api-toc-stem__heading::before {
+  transform: rotate(90deg);
+}
+
+.api-toc-stem__heading:hover {
+  color: var(--sl-color-gray-2);
 }
 
 .api-toc-stem__heading code {
@@ -1302,8 +1330,9 @@ starlight-toc nav a[href="#for-agents"]::before {
   color: inherit;
 }
 
-.api-toc-stem ul {
+.api-toc-stem > ul {
   padding-left: 0.45rem;
+  margin-top: 0.15rem;
   border-left: 1px solid var(--sl-color-hairline);
 }
 
