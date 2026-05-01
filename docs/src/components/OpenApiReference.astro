@@ -165,11 +165,13 @@ const selectedOperation = operationId ? operations.find(operation => operation.i
 
 {intro && (
   <div class="api-reference-intro">
-    <p>{spec.info.description ?? 'Generated HTTP API reference for Bakin core and official plugin routes.'}</p>
     <div class="api-reference-meta">
-      <span>OpenAPI {spec.openapi}</span>
-      <span>Base URL <code>{serverUrl}</code></span>
-      <a href="/docs/openapi.json">OpenAPI JSON</a>
+      <span class="api-reference-meta__chip"><span class="api-reference-meta__label">Base URL</span><code>{serverUrl}</code></span>
+      <a class="api-reference-meta__chip api-reference-meta__link" href="/docs/openapi.json">
+        OpenAPI JSON
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 17 17 7M9 7h8v8"></path></svg>
+      </a>
+      <span class="api-reference-meta__chip api-reference-meta__version">OpenAPI {spec.openapi}</span>
     </div>
   </div>
 )}
