@@ -1726,7 +1726,7 @@ writeStableFile(
 // The api.mdx wrapper-list MUST share operationIds with openapi.json or the
 // renderer can't find the operation by id. Shared `apiReferenceGroups` is
 // the bridge.
-const apiReferenceGroups = new Map<string, Array<{ operationId: string; curl: string }>>()
+const apiReferenceGroups = new Map<string, Array<{ operationId: string; curl: string; path: string; method: string }>>()
 {
   const { buildOperation, normalizeOpenApiPath } = await import('../../packages/core/src/openapi')
   const { coreRoutes: typedCoreRoutes } = await import('../../packages/host/src/core-routes')
@@ -1766,8 +1766,18 @@ const apiReferenceGroups = new Map<string, Array<{ operationId: string; curl: st
     const operationId = String(op.operationId)
     const curl = curlForOperation(entry.route.method, openApiPath, op)
     const existing = apiReferenceGroups.get(entry.tag) ?? []
-    existing.push({ operationId, curl })
+    existing.push({ operationId, curl, path: openApiPath, method: entry.route.method })
     apiReferenceGroups.set(entry.tag, existing)
+  }
+
+  // Sort within each tag group so the page body matches the right-rail TOC
+  // (which sorts alphabetically by path, then by HTTP method order).
+  const methodOrder: Record<string, number> = { GET: 0, POST: 1, PUT: 2, PATCH: 3, DELETE: 4, OPTIONS: 5, HEAD: 6 }
+  for (const ops of apiReferenceGroups.values()) {
+    ops.sort((a, b) =>
+      a.path.localeCompare(b.path) ||
+      (methodOrder[a.method] ?? 99) - (methodOrder[b.method] ?? 99),
+    )
   }
 
   const typedDoc = {
