@@ -98,6 +98,11 @@
         "description": "Retrieve a single asset's sidecar metadata by canonical filename."
       },
       {
+        "name": "bakin_exec_assets_open",
+        "summary": "Open an attached asset by canonical filename",
+        "description": "Open an attached asset by canonical filename. Returns sidecar metadata plus extracted text for text-like assets; non-extractable assets return metadata-only status."
+      },
+      {
         "name": "bakin_exec_assets_link",
         "summary": "Link an asset to a different task, or unlink it (set taskId to null)",
         "description": "Link an asset to a different task, or unlink it (set taskId to null). Sidecar-only edit — no file move."
