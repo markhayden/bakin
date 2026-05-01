@@ -39,6 +39,11 @@ const PLAIN_TEXT_EXTS = new Set([
   '.yaml', '.yml',
 ])
 
+export function canExtractAssetContent(filename: string): boolean {
+  const ext = (filename.toLowerCase().match(/\.[^.]+$/) ?? [''])[0]
+  return PLAIN_TEXT_EXTS.has(ext) || ext === '.pdf'
+}
+
 /**
  * Extract searchable text content from an asset file. Returns an empty
  * string for unsupported types and for any extraction that fails —
