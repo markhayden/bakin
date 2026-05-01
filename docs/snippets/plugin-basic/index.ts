@@ -1,11 +1,11 @@
-import type { BakinPlugin, PluginContext } from '@bakin/sdk/types'
+import { definePlugin, defineRoute } from '@bakin/sdk'
 
-const plugin: BakinPlugin = {
+const plugin = definePlugin({
   id: 'docs-basic',
   name: 'Docs Basic',
   version: '0.1.0',
-  async activate(ctx: PluginContext) {
-    ctx.registerRoute({
+  routes: [
+    defineRoute({
       method: 'GET',
       path: '/hello',
       summary: 'Say hello',
@@ -13,8 +13,9 @@ const plugin: BakinPlugin = {
       visibility: 'public',
       stability: 'stable',
       handler: async () => Response.json({ message: 'Hello from Bakin' }),
-    })
-  },
-}
+    }),
+  ],
+  async activate() {},
+})
 
 export default plugin

@@ -1,9 +1,9 @@
 ---
 title: Plugin Manifest
-description: Define the public plugin metadata Bakin uses to install, load, validate, and document a plugin.
+description: Define the install-time plugin metadata Bakin uses to validate, load, consent to, and document a plugin.
 ---
 
-Every plugin starts with `bakin-plugin.json`. Bakin reads this file before loading plugin code, so keep it boring, explicit, and stable.
+Every plugin starts with `bakin-plugin.json`. Bakin reads this file before loading plugin code, so keep it explicit and stable. The manifest is not just package metadata. It is the review surface for installers, permissions, public contributions, docs generation, and lifecycle decisions.
 
 The tested manifest fixture for these docs lives at `docs/snippets/plugin-basic/bakin-plugin.json`.
 
@@ -21,6 +21,29 @@ Source: `docs/snippets/plugin-basic/bakin-plugin.json`
     "server": "index.ts",
     "client": "client.tsx"
   },
+  "contributes": {
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/hello",
+        "summary": "Say hello",
+        "description": "Returns a small JSON payload from the docs example plugin.",
+        "visibility": "public",
+        "stability": "stable",
+        "responses": {
+          "200": {
+            "description": "Greeting payload"
+          }
+        }
+      }
+    ],
+    "clientRoutes": [
+      {
+        "path": "/docs-basic",
+        "summary": "Minimal docs plugin page"
+      }
+    ]
+  },
   "permissions": [
     "storage.read"
   ]
@@ -34,7 +57,7 @@ Source: `docs/snippets/plugin-basic/bakin-plugin.json`
 
 | Field | Meaning |
 | --- | --- |
-| `id` | Stable machine id. Use lowercase letters, numbers, dashes, and underscores. |
+| `id` | Stable machine ID. Must match `^[a-z][a-z0-9-]{0,39}$`. |
 | `name` | Human-readable plugin name. |
 | `version` | Plugin version. Use SemVer. |
 | `bakin` | Compatible Bakin version range. |
@@ -45,28 +68,80 @@ Source: `docs/snippets/plugin-basic/bakin-plugin.json`
 
 ## Optional Fields
 
-<div class="table-light-full table-label">
+<div class="table-light-full table-label-wrap">
 
 | Field | Meaning |
 | --- | --- |
-| `entry.client` | Client entry loaded into the Bakin shell. |
-| `contentFiles` | Files the plugin contributes to Bakin content. |
+| `entry.client` | Browser entry loaded into the Bakin shell. |
+| `contentFiles` | Files the plugin contributes under Bakin content. |
 | `secrets` | Secret names the plugin expects. |
 | `tests` | Plugin-local test command. |
 | `dependencies` | Other Bakin plugin IDs that must be available before this plugin loads. |
-| `permissions` | Capability labels used for install consent and runtime capability checks. |
+| `permissions` | Capability labels used for install consent and runtime permission checks. |
+| `runtimeCapabilities` | Runtime adapter capabilities the plugin needs, such as `tasks`, `search`, `models`, or `channels.message`. |
+| `contributes` | Public API, UI, CLI, settings, exec tool, and docs metadata. |
+| `devWatch` | Extra plugin-local paths to watch during development. |
 
 </div>
+
+## Contributions
+
+`contributes` tells Bakin what the plugin exposes before code runs.
+
+<div class="table-light-full table-label-wrap">
+
+| Contribution | Required core fields |
+| --- | --- |
+| `apiRoutes[]` | `method`, plugin-relative `path`, `summary` |
+| `clientRoutes[]` | app `path`, `summary` |
+| `execTools[]` | `name`, `summary` |
+| `cliCommands[]` | `name`, `usage`, `summary`, `dispatch` |
+| `settings[]` | `key`, `summary` |
+| `docs` | `slug` |
+
+</div>
+
+API route paths are plugin-relative. A route declared as `/hello` is exposed under `/api/plugins/{pluginId}/hello`. Do not declare `/api/...` paths in a plugin manifest.
+
+## Permissions
+
+Declare permissions before calling the corresponding APIs.
+
+<!-- docs:plugin-permissions -->
+<div class="table-light-full table-label-wrap permissions-table">
+
+| Permission | Typical use |
+| --- | --- |
+| `events.emit` | Broadcast Server-Sent Events to connected browsers |
+| `assets.read` | Read asset metadata and runtime-deliverable asset references |
+| `runtime.read` | Read general runtime adapter state |
+| `runtime.agents` | Read runtime agent identity and status |
+| `runtime.messaging` | Send messages through the runtime adapter |
+| `runtime.channels` | Send messages or content to configured runtime channels |
+| `runtime.cron` | Create and manage runtime cron jobs |
+| `runtime.skills` | Read runtime skills |
+| `runtime.models` | Read runtime model metadata |
+| `search.read` | Query Bakin search indexes |
+| `search.write` | Register or mutate plugin-owned search indexes |
+| `storage.read` | Read files in ~/.bakin/ |
+| `storage.write` | Write files in ~/.bakin/ |
+| `tasks.read` | Read tasks through the public task service |
+| `tasks.write` | Create and mutate tasks through the public task service |
+
+</div>
+<!-- /docs:plugin-permissions -->
+
+Runtime permission mode may warn or enforce depending on configuration. Missing declarations are still bugs: they show up in audit trails and can become hard failures.
 
 ## Authoring Rules
 
 - Treat `id` as permanent once users install the plugin.
-- Keep entries relative to the plugin root.
+- Keep entry paths relative to the plugin root.
 - Declare plugin dependencies by plugin ID. `bakin plugins install` refuses a plugin when a dependency is neither core nor already installed.
-- Declare permissions before calling runtime/data APIs such as `ctx.storage`, `ctx.search`, `ctx.tasks`, or `ctx.runtime.*`.
-- Runtime permission mode defaults to warning-only. Missing declarations are logged and audited; enforcement can throw `PermissionDenied`.
-- Do not rely on undocumented host files. Import supported APIs from `@bakin/sdk` and `@bakin/sdk/*`.
+- Keep `contributes` in sync with registered routes, tools, settings, and docs.
+- Use `runtimeCapabilities` for adapter-level needs and `permissions` for plugin capability consent.
+- Import supported APIs from `@bakin/sdk` and `@bakin/sdk/*`.
 
 ## Validation
 
-Launch docs require every public plugin example to be backed by a snippet fixture. `bun run docs:check` verifies the docs snippets exist and that JSON manifests parse cleanly.
+Docs examples that show real files should be backed by snippet fixtures. `bun run docs:check` validates `bakin` shell commands, source-backed snippets, generated docs blocks, route metadata, JSON fences, and the docs site build.

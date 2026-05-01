@@ -15,7 +15,7 @@ registerPlugin({
       order: 100,
     },
   ],
-  slots: {
-    'page:/docs-basic': DocsBasicPage,
+  routes: {
+    '/docs-basic': DocsBasicPage,
   },
 })

@@ -8,6 +8,29 @@
     "server": "index.ts",
     "client": "client.tsx"
   },
+  "contributes": {
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/hello",
+        "summary": "Say hello",
+        "description": "Returns a small JSON payload from the docs example plugin.",
+        "visibility": "public",
+        "stability": "stable",
+        "responses": {
+          "200": {
+            "description": "Greeting payload"
+          }
+        }
+      }
+    ],
+    "clientRoutes": [
+      {
+        "path": "/docs-basic",
+        "summary": "Minimal docs plugin page"
+      }
+    ]
+  },
   "permissions": [
     "storage.read"
   ]

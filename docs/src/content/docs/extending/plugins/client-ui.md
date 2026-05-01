@@ -1,9 +1,9 @@
 ---
 title: Client UI
-description: Register plugin navigation, pages, slots, and shell-integrated UI through @bakin/sdk.
+description: Register plugin navigation, pages, routes, slots, and shell-integrated UI through @bakin/sdk.
 ---
 
-Client entries use `registerPlugin()` from `@bakin/sdk`. Keep UI contributions small, predictable, and built from SDK components whenever possible.
+Client entries use `registerPlugin()` from `@bakin/sdk`. Keep UI contributions predictable and built from SDK components where practical. Plugin UI should feel like part of Bakin: dense enough for repeated work, accessible, and clear about loading, empty, error, and permission states.
 
 The tested minimal client entry lives at `docs/snippets/plugin-basic/client.tsx`.
 
@@ -28,8 +28,8 @@ registerPlugin({
       order: 100,
     },
   ],
-  slots: {
-    'page:/docs-basic': DocsBasicPage,
+  routes: {
+    '/docs-basic': DocsBasicPage,
   },
 })
 ```
@@ -37,26 +37,57 @@ registerPlugin({
 
 ## Navigation
 
-Navigation items should be stable and specific to the plugin. Use lucide icon names and include `order` only when the plugin has a strong placement requirement.
+Navigation items should be stable and specific to the plugin. Use lucide icon names. Include `order` only when the plugin has a strong placement requirement.
+
+<div class="table-light-full table-label">
 
 | Field | Meaning |
 | --- | --- |
-| `id` | Stable item id. Prefix with the plugin id. |
+| `id` | Stable item ID. Prefix with the plugin ID. |
 | `label` | Sidebar label. |
 | `icon` | Lucide icon name. |
 | `href` | Route path. |
 | `order` | Optional sort order. Defaults to `100`. |
 | `children` | Nested nav items. |
 
-## Pages
+</div>
 
-Page slots use `page:/route`. Prefer one top-level route per plugin area, then manage local tabs or filters inside that page.
+## Routes
 
-Use SDK UI primitives first. Custom UI is allowed when the domain needs it, but it should preserve Bakin keyboard behavior, spacing, contrast, and loading states.
+Use `routes` for plugin-owned pages. The host catch-all route renders registered plugin routes and passes route params into the component.
+
+```tsx
+registerPlugin({
+  id: 'docs-basic',
+  routes: {
+    '/docs-basic': DocsBasicPage,
+    '/docs-basic/[id]': DocsBasicDetailPage,
+  },
+})
+```
+
+Patterns support exact paths and dynamic segments in `:id`, `[id]`, or `$id` form. If a route is visible in navigation, also declare it in `bakin-plugin.json` `contributes.clientRoutes`.
+
+## Page Slots
+
+Use `page:/...` slots when the host already owns the route and the plugin fills that route. Core plugins use this for built-in pages such as Tasks, Assets, Schedule, Team, Models, Health, Workflows, and Memory.
+
+```tsx
+registerPlugin({
+  id: 'tasks',
+  slots: {
+    'page:/tasks': KanbanBoard,
+  },
+})
+```
+
+For a new route owned by your plugin, prefer `routes`.
 
 ## Slots
 
 Slots let plugins add focused UI to existing Bakin workflows.
+
+<div class="table-light-full table-label-wrap">
 
 | Slot | Use it for |
 | --- | --- |
@@ -65,7 +96,22 @@ Slots let plugins add focused UI to existing Bakin workflows.
 | `task-assets` | Task drawer asset attachments. |
 | `task-sidebar` | Task-specific side panels. |
 | `home-widget` | Dashboard widgets. |
-| `page:/<route>` | Full page plugin mount. |
+| `page:/<route>` | Host-owned page mount. |
+
+</div>
+
+Register with `registerSlot()` directly when you need a custom order. Lower order renders first.
+
+## UI Primitives
+
+Import common UI from `@bakin/sdk/ui` and shared app components from `@bakin/sdk/components`.
+
+```tsx
+import { Button } from '@bakin/sdk/ui'
+import { PluginHeader } from '@bakin/sdk/components'
+```
+
+Custom UI is fine when the domain needs it, but keep Bakin conventions: small radii, clear tables and filters, keyboard-friendly controls, visible empty states, and no layout shift when data loads.
 
 ## Runtime Cleanup
 
