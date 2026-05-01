@@ -646,15 +646,15 @@ async function cmdDoctor(): Promise<void> {
 // Agent Rules
 // ---------------------------------------------------------------------------
 
-// Agent-rules block management is owned by src/core/agent-rules/managed-blocks.ts.
+// Agent-rules context management is owned by src/core/agent-rules/managed-blocks.ts.
 // Imported lazily inside cmdAgentRules so the CLI stays a pure entry point.
 
 async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyAll?: boolean; checkAll?: boolean } = {}): Promise<void> {
   if (!options.apply && !options.check && !options.applyAll && !options.checkAll) {
-    console.log('Usage: bakin agent-rules --apply       # Write orchestrator rules block to AGENTS.md')
-    console.log('       bakin agent-rules --check       # Check if rules block is present and current')
-    console.log('       bakin agent-rules --apply-all   # Apply all managed blocks to all agent AGENTS.md files')
-    console.log('       bakin agent-rules --check-all   # Check all managed blocks across all agents')
+    console.log('Usage: bakin agent-rules --apply       # Write main-agent managed context to AGENTS.md')
+    console.log('       bakin agent-rules --check       # Check if main-agent managed context is current')
+    console.log('       bakin agent-rules --apply-all   # Apply managed context to all agent AGENTS.md files')
+    console.log('       bakin agent-rules --check-all   # Check managed context across all agents')
     return
   }
 

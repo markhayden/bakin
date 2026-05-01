@@ -15,14 +15,13 @@
  * Marker namespace conventions (used by callers, enforced by callers):
  *   - bakin:knowledge-catalog                    → table of contents in SOUL.md
  *   - bakin:knowledge:<package>:<lesson-id>      → one block per enabled lesson
- *   - bakin:mission-control                      → existing doctor-owned block
- *   - bakin:hard-rules                           → existing doctor-owned block
- *   - bakin:dependency-pattern                   → existing doctor-owned block
- *   - bakin:media-delegation                     → existing doctor-owned block
+ *   - bakin:managed-context                      → compact AGENTS.md context
+ *   - bakin:mission-control, etc.                → legacy AGENTS.md rule blocks,
+ *                                                   converted by doctor when
+ *                                                   well-formed
  *
  * This module is pure: it operates on string content, never touches the
- * filesystem. The phase-D refactor of `src/core/doctor.ts` will lift its
- * existing block helper to call into this module.
+ * filesystem. Callers decide which marker namespaces they own.
  */
 
 const START_MARKER_PATTERN = /^<!-- bakin:([\w:.-]+):start -->$/
