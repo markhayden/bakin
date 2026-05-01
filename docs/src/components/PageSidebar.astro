@@ -188,6 +188,27 @@ if (isApiPage) {
     .sl-container {
       width: calc(var(--sl-sidebar-width) - 2 * var(--sl-sidebar-pad-x));
     }
+    /* Mirror Starlight's default PageSidebar typography for the
+       fall-through TableOfContents on non-API pages. The override
+       replaces Starlight's default component, so without these the
+       default TOC ships unstyled. */
+    .right-sidebar-panel :global(h2) {
+      color: var(--sl-color-white);
+      font-size: var(--sl-text-h5);
+      font-weight: 600;
+      line-height: var(--sl-line-height-headings);
+      margin-bottom: 0.5rem;
+    }
+    .right-sidebar-panel :global(:where(a)) {
+      display: block;
+      font-size: var(--sl-text-xs);
+      text-decoration: none;
+      color: var(--sl-color-gray-3);
+      overflow-wrap: anywhere;
+    }
+    .right-sidebar-panel :global(:where(a):hover) {
+      color: var(--sl-color-white);
+    }
     @media (min-width: 72rem) {
       .sl-container {
         max-width: calc(
