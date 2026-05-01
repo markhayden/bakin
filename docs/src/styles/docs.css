@@ -1254,6 +1254,121 @@ starlight-toc nav a[href="#for-agents"]::before {
   background: #ff9a8f;
 }
 
+/* ── Right-rail TOC for the API reference page (custom PageSidebar override) */
+.api-toc h2 {
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-h5);
+  font-weight: 600;
+  line-height: var(--sl-line-height-headings);
+  margin: 0 0 0.5rem;
+}
+
+.api-toc-group {
+  margin-top: 0.85rem;
+}
+
+.api-toc-group h3 {
+  color: var(--sl-color-gray-2);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 0 0 0.3rem;
+}
+
+.api-toc ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.api-toc li > a {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.18rem 0.35rem;
+  border-radius: 0.25rem;
+  text-decoration: none;
+  color: var(--sl-color-gray-3);
+  font-size: var(--sl-text-xs);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.api-toc li > a:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--sl-color-white);
+}
+
+.api-toc-method {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3rem;
+  padding: 0.08rem 0.32rem;
+  border-radius: 0.22rem;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #14120f;
+  background: #f5f442;
+}
+
+.api-toc-method--get {
+  background: #93e6b5;
+}
+
+.api-toc-method--post {
+  background: #f5f442;
+}
+
+.api-toc-method--put,
+.api-toc-method--patch {
+  background: #8fd7ff;
+}
+
+.api-toc-method--delete {
+  background: #ff9a8f;
+}
+
+.api-toc-path {
+  flex: 1 1 auto;
+  font-family: var(--font-mono);
+  font-size: var(--sl-text-xs);
+  background: transparent;
+  padding: 0;
+  border: none;
+  color: inherit;
+  overflow-wrap: anywhere;
+}
+
+.api-toc-mobile {
+  margin: 0 0 1rem;
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.api-toc-mobile > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--sl-color-white);
+}
+
+.api-toc-mobile h2 {
+  color: var(--sl-color-gray-2);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 0.6rem 0 0.3rem;
+}
+
 .api-operation h3 {
   margin: 0;
   font-size: 1.34rem;
