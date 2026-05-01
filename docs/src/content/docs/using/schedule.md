@@ -39,6 +39,14 @@ Same menu lives in the detail drawer for jobs you've already opened.
 
 The detail drawer's `History` tab lists past fires with timestamps, success/failure, and the task that resulted. Useful when scheduled work looks stale or duplicated.
 
+### Cron tool allowlists
+
+Runtime-native cron jobs may also show a `Cron tools` field. That comes from the runtime adapter's cron allowlist, such as OpenClaw's `--tools` / `payload.toolsAllow` policy for isolated agent-turn cron jobs.
+
+If a runtime-native or legacy cron job has no allowlist, Schedule flags it as missing cron tools. Treat that as an audit prompt, not an automatic fix: choose the smallest tool set the native job needs before changing the runtime cron.
+
+Bakin-owned schedules are different. They use runtime cron as a timer, then create Bakin tasks. The eventual agent task's MCP permissions are not controlled by cron `toolsAllow`; that belongs to Bakin MCP tool scoping.
+
 ## How it works
 
 Schedule splits ownership: the runtime owns the cron, Bakin owns everything around it.
@@ -72,6 +80,7 @@ Cron expressions and run logs live in the runtime home. Bakin reads them; the ru
 | Failure cooldown (ms) | `number` | `300000` | Wait time after failure before retrying |
 | Max consecutive failures | `number` | `3` | Pause job after this many consecutive failures |
 | Bridge enabled | `boolean` | `true` | Allow cron jobs to create tasks via the bridge |
+| Startup reconciliation window | `number` | `24` | Create missed scheduled tasks only for successful runtime cron runs newer than this many hours. Set to 0 to disable startup backfill. |
 
 </div>
 <!-- /docs:settings -->

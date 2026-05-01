@@ -1074,11 +1074,27 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="schedule-post-by-jobId-adopt">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/schedule/<jobId>/adopt'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="schedule-post-by-jobId-pause">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/schedule/<jobId>/pause'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="schedule-post-by-jobId-restore-native">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/schedule/<jobId>/restore-native'
 ```
 </OpenApiReference>
 

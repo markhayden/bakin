@@ -9,12 +9,14 @@ import type {
   ChannelInfo,
   CronJob,
   CronRun,
+  CreateCronJobInput,
   CreateRuntimeAgentInput,
   RuntimeAgent,
   RuntimeAvailableModel,
   RuntimeMetadata,
   RuntimeMemorySearchResult,
   RuntimeSkill,
+  UpdateCronJobInput,
   WorkspaceFile,
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
@@ -94,13 +96,23 @@ interface OpenClawCronStore {
 
 interface OpenClawCronStoreJob {
   id: string
+  agentId?: string
+  sessionKey?: string
   name?: string
+  description?: string
   enabled?: boolean
+  deleteAfterRun?: boolean
   schedule?: string | { kind?: string; type?: string; expr?: string; value?: string; tz?: string }
-  delivery?: { mode?: string; url?: string; token?: string; channel?: string }
-  payload?: { message?: string } & Record<string, unknown>
+  sessionTarget?: string
+  wakeMode?: string
+  delivery?: { mode?: string; url?: string; to?: string; token?: string; channel?: string; threadId?: string; accountId?: string; bestEffort?: boolean; failureDestination?: unknown }
+  payload?: { kind?: string; message?: string; text?: string; toolsAllow?: string[] } & Record<string, unknown>
+  failureAlert?: unknown
+  state?: Record<string, unknown>
   createdAt?: string
   updatedAt?: string
+  createdAtMs?: number
+  updatedAtMs?: number
   metadata?: RuntimeMetadata
 }
 
@@ -724,41 +736,63 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       const job = readCronJobs().find((entry) => entry.id === id)
       return job ? cronStoreJobToRuntime(job) : null
     },
-    create: async (input: { id?: string; name: string; schedule: string; command: string; enabled?: boolean; metadata?: RuntimeMetadata }): Promise<CronJob> => {
+    create: async (input: CreateCronJobInput): Promise<CronJob> => {
       const store = readCronStore()
       const jobs = store.jobs ?? []
       const id = input.id ?? uniqueCronId(input.name, jobs)
       if (jobs.some((job) => job.id === id)) throw new Error(`Cron job already exists: ${id}`)
-      const now = new Date().toISOString()
+      const nowMs = Date.now()
+      const now = new Date(nowMs).toISOString()
+      const bakinSchedule = isBakinScheduleMetadata(input.metadata)
+      const payload = bakinSchedule
+        ? { kind: 'systemEvent', text: input.command }
+        : withCronToolsAllow({ kind: 'agentTurn', message: input.command }, input.toolsAllow)
       const job: OpenClawCronStoreJob = {
         id,
         name: input.name,
         enabled: input.enabled ?? true,
         schedule: { kind: 'cron', expr: input.schedule },
-        delivery: cronDeliveryFromMetadata(input.metadata),
-        payload: { message: input.command },
+        sessionTarget: bakinSchedule ? 'main' : 'isolated',
+        wakeMode: 'now',
+        delivery: cronDeliveryFromMetadata(input.metadata) ?? { mode: 'none' },
+        payload,
         createdAt: now,
         updatedAt: now,
+        createdAtMs: nowMs,
+        updatedAtMs: nowMs,
+        state: {},
         metadata: input.metadata,
       }
       writeCronStore({ ...store, jobs: [...jobs, job] })
       return cronStoreJobToRuntime(job)
     },
-    update: async (id: string, patch: { name?: string; schedule?: string; command?: string; enabled?: boolean; metadata?: RuntimeMetadata }): Promise<CronJob> => {
+    update: async (id: string, patch: UpdateCronJobInput): Promise<CronJob> => {
       const store = readCronStore()
       const jobs = store.jobs ?? []
       const index = jobs.findIndex((job) => job.id === id)
       if (index === -1) throw new Error(`Cron job not found: ${id}`)
       const current = jobs[index]
+      const metadata = patch.metadata ?? current.metadata
+      const bakinSchedule = isBakinScheduleMetadata(metadata)
+      const command = patch.command ?? cronStoreJobToRuntime(current).command
+      const nowMs = Date.now()
+      const payload = bakinSchedule || patch.command !== undefined || patch.toolsAllow !== undefined
+        ? withCronToolsAllow(cronPayloadForCommand(command, current.payload, bakinSchedule), patch.toolsAllow)
+        : current.payload
       const next: OpenClawCronStoreJob = {
         ...current,
         name: patch.name ?? current.name,
         enabled: patch.enabled ?? current.enabled ?? true,
         schedule: patch.schedule ? { kind: 'cron', expr: patch.schedule } : current.schedule,
-        delivery: patch.metadata ? cronDeliveryFromMetadata(patch.metadata) ?? current.delivery : current.delivery,
-        payload: { ...(current.payload ?? {}), ...(patch.command !== undefined ? { message: patch.command } : {}) },
-        metadata: patch.metadata ?? current.metadata,
-        updatedAt: new Date().toISOString(),
+        sessionTarget: bakinSchedule ? 'main' : current.sessionTarget,
+        wakeMode: bakinSchedule ? 'now' : current.wakeMode,
+        delivery: bakinSchedule
+          ? { mode: 'none' }
+          : patch.metadata ? cronDeliveryFromMetadata(patch.metadata) ?? current.delivery ?? { mode: 'none' } : current.delivery,
+        payload,
+        metadata,
+        updatedAt: new Date(nowMs).toISOString(),
+        updatedAtMs: nowMs,
       }
       jobs[index] = next
       writeCronStore({ ...store, jobs })
@@ -778,6 +812,27 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       }
     },
     listRuns: async (jobId: string): Promise<CronRun[]> => readCronRuns(jobId),
+    getRaw: async (id: string, reason: string): Promise<unknown | null> => {
+      if (!reason) throw new Error('cron.getRaw requires a reason')
+      const job = readCronJobs().find((entry) => entry.id === id)
+      return job ? cloneJson(job) : null
+    },
+    restoreRaw: async (id: string, snapshot: unknown, reason: string): Promise<CronJob> => {
+      if (!reason) throw new Error('cron.restoreRaw requires a reason')
+      if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+        throw new Error('cron.restoreRaw requires an object snapshot')
+      }
+      const restored = cloneJson(snapshot) as OpenClawCronStoreJob
+      if (typeof restored.id !== 'string' || restored.id.length === 0) restored.id = id
+      if (restored.id !== id) throw new Error(`Raw cron snapshot id mismatch: expected ${id}, got ${restored.id}`)
+      const store = readCronStore()
+      const jobs = store.jobs ?? []
+      const index = jobs.findIndex((job) => job.id === id)
+      if (index === -1) jobs.push(restored)
+      else jobs[index] = restored
+      writeCronStore({ ...store, jobs })
+      return cronStoreJobToRuntime(restored)
+    },
   }
 
   config = {
@@ -1155,20 +1210,70 @@ function cronStoreJobToRuntime(job: OpenClawCronStoreJob): CronJob {
     id: job.id,
     name: job.name ?? job.id,
     schedule: cronScheduleToString(job.schedule),
-    command: typeof job.payload?.message === 'string' ? job.payload.message : '',
+    command: typeof job.payload?.message === 'string'
+      ? job.payload.message
+      : typeof job.payload?.text === 'string'
+        ? job.payload.text
+        : '',
     enabled: job.enabled ?? true,
+    toolsAllow: normalizeCronToolsAllow(job.payload?.toolsAllow),
     metadata: job.metadata,
   }
 }
 
 function cronDeliveryFromMetadata(metadata: RuntimeMetadata | undefined): OpenClawCronStoreJob['delivery'] | undefined {
   const webhookUrl = metadataValue(metadata, 'webhookUrl')
-  return webhookUrl ? { mode: 'webhook', url: webhookUrl } : undefined
+  return webhookUrl ? { mode: 'webhook', to: webhookUrl, url: webhookUrl } : undefined
+}
+
+function isBakinScheduleMetadata(metadata: RuntimeMetadata | undefined): boolean {
+  return metadata?.bakinSchedule === true || metadata?.['bakin.schedule'] === true
+}
+
+function cronPayloadForCommand(
+  command: string,
+  current: OpenClawCronStoreJob['payload'],
+  bakinSchedule: boolean,
+): OpenClawCronStoreJob['payload'] {
+  if (bakinSchedule || current?.kind === 'systemEvent') {
+    return { kind: 'systemEvent', text: command }
+  }
+  return { ...(current ?? {}), kind: 'agentTurn', message: command }
+}
+
+function withCronToolsAllow(
+  payload: OpenClawCronStoreJob['payload'],
+  toolsAllow: string[] | null | undefined,
+): OpenClawCronStoreJob['payload'] {
+  if (payload?.kind !== 'agentTurn' || toolsAllow === undefined) return payload
+  const next = { ...payload }
+  const normalized = normalizeCronToolsAllow(toolsAllow)
+  if (normalized) next.toolsAllow = normalized
+  else delete next.toolsAllow
+  return next
+}
+
+function normalizeCronToolsAllow(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const seen = new Set<string>()
+  const tools: string[] = []
+  for (const entry of value) {
+    if (typeof entry !== 'string') continue
+    const tool = entry.trim()
+    if (!tool || seen.has(tool)) continue
+    seen.add(tool)
+    tools.push(tool)
+  }
+  return tools.length > 0 ? tools : undefined
 }
 
 function cronScheduleToString(schedule: OpenClawCronStoreJob['schedule']): string {
   if (typeof schedule === 'string') return schedule
   return schedule?.expr ?? schedule?.value ?? '* * * * *'
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T
 }
 
 function uniqueCronId(name: string, jobs: OpenClawCronStoreJob[]): string {

@@ -294,6 +294,8 @@ export function createPluginRuntimeFacade(runtime: AgentRuntimeAdapter): AgentRu
       remove: runtime.cron.remove.bind(runtime.cron),
       runNow: runtime.cron.runNow.bind(runtime.cron),
       listRuns: runtime.cron.listRuns.bind(runtime.cron),
+      getRaw: runtime.cron.getRaw.bind(runtime.cron),
+      restoreRaw: runtime.cron.restoreRaw.bind(runtime.cron),
     },
     config: {
       get: async () => { throw new Error('Runtime config is not exposed to plugins') },

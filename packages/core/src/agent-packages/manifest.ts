@@ -85,11 +85,11 @@ const AgentStanzaSchema = z.object({
   dispatchableBy: z.array(z.string().min(1)).optional(),
   tags: z.array(z.string().min(1)).optional(),
   /**
-   * Declarative MCP-tool allow-list. V1 documentation-only — issue #42's
-   * dispatch-routing layer reads this and enforces hard scoping.
+   * Declarative MCP-tool allow-list. Bakin's MCP server reads installed
+   * agent-package manifests and enforces this at listing and invocation time.
    */
   allowedTools: z.array(z.string().min(1)).optional(),
-  /** Declarative skill allow-list. Same V1-doc-only treatment as allowedTools. */
+  /** Declarative skill allow-list. Documentation-only until skill routing exists. */
   allowedSkills: z.array(z.string().min(1)).optional(),
 })
 

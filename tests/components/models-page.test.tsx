@@ -70,6 +70,20 @@ interface FetchCall {
   body?: Record<string, unknown>
 }
 
+interface AvailableModelsPayload {
+  models: Array<Record<string, unknown>>
+  cached: boolean
+  cachedAt: number | null
+  stale?: boolean
+  error?: string | null
+}
+
+interface Deferred<T> {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (error: unknown) => void
+}
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -77,9 +91,23 @@ function jsonResponse(body: unknown, status = 200): Response {
   })
 }
 
+function createDeferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void
+  let reject!: (error: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 describe('ModelsPage component', () => {
   let fetchCalls: FetchCall[]
   let availableFetchCount: number
+  let availableResponse: AvailableModelsPayload
+  let refreshResponse: AvailableModelsPayload
+  let availableRequest: Promise<Response> | null
+  let refreshRequest: Promise<Response> | null
   let configState: {
     agents: Array<Record<string, unknown>>
     defaultModel: string
@@ -111,9 +139,26 @@ describe('ModelsPage component', () => {
       defaultSubagentModel: 'anthropic/claude-haiku-4-5',
       fallbackModels: ['anthropic/claude-opus-4-6'],
     }
+    availableResponse = {
+      models: [
+        { id: 'anthropic/claude-sonnet-4-6', name: 'Claude Sonnet 4.6', provider: 'anthropic', tier: 'standard', isDefault: configState.defaultModel === 'anthropic/claude-sonnet-4-6', configured: true, tags: ['configured'] },
+        { id: 'anthropic/claude-opus-4-6', name: 'Claude Opus 4.6', provider: 'anthropic', tier: 'premium', configured: true, tags: ['configured'] },
+        { id: 'anthropic/claude-haiku-4-5', name: 'Claude Haiku 4.5', provider: 'anthropic', tier: 'budget', configured: true, tags: ['configured'] },
+        { id: 'openai-codex/gpt-5.4', name: 'GPT-5.4', provider: 'openai-codex', tier: 'premium', isDefault: configState.defaultModel === 'openai-codex/gpt-5.4', configured: true, tags: ['configured'] },
+        { id: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'google', tier: 'premium', configured: false, tags: [] },
+      ],
+      cached: false,
+      cachedAt: null,
+    }
+    refreshResponse = availableResponse
+    availableRequest = null
+    refreshRequest = null
     aliasesState = {
       sonnet: 'anthropic/claude-sonnet-4-6',
     }
+    runtimeState.restartNeeded = false
+    runtimeState.restarting = false
+    runtimeState.restart.mockReset()
 
     vi.stubGlobal('fetch', mock(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
@@ -126,17 +171,10 @@ describe('ModelsPage component', () => {
       }
       if (url === '/api/plugins/models/available' && method === 'GET') {
         availableFetchCount += 1
-        return jsonResponse({
-          models: [
-            { id: 'anthropic/claude-sonnet-4-6', name: 'Claude Sonnet 4.6', provider: 'anthropic', tier: 'standard', isDefault: configState.defaultModel === 'anthropic/claude-sonnet-4-6', configured: true, tags: ['configured'] },
-            { id: 'anthropic/claude-opus-4-6', name: 'Claude Opus 4.6', provider: 'anthropic', tier: 'premium', configured: true, tags: ['configured'] },
-            { id: 'anthropic/claude-haiku-4-5', name: 'Claude Haiku 4.5', provider: 'anthropic', tier: 'budget', configured: true, tags: ['configured'] },
-            { id: 'openai-codex/gpt-5.4', name: 'GPT-5.4', provider: 'openai-codex', tier: 'premium', isDefault: configState.defaultModel === 'openai-codex/gpt-5.4', configured: true, tags: ['configured'] },
-            { id: 'google/gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'google', tier: 'premium', configured: false, tags: [] },
-          ],
-          cached: false,
-          cachedAt: null,
-        })
+        return availableRequest ?? jsonResponse(availableResponse)
+      }
+      if (url === '/api/plugins/models/refresh' && method === 'POST') {
+        return refreshRequest ?? jsonResponse(refreshResponse)
       }
       if (url === '/api/plugins/models/aliases' && method === 'GET') {
         return jsonResponse({ aliases: aliasesState })
@@ -260,5 +298,119 @@ describe('ModelsPage component', () => {
       })
       expect(availableFetchCount).toBe(2)
     })
+  })
+
+  it('renders the available models loading state while the runtime request is pending', async () => {
+    const availableDeferred = createDeferred<Response>()
+    availableRequest = availableDeferred.promise
+
+    render(<ModelsPage />)
+    fireEvent.click(await screen.findByText('Available Models'))
+
+    expect(await screen.findByText('Querying runtime adapter — this can take up to 30 seconds on first load.')).toBeTruthy()
+
+    availableDeferred.resolve(jsonResponse(availableResponse))
+    await screen.findByText('Claude Sonnet 4.6')
+  })
+
+  it('renders the runtime models error state when no models are returned', async () => {
+    availableResponse = {
+      models: [],
+      cached: false,
+      cachedAt: null,
+      error: 'runtime unavailable',
+    }
+
+    render(<ModelsPage />)
+    fireEvent.click(await screen.findByText('Available Models'))
+
+    expect(await screen.findByText('Could not load models from the runtime.')).toBeTruthy()
+    expect(screen.getByText('runtime unavailable')).toBeTruthy()
+  })
+
+  it('renders the runtime restart-needed banner and calls restart', async () => {
+    runtimeState.restartNeeded = true
+
+    render(<ModelsPage />)
+
+    expect(await screen.findByText('Runtime config out of sync. Restart to apply changes.')).toBeTruthy()
+    fireEvent.click(screen.getByText('Restart Runtime'))
+
+    expect(runtimeState.restart).toHaveBeenCalled()
+  })
+
+  it('disables the refresh button while a refresh request is in flight', async () => {
+    const refreshDeferred = createDeferred<Response>()
+    refreshRequest = refreshDeferred.promise
+
+    render(<ModelsPage />)
+    fireEvent.click(await screen.findByText('Available Models'))
+
+    await screen.findByText('Claude Sonnet 4.6')
+    fireEvent.click(screen.getByText('Refresh'))
+
+    await waitFor(() => {
+      expect(screen.getByText('Refreshing…').closest('button')?.disabled).toBe(true)
+    })
+
+    refreshDeferred.resolve(jsonResponse(refreshResponse))
+    await screen.findByText('Refresh')
+  })
+
+  it('renders cached refresh age when available models come from cache', async () => {
+    availableResponse = {
+      ...availableResponse,
+      cached: true,
+      cachedAt: Date.now(),
+    }
+
+    render(<ModelsPage />)
+    fireEvent.click(await screen.findByText('Available Models'))
+
+    expect(await screen.findByText('just now')).toBeTruthy()
+  })
+
+  it('renders enriched model metadata while leaving unmatched models plain', async () => {
+    availableResponse = {
+      models: [
+        {
+          id: 'openai-codex/gpt-5.4',
+          name: 'GPT-5.4',
+          provider: 'openai-codex',
+          providerLabel: 'OpenAI Codex',
+          providerBrandIconSlug: 'openai',
+          providerBrandColor: '#111111',
+          tier: 'premium',
+          configured: true,
+          tags: ['configured'],
+          description: 'Best frontier coding model for long-running work.',
+          bestFor: 'Complex coding',
+          costRange: 'High cost',
+        },
+        {
+          id: 'vendor/plain-runtime-model',
+          name: 'Plain Runtime Model',
+          provider: 'vendor',
+          tier: 'standard',
+          configured: false,
+          tags: [],
+        },
+      ],
+      cached: false,
+      cachedAt: null,
+    }
+
+    render(<ModelsPage />)
+    fireEvent.click(await screen.findByText('Available Models'))
+
+    expect(await screen.findByText('Best frontier coding model for long-running work.')).toBeTruthy()
+    expect(screen.getByText('Complex coding')).toBeTruthy()
+    expect(screen.getByText('High cost')).toBeTruthy()
+
+    const plainCard = screen.getByText('Plain Runtime Model').closest('.rounded-xl')
+    expect(plainCard).toBeTruthy()
+    expect(within(plainCard as HTMLElement).getByText('vendor/plain-runtime-model')).toBeTruthy()
+    expect(within(plainCard as HTMLElement).queryByText('Complex coding')).toBeNull()
+    expect(within(plainCard as HTMLElement).queryByText('High cost')).toBeNull()
   })
 })

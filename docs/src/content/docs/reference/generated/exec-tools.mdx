@@ -15,7 +15,7 @@ import McpToolCard from '../../../../components/McpToolCard.astro'
 <p class="mcp-section-description">Asset tools let agents list, inspect, save, link, restore, and clean up files managed by Bakin.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="assets-audit" name="bakin_exec_assets_audit" label="Audited assets" description="Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files. Set fix=true to auto-generate missing thumbnails and create stub sidecars." source="plugins/assets/index.ts:747" parameters={[{"name":"type","type":"choice","required":false,"description":"Limit audit to a specific asset type"},{"name":"fix","type":"boolean","required":false,"description":"Auto-fix issues where possible"}]}>
+<McpToolCard id="assets-audit" name="bakin_exec_assets_audit" label="Audited assets" description="Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files. Set fix=true to auto-generate missing thumbnails and create stub sidecars." source="plugins/assets/index.ts:808" parameters={[{"name":"type","type":"choice","required":false,"description":"Limit audit to a specific asset type"},{"name":"fix","type":"boolean","required":false,"description":"Auto-fix issues where possible"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_audit --args '{
   "type": "value",
@@ -23,14 +23,14 @@ mcporter call bakin-<agent>.bakin_exec_assets_audit --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-delete" name="bakin_exec_assets_delete" label="Deleted an asset" description="Soft-delete an asset (moves to trash, restorable until trash is emptied)." source="plugins/assets/index.ts:662" parameters={[{"name":"filename","type":"string","required":true,"description":"Canonical asset filename (e.g. \"20260401-hero-a1b2c3d4.png\")"}]}>
+<McpToolCard id="assets-delete" name="bakin_exec_assets_delete" label="Deleted an asset" description="Soft-delete an asset (moves to trash, restorable until trash is emptied)." source="plugins/assets/index.ts:723" parameters={[{"name":"filename","type":"string","required":true,"description":"Canonical asset filename (e.g. \"20260401-hero-a1b2c3d4.png\")"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_delete --args '{
   "filename": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-empty-trash" name="bakin_exec_assets_empty_trash" label="Emptied asset trash" description="Permanently delete all items from trash. This cannot be undone." source="plugins/assets/index.ts:923">
+<McpToolCard id="assets-empty-trash" name="bakin_exec_assets_empty_trash" label="Emptied asset trash" description="Permanently delete all items from trash. This cannot be undone." source="plugins/assets/index.ts:984">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_empty_trash
 ```
@@ -42,7 +42,7 @@ mcporter call bakin-<agent>.bakin_exec_assets_get --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-link" name="bakin_exec_assets_link" label="Linked an asset" description="Link an asset to a different task, or unlink it (set taskId to null). Sidecar-only edit — no file move." source="plugins/assets/index.ts:688" parameters={[{"name":"filename","type":"string","required":true,"description":"Canonical asset filename (e.g. \"20260401-hero-a1b2c3d4.png\")"},{"name":"taskId","type":"string","required":true,"description":"Target task ID, or null to unlink"}]}>
+<McpToolCard id="assets-link" name="bakin_exec_assets_link" label="Linked an asset" description="Link an asset to a different task, or unlink it (set taskId to null). Sidecar-only edit — no file move." source="plugins/assets/index.ts:749" parameters={[{"name":"filename","type":"string","required":true,"description":"Canonical asset filename (e.g. \"20260401-hero-a1b2c3d4.png\")"},{"name":"taskId","type":"string","required":true,"description":"Target task ID, or null to unlink"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_link --args '{
   "filename": "value",
@@ -57,26 +57,33 @@ mcporter call bakin-<agent>.bakin_exec_assets_list --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-list-trash" name="bakin_exec_assets_list_trash" label="Listed trashed assets" description="List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge." source="plugins/assets/index.ts:710">
+<McpToolCard id="assets-list-trash" name="bakin_exec_assets_list_trash" label="Listed trashed assets" description="List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge." source="plugins/assets/index.ts:771">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_list_trash
 ```
 </McpToolCard>
-<McpToolCard id="assets-permanent-delete" name="bakin_exec_assets_permanent_delete" label="Permanently deleted an asset" description="Permanently delete a specific trashed asset. This cannot be undone." source="plugins/assets/index.ts:937" parameters={[{"name":"filename","type":"string","required":true,"description":"The trash filename (includes __deleted- suffix)"}]}>
+<McpToolCard id="assets-open" name="bakin_exec_assets_open" label="Opened an asset" description="Open an attached asset by canonical filename. Returns sidecar metadata plus extracted text for text-like assets; non-extractable assets return metadata-only status." source="plugins/assets/index.ts:642" parameters={[{"name":"filename","type":"string","required":true,"description":"Canonical asset filename (e.g. \"20260401-hero-a1b2c3d4.png\")"}]}>
+```sh frame="terminal"
+mcporter call bakin-<agent>.bakin_exec_assets_open --args '{
+  "filename": "value"
+}'
+```
+</McpToolCard>
+<McpToolCard id="assets-permanent-delete" name="bakin_exec_assets_permanent_delete" label="Permanently deleted an asset" description="Permanently delete a specific trashed asset. This cannot be undone." source="plugins/assets/index.ts:998" parameters={[{"name":"filename","type":"string","required":true,"description":"The trash filename (includes __deleted- suffix)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_permanent_delete --args '{
   "filename": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-restore" name="bakin_exec_assets_restore" label="Restored an asset" description="Restore a trashed asset back to its original location. Use bakin_exec_assets_list_trash first to get the filename." source="plugins/assets/index.ts:730" parameters={[{"name":"filename","type":"string","required":true,"description":"The trash filename (includes __deleted- suffix)"}]}>
+<McpToolCard id="assets-restore" name="bakin_exec_assets_restore" label="Restored an asset" description="Restore a trashed asset back to its original location. Use bakin_exec_assets_list_trash first to get the filename." source="plugins/assets/index.ts:791" parameters={[{"name":"filename","type":"string","required":true,"description":"The trash filename (includes __deleted- suffix)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_restore --args '{
   "filename": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-retype" name="bakin_exec_assets_retype" label="Retyped an asset" description="Change an asset's type classification. Sidecar-only edit — no file move." source="plugins/assets/index.ts:877" parameters={[{"name":"filename","type":"string","required":true,"description":"Canonical asset filename (e.g. \"20260401-hero-a1b2c3d4.png\")"},{"name":"type","type":"choice","required":true}]}>
+<McpToolCard id="assets-retype" name="bakin_exec_assets_retype" label="Retyped an asset" description="Change an asset's type classification. Sidecar-only edit — no file move." source="plugins/assets/index.ts:938" parameters={[{"name":"filename","type":"string","required":true,"description":"Canonical asset filename (e.g. \"20260401-hero-a1b2c3d4.png\")"},{"name":"type","type":"choice","required":true}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_retype --args '{
   "filename": "value",
@@ -84,7 +91,7 @@ mcporter call bakin-<agent>.bakin_exec_assets_retype --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-save" name="bakin_exec_assets_save" label="Saved an asset" description="Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically." source="plugins/assets/index.ts:642" parameters={[{"name":"filePath","type":"string","required":true,"description":"Absolute path to the source file to save"},{"name":"taskId","type":"string","required":true,"description":"Task ID to record in sidecar metadata"},{"name":"type","type":"choice","required":true},{"name":"description","type":"string","required":false,"description":"One-sentence summary visible in the asset grid and search. Be specific — \"Q2 blog hero image\" not \"an image\"."},{"name":"tags","type":"array","required":false,"description":"Lowercase hyphenated tags for filtering. Use domain tags (social, blog), format tags (draft, final), and project tags."},{"name":"tool","type":"string","required":false,"description":"Tool used to generate (e.g., \"dall-e-3\", \"nano-banana-pro\")"},{"name":"slug","type":"string","required":false,"description":"Custom filename slug. Auto-derived from source filename if omitted."}]}>
+<McpToolCard id="assets-save" name="bakin_exec_assets_save" label="Saved an asset" description="Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically." source="plugins/assets/index.ts:703" parameters={[{"name":"filePath","type":"string","required":true,"description":"Absolute path to the source file to save"},{"name":"taskId","type":"string","required":true,"description":"Task ID to record in sidecar metadata"},{"name":"type","type":"choice","required":true},{"name":"description","type":"string","required":false,"description":"One-sentence summary visible in the asset grid and search. Be specific — \"Q2 blog hero image\" not \"an image\"."},{"name":"tags","type":"array","required":false,"description":"Lowercase hyphenated tags for filtering. Use domain tags (social, blog), format tags (draft, final), and project tags."},{"name":"tool","type":"string","required":false,"description":"Tool used to generate (e.g., \"dall-e-3\", \"nano-banana-pro\")"},{"name":"slug","type":"string","required":false,"description":"Custom filename slug. Auto-derived from source filename if omitted."}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_save --args '{
   "filePath": "value",
@@ -99,7 +106,7 @@ mcporter call bakin-<agent>.bakin_exec_assets_save --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-update-content" name="bakin_exec_assets_update_content" label="Updated asset content" description="Update the text content of an editable asset. Only works for text-based MIME types (markdown, plain text, YAML, JSON, CSV, XML). Rewrites the entire file." source="plugins/assets/index.ts:899" parameters={[{"name":"filename","type":"string","required":true,"description":"Canonical asset filename (e.g. \"20260401-doc-a1b2c3d4.md\")"},{"name":"content","type":"string","required":true,"description":"New file content (replaces entire file)"}]}>
+<McpToolCard id="assets-update-content" name="bakin_exec_assets_update_content" label="Updated asset content" description="Update the text content of an editable asset. Only works for text-based MIME types (markdown, plain text, YAML, JSON, CSV, XML). Rewrites the entire file." source="plugins/assets/index.ts:960" parameters={[{"name":"filename","type":"string","required":true,"description":"Canonical asset filename (e.g. \"20260401-doc-a1b2c3d4.md\")"},{"name":"content","type":"string","required":true,"description":"New file content (replaces entire file)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_update_content --args '{
   "filename": "value",
@@ -589,14 +596,14 @@ mcporter call bakin-<agent>.bakin_exec_project_update_item --args '{
 <p class="mcp-section-description">Schedule tools let agents create, inspect, pause, run, and update recurring Bakin jobs.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="schedule-briefing" name="bakin_exec_schedule_briefing" label="Generated schedule briefing" description="Today's schedule summary — which jobs fire, assigned agents, alerts. Designed for orchestrator daily briefing." source="plugins/schedule/index.ts:917" parameters={[{"name":"date","type":"string","required":false,"description":"ISO date to check (defaults to today)"}]}>
+<McpToolCard id="schedule-briefing" name="bakin_exec_schedule_briefing" label="Generated schedule briefing" description="Today's schedule summary — which jobs fire, assigned agents, alerts. Designed for orchestrator daily briefing." source="plugins/schedule/index.ts:1173" parameters={[{"name":"date","type":"string","required":false,"description":"ISO date to check (defaults to today)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_briefing --args '{
   "date": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="schedule-create" name="bakin_exec_schedule_create" label="Created a scheduled job" description="Create a new scheduled job that creates tasks on the board" source="plugins/schedule/index.ts:683" parameters={[{"name":"name","type":"string","required":true,"description":"Job name (required)"},{"name":"schedule","type":"string","required":true,"description":"Schedule expression: NL (\"every day at 9am\") or raw cron (\"0 9 * * *\") (required)"},{"name":"agentId","type":"string","required":false,"description":"Agent to assign tasks to"},{"name":"workflowId","type":"string","required":false,"description":"Workflow to attach to tasks"},{"name":"taskPrompt","type":"string","required":false,"description":"Task description template"},{"name":"taskTitle","type":"string","required":false,"description":"Task title template (supports {date}, {agent})"}]}>
+<McpToolCard id="schedule-create" name="bakin_exec_schedule_create" label="Created a scheduled job" description="Create a new scheduled job that creates tasks on the board" source="plugins/schedule/index.ts:926" parameters={[{"name":"name","type":"string","required":true,"description":"Job name (required)"},{"name":"schedule","type":"string","required":true,"description":"Schedule expression: NL (\"every day at 9am\") or raw cron (\"0 9 * * *\") (required)"},{"name":"agentId","type":"string","required":false,"description":"Agent to assign tasks to"},{"name":"workflowId","type":"string","required":false,"description":"Workflow to attach to tasks"},{"name":"taskPrompt","type":"string","required":false,"description":"Task description template"},{"name":"taskTitle","type":"string","required":false,"description":"Task title template (supports {date}, {agent})"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_create --args '{
   "name": "value",
@@ -608,21 +615,21 @@ mcporter call bakin-<agent>.bakin_exec_schedule_create --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="schedule-delete" name="bakin_exec_schedule_delete" label="Deleted a scheduled job" description="Delete a scheduled job" source="plugins/schedule/index.ts:814" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"}]}>
+<McpToolCard id="schedule-delete" name="bakin_exec_schedule_delete" label="Deleted a scheduled job" description="Delete a scheduled job" source="plugins/schedule/index.ts:1067" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_delete --args '{
   "jobId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="schedule-get" name="bakin_exec_schedule_get" label="Read schedule details" description="Get details for a single scheduled job" source="plugins/schedule/index.ts:830" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"}]}>
+<McpToolCard id="schedule-get" name="bakin_exec_schedule_get" label="Read schedule details" description="Get details for a single scheduled job" source="plugins/schedule/index.ts:1083" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_get --args '{
   "jobId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="schedule-list" name="bakin_exec_schedule_list" label="Listed scheduled jobs" description="List all scheduled jobs (merged runtime cron + Bakin view)" source="plugins/schedule/index.ts:656" parameters={[{"name":"filter","type":"choice","required":false,"description":"Filter by job type"},{"name":"agentId","type":"string","required":false,"description":"Filter by assigned agent"}]}>
+<McpToolCard id="schedule-list" name="bakin_exec_schedule_list" label="Listed scheduled jobs" description="List all scheduled jobs (merged runtime cron + Bakin view)" source="plugins/schedule/index.ts:897" parameters={[{"name":"filter","type":"choice","required":false,"description":"Filter by job type"},{"name":"agentId","type":"string","required":false,"description":"Filter by assigned agent"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_list --args '{
   "filter": "value",
@@ -630,14 +637,14 @@ mcporter call bakin-<agent>.bakin_exec_schedule_list --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="schedule-parse" name="bakin_exec_schedule_parse" label="Parsed cron expression" description="Parse a natural language or raw cron schedule expression" source="plugins/schedule/index.ts:902" parameters={[{"name":"input","type":"string","required":true,"description":"Schedule expression to parse (required)"}]}>
+<McpToolCard id="schedule-parse" name="bakin_exec_schedule_parse" label="Parsed cron expression" description="Parse a natural language or raw cron schedule expression" source="plugins/schedule/index.ts:1158" parameters={[{"name":"input","type":"string","required":true,"description":"Schedule expression to parse (required)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_parse --args '{
   "input": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="schedule-pause" name="bakin_exec_schedule_pause" label="Paused a scheduled job" description="Pause, resume, or skip runs for a scheduled job" source="plugins/schedule/index.ts:773" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"},{"name":"action","type":"choice","required":true,"description":"Action to take (required)"},{"name":"pauseUntil","type":"string","required":false,"description":"ISO date to auto-resume (for pause action)"},{"name":"skipN","type":"number","required":false,"description":"Number of runs to skip (for skip action)"}]}>
+<McpToolCard id="schedule-pause" name="bakin_exec_schedule_pause" label="Paused a scheduled job" description="Pause, resume, or skip runs for a scheduled job" source="plugins/schedule/index.ts:1017" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"},{"name":"action","type":"choice","required":true,"description":"Action to take (required)"},{"name":"pauseUntil","type":"string","required":false,"description":"ISO date to auto-resume (for pause action)"},{"name":"skipN","type":"number","required":false,"description":"Number of runs to skip (for skip action)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_pause --args '{
   "jobId": "value",
@@ -647,14 +654,14 @@ mcporter call bakin-<agent>.bakin_exec_schedule_pause --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="schedule-run-now" name="bakin_exec_schedule_run_now" label="Triggered scheduled job" description="Trigger an immediate run of a scheduled job" source="plugins/schedule/index.ts:868" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"}]}>
+<McpToolCard id="schedule-run-now" name="bakin_exec_schedule_run_now" label="Triggered scheduled job" description="Trigger an immediate run of a scheduled job" source="plugins/schedule/index.ts:1121" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_run_now --args '{
   "jobId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="schedule-runs" name="bakin_exec_schedule_runs" label="Listed schedule runs" description="Get run history for a scheduled job" source="plugins/schedule/index.ts:886" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"},{"name":"limit","type":"number","required":false,"description":"Max runs to return (default 50)"}]}>
+<McpToolCard id="schedule-runs" name="bakin_exec_schedule_runs" label="Listed schedule runs" description="Get run history for a scheduled job" source="plugins/schedule/index.ts:1142" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"},{"name":"limit","type":"number","required":false,"description":"Max runs to return (default 50)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_runs --args '{
   "jobId": "value",
@@ -662,7 +669,7 @@ mcporter call bakin-<agent>.bakin_exec_schedule_runs --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="schedule-update" name="bakin_exec_schedule_update" label="Updated a scheduled job" description="Update an existing scheduled job" source="plugins/schedule/index.ts:735" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"},{"name":"name","type":"string","required":false,"description":"New job name"},{"name":"schedule","type":"string","required":false,"description":"New schedule expression"},{"name":"agentId","type":"string","required":false,"description":"New agent assignment"},{"name":"workflowId","type":"string","required":false,"description":"New workflow binding"},{"name":"taskPrompt","type":"string","required":false,"description":"New task prompt template"},{"name":"taskTitle","type":"string","required":false,"description":"New task title template"}]}>
+<McpToolCard id="schedule-update" name="bakin_exec_schedule_update" label="Updated a scheduled job" description="Update an existing scheduled job" source="plugins/schedule/index.ts:979" parameters={[{"name":"jobId","type":"string","required":true,"description":"Job ID (required)"},{"name":"name","type":"string","required":false,"description":"New job name"},{"name":"schedule","type":"string","required":false,"description":"New schedule expression"},{"name":"agentId","type":"string","required":false,"description":"New agent assignment"},{"name":"workflowId","type":"string","required":false,"description":"New workflow binding"},{"name":"taskPrompt","type":"string","required":false,"description":"New task prompt template"},{"name":"taskTitle","type":"string","required":false,"description":"New task title template"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_schedule_update --args '{
   "jobId": "value",

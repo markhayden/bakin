@@ -265,6 +265,7 @@ src/hooks/use-assets.ts       — Data fetching + SSE live updates
 |------|-------------|
 | `bakin_exec_assets_list` | List assets with optional filters (type, agent, taskId, tag) |
 | `bakin_exec_assets_get` | Read sidecar metadata by filename |
+| `bakin_exec_assets_open` | Dispatch-facing reader: sidecar metadata plus extracted text when available |
 | `bakin_exec_assets_save` | Save agent-created file with canonical naming + sidecar |
 | `bakin_exec_assets_delete` | Soft-delete to trash |
 | `bakin_exec_assets_link` | Edit sidecar `taskId` (metadata-only; no move) |
@@ -280,7 +281,19 @@ All tools accept **filenames**, never paths. Agents should treat filenames as st
 
 ### Dispatch hint — `bakin_exec_assets_open`
 
-`src/core/dispatch.ts` points agents at a `bakin_exec_assets_open` tool that is **not yet registered**. The spec defines it as a sidecar-plus-extracted-content reader, but the handler has not landed. Agents currently calling it will get "tool not found". Either register the tool (mirror `assets_get` + `content-extractor`) or rewrite the dispatch hint to call `assets_get` + `file` REST. Tracked as follow-up.
+`src/core/dispatch.ts` points agents at `bakin_exec_assets_open` for attached
+task assets. The tool accepts a canonical filename and returns:
+
+- `asset.filename` and `asset.path` resolved by filename-as-identity.
+- `asset.sidecar` metadata, or `null` when the file exists without a sidecar.
+- `asset.content.mode = "text"` with extracted `text` for text-like assets
+  (`.md`, `.txt`, `.json`, `.csv`, `.yaml`, `.xml`, `.pdf`, etc.).
+- `asset.content.mode = "metadata-only"` for binary assets with a note that the
+  asset has no extractable text content.
+
+Use `bakin_exec_assets_get` when metadata alone is enough. Use
+`bakin_exec_assets_open` when an agent needs to inspect attached task context
+without guessing which asset types are text-readable.
 
 ## Editable Asset Types
 

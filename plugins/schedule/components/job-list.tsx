@@ -15,6 +15,8 @@ export function JobList({
   onDelete,
   onEdit,
   onDuplicate,
+  onAdopt,
+  onRestoreNative,
   onSkipNext,
   scoreMap,
   showScores,
@@ -27,6 +29,8 @@ export function JobList({
   onDelete: (jobId: string) => void
   onEdit: (job: ScheduleJob) => void
   onDuplicate: (job: ScheduleJob) => void
+  onAdopt: (job: ScheduleJob) => void
+  onRestoreNative: (jobId: string) => void
   onSkipNext: (jobId: string) => void
   scoreMap?: Map<string, JobScoreInfo>
   showScores?: boolean
@@ -58,6 +62,8 @@ export function JobList({
             onDelete={() => onDelete(job.id)}
             onEdit={() => onEdit(job)}
             onDuplicate={() => onDuplicate(job)}
+            onAdopt={() => onAdopt(job)}
+            onRestoreNative={() => onRestoreNative(job.id)}
             onSkipNext={() => onSkipNext(job.id)}
             scoreInfo={showScores ? scoreMap?.get(job.id) : undefined}
           />

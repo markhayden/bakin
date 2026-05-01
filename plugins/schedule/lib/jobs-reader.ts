@@ -15,6 +15,7 @@ type RuntimeCronReader = Pick<AgentRuntimeAdapter['cron'], 'list'>
 export function runtimeCronToScheduleJob(job: CronJob): RuntimeCronJobSnapshot {
   const tz = metadataString(job.metadata, 'tz')
   const scheduleType = metadataScheduleType(job.metadata)
+  const toolsAllow = normalizeToolsAllow(job.toolsAllow)
   return {
     id: job.id,
     name: job.name,
@@ -30,6 +31,8 @@ export function runtimeCronToScheduleJob(job: CronJob): RuntimeCronJobSnapshot {
       ? { mode: 'webhook', url: metadataString(job.metadata, 'webhookUrl') }
       : undefined,
     payload: { message: job.command },
+    toolsAllow,
+    toolsAllowMissing: !toolsAllow && !isBakinScheduleMetadata(job.metadata),
     createdAt: metadataString(job.metadata, 'createdAt'),
     updatedAt: metadataString(job.metadata, 'updatedAt'),
   }
@@ -65,6 +68,8 @@ export function mergeJob(
 
   // For orphaned jobs (no sidecar), extract what we can from the payload
   const orphanContext = !meta ? extractOrphanContext(job) : {}
+  const source = meta?.source ?? (meta?.isBakinJob ? 'bakin' : 'runtime')
+  const normalizedSource = source === 'adopted' || meta?.originalRuntimeCron ? 'adopted' : source
 
   return {
     // Runtime cron fields (normalised)
@@ -73,6 +78,9 @@ export function mergeJob(
     schedule: normalised,
     enabled: job.enabled,
     delivery: job.delivery,
+    source: normalizedSource,
+    canAdopt: !meta?.isBakinJob,
+    canRestoreNative: Boolean(meta?.isBakinJob && meta.originalRuntimeCron),
 
     // Bakin sidecar (with defaults)
     isBakinJob: meta?.isBakinJob ?? false,
@@ -84,6 +92,8 @@ export function mergeJob(
     workflowId: meta?.workflowId,
     taskPrompt: meta?.taskPrompt ?? orphanContext.prompt,
     taskTitle: meta?.taskTitle,
+    toolsAllow: job.toolsAllow,
+    toolsAllowMissing: job.toolsAllowMissing ?? false,
     paused: meta?.paused ?? false,
     pauseUntil: meta?.pauseUntil,
     pauseReason: meta?.pauseReason,
@@ -136,7 +146,28 @@ function metadataString(metadata: RuntimeMetadata | undefined, key: string): str
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
+function metadataBoolean(metadata: RuntimeMetadata | undefined, key: string): boolean {
+  return metadata?.[key] === true
+}
+
+function isBakinScheduleMetadata(metadata: RuntimeMetadata | undefined): boolean {
+  return metadataBoolean(metadata, 'bakinSchedule') || metadataBoolean(metadata, 'bakin.schedule')
+}
+
 function metadataScheduleType(metadata: RuntimeMetadata | undefined): RuntimeCronJobSnapshot['schedule']['type'] {
   const value = metadataString(metadata, 'scheduleType')
   return value === 'every' || value === 'at' ? value : 'cron'
+}
+
+function normalizeToolsAllow(value: string[] | undefined): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const seen = new Set<string>()
+  const tools = value
+    .map(tool => tool.trim())
+    .filter(tool => {
+      if (!tool || seen.has(tool)) return false
+      seen.add(tool)
+      return true
+    })
+  return tools.length > 0 ? tools : undefined
 }
