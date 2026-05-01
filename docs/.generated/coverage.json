@@ -10,7 +10,7 @@
     },
     "httpRoutes": {
       "status": "active",
-      "count": 54,
+      "count": 55,
       "withInputSchema": 0,
       "withOutputSchema": 0,
       "withExamples": 0,
@@ -34,7 +34,7 @@
     },
     "execTools": {
       "status": "audited",
-      "count": 106,
+      "count": 107,
       "source": "source scan"
     },
     "corePlugins": {
@@ -49,7 +49,7 @@
     },
     "sdkSubpaths": {
       "status": "audited",
-      "count": 8,
+      "count": 9,
       "source": "packages/sdk/package.json"
     },
     "agentPackageKinds": {

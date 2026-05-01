@@ -415,12 +415,18 @@ if (existsSync(openApiPathOnDisk)) {
     if (spec.openapi !== '3.1.0') errors.push('docs/public/openapi.json: openapi must be 3.1.0')
     if (spec.info?.title !== 'Bakin API') errors.push('docs/public/openapi.json: info.title must be "Bakin API"')
     if (!spec.paths || Object.keys(spec.paths).length === 0) errors.push('docs/public/openapi.json: paths must not be empty')
+    // Extracted plugins (messaging, projects) are exempt from typed-contract
+    // validation and are excluded from openapi.json by the generator. Don't
+    // require them here either — the docs surface for those plugins comes
+    // from their own out-of-tree builds.
     const expectedRoutes = [
       ...getAllRoutes().filter(route => route.pluginId === 'core').map(route => ({ method: route.method, path: route.fullPath })),
-      ...listPluginManifests().flatMap(manifest => getApiRoutes(manifest.id).map(route => ({
-        method: route.method,
-        path: `/api/plugins/${manifest.id}${route.path}`,
-      }))),
+      ...listPluginManifests()
+        .filter(manifest => !Object.values(EXTRACTED_PLUGINS).includes(manifest.id))
+        .flatMap(manifest => getApiRoutes(manifest.id).map(route => ({
+          method: route.method,
+          path: `/api/plugins/${manifest.id}${route.path}`,
+        }))),
     ]
     for (const route of expectedRoutes) {
       const path = openApiPath(route.path)

@@ -133,6 +133,23 @@ Example:
 mcporter call bakin-<agent>.bakin_exec_assets_list_trash
 ```
 
+### bakin_exec_assets_open
+
+Label: Opened an asset
+Purpose: Open an attached asset by canonical filename. Returns sidecar metadata plus extracted text for text-like assets; non-extractable assets return metadata-only status.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `filename` | string | yes | Canonical asset filename (e.g. "20260401-hero-a1b2c3d4.png") |
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_assets_open --args '{
+  "filename": "value"
+}'
+```
+
 ### bakin_exec_assets_permanent_delete
 
 Label: Permanently deleted an asset

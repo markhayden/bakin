@@ -1058,16 +1058,7 @@ function buildOpenApiDocument(): Record<string, unknown> {
   }
 }
 
-function renderApiReference(): string {
-  const groups = new Map<string, Array<{ operationId: string; curl: string }>>()
-  for (const entry of allApiDocRoutes()) {
-    const operation = routeOperation(entry.route, entry.scope, entry.fullPath, entry.tag)
-    const operationId = String(operation.operationId)
-    const curl = curlForOperation(entry.route.method, openApiPath(entry.fullPath), operation)
-    const existing = groups.get(entry.tag) ?? []
-    existing.push({ operationId, curl })
-    groups.set(entry.tag, existing)
-  }
+function renderApiReference(groups: Map<string, Array<{ operationId: string; curl: string }>>): string {
   const groupLines = [...groups.keys()]
     .sort((a, b) => tagOrder(a).localeCompare(tagOrder(b)))
     .flatMap(tag => {
@@ -1725,14 +1716,101 @@ writeStableFile(
   renderCliReference(),
 )
 
-writeStableFile(
-  join(docsRoot, 'src/content/docs/reference/generated/api.mdx'),
-  renderApiReference(),
-)
+// T20: openapi.json + api.mdx are now generated from typed route contracts
+// (the same buildOperation used by /api/openapi). Imports each in-repo
+// plugin statically (no activate() invocation), reads plugin.default.routes,
+// combines with packages/host/src/core-routes/coreRoutes, runs the typed
+// builder. Replaces the legacy buildOpenApiDocument() that used
+// manifest + source-scan with generic-object fallbacks.
+//
+// The api.mdx wrapper-list MUST share operationIds with openapi.json or the
+// renderer can't find the operation by id. Shared `apiReferenceGroups` is
+// the bridge.
+const apiReferenceGroups = new Map<string, Array<{ operationId: string; curl: string; path: string; method: string }>>()
+{
+  const { buildOperation, normalizeOpenApiPath } = await import('../../packages/core/src/openapi')
+  const { coreRoutes: typedCoreRoutes } = await import('../../packages/host/src/core-routes')
+
+  const inRepoPluginIds = ['assets', 'health', 'memory', 'models', 'schedule', 'tasks', 'team', 'workflows']
+  const sources: Array<{ scope: string; tag: string; fullPath: string; route: any }> = []
+  for (const id of inRepoPluginIds) {
+    const mod = await import(join(repoRoot, 'plugins', id, 'index.ts')) as { default?: { name?: string; routes?: any[] } }
+    const routes = mod.default?.routes ?? []
+    const tag = mod.default?.name ?? id
+    for (const route of routes) {
+      sources.push({
+        scope: id,
+        tag,
+        fullPath: `/api/plugins/${id}${route.path}`,
+        route,
+      })
+    }
+  }
+  for (const route of typedCoreRoutes) {
+    sources.push({
+      scope: 'core',
+      tag: 'Core',
+      fullPath: route.path,
+      route,
+    })
+  }
+
+  const paths: Record<string, Record<string, unknown>> = {}
+  const tags = new Map<string, string | undefined>()
+  for (const entry of sources) {
+    tags.set(entry.tag, undefined)
+    const op = buildOperation(entry.route, { scope: entry.scope, fullPath: entry.fullPath, tag: entry.tag }) as unknown as OpenApiOperation
+    const openApiPath = normalizeOpenApiPath(entry.fullPath)
+    paths[openApiPath] ??= {}
+    paths[openApiPath][entry.route.method.toLowerCase()] = op
+    const operationId = String(op.operationId)
+    const curl = curlForOperation(entry.route.method, openApiPath, op)
+    const existing = apiReferenceGroups.get(entry.tag) ?? []
+    existing.push({ operationId, curl, path: openApiPath, method: entry.route.method })
+    apiReferenceGroups.set(entry.tag, existing)
+  }
+
+  // Sort within each tag group so the page body matches the right-rail TOC
+  // (which sorts alphabetically by path, then by HTTP method order).
+  const methodOrder: Record<string, number> = { GET: 0, POST: 1, PUT: 2, PATCH: 3, DELETE: 4, OPTIONS: 5, HEAD: 6 }
+  for (const ops of apiReferenceGroups.values()) {
+    ops.sort((a, b) =>
+      a.path.localeCompare(b.path) ||
+      (methodOrder[a.method] ?? 99) - (methodOrder[b.method] ?? 99),
+    )
+  }
+
+  const typedDoc = {
+    openapi: '3.1.0',
+    info: {
+      title: 'Bakin API',
+      version: APP_VERSION,
+      description: 'Generated from typed route contracts (defineRoute / defineCoreRoute) — same builder as /api/openapi.',
+    },
+    servers: [{ url: 'http://localhost:3737', description: 'Local Bakin server' }],
+    tags: [...tags.entries()].map(([name, description]) => ({ name, ...(description ? { description } : {}) })),
+    paths,
+    components: {
+      securitySchemes: {
+        pluginPermissions: {
+          type: 'apiKey',
+          in: 'header',
+          name: 'X-Bakin-Plugin-Permission',
+          description: 'Documents plugin permission requirements.',
+        },
+      },
+    },
+  }
+
+  writeStableFile(
+    join(docsRoot, 'public/openapi.json'),
+    `${JSON.stringify(typedDoc, null, 2)}\n`,
+  )
+}
 
 writeStableFile(
-  join(docsRoot, 'public/openapi.json'),
-  `${JSON.stringify(buildOpenApiDocument(), null, 2)}\n`,
+  join(docsRoot, 'src/content/docs/reference/generated/api.mdx'),
+  renderApiReference(apiReferenceGroups),
 )
 
 writeStableFile(

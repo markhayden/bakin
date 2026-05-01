@@ -1,0 +1,225 @@
+---
+/**
+ * Override of Starlight's `PageSidebar` (the right "On this page" rail).
+ *
+ * For the auto-generated API reference page we replace the default markdown
+ * heading TOC with a grouped, method-chipped operation index pulled from
+ * docs/public/openapi.json. Every other page falls back to Starlight's
+ * default TOC unchanged.
+ */
+import { readFileSync } from 'node:fs'
+import MobileTableOfContents from 'virtual:starlight/components/MobileTableOfContents'
+import TableOfContents from 'virtual:starlight/components/TableOfContents'
+
+type OpenApiSpec = {
+  paths: Record<string, Record<string, {
+    operationId?: string
+    tags?: string[]
+    summary?: string
+  }>>
+  tags?: Array<{ name: string }>
+}
+
+const slug = Astro.locals.starlightRoute.entry.slug
+const isApiPage = slug === 'reference/generated/api'
+
+type ApiOperation = {
+  operationId: string
+  method: string
+  path: string
+  tag: string
+  summary: string
+}
+
+type StemGroup = {
+  stem: string
+  operations: Array<ApiOperation & { residual: string }>
+}
+
+type TagGroup = {
+  tag: string
+  stems: StemGroup[]
+}
+
+/**
+ * Stem for grouping related routes:
+ * - `/api/plugins/<plugin>/<resource>` for plugin routes (first 4 segments)
+ * - `/api/<resource>` otherwise (first 2 segments)
+ *
+ * Shorter paths return themselves so single-segment routes still group.
+ */
+function computeStem(path: string): string {
+  const parts = path.split('/').filter(Boolean) // ['api', 'plugins', 'tasks', 'move'] etc.
+  if (parts[0] !== 'api') return path
+  if (parts[1] === 'plugins' && parts.length >= 4) {
+    return '/' + parts.slice(0, 4).join('/')
+  }
+  if (parts.length >= 2) {
+    return '/' + parts.slice(0, 2).join('/')
+  }
+  return path
+}
+
+let groups: TagGroup[] = []
+if (isApiPage) {
+  const specPath = new URL('../../public/openapi.json', import.meta.url)
+  const spec = JSON.parse(readFileSync(specPath, 'utf8')) as OpenApiSpec
+  const operations: ApiOperation[] = []
+  for (const [path, methods] of Object.entries(spec.paths)) {
+    for (const [methodKey, op] of Object.entries(methods)) {
+      const method = methodKey.toUpperCase()
+      operations.push({
+        operationId: op.operationId ?? `${method}-${path}`,
+        method,
+        path: path.replace(/\{([^}]+)\}/g, ':$1'),
+        tag: op.tags?.[0] ?? 'Other',
+        summary: op.summary ?? `${method} ${path}`,
+      })
+    }
+  }
+  const tagOrder = (tag: string) => (tag === 'Core' ? '00' : `10 ${tag}`)
+  const methodOrder: Record<string, number> = { GET: 0, POST: 1, PUT: 2, PATCH: 3, DELETE: 4, OPTIONS: 5, HEAD: 6 }
+  operations.sort((a, b) =>
+    tagOrder(a.tag).localeCompare(tagOrder(b.tag)) ||
+    a.path.localeCompare(b.path) ||
+    (methodOrder[a.method] ?? 99) - (methodOrder[b.method] ?? 99),
+  )
+  const byTag = new Map<string, ApiOperation[]>()
+  for (const op of operations) {
+    const list = byTag.get(op.tag) ?? []
+    list.push(op)
+    byTag.set(op.tag, list)
+  }
+  groups = [...byTag.entries()].map(([tag, ops]) => {
+    // Bucket operations by stem, preserving the (already-sorted) order.
+    const buckets = new Map<string, Array<ApiOperation & { residual: string }>>()
+    for (const op of ops) {
+      const stem = computeStem(op.path)
+      const residual = op.path.slice(stem.length) || '/'
+      const list = buckets.get(stem) ?? []
+      list.push({ ...op, residual })
+      buckets.set(stem, list)
+    }
+    // Every stem gets its own labeled subgroup, even single-route stems —
+    // the consistent hierarchy reads better than a flat singleton block.
+    const stems: StemGroup[] = [...buckets.entries()].map(([stem, operations]) => ({ stem, operations }))
+    return { tag, stems }
+  })
+}
+---
+
+{isApiPage ? (
+  <>
+    <div class="lg:sl-hidden">
+      <details class="api-toc-mobile">
+        <summary>On this page</summary>
+        <nav aria-label="API operations" class="api-toc">
+          {groups.map(({ tag, stems }) => (
+            <div class="api-toc-group">
+              <h2>{tag}</h2>
+              {stems.map(stemGroup => (
+                <details class="api-toc-stem">
+                  <summary class="api-toc-stem__heading"><code>{stemGroup.stem}</code></summary>
+                  <ul>
+                    {stemGroup.operations.map(op => (
+                      <li>
+                        <a href={`#${op.operationId}`} title={`${op.method} ${op.path}`}>
+                          <span class={`api-toc-method api-toc-method--${op.method.toLowerCase()}`}>{op.method}</span>
+                          <span class="api-toc-summary">{op.summary}</span>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ))}
+            </div>
+          ))}
+        </nav>
+      </details>
+    </div>
+    <div class="right-sidebar-panel sl-hidden lg:sl-block">
+      <div class="sl-container">
+        <nav aria-labelledby="api-on-this-page" class="api-toc">
+          <h2 id="api-on-this-page">On this page</h2>
+          {groups.map(({ tag, stems }) => (
+            <div class="api-toc-group">
+              <h3>{tag}</h3>
+              {stems.map(stemGroup => (
+                <details class="api-toc-stem">
+                  <summary class="api-toc-stem__heading"><code>{stemGroup.stem}</code></summary>
+                  <ul>
+                    {stemGroup.operations.map(op => (
+                      <li>
+                        <a href={`#${op.operationId}`} title={`${op.method} ${op.path}`}>
+                          <span class={`api-toc-method api-toc-method--${op.method.toLowerCase()}`}>{op.method}</span>
+                          <span class="api-toc-summary">{op.summary}</span>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ))}
+            </div>
+          ))}
+        </nav>
+      </div>
+    </div>
+  </>
+) : (
+  Astro.locals.starlightRoute.toc && (
+    <>
+      <div class="lg:sl-hidden">
+        <MobileTableOfContents />
+      </div>
+      <div class="right-sidebar-panel sl-hidden lg:sl-block">
+        <div class="sl-container">
+          <TableOfContents />
+        </div>
+      </div>
+    </>
+  )
+)}
+
+<style>
+  @layer starlight.core {
+    .right-sidebar-panel {
+      padding: 1rem var(--sl-sidebar-pad-x);
+    }
+    .sl-container {
+      width: calc(var(--sl-sidebar-width) - 2 * var(--sl-sidebar-pad-x));
+    }
+    /* Mirror Starlight's default PageSidebar typography for the
+       fall-through TableOfContents on non-API pages. The override
+       replaces Starlight's default component, so without these the
+       default TOC ships unstyled. */
+    .right-sidebar-panel :global(h2) {
+      color: var(--sl-color-white);
+      font-size: var(--sl-text-h5);
+      font-weight: 600;
+      line-height: var(--sl-line-height-headings);
+      margin-bottom: 0.5rem;
+    }
+    .right-sidebar-panel :global(:where(a)) {
+      display: block;
+      font-size: var(--sl-text-xs);
+      text-decoration: none;
+      color: var(--sl-color-gray-3);
+      overflow-wrap: anywhere;
+    }
+    .right-sidebar-panel :global(:where(a):hover) {
+      color: var(--sl-color-white);
+    }
+    @media (min-width: 72rem) {
+      .sl-container {
+        max-width: calc(
+          (
+            (
+              100vw - var(--sl-sidebar-width) - 2 * var(--sl-content-pad-x) - 2 *
+                var(--sl-sidebar-pad-x)
+            ) * 0.25
+          )
+        );
+      }
+    }
+  }
+</style>

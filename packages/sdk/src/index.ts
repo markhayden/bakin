@@ -34,3 +34,14 @@ export {
   getPluginRoutes,
 } from './register'
 export type { ClientRouteEntry, MatchedPluginRoute, NavItem, PluginRegistration } from './register'
+export { defineRoute, defineCoreRoute, definePlugin } from './routing'
+export type {
+  APIRoute,
+  HttpStatus,
+  RouteContext,
+  PluginContextLite,
+  CoreContext,
+  BodySpec,
+  ResponseSpec,
+  ParsedInput,
+} from './routing'

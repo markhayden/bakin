@@ -15,6 +15,7 @@ import { createLogger } from '../../src/core/logger'
 import { getContentDir } from '@bakin/core/content-dir'
 import { join } from 'path'
 import { MemoryIndexer } from './lib/indexer'
+import { definePlugin } from '@bakin/core/routing'
 import { auditRoute } from './lib/routes/audit'
 import { durableListRoute, durableDetailRoute } from './lib/routes/durable'
 import {
@@ -76,10 +77,30 @@ function clearEventSubscriptions(): void {
   eventDisposers = []
 }
 
-const memoryPlugin: BakinPlugin = {
+const routes = [
+  auditRoute,
+  durableListRoute,
+  durableDetailRoute,
+  dailyNotesListRoute,
+  dailyNotesDetailRoute,
+  dailyNotesCompareSearchRoute,
+  sessionsListRoute,
+  sessionDetailRoute,
+  sessionTurnsRoute,
+  turnsListRoute,
+  checkpointsListRoute,
+  checkpointDetailRoute,
+  dreamsListRoute,
+  dreamDetailRoute,
+  statusRoute,
+  recentRoute,
+]
+
+const memoryPlugin: BakinPlugin = definePlugin({
   id: 'memory',
   name: 'Memory',
   version: '2.0.0',
+  routes,
 
   settingsSchema: {
     fields: [
@@ -180,22 +201,8 @@ const memoryPlugin: BakinPlugin = {
     })
 
     // ─── Routes ─────────────────────────────────────────────────────────────
-    ctx.registerRoute(auditRoute)
-    ctx.registerRoute(durableListRoute)
-    ctx.registerRoute(durableDetailRoute)
-    ctx.registerRoute(dailyNotesListRoute)
-    ctx.registerRoute(dailyNotesDetailRoute)
-    ctx.registerRoute(dailyNotesCompareSearchRoute)
-    ctx.registerRoute(sessionsListRoute)
-    ctx.registerRoute(sessionDetailRoute)
-    ctx.registerRoute(sessionTurnsRoute)
-    ctx.registerRoute(turnsListRoute)
-    ctx.registerRoute(checkpointsListRoute)
-    ctx.registerRoute(checkpointDetailRoute)
-    ctx.registerRoute(dreamsListRoute)
-    ctx.registerRoute(dreamDetailRoute)
-    ctx.registerRoute(statusRoute)
-    ctx.registerRoute(recentRoute)
+    // Routes are declared at module scope on plugin.routes (T11). The plugin
+    // loader registers them into state.routes before activate() runs.
 
     // ─── MCP exec tools (spec §Feature 10) ──────────────────────────────────
     ctx.registerExecTool(createMemorySearchTool(ctx))
@@ -319,6 +326,6 @@ const memoryPlugin: BakinPlugin = {
     clearEventSubscriptions()
     stopTtlTimer()
   },
-}
+}) as unknown as BakinPlugin
 
 export default memoryPlugin

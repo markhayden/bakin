@@ -190,3 +190,33 @@ export { generateTaskId } from './ids'
 
 // Documentation metadata contracts
 export * from './docs'
+
+// Routing primitives — typed route contracts (declarative shape)
+export {
+  defineRoute,
+  defineCoreRoute,
+  definePlugin,
+} from './routing'
+export type {
+  HttpMethod as RoutingHttpMethod,
+  HttpStatus,
+  RouteContext,
+  PluginContextLite,
+  CoreContext,
+  JsonBodySpec,
+  MultipartBodySpec,
+  RawBodySpec,
+  NoBodySpec,
+  BodySpec,
+  JsonResponseSpec,
+  NoContentResponseSpec,
+  NonJsonResponseSpec,
+  ResponseSpec,
+  ParsedInput,
+  PluginWithRoutes,
+  DefinePluginInput,
+  // Re-export the new declarative APIRoute under a distinct name so it does
+  // not collide with the legacy `APIRoute` already exported above. After T17
+  // the legacy interface is deleted and this export will be renamed.
+  APIRoute as APIRouteContract,
+} from './routing'
