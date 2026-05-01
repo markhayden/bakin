@@ -22,6 +22,7 @@ import workflowsPlugin from '../../plugins/workflows'
 import assetsPlugin from '../../plugins/assets'
 import schedulePlugin from '../../plugins/schedule'
 import healthPlugin from '../../plugins/health'
+import gitPlugin from '../../plugins/git'
 
 import type { BakinPlugin } from '@bakin/core/plugin-types'
 
@@ -34,4 +35,5 @@ export const CORE_PLUGIN_IMPORTS: Readonly<Record<string, BakinPlugin>> = {
   'plugins/assets': assetsPlugin,
   'plugins/schedule': schedulePlugin,
   'plugins/health': healthPlugin,
+  'plugins/git': gitPlugin,
 }
