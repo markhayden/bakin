@@ -1290,7 +1290,7 @@ starlight-toc nav a[href="#for-agents"]::before {
   padding: 0;
   font-size: 0.62rem;
   font-weight: 600;
-  color: var(--sl-color-gray-3);
+  color: var(--sl-color-gray-4);
 }
 
 .api-toc-stem__heading code {
