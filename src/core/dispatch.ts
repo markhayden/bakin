@@ -12,6 +12,11 @@ import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { getHookRegistry } from '../lib/plugin-registry'
 import {
+  buildTaskKnowledgeQuery,
+  formatKnowledgeLessonsForDispatch,
+  retrieveAgentPackageKnowledge,
+} from './agent-packages/knowledge-retrieval'
+import {
   addTaskLog as appendTaskLog,
   blockTask as blockStoredTask,
   readTaskboard,
@@ -33,6 +38,51 @@ const MAX_ERR_LEN = 500
 function formatDispatchError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err)
   return raw.length > MAX_ERR_LEN ? `${raw.slice(0, MAX_ERR_LEN)}… (truncated)` : raw
+}
+
+async function buildDispatchKnowledgeBlock(input: {
+  contentDir: string
+  taskId: string
+  title: string
+  agentId: string
+  query: string
+}): Promise<string> {
+  try {
+    const settings = getSettings().agentPackages?.knowledgeRetrieval
+    const result = await retrieveAgentPackageKnowledge({
+      contentDir: input.contentDir,
+      agentId: input.agentId,
+      query: input.query,
+      settings,
+      requireDispatchInjection: true,
+    })
+    const block = formatKnowledgeLessonsForDispatch(
+      result.lessons,
+      settings?.maxCharacters,
+    )
+    if (result.lessons.length > 0) {
+      appendAudit(input.contentDir, 'agent_pkg.knowledge_retrieved', input.agentId, {
+        taskId: input.taskId,
+        title: input.title,
+        packageId: result.packageId,
+        lessons: result.lessons.map((lesson) => ({
+          lessonId: lesson.lessonId,
+          title: lesson.title,
+          score: lesson.score,
+        })),
+      })
+    }
+    return block
+  } catch (err) {
+    const error = formatDispatchError(err)
+    log.warn('Dispatch knowledge retrieval failed', { taskId: input.taskId, agentId: input.agentId, error })
+    appendAudit(input.contentDir, 'agent_pkg.knowledge_retrieval_failed', input.agentId, {
+      taskId: input.taskId,
+      title: input.title,
+      error,
+    })
+    return ''
+  }
 }
 
 type DispatchFailureKind = 'transient' | 'structural'
@@ -277,7 +327,14 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
 
       const targetAgent = task.agent ?? mainAgentId
 
-      const message = buildDispatchMessage(task, targetAgent, contentDir, port, mainAgentId)
+      const knowledgeBlock = await buildDispatchKnowledgeBlock({
+        contentDir,
+        taskId: task.id,
+        title: task.title,
+        agentId: targetAgent,
+        query: buildTaskKnowledgeQuery(task),
+      })
+      const message = buildDispatchMessage(task, targetAgent, contentDir, port, mainAgentId, knowledgeBlock)
 
       try {
         // Move to inProgress BEFORE sending message to eliminate race condition
@@ -407,7 +464,14 @@ export async function dispatchSingleTask(
 
     // Regular task dispatch
     const targetAgent = task.agent ?? mainAgentId
-    const message = buildDispatchMessage(task, targetAgent, contentDir, port, mainAgentId)
+    const knowledgeBlock = await buildDispatchKnowledgeBlock({
+      contentDir,
+      taskId: task.id,
+      title: task.title,
+      agentId: targetAgent,
+      query: buildTaskKnowledgeQuery(task),
+    })
+    const message = buildDispatchMessage(task, targetAgent, contentDir, port, mainAgentId, knowledgeBlock)
     const dispatchStart = Date.now()
 
     try {
@@ -466,9 +530,11 @@ export function buildDispatchMessage(
   contentDir: string,
   _port: number,
   mainAgentId = 'main',
+  knowledgeBlock = '',
 ): string {
   void _port
   const detailsBlock = task.description ? `\n\nDetails:\n${task.description}` : ''
+  const knowledgeSection = knowledgeBlock ? `\n\n${knowledgeBlock}` : ''
 
   // List attached assets by filename (stable identity). Agents open them
   // via bakin_exec_assets_open — disk paths are a view, not identity.
@@ -511,14 +577,14 @@ export function buildDispatchMessage(
   const mc = (tool: string, args: string) => `mcporter call ${server}.${tool} ${args}`
 
   if (!task.agent) {
-    return `Triage this task: "${task.title}".${detailsBlock}${assetsBlock}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=content/comms, basil=research/strategy) via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
+    return `Triage this task: "${task.title}".${detailsBlock}${assetsBlock}${knowledgeSection}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=content/comms, basil=research/strategy) via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
   if (task.agent === mainAgentId) {
-    return `Work on this task: "${task.title}".${detailsBlock}${assetsBlock}\n\n${contactsRef} When done: \`${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
+    return `Work on this task: "${task.title}".${detailsBlock}${assetsBlock}${knowledgeSection}\n\n${contactsRef} When done: \`${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
-  return `Work on this task: "${task.title}".${detailsBlock}${assetsBlock}${projectBlock}
+  return `Work on this task: "${task.title}".${detailsBlock}${assetsBlock}${projectBlock}${knowledgeSection}
 
 ## PROGRESS LOGGING — MANDATORY
 
@@ -675,8 +741,20 @@ async function dispatchWorkflowTask(
       stepOutputs?: Record<string, Record<string, unknown>>; deny_tools?: string[]
     }
     const targetAgent = agent
+    const knowledgeBlock = await buildDispatchKnowledgeBlock({
+      contentDir,
+      taskId: task.id,
+      title: task.title,
+      agentId: targetAgent,
+      query: buildTaskKnowledgeQuery({
+        title: task.title,
+        description: task.description,
+        instructions: ctx.instructions,
+        context: ctx.label,
+      }),
+    })
     // Pass contextTaskId so the step/complete API targets the right instance
-    const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, port)
+    const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, port, knowledgeBlock)
 
     try {
       await sendDispatchMessage(targetAgent, message)
@@ -728,7 +806,8 @@ function buildWorkflowDispatchMessage(
     deny_tools?: string[]
   },
   agentName: string,
-  _port: number
+  _port: number,
+  knowledgeBlock = '',
 ): string {
   void _port
   const lines: string[] = []
@@ -815,6 +894,11 @@ function buildWorkflowDispatchMessage(
     lines.push('```json')
     lines.push(JSON.stringify(stepContext.priorStepOutput, null, 2))
     lines.push('```')
+    lines.push('')
+  }
+
+  if (knowledgeBlock) {
+    lines.push(knowledgeBlock)
     lines.push('')
   }
 

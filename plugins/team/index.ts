@@ -27,11 +27,12 @@ import { createLogger } from '../../src/core/logger'
 import { readHeartbeats } from '../../src/lib/content-files'
 import { getContentDir, getBakinPaths } from '../../packages/core/src/content-dir'
 import { startAgent, stopAgent } from '../../src/lib/agents'
-import { resetSettingsCache } from '../../src/core/settings'
+import { getSettings, resetSettingsCache } from '../../src/core/settings'
 import { syncConfig as syncMcporter } from '../../src/core/mcporter'
 import { sendMessageToAgent } from '../../src/core/agents'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
 import { getStatsByMs } from '../../src/core/usage'
+import { retrieveAgentPackageKnowledge } from '../../src/core/agent-packages/knowledge-retrieval'
 import { getRuntimeMainAgentId, type AgentRuntimeAdapter, type RuntimeAgent } from '@bakin/core/adapters/runtime'
 import { readLatestSessionTranscript } from './lib/session-reader'
 import { checkAgentRoster, checkPersonas, checkAgentAssets } from './lib/health-checks'
@@ -1811,6 +1812,56 @@ const teamPlugin: BakinPlugin = definePlugin({
         const auditActivity = getLastAuditActivity()
         const { status, heartbeat, heartbeatAge } = resolveAgentStatus(params.agentId as string, heartbeats, auditActivity)
         return { ok: true, agentId: params.agentId, status, heartbeat, heartbeatAge }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_knowledge_search',
+      label: 'Searched package knowledge',
+      description: 'Search the enabled agent-package knowledge lessons for the calling agent.',
+      parameters: {
+        query: z.string().describe('Search query'),
+        limit: z.number().int().positive().max(10).optional().describe('Max lessons to return (default from settings, max 10)'),
+      },
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        const query = typeof params.query === 'string' ? params.query.trim() : ''
+        if (!query) return { ok: false, error: 'query required' }
+        if (!agent) return { ok: false, error: 'calling agent required' }
+
+        const baseSettings = getSettings().agentPackages?.knowledgeRetrieval
+        const limit = typeof params.limit === 'number'
+          ? Math.max(1, Math.min(10, Math.floor(params.limit)))
+          : undefined
+        if (baseSettings?.enabled === false || baseSettings?.mcpTool === false) {
+          return { ok: true, total: 0, lessons: [], reason: 'disabled' }
+        }
+
+        try {
+          const result = await retrieveAgentPackageKnowledge({
+            contentDir: getContentDir(),
+            agentId: agent,
+            query,
+            settings: {
+              ...baseSettings,
+              ...(limit === undefined ? {} : { maxLessons: limit }),
+            },
+          })
+          return {
+            ok: true,
+            packageId: result.packageId,
+            total: result.lessons.length,
+            reason: result.reason,
+            lessons: result.lessons.map((lesson) => ({
+              lessonId: lesson.lessonId,
+              title: lesson.title,
+              score: lesson.score,
+              tags: lesson.tags,
+              body: lesson.body,
+            })),
+          }
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
+        }
       },
     })
 

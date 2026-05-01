@@ -68,12 +68,13 @@ describe('team plugin: agent-knowledge content type registration', () => {
 
     // Build a minimal mock context that captures registerFileBackedContentType calls.
     const captured: Array<{ table: string; def: { facets?: string[]; filePatterns?: { pattern: string }[] } }> = []
+    const execTools: string[] = []
     const ctx = {
       pluginId: 'team',
       registerNav: () => {},
       registerRoute: () => {},
       registerSlot: () => {},
-      registerExecTool: () => {},
+      registerExecTool: (tool: { name: string }) => { execTools.push(tool.name) },
       registerSkill: () => {},
       registerWorkflow: () => {},
       registerNodeType: () => {},
@@ -107,6 +108,7 @@ describe('team plugin: agent-knowledge content type registration', () => {
     expect(knowledge!.def.facets).toContain('package_id')
     expect(knowledge!.def.facets).toContain('agent_id')
     expect(knowledge!.def.filePatterns?.[0].pattern).toBe('packages/agents/*/knowledge/*.md')
+    expect(execTools).toContain('bakin_exec_knowledge_search')
   })
 })
 

@@ -118,6 +118,19 @@ export interface BakinSettings {
     allowlist?: string[]
     blocklist?: string[]
   }
+  agentPackages: {
+    knowledgeRetrieval: {
+      enabled: boolean
+      /** Inject the top relevant enabled lessons directly into dispatch prompts. */
+      injectIntoDispatch: boolean
+      /** Expose the agent-facing MCP search tool for follow-up knowledge lookup. */
+      mcpTool: boolean
+      maxLessons: number
+      /** Approximate prompt budget for injected lesson bodies. */
+      maxCharacters: number
+      minScore: number
+    }
+  }
   doctor: {
     intervalMs: number
     autoFixSkill: boolean
@@ -220,6 +233,16 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     keepAliveMs: 30000,
   },
   models: {},
+  agentPackages: {
+    knowledgeRetrieval: {
+      enabled: true,
+      injectIntoDispatch: true,
+      mcpTool: true,
+      maxLessons: 3,
+      maxCharacters: 8000,
+      minScore: 0,
+    },
+  },
   doctor: {
     intervalMs: 30 * 60 * 1000, // 30 minutes
     autoFixSkill: true,
