@@ -247,6 +247,7 @@ document.addEventListener("click", function (event) {
             },
             { label: 'SDK', slug: 'extending/sdk/overview' },
             { label: "Bakin' Core", slug: 'extending/development-workflow' },
+            { label: 'Quality Control', slug: 'extending/quality-control' },
           ],
         },
         {
@@ -272,12 +273,6 @@ document.addEventListener("click", function (event) {
           label: 'Security',
           items: [
             { label: 'Data and Security', slug: 'security/data-and-security' },
-          ],
-        },
-        {
-          label: 'Contribute',
-          items: [
-            { label: 'Overview', slug: 'contribute/overview' },
           ],
         },
         ...(showMaintainerDocs

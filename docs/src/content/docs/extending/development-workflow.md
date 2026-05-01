@@ -64,22 +64,9 @@ bun run docs:check
 
 For a narrow plugin or docs change, targeted tests are fine while iterating. Before merging, the full checks should pass or the PR should explain the known gap.
 
-## Contribution Shape
-
-Good Bakin contributions are boring in the places that matter:
-
-- stable IDs and route paths
-- narrow permissions
-- explicit cleanup in `onShutdown()` for timers, sockets, watchers, and subscriptions
-- no top-level lifetime side effects in plugins
-- no imports from `packages/host`, `src`, or another plugin from extension code
-- examples that are either tested fixtures or marked illustrative with a reason
-
-When the public docs and generated reference disagree, trust the source contract, fix the docs, and regenerate.
-
 ## Related
 
-- [Contribute](/docs/contribute/overview/): repo-wide contribution basics
 - [Plugins](/docs/extending/plugins/overview/): plugin build path
 - [Agent Kits](/docs/extending/agents/overview/): agent kit build path
+- [Quality Control](/docs/extending/quality-control/): review standards, docs rules, and generated reference expectations
 - [Reference](/docs/reference/generated/coverage/): generated documentation coverage
