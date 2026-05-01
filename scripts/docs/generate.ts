@@ -1667,65 +1667,6 @@ function renderSdkReference(): string {
 	  return lines.join('\n')
 	}
 
-function renderCoverageReference(): string {
-  const routes = getAllRoutes()
-  const cliExampleCount = CLI_COMMANDS.reduce((count, command) => count + (command.examples?.length ?? 0), 0)
-  const routeInputSchemaCount = routes.filter(route => Boolean(route.input)).length
-  const routeOutputSchemaCount = routes.filter(route => Boolean(route.output)).length
-  const routeExampleCount = routes.filter(route => (route.examples?.length ?? 0) > 0).length
-  const hooks = extractHookRegistrations()
-  const slots = extractSlotRegistrations()
-  const execTools = extractExecTools()
-  const corePlugins = readCorePluginManifests()
-  const settings = flattenObject(DEFAULT_SETTINGS)
-  const sdkExports = readSdkExports()
-
-  return [
-    '---',
-    'title: Generated Coverage',
-    'description: Coverage report for generated Bakin documentation surfaces.',
-    '---',
-    '',
-    '| Surface | Source | Status |',
-    '| --- | --- | --- |',
-    `| CLI commands | \`src/core/cli/registry.ts\` | Active: ${CLI_COMMANDS.length} commands, ${cliExampleCount} examples |`,
-    `| HTTP routes | \`src/core/api-docs.ts\` and route metadata | Active: ${routes.length} routes, ${routeInputSchemaCount} input schemas, ${routeOutputSchemaCount} output schemas, ${routeExampleCount} routes with examples |`,
-    `| Plugin routes | Runtime route registration metadata | Partial: ${routes.filter(route => route.pluginId !== 'core').length} documented plugin routes |`,
-    `| Hooks | Source scan for \`hooks.register(...)\` | Audited: ${hooks.length} registrations |`,
-    `| Slots | SDK slot contract plus source scan | Documented: ${publicSlotNames.length} public slot names, ${slots.length} audited registrations |`,
-    `| Exec/MCP tools | Source scan for \`registerExecTool(...)\` | Audited: ${execTools.length} tools |`,
-    `| Core plugins | \`plugins/*/bakin-plugin.json\` | Active: ${corePlugins.length} plugin manifests |`,
-    `| Settings | \`packages/core/src/settings.ts\` | Active: ${settings.length} flattened settings |`,
-    '| Runtime paths | `packages/core/src/content-dir.ts` | Active: documented path contract |',
-    `| SDK exports | \`packages/sdk/package.json\` and barrel files | Audited: ${sdkExports.length} subpaths |`,
-    '| Agent package kinds | `packages/core/src/agent-packages/manifest.ts` | Active: agent, skill-pack, workflow-pack, knowledge-pack |',
-    `| Tested snippets | \`docs/snippets\` | Active: ${docsSnippetFiles.length} required fixtures |`,
-    `| LLM docs | \`docs/public/llms*\` | Active: ${llmBundleFiles.length} public bundles |`,
-    '',
-    '## Launch Gates',
-    '',
-    'These generated surfaces are in CI through `bun run docs:check`:',
-    '',
-    '- generated docs and LLM bundles exist',
-    '- Markdown pages have title and description frontmatter',
-    '- required snippet fixtures exist',
-    '- snippet JSON parses cleanly',
-    '- the Starlight site builds with Pagefind search and sitemap output',
-    '',
-    '## Remaining Contract Debt',
-    '',
-    'The current generated docs distinguish active structured metadata from audited source scans. Audited surfaces are public enough to document, but still need stronger contract objects before they should be considered final:',
-    '',
-    '- hooks need explicit kind, schemas, examples, visibility, and stability',
-    '- exec/MCP tools need explicit metadata and output shape coverage',
-    '- plugin routes should use the same route metadata helpers as core routes',
-    '- SDK exports need complete TSDoc and stability annotations',
-    '',
-    generatedPageNote(),
-    '',
-  ].join('\n')
-}
-
 writeStableFile(
   join(generatedRoot, 'coverage.json'),
   JSON.stringify(buildCoverageReport(), null, 2),
@@ -1861,11 +1802,6 @@ writeStableFile(
 writeStableFile(
   join(docsRoot, 'src/content/docs/reference/generated/sdk.md'),
   renderSdkReference(),
-)
-
-writeStableFile(
-  join(docsRoot, 'src/content/docs/reference/generated/coverage.md'),
-  renderCoverageReference(),
 )
 
 updateGeneratedContentBlocks()

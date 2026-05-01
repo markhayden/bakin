@@ -69,4 +69,3 @@ For a narrow plugin or docs change, targeted tests are fine while iterating. Bef
 - [Plugins](/docs/extending/plugins/overview/): plugin build path
 - [Agent Kits](/docs/extending/agents/overview/): agent kit build path
 - [Quality Control](/docs/extending/quality-control/): review standards, docs rules, and generated reference expectations
-- [Reference](/docs/reference/generated/coverage/): generated documentation coverage
