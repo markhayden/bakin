@@ -331,15 +331,14 @@ Task hooks let plugins enrich task details and react to task lifecycle changes.
 
 ### tasks.enrichDetails
 
-Label: Add project task context.
-Purpose: Adds project title, status, progress, and excerpt data to task detail payloads. Use it when a task surface wants project context without depending on project storage.
-Kind: waterfall
-Source: bakin-bits-official/plugins/projects/index.ts:160
+Label: tasks.enrichDetails
+Kind: rpc
+Source: bakin-bits-official/plugins/projects/index.ts:156
 
 Example:
 
 ```ts
-const next = await ctx.hooks.call(
+const result = await ctx.hooks.invoke(
   'tasks.enrichDetails',
   {
     task: {
@@ -352,15 +351,14 @@ const next = await ctx.hooks.call(
 
 ### tasks.statusChanged
 
-Label: Sync project task state.
-Purpose: Updates linked project checklist items when a task moves into a completed state. Use it to keep project progress in sync with task lifecycle events.
-Kind: event
+Label: tasks.statusChanged
+Kind: rpc
 Source: bakin-bits-official/plugins/projects/index.ts:149
 
 Example:
 
 ```ts
-await ctx.hooks.callAll(
+const result = await ctx.hooks.invoke(
   'tasks.statusChanged',
   {
     taskId: 'task-123',
@@ -379,7 +377,7 @@ Team hooks expose runtime agent and team metadata for plugins that need agent-aw
 Label: Get an agent.
 Purpose: Returns one runtime agent by id, including team-aware metadata when available. Use it when a plugin already has an agent id and needs the full display record.
 Kind: rpc
-Source: plugins/team/index.ts:1742
+Source: plugins/team/index.ts:1743
 
 Example:
 
@@ -397,7 +395,7 @@ const result = await ctx.hooks.invoke(
 Label: List agent ids.
 Purpose: Returns the ids of agents currently known to the runtime. Use it for lightweight validation, assignment pickers, or loops that do not need full agent metadata.
 Kind: rpc
-Source: plugins/team/index.ts:1747
+Source: plugins/team/index.ts:1748
 
 Example:
 
@@ -413,7 +411,7 @@ const result = await ctx.hooks.invoke(
 Label: Get agent team.
 Purpose: Returns the team currently assigned to an agent, or null when the agent is unassigned. Use it to add team context to task, workflow, or activity views.
 Kind: rpc
-Source: plugins/team/index.ts:1754
+Source: plugins/team/index.ts:1755
 
 Example:
 
@@ -431,7 +429,7 @@ const result = await ctx.hooks.invoke(
 Label: Get org structure.
 Purpose: Returns the current organization structure for teams and agents. Use it when a plugin needs the full hierarchy instead of individual team or agent records.
 Kind: rpc
-Source: plugins/team/index.ts:1760
+Source: plugins/team/index.ts:1761
 
 Example:
 
@@ -447,7 +445,7 @@ const result = await ctx.hooks.invoke(
 Label: List team members.
 Purpose: Returns the agents assigned to one team. Use it for team dashboards, routing rules, or workflow logic that needs team membership.
 Kind: rpc
-Source: plugins/team/index.ts:1751
+Source: plugins/team/index.ts:1752
 
 Example:
 
@@ -465,7 +463,7 @@ const result = await ctx.hooks.invoke(
 Label: List agents.
 Purpose: Returns runtime agents with their display and team metadata attached. Use it when another plugin needs the agent roster as Bakin presents it.
 Kind: rpc
-Source: plugins/team/index.ts:1741
+Source: plugins/team/index.ts:1742
 
 Example:
 
@@ -481,7 +479,7 @@ const result = await ctx.hooks.invoke(
 Label: Resolve agent profile.
 Purpose: Returns the runtime profile for an agent id. Use it when a plugin needs the lower-level profile data behind an agent display record.
 Kind: rpc
-Source: plugins/team/index.ts:1748
+Source: plugins/team/index.ts:1749
 
 Example:
 

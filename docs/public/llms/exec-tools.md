@@ -341,6 +341,47 @@ mcporter call bakin-<agent>.bakin_exec_get_step --args '{
 }'
 ```
 
+## Git
+
+### bakin_exec_git_prepare_worktree
+
+Label: Prepared git worktree
+Purpose: Create or reuse an isolated git worktree for a task. Call this before editing code for a Bakin task.
+
+Arguments: none.
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_git_prepare_worktree
+```
+
+### bakin_exec_git_release_worktree
+
+Label: Released git worktree
+Purpose: Release a tracked git worktree. Refuses dirty removal unless force=true.
+
+Arguments: none.
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_git_release_worktree
+```
+
+### bakin_exec_git_status
+
+Label: Checked git worktrees
+Purpose: List Bakin-tracked git worktrees and their dirty state.
+
+Arguments: none.
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_git_status
+```
+
 ## Health
 
 Health tools let agents check whether Bakin is running correctly before or during work.
@@ -397,6 +438,27 @@ mcporter call bakin-<agent>.bakin_exec_heartbeat --args '{
   "status": "value",
   "currentTask": "value",
   "message": "value"
+}'
+```
+
+## Knowledge
+
+### bakin_exec_knowledge_search
+
+Label: Searched package knowledge
+Purpose: Search the enabled agent-package knowledge lessons for the calling agent.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `query` | string | yes | Search query |
+| `limit` | number | no | Max lessons to return (default from settings, max 10) |
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_knowledge_search --args '{
+  "query": "value",
+  "limit": 20
 }'
 ```
 

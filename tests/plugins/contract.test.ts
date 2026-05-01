@@ -101,6 +101,7 @@ const workflowsPlugin = require('../../plugins/workflows').default as typeof imp
 const assetsPlugin = require('../../plugins/assets').default as typeof import('../../plugins/assets').default
 const schedulePlugin = require('../../plugins/schedule').default as typeof import('../../plugins/schedule').default
 const healthPlugin = require('../../plugins/health').default as typeof import('../../plugins/health').default
+const gitPlugin = require('../../plugins/git').default as typeof import('../../plugins/git').default
 
 const TEST_DIR = hoistedBakinHome
 const TEST_OPENCLAW_HOME = hoistedOpenClawHome
@@ -193,6 +194,7 @@ const ALL_PLUGINS: BakinPlugin[] = [
   assetsPlugin,
   schedulePlugin,
   healthPlugin,
+  gitPlugin,
 ]
 
 describe('Plugin Contract', () => {
