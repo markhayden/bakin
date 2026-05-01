@@ -17,6 +17,7 @@ import { DEFAULT_SETTINGS } from '../../packages/core/src/settings'
 import { CLI_COMMANDS } from '../../src/core/cli/registry'
 import { getAllRoutes } from '../../src/core/api-docs'
 import type { RouteDoc } from '../../src/core/api-docs'
+import { PERMISSION_DESCRIPTIONS, PermissionSchema } from '../../packages/core/src/plugins/permissions'
 
 const repoRoot = new URL('../..', import.meta.url).pathname
 const docsRoot = join(repoRoot, 'docs')
@@ -176,6 +177,23 @@ function renderSettingsSnippet(marker: string): string {
   return lines.join('\n')
 }
 
+function renderPluginPermissionsSnippet(): string {
+  const lines = [
+    '<!-- docs:plugin-permissions -->',
+    '<div class="table-light-full table-label-wrap permissions-table">',
+    '',
+    '| Permission | Typical use |',
+    '| --- | --- |',
+  ]
+  for (const permission of PermissionSchema.options) {
+    lines.push(`| \`${permission}\` | ${escapeTableCell(PERMISSION_DESCRIPTIONS[permission])} |`)
+  }
+  lines.push('')
+  lines.push('</div>')
+  lines.push('<!-- /docs:plugin-permissions -->')
+  return lines.join('\n')
+}
+
 function renderDocsSnippetBlock(marker: string): string {
   const snippet = docsSnippetBlocks[marker as keyof typeof docsSnippetBlocks]
   if (!snippet) throw new Error(`Unknown docs snippet block: ${marker}`)
@@ -210,6 +228,7 @@ function updateGeneratedContentBlocks(): void {
   const execToolsMarkerPattern = /<!-- docs:exec-tools ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:exec-tools -->/g
   const apiRoutesMarkerPattern = /<!-- docs:api-routes ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:api-routes -->/g
   const settingsMarkerPattern = /<!-- docs:settings ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:settings -->/g
+  const pluginPermissionsMarkerPattern = /<!-- docs:plugin-permissions -->[\s\S]*?<!-- \/docs:plugin-permissions -->/g
   for (const file of markdownFiles) {
     const text = readFileSync(file, 'utf8')
     const next = text
@@ -218,6 +237,7 @@ function updateGeneratedContentBlocks(): void {
       .replace(execToolsMarkerPattern, (_match, marker: string) => renderExecToolsSnippet(marker))
       .replace(apiRoutesMarkerPattern, (_match, marker: string) => renderApiRoutesSnippet(marker))
       .replace(settingsMarkerPattern, (_match, marker: string) => renderSettingsSnippet(marker))
+      .replace(pluginPermissionsMarkerPattern, renderPluginPermissionsSnippet())
     if (next !== text) writeStableFile(file, next)
   }
 }

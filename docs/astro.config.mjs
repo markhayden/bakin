@@ -226,14 +226,27 @@ document.addEventListener("click", function (event) {
           label: 'Extending',
           items: [
             { label: 'Overview', slug: 'extending/overview' },
-            { label: 'Plugin Authoring', slug: 'extending/plugins/overview' },
-            { label: 'Plugin Manifest', slug: 'extending/plugins/manifest' },
-            { label: 'Server Contracts', slug: 'extending/plugins/server-contracts' },
-            { label: 'Client UI', slug: 'extending/plugins/client-ui' },
-            { label: 'Agent Authoring', slug: 'extending/agents/overview' },
-            { label: 'Agent Packages', slug: 'extending/agents/packages' },
-            { label: 'Agent Knowledge', slug: 'extending/agents/knowledge' },
+            { label: 'Ingredients', slug: 'extending/ingredients' },
+            {
+              label: 'Plugins',
+              items: [
+                { label: 'Overview', slug: 'extending/plugins/overview' },
+                { label: 'Build a Plugin', slug: 'extending/plugins/build' },
+                { label: 'Manifest', slug: 'extending/plugins/manifest' },
+                { label: 'Client UI', slug: 'extending/plugins/client-ui' },
+                { label: 'Server Contracts', slug: 'extending/plugins/server-contracts' },
+              ],
+            },
+            {
+              label: 'Agent Kits',
+              items: [
+                { label: 'Overview', slug: 'extending/agents/overview' },
+                { label: 'Package Manifest', slug: 'extending/agents/packages' },
+                { label: 'Knowledge Blocks', slug: 'extending/agents/knowledge' },
+              ],
+            },
             { label: 'SDK', slug: 'extending/sdk/overview' },
+            { label: "Bakin' Core", slug: 'extending/development-workflow' },
           ],
         },
         {

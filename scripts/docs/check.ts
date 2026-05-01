@@ -13,6 +13,7 @@ import {
   renderExecToolsSnippet,
 } from './source-scan'
 import { getAllRoutes } from '../../src/core/api-docs'
+import { PERMISSION_DESCRIPTIONS, PermissionSchema } from '../../packages/core/src/plugins/permissions'
 
 const repoRoot = new URL('../..', import.meta.url).pathname
 const docsRoot = join(repoRoot, 'docs')
@@ -220,6 +221,34 @@ function renderSettingsSnippet(marker: string): string {
   return lines.join('\n')
 }
 
+function renderPluginPermissionsSnippet(): string {
+  const lines = [
+    '<!-- docs:plugin-permissions -->',
+    '<div class="table-light-full table-label-wrap permissions-table">',
+    '',
+    '| Permission | Typical use |',
+    '| --- | --- |',
+  ]
+  for (const permission of PermissionSchema.options) {
+    lines.push(`| \`${permission}\` | ${escapeTableCell(PERMISSION_DESCRIPTIONS[permission])} |`)
+  }
+  lines.push('')
+  lines.push('</div>')
+  lines.push('<!-- /docs:plugin-permissions -->')
+  return lines.join('\n')
+}
+
+function validatePluginPermissionsBlocks(file: string, text: string): void {
+  const rel = file.replace(repoRoot, '').replace(/^\//, '')
+  const markerPattern = /<!-- docs:plugin-permissions -->[\s\S]*?<!-- \/docs:plugin-permissions -->/g
+  for (const match of text.matchAll(markerPattern)) {
+    const expected = renderPluginPermissionsSnippet()
+    if (match[0].trimEnd() !== expected) {
+      errors.push(`${rel}: plugin permissions table is out of sync with packages/core/src/plugins/permissions.ts`)
+    }
+  }
+}
+
 function validateApiRouteBlocks(file: string, text: string): void {
   const rel = file.replace(repoRoot, '').replace(/^\//, '')
   const markerPattern = /<!-- docs:api-routes ([a-z0-9-]+) -->[\s\S]*?<!-- \/docs:api-routes -->/g
@@ -369,6 +398,7 @@ for (const file of walkMarkdown(docsContentRoot)) {
   validateExecToolBlocks(file, text)
   validateApiRouteBlocks(file, text)
   validateSettingsBlocks(file, text)
+  validatePluginPermissionsBlocks(file, text)
   validateDocsSnippetBlocks(file, text)
   validateJsonFences(file, text)
 }

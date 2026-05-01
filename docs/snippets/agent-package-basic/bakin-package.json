@@ -20,7 +20,7 @@
     ],
     "allowedTools": [
       "bakin_exec_tasks_list",
-      "bakin_exec_workflows_run"
+      "bakin_exec_workflows_start"
     ],
     "allowedSkills": [
       "content-brief"

@@ -10,7 +10,7 @@
  *   ./<name>/README.md
  *
  * Validation:
- *   - <name> must match /^[a-z0-9][a-z0-9-_]{0,39}$/i
+ *   - <name> must match /^[a-z][a-z0-9-]{0,39}$/
  *   - ./<name>/ must not already exist
  *
  * Exit codes: 0 on success, 1 on validation / filesystem errors.
@@ -19,12 +19,12 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { APP_VERSION } from '../../packages/core/src/constants'
 
-const NAME_RE = /^[a-z0-9][a-z0-9-_]{0,39}$/i
+const NAME_RE = /^[a-z][a-z0-9-]{0,39}$/
 
 export function scaffoldPlugin(name: string): number {
   if (!NAME_RE.test(name)) {
     console.error(`Invalid plugin name: ${JSON.stringify(name)}`)
-    console.error('  Must start with a letter or digit, be ≤40 chars, and use only [A-Za-z0-9_-].')
+    console.error('  Must start with a lowercase letter, be <=40 chars, and use only [a-z0-9-].')
     return 1
   }
 
@@ -44,9 +44,12 @@ export function scaffoldPlugin(name: string): number {
           id: name,
           name: name,
           version: '0.1.0',
+          bakin: `>=${APP_VERSION}`,
           description: `${name} plugin for Bakin`,
-          server: 'dist/index.js',
-          client: 'dist/client.js',
+          entry: {
+            server: 'src/index.ts',
+            client: 'src/client.tsx',
+          },
           permissions: [],
           dependencies: [],
         },
