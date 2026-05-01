@@ -1759,7 +1759,7 @@ const apiReferenceGroups = new Map<string, Array<{ operationId: string; curl: st
   const tags = new Map<string, string | undefined>()
   for (const entry of sources) {
     tags.set(entry.tag, undefined)
-    const op = buildOperation(entry.route, { scope: entry.scope, fullPath: entry.fullPath, tag: entry.tag }) as OpenApiOperation
+    const op = buildOperation(entry.route, { scope: entry.scope, fullPath: entry.fullPath, tag: entry.tag }) as unknown as OpenApiOperation
     const openApiPath = normalizeOpenApiPath(entry.fullPath)
     paths[openApiPath] ??= {}
     paths[openApiPath][entry.route.method.toLowerCase()] = op
