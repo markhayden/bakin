@@ -20,6 +20,7 @@
     ],
     "allowedTools": [
       "bakin_exec_tasks_list",
+      "bakin_exec_knowledge_search",
       "bakin_exec_workflows_start"
     ],
     "allowedSkills": [
