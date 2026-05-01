@@ -1261,8 +1261,30 @@ starlight-toc nav a[href="#for-agents"]::before {
 }
 
 .api-operation__anchor {
-  color: var(--sl-color-gray-3);
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  color: var(--bakin-brand-yellow);
+  opacity: 0;
   text-decoration: none;
+}
+
+.api-operation:hover .api-operation__anchor,
+.api-operation__anchor:focus {
+  opacity: 1;
+}
+
+.api-operation__anchor svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
 }
 
 .api-operation__description {
