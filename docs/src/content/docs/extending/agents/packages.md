@@ -33,6 +33,7 @@ Source: `docs/snippets/agent-package-basic/bakin-package.json`
     ],
     "allowedTools": [
       "bakin_exec_tasks_list",
+      "bakin_exec_knowledge_search",
       "bakin_exec_workflows_start"
     ],
     "allowedSkills": [
@@ -182,7 +183,12 @@ Dependency sources may be `github:user/repo`, `./relative/path`, `../relative/pa
 - Keep package IDs stable and short.
 - Pin external refs when sharing packages.
 - Keep `allowedTools` narrow enough for review.
+- Add `bakin_exec_knowledge_search` when the agent should be able to look up its enabled package lessons after dispatch.
 - Put reusable behavior in skills and workflows, not only in prose.
 - Use knowledge files for durable domain context, not one-off task state.
 - Keep secrets out of packages.
 - Test package install against a disposable local runtime before sharing.
+
+## Knowledge Retrieval
+
+Enabled agent-package lessons are selected at dispatch time from the `agent-knowledge` search index and injected into task prompts when relevant. Agents can also call `bakin_exec_knowledge_search` for follow-up lookup; the tool only searches the calling agent's enabled lessons.

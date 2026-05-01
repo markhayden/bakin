@@ -186,6 +186,11 @@
         "description": "List all agents with their current status (online/working/available/offline)."
       },
       {
+        "name": "bakin_exec_knowledge_search",
+        "summary": "Search enabled package knowledge for the calling agent",
+        "description": "Search the enabled agent-package knowledge lessons for the calling agent."
+      },
+      {
         "name": "bakin_exec_team_members",
         "summary": "Get agents that belong to a specific team (e",
         "description": "Get agents that belong to a specific team (e.g. \"builders\", \"creators\")."

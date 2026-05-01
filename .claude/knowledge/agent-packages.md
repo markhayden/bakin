@@ -173,14 +173,20 @@ Resolution order: **user > agent-package > plugin**. User files always win; agen
 
 Server.ts boot: plugin registry initializes → `loadAgentPackageSources()` runs → user files load. Order matters; the load-sources call sits between plugin init and the Antfly initialization (line ~136 of server.ts).
 
-## Search indexing for knowledge files
+## Search indexing and retrieval for knowledge files
 
 The team plugin (`plugins/team/index.ts`) registers a `agent-knowledge` content type via `ctx.search.registerFileBackedContentType()`:
 - Glob: `packages/agents/*/knowledge/*.md`
 - Schema: `title`, `body`, `package_id`, `agent_id`, `lesson_id`, `tags[]`, `default_enabled`, `updated_at`
 - Searchable: `title` + `body`. Facets: `package_id`, `agent_id`, `tags`. Chunker enabled (250 token target / 30 overlap).
 
-V1 limitation: `enabled` is NOT indexed — the lockfile is the source of truth for per-agent enabled state. Searching hits all available lessons; consumers cross-reference the lockfile to filter.
+Retrieval in `src/core/agent-packages/knowledge-retrieval.ts` is dispatch-time:
+- `retrieveAgentPackageKnowledge()` finds the target agent's package via the lockfile, queries `agent-knowledge`, filters results down to the package's enabled `knowledgeEnabled` lessons, dedupes repeated chunk hits by `lesson_id`, hydrates full lesson bodies from the installed package source, and returns the top configured lessons.
+- `dispatch.ts` injects the formatted top lessons into regular task dispatch and workflow step dispatch. Retrieval failures are audited and do not block dispatch.
+- The team plugin exposes `bakin_exec_knowledge_search`, scoped to the calling agent, for follow-up lookup over the same enabled lesson set.
+- Settings live under `settings.agentPackages.knowledgeRetrieval`: `enabled`, `injectIntoDispatch`, `mcpTool`, `maxLessons`, `maxCharacters`, `minScore`.
+
+Current limitation: `enabled` is NOT indexed — the lockfile remains the source of truth for per-agent enabled state. Searching hits all available lessons; consumers cross-reference the lockfile to filter.
 
 V1 limitation: knowledge-pack lessons aren't indexed (glob targets `packages/agents/*` only). Adding a parallel `knowledge-pack-knowledge` content type or extending the glob is V1.5 work.
 
@@ -283,7 +289,7 @@ Do not confuse this with:
 
 - **No hosted registry.** Curated catalog is a static JSON file shipped in the binary; bare-name install errors out.
 - **No trust levels enforcement.** The catalog has a `trust: "official"|"verified"|"community"` field but it's display-only.
-- **No dispatch-time knowledge retrieval.** All enabled lessons inject statically. Issue #157 covers V2 dispatch-time retrieval.
+- **No knowledge-pack lesson retrieval.** Dispatch-time retrieval covers installed agent-package lessons only. Knowledge-pack lessons are not indexed yet.
 - **No skill scoping enforcement.** Manifests declare `allowedSkills`, but the
   skill-routing layer does not enforce it yet.
 - **No bundles.** `bakin install creative-team` (bundle of pixel + rolo + jessica + shared visual skills) is a future possibility, not V1.
@@ -352,4 +358,4 @@ agents/                      In-repo reference packages (8 backfilled). NOT bund
 
 ## Companion future work (issues)
 
-- **#157** — V2 dispatch-time knowledge retrieval. Static block injection in V1; dynamic semantic-search-based at dispatch time in V2. Data model unchanged; only the injection path differs.
+- **#157** — V2 dispatch-time knowledge retrieval. Implemented for installed agent-package lessons via `agent-knowledge` search + lockfile filtering. Remaining follow-up: doctor/analytics reporting for indexed lessons that are never retrieved.
