@@ -1156,10 +1156,10 @@ starlight-toc nav a[href="#for-agents"]::before {
   margin-top: 0.9rem;
 }
 
-.api-reference-meta span,
-.api-reference-meta a {
+.api-reference-meta__chip {
   display: inline-flex;
   align-items: center;
+  gap: 0.4rem;
   min-height: 1.75rem;
   padding: 0.18rem 0.5rem;
   border: 1px solid rgba(120, 117, 116, 0.28);
@@ -1167,6 +1167,41 @@ starlight-toc nav a[href="#for-agents"]::before {
   color: var(--sl-color-gray-2);
   font-size: 0.8rem;
   text-decoration: none;
+}
+
+.api-reference-meta__label {
+  color: var(--sl-color-gray-3);
+}
+
+/* Strip nested code-tag box styling so the URL reads as inline text
+   inside the chip rather than a box-in-a-box. */
+.api-reference-meta__chip code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--sl-color-white);
+}
+
+.api-reference-meta__link svg {
+  width: 0.85rem;
+  height: 0.85rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.api-reference-meta__link:hover {
+  color: var(--sl-color-white);
+  border-color: rgba(245, 244, 66, 0.55);
+}
+
+/* Push the OpenAPI version chip to the far right of the row. */
+.api-reference-meta__version {
+  margin-left: auto;
 }
 
 .api-reference-groups {
