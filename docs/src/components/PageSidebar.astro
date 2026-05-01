@@ -31,7 +31,36 @@ type ApiOperation = {
   summary: string
 }
 
-let groups: Array<{ tag: string; operations: ApiOperation[] }> = []
+type StemGroup = {
+  stem: string | null  // null when the entry should render inline (no subheader)
+  operations: Array<ApiOperation & { residual: string }>
+}
+
+type TagGroup = {
+  tag: string
+  stems: StemGroup[]
+}
+
+/**
+ * Stem for grouping related routes:
+ * - `/api/plugins/<plugin>/<resource>` for plugin routes (first 4 segments)
+ * - `/api/<resource>` otherwise (first 2 segments)
+ *
+ * Shorter paths return themselves so single-segment routes still group.
+ */
+function computeStem(path: string): string {
+  const parts = path.split('/').filter(Boolean) // ['api', 'plugins', 'tasks', 'move'] etc.
+  if (parts[0] !== 'api') return path
+  if (parts[1] === 'plugins' && parts.length >= 4) {
+    return '/' + parts.slice(0, 4).join('/')
+  }
+  if (parts.length >= 2) {
+    return '/' + parts.slice(0, 2).join('/')
+  }
+  return path
+}
+
+let groups: TagGroup[] = []
 if (isApiPage) {
   const specPath = new URL('../../public/openapi.json', import.meta.url)
   const spec = JSON.parse(readFileSync(specPath, 'utf8')) as OpenApiSpec
@@ -55,13 +84,39 @@ if (isApiPage) {
     a.path.localeCompare(b.path) ||
     (methodOrder[a.method] ?? 99) - (methodOrder[b.method] ?? 99),
   )
-  const grouped = new Map<string, ApiOperation[]>()
+  const byTag = new Map<string, ApiOperation[]>()
   for (const op of operations) {
-    const list = grouped.get(op.tag) ?? []
+    const list = byTag.get(op.tag) ?? []
     list.push(op)
-    grouped.set(op.tag, list)
+    byTag.set(op.tag, list)
   }
-  groups = [...grouped.entries()].map(([tag, ops]) => ({ tag, operations: ops }))
+  groups = [...byTag.entries()].map(([tag, ops]) => {
+    // Bucket operations by stem, preserving the (already-sorted) order.
+    const buckets = new Map<string, Array<ApiOperation & { residual: string }>>()
+    for (const op of ops) {
+      const stem = computeStem(op.path)
+      const residual = op.path.slice(stem.length) || '/'
+      const list = buckets.get(stem) ?? []
+      list.push({ ...op, residual })
+      buckets.set(stem, list)
+    }
+    // Single-occupant stems collapse into one inline pseudo-group at the top
+    // (rendered without a subheader); multi-occupant stems get their own
+    // labeled subgroup.
+    const inline: Array<ApiOperation & { residual: string }> = []
+    const labeled: StemGroup[] = []
+    for (const [stem, items] of buckets) {
+      if (items.length === 1) {
+        inline.push({ ...items[0], residual: items[0].path })
+      } else {
+        labeled.push({ stem, operations: items })
+      }
+    }
+    const stems: StemGroup[] = []
+    if (inline.length > 0) stems.push({ stem: null, operations: inline })
+    stems.push(...labeled)
+    return { tag, stems }
+  })
 }
 ---
 
@@ -70,20 +125,25 @@ if (isApiPage) {
     <div class="lg:sl-hidden">
       <details class="api-toc-mobile">
         <summary>On this page</summary>
-        <nav aria-label="API operations">
-          {groups.map(({ tag, operations }) => (
+        <nav aria-label="API operations" class="api-toc">
+          {groups.map(({ tag, stems }) => (
             <div class="api-toc-group">
               <h2>{tag}</h2>
-              <ul>
-                {operations.map(op => (
-                  <li>
-                    <a href={`#${op.operationId}`} title={op.summary}>
-                      <span class={`api-toc-method api-toc-method--${op.method.toLowerCase()}`}>{op.method}</span>
-                      <code class="api-toc-path">{op.path}</code>
-                    </a>
-                  </li>
-                ))}
-              </ul>
+              {stems.map(stemGroup => (
+                <div class="api-toc-stem">
+                  {stemGroup.stem && <h4 class="api-toc-stem__heading"><code>{stemGroup.stem}</code></h4>}
+                  <ul>
+                    {stemGroup.operations.map(op => (
+                      <li>
+                        <a href={`#${op.operationId}`} title={op.path}>
+                          <span class={`api-toc-method api-toc-method--${op.method.toLowerCase()}`}>{op.method}</span>
+                          <code class="api-toc-path">{op.residual}</code>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </div>
           ))}
         </nav>
@@ -93,19 +153,24 @@ if (isApiPage) {
       <div class="sl-container">
         <nav aria-labelledby="api-on-this-page" class="api-toc">
           <h2 id="api-on-this-page">On this page</h2>
-          {groups.map(({ tag, operations }) => (
+          {groups.map(({ tag, stems }) => (
             <div class="api-toc-group">
               <h3>{tag}</h3>
-              <ul>
-                {operations.map(op => (
-                  <li>
-                    <a href={`#${op.operationId}`} title={op.summary}>
-                      <span class={`api-toc-method api-toc-method--${op.method.toLowerCase()}`}>{op.method}</span>
-                      <code class="api-toc-path">{op.path}</code>
-                    </a>
-                  </li>
-                ))}
-              </ul>
+              {stems.map(stemGroup => (
+                <div class="api-toc-stem">
+                  {stemGroup.stem && <h4 class="api-toc-stem__heading"><code>{stemGroup.stem}</code></h4>}
+                  <ul>
+                    {stemGroup.operations.map(op => (
+                      <li>
+                        <a href={`#${op.operationId}`} title={op.path}>
+                          <span class={`api-toc-method api-toc-method--${op.method.toLowerCase()}`}>{op.method}</span>
+                          <code class="api-toc-path">{op.residual}</code>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
             </div>
           ))}
         </nav>

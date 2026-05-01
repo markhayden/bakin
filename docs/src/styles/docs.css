@@ -1276,6 +1276,37 @@ starlight-toc nav a[href="#for-agents"]::before {
   margin: 0 0 0.3rem;
 }
 
+.api-toc-stem {
+  margin: 0;
+}
+
+.api-toc-stem + .api-toc-stem,
+.api-toc-stem:not(:first-child) {
+  margin-top: 0.45rem;
+}
+
+.api-toc-stem__heading {
+  margin: 0 0 0.15rem;
+  padding: 0;
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: var(--sl-color-gray-3);
+}
+
+.api-toc-stem__heading code {
+  background: transparent;
+  padding: 0;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: inherit;
+  color: inherit;
+}
+
+.api-toc-stem ul {
+  padding-left: 0.45rem;
+  border-left: 1px solid var(--sl-color-hairline);
+}
+
 .api-toc ul {
   list-style: none;
   padding: 0;
@@ -1337,13 +1368,20 @@ starlight-toc nav a[href="#for-agents"]::before {
 
 .api-toc-path {
   flex: 1 1 auto;
+  min-width: 0;
   font-family: var(--font-mono);
   font-size: 0.68rem;
   background: transparent;
   padding: 0;
   border: none;
   color: inherit;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* Truncate from the start so the meaningful tail (`/move`, `/:id/tasks`)
+   * stays visible and the prefix gets the …. */
+  direction: rtl;
+  text-align: left;
 }
 
 .api-toc-mobile {
