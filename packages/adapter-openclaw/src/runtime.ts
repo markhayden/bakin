@@ -275,7 +275,13 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       }
     },
     remove: async (agentId: string): Promise<void> => {
-      await this.exec(['agents', 'delete', agentId, '--force', '--json'])
+      try {
+        await this.exec(['agents', 'delete', agentId, '--force', '--json'])
+      } catch (err) {
+        if (!isAgentNotFoundError(err)) throw err
+        this.logger.warn('OpenClaw agent missing from roster during removal; pruning conventional state dirs', { agentId })
+      }
+      pruneConventionalAgentDirs(agentId)
       resetOpenClawConfigCache()
       removeAgentFromAllAllowlists(agentId)
     },
@@ -1412,6 +1418,25 @@ function getWorkspacePath(agentId: string): string {
     return config?.agents?.defaults?.workspace ?? join(getOpenClawHome(), 'workspace')
   }
   return join(getOpenClawHome(), 'workspaces', agentId)
+}
+
+function isSafeAgentIdForPrune(agentId: string): boolean {
+  return /^[a-zA-Z0-9._-]+$/.test(agentId) && agentId !== 'main'
+}
+
+function isAgentNotFoundError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err)
+  return /agent\s+["']?[^"'\s]+["']?\s+not\s+found/i.test(message)
+}
+
+function pruneConventionalAgentDirs(agentId: string): void {
+  if (!isSafeAgentIdForPrune(agentId)) return
+  for (const dir of [
+    getOpenClawPath('agents', agentId),
+    getOpenClawPath('workspaces', agentId),
+  ]) {
+    if (existsSync(dir)) rmSync(dir, { recursive: true, force: true })
+  }
 }
 
 function readGatewayToken(): string | null {
