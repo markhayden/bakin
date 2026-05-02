@@ -350,12 +350,13 @@ function registerShutdown(): void {
 async function main(): Promise<void> {
   registerShutdown()
 
-  // Prime the tree — same as the production prestart minus assets-manifest
-  // (disk fallback in _static.ts covers dev).
+  // Prime the tree — keep the generated asset manifest fresh before
+  // importing server.ts, since server.ts statically imports that module.
   await runStep('build:css', ['bun', 'run', 'build:css'])
   await runStep('build:vendors', ['bun', 'run', 'build:vendors'])
   await runStep('build:plugins', ['bun', 'run', 'build:plugins'])
   await runStep('build:host-shell', ['bun', 'run', 'build:host-shell'])
+  await runStep('build:assets-manifest', ['bun', 'run', 'build:assets-manifest'])
 
   await buildDevClient()
 
