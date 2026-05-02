@@ -1668,7 +1668,7 @@ export async function main(): Promise<void> {
           if (!args[2] || !args[3]) { console.error('Usage: bakin agents send <id> <message>'); process.exit(1) }
           await cmdAgentsSend(args[2], args.slice(3).join(' '))
         } else if (sub === 'install') {
-          if (!args[2]) { console.error('Usage: bakin agents install <path|github:user/repo[@ref]> [--adopt] [--install-as <id>] [--replace]'); process.exit(1) }
+          if (!args[2]) { console.error('Usage: bakin agents install <path|github:user/repo[@ref][#subpath]> [--adopt] [--install-as <id>] [--replace]'); process.exit(1) }
           await cmdAgentPackagesInstall(args[2], parseAgentsFlags(args.slice(3)))
         } else if (sub === 'remove') {
           if (!args[2]) { console.error('Usage: bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--force]'); process.exit(1) }
@@ -1764,7 +1764,7 @@ export async function main(): Promise<void> {
 
       case 'packages':
         if (sub === 'install') {
-          if (!args[2]) { console.error('Usage: bakin packages install <path|github:user/repo[@ref]> [--install-as <id>] [--replace]'); process.exit(1) }
+          if (!args[2]) { console.error('Usage: bakin packages install <path|github:user/repo[@ref][#subpath]> [--install-as <id>] [--replace]'); process.exit(1) }
           await cmdPackagesInstall(args[2], parseAgentsFlags(args.slice(3)))
         } else if (sub === 'list') {
           await cmdPackagesList(parseAgentsFlags(args.slice(2)))

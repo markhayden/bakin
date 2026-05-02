@@ -38,19 +38,41 @@ const SemverSchema = z
  * Dependency source. Allowed forms:
  *   - github:user/repo                         (no ref — installer resolves to default branch SHA)
  *   - github:user/repo (with `ref` field)      (tag/branch/commit-SHA)
+ *   - github:user/repo#agents/foo              (monorepo package subpath)
  *   - ./relative/path or /absolute/path        (local source)
  */
+function hasValidGithubSubpath(source: string): boolean {
+  const hashIdx = source.indexOf('#')
+  if (hashIdx === -1) return true
+  if (source.indexOf('#', hashIdx + 1) !== -1) return false
+
+  const subpath = source.slice(hashIdx + 1)
+  if (subpath.length === 0) return false
+  if (!/^[A-Za-z0-9._/-]+$/.test(subpath)) return false
+  if (subpath.startsWith('/') || subpath.endsWith('/')) return false
+  if (subpath.split('/').some((segment) => segment === '..' || segment === '.')) return false
+  return true
+}
+
+function isValidSource(source: string): boolean {
+  if (source.startsWith('github:')) return hasValidGithubSubpath(source)
+  return (
+    source.startsWith('./') ||
+    source.startsWith('../') ||
+    source.startsWith('/') ||
+    source.startsWith('~/')
+  )
+}
+
 const SourceSchema = z
   .string()
   .min(1)
   .refine(
-    (s) =>
-      s.startsWith('github:') ||
-      s.startsWith('./') ||
-      s.startsWith('../') ||
-      s.startsWith('/') ||
-      s.startsWith('~/'),
-    { message: "source must be 'github:user/repo' or a local path (./, ../, /, ~/)" },
+    isValidSource,
+    {
+      message:
+        "source must be 'github:user/repo[#subpath]' or a local path (./, ../, /, ~/)",
+    },
   )
 
 const DependencySchema = z.object({

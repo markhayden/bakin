@@ -38,7 +38,7 @@ Most tools call a markdown file an "agent." Bakin's are hired, not prompted.
 
 ```sh
 bakin agents list                                     # what's installed
-bakin agents install <path|github:user/repo[@ref]>    # add one
+bakin agents install <path|github:user/repo[@ref][#subpath]>    # add one
 bakin agents update <agent-id>                        # pull the latest
 bakin agents remove <agent-id>                        # uninstall
 ```
