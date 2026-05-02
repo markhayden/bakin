@@ -158,6 +158,12 @@ GitHub sources can include `@ref` for a tag, branch, or commit:
 bakin agents install github:madeinwyo/content-planner@v0.1.0 --install-as content-planner
 ```
 
+Install from a package inside a monorepo with `#subpath`:
+
+```sh
+bakin agents install github:madeinwyo/bakin-bits-official#agents/patch --adopt
+```
+
 ## Source Dependencies
 
 Package dependencies can point at GitHub or local sources. Pin refs for repeatable installs.
@@ -176,7 +182,7 @@ Package dependencies can point at GitHub or local sources. Pin refs for repeatab
 }
 ```
 
-Dependency sources may be `github:user/repo`, `./relative/path`, `../relative/path`, `/absolute/path`, or `~/path`. Each dependency requires `ref`; local sources can use a local marker such as `local` when the package is not meant to be reproduced remotely.
+Dependency sources may be `github:user/repo`, `github:user/repo#agents/package-id`, `./relative/path`, `../relative/path`, `/absolute/path`, or `~/path`. Each dependency requires `ref`; local sources can use a local marker such as `local` when the package is not meant to be reproduced remotely.
 
 ## Authoring Rules
 
