@@ -41,7 +41,7 @@ atomically.
 - `contributions`: shape per kind. agent has all six (workspaceFiles/skills/workflows/workflowSkills/knowledge/assets); skill-pack requires `skills` non-empty; workflow-pack requires at least one of workflows/workflowSkills; knowledge-pack requires `knowledge` non-empty.
 - `dependencies`: cross-kind. `{skills?: Dependency[], workflows?: Dependency[], knowledge?: Dependency[]}` where each `Dependency = {source, ref, items?, installAs?}`.
 
-ID rule: `/^[a-z0-9][a-z0-9-_]{0,39}$/i` — same as plugin install. Source rule: `github:user/repo` or local path (`./` `../` `/` `~/`); bare names refuse with a clear error.
+ID rule: `/^[a-z0-9][a-z0-9-_]{0,39}$/i` — same as plugin install. Source rule: `github:user/repo[@ref][#subpath]` or local path (`./` `../` `/` `~/`); bare names refuse with a clear error. GitHub `#subpath` installs stage only the package directory and reject empty, absolute, traversal, dot-segment, multi-`#`, and whitespace subpaths.
 
 ## Lockfile
 

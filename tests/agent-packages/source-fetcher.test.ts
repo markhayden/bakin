@@ -3,6 +3,7 @@
  *
  * Coverage:
  *   - parseGithubSpec on canonical + malformed inputs
+ *   - github monorepo #subpath parsing and staging
  *   - fetchSource('github:...') happy path via a local bare git repo as fixture
  *   - fetchSource(local path) copies to staging
  *   - bare-name input rejected
@@ -82,6 +83,7 @@ describe('parseGithubSpec', () => {
       owner: 'markhayden',
       repo: 'bakin-bits-official',
       ref: null,
+      subpath: '',
     })
   })
 
@@ -90,6 +92,27 @@ describe('parseGithubSpec', () => {
       owner: 'markhayden',
       repo: 'bakin-bits-official',
       ref: 'v0.1.0',
+      subpath: '',
+    })
+  })
+
+  it('parses owner/repo#subpath', () => {
+    expect(parseGithubSpec('github:markhayden/bakin-bits-official#agents/patch')).toEqual({
+      owner: 'markhayden',
+      repo: 'bakin-bits-official',
+      ref: null,
+      subpath: 'agents/patch',
+    })
+  })
+
+  it('parses owner/repo@ref#subpath', () => {
+    expect(
+      parseGithubSpec('github:markhayden/bakin-bits-official@v0.2.0#agents/patch'),
+    ).toEqual({
+      owner: 'markhayden',
+      repo: 'bakin-bits-official',
+      ref: 'v0.2.0',
+      subpath: 'agents/patch',
     })
   })
 
@@ -104,6 +127,22 @@ describe('parseGithubSpec', () => {
   it('throws on non-github source', () => {
     expect(() => parseGithubSpec('./local')).toThrow(/Not a github source/)
   })
+
+  const invalidSubpaths: Array<[string, string]> = [
+    ['empty subpath after #', 'github:owner/repo#'],
+    ['leading slash', 'github:owner/repo#/agents/patch'],
+    ['trailing slash', 'github:owner/repo#agents/patch/'],
+    ['parent traversal', 'github:owner/repo#agents/../patch'],
+    ['dot segment', 'github:owner/repo#./agents/patch'],
+    ['multiple # delimiters', 'github:owner/repo#agents#patch'],
+    ['space in subpath', 'github:owner/repo#agents/patch copy'],
+  ]
+
+  for (const [label, source] of invalidSubpaths) {
+    it(`throws on malformed subpath: ${label}`, () => {
+      expect(() => parseGithubSpec(source)).toThrow(/subpath/i)
+    })
+  }
 })
 
 // ─── fetchSource — input validation ──────────────────────────────────────────
@@ -281,6 +320,85 @@ describe('fetchSource — github (mock runner)', () => {
     expect(result.commitSha).toBe('deadbeef')
     // Verify --branch flag was NOT used
     expect(calls[0]).not.toContain('--branch')
+  })
+
+  it('stages only the requested package subpath from a monorepo clone', () => {
+    const calls: string[][] = []
+    const mockGit = (args: string[]): string => {
+      calls.push(args)
+      if (isCloneCall(args)) {
+        const target = args[args.length - 1]
+        mkdirSync(join(target, 'agents', 'patch'), { recursive: true })
+        mkdirSync(join(target, 'agents', 'other'), { recursive: true })
+        writeFileSync(join(target, 'README.md'), 'repo root')
+        writeFileSync(join(target, 'agents', 'patch', 'README.md'), 'patch package')
+        writeFileSync(
+          join(target, 'agents', 'patch', 'bakin-package.json'),
+          VALID_AGENT_MANIFEST,
+          'utf-8',
+        )
+        writeFileSync(join(target, 'agents', 'other', 'bakin-package.json'), '{}')
+        return ''
+      }
+      if (isRevParseCall(args)) return 'feedface\n'
+      return ''
+    }
+
+    const stagingDir = join(testDir, 'packages', '.staging-subpath')
+    const result = fetchGithubWithRunner(
+      'github:markhayden/bakin-bits-official#agents/patch',
+      mockGit,
+      stagingDir,
+    )
+
+    expect(result.kind).toBe('github')
+    expect(result.commitSha).toBe('feedface')
+    expect(result.ref).toBe('')
+    expect(existsSync(join(result.stagingDir, 'bakin-package.json'))).toBe(true)
+    expect(existsSync(join(result.stagingDir, 'README.md'))).toBe(true)
+    expect(existsSync(join(result.stagingDir, 'agents'))).toBe(false)
+  })
+
+  it('throws when requested package subpath is missing after clone', () => {
+    const mockGit = (args: string[]): string => {
+      if (isCloneCall(args)) {
+        const target = args[args.length - 1]
+        mkdirSync(target, { recursive: true })
+        writeFileSync(join(target, 'bakin-package.json'), VALID_AGENT_MANIFEST, 'utf-8')
+        return ''
+      }
+      return ''
+    }
+
+    const stagingDir = join(testDir, 'packages', '.staging-missing-subpath')
+    expect(() =>
+      fetchGithubWithRunner(
+        'github:markhayden/bakin-bits-official#agents/patch',
+        mockGit,
+        stagingDir,
+      ),
+    ).toThrow(/subpath.*not found/i)
+  })
+
+  it('throws when requested package subpath has no manifest', () => {
+    const mockGit = (args: string[]): string => {
+      if (isCloneCall(args)) {
+        const target = args[args.length - 1]
+        mkdirSync(join(target, 'agents', 'patch'), { recursive: true })
+        writeFileSync(join(target, 'agents', 'patch', 'README.md'), 'patch package')
+        return ''
+      }
+      return ''
+    }
+
+    const stagingDir = join(testDir, 'packages', '.staging-subpath-no-manifest')
+    expect(() =>
+      fetchGithubWithRunner(
+        'github:markhayden/bakin-bits-official#agents/patch',
+        mockGit,
+        stagingDir,
+      ),
+    ).toThrow(/subpath.*missing bakin-package\.json/i)
   })
 
   it('throws when bakin-package.json is missing after clone', () => {

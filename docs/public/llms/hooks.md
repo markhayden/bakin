@@ -331,14 +331,15 @@ Task hooks let plugins enrich task details and react to task lifecycle changes.
 
 ### tasks.enrichDetails
 
-Label: tasks.enrichDetails
-Kind: rpc
-Source: bakin-bits-official/plugins/projects/index.ts:156
+Label: Add project task context.
+Purpose: Adds project title, status, progress, and excerpt data to task detail payloads. Use it when a task surface wants project context without depending on project storage.
+Kind: waterfall
+Source: bakin-bits-official/plugins/projects/index.ts:160
 
 Example:
 
 ```ts
-const result = await ctx.hooks.invoke(
+const next = await ctx.hooks.call(
   'tasks.enrichDetails',
   {
     task: {
@@ -351,14 +352,15 @@ const result = await ctx.hooks.invoke(
 
 ### tasks.statusChanged
 
-Label: tasks.statusChanged
-Kind: rpc
+Label: Sync project task state.
+Purpose: Updates linked project checklist items when a task moves into a completed state. Use it to keep project progress in sync with task lifecycle events.
+Kind: event
 Source: bakin-bits-official/plugins/projects/index.ts:149
 
 Example:
 
 ```ts
-const result = await ctx.hooks.invoke(
+await ctx.hooks.callAll(
   'tasks.statusChanged',
   {
     taskId: 'task-123',

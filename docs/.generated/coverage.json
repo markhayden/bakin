@@ -5,7 +5,7 @@
     "cliCommands": {
       "status": "active",
       "count": 59,
-      "examples": 60,
+      "examples": 61,
       "source": "src/core/cli/registry.ts"
     },
     "httpRoutes": {

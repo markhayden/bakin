@@ -6,6 +6,7 @@
  *   - Required-field rejection
  *   - id format rejection
  *   - source format rejection (no bare names, no http:)
+ *   - github dependency #subpath validation
  *   - Per-kind contribution shape rejection (skill-pack with no skills, etc.)
  *   - safeParseManifest returns the typed Result variant
  *   - formatManifestError produces a single-line message
@@ -191,6 +192,32 @@ describe('manifest schema — dependency source rules', () => {
     ]
     expect(() => parseManifest(m)).not.toThrow()
   })
+
+  it('accepts github source with package subpath', () => {
+    const m = loadFixture('agent') as Record<string, unknown>
+    ;(m.dependencies as { skills: unknown[] }).skills = [
+      { source: 'github:markhayden/bakin-bits-official#agents/patch', ref: 'main' },
+    ]
+    expect(() => parseManifest(m)).not.toThrow()
+  })
+
+  for (const [label, source] of [
+    ['empty subpath', 'github:markhayden/bakin-bits-official#'],
+    ['leading slash', 'github:markhayden/bakin-bits-official#/agents/patch'],
+    ['trailing slash', 'github:markhayden/bakin-bits-official#agents/patch/'],
+    ['parent traversal', 'github:markhayden/bakin-bits-official#agents/../patch'],
+    ['dot segment', 'github:markhayden/bakin-bits-official#./agents/patch'],
+    ['multiple # delimiters', 'github:markhayden/bakin-bits-official#a#b'],
+    ['space in subpath', 'github:markhayden/bakin-bits-official#agents/patch copy'],
+  ] as const) {
+    it(`rejects malformed github subpath: ${label}`, () => {
+      const m = loadFixture('agent') as Record<string, unknown>
+      ;(m.dependencies as { skills: unknown[] }).skills = [
+        { source, ref: 'main' },
+      ]
+      expect(() => parseManifest(m)).toThrow()
+    })
+  }
 
   it('rejects empty ref', () => {
     const m = loadFixture('agent') as Record<string, unknown>
