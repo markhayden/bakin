@@ -1284,7 +1284,7 @@ interface PluginCliCommand {
   usage: string
   summary: string
   aliases?: string[]
-  dispatch: {
+  dispatch?: {
     type: 'execTool'
     name: string
   } | {
@@ -1391,6 +1391,7 @@ async function dispatchPluginCliCommand(cmd: string, args: string[]): Promise<bo
   for (const command of commands) {
     const params = matchPluginCliCommand(command, cmd, args)
     if (!params) continue
+    if (!command.dispatch) continue
 
     if (command.dispatch.type === 'execTool') {
       const result = await apiPost(`/api/exec-tools/${encodeURIComponent(command.dispatch.name)}`, {

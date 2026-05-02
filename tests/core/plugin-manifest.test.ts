@@ -4,6 +4,8 @@ import {
   parsePluginManifest,
   readPluginManifestJson,
 } from '../../packages/core/src/plugins/manifest'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 const baseManifest = {
   id: 'messaging',
@@ -86,7 +88,7 @@ describe('plugin manifest schema', () => {
     expect(manifest.contributes?.apiRoutes?.[1]?.operationId).toBe('messaging-approve-item')
     expect(manifest.contributes?.apiRoutes?.[1]?.parameters?.[0]?.name).toBe('itemId')
     expect(manifest.contributes?.apiRoutes?.[1]?.responses?.[200]?.description).toBe('Approved item.')
-    expect(manifest.contributes?.cliCommands?.[0]?.dispatch.type).toBe('apiRoute')
+    expect(manifest.contributes?.cliCommands?.[0]?.dispatch?.type).toBe('apiRoute')
   })
 
   it('rejects invalid plugin ids', () => {
@@ -111,6 +113,54 @@ describe('plugin manifest schema', () => {
 
     expect(manifest.entry.server).toBe('index.ts')
     expect(manifest.bakin).toBe('>=1.0.0')
+  })
+
+  it('allows legacy core CLI command metadata without dispatch', () => {
+    const manifest = parsePluginManifest({
+      id: 'legacy',
+      name: 'Legacy',
+      version: '0.1.0',
+      contributes: {
+        cliCommands: [
+          {
+            name: 'status',
+            usage: 'bakin status',
+            summary: 'Show status.',
+          },
+        ],
+      },
+    }, { allowLegacy: true })
+
+    expect(manifest.contributes?.cliCommands?.[0]?.dispatch).toBeUndefined()
+  })
+
+  it('parses every bundled plugin manifest in legacy mode', () => {
+    const pluginsDir = join(import.meta.dir, '..', '..', 'plugins')
+    const pluginIds = readdirSync(pluginsDir, { withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .map(entry => entry.name)
+      .sort()
+
+    expect(pluginIds.length).toBeGreaterThan(0)
+    for (const pluginId of pluginIds) {
+      const manifestText = readFileSync(join(pluginsDir, pluginId, 'bakin-plugin.json'), 'utf-8')
+      expect(() => readPluginManifestJson(manifestText, { allowLegacy: true })).not.toThrow()
+    }
+  })
+
+  it('requires CLI command dispatch in strict manifests', () => {
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      contributes: {
+        cliCommands: [
+          {
+            name: 'status',
+            usage: 'bakin status',
+            summary: 'Show status.',
+          },
+        ],
+      },
+    })).toThrow(/contributes\.cliCommands\[0\]\.dispatch must be an object/)
   })
 
   it('rejects absolute API paths in plugin route declarations', () => {

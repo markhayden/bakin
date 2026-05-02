@@ -164,10 +164,18 @@ function parseExecTool(raw: unknown, index: number): ExecToolContribution {
   }
 }
 
-function parseCliCommand(raw: unknown, index: number): CliCommandContribution {
+function parseCliCommand(raw: unknown, index: number, options: ParsePluginManifestOptions): CliCommandContribution {
   if (!isRecord(raw)) throw new PluginManifestError(`contributes.cliCommands[${index}] must be an object`)
+  const command = {
+    name: stringField(raw, 'name', { required: true })!,
+    usage: stringField(raw, 'usage', { required: true })!,
+    summary: stringField(raw, 'summary', { required: true })!,
+    description: stringField(raw, 'description'),
+    aliases: stringArrayField(raw, 'aliases'),
+  }
   const dispatch = raw.dispatch
   if (!isRecord(dispatch)) {
+    if (dispatch === undefined && options.allowLegacy) return command as CliCommandContribution
     throw new PluginManifestError(`contributes.cliCommands[${index}].dispatch must be an object`)
   }
   const dispatchType = stringField(dispatch, 'type', { required: true })
@@ -185,14 +193,7 @@ function parseCliCommand(raw: unknown, index: number): CliCommandContribution {
   } else {
     throw new PluginManifestError(`contributes.cliCommands[${index}].dispatch.type must be "apiRoute" or "execTool"`)
   }
-  return {
-    name: stringField(raw, 'name', { required: true })!,
-    usage: stringField(raw, 'usage', { required: true })!,
-    summary: stringField(raw, 'summary', { required: true })!,
-    description: stringField(raw, 'description'),
-    aliases: stringArrayField(raw, 'aliases'),
-    dispatch: parsedDispatch,
-  }
+  return { ...command, dispatch: parsedDispatch }
 }
 
 function parseSettings(raw: unknown, index: number): SettingsContribution {
@@ -203,7 +204,7 @@ function parseSettings(raw: unknown, index: number): SettingsContribution {
   }
 }
 
-function parseContributions(input: unknown): PluginContributions | undefined {
+function parseContributions(input: unknown, options: ParsePluginManifestOptions): PluginContributions | undefined {
   if (input === undefined || input === null) return undefined
   if (!isRecord(input)) throw new PluginManifestError(`bakin-plugin.json field "contributes" must be an object`)
   const out: PluginContributions = {}
@@ -222,7 +223,7 @@ function parseContributions(input: unknown): PluginContributions | undefined {
   }
   if (input.cliCommands !== undefined) {
     if (!Array.isArray(input.cliCommands)) throw new PluginManifestError('contributes.cliCommands must be an array')
-    out.cliCommands = input.cliCommands.map(parseCliCommand)
+    out.cliCommands = input.cliCommands.map((command, index) => parseCliCommand(command, index, options))
   }
   if (input.settings !== undefined) {
     if (!Array.isArray(input.settings)) throw new PluginManifestError('contributes.settings must be an array')
@@ -283,7 +284,7 @@ export function parsePluginManifest(raw: unknown, options: ParsePluginManifestOp
     dependencies: stringArrayField(raw, 'dependencies'),
     permissions: stringArrayField(raw, 'permissions') as PluginPermission[] | undefined,
     runtimeCapabilities,
-    contributes: parseContributions(raw.contributes),
+    contributes: parseContributions(raw.contributes, options),
     devWatch: stringArrayField(raw, 'devWatch'),
   }
 }
