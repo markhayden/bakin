@@ -16,14 +16,17 @@
  *     the user actually wants a pinned commit, they should pass
  *     `github:user/repo@<sha>`.
  *
- *   - **github** — `github:user/repo[@ref]` form. Cloned with
+ *   - **github** — `github:user/repo[@ref][#subpath]` form. Cloned with
  *     `--depth 1 --branch <ref>` first; if that fails (commit SHAs aren't
  *     accepted by --branch), falls back to a deeper clone + checkout.
  *     Commit SHA is read via `git rev-parse HEAD` after checkout.
+ *     When `#subpath` is present, only that directory is staged as the
+ *     package source.
  *
  * Bare names like `pixel` (no prefix and not a path) are explicitly
- * rejected — the spec says "use github:user/repo[@ref] or a local path"
- * and pretending bare names are valid would let typos silently succeed.
+ * rejected — the spec says "use github:user/repo[@ref][#subpath] or a
+ * local path" and pretending bare names are valid would let typos silently
+ * succeed.
  *
  * Pure failure mode: any error inside the fetch path cleans up the
  * staging directory before throwing. Callers never have to clean up.
@@ -57,6 +60,8 @@ interface ParsedGithubSpec {
   repo: string
   /** ref is null when none was specified — installer falls back to default branch. */
   ref: string | null
+  /** Monorepo path inside the clone; empty string when none was specified. */
+  subpath: string
 }
 
 // ─── Source parsing ──────────────────────────────────────────────────────────
@@ -78,25 +83,58 @@ function isLocalPath(source: string): boolean {
   )
 }
 
+function assertSubpathValid(source: string, subpath: string): void {
+  if (subpath.length === 0) {
+    throw new Error(`Malformed github source: "${source}" — subpath after # must not be empty`)
+  }
+  if (!/^[A-Za-z0-9._/-]+$/.test(subpath)) {
+    throw new Error(
+      `Malformed github source: "${source}" — subpath must match /^[A-Za-z0-9._/-]+$/`,
+    )
+  }
+  if (subpath.startsWith('/') || subpath.endsWith('/')) {
+    throw new Error(
+      `Malformed github source: "${source}" — subpath must not start or end with "/"`,
+    )
+  }
+  if (subpath.split('/').some((segment) => segment === '..' || segment === '.')) {
+    throw new Error(
+      `Malformed github source: "${source}" — subpath must not contain . or .. segments`,
+    )
+  }
+}
+
 /**
- * Parse `github:user/repo[@ref]` into its parts. Throws on malformed input —
- * the manifest's zod schema accepts a wider class of source strings, but the
- * fetcher needs the exact `<owner>/<repo>` shape and an optional ref.
+ * Parse `github:user/repo[@ref][#subpath]` into its parts. Throws on malformed
+ * input — the manifest's zod schema accepts a wider class of source strings,
+ * but the fetcher needs the exact `<owner>/<repo>` shape, optional ref, and
+ * safe optional subpath.
  */
 export function parseGithubSpec(source: string): ParsedGithubSpec {
   if (!isGithubSource(source)) {
     throw new Error(`Not a github source: "${source}"`)
   }
-  const body = source.slice(GITHUB_PREFIX.length)
+  const hashParts = source.split('#')
+  if (hashParts.length > 2) {
+    throw new Error(`Malformed github source: "${source}" — subpath may contain only one #`)
+  }
+
+  const subpath = hashParts.length === 2 ? hashParts[1] : ''
+  if (hashParts.length === 2) assertSubpathValid(source, subpath)
+
+  const body = hashParts[0].slice(GITHUB_PREFIX.length)
   const [pathPart, refPart] = body.split('@', 2)
-  const [owner, repo] = pathPart.split('/', 2)
-  if (!owner || !repo) {
-    throw new Error(`Malformed github source: "${source}" — expected github:owner/repo[@ref]`)
+  const pathSegments = pathPart.split('/')
+  if (pathSegments.length !== 2 || !pathSegments[0] || !pathSegments[1]) {
+    throw new Error(
+      `Malformed github source: "${source}" — expected github:owner/repo[@ref][#subpath]`,
+    )
   }
   return {
-    owner,
-    repo,
+    owner: pathSegments[0],
+    repo: pathSegments[1],
     ref: refPart && refPart.length > 0 ? refPart : null,
+    subpath,
   }
 }
 
@@ -173,6 +211,27 @@ function ensureManifestPresent(stagingDir: string): void {
   }
 }
 
+function resolveGithubSubpath(cloneDir: string, subpath: string): string {
+  const cloneRoot = resolve(cloneDir)
+  const subpathDir = resolve(cloneDir, subpath)
+  if (subpathDir !== cloneRoot && !subpathDir.startsWith(cloneRoot + '/')) {
+    throw new Error(`Github source subpath "${subpath}" escapes the cloned repository`)
+  }
+  return subpathDir
+}
+
+function ensureGithubSubpathPackagePresent(cloneDir: string, subpath: string): string {
+  const subpathDir = resolveGithubSubpath(cloneDir, subpath)
+  if (!existsSync(subpathDir) || !statSync(subpathDir).isDirectory()) {
+    throw new Error(`Github source subpath "${subpath}" not found in repository`)
+  }
+  const manifestPath = join(subpathDir, 'bakin-package.json')
+  if (!existsSync(manifestPath)) {
+    throw new Error(`Github source subpath "${subpath}" is missing bakin-package.json`)
+  }
+  return subpathDir
+}
+
 // ─── Local fetch ─────────────────────────────────────────────────────────────
 
 function fetchLocal(source: string): FetchedSource {
@@ -217,30 +276,46 @@ export function fetchGithubWithRunner(
 ): FetchedSource {
   const spec = parseGithubSpec(source)
   const url = `https://github.com/${spec.owner}/${spec.repo}.git`
+  const cloneTarget = spec.subpath ? `${staging}.clone` : staging
 
+  cleanupStaging(staging)
+  if (spec.subpath) cleanupStaging(cloneTarget)
   mkdirSync(staging, { recursive: true })
 
-  if (spec.ref) {
-    // Try the cheap path first: shallow clone of a tag or branch. This
-    // fails if `ref` is a commit SHA (--branch refuses arbitrary SHAs);
-    // we fall back to a deeper clone + checkout in that case.
-    try {
-      git(['clone', '--depth', '1', '--branch', spec.ref, url, staging])
-    } catch {
-      cleanupStaging(staging)
-      mkdirSync(staging, { recursive: true })
-      git(['clone', '--depth', '50', url, staging])
-      git(['-C', staging, 'checkout', spec.ref])
+  try {
+    if (spec.ref) {
+      // Try the cheap path first: shallow clone of a tag or branch. This
+      // fails if `ref` is a commit SHA (--branch refuses arbitrary SHAs);
+      // we fall back to a deeper clone + checkout in that case.
+      try {
+        git(['clone', '--depth', '1', '--branch', spec.ref, url, cloneTarget])
+      } catch {
+        cleanupStaging(cloneTarget)
+        if (!spec.subpath) mkdirSync(cloneTarget, { recursive: true })
+        git(['clone', '--depth', '50', url, cloneTarget])
+        git(['-C', cloneTarget, 'checkout', spec.ref])
+      }
+    } else {
+      // No ref — clone the default branch shallowly.
+      git(['clone', '--depth', '1', url, cloneTarget])
     }
-  } else {
-    // No ref — clone the default branch shallowly.
-    git(['clone', '--depth', '1', url, staging])
+
+    if (spec.subpath) {
+      const packageDir = ensureGithubSubpathPackagePresent(cloneTarget, spec.subpath)
+      cpSync(packageDir, staging, { recursive: true, dereference: false })
+      ensureManifestPresent(staging)
+    } else {
+      ensureManifestPresent(staging)
+    }
+
+    const commitSha = git(['-C', cloneTarget, 'rev-parse', 'HEAD']).trim()
+    if (spec.subpath) cleanupStaging(cloneTarget)
+    return { stagingDir: staging, commitSha, kind: 'github', ref: spec.ref ?? '' }
+  } catch (err) {
+    cleanupStaging(staging)
+    if (spec.subpath) cleanupStaging(cloneTarget)
+    throw err
   }
-
-  ensureManifestPresent(staging)
-
-  const commitSha = git(['-C', staging, 'rev-parse', 'HEAD']).trim()
-  return { stagingDir: staging, commitSha, kind: 'github', ref: spec.ref ?? '' }
 }
 
 function fetchGithub(source: string): FetchedSource {
@@ -270,6 +345,6 @@ export function fetchSource(source: string): FetchedSource {
 
   // Bare name → explicit error per Q5 of the spec refinement.
   throw new Error(
-    `"${source}" is not a valid source. Use github:user/repo[@ref] or a local path (./, ../, /, ~/).`,
+    `"${source}" is not a valid source. Use github:user/repo[@ref][#subpath] or a local path (./, ../, /, ~/).`,
   )
 }
