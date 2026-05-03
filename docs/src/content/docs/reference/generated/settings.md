@@ -119,8 +119,16 @@ description: Generated reference for Bakin core settings defaults.
   </thead>
   <tbody>
     <tr>
+      <td><code>plugins.requireSignatures</code></td>
+      <td><code>false</code></td>
+    </tr>
+    <tr>
       <td><code>plugins.runtimeCapabilityMode</code></td>
       <td><code>&quot;warn&quot;</code></td>
+    </tr>
+    <tr>
+      <td><code>plugins.trustedSigners</code></td>
+      <td><code>[]</code></td>
     </tr>
   </tbody>
 </table>
@@ -353,5 +361,5 @@ description: Generated reference for Bakin core settings defaults.
 
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 1, 2026 · Bakin 1.0.0</span>
+  <span>Generated May 3, 2026 · Bakin 1.0.0</span>
 </aside>

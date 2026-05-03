@@ -37,6 +37,7 @@ import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { appendAudit } from '@/core/audit'
 import { isCorePlugin } from '@/lib/plugin-registry'
+import { getSettings } from '@bakin/core/settings'
 import {
   addLinkedPlugin,
   isLinked as isLinkedEntry,
@@ -46,6 +47,7 @@ import {
   type PluginLockEntry,
 } from '@bakin/core/plugins/lockfile'
 import { parseManifestPermissions } from '@bakin/core/plugins/permissions'
+import { verifyPluginManifestSignature } from '@bakin/core/plugins/signatures'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
 import { checkPluginDependencies } from './dependencies'
 
@@ -160,6 +162,13 @@ function readManifest(dir: string): {
   if (!PLUGIN_ID_REGEX.test(manifest.id)) {
     throw new LinkRefusedError(
       `invalid plugin id "${manifest.id}" — must match /^[a-z][a-z0-9-]{0,39}$/`,
+    )
+  }
+  try {
+    verifyPluginManifestSignature(parsed, getSettings().plugins)
+  } catch (err) {
+    throw new LinkRefusedError(
+      `${manifest.id}: ${err instanceof Error ? err.message : String(err)}`,
     )
   }
   let permissions: PluginLockEntry['permissions']

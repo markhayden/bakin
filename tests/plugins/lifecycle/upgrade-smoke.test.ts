@@ -59,6 +59,7 @@ import {
   writePluginLockfile,
 } from '../../../packages/core/src/plugins/lockfile'
 import { installPluginAssets } from '../../../src/core/onboarding/plugin-assets'
+import { resetSettingsCache } from '../../../src/core/settings'
 import { computeSourceTreeSha, upgradePlugin, UpgradeRefusedError } from '../../../src/core/plugins/upgrade'
 
 afterAll(() => {
@@ -70,6 +71,7 @@ beforeEach(() => {
   mkdirSync(testDir, { recursive: true })
   mkdirSync(openClawDir, { recursive: true })
   installFilesystemRuntimeAppServices({ openClawDir })
+  resetSettingsCache()
 })
 
 const NOW = '2026-04-25T12:00:00Z'
@@ -134,6 +136,11 @@ function localEntry(opts: { id: string; sourcePath: string; version: string; sou
     manifestSha: 'abc',
     sourceTreeSha: opts.sourceTreeSha,
   }
+}
+
+function writeSettings(settings: Record<string, unknown>): void {
+  writeFileSync(join(testDir, 'settings.json'), JSON.stringify(settings, null, 2), 'utf-8')
+  resetSettingsCache()
 }
 
 describe('computeSourceTreeSha', () => {
@@ -216,6 +223,32 @@ describe('upgradePlugin (local)', () => {
     expect(updated?.version).toBe('1.1.0')
     expect(updated?.sourceTreeSha).not.toBe(initialSha)
     expect(updated?.upgradedAt).toBeTruthy()
+  })
+
+  it('rejects unsigned local plugin upgrades when signatures are required', async () => {
+    const sourcePath = join(testDir, 'src-unsigned')
+    const pluginDir = join(testDir, 'plugins', 'unsigned-plugin')
+    writeFixturePlugin(sourcePath, { id: 'unsigned-plugin', version: '1.0.0' })
+    writeFixturePlugin(pluginDir, { id: 'unsigned-plugin', version: '1.0.0' })
+    const initialSha = computeSourceTreeSha(sourcePath)
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'unsigned-plugin', localEntry({
+      id: 'unsigned-plugin',
+      sourcePath,
+      version: '1.0.0',
+      sourceTreeSha: initialSha,
+    })))
+
+    writeFixturePlugin(sourcePath, { id: 'unsigned-plugin', version: '1.1.0' })
+    writeSettings({
+      plugins: {
+        requireSignatures: true,
+        trustedSigners: [],
+      },
+    })
+
+    await expect(upgradePlugin('unsigned-plugin')).rejects.toThrow(/signed plugin manifest/)
+    expect(readPluginLockfile().plugins['unsigned-plugin']?.version).toBe('1.0.0')
+    expect(existsSync(join(pluginDir, 'bakin-plugin.json'))).toBe(true)
   })
 
   it('installs changed and new runtime skills from the upgraded local plugin', async () => {

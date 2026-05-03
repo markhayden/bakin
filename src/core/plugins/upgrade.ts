@@ -21,6 +21,7 @@ import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
 import { isCorePlugin } from '@/lib/plugin-registry'
 import { appendAudit } from '@/core/audit'
+import { getSettings } from '@bakin/core/settings'
 import {
   type PluginLockEntry,
   isLinked,
@@ -29,6 +30,7 @@ import {
   writePluginLockfile,
 } from '@bakin/core/plugins/lockfile'
 import { parseManifestPermissions, type Permission } from '@bakin/core/plugins/permissions'
+import { verifyPluginManifestSignature } from '@bakin/core/plugins/signatures'
 import { parseGithubSource } from '@bakin/core/plugins/source'
 import {
   findSkillsForPlugin,
@@ -202,6 +204,16 @@ function assertManifestIdStable(manifest: Record<string, unknown>, id: string): 
     throw new UpgradeRefusedError(
       `${id}: upgraded manifest declares id "${manifestId}" — plugins cannot rename across upgrades. Remove and reinstall as the new id if intentional.`,
     )
+  }
+}
+
+function assertManifestSignaturePolicy(manifest: Record<string, unknown>, id: string): void {
+  try {
+    verifyPluginManifestSignature(manifest, getSettings().plugins)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    auditUpgradeRejected('signature_verification_failed', id, { error: message })
+    throw new UpgradeRefusedError(`${id}: ${message}`)
   }
 }
 
@@ -416,6 +428,9 @@ export async function upgradePlugin(
   }
 
   const before = { version: entry.version, commitSha: entry.commitSha }
+  const { manifest: currentManifest } = readManifest(pluginDir)
+  assertManifestIdStable(currentManifest, id)
+  assertManifestSignaturePolicy(currentManifest, id)
 
   if (entry.type === 'github') {
     // Subpath installs (`github:user/repo#plugins/foo`) leave `pluginDir`
@@ -479,6 +494,7 @@ async function upgradeGithub(
   // runs against this. If the user declines, no disk change happens.
   const { manifest, manifestSha } = readRemoteManifest(pluginDir, entry.ref)
   assertManifestIdStable(manifest, id)
+  assertManifestSignaturePolicy(manifest, id)
   const newVersion = manifestVersion(manifest, entry.version)
   const newPerms = manifestPermissions(manifest, id)
   const widened = diffNewPermissions(entry.permissions, newPerms)
@@ -611,6 +627,7 @@ async function upgradeGithubSubpath(
 
     const { manifest, manifestSha } = readManifest(subpathDir)
     assertManifestIdStable(manifest, id)
+    assertManifestSignaturePolicy(manifest, id)
     const newVersion = manifestVersion(manifest, entry.version)
     const newPerms = manifestPermissions(manifest, id)
     const widened = diffNewPermissions(entry.permissions, newPerms)
@@ -692,6 +709,7 @@ async function upgradeLocal(
   // (and its lockfile entry) stays exactly where it was.
   const { manifest, manifestSha } = readManifest(sourcePath)
   assertManifestIdStable(manifest, id)
+  assertManifestSignaturePolicy(manifest, id)
   const newVersion = manifestVersion(manifest, entry.version)
   const newPerms = manifestPermissions(manifest, id)
   const widened = diffNewPermissions(entry.permissions, newPerms)

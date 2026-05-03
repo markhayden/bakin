@@ -946,6 +946,13 @@ export interface BakinPlugin {
 // ---------------------------------------------------------------------------
 // Plugin Manifest (bakin-plugin.json)
 // ---------------------------------------------------------------------------
+export interface PluginManifestSignature {
+  algorithm: 'ed25519'
+  signer: string
+  publicKey: string
+  signature: string
+}
+
 export interface PluginManifest {
   id: string
   name: string
@@ -958,6 +965,7 @@ export interface PluginManifest {
   tests?: string
   dependencies?: string[]
   permissions?: string[]
+  signature?: PluginManifestSignature
 }
 
 // ---------------------------------------------------------------------------

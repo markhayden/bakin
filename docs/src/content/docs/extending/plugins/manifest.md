@@ -81,8 +81,30 @@ Source: `docs/snippets/plugin-basic/bakin-plugin.json`
 | `runtimeCapabilities` | Runtime adapter capabilities the plugin needs, such as `tasks`, `search`, `models`, or `channels.message`. |
 | `contributes` | Public API, UI, CLI, settings, exec tool, and docs metadata. |
 | `devWatch` | Extra plugin-local paths to watch during development. |
+| `signature` | Optional Ed25519 manifest signature. Enforced only when `settings.plugins.requireSignatures` is `true`. |
 
 </div>
+
+## Signature Policy
+
+By default, plugin installs use trust-on-first-use: unsigned manifests are accepted, then Bakin records the installed source and manifest hash in the plugin lockfile.
+
+Set `settings.plugins.requireSignatures` to `true` to fail closed for unsigned, untrusted, or tampered manifests during install, dev-link, and upgrade. Trusted roots live in `settings.plugins.trustedSigners` and may be a `sha256:<hex>` public-key fingerprint, a raw base64 Ed25519 SPKI public key, or `ed25519:<base64-public-key>`.
+
+When present, `signature` has this shape:
+
+```json
+{
+  "signature": {
+    "algorithm": "ed25519",
+    "signer": "madeinwyo",
+    "publicKey": "base64-spki-public-key",
+    "signature": "base64-signature"
+  }
+}
+```
+
+The signature covers canonical JSON for `bakin-plugin.json` with the top-level `signature` block omitted. `signer` is display metadata; trust is bound to the public key or fingerprint.
 
 ## Contributions
 

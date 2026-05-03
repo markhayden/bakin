@@ -185,6 +185,8 @@ bakin plugins remove my-plugin              # refuses to remove core plugins
 bakin plugins scaffold <name>               # starter plugin at ./<name>/
 ```
 
+Unsigned plugin manifests are accepted by default. To fail closed for third-party plugin installs and upgrades, set `plugins.requireSignatures: true` in `~/.bakin/settings.json` and add Ed25519 public-key fingerprints or public keys under `plugins.trustedSigners`.
+
 ---
 
 ## CLI reference
