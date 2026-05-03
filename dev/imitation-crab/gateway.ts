@@ -8,6 +8,16 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'http'
 import { getChatMode, getGatewayPort } from './env'
 
+export interface ImitationCrabGateway {
+  port: number
+  url: string
+  close(): Promise<void>
+}
+
+export interface StartGatewayOptions {
+  registerSignals?: boolean
+}
+
 // Agent name lookup for canned responses
 const AGENT_NAMES: Record<string, string> = {
   main: 'Crab',
@@ -166,8 +176,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   json(res, response.body, response.status)
 }
 
-export function startGateway(port = getGatewayPort()): Promise<void> {
+export function startGateway(port = getGatewayPort(), options: StartGatewayOptions = {}): Promise<ImitationCrabGateway> {
   const chatMode = getChatMode()
+  const registerSignals = options.registerSignals ?? true
 
   return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
@@ -186,18 +197,34 @@ export function startGateway(port = getGatewayPort()): Promise<void> {
       }
     })
 
-    server.listen(port, '127.0.0.1', () => {
-      console.log(`[gateway] Mock OpenClaw gateway listening on http://127.0.0.1:${port}`)
-      console.log(`[gateway] Chat mode: ${chatMode}`)
-      resolve()
-    })
+    const close = async (): Promise<void> => {
+      process.off('SIGINT', shutdown)
+      process.off('SIGTERM', shutdown)
+      if (!server.listening) return
+      await new Promise<void>((closeResolve, closeReject) => {
+        server.close((err) => {
+          if (err) closeReject(err)
+          else closeResolve()
+        })
+      })
+    }
 
-    // Graceful shutdown
     const shutdown = () => {
       console.log('\n[gateway] Shutting down...')
-      server.close()
+      close().catch((err) => {
+        console.error('[gateway] Shutdown failed:', err)
+      })
     }
-    process.on('SIGINT', shutdown)
-    process.on('SIGTERM', shutdown)
+
+    server.listen(port, '127.0.0.1', () => {
+      const url = `http://127.0.0.1:${port}`
+      console.log(`[gateway] Mock OpenClaw gateway listening on ${url}`)
+      console.log(`[gateway] Chat mode: ${chatMode}`)
+      if (registerSignals) {
+        process.on('SIGINT', shutdown)
+        process.on('SIGTERM', shutdown)
+      }
+      resolve({ port, url, close })
+    })
   })
 }

@@ -411,6 +411,11 @@ Set `IMITATION_CRAB_HOME` or `IMITATION_CRAB_PORT` to isolate a mock run from
 the defaults. `OPENCLAW_MOCK_HOME` and `OPENCLAW_MOCK_PORT` are also accepted
 for compatibility with older scripts.
 
+Tests that need seeded runtime state can use `createImitationCrabHarness()` from
+`dev/imitation-crab/harness.ts`. It prepares an isolated mock home, installs the
+CLI shim, and returns AppServices backed by the OpenClaw adapter plus a mock
+search adapter.
+
 ---
 
 ## License

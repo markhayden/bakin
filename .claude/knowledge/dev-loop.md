@@ -112,6 +112,14 @@ Runtime knobs:
 `bun run mock:seed --force` removes the configured mock home before copying
 fixtures, so stale fixture files cannot survive a re-seed.
 
+Tests that need the mock as a contract harness should use
+`createImitationCrabHarness()` from `dev/imitation-crab/harness.ts`. It creates
+an isolated mock home, seeds fixtures, installs the CLI shim, wires an OpenClaw
+runtime adapter with mock settings, pairs it with `createMockSearchAdapter()`,
+and intercepts fetches to the mock gateway in-process. Use
+`startGateway: true` only for manual/server smoke tests where binding a local
+port is part of what you need to verify.
+
 ## One-React-instance invariant
 
 The shell and every plugin share React via the import map:
