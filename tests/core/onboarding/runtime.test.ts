@@ -151,6 +151,25 @@ describe('onboarding runtime component', () => {
       expect(result.message).toContain("'b'")
       expect(result.message).toContain('/x')
     })
+
+    it('does not apply the default workspace to every subagent when agent workspaces are omitted', async () => {
+      runtimeAgents = [
+        { id: 'main', name: 'Main', role: 'Orchestrator', status: 'active' },
+        { id: 'pixel', name: 'Pixel', status: 'active' },
+      ]
+      runtimeConfig = {
+        agents: {
+          defaults: { workspace: '/tmp/main-workspace' },
+          list: [
+            { id: 'main' },
+            { id: 'pixel' },
+          ],
+        },
+      }
+
+      const result = await runtimeComponent.check()
+      expect(result.status).toBe('ok')
+    })
   })
 
   describe('install()', () => {

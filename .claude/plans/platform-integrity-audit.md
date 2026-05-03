@@ -264,6 +264,9 @@ Findings:
 - **fourth slice:** add mock gateway failure controls and a runtime failure
   contract suite proving chat, stream, tool, and channel-send gateway errors
   reject loudly through the OpenClaw adapter when no CLI target fallback applies.
+- **fifth slice:** add onboarding contracts against Imitation Crab and fix the
+  runtime integrity check so OpenClaw `agents.defaults.workspace` is treated as
+  the main workspace default, not as an inherited subagent workspace collision.
 
 Evidence to inspect:
 
@@ -312,6 +315,8 @@ Evidence to inspect:
   - pass (27 tests).
 - `bun test tests/dev/mock-runtime-failure-contract.test.ts tests/dev/mock-runtime-contract.test.ts tests/dev/mock-harness.test.ts --isolate`
   - pass (6 tests).
+- `bun test tests/dev/mock-onboarding-contract.test.ts tests/core/onboarding/runtime.test.ts --isolate`
+  - pass (14 tests).
 - `bunx eslint dev/imitation-crab/cli-shim-install.ts dev/imitation-crab/env.ts dev/imitation-crab/gateway.ts dev/imitation-crab/harness.ts dev/imitation-crab/index.ts dev/imitation-crab/safety.ts dev/imitation-crab/seed.ts packages/adapter-openclaw/src/config.ts tests/adapter-openclaw/config-cache.test.ts tests/dev/mock-env.test.ts tests/dev/mock-gateway-streaming.test.ts tests/dev/mock-harness.test.ts tests/dev/mock-runtime-contract.test.ts tests/dev/mock-runtime-failure-contract.test.ts tests/dev/mock-seed.test.ts`
   - pass.
 - `bun test tests/cli/bakin.test.ts tests/cli/plugin-install-args.test.ts tests/cli/agents-packages.test.ts tests/cli/install-plugin-assets.test.ts tests/cli/install-agent-assets.test.ts tests/core/onboarding/index.test.ts tests/core/onboarding/runtime.test.ts tests/core/onboarding/plugin-assets.test.ts tests/core/onboarding/models.test.ts --isolate`
