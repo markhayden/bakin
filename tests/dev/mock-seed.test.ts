@@ -1,39 +1,59 @@
 import { describe, it, expect, afterEach } from 'bun:test'
-import { existsSync, rmSync, readFileSync } from 'fs'
+import { existsSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { mkdtempSync } from 'fs'
 import { tmpdir } from 'os'
+import { getMockHome, seed } from '../../dev/imitation-crab/seed'
 
 describe('mock seed', () => {
   let tempHome: string | undefined
+  const originalEnv = { ...process.env }
 
   afterEach(() => {
     if (tempHome && existsSync(tempHome)) {
       rmSync(tempHome, { recursive: true, force: true })
     }
+    tempHome = undefined
+    process.env = { ...originalEnv }
   })
 
-  it('creates the expected directory structure', async () => {
-    // The seed module uses a hardcoded path (~/.imitationcrab).
-    // For testing, we import the seed function and check that the fixture files exist.
-    // We'll verify the fixtures directory contains the expected files.
-    const fixturesDir = join(import.meta.dirname, '..', '..', 'dev', 'imitation-crab', 'fixtures')
+  function configureTempHome(): string {
+    tempHome = mkdtempSync(join(tmpdir(), 'bakin-imitation-crab-'))
+    process.env.IMITATION_CRAB_HOME = tempHome
+    process.env.BAKIN_HOME = tempHome
+    return tempHome
+  }
 
-    expect(existsSync(join(fixturesDir, 'openclaw.json'))).toBe(true)
-    expect(existsSync(join(fixturesDir, 'auth-profiles.json'))).toBe(true)
-    expect(existsSync(join(fixturesDir, 'jobs.json'))).toBe(true)
-    expect(existsSync(join(fixturesDir, 'tasks.json'))).toBe(true)
-    expect(existsSync(join(fixturesDir, 'workspace', 'SOUL.md'))).toBe(true)
-    expect(existsSync(join(fixturesDir, 'workspace', 'IDENTITY.md'))).toBe(true)
-    expect(existsSync(join(fixturesDir, 'workspace', 'AGENTS.md'))).toBe(true)
-    expect(existsSync(join(fixturesDir, 'workspace', 'TOOLS.md'))).toBe(true)
-    expect(existsSync(join(fixturesDir, 'bakin', 'workflows', 'definitions', 'approval-copy.yaml'))).toBe(true)
-    expect(existsSync(join(fixturesDir, 'bakin', 'workflows', 'definitions', 'approval-image.yaml'))).toBe(true)
-    expect(existsSync(join(fixturesDir, 'bakin', 'workflows', 'definitions', 'approval-bundle.yaml'))).toBe(true)
-    expect(existsSync(join(fixturesDir, 'bakin', 'workflows', 'instances', 'task-rv-002.json'))).toBe(true)
-    expect(existsSync(join(fixturesDir, 'bakin', 'workflows', 'instances', 'task-rv-003.json'))).toBe(true)
-    expect(existsSync(join(fixturesDir, 'bakin', 'workflows', 'instances', 'task-rv-004.json'))).toBe(true)
-    expect(existsSync(join(fixturesDir, 'bakin', 'assets', 'images', 'task-rv-003', 'trail-status-concept.svg'))).toBe(true)
+  it('seeds the expected directory structure into the configured mock home', () => {
+    const home = configureTempHome()
+
+    seed(true)
+
+    expect(getMockHome()).toBe(home)
+    expect(existsSync(join(home, 'openclaw.json'))).toBe(true)
+    expect(existsSync(join(home, 'agents', 'main', 'agent', 'auth-profiles.json'))).toBe(true)
+    expect(existsSync(join(home, 'cron', 'jobs.json'))).toBe(true)
+    expect(existsSync(join(home, 'workspace', 'SOUL.md'))).toBe(true)
+    expect(existsSync(join(home, 'workspace', 'IDENTITY.md'))).toBe(true)
+    expect(existsSync(join(home, 'workspace', 'AGENTS.md'))).toBe(true)
+    expect(existsSync(join(home, 'workspace', 'TOOLS.md'))).toBe(true)
+    expect(existsSync(join(home, 'workflows', 'definitions', 'approval-copy.yaml'))).toBe(true)
+    expect(existsSync(join(home, 'workflows', 'definitions', 'approval-image.yaml'))).toBe(true)
+    expect(existsSync(join(home, 'workflows', 'definitions', 'approval-bundle.yaml'))).toBe(true)
+    expect(existsSync(join(home, 'workflows', 'instances', 'task-rv-002.json'))).toBe(true)
+    expect(existsSync(join(home, 'workflows', 'instances', 'task-rv-003.json'))).toBe(true)
+    expect(existsSync(join(home, 'workflows', 'instances', 'task-rv-004.json'))).toBe(true)
+    expect(existsSync(join(home, 'assets', 'images', 'task-rv-003', 'trail-status-concept.svg'))).toBe(true)
+  })
+
+  it('force reseed removes stale files before copying fixtures', () => {
+    const home = configureTempHome()
+    const stalePath = join(home, 'stale.txt')
+    writeFileSync(stalePath, 'stale', 'utf-8')
+
+    seed(true)
+
+    expect(existsSync(stalePath)).toBe(false)
+    expect(existsSync(join(home, 'openclaw.json'))).toBe(true)
   })
 
   it('fixture openclaw.json has valid agent roster', () => {

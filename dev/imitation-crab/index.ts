@@ -5,8 +5,8 @@
  *   npx tsx dev/imitation-crab/index.ts              # Start mock only
  *   npx tsx dev/imitation-crab/index.ts --with-bakin  # Start mock + Bakin dev server
  *
- * Sets OPENCLAW_HOME=~/.imitationcrab and OPENCLAW_PATH to the CLI shim,
- * then starts the mock HTTP gateway on :18789.
+ * Sets OPENCLAW_HOME to the configured mock home and OPENCLAW_PATH to the CLI
+ * shim, then starts the mock HTTP gateway.
  */
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
@@ -16,6 +16,7 @@ import { spawn, type ChildProcess } from 'child_process'
 import { checkSafety, printSafetyError } from './safety'
 import { seed, getMockHome } from './seed'
 import { startGateway } from './gateway'
+import { getGatewayUrl } from './env'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PROJECT_ROOT = join(__dirname, '..', '..')
@@ -92,7 +93,7 @@ async function main(): Promise<void> {
     console.log('')
     console.log('Mock gateway is running. Start Bakin in another terminal with:')
     console.log('')
-    console.log(`  BAKIN_HOME=${mockHome} OPENCLAW_HOME=${mockHome} OPENCLAW_PATH=${shimPath} npm run dev`)
+    console.log(`  BAKIN_HOME=${mockHome} OPENCLAW_HOME=${mockHome} OPENCLAW_PATH=${shimPath} OPENCLAW_BASE_URL=${getGatewayUrl()} npm run dev`)
     console.log('')
   }
 }
