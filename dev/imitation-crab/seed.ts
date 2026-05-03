@@ -37,7 +37,7 @@ export function seed(force = false): void {
   mkdirSync(join(mockHome, 'bin'), { recursive: true })
 
   // Copy fixtures
-  cpSync(join(FIXTURES_DIR, 'openclaw.json'), join(mockHome, 'openclaw.json'))
+  seedOpenClawConfig(mockHome)
   cpSync(join(FIXTURES_DIR, 'auth-profiles.json'), join(mockHome, 'agents', 'main', 'agent', 'auth-profiles.json'))
   cpSync(join(FIXTURES_DIR, 'jobs.json'), join(mockHome, 'cron', 'jobs.json'))
 
@@ -73,6 +73,16 @@ export function seed(force = false): void {
   seedAuditLog(mockHome)
 
   console.log(`[seed] Done — ${mockHome} ready`)
+}
+
+function seedOpenClawConfig(mockHome: string): void {
+  const config = JSON.parse(readFileSync(join(FIXTURES_DIR, 'openclaw.json'), 'utf-8')) as {
+    agents?: { defaults?: { workspace?: string } }
+  }
+  config.agents ??= {}
+  config.agents.defaults ??= {}
+  config.agents.defaults.workspace = join(mockHome, 'workspace')
+  writeFileSync(join(mockHome, 'openclaw.json'), JSON.stringify(config, null, 2) + '\n', 'utf-8')
 }
 
 function seedTasks(mockHome: string): void {
