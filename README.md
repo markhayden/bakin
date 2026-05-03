@@ -409,7 +409,8 @@ bun run mock:seed --force # reseed fixtures
 
 Set `IMITATION_CRAB_HOME` or `IMITATION_CRAB_PORT` to isolate a mock run from
 the defaults. `OPENCLAW_MOCK_HOME` and `OPENCLAW_MOCK_PORT` are also accepted
-for compatibility with older scripts.
+for compatibility with older scripts. `OPENCLAW_MOCK_CHAT_MODE` can be
+`canned`, `echo`, or `error`; `OPENCLAW_MOCK_TOOL_MODE` can be `ok` or `error`.
 
 Tests that need seeded runtime state can use `createImitationCrabHarness()` from
 `dev/imitation-crab/harness.ts`. It prepares an isolated mock home, installs the

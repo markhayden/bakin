@@ -6,7 +6,7 @@ import { createHealthService } from '@bakin/core/app-services'
 import { createMockSearchAdapter } from '@bakin/core/adapters/search/testing'
 import { createFileBakinTaskStore } from '@bakin/core/tasks/store'
 import { createOpenClawRuntimeAdapter } from '@bakin/adapter-openclaw'
-import { getGatewayPort, getMockHome, type MockChatMode } from './env'
+import { getGatewayPort, getMockHome, type MockChatMode, type MockToolMode } from './env'
 import { installCliShim } from './cli-shim-install'
 import { handleGatewayRequest, startGateway, type ImitationCrabGateway } from './gateway'
 import { seed } from './seed'
@@ -22,6 +22,7 @@ export interface ImitationCrabEnvironmentOptions {
   home?: string
   port?: number
   chatMode?: MockChatMode
+  toolMode?: MockToolMode
   forceSeed?: boolean
   cleanupHome?: boolean
 }
@@ -145,6 +146,7 @@ export function prepareImitationCrabEnvironment(options: ImitationCrabEnvironmen
   process.env.OPENCLAW_HOME = home
   if (options.port !== undefined) process.env.IMITATION_CRAB_PORT = String(options.port)
   if (options.chatMode) process.env.OPENCLAW_MOCK_CHAT_MODE = options.chatMode
+  if (options.toolMode) process.env.OPENCLAW_MOCK_TOOL_MODE = options.toolMode
 
   const port = getGatewayPort()
   const gatewayUrl = `http://127.0.0.1:${port}`
