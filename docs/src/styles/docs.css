@@ -252,6 +252,87 @@ pre {
   width: auto;
 }
 
+.architecture-flow {
+  display: block;
+  width: 100%;
+  margin: 1.25rem 0 2rem;
+}
+
+.architecture-flow__stage {
+  position: relative;
+  height: min(calc(76vh - 100px), 660px);
+  min-height: 560px;
+  overflow: hidden;
+  border: 1px solid rgba(120, 117, 116, 0.3);
+  border-radius: 0.5rem;
+  background:
+    radial-gradient(60rem 40rem at 12% 18%, rgba(255, 112, 158, 0.08), transparent 60%),
+    radial-gradient(50rem 32rem at 88% 78%, rgba(234, 234, 0, 0.05), transparent 60%),
+    radial-gradient(34rem 20rem at 60% 50%, rgba(227, 0, 113, 0.06), transparent 65%),
+    #0f0e0e;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.36);
+}
+
+.architecture-flow__stage:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  min-height: 100vh;
+  border: 0;
+  border-radius: 0;
+}
+
+.architecture-flow__grid-haze {
+  position: absolute;
+  inset: -200px;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 80px 80px;
+  -webkit-mask-image: radial-gradient(ellipse at 50% 50%, #000 30%, transparent 80%);
+          mask-image: radial-gradient(ellipse at 50% 50%, #000 30%, transparent 80%);
+}
+
+.architecture-flow__controls {
+  position: absolute;
+  bottom: 0.85rem;
+  right: 0.85rem;
+  z-index: 20;
+  display: grid;
+  grid-auto-flow: row;
+  border: 1px solid rgba(120, 117, 116, 0.36);
+  border-radius: 0.4rem;
+  background: rgba(17, 16, 16, 0.88);
+  overflow: hidden;
+}
+
+.architecture-flow__controls button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 0;
+  border-bottom: 1px solid rgba(120, 117, 116, 0.28);
+  background: transparent;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.architecture-flow__controls button:last-child {
+  border-bottom: 0;
+}
+
+.architecture-flow__controls button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+@media (max-width: 760px) {
+  .architecture-flow__stage {
+    height: calc(72vh - 100px);
+    min-height: 420px;
+  }
+}
+
 /* Two-column "label : description" tables. Keep the label column on one line
    so short bold labels like **Context Usage** don't wrap mid-name when the
    description squeezes them. */

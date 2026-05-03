@@ -1,5 +1,6 @@
 import { defineConfig, passthroughImageService } from 'astro/config'
 import starlight from '@astrojs/starlight'
+import react from '@astrojs/react'
 import rehypeExternalLinks from 'rehype-external-links'
 
 const gtmId = process.env.PUBLIC_GTM_ID ?? 'GTM-KZQK989V'
@@ -22,6 +23,7 @@ export default defineConfig({
     ],
   },
   integrations: [
+    react(),
     starlight({
       title: 'Bakin Docs',
       logo: {
@@ -246,6 +248,7 @@ document.addEventListener("click", function (event) {
               ],
             },
             { label: 'SDK', slug: 'extending/sdk/overview' },
+            { label: 'Architecture', slug: 'extending/architecture' },
             { label: "Bakin' Core", slug: 'extending/development-workflow' },
             { label: 'Quality Control', slug: 'extending/quality-control' },
           ],
@@ -261,12 +264,6 @@ document.addEventListener("click", function (event) {
             { label: 'Defaults', slug: 'reference/generated/settings' },
             { label: 'Runtime Paths', slug: 'reference/generated/runtime-paths' },
             { label: 'SDK Reference', slug: 'reference/generated/sdk' },
-          ],
-        },
-        {
-          label: 'Architecture',
-          items: [
-            { label: 'Overview', slug: 'architecture/overview' },
           ],
         },
         {
