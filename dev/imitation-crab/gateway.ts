@@ -6,9 +6,7 @@
  *   POST /tools/invoke
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'http'
-
-const PORT = 18789
-const CHAT_MODE = process.env.OPENCLAW_MOCK_CHAT_MODE || 'canned'
+import { getChatMode, getGatewayPort } from './env'
 
 // Agent name lookup for canned responses
 const AGENT_NAMES: Record<string, string> = {
@@ -76,7 +74,7 @@ export async function handleGatewayRequest(req: GatewayRequest): Promise<Gateway
     const userMessage = parsed.messages?.[parsed.messages.length - 1]?.content || ''
 
     let reply: string
-    switch (CHAT_MODE) {
+    switch (getChatMode()) {
       case 'echo':
         reply = `[mock:${agentName}] ${userMessage}`
         break
@@ -168,7 +166,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   json(res, response.body, response.status)
 }
 
-export function startGateway(): Promise<void> {
+export function startGateway(port = getGatewayPort()): Promise<void> {
+  const chatMode = getChatMode()
+
   return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
       handleRequest(req, res).catch((err) => {
@@ -179,16 +179,16 @@ export function startGateway(): Promise<void> {
 
     server.on('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE') {
-        console.error(`[gateway] Port ${PORT} is already in use`)
+        console.error(`[gateway] Port ${port} is already in use`)
         reject(err)
       } else {
         reject(err)
       }
     })
 
-    server.listen(PORT, '127.0.0.1', () => {
-      console.log(`[gateway] Mock OpenClaw gateway listening on http://127.0.0.1:${PORT}`)
-      console.log(`[gateway] Chat mode: ${CHAT_MODE}`)
+    server.listen(port, '127.0.0.1', () => {
+      console.log(`[gateway] Mock OpenClaw gateway listening on http://127.0.0.1:${port}`)
+      console.log(`[gateway] Chat mode: ${chatMode}`)
       resolve()
     })
 
