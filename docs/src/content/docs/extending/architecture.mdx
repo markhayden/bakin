@@ -1,0 +1,14 @@
+---
+title: Architecture
+description: How Bakin's host, plugins, runtime adapter, and search adapter fit together.
+---
+
+import ArchitectureFlow from '../../../components/ArchitectureFlow'
+
+Bakin is a Bun process with a React host shell, a plugin registry, a shared service spine, an MCP tool server, and adapter boundaries for runtime and search. Extension points register intent; Bakin keeps ownership of routing, permissions, search tables, live events, and adapter lifecycle.
+
+<ArchitectureFlow client:load />
+
+## Extension Contract
+
+Plugins contribute capabilities; Bakin owns orchestration. That keeps the runtime and search machinery consistent while still letting plugins reshape the product.

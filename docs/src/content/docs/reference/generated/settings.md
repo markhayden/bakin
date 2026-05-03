@@ -7,6 +7,40 @@ description: Generated reference for Bakin core settings defaults.
   <p>Bakin starts with these values, then deep-merges anything you set in <code>settings.json</code>. Use this page when you need the exact key for CLI updates, automation, or troubleshooting.</p>
 </div>
 
+## AgentPackages
+
+<table class="settings-defaults-table">
+  <thead>
+    <tr><th>Key</th><th>Default</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>agentPackages.knowledgeRetrieval.enabled</code></td>
+      <td><code>true</code></td>
+    </tr>
+    <tr>
+      <td><code>agentPackages.knowledgeRetrieval.injectIntoDispatch</code></td>
+      <td><code>true</code></td>
+    </tr>
+    <tr>
+      <td><code>agentPackages.knowledgeRetrieval.maxCharacters</code></td>
+      <td><code>8000</code></td>
+    </tr>
+    <tr>
+      <td><code>agentPackages.knowledgeRetrieval.maxLessons</code></td>
+      <td><code>3</code></td>
+    </tr>
+    <tr>
+      <td><code>agentPackages.knowledgeRetrieval.mcpTool</code></td>
+      <td><code>true</code></td>
+    </tr>
+    <tr>
+      <td><code>agentPackages.knowledgeRetrieval.minScore</code></td>
+      <td><code>0</code></td>
+    </tr>
+  </tbody>
+</table>
+
 ## Dispatch
 
 <table class="settings-defaults-table">
@@ -319,5 +353,5 @@ description: Generated reference for Bakin core settings defaults.
 
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Apr 30, 2026 · Bakin 1.0.0</span>
+  <span>Generated May 2, 2026 · Bakin 1.0.0</span>
 </aside>

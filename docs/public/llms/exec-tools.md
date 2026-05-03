@@ -400,6 +400,27 @@ mcporter call bakin-<agent>.bakin_exec_heartbeat --args '{
 }'
 ```
 
+## Knowledge
+
+### bakin_exec_knowledge_search
+
+Label: Searched package knowledge
+Purpose: Search the enabled agent-package knowledge lessons for the calling agent.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `query` | string | yes | Search query |
+| `limit` | number | no | Max lessons to return (default from settings, max 10) |
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_knowledge_search --args '{
+  "query": "value",
+  "limit": 20
+}'
+```
+
 ## Log
 
 Logging tools record progress updates in Bakin task history and audit surfaces.
