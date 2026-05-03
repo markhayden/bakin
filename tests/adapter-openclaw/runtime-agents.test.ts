@@ -68,4 +68,22 @@ describe('OpenClaw runtime agents', () => {
     expect(existsSync(mainAgentDir)).toBe(true)
     expect(existsSync(mainWorkspaceDir)).toBe(true)
   })
+
+  it('surfaces OpenClaw stderr on non-missing-agent delete failures', async () => {
+    const fakeOpenClaw = join(testDir, 'openclaw')
+    writeFileSync(fakeOpenClaw, '#!/bin/sh\necho "permission denied pruning agent" >&2\nexit 13\n')
+    chmodSync(fakeOpenClaw, 0o755)
+
+    const agentDir = join(testDir, 'agents', 'patch')
+    const workspaceDir = join(testDir, 'workspaces', 'patch')
+    mkdirSync(agentDir, { recursive: true })
+    mkdirSync(workspaceDir, { recursive: true })
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: fakeOpenClaw } })
+
+    await expect(runtime.agents.remove('patch')).rejects.toThrow(/permission denied pruning agent/)
+    expect(existsSync(agentDir)).toBe(true)
+    expect(existsSync(workspaceDir)).toBe(true)
+  })
 })

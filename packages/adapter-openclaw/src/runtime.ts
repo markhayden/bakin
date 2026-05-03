@@ -953,8 +953,12 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   private async exec(args: string[]): Promise<string> {
-    const { stdout } = await execFileAsync(this.settings.binaryPath, args, { timeout: 15000 })
-    return stdout
+    try {
+      const { stdout } = await execFileAsync(this.settings.binaryPath, args, { timeout: 60000 })
+      return stdout
+    } catch (err) {
+      throw enrichOpenClawExecError(err, this.settings.binaryPath, args)
+    }
   }
 }
 
@@ -1437,6 +1441,26 @@ function pruneConventionalAgentDirs(agentId: string): void {
   ]) {
     if (existsSync(dir)) rmSync(dir, { recursive: true, force: true })
   }
+}
+
+function enrichOpenClawExecError(err: unknown, binaryPath: string, args: string[]): Error {
+  const source = err as {
+    message?: string
+    stdout?: string | Buffer
+    stderr?: string | Buffer
+    code?: unknown
+    signal?: unknown
+    killed?: unknown
+  }
+  const details = [
+    source.message || `Command failed: ${binaryPath} ${args.join(' ')}`,
+    source.stderr ? `stderr:\n${String(source.stderr).trim()}` : '',
+    source.stdout ? `stdout:\n${String(source.stdout).trim()}` : '',
+    source.code !== undefined ? `exitCode: ${String(source.code)}` : '',
+    source.signal !== undefined ? `signal: ${String(source.signal)}` : '',
+    source.killed !== undefined ? `killed: ${String(source.killed)}` : '',
+  ].filter(Boolean)
+  return new Error(details.join('\n'))
 }
 
 function readGatewayToken(): string | null {
