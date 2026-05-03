@@ -570,6 +570,37 @@ curl -sS \
 ```
 </OpenApiReference>
 
+## Git
+
+<OpenApiReference tag="Git" summary />
+
+<OpenApiReference operationId="git.get.worktrees">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/git/worktrees?repoPath=<repoPath>&taskId=<taskId>&includeReleased=<includeReleased>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="git.post.worktrees-prepare">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/git/worktrees/prepare' \
+  -H 'Content-Type: application/json' \
+  --data '{"repoPath":"value","taskId":"value","branch":"value","baseRef":"value","purpose":"value","agent":"value"}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="git.post.worktrees-release">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/git/worktrees/release' \
+  -H 'Content-Type: application/json' \
+  --data '"value"'
+```
+</OpenApiReference>
+
 ## Health
 
 <OpenApiReference tag="Health" summary />
@@ -1441,5 +1472,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 2, 2026 · Bakin 1.0.0</span>
+  <span>Generated May 1, 2026 · Bakin 1.0.0</span>
 </aside>

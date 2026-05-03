@@ -95,7 +95,7 @@ mock.module('../../src/core/task-store', () => ({
 
 import { validateRouteContracts } from '../../scripts/docs/route-contract-check-lib'
 
-const IN_REPO_PLUGINS = ['assets', 'health', 'memory', 'models', 'schedule', 'tasks', 'team', 'workflows'] as const
+const IN_REPO_PLUGINS = ['assets', 'git', 'health', 'memory', 'models', 'schedule', 'tasks', 'team', 'workflows'] as const
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })

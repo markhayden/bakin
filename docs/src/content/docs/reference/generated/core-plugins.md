@@ -20,6 +20,13 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>none</td>
     </tr>
     <tr>
+      <td>Git<br/><span>Git worktree isolation for agent code work</span></td>
+      <td><code>git</code></td>
+      <td>Core</td>
+      <td><code>1.0.0</code></td>
+      <td>none</td>
+    </tr>
+    <tr>
       <td>Health<br/><span>System health dashboard — MCP stats, diagnostics, and uptime</span></td>
       <td><code>health</code></td>
       <td>Core</td>
@@ -86,5 +93,5 @@ description: Generated catalog of official plugins supported by Bakin.
 </table>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 2, 2026 · Bakin 1.0.0</span>
+  <span>Generated May 1, 2026 · Bakin 1.0.0</span>
 </aside>

@@ -1,0 +1,57 @@
+{
+  "id": "git",
+  "name": "Git",
+  "version": "1.0.0",
+  "bakin": ">=1.0.0",
+  "description": "Git worktree isolation for agent code work",
+  "entry": {
+    "server": "index.ts"
+  },
+  "contentFiles": [],
+  "secrets": [],
+  "tests": "tests/",
+  "dependencies": [],
+  "permissions": [
+    "storage.read",
+    "storage.write"
+  ],
+  "contributes": {
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/worktrees",
+        "summary": "List git worktrees tracked by Bakin"
+      },
+      {
+        "method": "POST",
+        "path": "/worktrees/prepare",
+        "summary": "Create or reuse an isolated git worktree for a task"
+      },
+      {
+        "method": "POST",
+        "path": "/worktrees/release",
+        "summary": "Release a tracked git worktree after task work is complete"
+      }
+    ],
+    "execTools": [
+      {
+        "name": "bakin_exec_git_prepare_worktree",
+        "summary": "Create or reuse an isolated git worktree for a task",
+        "description": "Create or reuse an isolated git worktree for a task. Validates the repo is under an allowed root, creates a task branch, records the worktree, and returns the path to use for code edits."
+      },
+      {
+        "name": "bakin_exec_git_status",
+        "summary": "List tracked git worktrees and their dirty state",
+        "description": "List Bakin-tracked git worktrees, optionally filtered by repoPath or taskId, including branch, path, existence, and git status output."
+      },
+      {
+        "name": "bakin_exec_git_release_worktree",
+        "summary": "Release a tracked git worktree",
+        "description": "Release a tracked git worktree. Refuses to remove dirty worktrees unless force=true is supplied."
+      }
+    ],
+    "docs": {
+      "slug": "using/git"
+    }
+  }
+}

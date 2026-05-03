@@ -170,6 +170,28 @@ mcporter call bakin-<agent>.bakin_exec_get_step --args '{
 </McpToolCard>
 </div>
 
+## Git
+
+<p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
+
+<div class="mcp-tool-list">
+<McpToolCard id="git-prepare-worktree" name="bakin_exec_git_prepare_worktree" label="Prepared git worktree" description="Create or reuse an isolated git worktree for a task. Call this before editing code for a Bakin task." source="plugins/git/index.ts:639">
+```sh frame="terminal"
+mcporter call bakin-<agent>.bakin_exec_git_prepare_worktree
+```
+</McpToolCard>
+<McpToolCard id="git-release-worktree" name="bakin_exec_git_release_worktree" label="Released git worktree" description="Release a tracked git worktree. Refuses dirty removal unless force=true." source="plugins/git/index.ts:654">
+```sh frame="terminal"
+mcporter call bakin-<agent>.bakin_exec_git_release_worktree
+```
+</McpToolCard>
+<McpToolCard id="git-status" name="bakin_exec_git_status" label="Checked git worktrees" description="List Bakin-tracked git worktrees and their dirty state." source="plugins/git/index.ts:647">
+```sh frame="terminal"
+mcporter call bakin-<agent>.bakin_exec_git_status
+```
+</McpToolCard>
+</div>
+
 ## Health
 
 <p class="mcp-section-description">Health tools let agents check whether Bakin is running correctly before or during work.</p>
@@ -1053,5 +1075,5 @@ mcporter call bakin-<agent>.bakin_exec_workflows_start --args '{
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 2, 2026 · Bakin 1.0.0</span>
+  <span>Generated May 1, 2026 · Bakin 1.0.0</span>
 </aside>

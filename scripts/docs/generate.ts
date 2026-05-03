@@ -1692,7 +1692,7 @@ const apiReferenceGroups = new Map<string, Array<{ operationId: string; curl: st
   const { buildOperation, normalizeOpenApiPath } = await import('../../packages/core/src/openapi')
   const { coreRoutes: typedCoreRoutes } = await import('../../packages/host/src/core-routes')
 
-  const inRepoPluginIds = ['assets', 'health', 'memory', 'models', 'schedule', 'tasks', 'team', 'workflows']
+  const inRepoPluginIds = ['assets', 'git', 'health', 'memory', 'models', 'schedule', 'tasks', 'team', 'workflows']
   const sources: Array<{ scope: string; tag: string; fullPath: string; route: any }> = []
   for (const id of inRepoPluginIds) {
     const mod = await import(join(repoRoot, 'plugins', id, 'index.ts')) as { default?: { name?: string; routes?: any[] } }
