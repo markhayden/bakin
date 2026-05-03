@@ -34,7 +34,7 @@
     },
     "execTools": {
       "status": "audited",
-      "count": 107,
+      "count": 108,
       "source": "source scan"
     },
     "corePlugins": {
@@ -44,7 +44,7 @@
     },
     "settings": {
       "status": "active",
-      "count": 50,
+      "count": 56,
       "source": "packages/core/src/settings.ts"
     },
     "sdkSubpaths": {
