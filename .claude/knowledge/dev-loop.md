@@ -92,6 +92,26 @@ Three env-checks ensure `BAKIN_DEV` never leaks into the compiled binary:
 
 The dev-client bundle itself is disk-only — written to `packages/host/public/__bakin-dev/client.js`, gitignored, naturally excluded from `scripts/generate-embedded-assets.ts` (which only descends into explicitly-walked subdirectories under `public/`). It can never ship in a compiled binary.
 
+## Imitation Crab
+
+`bun run dev:mock` starts the OpenClaw-compatible mock under
+`dev/imitation-crab/`. The mock is still a development harness, not a production
+runtime adapter: Bakin talks to it through the OpenClaw adapter by setting
+`OPENCLAW_HOME` and `OPENCLAW_PATH`.
+
+Runtime knobs:
+
+- `IMITATION_CRAB_HOME` / `OPENCLAW_MOCK_HOME` — mock home directory. Default:
+  `~/.imitationcrab`.
+- `IMITATION_CRAB_PORT` / `OPENCLAW_MOCK_PORT` — mock gateway port. Default:
+  `18789`.
+- `OPENCLAW_MOCK_CHAT_MODE` — `canned`, `echo`, or `error`.
+- `OPENCLAW_MOCK_FORCE=1` — bypasses the safety check that refuses to run when
+  a real OpenClaw binary/config/gateway is detected.
+
+`bun run mock:seed --force` removes the configured mock home before copying
+fixtures, so stale fixture files cannot survive a re-seed.
+
 ## One-React-instance invariant
 
 The shell and every plugin share React via the import map:

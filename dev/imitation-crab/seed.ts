@@ -1,83 +1,86 @@
 /**
- * Filesystem seeder — creates ~/.imitationcrab/ with all fixture data.
+ * Filesystem seeder — creates the configured mock home with all fixture data.
  * Idempotent: skips if directory already exists (use --force to re-seed).
  */
-import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync, rmSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
-import { homedir } from 'os'
 import { initBakinHome } from '../../packages/core/src/content-dir'
+import { getMockHome } from './env'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const MOCK_HOME = join(homedir(), '.imitationcrab')
 const FIXTURES_DIR = join(__dirname, 'fixtures')
 
-export function getMockHome(): string {
-  return MOCK_HOME
-}
+export { getMockHome }
 
 export function seed(force = false): void {
-  if (existsSync(MOCK_HOME) && !force) {
-    console.log(`[seed] ${MOCK_HOME} already exists — skipping (use --force to re-seed)`)
+  const mockHome = getMockHome()
+
+  if (existsSync(mockHome) && !force) {
+    console.log(`[seed] ${mockHome} already exists — skipping (use --force to re-seed)`)
     return
   }
 
-  console.log(`[seed] Creating ${MOCK_HOME}`)
+  if (force) {
+    rmSync(mockHome, { recursive: true, force: true })
+  }
+
+  console.log(`[seed] Creating ${mockHome}`)
 
   // Create Bakin content structure (assets/, workflows/, settings.json, etc.)
-  initBakinHome(MOCK_HOME)
+  initBakinHome(mockHome)
 
   // Create directory structure
-  mkdirSync(join(MOCK_HOME, 'agents', 'main', 'agent'), { recursive: true })
-  mkdirSync(join(MOCK_HOME, 'cron', 'runs'), { recursive: true })
-  mkdirSync(join(MOCK_HOME, 'workspace'), { recursive: true })
-  mkdirSync(join(MOCK_HOME, 'bin'), { recursive: true })
+  mkdirSync(join(mockHome, 'agents', 'main', 'agent'), { recursive: true })
+  mkdirSync(join(mockHome, 'cron', 'runs'), { recursive: true })
+  mkdirSync(join(mockHome, 'workspace'), { recursive: true })
+  mkdirSync(join(mockHome, 'bin'), { recursive: true })
 
   // Copy fixtures
-  cpSync(join(FIXTURES_DIR, 'openclaw.json'), join(MOCK_HOME, 'openclaw.json'))
-  cpSync(join(FIXTURES_DIR, 'auth-profiles.json'), join(MOCK_HOME, 'agents', 'main', 'agent', 'auth-profiles.json'))
-  cpSync(join(FIXTURES_DIR, 'jobs.json'), join(MOCK_HOME, 'cron', 'jobs.json'))
+  cpSync(join(FIXTURES_DIR, 'openclaw.json'), join(mockHome, 'openclaw.json'))
+  cpSync(join(FIXTURES_DIR, 'auth-profiles.json'), join(mockHome, 'agents', 'main', 'agent', 'auth-profiles.json'))
+  cpSync(join(FIXTURES_DIR, 'jobs.json'), join(mockHome, 'cron', 'jobs.json'))
 
   // Copy run history
-  cpSync(join(FIXTURES_DIR, 'runs'), join(MOCK_HOME, 'cron', 'runs'), { recursive: true })
+  cpSync(join(FIXTURES_DIR, 'runs'), join(mockHome, 'cron', 'runs'), { recursive: true })
 
   // Copy main workspace
-  cpSync(join(FIXTURES_DIR, 'workspace'), join(MOCK_HOME, 'workspace'), { recursive: true })
+  cpSync(join(FIXTURES_DIR, 'workspace'), join(mockHome, 'workspace'), { recursive: true })
 
   // Copy Bakin-specific mock content (workflow defs, instances, assets)
   const bakinFixtures = join(FIXTURES_DIR, 'bakin')
   if (existsSync(bakinFixtures)) {
-    cpSync(bakinFixtures, MOCK_HOME, { recursive: true })
+    cpSync(bakinFixtures, mockHome, { recursive: true })
   }
 
   // Copy subagent workspaces
   const subagents = ['pixel', 'rolo', 'basil', 'scout', 'nemo', 'zen', 'patch']
   for (const agent of subagents) {
     const src = join(FIXTURES_DIR, 'workspaces', agent)
-    const dest = join(MOCK_HOME, 'workspaces', agent)
+    const dest = join(mockHome, 'workspaces', agent)
     if (existsSync(src)) {
       cpSync(src, dest, { recursive: true })
     }
   }
 
   // Seed Bakin-owned task-store data.
-  seedTasks()
+  seedTasks(mockHome)
 
   // Create a sample gateway log for today
   seedGatewayLog()
 
   // Seed audit entries for watchdog recoveries into ~/.bakin/audit.jsonl
-  seedAuditLog()
+  seedAuditLog(mockHome)
 
-  console.log(`[seed] Done — ${MOCK_HOME} ready`)
+  console.log(`[seed] Done — ${mockHome} ready`)
 }
 
-function seedTasks(): void {
+function seedTasks(mockHome: string): void {
   const tasks = JSON.parse(readFileSync(join(FIXTURES_DIR, 'tasks.json'), 'utf-8')) as Array<{
     id: string
     createdAt?: string
   }>
-  const tasksRoot = join(MOCK_HOME, 'tasks')
+  const tasksRoot = join(mockHome, 'tasks')
 
   for (const task of tasks) {
     const shard = (task.createdAt || new Date().toISOString()).slice(0, 7)
@@ -106,9 +109,9 @@ function seedGatewayLog(): void {
   }
 }
 
-function seedAuditLog(): void {
-  const { appendFileSync, writeFileSync } = require('fs')
-  const bakinHome = process.env.BAKIN_HOME || MOCK_HOME
+function seedAuditLog(mockHome: string): void {
+  const { appendFileSync } = require('fs')
+  const bakinHome = process.env.BAKIN_HOME || mockHome
   const auditPath = join(bakinHome, 'audit.jsonl')
 
   // Watchdog recovery audit entries matching the seeded tasks

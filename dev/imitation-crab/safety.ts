@@ -5,6 +5,7 @@
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
+import { getGatewayUrl } from './env'
 
 interface SafetyResult {
   safe: boolean
@@ -33,11 +34,12 @@ export async function checkSafety(): Promise<SafetyResult> {
 
   // 3. Check for running gateway
   try {
-    const res = await fetch('http://127.0.0.1:18789/health', {
+    const url = getGatewayUrl()
+    const res = await fetch(`${url}/health`, {
       signal: AbortSignal.timeout(2000),
     })
     if (res.ok) {
-      reasons.push('Gateway responding on :18789')
+      reasons.push(`Gateway responding on ${url}`)
     }
   } catch {
     // Not running — good

@@ -60,31 +60,30 @@ describe('mock gateway streaming', () => {
   })
 
   it('uses last message content for echo mode reply', async () => {
-    // Save and restore env
     const original = process.env.OPENCLAW_MOCK_CHAT_MODE
     process.env.OPENCLAW_MOCK_CHAT_MODE = 'echo'
 
-    // Need to re-import to pick up env change — but CHAT_MODE is read at module load.
-    // Instead, test that the content field is populated with something sensible.
-    const res = await handleGatewayRequest({
-      method: 'POST',
-      url: '/v1/chat/completions',
-      headers: { 'x-openclaw-agent-id': 'scout' },
-      body: JSON.stringify({
-        model: 'openclaw',
-        stream: true,
-        messages: [
-          { role: 'system', content: 'You are Scout' },
-          { role: 'user', content: 'Plan outdoor content' },
-        ],
-      }),
-    })
+    try {
+      const res = await handleGatewayRequest({
+        method: 'POST',
+        url: '/v1/chat/completions',
+        headers: { 'x-openclaw-agent-id': 'scout' },
+        body: JSON.stringify({
+          model: 'openclaw',
+          stream: true,
+          messages: [
+            { role: 'system', content: 'You are Scout' },
+            { role: 'user', content: 'Plan outdoor content' },
+          ],
+        }),
+      })
 
-    expect(res.status).toBe(200)
-    const body = res.body as Record<string, unknown>
-    expect(body.__stream).toBe(true)
-    expect(typeof body.content).toBe('string')
-
-    process.env.OPENCLAW_MOCK_CHAT_MODE = original
+      expect(res.status).toBe(200)
+      const body = res.body as Record<string, unknown>
+      expect(body.__stream).toBe(true)
+      expect(body.content).toBe('[mock:Scout] Plan outdoor content')
+    } finally {
+      process.env.OPENCLAW_MOCK_CHAT_MODE = original
+    }
   })
 })

@@ -240,7 +240,7 @@ Evidence to inspect:
 
 ### G. Imitation Crab / Dev Runtime
 
-Status: focused verification passed.
+Status: focused verification passed; first hardening slice in progress.
 
 Findings:
 
@@ -250,6 +250,10 @@ Findings:
   adapter or remains a deterministic dev harness.
 - **recommended direction:** build an adapter-like facade for dev/runtime tests
   only after #218 establishes the policy boundary it must simulate.
+- **first slice:** make the mock environment deterministic and testable before
+  adapterizing it. The seed path now honors a configured mock home, force re-seed
+  removes stale fixture state, the gateway port is configurable, and chat mode
+  validation fails loud.
 
 Evidence to inspect:
 
@@ -292,8 +296,10 @@ Evidence to inspect:
   - pass (130 tests).
 - `bun test tests/plugins/lifecycle/install-dependencies.test.ts tests/plugins/lifecycle/install-source-swap.test.ts tests/plugins/lifecycle/install-subpath.test.ts tests/plugins/lifecycle/upgrade-flow.integration.test.ts tests/plugins/lifecycle/remove-smoke.test.ts tests/plugins/lifecycle/registry-teardown-smoke.test.ts tests/api/plugins-install.test.ts tests/api/user-plugin-lifecycle.test.ts --isolate`
   - pass (52 tests).
-- `bun test tests/dev/mock-gateway.test.ts tests/dev/mock-gateway-streaming.test.ts tests/dev/mock-seed.test.ts tests/dev/mock-safety.test.ts --isolate`
-  - pass (21 tests).
+- `bun test tests/dev/mock-env.test.ts tests/dev/mock-seed.test.ts tests/dev/mock-gateway.test.ts tests/dev/mock-gateway-streaming.test.ts tests/dev/mock-safety.test.ts --isolate`
+  - pass (24 tests).
+- `bunx eslint dev/imitation-crab/env.ts dev/imitation-crab/gateway.ts dev/imitation-crab/index.ts dev/imitation-crab/safety.ts dev/imitation-crab/seed.ts tests/dev/mock-env.test.ts tests/dev/mock-seed.test.ts tests/dev/mock-gateway-streaming.test.ts`
+  - pass.
 - `bun test tests/cli/bakin.test.ts tests/cli/plugin-install-args.test.ts tests/cli/agents-packages.test.ts tests/cli/install-plugin-assets.test.ts tests/cli/install-agent-assets.test.ts tests/core/onboarding/index.test.ts tests/core/onboarding/runtime.test.ts tests/core/onboarding/plugin-assets.test.ts tests/core/onboarding/models.test.ts --isolate`
   - pass (96 tests).
 - `bun run typecheck` - pass.

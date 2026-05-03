@@ -112,10 +112,10 @@ scripts/                   Build + infrastructure (build-vendors, build-
 cli/                       Thin CLI entry point. Most commands go through
                            src/core/cli.ts inside the compiled binary.
 
-dev/imitation-crab/        OpenClaw-compatible runtime mock — seeds
-                           ~/.imitationcrab/ with fixtures and runs a mock
-                           gateway on :18789 for local dev without a real
-                           OpenClaw install.
+dev/imitation-crab/        OpenClaw-compatible runtime mock — seeds a mock
+                           home (default ~/.imitationcrab/) with fixtures and
+                           runs a mock gateway (default :18789) for local dev
+                           without a real OpenClaw install.
 ```
 
 ### Runtime data (`~/.bakin/`)
@@ -406,6 +406,10 @@ For mock dev without a real OpenClaw:
 bun run dev:mock          # seeds + launches Imitation Crab mock + Bakin
 bun run mock:seed --force # reseed fixtures
 ```
+
+Set `IMITATION_CRAB_HOME` or `IMITATION_CRAB_PORT` to isolate a mock run from
+the defaults. `OPENCLAW_MOCK_HOME` and `OPENCLAW_MOCK_PORT` are also accepted
+for compatibility with older scripts.
 
 ---
 
