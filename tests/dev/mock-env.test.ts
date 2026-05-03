@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { getChatMode, getGatewayPort, getGatewayUrl, getMockHome } from '../../dev/imitation-crab/env'
+import { getChatMode, getGatewayPort, getGatewayUrl, getMockHome, getToolMode } from '../../dev/imitation-crab/env'
 
 describe('imitation-crab env', () => {
   const originalEnv = { ...process.env }
@@ -20,11 +20,14 @@ describe('imitation-crab env', () => {
     expect(getGatewayUrl()).toBe('http://127.0.0.1:19001')
   })
 
-  it('fails loud on invalid gateway port and chat mode', () => {
+  it('fails loud on invalid gateway port, chat mode, and tool mode', () => {
     process.env.IMITATION_CRAB_PORT = 'not-a-port'
     expect(() => getGatewayPort()).toThrow('Invalid imitation-crab gateway port')
 
     process.env.OPENCLAW_MOCK_CHAT_MODE = 'surprise'
     expect(() => getChatMode()).toThrow('Invalid OPENCLAW_MOCK_CHAT_MODE')
+
+    process.env.OPENCLAW_MOCK_TOOL_MODE = 'surprise'
+    expect(() => getToolMode()).toThrow('Invalid OPENCLAW_MOCK_TOOL_MODE')
   })
 })

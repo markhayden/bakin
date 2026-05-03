@@ -6,7 +6,7 @@
  *   POST /tools/invoke
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'http'
-import { getChatMode, getGatewayPort } from './env'
+import { getChatMode, getGatewayPort, getToolMode } from './env'
 
 export interface ImitationCrabGateway {
   port: number
@@ -126,6 +126,16 @@ export async function handleGatewayRequest(req: GatewayRequest): Promise<Gateway
 
     console.log(`  → tool=${parsed.tool || 'unknown'} args=${JSON.stringify(parsed.args || {}).slice(0, 100)}`)
 
+    if (getToolMode() === 'error') {
+      return {
+        status: 500,
+        body: {
+          error: 'Mock tool error mode',
+          tool: parsed.tool || 'unknown',
+        },
+      }
+    }
+
     return { status: 200, body: { ok: true, mock: true } }
   }
 
@@ -178,6 +188,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
 export function startGateway(port = getGatewayPort(), options: StartGatewayOptions = {}): Promise<ImitationCrabGateway> {
   const chatMode = getChatMode()
+  const toolMode = getToolMode()
   const registerSignals = options.registerSignals ?? true
 
   return new Promise((resolve, reject) => {
@@ -220,6 +231,7 @@ export function startGateway(port = getGatewayPort(), options: StartGatewayOptio
       const url = `http://127.0.0.1:${port}`
       console.log(`[gateway] Mock OpenClaw gateway listening on ${url}`)
       console.log(`[gateway] Chat mode: ${chatMode}`)
+      console.log(`[gateway] Tool mode: ${toolMode}`)
       if (registerSignals) {
         process.on('SIGINT', shutdown)
         process.on('SIGTERM', shutdown)
