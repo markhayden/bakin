@@ -6,6 +6,7 @@ import type {
   HttpMethod,
   PluginContributions,
   PluginManifest,
+  PluginManifestSignature,
   PluginPermission,
   RuntimeCapability,
   SettingsContribution,
@@ -74,6 +75,14 @@ function stringArrayField(obj: Record<string, unknown>, key: string): string[] |
     if (!out.includes(item)) out.push(item)
   }
   return out
+}
+
+function signatureStringField(obj: Record<string, unknown>, key: string): string {
+  const value = obj[key]
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new PluginManifestError(`bakin-plugin.json field "signature.${key}" must be a non-empty string`)
+  }
+  return value
 }
 
 function recordField(obj: Record<string, unknown>, key: string, label: string): Record<string, unknown> | undefined {
@@ -236,6 +245,23 @@ function parseContributions(input: unknown): PluginContributions | undefined {
   return out
 }
 
+function parseSignature(raw: unknown): PluginManifestSignature | undefined {
+  if (raw === undefined || raw === null) return undefined
+  if (!isRecord(raw)) {
+    throw new PluginManifestError('bakin-plugin.json field "signature" must be an object')
+  }
+  const algorithm = signatureStringField(raw, 'algorithm')
+  if (algorithm !== 'ed25519') {
+    throw new PluginManifestError('bakin-plugin.json field "signature.algorithm" must be "ed25519"')
+  }
+  return {
+    algorithm,
+    signer: signatureStringField(raw, 'signer'),
+    publicKey: signatureStringField(raw, 'publicKey'),
+    signature: signatureStringField(raw, 'signature'),
+  }
+}
+
 export function parsePluginManifest(raw: unknown, options: ParsePluginManifestOptions = {}): PluginManifest {
   if (!isRecord(raw)) {
     throw new PluginManifestError('bakin-plugin.json must contain a JSON object')
@@ -285,6 +311,7 @@ export function parsePluginManifest(raw: unknown, options: ParsePluginManifestOp
     runtimeCapabilities,
     contributes: parseContributions(raw.contributes),
     devWatch: stringArrayField(raw, 'devWatch'),
+    signature: parseSignature(raw.signature),
   }
 }
 

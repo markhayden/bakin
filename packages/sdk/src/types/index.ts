@@ -167,6 +167,16 @@ export interface PluginContributions {
   docs?: DocsContribution
 }
 
+export interface PluginManifestSignature {
+  algorithm: 'ed25519'
+  /** Human-readable signer label. Trust is bound to publicKey/fingerprint, not this label. */
+  signer: string
+  /** Base64-encoded Ed25519 SPKI DER public key. */
+  publicKey: string
+  /** Base64-encoded signature over the canonical manifest without this signature block. */
+  signature: string
+}
+
 export interface PluginManifest {
   id: string
   name: string
@@ -182,6 +192,7 @@ export interface PluginManifest {
   runtimeCapabilities?: RuntimeCapability[]
   contributes?: PluginContributions
   devWatch?: string[]
+  signature?: PluginManifestSignature
 }
 
 // ---------------------------------------------------------------------------

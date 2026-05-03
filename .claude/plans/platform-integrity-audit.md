@@ -154,9 +154,13 @@ Findings:
 
 - **non-issue / already covered:** install, source-swap, subpath, upgrade,
   remove, registry teardown, and plugin install API tests pass.
-- **later / product-dependent:** #164 signature verification, #165 uninstalled
-  restore/retention, and #178 SDK publish matter for distribution polish, but
-  they do not block the higher-risk MCP/context work.
+- **fixed in follow-up slice:** #164 signature verification now has a
+  fail-closed policy path for install, dev-link, and upgrade when
+  `plugins.requireSignatures` is enabled. Default trust-on-first-use behavior
+  remains unchanged.
+- **later / product-dependent:** #165 uninstalled restore/retention and #178
+  SDK publish matter for distribution polish, but they do not block the
+  higher-risk MCP/context work.
 - **should-fix before broader third-party plugin push:** plugin docs should
   eventually describe how plugin exec tools participate in agent policy once
   #218 lands.

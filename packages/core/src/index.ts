@@ -27,6 +27,7 @@ export type {
   PluginContext,
   BakinPlugin,
   PluginManifest,
+  PluginManifestSignature,
   PluginEntry,
   BakinConfig,
 } from './plugin-types'
@@ -37,6 +38,13 @@ export {
   readPluginManifestJson,
 } from './plugins/manifest'
 export type { ParsePluginManifestOptions } from './plugins/manifest'
+export {
+  PluginSignatureError,
+  canonicalizePluginManifestForSignature,
+  pluginSignatureFingerprint,
+  verifyPluginManifestSignature,
+} from './plugins/signatures'
+export type { PluginSignaturePolicy, PluginSignatureVerification } from './plugins/signatures'
 export {
   PermissionDenied,
   PERMISSION_DESCRIPTIONS,
