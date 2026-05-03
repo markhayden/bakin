@@ -341,6 +341,47 @@ mcporter call bakin-<agent>.bakin_exec_get_step --args '{
 }'
 ```
 
+## Git
+
+### bakin_exec_git_prepare_worktree
+
+Label: Prepared git worktree
+Purpose: Create or reuse an isolated git worktree for a task. Call this before editing code for a Bakin task.
+
+Arguments: none.
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_git_prepare_worktree
+```
+
+### bakin_exec_git_release_worktree
+
+Label: Released git worktree
+Purpose: Release a tracked git worktree. Refuses dirty removal unless force=true.
+
+Arguments: none.
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_git_release_worktree
+```
+
+### bakin_exec_git_status
+
+Label: Checked git worktrees
+Purpose: List Bakin-tracked git worktrees and their dirty state.
+
+Arguments: none.
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_git_status
+```
+
 ## Health
 
 Health tools let agents check whether Bakin is running correctly before or during work.

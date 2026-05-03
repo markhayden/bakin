@@ -74,7 +74,7 @@ const log = createLogger('agent-pkg:install')
 // ─── Public types ────────────────────────────────────────────────────────────
 
 export interface InstallOptions {
-  /** Source spec — local path or `github:user/repo[@ref]`. */
+  /** Source spec — local path or `github:user/repo[@ref][#subpath]`. */
   source: string
   /**
    * Force adoption of an existing runtime agent rather than creating a

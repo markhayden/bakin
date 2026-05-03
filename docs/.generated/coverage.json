@@ -5,7 +5,7 @@
     "cliCommands": {
       "status": "active",
       "count": 59,
-      "examples": 60,
+      "examples": 61,
       "source": "src/core/cli/registry.ts"
     },
     "httpRoutes": {
@@ -34,12 +34,12 @@
     },
     "execTools": {
       "status": "audited",
-      "count": 108,
+      "count": 111,
       "source": "source scan"
     },
     "corePlugins": {
       "status": "active",
-      "count": 8,
+      "count": 9,
       "source": "plugins/*/bakin-plugin.json"
     },
     "settings": {

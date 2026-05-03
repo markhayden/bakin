@@ -49,12 +49,12 @@ import CliCommandCard from '../../../../components/CliCommandCard.astro'
 <div class="cli-command-list">
 <CliCommandCard id="agents-install" name="agents install" summary="Install an agent package." description="Installs or adopts an agent package into Bakin/runtime-managed agent state.">
 ```sh frame="terminal"
-bakin agents install <path|github:user/repo[@ref]> [--adopt] [--install-as <id>] [--replace]
+bakin agents install <path|github:user/repo[@ref][#subpath]> [--adopt] [--install-as <id>] [--replace]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
-      <tr><td><code>&lt;source&gt;</code><span class="cli-command__choices"><span>path</span><span>github:user/repo[@ref]</span></span></td><td>choice</td><td>yes</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>&lt;source&gt;</code><span class="cli-command__choices"><span>path</span><span>github:user/repo[@ref][#subpath]</span></span></td><td>choice</td><td>yes</td><td>Choose one of these values.</td></tr>
       <tr><td><code>[--adopt]</code></td><td>option</td><td>no</td><td>Adopt an existing runtime agent.</td></tr>
       <tr><td><code>[--install-as &lt;id&gt;]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
       <tr><td><code>[--replace]</code></td><td>option</td><td>no</td><td>Replace an existing install.</td></tr>
@@ -100,12 +100,12 @@ bakin agents knowledge <list|enable|disable> ...
 </CliCommandCard>
 <CliCommandCard id="packages-install" name="packages install" summary="Install a package." description="Installs a standalone package.">
 ```sh frame="terminal"
-bakin packages install <path|github:user/repo[@ref]> [--install-as <id>] [--replace]
+bakin packages install <path|github:user/repo[@ref][#subpath]> [--install-as <id>] [--replace]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
-      <tr><td><code>&lt;source&gt;</code><span class="cli-command__choices"><span>path</span><span>github:user/repo[@ref]</span></span></td><td>choice</td><td>yes</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>&lt;source&gt;</code><span class="cli-command__choices"><span>path</span><span>github:user/repo[@ref][#subpath]</span></span></td><td>choice</td><td>yes</td><td>Choose one of these values.</td></tr>
       <tr><td><code>[--install-as &lt;id&gt;]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
       <tr><td><code>[--replace]</code></td><td>option</td><td>no</td><td>Replace an existing install.</td></tr>
     </tbody>
@@ -732,5 +732,5 @@ bakin workflows submit <taskId> <stepId> <json>
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 2, 2026 · Bakin 1.0.0</span>
+  <span>Generated May 1, 2026 · Bakin 1.0.0</span>
 </aside>
