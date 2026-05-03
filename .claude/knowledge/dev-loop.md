@@ -120,6 +120,10 @@ and intercepts fetches to the mock gateway in-process. Use
 `startGateway: true` only for manual/server smoke tests where binding a local
 port is part of what you need to verify.
 
+`tests/dev/mock-runtime-contract.test.ts` is the baseline runtime contract suite
+for the harness. Add new runtime-surface expectations there when adapter-backed
+features expand instead of creating one-off mock smoke tests.
+
 ## One-React-instance invariant
 
 The shell and every plugin share React via the import map:

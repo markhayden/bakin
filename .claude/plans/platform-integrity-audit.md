@@ -258,6 +258,9 @@ Findings:
   OpenClaw runtime adapter plus mock search, normalize the seeded main workspace
   into the mock home, and fix the OpenClaw config cache so swapping
   `OPENCLAW_HOME` cannot reuse a same-mtime config from another path.
+- **third slice:** add a runtime contract suite against that harness covering
+  roster, workspace files, skills, messaging, streaming, tool invocation,
+  channels, cron create/update/run/remove, and task execution status.
 
 Evidence to inspect:
 
@@ -304,7 +307,9 @@ Evidence to inspect:
   - pass (24 tests).
 - `bun test tests/dev/mock-harness.test.ts tests/adapter-openclaw/config-cache.test.ts tests/dev/mock-env.test.ts tests/dev/mock-seed.test.ts tests/dev/mock-gateway.test.ts tests/dev/mock-gateway-streaming.test.ts tests/dev/mock-safety.test.ts --isolate`
   - pass (27 tests).
-- `bunx eslint dev/imitation-crab/cli-shim-install.ts dev/imitation-crab/env.ts dev/imitation-crab/gateway.ts dev/imitation-crab/harness.ts dev/imitation-crab/index.ts dev/imitation-crab/safety.ts dev/imitation-crab/seed.ts packages/adapter-openclaw/src/config.ts tests/adapter-openclaw/config-cache.test.ts tests/dev/mock-env.test.ts tests/dev/mock-gateway-streaming.test.ts tests/dev/mock-harness.test.ts tests/dev/mock-seed.test.ts`
+- `bun test tests/dev/mock-runtime-contract.test.ts tests/dev/mock-harness.test.ts --isolate`
+  - pass (4 tests).
+- `bunx eslint dev/imitation-crab/cli-shim-install.ts dev/imitation-crab/env.ts dev/imitation-crab/gateway.ts dev/imitation-crab/harness.ts dev/imitation-crab/index.ts dev/imitation-crab/safety.ts dev/imitation-crab/seed.ts packages/adapter-openclaw/src/config.ts tests/adapter-openclaw/config-cache.test.ts tests/dev/mock-env.test.ts tests/dev/mock-gateway-streaming.test.ts tests/dev/mock-harness.test.ts tests/dev/mock-runtime-contract.test.ts tests/dev/mock-seed.test.ts`
   - pass.
 - `bun test tests/cli/bakin.test.ts tests/cli/plugin-install-args.test.ts tests/cli/agents-packages.test.ts tests/cli/install-plugin-assets.test.ts tests/cli/install-agent-assets.test.ts tests/core/onboarding/index.test.ts tests/core/onboarding/runtime.test.ts tests/core/onboarding/plugin-assets.test.ts tests/core/onboarding/models.test.ts --isolate`
   - pass (96 tests).
