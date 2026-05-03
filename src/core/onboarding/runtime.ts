@@ -102,15 +102,16 @@ export function validateRuntimeIntegrity(config: RuntimeConfigForIntegrity | nul
     }
   }
 
-  // 3. Duplicate resolved workspaces — resolve via `agent.workspace ??
-  //    defaults.workspace`. Agents with no resolved workspace are skipped
-  //    because there's nothing for them to collide with.
+  // 3. Duplicate resolved workspaces. The OpenClaw adapter uses
+  //    `agents.defaults.workspace` only for main; subagents without an explicit
+  //    workspace resolve to adapter-owned per-agent paths, so they are skipped
+  //    here rather than treated as collisions on the main workspace.
   const defaultWorkspace = config.agents?.defaults?.workspace ?? null
   const firstOwner = new Map<string, string>()
   for (const agent of list) {
     const id = agent?.id
     if (typeof id !== 'string' || id.length === 0) continue
-    const resolved = agent?.workspace ?? defaultWorkspace
+    const resolved = agent?.workspace ?? (id === 'main' ? defaultWorkspace : null)
     if (!resolved) continue
     const existing = firstOwner.get(resolved)
     if (existing && existing !== id) {
