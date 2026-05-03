@@ -106,6 +106,7 @@ Runtime knobs:
 - `IMITATION_CRAB_PORT` / `OPENCLAW_MOCK_PORT` — mock gateway port. Default:
   `18789`.
 - `OPENCLAW_MOCK_CHAT_MODE` — `canned`, `echo`, or `error`.
+- `OPENCLAW_MOCK_TOOL_MODE` — `ok` or `error`.
 - `OPENCLAW_MOCK_FORCE=1` — bypasses the safety check that refuses to run when
   a real OpenClaw binary/config/gateway is detected.
 
@@ -121,8 +122,9 @@ and intercepts fetches to the mock gateway in-process. Use
 port is part of what you need to verify.
 
 `tests/dev/mock-runtime-contract.test.ts` is the baseline runtime contract suite
-for the harness. Add new runtime-surface expectations there when adapter-backed
-features expand instead of creating one-off mock smoke tests.
+for the harness. `tests/dev/mock-runtime-failure-contract.test.ts` covers the
+adapter-facing failure contract. Add new runtime-surface expectations there when
+adapter-backed features expand instead of creating one-off mock smoke tests.
 
 ## One-React-instance invariant
 

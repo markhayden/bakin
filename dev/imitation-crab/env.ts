@@ -2,9 +2,11 @@ import { homedir } from 'os'
 import { join } from 'path'
 
 export type MockChatMode = 'canned' | 'echo' | 'error'
+export type MockToolMode = 'ok' | 'error'
 
 const DEFAULT_PORT = 18789
 const CHAT_MODES = new Set<MockChatMode>(['canned', 'echo', 'error'])
+const TOOL_MODES = new Set<MockToolMode>(['ok', 'error'])
 
 export function getMockHome(): string {
   return process.env.IMITATION_CRAB_HOME
@@ -33,4 +35,12 @@ export function getChatMode(): MockChatMode {
     throw new Error(`Invalid OPENCLAW_MOCK_CHAT_MODE: ${mode}`)
   }
   return mode as MockChatMode
+}
+
+export function getToolMode(): MockToolMode {
+  const mode = process.env.OPENCLAW_MOCK_TOOL_MODE || 'ok'
+  if (!TOOL_MODES.has(mode as MockToolMode)) {
+    throw new Error(`Invalid OPENCLAW_MOCK_TOOL_MODE: ${mode}`)
+  }
+  return mode as MockToolMode
 }
