@@ -227,7 +227,6 @@ document.addEventListener("click", function (event) {
           label: 'Extending',
           items: [
             { label: 'Overview', slug: 'extending/overview' },
-            { label: 'Architecture', slug: 'extending/architecture' },
             { label: 'Ingredients', slug: 'extending/ingredients' },
             {
               label: 'Plugins',
@@ -248,6 +247,7 @@ document.addEventListener("click", function (event) {
               ],
             },
             { label: 'SDK', slug: 'extending/sdk/overview' },
+            { label: 'Architecture', slug: 'extending/architecture' },
             { label: "Bakin' Core", slug: 'extending/development-workflow' },
             { label: 'Quality Control', slug: 'extending/quality-control' },
           ],

@@ -1,14 +1,30 @@
 ---
 title: Architecture
-description: How Bakin's host, plugins, runtime adapter, and search adapter fit together.
+description: The engineering values behind how Bakin is put together — local-first, host-orchestrated, adapter-bounded.
 ---
 
 import ArchitectureFlow from '../../../components/ArchitectureFlow'
 
-Bakin is a Bun process with a React host shell, a plugin registry, a shared service spine, an MCP tool server, and adapter boundaries for runtime and search. Extension points register intent; Bakin keeps ownership of routing, permissions, search tables, live events, and adapter lifecycle.
+Bakin runs as one Bun process — host, plugins, MCP server, file watcher, runtime adapter, all in the same binary. Single executable, no SaaS dependencies. Your Mac mini, your data, your network.
 
 <ArchitectureFlow client:load />
 
-## Extension Contract
+## Plugins extend, host orchestrates
 
-Plugins contribute capabilities; Bakin owns orchestration. That keeps the runtime and search machinery consistent while still letting plugins reshape the product.
+Plugins ship code. They contribute nav, routes, hooks, exec tools, search content types — whatever surface they need. The host owns the parts that should never fragment: permissions, routing, lifecycle, audit, search provisioning. That split keeps the product coherent no matter how many plugins land.
+
+## Adapter boundaries for the parts that change
+
+The agent runtime and search engine are the components most likely to swap. They live behind contracts. The rest of Bakin talks to those interfaces — not OpenClaw or Antfly directly. Replacing a provider means writing an adapter, not refactoring the app.
+
+## Files as the source of truth
+
+Tasks, assets, plugin storage, audit, agent memory — markdown, JSON sidecars, JSONL logs, all in `~/.bakin/`. Readable by humans. Version-controllable. Backups are a `cp -r`. There's no opaque database to reason about.
+
+## Live by default
+
+State changes push over SSE. The UI doesn't poll — it observes. File watcher events feed indexing. Audit feeds search. The system stays in sync without a separate coordination layer.
+
+## What this gets you
+
+Plugins reshape the product without forking it. Runtime providers are interchangeable. Every change is a `git diff` against a flat tree. And because everything happens in one process on your hardware, the whole thing is debuggable end-to-end with the tools you already know.
