@@ -240,7 +240,7 @@ Evidence to inspect:
 
 ### G. Imitation Crab / Dev Runtime
 
-Status: focused verification passed; first hardening slice in progress.
+Status: focused verification passed; contract-harness slices in progress.
 
 Findings:
 
@@ -254,6 +254,10 @@ Findings:
   adapterizing it. The seed path now honors a configured mock home, force re-seed
   removes stale fixture state, the gateway port is configurable, and chat mode
   validation fails loud.
+- **second slice:** add an Imitation Crab AppServices harness backed by the
+  OpenClaw runtime adapter plus mock search, normalize the seeded main workspace
+  into the mock home, and fix the OpenClaw config cache so swapping
+  `OPENCLAW_HOME` cannot reuse a same-mtime config from another path.
 
 Evidence to inspect:
 
@@ -298,7 +302,9 @@ Evidence to inspect:
   - pass (52 tests).
 - `bun test tests/dev/mock-env.test.ts tests/dev/mock-seed.test.ts tests/dev/mock-gateway.test.ts tests/dev/mock-gateway-streaming.test.ts tests/dev/mock-safety.test.ts --isolate`
   - pass (24 tests).
-- `bunx eslint dev/imitation-crab/env.ts dev/imitation-crab/gateway.ts dev/imitation-crab/index.ts dev/imitation-crab/safety.ts dev/imitation-crab/seed.ts tests/dev/mock-env.test.ts tests/dev/mock-seed.test.ts tests/dev/mock-gateway-streaming.test.ts`
+- `bun test tests/dev/mock-harness.test.ts tests/adapter-openclaw/config-cache.test.ts tests/dev/mock-env.test.ts tests/dev/mock-seed.test.ts tests/dev/mock-gateway.test.ts tests/dev/mock-gateway-streaming.test.ts tests/dev/mock-safety.test.ts --isolate`
+  - pass (27 tests).
+- `bunx eslint dev/imitation-crab/cli-shim-install.ts dev/imitation-crab/env.ts dev/imitation-crab/gateway.ts dev/imitation-crab/harness.ts dev/imitation-crab/index.ts dev/imitation-crab/safety.ts dev/imitation-crab/seed.ts packages/adapter-openclaw/src/config.ts tests/adapter-openclaw/config-cache.test.ts tests/dev/mock-env.test.ts tests/dev/mock-gateway-streaming.test.ts tests/dev/mock-harness.test.ts tests/dev/mock-seed.test.ts`
   - pass.
 - `bun test tests/cli/bakin.test.ts tests/cli/plugin-install-args.test.ts tests/cli/agents-packages.test.ts tests/cli/install-plugin-assets.test.ts tests/cli/install-agent-assets.test.ts tests/core/onboarding/index.test.ts tests/core/onboarding/runtime.test.ts tests/core/onboarding/plugin-assets.test.ts tests/core/onboarding/models.test.ts --isolate`
   - pass (96 tests).

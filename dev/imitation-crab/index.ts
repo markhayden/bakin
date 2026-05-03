@@ -10,13 +10,13 @@
  */
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
-import { chmodSync, copyFileSync, mkdirSync } from 'fs'
 import { spawn, type ChildProcess } from 'child_process'
 
 import { checkSafety, printSafetyError } from './safety'
 import { seed, getMockHome } from './seed'
 import { startGateway } from './gateway'
 import { getGatewayUrl } from './env'
+import { installCliShim } from './cli-shim-install'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PROJECT_ROOT = join(__dirname, '..', '..')
@@ -24,19 +24,6 @@ const withBakin = process.argv.includes('--with-bakin')
 const forceSeed = process.argv.includes('--force')
 
 let bakinProcess: ChildProcess | null = null
-
-function installCliShim(): string {
-  const mockHome = getMockHome()
-  const binDir = join(mockHome, 'bin')
-  mkdirSync(binDir, { recursive: true })
-
-  const shimSrc = join(__dirname, 'cli-shim.sh')
-  const shimDest = join(binDir, 'openclaw')
-  copyFileSync(shimSrc, shimDest)
-  chmodSync(shimDest, 0o755)
-
-  return shimDest
-}
 
 async function main(): Promise<void> {
   console.log('')

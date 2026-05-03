@@ -33,7 +33,7 @@ export interface OpenClawConfig {
   skills?: Record<string, unknown>
 }
 
-let cachedConfig: { mtimeMs: number; config: OpenClawConfig | null } | null = null
+let cachedConfig: { path: string; mtimeMs: number; config: OpenClawConfig | null } | null = null
 
 export function readOpenClawConfig(): OpenClawConfig | null {
   let path: string
@@ -52,7 +52,7 @@ export function readOpenClawConfig(): OpenClawConfig | null {
     return null
   }
 
-  if (cachedConfig && cachedConfig.mtimeMs === mtimeMs) return cachedConfig.config
+  if (cachedConfig && cachedConfig.path === path && cachedConfig.mtimeMs === mtimeMs) return cachedConfig.config
 
   let config: OpenClawConfig | null
   try {
@@ -60,7 +60,7 @@ export function readOpenClawConfig(): OpenClawConfig | null {
   } catch {
     config = null
   }
-  cachedConfig = { mtimeMs, config }
+  cachedConfig = { path, mtimeMs, config }
   return config
 }
 
