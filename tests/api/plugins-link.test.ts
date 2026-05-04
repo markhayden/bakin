@@ -103,6 +103,7 @@ describe('POST /api/plugins/link — happy path', () => {
     writeManifest(sourceDir, { id: 'apilinked', name: 'AL', version: '0.1.0', permissions: [] })
     const res = await callLink({ localPath: sourceDir })
     const body = await res.json()
+    if (res.status !== 200) throw new Error(`link failed: ${body.error}`)
     expect(res.status).toBe(200)
     expect(body.ok).toBe(true)
     expect(body.id).toBe('apilinked')
@@ -127,6 +128,8 @@ describe('POST /api/plugins/unlink', () => {
     await callLink({ localPath: sourceDir })
 
     const res = await callUnlink({ pluginId: 'apiunlinked' })
+    const errorBody = await res.clone().json()
+    if (res.status !== 200) throw new Error(`unlink failed: ${errorBody.error}`)
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.ok).toBe(true)

@@ -25,6 +25,10 @@ mock.module('@/core/content-dir', () => ({
 
 mock.module('@/core/settings', () => ({
   getSettings: mock(() => ({
+    plugins: {
+      requireSignatures: false,
+      trustedSigners: [],
+    },
     search: {
       adapter: 'antfly',
       settings: {
