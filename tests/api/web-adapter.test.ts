@@ -2,7 +2,10 @@ import { describe, it, expect, mock } from 'bun:test'
 import { PassThrough } from 'stream'
 import type { IncomingMessage, ServerResponse } from 'http'
 import { dispatchWebHandler } from '../../packages/host/src/api/_adapter'
-import { DEFAULT_MAX_REQUEST_BODY_BYTES } from '../../src/core/request-body'
+import {
+  DEFAULT_MAX_REQUEST_BODY_BYTES,
+  DEFAULT_MAX_WEB_REQUEST_BODY_BYTES,
+} from '../../src/core/request-body'
 
 function mockReq(opts: {
   method?: string
@@ -41,9 +44,23 @@ function mockRes() {
 }
 
 describe('dispatchWebHandler', () => {
-  it('returns 413 and does not call the handler for oversize requests', async () => {
+  it('allows Web handler bodies above the JSON parser default limit', async () => {
     const req = mockReq({
       headers: { 'content-length': String(DEFAULT_MAX_REQUEST_BODY_BYTES + 1) },
+      body: 'ok',
+    })
+    const res = mockRes()
+    const handler = mock(() => new Response(JSON.stringify({ ok: true })))
+
+    await dispatchWebHandler(req, res, handler)
+
+    expect(handler).toHaveBeenCalled()
+    expect(res.writeHead).toHaveBeenCalledWith(200, expect.any(Object))
+  })
+
+  it('returns 413 and does not call the handler for oversize requests', async () => {
+    const req = mockReq({
+      headers: { 'content-length': String(DEFAULT_MAX_WEB_REQUEST_BODY_BYTES + 1) },
     })
     const res = mockRes()
     const handler = mock(() => new Response(JSON.stringify({ ok: true })))
