@@ -121,17 +121,15 @@ export async function retrieveAgentPackageLessons(options: {
     if (seen.has(lessonId)) continue
 
     const diskLesson = readLessonFromDisk(options.contentDir, owner.id, owner.entry, lessonId)
-    const title = diskLesson?.title || stringField(fields.title) || lessonId
-    const body = diskLesson?.body || stringField(fields.body)
-    if (!body.trim()) continue
+    if (!diskLesson?.body.trim()) continue
 
     lessons.push({
       packageId,
       agentId: options.agentId,
       lessonId,
-      title,
-      body,
-      tags: diskLesson?.tags ?? arrayStringField(fields.tags),
+      title: diskLesson.title || lessonId,
+      body: diskLesson.body,
+      tags: diskLesson.tags,
       score: hit.score,
     })
     seen.add(lessonId)
@@ -242,11 +240,6 @@ function parseLessonMarkdown(raw: string, fallbackTitle: string): { title: strin
 
 function stringField(value: unknown): string {
   return typeof value === 'string' ? value : ''
-}
-
-function arrayStringField(value: unknown): string[] {
-  if (!Array.isArray(value)) return []
-  return value.filter((item): item is string => typeof item === 'string')
 }
 
 function clampInteger(value: unknown, min: number, max: number, fallback: number): number {

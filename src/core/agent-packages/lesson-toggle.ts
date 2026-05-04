@@ -116,6 +116,7 @@ export async function setLessonEnabled(
   }
 
   const currentEnabled = new Set(entry.lessonsEnabled ?? [])
+  const lessonForEnable = enabled ? parseRequiredLessonFile(target.abs, target.rel, currentEnabled) : null
   const wasEnabled = currentEnabled.has(lessonId)
   if (wasEnabled === enabled) {
     return { packageId, lessonId, enabled, changed: false }
@@ -135,9 +136,8 @@ export async function setLessonEnabled(
 
   const blockId = `lesson:${packageId}:${lessonId}`
   let soul = soulFile.content
-  if (enabled) {
-    const lesson = parseLessonFile(target.abs, target.rel, currentEnabled)
-    soul = injectBlock(soul, blockId, lesson.body)
+  if (lessonForEnable) {
+    soul = injectBlock(soul, blockId, lessonForEnable.body)
     currentEnabled.add(lessonId)
   } else {
     soul = removeBlock(soul, blockId)
@@ -239,6 +239,21 @@ function parseLessonFile(
     sourcePath: absPath,
     enabled: enabled.has(lessonId),
   }
+}
+
+function parseRequiredLessonFile(
+  absPath: string,
+  packageRel: string,
+  enabled: Set<string>,
+): ParsedLesson & { enabled: boolean } {
+  if (!existsSync(absPath)) {
+    throw new Error(`Lesson source file is missing: ${packageRel}`)
+  }
+  const lesson = parseLessonFile(absPath, packageRel, enabled)
+  if (!lesson.body.trim()) {
+    throw new Error(`Lesson source file is empty: ${packageRel}`)
+  }
+  return lesson
 }
 
 function buildCatalogBody(

@@ -124,6 +124,28 @@ describe('agent package lessons retrieval', () => {
     expect(block.length).toBeLessThanOrEqual(1300)
     expect(block).toContain('[truncated]')
   })
+
+  it('skips stale search hits when the enabled lesson file is missing on disk', async () => {
+    seedAgentPackage('patch', '0.1.0', ['dev-discipline'])
+
+    const result = await retrieveAgentPackageLessons({
+      contentDir: testDir,
+      agentId: 'patch',
+      query: 'implementation task',
+      search: async () => response([
+        hit('dev-discipline', 0.99, {
+          package_id: 'patch',
+          lesson_id: 'dev-discipline',
+          title: 'Dev Discipline',
+          body: 'Stale indexed body that no longer exists on disk.',
+        }),
+      ]),
+    })
+
+    expect(result.packageId).toBe('patch')
+    expect(result.lessons).toEqual([])
+    expect(formatLessonsForDispatch(result.lessons)).toBe('')
+  })
 })
 
 function seedAgentPackage(agentId: string, version: string, lessonsEnabled: string[]): void {
