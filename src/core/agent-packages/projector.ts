@@ -53,6 +53,7 @@ import {
   injectBlock,
   removeBlock,
 } from '../../../packages/core/src/agent-packages/managed-blocks'
+import { validatePackageLessonIntegrity } from './lesson-integrity'
 
 const log = createLogger('agent-pkg:project')
 
@@ -623,6 +624,12 @@ async function projectLessonMarkers(
  * re-throwing so the install state matches what was on disk before.
  */
 export async function projectPackage(options: ProjectorOptions): Promise<ProjectorResult> {
+  validatePackageLessonIntegrity({
+    manifest: options.manifest,
+    stagingDir: options.stagingDir,
+    enabledLessons: options.enabledLessons,
+  })
+
   const result: ProjectorResult = { projections: [], skipped: [] }
   const writeLog = new WriteLog()
 

@@ -450,6 +450,77 @@ describe('installPackage — refuse paths', () => {
     expect(adapterCalls.addAgent).toHaveLength(0)
     expect(isInstallLockHeld()).toBe(false)
   })
+
+  it('refuses an agent package when a contributed lesson file is missing', async () => {
+    const src = seedAgentPackage()
+    rmSync(join(src, 'lessons', 'style.md'), { force: true })
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow(/lesson source file is missing/i)
+
+    expect(Object.keys(readLockfile().packages)).toEqual([])
+    expect(adapterCalls.addAgent).toHaveLength(0)
+  })
+
+  it('refuses an agent package when install.enableLessons references an undeclared lesson', async () => {
+    const src = seedAgentPackage()
+    const manifest = JSON.parse(readFileSync(join(src, 'bakin-package.json'), 'utf-8'))
+    manifest.install.enableLessons = ['missing']
+    writeFileSync(join(src, 'bakin-package.json'), JSON.stringify(manifest, null, 2))
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow(/enabled lesson "missing" is not contributed/i)
+
+    expect(Object.keys(readLockfile().packages)).toEqual([])
+    expect(adapterCalls.addAgent).toHaveLength(0)
+  })
+
+  it('refuses agent lessons outside the indexed lessons/<id>.md layout', async () => {
+    const src = seedAgentPackage()
+    mkdirSync(join(src, 'docs'), { recursive: true })
+    writeFileSync(join(src, 'docs', 'style.md'), readFileSync(join(src, 'lessons', 'style.md'), 'utf-8'))
+    rmSync(join(src, 'lessons', 'style.md'), { force: true })
+    const manifest = JSON.parse(readFileSync(join(src, 'bakin-package.json'), 'utf-8'))
+    manifest.contributions.lessons = ['docs/style.md']
+    writeFileSync(join(src, 'bakin-package.json'), JSON.stringify(manifest, null, 2))
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow(/lessons\/<lesson-id>\.md/i)
+
+    expect(Object.keys(readLockfile().packages)).toEqual([])
+  })
+
+  it('refuses duplicate contributed lesson ids', async () => {
+    const src = seedAgentPackage()
+    const manifest = JSON.parse(readFileSync(join(src, 'bakin-package.json'), 'utf-8'))
+    manifest.contributions.lessons = ['lessons/style.md', 'lessons/style.md']
+    writeFileSync(join(src, 'bakin-package.json'), JSON.stringify(manifest, null, 2))
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow(/duplicate lesson id "style"/i)
+
+    expect(Object.keys(readLockfile().packages)).toEqual([])
+    expect(adapterCalls.addAgent).toHaveLength(0)
+  })
+
+  it('refuses a contributed lesson with no body content', async () => {
+    const src = seedAgentPackage()
+    writeFileSync(
+      join(src, 'lessons', 'style.md'),
+      `---\ntitle: Style\ndefaultEnabled: true\n---\n\n`,
+    )
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow(/lesson source file is empty/i)
+
+    expect(Object.keys(readLockfile().packages)).toEqual([])
+    expect(adapterCalls.addAgent).toHaveLength(0)
+  })
 })
 
 // ─── Composition (single-level deps) ─────────────────────────────────────────
