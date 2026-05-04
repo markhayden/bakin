@@ -154,6 +154,25 @@ describe('search-registry', () => {
     expect(entry?.pluginId).toBe('my-plugin')
   })
 
+  it('allows the same plugin to re-register its own table', () => {
+    const api = buildSearchAPI('owner')
+    api.registerContentType(makeDef('widgets'))
+    api.registerContentType(makeDef('widgets'))
+
+    const entry = getContentTypes().get('bakin_widgets')
+    expect(entry?.pluginId).toBe('owner')
+  })
+
+  it('rejects another plugin taking over an already-owned table', () => {
+    buildSearchAPI('owner').registerContentType(makeDef('widgets'))
+
+    expect(() => buildSearchAPI('intruder').registerContentType(makeDef('widgets')))
+      .toThrow('already registered by plugin "owner"')
+
+    const entry = getContentTypes().get('bakin_widgets')
+    expect(entry?.pluginId).toBe('owner')
+  })
+
   // ── auto-registration of /search route (C1 — issue #67) ──────────────
 
   it('registerContentType auto-registers a GET /search route when registerRoute opt is provided', () => {

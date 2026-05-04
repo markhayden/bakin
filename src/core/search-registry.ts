@@ -448,6 +448,13 @@ export function buildSearchAPI(pluginId: string, opts?: BuildSearchAPIOptions): 
   const api: SearchAPI = {
     registerContentType(def: SearchContentTypeDefinition): void {
       const tableName = fullTableName(def.table)
+      const existing = registry.contentTypes.get(tableName)
+      if (existing && existing.pluginId !== pluginId) {
+        throw new Error(
+          `Search content type table "${tableName}" is already registered by plugin "${existing.pluginId}"; ` +
+          `plugin "${pluginId}" cannot take ownership.`,
+        )
+      }
       registry.contentTypes.set(tableName, { ...def, pluginId })
       registry.pluginTables.set(pluginId, tableName)
       log.info(`Content type registered: ${tableName} (plugin: ${pluginId})`)
