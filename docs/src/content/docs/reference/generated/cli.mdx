@@ -447,6 +447,20 @@ bakin plugins remove <id>
     </tbody>
   </table>
 </CliCommandCard>
+<CliCommandCard id="plugins-restore" name="plugins restore" summary="Restore a removed plugin." description="Lists or restores pre-uninstall snapshots from ~/.bakin/.uninstalled. `--snapshot` accepts a safe timestamp token or tarball filename. Restore refuses to overwrite an existing plugin unless --force is passed.">
+```sh frame="terminal"
+bakin plugins restore <id> [--snapshot <snapshot>] [--force] [--list]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+      <tr><td><code>[--snapshot &lt;snapshot&gt;]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[--force]</code></td><td>option</td><td>no</td><td>Bypass the normal safety guard.</td></tr>
+      <tr><td><code>[--list]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
 <CliCommandCard id="plugins-scaffold" name="plugins scaffold" summary="Create a plugin scaffold." description="Creates a starter plugin source tree.">
 ```sh frame="terminal"
 bakin plugins scaffold <name>
@@ -732,5 +746,5 @@ bakin workflows submit <taskId> <stepId> <json>
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 1, 2026 · Bakin 1.0.0</span>
+  <span>Generated May 3, 2026 · Bakin 1.0.0</span>
 </aside>

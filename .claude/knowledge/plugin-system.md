@@ -373,7 +373,8 @@ Full teardown sweep through `packages/host/src/api/plugins/remove.ts`:
 4. Snapshot Bakin-owned data via `snapshotUninstall` →
    `~/.bakin/.uninstalled/<id>-<ISO>.tar.gz` (atomic tmp+rename via
    `Bun.spawn(['tar', ...])` against a staging dir for clean tarball
-   structure: `plugins/`, `plugin-settings/`, `runtime-skills/`)
+   structure: `plugins/`, `plugin-settings/`, `runtime-skills/`,
+   `plugin-lock/`)
 5. Sweep registries:
    - `hookRegistry.unregisterByPlugin(id)` — sweeps every handler
      tagged with the plugin id during `ctx.hooks.register`
@@ -392,6 +393,28 @@ Full teardown sweep through `packages/host/src/api/plugins/remove.ts`:
 Restart still required for the plugin's modules to be released from
 the JS module cache; the registry sweep ensures no new invocations
 land while in-memory state is being torn down.
+
+### Restore flow — `bakin plugins restore <id>` (#165)
+
+Pre-uninstall snapshots now have a bounded retention policy: keep the
+latest 5 snapshots per plugin and keep every snapshot from the last 90
+days. The cleanup runs lazily after successful snapshot writes and never
+turns a successful uninstall into a failure.
+
+`bakin plugins restore <id> --list` lists available snapshots. Restore
+without `--snapshot` selects the newest snapshot; `--snapshot` accepts
+the safe timestamp token or full tarball filename. Restore refuses to
+overwrite an existing plugin dir or lockfile entry unless `--force` is
+passed.
+
+Restore extracts the tarball into a temp dir, validates every tar entry
+before extraction, restores `plugins/<id>/`, optional
+`plugin-settings/<id>.json`, runtime skill snapshots, and the captured
+`plugin-lock/<id>.json` entry. New snapshots preserve original source
+provenance for future list/check/upgrade behavior. Older snapshots that
+lack a lock entry are restored as local plugins using the restored
+manifest as the source of version, permissions, manifest hash, and
+runtime skill ownership.
 
 **CLI surface details:**
 - The response includes `skillsMissing: string[]` listing skill names

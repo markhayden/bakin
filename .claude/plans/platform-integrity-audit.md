@@ -158,9 +158,12 @@ Findings:
   fail-closed policy path for install, dev-link, and upgrade when
   `plugins.requireSignatures` is enabled. Default trust-on-first-use behavior
   remains unchanged.
-- **later / product-dependent:** #165 uninstalled restore/retention and #178
-  SDK publish matter for distribution polish, but they do not block the
-  higher-risk MCP/context work.
+- **fixed in follow-up slice:** #165 uninstalled snapshot retention and restore
+  now bound snapshot growth, preserve lockfile provenance, and expose
+  `bakin plugins restore <id> [--snapshot ...] [--list]` with conflict
+  handling.
+- **later / product-dependent:** #178 SDK publish matters for distribution
+  polish, but it does not block the higher-risk MCP/context work.
 - **should-fix before broader third-party plugin push:** plugin docs should
   eventually describe how plugin exec tools participate in agent policy once
   #218 lands.
