@@ -68,7 +68,7 @@ import {
 import { getAppServices } from '../app-services'
 import { readFileSync } from 'fs'
 import { join } from 'path'
-import { validatePackageLessonIntegrity } from './lesson-integrity'
+import { validatePackageContributionIntegrity } from './package-integrity'
 
 const log = createLogger('agent-pkg:install')
 
@@ -294,7 +294,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     }
 
     const resolvedTopId = options.installAs ?? manifest.id
-    validatePackageLessonIntegrity({
+    validatePackageContributionIntegrity({
       manifest,
       stagingDir: topFetched.stagingDir,
     })
@@ -354,7 +354,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     const resolved = resolveDependencies(manifest)
     for (const r of resolved) depFetched.push(r.fetched)
     for (const r of resolved) {
-      validatePackageLessonIntegrity({
+      validatePackageContributionIntegrity({
         manifest: r.manifest,
         stagingDir: r.fetched.stagingDir,
       })

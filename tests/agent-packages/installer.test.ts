@@ -463,6 +463,56 @@ describe('installPackage — refuse paths', () => {
     expect(adapterCalls.addAgent).toHaveLength(0)
   })
 
+  it('refuses an agent package when a declared workspace file is missing', async () => {
+    const src = seedAgentPackage()
+    rmSync(join(src, 'workspace', 'SOUL.md'), { force: true })
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow(/workspace file source is missing/i)
+
+    expect(Object.keys(readLockfile().packages)).toEqual([])
+    expect(adapterCalls.addAgent).toHaveLength(0)
+  })
+
+  it('refuses an agent package when a declared skill directory is missing', async () => {
+    const src = seedAgentPackage()
+    rmSync(join(src, 'skills', 'image-gen'), { recursive: true, force: true })
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow(/skill source directory is missing/i)
+
+    expect(Object.keys(readLockfile().packages)).toEqual([])
+    expect(adapterCalls.addAgent).toHaveLength(0)
+  })
+
+  it('refuses an agent package when a declared asset file is missing', async () => {
+    const src = seedAgentPackage()
+    rmSync(join(src, 'assets', 'avatar.jpg'), { force: true })
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow(/asset source file is missing/i)
+
+    expect(Object.keys(readLockfile().packages)).toEqual([])
+    expect(adapterCalls.addAgent).toHaveLength(0)
+  })
+
+  it('refuses an agent package when a contribution path escapes the package root', async () => {
+    const src = seedAgentPackage()
+    const manifest = JSON.parse(readFileSync(join(src, 'bakin-package.json'), 'utf-8'))
+    manifest.contributions.assets = ['../avatar.jpg']
+    writeFileSync(join(src, 'bakin-package.json'), JSON.stringify(manifest, null, 2))
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow(/escapes the package root/i)
+
+    expect(Object.keys(readLockfile().packages)).toEqual([])
+    expect(adapterCalls.addAgent).toHaveLength(0)
+  })
+
   it('refuses an agent package when install.enableLessons references an undeclared lesson', async () => {
     const src = seedAgentPackage()
     const manifest = JSON.parse(readFileSync(join(src, 'bakin-package.json'), 'utf-8'))

@@ -57,7 +57,7 @@ Source: `docs/snippets/agent-package-basic/bakin-package.json`
       "workspace/TOOLS.md"
     ],
     "skills": [
-      "skills/content-brief.md"
+      "skills/content-brief"
     ],
     "workflows": [
       "workflows/draft-review.yaml"
@@ -138,7 +138,9 @@ Agent packages can contribute:
 
 `skill-pack` packages must contribute at least one skill. `workflow-pack` packages must contribute at least one workflow or workflow skill. `lesson-pack` packages must contribute at least one lesson file.
 
-Lesson contributions are preflighted during install and update. Each lesson must be a real, non-empty Markdown file at `lessons/<lesson-id>.md`; the basename is the lesson ID. `enableLessons` can only name lessons contributed by the package.
+Declared contributions are preflighted during install and update before Bakin writes the lockfile or projects files. Workspace files, assets, workflows, and workflow skills must point at real files inside the package. Skills must point at directories with a non-empty `SKILL.md`. Workflows must be valid YAML workflow definitions, and workflow skills must be Markdown files with a non-empty instruction body.
+
+Lesson files must be real, non-empty Markdown files at `lessons/<lesson-id>.md`; the basename is the lesson ID. `enableLessons` can only name lessons contributed by the package.
 
 ## Install Commands
 
