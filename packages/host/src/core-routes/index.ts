@@ -72,6 +72,7 @@ const pluginsAndMiscRoutes = [
   defineCoreRoute({ path: '/api/plugins/memory/audit', method: 'GET', summary: 'List memory audit entries', responses: { 200: passthrough }, handler: stub }),
   defineCoreRoute({ path: '/api/plugins/memory/workspace', method: 'GET', summary: 'Get memory workspace bundle', query: z.object({ agentId: z.string() }), responses: { 200: passthrough }, handler: stub }),
   defineCoreRoute({ path: '/api/plugins/remove', method: 'POST', summary: 'Remove plugin', body: z.object({ pluginId: z.string() }), responses: { 200: okResponse, 400: errorResponse }, handler: stub }),
+  defineCoreRoute({ path: '/api/plugins/restore', method: 'POST', summary: 'Restore plugin', body: z.object({ pluginId: z.string(), snapshot: z.string().optional(), force: z.boolean().optional(), listOnly: z.boolean().optional() }), responses: { 200: passthrough, 400: errorResponse, 404: errorResponse, 409: errorResponse, 500: errorResponse }, handler: stub }),
   defineCoreRoute({ path: '/api/plugins/unlink', method: 'POST', summary: 'Unlink local plugin', body: z.object({ pluginId: z.string() }), responses: { 200: okResponse, 400: errorResponse }, handler: stub }),
   defineCoreRoute({ path: '/api/plugins/upgrade', method: 'POST', summary: 'Upgrade plugin', body: z.object({ pluginId: z.string() }), responses: { 200: passthrough, 400: errorResponse, 500: errorResponse }, handler: stub }),
 
