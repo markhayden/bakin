@@ -18,7 +18,7 @@ Use agent kits when you want a teammate or team capability that can be installed
 | `workspace/IDENTITY.md` | Human-facing identity and role context. |
 | `workspace/TOOLS.md` | Tool usage rules and boundaries. |
 | `workspace/AGENTS.md` | Collaboration and handoff notes when the package needs them. |
-| `skills/*.md` | Reusable procedures the runtime can load as skills. |
+| `skills/<name>/SKILL.md` | Reusable procedures the runtime can load as skills. |
 | `workflows/*.yaml` | Repeatable task flows the agent can run or participate in. |
 | `lessons/*.md` | Toggleable domain lessons. |
 
