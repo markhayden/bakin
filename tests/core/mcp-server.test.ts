@@ -68,6 +68,27 @@ describe('MCP Server', () => {
     expect(getActiveSessions()).toEqual([])
   })
 
+  it('should summarize both streamable and SSE sessions for health stats', async () => {
+    const { summarizeMcpSessions } = await import('@/core/mcp-server')
+
+    const summary = summarizeMcpSessions(
+      [
+        { agentId: 'patch', createdAt: 1_000 },
+        { agentId: 'basil', createdAt: 2_000 },
+      ],
+      [
+        { agentId: 'patch', createdAt: 3_000 },
+      ],
+      '2026-05-04T00:00:00.000Z',
+    )
+
+    expect(summary.upSince).toBe('2026-05-04T00:00:00.000Z')
+    expect(summary.activeSessions).toEqual([
+      { agent: 'patch', sessions: 2, connectedAt: '1970-01-01T00:00:03.000Z' },
+      { agent: 'basil', sessions: 1, connectedAt: '1970-01-01T00:00:02.000Z' },
+    ])
+  })
+
   it('should reject requests without agent param and no session ID', async () => {
     const { handleMcpRequest } = require('@/core/mcp-server') as typeof import('@/core/mcp-server')
 

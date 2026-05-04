@@ -74,18 +74,21 @@ const sseSessions = new Map<string, SseSession>()
 
 const startedAt = new Date().toISOString()
 
-// Expose MCP session state to plugin-land without an HTTP hop. The health
-// plugin reads this via globalThis to avoid coupling to mcp-server.ts
-// directly — same pattern as __bakinBroadcast.
-;(globalThis as unknown as { __bakinGetMcpSessions?: () => { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string } }).__bakinGetMcpSessions = () => {
+type SessionSummaryInput = Pick<McpSession | SseSession, 'agentId' | 'createdAt'>
+
+export function summarizeMcpSessions(
+  streamable: Iterable<SessionSummaryInput>,
+  sse: Iterable<SessionSummaryInput>,
+  upSince: string = startedAt,
+): { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string } {
   const agentMap = new Map<string, { sessions: number; latestAt: number }>()
-  for (const [, s] of sessions) {
-    const existing = agentMap.get(s.agentId)
+  for (const session of [...streamable, ...sse]) {
+    const existing = agentMap.get(session.agentId)
     if (existing) {
       existing.sessions++
-      existing.latestAt = Math.max(existing.latestAt, s.createdAt)
+      existing.latestAt = Math.max(existing.latestAt, session.createdAt)
     } else {
-      agentMap.set(s.agentId, { sessions: 1, latestAt: s.createdAt })
+      agentMap.set(session.agentId, { sessions: 1, latestAt: session.createdAt })
     }
   }
   return {
@@ -94,8 +97,15 @@ const startedAt = new Date().toISOString()
       sessions: info.sessions,
       connectedAt: new Date(info.latestAt).toISOString(),
     })),
-    upSince: startedAt,
+    upSince,
   }
+}
+
+// Expose MCP session state to plugin-land without an HTTP hop. The health
+// plugin reads this via globalThis to avoid coupling to mcp-server.ts
+// directly — same pattern as __bakinBroadcast.
+;(globalThis as unknown as { __bakinGetMcpSessions?: () => { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string } }).__bakinGetMcpSessions = () => {
+  return summarizeMcpSessions(sessions.values(), sseSessions.values(), startedAt)
 }
 
 // Clean up stale sessions every 5 minutes.
