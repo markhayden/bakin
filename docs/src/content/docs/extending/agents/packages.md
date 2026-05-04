@@ -138,6 +138,8 @@ Agent packages can contribute:
 
 `skill-pack` packages must contribute at least one skill. `workflow-pack` packages must contribute at least one workflow or workflow skill. `lesson-pack` packages must contribute at least one lesson file.
 
+Lesson contributions are preflighted during install and update. Each lesson must be a real, non-empty Markdown file at `lessons/<lesson-id>.md`; the basename is the lesson ID. `enableLessons` can only name lessons contributed by the package.
+
 ## Install Commands
 
 Install from a local path:

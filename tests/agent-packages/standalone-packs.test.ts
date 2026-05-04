@@ -278,6 +278,33 @@ describe('installPackage — kind:"lesson-pack"', () => {
     const entry = readLockfile().packages['shared-lessons@1.0.0']
     expect(entry?.projections ?? []).toEqual([])
   })
+
+  it('refuses a lesson-pack when a contributed lesson file is missing', async () => {
+    const src = seedLessonPack('shared-lessons')
+    rmSync(join(src, 'lessons', 'lesson-two.md'), { force: true })
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow(/lesson source file is missing/i)
+
+    expect(Object.keys(readLockfile().packages)).toEqual([])
+    expect(existsSync(join(testDir, 'packages', 'lesson-packs', 'shared-lessons@1.0.0'))).toBe(false)
+  })
+
+  it('refuses a lesson-pack when a contributed lesson has no body content', async () => {
+    const src = seedLessonPack('shared-lessons')
+    writeFileSync(
+      join(src, 'lessons', 'lesson-two.md'),
+      `---\ntitle: Lesson Two\ndefaultEnabled: false\n---\n\n`,
+    )
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow(/lesson source file is empty/i)
+
+    expect(Object.keys(readLockfile().packages)).toEqual([])
+    expect(existsSync(join(testDir, 'packages', 'lesson-packs', 'shared-lessons@1.0.0'))).toBe(false)
+  })
 })
 
 // ─── refCount lifecycle (orphan handling) ────────────────────────────────────

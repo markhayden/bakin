@@ -43,6 +43,8 @@ atomically.
 
 ID rule: `/^[a-z0-9][a-z0-9-_]{0,39}$/i` — same as plugin install. Source rule: `github:user/repo[@ref][#subpath]` or local path (`./` `../` `/` `~/`); bare names refuse with a clear error. GitHub `#subpath` installs stage only the package directory and reject empty, absolute, traversal, dot-segment, multi-`#`, and whitespace subpaths.
 
+Lesson integrity rule: install/update preflights agent and lesson-pack lesson contributions before writing lockfile or projections. Lesson contributions must be real, non-empty Markdown files at `lessons/<lesson-id>.md`, with unique basename-derived ids. Agent `install.enableLessons[]` and update-preserved `lessonsEnabled[]` must reference contributed lesson ids.
+
 ## Lockfile
 
 `~/.bakin/packages/lock.json`. zod-validated, atomic IO (`tmp + rename`). Schema in `packages/core/src/agent-packages/lockfile.ts`:
