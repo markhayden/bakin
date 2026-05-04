@@ -8,7 +8,7 @@ Reference agent package for Bakin's video producer.
 agents/rolo/
 ├── bakin-package.json
 ├── workspace/                 template files (SOUL/IDENTITY/AGENTS/TOOLS)
-├── knowledge/                 lessons w/ frontmatter
+├── lessons/                 lessons w/ frontmatter
 │   ├── video-pacing.md        (default-enabled)
 │   └── audio-craft.md         (opt-in)
 └── assets/                    avatar.jpg + avatar-full.png

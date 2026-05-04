@@ -14756,10 +14756,10 @@
         "x-bakin-full-path": "/api/agent-packages/:agentId/update"
       }
     },
-    "/api/agent-packages/{agentId}/knowledge": {
+    "/api/agent-packages/{agentId}/lessons": {
       "get": {
-        "operationId": "core.get.api-agent-packages-agent-id-knowledge",
-        "summary": "List agent package knowledge",
+        "operationId": "core.get.api-agent-packages-agent-id-lessons",
+        "summary": "List agent package lessons",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -14829,13 +14829,13 @@
             }
           }
         ],
-        "x-bakin-full-path": "/api/agent-packages/:agentId/knowledge"
+        "x-bakin-full-path": "/api/agent-packages/:agentId/lessons"
       }
     },
-    "/api/agent-packages/{agentId}/knowledge/{lessonId}": {
+    "/api/agent-packages/{agentId}/lessons/{lessonId}": {
       "post": {
-        "operationId": "core.post.api-agent-packages-agent-id-knowledge-lesson-id",
-        "summary": "Toggle agent package knowledge",
+        "operationId": "core.post.api-agent-packages-agent-id-lessons-lesson-id",
+        "summary": "Toggle agent package lessons",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -14963,7 +14963,7 @@
             }
           }
         },
-        "x-bakin-full-path": "/api/agent-packages/:agentId/knowledge/:lessonId"
+        "x-bakin-full-path": "/api/agent-packages/:agentId/lessons/:lessonId"
       }
     },
     "/api/packages": {

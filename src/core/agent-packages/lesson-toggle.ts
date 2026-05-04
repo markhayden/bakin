@@ -1,9 +1,9 @@
 /**
- * Focused mutator for `bakin agents knowledge {enable,disable,list}`.
+ * Focused mutator for `bakin agents lessons {enable,disable,list}`.
  *
  * Toggling a single lesson on/off doesn't justify a full re-project — the
- * knowledge-marker block in SOUL.md is the only thing that changes. This
- * helper updates that block + the lockfile's `knowledgeEnabled` array, and
+ * lesson-marker block in SOUL.md is the only thing that changes. This
+ * helper updates that block + the lockfile's `lessonsEnabled` array, and
  * leaves the rest of the projection alone.
  *
  * Reads the lesson body fresh from the package's installed source dir so
@@ -32,9 +32,9 @@ import {
   removeBlock,
 } from '../../../packages/core/src/agent-packages/managed-blocks'
 
-const log = createLogger('agent-pkg:knowledge')
+const log = createLogger('agent-pkg:lessons')
 
-export interface KnowledgeLessonInfo {
+export interface LessonInfo {
   lessonId: string
   title: string
   tags: string[]
@@ -49,7 +49,7 @@ export interface KnowledgeLessonInfo {
  * cross-referenced against the lockfile. Reads frontmatter for title +
  * tags + defaultEnabled.
  */
-export function listKnowledge(packageId: string): KnowledgeLessonInfo[] {
+export function listLessons(packageId: string): LessonInfo[] {
   const lock = readLockfile()
   const entry = lock.packages[packageId]
   if (!entry) {
@@ -60,10 +60,10 @@ export function listKnowledge(packageId: string): KnowledgeLessonInfo[] {
   const manifest = readPackageManifest(installDir)
   if (!manifest || manifest.kind !== 'agent') return []
 
-  const knowledge = manifest.contributions.knowledge ?? []
-  const enabledSet = new Set(entry.knowledgeEnabled ?? [])
+  const lessons = manifest.contributions.lessons ?? []
+  const enabledSet = new Set(entry.lessonsEnabled ?? [])
 
-  return knowledge.map((rel) => parseLessonFile(join(installDir, rel), rel, enabledSet))
+  return lessons.map((rel) => parseLessonFile(join(installDir, rel), rel, enabledSet))
 }
 
 export interface ToggleResult {
@@ -77,7 +77,7 @@ export interface ToggleResult {
  * Enable or disable a single lesson. Idempotent — toggling an already-on
  * lesson on returns `changed: false` with no writes.
  */
-export async function setKnowledgeEnabled(
+export async function setLessonEnabled(
   packageId: string,
   lessonId: string,
   enabled: boolean,
@@ -89,7 +89,7 @@ export async function setKnowledgeEnabled(
   }
   if (entry.kind !== 'agent') {
     throw new Error(
-      `Package "${packageId}" is a ${entry.kind} — knowledge toggling only applies to agent packages.`,
+      `Package "${packageId}" is a ${entry.kind} — lesson toggling only applies to agent packages.`,
     )
   }
   if (!entry.agentId) {
@@ -102,7 +102,7 @@ export async function setKnowledgeEnabled(
     throw new Error(`Package source for "${packageId}" is missing or malformed.`)
   }
 
-  const lessonPaths = (manifest.contributions.knowledge ?? []).map((rel) => ({
+  const lessonPaths = (manifest.contributions.lessons ?? []).map((rel) => ({
     rel,
     abs: join(installDir, rel),
     lessonId: basename(rel).replace(/\.md$/i, ''),
@@ -115,7 +115,7 @@ export async function setKnowledgeEnabled(
     )
   }
 
-  const currentEnabled = new Set(entry.knowledgeEnabled ?? [])
+  const currentEnabled = new Set(entry.lessonsEnabled ?? [])
   const wasEnabled = currentEnabled.has(lessonId)
   if (wasEnabled === enabled) {
     return { packageId, lessonId, enabled, changed: false }
@@ -129,11 +129,11 @@ export async function setKnowledgeEnabled(
   }
   if (soulFile.metadata?.userEdited === true) {
     throw new Error(
-      `SOUL.md is marked .userEdited — refusing to mutate. Remove the sentinel to re-enable knowledge toggling.`,
+      `SOUL.md is marked .userEdited — refusing to mutate. Remove the sentinel to re-enable lesson toggling.`,
     )
   }
 
-  const blockId = `knowledge:${packageId}:${lessonId}`
+  const blockId = `lesson:${packageId}:${lessonId}`
   let soul = soulFile.content
   if (enabled) {
     const lesson = parseLessonFile(target.abs, target.rel, currentEnabled)
@@ -146,23 +146,23 @@ export async function setKnowledgeEnabled(
 
   // Refresh the catalog block to reflect the new enabled state
   const allLessons = lessonPaths.map((l) => parseLessonFile(l.abs, l.rel, currentEnabled))
-  soul = injectBlock(soul, 'knowledge-catalog', buildCatalogBody(packageId, allLessons, currentEnabled))
+  soul = injectBlock(soul, 'lesson-catalog', buildCatalogBody(packageId, allLessons, currentEnabled))
 
   await runtime.agents.writeWorkspaceFile(entry.agentId, { path: 'SOUL.md', content: soul })
 
   // Update lockfile
-  const nextEntry = { ...entry, knowledgeEnabled: Array.from(currentEnabled).sort() }
+  const nextEntry = { ...entry, lessonsEnabled: Array.from(currentEnabled).sort() }
   writeLockfile(addPackage(lock, packageId, nextEntry))
 
   appendAudit(
     getContentDir(),
-    enabled ? 'agent_pkg.knowledge_enabled' : 'agent_pkg.knowledge_disabled',
+    enabled ? 'agent_pkg.lessons_enabled' : 'agent_pkg.lessons_disabled',
     entry.agentId,
     { packageId, lessonId },
     'cli',
   )
 
-  log.info(`Knowledge ${enabled ? 'enabled' : 'disabled'}`, {
+  log.info(`Lesson ${enabled ? 'enabled' : 'disabled'}`, {
     packageId,
     lessonId,
     agentId: entry.agentId,
@@ -247,11 +247,11 @@ function buildCatalogBody(
   enabled: Set<string>,
 ): string {
   if (lessons.length === 0) {
-    return `> No knowledge available from ${packageId}.`
+    return `> No lessons available from ${packageId}.`
   }
   const lines = [
-    `> Knowledge available from agent-package \`${packageId}\`. ` +
-      `Toggle individual lessons via \`bakin agents knowledge enable|disable\`.`,
+    `> Lessons available from agent-package \`${packageId}\`. ` +
+      `Toggle individual lessons via \`bakin agents lessons enable|disable\`.`,
     '',
   ]
   for (const k of lessons) {
@@ -263,4 +263,4 @@ function buildCatalogBody(
 
 // Reference type imports so unused-import linting doesn't trip
 void ((null as unknown) as AgentManifest)
-void ((null as unknown) as KnowledgeLessonInfo)
+void ((null as unknown) as LessonInfo)

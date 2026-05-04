@@ -8,7 +8,7 @@ Reference agent package for Bakin's research / multi-source discovery agent.
 agents/jessica-fetcher/
 ├── bakin-package.json
 ├── workspace/                 SOUL/IDENTITY/AGENTS/TOOLS templates
-├── knowledge/
+├── lessons/
 │   ├── source-hierarchy.md    (default-enabled)
 │   └── parallel-lanes.md      (opt-in)
 └── assets/                    avatar.jpg

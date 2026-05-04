@@ -32,7 +32,7 @@ import { syncConfig as syncMcporter } from '../../src/core/mcporter'
 import { sendMessageToAgent } from '../../src/core/agents'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
 import { getStatsByMs } from '../../src/core/usage'
-import { retrieveAgentPackageKnowledge } from '../../src/core/agent-packages/knowledge-retrieval'
+import { retrieveAgentPackageLessons } from '../../src/core/agent-packages/lesson-retrieval'
 import { getRuntimeMainAgentId, type AgentRuntimeAdapter, type RuntimeAgent } from '@bakin/core/adapters/runtime'
 import { readLatestSessionTranscript } from './lib/session-reader'
 import { checkAgentRoster, checkPersonas, checkAgentAssets } from './lib/health-checks'
@@ -571,28 +571,28 @@ async function getOrgStructure(runtime: AgentRuntimeAdapter) {
 /** Module-level hook for batch-indexing agents — set during activate() */
 let batchIndexAgents: () => Promise<void> = async () => {}
 
-// ─── Agent-knowledge indexing helpers ────────────────────────────────────────
+// ─── Agent-lessons indexing helpers ────────────────────────────────────────
 
 /**
- * Decompose a packages/agents/<dir>@<version>/knowledge/<lesson>.md path
+ * Decompose a packages/agents/<dir>@<version>/lessons/<lesson>.md path
  * into the parts needed to build a search id + doc. Returns null on a
  * non-conforming path (the watcher passes us anything that matches the
  * glob; we trust the glob for happy-path inputs but defensively handle
  * the edge cases).
  */
-interface KnowledgeFileParts {
+interface LessonFileParts {
   packageId: string
   version: string
   lessonId: string
   agentId: string
 }
 
-function parseKnowledgeFilePath(rel: string): KnowledgeFileParts | null {
-  // rel example: 'packages/agents/pixel@0.1.0/knowledge/style.md'
+function parseLessonFilePath(rel: string): LessonFileParts | null {
+  // rel example: 'packages/agents/pixel@0.1.0/lessons/style.md'
   const segments = rel.split('/')
   if (segments.length < 5) return null
   if (segments[0] !== 'packages' || segments[1] !== 'agents') return null
-  if (segments[3] !== 'knowledge') return null
+  if (segments[3] !== 'lessons') return null
   const dirName = segments[2]
   const lessonFile = segments[4]
   if (!lessonFile.endsWith('.md')) return null
@@ -606,21 +606,21 @@ function parseKnowledgeFilePath(rel: string): KnowledgeFileParts | null {
   return { packageId, version, agentId: packageId, lessonId }
 }
 
-function agentKnowledgeFileToId(rel: string): string {
-  const parts = parseKnowledgeFilePath(rel)
+function agentLessonFileToId(rel: string): string {
+  const parts = parseLessonFilePath(rel)
   if (!parts) return rel.replace(/[^a-zA-Z0-9_]+/g, '_')
   return `${parts.packageId}@${parts.version}/${parts.lessonId}`
 }
 
-function agentKnowledgeKeyToFilePath(key: string): string | null {
+function agentLessonKeyToFilePath(key: string): string | null {
   const slash = key.indexOf('/')
   if (slash === -1) return null
   const dirPart = key.slice(0, slash)
   const lesson = key.slice(slash + 1)
-  return join(getContentDir(), 'packages', 'agents', dirPart, 'knowledge', `${lesson}.md`)
+  return join(getContentDir(), 'packages', 'agents', dirPart, 'lessons', `${lesson}.md`)
 }
 
-interface KnowledgeDoc extends Record<string, unknown> {
+interface LessonDoc extends Record<string, unknown> {
   title: string
   body: string
   package_id: string
@@ -631,7 +631,7 @@ interface KnowledgeDoc extends Record<string, unknown> {
   updated_at: string
 }
 
-function parseKnowledgeFrontmatter(raw: string): {
+function parseLessonFrontmatter(raw: string): {
   title: string
   body: string
   tags: string[]
@@ -663,8 +663,8 @@ function parseKnowledgeFrontmatter(raw: string): {
   return { title, body, tags, defaultEnabled }
 }
 
-async function agentKnowledgeFileToDoc(rel: string): Promise<KnowledgeDoc | null> {
-  const parts = parseKnowledgeFilePath(rel)
+async function agentLessonFileToDoc(rel: string): Promise<LessonDoc | null> {
+  const parts = parseLessonFilePath(rel)
   if (!parts) return null
   const abs = join(getContentDir(), rel)
   if (!existsSync(abs)) return null
@@ -674,7 +674,7 @@ async function agentKnowledgeFileToDoc(rel: string): Promise<KnowledgeDoc | null
   } catch {
     return null
   }
-  const { title, body, tags, defaultEnabled } = parseKnowledgeFrontmatter(raw)
+  const { title, body, tags, defaultEnabled } = parseLessonFrontmatter(raw)
   return {
     title: title || parts.lessonId,
     body,
@@ -688,26 +688,26 @@ async function agentKnowledgeFileToDoc(rel: string): Promise<KnowledgeDoc | null
 }
 
 /**
- * Walk every installed agent package's knowledge/ dir and yield
+ * Walk every installed agent package's lessons/ dir and yield
  * (key, doc) pairs for the search index reindexer.
  */
-function* agentKnowledgeReindexAll(): Generator<{ key: string; doc: KnowledgeDoc }> {
+function* agentLessonReindexAll(): Generator<{ key: string; doc: LessonDoc }> {
   const root = join(getContentDir(), 'packages', 'agents')
   if (!existsSync(root)) return
   for (const dirent of readdirSync(root, { withFileTypes: true })) {
     if (!dirent.isDirectory()) continue
-    const knowledgeDir = join(root, dirent.name, 'knowledge')
-    if (!existsSync(knowledgeDir)) continue
+    const lessonsDir = join(root, dirent.name, 'lessons')
+    if (!existsSync(lessonsDir)) continue
     let stat
-    try { stat = statSync(knowledgeDir) } catch { continue }
+    try { stat = statSync(lessonsDir) } catch { continue }
     if (!stat.isDirectory()) continue
-    for (const file of readdirSync(knowledgeDir)) {
+    for (const file of readdirSync(lessonsDir)) {
       if (!file.endsWith('.md')) continue
-      const rel = relative(getContentDir(), join(knowledgeDir, file))
-      const parts = parseKnowledgeFilePath(rel)
+      const rel = relative(getContentDir(), join(lessonsDir, file))
+      const parts = parseLessonFilePath(rel)
       if (!parts) continue
-      const raw = readFileSync(join(knowledgeDir, file), 'utf-8')
-      const { title, body, tags, defaultEnabled } = parseKnowledgeFrontmatter(raw)
+      const raw = readFileSync(join(lessonsDir, file), 'utf-8')
+      const { title, body, tags, defaultEnabled } = parseLessonFrontmatter(raw)
       const key = `${parts.packageId}@${parts.version}/${parts.lessonId}`
       yield {
         key,
@@ -1653,17 +1653,17 @@ const teamPlugin: BakinPlugin = definePlugin({
       verifyExists: async () => true, // Agents are managed by the runtime adapter
     })
 
-    // ─── Agent-knowledge content type (Phase F-4) ────────────────────────
+    // ─── Agent-lessons content type (Phase F-4) ────────────────────────
     //
     // Indexes lesson markdown files shipped by installed agent-packages.
-    // Source: ~/.bakin/packages/agents/<id>@<version>/knowledge/*.md
+    // Source: ~/.bakin/packages/agents/<id>@<version>/lessons/*.md
     //
     // Frontmatter carries title / tags / defaultEnabled; body is the
     // searchable content. The lesson's enabled state lives in the
     // lockfile — not indexed here for V1; consumers filter that
     // client-side by cross-referencing the lockfile.
     ctx.search.registerFileBackedContentType({
-      table: 'agent-knowledge',
+      table: 'agent-lessons',
       schema: {
         title: { type: 'text' },
         body: { type: 'text' },
@@ -1681,21 +1681,21 @@ const teamPlugin: BakinPlugin = definePlugin({
       chunker: { enabled: true, targetTokens: 250, overlapTokens: 30 },
       filePatterns: [
         {
-          // Match `packages/agents/<id>@<version>/knowledge/<lesson>.md`
+          // Match `packages/agents/<id>@<version>/lessons/<lesson>.md`
           // under the content dir. Subdir layout for the kind:"agent"
           // install root is fixed by getPackageSourceDir.
-          pattern: 'packages/agents/*/knowledge/*.md',
-          fileToId: (rel) => agentKnowledgeFileToId(rel),
-          fileToDoc: async (rel) => agentKnowledgeFileToDoc(rel),
+          pattern: 'packages/agents/*/lessons/*.md',
+          fileToId: (rel) => agentLessonFileToId(rel),
+          fileToDoc: async (rel) => agentLessonFileToDoc(rel),
         },
       ],
       reindex: async function* () {
-        for (const doc of agentKnowledgeReindexAll()) {
+        for (const doc of agentLessonReindexAll()) {
           yield doc
         }
       },
       verifyExists: async (key: string) => {
-        const path = agentKnowledgeKeyToFilePath(key)
+        const path = agentLessonKeyToFilePath(key)
         return path !== null && existsSync(path)
       },
     })
@@ -1816,9 +1816,9 @@ const teamPlugin: BakinPlugin = definePlugin({
     })
 
     ctx.registerExecTool({
-      name: 'bakin_exec_knowledge_search',
-      label: 'Searched package knowledge',
-      description: 'Search the enabled agent-package knowledge lessons for the calling agent.',
+      name: 'bakin_exec_lesson_search',
+      label: 'Searched package lessons',
+      description: 'Search the enabled agent-package lessons for the calling agent.',
       parameters: {
         query: z.string().describe('Search query'),
         limit: z.number().int().positive().max(10).optional().describe('Max lessons to return (default from settings, max 10)'),
@@ -1828,7 +1828,7 @@ const teamPlugin: BakinPlugin = definePlugin({
         if (!query) return { ok: false, error: 'query required' }
         if (!agent) return { ok: false, error: 'calling agent required' }
 
-        const baseSettings = getSettings().agentPackages?.knowledgeRetrieval
+        const baseSettings = getSettings().agentPackages?.lessonsRetrieval
         const limit = typeof params.limit === 'number'
           ? Math.max(1, Math.min(10, Math.floor(params.limit)))
           : undefined
@@ -1837,7 +1837,7 @@ const teamPlugin: BakinPlugin = definePlugin({
         }
 
         try {
-          const result = await retrieveAgentPackageKnowledge({
+          const result = await retrieveAgentPackageLessons({
             contentDir: getContentDir(),
             agentId: agent,
             query,

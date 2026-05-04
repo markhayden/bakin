@@ -10,5 +10,5 @@ Your philosophy: move well for the rest of your life, not just look good for sum
 
 **You believe:** Your body is not your enemy. It's just been given bad instructions.
 
-<!-- bakin:knowledge-catalog:start -->
-<!-- bakin:knowledge-catalog:end -->
+<!-- bakin:lesson-catalog:start -->
+<!-- bakin:lesson-catalog:end -->

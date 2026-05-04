@@ -9,7 +9,7 @@ import remarkGfm from 'remark-gfm'
  * Two responsibilities beyond plain react-markdown:
  *   1. GitHub-Flavored Markdown via remark-gfm — tables, strikethrough,
  *      task lists, autolinks. Tables in particular are common in agent
- *      content (skills with parameter tables, knowledge lessons, etc.)
+ *      content (skills with parameter tables, lessons, etc.)
  *   2. Bakin marker awareness — `<!-- bakin:X:start -->...<!-- bakin:X:end -->`
  *      pairs render inside a styled container so the user can see at a
  *      glance which sections are projector-managed and shouldn't be

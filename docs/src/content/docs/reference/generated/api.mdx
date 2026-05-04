@@ -45,18 +45,18 @@ curl -sS \
 ```
 </OpenApiReference>
 
-<OpenApiReference operationId="core.get.api-agent-packages-agent-id-knowledge">
+<OpenApiReference operationId="core.get.api-agent-packages-agent-id-lessons">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
-  'http://localhost:3737/api/agent-packages/<agentId>/knowledge'
+  'http://localhost:3737/api/agent-packages/<agentId>/lessons'
 ```
 </OpenApiReference>
 
-<OpenApiReference operationId="core.post.api-agent-packages-agent-id-knowledge-lesson-id">
+<OpenApiReference operationId="core.post.api-agent-packages-agent-id-lessons-lesson-id">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/agent-packages/<agentId>/knowledge/<lessonId>' \
+  'http://localhost:3737/api/agent-packages/<agentId>/lessons/<lessonId>' \
   -H 'Content-Type: application/json' \
   --data '{"enabled":true}'
 ```

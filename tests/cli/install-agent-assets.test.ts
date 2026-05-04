@@ -70,7 +70,7 @@ const NON_INTERACTIVE = {
 function seedAgentPackage(): string {
   const dir = join(testDir, 'pixel-pkg')
   mkdirSync(join(dir, 'workspace'), { recursive: true })
-  mkdirSync(join(dir, 'knowledge'), { recursive: true })
+  mkdirSync(join(dir, 'lessons'), { recursive: true })
   mkdirSync(join(dir, 'assets'), { recursive: true })
   writeFileSync(
     join(dir, 'bakin-package.json'),
@@ -80,20 +80,20 @@ function seedAgentPackage(): string {
       name: 'Pixel',
       version: '0.1.0',
       agent: { identity: { name: 'Pixel' } },
-      install: { writeWorkspaceFiles: true, enableKnowledge: ['style'] },
+      install: { writeWorkspaceFiles: true, enableLessons: ['style'] },
       contributions: {
         workspaceFiles: ['workspace/SOUL.md'],
-        knowledge: ['knowledge/style.md'],
+        lessons: ['lessons/style.md'],
         assets: ['assets/avatar.jpg'],
       },
     }),
   )
   writeFileSync(
     join(dir, 'workspace', 'SOUL.md'),
-    `# Soul Pixel\n\n<!-- bakin:knowledge-catalog:start -->\n<!-- bakin:knowledge-catalog:end -->\n`,
+    `# Soul Pixel\n\n<!-- bakin:lesson-catalog:start -->\n<!-- bakin:lesson-catalog:end -->\n`,
   )
   writeFileSync(
-    join(dir, 'knowledge', 'style.md'),
+    join(dir, 'lessons', 'style.md'),
     `---\ntitle: Style\ndefaultEnabled: true\n---\n\nStyle body.`,
   )
   writeFileSync(join(dir, 'assets', 'avatar.jpg'), 'jpg-bytes')
@@ -149,7 +149,7 @@ describe('agent-assets onboarding component — check()', () => {
     await installPackage({ source: src })
 
     // Simulate the agent expanding SOUL.md (preserving the bakin: markers
-    // so the knowledge-marker projections still resolve). Pure file-sha
+    // so the lesson-marker projections still resolve). Pure file-sha
     // drift on a templateOnly projection should NOT trigger warn.
     const soulPath = join(openClawDir, 'workspaces', 'pixel', 'SOUL.md')
     const { readFileSync } = await import('fs')

@@ -9,7 +9,7 @@ export type {
   AgentManifest,
   SkillPackManifest,
   WorkflowPackManifest,
-  KnowledgePackManifest,
+  LessonPackManifest,
   Dependency,
   PackageKind,
   ParseResult,

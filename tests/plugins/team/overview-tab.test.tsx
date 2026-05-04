@@ -4,7 +4,7 @@
  * OverviewTab — consolidated agent dashboard.
  *
  * Covers all the panels: Identity, Settings (model + team), Package
- * card (delegated), Workspace, Capacity (skills + knowledge counts),
+ * card (delegated), Workspace, Capacity (skills + lessons counts),
  * Latest Session (folded-in Stats data), Recent Activity.
  *
  * Tests the wiring shape — fetches happen, UI reflects responses,
@@ -61,7 +61,7 @@ interface FetchExpectation {
   stats?: { usage: { agent: string; sessionId: string; sessionStarted: string; model: string; messages: number; tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number }; cost: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number } } | null }
   recentActivity?: { ok: boolean; activity?: { windowMs: Record<string, number>; errors: Record<string, number>; sinceServerStart: string } }
   skills?: { skills: Array<{ id: string }> }
-  knowledge?: { ok: boolean; lessons?: Array<{ enabled: boolean }> }
+  lessons?: { ok: boolean; lessons?: Array<{ enabled: boolean }> }
 }
 
 const teamRoutes: Array<{ url: string; init?: RequestInit }> = []
@@ -74,7 +74,7 @@ function setupFetch(exp: FetchExpectation) {
     if (u.endsWith('/stats')) return Promise.resolve({ ok: true, json: () => Promise.resolve(exp.stats ?? { usage: null }) } as Response)
     if (u.endsWith('/recent-activity')) return Promise.resolve({ ok: true, json: () => Promise.resolve(exp.recentActivity ?? { ok: true, activity: { windowMs: { '5m': 0, '1h': 0, '24h': 0 }, errors: { '5m': 0, '1h': 0, '24h': 0 }, sinceServerStart: new Date().toISOString() } }) } as Response)
     if (u.endsWith('/skills')) return Promise.resolve({ ok: true, json: () => Promise.resolve(exp.skills ?? { skills: [] }) } as Response)
-    if (u.includes('/api/agent-packages/') && u.endsWith('/knowledge')) return Promise.resolve({ ok: true, json: () => Promise.resolve(exp.knowledge ?? { ok: true, lessons: [] }) } as Response)
+    if (u.includes('/api/agent-packages/') && u.endsWith('/lessons')) return Promise.resolve({ ok: true, json: () => Promise.resolve(exp.lessons ?? { ok: true, lessons: [] }) } as Response)
     if (u.endsWith('/team')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) } as Response)
     return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response)
   }) as unknown as typeof global.fetch
@@ -139,18 +139,18 @@ describe('OverviewTab', () => {
     expect(screen.queryByText('/tmp/openclaw/workspaces/pixel')).toBeNull()
   })
 
-  it('fetches stats / recent-activity / skills / knowledge in parallel and renders the counts', async () => {
+  it('fetches stats / recent-activity / skills / lessons in parallel and renders the counts', async () => {
     setupFetch({
       stats: { usage: { agent: 'pixel', sessionId: 's', sessionStarted: '', model: 'claude-opus-4-7', messages: 12, tokens: { input: 1000, output: 500, cacheRead: 200, cacheWrite: 50, total: 1750 }, cost: { input: 0.01, output: 0.02, cacheRead: 0.001, cacheWrite: 0.001, total: 0.03 } } },
       recentActivity: { ok: true, activity: { windowMs: { '5m': 1, '1h': 7, '24h': 23 }, errors: { '5m': 0, '1h': 1, '24h': 1 }, sinceServerStart: new Date().toISOString() } },
       skills: { skills: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] },
-      knowledge: { ok: true, lessons: [{ enabled: true }, { enabled: true }, { enabled: false }, { enabled: false }, { enabled: false }] },
+      lessons: { ok: true, lessons: [{ enabled: true }, { enabled: true }, { enabled: false }, { enabled: false }, { enabled: false }] },
     })
     renderTab()
     await waitFor(() => expect(screen.getByText('1,750')).toBeDefined())
     // Distinct values per tile so getByText is unambiguous
     expect(screen.getByText('3')).toBeDefined() // skills count
-    expect(screen.getByText('5')).toBeDefined() // knowledge total
+    expect(screen.getByText('5')).toBeDefined() // lessons total
     expect(screen.getByText('2 enabled')).toBeDefined()
     expect(screen.getByText('1')).toBeDefined() // 5m count
     expect(screen.getByText('7')).toBeDefined() // 1h count

@@ -441,12 +441,12 @@ mcporter call bakin-<agent>.bakin_exec_heartbeat --args '{
 }'
 ```
 
-## Knowledge
+## Lesson
 
-### bakin_exec_knowledge_search
+### bakin_exec_lesson_search
 
-Label: Searched package knowledge
-Purpose: Search the enabled agent-package knowledge lessons for the calling agent.
+Label: Searched package lessons
+Purpose: Search the enabled agent-package lessons for the calling agent.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -456,7 +456,7 @@ Purpose: Search the enabled agent-package knowledge lessons for the calling agen
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_knowledge_search --args '{
+mcporter call bakin-<agent>.bakin_exec_lesson_search --args '{
   "query": "value",
   "limit": 20
 }'

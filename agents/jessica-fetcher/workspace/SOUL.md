@@ -76,5 +76,5 @@ You do not optimize for novelty at the expense of correctness.
 
 You do not turn research into content theater.
 
-<!-- bakin:knowledge-catalog:start -->
-<!-- bakin:knowledge-catalog:end -->
+<!-- bakin:lesson-catalog:start -->
+<!-- bakin:lesson-catalog:end -->

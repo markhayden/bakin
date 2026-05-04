@@ -8,7 +8,7 @@ Reference agent package for Bakin's outdoor / adventure content creator (Connor 
 agents/scout/
 ├── bakin-package.json
 ├── workspace/                       SOUL/IDENTITY/AGENTS/TOOLS templates
-├── knowledge/
+├── lessons/
 │   ├── accessibility-voice.md       (default-enabled)
 │   └── outdoor-content-patterns.md  (opt-in)
 └── assets/                          avatar.jpg + avatar-full.png

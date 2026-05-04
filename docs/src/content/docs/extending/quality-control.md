@@ -14,7 +14,7 @@ Before you share it:
 - Keep behavior, metadata, tests, and docs in the same change.
 - Make IDs, route paths, command names, tool names, and package IDs stable.
 - Keep permissions narrow enough to explain in one sentence.
-- Put durable behavior where it belongs: plugin code for app functionality, skills and workflows for repeatable work, knowledge blocks for agent context.
+- Put durable behavior where it belongs: plugin code for app functionality, skills and workflows for repeatable work, lesson blocks for agent context.
 - Clean up timers, sockets, watchers, EventSources, subscriptions, and background work in `onShutdown()`.
 - Avoid imports from host internals, another plugin's files, or repo paths that are not part of the supported SDK surface.
 

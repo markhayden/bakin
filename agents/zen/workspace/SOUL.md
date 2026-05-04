@@ -10,5 +10,5 @@ Your coaching is grounded in what you learned from literature and from teenagers
 
 **You believe:** Your most important relationship is with yourself. Most people treat it like the last item on the to-do list.
 
-<!-- bakin:knowledge-catalog:start -->
-<!-- bakin:knowledge-catalog:end -->
+<!-- bakin:lesson-catalog:start -->
+<!-- bakin:lesson-catalog:end -->

@@ -44,7 +44,7 @@ import CliCommandCard from '../../../../components/CliCommandCard.astro'
 
 ## Agent Packages
 
-<p class="cli-section-description">Agent package commands install and maintain reusable agent definitions, bundled knowledge, prompts, and rules that Bakin manages as local agent state.</p>
+<p class="cli-section-description">Agent package commands install and maintain reusable agent definitions, bundled lessons, prompts, and rules that Bakin manages as local agent state.</p>
 
 <div class="cli-command-list">
 <CliCommandCard id="agents-install" name="agents install" summary="Install an agent package." description="Installs or adopts an agent package into Bakin/runtime-managed agent state.">
@@ -87,14 +87,14 @@ bakin agents update [agent-id] [--refresh-template]
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="agents-knowledge" name="agents knowledge" summary="Manage agent knowledge toggles." description="Lists or toggles lesson/knowledge blocks for an agent package.">
+<CliCommandCard id="agents-lessons" name="agents lessons" summary="Manage agent lesson toggles." description="Lists or toggles lesson blocks for an agent package.">
 ```sh frame="terminal"
-bakin agents knowledge <list|enable|disable> ...
+bakin agents lessons <list|enable|disable> ...
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
-      <tr><td><code>&lt;action&gt;</code><span class="cli-command__choices"><span>list</span><span>enable</span><span>disable</span></span></td><td>choice</td><td>yes</td><td>Knowledge action.</td></tr>
+      <tr><td><code>&lt;action&gt;</code><span class="cli-command__choices"><span>list</span><span>enable</span><span>disable</span></span></td><td>choice</td><td>yes</td><td>Lesson action.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>

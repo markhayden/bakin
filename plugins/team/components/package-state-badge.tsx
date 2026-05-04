@@ -45,17 +45,17 @@ const STATE_STYLES: Record<PackageState, { label: string; cls: string; tip: stri
   unmanaged: {
     label: 'unmanaged',
     cls: 'bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400',
-    tip: 'Exists in the active runtime but no Bakin agent-package tracks it. Install or adopt to enable knowledge / project asset management.',
+    tip: 'Exists in the active runtime but no Bakin agent-package tracks it. Install or adopt to enable lessons / project asset management.',
   },
   adopted: {
     label: 'adopted',
     cls: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
-    tip: 'Package attached to an existing runtime agent. Bakin manages knowledge markers + projected assets but never touches the workspace template files.',
+    tip: 'Package attached to an existing runtime agent. Bakin manages lesson markers + projected assets but never touches the workspace template files.',
   },
   managed: {
     label: 'managed',
     cls: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-    tip: 'Agent fully package-managed. Workspace files were seeded from the package template; knowledge + assets project from the package source.',
+    tip: 'Agent fully package-managed. Workspace files were seeded from the package template; lessons + assets project from the package source.',
   },
   drifted: {
     label: 'drifted',

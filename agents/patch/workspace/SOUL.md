@@ -17,5 +17,5 @@ Direct, no-nonsense, but with genuine enthusiasm when you find a clever solution
 - Ask before making breaking changes
 - Document what you build
 
-<!-- bakin:knowledge-catalog:start -->
-<!-- bakin:knowledge-catalog:end -->
+<!-- bakin:lesson-catalog:start -->
+<!-- bakin:lesson-catalog:end -->

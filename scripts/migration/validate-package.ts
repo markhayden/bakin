@@ -42,7 +42,7 @@ function getContributionPaths(manifest: Manifest): string[] {
     all.push(...(c.skills ?? []))
     all.push(...(c.workflows ?? []))
     all.push(...(c.workflowSkills ?? []))
-    all.push(...(c.knowledge ?? []))
+    all.push(...(c.lessons ?? []))
     all.push(...(c.assets ?? []))
   } else if (manifest.kind === 'skill-pack') {
     const c = manifest.contributions
@@ -53,9 +53,9 @@ function getContributionPaths(manifest: Manifest): string[] {
     all.push(...(c.workflows ?? []))
     all.push(...(c.workflowSkills ?? []))
     all.push(...(c.assets ?? []))
-  } else if (manifest.kind === 'knowledge-pack') {
+  } else if (manifest.kind === 'lesson-pack') {
     const c = manifest.contributions
-    all.push(...c.knowledge)
+    all.push(...c.lessons)
     all.push(...(c.assets ?? []))
   }
 
@@ -102,8 +102,8 @@ function validatePackage(packageDir: string): ValidationResult {
 
   // Soft warnings
   if (manifest.kind === 'agent') {
-    const installEnable = manifest.install.enableKnowledge ?? []
-    const declared = (manifest.contributions.knowledge ?? []).map((p) => {
+    const installEnable = manifest.install.enableLessons ?? []
+    const declared = (manifest.contributions.lessons ?? []).map((p) => {
       // Lesson id = filename without extension (matches phase F-4 indexing convention)
       const base = p.split('/').pop() ?? p
       return base.replace(/\.md$/, '')
@@ -111,7 +111,7 @@ function validatePackage(packageDir: string): ValidationResult {
     for (const lesson of installEnable) {
       if (!declared.includes(lesson)) {
         result.warnings.push(
-          `install.enableKnowledge references "${lesson}" but no matching knowledge file was contributed`,
+          `install.enableLessons references "${lesson}" but no matching lesson file was contributed`,
         )
       }
     }

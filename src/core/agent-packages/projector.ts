@@ -11,7 +11,7 @@
  *      mode skips entirely)
  *   - skills in the runtime's agent-scoped or global skill store
  *   - assets at ~/.bakin/agents/<agentId>/<file>
- *   - knowledge markers injected into the agent's SOUL.md (catalog +
+ *   - lesson markers injected into the agent's SOUL.md (catalog +
  *     per-enabled-lesson blocks)
  *
  * Each successful write goes into an in-memory `writeLog` so any later
@@ -71,8 +71,8 @@ export interface ProjectorOptions {
   mode: ProjectionMode
   /** When true, update mode rewrites workspace files even if they exist. */
   refreshTemplate?: boolean
-  /** Lesson ids to enable on this projection. Defaults to manifest.install.enableKnowledge. */
-  enabledKnowledge?: string[]
+  /** Lesson ids to enable on this projection. Defaults to manifest.install.enableLessons. */
+  enabledLessons?: string[]
   /** Provenance metadata stamped onto every .installedBy sidecar. */
   installedBy: Omit<InstalledByMarker, 'sha256'>
   /**
@@ -460,9 +460,9 @@ function projectAssets(
   }
 }
 
-// ─── Knowledge markers (SOUL.md catalog + per-lesson blocks) ─────────────────
+// ─── Lesson markers (SOUL.md catalog + per-lesson blocks) ────────────────────
 
-interface KnowledgeFileMeta {
+interface LessonFileMeta {
   lessonId: string
   title: string
   body: string
@@ -470,7 +470,7 @@ interface KnowledgeFileMeta {
   packageRel: string
 }
 
-function parseKnowledgeFile(absPath: string, packageRel: string): KnowledgeFileMeta {
+function parseLessonFile(absPath: string, packageRel: string): LessonFileMeta {
   const raw = readFileSync(absPath, 'utf-8')
   const match = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
   let title = basename(absPath).replace(/\.md$/i, '')
@@ -481,8 +481,7 @@ function parseKnowledgeFile(absPath: string, packageRel: string): KnowledgeFileM
     body = match[2].trim()
     // Light frontmatter parse — we only need title + defaultEnabled, and
     // bringing in js-yaml here pulls a heavy dep into the projector. The
-    // installer is the right place for full frontmatter access (it'll
-    // index knowledge into search per CC-2).
+    // installer is the right place for full frontmatter access.
     for (const line of match[1].split('\n')) {
       const trimmed = line.trim()
       if (trimmed.startsWith('title:')) {
@@ -497,50 +496,50 @@ function parseKnowledgeFile(absPath: string, packageRel: string): KnowledgeFileM
   return { lessonId, title, body, defaultEnabled, packageRel }
 }
 
-function readKnowledgeFiles(
+function readLessonFiles(
   manifest: AgentManifest,
   options: ProjectorOptions,
-): KnowledgeFileMeta[] {
-  const rels = manifest.contributions.knowledge ?? []
-  const out: KnowledgeFileMeta[] = []
+): LessonFileMeta[] {
+  const rels = manifest.contributions.lessons ?? []
+  const out: LessonFileMeta[] = []
   for (const rel of rels) {
     const abs = join(options.stagingDir, rel)
     if (!existsSync(abs)) {
-      log.warn('Knowledge source missing — skipping', { rel })
+      log.warn('Lesson source missing — skipping', { rel })
       continue
     }
-    out.push(parseKnowledgeFile(abs, rel))
+    out.push(parseLessonFile(abs, rel))
   }
   return out
 }
 
-function knowledgeBlockId(packageId: string, lessonId: string): string {
-  return `knowledge:${packageId}:${lessonId}`
+function lessonBlockId(packageId: string, lessonId: string): string {
+  return `lesson:${packageId}:${lessonId}`
 }
 
-const CATALOG_BLOCK_ID = 'knowledge-catalog'
+const CATALOG_BLOCK_ID = 'lesson-catalog'
 
 function buildCatalogBody(
   packageId: string,
-  knowledge: KnowledgeFileMeta[],
+  lessons: LessonFileMeta[],
   enabled: Set<string>,
 ): string {
-  if (knowledge.length === 0) {
-    return `> No knowledge available from ${packageId}.`
+  if (lessons.length === 0) {
+    return `> No lessons available from ${packageId}.`
   }
   const lines = [
-    `> Knowledge available from agent-package \`${packageId}\`. ` +
-      `Toggle individual lessons via \`bakin agents knowledge enable|disable\`.`,
+    `> Lessons available from agent-package \`${packageId}\`. ` +
+      `Toggle individual lessons via \`bakin agents lessons enable|disable\`.`,
     '',
   ]
-  for (const k of knowledge) {
+  for (const k of lessons) {
     const mark = enabled.has(k.lessonId) ? '[x]' : '[ ]'
     lines.push(`- ${mark} **${k.title}** (\`${k.lessonId}\`)`)
   }
   return lines.join('\n')
 }
 
-async function projectKnowledgeMarkers(
+async function projectLessonMarkers(
   manifest: AgentManifest,
   agentId: string,
   options: ProjectorOptions,
@@ -554,7 +553,7 @@ async function projectKnowledgeMarkers(
     // Adopt mode without an existing SOUL.md is unusual but possible if
     // the user pre-created the agent and never wrote SOUL.md. Skip with
     // a warning — the doctor will surface it.
-    log.warn('SOUL.md missing — knowledge markers skipped', { soulPath })
+    log.warn('SOUL.md missing — lesson markers skipped', { soulPath })
     return
   }
 
@@ -563,10 +562,10 @@ async function projectKnowledgeMarkers(
     return
   }
 
-  const knowledge = readKnowledgeFiles(manifest, options)
-  const enabledList = options.enabledKnowledge
-    ?? manifest.install.enableKnowledge
-    ?? knowledge.filter((k) => k.defaultEnabled).map((k) => k.lessonId)
+  const lessons = readLessonFiles(manifest, options)
+  const enabledList = options.enabledLessons
+    ?? manifest.install.enableLessons
+    ?? lessons.filter((k) => k.defaultEnabled).map((k) => k.lessonId)
   const enabled = new Set(enabledList)
 
   const before = soulFile.content
@@ -577,13 +576,13 @@ async function projectKnowledgeMarkers(
   updated = injectBlock(
     updated,
     CATALOG_BLOCK_ID,
-    buildCatalogBody(manifest.id, knowledge, enabled),
+    buildCatalogBody(manifest.id, lessons, enabled),
   )
 
   // 2. Per-lesson blocks — present only for enabled lessons. Disabled
   //    lessons get their block removed (handles the toggle-off path).
-  for (const k of knowledge) {
-    const blockId = knowledgeBlockId(manifest.id, k.lessonId)
+  for (const k of lessons) {
+    const blockId = lessonBlockId(manifest.id, k.lessonId)
     if (enabled.has(k.lessonId)) {
       updated = injectBlock(updated, blockId, k.body)
     } else {
@@ -602,16 +601,16 @@ async function projectKnowledgeMarkers(
 
   // Record one projection entry for the catalog plus one per enabled lesson.
   result.projections.push({
-    kind: 'knowledge-marker',
+    kind: 'lesson-marker',
     target: soulPath,
     blockId: CATALOG_BLOCK_ID,
   })
-  for (const k of knowledge) {
+  for (const k of lessons) {
     if (!enabled.has(k.lessonId)) continue
     result.projections.push({
-      kind: 'knowledge-marker',
+      kind: 'lesson-marker',
       target: soulPath,
-      blockId: knowledgeBlockId(manifest.id, k.lessonId),
+      blockId: lessonBlockId(manifest.id, k.lessonId),
     })
   }
 }
@@ -635,13 +634,13 @@ export async function projectPackage(options: ProjectorOptions): Promise<Project
       await projectWorkspaceFiles(options.manifest, options.agentId, options, result, writeLog)
       await projectSkills(options.manifest, options, result, writeLog)
       projectAssets(options.manifest, options.agentId, options, result, writeLog)
-      await projectKnowledgeMarkers(options.manifest, options.agentId, options, result, writeLog)
+      await projectLessonMarkers(options.manifest, options.agentId, options, result, writeLog)
     } else if (options.manifest.kind === 'skill-pack') {
       await projectSkills(options.manifest, options, result, writeLog)
     }
-    // workflow-pack and knowledge-pack don't project filesystem-side at
+    // workflow-pack and lesson-pack don't project filesystem-side at
     // V1 — workflow-pack lives in the source registry (boot-time load),
-    // knowledge-pack is search-indexed by the team plugin. Their
+    // lesson-pack is search-indexed by the team plugin. Their
     // package source dir under ~/.bakin/packages/* is the only "projection."
   } catch (err) {
     await writeLog.rollback()
@@ -654,7 +653,7 @@ export async function projectPackage(options: ProjectorOptions): Promise<Project
 /**
  * Reverse a projection — used by the uninstaller (Phase E-6). Removes
  * every projected file (skipping `.userEdited` ones), removes sidecars,
- * and strips knowledge markers from SOUL.md.
+ * and strips lesson markers from SOUL.md.
  */
 export async function unprojectPackage(
   projections: ProjectionEntry[],
@@ -663,7 +662,7 @@ export async function unprojectPackage(
   const runtime = getAppServices().runtime
   for (const p of projections) {
     const runtimeTarget = parseRuntimeTarget(p.target)
-    if (p.kind === 'knowledge-marker') {
+    if (p.kind === 'lesson-marker') {
       if (options.keepBlocks) continue
       if (!runtimeTarget || runtimeTarget.kind !== 'workspace-file') continue
       const file = await runtime.agents.readWorkspaceFile(runtimeTarget.agentId, runtimeTarget.path)

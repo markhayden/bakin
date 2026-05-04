@@ -41,7 +41,7 @@ Use the `assets.images` path. Save under `<assets-images>/<task-id>/YYYYMMDD-nam
 
 ### 3. Generate or edit
 
-Use the nano-banana-pro skill exactly as your AGENTS.md describes. Apply the prompt-style-system knowledge if it's enabled — composition, lighting, specifics, style cues.
+Use the nano-banana-pro skill exactly as your AGENTS.md describes. Apply the prompt-style-system lesson if it's enabled — composition, lighting, specifics, style cues.
 
 ### 4. Save the sidecar FIRST, then the asset
 

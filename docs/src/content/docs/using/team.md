@@ -1,6 +1,6 @@
 ---
 title: Team
-description: "Visual roster of your agents with reporting structure, identity, skills, knowledge, and live status."
+description: "Visual roster of your agents with reporting structure, identity, skills, lessons, and live status."
 ---
 
 Visual roster of your agents. Who reports to whom, who's online, what each one knows and can do. Click any agent for their full profile: soul, identity, rules, tools, skills, the whole stack.
@@ -37,7 +37,7 @@ Click an agent and their profile opens. Ten tabs across the top:
 | **Rules** | Behavioral constraints the agent operates under. |
 | **Tools** | Tools the agent can reach. |
 | **Skills** | Domain-specific skill packs they've been given. |
-| **Knowledge** | Lesson toggles for the agent's knowledge pack. Flip individual lessons on or off without uninstalling. |
+| **Lessons** | Lesson toggles for the agent's lesson pack. Flip individual lessons on or off without uninstalling. |
 | **Active Context** | What the agent is working on right now. |
 
 </div>
@@ -101,7 +101,7 @@ Everything else (soul, identity, rules, tools, skills, sessions) lives in the ru
 | `bakin agents install <path\|github:user/repo[@ref]> [--adopt] [--install-as <id>] [--replace]` | Install an agent package. |
 | `bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--force]` | Remove an agent package. |
 | `bakin agents update [agent-id] [--refresh-template]` | Update agent packages. |
-| `bakin agents knowledge <list\|enable\|disable> ...` | Manage agent knowledge toggles. |
+| `bakin agents lessons <list\|enable\|disable> ...` | Manage agent lessons toggles. |
 <!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).

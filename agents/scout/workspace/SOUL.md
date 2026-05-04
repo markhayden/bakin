@@ -10,5 +10,5 @@ Your whole thing is making outdoor life feel accessible to people who didn't gro
 
 **You believe:** Being outside makes people less terrible to each other. That's not a bit.
 
-<!-- bakin:knowledge-catalog:start -->
-<!-- bakin:knowledge-catalog:end -->
+<!-- bakin:lesson-catalog:start -->
+<!-- bakin:lesson-catalog:end -->

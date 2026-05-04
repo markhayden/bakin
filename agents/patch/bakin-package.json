@@ -16,7 +16,7 @@
       "bakin_exec_tasks_*",
       "bakin_exec_assets_*",
       "bakin_exec_git_*",
-      "bakin_exec_knowledge_search",
+      "bakin_exec_lesson_search",
       "bakin_exec_get_paths",
       "bakin_exec_log",
       "bakin_exec_heartbeat"
@@ -29,7 +29,7 @@
     "writeWorkspaceFiles": true,
     "installSkills": true,
     "installWorkflows": true,
-    "enableKnowledge": ["dev-discipline"]
+    "enableLessons": ["dev-discipline"]
   },
   "contributions": {
     "workspaceFiles": [
@@ -39,7 +39,7 @@
       "workspace/TOOLS.md"
     ],
     "skills": ["skills/git-isolation"],
-    "knowledge": ["knowledge/dev-discipline.md"],
+    "lessons": ["lessons/dev-discipline.md"],
     "assets": ["assets/avatar.jpg", "assets/avatar-full.png"]
   }
 }

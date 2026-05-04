@@ -17,5 +17,5 @@ Warm, encouraging, expertise without condescension. You talk like: "Today we're 
 - Assemble complete post packages before handing to Roscoe
 - Stay on content calendar
 
-<!-- bakin:knowledge-catalog:start -->
-<!-- bakin:knowledge-catalog:end -->
+<!-- bakin:lesson-catalog:start -->
+<!-- bakin:lesson-catalog:end -->

@@ -5,7 +5,7 @@
  *
  * Replaces the old Profile tab (which regurgitated content from the
  * Soul/Rules/Tools/Heartbeat tabs). Folds in what the killed Stats tab
- * used to show, plus summary counts (skills + knowledge), recent
+ * used to show, plus summary counts (skills + lessons), recent
  * activity (5m/1h/24h dispatch counts), model selector, and team
  * selector — both moved out of the agent-detail header.
  */
@@ -27,7 +27,7 @@ export interface OverviewTabProps {
   savingModel: boolean
 }
 
-interface KnowledgeMeta {
+interface LessonsMeta {
   total: number
   enabled: number
 }
@@ -127,7 +127,7 @@ export function OverviewTab({
   const [usage, setUsage] = useState<AgentUsage | null>(null)
   const [activity, setActivity] = useState<RecentActivity | null>(null)
   const [skillCount, setSkillCount] = useState<number | null>(null)
-  const [knowledge, setKnowledge] = useState<KnowledgeMeta | null>(null)
+  const [lessonsMeta, setLessonsMeta] = useState<LessonsMeta | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -137,24 +137,24 @@ export function OverviewTab({
       fetch(`/api/plugins/team/${agentId}/stats`).then((r) => r.json()).catch(() => ({ usage: null })),
       fetch(`/api/plugins/team/${agentId}/recent-activity`).then((r) => r.json()).catch(() => ({ ok: false })),
       fetch(`/api/plugins/team/${agentId}/skills`).then((r) => r.json()).catch(() => ({ skills: [] })),
-      fetch(`/api/agent-packages/${agentId}/knowledge`).then((r) => r.json()).catch(() => ({ ok: false })),
-    ]).then(([statsBody, activityBody, skillsBody, knowledgeBody]) => {
+      fetch(`/api/agent-packages/${agentId}/lessons`).then((r) => r.json()).catch(() => ({ ok: false })),
+    ]).then(([statsBody, activityBody, skillsBody, lessonsBody]) => {
       if (cancelled) return
       const stats = statsBody as { usage: AgentUsage | null }
       const act = activityBody as { ok: boolean; activity?: RecentActivity }
       const skills = skillsBody as { skills?: unknown[] }
-      const know = knowledgeBody as { ok: boolean; lessons?: Array<{ enabled: boolean }> }
+      const lessons = lessonsBody as { ok: boolean; lessons?: Array<{ enabled: boolean }> }
 
       setUsage(stats.usage ?? null)
       setActivity(act.ok && act.activity ? act.activity : null)
       setSkillCount(Array.isArray(skills.skills) ? skills.skills.length : 0)
-      if (know.ok && Array.isArray(know.lessons)) {
-        setKnowledge({
-          total: know.lessons.length,
-          enabled: know.lessons.filter((l) => l.enabled).length,
+      if (lessons.ok && Array.isArray(lessons.lessons)) {
+        setLessonsMeta({
+          total: lessons.lessons.length,
+          enabled: lessons.lessons.filter((l) => l.enabled).length,
         })
       } else {
-        setKnowledge({ total: 0, enabled: 0 })
+        setLessonsMeta({ total: 0, enabled: 0 })
       }
       setLoading(false)
     })
@@ -242,9 +242,9 @@ export function OverviewTab({
             accentBg="bg-violet-500/15"
           />
           <MetricTile
-            label="Knowledge"
-            value={loading || !knowledge ? '—' : fmtNum(knowledge.total)}
-            sublabel={knowledge ? `${knowledge.enabled} enabled` : undefined}
+            label="Lessons"
+            value={loading || !lessonsMeta ? '—' : fmtNum(lessonsMeta.total)}
+            sublabel={lessonsMeta ? `${lessonsMeta.enabled} enabled` : undefined}
             icon={BookOpen}
             accent="text-cyan-300"
             accentBg="bg-cyan-500/15"

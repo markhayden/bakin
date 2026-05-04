@@ -73,7 +73,7 @@ export function AdoptDialog({ open, onOpenChange, agentId, onAdopted }: AdoptDia
           <DialogDescription>
             Attach an agent-package to an existing runtime agent. Workspace files
             stay on disk untouched; Bakin only injects managed markers + projects
-            assets and knowledge.
+            assets and lessons.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -91,7 +91,7 @@ export function AdoptDialog({ open, onOpenChange, agentId, onAdopted }: AdoptDia
             <p className="font-medium">Adopt mode keeps your workspace files.</p>
             <p className="mt-1 text-xs">
               SOUL.md, IDENTITY.md, AGENTS.md, TOOLS.md as they are now —
-              the package's templates won't overwrite them. Only the bakin:knowledge
+              the package's templates won't overwrite them. Only the bakin:lesson
               markers + asset files + (optionally) skills get projected.
             </p>
           </div>

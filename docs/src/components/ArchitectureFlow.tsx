@@ -160,7 +160,7 @@ const NODES: FlowNode[] = [
       { icon: IconHeart, label: 'Health Checks' },
       { icon: IconStar, label: 'Skills' },
       { icon: IconAnchor, label: 'Hooks' },
-      { icon: IconBook, label: 'Knowledge' },
+      { icon: IconBook, label: 'Lessons' },
       { icon: IconChevrons, label: 'Etc.', muted: true },
     ],
   },

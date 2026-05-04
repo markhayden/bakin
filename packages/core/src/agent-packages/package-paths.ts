@@ -15,7 +15,7 @@
  *   agents/<id>@<version>/             kind: 'agent'
  *   skill-packs/<id>@<version>/        kind: 'skill-pack'
  *   workflow-packs/<id>@<version>/     kind: 'workflow-pack'
- *   knowledge-packs/<id>@<version>/    kind: 'knowledge-pack'
+ *   lesson-packs/<id>@<version>/    kind: 'lesson-pack'
  *
  * The `<id>@<version>` suffix lets two versions of the same pack coexist
  * during an in-progress update (the new version installs alongside the old
@@ -30,7 +30,7 @@ const SUBDIR_BY_KIND: Record<PackageKind, string> = {
   'agent': 'agents',
   'skill-pack': 'skill-packs',
   'workflow-pack': 'workflow-packs',
-  'knowledge-pack': 'knowledge-packs',
+  'lesson-pack': 'lesson-packs',
 }
 
 /** Root of the per-installation package tree under a content dir. */

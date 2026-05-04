@@ -18,7 +18,7 @@
       "bakin_exec_tasks_*",
       "bakin_exec_assets_*",
       "bakin_exec_search_*",
-      "bakin_exec_knowledge_search",
+      "bakin_exec_lesson_search",
       "bakin_exec_get_paths",
       "bakin_exec_log",
       "bakin_exec_heartbeat"
@@ -31,7 +31,7 @@
     "writeWorkspaceFiles": true,
     "installSkills": true,
     "installWorkflows": true,
-    "enableKnowledge": ["source-hierarchy"]
+    "enableLessons": ["source-hierarchy"]
   },
   "contributions": {
     "workspaceFiles": [
@@ -40,9 +40,9 @@
       "workspace/AGENTS.md",
       "workspace/TOOLS.md"
     ],
-    "knowledge": [
-      "knowledge/source-hierarchy.md",
-      "knowledge/parallel-lanes.md"
+    "lessons": [
+      "lessons/source-hierarchy.md",
+      "lessons/parallel-lanes.md"
     ],
     "assets": ["assets/avatar.jpg"]
   }

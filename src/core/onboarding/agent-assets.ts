@@ -99,9 +99,9 @@ export function scanAgentAssets(lockfile?: Lockfile): ScanReport {
       report.totalProjections++
       const finding: ProjectionFinding = { packageId: pkgId, projection: p, status: 'ok' }
 
-      // Knowledge-marker projections live inside SOUL.md; classified by
+      // Lesson-marker projections live inside SOUL.md; classified by
       // marker presence rather than sha.
-      if (p.kind === 'knowledge-marker') {
+      if (p.kind === 'lesson-marker') {
         if (isRuntimeWorkspaceTarget(p.target)) {
           report.ok.push(finding)
           continue
@@ -145,7 +145,7 @@ export function scanAgentAssets(lockfile?: Lockfile): ScanReport {
       }
 
       // Workspace-file projections with templateOnly=true are inherently
-      // agent-mutable — SOUL.md gets knowledge markers injected after the
+      // agent-mutable — SOUL.md gets lesson markers injected after the
       // initial template write, IDENTITY.md/AGENTS.md/TOOLS.md are owned
       // by the agent after install. We only check existence + sidecar
       // presence for these; sha drift is expected and managed by other
