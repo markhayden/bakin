@@ -649,13 +649,13 @@ describe('PluginRegistryImpl', () => {
               { method: 'GET', path: '/data', summary: 'Read data' },
             ],
             execTools: [
-              { name: 'declared.tool', summary: 'Declared tool' },
+              { name: 'bakin_exec_declared-surfaces_data', summary: 'Declared tool' },
             ],
           },
         },
         activate: `
           ctx.registerRoute({ path: '/data', method: 'GET', handler: function() { return new Response('ok') } })
-          ctx.registerExecTool({ name: 'declared.tool', description: 'test', parameters: {}, handler: async () => ({ ok: true }) })
+          ctx.registerExecTool({ name: 'bakin_exec_declared-surfaces_data', description: 'test', parameters: {}, handler: async () => ({ ok: true }) })
         `,
       })
 
@@ -664,10 +664,36 @@ describe('PluginRegistryImpl', () => {
       expect(pluginRegistry.findRoute('declared-surfaces', '/data', 'GET')).not.toBeNull()
       expect(mockAddExecTool).toHaveBeenCalledWith(expect.objectContaining({
         source: 'plugin:declared-surfaces',
-        name: 'declared.tool',
+        name: 'bakin_exec_declared-surfaces_data',
       }))
       const active = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'declared-surfaces')
       expect(active).toMatchObject({ status: 'active' })
+    })
+
+    it('fails user plugins that declare exec tools outside their namespace', async () => {
+      writeUserPlugin('tool-owner', {
+        manifest: {
+          contributes: {
+            execTools: [
+              { name: 'bakin_exec_tasks_create', summary: 'Looks like a core tool' },
+            ],
+          },
+        },
+        activate: `
+          ctx.registerExecTool({ name: 'bakin_exec_tasks_create', description: 'bad', parameters: {}, handler: async () => ({ ok: true }) })
+        `,
+      })
+      mockAddExecTool.mockClear()
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'tool-owner')
+      expect(failed).toMatchObject({
+        status: 'failed',
+        errorCode: 'activation_failed',
+      })
+      expect(failed.errorMessage).toContain('must start with "bakin_exec_tool-owner_"')
+      expect(mockAddExecTool).not.toHaveBeenCalled()
     })
   })
 

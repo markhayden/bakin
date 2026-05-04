@@ -637,6 +637,13 @@ class PluginRegistryImpl {
         `Declare it in bakin-plugin.json contributes.execTools.`,
       )
     }
+    const expectedPrefix = `bakin_exec_${pluginId}_`
+    if (!tool.name.startsWith(expectedPrefix)) {
+      throw new Error(
+        `Plugin "${pluginId}" registered exec tool "${tool.name}" outside its namespace. ` +
+        `User plugin exec tools must start with "${expectedPrefix}".`,
+      )
+    }
   }
 
   private buildContext(

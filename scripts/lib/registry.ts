@@ -53,8 +53,10 @@ function getRuntimePluginState(pluginId: string): RuntimePluginState | undefined
 // ---------------------------------------------------------------------------
 
 export function addExecTool(tool: ExecToolDefinition): void {
-  if (execTools.has(tool.name)) {
-    console.warn(`Exec tool "${tool.name}" already registered — overriding`)
+  const existing = execTools.get(tool.name)
+  if (existing) {
+    const owner = existing.source ? ` by ${existing.source}` : ''
+    throw new Error(`Exec tool "${tool.name}" is already registered${owner}`)
   }
   execTools.set(tool.name, tool)
 }
@@ -78,9 +80,10 @@ export function getExecTool(name: string): ExecToolDefinition | undefined {
  */
 export function removeExecToolsByPlugin(pluginId: string): number {
   const prefix = `bakin_exec_${pluginId}_`
+  const pluginSource = `plugin:${pluginId}`
   let removed = 0
-  for (const name of [...execTools.keys()]) {
-    if (name.startsWith(prefix)) {
+  for (const [name, tool] of [...execTools.entries()]) {
+    if (name.startsWith(prefix) || tool.source === pluginSource) {
       execTools.delete(name)
       removed++
     }
