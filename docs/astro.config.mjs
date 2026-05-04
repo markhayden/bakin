@@ -183,14 +183,14 @@ document.addEventListener("click", function (event) {
       ],
       defaultLocale: 'root',
       editLink: {
-        baseUrl: 'https://github.com/madeinwyo/bakin/edit/main/docs/',
+        baseUrl: 'https://github.com/markhayden/bakin/edit/main/docs/',
       },
       lastUpdated: true,
       social: [
         {
           icon: 'github',
           label: 'GitHub',
-          href: 'https://github.com/madeinwyo/bakin',
+          href: 'https://github.com/markhayden/bakin',
         },
       ],
       tableOfContents: {

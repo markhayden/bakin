@@ -153,19 +153,19 @@ bakin agents install ./content-planner --install-as content-planner
 Install from GitHub:
 
 ```sh
-bakin agents install github:madeinwyo/content-planner --install-as content-planner
+bakin agents install github:markhayden/content-planner --install-as content-planner
 ```
 
 GitHub sources can include `@ref` for a tag, branch, or commit:
 
 ```sh
-bakin agents install github:madeinwyo/content-planner@v0.1.0 --install-as content-planner
+bakin agents install github:markhayden/content-planner@v0.1.0 --install-as content-planner
 ```
 
 Install from a package inside a monorepo with `#subpath`:
 
 ```sh
-bakin agents install github:madeinwyo/bakin-bits-official#agents/patch --adopt
+bakin agents install github:markhayden/bakin-bits-official#agents/patch --adopt
 ```
 
 ## Source Dependencies
@@ -177,7 +177,7 @@ Package dependencies can point at GitHub or local sources. Pin refs for repeatab
   "dependencies": {
     "skills": [
       {
-        "source": "github:madeinwyo/bakin-agent-skills",
+        "source": "github:markhayden/bakin-agent-skills",
         "ref": "v0.1.0",
         "items": ["content-brief"]
       }

@@ -301,7 +301,7 @@ source — `bakin-bits-official` is the reference example. Append
 `#path/to/plugin` to the source string to install just one of them:
 
 ```sh
-bakin plugins install github:madeinwyo/bakin-bits-official#plugins/messaging
+bakin plugins install github:markhayden/bakin-bits-official#plugins/messaging
 bakin plugins install github:your-user/your-monorepo#packages/foo
 ```
 

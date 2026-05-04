@@ -56,7 +56,7 @@ Contribution integrity rule: install/update preflights declared contributions be
     "pixel": {
       "kind": "agent",
       "version": "0.1.0",
-      "source": "github:madeinwyo/bakin-agent-pixel",
+      "source": "github:markhayden/bakin-agent-pixel",
       "ref": "v0.1.0",
       "commitSha": "abc123...",
       "installedAt": "2026-04-24T...Z",
@@ -74,7 +74,7 @@ Contribution integrity rule: install/update preflights declared contributions be
     "visual@0.3.1": {
       "kind": "skill-pack",
       "version": "0.3.1",
-      "source": "github:madeinwyo/bakin-skills-visual",
+      "source": "github:markhayden/bakin-skills-visual",
       "ref": "v0.3.1",
       "commitSha": "def456...",
       "refCount": 2,

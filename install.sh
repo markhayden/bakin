@@ -5,7 +5,7 @@
 # ~/.local/bin as a fallback.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/madeinwyo/bakin/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | bash
 #
 # Environment:
 #   BAKIN_INSTALL_DIR   Override the install directory.
@@ -13,7 +13,7 @@
 #
 set -euo pipefail
 
-REPO="madeinwyo/bakin"
+REPO="markhayden/bakin"
 API_BASE="https://api.github.com/repos/${REPO}"
 
 die() {

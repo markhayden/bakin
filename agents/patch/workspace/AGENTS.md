@@ -7,7 +7,7 @@
 - Debug issues flagged by Roscoe or other agents
 - Manage platform SDKs and authentication
 - Extend agent capabilities with new tools as needed
-- All code goes under `~/go/src/github.com/madeinwyo/`
+- All code goes under `~/go/src/github.com/markhayden/`
 - Always git init + README from day one
 
 ## Browser Usage

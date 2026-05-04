@@ -82,7 +82,7 @@ Verify before commit #1:
 - [ ] Confirm `git --version` ≥ 2.20 on the dev machine (needed for `git ls-remote --symref`)
 - [ ] Confirm `~/.bakin/` is writable + healthy on dev machine; `~/.bakin/plugins/` may or may not exist
 - [ ] Audit `packages/core/src/agent-packages/lockfile.ts` — bookmark the docblock voice and export ordering for visual matching
-- [ ] If the `madeinwyo/bakin-plugin-fixture-readonly` repo doesn't exist yet, create it (single commit with a minimal `bakin-plugin.json` + trivial `index.ts`); only blocks C10 (e2e smoke), not C1
+- [ ] If the `markhayden/bakin-plugin-fixture-readonly` repo doesn't exist yet, create it (single commit with a minimal `bakin-plugin.json` + trivial `index.ts`); only blocks C10 (e2e smoke), not C1
 
 ## Dependency Graph
 
@@ -850,7 +850,7 @@ bun run dev:mock                                    # full visual sweep
 4. **Source-tree sha includes mtimes?** — No. Path + content only. **(Resolved in C4 OPEN QUESTION.)**
 5. **Consent prompt rendering style** — match the exact spec text verbatim; no color codes (terminals vary). Settle column alignment during C9 build by visual feel.
 6. **Audit log line format** — JSON line via `appendAudit`; rendered string in `server.log` per existing logger pattern. No new format invention.
-7. **Fixture repo creation timing** — set up `madeinwyo/bakin-plugin-fixture-readonly` before C10 tests. Single commit, no future changes.
+7. **Fixture repo creation timing** — set up `markhayden/bakin-plugin-fixture-readonly` before C10 tests. Single commit, no future changes.
 
 None block C1.
 

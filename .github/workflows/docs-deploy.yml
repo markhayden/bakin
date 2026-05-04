@@ -42,7 +42,7 @@ jobs:
       # actions/checkout rejects paths outside the workspace, so use
       # plain git clone (the repo is public).
       - name: Clone bakin-bits-official (extracted plugins)
-        run: git clone --depth 1 https://github.com/madeinwyo/bakin-bits-official.git "${{ runner.workspace }}/external/bakin-bits-official"
+        run: git clone --depth 1 https://github.com/markhayden/bakin-bits-official.git "${{ runner.workspace }}/external/bakin-bits-official"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

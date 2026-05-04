@@ -8,12 +8,12 @@ the code.
 ## Publishing a release to Homebrew
 
 Homebrew itself doesn't read this file. The file belongs in a tap
-repository — specifically `madeinwyo/homebrew-tap`, at
+repository — specifically `markhayden/homebrew-tap`, at
 `Formula/bakin.rb`. For each Bakin release:
 
 1. Build binaries + compute sha256 sums (the release workflow does this
    automatically and attaches `checksums.txt` to the GitHub release).
-2. Copy `homebrew/bakin.rb` to `madeinwyo/homebrew-tap/Formula/bakin.rb`.
+2. Copy `homebrew/bakin.rb` to `markhayden/homebrew-tap/Formula/bakin.rb`.
 3. Replace the placeholders:
    - `__VERSION__` → the release tag without the leading `v` (e.g. `1.2.0`)
    - `__SHA256_DARWIN_ARM64__` → the sha256 of `bakin-darwin-arm64`
@@ -22,7 +22,7 @@ repository — specifically `madeinwyo/homebrew-tap`, at
 4. Commit + push the tap repo. Users install with:
 
    ```sh
-   brew tap madeinwyo/bakin
+   brew tap markhayden/bakin
    brew install bakin
    ```
 

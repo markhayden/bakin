@@ -19,7 +19,7 @@ export const RECOMMENDED_PLUGINS = [
   {
     id: 'messaging',
     name: 'Messaging',
-    source: 'github:madeinwyo/bakin-bits-official#plugins/messaging',
+    source: 'github:markhayden/bakin-bits-official#plugins/messaging',
     description: 'Content planning, calendar items, brainstorming sessions, approvals, and channel delivery.',
     dependencies: ['team', 'workflows'],
     defaultSelected: true,
@@ -27,7 +27,7 @@ export const RECOMMENDED_PLUGINS = [
   {
     id: 'projects',
     name: 'Projects',
-    source: 'github:madeinwyo/bakin-bits-official#plugins/projects',
+    source: 'github:markhayden/bakin-bits-official#plugins/projects',
     description: 'Project specs, checklists, task links, assets, and project-context agent tools.',
     dependencies: ['tasks', 'assets', 'team'],
     defaultSelected: true,
@@ -98,7 +98,7 @@ async function check(): Promise<CheckResult> {
     name: 'recommended-plugins',
     status: 'missing',
     message: `${missing.length} recommended official plugin${missing.length === 1 ? '' : 's'} not installed`,
-    remediation: 'Install during onboarding or later with `bakin plugins install github:madeinwyo/bakin-bits-official#plugins/<id> --yes`.',
+    remediation: 'Install during onboarding or later with `bakin plugins install github:markhayden/bakin-bits-official#plugins/<id> --yes`.',
     details: { missing: missing.map(plugin => plugin.id) },
   }
 }

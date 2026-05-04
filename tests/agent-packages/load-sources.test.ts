@@ -67,7 +67,7 @@ function pixelEntry(version = '0.1.0'): PackageEntry {
   return {
     kind: 'agent',
     version,
-    source: 'github:madeinwyo/bakin-agent-pixel',
+    source: 'github:markhayden/bakin-agent-pixel',
     ref: `v${version}`,
     commitSha: 'abc123',
     installedAt: NOW,
@@ -212,7 +212,7 @@ steps:
         'visual@0.3.1': {
           kind: 'skill-pack',
           version: '0.3.1',
-          source: 'github:madeinwyo/bakin-skills-visual',
+          source: 'github:markhayden/bakin-skills-visual',
           ref: 'v0.3.1',
           commitSha: 'def456',
           installedAt: NOW,
@@ -222,7 +222,7 @@ steps:
         'lessons@1.0.0': {
           kind: 'lesson-pack',
           version: '1.0.0',
-          source: 'github:madeinwyo/bakin-lessons',
+          source: 'github:markhayden/bakin-lessons',
           ref: 'v1.0.0',
           commitSha: 'ghi789',
           installedAt: NOW,

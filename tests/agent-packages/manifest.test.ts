@@ -59,7 +59,7 @@ describe('manifest schema — happy path', () => {
     expect(m.agent.identity.name).toBe('Pixel')
     expect(m.install.enableLessons).toEqual(['prompt-style-system'])
     expect(m.contributions.skills).toEqual(['skills/image-generation'])
-    expect(m.dependencies?.skills?.[0].source).toBe('github:madeinwyo/bakin-skills-visual')
+    expect(m.dependencies?.skills?.[0].source).toBe('github:markhayden/bakin-skills-visual')
     expect(m.dependencies?.skills?.[0].installAs).toBeNull()
   })
 
@@ -196,19 +196,19 @@ describe('manifest schema — dependency source rules', () => {
   it('accepts github source with package subpath', () => {
     const m = loadFixture('agent') as Record<string, unknown>
     ;(m.dependencies as { skills: unknown[] }).skills = [
-      { source: 'github:madeinwyo/bakin-bits-official#agents/patch', ref: 'main' },
+      { source: 'github:markhayden/bakin-bits-official#agents/patch', ref: 'main' },
     ]
     expect(() => parseManifest(m)).not.toThrow()
   })
 
   for (const [label, source] of [
-    ['empty subpath', 'github:madeinwyo/bakin-bits-official#'],
-    ['leading slash', 'github:madeinwyo/bakin-bits-official#/agents/patch'],
-    ['trailing slash', 'github:madeinwyo/bakin-bits-official#agents/patch/'],
-    ['parent traversal', 'github:madeinwyo/bakin-bits-official#agents/../patch'],
-    ['dot segment', 'github:madeinwyo/bakin-bits-official#./agents/patch'],
-    ['multiple # delimiters', 'github:madeinwyo/bakin-bits-official#a#b'],
-    ['space in subpath', 'github:madeinwyo/bakin-bits-official#agents/patch copy'],
+    ['empty subpath', 'github:markhayden/bakin-bits-official#'],
+    ['leading slash', 'github:markhayden/bakin-bits-official#/agents/patch'],
+    ['trailing slash', 'github:markhayden/bakin-bits-official#agents/patch/'],
+    ['parent traversal', 'github:markhayden/bakin-bits-official#agents/../patch'],
+    ['dot segment', 'github:markhayden/bakin-bits-official#./agents/patch'],
+    ['multiple # delimiters', 'github:markhayden/bakin-bits-official#a#b'],
+    ['space in subpath', 'github:markhayden/bakin-bits-official#agents/patch copy'],
   ] as const) {
     it(`rejects malformed github subpath: ${label}`, () => {
       const m = loadFixture('agent') as Record<string, unknown>

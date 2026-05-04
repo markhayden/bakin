@@ -14,7 +14,7 @@ Make Bakin's plugin architecture **load-bearing for third parties**. Today the p
 
 This work makes it concrete:
 
-1. **Establish a clear feature-module / plugin distinction.** Eight `plugins/*` directories are structurally part of Bakin (core can import from them, they're always present, they aren't optional). Two — `messaging` and `projects` — are bundled-but-optional. Extract those two to `madeinwyo/bakin-bits-official` and turn them into the first real third-party plugins.
+1. **Establish a clear feature-module / plugin distinction.** Eight `plugins/*` directories are structurally part of Bakin (core can import from them, they're always present, they aren't optional). Two — `messaging` and `projects` — are bundled-but-optional. Extract those two to `markhayden/bakin-bits-official` and turn them into the first real third-party plugins.
 
 2. **Build the developer experience that makes plugin authoring viable.** A `bakin plugins link <source>` command that symlinks a plugin directory into `~/.bakin/plugins/`, watches it, and hot-reloads the server-side and client-side independently when the source changes. No restart-required loop. This dogfoods the install/upgrade/remove path and forces every gap to surface.
 
@@ -178,8 +178,8 @@ bakin plugins install /local/path
 bakin plugins install github:user/repo
 
 # NEW:
-bakin plugins install github:madeinwyo/bakin-bits-official#plugins/messaging
-bakin plugins install github:madeinwyo/bakin-bits-official#plugins/projects --ref messaging-v1.2.0
+bakin plugins install github:markhayden/bakin-bits-official#plugins/messaging
+bakin plugins install github:markhayden/bakin-bits-official#plugins/projects --ref messaging-v1.2.0
 ```
 
 **Source string format:** `github:<user>/<repo>[#<subpath>]`. The `#subpath` is parsed off and points the installer at a subdirectory of the cloned repo. If absent, the install expects the manifest at the repo root (existing behavior — unchanged).
@@ -223,14 +223,14 @@ A new step in the onboard flow, after the existing setup:
 export const RECOMMENDED_PLUGINS: RecommendedPlugin[] = [
   {
     id: 'messaging',
-    source: 'github:madeinwyo/bakin-bits-official#plugins/messaging',
+    source: 'github:markhayden/bakin-bits-official#plugins/messaging',
     name: 'Messaging',
     description: 'Cross-agent chat sessions, brainstorm threads, planning layouts',
     defaultSelected: true,
   },
   {
     id: 'projects',
-    source: 'github:madeinwyo/bakin-bits-official#plugins/projects',
+    source: 'github:markhayden/bakin-bits-official#plugins/projects',
     name: 'Projects',
     description: 'Project tracking with subtasks and asset linkage',
     defaultSelected: true,
@@ -392,7 +392,7 @@ Each phase is a separate PR. Each leaves the codebase shippable.
 - Tests for `github:user/repo#subpath` parsing + install.
 - Documentation update for the install command.
 
-**Acceptance:** `bakin plugins install github:madeinwyo/bakin-bits-official#plugins/messaging` works (against a fixture repo). Roundtrip with upgrade + remove.
+**Acceptance:** `bakin plugins install github:markhayden/bakin-bits-official#plugins/messaging` works (against a fixture repo). Roundtrip with upgrade + remove.
 
 ### Phase 2 — Plugin link + hot-reload (in bakin)
 The biggest phase. Bundle these because they're useless apart:
@@ -409,7 +409,7 @@ The biggest phase. Bundle these because they're useless apart:
 
 ### Phase 3 — `bakin-bits-official` repo skeleton
 Outside bakin repo:
-- New `madeinwyo/bakin-bits-official` repo created.
+- New `markhayden/bakin-bits-official` repo created.
 - Top-level `package.json`, `tsconfig.json`, `.github/workflows/ci.yml`, README.
 - Empty `plugins/` directory.
 - Empty `agents/` directory (placeholder for future).
@@ -473,7 +473,7 @@ Repeat Phase 4 for projects. Should be smoother.
 ## 12. Acceptance (whole work, post-Phase 7)
 
 - [ ] `bakin-bits-official` exists with `messaging` + `projects` plugins.
-- [ ] `bakin plugins install github:madeinwyo/bakin-bits-official#plugins/messaging` works.
+- [ ] `bakin plugins install github:markhayden/bakin-bits-official#plugins/messaging` works.
 - [ ] `bakin plugins link /local/bakin-bits-official/plugins/messaging` works.
 - [ ] Editing a file in the linked plugin updates the running bakin within ~1s, no restart.
 - [ ] Build errors surface in dev overlay; old plugin keeps working until fix.

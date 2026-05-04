@@ -66,7 +66,7 @@ const NOW = '2026-04-25T12:00:00Z'
 
 function sampleEntry(overrides: Partial<PluginLockEntry> = {}): PluginLockEntry {
   return {
-    source: 'github:madeinwyo/sample-plugin',
+    source: 'github:markhayden/sample-plugin',
     type: 'github',
     ref: 'main',
     commitSha: '0123456789abcdef0123456789abcdef01234567',

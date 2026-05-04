@@ -54,7 +54,7 @@ import {
 } from '../../../packages/core/src/plugins/lockfile'
 
 const pluginEntry: PluginLockEntry = {
-  source: 'github:madeinwyo/example-plugin',
+  source: 'github:markhayden/example-plugin',
   type: 'github',
   ref: 'main',
   commitSha: '0123456789abcdef0123456789abcdef01234567',
@@ -175,7 +175,7 @@ describe('restoreUninstallSnapshot', () => {
     expect(restored.snapshot.path).toBe(snapshot.tarballPath)
     expect(existsSync(join(testDir, 'plugins', 'demo-plugin', 'bakin-plugin.json'))).toBe(true)
     expect(existsSync(join(testDir, 'plugin-settings', 'demo-plugin.json'))).toBe(true)
-    expect(readPluginLockfile().plugins['demo-plugin']?.source).toBe('github:madeinwyo/example-plugin')
+    expect(readPluginLockfile().plugins['demo-plugin']?.source).toBe('github:markhayden/example-plugin')
     expect(readPluginLockfile().plugins['demo-plugin']?.commitSha).toBe(pluginEntry.commitSha)
 
     const runtime = (await import('@/core/app-services')).getAppServices().runtime

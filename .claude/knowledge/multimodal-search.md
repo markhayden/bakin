@@ -226,7 +226,7 @@ The **`indexScores`** field on each result is the proof of life. A hit with `ble
 
 ## Known upstream issues
 
-All tracked in [Bakin issue #72](https://github.com/madeinwyo/bakin/issues/72):
+All tracked in [Bakin issue #72](https://github.com/markhayden/bakin/issues/72):
 
 1. **`content_security.block_private_ips` is dead code** — documented Antfly config key that does nothing because `SetDefaultSecurityConfig()` is never called from app startup.
 2. **`ajroetker/pdf` is too weak for real PDFs** — fails silently on complex font encoding. Would be fixed upstream by swapping to `pdfcpu` or shelling out to `pdftotext`.

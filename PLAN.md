@@ -877,7 +877,7 @@ Each follows the **same template** as phase B (snapshot → convert → validate
   - Schema in `curated-agents.json`:
     ```json
     [
-      { "id": "pixel", "name": "Pixel", "source": "github:madeinwyo/bakin-agent-pixel", "description": "Creative image and design agent", "tags": ["creative"], "icon": "/api/curated/icons/pixel.png" }
+      { "id": "pixel", "name": "Pixel", "source": "github:markhayden/bakin-agent-pixel", "description": "Creative image and design agent", "tags": ["creative"], "icon": "/api/curated/icons/pixel.png" }
     ]
     ```
   - GET /api/curated returns the list

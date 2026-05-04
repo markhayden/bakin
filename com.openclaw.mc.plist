@@ -8,8 +8,8 @@
   <key>ProgramArguments</key>
   <array>
     <string>/opt/homebrew/bin/node</string>
-    <string>/Users/roscoe/go/src/github.com/madeinwyo/mission-control/node_modules/.bin/tsx</string>
-    <string>/Users/roscoe/go/src/github.com/madeinwyo/mission-control/server.ts</string>
+    <string>/Users/roscoe/go/src/github.com/markhayden/mission-control/node_modules/.bin/tsx</string>
+    <string>/Users/roscoe/go/src/github.com/markhayden/mission-control/server.ts</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
@@ -19,14 +19,14 @@
     <string>production</string>
   </dict>
   <key>WorkingDirectory</key>
-  <string>/Users/roscoe/go/src/github.com/madeinwyo/mission-control</string>
+  <string>/Users/roscoe/go/src/github.com/markhayden/mission-control</string>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
   <true/>
   <key>StandardOutPath</key>
-  <string>/Users/roscoe/go/src/github.com/madeinwyo/mission-control/mc-server.log</string>
+  <string>/Users/roscoe/go/src/github.com/markhayden/mission-control/mc-server.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/roscoe/go/src/github.com/madeinwyo/mission-control/mc-server-error.log</string>
+  <string>/Users/roscoe/go/src/github.com/markhayden/mission-control/mc-server-error.log</string>
 </dict>
 </plist>

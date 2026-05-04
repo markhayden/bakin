@@ -1,6 +1,6 @@
 # @bakin/sdk
 
-SDK for building [Bakin](https://github.com/madeinwyo/bakin) plugins.
+SDK for building [Bakin](https://github.com/markhayden/bakin) plugins.
 Gives you the `registerPlugin` helper, shared UI components, slot
 types, and React hooks the Bakin host shell already ships at runtime.
 
@@ -99,7 +99,7 @@ The `exports` map covers these sub-paths:
 ## Repository
 
 This package is developed alongside Bakin in the
-[madeinwyo/bakin](https://github.com/madeinwyo/bakin) monorepo, under
+[markhayden/bakin](https://github.com/markhayden/bakin) monorepo, under
 `packages/sdk`. File issues and PRs on the main repository.
 
 ## License

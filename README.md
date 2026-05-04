@@ -11,14 +11,14 @@ Built on [Bun](https://bun.sh) end to end: runtime, bundler, package manager, an
 **One-liner (recommended):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/madeinwyo/bakin/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | bash
 ```
 
 Detects your platform (Mac arm64, Linux x64, Linux arm64), verifies the sha256 against the release's `checksums.txt`, and drops the binary at `/usr/local/bin/bakin` (or `~/.local/bin` fallback).
 
 **Manual install:**
 
-Grab the binary for your platform from [releases](https://github.com/madeinwyo/bakin/releases), `chmod +x`, and put it on your PATH.
+Grab the binary for your platform from [releases](https://github.com/markhayden/bakin/releases), `chmod +x`, and put it on your PATH.
 
 **Self-update:**
 
@@ -379,7 +379,7 @@ openclaw skills list
 ## Developing
 
 ```bash
-git clone git@github.com:madeinwyo/bakin.git
+git clone git@github.com:markhayden/bakin.git
 cd bakin
 bun install
 bun run dev       # or `bakin dev` if the CLI is on your PATH

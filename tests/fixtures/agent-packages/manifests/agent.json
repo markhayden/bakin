@@ -43,7 +43,7 @@
   "dependencies": {
     "skills": [
       {
-        "source": "github:madeinwyo/bakin-skills-visual",
+        "source": "github:markhayden/bakin-skills-visual",
         "ref": "v0.3.1",
         "items": ["image-generation"],
         "installAs": null

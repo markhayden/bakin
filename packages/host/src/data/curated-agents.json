@@ -8,7 +8,7 @@
       "emoji": "🎨",
       "description": "Image artist agent. Crafts prompts, iterates on outputs, owns visual quality.",
       "tags": ["creative", "image", "design"],
-      "source": "github:madeinwyo/bakin-agent-pixel",
+      "source": "github:markhayden/bakin-agent-pixel",
       "ref": null,
       "trust": "official"
     },
@@ -18,7 +18,7 @@
       "emoji": "🎬",
       "description": "Video producer agent. Generates video + audio, mixes finished assets.",
       "tags": ["creative", "video", "audio"],
-      "source": "github:madeinwyo/bakin-agent-rolo",
+      "source": "github:markhayden/bakin-agent-rolo",
       "ref": null,
       "trust": "official"
     },
@@ -28,7 +28,7 @@
       "emoji": "🔎",
       "description": "Research agent — multi-source discovery, evidence gathering, synthesis support.",
       "tags": ["research", "synthesis"],
-      "source": "github:madeinwyo/bakin-agent-jessica-fetcher",
+      "source": "github:markhayden/bakin-agent-jessica-fetcher",
       "ref": null,
       "trust": "official"
     },
@@ -38,7 +38,7 @@
       "emoji": "🥗",
       "description": "Nutritionist + food content creator. Orchestrates Pixel and Rolo for daily food / nutrition posts.",
       "tags": ["content", "food", "nutrition"],
-      "source": "github:madeinwyo/bakin-agent-basil",
+      "source": "github:markhayden/bakin-agent-basil",
       "ref": null,
       "trust": "official"
     },
@@ -48,7 +48,7 @@
       "emoji": "⚙️",
       "description": "Developer agent — API integrations, automation, debugging, tool extensions.",
       "tags": ["dev", "automation"],
-      "source": "github:madeinwyo/bakin-agent-patch",
+      "source": "github:markhayden/bakin-agent-patch",
       "ref": null,
       "trust": "official"
     }

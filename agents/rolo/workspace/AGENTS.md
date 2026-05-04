@@ -50,7 +50,7 @@ ffmpeg -i video.mp4 -i /tmp/bgmusic.mp3 -i /tmp/sizzle.mp3 \
 ```
 
 ## Video Generation (Runway)
-- Skills at: `~/go/src/github.com/madeinwyo/runway-skill/`
+- Skills at: `~/go/src/github.com/markhayden/runway-skill/`
 - Handle sequencing, transitions, and pacing
 - Coordinate with Pixel when static images are needed as video components
 

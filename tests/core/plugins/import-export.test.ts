@@ -29,7 +29,7 @@ describe('plugin import/export manifest', () => {
       version: 1,
       plugins: {
         messaging: entry({
-          source: 'github:madeinwyo/bakin-bits-official#plugins/messaging',
+          source: 'github:markhayden/bakin-bits-official#plugins/messaging',
           ref: 'messaging-v1.0.0',
           commitSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
           version: '1.0.0',
@@ -51,7 +51,7 @@ describe('plugin import/export manifest', () => {
       plugins: [
         {
           id: 'messaging',
-          source: 'github:madeinwyo/bakin-bits-official#plugins/messaging',
+          source: 'github:markhayden/bakin-bits-official#plugins/messaging',
           type: 'github',
           ref: 'messaging-v1.0.0',
           commitSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',

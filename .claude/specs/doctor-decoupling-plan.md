@@ -502,7 +502,7 @@ C10 (collapse type + delete inline helpers + docs)          ──┘
 - **EDIT** `docs/public/llms/plugin-authoring.md` — LLM mirror.
 
 **Verification:**
-- `grep -rn "DiagnosticResult" /Users/roscoe/go/src/github.com/madeinwyo/bakin --include="*.ts" --include="*.tsx"` returns zero matches.
+- `grep -rn "DiagnosticResult" /Users/roscoe/go/src/github.com/markhayden/bakin --include="*.ts" --include="*.tsx"` returns zero matches.
 - `grep -nE "function check[A-Z]" src/core/doctor.ts` returns zero matches.
 - `wc -l src/core/doctor.ts` ≤ 100.
 - `bun test --isolate` green.
