@@ -66,7 +66,7 @@ const dispatchAndPackagesRoutes = [
 // ─── /api/plugins/* + misc (T16) ─────────────────────────────────────────
 const pluginsAndMiscRoutes = [
   defineCoreRoute({ path: '/api/plugins/install', method: 'POST', summary: 'Install plugin', body: z.object({ source: z.string(), type: z.enum(['local', 'github']) }), responses: { 200: passthrough, 400: errorResponse, 500: errorResponse }, handler: stub }),
-  defineCoreRoute({ path: '/api/plugins/link', method: 'POST', summary: 'Link local plugin', body: z.object({ path: z.string() }), responses: { 200: passthrough, 400: errorResponse, 500: errorResponse }, handler: stub }),
+  defineCoreRoute({ path: '/api/plugins/link', method: 'POST', summary: 'Link local plugin', body: z.object({ localPath: z.string(), force: z.boolean().optional() }), responses: { 200: passthrough, 400: errorResponse, 500: errorResponse }, handler: stub }),
   defineCoreRoute({ path: '/api/plugins/manifest', method: 'GET', summary: 'Get plugin manifest bundle', responses: { 200: passthrough }, handler: stub }),
   defineCoreRoute({ path: '/api/plugins/:pluginId/assets/:path', method: 'GET', summary: 'Serve plugin client asset', params: z.object({ pluginId: z.string(), path: z.string() }), responses: { 200: { contentType: 'application/octet-stream' }, 404: errorResponse }, handler: stub }),
   defineCoreRoute({ path: '/api/plugins/memory/audit', method: 'GET', summary: 'List memory audit entries', responses: { 200: passthrough }, handler: stub }),
