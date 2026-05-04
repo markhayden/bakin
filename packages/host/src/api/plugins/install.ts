@@ -35,8 +35,10 @@ import {
   writePluginLockfile,
   type PluginLockEntry,
 } from '@bakin/core/plugins/lockfile'
+import { getSettings } from '@bakin/core/settings'
 import { parseManifestPermissions } from '@bakin/core/plugins/permissions'
 import { PLUGIN_ID_RE, readPluginManifestJson, PluginManifestError } from '@bakin/core/plugins/manifest'
+import { verifyPluginManifestSignature } from '@bakin/core/plugins/signatures'
 import { parseGithubSource, InvalidGithubSourceError, assertGitRefValid } from '@bakin/core/plugins/source'
 import { computeSourceTreeSha } from '@/core/plugins/upgrade'
 import { checkPluginDependencies } from '@/core/plugins/dependencies'
@@ -512,8 +514,11 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       }
 
       let manifest: Record<string, unknown> & { id: string; version: string }
+      let rawManifest: unknown
       try {
-        manifest = readPluginManifestJson(readFileSync(manifestPath, 'utf-8')) as unknown as Record<string, unknown> & { id: string; version: string }
+        const manifestText = readFileSync(manifestPath, 'utf-8')
+        manifest = readPluginManifestJson(manifestText) as unknown as Record<string, unknown> & { id: string; version: string }
+        rawManifest = JSON.parse(manifestText)
       } catch (err) {
         rmSync(stagingDir, { recursive: true, force: true })
         return Response.json({
@@ -548,6 +553,18 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         return Response.json({
           ok: false,
           error: `Plugin id "${id}" collides with a core plugin. Re-run with overrideCore:true to intentionally replace the built-in (rare).`,
+        }, { status: 400 })
+      }
+
+      try {
+        verifyPluginManifestSignature(rawManifest, getSettings().plugins)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        rmSync(stagingDir, { recursive: true, force: true })
+        auditInstallRejected('signature_verification_failed', body.source, { id, error: message })
+        return Response.json({
+          ok: false,
+          error: `plugin "${id}": ${message}`,
         }, { status: 400 })
       }
 

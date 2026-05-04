@@ -132,6 +132,10 @@ commit submits source B):
    each dependency must be a core plugin, an installed user plugin, or
    in the selected recommended-plugin install plan. Missing deps return
    HTTP 400 and the staging dir is removed.
+   If `settings.plugins.requireSignatures === true`, the same pre-copy
+   phase verifies `bakin-plugin.json.signature` against
+   `settings.plugins.trustedSigners`; unsigned, untrusted, or tampered
+   manifests fail with `plugin.install.rejected`.
 3. If permissions are non-empty AND `accepted !== true`, server returns
    `{ awaitingConsent: true, id, version, permissions, consentToken }`
    and tears down staging. The token is HMAC-SHA256 over
@@ -153,6 +157,37 @@ commit submits source B):
 Zero-permission plugins skip the consent gate (no token needed).
 `--yes` short-circuits the prompt for scripted/CI installs but the
 token round-trip still runs for the binding check.
+
+### Signature Policy
+
+Default behavior is trust-on-first-use: unsigned plugin manifests install,
+link, and upgrade normally, and the lockfile records the source plus
+`manifestSha`.
+
+Set `plugins.requireSignatures: true` in `~/.bakin/settings.json` to fail
+closed for install, dev-link, and upgrade. Trusted roots live in
+`plugins.trustedSigners` and may be:
+
+- `sha256:<hex>` — SHA-256 fingerprint of the Ed25519 SPKI DER public key.
+- Raw base64 Ed25519 SPKI public key.
+- `ed25519:<base64-public-key>`.
+
+Manifest shape:
+
+```json
+{
+  "signature": {
+    "algorithm": "ed25519",
+    "signer": "madeinwyo",
+    "publicKey": "base64-spki-public-key",
+    "signature": "base64-signature"
+  }
+}
+```
+
+The signature covers canonical JSON for `bakin-plugin.json` with the
+top-level `signature` block omitted. `signer` is display metadata only;
+trust is bound to the key or fingerprint.
 
 ### Dependency Validation
 
@@ -256,7 +291,11 @@ without creating a second plugin package schema.
 ### Upgrade flow — `bakin plugins upgrade <id> [--yes]`
 
 `src/core/plugins/upgrade.ts`. Refuses core plugins. Reads the
-lockfile entry to determine source type:
+lockfile entry and verifies the currently installed manifest before
+source-specific no-op checks. That means flipping
+`plugins.requireSignatures` to true makes existing unsigned plugins fail
+closed on their next upgrade attempt until they are reinstalled from a
+trusted signed source. Then it determines source type:
 
 - **github**:
   1. `git remote set-url origin -- <lockfile.source>` — pins origin so
@@ -271,10 +310,11 @@ lockfile entry to determine source type:
      declares a different id (anti-impersonation; otherwise a user
      plugin could rename to `tasks` and clobber a core plugin after
      restart).
-  6. Compute permission diff. If widened AND `!opts.yes` → return
+  6. Verify the remote manifest signature when required.
+  7. Compute permission diff. If widened AND `!opts.yes` → return
      `{ awaitingConsent: true, newPermissions }` WITHOUT mutating disk
      or lockfile.
-  7. Force-push detection via `git merge-base --is-ancestor` then
+  8. Force-push detection via `git merge-base --is-ancestor` then
      `git merge --ff-only`. Build. Project the upgraded plugin's
      `defaults/runtime-skills/` assets into the runtime skill store.
      Unexpected asset install errors fail the upgrade; `.userEdited`
@@ -284,9 +324,9 @@ lockfile entry to determine source type:
   Compute deterministic source-tree sha (skip `node_modules`/`dist`/
   `.git`, content + path only — no mtimes). No-op if unchanged.
   Read source manifest directly (no copy yet), assert manifest.id
-  stable, compute permission diff, run consent gate. Only then wipe +
-  cpSync + rebuild + project plugin runtime-skill assets + write
-  lockfile.
+  stable, verify signature when required, compute permission diff, run
+  consent gate. Only then wipe + cpSync + rebuild + project plugin
+  runtime-skill assets + write lockfile.
 
 Permission widening: if the new manifest declares permissions not in
 the lockfile entry AND `--yes` is unset, return
@@ -583,6 +623,12 @@ interface PluginManifest {
   tests?: string
   dependencies?: string[]      // other plugin IDs — drives topological sort
   permissions?: Permission[]   // strict Zod enum — see PermissionSchema. Empty/missing → []
+  signature?: {
+    algorithm: 'ed25519'
+    signer: string             // display metadata only
+    publicKey: string          // base64 Ed25519 SPKI DER key
+    signature: string          // base64 signature over canonical manifest minus this block
+  }
 }
 ```
 

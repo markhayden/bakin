@@ -113,6 +113,42 @@ describe('plugin manifest schema', () => {
     expect(manifest.bakin).toBe('>=1.0.0')
   })
 
+  it('accepts an optional ed25519 signature block', () => {
+    const manifest = parsePluginManifest({
+      ...baseManifest,
+      signature: {
+        algorithm: 'ed25519',
+        signer: 'madeinwyo',
+        publicKey: 'MCowBQYDK2VwAyEAtest',
+        signature: 'signed-body',
+      },
+    })
+
+    expect(manifest.signature?.algorithm).toBe('ed25519')
+    expect(manifest.signature?.signer).toBe('madeinwyo')
+  })
+
+  it('rejects malformed signature blocks', () => {
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      signature: {
+        algorithm: 'rsa',
+        signer: 'madeinwyo',
+        publicKey: 'MCowBQYDK2VwAyEAtest',
+        signature: 'signed-body',
+      },
+    })).toThrow(/signature\.algorithm/)
+
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      signature: {
+        algorithm: 'ed25519',
+        signer: 'madeinwyo',
+        signature: 'signed-body',
+      },
+    })).toThrow(/signature\.publicKey/)
+  })
+
   it('rejects absolute API paths in plugin route declarations', () => {
     expect(() => parsePluginManifest({
       ...baseManifest,
