@@ -21,7 +21,7 @@ Do not use lesson files for secrets, ephemeral task notes, live credentials, per
 
 ## File Shape
 
-Lesson files are Markdown. Keep headings direct and avoid clever structure. Agents should be able to scan the file and extract instructions without guessing.
+Lesson files are Markdown under `lessons/<lesson-id>.md`. Install and update fail if a contributed lesson file is missing, empty, outside that path shape, or duplicates another lesson ID. Keep headings direct and avoid clever structure. Agents should be able to scan the file and extract instructions without guessing.
 
 ```md
 # Voice

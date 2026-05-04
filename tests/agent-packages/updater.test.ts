@@ -302,4 +302,34 @@ describe('updatePackageById — refuse paths', () => {
       await updatePackageById({ packageId: 'pixel' })
     }).toThrow(/does not match installed id/)
   })
+
+  it('refuses an update that removes a currently enabled lesson', async () => {
+    const src = seedAgentPackage({ id: 'pixel', version: '0.1.0' })
+    await installPackage({ source: src })
+
+    const soulPath = join(openClawDir, 'workspaces', 'pixel', 'SOUL.md')
+    const beforeSoul = readFileSync(soulPath, 'utf-8')
+    expect(beforeSoul).toContain('v0.1.0 body.')
+
+    const manifest = JSON.parse(readFileSync(join(src, 'bakin-package.json'), 'utf-8'))
+    manifest.version = '0.2.0'
+    manifest.contributions.lessons = ['lessons/new-style.md']
+    writeFileSync(join(src, 'bakin-package.json'), JSON.stringify(manifest, null, 2))
+    rmSync(join(src, 'lessons', 'style.md'), { force: true })
+    writeFileSync(
+      join(src, 'lessons', 'new-style.md'),
+      `---\ntitle: New Style\ndefaultEnabled: false\n---\n\nv0.2.0 body.`,
+    )
+
+    expect(async () => {
+      await updatePackageById({ packageId: 'pixel' })
+    }).toThrow(/enabled lesson "style" is not contributed/i)
+
+    const lockAfter = readLockfile()
+    expect(lockAfter.packages.pixel.version).toBe('0.1.0')
+    expect(lockAfter.packages.pixel.lessonsEnabled).toEqual(['style'])
+    const afterSoul = readFileSync(soulPath, 'utf-8')
+    expect(afterSoul).toBe(beforeSoul)
+    expect(afterSoul).not.toContain('v0.2.0 body.')
+  })
 })

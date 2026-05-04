@@ -33,6 +33,7 @@ import {
   acquireInstallLock,
   releaseInstallLock,
 } from './install-lock'
+import { validatePackageLessonIntegrity } from './lesson-integrity'
 
 const log = createLogger('agent-pkg:update')
 
@@ -107,6 +108,12 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
           `Run \`bakin agents remove ${options.packageId}\` then install the new id fresh.`,
       )
     }
+
+    validatePackageLessonIntegrity({
+      manifest,
+      stagingDir: fetched.stagingDir,
+      enabledLessons: entry.kind === 'agent' ? entry.lessonsEnabled ?? [] : undefined,
+    })
 
     // Roll back the old projections so the new ones land on a clean slate.
     // Two carve-outs:

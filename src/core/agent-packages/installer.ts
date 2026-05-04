@@ -68,6 +68,7 @@ import {
 import { getAppServices } from '../app-services'
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import { validatePackageLessonIntegrity } from './lesson-integrity'
 
 const log = createLogger('agent-pkg:install')
 
@@ -293,6 +294,10 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     }
 
     const resolvedTopId = options.installAs ?? manifest.id
+    validatePackageLessonIntegrity({
+      manifest,
+      stagingDir: topFetched.stagingDir,
+    })
 
     // ─── 3. Compute install mode for kind:"agent" ──────────────────────────
     const lock = readLockfile()
@@ -348,6 +353,12 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     // ─── 4. Resolve dependencies ───────────────────────────────────────────
     const resolved = resolveDependencies(manifest)
     for (const r of resolved) depFetched.push(r.fetched)
+    for (const r of resolved) {
+      validatePackageLessonIntegrity({
+        manifest: r.manifest,
+        stagingDir: r.fetched.stagingDir,
+      })
+    }
 
     // ─── 5. Pre-flight collision check ─────────────────────────────────────
     const collisions = preflightCollisions(lock, resolvedTopId, resolved)
