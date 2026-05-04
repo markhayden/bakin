@@ -42,6 +42,7 @@ import { checkAndContinueDependents } from './src/core/continuation'
 import { getAllRoutes, generateDocs } from './src/core/api-docs'
 import { getCachedOrBuild } from './packages/host/src/api/docs-runtime'
 import type { buildOpenApiDocument } from './packages/host/src/api/docs-runtime'
+import { collectOpenApiSources as collectTypedOpenApiSources } from './packages/host/src/api/openapi-sources'
 import { migrateIfNeeded } from './src/core/search-migration'
 import * as agents from './src/core/agents'
 import * as doctor from './src/core/doctor'
@@ -113,25 +114,12 @@ const CONTENT_DIR = getContentDir()
 
 /**
  * Build the source list the OpenAPI runtime builder consumes from the
- * live route registry. Plugin routes come from pluginRegistry; legacy
- * core routes still flow through src/core/api-docs.ts CORE_ROUTES until
- * T14–T16 migrate them onto the declarative shape.
+ * live route registry. Plugin routes come from pluginRegistry; core routes
+ * come from the typed core route declarations so body/query/response schemas
+ * are preserved in live `/api/openapi`.
  */
 function collectOpenApiSources(): Parameters<typeof buildOpenApiDocument>[0] {
-  return [
-    ...pluginRegistry.getAllPluginRoutes().map(({ pluginId, route }) => ({
-      scope: pluginId,
-      fullPath: `/api/plugins/${pluginId}${route.path}`,
-      route: route as unknown as Parameters<typeof buildOpenApiDocument>[0][number]['route'],
-    })),
-    ...getAllRoutes()
-      .filter(r => r.pluginId === 'core')
-      .map(r => ({
-        scope: 'core' as const,
-        fullPath: r.fullPath,
-        route: r as unknown as Parameters<typeof buildOpenApiDocument>[0][number]['route'],
-      })),
-  ]
+  return collectTypedOpenApiSources(pluginRegistry.getAllPluginRoutes())
 }
 
 // Ensure required directories exist
