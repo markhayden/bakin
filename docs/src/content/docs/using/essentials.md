@@ -26,6 +26,8 @@ bakin plugins export plugins.json                # back up user plugins
 bakin plugins import plugins.json --yes          # restore user plugins
 bakin plugins upgrade <id>                       # pull the latest
 bakin plugins remove <id>                        # uninstall
+bakin plugins restore <id> --list                # list uninstall snapshots
+bakin plugins restore <id>                       # restore latest snapshot
 ```
 
 Core plugins ship with Bakin and can't be removed. Everything else is fair game. [Build your own](/docs/extending/plugins/overview/) or install one from the community.

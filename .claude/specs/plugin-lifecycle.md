@@ -28,7 +28,7 @@ This work introduces the missing primitive (`~/.bakin/plugins/lock.json`, modele
 |-----|--------|-----------|
 | Signature verification (`bakin-plugin.json.signature`, `settings.plugins.trustedSigners`, `settings.plugins.requireSignatures`) | Originally cut from the lifecycle bundle. Now addressed as an additive policy: trust-on-first-use remains default, `requireSignatures` fails closed when enabled. | #164 |
 | Hot reload of user plugins after install/upgrade/remove | Touches plugin registry, route dispatcher, MCP tool registry, Bun module cache. Own design tree. Restart cost is ~2s. | New issue: "feat(plugins): hot reload for install/upgrade/remove" |
-| Tarball retention / cleanup / `bakin plugins restore` | `.uninstalled/` tarballs accumulate without expiry in this PR. Punt to its own UX conversation. | New issue: "feat(plugins): .uninstalled tarball retention + restore command" |
+| Tarball retention / cleanup / `bakin plugins restore` | Originally cut from the lifecycle bundle. Now addressed with latest-5-plus-90-day retention, snapshot listing, restore, and lockfile provenance capture. | #165 |
 | Permissions layer 3 (runtime capability gating) | Pervasive SDK surface change. Locks plugins out on enforcement bugs. Needs disable-toggle for rollout. | New sub-issue under #142: "feat(plugins): permissions layer 3 — runtime capability gating" |
 | `@ref` syntax in install URL (`github:user/repo@v1.2.0`) | Different feature with its own UX surface. Lockfile field is already a string — additive when added. | New issue: "feat(plugins): pin install ref (tag/branch/commit)" |
 | Reproducible install manifest (export/import all installed plugins at exact refs) | Cut from original lifecycle PR; later unblocked by @ref pinning. | Shipped by #168: `bakin plugins export [file]` / `bakin plugins import <file> [--yes] [--force]` |
@@ -496,7 +496,7 @@ Specific to this work:
 ## 10. Follow-up Issues to File (at commit #11)
 
 1. **Shipped after cut:** #164 signature verification + trusted signers. Spec: `bakin-plugin.json.signature`, `settings.plugins.trustedSigners`, `settings.plugins.requireSignatures` (default false).
-2. **feat(plugins): .uninstalled tarball retention + restore command** — From #119 cut. Spec: retention policy (e.g., 90 days or N most recent), `bakin plugins restore <id>` UX, `bakin trash` integration.
+2. **Shipped after cut:** #165 `.uninstalled` tarball retention + restore command. Policy: keep latest 5 per plugin plus all snapshots from the last 90 days; `bakin plugins restore <id> [--snapshot ...] [--list]` restores plugin files, settings, runtime skills, and lockfile provenance.
 3. **feat(plugins): permissions layer 3 — runtime capability gating** — From #142. Spec: wrap `ctx.*` methods, throw `PermissionDenied` if undeclared. Needs disable-toggle for rollout.
 4. **feat(plugins): pin install ref (tag/branch/commit)** — From #151. Spec: `github:user/repo@v1.2.0` syntax; lockfile `ref` field already supports it; upgrade UX (`--unpin`/`--ref=`).
 5. **feat(plugins): bakin plugins import/export** — Depends on #4. Spec: export installed plugin set to a manifest file; `bakin plugins import <file>` to reproduce on another machine.

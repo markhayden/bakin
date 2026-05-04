@@ -400,6 +400,16 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="core.post.api-plugins-restore">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/restore' \
+  -H 'Content-Type: application/json' \
+  --data '{"pluginId":"value","snapshot":"value","force":true,"listOnly":true}'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="core.post.api-plugins-unlink">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -1472,5 +1482,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 1, 2026 · Bakin 1.0.0</span>
+  <span>Generated May 3, 2026 · Bakin 1.0.0</span>
 </aside>

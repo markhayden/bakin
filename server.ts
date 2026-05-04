@@ -59,6 +59,7 @@ import * as pluginSettingsIdRoute from './packages/host/src/api/plugin-settings/
 import * as pluginSettingsSchemasRoute from './packages/host/src/api/plugin-settings/schemas'
 import * as pluginsInstallRoute from './packages/host/src/api/plugins/install'
 import * as pluginsRemoveRoute from './packages/host/src/api/plugins/remove'
+import * as pluginsRestoreRoute from './packages/host/src/api/plugins/restore'
 import * as pluginsUpgradeRoute from './packages/host/src/api/plugins/upgrade'
 import * as pluginsLinkRoute from './packages/host/src/api/plugins/link'
 import * as pluginsUnlinkRoute from './packages/host/src/api/plugins/unlink'
@@ -421,6 +422,11 @@ const eventBus = new BakinEventBus(broadcast)
 
     if (url.pathname === '/api/plugins/remove' && req.method === 'POST') {
       dispatchWebHandler(req, res, pluginsRemoveRoute.post)
+      return
+    }
+
+    if (url.pathname === '/api/plugins/restore' && req.method === 'POST') {
+      dispatchWebHandler(req, res, pluginsRestoreRoute.post)
       return
     }
 
