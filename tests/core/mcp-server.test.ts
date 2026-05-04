@@ -19,14 +19,20 @@ mock.module('@/core/task-service', () => ({
 }))
 
 mock.module('@/core/content-dir', () => ({
-  getContentDir: mock(() => '/tmp/test'),
+  getContentDir: mock(() => process.env.BAKIN_HOME || '/tmp/test'),
   getBakinPaths: mock(() => ({
-    home: '/tmp/test',
-    assets: '/tmp/test/assets',
+    root: process.env.BAKIN_HOME || '/tmp/test',
+    home: process.env.BAKIN_HOME || '/tmp/test',
+    assets: `${process.env.BAKIN_HOME || '/tmp/test'}/assets`,
+    settings: `${process.env.BAKIN_HOME || '/tmp/test'}/settings.json`,
+    pluginSettings: `${process.env.BAKIN_HOME || '/tmp/test'}/plugin-settings`,
+    plugins: `${process.env.BAKIN_HOME || '/tmp/test'}/plugins`,
+    audit: `${process.env.BAKIN_HOME || '/tmp/test'}/audit.jsonl`,
+    logs: `${process.env.BAKIN_HOME || '/tmp/test'}/logs`,
+  })),
   isUsingBakinHome: () => true,
   resetContentDir: () => {},
   initBakinHome: () => {},
-})),
 }))
 
 mock.module('@/core/audit', () => ({
@@ -34,6 +40,9 @@ mock.module('@/core/audit', () => ({
 }))
 
 mock.module('@bakin/workflows/lib/runtime', () => ({
+  createInstance: mock(() => ({ taskId: 'task-1', workflowId: 'wf', status: 'in_progress' })),
+  loadInstance: mock(() => null),
+  saveInstance: mock(),
   getCurrentStep: mock(() => ({
     stepId: 'write-copy',
     label: 'Write Copy',
@@ -41,6 +50,14 @@ mock.module('@bakin/workflows/lib/runtime', () => ({
     output_schema: { type: 'object', properties: { text: { type: 'string' } } },
   })),
   completeStep: mock(() => ({ success: true, workflowComplete: false })),
+  approveGate: mock(() => ({ success: true })),
+  rejectGate: mock(() => ({ success: true })),
+  listInstances: mock(() => []),
+  getActiveAgents: mock(() => []),
+  authorizeWorkflowToolUse: mock(() => ({ allowed: true })),
+  isGateNotified: mock(() => false),
+  markGateNotified: mock(),
+  cancelInstance: mock(),
 }))
 
 mock.module('@/core/logger', () => ({

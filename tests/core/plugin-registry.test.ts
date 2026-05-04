@@ -130,9 +130,31 @@ mock.module('@/core/migrations', () => ({
   runMigrations: mock().mockResolvedValue(0),
 }))
 
+const mockedExecTools = new Map<string, any>()
+const mockedAddExecTool = mock((tool: any) => {
+  if (mockedExecTools.has(tool.name)) {
+    throw new Error(`Exec tool "${tool.name}" is already registered`)
+  }
+  mockedExecTools.set(tool.name, tool)
+})
+const mockedRemoveExecToolsByPlugin = mock((pluginId: string) => {
+  const prefix = `bakin_exec_${pluginId}_`
+  const source = `plugin:${pluginId}`
+  let removed = 0
+  for (const [name, tool] of [...mockedExecTools.entries()]) {
+    if (name.startsWith(prefix) || tool.source === source) {
+      mockedExecTools.delete(name)
+      removed++
+    }
+  }
+  return removed
+})
+
 mock.module('../../scripts/lib/registry', () => ({
-  addExecTool: mock(),
-  removeExecToolsByPlugin: mock(() => 0),
+  addExecTool: mockedAddExecTool,
+  getExecTool: (name: string) => mockedExecTools.get(name),
+  getAllExecTools: () => [...mockedExecTools.values()],
+  removeExecToolsByPlugin: mockedRemoveExecToolsByPlugin,
 }))
 
 describe('PluginRegistryImpl', () => {
@@ -144,14 +166,17 @@ describe('PluginRegistryImpl', () => {
   let mockAppendAudit: any
   let mockAddExecTool: any
   let mockRegisterRouteDoc: any
+  let previousBakinHome: string | undefined
 
   beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bakin-plugin-reg-'))
     // Point user plugins to a non-existent dir (no user plugins by default)
+    previousBakinHome = process.env.BAKIN_HOME
     process.env.BAKIN_HOME = join(tempDir, 'bakin-home')
     // Clear globalThis singletons for fresh instances
     delete (globalThis as any).__bakinPluginRegistry
     delete (globalThis as any).__bakinHookRegistry
+    mockedExecTools.clear()
     const runtime = createMockRuntimeAdapter()
     const search = createMockSearchAdapter()
     ;(globalThis as any).__bakinAppServices = {
@@ -190,7 +215,12 @@ describe('PluginRegistryImpl', () => {
   })
 
   afterEach(() => {
-    delete process.env.BAKIN_HOME
+    if (previousBakinHome === undefined) {
+      delete process.env.BAKIN_HOME
+    } else {
+      process.env.BAKIN_HOME = previousBakinHome
+    }
+    mockGetContentDir?.mockImplementation(() => process.env.BAKIN_HOME || '/tmp/test')
     // Clean up any globalThis test vars
     for (const key of Object.keys(globalThis)) {
       if (key.startsWith('__') && key !== '__bakinPluginRegistry' && key !== '__bakinHookRegistry') {
