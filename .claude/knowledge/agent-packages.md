@@ -43,7 +43,7 @@ atomically.
 
 ID rule: `/^[a-z0-9][a-z0-9-_]{0,39}$/i` — same as plugin install. Source rule: `github:user/repo[@ref][#subpath]` or local path (`./` `../` `/` `~/`); bare names refuse with a clear error. GitHub `#subpath` installs stage only the package directory and reject empty, absolute, traversal, dot-segment, multi-`#`, and whitespace subpaths.
 
-Lesson integrity rule: install/update preflights agent and lesson-pack lesson contributions before writing lockfile or projections. Lesson contributions must be real, non-empty Markdown files at `lessons/<lesson-id>.md`, with unique basename-derived ids. Agent `install.enableLessons[]` and update-preserved `lessonsEnabled[]` must reference contributed lesson ids.
+Contribution integrity rule: install/update preflights declared contributions before writing the lockfile or projections. Workspace files, assets, workflows, and workflow skills must be real files inside the package. Skills must be directories with a non-empty `SKILL.md`. Workflow files must be YAML definitions that pass workflow validation, and workflow-skill Markdown must have a non-empty instruction body. Lesson contributions must be real, non-empty Markdown files at `lessons/<lesson-id>.md`, with unique basename-derived ids. Agent `install.enableLessons[]` and update-preserved `lessonsEnabled[]` must reference contributed lesson ids.
 
 ## Lockfile
 

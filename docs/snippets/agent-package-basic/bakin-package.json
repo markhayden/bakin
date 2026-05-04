@@ -44,7 +44,7 @@
       "workspace/TOOLS.md"
     ],
     "skills": [
-      "skills/content-brief.md"
+      "skills/content-brief"
     ],
     "workflows": [
       "workflows/draft-review.yaml"

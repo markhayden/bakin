@@ -332,4 +332,25 @@ describe('updatePackageById — refuse paths', () => {
     expect(afterSoul).toBe(beforeSoul)
     expect(afterSoul).not.toContain('v0.2.0 body.')
   })
+
+  it('refuses an update with a missing declared asset before mutating installed state', async () => {
+    const src = seedAgentPackage({ id: 'pixel', version: '0.1.0' })
+    await installPackage({ source: src })
+
+    const soulPath = join(openClawDir, 'workspaces', 'pixel', 'SOUL.md')
+    const beforeSoul = readFileSync(soulPath, 'utf-8')
+
+    const manifest = JSON.parse(readFileSync(join(src, 'bakin-package.json'), 'utf-8'))
+    manifest.version = '0.2.0'
+    manifest.contributions.assets = ['assets/missing-avatar.jpg']
+    writeFileSync(join(src, 'bakin-package.json'), JSON.stringify(manifest, null, 2))
+
+    expect(async () => {
+      await updatePackageById({ packageId: 'pixel' })
+    }).toThrow(/asset source file is missing/i)
+
+    const lockAfter = readLockfile()
+    expect(lockAfter.packages.pixel.version).toBe('0.1.0')
+    expect(readFileSync(soulPath, 'utf-8')).toBe(beforeSoul)
+  })
 })

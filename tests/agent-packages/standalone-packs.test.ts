@@ -140,6 +140,28 @@ describe('installPackage — kind:"skill-pack"', () => {
       await installPackage({ source: src })
     }).toThrow()
   })
+
+  it('refuses a skill-pack when a declared skill directory is missing', async () => {
+    const src = seedSkillPack('visual-skills')
+    rmSync(join(src, 'skills', 'image-gen'), { recursive: true, force: true })
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow(/skill source directory is missing/i)
+
+    expect(Object.keys(readLockfile().packages)).toEqual([])
+  })
+
+  it('refuses a skill-pack when SKILL.md is missing', async () => {
+    const src = seedSkillPack('visual-skills')
+    rmSync(join(src, 'skills', 'image-gen', 'SKILL.md'), { force: true })
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow(/SKILL\.md is missing/i)
+
+    expect(Object.keys(readLockfile().packages)).toEqual([])
+  })
 })
 
 // ─── workflow-pack ───────────────────────────────────────────────────────────
@@ -214,6 +236,42 @@ describe('installPackage — kind:"workflow-pack"', () => {
     const def = getDefinition('image-flow')
     expect(def?.source).toBe('agent-package')
     expect(def?.packageId).toBe('creative-flows')
+  })
+
+  it('refuses a workflow-pack when a declared workflow file is missing', async () => {
+    const src = seedWorkflowPack('creative-flows')
+    rmSync(join(src, 'workflows', 'image-flow.yaml'), { force: true })
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow(/workflow source file is missing/i)
+
+    expect(Object.keys(readLockfile().packages)).toEqual([])
+  })
+
+  it('refuses a workflow-pack when a declared workflow is invalid', async () => {
+    const src = seedWorkflowPack('creative-flows')
+    writeFileSync(join(src, 'workflows', 'image-flow.yaml'), 'bad: yaml: : :: invalid')
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow(/workflow source file is invalid/i)
+
+    expect(Object.keys(readLockfile().packages)).toEqual([])
+  })
+
+  it('refuses a workflow-pack when a declared workflow skill has no body content', async () => {
+    const src = seedWorkflowPack('creative-flows')
+    writeFileSync(
+      join(src, 'workflow-skills', 'critique.md'),
+      `---\nname: Critique\n---\n\n`,
+    )
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow(/workflow-skill source file is empty/i)
+
+    expect(Object.keys(readLockfile().packages)).toEqual([])
   })
 })
 

@@ -87,7 +87,7 @@ Use skills when instructions should be reusable and task-sized. If the same proc
 
 Skills can belong to plugins or agent kits. Put a skill in a plugin when it belongs to a plugin-owned capability. Put it in an agent kit when it travels with a teammate or reusable team package.
 
-Plugin skills are registered with `ctx.registerSkill()`. Agent kit skills live under `contributions.skills` in `bakin-package.json` and can be listed in `agent.allowedSkills`.
+Plugin skills are registered with `ctx.registerSkill()`. Agent kit skills live under `contributions.skills` in `bakin-package.json`, where each contribution points at a skill directory containing `SKILL.md`. They can be listed in `agent.allowedSkills`.
 
 Start with [Server Contracts](/docs/extending/plugins/server-contracts/) or [Package Manifest](/docs/extending/agents/packages/).
 
@@ -174,7 +174,7 @@ Agent kits use `bakin-package.json`. The manifest declares package kind, agent i
   },
   "contributions": {
     "workspaceFiles": ["workspace/SOUL.md", "workspace/TOOLS.md"],
-    "skills": ["skills/launch-review.md"],
+    "skills": ["skills/launch-review"],
     "workflows": ["workflows/launch.yaml"],
     "lessons": ["lessons/voice.md"]
   }

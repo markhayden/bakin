@@ -33,7 +33,7 @@ import {
   acquireInstallLock,
   releaseInstallLock,
 } from './install-lock'
-import { validatePackageLessonIntegrity } from './lesson-integrity'
+import { validatePackageContributionIntegrity } from './package-integrity'
 
 const log = createLogger('agent-pkg:update')
 
@@ -109,7 +109,7 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
       )
     }
 
-    validatePackageLessonIntegrity({
+    validatePackageContributionIntegrity({
       manifest,
       stagingDir: fetched.stagingDir,
       enabledLessons: entry.kind === 'agent' ? entry.lessonsEnabled ?? [] : undefined,
