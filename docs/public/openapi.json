@@ -15692,12 +15692,15 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "path": {
+                  "localPath": {
                     "type": "string"
+                  },
+                  "force": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
-                  "path"
+                  "localPath"
                 ],
                 "additionalProperties": false
               }
