@@ -254,7 +254,7 @@ function writeAgentPackage(
         state,
         agentId,
         projections: [],
-        knowledgeEnabled: [],
+        lessonsEnabled: [],
       },
     },
   })

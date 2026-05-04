@@ -14,7 +14,7 @@ import { PackageStateBadge } from './package-state-badge'
 import { AdoptDialog } from './adopt-dialog'
 import type { PackageStateRow } from '../types'
 
-export const ADOPT_INFO = `Adopting attaches an agent-package to this agent. Bakin then tracks the source repo + commit, projects the package's knowledge lessons + skills into the workspace, and lets you toggle which lessons are active. Your existing SOUL/IDENTITY/AGENTS/TOOLS files stay on disk untouched.`
+export const ADOPT_INFO = `Adopting attaches an agent-package to this agent. Bakin then tracks the source repo + commit, projects the package's lessons + skills into the workspace, and lets you toggle which lessons are active. Your existing SOUL/IDENTITY/AGENTS/TOOLS files stay on disk untouched.`
 
 function CliHint({ command }: { command: string }) {
   const [copied, setCopied] = useState(false)
@@ -131,7 +131,7 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
       </div>
       {state === 'unmanaged' && (
         <p className="text-xs text-muted-foreground leading-relaxed">
-          Adopt to enable knowledge-lesson toggles, automatic skill projection, and update-from-source tracking. Your workspace files stay as-is.
+          Adopt to enable lesson toggles, automatic skill projection, and update-from-source tracking. Your workspace files stay as-is.
         </p>
       )}
       {packageState?.entry && (state === 'managed' || state === 'adopted') && (

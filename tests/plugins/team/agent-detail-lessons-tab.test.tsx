@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
 
 /**
- * Knowledge tab contract for agent-detail.
+ * Lessons tab contract for agent-detail.
  *
  * - Tab is always visible in the tab bar (regardless of package state)
- * - For managed/adopted agents the tab renders KnowledgeToggleList
- *   (which fetches from /api/agent-packages/:id/knowledge)
- * - For unmanaged/absent/undefined the tab renders a "Knowledge requires a package"
+ * - For managed/adopted agents the tab renders LessonToggleList
+ *   (which fetches from /api/agent-packages/:id/lessons)
+ * - For unmanaged/absent/undefined the tab renders a "Lessons require a package"
  *   placeholder with a hint pointing back at the Package card
- * - Tab click writes ?tab=knowledge to the URL via useQueryState
+ * - Tab click writes ?tab=lessons to the URL via useQueryState
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -16,7 +16,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { rmSync } from 'fs'
 
-const testDir = join(tmpdir(), `bakin-test-knowledge-tab-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+const testDir = join(tmpdir(), `bakin-test-lessons-tab-${Date.now()}-${Math.random().toString(36).slice(2)}`)
 
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
@@ -70,7 +70,7 @@ function setupFetch() {
     if (u.startsWith('/api/plugins/models/available')) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ models: [] }) } as Response)
     }
-    if (u.includes('/api/agent-packages/pixel/knowledge')) {
+    if (u.includes('/api/agent-packages/pixel/lessons')) {
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve({
@@ -117,52 +117,52 @@ async function openDetail() {
   await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Pixel' })).toBeDefined())
 }
 
-describe('AgentDetail — Knowledge tab', () => {
-  it('shows the Knowledge tab in the tab bar', async () => {
+describe('AgentDetail — Lessons tab', () => {
+  it('shows the Lessons tab in the tab bar', async () => {
     primeState()
     await openDetail()
-    expect(screen.getByRole('button', { name: 'Knowledge' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Lessons' })).toBeDefined()
   })
 
-  it('clicking Knowledge writes tab=knowledge to the URL', async () => {
+  it('clicking Lessons writes tab=lessons to the URL', async () => {
     primeState()
     await openDetail()
-    fireEvent.click(screen.getByRole('button', { name: 'Knowledge' }))
-    expect(setTabSpy).toHaveBeenCalledWith('knowledge')
+    fireEvent.click(screen.getByRole('button', { name: 'Lessons' }))
+    expect(setTabSpy).toHaveBeenCalledWith('lessons')
   })
 
-  it('renders KnowledgeToggleList for state=managed', async () => {
+  it('renders LessonToggleList for state=managed', async () => {
     primeState({
       pixel: { agentId: 'pixel', state: 'managed', packageId: 'examples/pixel@0.1.0' },
     })
-    queryState.tab = 'knowledge'
+    queryState.tab = 'lessons'
     await openDetail()
     await waitFor(() => expect(screen.getByText('Lesson One')).toBeDefined())
     expect(screen.getByText('Lesson Two')).toBeDefined()
-    expect(screen.queryByText('Knowledge requires a package')).toBeNull()
+    expect(screen.queryByText('Lessons require a package')).toBeNull()
   })
 
-  it('renders KnowledgeToggleList for state=adopted', async () => {
+  it('renders LessonToggleList for state=adopted', async () => {
     primeState({
       pixel: { agentId: 'pixel', state: 'adopted', packageId: 'examples/pixel@0.1.0' },
     })
-    queryState.tab = 'knowledge'
+    queryState.tab = 'lessons'
     await openDetail()
     await waitFor(() => expect(screen.getByText('Lesson One')).toBeDefined())
   })
 
-  it('renders "Knowledge requires a package" empty state for state=unmanaged', async () => {
+  it('renders "Lessons require a package" empty state for state=unmanaged', async () => {
     primeState({ pixel: { agentId: 'pixel', state: 'unmanaged' } })
-    queryState.tab = 'knowledge'
+    queryState.tab = 'lessons'
     await openDetail()
-    await waitFor(() => expect(screen.getByText('Knowledge requires a package')).toBeDefined())
+    await waitFor(() => expect(screen.getByText('Lessons require a package')).toBeDefined())
     expect(screen.queryByText('Lesson One')).toBeNull()
   })
 
-  it('renders "Knowledge requires a package" when no package state row exists', async () => {
+  it('renders "Lessons require a package" when no package state row exists', async () => {
     primeState()
-    queryState.tab = 'knowledge'
+    queryState.tab = 'lessons'
     await openDetail()
-    await waitFor(() => expect(screen.getByText('Knowledge requires a package')).toBeDefined())
+    await waitFor(() => expect(screen.getByText('Lessons require a package')).toBeDefined())
   })
 })

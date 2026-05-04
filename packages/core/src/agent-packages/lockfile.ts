@@ -22,7 +22,7 @@ const ProjectionKindSchema = z.enum([
   'skill',
   'asset',
   'workspace-file',
-  'knowledge-marker',
+  'lesson-marker',
 ])
 
 const ProjectionEntrySchema = z.object({
@@ -37,12 +37,12 @@ const ProjectionEntrySchema = z.object({
    * doctor should NOT auto-overwrite on update unless --refresh-template.
    */
   templateOnly: z.boolean().optional(),
-  /** For knowledge-marker entries — the block id ("knowledge:pixel:product-photography"). */
+  /** For lesson-marker entries — the block id ("lesson:pixel:product-photography"). */
   blockId: z.string().optional(),
 })
 
 const PackageStateSchema = z.enum(['managed', 'adopted'])
-const PackageKindSchema = z.enum(['agent', 'skill-pack', 'workflow-pack', 'knowledge-pack'])
+const PackageKindSchema = z.enum(['agent', 'skill-pack', 'workflow-pack', 'lesson-pack'])
 
 const PackageEntrySchema = z.object({
   kind: PackageKindSchema,
@@ -58,7 +58,7 @@ const PackageEntrySchema = z.object({
   // Agent-only fields (present iff kind === 'agent')
   state: PackageStateSchema.optional(),
   agentId: z.string().optional(),
-  knowledgeEnabled: z.array(z.string()).optional(),
+  lessonsEnabled: z.array(z.string()).optional(),
 
   // Projections (present on every kind that puts files anywhere)
   projections: z.array(ProjectionEntrySchema).optional(),

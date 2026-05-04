@@ -4,8 +4,8 @@
  * Routes covered:
  *   DELETE /api/agent-packages/{agentId}                       remove the package
  *   POST   /api/agent-packages/{agentId}/update                update the package
- *   GET    /api/agent-packages/{agentId}/knowledge             list lessons + state
- *   POST   /api/agent-packages/{agentId}/knowledge/{lessonId}  toggle lesson
+ *   GET    /api/agent-packages/{agentId}/lessons             list lessons + state
+ *   POST   /api/agent-packages/{agentId}/lessons/{lessonId}  toggle lesson
  *
  * The path family is `/api/agent-packages/...` rather than `/api/agents/...`
  * to avoid collision with the existing runtime surface (`/api/agents/{id}/
@@ -18,9 +18,9 @@ import { z } from 'zod'
 import { removePackageById } from '@/core/agent-packages/uninstaller'
 import { updatePackageById } from '@/core/agent-packages/updater'
 import {
-  listKnowledge,
-  setKnowledgeEnabled,
-} from '@/core/agent-packages/knowledge-toggle'
+  listLessons,
+  setLessonEnabled,
+} from '@/core/agent-packages/lesson-toggle'
 import { findAgentPackage, readLockfile } from '@bakin/core/agent-packages/lockfile'
 import { createLogger } from '@/core/logger'
 
@@ -74,14 +74,14 @@ export async function handler(req: Request, url: URL): Promise<Response> {
     return handleUpdate(req, agentId)
   }
 
-  // /api/agent-packages/{agentId}/knowledge <- GET
-  if (segments.length === 4 && segments[3] === 'knowledge' && req.method === 'GET') {
-    return handleKnowledgeList(agentId)
+  // /api/agent-packages/{agentId}/lessons <- GET
+  if (segments.length === 4 && segments[3] === 'lessons' && req.method === 'GET') {
+    return handleLessonsList(agentId)
   }
 
-  // /api/agent-packages/{agentId}/knowledge/{lessonId} <- POST
-  if (segments.length === 5 && segments[3] === 'knowledge' && req.method === 'POST') {
-    return handleKnowledgeToggle(req, agentId, segments[4])
+  // /api/agent-packages/{agentId}/lessons/{lessonId} <- POST
+  if (segments.length === 5 && segments[3] === 'lessons' && req.method === 'POST') {
+    return handleLessonsToggle(req, agentId, segments[4])
   }
 
   return Response.json({ ok: false, error: 'Not found' }, { status: 404 })
@@ -168,7 +168,7 @@ async function handleUpdate(req: Request, agentId: string): Promise<Response> {
   }
 }
 
-function handleKnowledgeList(agentId: string): Response {
+function handleLessonsList(agentId: string): Response {
   const packageId = resolvePackageIdForAgent(agentId)
   if (!packageId) {
     return Response.json(
@@ -177,7 +177,7 @@ function handleKnowledgeList(agentId: string): Response {
     )
   }
   try {
-    const lessons = listKnowledge(packageId)
+    const lessons = listLessons(packageId)
     return Response.json({ ok: true, packageId, lessons })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -185,7 +185,7 @@ function handleKnowledgeList(agentId: string): Response {
   }
 }
 
-async function handleKnowledgeToggle(
+async function handleLessonsToggle(
   req: Request,
   agentId: string,
   lessonId: string,
@@ -216,11 +216,11 @@ async function handleKnowledgeToggle(
   }
 
   try {
-    const result = await setKnowledgeEnabled(packageId, lessonId, parsed.data.enabled)
+    const result = await setLessonEnabled(packageId, lessonId, parsed.data.enabled)
     return Response.json({ ok: true, result })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    log.error('agents/knowledge/toggle failed', err as Error, { packageId, lessonId })
+    log.error('agents/lessons/toggle failed', err as Error, { packageId, lessonId })
     return Response.json({ ok: false, error: message }, { status: 500 })
   }
 }

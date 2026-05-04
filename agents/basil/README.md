@@ -8,7 +8,7 @@ Reference agent package for Bakin's nutritionist + food content creator. Owns th
 agents/basil/
 ├── bakin-package.json
 ├── workspace/                       SOUL/IDENTITY/AGENTS/TOOLS templates
-├── knowledge/
+├── lessons/
 │   ├── food-content-craft.md        (default-enabled)
 │   └── orchestration-playbook.md    (opt-in)
 └── assets/                          avatar.jpg + avatar-full.png

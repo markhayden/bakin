@@ -8,7 +8,7 @@ Reference agent package for Bakin's fitness coach / longevity-focused content cr
 agents/nemo/
 ├── bakin-package.json
 ├── workspace/                  SOUL/IDENTITY/AGENTS/TOOLS templates
-├── knowledge/
+├── lessons/
 │   └── longevity-voice.md      (default-enabled)
 └── assets/                     avatar.jpg + avatar-full.png
 ```
@@ -16,7 +16,7 @@ agents/nemo/
 ## Notes
 
 - Persona built around the rejection of aesthetics-focused fitness culture: "your body is not your enemy — it's just been given bad instructions."
-- Single knowledge file: `longevity-voice` — durable definition of the voice (mechanics over aesthetics / hype-vs-mechanical phrasing examples / how to push back when briefs ask for "summer body" framing).
+- Single lesson file: `longevity-voice` — durable definition of the voice (mechanics over aesthetics / hype-vs-mechanical phrasing examples / how to push back when briefs ask for "summer body" framing).
 - ElevenLabs voice id `56AoDkrOh6qfVPDXZ7Pt` recorded in TOOLS.md.
 
 ## Install

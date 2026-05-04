@@ -2,7 +2,7 @@
  * Agent-package manifest schema (`bakin-package.json`).
  *
  * One manifest covers all four package kinds — `agent`, `skill-pack`,
- * `workflow-pack`, `knowledge-pack` — discriminated by the `kind` field.
+ * `workflow-pack`, `lesson-pack` — discriminated by the `kind` field.
  * Kind-specific stanzas (`agent`, `install`) only attach to `kind: "agent"`.
  *
  * This module is pure: zod schemas + parser entry points only. No filesystem
@@ -20,7 +20,7 @@ const PackageIdSchema = z
     message: 'id must match /^[a-z0-9][a-z0-9-_]{0,39}$/i',
   })
 
-/** Lesson id pattern — same shape as package ids. Used for knowledge files. */
+/** Lesson id pattern — same shape as package ids. Used for lesson files. */
 const LessonIdSchema = z
   .string()
   .regex(/^[a-z0-9][a-z0-9-_]{0,39}$/i, {
@@ -88,7 +88,7 @@ const DependenciesSchema = z
   .object({
     skills: z.array(DependencySchema).optional(),
     workflows: z.array(DependencySchema).optional(),
-    knowledge: z.array(DependencySchema).optional(),
+    lessons: z.array(DependencySchema).optional(),
   })
   .optional()
 
@@ -124,8 +124,8 @@ const InstallStanzaSchema = z.object({
   writeWorkspaceFiles: z.boolean().optional(),
   installSkills: z.boolean().optional(),
   installWorkflows: z.boolean().optional(),
-  /** Lessons that auto-enable on install. Anything here gets a knowledge block injected by default. */
-  enableKnowledge: z.array(LessonIdSchema).optional(),
+  /** Lessons that auto-enable on install. Anything here gets a lesson block injected by default. */
+  enableLessons: z.array(LessonIdSchema).optional(),
 })
 
 // ─── Per-kind contributions ──────────────────────────────────────────────────
@@ -135,7 +135,7 @@ const AgentContributionsSchema = z.object({
   skills: z.array(z.string().min(1)).optional(),
   workflows: z.array(z.string().min(1)).optional(),
   workflowSkills: z.array(z.string().min(1)).optional(),
-  knowledge: z.array(z.string().min(1)).optional(),
+  lessons: z.array(z.string().min(1)).optional(),
   assets: z.array(z.string().min(1)).optional(),
 })
 
@@ -157,9 +157,9 @@ const WorkflowPackContributionsSchema = z
     { message: 'workflow-pack must contribute at least one workflow or workflow-skill' },
   )
 
-const KnowledgePackContributionsSchema = z.object({
-  knowledge: z.array(z.string().min(1)).min(1, {
-    message: 'knowledge-pack must contribute at least one knowledge file',
+const LessonPackContributionsSchema = z.object({
+  lessons: z.array(z.string().min(1)).min(1, {
+    message: 'lesson-pack must contribute at least one lesson file',
   }),
   assets: z.array(z.string().min(1)).optional(),
 })
@@ -199,10 +199,10 @@ export const WorkflowPackManifestSchema = z.object({
   dependencies: DependenciesSchema,
 })
 
-export const KnowledgePackManifestSchema = z.object({
+export const LessonPackManifestSchema = z.object({
   ...BaseManifestFields,
-  kind: z.literal('knowledge-pack'),
-  contributions: KnowledgePackContributionsSchema,
+  kind: z.literal('lesson-pack'),
+  contributions: LessonPackContributionsSchema,
   dependencies: DependenciesSchema,
 })
 
@@ -210,7 +210,7 @@ export const ManifestSchema = z.discriminatedUnion('kind', [
   AgentManifestSchema,
   SkillPackManifestSchema,
   WorkflowPackManifestSchema,
-  KnowledgePackManifestSchema,
+  LessonPackManifestSchema,
 ])
 
 // ─── Inferred TypeScript types (the canonical surface) ───────────────────────
@@ -218,7 +218,7 @@ export const ManifestSchema = z.discriminatedUnion('kind', [
 export type AgentManifest = z.infer<typeof AgentManifestSchema>
 export type SkillPackManifest = z.infer<typeof SkillPackManifestSchema>
 export type WorkflowPackManifest = z.infer<typeof WorkflowPackManifestSchema>
-export type KnowledgePackManifest = z.infer<typeof KnowledgePackManifestSchema>
+export type LessonPackManifest = z.infer<typeof LessonPackManifestSchema>
 export type Manifest = z.infer<typeof ManifestSchema>
 export type Dependency = z.infer<typeof DependencySchema>
 export type PackageKind = Manifest['kind']

@@ -97,7 +97,7 @@ function mockProfileFetch() {
     if (u.endsWith('/stats')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ usage: null }) } as Response)
     if (u.endsWith('/recent-activity')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, activity: { windowMs: { '5m': 0, '1h': 0, '24h': 0 }, errors: { '5m': 0, '1h': 0, '24h': 0 }, sinceServerStart: new Date().toISOString() } }) } as Response)
     if (u.endsWith('/skills')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ skills: [] }) } as Response)
-    if (u.includes('/api/agent-packages/') && u.endsWith('/knowledge')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, lessons: [] }) } as Response)
+    if (u.includes('/api/agent-packages/') && u.endsWith('/lessons')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, lessons: [] }) } as Response)
     return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response)
   }) as unknown as typeof global.fetch
 }
@@ -130,7 +130,7 @@ describe('PackageCard — read-only display per state', () => {
     expect((adopt as HTMLButtonElement).disabled).toBe(false)
     // The explainer text appears below the button so users understand
     // what adoption means before clicking.
-    expect(screen.getByText(/knowledge-lesson toggles/)).toBeDefined()
+    expect(screen.getByText(/lesson toggles/)).toBeDefined()
     expect(screen.getByText(/workspace files stay as-is/)).toBeDefined()
   })
 
@@ -212,7 +212,7 @@ describe('PackageCard — main agent special-case', () => {
       if (u.endsWith('/stats')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ usage: null }) } as Response)
       if (u.endsWith('/recent-activity')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, activity: { windowMs: { '5m': 0, '1h': 0, '24h': 0 }, errors: { '5m': 0, '1h': 0, '24h': 0 }, sinceServerStart: new Date().toISOString() } }) } as Response)
       if (u.endsWith('/skills')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ skills: [] }) } as Response)
-      if (u.includes('/api/agent-packages/') && u.endsWith('/knowledge')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, lessons: [] }) } as Response)
+      if (u.includes('/api/agent-packages/') && u.endsWith('/lessons')) return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, lessons: [] }) } as Response)
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response)
     }) as unknown as typeof global.fetch
   }

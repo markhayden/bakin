@@ -9,7 +9,7 @@ import {
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
 import { crossTableSearch } from '../search-registry'
 
-export interface AgentPackageKnowledgeRetrievalSettings {
+export interface AgentPackageLessonRetrievalSettings {
   enabled: boolean
   injectIntoDispatch: boolean
   mcpTool: boolean
@@ -18,7 +18,7 @@ export interface AgentPackageKnowledgeRetrievalSettings {
   minScore: number
 }
 
-export const DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS: AgentPackageKnowledgeRetrievalSettings = {
+export const DEFAULT_LESSON_RETRIEVAL_SETTINGS: AgentPackageLessonRetrievalSettings = {
   enabled: true,
   injectIntoDispatch: true,
   mcpTool: true,
@@ -27,7 +27,7 @@ export const DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS: AgentPackageKnowledgeRetrieva
   minScore: 0,
 }
 
-export interface RetrievedKnowledgeLesson {
+export interface RetrievedLesson {
   packageId: string
   agentId: string
   lessonId: string
@@ -37,13 +37,13 @@ export interface RetrievedKnowledgeLesson {
   score: number
 }
 
-export interface KnowledgeRetrievalResult {
-  lessons: RetrievedKnowledgeLesson[]
+export interface LessonRetrievalResult {
+  lessons: RetrievedLesson[]
   packageId?: string
   reason?: 'disabled' | 'dispatch-disabled' | 'no-package' | 'no-enabled-lessons' | 'no-query' | 'search-unavailable'
 }
 
-export type KnowledgeSearchFn = (
+export type LessonSearchFn = (
   q: string,
   opts: {
     table?: string
@@ -52,31 +52,31 @@ export type KnowledgeSearchFn = (
   },
 ) => Promise<SearchResponse>
 
-export function normalizeKnowledgeRetrievalSettings(
-  input?: Partial<AgentPackageKnowledgeRetrievalSettings>,
-): AgentPackageKnowledgeRetrievalSettings {
-  const merged = { ...DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS, ...(input ?? {}) }
+export function normalizeLessonRetrievalSettings(
+  input?: Partial<AgentPackageLessonRetrievalSettings>,
+): AgentPackageLessonRetrievalSettings {
+  const merged = { ...DEFAULT_LESSON_RETRIEVAL_SETTINGS, ...(input ?? {}) }
   return {
     enabled: merged.enabled !== false,
     injectIntoDispatch: merged.injectIntoDispatch !== false,
     mcpTool: merged.mcpTool !== false,
-    maxLessons: clampInteger(merged.maxLessons, 1, 10, DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS.maxLessons),
-    maxCharacters: clampInteger(merged.maxCharacters, 1000, 50000, DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS.maxCharacters),
+    maxLessons: clampInteger(merged.maxLessons, 1, 10, DEFAULT_LESSON_RETRIEVAL_SETTINGS.maxLessons),
+    maxCharacters: clampInteger(merged.maxCharacters, 1000, 50000, DEFAULT_LESSON_RETRIEVAL_SETTINGS.maxCharacters),
     minScore: typeof merged.minScore === 'number' && Number.isFinite(merged.minScore)
       ? Math.max(0, merged.minScore)
-      : DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS.minScore,
+      : DEFAULT_LESSON_RETRIEVAL_SETTINGS.minScore,
   }
 }
 
-export async function retrieveAgentPackageKnowledge(options: {
+export async function retrieveAgentPackageLessons(options: {
   contentDir: string
   agentId: string
   query: string
-  settings?: Partial<AgentPackageKnowledgeRetrievalSettings>
+  settings?: Partial<AgentPackageLessonRetrievalSettings>
   requireDispatchInjection?: boolean
-  search?: KnowledgeSearchFn
-}): Promise<KnowledgeRetrievalResult> {
-  const settings = normalizeKnowledgeRetrievalSettings(options.settings)
+  search?: LessonSearchFn
+}): Promise<LessonRetrievalResult> {
+  const settings = normalizeLessonRetrievalSettings(options.settings)
   if (!settings.enabled) return { lessons: [], reason: 'disabled' }
   if (options.requireDispatchInjection && !settings.injectIntoDispatch) {
     return { lessons: [], reason: 'dispatch-disabled' }
@@ -89,7 +89,7 @@ export async function retrieveAgentPackageKnowledge(options: {
   const owner = findAgentPackage(lock, options.agentId)
   if (!owner) return { lessons: [], reason: 'no-package' }
 
-  const enabledLessonIds = new Set(owner.entry.knowledgeEnabled ?? [])
+  const enabledLessonIds = new Set(owner.entry.lessonsEnabled ?? [])
   if (enabledLessonIds.size === 0) {
     return { lessons: [], packageId: owner.id, reason: 'no-enabled-lessons' }
   }
@@ -97,7 +97,7 @@ export async function retrieveAgentPackageKnowledge(options: {
   const search = options.search ?? crossTableSearch
   const candidateLimit = Math.max(settings.maxLessons * 6, 12)
   const response = await search(query, {
-    table: 'agent-knowledge',
+    table: 'agent-lessons',
     limit: candidateLimit,
     filters: { package_id: owner.id },
   })
@@ -107,7 +107,7 @@ export async function retrieveAgentPackageKnowledge(options: {
   }
 
   const sorted = [...response.results].sort((a, b) => b.score - a.score)
-  const lessons: RetrievedKnowledgeLesson[] = []
+  const lessons: RetrievedLesson[] = []
   const seen = new Set<string>()
   for (const hit of sorted) {
     if (lessons.length >= settings.maxLessons) break
@@ -140,8 +140,8 @@ export async function retrieveAgentPackageKnowledge(options: {
   return { lessons, packageId: owner.id }
 }
 
-export function formatKnowledgeLessonsForDispatch(
-  lessons: RetrievedKnowledgeLesson[],
+export function formatLessonsForDispatch(
+  lessons: RetrievedLesson[],
   maxCharacters?: number,
 ): string {
   if (lessons.length === 0) return ''
@@ -149,11 +149,11 @@ export function formatKnowledgeLessonsForDispatch(
     maxCharacters,
     1000,
     50000,
-    DEFAULT_KNOWLEDGE_RETRIEVAL_SETTINGS.maxCharacters,
+    DEFAULT_LESSON_RETRIEVAL_SETTINGS.maxCharacters,
   )
 
   const lines = [
-    '## Relevant Package Knowledge',
+    '## Relevant Package Lessons',
     '',
     'Bakin selected these enabled agent-package lessons for this assignment. Use them as context; the task instructions still take priority.',
     '',
@@ -182,7 +182,7 @@ export function formatKnowledgeLessonsForDispatch(
   return lines.join('\n').trimEnd()
 }
 
-export function buildTaskKnowledgeQuery(input: {
+export function buildTaskLessonQuery(input: {
   title: string
   description?: string
   instructions?: string
@@ -204,19 +204,19 @@ function readLessonFromDisk(
 ): { title: string; body: string; tags: string[] } | null {
   const lessonPath = join(
     getPackageSourceDir(contentDir, entry.kind, packageId, entry.version),
-    'knowledge',
+    'lessons',
     `${lessonId}.md`,
   )
   if (!existsSync(lessonPath)) return null
 
   try {
-    return parseKnowledgeMarkdown(readFileSync(lessonPath, 'utf-8'), lessonId)
+    return parseLessonMarkdown(readFileSync(lessonPath, 'utf-8'), lessonId)
   } catch {
     return null
   }
 }
 
-function parseKnowledgeMarkdown(raw: string, fallbackTitle: string): { title: string; body: string; tags: string[] } {
+function parseLessonMarkdown(raw: string, fallbackTitle: string): { title: string; body: string; tags: string[] } {
   const match = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
   if (!match) return { title: fallbackTitle, body: raw.trim(), tags: [] }
 

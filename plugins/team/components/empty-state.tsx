@@ -5,7 +5,7 @@
  *
  * Pattern: centered icon chip → headline → 1-2 line description →
  * optional action (link or callback). Used by Memory, Skills,
- * Knowledge, Heartbeat, and Active Context when their data source
+ * Lessons, Heartbeat, and Active Context when their data source
  * is empty or not applicable.
  *
  * Keeping a single component means tone + spacing stay consistent

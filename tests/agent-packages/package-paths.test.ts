@@ -54,9 +54,9 @@ describe('package-paths', () => {
     )
   })
 
-  it('knowledge-pack install dir lives under packages/knowledge-packs/', () => {
-    expect(getPackageSourceDir(CONTENT, 'knowledge-pack', 'lessons', '1.0.0')).toBe(
-      join(CONTENT, 'packages', 'knowledge-packs', 'lessons@1.0.0'),
+  it('lesson-pack install dir lives under packages/lesson-packs/', () => {
+    expect(getPackageSourceDir(CONTENT, 'lesson-pack', 'lessons', '1.0.0')).toBe(
+      join(CONTENT, 'packages', 'lesson-packs', 'lessons@1.0.0'),
     )
   })
 

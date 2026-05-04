@@ -17,7 +17,7 @@
     "allowedTools": [
       "bakin_exec_tasks_*",
       "bakin_exec_assets_*",
-      "bakin_exec_knowledge_search",
+      "bakin_exec_lesson_search",
       "bakin_exec_get_paths",
       "bakin_exec_log",
       "bakin_exec_heartbeat"
@@ -30,7 +30,7 @@
     "writeWorkspaceFiles": true,
     "installSkills": true,
     "installWorkflows": true,
-    "enableKnowledge": ["prompt-style-system", "visual-styles"]
+    "enableLessons": ["prompt-style-system", "visual-styles"]
   },
   "contributions": {
     "workspaceFiles": [
@@ -40,10 +40,10 @@
       "workspace/TOOLS.md"
     ],
     "workflowSkills": ["workflow-skills/generate-image.md"],
-    "knowledge": [
-      "knowledge/prompt-style-system.md",
-      "knowledge/visual-styles.md",
-      "knowledge/social-media-craft.md"
+    "lessons": [
+      "lessons/prompt-style-system.md",
+      "lessons/visual-styles.md",
+      "lessons/social-media-craft.md"
     ],
     "assets": ["assets/avatar.jpg", "assets/avatar-full.png"]
   }

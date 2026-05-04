@@ -17,7 +17,7 @@
  *   - workflow-skills: parse each contributions.workflowSkills markdown
  *     file → call registerAgentPackageSkill(packageId, name, skill)
  *
- * Knowledge file indexing for search (CC-2 in PLAN.md) lands in Phase F-4
+ * Lesson file indexing for search (CC-2 in PLAN.md) lands in Phase F-4
  * via the team plugin's existing `registerFileBackedContentType` helper —
  * not this module.
  *
@@ -288,7 +288,7 @@ export function loadAgentPackageSources(contentDir: string = getContentDir()): L
   for (const [packageId, entry] of Object.entries(lockfile.packages)) {
     // Only kinds that contribute workflows/workflow-skills get scanned.
     // skill-packs ship runtime skills (filesystem) but no workflow content;
-    // knowledge-packs ship knowledge files (search-indexed elsewhere).
+    // lesson-packs ship lesson files (search-indexed elsewhere).
     if (entry.kind !== 'agent' && entry.kind !== 'workflow-pack') continue
     try {
       loadSourcesForEntry(packageId, entry, contentDir, result)

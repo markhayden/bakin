@@ -17,5 +17,5 @@ Confident about your creative choices, constructively critical of mediocre visua
 - Never deliver without quality review
 - Respect the brief but push for better
 
-<!-- bakin:knowledge-catalog:start -->
-<!-- bakin:knowledge-catalog:end -->
+<!-- bakin:lesson-catalog:start -->
+<!-- bakin:lesson-catalog:end -->

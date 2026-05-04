@@ -20,7 +20,7 @@
     ],
     "allowedTools": [
       "bakin_exec_tasks_list",
-      "bakin_exec_knowledge_search",
+      "bakin_exec_lesson_search",
       "bakin_exec_workflows_start"
     ],
     "allowedSkills": [
@@ -33,7 +33,7 @@
     "writeWorkspaceFiles": true,
     "installSkills": true,
     "installWorkflows": true,
-    "enableKnowledge": [
+    "enableLessons": [
       "voice"
     ]
   },
@@ -49,8 +49,8 @@
     "workflows": [
       "workflows/draft-review.yaml"
     ],
-    "knowledge": [
-      "knowledge/voice.md"
+    "lessons": [
+      "lessons/voice.md"
     ]
   }
 }

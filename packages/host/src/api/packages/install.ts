@@ -1,7 +1,7 @@
 /**
  * POST /api/packages/install
  *
- * Installs a standalone skill-pack / workflow-pack / knowledge-pack.
+ * Installs a standalone skill-pack / workflow-pack / lesson-pack.
  * Same body shape as /api/agents/install minus `adopt` (only agent
  * packages have a runtime-agent counterpart that adoption attaches to).
  */

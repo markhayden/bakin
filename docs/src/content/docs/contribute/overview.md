@@ -8,7 +8,7 @@ Bakin contribution guidance now lives in Extending, next to the surfaces people 
 Start with the path that matches what you want to change:
 
 - [Plugins](/docs/extending/plugins/overview/) for new app functionality, UI, routes, hooks, tools, settings, search, and health checks.
-- [Agent Kits](/docs/extending/agents/overview/) for installable teammates with identity, workspace files, skills, workflows, and knowledge.
+- [Agent Kits](/docs/extending/agents/overview/) for installable teammates with identity, workspace files, skills, workflows, and lessons.
 - [Bakin' Core](/docs/extending/development-workflow/) for source setup, local development loops, checks, and generated docs.
 - [Quality Control](/docs/extending/quality-control/) for review expectations, docs rules, examples, and source-link policy.
 

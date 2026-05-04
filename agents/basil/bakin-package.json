@@ -14,7 +14,7 @@
     "allowedTools": [
       "bakin_exec_tasks_*",
       "bakin_exec_assets_*",
-      "bakin_exec_knowledge_search",
+      "bakin_exec_lesson_search",
       "bakin_exec_get_paths",
       "bakin_exec_log",
       "bakin_exec_heartbeat"
@@ -27,7 +27,7 @@
     "writeWorkspaceFiles": true,
     "installSkills": true,
     "installWorkflows": true,
-    "enableKnowledge": ["food-content-craft"]
+    "enableLessons": ["food-content-craft"]
   },
   "contributions": {
     "workspaceFiles": [
@@ -36,9 +36,9 @@
       "workspace/AGENTS.md",
       "workspace/TOOLS.md"
     ],
-    "knowledge": [
-      "knowledge/food-content-craft.md",
-      "knowledge/orchestration-playbook.md"
+    "lessons": [
+      "lessons/food-content-craft.md",
+      "lessons/orchestration-playbook.md"
     ],
     "assets": ["assets/avatar.jpg", "assets/avatar-full.png"]
   }

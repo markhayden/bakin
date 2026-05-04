@@ -51,7 +51,7 @@ The spec's 12-step migration sequence has been re-grouped into 7 phases with fin
         │ F. CLI +   │    │ G. Agent     │   │ H. Composition│
         │  REST API  │    │  backfill    │   │  (skill-pack, │
         │  + onboard │    │  (8 agents)  │   │   workflow-pk │
-        │  agent-    │    │              │   │   knowledge-pk│
+        │  agent-    │    │              │   │   lesson-pk   │
         │  assets    │    │              │   │   transitive) │
         └─────┬──────┘    └──────┬───────┘   └──────┬────────┘
               │                  │                  │
@@ -82,11 +82,11 @@ The spec's 12-step migration sequence has been re-grouped into 7 phases with fin
 | Event | Channel | Phase | Data shape |
 |-------|---------|-------|------------|
 | `agent_pkg.installed` | `cli` or `rest` | E | `{ packageId, version, source, ref, commitSha, agentId, state }` |
-| `agent_pkg.adopted` | `cli` or `rest` | E | `{ packageId, agentId, knowledgeEnabled }` |
+| `agent_pkg.adopted` | `cli` or `rest` | E | `{ packageId, agentId, lessonsEnabled }` |
 | `agent_pkg.removed` | `cli` or `rest` | E | `{ packageId, agentId, keepBlocks, deletedAgent }` |
 | `agent_pkg.updated` | `cli` or `rest` | E | `{ packageId, fromVersion, toVersion, fromSha, toSha, refreshTemplate }` |
-| `agent_pkg.knowledge_enabled` | `cli` or `rest` | F | `{ packageId, agentId, lessonId }` |
-| `agent_pkg.knowledge_disabled` | `cli` or `rest` | F | `{ packageId, agentId, lessonId }` |
+| `agent_pkg.lessons_enabled` | `cli` or `rest` | F | `{ packageId, agentId, lessonId }` |
+| `agent_pkg.lessons_disabled` | `cli` or `rest` | F | `{ packageId, agentId, lessonId }` |
 | `agent_pkg.drift_detected` | `system` | I | `{ packageId, projection, expectedSha, actualSha }` |
 | `agent_pkg.drift_repaired` | `cli` or `system` | I | `{ packageId, projection, oldSha, newSha }` |
 | `pkg.installed` | `cli` or `rest` | H | `{ packageId, kind, version, source, ref, commitSha, refCount }` |
@@ -94,13 +94,13 @@ The spec's 12-step migration sequence has been re-grouped into 7 phases with fin
 
 Audit events also trigger SSE broadcast and memory-plugin indexing per existing pipeline — no new wiring needed.
 
-### CC-2 — Search indexing for knowledge files
+### CC-2 — Search indexing for lesson files
 
-Knowledge files are markdown with frontmatter. Existing `ctx.search.registerFileBackedContentType()` precedent in projects/workflows/assets/messaging plugins is the right pattern.
+Lesson files are markdown with frontmatter. Existing `ctx.search.registerFileBackedContentType()` precedent in projects/workflows/assets/messaging plugins is the right pattern.
 
-**Decision:** V1 indexes knowledge files under a new content type `agent-knowledge` registered by the team plugin (it already owns the agent surface). The watcher path is `~/.bakin/packages/agents/<id>/knowledge/*.md`. Each row carries facets: `packageId`, `agentId`, `lessonId`, `tags[]`, `enabled` (bool — synced from lockfile on enable/disable).
+**Decision:** V1 indexes lesson files under a new content type `agent-lessons` registered by the team plugin (it already owns the agent surface). The watcher path is `~/.bakin/packages/agents/<id>/lessons/*.md`. Each row carries facets: `packageId`, `agentId`, `lessonId`, `tags[]`, `enabled` (bool — synced from lockfile on enable/disable).
 
-Fits in phase F (alongside knowledge enable/disable wiring). 80 lines including watcher hookup.
+Fits in phase F (alongside lesson enable/disable wiring). 80 lines including watcher hookup.
 
 ### CC-3 — Settings additions
 
@@ -167,7 +167,7 @@ When user runs `bakin agents install ./agents/pixel` against a machine that alre
 
 Each of the 8 agents has hand-edited workspace files on Roscoe's actual machine. Phase G needs to:
 1. Snapshot `~/.openclaw/workspaces/<id>/` before any package writes.
-2. Convert that snapshot into `agents/<id>/` package shape (extracting knowledge from prose, generating manifest).
+2. Convert that snapshot into `agents/<id>/` package shape (extracting lessons from prose, generating manifest).
 3. Test the install against a temp `OPENCLAW_HOME` round-trip.
 4. ONLY write to real `~/.openclaw/` after Roscoe explicitly confirms.
 
@@ -179,7 +179,7 @@ OpenClaw might not pick up new skills until session restart. **Unknown until tes
 
 ### R-6 — Memory-plugin indexer + audit.jsonl growth
 
-Every new audit event triggers indexing into `bakin_memory` table. Phase E adds 4 events per install; phase F adds 2 per knowledge toggle. Volume should be fine but worth verifying — phase F manual test runs `bakin agents install` 10 times and confirms `bakin_memory` table doesn't bloat unreasonably.
+Every new audit event triggers indexing into `bakin_memory` table. Phase E adds 4 events per install; phase F adds 2 per lesson toggle. Volume should be fine but worth verifying — phase F manual test runs `bakin agents install` 10 times and confirms `bakin_memory` table doesn't bloat unreasonably.
 
 ### R-7 — `git clone --depth 1 --branch <ref>` semantics
 
@@ -213,7 +213,7 @@ Each task: files touched · dependencies · complexity · acceptance criteria ·
   - NEW `packages/core/src/agent-packages/manifest.ts`
   - NEW `packages/core/src/agent-packages/types.ts`
   - NEW `tests/agent-packages/manifest.test.ts`
-  - NEW `tests/fixtures/agent-packages/manifests/{agent,skill-pack,workflow-pack,knowledge-pack}.json`
+  - NEW `tests/fixtures/agent-packages/manifests/{agent,skill-pack,workflow-pack,lesson-pack}.json`
 - **Deps:** none
 - **Complexity:** M
 - **Acceptance:**
@@ -222,7 +222,7 @@ Each task: files touched · dependencies · complexity · acceptance criteria ·
   - Zod refusal on `id` not matching `/^[a-z0-9][a-z0-9-_]{0,39}$/i` (mirrors plugin install ID rule)
   - Zod refusal on `dependencies[].source` not matching local-path-or-`github:` pattern
   - Each kind has at least one valid + one invalid fixture; tests parse all and assert success/failure
-  - Type exports: `Manifest`, `AgentManifest`, `SkillPackManifest`, `WorkflowPackManifest`, `KnowledgePackManifest`, `Dependency`
+  - Type exports: `Manifest`, `AgentManifest`, `SkillPackManifest`, `WorkflowPackManifest`, `LessonPackManifest`, `Dependency`
 - **Commit boundary:** ❶ "feat(agent-pkg): manifest schema + types"
 
 ### A-2 — Lockfile schema + atomic read/write
@@ -271,7 +271,7 @@ Each task: files touched · dependencies · complexity · acceptance criteria ·
   - `listBlocks(content): { blockId, body }[]` — discover all marker pairs
   - `hasBlock(content, blockId): boolean`
   - Tests cover: insert into empty file, update existing, remove, malformed (start without end → returns null + warning), nested marker rejection
-  - Marker namespace convention documented in JSDoc: `bakin:knowledge:<package-id>:<lesson-id>`, `bakin:knowledge-catalog`, plus the doctor-owned ones (`bakin:mission-control` etc.)
+  - Marker namespace convention documented in JSDoc: `bakin:lesson:<package-id>:<lesson-id>`, `bakin:lesson-catalog`, plus the doctor-owned ones (`bakin:mission-control` etc.)
 - **Commit boundary:** ❹ "feat(agent-pkg): managed-block primitives"
 
 ### A-5 — Test infrastructure (helpers + mocks)
@@ -321,11 +321,11 @@ Each task: files touched · dependencies · complexity · acceptance criteria ·
 
 - **Files:**
   - NEW `agents/pixel/bakin-package.json`
-  - NEW `agents/pixel/workspace/{SOUL,IDENTITY,AGENTS,TOOLS}.md` (cleaned from snapshot, knowledge prose extracted)
+  - NEW `agents/pixel/workspace/{SOUL,IDENTITY,AGENTS,TOOLS}.md` (cleaned from snapshot, lesson prose extracted)
   - NEW `agents/pixel/skills/image-generation/{SKILL.md,scripts/...}` (extracted from `~/.openclaw/skills/image-generation/` if present)
   - NEW `agents/pixel/workflow-skills/*.md` (lifted from any plugin-shipped Pixel-specific workflow-skills)
   - NEW `agents/pixel/workflows/*.yaml`
-  - NEW `agents/pixel/knowledge/{product-photography,editorial-photography,prompt-style-system}.md` (extracted from current SOUL.md prose)
+  - NEW `agents/pixel/lessons/{product-photography,editorial-photography,prompt-style-system}.md` (extracted from current SOUL.md prose)
   - NEW `agents/pixel/assets/{avatar.jpg,avatar-full.png}` (lifted from `~/.bakin/agents/pixel/`)
   - NEW `agents/pixel/README.md` — quickstart for the package
   - UPDATE `.gitignore` — exclude `agents/*/.snapshot/`
@@ -333,12 +333,12 @@ Each task: files touched · dependencies · complexity · acceptance criteria ·
 - **Complexity:** L (manual extraction, careful)
 - **Acceptance:**
   - Manifest validates against zod schema (phase A-1)
-  - SOUL.md template includes the marker placeholders: `<!-- bakin:knowledge-catalog:start --><!-- bakin:knowledge-catalog:end -->` (empty until installed)
-  - Each knowledge file has frontmatter `{ title, tags, defaultEnabled }`
-  - `manifest.contributions.knowledge` paths match files on disk
-  - `manifest.install.enableKnowledge` lists `prompt-style-system` (the always-on lesson)
+  - SOUL.md template includes the marker placeholders: `<!-- bakin:lesson-catalog:start --><!-- bakin:lesson-catalog:end -->` (empty until installed)
+  - Each lesson file has frontmatter `{ title, tags, defaultEnabled }`
+  - `manifest.contributions.lessons` paths match files on disk
+  - `manifest.install.enableLessons` lists `prompt-style-system` (the always-on lesson)
   - `manifest.agent.allowedTools` and `allowedSkills` populated as documentation hints (V1 doc-only per spec)
-  - Diff between snapshot SOUL.md and template SOUL.md is reviewable (knowledge prose moved to files, template skeleton remains)
+  - Diff between snapshot SOUL.md and template SOUL.md is reviewable (lesson prose moved to files, template skeleton remains)
 - **Commit boundary:** ❼ "feat(agents): pixel as reference package"
 
 ### Phase B verification gate
@@ -396,7 +396,7 @@ Each task: files touched · dependencies · complexity · acceptance criteria ·
 - **Deps:** C-1, C-2
 - **Complexity:** S
 - **Acceptance:**
-  - On boot, after plugin activation, read `~/.bakin/packages/lock.json`, iterate packages with `kind: "agent" | "workflow-pack"` and call `registerAgentPackageDefinition()` per `contributions.workflows`. Same for `kind: "knowledge-pack" | "agent"` for knowledge files (registered with the search system later — phase F). Skills handled identically.
+  - On boot, after plugin activation, read `~/.bakin/packages/lock.json`, iterate packages with `kind: "agent" | "workflow-pack"` and call `registerAgentPackageDefinition()` per `contributions.workflows`. Same for `kind: "lesson-pack" | "agent"` for lesson files (registered with the search system later — phase F). Skills handled identically.
   - On startup with no lockfile: no-op, no error
   - On startup with malformed lockfile: log error, continue boot (do NOT crash)
   - Test verifies a fixture lockfile produces the expected source registry state
@@ -440,7 +440,7 @@ Each task: files touched · dependencies · complexity · acceptance criteria ·
 
 ## Phase E — Installer + Projector (the heart)
 
-**Goal:** End-to-end install of `agents/pixel/` (local source) into a temp `OPENCLAW_HOME` + `BAKIN_HOME`. Pixel's workspace files seeded, skill projected, knowledge catalog block injected, lockfile written.
+**Goal:** End-to-end install of `agents/pixel/` (local source) into a temp `OPENCLAW_HOME` + `BAKIN_HOME`. Pixel's workspace files seeded, skill projected, lesson catalog block injected, lockfile written.
 
 **Parallel with:** none — every later phase needs this.
 
@@ -490,7 +490,7 @@ Each task: files touched · dependencies · complexity · acceptance criteria ·
     - **Workspace files** (managed mode only): copy `workspace/*.md` to `{workspace}/<file>` (skipping if `.userEdited`); write `.installedBy` sidecar with sha
     - **Skills** (kind:"agent" → per-agent; kind:"skill-pack" → global): recursively copy `skills/<name>/` to projection target; write `.installedBy` sidecar in projection root
     - **Assets**: copy each `assets/<file>` to `~/.bakin/agents/<id>/<file>`; write sidecar
-    - **Knowledge markers** (always): inject empty `<!-- bakin:knowledge-catalog -->` block + per-lesson blocks for `enabled` lessons into SOUL.md (using phase A-4 helper); record `knowledge-marker` projections in lockfile entry
+    - **Lesson markers** (always): inject empty `<!-- bakin:lesson-catalog -->` block + per-lesson blocks for `enabled` lessons into SOUL.md (using phase A-4 helper); record `lesson-marker` projections in lockfile entry
     - **Adopt mode**: skip workspace files, only inject markers
     - **Update mode**: skip files marked `.userEdited`; refresh non-edited workspace files only if `--refresh-template` flag passed; always update markers; always overwrite skills (drift policy)
     - Returns `{ projections: ProjectionEntry[], skipped: SkippedEntry[] }` for lockfile insertion
@@ -608,9 +608,9 @@ Each task: files touched · dependencies · complexity · acceptance criteria ·
   - `bakin agents list [--json]`
   - `bakin agents remove <id> [--keep-blocks] [--delete-agent]`
   - `bakin agents update [<id>] [--refresh-template]`
-  - `bakin agents knowledge list <agent-id>`
-  - `bakin agents knowledge enable <agent-id> <lesson-id>`
-  - `bakin agents knowledge disable <agent-id> <lesson-id>`
+  - `bakin agents lessons list <agent-id>`
+  - `bakin agents lessons enable <agent-id> <lesson-id>`
+  - `bakin agents lessons disable <agent-id> <lesson-id>`
   - `bakin packages list [--json]`
   - `bakin packages install <source>` (kind inferred from manifest)
   - `bakin packages remove <id>` (refuses with refCount > 0)
@@ -627,8 +627,8 @@ Each task: files touched · dependencies · complexity · acceptance criteria ·
   - NEW `packages/host/src/api/agents/remove.ts` (DELETE [agentId])
   - NEW `packages/host/src/api/agents/update.ts` (POST)
   - NEW `packages/host/src/api/agents/adopt.ts` (POST)
-  - NEW `packages/host/src/api/agents/knowledge/list.ts` (GET)
-  - NEW `packages/host/src/api/agents/knowledge/toggle.ts` (POST)
+  - NEW `packages/host/src/api/agents/lessons/list.ts` (GET)
+  - NEW `packages/host/src/api/agents/lessons/toggle.ts` (POST)
   - NEW `packages/host/src/api/packages/{install,list,remove,update}.ts`
   - UPDATE `server.ts` route dispatch (the file is dispatch-by-file-tree style based on existing structure — verify)
   - NEW `tests/api/agents-install.test.ts`
@@ -657,20 +657,20 @@ Each task: files touched · dependencies · complexity · acceptance criteria ·
   - **Important:** drift detection logic shared with phase I doctor checks — don't duplicate; lift into a helper in phase I
 - **Commit boundary:** ㉑ "feat(onboarding): agent-assets check + install component"
 
-### F-4 — Knowledge file indexing for search
+### F-4 — Lesson file indexing for search
 
 - **Files:**
-  - UPDATE `plugins/team/index.ts` (register new content type `agent-knowledge`)
+  - UPDATE `plugins/team/index.ts` (register new content type `agent-lessons`)
   - UPDATE `plugins/team/lib/...` (file-backed registration — uses existing helper)
-  - NEW `tests/plugins/team-knowledge-search.test.ts`
+  - NEW `tests/plugins/team-lesson-search.test.ts`
 - **Deps:** F-2
 - **Complexity:** S
 - **Acceptance:**
-  - Team plugin calls `ctx.search.registerFileBackedContentType({ contentType: 'agent-knowledge', glob: '~/.bakin/packages/agents/*/knowledge/*.md', extractFacets: { packageId, agentId, lessonId, tags, enabled } })`
+  - Team plugin calls `ctx.search.registerFileBackedContentType({ contentType: 'agent-lessons', glob: '~/.bakin/packages/agents/*/lessons/*.md', extractFacets: { packageId, agentId, lessonId, tags, enabled } })`
   - Watcher auto-syncs on file changes
   - Enable/disable toggles in F-2 trigger `ctx.search.update()` to refresh `enabled` facet
-  - Test: index 3 knowledge files, query, verify all found; toggle one off, query with facet filter `enabled:true`, verify only 2
-- **Commit boundary:** ㉒ "feat(team): knowledge file search indexing"
+  - Test: index 3 lesson files, query, verify all found; toggle one off, query with facet filter `enabled:true`, verify only 2
+- **Commit boundary:** ㉒ "feat(team): lesson file search indexing"
 
 ### Phase F verification gate
 
@@ -706,7 +706,7 @@ Each follows the **same template** as phase B (snapshot → convert → validate
   - NEW `agents/<id>/bakin-package.json`
   - NEW `agents/<id>/workspace/{SOUL,IDENTITY,AGENTS,TOOLS}.md`
   - NEW `agents/<id>/skills/<name>/SKILL.md` (only for agents with current skills; many won't have any)
-  - NEW `agents/<id>/knowledge/*.md` (extracted from current SOUL.md)
+  - NEW `agents/<id>/lessons/*.md` (extracted from current SOUL.md)
   - NEW `agents/<id>/assets/{avatar.jpg,...}` (lifted from `~/.bakin/agents/<id>/`)
   - NEW `agents/<id>/README.md`
 - **Deps per agent:** G-0; previous G commits don't gate on each other
@@ -714,7 +714,7 @@ Each follows the **same template** as phase B (snapshot → convert → validate
 - **Acceptance per agent:**
   - Manifest validates
   - Test install against TEMP `OPENCLAW_HOME` works (separately verified per agent before commit)
-  - Roscoe manually inspects extracted knowledge for accuracy
+  - Roscoe manually inspects extracted lessons for accuracy
 - **Commit boundary:** ㉓-㉙ — one commit per agent: "feat(agents): rolo as package", ..., "feat(agents): patch as package"
 
 ### G-8 — Real-machine adoption
@@ -741,7 +741,7 @@ Each follows the **same template** as phase B (snapshot → convert → validate
 
 ## Phase H — Composition (Standalone Packs + Transitive Deps)
 
-**Goal:** Make `kind: "skill-pack" | "workflow-pack" | "knowledge-pack"` first-class. Add transitive dependency resolution + ref-counting + `installAs` collision aliasing.
+**Goal:** Make `kind: "skill-pack" | "workflow-pack" | "lesson-pack"` first-class. Add transitive dependency resolution + ref-counting + `installAs` collision aliasing.
 
 **Parallel with:** F, G (no shared files).
 
@@ -749,16 +749,16 @@ Each follows the **same template** as phase B (snapshot → convert → validate
 
 - **Files:**
   - UPDATE `src/core/agent-packages/installer.ts` (handle non-agent kinds)
-  - UPDATE `src/core/agent-packages/projector.ts` (skill-pack → global `~/.openclaw/skills/`; knowledge-pack → just installs files at package source dir, no SOUL.md mutation; workflow-pack → registry only)
+  - UPDATE `src/core/agent-packages/projector.ts` (skill-pack → global `~/.openclaw/skills/`; lesson-pack → just installs files at package source dir, no SOUL.md mutation; workflow-pack → registry only)
   - NEW `tests/agent-packages/standalone-packs.test.ts`
 - **Deps:** Phase E
 - **Complexity:** M
 - **Acceptance:**
   - `bakin packages install <skill-pack-source>`: skills project to `~/.openclaw/skills/<name>/`; lockfile entry with `refCount: 0` (no agent depends on it yet)
   - `bakin packages install <workflow-pack-source>`: workflows registered in source registry (phase C); no fs projection beyond storing the package source
-  - `bakin packages install <knowledge-pack-source>`: knowledge files indexed for search, made available via `bakin agents knowledge enable <agent> <lesson>` from any agent
+  - `bakin packages install <lesson-pack-source>`: lesson files indexed for search, made available via `bakin agents lessons enable <agent> <lesson>` from any agent
   - Tests cover each kind end-to-end
-- **Commit boundary:** ㉛ "feat(agent-pkg): standalone skill-pack/workflow-pack/knowledge-pack install"
+- **Commit boundary:** ㉛ "feat(agent-pkg): standalone skill-pack/workflow-pack/lesson-pack install"
 
 ### H-2 — Transitive dependency resolution
 
@@ -845,10 +845,10 @@ Each follows the **same template** as phase B (snapshot → convert → validate
 - **Files:**
   - NEW `plugins/team/components/package-state-badge.tsx`
   - NEW `plugins/team/components/adopt-dialog.tsx`
-  - NEW `plugins/team/components/knowledge-toggle-list.tsx`
+  - NEW `plugins/team/components/lesson-toggle-list.tsx`
   - NEW `plugins/team/components/curated-browser.tsx`
   - UPDATE `plugins/team/components/team-grid.tsx` (badges)
-  - UPDATE `plugins/team/components/agent-detail.tsx` (adopt + knowledge tabs)
+  - UPDATE `plugins/team/components/agent-detail.tsx` (adopt + lessons tabs)
   - NEW `plugins/team/components/install-dialog.tsx` (entry point — local path or github URL)
 - **Deps:** F-2
 - **Complexity:** L
@@ -856,11 +856,11 @@ Each follows the **same template** as phase B (snapshot → convert → validate
   - Team grid shows state badge per agent (`unmanaged` gray, `adopted` blue, `managed` green, `drifted` yellow, `update-available` orange)
   - Click on `unmanaged` agent → "Adopt with package" button opens adopt dialog
   - Adopt dialog: source input (URL or path), package preview (manifest summary), confirm
-  - Agent detail page: "Knowledge" tab with toggle list (each lesson w/ title, tags, enabled toggle)
+  - Agent detail page: "Lessons" tab with toggle list (each lesson w/ title, tags, enabled toggle)
   - "Install agent" button on team page opens install dialog (local path or github URL)
   - "Browse curated" button opens curated-browser (reads `/api/curated`)
-  - All UI updates via SSE hooks (existing pattern) — knowledge toggle invalidates the toggle list query
-- **Commit boundary:** ㊱ "feat(team): package state UI + adopt + knowledge"
+  - All UI updates via SSE hooks (existing pattern) — lesson toggle invalidates the toggle list query
+- **Commit boundary:** ㊱ "feat(team): package state UI + adopt + lessons"
 
 ### I-3 — Curated catalog
 
@@ -886,7 +886,7 @@ Each follows the **same template** as phase B (snapshot → convert → validate
 
 ### Phase I verification gate
 
-- Manual UI smoke: install Pixel package via UI → state changes to `managed` → toggle a knowledge lesson → SOUL.md updates
+- Manual UI smoke: install Pixel package via UI → state changes to `managed` → toggle a lesson → SOUL.md updates
 - `bakin doctor` reports drift after manually mutating a projected file
 - Total: 3 commits
 
@@ -921,7 +921,7 @@ Each follows the **same template** as phase B (snapshot → convert → validate
 - **Acceptance:**
   - `.claude/knowledge/agent-packages.md` covers manifest, lockfile, projection, three states, doctor checks, and migration story
   - Cross-links to `plugin-system.md`, `workflows-plugin.md`, `team-plugin.md`
-- **Commit boundary:** ㊴ "docs(knowledge): agent-packages deep reference"
+- **Commit boundary:** ㊴ "docs(agent-packages): deep reference"
 
 ### J-3 — Author walkthrough doc
 
@@ -931,7 +931,7 @@ Each follows the **same template** as phase B (snapshot → convert → validate
 - **Complexity:** M
 - **Acceptance:**
   - Hands-on walkthrough mirroring `docs/plugin-authoring.md` style
-  - Covers: package shape, manifest fields, knowledge file frontmatter, marker semantics, dependencies, installAs, testing locally with `bakin agents install ./my-agent`, publishing to GitHub
+  - Covers: package shape, manifest fields, lesson file frontmatter, marker semantics, dependencies, installAs, testing locally with `bakin agents install ./my-agent`, publishing to GitHub
 - **Commit boundary:** ㊵ "docs: agent-packages authoring guide"
 
 ### J-4 — Final test pass + manual smoke
@@ -985,18 +985,18 @@ Each follows the **same template** as phase B (snapshot → convert → validate
 | ⓳ | F-1 | feat(cli): agents + packages subcommands | cli + core/cli + tests |
 | ⓴ | F-2 | feat(api): agents + packages routes | api + tests |
 | ㉑ | F-3 | feat(onboarding): agent-assets check + install component | onboarding + tests |
-| ㉒ | F-4 | feat(team): knowledge file search indexing | team plugin + tests |
+| ㉒ | F-4 | feat(team): lesson file search indexing | team plugin + tests |
 | ㉓-㉙ | G-1..7 | feat(agents): rolo/jessica/scout/zen/nemo/basil/patch as package | agents/<id>/ — 7 commits |
 | ㉚ | G-8 | chore(migration): adopt 8 agents into package management | none in repo (operational) |
-| ㉛ | H-1 | feat(agent-pkg): standalone skill-pack/workflow-pack/knowledge-pack install | core + tests |
+| ㉛ | H-1 | feat(agent-pkg): standalone skill-pack/workflow-pack/lesson-pack install | core + tests |
 | ㉜ | H-2 | feat(agent-pkg): transitive dependency resolution | core + tests |
 | ㉝ | H-3 | feat(agent-pkg): ref-counted dep cleanup | core + tests |
 | ㉞ | H-4 | feat(agent-pkg): installAs collision aliasing | core + tests |
 | ㉟ | I-1 | feat(doctor): agent-package drift checks | core + doctor + tests |
-| ㊱ | I-2 | feat(team): package state UI + adopt + knowledge | team plugin |
+| ㊱ | I-2 | feat(team): package state UI + adopt + lessons | team plugin |
 | ㊲ | I-3 | feat(team): curated agent catalog | host data + api + scripts + tests |
 | ㊳ | J-1 | docs(claude): agent-packages primitive | CLAUDE.md |
-| ㊴ | J-2 | docs(knowledge): agent-packages deep reference | .claude/knowledge/ |
+| ㊴ | J-2 | docs(agent-packages): deep reference | .claude/knowledge/ |
 | ㊵ | J-3 | docs: agent-packages authoring guide | docs/ |
 | ㊶ | J-4 | test(agent-pkg): final test pass + smoke | (empty / fix-ups) |
 
@@ -1026,7 +1026,7 @@ git tag -l 'agent-pkg-phase-*'
 # (this is destructive; ask before running)
 ```
 
-The 8 backfilled-agent commits (㉓-㉙) are individually revertable: if Pixel-package install works but Rolo's package has malformed knowledge frontmatter, `git revert <Rolo's commit hash>` and the rest stays.
+The 8 backfilled-agent commits (㉓-㉙) are individually revertable: if Pixel-package install works but Rolo's package has malformed lesson frontmatter, `git revert <Rolo's commit hash>` and the rest stays.
 
 ---
 
@@ -1042,7 +1042,7 @@ All previously-open questions resolved:
 2. **Transitive deps confirmation** — One y/N per `bakin agents install` invocation. CLI displays the full dep tree; user confirms once at the agent-package install boundary, never per individual dep. Phase H-2.
 3. **API paths** — `/api/agents/...` and `/api/packages/...` at top level. SPEC.md updated to match. Phase F-2.
 4. **No binary embedding of agent packages** — `agents/<id>/` directories stay out of the binary. User-installed agent packages live in `~/.bakin/packages/agents/<id>/` and update without a binary rebuild. Phase I-3 verifies via embedded-assets test.
-5. **Standalone pack patterns** — Skill-pack ships globally (matches plugin pattern). Workflow-pack ships into source registry only. Knowledge-pack indexes for search and is attachable to any agent via `bakin agents knowledge enable`. Phase H-1.
+5. **Standalone pack patterns** — Skill-pack ships globally (matches plugin pattern). Workflow-pack ships into source registry only. Lesson-pack indexes for search and is attachable to any agent via `bakin agents lessons enable`. Phase H-1.
 
 ---
 

@@ -15,7 +15,7 @@ import { useRuntimeStatus } from "@bakin/sdk/hooks"
 import type { AvailableModel } from "@bakin/sdk/types"
 import { useAgentStore, useAgentColor, useMainAgentId, usePackageState } from '@bakin/sdk/hooks'
 import { useQueryState } from "@bakin/sdk/hooks"
-import { KnowledgeToggleList } from './knowledge-toggle-list'
+import { LessonToggleList } from './lesson-toggle-list'
 import { MarkdownEditTab } from './markdown-edit-tab'
 import { HeartbeatTab } from './heartbeat-tab'
 import { ActiveContextTab } from './active-context-tab'
@@ -23,7 +23,7 @@ import { OverviewTab } from './overview-tab'
 import { EmptyState } from './empty-state'
 import type { AgentProfile, SkillSummary, PackageStateRow } from '../types'
 
-type Tab = 'overview' | 'identity' | 'soul' | 'memory' | 'heartbeat' | 'rules' | 'tools' | 'skills' | 'knowledge' | 'active-context'
+type Tab = 'overview' | 'identity' | 'soul' | 'memory' | 'heartbeat' | 'rules' | 'tools' | 'skills' | 'lessons' | 'active-context'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -34,7 +34,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'rules', label: 'Rules' },
   { id: 'tools', label: 'Tools' },
   { id: 'skills', label: 'Skills' },
-  { id: 'knowledge', label: 'Knowledge' },
+  { id: 'lessons', label: 'Lessons' },
   { id: 'active-context', label: 'Active Context' },
 ]
 
@@ -251,7 +251,7 @@ export function AgentDetail({ agentId }: { agentId: string }) {
         {activeTab === 'rules' && <MarkdownEditTab agentId={agentId} filename="AGENTS.md" initialContent={profile.rules} />}
         {activeTab === 'tools' && <MarkdownEditTab agentId={agentId} filename="TOOLS.md" initialContent={profile.tools} />}
         {activeTab === 'skills' && <SkillsTab agentId={agentId} />}
-        {activeTab === 'knowledge' && <KnowledgeTab agentId={agentId} packageState={packageState} />}
+        {activeTab === 'lessons' && <LessonsTab agentId={agentId} packageState={packageState} />}
         {activeTab === 'active-context' && <ActiveContextTab agentId={agentId} />}
       </div>
 
@@ -286,22 +286,22 @@ export function AgentDetail({ agentId }: { agentId: string }) {
 }
 
 
-// ─── Knowledge Tab ───────────────────────────────────────────────────────────
+// ─── Lessons Tab ─────────────────────────────────────────────────────────────
 
-function KnowledgeTab({ agentId, packageState }: { agentId: string; packageState: PackageStateRow | undefined }) {
+function LessonsTab({ agentId, packageState }: { agentId: string; packageState: PackageStateRow | undefined }) {
   const state = packageState?.state ?? 'unmanaged'
   if (state === 'managed' || state === 'adopted') {
     return (
       <div className="w-full">
-        <KnowledgeToggleList agentId={agentId} />
+        <LessonToggleList agentId={agentId} />
       </div>
     )
   }
   return (
     <EmptyState
       icon={BookOpen}
-      title="Knowledge requires a package"
-      description="Knowledge lessons let you toggle individual pieces of curriculum on or off per agent — useful for narrowing the persona to a task. Adopt this agent into a package on the Overview tab to unlock per-lesson toggles."
+      title="Lessons require a package"
+      description="Lessons let you toggle individual pieces of curriculum on or off per agent — useful for narrowing the persona to a task. Adopt this agent into a package on the Overview tab to unlock per-lesson toggles."
     />
   )
 }

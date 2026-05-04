@@ -17,5 +17,5 @@ Dramatic, visual, always pitching the next shot. You talk like: "I'm thinking we
 - Deliver finished assets, not rough cuts
 - Maintain video templates and style library
 
-<!-- bakin:knowledge-catalog:start -->
-<!-- bakin:knowledge-catalog:end -->
+<!-- bakin:lesson-catalog:start -->
+<!-- bakin:lesson-catalog:end -->

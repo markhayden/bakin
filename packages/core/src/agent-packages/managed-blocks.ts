@@ -13,8 +13,8 @@
  * and the user is told not to edit by hand.
  *
  * Marker namespace conventions (used by callers, enforced by callers):
- *   - bakin:knowledge-catalog                    → table of contents in SOUL.md
- *   - bakin:knowledge:<package>:<lesson-id>      → one block per enabled lesson
+ *   - bakin:lesson-catalog                    → table of contents in SOUL.md
+ *   - bakin:lesson:<package>:<lesson-id>      → one block per enabled lesson
  *   - bakin:managed-context                      → compact AGENTS.md context
  *   - bakin:mission-control, etc.                → legacy AGENTS.md rule blocks,
  *                                                   converted by doctor when
@@ -37,7 +37,7 @@ function endMarker(blockId: string): string {
 
 /**
  * Block ids must be non-empty strings of word chars, hyphens, dots, or colons.
- * Colons are used as separators (e.g. `knowledge:pixel:product-photography`).
+ * Colons are used as separators (e.g. `lesson:pixel:product-photography`).
  */
 export function isValidBlockId(blockId: string): boolean {
   return /^[\w.-][\w:.-]*$/.test(blockId)

@@ -1,0 +1,15 @@
+{
+  "id": "bakin-lessons-product-photography",
+  "kind": "lesson-pack",
+  "name": "Product Photography Lessons",
+  "version": "0.1.0",
+  "description": "Cross-agent product photography lessons.",
+  "bakin": "^1.0.0",
+  "author": "Made in Wyo",
+  "contributions": {
+    "lessons": [
+      "lessons/product-photography.md",
+      "lessons/ecommerce-lighting.md"
+    ]
+  }
+}
