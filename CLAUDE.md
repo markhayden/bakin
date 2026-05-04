@@ -20,7 +20,7 @@ Runs on a Mac mini, accessed via Tailscale. No SaaS dependencies.
 - **Agents:** Managed through `AppServices.runtime` / `ctx.runtime`. OpenClaw is the current runtime implementation, isolated in `packages/adapter-openclaw/`.
 - **Search:** `AppServices.search` / `ctx.search` for full-text + semantic search. Antfly is the current search implementation, isolated in `packages/adapter-antfly/`; plugin and feature code never import `@antfly/sdk`.
 - **Adapter Boundary:** Runtime/search provider details stay behind adapter packages and the factories in `src/core/*-adapter-factory.ts`. Bakin owns UI data, task metadata, audit, assets, workflows, plugin settings/data, and heartbeats. Runtime providers own agent identity, soul, rules, tools, models, workspace data, channels, cron jobs, and memory. Deep reference: `.claude/knowledge/adapter-architecture.md`. Audit skill: `.claude/skills/check-adapter-boundary.md`.
-- **Agent Packages:** A second primitive distinct from plugins. Plugins ship code (routes, UI, MCP tools); agent packages ship **content** — identity (SOUL/IDENTITY/AGENTS/TOOLS), runtime skills, workflows, and knowledge files — that personifies an agent in the active runtime and gives it domain perspective. Manifested as `bakin-package.json` with `kind: "agent" | "skill-pack" | "workflow-pack" | "knowledge-pack"`. Three states per agent: `unmanaged`, `adopted`, `managed`. Deep reference: `.claude/knowledge/agent-packages.md`.
+- **Agent Packages:** A second primitive distinct from plugins. Plugins ship code (routes, UI, MCP tools); agent packages ship **content** — identity (SOUL/IDENTITY/AGENTS/TOOLS), runtime skills, workflows, and lesson files — that personifies an agent in the active runtime and gives it domain perspective. Manifested as `bakin-package.json` with `kind: "agent" | "skill-pack" | "workflow-pack" | "lesson-pack"`. Three states per agent: `unmanaged`, `adopted`, `managed`. Deep reference: `.claude/knowledge/agent-packages.md`.
 
 ## Build, Dev, CLI
 
@@ -65,11 +65,11 @@ Deep references: `.claude/knowledge/plugin-system.md`, `.claude/knowledge/workfl
 
 ## Agent Packages
 
-Plugins ship code; agent packages ship content. Every package has `bakin-package.json`, `workspace/` (template SOUL/IDENTITY/AGENTS/TOOLS files seeded once on install), `skills/<name>/`, optional `workflows/*.yaml` + `workflow-skills/*.md`, `knowledge/*.md`, and `assets/*`.
+Plugins ship code; agent packages ship content. Every package has `bakin-package.json`, `workspace/` (template SOUL/IDENTITY/AGENTS/TOOLS files seeded once on install), `skills/<name>/`, optional `workflows/*.yaml` + `workflow-skills/*.md`, `lessons/*.md`, and `assets/*`.
 
 Lockfile at `~/.bakin/packages/lock.json` is the canonical install ledger; every projected file gets a `.installedBy` sidecar; `.userEdited` sentinels lock projections from being overwritten.
 
-CLI: `bakin agents {install,list,remove,update,knowledge}` and `bakin packages {install,list,remove,update}`. REST: `/api/agent-packages/*` and `/api/packages/*` (top-level, distinct from runtime `/api/agents/*`). Doctor surfaces drift via `bakin check agent-assets` / `bakin install agent-assets`.
+CLI: `bakin agents {install,list,remove,update,lessons}` and `bakin packages {install,list,remove,update}`. REST: `/api/agent-packages/*` and `/api/packages/*` (top-level, distinct from runtime `/api/agents/*`). Doctor surfaces drift via `bakin check agent-assets` / `bakin install agent-assets`.
 
 Deep references: `.claude/knowledge/agent-packages.md`, `docs/agent-packages-authoring.md`.
 

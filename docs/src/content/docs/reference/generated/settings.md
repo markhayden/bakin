@@ -15,27 +15,27 @@ description: Generated reference for Bakin core settings defaults.
   </thead>
   <tbody>
     <tr>
-      <td><code>agentPackages.knowledgeRetrieval.enabled</code></td>
+      <td><code>agentPackages.lessonsRetrieval.enabled</code></td>
       <td><code>true</code></td>
     </tr>
     <tr>
-      <td><code>agentPackages.knowledgeRetrieval.injectIntoDispatch</code></td>
+      <td><code>agentPackages.lessonsRetrieval.injectIntoDispatch</code></td>
       <td><code>true</code></td>
     </tr>
     <tr>
-      <td><code>agentPackages.knowledgeRetrieval.maxCharacters</code></td>
+      <td><code>agentPackages.lessonsRetrieval.maxCharacters</code></td>
       <td><code>8000</code></td>
     </tr>
     <tr>
-      <td><code>agentPackages.knowledgeRetrieval.maxLessons</code></td>
+      <td><code>agentPackages.lessonsRetrieval.maxLessons</code></td>
       <td><code>3</code></td>
     </tr>
     <tr>
-      <td><code>agentPackages.knowledgeRetrieval.mcpTool</code></td>
+      <td><code>agentPackages.lessonsRetrieval.mcpTool</code></td>
       <td><code>true</code></td>
     </tr>
     <tr>
-      <td><code>agentPackages.knowledgeRetrieval.minScore</code></td>
+      <td><code>agentPackages.lessonsRetrieval.minScore</code></td>
       <td><code>0</code></td>
     </tr>
   </tbody>

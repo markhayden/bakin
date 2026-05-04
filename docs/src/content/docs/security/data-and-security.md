@@ -29,7 +29,7 @@ Important files and directories include:
 | `logs/` | Server logs. `server.log` rotates at 10 MB with one backup. Set `BAKIN_DISABLE_FILE_LOG=1` to disable file logging. |
 | `assets/` | Asset storage, inbox, and trash. |
 | `plugins/` | Installed external plugins, their bundles, and plugin-scoped data. |
-| `packages/` | Installed agent, skill, workflow, and knowledge package sources plus package lock data. |
+| `packages/` | Installed agent, skill, workflow, and lesson package sources plus package lock data. |
 | `tasks/` | Task board data and dispatch state. |
 | `projects/` | Project markdown specs, checklist state, and project asset links. |
 | `workflows/` | Workflow definitions, skills, and instances. |
@@ -83,7 +83,7 @@ Treat these as sensitive:
 - assets, project specs, task descriptions, messaging sessions, workflow inputs/outputs
 - runtime home data such as agent transcripts, durable memory, and workspace files
 
-Keep API keys, credentials, and channel tokens out of docs, tasks, project specs, assets, and agent knowledge unless you explicitly intend agents and local plugins to see them.
+Keep API keys, credentials, and channel tokens out of docs, tasks, project specs, assets, and agent lessons unless you explicitly intend agents and local plugins to see them.
 
 ## Install and Update Integrity
 
@@ -106,7 +106,7 @@ For a complete restore, also back up the configured runtime home, such as `~/.op
 ## Operational Hygiene
 
 - Restrict network access to the Bakin port.
-- Keep secrets out of docs, tasks, assets, project specs, messaging sessions, and agent knowledge files.
+- Keep secrets out of docs, tasks, assets, project specs, messaging sessions, and agent lessons files.
 - Treat `audit.jsonl` and `logs/` as sensitive operational records.
 - Review agent package `allowedTools` and `allowedSkills` before adopting packages.
 - Review third-party plugin permissions and source before install or upgrade.

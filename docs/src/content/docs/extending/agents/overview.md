@@ -1,9 +1,9 @@
 ---
 title: Agent Kits
-description: Author installable agent kits with identity, workspace files, skills, workflows, knowledge, and narrow tool access.
+description: Author installable agent kits with identity, workspace files, skills, workflows, lessons, and narrow tool access.
 ---
 
-Agent kits are not just prompts. In Bakin, an agent kit is an installable contract for runtime-managed work: identity, permissions, reusable skills, workflows, knowledge, and the workspace files that tell the agent how to operate.
+Agent kits are not just prompts. In Bakin, an agent kit is an installable contract for runtime-managed work: identity, permissions, reusable skills, workflows, lessons, and the workspace files that tell the agent how to operate.
 
 Use agent kits when you want a teammate or team capability that can be installed, reviewed, updated, and removed cleanly.
 
@@ -20,15 +20,15 @@ Use agent kits when you want a teammate or team capability that can be installed
 | `workspace/AGENTS.md` | Collaboration and handoff notes when the package needs them. |
 | `skills/*.md` | Reusable procedures the runtime can load as skills. |
 | `workflows/*.yaml` | Repeatable task flows the agent can run or participate in. |
-| `knowledge/*.md` | Toggleable domain knowledge lessons. |
+| `lessons/*.md` | Toggleable domain lessons. |
 
 </div>
 
 ## Build Path
 
-1. Decide whether you need an `agent`, `skill-pack`, `workflow-pack`, or `knowledge-pack`.
+1. Decide whether you need an `agent`, `skill-pack`, `workflow-pack`, or `lesson-pack`.
 2. Define `bakin-package.json`.
-3. Add workspace files, skills, workflows, workflow skills, knowledge, or assets.
+3. Add workspace files, skills, workflows, workflow skills, lessons, or assets.
 4. Install locally with `bakin agents install`.
 5. Test the agent against the workflows and MCP tools it is allowed to use.
 6. Keep package docs focused on what the agent does, not how Bakin works internally.
@@ -36,7 +36,7 @@ Use agent kits when you want a teammate or team capability that can be installed
 Use these pages for the details:
 
 - [Package Manifest](/docs/extending/agents/packages/)
-- [Knowledge Blocks](/docs/extending/agents/knowledge/)
+- [Lesson Blocks](/docs/extending/agents/lessons/)
 
 ## Tool Access
 
@@ -46,7 +46,7 @@ Keep `allowedTools` narrow. The manifest is where reviewers can see what an agen
 
 ## Runtime-Specific Behavior
 
-Bakin can run against different runtime adapters. If a package depends on adapter-specific behavior, say so in the package README or knowledge. Do not hide runtime assumptions inside vague prose.
+Bakin can run against different runtime adapters. If a package depends on adapter-specific behavior, say so in the package README or lessons. Do not hide runtime assumptions inside vague prose.
 
 ## For Coding Agents
 

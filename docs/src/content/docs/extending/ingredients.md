@@ -63,7 +63,7 @@ Start with [Server Contracts](/docs/extending/plugins/server-contracts/).
 
 Search ingredients make plugin-owned content findable by people and agents. Bakin can index text and structured fields, expose facets, and run retrieval across plugin data.
 
-Use search when your plugin creates knowledge worth finding later: leads, research notes, assets, campaign briefs, account records, decisions, or task-linked output.
+Use search when your plugin creates content worth finding later: leads, research notes, assets, campaign briefs, account records, decisions, or task-linked output.
 
 Search belongs to plugins. File-backed content should use `ctx.search.registerFileBackedContentType()`. External or service-backed content should use `ctx.search.registerContentType()` with a complete `reindex()` generator and `verifyExists()` check.
 
@@ -103,15 +103,15 @@ Plugin workflows are registered with `ctx.registerWorkflow()`. Agent kit workflo
 
 Start with [Workflows](/docs/using/workflows/), [Server Contracts](/docs/extending/plugins/server-contracts/), or [Package Manifest](/docs/extending/agents/packages/).
 
-## Knowledge Blocks
+## Lesson Blocks
 
-Knowledge blocks are durable agent context. They are the things an installed teammate should know before work starts: voice, market rules, taxonomy, review standards, escalation rules, or domain-specific terminology.
+Lesson blocks are durable agent context. They are the things an installed teammate should know before work starts: voice, market rules, taxonomy, review standards, escalation rules, or domain-specific terminology.
 
-Use knowledge blocks when the information is reusable, stable, and agent-facing. Do not use them for secrets, one-off task notes, credentials, or live state.
+Use lesson blocks when the information is reusable, stable, and agent-facing. Do not use them for secrets, one-off task notes, credentials, or live state.
 
-Knowledge blocks belong to agent kits. Declare files under `contributions.knowledge`, enable defaults with `install.enableKnowledge`, and let users toggle them with `bakin agents knowledge`.
+Lesson blocks belong to agent kits. Declare files under `contributions.lessons`, enable defaults with `install.enableLessons`, and let users toggle them with `bakin agents lessons`.
 
-Start with [Knowledge Blocks](/docs/extending/agents/knowledge/).
+Start with [Lesson Blocks](/docs/extending/agents/lessons/).
 
 ## Workspace Files
 
@@ -176,7 +176,7 @@ Agent kits use `bakin-package.json`. The manifest declares package kind, agent i
     "workspaceFiles": ["workspace/SOUL.md", "workspace/TOOLS.md"],
     "skills": ["skills/launch-review.md"],
     "workflows": ["workflows/launch.yaml"],
-    "knowledge": ["knowledge/voice.md"]
+    "lessons": ["lessons/voice.md"]
   }
 }
 ```
@@ -188,4 +188,4 @@ For exact fields, use [Plugin Manifest](/docs/extending/plugins/manifest/) and [
 - [Plugins](/docs/extending/plugins/overview/): build app and runtime functionality
 - [Agent Kits](/docs/extending/agents/overview/): build installable teammates
 - [Server Contracts](/docs/extending/plugins/server-contracts/): routes, tools, hooks, search, health checks, skills, and workflows
-- [Knowledge Blocks](/docs/extending/agents/knowledge/): write toggleable context for agents
+- [Lesson Blocks](/docs/extending/agents/lessons/): write toggleable context for agents

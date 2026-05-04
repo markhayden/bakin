@@ -57,7 +57,7 @@ describe('manifest schema — happy path', () => {
     if (m.kind !== 'agent') throw new Error('discriminator narrowing failed')
     expect(m.id).toBe('pixel')
     expect(m.agent.identity.name).toBe('Pixel')
-    expect(m.install.enableKnowledge).toEqual(['prompt-style-system'])
+    expect(m.install.enableLessons).toEqual(['prompt-style-system'])
     expect(m.contributions.skills).toEqual(['skills/image-generation'])
     expect(m.dependencies?.skills?.[0].source).toBe('github:markhayden/bakin-skills-visual')
     expect(m.dependencies?.skills?.[0].installAs).toBeNull()
@@ -78,11 +78,11 @@ describe('manifest schema — happy path', () => {
     expect(m.contributions.workflowSkills).toHaveLength(1)
   })
 
-  it('parses a knowledge-pack manifest', () => {
-    const m = parseManifest(loadFixture('knowledge-pack'))
-    expect(m.kind).toBe('knowledge-pack')
-    if (m.kind !== 'knowledge-pack') throw new Error('discriminator narrowing failed')
-    expect(m.contributions.knowledge).toHaveLength(2)
+  it('parses a lesson-pack manifest', () => {
+    const m = parseManifest(loadFixture('lesson-pack'))
+    expect(m.kind).toBe('lesson-pack')
+    if (m.kind !== 'lesson-pack') throw new Error('discriminator narrowing failed')
+    expect(m.contributions.lessons).toHaveLength(2)
   })
 })
 
@@ -235,9 +235,9 @@ describe('manifest schema — kind-specific contributions', () => {
     expect(() => parseManifest(m)).toThrow()
   })
 
-  it('rejects knowledge-pack with no knowledge', () => {
-    const m = loadFixture('knowledge-pack') as Record<string, unknown>
-    ;(m.contributions as { knowledge: unknown[] }).knowledge = []
+  it('rejects lesson-pack with no lessons', () => {
+    const m = loadFixture('lesson-pack') as Record<string, unknown>
+    ;(m.contributions as { lessons: unknown[] }).lessons = []
     expect(() => parseManifest(m)).toThrow()
   })
 

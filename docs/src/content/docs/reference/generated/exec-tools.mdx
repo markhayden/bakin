@@ -227,14 +227,14 @@ mcporter call bakin-<agent>.bakin_exec_heartbeat --args '{
 </McpToolCard>
 </div>
 
-## Knowledge
+## Lesson
 
 <p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="knowledge-search" name="bakin_exec_knowledge_search" label="Searched package knowledge" description="Search the enabled agent-package knowledge lessons for the calling agent." source="plugins/team/index.ts:1819" parameters={[{"name":"query","type":"string","required":true,"description":"Search query"},{"name":"limit","type":"number","required":false,"description":"Max lessons to return (default from settings, max 10)"}]}>
+<McpToolCard id="lesson-search" name="bakin_exec_lesson_search" label="Searched package lessons" description="Search the enabled agent-package lessons for the calling agent." source="plugins/team/index.ts:1819" parameters={[{"name":"query","type":"string","required":true,"description":"Search query"},{"name":"limit","type":"number","required":false,"description":"Max lessons to return (default from settings, max 10)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_knowledge_search --args '{
+mcporter call bakin-<agent>.bakin_exec_lesson_search --args '{
   "query": "value",
   "limit": 20
 }'
@@ -1075,5 +1075,5 @@ mcporter call bakin-<agent>.bakin_exec_workflows_start --args '{
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 1, 2026 · Bakin 1.0.0</span>
+  <span>Generated May 3, 2026 · Bakin 1.0.0</span>
 </aside>

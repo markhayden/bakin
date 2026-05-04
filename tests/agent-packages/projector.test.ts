@@ -2,7 +2,7 @@
  * Tests for the projector (Phase E-3).
  *
  * Coverage:
- *   - Fresh install of an agent package: workspace files, knowledge markers,
+ *   - Fresh install of an agent package: workspace files, lesson markers,
  *     assets, sidecars all in place
  *   - Adopt mode: workspace files preserved, only markers + assets project
  *   - Update mode without --refresh-template: workspace files NOT rewritten
@@ -10,11 +10,11 @@
  *   - .userEdited skip: target preserved, no .installedBy written, recorded
  *     in result.skipped
  *   - Mid-install failure rolls back every prior write
- *   - Knowledge catalog block reflects enabled lessons
+ *   - Lesson catalog block reflects enabled lessons
  *   - Disabled lessons get their per-lesson block removed
  *   - Symlinks in source are skipped (refused on copy)
  *   - skill-pack projects to global ~/.openclaw/skills/
- *   - workflow-pack and knowledge-pack are no-op at filesystem level
+ *   - workflow-pack and lesson-pack are no-op at filesystem level
  *   - unprojectPackage removes files + strips markers
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
@@ -89,14 +89,14 @@ function pixelManifest(): AgentManifest {
     install: {
       writeWorkspaceFiles: true,
       installSkills: true,
-      enableKnowledge: ['prompt-style-system'],
+      enableLessons: ['prompt-style-system'],
     },
     contributions: {
       workspaceFiles: ['workspace/SOUL.md', 'workspace/IDENTITY.md'],
       skills: ['skills/test-skill'],
-      knowledge: [
-        'knowledge/prompt-style-system.md',
-        'knowledge/social-media.md',
+      lessons: [
+        'lessons/prompt-style-system.md',
+        'lessons/social-media.md',
       ],
       assets: ['assets/avatar.jpg'],
     },
@@ -107,22 +107,22 @@ function seedPackageStaging(): string {
   const stagingDir = join(testDir, 'staging-pixel')
   mkdirSync(join(stagingDir, 'workspace'), { recursive: true })
   mkdirSync(join(stagingDir, 'skills', 'test-skill'), { recursive: true })
-  mkdirSync(join(stagingDir, 'knowledge'), { recursive: true })
+  mkdirSync(join(stagingDir, 'lessons'), { recursive: true })
   mkdirSync(join(stagingDir, 'assets'), { recursive: true })
 
   writeFileSync(
     join(stagingDir, 'workspace', 'SOUL.md'),
-    `# Soul\n\nYou are Pixel.\n\n<!-- bakin:knowledge-catalog:start -->\n<!-- bakin:knowledge-catalog:end -->\n`,
+    `# Soul\n\nYou are Pixel.\n\n<!-- bakin:lesson-catalog:start -->\n<!-- bakin:lesson-catalog:end -->\n`,
   )
   writeFileSync(join(stagingDir, 'workspace', 'IDENTITY.md'), `# IDENTITY\n\n- **Name:** Pixel\n`)
   writeFileSync(join(stagingDir, 'skills', 'test-skill', 'SKILL.md'), '# Skill\n')
 
   writeFileSync(
-    join(stagingDir, 'knowledge', 'prompt-style-system.md'),
+    join(stagingDir, 'lessons', 'prompt-style-system.md'),
     `---\ntitle: Prompt Style System\ndefaultEnabled: true\n---\n\n## Anatomy of a prompt\n\nFour ingredients...`,
   )
   writeFileSync(
-    join(stagingDir, 'knowledge', 'social-media.md'),
+    join(stagingDir, 'lessons', 'social-media.md'),
     `---\ntitle: Social Media\ndefaultEnabled: false\n---\n\nViral patterns...`,
   )
 
@@ -289,48 +289,48 @@ describe('projectPackage — fresh install (kind:"agent")', () => {
     expect(readInstalledBy(avatar)?.package).toBe('pixel')
   })
 
-  it('injects knowledge catalog + enabled-lesson blocks into SOUL.md', async () => {
+  it('injects lesson catalog + enabled-lesson blocks into SOUL.md', async () => {
     await projectPackage(freshOptions())
     const soul = readFileSync(join(openClawDir, 'workspaces', 'pixel', 'SOUL.md'), 'utf-8')
 
-    expect(hasBlock(soul, 'knowledge-catalog')).toBe(true)
-    const catalog = extractBlock(soul, 'knowledge-catalog') ?? ''
+    expect(hasBlock(soul, 'lesson-catalog')).toBe(true)
+    const catalog = extractBlock(soul, 'lesson-catalog') ?? ''
     expect(catalog).toContain('Prompt Style System')
     expect(catalog).toContain('[x] **Prompt Style System**')
     expect(catalog).toContain('[ ] **Social Media**')
 
     // Enabled lesson has a block; disabled lesson does not
-    expect(hasBlock(soul, 'knowledge:pixel:prompt-style-system')).toBe(true)
-    expect(hasBlock(soul, 'knowledge:pixel:social-media')).toBe(false)
+    expect(hasBlock(soul, 'lesson:pixel:prompt-style-system')).toBe(true)
+    expect(hasBlock(soul, 'lesson:pixel:social-media')).toBe(false)
   })
 
-  it('records knowledge-marker projections for catalog + each enabled lesson', async () => {
+  it('records lesson-marker projections for catalog + each enabled lesson', async () => {
     const result = await projectPackage(freshOptions())
-    const markers = result.projections.filter((p) => p.kind === 'knowledge-marker')
+    const markers = result.projections.filter((p) => p.kind === 'lesson-marker')
     expect(markers).toHaveLength(2) // catalog + prompt-style-system
     const blockIds = markers.map((m) => m.blockId)
-    expect(blockIds).toContain('knowledge-catalog')
-    expect(blockIds).toContain('knowledge:pixel:prompt-style-system')
+    expect(blockIds).toContain('lesson-catalog')
+    expect(blockIds).toContain('lesson:pixel:prompt-style-system')
   })
 
-  it('falls back to defaultEnabled frontmatter when install.enableKnowledge is undefined', async () => {
+  it('falls back to defaultEnabled frontmatter when install.enableLessons is undefined', async () => {
     const opts = freshOptions()
-    opts.manifest = { ...opts.manifest, install: { ...(opts.manifest as AgentManifest).install, enableKnowledge: undefined } } as Manifest
+    opts.manifest = { ...opts.manifest, install: { ...(opts.manifest as AgentManifest).install, enableLessons: undefined } } as Manifest
     await projectPackage(opts)
     const soul = readFileSync(join(openClawDir, 'workspaces', 'pixel', 'SOUL.md'), 'utf-8')
     // prompt-style-system has defaultEnabled: true → block present
-    expect(hasBlock(soul, 'knowledge:pixel:prompt-style-system')).toBe(true)
+    expect(hasBlock(soul, 'lesson:pixel:prompt-style-system')).toBe(true)
     // social-media has defaultEnabled: false → block absent
-    expect(hasBlock(soul, 'knowledge:pixel:social-media')).toBe(false)
+    expect(hasBlock(soul, 'lesson:pixel:social-media')).toBe(false)
   })
 
-  it('honors enabledKnowledge override', async () => {
+  it('honors enabledLessons override', async () => {
     const opts = freshOptions()
-    opts.enabledKnowledge = ['social-media'] // only social-media enabled
+    opts.enabledLessons = ['social-media'] // only social-media enabled
     await projectPackage(opts)
     const soul = readFileSync(join(openClawDir, 'workspaces', 'pixel', 'SOUL.md'), 'utf-8')
-    expect(hasBlock(soul, 'knowledge:pixel:social-media')).toBe(true)
-    expect(hasBlock(soul, 'knowledge:pixel:prompt-style-system')).toBe(false)
+    expect(hasBlock(soul, 'lesson:pixel:social-media')).toBe(true)
+    expect(hasBlock(soul, 'lesson:pixel:prompt-style-system')).toBe(false)
   })
 })
 
@@ -355,7 +355,7 @@ describe('projectPackage — adopt mode', () => {
     const soul = readFileSync(join(wsDir, 'SOUL.md'), 'utf-8')
     expect(soul).toContain('# Existing Pixel SOUL')
     expect(soul).toContain('User-written content.')
-    expect(hasBlock(soul, 'knowledge-catalog')).toBe(true)
+    expect(hasBlock(soul, 'lesson-catalog')).toBe(true)
 
     // No workspace-file projections — adopt mode skips them
     const wsProjections = result.projections.filter((p) => p.kind === 'workspace-file')
@@ -521,7 +521,7 @@ describe('unprojectPackage', () => {
     expect(existsSync(join(openClawDir, 'workspaces', 'pixel', 'skills', 'test-skill'))).toBe(false)
   })
 
-  it('with keepBlocks=true, leaves knowledge markers intact', async () => {
+  it('with keepBlocks=true, leaves lesson markers intact', async () => {
     const result = await projectPackage(freshOptions())
     const soul = join(openClawDir, 'workspaces', 'pixel', 'SOUL.md')
 

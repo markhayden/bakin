@@ -37,12 +37,12 @@ const CLI_SOURCE = readFileSync(
 )
 
 describe('cli: agents subcommands', () => {
-  it('exposes install / list / remove / update / knowledge subcommands', () => {
+  it('exposes install / list / remove / update / lessons subcommands', () => {
     expect(CLI_SOURCE).toContain("case 'agents':")
     expect(CLI_SOURCE).toContain("sub === 'install'")
     expect(CLI_SOURCE).toContain("sub === 'remove'")
     expect(CLI_SOURCE).toContain("sub === 'update'")
-    expect(CLI_SOURCE).toContain("sub === 'knowledge'")
+    expect(CLI_SOURCE).toContain("sub === 'lessons'")
   })
 
   it('routes agents install to cmdAgentPackagesInstall', () => {
@@ -57,12 +57,12 @@ describe('cli: agents subcommands', () => {
     expect(CLI_SOURCE).toContain('cmdAgentPackagesUpdate')
   })
 
-  it('routes agents knowledge enable/disable to cmdAgentPackagesKnowledgeToggle', () => {
-    expect(CLI_SOURCE).toContain('cmdAgentPackagesKnowledgeToggle(args[3], args[4]')
+  it('routes agents lessons enable/disable to cmdAgentPackagesLessonsToggle', () => {
+    expect(CLI_SOURCE).toContain('cmdAgentPackagesLessonsToggle(args[3], args[4]')
   })
 
-  it('routes agents knowledge list to cmdAgentPackagesKnowledgeList', () => {
-    expect(CLI_SOURCE).toContain('cmdAgentPackagesKnowledgeList(args[3])')
+  it('routes agents lessons list to cmdAgentPackagesLessonsList', () => {
+    expect(CLI_SOURCE).toContain('cmdAgentPackagesLessonsList(args[3])')
   })
 
   it('preserves the existing runtime subcommands (status / tasks / send)', () => {

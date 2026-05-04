@@ -5,11 +5,11 @@
  *   - workflow-pack: source dir + manifest at
  *     ~/.bakin/packages/workflow-packs/<id>@<v>/; load-sources picks
  *     up workflows on next boot
- *   - knowledge-pack: source dir + manifest at
- *     ~/.bakin/packages/knowledge-packs/<id>@<v>/; lockfile tracking only
- *     for V1 (search indexing of knowledge-pack lessons is a follow-up
+ *   - lesson-pack: source dir + manifest at
+ *     ~/.bakin/packages/lesson-packs/<id>@<v>/; lockfile tracking only
+ *     for V1 (search indexing of lesson-pack lessons is a follow-up
  *     since the team plugin's content-type glob targets agent packages
- *     specifically — knowledge-pack lessons don't yet land in search)
+ *     specifically — lesson-pack lessons don't yet land in search)
  *
  * Each pack lands at refCount=0 since no agent depends on it yet.
  * `bakin packages remove <id>` succeeds without --force when refCount=0;
@@ -217,57 +217,57 @@ describe('installPackage — kind:"workflow-pack"', () => {
   })
 })
 
-// ─── knowledge-pack ──────────────────────────────────────────────────────────
+// ─── lesson-pack ──────────────────────────────────────────────────────────
 
-function seedKnowledgePack(id: string, version = '1.0.0'): string {
+function seedLessonPack(id: string, version = '1.0.0'): string {
   const dir = join(testDir, `${id}-pack`)
-  mkdirSync(join(dir, 'knowledge'), { recursive: true })
+  mkdirSync(join(dir, 'lessons'), { recursive: true })
   writeFileSync(
     join(dir, 'bakin-package.json'),
     JSON.stringify({
       id,
-      kind: 'knowledge-pack',
+      kind: 'lesson-pack',
       name: id,
       version,
       contributions: {
-        knowledge: ['knowledge/lesson-one.md', 'knowledge/lesson-two.md'],
+        lessons: ['lessons/lesson-one.md', 'lessons/lesson-two.md'],
       },
     }),
   )
   writeFileSync(
-    join(dir, 'knowledge', 'lesson-one.md'),
+    join(dir, 'lessons', 'lesson-one.md'),
     `---\ntitle: Lesson One\ndefaultEnabled: true\n---\n\nFirst lesson body.`,
   )
   writeFileSync(
-    join(dir, 'knowledge', 'lesson-two.md'),
+    join(dir, 'lessons', 'lesson-two.md'),
     `---\ntitle: Lesson Two\ndefaultEnabled: false\n---\n\nSecond lesson body.`,
   )
   return dir
 }
 
-describe('installPackage — kind:"knowledge-pack"', () => {
-  it('lays down install dir with knowledge files preserved + lockfile entry', async () => {
-    const src = seedKnowledgePack('shared-lessons')
+describe('installPackage — kind:"lesson-pack"', () => {
+  it('lays down install dir with lesson files preserved + lockfile entry', async () => {
+    const src = seedLessonPack('shared-lessons')
     const result = await installPackage({ source: src })
 
-    expect(result.kind).toBe('knowledge-pack')
+    expect(result.kind).toBe('lesson-pack')
 
-    // Install dir contains all knowledge files
-    const installDir = join(testDir, 'packages', 'knowledge-packs', 'shared-lessons@1.0.0')
-    expect(existsSync(join(installDir, 'knowledge', 'lesson-one.md'))).toBe(true)
-    expect(existsSync(join(installDir, 'knowledge', 'lesson-two.md'))).toBe(true)
+    // Install dir contains all lesson files
+    const installDir = join(testDir, 'packages', 'lesson-packs', 'shared-lessons@1.0.0')
+    expect(existsSync(join(installDir, 'lessons', 'lesson-one.md'))).toBe(true)
+    expect(existsSync(join(installDir, 'lessons', 'lesson-two.md'))).toBe(true)
     // Frontmatter preserved
-    const lessonOne = readFileSync(join(installDir, 'knowledge', 'lesson-one.md'), 'utf-8')
+    const lessonOne = readFileSync(join(installDir, 'lessons', 'lesson-one.md'), 'utf-8')
     expect(lessonOne).toContain('defaultEnabled: true')
 
-    // Lockfile entry: refCount 0, kind knowledge-pack
+    // Lockfile entry: refCount 0, kind lesson-pack
     const entry = readLockfile().packages['shared-lessons@1.0.0']
-    expect(entry?.kind).toBe('knowledge-pack')
+    expect(entry?.kind).toBe('lesson-pack')
     expect(entry?.refCount).toBe(0)
   })
 
-  it('does NOT project filesystem-side beyond the install dir (knowledge-pack is FS-inert at install time)', async () => {
-    const src = seedKnowledgePack('shared-lessons')
+  it('does NOT project filesystem-side beyond the install dir (lesson-pack is FS-inert at install time)', async () => {
+    const src = seedLessonPack('shared-lessons')
     await installPackage({ source: src })
 
     // No openclaw side-effects

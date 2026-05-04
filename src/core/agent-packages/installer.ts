@@ -162,9 +162,9 @@ function preflightCollisions(
   for (const [pkgId, entry] of Object.entries(lock.packages)) {
     if (newPackageIds.has(pkgId)) continue
     for (const p of entry.projections ?? []) {
-      // Knowledge-marker projections share the SOUL.md target across
+      // Lesson-marker projections share the SOUL.md target across
       // packages — that's not a collision (each block has its own id).
-      if (p.kind === 'knowledge-marker') continue
+      if (p.kind === 'lesson-marker') continue
       existing.set(p.target, pkgId)
     }
   }
@@ -232,7 +232,7 @@ function listImmediateDeps(
   const slots: Array<Array<{ source: string; ref: string }> | undefined> = [
     deps?.skills,
     deps?.workflows,
-    deps?.knowledge,
+    deps?.lessons,
   ]
   for (const slot of slots) {
     if (!slot) continue
@@ -478,11 +478,11 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     if (manifest.kind === 'agent' && agentId) {
       parentEntry.state = mode === 'adopt' ? 'adopted' : 'managed'
       parentEntry.agentId = agentId
-      parentEntry.knowledgeEnabled =
-        manifest.install.enableKnowledge ??
+      parentEntry.lessonsEnabled =
+        manifest.install.enableLessons ??
         []
     } else {
-      // Non-agent kinds (skill-pack / workflow-pack / knowledge-pack) live as
+      // Non-agent kinds (skill-pack / workflow-pack / lesson-pack) live as
       // top-level entries with no agent state. Initialize refCount/dependents
       // so other packages can depend on them later via incrementRefCount.
       parentEntry.refCount = 0
@@ -524,7 +524,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
       ...(agentId ? { agentId, state: parentEntry.state } : {}),
       ...(adopted ? { adopted: true } : {}),
       ...(createdAgent ? { createdAgent: true } : {}),
-      knowledgeEnabled: parentEntry.knowledgeEnabled ?? [],
+      lessonsEnabled: parentEntry.lessonsEnabled ?? [],
       dependencies: resolved.map((r) => `${r.resolvedId}@${r.manifest.version}`),
     }, 'cli')
 

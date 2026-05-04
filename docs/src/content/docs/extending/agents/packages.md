@@ -1,6 +1,6 @@
 ---
 title: Package Manifest
-description: Package reusable agents, skills, workflows, knowledge, workspace files, and assets for Bakin.
+description: Package reusable agents, skills, workflows, lessons, workspace files, and assets for Bakin.
 ---
 
 Agent packages are installable bundles for Bakin and runtime-managed agent state. They use `bakin-package.json`, not `bakin-plugin.json`. The manifest is parsed with a strict Zod schema before install.
@@ -33,7 +33,7 @@ Source: `docs/snippets/agent-package-basic/bakin-package.json`
     ],
     "allowedTools": [
       "bakin_exec_tasks_list",
-      "bakin_exec_knowledge_search",
+      "bakin_exec_lesson_search",
       "bakin_exec_workflows_start"
     ],
     "allowedSkills": [
@@ -46,7 +46,7 @@ Source: `docs/snippets/agent-package-basic/bakin-package.json`
     "writeWorkspaceFiles": true,
     "installSkills": true,
     "installWorkflows": true,
-    "enableKnowledge": [
+    "enableLessons": [
       "voice"
     ]
   },
@@ -62,8 +62,8 @@ Source: `docs/snippets/agent-package-basic/bakin-package.json`
     "workflows": [
       "workflows/draft-review.yaml"
     ],
-    "knowledge": [
-      "knowledge/voice.md"
+    "lessons": [
+      "lessons/voice.md"
     ]
   }
 }
@@ -76,10 +76,10 @@ Source: `docs/snippets/agent-package-basic/bakin-package.json`
 
 | Kind | Purpose |
 | --- | --- |
-| `agent` | Install or adopt an agent and project its workspace files, skills, workflows, knowledge, and assets. |
+| `agent` | Install or adopt an agent and project its workspace files, skills, workflows, lessons, and assets. |
 | `skill-pack` | Ship reusable skills without creating an agent. |
 | `workflow-pack` | Ship workflows and workflow skills. |
-| `knowledge-pack` | Ship reusable knowledge files. |
+| `lesson-pack` | Ship reusable lesson files. |
 
 </div>
 
@@ -119,7 +119,7 @@ Package IDs may contain letters, numbers, dashes, and underscores, up to 40 char
 | `writeWorkspaceFiles` | Write template workspace files on fresh install. |
 | `installSkills` | Install contributed skills. |
 | `installWorkflows` | Install contributed workflows and workflow skills. |
-| `enableKnowledge` | Knowledge lesson IDs enabled by default. |
+| `enableLessons` | Lesson IDs enabled by default. |
 
 </div>
 
@@ -133,10 +133,10 @@ Agent packages can contribute:
 - `skills`
 - `workflows`
 - `workflowSkills`
-- `knowledge`
+- `lessons`
 - `assets`
 
-`skill-pack` packages must contribute at least one skill. `workflow-pack` packages must contribute at least one workflow or workflow skill. `knowledge-pack` packages must contribute at least one knowledge file.
+`skill-pack` packages must contribute at least one skill. `workflow-pack` packages must contribute at least one workflow or workflow skill. `lesson-pack` packages must contribute at least one lesson file.
 
 ## Install Commands
 
@@ -189,12 +189,12 @@ Dependency sources may be `github:user/repo`, `github:user/repo#agents/package-i
 - Keep package IDs stable and short.
 - Pin external refs when sharing packages.
 - Keep `allowedTools` narrow enough for review.
-- Add `bakin_exec_knowledge_search` when the agent should be able to look up its enabled package lessons after dispatch.
+- Add `bakin_exec_lesson_search` when the agent should be able to look up its enabled package lessons after dispatch.
 - Put reusable behavior in skills and workflows, not only in prose.
-- Use knowledge files for durable domain context, not one-off task state.
+- Use lesson files for durable domain context, not one-off task state.
 - Keep secrets out of packages.
 - Test package install against a disposable local runtime before sharing.
 
-## Knowledge Retrieval
+## Lesson Retrieval
 
-Enabled agent-package lessons are selected at dispatch time from the `agent-knowledge` search index and injected into task prompts when relevant. Agents can also call `bakin_exec_knowledge_search` for follow-up lookup; the tool only searches the calling agent's enabled lessons.
+Enabled agent-package lessons are selected at dispatch time from the `agent-lessons` search index and injected into task prompts when relevant. Agents can also call `bakin_exec_lesson_search` for follow-up lookup; the tool only searches the calling agent's enabled lessons.

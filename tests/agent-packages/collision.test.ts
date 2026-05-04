@@ -149,7 +149,7 @@ describe('installPackage — collision detection (Phase H-4)', () => {
     )
     writeFileSync(
       join(agentDir, 'workspace', 'SOUL.md'),
-      `# Soul\n\n<!-- bakin:knowledge-catalog:start -->\n<!-- bakin:knowledge-catalog:end -->\n`,
+      `# Soul\n\n<!-- bakin:lesson-catalog:start -->\n<!-- bakin:lesson-catalog:end -->\n`,
     )
 
     // Without per-skill installAs renaming, the second package's skill

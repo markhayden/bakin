@@ -21,7 +21,7 @@
     "writeWorkspaceFiles": true,
     "installSkills": true,
     "installWorkflows": true,
-    "enableKnowledge": ["prompt-style-system"]
+    "enableLessons": ["prompt-style-system"]
   },
   "contributions": {
     "workspaceFiles": [
@@ -33,10 +33,10 @@
     "skills": ["skills/image-generation"],
     "workflows": ["workflows/image-generation.yaml"],
     "workflowSkills": ["workflow-skills/generate-image.md"],
-    "knowledge": [
-      "knowledge/product-photography.md",
-      "knowledge/editorial-photography.md",
-      "knowledge/prompt-style-system.md"
+    "lessons": [
+      "lessons/product-photography.md",
+      "lessons/editorial-photography.md",
+      "lessons/prompt-style-system.md"
     ],
     "assets": ["assets/avatar.jpg", "assets/avatar-full.png"]
   },

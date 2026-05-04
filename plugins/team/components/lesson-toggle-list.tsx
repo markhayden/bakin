@@ -5,9 +5,9 @@ import { Loader2, Package } from 'lucide-react'
 import { Switch } from '@bakin/sdk/ui'
 
 /**
- * Per-agent knowledge toggle list. Fetches from
- * /api/agent-packages/{agentId}/knowledge, renders a checkbox row per
- * lesson, POSTs to .../knowledge/{lessonId} on toggle.
+ * Per-agent lessons toggle list. Fetches from
+ * /api/agent-packages/{agentId}/lessons, renders a checkbox row per
+ * lesson, POSTs to .../lessons/{lessonId} on toggle.
  *
  * Optimistic UI — toggle flips immediately, reverts on server error.
  */
@@ -20,11 +20,11 @@ interface Lesson {
   enabled: boolean
 }
 
-export interface KnowledgeToggleListProps {
+export interface LessonToggleListProps {
   agentId: string
 }
 
-export function KnowledgeToggleList({ agentId }: KnowledgeToggleListProps) {
+export function LessonToggleList({ agentId }: LessonToggleListProps) {
   const [lessons, setLessons] = useState<Lesson[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [packageId, setPackageId] = useState<string | null>(null)
@@ -34,7 +34,7 @@ export function KnowledgeToggleList({ agentId }: KnowledgeToggleListProps) {
     let cancelled = false
     async function load() {
       try {
-        const res = await fetch(`/api/agent-packages/${encodeURIComponent(agentId)}/knowledge`)
+        const res = await fetch(`/api/agent-packages/${encodeURIComponent(agentId)}/lessons`)
         const body = (await res.json()) as {
           ok: boolean
           packageId?: string
@@ -65,7 +65,7 @@ export function KnowledgeToggleList({ agentId }: KnowledgeToggleListProps) {
     setLessons(lessons.map((l) => (l.lessonId === lessonId ? { ...l, enabled: nextEnabled } : l)))
     try {
       const res = await fetch(
-        `/api/agent-packages/${encodeURIComponent(agentId)}/knowledge/${encodeURIComponent(lessonId)}`,
+        `/api/agent-packages/${encodeURIComponent(agentId)}/lessons/${encodeURIComponent(lessonId)}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -103,12 +103,12 @@ export function KnowledgeToggleList({ agentId }: KnowledgeToggleListProps) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" />
-        Loading knowledge…
+        Loading lessons...
       </div>
     )
   }
   if (lessons.length === 0) {
-    return <p className="text-sm text-muted-foreground">No knowledge available from this package.</p>
+    return <p className="text-sm text-muted-foreground">No lessons available from this package.</p>
   }
 
   return (

@@ -290,7 +290,7 @@ describe('checkAgentAssets — wrapper', () => {
 function seedAgentPackage(): string {
   const dir = join(testDir, 'pixel-pkg')
   mkdirSync(join(dir, 'workspace'), { recursive: true })
-  mkdirSync(join(dir, 'knowledge'), { recursive: true })
+  mkdirSync(join(dir, 'lessons'), { recursive: true })
   mkdirSync(join(dir, 'assets'), { recursive: true })
   writeFileSync(
     join(dir, 'bakin-package.json'),
@@ -300,20 +300,20 @@ function seedAgentPackage(): string {
       name: 'Pixel',
       version: '0.1.0',
       agent: { identity: { name: 'Pixel' } },
-      install: { writeWorkspaceFiles: true, enableKnowledge: ['style'] },
+      install: { writeWorkspaceFiles: true, enableLessons: ['style'] },
       contributions: {
         workspaceFiles: ['workspace/SOUL.md'],
-        knowledge: ['knowledge/style.md'],
+        lessons: ['lessons/style.md'],
         assets: ['assets/avatar.jpg'],
       },
     }),
   )
   writeFileSync(
     join(dir, 'workspace', 'SOUL.md'),
-    `# Soul Pixel\n\n<!-- bakin:knowledge-catalog:start -->\n<!-- bakin:knowledge-catalog:end -->\n`,
+    `# Soul Pixel\n\n<!-- bakin:lesson-catalog:start -->\n<!-- bakin:lesson-catalog:end -->\n`,
   )
   writeFileSync(
-    join(dir, 'knowledge', 'style.md'),
+    join(dir, 'lessons', 'style.md'),
     `---\ntitle: Style\ndefaultEnabled: true\n---\n\nStyle body.`,
   )
   writeFileSync(join(dir, 'assets', 'avatar.jpg'), 'jpg-bytes')

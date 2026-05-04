@@ -119,11 +119,11 @@ export interface BakinSettings {
     blocklist?: string[]
   }
   agentPackages: {
-    knowledgeRetrieval: {
+    lessonsRetrieval: {
       enabled: boolean
       /** Inject the top relevant enabled lessons directly into dispatch prompts. */
       injectIntoDispatch: boolean
-      /** Expose the agent-facing MCP search tool for follow-up knowledge lookup. */
+      /** Expose the agent-facing MCP search tool for follow-up lesson lookup. */
       mcpTool: boolean
       maxLessons: number
       /** Approximate prompt budget for injected lesson bodies. */
@@ -242,7 +242,7 @@ export const DEFAULT_SETTINGS: BakinSettings = {
   },
   models: {},
   agentPackages: {
-    knowledgeRetrieval: {
+    lessonsRetrieval: {
       enabled: true,
       injectIntoDispatch: true,
       mcpTool: true,

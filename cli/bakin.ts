@@ -543,13 +543,13 @@ async function cmdAgentPackagesUpdate(agentId: string | undefined, flags: Agents
   }
 }
 
-async function cmdAgentPackagesKnowledgeList(agentId: string): Promise<void> {
-  const result = await apiGet(`/api/agent-packages/${encodeURIComponent(agentId)}/knowledge`) as {
+async function cmdAgentPackagesLessonsList(agentId: string): Promise<void> {
+  const result = await apiGet(`/api/agent-packages/${encodeURIComponent(agentId)}/lessons`) as {
     ok: boolean
     packageId: string
     lessons: Array<{ lessonId: string; title: string; tags: string[]; enabled: boolean }>
   }
-  console.log(`Knowledge for ${agentId} (package: ${result.packageId})`)
+  console.log(`Lessons for ${agentId} (package: ${result.packageId})`)
   for (const l of result.lessons) {
     const mark = l.enabled ? '[x]' : '[ ]'
     const tags = l.tags.length > 0 ? ` (${l.tags.join(', ')})` : ''
@@ -557,9 +557,9 @@ async function cmdAgentPackagesKnowledgeList(agentId: string): Promise<void> {
   }
 }
 
-async function cmdAgentPackagesKnowledgeToggle(agentId: string, lessonId: string, enabled: boolean): Promise<void> {
+async function cmdAgentPackagesLessonsToggle(agentId: string, lessonId: string, enabled: boolean): Promise<void> {
   const result = await apiPost(
-    `/api/agent-packages/${encodeURIComponent(agentId)}/knowledge/${encodeURIComponent(lessonId)}`,
+    `/api/agent-packages/${encodeURIComponent(agentId)}/lessons/${encodeURIComponent(lessonId)}`,
     { enabled },
   )
   print(result)
@@ -1774,22 +1774,22 @@ export async function main(): Promise<void> {
           const id = args[2] && !args[2].startsWith('--') ? args[2] : undefined
           const flagsStart = id ? 3 : 2
           await cmdAgentPackagesUpdate(id, parseAgentsFlags(args.slice(flagsStart)))
-        } else if (sub === 'knowledge') {
-          const knowSub = args[2]
-          if (knowSub === 'list') {
-            if (!args[3]) { console.error('Usage: bakin agents knowledge list <agent-id>'); process.exit(1) }
-            await cmdAgentPackagesKnowledgeList(args[3])
-          } else if (knowSub === 'enable' || knowSub === 'disable') {
-            if (!args[3] || !args[4]) { console.error(`Usage: bakin agents knowledge ${knowSub} <agent-id> <lesson-id>`); process.exit(1) }
-            await cmdAgentPackagesKnowledgeToggle(args[3], args[4], knowSub === 'enable')
+        } else if (sub === 'lessons') {
+          const lessonSub = args[2]
+          if (lessonSub === 'list') {
+            if (!args[3]) { console.error('Usage: bakin agents lessons list <agent-id>'); process.exit(1) }
+            await cmdAgentPackagesLessonsList(args[3])
+          } else if (lessonSub === 'enable' || lessonSub === 'disable') {
+            if (!args[3] || !args[4]) { console.error(`Usage: bakin agents lessons ${lessonSub} <agent-id> <lesson-id>`); process.exit(1) }
+            await cmdAgentPackagesLessonsToggle(args[3], args[4], lessonSub === 'enable')
           } else {
-            console.error(`Unknown agents knowledge subcommand: ${knowSub ?? '(none)'}`)
+            console.error(`Unknown agents lessons subcommand: ${lessonSub ?? '(none)'}`)
             console.error('Available: list | enable | disable')
             process.exit(1)
           }
         } else {
           console.error(`Unknown agents subcommand: ${sub}`)
-          console.error('Available: list | status | tasks | send | install | remove | update | knowledge {list,enable,disable}')
+          console.error('Available: list | status | tasks | send | install | remove | update | lessons {list,enable,disable}')
           process.exit(1)
         }
         break

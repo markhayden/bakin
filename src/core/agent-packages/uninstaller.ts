@@ -1,7 +1,7 @@
 /**
  * Uninstaller — `bakin agents remove` and `bakin packages remove`.
  *
- * Reverses an install. Removes projected files, strips knowledge markers,
+ * Reverses an install. Removes projected files, strips lesson markers,
  * decrements ref-counts on dependencies (recursively removing dep packs
  * that drop to zero), optionally deletes the runtime agent, and updates
  * the lockfile.
@@ -49,7 +49,7 @@ async function removeRuntimeAllowListReferences(agentId: string): Promise<void> 
 
 export interface RemoveOptions {
   packageId: string
-  /** When true, leave knowledge-marker projections in place — only strip files. */
+  /** When true, leave lesson-marker projections in place — only strip files. */
   keepBlocks?: boolean
   /** When true (kind:"agent" only), also call the runtime to delete the agent. */
   deleteAgent?: boolean

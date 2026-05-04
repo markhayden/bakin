@@ -13,7 +13,7 @@ Bakin ships with key capabilities auto-bundled. The plugins documented in the re
 - **Community contributed** kits from other Bakin users
 - **Bespoke** kits you build yourself
 
-Whichever path, kits install the same way. Inside, they can carry workflows, settings, skills, knowledge bombs, assets, and any other content the extension needs to plug in cleanly.
+Whichever path, kits install the same way. Inside, they can carry workflows, settings, skills, lessons bombs, assets, and any other content the extension needs to plug in cleanly.
 
 ### Plugins
 
@@ -34,7 +34,7 @@ Core plugins ship with Bakin and can't be removed. Everything else is fair game.
 
 ### Agents
 
-Where plugins ship code, agent kits ship the content that makes an agent an agent: identity, skills, workflows, knowledge bombs. Once installed, Bakin projects the kit into your runtime's home directory and registers the agent in its lockfile. From there it picks up task assignments, calls MCP tools, and reports results like any other team member.
+Where plugins ship code, agent kits ship the content that makes an agent an agent: identity, skills, workflows, lessons bombs. Once installed, Bakin projects the kit into your runtime's home directory and registers the agent in its lockfile. From there it picks up task assignments, calls MCP tools, and reports results like any other team member.
 
 Most tools call a markdown file an "agent." Bakin's are hired, not prompted.
 
