@@ -37,7 +37,7 @@ export async function dispatchWebHandler(
     let body: BodyInit | undefined = undefined
     if (req.method && req.method !== 'GET' && req.method !== 'HEAD') {
       const rawBody = await readRequestBody(req)
-      if (rawBody) body = rawBody
+      if (rawBody) body = new Uint8Array(rawBody)
     }
 
     // Normalize headers: Node's object → Web Headers.

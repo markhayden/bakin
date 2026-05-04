@@ -45,6 +45,8 @@ Use MCP tools when an agent needs to do something, not just read instructions. S
 
 MCP tools belong to plugins. Register them with `ctx.registerExecTool()`, keep parameter schemas strict, return boring result objects, and declare public tools in `bakin-plugin.json` under `contributes.execTools`.
 
+User plugin tool names must stay inside the plugin namespace: `bakin_exec_{pluginId}_{action}`. Bakin rejects undeclared tools, duplicate tool names, and user plugin tools that try to register outside their own prefix.
+
 Start with [Server Contracts](/docs/extending/plugins/server-contracts/) and the [Exec tools reference](/docs/reference/generated/exec-tools/).
 
 ## Settings
@@ -155,7 +157,7 @@ Plugins use `bakin-plugin.json`. The manifest declares identity, entry points, p
   "permissions": ["storage.read", "tasks.write"],
   "contributes": {
     "clientRoutes": [{ "path": "/lead-intel", "summary": "Lead intelligence view" }],
-    "execTools": [{ "name": "lead_intel_score", "summary": "Score a lead" }]
+    "execTools": [{ "name": "bakin_exec_lead-intel_score", "summary": "Score a lead" }]
   }
 }
 ```

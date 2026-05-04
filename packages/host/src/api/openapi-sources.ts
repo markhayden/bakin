@@ -1,7 +1,7 @@
 import { coreRoutes } from '../core-routes'
-import type { buildOpenApiDocument } from './docs-runtime'
+import type { RouteSource } from './docs-runtime'
 
-type OpenApiSource = Parameters<typeof buildOpenApiDocument>[0][number]
+type OpenApiSource = RouteSource
 
 export interface PluginRouteSource {
   pluginId: string

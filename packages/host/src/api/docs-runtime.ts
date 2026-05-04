@@ -24,16 +24,29 @@ export interface OpenApiDocument {
   }
 }
 
-interface RouteSource {
+export interface OpenApiRouteLike {
+  path: string
+  method: string
+  summary?: string
+  description?: string
+  params?: unknown
+  query?: unknown
+  body?: unknown
+  responses?: unknown
+  visibility?: string
+  stability?: string
+  permissions?: string[]
+  examples?: unknown[]
+  operationId?: string
+  tags?: string[]
+  input?: unknown
+  output?: unknown
+}
+
+export interface RouteSource {
   scope: 'core' | string
   fullPath: string
-  route: {
-    path: string
-    method: string
-    summary?: string
-    description?: string
-    [key: string]: unknown
-  }
+  route: OpenApiRouteLike
   manifestDescription?: string
 }
 
