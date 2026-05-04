@@ -8,7 +8,7 @@
  *   - malformed manifest → warning, no throw
  *   - workflow YAML registers under registerAgentPackageDefinition
  *   - workflow-skills md registers under registerAgentPackageSkill
- *   - skill-pack + knowledge-pack entries are skipped (no workflows to load)
+ *   - skill-pack + lesson-pack entries are skipped (no workflows to load)
  *   - re-running is idempotent (re-registers same content; doesn't duplicate)
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
@@ -205,7 +205,7 @@ steps:
     expect(second.skillsRegistered).toBe(1)
   })
 
-  it('skips skill-pack and knowledge-pack entries (no workflow content to load)', () => {
+  it('skips skill-pack and lesson-pack entries (no workflow content to load)', () => {
     const lock: Lockfile = {
       version: 1,
       packages: {
@@ -220,7 +220,7 @@ steps:
           dependents: [],
         },
         'lessons@1.0.0': {
-          kind: 'knowledge-pack',
+          kind: 'lesson-pack',
           version: '1.0.0',
           source: 'github:markhayden/bakin-lessons',
           ref: 'v1.0.0',

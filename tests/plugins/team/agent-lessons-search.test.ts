@@ -1,7 +1,7 @@
 /**
- * Tests for the team plugin's agent-knowledge search content type (Phase F-4).
+ * Tests for the team plugin's agent-lessons search content type (Phase F-4).
  *
- * The team plugin registers a `agent-knowledge` table that indexes lesson
+ * The team plugin registers a `agent-lessons` table that indexes lesson
  * markdown files shipped by installed agent-packages. This test exercises
  * the path-parsing, frontmatter extraction, and reindex generator that
  * back the registration — without booting the full plugin (which would
@@ -11,7 +11,7 @@ import { tmpdir } from 'os'
 import { join as pathJoin } from 'path'
 import { randomUUID } from 'crypto'
 
-const testDir = pathJoin(tmpdir(), `bakin-test-team-knowledge-${Date.now()}-${randomUUID()}`)
+const testDir = pathJoin(tmpdir(), `bakin-test-team-lessons-${Date.now()}-${randomUUID()}`)
 process.env.BAKIN_HOME = testDir
 process.env.OPENCLAW_HOME = pathJoin(testDir, 'openclaw')
 
@@ -44,13 +44,13 @@ beforeEach(() => {
   mkdirSync(testDir, { recursive: true })
 })
 
-function seedKnowledgeFile(packageId: string, version: string, lessonId: string, body: {
+function seedLessonFile(packageId: string, version: string, lessonId: string, body: {
   title?: string
   tags?: string[]
   defaultEnabled?: boolean
   bodyText?: string
 }): string {
-  const dir = join(testDir, 'packages', 'agents', `${packageId}@${version}`, 'knowledge')
+  const dir = join(testDir, 'packages', 'agents', `${packageId}@${version}`, 'lessons')
   mkdirSync(dir, { recursive: true })
   const path = join(dir, `${lessonId}.md`)
   const lines = ['---']
@@ -62,7 +62,7 @@ function seedKnowledgeFile(packageId: string, version: string, lessonId: string,
   return path
 }
 
-describe('team plugin: agent-knowledge content type registration', () => {
+describe('team plugin: agent-lessons content type registration', () => {
   it('is registered when the team plugin activates', async () => {
     const teamPlugin = (await import('../../../plugins/team/index')).default
 
@@ -103,31 +103,31 @@ describe('team plugin: agent-knowledge content type registration', () => {
 
     teamPlugin.activate(ctx as never)
 
-    const knowledge = captured.find((c) => c.table === 'agent-knowledge')
-    expect(knowledge).toBeDefined()
-    expect(knowledge!.def.facets).toContain('package_id')
-    expect(knowledge!.def.facets).toContain('agent_id')
-    expect(knowledge!.def.filePatterns?.[0].pattern).toBe('packages/agents/*/knowledge/*.md')
-    expect(execTools).toContain('bakin_exec_knowledge_search')
+    const lessons = captured.find((c) => c.table === 'agent-lessons')
+    expect(lessons).toBeDefined()
+    expect(lessons!.def.facets).toContain('package_id')
+    expect(lessons!.def.facets).toContain('agent_id')
+    expect(lessons!.def.filePatterns?.[0].pattern).toBe('packages/agents/*/lessons/*.md')
+    expect(execTools).toContain('bakin_exec_lesson_search')
   })
 })
 
-describe('team plugin: knowledge file → search doc conversion', () => {
-  it('reindex generator yields one entry per knowledge file with parsed frontmatter', async () => {
-    seedKnowledgeFile('pixel', '0.1.0', 'style', {
+describe('team plugin: lesson file → search doc conversion', () => {
+  it('reindex generator yields one entry per lesson file with parsed frontmatter', async () => {
+    seedLessonFile('pixel', '0.1.0', 'style', {
       title: 'Style System',
       tags: ['core', 'aesthetics'],
       defaultEnabled: true,
       bodyText: 'How Pixel thinks about style.',
     })
-    seedKnowledgeFile('pixel', '0.1.0', 'social', {
+    seedLessonFile('pixel', '0.1.0', 'social', {
       title: 'Social Media',
       tags: ['social'],
       defaultEnabled: false,
       bodyText: 'Viral patterns.',
     })
     // Different package
-    seedKnowledgeFile('rolo', '0.1.0', 'pacing', {
+    seedLessonFile('rolo', '0.1.0', 'pacing', {
       title: 'Video Pacing',
       defaultEnabled: true,
       bodyText: 'Cuts.',
@@ -157,7 +157,7 @@ describe('team plugin: knowledge file → search doc conversion', () => {
       search: {
         registerContentType: () => {},
         registerFileBackedContentType: (def: { table: string; reindex: () => AsyncGenerator<{ key: string; doc: Record<string, unknown> }> }) => {
-          if (def.table === 'agent-knowledge') reindexGen = def.reindex()
+          if (def.table === 'agent-lessons') reindexGen = def.reindex()
         },
         index: async () => {},
         remove: async () => {},
@@ -194,10 +194,10 @@ describe('team plugin: knowledge file → search doc conversion', () => {
     expect(socialDoc.default_enabled).toBe('false')
   })
 
-  it('handles knowledge files without frontmatter (treats whole file as body)', async () => {
-    seedKnowledgeFile('pixel', '0.1.0', 'no-fm', { bodyText: '' })
+  it('handles lesson files without frontmatter (treats whole file as body)', async () => {
+    seedLessonFile('pixel', '0.1.0', 'no-fm', { bodyText: '' })
     // Now overwrite to have NO frontmatter
-    const path = join(testDir, 'packages', 'agents', 'pixel@0.1.0', 'knowledge', 'no-fm.md')
+    const path = join(testDir, 'packages', 'agents', 'pixel@0.1.0', 'lessons', 'no-fm.md')
     writeFileSync(path, 'Just a plain body, no frontmatter.')
 
     const teamPlugin = (await import('../../../plugins/team/index')).default
@@ -215,7 +215,7 @@ describe('team plugin: knowledge file → search doc conversion', () => {
       search: {
         registerContentType: () => {},
         registerFileBackedContentType: (def: { table: string; reindex: () => AsyncGenerator<{ key: string; doc: Record<string, unknown> }> }) => {
-          if (def.table === 'agent-knowledge') reindexGen = def.reindex()
+          if (def.table === 'agent-lessons') reindexGen = def.reindex()
         },
         index: async () => {}, remove: async () => {}, transform: async () => {},
         query: async () => ({ results: [] }),
@@ -237,7 +237,7 @@ describe('team plugin: knowledge file → search doc conversion', () => {
 
   it('skips non-conforming paths in the packages dir', async () => {
     // Create a malformed path (no @ in the dir name)
-    const dir = join(testDir, 'packages', 'agents', 'pixel-no-version', 'knowledge')
+    const dir = join(testDir, 'packages', 'agents', 'pixel-no-version', 'lessons')
     mkdirSync(dir, { recursive: true })
     writeFileSync(join(dir, 'lesson.md'), '---\ntitle: test\n---\nbody')
 
@@ -256,7 +256,7 @@ describe('team plugin: knowledge file → search doc conversion', () => {
       search: {
         registerContentType: () => {},
         registerFileBackedContentType: (def: { table: string; reindex: () => AsyncGenerator<{ key: string; doc: Record<string, unknown> }> }) => {
-          if (def.table === 'agent-knowledge') reindexGen = def.reindex()
+          if (def.table === 'agent-lessons') reindexGen = def.reindex()
         },
         index: async () => {}, remove: async () => {}, transform: async () => {},
         query: async () => ({ results: [] }),

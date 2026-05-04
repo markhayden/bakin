@@ -433,7 +433,7 @@ const eventBus = new BakinEventBus(broadcast)
       return
     }
 
-    // ─── Agent-package routes (install / list / remove / update / knowledge) ──
+    // ─── Agent-package routes (install / list / remove / update / lessons) ──
     // Distinct from the runtime /api/agents/* surface below — see
     // packages/host/src/api/agent-packages/dynamic.ts for the rationale.
     if (url.pathname === '/api/agent-packages' && req.method === 'GET') {
@@ -449,7 +449,7 @@ const eventBus = new BakinEventBus(broadcast)
       return
     }
 
-    // ─── Standalone packages routes (skill-pack / workflow-pack / knowledge-pack) ──
+    // ─── Standalone packages routes (skill-pack / workflow-pack / lesson-pack) ──
     if (url.pathname === '/api/packages' && req.method === 'GET') {
       dispatchWebHandler(req, res, packagesListRoute.get)
       return

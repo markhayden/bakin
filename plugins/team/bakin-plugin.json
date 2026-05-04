@@ -186,9 +186,9 @@
         "description": "List all agents with their current status (online/working/available/offline)."
       },
       {
-        "name": "bakin_exec_knowledge_search",
-        "summary": "Search enabled package knowledge for the calling agent",
-        "description": "Search the enabled agent-package knowledge lessons for the calling agent."
+        "name": "bakin_exec_lesson_search",
+        "summary": "Search enabled package lessons for the calling agent",
+        "description": "Search the enabled agent-package lessons for the calling agent."
       },
       {
         "name": "bakin_exec_team_members",
@@ -273,9 +273,9 @@
         "summary": "Update agent packages."
       },
       {
-        "name": "agents knowledge",
-        "usage": "bakin agents knowledge <list|enable|disable> ...",
-        "summary": "Manage agent knowledge toggles."
+        "name": "agents lessons",
+        "usage": "bakin agents lessons <list|enable|disable> ...",
+        "summary": "Manage agent lessons toggles."
       }
     ],
     "docs": {

@@ -5,12 +5,12 @@ import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 import type { SearchResponse } from '../../packages/core/src/plugin-types'
 import {
-  formatKnowledgeLessonsForDispatch,
-  retrieveAgentPackageKnowledge,
-  type KnowledgeSearchFn,
-} from '../../src/core/agent-packages/knowledge-retrieval'
+  formatLessonsForDispatch,
+  retrieveAgentPackageLessons,
+  type LessonSearchFn,
+} from '../../src/core/agent-packages/lesson-retrieval'
 
-const testDir = join(tmpdir(), `bakin-knowledge-retrieval-${Date.now()}-${randomUUID()}`)
+const testDir = join(tmpdir(), `bakin-lesson-retrieval-${Date.now()}-${randomUUID()}`)
 
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -21,7 +21,7 @@ afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-describe('agent package knowledge retrieval', () => {
+describe('agent package lessons retrieval', () => {
   it('selects top enabled lessons for the target package and hydrates full bodies from disk', async () => {
     seedAgentPackage('pixel', '0.1.0', ['style', 'craft'])
     seedLesson('pixel', '0.1.0', 'style', {
@@ -40,8 +40,8 @@ describe('agent package knowledge retrieval', () => {
       body: 'Should not appear.',
     })
 
-    const calls: Array<{ q: string; opts: Parameters<KnowledgeSearchFn>[1] }> = []
-    const search: KnowledgeSearchFn = async (q, opts) => {
+    const calls: Array<{ q: string; opts: Parameters<LessonSearchFn>[1] }> = []
+    const search: LessonSearchFn = async (q, opts) => {
       calls.push({ q, opts })
       return response([
         hit('disabled', 0.99, { package_id: 'pixel', lesson_id: 'disabled', title: 'Disabled', body: 'disabled chunk' }),
@@ -52,7 +52,7 @@ describe('agent package knowledge retrieval', () => {
       ])
     }
 
-    const result = await retrieveAgentPackageKnowledge({
+    const result = await retrieveAgentPackageLessons({
       contentDir: testDir,
       agentId: 'pixel',
       query: 'make a polished social image',
@@ -61,7 +61,7 @@ describe('agent package knowledge retrieval', () => {
     })
 
     expect(calls).toHaveLength(1)
-    expect(calls[0].opts.table).toBe('agent-knowledge')
+    expect(calls[0].opts.table).toBe('agent-lessons')
     expect(calls[0].opts.filters).toEqual({ package_id: 'pixel' })
     expect(result.packageId).toBe('pixel')
     expect(result.lessons.map((lesson) => lesson.lessonId)).toEqual(['style', 'craft'])
@@ -69,8 +69,8 @@ describe('agent package knowledge retrieval', () => {
     expect(result.lessons[0].body).toBe('Full style lesson body from disk.')
     expect(result.lessons[0].tags).toEqual(['visual', 'prompting'])
 
-    const block = formatKnowledgeLessonsForDispatch(result.lessons)
-    expect(block).toContain('## Relevant Package Knowledge')
+    const block = formatLessonsForDispatch(result.lessons)
+    expect(block).toContain('## Relevant Package Lessons')
     expect(block).toContain('Style System')
     expect(block).toContain('Full craft lesson body from disk.')
     expect(block).not.toContain('Should not appear')
@@ -78,7 +78,7 @@ describe('agent package knowledge retrieval', () => {
 
   it('does not query search when the agent is not package-managed', async () => {
     let searched = false
-    const result = await retrieveAgentPackageKnowledge({
+    const result = await retrieveAgentPackageLessons({
       contentDir: testDir,
       agentId: 'unmanaged',
       query: 'anything',
@@ -101,7 +101,7 @@ describe('agent package knowledge retrieval', () => {
       body: 'A'.repeat(5000),
     })
 
-    const result = await retrieveAgentPackageKnowledge({
+    const result = await retrieveAgentPackageLessons({
       contentDir: testDir,
       agentId: 'patch',
       query: 'implementation task',
@@ -112,7 +112,7 @@ describe('agent package knowledge retrieval', () => {
     })
     expect(result.lessons).toEqual([])
 
-    const selected = await retrieveAgentPackageKnowledge({
+    const selected = await retrieveAgentPackageLessons({
       contentDir: testDir,
       agentId: 'patch',
       query: 'implementation task',
@@ -120,13 +120,13 @@ describe('agent package knowledge retrieval', () => {
         hit('dev-discipline', 0.9, { package_id: 'patch', lesson_id: 'dev-discipline', title: 'Dev Discipline', body: 'chunk' }),
       ]),
     })
-    const block = formatKnowledgeLessonsForDispatch(selected.lessons, 1200)
+    const block = formatLessonsForDispatch(selected.lessons, 1200)
     expect(block.length).toBeLessThanOrEqual(1300)
     expect(block).toContain('[truncated]')
   })
 })
 
-function seedAgentPackage(agentId: string, version: string, knowledgeEnabled: string[]): void {
+function seedAgentPackage(agentId: string, version: string, lessonsEnabled: string[]): void {
   const lockPath = join(testDir, 'packages', 'lock.json')
   mkdirSync(join(testDir, 'packages'), { recursive: true })
   writeFileSync(lockPath, JSON.stringify({
@@ -141,7 +141,7 @@ function seedAgentPackage(agentId: string, version: string, knowledgeEnabled: st
         installedAt: '2026-04-30T00:00:00.000Z',
         state: 'managed',
         agentId,
-        knowledgeEnabled,
+        lessonsEnabled,
       },
     },
   }, null, 2))
@@ -152,7 +152,7 @@ function seedLesson(packageId: string, version: string, lessonId: string, input:
   tags: string[]
   body: string
 }): void {
-  const dir = join(testDir, 'packages', 'agents', `${packageId}@${version}`, 'knowledge')
+  const dir = join(testDir, 'packages', 'agents', `${packageId}@${version}`, 'lessons')
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, `${lessonId}.md`), [
     '---',
@@ -179,7 +179,7 @@ function response(results: SearchResponse['results']): SearchResponse {
 function hit(id: string, score: number, fields: Record<string, unknown>): SearchResponse['results'][number] {
   return {
     id,
-    table: 'bakin_agent-knowledge',
+    table: 'bakin_agent-lessons',
     score,
     fields,
   }

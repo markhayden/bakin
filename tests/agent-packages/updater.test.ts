@@ -187,7 +187,7 @@ function seedAgentPackage(opts: { id?: string; version?: string; soulBody?: stri
   const version = opts.version ?? '0.1.0'
   const dir = join(testDir, `${id}-pkg-${version}`)
   mkdirSync(join(dir, 'workspace'), { recursive: true })
-  mkdirSync(join(dir, 'knowledge'), { recursive: true })
+  mkdirSync(join(dir, 'lessons'), { recursive: true })
 
   writeFileSync(
     join(dir, 'bakin-package.json'),
@@ -197,17 +197,17 @@ function seedAgentPackage(opts: { id?: string; version?: string; soulBody?: stri
       name: id,
       version,
       agent: { identity: { name: id } },
-      install: { writeWorkspaceFiles: true, enableKnowledge: ['style'] },
+      install: { writeWorkspaceFiles: true, enableLessons: ['style'] },
       contributions: {
         workspaceFiles: ['workspace/SOUL.md'],
-        knowledge: ['knowledge/style.md'],
+        lessons: ['lessons/style.md'],
       },
     }),
   )
-  const soul = opts.soulBody ?? `# Soul ${id}\n\n<!-- bakin:knowledge-catalog:start -->\n<!-- bakin:knowledge-catalog:end -->\n`
+  const soul = opts.soulBody ?? `# Soul ${id}\n\n<!-- bakin:lesson-catalog:start -->\n<!-- bakin:lesson-catalog:end -->\n`
   writeFileSync(join(dir, 'workspace', 'SOUL.md'), soul)
   writeFileSync(
-    join(dir, 'knowledge', 'style.md'),
+    join(dir, 'lessons', 'style.md'),
     `---\ntitle: Style\ndefaultEnabled: true\n---\n\nv${version} body.`,
   )
   return dir
@@ -228,7 +228,7 @@ describe('updatePackageById — happy paths', () => {
     v2Manifest.version = '0.2.0'
     writeFileSync(join(v1Src, 'bakin-package.json'), JSON.stringify(v2Manifest))
     writeFileSync(
-      join(v1Src, 'knowledge', 'style.md'),
+      join(v1Src, 'lessons', 'style.md'),
       `---\ntitle: Style\ndefaultEnabled: true\n---\n\nv0.2.0 body.`,
     )
 
@@ -239,7 +239,7 @@ describe('updatePackageById — happy paths', () => {
     const lockAfter = readLockfile()
     expect(lockAfter.packages.pixel.version).toBe('0.2.0')
 
-    // Knowledge content updated
+    // Lesson content updated
     const soul = readFileSync(join(openClawDir, 'workspaces', 'pixel', 'SOUL.md'), 'utf-8')
     expect(soul).toContain('v0.2.0 body.')
     expect(soul).not.toContain('v0.1.0 body.')
@@ -270,7 +270,7 @@ describe('updatePackageById — happy paths', () => {
     writeFileSync(join(v1Src, 'bakin-package.json'), JSON.stringify(newManifest))
     writeFileSync(
       join(v1Src, 'workspace', 'SOUL.md'),
-      `# Refreshed template\n\n<!-- bakin:knowledge-catalog:start -->\n<!-- bakin:knowledge-catalog:end -->\n`,
+      `# Refreshed template\n\n<!-- bakin:lesson-catalog:start -->\n<!-- bakin:lesson-catalog:end -->\n`,
     )
 
     await updatePackageById({ packageId: 'pixel', refreshTemplate: true })

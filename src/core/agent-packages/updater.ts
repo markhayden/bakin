@@ -113,13 +113,13 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
     //   - Workspace files stay unless --refresh-template was passed; the agent
     //     owns them after first install and the new projector will only
     //     re-write under refreshTemplate.
-    //   - Knowledge markers stay (keepBlocks) because the projector replaces
+    //   - Lesson markers stay (keepBlocks) because the projector replaces
     //     them in-place via injectBlock; a removeBlock + injectBlock round
     //     trip would briefly drop the catalog block from the agent's SOUL.md.
     if (entry.projections && entry.projections.length > 0) {
       const toUnproject = entry.projections.filter((p) => {
         if (p.kind === 'workspace-file' && !options.refreshTemplate) return false
-        if (p.kind === 'knowledge-marker') return false
+        if (p.kind === 'lesson-marker') return false
         return true
       })
       if (toUnproject.length > 0) {
@@ -143,7 +143,7 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
       agentId: entry.agentId,
       mode: 'update',
       refreshTemplate: options.refreshTemplate,
-      enabledKnowledge: entry.knowledgeEnabled,
+      enabledLessons: entry.lessonsEnabled,
       installedBy,
     })
 

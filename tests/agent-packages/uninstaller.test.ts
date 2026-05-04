@@ -207,7 +207,7 @@ function seedAgentPackage(opts: { id?: string; deps?: string[] } = {}): string {
   const dir = join(testDir, `${id}-pkg`)
   mkdirSync(join(dir, 'workspace'), { recursive: true })
   mkdirSync(join(dir, 'skills', 'image-gen'), { recursive: true })
-  mkdirSync(join(dir, 'knowledge'), { recursive: true })
+  mkdirSync(join(dir, 'lessons'), { recursive: true })
   mkdirSync(join(dir, 'assets'), { recursive: true })
 
   writeFileSync(
@@ -218,11 +218,11 @@ function seedAgentPackage(opts: { id?: string; deps?: string[] } = {}): string {
       name: id,
       version: '0.1.0',
       agent: { identity: { name: id } },
-      install: { writeWorkspaceFiles: true, enableKnowledge: ['style'] },
+      install: { writeWorkspaceFiles: true, enableLessons: ['style'] },
       contributions: {
         workspaceFiles: ['workspace/SOUL.md'],
         skills: ['skills/image-gen'],
-        knowledge: ['knowledge/style.md'],
+        lessons: ['lessons/style.md'],
         assets: ['assets/avatar.jpg'],
       },
       ...(opts.deps ? { dependencies: { skills: opts.deps.map((s) => ({ source: s, ref: 'main' })) } } : {}),
@@ -230,11 +230,11 @@ function seedAgentPackage(opts: { id?: string; deps?: string[] } = {}): string {
   )
   writeFileSync(
     join(dir, 'workspace', 'SOUL.md'),
-    `# Soul ${id}\n\n<!-- bakin:knowledge-catalog:start -->\n<!-- bakin:knowledge-catalog:end -->\n`,
+    `# Soul ${id}\n\n<!-- bakin:lesson-catalog:start -->\n<!-- bakin:lesson-catalog:end -->\n`,
   )
   writeFileSync(join(dir, 'skills', 'image-gen', 'SKILL.md'), '# image-gen')
   writeFileSync(
-    join(dir, 'knowledge', 'style.md'),
+    join(dir, 'lessons', 'style.md'),
     `---\ntitle: Style\ndefaultEnabled: true\n---\n\nStyle body.`,
   )
   writeFileSync(join(dir, 'assets', 'avatar.jpg'), 'jpg')
@@ -293,7 +293,7 @@ describe('removePackageById — basic remove', () => {
     expect(openClawAgents.find((a) => a.id === 'pixel')).toBeUndefined()
   })
 
-  it('with --keep-blocks, leaves knowledge markers in place when files survive', async () => {
+  it('with --keep-blocks, leaves lesson markers in place when files survive', async () => {
     const src = seedAgentPackage()
     await installPackage({ source: src })
 
@@ -308,8 +308,8 @@ describe('removePackageById — basic remove', () => {
     // SOUL.md kept (userEdited) AND its markers kept (keepBlocks)
     expect(existsSync(soulPath)).toBe(true)
     const soul = readFileSync(soulPath, 'utf-8')
-    expect(hasBlock(soul, 'knowledge-catalog')).toBe(true)
-    expect(hasBlock(soul, 'knowledge:pixel:style')).toBe(true)
+    expect(hasBlock(soul, 'lesson-catalog')).toBe(true)
+    expect(hasBlock(soul, 'lesson:pixel:style')).toBe(true)
   })
 })
 

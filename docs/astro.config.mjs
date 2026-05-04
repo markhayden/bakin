@@ -244,7 +244,7 @@ document.addEventListener("click", function (event) {
               items: [
                 { label: 'Overview', slug: 'extending/agents/overview' },
                 { label: 'Package Manifest', slug: 'extending/agents/packages' },
-                { label: 'Knowledge Blocks', slug: 'extending/agents/knowledge' },
+                { label: 'Lesson Blocks', slug: 'extending/agents/lessons' },
               ],
             },
             { label: 'SDK', slug: 'extending/sdk/overview' },

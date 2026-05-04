@@ -4,7 +4,7 @@
  * Each test mounts a fresh Bakin home + OpenClaw home, seeds a real package
  * source on disk, calls installPackage(), and asserts:
  *   - lockfile entries land with correct projections, sha, commitSha, state
- *   - workspace files / skills / assets / knowledge markers are on disk
+ *   - workspace files / skills / assets / lesson markers are on disk
  *   - the final install dir at ~/.bakin/packages/<kind>/<id>@<ver>/ holds
  *     the package source
  *   - runtime adapter mocks are called the right number of times in the
@@ -227,7 +227,7 @@ function seedAgentPackage(opts: { id?: string; emoji?: string; deps?: { skills?:
   const dir = join(testDir, `${id}-pkg`)
   mkdirSync(join(dir, 'workspace'), { recursive: true })
   mkdirSync(join(dir, 'skills', 'image-gen'), { recursive: true })
-  mkdirSync(join(dir, 'knowledge'), { recursive: true })
+  mkdirSync(join(dir, 'lessons'), { recursive: true })
   mkdirSync(join(dir, 'assets'), { recursive: true })
 
   const manifest = {
@@ -246,12 +246,12 @@ function seedAgentPackage(opts: { id?: string; emoji?: string; deps?: { skills?:
       adoptIfExists: true,
       writeWorkspaceFiles: true,
       installSkills: true,
-      enableKnowledge: ['style'],
+      enableLessons: ['style'],
     },
     contributions: {
       workspaceFiles: ['workspace/SOUL.md'],
       skills: ['skills/image-gen'],
-      knowledge: ['knowledge/style.md'],
+      lessons: ['lessons/style.md'],
       assets: ['assets/avatar.jpg'],
     },
     ...(opts.deps ? { dependencies: { skills: opts.deps.skills?.map((s) => ({ source: s, ref: 'main' })) } } : {}),
@@ -259,11 +259,11 @@ function seedAgentPackage(opts: { id?: string; emoji?: string; deps?: { skills?:
   writeFileSync(join(dir, 'bakin-package.json'), JSON.stringify(manifest, null, 2))
   writeFileSync(
     join(dir, 'workspace', 'SOUL.md'),
-    `# Soul\n\nYou are ${id}.\n\n<!-- bakin:knowledge-catalog:start -->\n<!-- bakin:knowledge-catalog:end -->\n`,
+    `# Soul\n\nYou are ${id}.\n\n<!-- bakin:lesson-catalog:start -->\n<!-- bakin:lesson-catalog:end -->\n`,
   )
   writeFileSync(join(dir, 'skills', 'image-gen', 'SKILL.md'), '# image-gen')
   writeFileSync(
-    join(dir, 'knowledge', 'style.md'),
+    join(dir, 'lessons', 'style.md'),
     `---\ntitle: Style\ndefaultEnabled: true\n---\n\nStyle lessons body.`,
   )
   writeFileSync(join(dir, 'assets', 'avatar.jpg'), 'jpg-bytes')
@@ -322,7 +322,7 @@ describe('installPackage — fresh install (kind:"agent")', () => {
     expect(entry.kind).toBe('agent')
     expect(entry.state).toBe('managed')
     expect(entry.agentId).toBe('pixel')
-    expect(entry.knowledgeEnabled).toEqual(['style'])
+    expect(entry.lessonsEnabled).toEqual(['style'])
     expect(entry.projections?.length).toBeGreaterThan(0)
   })
 
@@ -338,11 +338,11 @@ describe('installPackage — fresh install (kind:"agent")', () => {
     expect(existsSync(skill)).toBe(true)
     expect(existsSync(avatar)).toBe(true)
 
-    // Knowledge markers injected
+    // Lesson markers injected
     const soul = readFileSync(wsSoul, 'utf-8')
-    expect(hasBlock(soul, 'knowledge-catalog')).toBe(true)
-    expect(hasBlock(soul, 'knowledge:pixel:style')).toBe(true)
-    const catalog = extractBlock(soul, 'knowledge-catalog') ?? ''
+    expect(hasBlock(soul, 'lesson-catalog')).toBe(true)
+    expect(hasBlock(soul, 'lesson:pixel:style')).toBe(true)
+    const catalog = extractBlock(soul, 'lesson-catalog') ?? ''
     expect(catalog).toContain('[x] **Style**')
   })
 
@@ -353,7 +353,7 @@ describe('installPackage — fresh install (kind:"agent")', () => {
     const installDir = join(testDir, 'packages', 'agents', 'pixel@0.1.0')
     expect(existsSync(installDir)).toBe(true)
     expect(existsSync(join(installDir, 'bakin-package.json'))).toBe(true)
-    expect(existsSync(join(installDir, 'knowledge', 'style.md'))).toBe(true)
+    expect(existsSync(join(installDir, 'lessons', 'style.md'))).toBe(true)
   })
 
   it('writes an audit event tagged with the agent id', async () => {
@@ -397,7 +397,7 @@ describe('installPackage — adopt mode', () => {
     // SOUL.md still has the user's content but with markers injected
     const soul = readFileSync(join(wsDir, 'SOUL.md'), 'utf-8')
     expect(soul).toContain('# user wrote this')
-    expect(hasBlock(soul, 'knowledge-catalog')).toBe(true)
+    expect(hasBlock(soul, 'lesson-catalog')).toBe(true)
 
     // Lockfile state = adopted
     expect(readLockfile().packages.pixel.state).toBe('adopted')

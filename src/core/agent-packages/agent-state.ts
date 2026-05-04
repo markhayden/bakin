@@ -9,7 +9,7 @@
  *                     before agent-packages shipped.
  *   - 'adopted'     — exists in runtime AND has a lockfile entry
  *                     with state='adopted'. Bakin tracks managed-block
- *                     attachments + knowledge toggles but does not own
+ *                     attachments + lesson toggles but does not own
  *                     the workspace files.
  *   - 'managed'     — exists in runtime AND has a lockfile entry
  *                     with state='managed'. Bakin owns the package +

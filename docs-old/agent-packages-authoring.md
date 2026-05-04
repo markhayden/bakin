@@ -1,10 +1,10 @@
 # Authoring a Bakin agent package
 
 This guide walks through writing a Bakin **agent package** end-to-end:
-shape, manifest, knowledge files, dependencies, install flow, and
+shape, manifest, lesson files, dependencies, install flow, and
 publishing. Agent packages are a separate primitive from plugins —
 plugins ship behavior (routes, UI, MCP tools), agent packages ship
-content (identity, persona, skills, workflows, knowledge).
+content (identity, persona, skills, workflows, lessons).
 
 If you want runnable code that adds a new MCP tool or UI page, you want
 [`docs/plugin-authoring.md`](./plugin-authoring.md). If you want a
@@ -25,10 +25,10 @@ Every package declares one `kind`:
 
 | Kind | What it ships | Lockfile key | Typical layout |
 |------|---------------|--------------|----------------|
-| `agent` | persona files, optional skills/workflows/knowledge/assets, dispatch perms | bare id (`pixel`) | `workspace/` + `knowledge/` + `assets/` |
+| `agent` | persona files, optional skills/workflows/lessons/assets, dispatch perms | bare id (`pixel`) | `workspace/` + `lessons/` + `assets/` |
 | `skill-pack` | reusable runtime skills used by multiple agents | `<id>@<version>` | `skills/<name>/` |
 | `workflow-pack` | reusable workflow definitions + step instructions | `<id>@<version>` | `workflows/` + `workflow-skills/` |
-| `knowledge-pack` | cross-agent knowledge lessons | `<id>@<version>` | `knowledge/` |
+| `lesson-pack` | cross-agent lessons | `<id>@<version>` | `lessons/` |
 
 The agent-kind uses a bare-id lockfile key because there is exactly one
 runtime agent per id — two versions cannot coexist. Non-agent kinds
@@ -36,7 +36,7 @@ use a compound `<id>@<version>` key so an update can stage the new
 version alongside the old one before flipping the pointer.
 
 This guide focuses on `kind: "agent"` because it is the richest case;
-the other three are subsets. References to skill / workflow / knowledge
+the other three are subsets. References to skill / workflow / lesson
 packs are called out where they differ.
 
 ## Directory layout (agent kind)
@@ -46,11 +46,11 @@ my-agent/
 ├── bakin-package.json        ← manifest (id, kind, name, version, agent stanza)
 ├── README.md                 ← package description, install hints, choices
 ├── workspace/                ← seeded into the runtime workspace on fresh install
-│   ├── SOUL.md               ← persona + knowledge marker placeholders
+│   ├── SOUL.md               ← persona + lesson marker placeholders
 │   ├── IDENTITY.md           ← structured identity card
 │   ├── AGENTS.md             ← agent-specific operational rules
 │   └── TOOLS.md              ← per-install local notes (template)
-├── knowledge/                ← lessons, with frontmatter
+├── lessons/                 ← lessons, with frontmatter
 │   ├── core-style.md         ← defaultEnabled: true
 │   └── advanced-tactics.md   ← defaultEnabled: false (opt-in)
 ├── workflow-skills/          ← (optional) step instructions resolved by the workflows plugin
@@ -70,10 +70,10 @@ Cross-cutting rule: a package source tree contains **only files Bakin
 projects on install**. No build outputs, no `dist/`, no `node_modules/`.
 Agent packages are content packages, not compiled code.
 
-For other kinds: `kind: "skill-pack"` drops the workspace/knowledge
+For other kinds: `kind: "skill-pack"` drops the workspace/lessons
 directories and centers on `skills/`; `kind: "workflow-pack"` centers on
-`workflows/` + `workflow-skills/`; `kind: "knowledge-pack"` centers on
-`knowledge/`. The manifest's `contributions` map enforces that.
+`workflows/` + `workflow-skills/`; `kind: "lesson-pack"` centers on
+`lessons/`. The manifest's `contributions` map enforces that.
 
 ## Manifest (`bakin-package.json`)
 
@@ -111,7 +111,7 @@ Full agent example:
     "writeWorkspaceFiles": true,
     "installSkills": true,
     "installWorkflows": true,
-    "enableKnowledge": ["core-style"]
+    "enableLessons": ["core-style"]
   },
   "contributions": {
     "workspaceFiles": [
@@ -120,9 +120,9 @@ Full agent example:
       "workspace/AGENTS.md",
       "workspace/TOOLS.md"
     ],
-    "knowledge": [
-      "knowledge/core-style.md",
-      "knowledge/advanced-tactics.md"
+    "lessons": [
+      "lessons/core-style.md",
+      "lessons/advanced-tactics.md"
     ],
     "assets": ["assets/avatar.jpg", "assets/avatar-full.png"]
   },
@@ -141,7 +141,7 @@ Full agent example:
 Field rules:
 
 - `id` — `/^[a-z0-9][a-z0-9-_]{0,39}$/i`. Same constraint as plugin ids.
-- `kind` — discriminator; one of `agent | skill-pack | workflow-pack | knowledge-pack`.
+- `kind` — discriminator; one of `agent | skill-pack | workflow-pack | lesson-pack`.
 - `version` — semver string. Bump on every meaningful change to package
   contents; the lockfile records the version + commitSha for drift
   detection.
@@ -156,11 +156,11 @@ Field rules:
   - `adoptIfExists` — allow `--adopt` mode when the agent already exists
   - `writeWorkspaceFiles` — project SOUL/IDENTITY/AGENTS/TOOLS on fresh install
   - `installSkills` / `installWorkflows` — toggle those projection passes
-  - `enableKnowledge[]` — lesson ids enabled by default after install
+  - `enableLessons[]` — lesson ids enabled by default after install
 - `contributions` — exhaustive list of paths the projector reads. The
   shape is enforced per-kind: `skill-pack` requires non-empty `skills`,
   `workflow-pack` requires at least one of `workflows` /
-  `workflowSkills`, `knowledge-pack` requires non-empty `knowledge`.
+  `workflowSkills`, `lesson-pack` requires non-empty `lessons`.
 - `dependencies` — see [Dependencies](#dependencies) below.
 
 The manifest is zod-validated at install time. Errors print the offending
@@ -171,14 +171,14 @@ without reading the schema source.
 
 The four workspace files have a specific contract:
 
-- **SOUL.md** — persona, voice, values. Must contain a knowledge-catalog
+- **SOUL.md** — persona, voice, values. Must contain a lesson-catalog
   marker pair somewhere in the body:
   ```markdown
-  <!-- bakin:knowledge-catalog:start -->
-  <!-- bakin:knowledge-catalog:end -->
+  <!-- bakin:lesson-catalog:start -->
+  <!-- bakin:lesson-catalog:end -->
   ```
   The projector injects the per-lesson catalog inside that pair on
-  install. Per-lesson body blocks (`<!-- bakin:knowledge:<agent>:<lesson>:start -->`)
+  install. Per-lesson body blocks (`<!-- bakin:lesson:<agent>:<lesson>:start -->`)
   are added wherever the projector chooses to place them — author-controlled
   placement is V1.5.
 
@@ -208,9 +208,9 @@ This is the core ergonomic reason workspace files exist as a separate
 projection class — agents are personalities, and the user owning their
 voice is more important than maintaining template fidelity.
 
-## Knowledge files
+## Lesson files
 
-Knowledge is *taste, perspective, doctrine* — non-executable markdown
+Lessons are *taste, perspective, doctrine* — non-executable markdown
 the agent reads as context. Each file has zod-validated frontmatter:
 
 ```markdown
@@ -230,30 +230,30 @@ How <agent> writes prompts. This is taste, not a checklist.
 
 Frontmatter fields:
 
-- `title` (required) — display name shown in the Teams UI knowledge
+- `title` (required) — display name shown in the Teams UI lesson
   toggle list. The lesson id is the filename without `.md` (so
   `prompt-style-system.md` → lesson id `prompt-style-system`).
 - `tags[]` (optional) — facets used for search filtering and UI
   grouping.
 - `defaultEnabled` (optional, default `false`) — whether this lesson is
-  toggled on after a fresh install. `manifest.install.enableKnowledge[]`
+  toggled on after a fresh install. `manifest.install.enableLessons[]`
   is the authoritative source for fresh-install enablement; this field
   is a per-lesson hint the manifest can override.
 
 Body content is plain markdown. Aim for concrete, opinionated guidance
-— knowledge is the place for the "how this agent thinks" voice that
+— lessons are the place for the "how this agent thinks" voice that
 doesn't fit in `SOUL.md` because it's domain-specific.
 
 When a lesson is enabled, the projector injects two managed blocks:
 
 1. A line into the SOUL.md catalog: `- prompt-style-system — Prompt Style System`
-2. A body block somewhere in SOUL.md: `<!-- bakin:knowledge:<agent>:prompt-style-system:start -->\n<lesson body>\n<!-- bakin:knowledge:<agent>:prompt-style-system:end -->`
+2. A body block somewhere in SOUL.md: `<!-- bakin:lesson:<agent>:prompt-style-system:start -->\n<lesson body>\n<!-- bakin:lesson:<agent>:prompt-style-system:end -->`
 
-Toggling a lesson off via `bakin agents knowledge disable` removes both
-blocks. The lesson file in `~/.bakin/packages/agents/<id>@<version>/knowledge/`
+Toggling a lesson off via `bakin agents lessons disable` removes both
+blocks. The lesson file in `~/.bakin/packages/agents/<id>@<version>/lessons/`
 stays put, ready to be re-enabled.
 
-V1 limitation: knowledge is statically injected. V2 (issue #157) will
+V1 limitation: lessons are statically injected. V2 (issue #157) will
 do dispatch-time semantic retrieval; the data model is unchanged.
 
 ## Skills, workflows, workflow-skills
@@ -338,7 +338,7 @@ without each one duplicating the skill source.
       "ref": "v0.2.0"
     }
   ],
-  "knowledge": []
+  "lessons": []
 }
 ```
 
@@ -400,7 +400,7 @@ What happens under the hood:
    - Already managed/adopted: refuse with "use update".
 5. **Resolve dependencies** recursively, leaves-first.
 6. **Project** each contribution. Skills/assets get sidecars; workspace
-   files get sidecars but with `templateOnly: true`. Knowledge markers
+   files get sidecars but with `templateOnly: true`. Lesson markers
    inject into SOUL.md. The whole package projection is atomic — any
    error rolls every prior write back.
 7. **Update the lockfile** atomically (tmp + rename). Records the agent's
@@ -435,7 +435,7 @@ fetched commitSha matches what's in the lockfile, it's a no-op. If
 it changed, the projector re-runs in `update` mode:
 
 - Skills + assets: re-projected (collision check still runs).
-- Knowledge markers: re-injected in-place via `injectBlock`.
+- Lesson markers: re-injected in-place via `injectBlock`.
 - Workspace files: skipped unless `--refresh-template`.
 
 After a successful update, the lockfile entry's `commitSha` and
@@ -451,7 +451,7 @@ bakin agents remove my-agent
 # Remove the runtime agent too
 bakin agents remove my-agent --delete-agent
 
-# Keep knowledge blocks in SOUL.md after removal (rare)
+# Keep lesson blocks in SOUL.md after removal (rare)
 bakin agents remove my-agent --keep-blocks
 
 # Force removal even if other packages depend on it (only for non-agent kinds)
@@ -468,22 +468,22 @@ decrements its own immediate parent.
 graphs deliberately; the agent kind never has dependents (it's always
 a leaf in the package graph).
 
-## Knowledge toggles
+## Lesson toggles
 
 Per-lesson runtime control:
 
 ```sh
-bakin agents knowledge list my-agent
-bakin agents knowledge enable my-agent advanced-tactics
-bakin agents knowledge disable my-agent core-style
+bakin agents lessons list my-agent
+bakin agents lessons enable my-agent advanced-tactics
+bakin agents lessons disable my-agent core-style
 ```
 
 Each enable/disable rewrites the SOUL.md catalog block + injects or
-removes the per-lesson body block. The lockfile's `knowledgeEnabled[]`
+removes the per-lesson body block. The lockfile's `lessonsEnabled[]`
 is the authoritative state.
 
 The Teams UI exposes the same operations as toggle switches with
-optimistic updates — see `plugins/team/components/knowledge-toggle-list.tsx`.
+optimistic updates — see `plugins/team/components/lesson-toggle-list.tsx`.
 
 ## Testing locally
 
@@ -494,7 +494,7 @@ The fastest iteration loop is install-from-disk:
 bakin agents install ./my-agent
 
 # Iterate on the package source
-$EDITOR ./my-agent/knowledge/core-style.md
+$EDITOR ./my-agent/lessons/core-style.md
 
 # Bump the version in bakin-package.json (e.g., 0.1.0 → 0.1.1)
 
@@ -549,7 +549,7 @@ The next update / repair will leave that file alone.
 
 Agent packages are plain git repositories. Naming convention:
 `bakin-agent-<id>`, `bakin-skills-<name>`, `bakin-workflows-<name>`,
-`bakin-knowledge-<topic>`. The convention is purely social —
+`bakin-lessons-<topic>`. The convention is purely social —
 `bakin agents install github:user/anything` works as long as the repo
 contains a valid `bakin-package.json` at the root.
 
@@ -560,7 +560,7 @@ bakin-agent-my-agent/
 ├── bakin-package.json
 ├── README.md                ← description + install instructions
 ├── workspace/
-├── knowledge/
+├── lessons/
 ├── assets/
 ├── .github/workflows/
 │   └── validate.yml         ← CI: bun run scripts/.../validate-package.ts
@@ -579,7 +579,7 @@ Once you tag a release, anyone with Bakin and access to the repo can:
 bakin agents install github:your-user/bakin-agent-my-agent@v0.1.0
 ```
 
-…and end up with a fully provisioned runtime agent, knowledge files,
+…and end up with a fully provisioned runtime agent, lesson files,
 optional skills/workflows, and a lockfile entry tracking the package
 back to the exact commitSha you tagged.
 
@@ -620,13 +620,13 @@ The Teams plugin surfaces a small but useful slice of the agent-package model in
 - **Package state badge** on every agent card in the team grid — only renders for `unmanaged`, `drifted`, or `update-available` (healthy states stay clean). Color-coded.
 - **Package card** at the top of the agent-detail Profile tab — read-only display of state, source, ref, commit (short SHA), installed-at, and dependencies for managed/adopted agents.
 - **Adopt button** in the Package card on unmanaged agents — opens a dialog, asks for the package source, and `POST`s `/api/agent-packages/install` with `{ source, adopt: agentId }`. The Teams page updates without a reload.
-- **Knowledge tab** on agent-detail — for managed/adopted agents, renders per-lesson on/off toggles backed by `/api/agent-packages/:id/knowledge`. Optimistic UI, revert on error.
+- **Lessons tab** on agent-detail — for managed/adopted agents, renders per-lesson on/off toggles backed by `/api/agent-packages/:id/lessons`. Optimistic UI, revert on error.
 
 **Still CLI-only:**
 
 - **Install fresh agent** → `bakin agents install <source>`
 - **Browse curated catalog** → `bakin agents install` from the curated list (no in-app browser yet)
-- **Install non-agent kinds** (skill-pack / workflow-pack / knowledge-pack) → `bakin packages install <source>`
+- **Install non-agent kinds** (skill-pack / workflow-pack / lesson-pack) → `bakin packages install <source>`
 - **List installed packages** of any kind → `bakin packages list`
 - **Update a package** → `bakin agents update <id>` or `bakin packages update <id>`
 - **Remove a package** → `bakin agents remove <id>` or `bakin packages remove <id>`
@@ -640,7 +640,7 @@ A future "Workshop" page will bring install / browse / curated / non-agent manag
 
 - **Per-skill rename via `installAs`.** V1 aliases the lockfile key only;
   on-disk projection collisions still need `--replace` or version-pinning.
-- **Dispatch-time knowledge retrieval (issue #157).** All enabled
+- **Dispatch-time lesson retrieval (issue #157).** All enabled
   lessons inject statically in V1; V2 will do semantic retrieval at
   dispatch time. Data model unchanged.
 - **MCP-tool / skill scoping enforcement (issue #42).** `agent.allowedTools`
@@ -651,8 +651,8 @@ A future "Workshop" page will bring install / browse / curated / non-agent manag
   future work.
 - **Bundles.** `bakin install creative-team` (one command bundling
   multiple agents + shared skill packs) is a future possibility, not V1.
-- **Knowledge-pack search indexing.** The team plugin indexes
-  `agents/*/knowledge/*.md` for full-text search; standalone knowledge
+- **Lesson-pack search indexing.** The team plugin indexes
+  `agents/*/lessons/*.md` for full-text search; standalone lessons
   packs are not indexed yet.
 
 ## Related docs
@@ -660,5 +660,5 @@ A future "Workshop" page will bring install / browse / curated / non-agent manag
 - [`./plugin-authoring.md`](./plugin-authoring.md) — companion guide for the OTHER kind of package (code, not content)
 - [`../CLAUDE.md`](../CLAUDE.md) — architecture overview, build pipeline, testing rules
 - [`../.claude/knowledge/agent-packages.md`](../.claude/knowledge/agent-packages.md) — internals reference for the agent-packages system
-- [`../.claude/knowledge/team-plugin.md`](../.claude/knowledge/team-plugin.md) — how the Teams UI surfaces packages, adoption, and knowledge toggles
+- [`../.claude/knowledge/team-plugin.md`](../.claude/knowledge/team-plugin.md) — how the Teams UI surfaces packages, adoption, and lesson toggles
 - [`../.claude/knowledge/workflows-plugin.md`](../.claude/knowledge/workflows-plugin.md) — how workflow definitions and workflow-skills resolve across plugin / agent-package / user tiers

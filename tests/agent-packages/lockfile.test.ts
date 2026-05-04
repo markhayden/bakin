@@ -67,7 +67,7 @@ function pixelEntry(): PackageEntry {
     installedAt: NOW,
     state: 'managed',
     agentId: 'pixel',
-    knowledgeEnabled: ['prompt-style-system'],
+    lessonsEnabled: ['prompt-style-system'],
     projections: [
       { kind: 'asset', target: '/tmp/avatar.jpg', sha256: 'deadbeef' },
     ],

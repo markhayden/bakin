@@ -42,8 +42,8 @@ import {
 } from '../../packages/core/src/agent-packages/managed-blocks'
 
 describe('isValidBlockId', () => {
-  it('accepts knowledge-style nested ids', () => {
-    expect(isValidBlockId('knowledge:pixel:product-photography')).toBe(true)
+  it('accepts lesson-style nested ids', () => {
+    expect(isValidBlockId('lesson:pixel:product-photography')).toBe(true)
   })
 
   it('accepts simple ids', () => {
@@ -68,20 +68,20 @@ describe('hasBlock / extractBlock', () => {
 
 Some agent prose.
 
-<!-- bakin:knowledge-catalog:start -->
+<!-- bakin:lesson-catalog:start -->
 - product-photography
 - editorial
-<!-- bakin:knowledge-catalog:end -->
+<!-- bakin:lesson-catalog:end -->
 
 More prose.
 
-<!-- bakin:knowledge:pixel:product-photography:start -->
+<!-- bakin:lesson:pixel:product-photography:start -->
 Product photography lessons.
-<!-- bakin:knowledge:pixel:product-photography:end -->
+<!-- bakin:lesson:pixel:product-photography:end -->
 `
 
   it('hasBlock returns true for existing block', () => {
-    expect(hasBlock(content, 'knowledge-catalog')).toBe(true)
+    expect(hasBlock(content, 'lesson-catalog')).toBe(true)
   })
 
   it('hasBlock returns false for missing block', () => {
@@ -89,11 +89,11 @@ Product photography lessons.
   })
 
   it('extractBlock returns trimmed body', () => {
-    expect(extractBlock(content, 'knowledge-catalog')).toBe('- product-photography\n- editorial')
+    expect(extractBlock(content, 'lesson-catalog')).toBe('- product-photography\n- editorial')
   })
 
   it('extractBlock handles colon-separated nested ids', () => {
-    expect(extractBlock(content, 'knowledge:pixel:product-photography')).toBe(
+    expect(extractBlock(content, 'lesson:pixel:product-photography')).toBe(
       'Product photography lessons.',
     )
   })
@@ -197,8 +197,8 @@ describe('injectBlock', () => {
   })
 
   it('round-trips with extractBlock', () => {
-    const out = injectBlock('', 'knowledge:pixel:product-photography', 'lesson body')
-    expect(extractBlock(out, 'knowledge:pixel:product-photography')).toBe('lesson body')
+    const out = injectBlock('', 'lesson:pixel:product-photography', 'lesson body')
+    expect(extractBlock(out, 'lesson:pixel:product-photography')).toBe('lesson body')
   })
 })
 

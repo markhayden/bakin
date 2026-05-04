@@ -108,8 +108,8 @@ function kindForDepCategory(category: keyof NonNullable<Manifest['dependencies']
       return 'skill-pack'
     case 'workflows':
       return 'workflow-pack'
-    case 'knowledge':
-      return 'knowledge-pack'
+    case 'lessons':
+      return 'lesson-pack'
   }
 }
 
@@ -118,7 +118,7 @@ function listDirectDeps(parent: Manifest): Array<{ kind: keyof NonNullable<Manif
   const deps = parent.dependencies
   if (deps?.skills) for (const spec of deps.skills) out.push({ kind: 'skills', spec })
   if (deps?.workflows) for (const spec of deps.workflows) out.push({ kind: 'workflows', spec })
-  if (deps?.knowledge) for (const spec of deps.knowledge) out.push({ kind: 'knowledge', spec })
+  if (deps?.lessons) for (const spec of deps.lessons) out.push({ kind: 'lessons', spec })
   return out
 }
 

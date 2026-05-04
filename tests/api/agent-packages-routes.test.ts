@@ -97,7 +97,7 @@ beforeEach(() => {
 function seedAgentPackage(id = 'pixel'): string {
   const dir = join(testDir, `${id}-pkg`)
   mkdirSync(join(dir, 'workspace'), { recursive: true })
-  mkdirSync(join(dir, 'knowledge'), { recursive: true })
+  mkdirSync(join(dir, 'lessons'), { recursive: true })
   writeFileSync(
     join(dir, 'bakin-package.json'),
     JSON.stringify({
@@ -106,19 +106,19 @@ function seedAgentPackage(id = 'pixel'): string {
       name: id,
       version: '0.1.0',
       agent: { identity: { name: id } },
-      install: { writeWorkspaceFiles: true, enableKnowledge: ['style'] },
+      install: { writeWorkspaceFiles: true, enableLessons: ['style'] },
       contributions: {
         workspaceFiles: ['workspace/SOUL.md'],
-        knowledge: ['knowledge/style.md'],
+        lessons: ['lessons/style.md'],
       },
     }),
   )
   writeFileSync(
     join(dir, 'workspace', 'SOUL.md'),
-    `# Soul ${id}\n\n<!-- bakin:knowledge-catalog:start -->\n<!-- bakin:knowledge-catalog:end -->\n`,
+    `# Soul ${id}\n\n<!-- bakin:lesson-catalog:start -->\n<!-- bakin:lesson-catalog:end -->\n`,
   )
   writeFileSync(
-    join(dir, 'knowledge', 'style.md'),
+    join(dir, 'lessons', 'style.md'),
     `---\ntitle: Style\ndefaultEnabled: true\n---\n\nStyle body.`,
   )
   return dir
@@ -235,31 +235,31 @@ describe('agent-packages dynamic — DELETE /api/agent-packages/{agentId}', () =
   })
 })
 
-describe('agent-packages dynamic — knowledge endpoints', () => {
-  it('GET /knowledge lists lessons with current enabled state', async () => {
+describe('agent-packages dynamic — lessons endpoints', () => {
+  it('GET /lessons lists lessons with current enabled state', async () => {
     const src = seedAgentPackage()
     {
       const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
       await installRoute.post(req, url)
     }
 
-    const { req, url } = makeRequest('GET', '/api/agent-packages/pixel/knowledge')
+    const { req, url } = makeRequest('GET', '/api/agent-packages/pixel/lessons')
     const res = await dynamicRoute.handler(req, url)
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body.ok).toBe(true)
     const style = body.lessons.find((l: { lessonId: string }) => l.lessonId === 'style')
-    expect(style?.enabled).toBe(true) // enableKnowledge: ['style']
+    expect(style?.enabled).toBe(true) // enableLessons: ['style']
   })
 
-  it('POST /knowledge/{lid} { enabled: false } disables a lesson', async () => {
+  it('POST /lessons/{lid} { enabled: false } disables a lesson', async () => {
     const src = seedAgentPackage()
     {
       const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
       await installRoute.post(req, url)
     }
 
-    const { req, url } = makeRequest('POST', '/api/agent-packages/pixel/knowledge/style', {
+    const { req, url } = makeRequest('POST', '/api/agent-packages/pixel/lessons/style', {
       enabled: false,
     })
     const res = await dynamicRoute.handler(req, url)
@@ -269,7 +269,7 @@ describe('agent-packages dynamic — knowledge endpoints', () => {
     expect(body.result.enabled).toBe(false)
 
     // Verify via GET that the toggle reflected
-    const { req: req2, url: url2 } = makeRequest('GET', '/api/agent-packages/pixel/knowledge')
+    const { req: req2, url: url2 } = makeRequest('GET', '/api/agent-packages/pixel/lessons')
     const res2 = await dynamicRoute.handler(req2, url2)
     const body2 = await res2.json()
     const style = body2.lessons.find((l: { lessonId: string }) => l.lessonId === 'style')
@@ -283,7 +283,7 @@ describe('agent-packages dynamic — knowledge endpoints', () => {
       await installRoute.post(req, url)
     }
 
-    const { req, url } = makeRequest('POST', '/api/agent-packages/pixel/knowledge/style', {})
+    const { req, url } = makeRequest('POST', '/api/agent-packages/pixel/lessons/style', {})
     const res = await dynamicRoute.handler(req, url)
     expect(res.status).toBe(400)
   })
