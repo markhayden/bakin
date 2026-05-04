@@ -70,8 +70,9 @@ export async function post(req: Request, _url: URL): Promise<Response> {
 
   const pluginDir = join(getContentDir(), 'plugins', pluginId)
   const settingsFile = join(getContentDir(), 'plugin-settings', `${pluginId}.json`)
+  const lockBeforeRemove = readPluginLockfile()
 
-  if (!existsSync(pluginDir) && !readPluginLockfile().plugins[pluginId]) {
+  if (!existsSync(pluginDir) && !lockBeforeRemove.plugins[pluginId]) {
     return Response.json({
       ok: false,
       error: `Plugin "${pluginId}" is not installed (no lockfile entry, no plugin dir).`,
@@ -113,7 +114,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
   // `{pluginId: <self>}` into other plugins' .installedBy can't trick us
   // into deleting them, because the lockfile entry only records skills
   // this plugin actually installed.
-  const ownedSkills = readPluginLockfile().plugins[pluginId]?.installedSkills ?? []
+  const ownedSkills = lockBeforeRemove.plugins[pluginId]?.installedSkills ?? []
   const assetsPlan = await planPluginAssetsRemoval(pluginId, ownedSkills)
 
   // ─── 3. Snapshot ───────────────────────────────────────────────────────────
@@ -123,6 +124,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       pluginId,
       pluginDir,
       settingsFile: existsSync(settingsFile) ? settingsFile : undefined,
+      lockEntry: lockBeforeRemove.plugins[pluginId],
       removedSkills: assetsPlan.snapshots,
     })
     snapshotPath = result.tarballPath

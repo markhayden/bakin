@@ -359,6 +359,102 @@ async function cmdPluginsRemove(pluginId: string): Promise<void> {
   print(result)
 }
 
+interface PluginRestoreSnapshot {
+  timestamp: string
+  createdAt: string
+  filename: string
+  sizeBytes: number
+}
+
+interface PluginRestoreResult {
+  ok?: boolean
+  error?: string
+  core?: boolean
+  message?: string
+  snapshot?: string
+  snapshotInfo?: PluginRestoreSnapshot
+  snapshots?: PluginRestoreSnapshot[]
+  skills?: { restored: number }
+  restored?: boolean
+  activated?: boolean
+}
+
+const PLUGIN_RESTORE_USAGE = 'Usage: bakin plugins restore <id> [--snapshot <snapshot>] [--force] [--list]'
+
+function parsePluginRestoreFlags(flags: string[]): {
+  snapshot?: string
+  force: boolean
+  list: boolean
+  error?: string
+} {
+  let snapshot: string | undefined
+  let force = false
+  let list = false
+  for (let i = 0; i < flags.length; i++) {
+    const flag = flags[i]
+    if (flag === '--force') {
+      force = true
+      continue
+    }
+    if (flag === '--list') {
+      list = true
+      continue
+    }
+    if (flag === '--snapshot') {
+      const value = flags[i + 1]
+      if (!value || value.startsWith('--')) return { force, list, error: '--snapshot requires a timestamp or filename' }
+      snapshot = value
+      i++
+      continue
+    }
+    return { force, list, error: `Unknown plugins restore argument: ${flag}` }
+  }
+  return { snapshot, force, list }
+}
+
+function printPluginRestoreSnapshots(pluginId: string, snapshots: PluginRestoreSnapshot[] = []): void {
+  if (snapshots.length === 0) {
+    console.log(`No uninstall snapshots found for plugin "${pluginId}".`)
+    return
+  }
+  console.log(`Uninstall snapshots for ${pluginId}:`)
+  for (const snapshot of snapshots) {
+    const kb = Math.max(1, Math.ceil(snapshot.sizeBytes / 1024))
+    console.log(`  ${snapshot.timestamp}  ${snapshot.createdAt}  ${kb}KB  ${snapshot.filename}`)
+  }
+}
+
+async function cmdPluginsRestore(pluginId: string, opts: { snapshot?: string; force: boolean; list: boolean }): Promise<void> {
+  const res = await fetch(`${BASE_URL}/api/plugins/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      pluginId,
+      snapshot: opts.snapshot,
+      force: opts.force,
+      listOnly: opts.list,
+    }),
+  })
+  const result = await res.json().catch(() => ({})) as PluginRestoreResult
+  if (opts.list) {
+    if (result.error) throw new Error(result.error)
+    printPluginRestoreSnapshots(pluginId, result.snapshots)
+    return
+  }
+  if (!res.ok || result.error) {
+    if (result.snapshots && result.snapshots.length > 0) printPluginRestoreSnapshots(pluginId, result.snapshots)
+    throw new Error(result.error ?? `HTTP ${res.status}`)
+  }
+  console.log(result.message ?? `Restored plugin: ${pluginId}`)
+  if (result.snapshotInfo) {
+    console.log(`  Snapshot: ${result.snapshotInfo.filename}`)
+  } else if (result.snapshot) {
+    console.log(`  Snapshot: ${result.snapshot}`)
+  }
+  if (result.skills) console.log(`  Runtime skills restored: ${result.skills.restored}`)
+  if (result.activated === false) console.log('  Activation deferred until next server start.')
+}
+
 async function cmdPluginsLink(localPath: string, opts: { force?: boolean } = {}): Promise<void> {
   const result = await apiPost('/api/plugins/link', {
     localPath,
@@ -1750,6 +1846,19 @@ export async function main(): Promise<void> {
         } else if (sub === 'remove') {
           if (!args[2]) { console.error('Usage: bakin plugins remove <id>'); process.exit(1) }
           await cmdPluginsRemove(args[2])
+        } else if (sub === 'restore') {
+          if (!args[2]) { console.error(PLUGIN_RESTORE_USAGE); process.exit(1) }
+          const parsed = parsePluginRestoreFlags(args.slice(3))
+          if (parsed.error) {
+            console.error(parsed.error)
+            console.error(PLUGIN_RESTORE_USAGE)
+            process.exit(1)
+          }
+          await cmdPluginsRestore(args[2], {
+            snapshot: parsed.snapshot,
+            force: parsed.force,
+            list: parsed.list,
+          })
         } else if (sub === 'link') {
           if (!args[2]) { console.error('Usage: bakin plugins link <localPath> [--force]'); process.exit(1) }
           await cmdPluginsLink(args[2], { force: args.slice(3).includes('--force') })

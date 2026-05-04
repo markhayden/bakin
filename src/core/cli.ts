@@ -478,6 +478,136 @@ async function cmdPluginsUnlink(pluginId: string): Promise<number> {
   }
 }
 
+interface PluginRestoreSnapshot {
+  pluginId: string
+  timestamp: string
+  createdAt: string
+  filename: string
+  path: string
+  sizeBytes: number
+}
+
+interface PluginRestoreResponse {
+  ok?: boolean
+  error?: string
+  code?: string
+  core?: boolean
+  id?: string
+  restored?: boolean
+  snapshot?: string
+  snapshotInfo?: PluginRestoreSnapshot
+  snapshots?: PluginRestoreSnapshot[]
+  skills?: { restored: number; names: string[] }
+  activated?: boolean
+  message?: string
+}
+
+const PLUGIN_RESTORE_USAGE = 'Usage: bakin plugins restore <id> [--snapshot <snapshot>] [--force] [--list]'
+
+function renderPluginSnapshots(pluginId: string, snapshots: PluginRestoreSnapshot[] = []): string[] {
+  if (snapshots.length === 0) return [`No uninstall snapshots found for plugin "${pluginId}".`]
+  return [
+    `Uninstall snapshots for ${pluginId}:`,
+    ...snapshots.map((s) => {
+      const kb = Math.max(1, Math.ceil(s.sizeBytes / 1024))
+      return `  ${s.timestamp}  ${s.createdAt}  ${kb}KB  ${s.filename}`
+    }),
+  ]
+}
+
+function parsePluginRestoreArgs(args: string[]): {
+  pluginId?: string
+  snapshot?: string
+  force: boolean
+  list: boolean
+  error?: string
+} {
+  const pluginId = args[0]
+  if (!pluginId) return { force: false, list: false, error: PLUGIN_RESTORE_USAGE }
+  let snapshot: string | undefined
+  let force = false
+  let list = false
+  for (let i = 1; i < args.length; i++) {
+    const arg = args[i]
+    if (arg === '--force') {
+      force = true
+      continue
+    }
+    if (arg === '--list') {
+      list = true
+      continue
+    }
+    if (arg === '--snapshot') {
+      const value = args[i + 1]
+      if (!value || value.startsWith('--')) {
+        return { pluginId, force, list, error: '--snapshot requires a timestamp or filename' }
+      }
+      snapshot = value
+      i++
+      continue
+    }
+    return { pluginId, force, list, error: `Unknown plugins restore argument: ${arg}` }
+  }
+  return { pluginId, snapshot, force, list }
+}
+
+async function cmdPluginsRestore(
+  pluginId: string,
+  opts: { snapshot?: string; force: boolean; list: boolean },
+): Promise<number> {
+  try {
+    const res = await fetch(`${BAKIN_URL}/api/plugins/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pluginId,
+        snapshot: opts.snapshot,
+        force: opts.force,
+        listOnly: opts.list,
+      }),
+    })
+    const body = await res.json().catch(() => ({})) as PluginRestoreResponse
+
+    if (opts.list) {
+      if (body.error) {
+        console.error(`Restore failed: ${body.error}`)
+        return body.core ? 2 : 1
+      }
+      for (const line of renderPluginSnapshots(pluginId, body.snapshots)) console.log(line)
+      return 0
+    }
+
+    if (body.core) {
+      console.error(`Refusing to restore core plugin "${pluginId}".`)
+      return 2
+    }
+    if (!res.ok || body.error) {
+      console.error(`Restore failed: ${body.error ?? `HTTP ${res.status}`}`)
+      if (body.snapshots && body.snapshots.length > 0) {
+        for (const line of renderPluginSnapshots(pluginId, body.snapshots)) console.error(line)
+      }
+      return 1
+    }
+
+    console.log(body.message ?? `Restored plugin: ${body.id ?? pluginId}`)
+    if (body.snapshotInfo) {
+      console.log(`  Snapshot: ${body.snapshotInfo.filename}`)
+    } else if (body.snapshot) {
+      console.log(`  Snapshot: ${body.snapshot}`)
+    }
+    if (body.skills) {
+      console.log(`  Runtime skills restored: ${body.skills.restored}`)
+    }
+    if (body.activated === false) {
+      console.log('  Activation deferred until next server start.')
+    }
+    return 0
+  } catch (err) {
+    console.error(`Restore failed: ${err instanceof Error ? err.message : String(err)}`)
+    return 1
+  }
+}
+
 async function cmdPluginsScaffold(name: string): Promise<number> {
   // Implementation lands in TH4 (src/core/plugin-scaffold.ts). Use a
   // variable specifier so TypeScript doesn't complain before that file
@@ -595,7 +725,7 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
 
       case 'plugins': {
         if (!sub) {
-          console.error('Usage: bakin plugins <list|install|export|import|upgrade|remove|scaffold|link|unlink>')
+          console.error('Usage: bakin plugins <list|install|export|import|upgrade|remove|restore|scaffold|link|unlink>')
           return { startServer: false, exitCode: 1 }
         }
         if (sub === 'list') {
@@ -666,6 +796,21 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
             return { startServer: false, exitCode: 1 }
           }
           return { startServer: false, exitCode: await cmdPluginsRemove(args[2]) }
+        }
+        if (sub === 'restore') {
+          const parsed = parsePluginRestoreArgs(args.slice(2))
+          if (parsed.error || !parsed.pluginId) {
+            console.error(parsed.error ?? PLUGIN_RESTORE_USAGE)
+            return { startServer: false, exitCode: 1 }
+          }
+          return {
+            startServer: false,
+            exitCode: await cmdPluginsRestore(parsed.pluginId, {
+              snapshot: parsed.snapshot,
+              force: parsed.force,
+              list: parsed.list,
+            }),
+          }
         }
         if (sub === 'scaffold') {
           if (!args[2]) {

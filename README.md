@@ -182,6 +182,8 @@ bakin plugins install github:user/repo --ref v1.2.3
 bakin plugins export plugins.json           # back up installed user plugins
 bakin plugins import plugins.json --yes     # restore that plugin set
 bakin plugins remove my-plugin              # refuses to remove core plugins
+bakin plugins restore my-plugin --list      # list uninstall snapshots
+bakin plugins restore my-plugin             # restore latest uninstall snapshot
 bakin plugins scaffold <name>               # starter plugin at ./<name>/
 ```
 
