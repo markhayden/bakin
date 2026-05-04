@@ -1,6 +1,7 @@
 import type { IncomingMessage } from 'http'
 
 export const DEFAULT_MAX_REQUEST_BODY_BYTES = 1024 * 1024
+export const DEFAULT_MAX_WEB_REQUEST_BODY_BYTES = 100 * 1024 * 1024
 
 export interface ReadRequestBodyOptions {
   maxBytes?: number
@@ -64,8 +65,8 @@ export function readRequestBody(
       const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
       total += buf.length
       if (total > maxBytes) {
-        req.destroy?.()
         finish(() => reject(new RequestBodyTooLargeError(maxBytes)))
+        req.destroy?.()
         return
       }
       chunks.push(buf)

@@ -12,7 +12,11 @@
  * evaporates — handlers are already in the shape Bun.serve expects.
  */
 import type { IncomingMessage, ServerResponse } from 'http'
-import { isRequestBodyTooLargeError, readRequestBody } from '@/core/request-body'
+import {
+  DEFAULT_MAX_WEB_REQUEST_BODY_BYTES,
+  isRequestBodyTooLargeError,
+  readRequestBody,
+} from '@/core/request-body'
 
 export type WebHandler = (req: Request, url: URL) => Promise<Response> | Response
 
@@ -36,7 +40,7 @@ export async function dispatchWebHandler(
     // Read request body for non-GET/HEAD requests.
     let body: BodyInit | undefined = undefined
     if (req.method && req.method !== 'GET' && req.method !== 'HEAD') {
-      const rawBody = await readRequestBody(req)
+      const rawBody = await readRequestBody(req, { maxBytes: DEFAULT_MAX_WEB_REQUEST_BODY_BYTES })
       if (rawBody) body = new Uint8Array(rawBody)
     }
 
