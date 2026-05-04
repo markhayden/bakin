@@ -19,7 +19,7 @@ process.env.OPENCLAW_HOME = openClawDir
 process.env.BAKIN_HOME = testDir
 
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs'
+import { mkdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { createMockRuntimeAdapter } from '../../packages/core/src/adapters/runtime/testing'
 import type { WorkspaceFile } from '../../packages/core/src/adapters/runtime'
@@ -94,7 +94,8 @@ beforeEach(() => {
   installRuntimeMock()
 })
 
-function seedAgentPackage(id = 'pixel'): string {
+function seedAgentPackage(id = 'pixel', options: { enableLessons?: string[] } = {}): string {
+  const enableLessons = options.enableLessons ?? ['style']
   const dir = join(testDir, `${id}-pkg`)
   mkdirSync(join(dir, 'workspace'), { recursive: true })
   mkdirSync(join(dir, 'lessons'), { recursive: true })
@@ -106,7 +107,7 @@ function seedAgentPackage(id = 'pixel'): string {
       name: id,
       version: '0.1.0',
       agent: { identity: { name: id } },
-      install: { writeWorkspaceFiles: true, enableLessons: ['style'] },
+      install: { writeWorkspaceFiles: true, enableLessons },
       contributions: {
         workspaceFiles: ['workspace/SOUL.md'],
         lessons: ['lessons/style.md'],
@@ -286,6 +287,30 @@ describe('agent-packages dynamic — lessons endpoints', () => {
     const { req, url } = makeRequest('POST', '/api/agent-packages/pixel/lessons/style', {})
     const res = await dynamicRoute.handler(req, url)
     expect(res.status).toBe(400)
+  })
+
+  it('does not enable a lesson when its installed source file is missing', async () => {
+    const src = seedAgentPackage('pixel', { enableLessons: [] })
+    {
+      const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
+      await installRoute.post(req, url)
+    }
+    unlinkSync(join(testDir, 'packages', 'agents', 'pixel@0.1.0', 'lessons', 'style.md'))
+
+    const { req, url } = makeRequest('POST', '/api/agent-packages/pixel/lessons/style', {
+      enabled: true,
+    })
+    const res = await dynamicRoute.handler(req, url)
+    expect(res.status).toBe(500)
+    const body = await res.json()
+    expect(body.ok).toBe(false)
+    expect(body.error).toContain('source file is missing')
+
+    const lock = JSON.parse(readFileSync(join(testDir, 'packages', 'lock.json'), 'utf-8'))
+    expect(lock.packages.pixel.lessonsEnabled).toEqual([])
+
+    const soul = readFileSync(join(openClawDir, 'workspaces', 'pixel', 'SOUL.md'), 'utf-8')
+    expect(soul).not.toContain('<!-- bakin:lesson:pixel:style:start -->')
   })
 })
 
