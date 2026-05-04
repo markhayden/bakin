@@ -4,6 +4,11 @@
  */
 import type { IncomingMessage, ServerResponse } from 'http'
 import { createLogger } from './logger'
+import {
+  isRequestBodyTooLargeError,
+  readJsonBody,
+  type ReadRequestBodyOptions,
+} from './request-body'
 
 const log = createLogger('middleware')
 
@@ -11,19 +16,17 @@ const log = createLogger('middleware')
  * Parse a JSON body from an IncomingMessage.
  * Returns the parsed object or null if parsing fails.
  */
-export function parseJsonBody(req: IncomingMessage): Promise<Record<string, unknown> | null> {
-  return new Promise((resolve) => {
-    let body = ''
-    req.on('data', (chunk: Buffer) => { body += chunk.toString() })
-    req.on('end', () => {
-      try {
-        resolve(JSON.parse(body))
-      } catch {
-        resolve(null)
-      }
-    })
-    req.on('error', () => resolve(null))
-  })
+export async function parseJsonBody(
+  req: IncomingMessage,
+  options: ReadRequestBodyOptions = {},
+): Promise<Record<string, unknown> | null> {
+  try {
+    const body = await readJsonBody(req, options)
+    return body && typeof body === 'object' ? body as Record<string, unknown> : null
+  } catch (err) {
+    if (isRequestBodyTooLargeError(err)) throw err
+    return null
+  }
 }
 
 /**
@@ -57,11 +60,21 @@ export function jsonResponse(res: ServerResponse, status: number, data: unknown)
 export async function handleJsonPost(
   req: IncomingMessage,
   res: ServerResponse,
-  handler: (body: Record<string, unknown>) => Promise<unknown>
+  handler: (body: Record<string, unknown>) => Promise<unknown>,
+  options: ReadRequestBodyOptions = {},
 ): Promise<void> {
   if (!validateJsonContentType(req, res)) return
 
-  const body = await parseJsonBody(req)
+  let body: Record<string, unknown> | null
+  try {
+    body = await parseJsonBody(req, options)
+  } catch (err) {
+    if (isRequestBodyTooLargeError(err)) {
+      jsonResponse(res, 413, { error: err.message })
+      return
+    }
+    throw err
+  }
   if (!body) {
     jsonResponse(res, 400, { error: 'Invalid JSON body' })
     return

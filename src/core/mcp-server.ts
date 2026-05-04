@@ -25,6 +25,11 @@ import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { createLogger } from './logger'
 import { getContentDir } from './content-dir'
 import { appendAudit } from './audit'
+import {
+  isInvalidJsonBodyError,
+  isRequestBodyTooLargeError,
+  readJsonBody,
+} from './request-body'
 import { recordUsage } from '@/core/usage'
 import { getAllExecTools, getExecTool, getToolContext } from '../../scripts/lib/registry'
 import {
@@ -367,7 +372,22 @@ export async function handleMcpRequest(
 
   // ─── POST: route to correct transport ──────────────────────────────
   if (method === 'POST') {
-    const body = await parseBody(req)
+    let body: unknown
+    try {
+      body = await parseBody(req)
+    } catch (err) {
+      if (isRequestBodyTooLargeError(err)) {
+        res.writeHead(413, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: err.message }))
+        return
+      }
+      if (isInvalidJsonBodyError(err)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'Invalid JSON body' }))
+        return
+      }
+      throw err
+    }
 
     // Check for Streamable HTTP session (header-based)
     const existingSessionId = req.headers['mcp-session-id'] as string | undefined
@@ -441,19 +461,7 @@ export async function handleMcpRequest(
 // ---------------------------------------------------------------------------
 
 function parseBody(req: IncomingMessage): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = []
-    req.on('data', (chunk: Buffer) => chunks.push(chunk))
-    req.on('end', () => {
-      try {
-        const raw = Buffer.concat(chunks).toString('utf-8')
-        resolve(raw ? JSON.parse(raw) : undefined)
-      } catch (err) {
-        reject(err)
-      }
-    })
-    req.on('error', reject)
-  })
+  return readJsonBody(req)
 }
 
 // ---------------------------------------------------------------------------
