@@ -20,6 +20,7 @@ import {
   addExecTool,
   getAllExecTools,
   getExecTool,
+  removeExecToolsByPlugin,
 } from '../../scripts/lib/registry'
 
 // Per-tool call counting now lives in the unified usage recorder
@@ -28,17 +29,37 @@ import {
 // directly and query getUsageFeed({ kind: 'mcp' }).
 
 describe('exec tool registry', () => {
-  const mockTool = {
-    name: 'bakin_exec_test_tool',
-    description: 'Test tool',
-    source: 'test',
-    parameters: {},
-    handler: async () => ({ ok: true as const }),
+  function mockTool(name: string, source = 'test') {
+    return {
+      name,
+      description: 'Test tool',
+      source,
+      parameters: {},
+      handler: async () => ({ ok: true as const }),
+    }
   }
 
   it('registers and retrieves a tool', () => {
-    addExecTool(mockTool)
-    expect(getExecTool('bakin_exec_test_tool')).toBe(mockTool)
+    const tool = mockTool('bakin_exec_test_tool_registers')
+    addExecTool(tool)
+    expect(getExecTool('bakin_exec_test_tool_registers')).toBe(tool)
+  })
+
+  it('rejects duplicate tool names instead of overriding', () => {
+    addExecTool(mockTool('bakin_exec_test_tool_duplicate'))
+
+    expect(() => addExecTool(mockTool('bakin_exec_test_tool_duplicate'))).toThrow('already registered')
+  })
+
+  it('removes plugin-owned tools by recorded source as well as namespace prefix', () => {
+    addExecTool(mockTool('legacy_tool_name', 'plugin:sample'))
+    addExecTool(mockTool('bakin_exec_sample_namespaced', 'plugin:sample'))
+    addExecTool(mockTool('bakin_exec_other_namespaced', 'plugin:other'))
+
+    expect(removeExecToolsByPlugin('sample')).toBe(2)
+    expect(getExecTool('legacy_tool_name')).toBeUndefined()
+    expect(getExecTool('bakin_exec_sample_namespaced')).toBeUndefined()
+    expect(getExecTool('bakin_exec_other_namespaced')).toBeDefined()
   })
 
   it('returns undefined for unknown tool', () => {
@@ -46,8 +67,9 @@ describe('exec tool registry', () => {
   })
 
   it('getAllExecTools returns registered tools', () => {
-    addExecTool(mockTool)
+    const tool = mockTool('bakin_exec_test_tool_all')
+    addExecTool(tool)
     const all = getAllExecTools()
-    expect(all.find(t => t.name === 'bakin_exec_test_tool')).toBeDefined()
+    expect(all.find(t => t.name === 'bakin_exec_test_tool_all')).toBeDefined()
   })
 })

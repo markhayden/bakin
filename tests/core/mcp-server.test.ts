@@ -19,14 +19,20 @@ mock.module('@/core/task-service', () => ({
 }))
 
 mock.module('@/core/content-dir', () => ({
-  getContentDir: mock(() => '/tmp/test'),
+  getContentDir: mock(() => process.env.BAKIN_HOME || '/tmp/test'),
   getBakinPaths: mock(() => ({
-    home: '/tmp/test',
-    assets: '/tmp/test/assets',
+    root: process.env.BAKIN_HOME || '/tmp/test',
+    home: process.env.BAKIN_HOME || '/tmp/test',
+    assets: `${process.env.BAKIN_HOME || '/tmp/test'}/assets`,
+    settings: `${process.env.BAKIN_HOME || '/tmp/test'}/settings.json`,
+    pluginSettings: `${process.env.BAKIN_HOME || '/tmp/test'}/plugin-settings`,
+    plugins: `${process.env.BAKIN_HOME || '/tmp/test'}/plugins`,
+    audit: `${process.env.BAKIN_HOME || '/tmp/test'}/audit.jsonl`,
+    logs: `${process.env.BAKIN_HOME || '/tmp/test'}/logs`,
+  })),
   isUsingBakinHome: () => true,
   resetContentDir: () => {},
   initBakinHome: () => {},
-})),
 }))
 
 mock.module('@/core/audit', () => ({
@@ -34,6 +40,9 @@ mock.module('@/core/audit', () => ({
 }))
 
 mock.module('@bakin/workflows/lib/runtime', () => ({
+  createInstance: mock(() => ({ taskId: 'task-1', workflowId: 'wf', status: 'in_progress' })),
+  loadInstance: mock(() => null),
+  saveInstance: mock(),
   getCurrentStep: mock(() => ({
     stepId: 'write-copy',
     label: 'Write Copy',
@@ -41,6 +50,14 @@ mock.module('@bakin/workflows/lib/runtime', () => ({
     output_schema: { type: 'object', properties: { text: { type: 'string' } } },
   })),
   completeStep: mock(() => ({ success: true, workflowComplete: false })),
+  approveGate: mock(() => ({ success: true })),
+  rejectGate: mock(() => ({ success: true })),
+  listInstances: mock(() => []),
+  getActiveAgents: mock(() => []),
+  authorizeWorkflowToolUse: mock(() => ({ allowed: true })),
+  isGateNotified: mock(() => false),
+  markGateNotified: mock(),
+  cancelInstance: mock(),
 }))
 
 mock.module('@/core/logger', () => ({
@@ -68,6 +85,27 @@ describe('MCP Server', () => {
     expect(getActiveSessions()).toEqual([])
   })
 
+  it('should summarize both streamable and SSE sessions for health stats', async () => {
+    const { summarizeMcpSessions } = await import('@/core/mcp-server')
+
+    const summary = summarizeMcpSessions(
+      [
+        { agentId: 'patch', createdAt: 1_000 },
+        { agentId: 'basil', createdAt: 2_000 },
+      ],
+      [
+        { agentId: 'patch', createdAt: 3_000 },
+      ],
+      '2026-05-04T00:00:00.000Z',
+    )
+
+    expect(summary.upSince).toBe('2026-05-04T00:00:00.000Z')
+    expect(summary.activeSessions).toEqual([
+      { agent: 'patch', sessions: 2, connectedAt: '1970-01-01T00:00:03.000Z' },
+      { agent: 'basil', sessions: 1, connectedAt: '1970-01-01T00:00:02.000Z' },
+    ])
+  })
+
   it('should reject requests without agent param and no session ID', async () => {
     const { handleMcpRequest } = require('@/core/mcp-server') as typeof import('@/core/mcp-server')
 
@@ -78,6 +116,33 @@ describe('MCP Server', () => {
 
     expect(res.writeHead).toHaveBeenCalledWith(400, expect.any(Object))
     expect(res._body).toContain('agent query parameter required')
+  })
+
+  it('should return 400 for malformed JSON bodies', async () => {
+    const { handleMcpRequest } = require('@/core/mcp-server') as typeof import('@/core/mcp-server')
+
+    const req = createMockRequest('POST', '/mcp?agent=basil', '{ broken')
+    const res = createMockResponse()
+
+    await handleMcpRequest(req, res)
+
+    expect(res.writeHead).toHaveBeenCalledWith(400, expect.any(Object))
+    expect(res._body).toContain('Invalid JSON body')
+  })
+
+  it('should return 413 when the request body is too large', async () => {
+    const { DEFAULT_MAX_REQUEST_BODY_BYTES } = await import('@/core/request-body')
+    const { handleMcpRequest } = require('@/core/mcp-server') as typeof import('@/core/mcp-server')
+
+    const req = createMockRequest('POST', '/mcp?agent=basil', null, {
+      'content-length': String(DEFAULT_MAX_REQUEST_BODY_BYTES + 1),
+    })
+    const res = createMockResponse()
+
+    await handleMcpRequest(req, res)
+
+    expect(res.writeHead).toHaveBeenCalledWith(413, expect.any(Object))
+    expect(res._body).toContain('Request body too large')
   })
 
   it('should return 404 for unknown Streamable HTTP session ID', async () => {
@@ -121,7 +186,8 @@ function createMockRequest(
     },
     on: mock((event: string, cb: (...args: any[]) => void) => {
       if (event === 'data' && body) {
-        cb(Buffer.from(JSON.stringify(body)))
+        const raw = typeof body === 'string' ? body : JSON.stringify(body)
+        cb(Buffer.from(raw))
       }
       if (event === 'end') {
         cb()

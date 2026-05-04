@@ -23,6 +23,7 @@ function mockReq(opts: {
   body?: string
   method?: string
   contentType?: string
+  contentLength?: string
 } = {}): IncomingMessage {
   const stream = new PassThrough()
   if (opts.body !== undefined) {
@@ -34,6 +35,7 @@ function mockReq(opts: {
   req.method = opts.method || 'GET'
   req.headers = {}
   if (opts.contentType) req.headers['content-type'] = opts.contentType
+  if (opts.contentLength) req.headers['content-length'] = opts.contentLength
   return req
 }
 
@@ -80,6 +82,12 @@ describe('middleware', () => {
       stream.emit('error', new Error('stream broke'))
       const result = await promise
       expect(result).toBeNull()
+    })
+
+    it('throws when body exceeds the configured limit', async () => {
+      const req = mockReq({ body: '{"ok":true}', contentLength: '16' })
+
+      await expect(parseJsonBody(req, { maxBytes: 8 })).rejects.toThrow('Request body too large')
     })
   })
 
@@ -192,6 +200,24 @@ describe('middleware', () => {
       expect(res.writeHead).toHaveBeenCalledWith(400, expect.any(Object))
       const body = JSON.parse(res.end.mock.calls[0][0])
       expect(body.error).toContain('Invalid JSON')
+    })
+
+    it('returns 413 when body exceeds the configured limit', async () => {
+      const req = mockReq({
+        method: 'POST',
+        contentType: 'application/json',
+        contentLength: '16',
+        body: '{"ok":true}',
+      })
+      const res = mockRes()
+      const handler = mock()
+
+      await handleJsonPost(req, res, handler, { maxBytes: 8 })
+
+      expect(handler).not.toHaveBeenCalled()
+      expect(res.writeHead).toHaveBeenCalledWith(413, expect.any(Object))
+      const body = JSON.parse(res.end.mock.calls[0][0])
+      expect(body.error).toContain('Request body too large')
     })
 
     it('returns 500 when handler throws', async () => {

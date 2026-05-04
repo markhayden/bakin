@@ -25,6 +25,11 @@ import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { createLogger } from './logger'
 import { getContentDir } from './content-dir'
 import { appendAudit } from './audit'
+import {
+  isInvalidJsonBodyError,
+  isRequestBodyTooLargeError,
+  readJsonBody,
+} from './request-body'
 import { recordUsage } from '@/core/usage'
 import { getAllExecTools, getExecTool, getToolContext } from '../../scripts/lib/registry'
 import {
@@ -69,18 +74,21 @@ const sseSessions = new Map<string, SseSession>()
 
 const startedAt = new Date().toISOString()
 
-// Expose MCP session state to plugin-land without an HTTP hop. The health
-// plugin reads this via globalThis to avoid coupling to mcp-server.ts
-// directly — same pattern as __bakinBroadcast.
-;(globalThis as unknown as { __bakinGetMcpSessions?: () => { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string } }).__bakinGetMcpSessions = () => {
+type SessionSummaryInput = Pick<McpSession | SseSession, 'agentId' | 'createdAt'>
+
+export function summarizeMcpSessions(
+  streamable: Iterable<SessionSummaryInput>,
+  sse: Iterable<SessionSummaryInput>,
+  upSince: string = startedAt,
+): { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string } {
   const agentMap = new Map<string, { sessions: number; latestAt: number }>()
-  for (const [, s] of sessions) {
-    const existing = agentMap.get(s.agentId)
+  for (const session of [...streamable, ...sse]) {
+    const existing = agentMap.get(session.agentId)
     if (existing) {
       existing.sessions++
-      existing.latestAt = Math.max(existing.latestAt, s.createdAt)
+      existing.latestAt = Math.max(existing.latestAt, session.createdAt)
     } else {
-      agentMap.set(s.agentId, { sessions: 1, latestAt: s.createdAt })
+      agentMap.set(session.agentId, { sessions: 1, latestAt: session.createdAt })
     }
   }
   return {
@@ -89,8 +97,15 @@ const startedAt = new Date().toISOString()
       sessions: info.sessions,
       connectedAt: new Date(info.latestAt).toISOString(),
     })),
-    upSince: startedAt,
+    upSince,
   }
+}
+
+// Expose MCP session state to plugin-land without an HTTP hop. The health
+// plugin reads this via globalThis to avoid coupling to mcp-server.ts
+// directly — same pattern as __bakinBroadcast.
+;(globalThis as unknown as { __bakinGetMcpSessions?: () => { activeSessions: Array<{ agent: string; sessions: number; connectedAt: string }>; upSince: string } }).__bakinGetMcpSessions = () => {
+  return summarizeMcpSessions(sessions.values(), sseSessions.values(), startedAt)
 }
 
 // Clean up stale sessions every 5 minutes.
@@ -367,7 +382,22 @@ export async function handleMcpRequest(
 
   // ─── POST: route to correct transport ──────────────────────────────
   if (method === 'POST') {
-    const body = await parseBody(req)
+    let body: unknown
+    try {
+      body = await parseBody(req)
+    } catch (err) {
+      if (isRequestBodyTooLargeError(err)) {
+        res.writeHead(413, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: err.message }))
+        return
+      }
+      if (isInvalidJsonBodyError(err)) {
+        res.writeHead(400, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ error: 'Invalid JSON body' }))
+        return
+      }
+      throw err
+    }
 
     // Check for Streamable HTTP session (header-based)
     const existingSessionId = req.headers['mcp-session-id'] as string | undefined
@@ -441,19 +471,7 @@ export async function handleMcpRequest(
 // ---------------------------------------------------------------------------
 
 function parseBody(req: IncomingMessage): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = []
-    req.on('data', (chunk: Buffer) => chunks.push(chunk))
-    req.on('end', () => {
-      try {
-        const raw = Buffer.concat(chunks).toString('utf-8')
-        resolve(raw ? JSON.parse(raw) : undefined)
-      } catch (err) {
-        reject(err)
-      }
-    })
-    req.on('error', reject)
-  })
+  return readJsonBody(req)
 }
 
 // ---------------------------------------------------------------------------

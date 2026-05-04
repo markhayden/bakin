@@ -28,6 +28,7 @@ mock.module('../../src/core/task-store', () => ({}))
 
 import { defineRoute } from '../../packages/core/src/routing'
 import { buildOpenApiDocument, invalidateDocsCache } from '../../packages/host/src/api/docs-runtime'
+import { collectOpenApiSources } from '../../packages/host/src/api/openapi-sources'
 
 describe('buildOpenApiDocument', () => {
   it('returns a valid OpenAPI 3.1 envelope when no routes', () => {
@@ -79,5 +80,17 @@ describe('buildOpenApiDocument', () => {
     ])
     const tagNames = doc.tags.map(t => t.name).sort()
     expect(tagNames).toEqual(['Core', 'Tasks'])
+  })
+
+  it('collects typed core route schemas for the live OpenAPI document', () => {
+    invalidateDocsCache()
+    const doc = buildOpenApiDocument(collectOpenApiSources([]))
+
+    const schema = doc.paths['/api/plugins/link'].post.requestBody?.content['application/json'].schema
+
+    expect(schema?.properties).toHaveProperty('localPath')
+    expect(schema?.properties).toHaveProperty('force')
+    expect(schema?.properties).not.toHaveProperty('path')
+    expect(schema?.required).toEqual(['localPath'])
   })
 })
