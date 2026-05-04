@@ -159,6 +159,14 @@ export interface BakinSettings {
   }
   plugins: {
     runtimeCapabilityMode: 'off' | 'warn' | 'enforce'
+    /** When true, user plugin install/link/upgrade rejects unsigned or untrusted manifests. */
+    requireSignatures: boolean
+    /**
+     * Trusted signer roots for plugin manifests. Entries may be
+     * `sha256:<hex>` fingerprints, raw base64 Ed25519 SPKI public keys, or
+     * `ed25519:<base64-public-key>`.
+     */
+    trustedSigners: string[]
   }
 }
 
@@ -264,7 +272,47 @@ export const DEFAULT_SETTINGS: BakinSettings = {
   },
   plugins: {
     runtimeCapabilityMode: 'warn',
+    requireSignatures: false,
+    trustedSigners: [],
   },
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function normalizePluginSettings(input: unknown): BakinSettings['plugins'] {
+  const raw = isRecord(input) ? input : {}
+  const runtimeCapabilityMode = (
+    raw.runtimeCapabilityMode === 'off' ||
+    raw.runtimeCapabilityMode === 'warn' ||
+    raw.runtimeCapabilityMode === 'enforce'
+  )
+    ? raw.runtimeCapabilityMode
+    : DEFAULT_SETTINGS.plugins.runtimeCapabilityMode
+  const requireSignatures = typeof raw.requireSignatures === 'boolean'
+    ? raw.requireSignatures
+    : DEFAULT_SETTINGS.plugins.requireSignatures
+  const trustedSigners = Array.isArray(raw.trustedSigners)
+    ? Array.from(new Set(
+      raw.trustedSigners
+        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        .map(value => value.trim()),
+    ))
+    : DEFAULT_SETTINGS.plugins.trustedSigners
+
+  return {
+    runtimeCapabilityMode,
+    requireSignatures,
+    trustedSigners,
+  }
+}
+
+function normalizeSettings(settings: BakinSettings): BakinSettings {
+  return {
+    ...settings,
+    plugins: normalizePluginSettings(settings.plugins),
+  }
 }
 
 // Use globalThis so the settings cache is shared across every reach into
@@ -318,10 +366,10 @@ export function getSettings(): BakinSettings {
     log.warn('Failed to read settings, using defaults', err)
   }
 
-  const settings = deepMerge(
+  const settings = normalizeSettings(deepMerge(
     DEFAULT_SETTINGS as unknown as Record<string, unknown>,
     overrides
-  ) as unknown as BakinSettings
+  ) as unknown as BakinSettings)
 
   setCachedSettings(settings)
   return settings

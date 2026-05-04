@@ -29,6 +29,8 @@ describe('Settings', () => {
     expect(settings.search.settings.enabled).toBe(true)
     expect(settings.runtime.adapter).toBe('openclaw')
     expect(settings.runtime.settings).toEqual({})
+    expect(settings.plugins.requireSignatures).toBe(false)
+    expect(settings.plugins.trustedSigners).toEqual([])
   })
 
   it('returns doctor defaults including requireOnboard', () => {
@@ -105,6 +107,35 @@ describe('Settings', () => {
     const settings = getSettings()
     expect(settings.runtime.adapter).toBe('openclaw')
     expect(settings.runtime.settings).toEqual({ customPort: 19000 })
+  })
+
+  it('merges plugin signature policy overrides preserving plugin defaults', () => {
+    fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
+      plugins: {
+        requireSignatures: true,
+        trustedSigners: ['sha256:abc123'],
+      },
+    }))
+
+    const settings = getSettings()
+    expect(settings.plugins.requireSignatures).toBe(true)
+    expect(settings.plugins.trustedSigners).toEqual(['sha256:abc123'])
+    expect(settings.plugins.runtimeCapabilityMode).toBe('warn')
+  })
+
+  it('normalizes malformed plugin signature policy settings to safe defaults', () => {
+    fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
+      plugins: {
+        requireSignatures: 'true',
+        trustedSigners: ['sha256:abc123', '', 42],
+      },
+    }))
+
+    const settings = getSettings()
+    expect(settings.plugins.requireSignatures).toBe(false)
+    expect(settings.plugins.trustedSigners).toEqual(['sha256:abc123'])
   })
 
   it('caches settings on subsequent calls', () => {

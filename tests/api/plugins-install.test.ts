@@ -46,6 +46,7 @@ mock.module('@/core/plugins/live-lifecycle', () => ({
 
 import { post as installPOST } from '../../packages/host/src/api/plugins/install'
 import { post as removePOST } from '../../packages/host/src/api/plugins/remove'
+import { resetSettingsCache } from '../../src/core/settings'
 
 // Source plugin lives INSIDE the mocked content dir so it's contained by
 // the install handler's path-traversal guard (C12 hardening). The original
@@ -53,6 +54,7 @@ import { post as removePOST } from '../../packages/host/src/api/plugins/remove'
 // root (~/.bakin/ ↔ testDir / $HOME / cwd) — exactly the case the guard
 // rejects.
 const sourcePluginDir = join(testDir, 'source-plugin')
+const settingsFile = join(testDir, 'settings.json')
 
 function makeRequest(body: unknown): Request {
   return new Request('http://localhost/api/plugins/install', {
@@ -70,9 +72,7 @@ async function invoke(
   return handler(req, new URL(req.url))
 }
 
-beforeAll(() => {
-  mkdirSync(testDir, { recursive: true })
-  mkdirSync(sourcePluginDir, { recursive: true })
+function writeSourceManifest(manifest: Record<string, unknown> = {}) {
   writeFileSync(
     join(sourcePluginDir, 'bakin-plugin.json'),
     JSON.stringify({
@@ -83,8 +83,20 @@ beforeAll(() => {
       description: 'Test plugin',
       entry: { server: 'index.ts' },
       permissions: [],
+      ...manifest,
     }, null, 2),
   )
+}
+
+function writeSettings(settings: Record<string, unknown>) {
+  writeFileSync(settingsFile, JSON.stringify(settings, null, 2))
+  resetSettingsCache()
+}
+
+beforeAll(() => {
+  mkdirSync(testDir, { recursive: true })
+  mkdirSync(sourcePluginDir, { recursive: true })
+  writeSourceManifest()
   writeFileSync(join(sourcePluginDir, 'index.ts'), '// stub\n')
 })
 
@@ -97,6 +109,9 @@ beforeEach(() => {
   const installed = join(testDir, 'plugins', 'hello')
   if (existsSync(installed)) rmSync(installed, { recursive: true, force: true })
   rmSync(join(testDir, 'plugins', 'lock.json'), { force: true })
+  rmSync(settingsFile, { force: true })
+  writeSourceManifest()
+  resetSettingsCache()
 })
 
 describe('POST /api/plugins/install', () => {
@@ -158,6 +173,21 @@ describe('POST /api/plugins/install', () => {
     expect(existsSync(join(testDir, 'plugins', 'hello', 'bakin-plugin.json'))).toBe(true)
   })
 
+  it('rejects unsigned plugins when signatures are required', async () => {
+    writeSettings({
+      plugins: {
+        requireSignatures: true,
+        trustedSigners: [],
+      },
+    })
+
+    const res = await invoke(installPOST, makeRequest({ source: sourcePluginDir, type: 'local' }))
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toMatch(/signed plugin manifest/)
+    expect(existsSync(join(testDir, 'plugins', 'hello'))).toBe(false)
+  })
+
   it('rejects dev installs from github sources', async () => {
     const res = await invoke(installPOST, makeRequest({
       source: 'github:markhayden/bakin-bits-official#plugins/messaging',
@@ -182,6 +212,24 @@ describe('POST /api/plugins/install', () => {
     expect(body.activated).toBe(true)
     expect(body.linkedSource).toBe(realpathSync(sourcePluginDir))
     expect(body.message).toMatch(/Dev-installed/)
+  })
+
+  it('rejects unsigned dev installs when signatures are required', async () => {
+    writeSettings({
+      plugins: {
+        requireSignatures: true,
+        trustedSigners: [],
+      },
+    })
+
+    const res = await invoke(installPOST, makeRequest({
+      source: sourcePluginDir,
+      type: 'local',
+      dev: true,
+    }))
+    expect(res.status).toBe(400)
+    const body = await res.json()
+    expect(body.error).toMatch(/signed plugin manifest/)
   })
 
   it('overwrites an existing install cleanly', async () => {
