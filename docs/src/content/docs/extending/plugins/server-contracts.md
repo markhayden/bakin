@@ -89,7 +89,7 @@ Exec tools are the API agents usually feel first. Keep tool names stable, parame
 
 ```ts
 ctx.registerExecTool({
-  name: 'docs_basic_echo',
+  name: 'bakin_exec_docs-basic_echo',
   description: 'Echo a short message through the docs basic plugin.',
   parameters: {
     message: z.string().min(1).max(500),
@@ -101,7 +101,7 @@ ctx.registerExecTool({
 })
 ```
 
-Use plugin-specific prefixes. Return an actionable `error` string when `ok` is false. If the tool mutates tasks, assets, workflows, or external systems, make that obvious in the name and description.
+Use the enforced `bakin_exec_{pluginId}_{action}` prefix for user plugin tools. The tool must also be declared in `bakin-plugin.json` under `contributes.execTools`; duplicate names and cross-plugin prefixes fail plugin activation. Return an actionable `error` string when `ok` is false. If the tool mutates tasks, assets, workflows, or external systems, make that obvious in the name and description.
 
 ## Hooks
 

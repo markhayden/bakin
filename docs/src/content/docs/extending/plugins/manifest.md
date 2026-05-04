@@ -125,6 +125,8 @@ The signature covers canonical JSON for `bakin-plugin.json` with the top-level `
 
 API route paths are plugin-relative. A route declared as `/hello` is exposed under `/api/plugins/{pluginId}/hello`. Do not declare `/api/...` paths in a plugin manifest.
 
+Exec tool names must use the plugin-owned MCP namespace: `bakin_exec_{pluginId}_{action}`. The manifest declaration and runtime `ctx.registerExecTool()` call must agree. Bakin rejects undeclared tools, duplicate tool names, and user plugin tools that register outside their own plugin prefix.
+
 ## Permissions
 
 Declare permissions before calling the corresponding APIs.
