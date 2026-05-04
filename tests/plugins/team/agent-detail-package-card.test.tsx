@@ -130,7 +130,7 @@ describe('PackageCard — read-only display per state', () => {
     expect((adopt as HTMLButtonElement).disabled).toBe(false)
     // The explainer text appears below the button so users understand
     // what adoption means before clicking.
-    expect(screen.getByText(/lessons-lesson toggles/)).toBeDefined()
+    expect(screen.getByText(/lesson toggles/)).toBeDefined()
     expect(screen.getByText(/workspace files stay as-is/)).toBeDefined()
   })
 
