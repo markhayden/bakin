@@ -14,7 +14,7 @@
  * plugins are activated once at boot, routes are already registered, ctx
  * lookups go through the real globals. ~170 lines of duplication removed.
  */
-import { readFileSync, writeFileSync, appendFileSync, mkdirSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import { MarkdownStorageAdapter } from '@/lib/storage/markdown-adapter'
 import { ScopedPluginStorageAdapter } from '@bakin/core/storage/scoped-plugin-storage'
@@ -105,21 +105,7 @@ function buildCtx(pluginId: string): PluginContext {
         }
       },
       audit: (event, agent, data) => {
-        const contentDir = getContentDir()
-        const entry = JSON.stringify({
-          ts: new Date().toISOString(),
-          event: `${pluginId}.${event}`,
-          agent,
-          ...(data || {}),
-        })
-        const auditPath = join(contentDir, 'audit.jsonl')
-        try { appendFileSync(auditPath, entry + '\n') } catch { /* best-effort */ }
-        const broadcastFn = (globalThis as Record<string, unknown>).__bakinBroadcast as
-          | ((data: Record<string, unknown>) => void)
-          | undefined
-        if (broadcastFn) {
-          broadcastFn({ type: 'audit', event: `${pluginId}.${event}`, agent, ...data })
-        }
+        appendAudit(getContentDir(), `${pluginId}.${event}`, agent, data || {}, 'rest')
       },
     },
     search: buildSearchAPI(pluginId, { registerRoute: noopRegisterRoute, skipFileBackedWiring: true }),
