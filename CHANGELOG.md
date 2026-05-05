@@ -11,6 +11,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 ### Changed
 
 ### Fixed
+- Treat codesign verification and Apple notarization acceptance as the macOS gate for standalone CLI binaries.
 
 ### Removed
 
