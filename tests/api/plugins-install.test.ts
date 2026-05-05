@@ -190,7 +190,7 @@ describe('POST /api/plugins/install', () => {
 
   it('rejects dev installs from github sources', async () => {
     const res = await invoke(installPOST, makeRequest({
-      source: 'github:madeinwyo/bakin-bits-official#plugins/messaging',
+      source: 'github:markhayden/bakin-bits-official#plugins/messaging',
       type: 'github',
       dev: true,
     }))

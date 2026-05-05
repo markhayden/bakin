@@ -129,7 +129,7 @@ Full agent example:
   "dependencies": {
     "skills": [
       {
-        "source": "github:madeinwyo/bakin-skills-visual",
+        "source": "github:markhayden/bakin-skills-visual",
         "ref": "v0.3.1",
         "items": ["image-generation"]
       }
@@ -326,7 +326,7 @@ without each one duplicating the skill source.
 "dependencies": {
   "skills": [
     {
-      "source": "github:madeinwyo/bakin-skills-visual",
+      "source": "github:markhayden/bakin-skills-visual",
       "ref": "v0.3.1",
       "items": ["image-generation", "prompt-refinement"],
       "installAs": "shared-visual-v031"
@@ -334,7 +334,7 @@ without each one duplicating the skill source.
   ],
   "workflows": [
     {
-      "source": "github:madeinwyo/bakin-workflows-creative",
+      "source": "github:markhayden/bakin-workflows-creative",
       "ref": "v0.2.0"
     }
   ],

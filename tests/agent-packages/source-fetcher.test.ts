@@ -79,8 +79,8 @@ function seedLocalPackage(rel = 'pixel'): string {
 
 describe('parseGithubSpec', () => {
   it('parses owner/repo with no ref', () => {
-    expect(parseGithubSpec('github:madeinwyo/bakin-agent-pixel')).toEqual({
-      owner: 'madeinwyo',
+    expect(parseGithubSpec('github:markhayden/bakin-agent-pixel')).toEqual({
+      owner: 'markhayden',
       repo: 'bakin-agent-pixel',
       ref: null,
       subpath: '',
@@ -88,8 +88,8 @@ describe('parseGithubSpec', () => {
   })
 
   it('parses owner/repo@ref', () => {
-    expect(parseGithubSpec('github:madeinwyo/bakin-agent-pixel@v0.1.0')).toEqual({
-      owner: 'madeinwyo',
+    expect(parseGithubSpec('github:markhayden/bakin-agent-pixel@v0.1.0')).toEqual({
+      owner: 'markhayden',
       repo: 'bakin-agent-pixel',
       ref: 'v0.1.0',
       subpath: '',
@@ -97,8 +97,8 @@ describe('parseGithubSpec', () => {
   })
 
   it('parses owner/repo#subpath', () => {
-    expect(parseGithubSpec('github:madeinwyo/bakin-bits-official#agents/patch')).toEqual({
-      owner: 'madeinwyo',
+    expect(parseGithubSpec('github:markhayden/bakin-bits-official#agents/patch')).toEqual({
+      owner: 'markhayden',
       repo: 'bakin-bits-official',
       ref: null,
       subpath: 'agents/patch',
@@ -107,9 +107,9 @@ describe('parseGithubSpec', () => {
 
   it('parses owner/repo@ref#subpath', () => {
     expect(
-      parseGithubSpec('github:madeinwyo/bakin-bits-official@v0.2.0#agents/patch'),
+      parseGithubSpec('github:markhayden/bakin-bits-official@v0.2.0#agents/patch'),
     ).toEqual({
-      owner: 'madeinwyo',
+      owner: 'markhayden',
       repo: 'bakin-bits-official',
       ref: 'v0.2.0',
       subpath: 'agents/patch',
@@ -249,7 +249,7 @@ describe('fetchSource — github (mock runner)', () => {
     }
 
     const stagingDir = join(testDir, 'packages', '.staging-test')
-    const result = fetchGithubWithRunner('github:madeinwyo/foo@v0.1.0', mockGit, stagingDir)
+    const result = fetchGithubWithRunner('github:markhayden/foo@v0.1.0', mockGit, stagingDir)
 
     expect(result.kind).toBe('github')
     expect(result.commitSha).toBe('abc123')
@@ -260,7 +260,7 @@ describe('fetchSource — github (mock runner)', () => {
       '1',
       '--branch',
       'v0.1.0',
-      'https://github.com/madeinwyo/foo.git',
+      'https://github.com/markhayden/foo.git',
       stagingDir,
     ])
   })
@@ -289,7 +289,7 @@ describe('fetchSource — github (mock runner)', () => {
 
     const stagingDir = join(testDir, 'packages', '.staging-fallback')
     const result = fetchGithubWithRunner(
-      'github:madeinwyo/foo@abc123abc',
+      'github:markhayden/foo@abc123abc',
       mockGit,
       stagingDir,
     )
@@ -314,7 +314,7 @@ describe('fetchSource — github (mock runner)', () => {
     }
 
     const stagingDir = join(testDir, 'packages', '.staging-default')
-    const result = fetchGithubWithRunner('github:madeinwyo/foo', mockGit, stagingDir)
+    const result = fetchGithubWithRunner('github:markhayden/foo', mockGit, stagingDir)
 
     expect(result.ref).toBe('')
     expect(result.commitSha).toBe('deadbeef')
@@ -346,7 +346,7 @@ describe('fetchSource — github (mock runner)', () => {
 
     const stagingDir = join(testDir, 'packages', '.staging-subpath')
     const result = fetchGithubWithRunner(
-      'github:madeinwyo/bakin-bits-official#agents/patch',
+      'github:markhayden/bakin-bits-official#agents/patch',
       mockGit,
       stagingDir,
     )
@@ -373,7 +373,7 @@ describe('fetchSource — github (mock runner)', () => {
     const stagingDir = join(testDir, 'packages', '.staging-missing-subpath')
     expect(() =>
       fetchGithubWithRunner(
-        'github:madeinwyo/bakin-bits-official#agents/patch',
+        'github:markhayden/bakin-bits-official#agents/patch',
         mockGit,
         stagingDir,
       ),
@@ -394,7 +394,7 @@ describe('fetchSource — github (mock runner)', () => {
     const stagingDir = join(testDir, 'packages', '.staging-subpath-no-manifest')
     expect(() =>
       fetchGithubWithRunner(
-        'github:madeinwyo/bakin-bits-official#agents/patch',
+        'github:markhayden/bakin-bits-official#agents/patch',
         mockGit,
         stagingDir,
       ),
@@ -414,7 +414,7 @@ describe('fetchSource — github (mock runner)', () => {
 
     const stagingDir = join(testDir, 'packages', '.staging-no-manifest')
     expect(() =>
-      fetchGithubWithRunner('github:madeinwyo/foo@v0.1.0', mockGit, stagingDir),
+      fetchGithubWithRunner('github:markhayden/foo@v0.1.0', mockGit, stagingDir),
     ).toThrow(/missing bakin-package\.json/)
   })
 })
@@ -449,7 +449,7 @@ describe('fetchSource — github (real git, against a local bare repo)', () => {
     const fakeGitRunner = (args: string[]): string => {
       // Substitute github URL → local bare repo path
       const swapped = args.map((a) =>
-        a === 'https://github.com/madeinwyo/foo.git' ? bare : a,
+        a === 'https://github.com/markhayden/foo.git' ? bare : a,
       )
       return execFileSync('git', swapped, {
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -458,7 +458,7 @@ describe('fetchSource — github (real git, against a local bare repo)', () => {
 
     const stagingDir = join(testDir, 'packages', '.staging-real-git')
     const result = fetchGithubWithRunner(
-      'github:madeinwyo/foo@v0.1.0',
+      'github:markhayden/foo@v0.1.0',
       fakeGitRunner,
       stagingDir,
     )

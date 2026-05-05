@@ -118,14 +118,14 @@ describe('plugin manifest schema', () => {
       ...baseManifest,
       signature: {
         algorithm: 'ed25519',
-        signer: 'madeinwyo',
+        signer: 'markhayden',
         publicKey: 'MCowBQYDK2VwAyEAtest',
         signature: 'signed-body',
       },
     })
 
     expect(manifest.signature?.algorithm).toBe('ed25519')
-    expect(manifest.signature?.signer).toBe('madeinwyo')
+    expect(manifest.signature?.signer).toBe('markhayden')
   })
 
   it('rejects malformed signature blocks', () => {
@@ -133,7 +133,7 @@ describe('plugin manifest schema', () => {
       ...baseManifest,
       signature: {
         algorithm: 'rsa',
-        signer: 'madeinwyo',
+        signer: 'markhayden',
         publicKey: 'MCowBQYDK2VwAyEAtest',
         signature: 'signed-body',
       },
@@ -143,7 +143,7 @@ describe('plugin manifest schema', () => {
       ...baseManifest,
       signature: {
         algorithm: 'ed25519',
-        signer: 'madeinwyo',
+        signer: 'markhayden',
         signature: 'signed-body',
       },
     })).toThrow(/signature\.publicKey/)

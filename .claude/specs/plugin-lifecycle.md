@@ -2,7 +2,7 @@
 
 **Status:** Draft for review (kickoff phase, pre-plan)
 **Owner:** @markhayden
-**Bundles:** [#151](https://github.com/madeinwyo/bakin/issues/151) (`bakin plugins upgrade`), [#119](https://github.com/madeinwyo/bakin/issues/119) (per-plugin uninstall teardown), [#142](https://github.com/madeinwyo/bakin/issues/142) (permissions enforcement layers 1+2)
+**Bundles:** [#151](https://github.com/markhayden/bakin/issues/151) (`bakin plugins upgrade`), [#119](https://github.com/markhayden/bakin/issues/119) (per-plugin uninstall teardown), [#142](https://github.com/markhayden/bakin/issues/142) (permissions enforcement layers 1+2)
 **Companion plan:** `.claude/specs/plugin-lifecycle-plan.md` (next phase)
 
 ---
@@ -430,7 +430,7 @@ Specific to this work:
 
 **Hybrid git substrate:**
 - **Default: hermetic local bare repos.** `tests/fixtures/plugins/hermetic-git.ts` exposes `createBareRepo(fixturePath: string): Promise<string>` (returns `file://` URL) and `pushCommit(workdir: string, files: Record<string, string>): Promise<string>` (returns sha). `git init --bare` is fast (~50ms). Tests skip with a clear message if `git` not on PATH.
-- **One e2e smoke:** `github-smoke.e2e.test.ts` gated behind `BAKIN_E2E_GITHUB=1`. Points at `madeinwyo/bakin-plugin-fixture-readonly` (public, single commit, never changes — set up as part of this work). Verifies: `github:user/repo` URL parser → real clone → default-branch detection → `git ls-remote` for upgrade-available check. Runs in CI on tagged release only.
+- **One e2e smoke:** `github-smoke.e2e.test.ts` gated behind `BAKIN_E2E_GITHUB=1`. Points at `markhayden/bakin-plugin-fixture-readonly` (public, single commit, never changes — set up as part of this work). Verifies: `github:user/repo` URL parser → real clone → default-branch detection → `git ls-remote` for upgrade-available check. Runs in CI on tagged release only.
 
 **Coverage target:** every new public function has at least one happy-path + one error-case test.
 

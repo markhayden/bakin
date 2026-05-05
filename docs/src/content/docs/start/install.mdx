@@ -9,7 +9,7 @@ import { Aside, LinkButton } from '@astrojs/starlight/components'
 One command and you're running. The installer picks the right binary for your machine, verifies the SHA-256, and drops it on your `PATH` as `bakin`.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/madeinwyo/bakin/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | bash
 ```
 
 That's the whole install.
@@ -68,7 +68,7 @@ Each release publishes the platform binaries plus a `checksums.txt` with SHA-256
 Override the default with `BAKIN_INSTALL_DIR`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/madeinwyo/bakin/main/install.sh | BAKIN_INSTALL_DIR="$HOME/bin" bash
+curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | BAKIN_INSTALL_DIR="$HOME/bin" bash
 ```
 
 ### Pin a version
@@ -76,12 +76,12 @@ curl -fsSL https://raw.githubusercontent.com/madeinwyo/bakin/main/install.sh | B
 `BAKIN_VERSION` grabs a specific release tag instead of the latest:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/madeinwyo/bakin/main/install.sh | BAKIN_VERSION=v1.0.0 bash
+curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | BAKIN_VERSION=v1.0.0 bash
 ```
 
 ### Manual download
 
-Pull the asset for your platform from the [GitHub releases page](https://github.com/madeinwyo/bakin/releases), check it against `checksums.txt`, drop it on your `PATH` as `bakin`. Same outcome as the installer, just more steps.
+Pull the asset for your platform from the [GitHub releases page](https://github.com/markhayden/bakin/releases), check it against `checksums.txt`, drop it on your `PATH` as `bakin`. Same outcome as the installer, just more steps.
 
 ### Build from source
 

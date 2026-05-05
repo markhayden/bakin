@@ -55,7 +55,7 @@ import { snapshotUninstall } from '../../src/core/plugins/uninstall-snapshot'
 import { addPlugin, readPluginLockfile, writePluginLockfile } from '../../packages/core/src/plugins/lockfile'
 
 const pluginEntry: PluginLockEntry = {
-  source: 'github:madeinwyo/example-plugin',
+  source: 'github:markhayden/example-plugin',
   type: 'github',
   ref: 'main',
   commitSha: '0123456789abcdef0123456789abcdef01234567',

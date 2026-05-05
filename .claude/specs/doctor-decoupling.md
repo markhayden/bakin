@@ -2,8 +2,8 @@
 
 **Status:** Draft for review (kickoff phase, pre-plan)
 **Owner:** @markhayden
-**Closes:** [#139](https://github.com/madeinwyo/bakin/issues/139) (collapse `DiagnosticResult` into `HealthCheckResult`)
-**Sibling follow-up filed:** [#172](https://github.com/madeinwyo/bakin/issues/172) (unify `bakin agent-rules` with `applyAllManagedBlocks`)
+**Closes:** [#139](https://github.com/markhayden/bakin/issues/139) (collapse `DiagnosticResult` into `HealthCheckResult`)
+**Sibling follow-up filed:** [#172](https://github.com/markhayden/bakin/issues/172) (unify `bakin agent-rules` with `applyAllManagedBlocks`)
 **Companion plan:** `.claude/specs/doctor-decoupling-plan.md` (next phase)
 
 ---
@@ -35,7 +35,7 @@ After this PR:
 
 | Cut | Reason | Follow-up |
 |-----|--------|-----------|
-| Unifying CLI `bakin agent-rules` with `applyAllManagedBlocks` | The CLI duplicates writing-blocks-to-AGENTS.md logic at a smaller scope than the doctor's helper. Pure cleanup, separable. | [#172](https://github.com/madeinwyo/bakin/issues/172) (filed during kickoff) |
+| Unifying CLI `bakin agent-rules` with `applyAllManagedBlocks` | The CLI duplicates writing-blocks-to-AGENTS.md logic at a smaller scope than the doctor's helper. Pure cleanup, separable. | [#172](https://github.com/markhayden/bakin/issues/172) (filed during kickoff) |
 | Splitting managed-block ownership across plugins (workflow-rules → workflows, scheduling-rules → schedule, asset-rules → assets) | Would require a new "managed-block contributor" registry hook. Out of scope; the 7 blocks travel together to `plugins/health/lib/managed-blocks.ts`. | New issue: "feat(plugins): managed-block contributor registry" |
 | Moving `~/.bakin/settings.json` doctor-* keys to per-plugin settings | Doctor settings live in core today (`settings.doctor.intervalMs`, `autoFixSkill`, `requireOnboard`). Each migrated check reads them via `getSettings()` — same as the workflows precedent. Behavioral move; not a layout move. | None planned |
 | Moving the cron itself into the health plugin (delete `src/core/doctor.ts` entirely) | Considered. Rejected: core already owns long-running services (dispatch loop, file watcher); doctor cron fits that pattern. Inconsistent to put one in a plugin. | None planned |
@@ -160,7 +160,7 @@ const { AGENT_RULES_BLOCK_START, AGENT_RULES_BLOCK_END, resolveOrchestratorRules
 const { applyAllManagedBlocks } = await import('../plugins/health/lib/managed-blocks')
 ```
 
-Both are bundled into the same single-file binary (`bun build --compile`); the import path change is purely a refactor. Issue [#172](https://github.com/madeinwyo/bakin/issues/172) tracks unifying the CLI's two code paths into one (`applyAllManagedBlocks` everywhere) — out of scope here.
+Both are bundled into the same single-file binary (`bun build --compile`); the import path change is purely a refactor. Issue [#172](https://github.com/markhayden/bakin/issues/172) tracks unifying the CLI's two code paths into one (`applyAllManagedBlocks` everywhere) — out of scope here.
 
 ---
 
@@ -386,7 +386,7 @@ Detailed per-commit plan lives in `.claude/specs/doctor-decoupling-plan.md` (nex
 ## 10. Acceptance
 
 - [ ] `grep -nE "function check[A-Z]" src/core/doctor.ts` returns zero matches.
-- [ ] `grep -nE "interface DiagnosticResult" /Users/roscoe/go/src/github.com/madeinwyo/bakin -r --include="*.ts" --include="*.tsx"` returns zero matches.
+- [ ] `grep -nE "interface DiagnosticResult" /Users/roscoe/go/src/github.com/markhayden/bakin -r --include="*.ts" --include="*.tsx"` returns zero matches.
 - [ ] `wc -l src/core/doctor.ts` is ≤ 100.
 - [ ] `bun test --isolate` is green.
 - [ ] `bunx tsc --noEmit -p tsconfig.app.json` is green.

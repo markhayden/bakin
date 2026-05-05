@@ -2,7 +2,7 @@
  * `bakin update` — self-replacing binary update (#147 TG4).
  *
  * Flow:
- *   1. GET https://api.github.com/repos/madeinwyo/bakin/releases/latest
+ *   1. GET https://api.github.com/repos/markhayden/bakin/releases/latest
  *   2. Pick the asset whose name ends in `bakin-<platform>-<arch>`.
  *   3. Download it alongside `checksums.txt`.
  *   4. Verify SHA256 against the listed value.
@@ -22,7 +22,7 @@ import { Readable } from 'node:stream'
 import { finished } from 'node:stream/promises'
 import type { ReadableStream as WebReadableStream } from 'node:stream/web'
 
-const RELEASE_API = 'https://api.github.com/repos/madeinwyo/bakin/releases/latest'
+const RELEASE_API = 'https://api.github.com/repos/markhayden/bakin/releases/latest'
 
 interface GithubAsset {
   name: string

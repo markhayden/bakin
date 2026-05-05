@@ -5,7 +5,7 @@
  *   POST   /api/packages/{packageId}/update           update at recorded ref
  *
  * The packageId here is the lockfile key — for standalone packs that's
- * `<id>@<version>` (e.g. "madeinwyo.bakin-skills-visual@0.3.1"). The CLI
+ * `<id>@<version>` (e.g. "markhayden.bakin-skills-visual@0.3.1"). The CLI
  * URL-encodes the `@` so the path-segment match below works without
  * extra parsing.
  */

@@ -1,6 +1,6 @@
 # Spec — Surgical Agent-Packages UI in Teams Plugin (#158)
 
-Closes part of [#158](https://github.com/madeinwyo/bakin/issues/158) as a partial. Opens follow-up for Workshop install/browse UX.
+Closes part of [#158](https://github.com/markhayden/bakin/issues/158) as a partial. Opens follow-up for Workshop install/browse UX.
 
 ## Problem
 

@@ -1,7 +1,7 @@
 # Homebrew formula for Bakin.
 #
 # This file is the CANONICAL template. Publishing to Homebrew involves
-# copying it to the tap repository (madeinwyo/homebrew-tap) at
+# copying it to the tap repository (markhayden/homebrew-tap) at
 # Formula/bakin.rb and updating `url` + `sha256` for each release. See
 # homebrew/README.md for the publish flow.
 #
@@ -11,23 +11,23 @@
 # install time.
 class Bakin < Formula
   desc "Self-hosted multi-agent orchestration platform"
-  homepage "https://github.com/madeinwyo/bakin"
+  homepage "https://github.com/markhayden/bakin"
   license "MIT"
 
   on_macos do
     on_arm do
-      url "https://github.com/madeinwyo/bakin/releases/download/v__VERSION__/bakin-darwin-arm64"
+      url "https://github.com/markhayden/bakin/releases/download/v__VERSION__/bakin-darwin-arm64"
       sha256 "__SHA256_DARWIN_ARM64__"
     end
   end
 
   on_linux do
     on_intel do
-      url "https://github.com/madeinwyo/bakin/releases/download/v__VERSION__/bakin-linux-x64"
+      url "https://github.com/markhayden/bakin/releases/download/v__VERSION__/bakin-linux-x64"
       sha256 "__SHA256_LINUX_X64__"
     end
     on_arm do
-      url "https://github.com/madeinwyo/bakin/releases/download/v__VERSION__/bakin-linux-arm64"
+      url "https://github.com/markhayden/bakin/releases/download/v__VERSION__/bakin-linux-arm64"
       sha256 "__SHA256_LINUX_ARM64__"
     end
   end

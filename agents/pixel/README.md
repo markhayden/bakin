@@ -29,7 +29,7 @@ agents/pixel/
 - **No bundled OpenClaw skill.** Pixel uses the OpenClaw built-in `nano-banana-pro` skill that ships with OpenClaw itself; she does not need to project a custom skill into her workspace.
 - **AGENTS.md ships only Pixel-specific content.** The `bakin:mission-control`, `bakin:hard-rules`, `bakin:dependency-pattern`, `bakin:media-delegation`, `bakin:workflow-rules`, `bakin:asset-rules`, and `bakin:scheduling-rules` blocks are *not* in the package source — `bakin doctor` injects them on install and keeps them current as Bakin's defaults evolve.
 - **Three lesson files**: two default-enabled (`prompt-style-system.md` covers prompt anatomy and iteration; `visual-styles.md` is the photo-real / hyper-real / Pixar-3D / editorial taxonomy) and one opt-in (`social-media-craft.md` covers viral patterns, click-bait without being slimy, and platform-specific aesthetics — only injected when the agent is doing social work). More lessons can be added later without a manifest change — drop a frontmatter'd `.md` in `lessons/` and bump the version.
-- **`agent.allowedTools` and `allowedSkills`** are declarative documentation in V1. Once issue [#42](https://github.com/madeinwyo/bakin/issues/42) ships, the dispatch-routing layer will read these and enforce hard scoping at the MCP boundary.
+- **`agent.allowedTools` and `allowedSkills`** are declarative documentation in V1. Once issue [#42](https://github.com/markhayden/bakin/issues/42) ships, the dispatch-routing layer will read these and enforce hard scoping at the MCP boundary.
 
 ## Installing
 
@@ -40,7 +40,7 @@ bakin agents install ./agents/pixel
 
 Once the package lives in its own repo:
 ```bash
-bakin agents install github:madeinwyo/bakin-agent-pixel
+bakin agents install github:markhayden/bakin-agent-pixel
 ```
 
 To attach the package to an already-existing OpenClaw `pixel` agent without overwriting their workspace files:

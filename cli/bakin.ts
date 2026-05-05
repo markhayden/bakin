@@ -950,7 +950,7 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
 
   console.log('')
   console.log('LaunchAgent auto-start is disabled. Run Bakin manually:')
-  console.log('  cd /Users/roscoe/go/src/github.com/madeinwyo/bakin && npx tsx server.ts')
+  console.log('  cd /Users/roscoe/go/src/github.com/markhayden/bakin && npx tsx server.ts')
   console.log('')
   console.log('Or use: bakin reboot')
 }

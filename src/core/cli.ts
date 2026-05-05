@@ -661,7 +661,7 @@ export async function cmdDev(): Promise<number> {
   const devScript = join(repoRoot, 'scripts', 'dev.ts')
   if (!existsSync(devScript)) {
     console.error('`bakin dev` only runs from a bakin source tree.')
-    console.error('Clone https://github.com/madeinwyo/bakin and run `bakin dev` from the repo root.')
+    console.error('Clone https://github.com/markhayden/bakin and run `bakin dev` from the repo root.')
     return 1
   }
 

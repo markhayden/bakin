@@ -26,7 +26,7 @@ No Node.js, pnpm, yarn, or Vite installation required — Bun handles everything
 ## First-time setup
 
 ```bash
-git clone git@github.com:madeinwyo/bakin.git
+git clone git@github.com:markhayden/bakin.git
 cd bakin
 bun install
 bun run typecheck

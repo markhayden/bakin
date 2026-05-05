@@ -27,14 +27,14 @@
   "dependencies": {},
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/madeinwyo/bakin.git",
+    "url": "git+https://github.com/markhayden/bakin.git",
     "directory": "packages/sdk"
   },
-  "homepage": "https://github.com/madeinwyo/bakin/tree/main/packages/sdk#readme",
+  "homepage": "https://github.com/markhayden/bakin/tree/main/packages/sdk#readme",
   "bugs": {
-    "url": "https://github.com/madeinwyo/bakin/issues"
+    "url": "https://github.com/markhayden/bakin/issues"
   },
-  "author": "madeinwyo",
+  "author": "markhayden",
   "license": "MIT",
   "keywords": [
     "bakin",

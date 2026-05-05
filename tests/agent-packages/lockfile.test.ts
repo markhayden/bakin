@@ -61,7 +61,7 @@ function pixelEntry(): PackageEntry {
   return {
     kind: 'agent',
     version: '0.1.0',
-    source: 'github:madeinwyo/bakin-agent-pixel',
+    source: 'github:markhayden/bakin-agent-pixel',
     ref: 'v0.1.0',
     commitSha: 'abc123',
     installedAt: NOW,
@@ -71,7 +71,7 @@ function pixelEntry(): PackageEntry {
     projections: [
       { kind: 'asset', target: '/tmp/avatar.jpg', sha256: 'deadbeef' },
     ],
-    dependencies: ['madeinwyo.bakin-skills-visual@0.3.1'],
+    dependencies: ['markhayden.bakin-skills-visual@0.3.1'],
   }
 }
 
@@ -79,7 +79,7 @@ function visualSkillsEntry(): PackageEntry {
   return {
     kind: 'skill-pack',
     version: '0.3.1',
-    source: 'github:madeinwyo/bakin-skills-visual',
+    source: 'github:markhayden/bakin-skills-visual',
     ref: 'v0.3.1',
     commitSha: 'def456',
     installedAt: NOW,

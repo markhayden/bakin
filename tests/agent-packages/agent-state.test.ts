@@ -60,7 +60,7 @@ function managedEntry(agentId = 'pixel'): PackageEntry {
   return {
     kind: 'agent',
     version: '0.1.0',
-    source: 'github:madeinwyo/bakin-agent-pixel',
+    source: 'github:markhayden/bakin-agent-pixel',
     ref: 'v0.1.0',
     commitSha: 'abc123',
     installedAt: NOW,

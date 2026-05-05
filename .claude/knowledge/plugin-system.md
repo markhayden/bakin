@@ -178,7 +178,7 @@ Manifest shape:
 {
   "signature": {
     "algorithm": "ed25519",
-    "signer": "madeinwyo",
+    "signer": "markhayden",
     "publicKey": "base64-spki-public-key",
     "signature": "base64-signature"
   }

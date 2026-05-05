@@ -178,7 +178,7 @@ Before starting Phase 0:
 - [ ] `gh issue view 175` exists — lint rule issue (already filed)
 - [ ] `gh issue view 174` exists — architectural inversion follow-up (already filed)
 - [ ] Confirm `~/.bakin/` and `~/.openclaw/` on dev machine are healthy (Phase 4-5 install round-trips against this dir)
-- [ ] `gh repo view madeinwyo/bakin-bits-official` returns "not found" — confirms we're creating it fresh in Phase 3
+- [ ] `gh repo view markhayden/bakin-bits-official` returns "not found" — confirms we're creating it fresh in Phase 3
 
 Before starting Phase 1:
 
@@ -193,7 +193,7 @@ Before starting Phase 2:
 Before starting Phase 3:
 
 - [ ] Phase 2 merged.
-- [ ] Empty `madeinwyo/bakin-bits-official` repo created on GitHub.
+- [ ] Empty `markhayden/bakin-bits-official` repo created on GitHub.
 
 Before starting Phase 4:
 
@@ -361,7 +361,7 @@ Hermetic git monorepo fixture with two plugins. Install one via `#subpath`, veri
 Files: 1.8 (`docs/src/content/docs/extend/plugins/install.md`), `.claude/knowledge/plugin-system.md` (lifecycle subsection).
 
 **P1 acceptance:**
-- `bakin plugins install github:madeinwyo/bakin-bits-official#plugins/messaging` works against fixture monorepo.
+- `bakin plugins install github:markhayden/bakin-bits-official#plugins/messaging` works against fixture monorepo.
 - Install fails clearly when subpath doesn't exist (`error: subpath 'plugins/foo' not found in repository`).
 - Lockfile round-trips: install → upgrade → remove.
 - Single `parseGithubSource` helper used by both install endpoint and upgrade flow.
@@ -547,7 +547,7 @@ Document `bakin plugins link`, the watcher contract, the hot-reload pipeline, th
 
 **Scope:** Bootstrap the repo. Empty plugins/ + agents/. Plugin authoring template. CI. Documentation.
 
-**No bakin PR.** Repo work happens in `madeinwyo/bakin-bits-official`.
+**No bakin PR.** Repo work happens in `markhayden/bakin-bits-official`.
 
 **Commits in that repo:**
 
@@ -576,7 +576,7 @@ Files: 3.7 (`agents/README.md`), 3.8 (`CONTRIBUTING.md`).
 How to set up locally: clone, `bakin plugins link ./plugins/foo`, edit, save. How to test: `bun test`. How to release: tag `<plugin>-v<semver>`. Agents directory: placeholder noting agent packages will live there in future.
 
 **P3 acceptance:**
-- Repo exists at `madeinwyo/bakin-bits-official`.
+- Repo exists at `markhayden/bakin-bits-official`.
 - CI passes against the empty state (just the template plugin).
 - `bakin plugins link /local/path/to/_template/` works.
 
@@ -758,7 +758,7 @@ Manual smoke (after Phase 2):
 - Fix error — observe recovery + new code live
 
 Manual smoke (after Phase 4-5):
-- `bakin plugins install github:madeinwyo/bakin-bits-official#plugins/messaging` — installs messaging
+- `bakin plugins install github:markhayden/bakin-bits-official#plugins/messaging` — installs messaging
 - `bakin plugins list` — shows messaging at v1.0.0, source `github:...`
 - `bakin plugins remove messaging` — removes cleanly, snapshots in `~/.bakin/.uninstalled/`
 
@@ -772,7 +772,7 @@ Manual smoke (after Phase 6):
 Per spec §12. All checkboxes accomplished:
 
 - [ ] `bakin-bits-official` exists with `messaging` + `projects` plugins.
-- [ ] `bakin plugins install github:madeinwyo/bakin-bits-official#plugins/messaging` works.
+- [ ] `bakin plugins install github:markhayden/bakin-bits-official#plugins/messaging` works.
 - [ ] `bakin plugins link /local/bakin-bits-official/plugins/messaging` works.
 - [ ] Editing a file in the linked plugin updates the running bakin within ~1s, no restart.
 - [ ] Build errors surface in dev overlay; old plugin keeps working until fix.
