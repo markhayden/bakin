@@ -47,6 +47,30 @@ bun test --watch --isolate   # watch mode
 bun run lint         # ESLint
 ```
 
+## Releases
+
+Releases are cut from `main` with the local release driver:
+
+```bash
+bun run release patch --dry-run
+bun run release patch
+bun run release minor --rc
+bun run release promote
+```
+
+The script checks that `main` is clean, matches `origin/main`, has green
+Main CI for the exact head SHA, has non-empty `[Unreleased]` changelog
+bullets, and will create the release commit/tag before an atomic push.
+
+CI then builds all binaries, signs/notarizes macOS, computes checksums,
+publishes `@bakin/sdk` with npm trusted publishing/provenance, updates
+`markhayden/homebrew-tap` for stable releases, publishes the GitHub
+release, and runs post-publish smoke.
+
+Maintainer one-time setup is documented in
+[`.claude/knowledge/release-pipeline.md`](./.claude/knowledge/release-pipeline.md).
+Do not add an `NPM_TOKEN`; npm publishing is OIDC/trusted-publisher based.
+
 ## Development loop
 
 `bun run dev` is what you use daily. It sets `BAKIN_DEV=1`, runs the same prestart build as `bun run start`, then starts a watcher coordinator + the server in the same process.
