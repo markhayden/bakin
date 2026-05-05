@@ -9,7 +9,7 @@
     ".": "./src/index.ts"
   },
   "peerDependencies": {
-    "@bakin/core": "^1.0.0"
+    "@bakin/core": "workspace:*"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"

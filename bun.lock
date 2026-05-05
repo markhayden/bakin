@@ -61,7 +61,7 @@
     },
     "docs": {
       "name": "@bakin/docs",
-      "version": "0.1.0",
+      "version": "0.0.0-workspace",
       "dependencies": {
         "@astrojs/react": "^5.0.4",
         "@astrojs/starlight": "^0.35.3",
@@ -78,21 +78,21 @@
     },
     "packages/adapter-antfly": {
       "name": "@bakin/adapter-antfly",
-      "version": "0.1.0",
+      "version": "0.0.0-workspace",
       "peerDependencies": {
-        "@bakin/core": "^1.0.0",
+        "@bakin/core": "workspace:*",
       },
     },
     "packages/adapter-openclaw": {
       "name": "@bakin/adapter-openclaw",
-      "version": "0.1.0",
+      "version": "0.0.0-workspace",
       "peerDependencies": {
-        "@bakin/core": "^1.0.0",
+        "@bakin/core": "workspace:*",
       },
     },
     "packages/core": {
       "name": "@bakin/core",
-      "version": "1.0.0",
+      "version": "0.0.0-workspace",
     },
     "packages/host": {
       "name": "@bakin/host",
@@ -100,7 +100,7 @@
     },
     "packages/sdk": {
       "name": "@bakin/sdk",
-      "version": "0.1.0",
+      "version": "0.0.0-workspace",
       "peerDependencies": {
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
