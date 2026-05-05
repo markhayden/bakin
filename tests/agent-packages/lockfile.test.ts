@@ -71,7 +71,7 @@ function pixelEntry(): PackageEntry {
     projections: [
       { kind: 'asset', target: '/tmp/avatar.jpg', sha256: 'deadbeef' },
     ],
-    dependencies: ['madeinwyo.bakin-skills-visual@0.3.1'],
+    dependencies: ['markhayden.bakin-skills-visual@0.3.1'],
   }
 }
 

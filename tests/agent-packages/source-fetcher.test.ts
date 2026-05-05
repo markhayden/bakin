@@ -80,7 +80,7 @@ function seedLocalPackage(rel = 'pixel'): string {
 describe('parseGithubSpec', () => {
   it('parses owner/repo with no ref', () => {
     expect(parseGithubSpec('github:markhayden/bakin-agent-pixel')).toEqual({
-      owner: 'madeinwyo',
+      owner: 'markhayden',
       repo: 'bakin-agent-pixel',
       ref: null,
       subpath: '',
@@ -89,7 +89,7 @@ describe('parseGithubSpec', () => {
 
   it('parses owner/repo@ref', () => {
     expect(parseGithubSpec('github:markhayden/bakin-agent-pixel@v0.1.0')).toEqual({
-      owner: 'madeinwyo',
+      owner: 'markhayden',
       repo: 'bakin-agent-pixel',
       ref: 'v0.1.0',
       subpath: '',
@@ -98,7 +98,7 @@ describe('parseGithubSpec', () => {
 
   it('parses owner/repo#subpath', () => {
     expect(parseGithubSpec('github:markhayden/bakin-bits-official#agents/patch')).toEqual({
-      owner: 'madeinwyo',
+      owner: 'markhayden',
       repo: 'bakin-bits-official',
       ref: null,
       subpath: 'agents/patch',
@@ -109,7 +109,7 @@ describe('parseGithubSpec', () => {
     expect(
       parseGithubSpec('github:markhayden/bakin-bits-official@v0.2.0#agents/patch'),
     ).toEqual({
-      owner: 'madeinwyo',
+      owner: 'markhayden',
       repo: 'bakin-bits-official',
       ref: 'v0.2.0',
       subpath: 'agents/patch',

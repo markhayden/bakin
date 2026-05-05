@@ -44,8 +44,8 @@ describe('package-paths', () => {
 
   it('skill-pack install dir lives under packages/skill-packs/', () => {
     expect(
-      getPackageSourceDir(CONTENT, 'skill-pack', 'madeinwyo.bakin-skills-visual', '0.3.1'),
-    ).toBe(join(CONTENT, 'packages', 'skill-packs', 'madeinwyo.bakin-skills-visual@0.3.1'))
+      getPackageSourceDir(CONTENT, 'skill-pack', 'markhayden.bakin-skills-visual', '0.3.1'),
+    ).toBe(join(CONTENT, 'packages', 'skill-packs', 'markhayden.bakin-skills-visual@0.3.1'))
   })
 
   it('workflow-pack install dir lives under packages/workflow-packs/', () => {

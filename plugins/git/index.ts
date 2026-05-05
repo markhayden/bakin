@@ -23,7 +23,7 @@ const execFileAsync = promisify(execFile)
 
 const REGISTRY_PATH = 'worktrees.json'
 const DEFAULT_WORKTREE_DIR = 'git-worktrees'
-const DEFAULT_ALLOWED_ROOT = '~/go/src/github.com/madeinwyo'
+const DEFAULT_ALLOWED_ROOT = '~/go/src/github.com/markhayden'
 
 const okResponse = z.object({ ok: z.boolean() }).passthrough()
 const errorResponse = z.object({ error: z.string() }).passthrough()

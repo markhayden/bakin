@@ -104,4 +104,4 @@ This package is developed alongside Bakin in the
 
 ## License
 
-MIT © madeinwyo
+MIT © markhayden

@@ -19,7 +19,7 @@ The `git` core plugin owns task-scoped worktree isolation for code-producing age
 
 ## Settings
 
-- `allowedRepoRoots`: list of `{ path }` records or strings. Defaults to `~/go/src/github.com/madeinwyo`.
+- `allowedRepoRoots`: list of `{ path }` records or strings. Defaults to `~/go/src/github.com/markhayden`.
 - `worktreeRoot`: path for Bakin-created worktrees. Defaults to `~/.bakin/git-worktrees`.
 
 The plugin resolves real paths for both requested repos and allowed roots. A repo is accepted only when both the requested path and the actual git top-level are within a configured allowed root.
