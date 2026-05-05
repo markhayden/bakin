@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url'
 import { userInfo } from 'os'
 import yaml from 'js-yaml'
 import { z } from 'zod'
-import type { ApprovalActor, APIRoute, BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
+import type { ApprovalActor, BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { defineRoute, definePlugin } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
 import { listDefinitions, loadDefinition, validateDefinition } from './lib/parser'
@@ -139,11 +139,6 @@ async function indexInstance(taskId: string): Promise<void> {
   }
 }
 
-function webApprover(): ApprovalActor {
-  const { username } = userInfo()
-  return { source: 'web', id: username, displayName: username }
-}
-
 function getGateDescription(workflowId: string, stepId: string): string | undefined {
   const def = loadDefinition(workflowId)
   if (!def) return undefined
@@ -167,16 +162,6 @@ function buildGateAuditPayload(
     durationMs: decision?.durationMs,
     ...(reason !== undefined ? { reason } : {}),
   }
-}
-
-function getDefinitionsDir(): string {
-  return join(getContentDir(), 'workflows', 'definitions')
-}
-
-function writeUserDefinition(id: string, def: unknown): void {
-  const dir = getDefinitionsDir()
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, `${id}.yaml`), yaml.dump(def), 'utf-8')
 }
 
 async function getRuntimeAgentNames(): Promise<Set<string>> {
@@ -327,7 +312,7 @@ function populateWorkflowRoutes(arr: any[]): void {
     description: 'List registered notification channels',
     summary: 'List registered notification channels',
     responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf },
-    handler: async (_req: Request, ctx: PluginContextLite) => new Response(
+    handler: async (_req: Request, _ctx: PluginContextLite) => new Response(
       JSON.stringify({ channels: listNotificationChannels() }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     ),
@@ -372,11 +357,11 @@ function populateWorkflowRoutes(arr: any[]): void {
   }
 
   // GET /definitions — list all workflow templates
-  const listHandler = async (_req: Request, ctx: PluginContextLite) => Response.json(buildTemplateList())
+  const listHandler = async (_req: Request, _ctx: PluginContextLite) => Response.json(buildTemplateList())
   arr.push(defineRoute({ path: '/definitions', method: 'GET', description: 'List all workflow templates with step counts and resolved sub-workflows', summary: 'List all workflow templates with step counts and resolved sub-workflows', responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: listHandler }))
 
   // GET /definitions/:name — get a specific definition with resolved sub-workflows
-  const getDefinitionHandler = async (req: Request, ctx: PluginContextLite) => {
+  const getDefinitionHandler = async (req: Request, _ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const name = url.searchParams.get('name')
 
@@ -418,7 +403,7 @@ function populateWorkflowRoutes(arr: any[]): void {
   }
 
   // POST /definitions — create a new user-owned workflow YAML
-  const createDefinitionHandler = async (req: Request, ctx: PluginContextLite) => {
+  const createDefinitionHandler = async (req: Request, _ctx: PluginContextLite) => {
     let body: { id?: string; [k: string]: unknown }
     try {
       body = await req.json()
@@ -468,7 +453,7 @@ function populateWorkflowRoutes(arr: any[]): void {
   arr.push(defineRoute({ path: '/definitions', method: 'POST', description: 'Create a new user-owned workflow definition', summary: 'Create a new user-owned workflow definition', responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: createDefinitionHandler }))
 
   // PUT /definitions/:name — update or create a user-owned workflow YAML
-  const updateDefinitionHandler = async (req: Request, ctx: PluginContextLite) => {
+  const updateDefinitionHandler = async (req: Request, _ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const name = url.searchParams.get('name')
     if (!name) {
@@ -510,7 +495,7 @@ function populateWorkflowRoutes(arr: any[]): void {
   arr.push(defineRoute({ path: '/definitions/:name', method: 'PUT', description: 'Update or shadow a workflow definition (writes user YAML)', summary: 'Update or shadow a workflow definition (writes user YAML)', params: z.object({ name: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: updateDefinitionHandler }))
 
   // DELETE /definitions/:name — remove the user-owned YAML for this id
-  const deleteDefinitionHandler = async (req: Request, ctx: PluginContextLite) => {
+  const deleteDefinitionHandler = async (req: Request, _ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const name = url.searchParams.get('name')
     if (!name) {
@@ -543,7 +528,7 @@ function populateWorkflowRoutes(arr: any[]): void {
   // GET /node-types — palette data source. Returns the registered node-type
   // metadata (builtin + plugin-registered) minus the Zod schemas (which
   // aren't JSON-serializable). The canvas-editor palette hydrates from this.
-  const nodeTypesHandler = async (_req: Request, ctx: PluginContextLite) => {
+  const nodeTypesHandler = async (_req: Request, _ctx: PluginContextLite) => {
     const items = listNodeTypes().map((def) => ({
       kind: def.kind,
       runtime: def.runtime,
@@ -558,7 +543,7 @@ function populateWorkflowRoutes(arr: any[]): void {
   // ─── Runtime Routes ───────────────────────────────────────────────
 
   // GET /steps/:taskId — get current step for a task
-  const getStepHandler = async (req: Request, ctx: PluginContextLite) => {
+  const getStepHandler = async (req: Request, _ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const taskId = url.searchParams.get('taskId')
     const agentId = url.searchParams.get('agentId') || undefined
@@ -782,7 +767,7 @@ function populateWorkflowRoutes(arr: any[]): void {
   }
   arr.push(defineRoute({ path: '/gates/:taskId/reject', method: 'POST', description: 'Reject a gate step, rewinds workflow', summary: 'Reject a gate step, rewinds workflow', params: z.object({ taskId: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: rejectHandler }))
 
-  const gateDecisionPageHandler = async (req: Request, ctx: PluginContextLite) => {
+  const gateDecisionPageHandler = async (req: Request, _ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const taskId = url.searchParams.get('taskId')
     const stepId = url.searchParams.get('stepId')
@@ -932,7 +917,7 @@ function populateWorkflowRoutes(arr: any[]): void {
     description: 'List active workflow instances. Optional status filter.',
     summary: 'List active workflow instances. Optional status filter.',
     responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf },
-    handler: async (req: Request, ctx: PluginContextLite) => {
+    handler: async (req: Request, _ctx: PluginContextLite) => {
       const url = new URL(req.url)
       const status = url.searchParams.get('status') || undefined
       const instances = listInstances(status)
@@ -940,8 +925,8 @@ function populateWorkflowRoutes(arr: any[]): void {
     },
   }))
 
-  // GET /instances/:taskId ��� get full instance state
-  const getInstanceHandler = async (req: Request, ctx: PluginContextLite) => {
+  // GET /instances/:taskId - get full instance state
+  const getInstanceHandler = async (req: Request, _ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const taskId = url.searchParams.get('taskId')
 
@@ -960,7 +945,7 @@ function populateWorkflowRoutes(arr: any[]): void {
 
 
   // GET /gates/pending — list all gates awaiting approval
-  const pendingGatesHandler = async (_req: Request, ctx: PluginContextLite) => {
+  const pendingGatesHandler = async (_req: Request, _ctx: PluginContextLite) => {
     const instances = listInstances('pending_approval')
     const gates = instances.map((inst) => {
       const def = loadDefinition(inst.workflowId)
@@ -1005,7 +990,7 @@ function populateWorkflowRoutes(arr: any[]): void {
 
 
   // GET /gates/status — batch check gate status for tasks
-  const gateStatusHandler = async (req: Request, ctx: PluginContextLite) => {
+  const gateStatusHandler = async (req: Request, _ctx: PluginContextLite) => {
     const url = new URL(req.url)
     const taskIds = (url.searchParams.get('taskIds') || '').split(',').filter(Boolean)
 
@@ -1116,6 +1101,8 @@ const workflowsPlugin: BakinPlugin = definePlugin({
   contentFiles: [],
 
   async activate(ctx: PluginContext) {
+    pluginCtx = ctx
+
     // ─── Search Content Type Registration ─────────────────────────────
 
     /** Convert a workflow definition to a search document */
@@ -1263,7 +1250,7 @@ const workflowsPlugin: BakinPlugin = definePlugin({
     setNotificationRuntime(ctx.runtime)
 
     const pluginSettings = ctx.getSettings<Record<string, unknown>>()
-    const gateNotificationSettings: GateNotificationSettings = {
+    gateNotificationSettings = {
       approvalChannelAlerts: pluginSettings.approvalChannelAlerts as boolean ?? false,
       approvalChannel: pluginSettings.approvalChannel as string ?? 'general',
       requireRejectReason: pluginSettings.requireRejectReason as boolean ?? true,

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Bakin API",
-    "version": "1.0.0",
+    "version": "0.0.0-dev",
     "description": "Generated from typed route contracts (defineRoute / defineCoreRoute) — same builder as /api/openapi."
   },
   "servers": [
@@ -5626,8 +5626,16 @@
           "content": {
             "*/*": {
               "schema": {
-                "type": "string",
-                "format": "binary"
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
               }
             }
           }

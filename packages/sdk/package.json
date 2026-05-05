@@ -1,6 +1,6 @@
 {
   "name": "@bakin/sdk",
-  "version": "0.1.0",
+  "version": "0.0.0-workspace",
   "description": "SDK for building Bakin plugins — UI components, slot types, hooks, and the runtime registerPlugin helper.",
   "type": "module",
   "main": "./src/index.ts",

@@ -10,7 +10,7 @@
 import { z } from 'zod'
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
-import type { APIRoute, PluginContext } from '@bakin/core/plugin-types'
+import type { PluginContext } from '@bakin/core/plugin-types'
 import { CANONICAL_DURABLE_FILES } from '../durable-kinds'
 import { getRuntimeMemoryEntry } from '../runtime-memory'
 

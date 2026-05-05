@@ -1,6 +1,6 @@
 # Bakin Docs
 
-Docs version: Bakin 1.0.0
+Docs version: Bakin 0.0.0-dev
 
 Bakin is a self-hosted dashboard, backend, CLI, and extension system for running agent work through a configured runtime adapter. Use these docs to install Bakin, operate it, build plugins, author agent packages, and understand the public contracts exposed by the SDK, hooks, slots, CLI, and HTTP API.
 
@@ -19,13 +19,13 @@ Primary docs:
   Use this for built-in Bakin areas such as tasks, workflows, assets, schedule, memory, models, team, and health. Official add-on plugins such as Messaging and Projects are installed separately but documented in the same site.
 
 - Plugin authoring: https://makinbakin.com/docs/extend/plugins/overview/
-  Use this when building Bakin plugins with @bakin/sdk.
+  Use this when building Bakin plugins with @makinbakin/sdk.
 
 - Agent authoring: https://makinbakin.com/docs/extend/agents/overview/
   Use this when creating agent packages or writing instructions for coding agents working with Bakin.
 
 - SDK docs: https://makinbakin.com/docs/extend/sdk/overview/
-  Use this for @bakin/sdk imports, UI components, hooks, slots, and public extension contracts.
+  Use this for @makinbakin/sdk imports, UI components, hooks, slots, and public extension contracts.
 
 LLM bundles:
 

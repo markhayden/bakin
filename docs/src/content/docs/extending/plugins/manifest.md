@@ -164,7 +164,7 @@ Runtime permission mode may warn or enforce depending on configuration. Missing 
 - Declare plugin dependencies by plugin ID. `bakin plugins install` refuses a plugin when a dependency is neither core nor already installed.
 - Keep `contributes` in sync with registered routes, tools, settings, and docs.
 - Use `runtimeCapabilities` for adapter-level needs and `permissions` for plugin capability consent.
-- Import supported APIs from `@bakin/sdk` and `@bakin/sdk/*`.
+- Import supported APIs from `@makinbakin/sdk` and `@makinbakin/sdk/*`.
 
 ## Validation
 

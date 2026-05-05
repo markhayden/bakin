@@ -1,9 +1,9 @@
 ---
 title: SDK Reference
-description: Generated audit reference for @bakin/sdk subpath exports.
+description: Generated audit reference for @makinbakin/sdk subpath exports.
 ---
 
-## `@bakin/sdk`
+## `@makinbakin/sdk`
 
 Source: `packages/sdk/src/index.ts`
 
@@ -15,7 +15,7 @@ Source: `packages/sdk/src/index.ts`
 | `export { defineRoute, defineCoreRoute, definePlugin } from './routing'` |
 | `export type {` |
 
-## `@bakin/sdk/ui`
+## `@makinbakin/sdk/ui`
 
 Source: `packages/sdk/src/ui/index.ts`
 
@@ -47,7 +47,7 @@ Source: `packages/sdk/src/ui/index.ts`
 | `export * from '@/components/ui/textarea'` |
 | `export * from '@/components/ui/tooltip'` |
 
-## `@bakin/sdk/hooks`
+## `@makinbakin/sdk/hooks`
 
 Source: `packages/sdk/src/hooks/index.ts`
 
@@ -71,7 +71,7 @@ Source: `packages/sdk/src/hooks/index.ts`
 | `export {` |
 | `export { useRouter, usePathname, useSearchParams, useParams } from './router'` |
 
-## `@bakin/sdk/components`
+## `@makinbakin/sdk/components`
 
 Source: `packages/sdk/src/components/index.ts`
 
@@ -103,7 +103,7 @@ Source: `packages/sdk/src/components/index.ts`
 | `export type { UnderlineTab } from '@/components/underline-tabs'` |
 | `export { ChannelIcon } from '@bakin/workflows/hooks/channel-icon'` |
 
-## `@bakin/sdk/slots`
+## `@makinbakin/sdk/slots`
 
 Source: `packages/sdk/src/slots/index.tsx`
 
@@ -114,7 +114,7 @@ Source: `packages/sdk/src/slots/index.tsx`
 | `export function clearSlotsOwnedBy(pluginId: string): void {` |
 | `export function Slot({ name, ...props }: SlotProps): JSX.Element \| null {` |
 
-## `@bakin/sdk/types`
+## `@makinbakin/sdk/types`
 
 Source: `packages/sdk/src/types/index.ts`
 
@@ -223,7 +223,7 @@ Source: `packages/sdk/src/types/index.ts`
 | `export interface BakinConfig {` |
 | `export interface PluginEntry {` |
 
-## `@bakin/sdk/utils`
+## `@makinbakin/sdk/utils`
 
 Source: `packages/sdk/src/utils/index.ts`
 
@@ -232,7 +232,7 @@ Source: `packages/sdk/src/utils/index.ts`
 | `export { cn } from '@/lib/utils'` |
 | `export { formatAge, formatSize, isStale } from '@bakin/core/format'` |
 
-## `@bakin/sdk/metadata`
+## `@makinbakin/sdk/metadata`
 
 Source: `packages/sdk/src/metadata/index.ts`
 
@@ -241,7 +241,7 @@ Source: `packages/sdk/src/metadata/index.ts`
 | `export type {` |
 | `export {` |
 
-## `@bakin/sdk/routing`
+## `@makinbakin/sdk/routing`
 
 Source: `packages/sdk/src/routing/index.ts`
 
@@ -251,5 +251,5 @@ Source: `packages/sdk/src/routing/index.ts`
 | `export type {` |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 3, 2026 · Bakin 1.0.0</span>
+  <span>Generated May 5, 2026 · Bakin 0.0.0-dev</span>
 </aside>

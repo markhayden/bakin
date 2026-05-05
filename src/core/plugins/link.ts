@@ -222,12 +222,18 @@ export async function linkPlugin(
   const existingLock = readPluginLockfile()
   const existingEntry = existingLock.plugins[id]
   if (existingEntry && isLinkedEntry(existingEntry)) {
-    auditLinkRejected('id_collision_linked', localPath, { id, linkedSource: existingEntry.linkedSource })
-    throw new LinkRefusedError(
-      `plugin id "${id}" is already dev-installed from ${existingEntry.linkedSource}; run \`bakin plugins unlink ${id}\` first`,
-    )
+    if (opts.force !== true) {
+      auditLinkRejected('id_collision_linked', localPath, { id, linkedSource: existingEntry.linkedSource })
+      throw new LinkRefusedError(
+        `plugin id "${id}" is already dev-installed from ${existingEntry.linkedSource}; run \`bakin plugins unlink ${id}\` first`,
+      )
+    }
+    // --force on an already-linked entry: drop the prior symlink + lockfile
+    // entry so the link below proceeds cleanly. Mirrors how --force handles
+    // a prior installed (non-linked) entry.
+    await unlinkPlugin(id)
   }
-  if (existingEntry && opts.force !== true) {
+  if (existingEntry && !isLinkedEntry(existingEntry) && opts.force !== true) {
     auditLinkRejected('id_collision_installed', localPath, { id })
     throw new LinkRefusedError(
       `plugin id "${id}" is already installed; pass --force to override or run \`bakin plugins remove ${id}\` first`,

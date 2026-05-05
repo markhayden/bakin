@@ -142,9 +142,11 @@ const targets: VendorTarget[] = [
   { specifier: '@bakin/sdk/slots', name: 'sdk-slots', entrypoint: './packages/sdk/src/slots/index.tsx' },
   { specifier: '@bakin/sdk/types', name: 'sdk-types', entrypoint: './packages/sdk/src/types/index.ts' },
   { specifier: '@bakin/sdk/utils', name: 'sdk-utils', entrypoint: './packages/sdk/src/utils/index.ts' },
+  { specifier: '@bakin/sdk/metadata', name: 'sdk-metadata', entrypoint: './packages/sdk/src/metadata/index.ts' },
+  { specifier: '@bakin/sdk/routing', name: 'sdk-routing', entrypoint: './packages/sdk/src/routing/index.ts' },
 ]
 
-const SDK_SPECIFIERS = ['@bakin/sdk', '@bakin/sdk/ui', '@bakin/sdk/hooks', '@bakin/sdk/components', '@bakin/sdk/slots', '@bakin/sdk/types', '@bakin/sdk/utils']
+const SDK_SPECIFIERS = ['@bakin/sdk', '@bakin/sdk/ui', '@bakin/sdk/hooks', '@bakin/sdk/components', '@bakin/sdk/slots', '@bakin/sdk/types', '@bakin/sdk/utils', '@bakin/sdk/metadata', '@bakin/sdk/routing']
 
 function externalsFor(target: VendorTarget): string[] {
   // Every non-react bundle externalizes `react` so the browser ends up

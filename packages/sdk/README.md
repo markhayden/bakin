@@ -1,20 +1,20 @@
-# @bakin/sdk
+# @makinbakin/sdk
 
 SDK for building [Bakin](https://github.com/markhayden/bakin) plugins.
 Gives you the `registerPlugin` helper, shared UI components, slot
 types, and React hooks the Bakin host shell already ships at runtime.
 
 Your plugin bundles use this package as a TypeScript source, but at
-runtime React + `@bakin/sdk/*` are externalized and resolved through
+runtime React + `@makinbakin/sdk/*` are externalized and resolved through
 the host's import map — so plugins don't ship a second copy of any of
 them.
 
 ## Install
 
 ```sh
-bun install @bakin/sdk
+bun install @makinbakin/sdk
 # or
-npm install @bakin/sdk
+npm install @makinbakin/sdk
 ```
 
 `react` and `react-dom` are peer dependencies; the Bakin host provides
@@ -33,7 +33,7 @@ bakin plugins install .
 
 ```tsx
 // src/client.tsx
-import { registerPlugin } from '@bakin/sdk'
+import { registerPlugin } from '@makinbakin/sdk'
 
 registerPlugin({
   id: 'my-plugin',
@@ -50,7 +50,7 @@ registerPlugin({
 
 ```ts
 // src/index.ts
-import type { BakinPlugin, PluginContext } from '@bakin/sdk/types'
+import type { BakinPlugin, PluginContext } from '@makinbakin/sdk/types'
 
 const plugin: BakinPlugin = {
   id: 'my-plugin',
@@ -88,13 +88,13 @@ The `exports` map covers these sub-paths:
 
 | Import path              | What it exposes                              |
 | ------------------------ | -------------------------------------------- |
-| `@bakin/sdk`             | `registerPlugin`, top-level re-exports       |
-| `@bakin/sdk/ui`          | Base UI components (buttons, cards, inputs)  |
-| `@bakin/sdk/hooks`       | Shared React hooks (useQueryState, useDebug) |
-| `@bakin/sdk/components`  | Higher-level shell components                |
-| `@bakin/sdk/slots`       | Slot runtime + provider                      |
-| `@bakin/sdk/types`       | TypeScript types (`BakinPlugin`, `PluginContext`, etc.) |
-| `@bakin/sdk/utils`       | Shared utilities                             |
+| `@makinbakin/sdk`             | `registerPlugin`, top-level re-exports       |
+| `@makinbakin/sdk/ui`          | Base UI components (buttons, cards, inputs)  |
+| `@makinbakin/sdk/hooks`       | Shared React hooks (useQueryState, useDebug) |
+| `@makinbakin/sdk/components`  | Higher-level shell components                |
+| `@makinbakin/sdk/slots`       | Slot runtime + provider                      |
+| `@makinbakin/sdk/types`       | TypeScript types (`BakinPlugin`, `PluginContext`, etc.) |
+| `@makinbakin/sdk/utils`       | Shared utilities                             |
 
 ## Repository
 

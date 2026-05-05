@@ -1,0 +1,90 @@
+name: Release Smoke
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+
+jobs:
+  binary:
+    name: Binary smoke (${{ matrix.asset }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            asset: bakin-darwin-arm64
+            macos: true
+          - runner: ubuntu-latest
+            asset: bakin-linux-x64
+            macos: false
+          - runner: ubuntu-24.04-arm
+            asset: bakin-linux-arm64
+            macos: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.event.release.tag_name }}
+      ASSET: ${{ matrix.asset }}
+    steps:
+      - name: Download release asset
+        run: gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" --pattern "${ASSET}" --dir release-assets --clobber
+
+      - name: Verify and run binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary="release-assets/${ASSET}"
+          chmod +x "${binary}"
+          if [[ "${{ matrix.macos }}" == "true" ]]; then
+            codesign --verify --verbose=3 --strict "${binary}"
+            spctl --assess --type execute --verbose "${binary}"
+          fi
+          expected="${TAG#v}"
+          actual="$("${binary}" --version)"
+          test "${actual}" = "${expected}"
+
+  sdk:
+    name: SDK install smoke
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ github.event.release.tag_name }}
+    steps:
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install exact SDK version and import subpaths
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${VERSION#v}"
+          scratch="${RUNNER_TEMP}/bakin-sdk-smoke"
+          mkdir -p "${scratch}"
+          cd "${scratch}"
+          bun init -y
+          bun add react@^19 react-dom@^19 "@makinbakin/sdk@${version}"
+          bun -e "const m = await import('@makinbakin/sdk'); if (typeof m.registerPlugin !== 'function') throw new Error('missing registerPlugin')"
+          for subpath in ui hooks components slots types utils metadata routing; do
+            bun -e "await import('@makinbakin/sdk/${subpath}')"
+          done
+
+  homebrew:
+    name: Homebrew smoke
+    runs-on: macos-latest
+    if: ${{ github.event.release.prerelease == false }}
+    env:
+      VERSION: ${{ github.event.release.tag_name }}
+    steps:
+      - name: Install and test formula
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${VERSION#v}"
+          brew update
+          brew install markhayden/tap/bakin
+          actual="$(bakin version)"
+          test "${actual}" = "${expected}"
+          brew test markhayden/tap/bakin

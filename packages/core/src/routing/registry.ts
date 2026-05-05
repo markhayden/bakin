@@ -112,7 +112,7 @@ export class RouteRegistry {
    * Register a route. Throws on duplicate <method, fullPath> or operationId.
    */
   register(input: RouteScope): RegisteredRoute {
-    const { scope, route } = input
+    const { route } = input
     const pluginId = input.scope === 'plugin' ? input.pluginId : null
     const fullPath = pluginId !== null
       ? `/api/plugins/${pluginId}${route.path}`

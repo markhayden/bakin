@@ -139,7 +139,11 @@ export interface CliCommandContribution {
   summary: string
   description?: string
   aliases?: string[]
-  dispatch: {
+  /** Optional. When present, the manifest-driven CLI dispatcher routes the
+   *  command through either the named exec-tool or the given API route.
+   *  When absent, the command is documentation-only — its real
+   *  implementation lives in `cli/bakin.ts`'s imperative switch. */
+  dispatch?: {
     type: 'apiRoute'
     method: HttpMethod
     path: string

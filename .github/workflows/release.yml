@@ -7,18 +7,84 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+
+concurrency:
+  group: release-publish
+  cancel-in-progress: false
+
+env:
+  DARWIN_BINARY: bakin-darwin-arm64
+  LINUX_X64_BINARY: bakin-linux-x64
+  LINUX_ARM64_BINARY: bakin-linux-arm64
 
 jobs:
-  build-and-release:
-    name: Build binaries + release
+  gate:
+    name: Validate release tag
     runs-on: ubuntu-latest
-    env:
-      # Surface NPM_TOKEN as a job-level env so steps below can gate on it.
-      # Secrets aren't readable inside `if:` directly, but an env copy is.
-      HAS_NPM_TOKEN: ${{ secrets.NPM_TOKEN != '' }}
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+      npm_tag: ${{ steps.release.outputs.npm_tag }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+      commit: ${{ steps.release.outputs.commit }}
     steps:
-      - name: Checkout
+      - name: Checkout full history
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag grammar and main ancestry
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${GITHUB_REF_NAME}"
+          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+            echo "::error::Malformed release tag: ${tag}"
+            exit 1
+          fi
+
+          git fetch origin main --depth=1
+          commit="$(git rev-list -n 1 "${tag}")"
+          if ! git merge-base --is-ancestor "${commit}" origin/main; then
+            echo "::error::Release tag ${tag} does not point at main history"
+            exit 1
+          fi
+
+          version="${tag#v}"
+          if [[ "${version}" == *-rc.* ]]; then
+            npm_tag="next"
+            prerelease="true"
+          else
+            npm_tag="latest"
+            prerelease="false"
+          fi
+
+          {
+            echo "tag=${tag}"
+            echo "version=${version}"
+            echo "npm_tag=${npm_tag}"
+            echo "prerelease=${prerelease}"
+            echo "commit=${commit}"
+          } >> "${GITHUB_OUTPUT}"
+
+  build:
+    name: Build and pre-publish gates
+    runs-on: ubuntu-latest
+    needs: gate
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.gate.outputs.version }}
+      NPM_TAG: ${{ needs.gate.outputs.npm_tag }}
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.commit }}
+          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -27,6 +93,18 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Check for home-directory bypasses
+        run: bun run lint:home-bypasses
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun test --isolate
 
       - name: Build vendor bundles
         run: bun run build:vendors
@@ -37,35 +115,215 @@ jobs:
       - name: Build host shell
         run: bun run build:host-shell
 
-      - name: Build binaries (3 platforms)
+      - name: Build binaries
         run: bun run build:binary
 
-      - name: Compute checksums
-        working-directory: dist
+      - name: Smoke host-platform binary
+        shell: bash
         run: |
-          sha256sum bakin-darwin-arm64 bakin-linux-x64 bakin-linux-arm64 > checksums.txt
-          cat checksums.txt
+          set -euo pipefail
+          chmod +x "dist/${LINUX_X64_BINARY}"
+          actual="$(./dist/${LINUX_X64_BINARY} --version)"
+          test "${actual}" = "${VERSION}"
 
-      - name: Setup Node for npm publish
-        if: env.HAS_NPM_TOKEN == 'true'
+      - name: SDK dry-run package publish
+        run: bun run scripts/publish-sdk.ts --dry-run --version "${VERSION}" --package-dir "${RUNNER_TEMP}/sdk-package-dry-run" --tag "${NPM_TAG}"
+
+      - name: Upload unsigned binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-binaries-unsigned
+          if-no-files-found: error
+          path: |
+            dist/${{ env.DARWIN_BINARY }}
+            dist/${{ env.LINUX_X64_BINARY }}
+            dist/${{ env.LINUX_ARM64_BINARY }}
+
+  sign-macos:
+    name: Sign and notarize macOS binary
+    runs-on: macos-latest
+    needs:
+      - gate
+      - build
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.commit }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Download unsigned binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: release-binaries-unsigned
+          path: dist
+
+      - name: Sign and notarize
+        env:
+          APPLE_DEVELOPER_ID_CERT_P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12_BASE64 }}
+          APPLE_DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_PASSWORD }}
+          APPLE_DEVELOPER_IDENTITY: ${{ secrets.APPLE_DEVELOPER_IDENTITY }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+        run: |
+          chmod +x "dist/${DARWIN_BINARY}"
+          bun run scripts/sign-macos-binary.ts --binary "dist/${DARWIN_BINARY}"
+
+      - name: Upload signed macOS binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-macos-binary
+          if-no-files-found: error
+          path: dist/${{ env.DARWIN_BINARY }}
+
+  publish:
+    name: Publish release artifacts
+    runs-on: ubuntu-latest
+    needs:
+      - gate
+      - build
+      - sign-macos
+    env:
+      TAG: ${{ needs.gate.outputs.tag }}
+      VERSION: ${{ needs.gate.outputs.version }}
+      NPM_TAG: ${{ needs.gate.outputs.npm_tag }}
+      PRERELEASE: ${{ needs.gate.outputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.commit }}
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Setup Node for trusted publishing
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Publish @bakin/sdk to npm
-        if: env.HAS_NPM_TOKEN == 'true'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          BAKIN_PUBLISH_IDEMPOTENT: '1'
-        run: bun run scripts/publish-sdk.ts
+      - name: Check npm trusted-publishing toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version
+          npm --version
+          npm_major="$(npm --version | cut -d. -f1)"
+          npm_minor="$(npm --version | cut -d. -f2)"
+          npm_patch="$(npm --version | cut -d. -f3)"
+          if (( npm_major < 11 || (npm_major == 11 && npm_minor < 5) || (npm_major == 11 && npm_minor == 5 && npm_patch < 1) )); then
+            echo "::error::npm >= 11.5.1 is required for trusted publishing"
+            exit 1
+          fi
 
-      - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+      - name: Download unsigned binaries
+        uses: actions/download-artifact@v4
         with:
-          files: |
-            dist/bakin-darwin-arm64
-            dist/bakin-linux-x64
-            dist/bakin-linux-arm64
-            dist/checksums.txt
-          generate_release_notes: true
+          name: release-binaries-unsigned
+          path: dist
+
+      - name: Download signed macOS binary
+        uses: actions/download-artifact@v4
+        with:
+          name: signed-macos-binary
+          path: signed-macos
+
+      - name: Assemble signed artifact set
+        run: |
+          cp "signed-macos/${DARWIN_BINARY}" "dist/${DARWIN_BINARY}"
+          chmod +x "dist/${DARWIN_BINARY}" "dist/${LINUX_X64_BINARY}" "dist/${LINUX_ARM64_BINARY}"
+
+      - name: Compute checksums after signing
+        working-directory: dist
+        run: |
+          sha256sum "${DARWIN_BINARY}" "${LINUX_X64_BINARY}" "${LINUX_ARM64_BINARY}" > checksums.txt
+          cat checksums.txt
+
+      - name: Extract release notes
+        run: bun run scripts/extract-release-notes.ts --version "${VERSION}" --out .release-notes.md
+
+      - name: Create or update draft GitHub release
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --jq .id 2>/dev/null || true)"
+          body="$(cat .release-notes.md)"
+          if [[ -n "${release_id}" ]]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+              -f tag_name="${TAG}" \
+              -f name="${TAG}" \
+              -f body="${body}" \
+              -F draft=true \
+              -F prerelease="${PRERELEASE}"
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/releases" \
+              -f tag_name="${TAG}" \
+              -f name="${TAG}" \
+              -f body="${body}" \
+              -F draft=true \
+              -F prerelease="${PRERELEASE}"
+          fi
+          gh release upload "${TAG}" \
+            "dist/${DARWIN_BINARY}" \
+            "dist/${LINUX_X64_BINARY}" \
+            "dist/${LINUX_ARM64_BINARY}" \
+            "dist/checksums.txt" \
+            --clobber
+
+      - name: Publish SDK to npm
+        run: bun run scripts/publish-sdk.ts --version "${VERSION}" --package-dir "${RUNNER_TEMP}/sdk-package" --tag "${NPM_TAG}"
+
+      - name: Render Homebrew formula
+        run: bun run scripts/update-homebrew-formula.ts --version "${VERSION}" --checksums dist/checksums.txt --out "${RUNNER_TEMP}/bakin.rb"
+
+      - name: Publish Homebrew tap
+        if: ${{ needs.gate.outputs.prerelease == 'false' }}
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${HOMEBREW_TAP_TOKEN}" ]]; then
+            echo "::error::HOMEBREW_TAP_TOKEN is required for stable releases"
+            exit 1
+          fi
+
+          tap_dir="${RUNNER_TEMP}/homebrew-tap"
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/markhayden/homebrew-tap.git" "${tap_dir}"
+          mkdir -p "${tap_dir}/Formula"
+          cp "${RUNNER_TEMP}/bakin.rb" "${tap_dir}/Formula/bakin.rb"
+
+          cd "${tap_dir}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/bakin.rb
+          if git diff --cached --quiet; then
+            echo "Homebrew formula already current for ${VERSION}"
+          else
+            git commit -m "bakin ${VERSION}"
+            git push origin HEAD:main
+          fi
+
+      - name: Publish GitHub release
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --jq .id)"
+          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+            -F draft=false \
+            -F prerelease="${PRERELEASE}"

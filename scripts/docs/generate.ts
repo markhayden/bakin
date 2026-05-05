@@ -375,7 +375,7 @@ function readSdkExports(): SdkExportDoc[] {
   const pkgPath = join(repoRoot, 'packages/sdk/package.json')
   const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { exports: Record<string, string> }
   return Object.entries(pkg.exports).map(([subpath, source]) => {
-    const importPath = subpath === '.' ? '@bakin/sdk' : `@bakin/sdk${subpath.slice(1)}`
+    const importPath = subpath === '.' ? '@makinbakin/sdk' : `@makinbakin/sdk${subpath.slice(1)}`
     const sourcePath = join(repoRoot, 'packages/sdk', source.replace(/^\.\//, ''))
     const text = readFileSync(sourcePath, 'utf8')
     const exports = text
@@ -1044,7 +1044,7 @@ function allApiDocRoutes(): Array<{ scope: string; tag: string; fullPath: string
   )
 }
 
-function buildOpenApiDocument(): Record<string, unknown> {
+function _buildOpenApiDocument(): Record<string, unknown> {
   const paths: Record<string, Record<string, unknown>> = {}
   const tags = new Map<string, string | undefined>()
   for (const entry of allApiDocRoutes()) {
@@ -1643,12 +1643,12 @@ function renderSdkReference(): string {
   const lines = [
     '---',
     'title: SDK Reference',
-    'description: Generated audit reference for @bakin/sdk subpath exports.',
-	    '---',
-	    '',
-	  ]
+    'description: Generated audit reference for @makinbakin/sdk subpath exports.',
+    '---',
+    '',
+  ]
 
-	  for (const entry of entries) {
+  for (const entry of entries) {
     lines.push(`## \`${entry.importPath}\``, '')
     lines.push(`Source: \`${entry.source}\``, '')
     if (entry.exports.length === 0) {
@@ -1661,11 +1661,11 @@ function renderSdkReference(): string {
       lines.push(`| \`${exported.replaceAll('|', '\\|')}\` |`)
     }
     lines.push('')
-	  }
-	  lines.push(generatedPageNote(), '')
+  }
+  lines.push(generatedPageNote(), '')
 
-	  return lines.join('\n')
-	}
+  return lines.join('\n')
+}
 
 writeStableFile(
   join(generatedRoot, 'coverage.json'),
@@ -1829,13 +1829,13 @@ Primary docs:
   Use this for built-in Bakin areas such as tasks, workflows, assets, schedule, memory, models, team, and health. Official add-on plugins such as Messaging and Projects are installed separately but documented in the same site.
 
 - Plugin authoring: ${docsUrl}/extend/plugins/overview/
-  Use this when building Bakin plugins with @bakin/sdk.
+  Use this when building Bakin plugins with @makinbakin/sdk.
 
 - Agent authoring: ${docsUrl}/extend/agents/overview/
   Use this when creating agent packages or writing instructions for coding agents working with Bakin.
 
 - SDK docs: ${docsUrl}/extend/sdk/overview/
-  Use this for @bakin/sdk imports, UI components, hooks, slots, and public extension contracts.
+  Use this for @makinbakin/sdk imports, UI components, hooks, slots, and public extension contracts.
 
 LLM bundles:
 
@@ -1861,7 +1861,7 @@ Canonical docs: ${docsUrl}/
 
 - Use \`Bakin\` for the product and \`bakin\` for the CLI.
 - Prefer the released one-line installer for end-user install instructions.
-- Use \`@bakin/sdk/*\` imports for plugin-facing code.
+- Use \`@makinbakin/sdk/*\` imports for plugin-facing code.
 - Do not import host internals or another plugin's internals from a plugin.
 - Treat public hooks, slots, CLI commands, HTTP routes, settings, and SDK exports as documented contracts.
 - Prefer tested docs snippets and generated reference over guessing APIs.
@@ -1893,7 +1893,7 @@ curl -fsSL ${docsUrl}/llms/agent-authoring.md
 const bundles = {
   'plugin-authoring.md': {
     title: 'Bakin Plugin Authoring',
-    body: 'Use `@bakin/sdk/*` for plugin code. Public plugin examples must be backed by tested snippets. Public hooks, slots, routes, settings, and exec/MCP tools require metadata, schemas, examples, visibility, and stability before launch.',
+    body: 'Use `@makinbakin/sdk/*` for plugin code. Public plugin examples must be backed by tested snippets. Public hooks, slots, routes, settings, and exec/MCP tools require metadata, schemas, examples, visibility, and stability before launch.',
   },
   'agent-authoring.md': {
     title: 'Bakin Agent Authoring',

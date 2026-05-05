@@ -13,7 +13,7 @@ Bakin is meant to be shaped by the people using it. Start here when you want to 
 | --- | --- | --- |
 | Add the missing piece your operation needs: an SDR pipeline that pulls leads from your CRM, a business intelligence view that explains what is working, a weird little launch tracker, or tools your agents can call when the built-in set is not enough. | Plugin | [Plugins](/docs/extending/plugins/overview/) |
 | Add a teammate with a job to do: a researcher who knows your market, a producer who follows your launch playbook, or an operator that arrives with its own identity, workspace, skills, workflows, and lessons. | Agent Kit | [Agent Kits](/docs/extending/agents/overview/) |
-| Expose a supported component, type, route helper, or plugin API that plugins need but cannot safely import today | @bakin/sdk | [SDK](/docs/extending/sdk/overview/) |
+| Expose a supported component, type, route helper, or plugin API that plugins need but cannot safely import today | @makinbakin/sdk | [SDK](/docs/extending/sdk/overview/) |
 | Change the core product: tighten the shell, improve plugin loading, add a first-party capability, or fix the rough edge you keep tripping over. | @bakin/core | [Bakin' Core](/docs/extending/development-workflow/) |
 
 </div>

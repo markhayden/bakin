@@ -1,0 +1,3 @@
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  bakin-darwin-arm64
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  bakin-linux-x64
+cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  bakin-linux-arm64

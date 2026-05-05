@@ -1,6 +1,6 @@
 {
   "name": "bakin",
-  "version": "1.0.0",
+  "version": "0.0.0-dev",
   "private": true,
   "workspaces": [
     "packages/*",
@@ -11,7 +11,9 @@
   },
   "scripts": {
     "dev": "bun run scripts/dev.ts",
+    "prebuild": "bun run scripts/stamp-version.ts",
     "build": "bun run build:css && bun run build:vendors && bun run build:plugins && bun run build:host-shell && bun run build:binary",
+    "release": "bun run scripts/release.ts",
     "build:host": "bun run build:css && bun run build:vendors && bun run build:host-shell",
     "build:css": "bunx @tailwindcss/cli -i ./packages/host/src/globals.css -o ./packages/host/public/globals.css",
     "build:host-shell": "bun run packages/host/build.ts",

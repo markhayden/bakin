@@ -5,26 +5,46 @@ any change to the install surface (new platform, test command update,
 license change) lands in one place and gets reviewed with the rest of
 the code.
 
+## User install
+
+After the first stable release, the preferred macOS install path is:
+
+```sh
+brew install markhayden/tap/bakin
+```
+
+Equivalent two-step form:
+
+```sh
+brew tap markhayden/tap
+brew install bakin
+```
+
+The tap repository is `markhayden/homebrew-tap`, which Homebrew exposes
+as `markhayden/tap`.
+
 ## Publishing a release to Homebrew
 
 Homebrew itself doesn't read this file. The file belongs in a tap
 repository — specifically `markhayden/homebrew-tap`, at
-`Formula/bakin.rb`. For each Bakin release:
+`Formula/bakin.rb`.
 
-1. Build binaries + compute sha256 sums (the release workflow does this
-   automatically and attaches `checksums.txt` to the GitHub release).
-2. Copy `homebrew/bakin.rb` to `markhayden/homebrew-tap/Formula/bakin.rb`.
-3. Replace the placeholders:
-   - `__VERSION__` → the release tag without the leading `v` (e.g. `1.2.0`)
-   - `__SHA256_DARWIN_ARM64__` → the sha256 of `bakin-darwin-arm64`
-   - `__SHA256_LINUX_X64__` → the sha256 of `bakin-linux-x64`
-   - `__SHA256_LINUX_ARM64__` → the sha256 of `bakin-linux-arm64`
-4. Commit + push the tap repo. Users install with:
+Stable releases publish the tap automatically from `.github/workflows/release.yml`:
 
-   ```sh
-   brew tap markhayden/bakin
-   brew install bakin
-   ```
+1. The workflow builds binaries, signs/notarizes the macOS binary, then
+   computes `dist/checksums.txt`.
+2. `scripts/update-homebrew-formula.ts` renders this template with the
+   release version and final checksums.
+3. Stable releases clone `markhayden/homebrew-tap`, write
+   `Formula/bakin.rb`, commit `bakin <version>`, and push.
+4. RC releases render the formula as a dry-run validation but never push
+   to the tap.
+
+Local render check:
+
+```sh
+bun run scripts/update-homebrew-formula.ts --version 0.1.0 --checksums dist/checksums.txt --out /tmp/bakin.rb
+```
 
 ## Why a single file per release, not `brew install --build-from-source`
 
