@@ -11,6 +11,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 ### Changed
 
 ### Fixed
+
+### Removed
+
+### Security
+
+## [0.1.0-rc.6] - 2026-05-05
+
+### Added
+
+### Changed
+
+### Fixed
 - Publish the SDK without npm provenance when the source repository is private.
 
 ### Removed
@@ -90,5 +102,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 [0.1.0-rc.4]: https://github.com/markhayden/bakin/releases/tag/v0.1.0-rc.4
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.1.0-rc.5...HEAD
 [0.1.0-rc.5]: https://github.com/markhayden/bakin/releases/tag/v0.1.0-rc.5
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.1.0-rc.6...HEAD
+[0.1.0-rc.6]: https://github.com/markhayden/bakin/releases/tag/v0.1.0-rc.6
