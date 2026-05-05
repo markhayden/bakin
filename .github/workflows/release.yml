@@ -288,6 +288,37 @@ jobs:
       - name: Publish SDK to npm
         run: bun run scripts/publish-sdk.ts --version "${VERSION}" --package-dir "${RUNNER_TEMP}/sdk-package" --tag "${NPM_TAG}"
 
+      - name: Render Homebrew formula
+        run: bun run scripts/update-homebrew-formula.ts --version "${VERSION}" --checksums dist/checksums.txt --out "${RUNNER_TEMP}/bakin.rb"
+
+      - name: Publish Homebrew tap
+        if: ${{ needs.gate.outputs.prerelease == 'false' }}
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${HOMEBREW_TAP_TOKEN}" ]]; then
+            echo "::error::HOMEBREW_TAP_TOKEN is required for stable releases"
+            exit 1
+          fi
+
+          tap_dir="${RUNNER_TEMP}/homebrew-tap"
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/markhayden/homebrew-tap.git" "${tap_dir}"
+          mkdir -p "${tap_dir}/Formula"
+          cp "${RUNNER_TEMP}/bakin.rb" "${tap_dir}/Formula/bakin.rb"
+
+          cd "${tap_dir}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/bakin.rb
+          if git diff --cached --quiet; then
+            echo "Homebrew formula already current for ${VERSION}"
+          else
+            git commit -m "bakin ${VERSION}"
+            git push origin HEAD:main
+          fi
+
       - name: Publish GitHub release
         shell: bash
         run: |
