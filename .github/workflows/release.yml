@@ -94,6 +94,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Stamp release version
+        run: bun run scripts/stamp-version.ts
+
       - name: Check for home-directory bypasses
         run: bun run lint:home-bypasses
 
@@ -124,6 +127,8 @@ jobs:
           set -euo pipefail
           chmod +x "dist/${LINUX_X64_BINARY}"
           actual="$(./dist/${LINUX_X64_BINARY} --version)"
+          echo "Expected version: ${VERSION}"
+          echo "Actual version:   ${actual}"
           test "${actual}" = "${VERSION}"
 
       - name: SDK dry-run package publish
