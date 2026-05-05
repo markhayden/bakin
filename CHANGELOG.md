@@ -11,6 +11,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 ### Changed
 
 ### Fixed
+
+### Removed
+
+### Security
+
+## [0.1.0-rc.3] - 2026-05-05
+
+### Added
+
+### Changed
+
+### Fixed
 - Allow the macOS signing script to read GitHub Actions secrets from `process.env`.
 
 ### Removed
@@ -45,5 +57,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 [0.1.0-rc.1]: https://github.com/markhayden/bakin/releases/tag/v0.1.0-rc.1
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.1.0-rc.2...HEAD
 [0.1.0-rc.2]: https://github.com/markhayden/bakin/releases/tag/v0.1.0-rc.2
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.1.0-rc.3...HEAD
+[0.1.0-rc.3]: https://github.com/markhayden/bakin/releases/tag/v0.1.0-rc.3
