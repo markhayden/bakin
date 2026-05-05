@@ -113,7 +113,8 @@ export function parseArgs(argv: string[]): CliOptions {
 
 export function validateSigningInputs(opts: SignMacosOptions): void {
   if (!opts.dryRun) {
-    const missing = SIGNING_ENV_KEYS.filter((key) => !opts.env?.[key])
+    const env = opts.env ?? process.env
+    const missing = SIGNING_ENV_KEYS.filter((key) => !env[key])
     if (missing.length > 0) {
       throw new Error(`Missing macOS signing env vars: ${missing.join(', ')}`)
     }

@@ -105,6 +105,29 @@ describe('validateSigningInputs', () => {
     })).toThrow(SIGNING_ENV_KEYS[0])
   })
 
+  it('defaults real-mode env validation to process.env', () => {
+    const previous = new Map(SIGNING_ENV_KEYS.map((key) => [key, process.env[key]] as const))
+    try {
+      for (const key of SIGNING_ENV_KEYS) {
+        process.env[key] = fakeEnv[key]
+      }
+
+      expect(validateSigningInputs({
+        binary: 'package.json',
+        dryRun: false,
+        platform: 'darwin',
+      })).toBeUndefined()
+    } finally {
+      for (const [key, value] of previous) {
+        if (value === undefined) {
+          delete process.env[key]
+        } else {
+          process.env[key] = value
+        }
+      }
+    }
+  })
+
   it('refuses real mode outside macOS', () => {
     expect(() => validateSigningInputs({
       binary: 'dist/bakin-darwin-arm64',
