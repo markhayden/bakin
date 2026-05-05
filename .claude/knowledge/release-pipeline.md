@@ -53,7 +53,7 @@ On success, the script moves `[Unreleased]` into a concrete changelog section, c
 7. Compute checksums after signing.
 8. Extract release notes from committed `CHANGELOG.md`.
 9. Create/update a draft GitHub release and upload assets.
-10. Publish `@bakin/sdk` from the generated package with npm trusted publishing/provenance.
+10. Publish `@makinbakin/sdk` from the generated package with npm trusted publishing/provenance.
 11. Render the Homebrew formula for all tags.
 12. Stable only: push `Formula/bakin.rb` to `markhayden/homebrew-tap`.
 13. Publish/undraft the GitHub release.
@@ -65,7 +65,7 @@ If the Homebrew push fails, the GitHub release remains draft. Fix the tap/push i
 
 ### npm
 
-`@bakin/sdk` must exist before trusted publishing can be configured.
+`@makinbakin/sdk` must exist before trusted publishing can be configured.
 
 1. Build the SDK package locally with a bootstrap version.
 2. Manually publish once with interactive npm auth:
@@ -77,14 +77,14 @@ If the Homebrew push fails, the GitHub release remains draft. Fix the tap/push i
    ```
 
 3. On npmjs.com, configure trusted publishing for:
-   - Package: `@bakin/sdk`
+   - Package: `@makinbakin/sdk`
    - Publisher: GitHub Actions
    - Owner/repo: `markhayden/bakin`
    - Workflow filename: `release.yml`
 4. Optional:
 
    ```sh
-   npm deprecate @bakin/sdk@0.0.0-bootstrap.0 "bootstrap only; use a tagged Bakin release"
+   npm deprecate @makinbakin/sdk@0.0.0-bootstrap.0 "bootstrap only; use a tagged Bakin release"
    ```
 
 Do not configure `NPM_TOKEN`; the workflow uses OIDC.
@@ -122,7 +122,7 @@ Default: roll forward.
 4. Deprecate the bad SDK version if needed:
 
    ```sh
-   npm deprecate @bakin/sdk@<bad-version> "broken: use <fixed-version>"
+   npm deprecate @makinbakin/sdk@<bad-version> "broken: use <fixed-version>"
    ```
 
 5. Edit the bad GitHub release body to point at the fixed release.

@@ -175,24 +175,31 @@ function parseExecTool(raw: unknown, index: number): ExecToolContribution {
 
 function parseCliCommand(raw: unknown, index: number): CliCommandContribution {
   if (!isRecord(raw)) throw new PluginManifestError(`contributes.cliCommands[${index}] must be an object`)
-  const dispatch = raw.dispatch
-  if (!isRecord(dispatch)) {
-    throw new PluginManifestError(`contributes.cliCommands[${index}].dispatch must be an object`)
-  }
-  const dispatchType = stringField(dispatch, 'type', { required: true })
+  // `dispatch` is optional: commands without it are documentation-only —
+  // they describe a built-in CLI surface (handled imperatively in
+  // cli/bakin.ts) and are never wired through dispatchPluginCliCommand.
+  // Only commands with explicit dispatch participate in the manifest-driven
+  // dispatcher.
   let parsedDispatch: CliCommandContribution['dispatch']
-  if (dispatchType === 'apiRoute') {
-    const method = stringField(dispatch, 'method', { required: true })!.toUpperCase()
-    if (!HTTP_METHODS.has(method as HttpMethod)) {
-      throw new PluginManifestError(`contributes.cliCommands[${index}].dispatch.method "${method}" is not supported`)
+  if (raw.dispatch !== undefined) {
+    const dispatch = raw.dispatch
+    if (!isRecord(dispatch)) {
+      throw new PluginManifestError(`contributes.cliCommands[${index}].dispatch must be an object`)
     }
-    const path = stringField(dispatch, 'path', { required: true })!
-    validatePluginRelativePath(path, `contributes.cliCommands[${index}].dispatch`)
-    parsedDispatch = { type: 'apiRoute', method: method as HttpMethod, path }
-  } else if (dispatchType === 'execTool') {
-    parsedDispatch = { type: 'execTool', name: stringField(dispatch, 'name', { required: true })! }
-  } else {
-    throw new PluginManifestError(`contributes.cliCommands[${index}].dispatch.type must be "apiRoute" or "execTool"`)
+    const dispatchType = stringField(dispatch, 'type', { required: true })
+    if (dispatchType === 'apiRoute') {
+      const method = stringField(dispatch, 'method', { required: true })!.toUpperCase()
+      if (!HTTP_METHODS.has(method as HttpMethod)) {
+        throw new PluginManifestError(`contributes.cliCommands[${index}].dispatch.method "${method}" is not supported`)
+      }
+      const path = stringField(dispatch, 'path', { required: true })!
+      validatePluginRelativePath(path, `contributes.cliCommands[${index}].dispatch`)
+      parsedDispatch = { type: 'apiRoute', method: method as HttpMethod, path }
+    } else if (dispatchType === 'execTool') {
+      parsedDispatch = { type: 'execTool', name: stringField(dispatch, 'name', { required: true })! }
+    } else {
+      throw new PluginManifestError(`contributes.cliCommands[${index}].dispatch.type must be "apiRoute" or "execTool"`)
+    }
   }
   return {
     name: stringField(raw, 'name', { required: true })!,

@@ -4,9 +4,9 @@
  * Verifies the full link + unlink contract:
  *   - linkPlugin creates a symlink at ~/.bakin/plugins/<id>/, runs the
  *     initial build, and writes a `linked: true` lockfile entry.
- *   - id collisions with installed and core plugin ids refuse without
- *     --force; force=true overrides those, but never overwrites an
- *     already-linked plugin.
+ *   - id collisions with installed, core, and already-linked plugin ids
+ *     refuse without --force; force=true unlinks-and-relinks for already-
+ *     linked entries and overrides the others.
  *   - resolveAndContain refuses paths that escape the trusted roots.
  *   - Build failure rolls back the symlink so no half-linked state
  *     persists.
@@ -179,13 +179,29 @@ describe('linkPlugin — refusal cases', () => {
     expect(readPluginLockfile().plugins['force-collide']?.linked).toBe(true)
   })
 
-  it('refuses id collision with an already linked plugin even with force', async () => {
+  it('refuses id collision with an already linked plugin (without force)', async () => {
     const seedDir = join(testDir, 'seed-linked')
     writeManifest(seedDir, { id: 'linked-collide', name: 'Linked', version: '1.0.0', permissions: [] })
     await linkPlugin(seedDir)
 
     writeManifest(sourceDir, { id: 'linked-collide', name: 'Linked Again', version: '1.0.0', permissions: [] })
-    await expect(linkPlugin(sourceDir, { force: true })).rejects.toThrow(/already dev-installed/i)
+    await expect(linkPlugin(sourceDir)).rejects.toThrow(/already dev-installed/i)
+  })
+
+  it('--force replaces an already linked plugin with the new source', async () => {
+    const { readPluginLockfile } = await import('../../../packages/core/src/plugins/lockfile')
+    const seedDir = join(testDir, 'seed-linked')
+    writeManifest(seedDir, { id: 'linked-collide', name: 'Linked', version: '1.0.0', permissions: [] })
+    await linkPlugin(seedDir)
+
+    writeManifest(sourceDir, { id: 'linked-collide', name: 'Linked Again', version: '2.0.0', permissions: [] })
+    const result = await linkPlugin(sourceDir, { force: true })
+    expect(result.id).toBe('linked-collide')
+    const entry = readPluginLockfile().plugins['linked-collide']
+    expect(entry?.linked).toBe(true)
+    // linkPlugin canonicalizes via realpath; on macOS tmpdir() is a /var → /private/var symlink.
+    expect(entry?.linkedSource).toBe(realpathSync(sourceDir))
+    expect(entry?.version).toBe('2.0.0')
   })
 
   it('refuses id collision with a core plugin (without force)', async () => {

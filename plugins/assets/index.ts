@@ -7,7 +7,7 @@ import { existsSync, readdirSync, statSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
-import { definePlugin, defineRoute, searchRoute, type PluginContextLite } from '@bakin/core/routing'
+import { definePlugin, defineRoute, searchRoute } from '@bakin/core/routing'
 import { handleList } from './routes/list'
 import { handleFile } from './routes/file'
 import { handleDelete } from './routes/delete'
@@ -131,7 +131,7 @@ const routes = [
     summary: 'Serve asset file',
     description: 'Streams an asset file by canonical filename for rendering.',
     responses: {
-      200: { contentType: 'application/octet-stream', schema: undefined } as { contentType: string; schema?: undefined },
+      200: binaryResponse,
       404: errorResponse,
     },
     handler: async (req) => handleFile(req),

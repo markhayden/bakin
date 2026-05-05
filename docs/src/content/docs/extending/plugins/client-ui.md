@@ -1,9 +1,9 @@
 ---
 title: Client UI
-description: Register plugin navigation, pages, routes, slots, and shell-integrated UI through @bakin/sdk.
+description: Register plugin navigation, pages, routes, slots, and shell-integrated UI through @makinbakin/sdk.
 ---
 
-Client entries use `registerPlugin()` from `@bakin/sdk`. Keep UI contributions predictable and built from SDK components where practical. Plugin UI should feel like part of Bakin: dense enough for repeated work, accessible, and clear about loading, empty, error, and permission states.
+Client entries use `registerPlugin()` from `@makinbakin/sdk`. Keep UI contributions predictable and built from SDK components where practical. Plugin UI should feel like part of Bakin: dense enough for repeated work, accessible, and clear about loading, empty, error, and permission states.
 
 The tested minimal client entry lives at `docs/snippets/plugin-basic/client.tsx`.
 
@@ -11,7 +11,7 @@ The tested minimal client entry lives at `docs/snippets/plugin-basic/client.tsx`
 Source: `docs/snippets/plugin-basic/client.tsx`
 
 ```tsx
-import { registerPlugin } from '@bakin/sdk'
+import { registerPlugin } from '@makinbakin/sdk'
 
 function DocsBasicPage() {
   return <div>Hello from a Bakin plugin.</div>
@@ -104,11 +104,11 @@ Register with `registerSlot()` directly when you need a custom order. Lower orde
 
 ## UI Primitives
 
-Import common UI from `@bakin/sdk/ui` and shared app components from `@bakin/sdk/components`.
+Import common UI from `@makinbakin/sdk/ui` and shared app components from `@makinbakin/sdk/components`.
 
 ```tsx
-import { Button } from '@bakin/sdk/ui'
-import { PluginHeader } from '@bakin/sdk/components'
+import { Button } from '@makinbakin/sdk/ui'
+import { PluginHeader } from '@makinbakin/sdk/components'
 ```
 
 Custom UI is fine when the domain needs it, but keep Bakin conventions: small radii, clear tables and filters, keyboard-friendly controls, visible empty states, and no layout shift when data loads.
@@ -118,7 +118,7 @@ Custom UI is fine when the domain needs it, but keep Bakin conventions: small ra
 During development, Bakin can unregister and reload client contributions. If a plugin maintains a client-side registry outside `registerPlugin()`, enroll cleanup with `registerPluginCleanup(id, fn)`.
 
 ```ts
-import { registerPluginCleanup } from '@bakin/sdk'
+import { registerPluginCleanup } from '@makinbakin/sdk'
 
 registerPluginCleanup('docs-basic', () => {
   // Clear plugin-owned client registries here.
@@ -130,9 +130,9 @@ registerPluginCleanup('docs-basic', () => {
 Import supported surfaces only:
 
 ```ts
-import { registerPlugin } from '@bakin/sdk'
-import { Button } from '@bakin/sdk/ui'
-import type { NavItem } from '@bakin/sdk'
+import { registerPlugin } from '@makinbakin/sdk'
+import { Button } from '@makinbakin/sdk/ui'
+import type { NavItem } from '@makinbakin/sdk'
 ```
 
 Host internals can change without warning. SDK exports are the contract.

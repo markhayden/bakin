@@ -256,7 +256,6 @@ function fail(message: string): void {
   if (process.env.NODE_ENV === 'test' || (process.env as Record<string, string>).VITEST) {
     throw new Error(message)
   }
-  // eslint-disable-next-line no-console
   console.warn(`[dispatcher] ${message}`)
 }
 

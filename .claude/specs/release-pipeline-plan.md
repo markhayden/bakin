@@ -4,7 +4,7 @@ Companion to `.claude/specs/release-pipeline.md`. Read the spec first for the de
 
 ## Refresher
 
-One branch: `feat/release-pipeline`. End state: a release is cut locally with `bun run release <patch|minor|major>`, CI gates the tag, publishes signed binaries, publishes `@bakin/sdk` with npm provenance, updates the Homebrew tap for stable releases, and then emits post-publish smoke.
+One branch: `feat/release-pipeline`. End state: a release is cut locally with `bun run release <patch|minor|major>`, CI gates the tag, publishes signed binaries, publishes `@makinbakin/sdk` with npm provenance, updates the Homebrew tap for stable releases, and then emits post-publish smoke.
 
 **State of main before this work:**
 - Root `package.json` is `1.0.0`; `packages/core/src/constants.ts` hardcodes `APP_VERSION = '1.0.0'`.
@@ -12,7 +12,7 @@ One branch: `feat/release-pipeline`. End state: a release is cut locally with `b
 - `.github/workflows/release.yml` runs on `v*`, uses Ubuntu only, has `contents: write` only, computes checksums before any signing, generates release notes automatically, and publishes SDK only when `NPM_TOKEN` exists.
 - `scripts/publish-sdk.ts` mutates `packages/sdk/package.json`, uses broad `git describe --tags --abbrev=0`, and treats every npm failure as success when `BAKIN_PUBLISH_IDEMPOTENT=1`.
 - `packages/sdk/package.json` publishes raw `.ts/.tsx` source and export subpaths import repo-only aliases/plugin internals.
-- `@bakin/sdk` does not exist on npm yet, so trusted publishing needs one manual bootstrap publish before the first real tag.
+- `@makinbakin/sdk` does not exist on npm yet, so trusted publishing needs one manual bootstrap publish before the first real tag.
 - `homebrew/bakin.rb` exists as a template, but `homebrew/README.md` documents a manual flow and the wrong tap name for `markhayden/homebrew-tap`.
 
 ## Pre-Flight Checklist
@@ -23,7 +23,7 @@ One branch: `feat/release-pipeline`. End state: a release is cut locally with `b
 - [ ] Baseline: `bun run typecheck`.
 - [ ] Baseline: `bun run lint`.
 - [ ] Confirm `gh auth status` can read workflow runs and push tags.
-- [ ] Confirm npm account owns `@bakin` scope or can publish `@bakin/sdk`.
+- [ ] Confirm npm account owns `@makinbakin` scope or can publish `@makinbakin/sdk`.
 - [ ] Confirm Apple Developer ID certificate export path is understood: `.p12` + password + App Store Connect API key.
 - [ ] Confirm `markhayden/homebrew-tap` exists and decide whether `HOMEBREW_TAP_TOKEN` will be a PAT or GitHub App token.
 
@@ -107,7 +107,7 @@ C5 macOS signing script ──────────────────�
 
 ### C2 — `feat(release): build a publishable SDK package`
 
-**Description:** Make `@bakin/sdk` publishable from a generated package directory instead of raw repo source.
+**Description:** Make the SDK publishable as `@makinbakin/sdk` from a generated package directory instead of raw repo source.
 
 **Files likely touched:**
 - `scripts/build-sdk-package.ts`
@@ -134,8 +134,8 @@ C5 macOS signing script ──────────────────�
 - [ ] `bun test tests/scripts/build-sdk-package.test.ts --isolate`
 - [ ] `bun run scripts/build-sdk-package.ts --version 0.1.0-rc.1 --out /tmp/bakin-sdk-package-smoke`
 - [ ] From a scratch dir: `bun add react@^19 react-dom@^19 /tmp/bakin-sdk-package-smoke`
-- [ ] From scratch: `bun -e "import('@bakin/sdk').then(m => { if (typeof m.registerPlugin !== 'function') throw new Error('missing registerPlugin') })"`
-- [ ] One `bun -e "import('@bakin/sdk/<subpath>')"` per export.
+- [ ] From scratch: `bun -e "import('@makinbakin/sdk').then(m => { if (typeof m.registerPlugin !== 'function') throw new Error('missing registerPlugin') })"`
+- [ ] One `bun -e "import('@makinbakin/sdk/<subpath>')"` per export.
 - [ ] `bun run typecheck`
 
 **Dependencies:** C1 preferred, but can start independently if version is passed as a script arg.
@@ -245,7 +245,7 @@ C5 macOS signing script ──────────────────�
 - Setup Node >= 24 and npm >= 11.5.1 before publish.
 - `scripts/publish-sdk.ts` should:
   - accept `--dry-run`, `--package-dir`, `--version`, and optional `--tag`;
-  - pre-check `npm view @bakin/sdk@<version> version --json`;
+  - pre-check `npm view @makinbakin/sdk@<version> version --json`;
   - exit 0 only when version already exists;
   - publish with `npm publish --provenance --tag <latest|next>` from the generated package dir;
   - never read `NPM_TOKEN`.
@@ -312,7 +312,7 @@ C5 macOS signing script ──────────────────�
 - [ ] Binary matrix downloads exact release assets with `GH_TOKEN`.
 - [ ] Linux x64 and Linux arm64 run `--version` and match tag without `v`.
 - [ ] macOS verifies `codesign`, `spctl`, then runs `--version`.
-- [ ] SDK smoke installs exact `@bakin/sdk@<version>` with Bun and imports every export subpath.
+- [ ] SDK smoke installs exact `@makinbakin/sdk@<version>` with Bun and imports every export subpath.
 - [ ] Homebrew job runs only for stable releases and verifies `brew install markhayden/tap/bakin`, `bakin version`, and `brew test`.
 
 **Verification:**
@@ -358,7 +358,7 @@ C5 macOS signing script ──────────────────�
 **Steps:**
 1. Build SDK package locally with bootstrap version.
 2. `npm publish --access public --tag bootstrap` from the generated SDK package dir.
-3. Configure npm trusted publisher for `@bakin/sdk`: repo `markhayden/bakin`, workflow filename `release.yml`.
+3. Configure npm trusted publisher for `@makinbakin/sdk`: repo `markhayden/bakin`, workflow filename `release.yml`.
 4. Configure GitHub secrets:
    - `APPLE_DEVELOPER_ID_CERT_P12_BASE64`
    - `APPLE_DEVELOPER_ID_CERT_PASSWORD`
@@ -376,8 +376,8 @@ C5 macOS signing script ──────────────────�
 11. Optionally deprecate bootstrap package version.
 
 **Acceptance criteria:**
-- [ ] `@bakin/sdk@0.1.0-rc.1` exists with npm provenance and dist-tag `next`.
-- [ ] `@bakin/sdk@0.1.0` exists with npm provenance and dist-tag `latest`.
+- [ ] `@makinbakin/sdk@0.1.0-rc.1` exists with npm provenance and dist-tag `next`.
+- [ ] `@makinbakin/sdk@0.1.0` exists with npm provenance and dist-tag `latest`.
 - [ ] GitHub releases have expected assets + checksums.
 - [ ] macOS asset is signed/notarized and smoke passes.
 - [ ] `markhayden/homebrew-tap` formula points at `v0.1.0`.
@@ -428,4 +428,4 @@ C5 macOS signing script ──────────────────�
 - [ ] Exact GitHub secret names match the final workflow.
 - [ ] Confirm whether `spctl --assess --type execute` passes on the raw signed/notarized binary after ZIP notary submission. If not, switch macOS release asset/formula URL to a ZIP or add a packaged artifact in a follow-up.
 - [ ] Confirm `brew audit --strict --online` expectations for binary-only formula in a third-party tap.
-- [ ] Decide whether to deprecate `@bakin/sdk@0.0.0-bootstrap.0` immediately after `v0.1.0` ships.
+- [ ] Decide whether to deprecate `@makinbakin/sdk@0.0.0-bootstrap.0` immediately after `v0.1.0` ships.

@@ -59,11 +59,7 @@ export interface PluginContextLite extends RouteContext {
  * Core (host) context — host-only surface for routes registered under
  * `packages/host/src/core-routes/`.
  */
-export interface CoreContext extends RouteContext {
-  // Host-only surface is added in T4 alongside the dispatcher. T1 keeps the
-  // shape minimal so the type compiles without forward-referencing modules
-  // that don't exist yet.
-}
+export type CoreContext = RouteContext
 
 // ---------------------------------------------------------------------------
 // Body / response specs
@@ -122,7 +118,7 @@ export interface NonJsonResponseSpec {
     | 'image/png'
     | 'image/jpeg'
     | 'image/svg+xml'
-    | (string & {})
+    | (string & Record<never, never>)
   schema?: z.ZodType
 }
 
@@ -136,22 +132,16 @@ export type ResponseSpec =
 // Parsed input — conditional intersection so undeclared keys are absent
 // ---------------------------------------------------------------------------
 
-/** Helper: `{ body: B }` if B is declared (non-undefined), else `{}`. */
-type Field<K extends string, T> = [T] extends [undefined] ? {} : { [P in K]: T }
-
-/** Body spec extracts to its inferred output type. */
-type InferBody<B> =
-  B extends z.ZodType<infer Out> ? Out :
-  B extends JsonBodySpec<infer Out> ? Out :
-  B extends MultipartBodySpec<infer Out> ? Out :
-  B extends RawBodySpec<infer Out> ? Out :
-  B extends NoBodySpec ? undefined :
-  undefined
+/** Helper: `{ body: B }` if B is declared (non-undefined), else no fields. */
+type Field<K extends string, T> = [T] extends [undefined] ? unknown : { [P in K]: T }
+type Normalize<T> = { [K in keyof T]: T[K] }
 
 export type ParsedInput<P, Q, B> =
-  & Field<'params', P>
-  & Field<'query', Q>
-  & Field<'body', B>
+  Normalize<
+    & Field<'params', P>
+    & Field<'query', Q>
+    & Field<'body', B>
+  >
 
 // ---------------------------------------------------------------------------
 // APIRoute — the new declarative shape

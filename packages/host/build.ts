@@ -2,7 +2,7 @@
  * Bakin host client bundle.
  *
  * Builds packages/host/src/main.tsx → packages/host/dist/main.mjs for the
- * browser. Externals (React, @bakin/sdk) are wired in via the import map
+ * browser. Externals (React, SDK package aliases) are wired in via the import map
  * emitted by `packages/host/public/index.html`, pointing at vendor bundles
  * under `/vendor/*.js`. Plugin client bundles are loaded dynamically at
  * runtime by `PluginHost`, so the shell no longer statically imports any
@@ -25,7 +25,7 @@ await Bun.build({
     chunk: '[name]-[hash].[ext]',
     asset: '[name]-[hash].[ext]',
   },
-  // TD1: externalize React + @bakin/sdk so plugins and shell share instances
+  // TD1: externalize React + SDK package aliases so plugins and shell share instances
   // at runtime via the browser import map emitted in TD3. TD2 produces the
   // vendor bundles that the import map points at.
   external: [
@@ -42,6 +42,17 @@ await Bun.build({
     '@bakin/sdk/slots',
     '@bakin/sdk/types',
     '@bakin/sdk/utils',
+    '@bakin/sdk/metadata',
+    '@bakin/sdk/routing',
+    '@makinbakin/sdk',
+    '@makinbakin/sdk/ui',
+    '@makinbakin/sdk/hooks',
+    '@makinbakin/sdk/components',
+    '@makinbakin/sdk/slots',
+    '@makinbakin/sdk/types',
+    '@makinbakin/sdk/utils',
+    '@makinbakin/sdk/metadata',
+    '@makinbakin/sdk/routing',
   ],
 })
 

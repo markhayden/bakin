@@ -1,12 +1,11 @@
 /**
- * Build a self-contained publish directory for @bakin/sdk.
+ * Build a self-contained publish directory for the public SDK package.
  *
  * The source SDK package is optimized for the monorepo import map. This
  * script turns it into an npm package: bundled ESM entrypoints, generated
  * declarations, a publish-only package.json, and no repo-only import leaks.
  */
 import {
-  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -24,6 +23,8 @@ const REPO_ROOT = resolve(import.meta.dir, '..')
 const SDK_DIR = join(REPO_ROOT, 'packages/sdk')
 const ROOT_PACKAGE_PATH = join(REPO_ROOT, 'package.json')
 const SDK_PACKAGE_PATH = join(SDK_DIR, 'package.json')
+const INTERNAL_SDK_PACKAGE_NAME = '@bakin/sdk'
+export const PUBLIC_SDK_PACKAGE_NAME = '@makinbakin/sdk'
 
 export interface SdkExportEntry {
   exportPath: string
@@ -54,6 +55,7 @@ const EXTERNAL_JS_PEERS = [
 
 const FORBIDDEN_BARE_PREFIXES = [
   '@/',
+  '@bakin/sdk',
   '@bakin/core',
   '@bakin/team',
   '@bakin/workflows',
@@ -179,12 +181,20 @@ function aliasTarget(specifier: string): string | null {
   return null
 }
 
+function toPublicSdkSpecifier(specifier: string): string {
+  if (specifier === INTERNAL_SDK_PACKAGE_NAME) return PUBLIC_SDK_PACKAGE_NAME
+  if (specifier.startsWith(`${INTERNAL_SDK_PACKAGE_NAME}/`)) {
+    return `${PUBLIC_SDK_PACKAGE_NAME}${specifier.slice(INTERNAL_SDK_PACKAGE_NAME.length)}`
+  }
+  return specifier
+}
+
 function rewriteModuleSpecifier(
   specifier: string,
   originalFileRel: string,
   outputFileRel: string,
 ): string {
-  if (specifier.startsWith('@bakin/sdk')) return specifier
+  if (specifier.startsWith(INTERNAL_SDK_PACKAGE_NAME)) return toPublicSdkSpecifier(specifier)
   const target = aliasTarget(specifier)
     ?? (specifier.startsWith('.') ? resolveOriginalRelativeSpecifier(originalFileRel, specifier) : null)
   if (!target) return specifier
@@ -194,11 +204,12 @@ function rewriteModuleSpecifier(
 }
 
 function rewriteDeclarationImports(content: string, originalFileRel: string, outputFileRel: string): string {
-  return content.replace(IMPORT_SPECIFIER_RE, (match, fromSpec, bareSpec, dynamicSpec) => {
+  const rewrittenImports = content.replace(IMPORT_SPECIFIER_RE, (match, fromSpec, bareSpec, dynamicSpec) => {
     const specifier = fromSpec ?? bareSpec ?? dynamicSpec
     const rewritten = rewriteModuleSpecifier(specifier, originalFileRel, outputFileRel)
     return match.replace(specifier, rewritten)
   })
+  return rewrittenImports.replaceAll(INTERNAL_SDK_PACKAGE_NAME, PUBLIC_SDK_PACKAGE_NAME)
 }
 
 function copyDeclarationTree(tempDtsDir: string, outDir: string): void {
@@ -216,26 +227,27 @@ function copyDeclarationTree(tempDtsDir: string, outDir: string): void {
   }
 }
 
-async function buildJsEntry(entry: SdkExportEntry, outDir: string): Promise<void> {
+function buildJsEntry(entry: SdkExportEntry, outDir: string): void {
   const targetFile = join(outDir, entry.importPath)
   mkdirSync(dirname(targetFile), { recursive: true })
-  const result = await Bun.build({
-    entrypoints: [join(REPO_ROOT, entry.source)],
-    outdir: dirname(targetFile),
-    target: 'bun',
-    format: 'esm',
-    external: EXTERNAL_JS_PEERS,
-    naming: '[name].[ext]',
+  const result = spawnSync('bun', [
+    'build',
+    join(REPO_ROOT, entry.source),
+    '--outdir',
+    dirname(targetFile),
+    '--target',
+    'bun',
+    '--format',
+    'esm',
+    '--entry-naming',
+    '[name].[ext]',
+    ...EXTERNAL_JS_PEERS.flatMap((specifier) => ['--external', specifier]),
+  ], {
+    cwd: REPO_ROOT,
+    encoding: 'utf-8',
   })
-  if (!result.success) {
-    const messages = result.logs.map((log: unknown) => {
-      if (log instanceof Error) return log.message
-      if (typeof log === 'object' && log !== null && 'message' in log) {
-        return String((log as { message: unknown }).message)
-      }
-      return String(log)
-    }).join('\n')
-    throw new Error(`Failed to build ${entry.exportPath}:\n${messages}`)
+  if (result.status !== 0) {
+    throw new Error(`Failed to build ${entry.exportPath}:\n${result.stdout}${result.stderr}`)
   }
   if (!existsSync(targetFile)) {
     throw new Error(`Expected ${entry.importPath} to be generated`)
@@ -271,7 +283,7 @@ function collectBareDeclarationDependencies(outDir: string): string[] {
     const content = readFileSync(file, 'utf-8')
     for (const match of content.matchAll(IMPORT_SPECIFIER_RE)) {
       const specifier = match[1] ?? match[2] ?? match[3]
-      if (!specifier || specifier.startsWith('.') || specifier.startsWith('@bakin/sdk')) continue
+      if (!specifier || specifier.startsWith('.') || specifier.startsWith(PUBLIC_SDK_PACKAGE_NAME) || specifier.startsWith(INTERNAL_SDK_PACKAGE_NAME)) continue
       packages.add(packageName(specifier))
     }
   }
@@ -308,7 +320,7 @@ function writePackageJson(outDir: string, version: string): void {
   ]))
 
   const pkg = {
-    name: '@bakin/sdk',
+    name: PUBLIC_SDK_PACKAGE_NAME,
     version,
     description: sourcePkg.description,
     type: 'module',
@@ -339,7 +351,9 @@ function writePackageJson(outDir: string, version: string): void {
 
 function copyReadme(outDir: string): void {
   const source = join(SDK_DIR, 'README.md')
-  if (existsSync(source)) cpSync(source, join(outDir, 'README.md'))
+  if (!existsSync(source)) return
+  const content = readFileSync(source, 'utf-8').replaceAll(INTERNAL_SDK_PACKAGE_NAME, PUBLIC_SDK_PACKAGE_NAME)
+  writeFileSync(join(outDir, 'README.md'), content, 'utf-8')
 }
 
 export function findForbiddenPackageImports(files: string[], packageRoot: string): string[] {
@@ -376,9 +390,7 @@ export async function buildSdkPackage(opts: BuildSdkPackageOptions): Promise<voi
   rmSync(outDir, { recursive: true, force: true })
   mkdirSync(outDir, { recursive: true })
 
-  for (const entry of SDK_EXPORTS) {
-    await buildJsEntry(entry, outDir)
-  }
+  for (const entry of SDK_EXPORTS) buildJsEntry(entry, outDir)
 
   const tempDtsDir = mkdtempSync(join(tmpdir(), 'bakin-sdk-dts-'))
   try {
@@ -411,7 +423,7 @@ async function main(): Promise<void> {
   const opts = parseArgs(process.argv.slice(2))
   await buildSdkPackage(opts)
   const count = collectFiles(resolve(opts.outDir), (path) => statSync(path).isFile()).length
-  console.log(`Built @bakin/sdk@${opts.version} package at ${resolve(opts.outDir)} (${count} files)`)
+  console.log(`Built ${PUBLIC_SDK_PACKAGE_NAME}@${opts.version} package at ${resolve(opts.outDir)} (${count} files)`)
 }
 
 if (import.meta.main) {
