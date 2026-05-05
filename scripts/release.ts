@@ -53,6 +53,14 @@ interface CommandResult {
   stderr: string
 }
 
+interface ReleaseWorkflowRun {
+  conclusion?: string
+  databaseId?: number
+  headBranch?: string
+  status?: string
+  url?: string
+}
+
 export function parseReleaseTag(tag: string): ParsedReleaseTag | null {
   const match = RELEASE_TAG_RE.exec(tag)
   if (!match) return null
@@ -296,6 +304,50 @@ function gh(args: string[]): string {
   return requireOk(`gh ${args.join(' ')}`, run('gh', args))
 }
 
+export function releaseWorkflowUrlFromRuns(json: string, targetTag: string): string | null {
+  const runs = JSON.parse(json) as ReleaseWorkflowRun[]
+  const runInfo = runs.find((item) => item.headBranch === targetTag && item.url)
+  return runInfo?.url ?? null
+}
+
+function releaseWorkflowFallbackUrl(targetTag: string): string {
+  const query = encodeURIComponent(`branch:${targetTag}`)
+  return `https://github.com/markhayden/bakin/actions/workflows/release.yml?query=${query}`
+}
+
+function releaseWorkflowUrl(targetTag: string): string | null {
+  const output = gh([
+    'run', 'list',
+    '--workflow', 'Release',
+    '--branch', targetTag,
+    '--json', 'conclusion,databaseId,headBranch,status,url',
+    '--limit', '10',
+  ])
+  return releaseWorkflowUrlFromRuns(output, targetTag)
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolveSleep) => setTimeout(resolveSleep, ms))
+}
+
+async function waitForReleaseWorkflowUrl(
+  targetTag: string,
+  opts: { attempts?: number; delayMs?: number } = {},
+): Promise<string | null> {
+  const attempts = opts.attempts ?? 12
+  const delayMs = opts.delayMs ?? 5_000
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const url = releaseWorkflowUrl(targetTag)
+      if (url) return url
+    } catch {
+      // The release tag is already pushed; workflow discovery is best-effort UX.
+    }
+    if (attempt < attempts) await sleep(delayMs)
+  }
+  return null
+}
+
 function listReleaseTags(): string[] {
   const output = git(['tag', '--list', 'v[0-9]*'])
   return output.split('\n').map((tag) => tag.trim()).filter(Boolean)
@@ -430,8 +482,8 @@ async function main(): Promise<void> {
   git(['commit', '-m', `chore(release): ${targetTag}`])
   git(['tag', targetTag])
   git(['push', '--atomic', 'origin', 'main', targetTag])
-  const runUrl = gh(['run', 'list', '--workflow', 'Release', '--json', 'url', '--limit', '1'])
-  console.log(`Release tag pushed. Workflow: ${runUrl}`)
+  const runUrl = await waitForReleaseWorkflowUrl(targetTag)
+  console.log(`Release tag pushed. Workflow: ${runUrl ?? releaseWorkflowFallbackUrl(targetTag)}`)
 }
 
 if (import.meta.main) {

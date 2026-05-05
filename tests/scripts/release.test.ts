@@ -6,6 +6,7 @@ import {
   parseArgs,
   parseReleaseTag,
   releaseNotesForTarget,
+  releaseWorkflowUrlFromRuns,
   resolveReleaseTarget,
 } from '../../scripts/release'
 
@@ -81,6 +82,25 @@ describe('parseArgs', () => {
   it('rejects ambiguous command shapes', () => {
     expect(() => parseArgs(['patch', 'minor'])).toThrow('Unexpected release arguments')
     expect(() => parseArgs(['promote', '--rc'])).toThrow('cannot be combined')
+  })
+})
+
+describe('release workflow URL discovery', () => {
+  it('returns the tag-triggered release run URL', () => {
+    const runs = JSON.stringify([
+      { headBranch: 'main', url: 'https://github.com/markhayden/bakin/actions/runs/old' },
+      { headBranch: 'v0.1.0-rc.9', url: 'https://github.com/markhayden/bakin/actions/runs/next' },
+    ])
+
+    expect(releaseWorkflowUrlFromRuns(runs, 'v0.1.0-rc.9')).toBe('https://github.com/markhayden/bakin/actions/runs/next')
+  })
+
+  it('does not report stale release workflow runs for other refs', () => {
+    const runs = JSON.stringify([
+      { headBranch: 'v0.1.0-rc.8', url: 'https://github.com/markhayden/bakin/actions/runs/old' },
+    ])
+
+    expect(releaseWorkflowUrlFromRuns(runs, 'v0.1.0-rc.9')).toBeNull()
   })
 })
 
