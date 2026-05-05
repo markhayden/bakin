@@ -199,6 +199,7 @@ jobs:
       TAG: ${{ needs.gate.outputs.tag }}
       VERSION: ${{ needs.gate.outputs.version }}
       NPM_TAG: ${{ needs.gate.outputs.npm_tag }}
+      NPM_PROVENANCE: ${{ github.event.repository.private == false && '1' || '0' }}
       PRERELEASE: ${{ needs.gate.outputs.prerelease }}
       GH_TOKEN: ${{ github.token }}
     steps:

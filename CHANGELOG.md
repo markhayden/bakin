@@ -11,6 +11,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 ### Changed
 
 ### Fixed
+- Publish the SDK without npm provenance when the source repository is private.
 
 ### Removed
 

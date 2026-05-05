@@ -4,7 +4,7 @@ Companion to `.claude/specs/release-pipeline.md`. Read the spec first for the de
 
 ## Refresher
 
-One branch: `feat/release-pipeline`. End state: a release is cut locally with `bun run release <patch|minor|major>`, CI gates the tag, publishes signed binaries, publishes `@makinbakin/sdk` with npm provenance, updates the Homebrew tap for stable releases, and then emits post-publish smoke.
+One branch: `feat/release-pipeline`. End state: a release is cut locally with `bun run release <patch|minor|major>`, CI gates the tag, publishes signed binaries, publishes `@makinbakin/sdk` with npm trusted publishing and provenance when repository visibility supports it, updates the Homebrew tap for stable releases, and then emits post-publish smoke.
 
 **State of main before this work:**
 - Root `package.json` is `1.0.0`; `packages/core/src/constants.ts` hardcodes `APP_VERSION = '1.0.0'`.
@@ -61,7 +61,7 @@ C5 macOS signing script ──────────────────�
 | `packages/core/src/generated-version.ts` | Tracked stub, stamped during builds. |
 | `packages/core/src/constants.ts` | Re-exports `APP_VERSION`. |
 | `scripts/build-sdk-package.ts` | Builds self-contained SDK publish directory. |
-| `scripts/publish-sdk.ts` | Publishes built SDK package with trusted publishing/provenance. |
+| `scripts/publish-sdk.ts` | Publishes built SDK package with trusted publishing and optional provenance. |
 | `scripts/release.ts` | Local bump, CHANGELOG, commit, tag, atomic push UX. |
 | `scripts/sign-macos-binary.ts` | Developer ID signing/notary orchestration. |
 | `scripts/update-homebrew-formula.ts` | Renders tap formula from release checksums. |
@@ -247,7 +247,7 @@ C5 macOS signing script ──────────────────�
   - accept `--dry-run`, `--package-dir`, `--version`, and optional `--tag`;
   - pre-check `npm view @makinbakin/sdk@<version> version --json`;
   - exit 0 only when version already exists;
-  - publish with `npm publish --provenance --tag <latest|next>` from the generated package dir;
+  - publish with `npm publish [--provenance] --tag <latest|next>` from the generated package dir;
   - never read `NPM_TOKEN`.
 - After npm publish, C7 handles tap update; then workflow undrafts/publishes the GitHub release.
 
@@ -376,8 +376,8 @@ C5 macOS signing script ──────────────────�
 11. Optionally deprecate bootstrap package version.
 
 **Acceptance criteria:**
-- [ ] `@makinbakin/sdk@0.1.0-rc.1` exists with npm provenance and dist-tag `next`.
-- [ ] `@makinbakin/sdk@0.1.0` exists with npm provenance and dist-tag `latest`.
+- [ ] `@makinbakin/sdk@0.1.0-rc.1` exists with dist-tag `next`; provenance exists when repository visibility supports it.
+- [ ] `@makinbakin/sdk@0.1.0` exists with dist-tag `latest`; provenance exists when repository visibility supports it.
 - [ ] GitHub releases have expected assets + checksums.
 - [ ] macOS asset is signed/notarized and smoke passes.
 - [ ] `markhayden/homebrew-tap` formula points at `v0.1.0`.

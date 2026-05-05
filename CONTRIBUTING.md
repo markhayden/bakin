@@ -63,9 +63,10 @@ Main CI for the exact head SHA, has non-empty `[Unreleased]` changelog
 bullets, and will create the release commit/tag before an atomic push.
 
 CI then builds all binaries, signs/notarizes macOS, computes checksums,
-publishes `@makinbakin/sdk` with npm trusted publishing/provenance, updates
+publishes `@makinbakin/sdk` with npm trusted publishing, updates
 `markhayden/homebrew-tap` for stable releases, publishes the GitHub
-release, and runs post-publish smoke.
+release, and runs post-publish smoke. npm provenance is enabled only when
+repository visibility supports it.
 
 Maintainer one-time setup is documented in
 [`.claude/knowledge/release-pipeline.md`](./.claude/knowledge/release-pipeline.md).
