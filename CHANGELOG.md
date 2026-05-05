@@ -11,6 +11,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 ### Changed
 
 ### Fixed
+- Dispatch post-publish smoke explicitly after releases created by `GITHUB_TOKEN`.
 
 ### Removed
 

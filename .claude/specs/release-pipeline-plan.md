@@ -308,7 +308,7 @@ C5 macOS signing script ──────────────────�
 - `.github/workflows/release-smoke.yml`
 
 **Acceptance criteria:**
-- [ ] Trigger is `release: published`.
+- [ ] Trigger supports explicit `workflow_dispatch` from `release.yml`, with `release: published` kept for human-published releases.
 - [ ] Binary matrix downloads exact release assets with `GH_TOKEN`.
 - [ ] Linux x64 and Linux arm64 run `--version` and match tag without `v`.
 - [ ] macOS verifies `codesign`, then runs `--version`.

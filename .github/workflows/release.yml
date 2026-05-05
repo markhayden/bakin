@@ -6,6 +6,7 @@ on:
       - 'v*'
 
 permissions:
+  actions: write
   contents: write
   id-token: write
 
@@ -344,3 +345,6 @@ jobs:
           gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
             -F draft=false \
             -F prerelease="${PRERELEASE}"
+
+      - name: Dispatch post-publish smoke
+        run: gh workflow run release-smoke.yml --ref main -f tag="${TAG}" -f prerelease="${PRERELEASE}"
