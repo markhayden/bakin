@@ -11,6 +11,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 ### Changed
 
 ### Fixed
+- Allow the macOS signing script to read GitHub Actions secrets from `process.env`.
 
 ### Removed
 
