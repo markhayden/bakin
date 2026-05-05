@@ -1,0 +1,422 @@
+/**
+ * Build a self-contained publish directory for @bakin/sdk.
+ *
+ * The source SDK package is optimized for the monorepo import map. This
+ * script turns it into an npm package: bundled ESM entrypoints, generated
+ * declarations, a publish-only package.json, and no repo-only import leaks.
+ */
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { dirname, join, relative, resolve, sep } from 'node:path'
+import { tmpdir } from 'node:os'
+
+const REPO_ROOT = resolve(import.meta.dir, '..')
+const SDK_DIR = join(REPO_ROOT, 'packages/sdk')
+const ROOT_PACKAGE_PATH = join(REPO_ROOT, 'package.json')
+const SDK_PACKAGE_PATH = join(SDK_DIR, 'package.json')
+
+export interface SdkExportEntry {
+  exportPath: string
+  source: string
+  importPath: string
+  typesPath: string
+}
+
+export const SDK_EXPORTS: SdkExportEntry[] = [
+  { exportPath: '.', source: 'packages/sdk/src/index.ts', importPath: './index.js', typesPath: './index.d.ts' },
+  { exportPath: './ui', source: 'packages/sdk/src/ui/index.ts', importPath: './ui/index.js', typesPath: './ui/index.d.ts' },
+  { exportPath: './hooks', source: 'packages/sdk/src/hooks/index.ts', importPath: './hooks/index.js', typesPath: './hooks/index.d.ts' },
+  { exportPath: './components', source: 'packages/sdk/src/components/index.ts', importPath: './components/index.js', typesPath: './components/index.d.ts' },
+  { exportPath: './slots', source: 'packages/sdk/src/slots/index.tsx', importPath: './slots/index.js', typesPath: './slots/index.d.ts' },
+  { exportPath: './types', source: 'packages/sdk/src/types/index.ts', importPath: './types/index.js', typesPath: './types/index.d.ts' },
+  { exportPath: './utils', source: 'packages/sdk/src/utils/index.ts', importPath: './utils/index.js', typesPath: './utils/index.d.ts' },
+  { exportPath: './metadata', source: 'packages/sdk/src/metadata/index.ts', importPath: './metadata/index.js', typesPath: './metadata/index.d.ts' },
+  { exportPath: './routing', source: 'packages/sdk/src/routing/index.ts', importPath: './routing/index.js', typesPath: './routing/index.d.ts' },
+]
+
+const EXTERNAL_JS_PEERS = [
+  'react',
+  'react-dom',
+  'react-dom/client',
+  'react/jsx-runtime',
+  'react/jsx-dev-runtime',
+]
+
+const FORBIDDEN_BARE_PREFIXES = [
+  '@/',
+  '@bakin/core',
+  '@bakin/team',
+  '@bakin/workflows',
+  '@bakin/assets',
+  '@bakin/tasks',
+  '@bakin/memory',
+  '@bakin/models',
+  '@bakin/health',
+  '@bakin/schedule',
+]
+
+const IMPORT_SPECIFIER_RE = /\bfrom\s+["']([^"']+)["']|\bimport\s+["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)/g
+
+interface PackageJson {
+  name?: string
+  description?: string
+  peerDependencies?: Record<string, string>
+  dependencies?: Record<string, string>
+  repository?: unknown
+  homepage?: string
+  bugs?: unknown
+  author?: string
+  license?: string
+  keywords?: string[]
+}
+
+interface BuildSdkPackageOptions {
+  version: string
+  outDir: string
+}
+
+function readJson<T>(path: string): T {
+  return JSON.parse(readFileSync(path, 'utf-8')) as T
+}
+
+function writeJson(path: string, value: unknown): void {
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf-8')
+}
+
+function toPosix(path: string): string {
+  return path.split(sep).join('/')
+}
+
+function withoutDtsExtension(rel: string): string {
+  return rel.replace(/\.d\.ts$/, '')
+}
+
+function normalizeRel(path: string): string {
+  return toPosix(path).replace(/^\.\//, '')
+}
+
+function ensureRelativeSpecifier(specifier: string): string {
+  return specifier.startsWith('.') ? specifier : `./${specifier}`
+}
+
+function packageName(specifier: string): string {
+  if (specifier.startsWith('@')) {
+    const [scope, name] = specifier.split('/')
+    return `${scope}/${name}`
+  }
+  return specifier.split('/')[0]
+}
+
+function collectFiles(dir: string, predicate: (path: string) => boolean): string[] {
+  const out: string[] = []
+  if (!existsSync(dir)) return out
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name)
+    if (entry.isDirectory()) out.push(...collectFiles(path, predicate))
+    else if (predicate(path)) out.push(path)
+  }
+  return out
+}
+
+function mapSdkModule(rest: string): string | null {
+  if (rest === 'index') return 'index'
+  if (rest === 'register') return 'register'
+  if (rest.endsWith('/index')) return rest
+  if (rest === 'types' || rest === 'routing' || rest === 'ui' || rest === 'hooks' || rest === 'components' || rest === 'slots' || rest === 'utils' || rest === 'metadata') {
+    return `${rest}/index`
+  }
+  return rest === 'hooks/router' ? 'hooks/router' : null
+}
+
+function mapOriginalModulePath(originalNoExt: string): string | null {
+  const normalized = normalizeRel(originalNoExt)
+  if (normalized.startsWith('packages/sdk/src/')) {
+    return mapSdkModule(normalized.slice('packages/sdk/src/'.length))
+  }
+  if (normalized.startsWith('src/')) {
+    return `_internal/app/${normalized.slice('src/'.length)}`
+  }
+  if (normalized.startsWith('packages/core/src/')) {
+    return `_internal/core/${normalized.slice('packages/core/src/'.length)}`
+  }
+  if (normalized.startsWith('plugins/')) {
+    return `_internal/plugins/${normalized.slice('plugins/'.length)}`
+  }
+  return null
+}
+
+function resolveOriginalRelativeSpecifier(originalFileRel: string, specifier: string): string | null {
+  const base = normalizeRel(join(dirname(originalFileRel), specifier))
+  const direct = mapOriginalModulePath(base)
+  if (direct) return direct
+  return mapOriginalModulePath(`${base}/index`)
+}
+
+function aliasTarget(specifier: string): string | null {
+  if (specifier.startsWith('@/')) {
+    return `_internal/app/${specifier.slice(2)}`
+  }
+  if (specifier === '@bakin/core') return '_internal/core/index'
+  if (specifier.startsWith('@bakin/core/')) {
+    return `_internal/core/${specifier.slice('@bakin/core/'.length)}`
+  }
+  for (const plugin of ['team', 'workflows', 'assets', 'tasks', 'memory', 'models', 'health', 'schedule']) {
+    const prefix = `@bakin/${plugin}/`
+    if (specifier.startsWith(prefix)) {
+      return `_internal/plugins/${plugin}/${specifier.slice(prefix.length)}`
+    }
+  }
+  return null
+}
+
+function rewriteModuleSpecifier(
+  specifier: string,
+  originalFileRel: string,
+  outputFileRel: string,
+): string {
+  if (specifier.startsWith('@bakin/sdk')) return specifier
+  const target = aliasTarget(specifier)
+    ?? (specifier.startsWith('.') ? resolveOriginalRelativeSpecifier(originalFileRel, specifier) : null)
+  if (!target) return specifier
+
+  const rewritten = toPosix(relative(dirname(outputFileRel), target))
+  return ensureRelativeSpecifier(rewritten)
+}
+
+function rewriteDeclarationImports(content: string, originalFileRel: string, outputFileRel: string): string {
+  return content.replace(IMPORT_SPECIFIER_RE, (match, fromSpec, bareSpec, dynamicSpec) => {
+    const specifier = fromSpec ?? bareSpec ?? dynamicSpec
+    const rewritten = rewriteModuleSpecifier(specifier, originalFileRel, outputFileRel)
+    return match.replace(specifier, rewritten)
+  })
+}
+
+function copyDeclarationTree(tempDtsDir: string, outDir: string): void {
+  for (const file of collectFiles(tempDtsDir, (path) => path.endsWith('.d.ts'))) {
+    const originalFileRel = normalizeRel(relative(tempDtsDir, file))
+    const originalNoExt = withoutDtsExtension(originalFileRel)
+    const mapped = mapOriginalModulePath(originalNoExt)
+    if (!mapped) continue
+
+    const outputFileRel = `${mapped}.d.ts`
+    const outputFile = join(outDir, outputFileRel)
+    const content = rewriteDeclarationImports(readFileSync(file, 'utf-8'), originalFileRel, outputFileRel)
+    mkdirSync(dirname(outputFile), { recursive: true })
+    writeFileSync(outputFile, content, 'utf-8')
+  }
+}
+
+async function buildJsEntry(entry: SdkExportEntry, outDir: string): Promise<void> {
+  const targetFile = join(outDir, entry.importPath)
+  mkdirSync(dirname(targetFile), { recursive: true })
+  const result = await Bun.build({
+    entrypoints: [join(REPO_ROOT, entry.source)],
+    outdir: dirname(targetFile),
+    target: 'bun',
+    format: 'esm',
+    external: EXTERNAL_JS_PEERS,
+    naming: '[name].[ext]',
+  })
+  if (!result.success) {
+    const messages = result.logs.map((log: unknown) => {
+      if (log instanceof Error) return log.message
+      if (typeof log === 'object' && log !== null && 'message' in log) {
+        return String((log as { message: unknown }).message)
+      }
+      return String(log)
+    }).join('\n')
+    throw new Error(`Failed to build ${entry.exportPath}:\n${messages}`)
+  }
+  if (!existsSync(targetFile)) {
+    throw new Error(`Expected ${entry.importPath} to be generated`)
+  }
+  if (statSync(targetFile).size === 0) {
+    writeFileSync(targetFile, 'export {}\n', 'utf-8')
+  }
+}
+
+function emitDeclarations(tempDtsDir: string): void {
+  const result = spawnSync('bunx', [
+    'tsc',
+    '-p', 'packages/sdk/tsconfig.json',
+    '--noEmit', 'false',
+    '--declaration',
+    '--emitDeclarationOnly',
+    '--declarationMap', 'false',
+    '--incremental', 'false',
+    '--rootDir', '.',
+    '--outDir', tempDtsDir,
+  ], {
+    cwd: REPO_ROOT,
+    encoding: 'utf-8',
+  })
+  if (result.status !== 0) {
+    throw new Error(`Declaration emit failed:\n${result.stdout}${result.stderr}`)
+  }
+}
+
+function collectBareDeclarationDependencies(outDir: string): string[] {
+  const packages = new Set<string>()
+  for (const file of collectFiles(outDir, (path) => path.endsWith('.d.ts'))) {
+    const content = readFileSync(file, 'utf-8')
+    for (const match of content.matchAll(IMPORT_SPECIFIER_RE)) {
+      const specifier = match[1] ?? match[2] ?? match[3]
+      if (!specifier || specifier.startsWith('.') || specifier.startsWith('@bakin/sdk')) continue
+      packages.add(packageName(specifier))
+    }
+  }
+  return [...packages].sort()
+}
+
+function buildDependencies(outDir: string, sourceSdkPkg: PackageJson): Record<string, string> {
+  const rootPkg = readJson<PackageJson>(ROOT_PACKAGE_PATH)
+  const rootDeps = {
+    ...(rootPkg.dependencies ?? {}),
+    ...(rootPkg.peerDependencies ?? {}),
+  }
+  const sourcePeers = sourceSdkPkg.peerDependencies ?? {}
+  const deps: Record<string, string> = {}
+  for (const name of collectBareDeclarationDependencies(outDir)) {
+    if (name in sourcePeers) continue
+    const version = rootDeps[name]
+    if (!version) {
+      throw new Error(`No package.json version found for SDK declaration dependency: ${name}`)
+    }
+    deps[name] = version
+  }
+  return deps
+}
+
+function writePackageJson(outDir: string, version: string): void {
+  const sourcePkg = readJson<PackageJson>(SDK_PACKAGE_PATH)
+  const exportsMap = Object.fromEntries(SDK_EXPORTS.map((entry) => [
+    entry.exportPath,
+    {
+      import: entry.importPath,
+      types: entry.typesPath,
+    },
+  ]))
+
+  const pkg = {
+    name: '@bakin/sdk',
+    version,
+    description: sourcePkg.description,
+    type: 'module',
+    sideEffects: false,
+    main: './index.js',
+    types: './index.d.ts',
+    exports: exportsMap,
+    files: [
+      '**/*.js',
+      '**/*.d.ts',
+      'README.md',
+    ],
+    peerDependencies: sourcePkg.peerDependencies ?? {
+      react: '^19.0.0',
+      'react-dom': '^19.0.0',
+    },
+    dependencies: buildDependencies(outDir, sourcePkg),
+    repository: sourcePkg.repository,
+    homepage: sourcePkg.homepage,
+    bugs: sourcePkg.bugs,
+    author: sourcePkg.author,
+    license: sourcePkg.license,
+    keywords: sourcePkg.keywords,
+    publishConfig: { access: 'public' },
+  }
+  writeJson(join(outDir, 'package.json'), pkg)
+}
+
+function copyReadme(outDir: string): void {
+  const source = join(SDK_DIR, 'README.md')
+  if (existsSync(source)) cpSync(source, join(outDir, 'README.md'))
+}
+
+export function findForbiddenPackageImports(files: string[], packageRoot: string): string[] {
+  const leaks: string[] = []
+  for (const file of files) {
+    const content = readFileSync(file, 'utf-8')
+    for (const match of content.matchAll(IMPORT_SPECIFIER_RE)) {
+      const specifier = match[1] ?? match[2] ?? match[3]
+      if (!specifier) continue
+      const isForbiddenBare = FORBIDDEN_BARE_PREFIXES.some((prefix) => specifier === prefix.replace(/\/$/, '') || specifier.startsWith(prefix))
+      const isForbiddenPath = specifier.includes('packages/host') || specifier.includes('/src/') || specifier.startsWith('src/') || specifier.startsWith('workspace:')
+      const isAbsoluteRepoPath = specifier.startsWith(REPO_ROOT)
+      if (isForbiddenBare || isForbiddenPath || isAbsoluteRepoPath) {
+        leaks.push(`${toPosix(relative(packageRoot, file))}: ${specifier}`)
+      }
+    }
+  }
+  return leaks
+}
+
+function assertNoForbiddenImports(outDir: string): void {
+  const files = collectFiles(outDir, (path) => path.endsWith('.js') || path.endsWith('.d.ts'))
+  const leaks = findForbiddenPackageImports(files, outDir)
+  if (leaks.length > 0) {
+    throw new Error(`SDK package contains repo-only imports:\n${leaks.join('\n')}`)
+  }
+}
+
+export async function buildSdkPackage(opts: BuildSdkPackageOptions): Promise<void> {
+  if (!opts.version) throw new Error('version is required')
+  if (!opts.outDir) throw new Error('outDir is required')
+
+  const outDir = resolve(opts.outDir)
+  rmSync(outDir, { recursive: true, force: true })
+  mkdirSync(outDir, { recursive: true })
+
+  for (const entry of SDK_EXPORTS) {
+    await buildJsEntry(entry, outDir)
+  }
+
+  const tempDtsDir = mkdtempSync(join(tmpdir(), 'bakin-sdk-dts-'))
+  try {
+    emitDeclarations(tempDtsDir)
+    copyDeclarationTree(tempDtsDir, outDir)
+  } finally {
+    rmSync(tempDtsDir, { recursive: true, force: true })
+  }
+
+  copyReadme(outDir)
+  writePackageJson(outDir, opts.version)
+  assertNoForbiddenImports(outDir)
+}
+
+function parseArgs(argv: string[]): BuildSdkPackageOptions {
+  let version = ''
+  let outDir = ''
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]
+    if (arg === '--version') {
+      version = argv[++i] ?? ''
+    } else if (arg === '--out') {
+      outDir = argv[++i] ?? ''
+    }
+  }
+  return { version, outDir }
+}
+
+async function main(): Promise<void> {
+  const opts = parseArgs(process.argv.slice(2))
+  await buildSdkPackage(opts)
+  const count = collectFiles(resolve(opts.outDir), (path) => statSync(path).isFile()).length
+  console.log(`Built @bakin/sdk@${opts.version} package at ${resolve(opts.outDir)} (${count} files)`)
+}
+
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error(err instanceof Error ? err.message : String(err))
+    process.exit(1)
+  })
+}
