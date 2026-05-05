@@ -1,4 +1,4 @@
-import { registerPlugin } from '@bakin/sdk'
+import { registerPlugin } from '@makinbakin/sdk'
 
 function DocsBasicPage() {
   return <div>Hello from a Bakin plugin.</div>

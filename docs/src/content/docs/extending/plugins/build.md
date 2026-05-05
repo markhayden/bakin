@@ -79,7 +79,7 @@ Full field details live in [Manifest](/docs/extending/plugins/manifest/).
 If humans need a place to work, add a client entry.
 
 ```tsx
-import { registerPlugin } from '@bakin/sdk'
+import { registerPlugin } from '@makinbakin/sdk'
 
 function LeadIntelPage() {
   return <div>Lead Intel</div>
@@ -110,7 +110,7 @@ Full UI details live in [Client UI](/docs/extending/plugins/client-ui/).
 The server entry exports a plugin. Use declarative routes for HTTP APIs and `activate(ctx)` for registrations such as MCP tools, hooks, search, health checks, skills, and workflows.
 
 ```ts
-import { definePlugin, defineRoute } from '@bakin/sdk'
+import { definePlugin, defineRoute } from '@makinbakin/sdk'
 
 const plugin = definePlugin({
   id: 'lead-intel',

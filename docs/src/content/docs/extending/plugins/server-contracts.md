@@ -11,7 +11,7 @@ The tested minimal server entry lives at `docs/snippets/plugin-basic/index.ts`.
 Source: `docs/snippets/plugin-basic/index.ts`
 
 ```ts
-import { definePlugin, defineRoute } from '@bakin/sdk'
+import { definePlugin, defineRoute } from '@makinbakin/sdk'
 
 const plugin = definePlugin({
   id: 'docs-basic',

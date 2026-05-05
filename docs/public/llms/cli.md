@@ -1,6 +1,6 @@
 # Bakin CLI Reference
 
-Docs version: Bakin 1.0.0
+Docs version: Bakin 0.0.0-dev
 
 Audience: coding agents and technical authors.
 

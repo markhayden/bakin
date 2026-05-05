@@ -50,12 +50,12 @@ Walk the full path in [Build a Plugin](/docs/extending/plugins/build/).
 Plugin code imports from the SDK:
 
 ```ts
-import { definePlugin, registerPlugin } from '@bakin/sdk'
-import { Button } from '@bakin/sdk/ui'
-import type { PluginContext } from '@bakin/sdk/types'
+import { definePlugin, registerPlugin } from '@makinbakin/sdk'
+import { Button } from '@makinbakin/sdk/ui'
+import type { PluginContext } from '@makinbakin/sdk/types'
 ```
 
-Do not import host files, `src`, `packages/host`, another plugin's internals, or Bakin path aliases. If a plugin needs something that is not in `@bakin/sdk`, that is an SDK gap.
+Do not import host files, `src`, `packages/host`, another plugin's internals, or Bakin path aliases. If a plugin needs something that is not in `@makinbakin/sdk`, that is an SDK gap.
 
 ## Related
 

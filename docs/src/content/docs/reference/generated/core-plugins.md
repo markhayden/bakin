@@ -93,5 +93,5 @@ description: Generated catalog of official plugins supported by Bakin.
 </table>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 3, 2026 · Bakin 1.0.0</span>
+  <span>Generated May 5, 2026 · Bakin 0.0.0-dev</span>
 </aside>

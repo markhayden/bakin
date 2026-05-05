@@ -92,23 +92,7 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 
 Agents drive projects through MCP exec tools. The full set covers create/update, checklist items, task linking, and asset attachments:
 
-<!-- docs:exec-tools project -->
-- `bakin_exec_project_add_item`: Add a new checklist item to a project.
-- `bakin_exec_project_ask`: Ask an agent a question about a project. Sends the project context (spec, checklist, assets) along with the message to the agent for brainstorming.
-- `bakin_exec_project_attach_asset`: Attach an existing asset to a project by filename. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in project_get — use asset tools to read full content when needed.
-- `bakin_exec_project_create`: Create a new project with title, markdown body, and optional initial checklist items. Returns project ID and generated task item IDs.
-- `bakin_exec_project_delete`: Delete a project by ID.
-- `bakin_exec_project_detach_asset`: Remove an asset reference from a project by filename. Does not delete the asset itself.
-- `bakin_exec_project_get`: Get a project by ID including full spec, checklist, progress, and linked board task statuses.
-- `bakin_exec_project_link_item`: Link an existing board task to a project checklist item. Use this when a task was created separately and should be associated with a project.
-- `bakin_exec_project_list`: List all projects with optional status filter. Returns summaries with id, title, status, progress, taskCount.
-- `bakin_exec_project_mark_item`: Mark a checklist item as checked (done) or unchecked. Returns updated progress percentage.
-- `bakin_exec_project_promote_item`: Create a NEW board task from a project checklist item and automatically link it. The task appears on the task board with the item title and projectId set.
-- `bakin_exec_project_remove_item`: Remove a checklist item from a project.
-- `bakin_exec_project_toggle_item`: Toggle a checklist item checked/unchecked by item ID. Returns updated progress percentage.
-- `bakin_exec_project_update`: Update a project's title, status, body, or owner. Cannot set status to "completed" if unchecked items remain.
-- `bakin_exec_project_update_item`: Update a checklist item's title and/or description.
-<!-- /docs:exec-tools -->
+
 
 Full schemas in the [Exec tools reference](/docs/reference/generated/exec-tools/).
 

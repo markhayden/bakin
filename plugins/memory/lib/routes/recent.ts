@@ -25,7 +25,7 @@
 import { z } from 'zod'
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
-import type { APIRoute, PluginContext, SearchQueryParams } from '@bakin/core/plugin-types'
+import type { SearchQueryParams } from '@bakin/core/plugin-types'
 
 const passthrough = z.object({}).passthrough()
 const errorResponse = z.object({ error: z.string() })

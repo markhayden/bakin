@@ -8,7 +8,13 @@ Built on [Bun](https://bun.sh) end to end: runtime, bundler, package manager, an
 
 ## Install
 
-**One-liner (recommended):**
+**macOS with Homebrew (recommended):**
+
+```bash
+brew install markhayden/tap/bakin
+```
+
+**Install script (Linux, CI, or Homebrew fallback):**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | bash
@@ -81,9 +87,8 @@ packages/
   core/                    @bakin/core — shared types + utilities (content-dir
                            resolver, logger, settings, vault, hook registry,
                            adapter contracts, task store).
-  sdk/                     @bakin/sdk — the plugin-author surface. Sub-paths
-                           @bakin/sdk/{ui,hooks,components,slots,types,utils}.
-                           Published to npm at release time.
+  sdk/                     @bakin/sdk — the in-repo plugin-author surface.
+                           Published to npm as @makinbakin/sdk at release time.
   host/                    @bakin/host — React 19 shell built with Bun.build,
                            TanStack Router routes under packages/host/src/
                            routes/, Web Fetch API handlers under
