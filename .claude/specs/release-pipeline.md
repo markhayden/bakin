@@ -263,12 +263,13 @@ The bootstrap version is never `latest` or `next`, has no GitHub release, and is
 **npm trusted publishing (primary):**
 - Configure trusted publisher on npmjs.com linking to `markhayden/bakin` and workflow filename `release.yml`
 - `release.yml` declares `permissions: { contents: write, id-token: write }`
-- `scripts/publish-sdk.ts` runs `npm publish --provenance` — npm uses the OIDC token from GH Actions; **no `NPM_TOKEN` needed**
+- `scripts/publish-sdk.ts` runs `npm publish` via trusted publishing — npm uses the OIDC token from GH Actions; **no `NPM_TOKEN` needed**
+- Provenance is conditional: `NPM_PROVENANCE=1` / `--provenance` only when the source repository is public, because npm rejects GitHub Actions provenance from private repositories.
 - Requires Node ≥ 24 and npm ≥ 11.5.1 in the workflow runner; workflow prints and checks both versions before publish
 
 **SDK publish mechanics (no source-tree mutation):**
 1. `bun run scripts/build-sdk-package.ts --version <version> --out <temp-dir>`
-2. `cd <temp-dir> && npm publish --provenance --tag <latest|next>`
+2. `cd <temp-dir> && npm publish [--provenance] --tag <latest|next>`
 3. Cleanup temp dir (CI runner is ephemeral anyway)
 
 **Idempotency rewrite:** `scripts/publish-sdk.ts` pre-checks with `npm view @makinbakin/sdk@<version> version --json`. If exists → log and exit 0 (the version is already published, this is a re-run). If not exists → publish; **any failure is a real failure**, exit non-zero. The current "swallow any non-zero" behavior in `BAKIN_PUBLISH_IDEMPOTENT` mode is removed entirely.
@@ -403,7 +404,7 @@ Single feature branch: `feat/release-pipeline`. One PR. Each commit independentl
 | 3 | `docs(release): add CHANGELOG.md skeleton` | Keep-a-Changelog template |
 | 4 | `feat(release): add release script with bump verbs and pre-flight checks` | `scripts/release.ts`, npm script, unit tests, strict release-tag parsing, Releaser UX from D4 |
 | 5 | `feat(release): sign and notarize macOS release binaries` | `scripts/sign-macos-binary.ts`, release workflow macOS signing job, Apple secret docs, post-signing checksum order |
-| 6 | `feat(release): tighten workflow gates and enable trusted publishing` | `release.yml` updates (permissions, gates, fetch-depth: 0, global concurrency, CHANGELOG extraction). `scripts/publish-sdk.ts` rewritten (publish built SDK package, `npm view` pre-check, no NPM_TOKEN, no swallowed errors, `--provenance`, `--tag` routing). |
+| 6 | `feat(release): tighten workflow gates and enable trusted publishing` | `release.yml` updates (permissions, gates, fetch-depth: 0, global concurrency, CHANGELOG extraction). `scripts/publish-sdk.ts` rewritten (publish built SDK package, `npm view` pre-check, no NPM_TOKEN, no swallowed errors, conditional `--provenance`, `--tag` routing). |
 | 7 | `feat(release): automate Homebrew tap publishing` | `scripts/update-homebrew-formula.ts`, formula render tests, tap checkout/commit/push for stable releases only, RC dry-run render |
 | 8 | `feat(release): add post-publish smoke matrix` | `release-smoke.yml`: binary matrix (macOS/linux-x64/linux-arm64), SDK install + import via Bun, Homebrew stable install/test, `GH_TOKEN` env |
 | 9 | `docs(release): document release pipeline and rollback runbook` | README, CONTRIBUTING, CLAUDE, `.claude/knowledge/release-pipeline.md` (with bootstrap + signing + Homebrew + rollback), `install.mdx` sync, `homebrew/README.md` corrected |
@@ -448,7 +449,7 @@ Single feature branch: `feat/release-pipeline`. One PR. Each commit independentl
 - Workspace `package.json` files (`docs/package.json`, `packages/*/package.json`) (version → `"0.0.0-workspace"`)
 - `packages/sdk/package.json` (source version sentinel, package build script if useful; published package is generated)
 - `.github/workflows/release.yml` (gates, atomic push, concurrency, trusted publishing, CHANGELOG extraction)
-- `scripts/publish-sdk.ts` (rewritten — publish built SDK package, `npm view` pre-check, fail-loud, `--provenance`)
+- `scripts/publish-sdk.ts` (rewritten — publish built SDK package, `npm view` pre-check, fail-loud, conditional `--provenance`)
 - `homebrew/bakin.rb` (correct comments/test if needed; template remains canonical)
 - `homebrew/README.md` (automated publish flow + correct tap name)
 - `README.md`, `CONTRIBUTING.md`, `CLAUDE.md`
@@ -479,7 +480,7 @@ Follows existing conventions per `CLAUDE.md`. New scripts in `scripts/`, tests i
 - Cut `v0.1.0-rc.1`, observe full pipeline runs green; verify RC formula render is dry-run only
 - `bun add react@^19 react-dom@^19 @makinbakin/sdk@0.1.0-rc.1` from a clean shell, import all exports
 - `codesign --verify --strict` passes for `bakin-darwin-arm64`; `./bakin-darwin-arm64 --version` matches the tag
-- Confirm npm provenance attestation visible at npmjs.com
+- Confirm npm provenance attestation visible at npmjs.com when the source repository is public; for a private repo, confirm trusted publishing succeeds without provenance.
 - Run `bun run release promote` to ship `v0.1.0`
 - `brew install markhayden/tap/bakin`, `bakin version`, and `brew test markhayden/tap/bakin` pass after stable release
 

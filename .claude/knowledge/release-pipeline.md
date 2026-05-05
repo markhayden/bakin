@@ -53,7 +53,7 @@ On success, the script moves `[Unreleased]` into a concrete changelog section, c
 7. Compute checksums after signing.
 8. Extract release notes from committed `CHANGELOG.md`.
 9. Create/update a draft GitHub release and upload assets.
-10. Publish `@makinbakin/sdk` from the generated package with npm trusted publishing/provenance.
+10. Publish `@makinbakin/sdk` from the generated package with npm trusted publishing; include provenance only when the source repository is public.
 11. Render the Homebrew formula for all tags.
 12. Stable only: push `Formula/bakin.rb` to `markhayden/homebrew-tap`.
 13. Publish/undraft the GitHub release.

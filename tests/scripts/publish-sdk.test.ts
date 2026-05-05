@@ -41,12 +41,14 @@ describe('parseArgs', () => {
       tag: 'next',
       dryRun: true,
       keepPackageDir: false,
+      provenance: false,
     })
   })
 
   it('can resolve a tag-triggered workflow version from env', () => {
     expect(parseArgs([], { GITHUB_REF: 'refs/tags/v0.2.0' }).version).toBe('0.2.0')
     expect(parseArgs([], { GITHUB_REF_NAME: 'v0.3.0-rc.2' }).tag).toBe('next')
+    expect(parseArgs(['--version', '0.3.0'], { NPM_PROVENANCE: '1' }).provenance).toBe(true)
   })
 
   it('rejects malformed versions and dist-tags', () => {
@@ -72,6 +74,7 @@ describe('publishSdkPackage', () => {
       tag: 'next',
       dryRun: true,
       keepPackageDir: false,
+      provenance: false,
     }, {
       builder: packageBuilder(),
       runner: ((cmd, args) => {
@@ -92,6 +95,7 @@ describe('publishSdkPackage', () => {
       tag: 'latest',
       dryRun: false,
       keepPackageDir: false,
+      provenance: false,
     }, {
       builder: packageBuilder(),
       runner: ((cmd, args) => {
@@ -104,7 +108,7 @@ describe('publishSdkPackage', () => {
     expect(calls).toEqual([`npm view ${PUBLIC_SDK_PACKAGE_NAME}@0.1.0 version --json`])
   })
 
-  it('publishes with provenance after an npm 404 pre-check', async () => {
+  it('publishes with optional provenance after an npm 404 pre-check', async () => {
     const calls: string[] = []
     const result = await publishSdkPackage({
       version: '0.1.0-rc.1',
@@ -112,6 +116,7 @@ describe('publishSdkPackage', () => {
       tag: 'next',
       dryRun: false,
       keepPackageDir: false,
+      provenance: true,
     }, {
       builder: packageBuilder(),
       runner: ((cmd, args, cwd) => {
@@ -128,6 +133,31 @@ describe('publishSdkPackage', () => {
     expect(calls[1]).toContain('npm publish --provenance --access public --tag next')
   })
 
+  it('publishes without provenance when disabled', async () => {
+    const calls: string[] = []
+    const result = await publishSdkPackage({
+      version: '0.1.0-rc.2',
+      packageDir: join(testRoot, 'new-private-package'),
+      tag: 'next',
+      dryRun: false,
+      keepPackageDir: false,
+      provenance: false,
+    }, {
+      builder: packageBuilder(),
+      runner: ((cmd, args, cwd) => {
+        calls.push(`${cwd}: ${cmd} ${args.join(' ')}`)
+        if (args[0] === 'view') {
+          return { status: 1, stdout: '', stderr: 'npm ERR! code E404\nnpm ERR! 404 Not Found' }
+        }
+        return { status: 0, stdout: 'published\n', stderr: '' }
+      }) satisfies CommandRunner,
+    })
+
+    expect(result).toBe('published')
+    expect(calls[1]).toContain('npm publish --access public --tag next')
+    expect(calls[1]).not.toContain('--provenance')
+  })
+
   it('fails loudly on unexpected npm view and publish errors', async () => {
     await expect(publishSdkPackage({
       version: '0.1.0',
@@ -135,6 +165,7 @@ describe('publishSdkPackage', () => {
       tag: 'latest',
       dryRun: false,
       keepPackageDir: false,
+      provenance: false,
     }, {
       builder: packageBuilder(),
       runner: (() => ({ status: 1, stdout: '', stderr: 'network failed' })) satisfies CommandRunner,
@@ -146,6 +177,7 @@ describe('publishSdkPackage', () => {
       tag: 'latest',
       dryRun: false,
       keepPackageDir: false,
+      provenance: false,
     }, {
       builder: packageBuilder(),
       runner: ((_, args) => args[0] === 'view'

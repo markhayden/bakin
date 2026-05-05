@@ -3,7 +3,9 @@
  *
  * The source workspace package is intentionally not publishable directly.
  * This script always publishes from a generated package directory and uses
- * npm trusted publishing/provenance in CI instead of a long-lived npm token.
+ * npm trusted publishing in CI instead of a long-lived npm token. Provenance
+ * is opt-in because npm only supports GitHub Actions provenance for public
+ * source repositories.
  */
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
@@ -23,6 +25,7 @@ export interface PublishSdkOptions {
   tag: 'latest' | 'next'
   dryRun: boolean
   keepPackageDir: boolean
+  provenance: boolean
 }
 
 interface CommandResult {
@@ -72,6 +75,7 @@ export function parseArgs(argv: string[], env: Record<string, string | undefined
   let tag = ''
   let dryRun = false
   let keepPackageDir = false
+  let provenance = env.NPM_PROVENANCE === '1'
 
   const takeValue = (index: number, name: string): string => {
     const value = argv[index + 1] ?? ''
@@ -94,6 +98,8 @@ export function parseArgs(argv: string[], env: Record<string, string | undefined
       dryRun = true
     } else if (arg === '--keep-package-dir') {
       keepPackageDir = true
+    } else if (arg === '--provenance') {
+      provenance = true
     } else {
       throw new Error(`Unexpected argument: ${arg}`)
     }
@@ -115,6 +121,7 @@ export function parseArgs(argv: string[], env: Record<string, string | undefined
     tag: resolvedTag,
     dryRun,
     keepPackageDir,
+    provenance,
   }
 }
 
@@ -153,7 +160,7 @@ export async function publishSdkPackage(
   assertGeneratedPackage(packageDir, opts.version)
 
   const viewArgs = ['view', `${SDK_PACKAGE_NAME}@${opts.version}`, 'version', '--json']
-  const publishArgs = ['publish', '--provenance', '--access', 'public', '--tag', opts.tag]
+  const publishArgs = ['publish', ...(opts.provenance ? ['--provenance'] : []), '--access', 'public', '--tag', opts.tag]
 
   if (opts.dryRun) {
     console.log(`[dry-run] Built ${SDK_PACKAGE_NAME}@${opts.version} at ${packageDir}`)
