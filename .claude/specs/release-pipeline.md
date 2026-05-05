@@ -282,7 +282,7 @@ The bootstrap version is never `latest` or `next`, has no GitHub release, and is
 
 ### D9. Post-publish smoke matrix
 
-`.github/workflows/release-smoke.yml`, triggered on `release: published`:
+`.github/workflows/release-smoke.yml`, triggered by explicit `workflow_dispatch` from `release.yml` after publishing. It also keeps a `release: published` trigger for human-published releases; GitHub does not fire recursive release-event workflows from releases published with `GITHUB_TOKEN`.
 
 **`binary` job (matrix):**
 - `macos-latest` × `bakin-darwin-arm64`
@@ -371,7 +371,7 @@ The current draft Homebrew docs that say `brew tap markhayden/bakin` are wrong f
 - The formula `test do` asserts `bakin version`.
 
 **Publishing:**
-- Stable releases only: `release.yml` uploads GitHub release assets/checksums to a draft release, publishes npm, checks out `markhayden/homebrew-tap`, renders `Formula/bakin.rb`, commits `bakin <version>`, pushes, then publishes/undrafts the GitHub release. The `release: published` smoke event fires only after the tap points at the new version.
+- Stable releases only: `release.yml` uploads GitHub release assets/checksums to a draft release, publishes npm, checks out `markhayden/homebrew-tap`, renders `Formula/bakin.rb`, commits `bakin <version>`, pushes, publishes/undrafts the GitHub release, then dispatches post-publish smoke. Smoke starts only after the tap points at the new version.
 - Use `HOMEBREW_TAP_TOKEN` (fine-grained PAT or GitHub App token with contents write to `markhayden/homebrew-tap`). This token is separate from npm trusted publishing.
 - RCs render the formula as a dry-run validation but never push to the tap.
 - If the tap push fails after npm publish but before the GitHub release is undrafted, leave the GitHub release draft in place, fix the tap, then re-run the tap/publish tail. Do not republish binaries or npm.
