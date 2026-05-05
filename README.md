@@ -8,7 +8,13 @@ Built on [Bun](https://bun.sh) end to end: runtime, bundler, package manager, an
 
 ## Install
 
-**One-liner (recommended):**
+**macOS with Homebrew (recommended):**
+
+```bash
+brew install markhayden/tap/bakin
+```
+
+**Install script (Linux, CI, or Homebrew fallback):**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | bash
