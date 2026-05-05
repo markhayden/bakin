@@ -7,6 +7,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+
+### Security
+
+## [0.1.0-rc.1] - 2026-05-05
+
+### Added
 - Initial public release: signed binaries, npm SDK publishing, Homebrew tap automation, and release smoke checks.
 
 ### Changed
@@ -16,3 +28,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 ### Removed
 
 ### Security
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.1.0-rc.1...HEAD
+[0.1.0-rc.1]: https://github.com/markhayden/bakin/releases/tag/v0.1.0-rc.1
