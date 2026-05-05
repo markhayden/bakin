@@ -276,12 +276,6 @@ export function buildSigningPlan(opts: SignMacosOptions): SigningPlan {
           arg(envValue(env, 'APP_STORE_CONNECT_ISSUER_ID')),
         ],
       },
-      {
-        kind: 'command',
-        label: 'Assess binary with Gatekeeper',
-        command: 'spctl',
-        args: [arg('--assess'), arg('--type'), arg('execute'), arg('--verbose'), arg(binary)],
-      },
     ],
   }
 }

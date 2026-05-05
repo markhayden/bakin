@@ -211,7 +211,7 @@ Only after all gates pass do we publish.
    `codesign --verify --verbose=3 --strict dist/bakin-darwin-arm64`
 6. Zip the signed binary for the notary upload, then submit with `xcrun notarytool submit ... --wait`.
 7. Always fetch and print the notary log on failure.
-8. Run `spctl --assess --type execute --verbose dist/bakin-darwin-arm64` after notarization.
+8. Treat successful `codesign --verify` plus `notarytool` `Accepted` status as the release gate for the standalone CLI binary.
 9. Compute SHA256 checksums only after signing/notarization succeeds.
 
 **Secrets/config:**
@@ -224,7 +224,7 @@ Only after all gates pass do we publish.
 
 Prefer App Store Connect API-key auth over an Apple ID app-specific password. The workflow may support the password flow as a fallback, but the documented path is API-key based.
 
-**Artifact shape:** keep the public GitHub release asset name `bakin-darwin-arm64` unless Gatekeeper testing proves a package artifact is required. Apple can notarize a ZIP containing the signed binary, but standalone binaries cannot currently be stapled. Do not claim the standalone binary is stapled. If a stapled offline artifact becomes important, add a future `pkg`/`dmg` distribution rather than pretending the raw binary has a stapled ticket.
+**Artifact shape:** keep the public GitHub release asset name `bakin-darwin-arm64` unless Gatekeeper testing proves a package artifact is required. Apple can notarize a ZIP containing the signed binary, but standalone binaries cannot currently be stapled, and `spctl` assessment is not a required gate for the raw executable. Do not claim the standalone binary is stapled. If a stapled offline artifact becomes important, add a future `pkg`/`dmg` distribution rather than pretending the raw binary has a stapled ticket.
 
 **Implementation preference:** put the signing/notary command orchestration in a small script (`scripts/sign-macos-binary.ts`) with a `--dry-run`/command-plan mode, not as an opaque block of YAML. The real signing/notary path only runs on macOS CI with secrets present.
 
@@ -291,7 +291,7 @@ The bootstrap version is never `latest` or `next`, has no GitHub release, and is
 Each step:
 1. `gh release download "${{ github.event.release.tag_name }}" -p <artifact>` (with `env.GH_TOKEN: ${{ github.token }}`)
 2. `chmod +x <artifact>`
-3. macOS only: `codesign --verify --verbose=3 --strict <artifact>` and `spctl --assess --type execute --verbose <artifact>`
+3. macOS only: `codesign --verify --verbose=3 --strict <artifact>`
 4. `actual=$(./<artifact> --version)`; `expected=${{ github.event.release.tag_name }}`; assert `actual == ${expected#v}`
 
 **`sdk` job:**
@@ -478,7 +478,7 @@ Follows existing conventions per `CLAUDE.md`. New scripts in `scripts/`, tests i
 - Configure Apple Developer ID/notary secrets and `HOMEBREW_TAP_TOKEN`
 - Cut `v0.1.0-rc.1`, observe full pipeline runs green; verify RC formula render is dry-run only
 - `bun add react@^19 react-dom@^19 @makinbakin/sdk@0.1.0-rc.1` from a clean shell, import all exports
-- `codesign --verify --strict` and `spctl --assess --type execute` pass for `bakin-darwin-arm64`; `./bakin-darwin-arm64 --version` matches the tag
+- `codesign --verify --strict` passes for `bakin-darwin-arm64`; `./bakin-darwin-arm64 --version` matches the tag
 - Confirm npm provenance attestation visible at npmjs.com
 - Run `bun run release promote` to ship `v0.1.0`
 - `brew install markhayden/tap/bakin`, `bakin version`, and `brew test markhayden/tap/bakin` pass after stable release

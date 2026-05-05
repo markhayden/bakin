@@ -32,7 +32,7 @@ describe('parseArgs', () => {
 })
 
 describe('buildSigningPlan', () => {
-  it('keeps signing, notarization, and assessment in the required order', () => {
+  it('keeps signing and notarization in the required order', () => {
     const plan = buildSigningPlan({
       binary: 'dist/bakin-darwin-arm64',
       dryRun: true,
@@ -55,7 +55,6 @@ describe('buildSigningPlan', () => {
       'Zip signed binary for notarization',
       'Submit notarization request',
       'Fetch notarization log on failure',
-      'Assess binary with Gatekeeper',
     ])
 
     const commandNames = plan.steps
@@ -63,7 +62,6 @@ describe('buildSigningPlan', () => {
       .map((step) => step.command)
     expect(commandNames).toContain('codesign')
     expect(commandNames).toContain('xcrun')
-    expect(commandNames).toContain('spctl')
   })
 
   it('prints a dry-run plan without leaking secrets', () => {

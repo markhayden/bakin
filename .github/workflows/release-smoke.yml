@@ -41,7 +41,6 @@ jobs:
           chmod +x "${binary}"
           if [[ "${{ matrix.macos }}" == "true" ]]; then
             codesign --verify --verbose=3 --strict "${binary}"
-            spctl --assess --type execute --verbose "${binary}"
           fi
           expected="${TAG#v}"
           actual="$("${binary}" --version)"

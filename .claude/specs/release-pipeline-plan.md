@@ -201,7 +201,7 @@ C5 macOS signing script ──────────────────�
 **Implementation notes:**
 - Real mode requires macOS, a binary path, and required secret env vars.
 - Dry-run mode prints a redacted command plan and can run on any platform.
-- Order is fixed: import cert/keychain, `codesign`, verify, zip for notary upload, `notarytool submit --wait`, fetch log on failure, `spctl`, then leave artifact ready for checksum.
+- Order is fixed: import cert/keychain, `codesign`, verify, zip for notary upload, `notarytool submit --wait`, fetch log on failure, then leave artifact ready for checksum.
 - Do not print certificate passwords, private keys, or keychain passwords.
 
 **Acceptance criteria:**
@@ -311,7 +311,7 @@ C5 macOS signing script ──────────────────�
 - [ ] Trigger is `release: published`.
 - [ ] Binary matrix downloads exact release assets with `GH_TOKEN`.
 - [ ] Linux x64 and Linux arm64 run `--version` and match tag without `v`.
-- [ ] macOS verifies `codesign`, `spctl`, then runs `--version`.
+- [ ] macOS verifies `codesign`, then runs `--version`.
 - [ ] SDK smoke installs exact `@makinbakin/sdk@<version>` with Bun and imports every export subpath.
 - [ ] Homebrew job runs only for stable releases and verifies `brew install markhayden/tap/bakin`, `bakin version`, and `brew test`.
 
@@ -426,6 +426,6 @@ C5 macOS signing script ──────────────────�
 ## Open Questions Before C10
 
 - [ ] Exact GitHub secret names match the final workflow.
-- [ ] Confirm whether `spctl --assess --type execute` passes on the raw signed/notarized binary after ZIP notary submission. If not, switch macOS release asset/formula URL to a ZIP or add a packaged artifact in a follow-up.
+- [x] Confirm whether `spctl --assess --type execute` passes on the raw signed/notarized binary after ZIP notary submission. It rejects the raw executable as not an app; use `codesign` verification plus accepted notarization for the binary, and add a `pkg`/`dmg` artifact later if stapled offline Gatekeeper validation becomes required.
 - [ ] Confirm `brew audit --strict --online` expectations for binary-only formula in a third-party tap.
 - [ ] Decide whether to deprecate `@makinbakin/sdk@0.0.0-bootstrap.0` immediately after `v0.1.0` ships.
