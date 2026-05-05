@@ -13,6 +13,7 @@
     "dev": "bun run scripts/dev.ts",
     "prebuild": "bun run scripts/stamp-version.ts",
     "build": "bun run build:css && bun run build:vendors && bun run build:plugins && bun run build:host-shell && bun run build:binary",
+    "release": "bun run scripts/release.ts",
     "build:host": "bun run build:css && bun run build:vendors && bun run build:host-shell",
     "build:css": "bunx @tailwindcss/cli -i ./packages/host/src/globals.css -o ./packages/host/public/globals.css",
     "build:host-shell": "bun run packages/host/build.ts",
