@@ -16,6 +16,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ### Security
 
+## [0.1.0] - 2026-05-05
+
+### Added
+
+### Changed
+
+### Fixed
+- Dispatch post-publish smoke explicitly after releases created by `GITHUB_TOKEN`.
+
+### Removed
+
+### Security
+
 ## [0.1.0-rc.8] - 2026-05-05
 
 ### Added
@@ -134,5 +147,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 [0.1.0-rc.7]: https://github.com/markhayden/bakin/releases/tag/v0.1.0-rc.7
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.1.0-rc.8...HEAD
 [0.1.0-rc.8]: https://github.com/markhayden/bakin/releases/tag/v0.1.0-rc.8
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/markhayden/bakin/releases/tag/v0.1.0
