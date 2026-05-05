@@ -158,9 +158,33 @@ function unreleasedRange(changelog: string): { start: number; bodyStart: number;
   }
 }
 
+function versionRange(changelog: string, version: string): { start: number; bodyStart: number; end: number; body: string } | null {
+  const header = `## [${version}]`
+  const start = changelog.indexOf(header)
+  if (start === -1) return null
+  const lineEnd = changelog.indexOf('\n', start)
+  const bodyStart = lineEnd === -1 ? changelog.length : lineEnd + 1
+  const nextMatch = /\n## \[[^\]]+\]/.exec(changelog.slice(bodyStart))
+  const end = nextMatch ? bodyStart + nextMatch.index : changelog.length
+  return {
+    start,
+    bodyStart,
+    end,
+    body: changelog.slice(bodyStart, end),
+  }
+}
+
+function hasBullets(body: string): boolean {
+  return /^\s*-\s+\S/m.test(body)
+}
+
+function bulletCount(body: string): number {
+  return (body.match(/^\s*-\s+\S/gm) ?? []).length
+}
+
 export function assertHasUnreleasedBullets(changelog: string): void {
   const range = unreleasedRange(changelog)
-  if (!/^\s*-\s+\S/m.test(range.body)) {
+  if (!hasBullets(range.body)) {
     throw new Error('CHANGELOG.md [Unreleased] has no release-note bullets')
   }
 }
@@ -178,17 +202,70 @@ function replaceOrAppendLinkRefs(changelog: string, version: string): string {
 `
 }
 
-export function moveUnreleasedToVersion(changelog: string, version: string, date: string): string {
-  assertHasUnreleasedBullets(changelog)
-  const range = unreleasedRange(changelog)
-  const notes = range.body.trim()
-  const next = `${changelog.slice(0, range.start)}${EMPTY_UNRELEASED}
+function removeVersionSection(changelog: string, version: string): string {
+  const range = versionRange(changelog, version)
+  if (!range) return changelog
+  return `${changelog.slice(0, range.start)}${changelog.slice(range.end)}`.replace(/\n{3,}/g, '\n\n')
+}
+
+function insertVersionNotes(changelog: string, version: string, date: string, notes: string): string {
+  const withoutDuplicateVersion = removeVersionSection(changelog, version)
+  const range = unreleasedRange(withoutDuplicateVersion)
+  const next = `${withoutDuplicateVersion.slice(0, range.start)}${EMPTY_UNRELEASED}
 
 ## [${version}] - ${date}
 
 ${notes}
-${changelog.slice(range.end)}`
+${withoutDuplicateVersion.slice(range.end)}`
   return replaceOrAppendLinkRefs(next, version)
+}
+
+export function latestRcForVersion(tags: string[], version: string): ParsedReleaseTag | null {
+  return parseReleaseTags(tags)
+    .filter((tag) => tag.rc !== null && baseVersion(tag) === version)
+    .at(-1) ?? null
+}
+
+export function releaseNotesForTarget(
+  changelog: string,
+  target: ParsedReleaseTag,
+  opts: { verb: ReleaseVerb },
+  tags: string[] = [],
+): { body: string; bulletCount: number } {
+  const unreleased = unreleasedRange(changelog).body
+  if (opts.verb !== 'promote') {
+    if (!hasBullets(unreleased)) {
+      throw new Error('CHANGELOG.md [Unreleased] has no release-note bullets')
+    }
+    return { body: unreleased.trim(), bulletCount: bulletCount(unreleased) }
+  }
+
+  const rc = latestRcForVersion(tags, target.version)
+  if (!rc) throw new Error(`No release candidate notes found for ${target.version}`)
+  const rcNotes = versionRange(changelog, rc.version)?.body.trim() ?? ''
+  const extraNotes = hasBullets(unreleased) ? unreleased.trim() : ''
+  const notes = [rcNotes, extraNotes].filter(Boolean).join('\n\n')
+  if (!hasBullets(notes)) {
+    throw new Error(`CHANGELOG.md has no release-note bullets for ${rc.tag} or [Unreleased]`)
+  }
+  return { body: notes, bulletCount: bulletCount(notes) }
+}
+
+export function moveUnreleasedToVersion(changelog: string, version: string, date: string): string {
+  const target = parseReleaseTag(`v${version}`)
+  if (!target) throw new Error(`Malformed release version: ${version}`)
+  const notes = releaseNotesForTarget(changelog, target, { verb: 'patch' })
+  return insertVersionNotes(changelog, version, date, notes.body)
+}
+
+export function moveReleaseNotesToVersion(
+  changelog: string,
+  target: ParsedReleaseTag,
+  date: string,
+  opts: { verb: ReleaseVerb; tags?: string[] },
+): string {
+  const notes = releaseNotesForTarget(changelog, target, opts, opts.tags ?? [])
+  return insertVersionNotes(changelog, target.version, date, notes.body)
 }
 
 function run(cmd: string, args: string[], opts: { inherit?: boolean } = {}): CommandResult {
@@ -259,7 +336,7 @@ function assertMainCiGreen(head: string): string {
   return runInfo.url ?? `run #${runInfo.databaseId}`
 }
 
-function preflight(targetTag: string): { head: string; ciUrl: string; bulletCount: number } {
+function preflight(targetTag: string, opts: CliOptions, tags: string[]): { head: string; ciUrl: string; bulletCount: number } {
   const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'])
   if (branch !== 'main') throw new Error(`Release must be cut from main, currently on ${branch}`)
 
@@ -270,12 +347,12 @@ function preflight(targetTag: string): { head: string; ciUrl: string; bulletCoun
   if (head !== originMain) throw new Error('Local main does not match origin/main')
 
   const ciUrl = assertMainCiGreen(head)
-  const changelog = readFileSync(CHANGELOG_PATH, 'utf-8')
-  assertHasUnreleasedBullets(changelog)
-  const bulletCount = (unreleasedRange(changelog).body.match(/^\s*-\s+\S/gm) ?? []).length
   assertTagDoesNotExist(targetTag)
-  if (!parseReleaseTag(targetTag)) throw new Error(`Malformed release tag: ${targetTag}`)
-  return { head, ciUrl, bulletCount }
+  const target = parseReleaseTag(targetTag)
+  if (!target) throw new Error(`Malformed release tag: ${targetTag}`)
+  const changelog = readFileSync(CHANGELOG_PATH, 'utf-8')
+  const notes = releaseNotesForTarget(changelog, target, opts, tags)
+  return { head, ciUrl, bulletCount: notes.bulletCount }
 }
 
 export function parseArgs(argv: string[]): CliOptions {
@@ -341,14 +418,14 @@ async function main(): Promise<void> {
     }
   }
 
-  const checks = preflight(targetTag)
+  const checks = preflight(targetTag, opts, tags)
   printPlan(targetTag, opts, checks)
   if (opts.dryRun) return
   await confirmProceed(targetTag, opts.yes)
 
   const current = readFileSync(CHANGELOG_PATH, 'utf-8')
   const today = new Date().toISOString().slice(0, 10)
-  writeFileSync(CHANGELOG_PATH, moveUnreleasedToVersion(current, target.version, today), 'utf-8')
+  writeFileSync(CHANGELOG_PATH, moveReleaseNotesToVersion(current, target, today, { verb: opts.verb, tags }), 'utf-8')
   git(['add', 'CHANGELOG.md'])
   git(['commit', '-m', `chore(release): ${targetTag}`])
   git(['tag', targetTag])

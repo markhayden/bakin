@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'bun:test'
 import {
   assertHasUnreleasedBullets,
+  moveReleaseNotesToVersion,
   moveUnreleasedToVersion,
   parseArgs,
   parseReleaseTag,
+  releaseNotesForTarget,
   resolveReleaseTarget,
 } from '../../scripts/release'
 
@@ -111,5 +113,42 @@ describe('CHANGELOG helpers', () => {
     expect(next).toContain('- Release script.')
     expect(next).toContain('[Unreleased]: https://github.com/markhayden/bakin/compare/v0.2.0...HEAD')
     expect(next).toContain('[0.2.0]: https://github.com/markhayden/bakin/releases/tag/v0.2.0')
+  })
+
+  it('promotes stable notes from the matching rc section when Unreleased is empty', () => {
+    const afterRc = `# Changelog
+
+## [Unreleased]
+
+### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+
+### Security
+
+## [0.2.0-rc.1] - 2026-05-05
+
+### Added
+- Release pipeline.
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.2.0-rc.1...HEAD
+[0.2.0-rc.1]: https://github.com/markhayden/bakin/releases/tag/v0.2.0-rc.1
+`
+    const target = parseReleaseTag('v0.2.0')!
+    const notes = releaseNotesForTarget(afterRc, target, { verb: 'promote' }, ['v0.2.0-rc.1'])
+    expect(notes.bulletCount).toBe(1)
+    expect(notes.body).toContain('- Release pipeline.')
+
+    const promoted = moveReleaseNotesToVersion(afterRc, target, '2026-05-06', {
+      verb: 'promote',
+      tags: ['v0.2.0-rc.1'],
+    })
+    expect(promoted).toContain('## [0.2.0] - 2026-05-06')
+    expect(promoted).toContain('## [0.2.0-rc.1] - 2026-05-05')
+    expect(promoted).toContain('[0.2.0]: https://github.com/markhayden/bakin/releases/tag/v0.2.0')
   })
 })
