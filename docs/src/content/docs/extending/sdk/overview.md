@@ -1,9 +1,9 @@
 ---
 title: SDK
-description: Use @bakin/sdk to build plugins with supported registration, routing, UI, hooks, slots, types, utilities, and metadata helpers.
+description: Use @makinbakin/sdk to build plugins with supported registration, routing, UI, hooks, slots, types, utilities, and metadata helpers.
 ---
 
-`@bakin/sdk` is the plugin-author surface. It exists so external plugins can typecheck and run without importing Bakin host internals. If a plugin needs something that is not exported here, treat that as an SDK design question before reaching into `src` or another package.
+`@makinbakin/sdk` is the plugin-author surface. It exists so external plugins can typecheck and run without importing Bakin host internals. If a plugin needs something that is not exported here, treat that as an SDK design question before reaching into `src` or another package.
 
 ## Import Map
 
@@ -11,19 +11,19 @@ description: Use @bakin/sdk to build plugins with supported registration, routin
 
 | Import | Purpose |
 | --- | --- |
-| `@bakin/sdk` | plugin registration, route helpers, top-level types, and core exports |
-| `@bakin/sdk/ui` | base UI primitives such as buttons, inputs, dialogs, tables, tabs, and badges |
-| `@bakin/sdk/hooks` | shared React hooks |
-| `@bakin/sdk/components` | higher-level Bakin shell components |
-| `@bakin/sdk/slots` | slot registry and `<Slot>` primitive |
-| `@bakin/sdk/types` | public TypeScript contract types |
-| `@bakin/sdk/utils` | shared utilities |
-| `@bakin/sdk/metadata` | docs-aware contract helper types and compatibility exports |
-| `@bakin/sdk/routing` | typed declarative route helpers re-exported from the canonical routing package |
+| `@makinbakin/sdk` | plugin registration, route helpers, top-level types, and core exports |
+| `@makinbakin/sdk/ui` | base UI primitives such as buttons, inputs, dialogs, tables, tabs, and badges |
+| `@makinbakin/sdk/hooks` | shared React hooks |
+| `@makinbakin/sdk/components` | higher-level Bakin shell components |
+| `@makinbakin/sdk/slots` | slot registry and `<Slot>` primitive |
+| `@makinbakin/sdk/types` | public TypeScript contract types |
+| `@makinbakin/sdk/utils` | shared utilities |
+| `@makinbakin/sdk/metadata` | docs-aware contract helper types and compatibility exports |
+| `@makinbakin/sdk/routing` | typed declarative route helpers re-exported from the canonical routing package |
 
 </div>
 
-At build time, plugin bundles should mark `@bakin/sdk`, `@bakin/sdk/*`, `react`, and `react-dom` as externals. At runtime, Bakin resolves them to the host copies so there is one React instance and one SDK registry.
+At build time, plugin bundles should mark `@makinbakin/sdk`, `@makinbakin/sdk/*`, `react`, and `react-dom` as externals. At runtime, Bakin resolves them to the host copies so there is one React instance and one SDK registry.
 
 ## Top-Level Authoring APIs
 
@@ -55,22 +55,22 @@ At build time, plugin bundles should mark `@bakin/sdk`, `@bakin/sdk/*`, `react`,
 
 </div>
 
-All public types are importable from `@bakin/sdk` or `@bakin/sdk/types`. Routing-specific types are also available from `@bakin/sdk/routing`.
+All public types are importable from `@makinbakin/sdk` or `@makinbakin/sdk/types`. Routing-specific types are also available from `@makinbakin/sdk/routing`.
 
 ## UI Guidance
 
 Prefer SDK UI components for plugin UI. Custom UI is allowed for domain-specific needs, but it should preserve Bakin's accessibility, spacing, contrast, density, loading behavior, and keyboard interactions.
 
 ```tsx
-import { Button, Input, Table } from '@bakin/sdk/ui'
-import { PluginHeader } from '@bakin/sdk/components'
+import { Button, Input, Table } from '@makinbakin/sdk/ui'
+import { PluginHeader } from '@makinbakin/sdk/components'
 ```
 
 Avoid copying host component files into a plugin. If a component is broadly useful, promote it to the SDK instead.
 
 ## Metadata Helpers
 
-`@bakin/sdk/metadata` re-exports docs-aware contract types and helper functions. New HTTP APIs should use `defineRoute()` from `@bakin/sdk` or `@bakin/sdk/routing`; older metadata helpers remain for compatibility with existing contracts.
+`@makinbakin/sdk/metadata` re-exports docs-aware contract types and helper functions. New HTTP APIs should use `defineRoute()` from `@makinbakin/sdk` or `@makinbakin/sdk/routing`; older metadata helpers remain for compatibility with existing contracts.
 
 ## Stability Rule
 

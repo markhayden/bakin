@@ -48,9 +48,9 @@ describe('routing types', () => {
     type _ParamsOnly = Expect<Equal<ParsedInput<{ id: string }, undefined, undefined>, { params: { id: string } }>>
     type _AllThree = Expect<Equal<
       ParsedInput<{ id: string }, { q?: string }, { x: number }>,
-      { params: { id: string } } & { query: { q?: string } } & { body: { x: number } }
+      { params: { id: string }; query: { q?: string }; body: { x: number } }
     >>
-    type _NoneDeclared = Expect<Equal<ParsedInput<undefined, undefined, undefined>, {}>>
+    type _NoneDeclared = Expect<Equal<ParsedInput<undefined, undefined, undefined>, Record<never, never>>>
     expect(true).toBe(true)
   })
 

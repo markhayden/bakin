@@ -1380,7 +1380,7 @@ interface PluginCliCommand {
   usage: string
   summary: string
   aliases?: string[]
-  dispatch: {
+  dispatch?: {
     type: 'execTool'
     name: string
   } | {
@@ -1485,6 +1485,7 @@ async function dispatchPluginCliCommand(cmd: string, args: string[]): Promise<bo
   const manifest = await apiGet('/api/plugins/manifest') as { plugins: PluginManifestRow[] }
   const commands = manifest.plugins.flatMap(plugin => plugin.contributes?.cliCommands ?? [])
   for (const command of commands) {
+    if (!command.dispatch) continue
     const params = matchPluginCliCommand(command, cmd, args)
     if (!params) continue
 

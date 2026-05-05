@@ -86,7 +86,7 @@ describe('plugin manifest schema', () => {
     expect(manifest.contributes?.apiRoutes?.[1]?.operationId).toBe('messaging-approve-item')
     expect(manifest.contributes?.apiRoutes?.[1]?.parameters?.[0]?.name).toBe('itemId')
     expect(manifest.contributes?.apiRoutes?.[1]?.responses?.[200]?.description).toBe('Approved item.')
-    expect(manifest.contributes?.cliCommands?.[0]?.dispatch.type).toBe('apiRoute')
+    expect(manifest.contributes?.cliCommands?.[0]?.dispatch?.type).toBe('apiRoute')
   })
 
   it('rejects invalid plugin ids', () => {

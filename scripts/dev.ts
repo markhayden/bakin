@@ -40,6 +40,11 @@ const EXTERNAL = [
   '@bakin/sdk', '@bakin/sdk/ui', '@bakin/sdk/hooks',
   '@bakin/sdk/components', '@bakin/sdk/slots',
   '@bakin/sdk/types', '@bakin/sdk/utils',
+  '@bakin/sdk/metadata', '@bakin/sdk/routing',
+  '@makinbakin/sdk', '@makinbakin/sdk/ui', '@makinbakin/sdk/hooks',
+  '@makinbakin/sdk/components', '@makinbakin/sdk/slots',
+  '@makinbakin/sdk/types', '@makinbakin/sdk/utils',
+  '@makinbakin/sdk/metadata', '@makinbakin/sdk/routing',
 ]
 
 const DEFAULT_PLUGIN_DEV_WATCH = [
@@ -350,12 +355,15 @@ function registerShutdown(): void {
 async function main(): Promise<void> {
   registerShutdown()
 
-  // Prime the tree — same as the production prestart minus assets-manifest
-  // (disk fallback in _static.ts covers dev).
+  // Prime the tree — same as the production prestart. assets-manifest must
+  // run too: server.ts imports _embedded-assets-static.ts at the top level,
+  // and stale entries pointing to removed plugins fail Bun's file-typed
+  // import resolution before the disk fallback in _static.ts ever runs.
   await runStep('build:css', ['bun', 'run', 'build:css'])
   await runStep('build:vendors', ['bun', 'run', 'build:vendors'])
   await runStep('build:plugins', ['bun', 'run', 'build:plugins'])
   await runStep('build:host-shell', ['bun', 'run', 'build:host-shell'])
+  await runStep('build:assets-manifest', ['bun', 'run', 'build:assets-manifest'])
 
   await buildDevClient()
 

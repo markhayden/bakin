@@ -11,7 +11,7 @@
  * the disk layout is identical for core vs user plugins — the runtime
  * loader doesn't care which bucket a plugin came from.
  *
- * Externals held: react, @tanstack/react-router, and @bakin/sdk/* so the
+ * Externals held: react, @tanstack/react-router, and SDK package aliases so the
  * host shell and plugin share the singletons wired in via the browser
  * import map.
  *
@@ -30,6 +30,11 @@ const EXTERNAL = [
   '@bakin/sdk', '@bakin/sdk/ui', '@bakin/sdk/hooks',
   '@bakin/sdk/components', '@bakin/sdk/slots',
   '@bakin/sdk/types', '@bakin/sdk/utils',
+  '@bakin/sdk/metadata', '@bakin/sdk/routing',
+  '@makinbakin/sdk', '@makinbakin/sdk/ui', '@makinbakin/sdk/hooks',
+  '@makinbakin/sdk/components', '@makinbakin/sdk/slots',
+  '@makinbakin/sdk/types', '@makinbakin/sdk/utils',
+  '@makinbakin/sdk/metadata', '@makinbakin/sdk/routing',
 ]
 
 interface RunResult {

@@ -36,7 +36,7 @@ Lock down Bakin's build/release/deploy pipeline so that cutting a release is a s
 
 ### D1. Version source of truth
 
-**Git tag is the single source of truth.** Strict semver: `vMAJOR.MINOR.PATCH[-rc.N]`. Bakin app and `@bakin/sdk` share one version. Pre-1.0; breaking → `MINOR`, fixes → `PATCH`.
+**Git tag is the single source of truth.** Strict semver: `vMAJOR.MINOR.PATCH[-rc.N]`. Bakin app and published SDK package `@makinbakin/sdk` share one version. Pre-1.0; breaking → `MINOR`, fixes → `PATCH`.
 
 **Mechanism:** `scripts/stamp-version.ts` runs as a `prebuild` hook. Idempotent — if the resolved version equals the current file content, it does not write (preventing dirty worktree on no-op runs).
 
@@ -250,13 +250,13 @@ Add `scripts/build-sdk-package.ts`:
 5. Fail the build if published JS or `.d.ts` contains repo-only imports: `@/`, `@bakin/<plugin>`, `workspace:`, absolute repo paths, or `packages/host` / `src/` internals.
 6. Smoke the package from a scratch directory with Bun before publish.
 
-**One-time npm bootstrap.** `@bakin/sdk` does not currently exist on npm. npm trusted publisher configuration requires the package to exist first, so there is a single documented exception to D1:
+**One-time npm bootstrap.** `@makinbakin/sdk` does not currently exist on npm. npm trusted publisher configuration requires the package to exist first, so there is a single documented exception to D1:
 
 1. Build the SDK publish directory locally.
 2. Stamp version `0.0.0-bootstrap.0`.
 3. Manually publish once with an interactive npm login: `npm publish --access public --tag bootstrap`.
-4. Immediately configure npm trusted publishing for package `@bakin/sdk`, repository `markhayden/bakin`, workflow filename `release.yml` (filename only, not `.github/workflows/release.yml`).
-5. Optionally deprecate the bootstrap version with `npm deprecate @bakin/sdk@0.0.0-bootstrap.0 "bootstrap only; use a tagged Bakin release"`.
+4. Immediately configure npm trusted publishing for package `@makinbakin/sdk`, repository `markhayden/bakin`, workflow filename `release.yml` (filename only, not `.github/workflows/release.yml`).
+5. Optionally deprecate the bootstrap version with `npm deprecate @makinbakin/sdk@0.0.0-bootstrap.0 "bootstrap only; use a tagged Bakin release"`.
 
 The bootstrap version is never `latest` or `next`, has no GitHub release, and is not documented as installable. All real app+SDK versions still come from git tags.
 
@@ -271,7 +271,7 @@ The bootstrap version is never `latest` or `next`, has no GitHub release, and is
 2. `cd <temp-dir> && npm publish --provenance --tag <latest|next>`
 3. Cleanup temp dir (CI runner is ephemeral anyway)
 
-**Idempotency rewrite:** `scripts/publish-sdk.ts` pre-checks with `npm view @bakin/sdk@<version> version --json`. If exists → log and exit 0 (the version is already published, this is a re-run). If not exists → publish; **any failure is a real failure**, exit non-zero. The current "swallow any non-zero" behavior in `BAKIN_PUBLISH_IDEMPOTENT` mode is removed entirely.
+**Idempotency rewrite:** `scripts/publish-sdk.ts` pre-checks with `npm view @makinbakin/sdk@<version> version --json`. If exists → log and exit 0 (the version is already published, this is a re-run). If not exists → publish; **any failure is a real failure**, exit non-zero. The current "swallow any non-zero" behavior in `BAKIN_PUBLISH_IDEMPOTENT` mode is removed entirely.
 
 **Removed:** `NPM_TOKEN` secret. The workflow no longer reads it. (Document removal in CONTRIBUTING and the runbook so it's clear why the secret is gone.)
 
@@ -297,9 +297,9 @@ Each step:
 **`sdk` job:**
 1. `runs-on: ubuntu-latest`, install Bun (`oven-sh/setup-bun`)
 2. `mkdir scratch && cd scratch && bun init -y`
-3. `bun add react@^19 react-dom@^19 @bakin/sdk@<exact-tag-version>` (not `latest` — verify the exact published version)
-4. `bun -e "import('@bakin/sdk').then(m => { if (typeof m.registerPlugin !== 'function') throw new Error('missing registerPlugin'); })"`
-5. One `bun -e "import('@bakin/sdk/<subpath>')"` line per entry in the SDK's `exports` map
+3. `bun add react@^19 react-dom@^19 @makinbakin/sdk@<exact-tag-version>` (not `latest` — verify the exact published version)
+4. `bun -e "import('@makinbakin/sdk').then(m => { if (typeof m.registerPlugin !== 'function') throw new Error('missing registerPlugin'); })"`
+5. One `bun -e "import('@makinbakin/sdk/<subpath>')"` line per entry in the SDK's `exports` map
 
 **Critical:** the smoke uses Bun because Bakin plugin authors target Bun. The package must still be a real published package: built JS, declarations, no repo-only imports, and installable from a clean directory.
 
@@ -321,14 +321,14 @@ RCs do not update the Homebrew tap. The release workflow still renders the formu
 1. Fix the bug (normal PR)
 2. Update CHANGELOG `[Unreleased]` with `fixes regression in 0.2.0`
 3. `bun run release patch` → `0.2.1`
-4. `npm deprecate @bakin/sdk@0.2.0 "broken: use 0.2.1"`
+4. `npm deprecate @makinbakin/sdk@0.2.0 "broken: use 0.2.1"`
 5. Edit the bad GH release with a banner pointing to `0.2.1`
 6. Stable releases: the next successful release workflow updates the Homebrew tap to the fixed version. If the tap update itself is the failed piece, fix and re-run only the tap publish/smoke step.
 
 **Exception (secrets leaked / active security vuln):** full yank within 72h:
 
 1. Rotate the leaked secret immediately
-2. `npm unpublish @bakin/sdk@0.2.0` (falls back to `npm deprecate` if blocked)
+2. `npm unpublish @makinbakin/sdk@0.2.0` (falls back to `npm deprecate` if blocked)
 3. Update the Homebrew tap first so it no longer points at the asset being deleted (or points at the fixed version if already available)
 4. `gh release delete v0.2.0`
 5. `git push --delete origin v0.2.0`
@@ -407,7 +407,7 @@ Single feature branch: `feat/release-pipeline`. One PR. Each commit independentl
 | 7 | `feat(release): automate Homebrew tap publishing` | `scripts/update-homebrew-formula.ts`, formula render tests, tap checkout/commit/push for stable releases only, RC dry-run render |
 | 8 | `feat(release): add post-publish smoke matrix` | `release-smoke.yml`: binary matrix (macOS/linux-x64/linux-arm64), SDK install + import via Bun, Homebrew stable install/test, `GH_TOKEN` env |
 | 9 | `docs(release): document release pipeline and rollback runbook` | README, CONTRIBUTING, CLAUDE, `.claude/knowledge/release-pipeline.md` (with bootstrap + signing + Homebrew + rollback), `install.mdx` sync, `homebrew/README.md` corrected |
-| 10 | (verification, no code commit) | Manually publish `@bakin/sdk@0.0.0-bootstrap.0` with dist-tag `bootstrap`; configure npm trusted publisher for `release.yml`; configure Apple signing/notary secrets; configure `HOMEBREW_TAP_TOKEN`; cut `v0.1.0-rc.1`, watch full pipeline without tap push. Fix any bugs. Then `bun run release promote` → `v0.1.0` first official release and verify tap install. |
+| 10 | (verification, no code commit) | Manually publish `@makinbakin/sdk@0.0.0-bootstrap.0` with dist-tag `bootstrap`; configure npm trusted publisher for `release.yml`; configure Apple signing/notary secrets; configure `HOMEBREW_TAP_TOKEN`; cut `v0.1.0-rc.1`, watch full pipeline without tap push. Fix any bugs. Then `bun run release promote` → `v0.1.0` first official release and verify tap install. |
 
 ---
 
@@ -474,10 +474,10 @@ Follows existing conventions per `CLAUDE.md`. New scripts in `scripts/`, tests i
 - `tests/scripts/update-homebrew-formula.test.ts` — renders correct URLs/SHA256 values, uses `markhayden/tap`, refuses missing checksums, never emits placeholder values
 
 **Integration verification (manual, slice 10):**
-- Manually publish `@bakin/sdk@0.0.0-bootstrap.0` with dist-tag `bootstrap`, then configure npm trusted publisher for `release.yml`
+- Manually publish `@makinbakin/sdk@0.0.0-bootstrap.0` with dist-tag `bootstrap`, then configure npm trusted publisher for `release.yml`
 - Configure Apple Developer ID/notary secrets and `HOMEBREW_TAP_TOKEN`
 - Cut `v0.1.0-rc.1`, observe full pipeline runs green; verify RC formula render is dry-run only
-- `bun add react@^19 react-dom@^19 @bakin/sdk@0.1.0-rc.1` from a clean shell, import all exports
+- `bun add react@^19 react-dom@^19 @makinbakin/sdk@0.1.0-rc.1` from a clean shell, import all exports
 - `codesign --verify --strict` and `spctl --assess --type execute` pass for `bakin-darwin-arm64`; `./bakin-darwin-arm64 --version` matches the tag
 - Confirm npm provenance attestation visible at npmjs.com
 - Run `bun run release promote` to ship `v0.1.0`
@@ -503,7 +503,7 @@ Follows existing conventions per `CLAUDE.md`. New scripts in `scripts/`, tests i
 - Cutting first `v1.0.0`. Confirm intent.
 - Anything requiring `npm unpublish`.
 - Changing trusted publisher config on npmjs.com.
-- The one-time `@bakin/sdk@0.0.0-bootstrap.0` manual publish if it fails or needs repeating.
+- The one-time `@makinbakin/sdk@0.0.0-bootstrap.0` manual publish if it fails or needs repeating.
 - Creating/renaming the Homebrew tap repo, submitting to Homebrew/homebrew-core, or changing `HOMEBREW_TAP_TOKEN` scope.
 - Rotating Apple signing certificates/notary credentials, or shipping an emergency unsigned macOS artifact.
 

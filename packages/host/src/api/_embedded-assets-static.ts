@@ -21,6 +21,7 @@ import asset_bakin_logo_svg from '../../public/bakin-logo.svg' with { type: 'fil
 import asset_bakin_hop_svg from '../../public/bakin-hop.svg' with { type: 'file' }
 import asset_globals_css from '../../public/globals.css' with { type: 'file' }
 import asset_vendor_sdk_ui_js from '../../public/vendor/sdk-ui.js' with { type: 'file' }
+import asset_vendor_sdk_routing_js from '../../public/vendor/sdk-routing.js' with { type: 'file' }
 import asset_vendor_react_js from '../../public/vendor/react.js' with { type: 'file' }
 import asset_vendor_jsx_runtime_js from '../../public/vendor/jsx-runtime.js' with { type: 'file' }
 import asset_vendor_sdk_utils_js from '../../public/vendor/sdk-utils.js' with { type: 'file' }
@@ -28,6 +29,7 @@ import asset_vendor_sdk_types_js from '../../public/vendor/sdk-types.js' with { 
 import asset_vendor_react_dom_js from '../../public/vendor/react-dom.js' with { type: 'file' }
 import asset_vendor_sdk_index_js from '../../public/vendor/sdk-index.js' with { type: 'file' }
 import asset_vendor_sdk_slots_js from '../../public/vendor/sdk-slots.js' with { type: 'file' }
+import asset_vendor_sdk_metadata_js from '../../public/vendor/sdk-metadata.js' with { type: 'file' }
 import asset_vendor_sdk_components_js from '../../public/vendor/sdk-components.js' with { type: 'file' }
 import asset_vendor_sdk_hooks_js from '../../public/vendor/sdk-hooks.js' with { type: 'file' }
 import asset_vendor_tanstack_router_js from '../../public/vendor/tanstack-router.js' with { type: 'file' }
@@ -38,8 +40,6 @@ import asset_api_plugins_tasks_assets_client_js from '../../../../plugins/tasks/
 import asset_api_plugins_tasks_assets_index_js from '../../../../plugins/tasks/dist/index.js' with { type: 'file' }
 import asset_api_plugins_memory_assets_client_js from '../../../../plugins/memory/dist/client.js' with { type: 'file' }
 import asset_api_plugins_memory_assets_index_js from '../../../../plugins/memory/dist/index.js' with { type: 'file' }
-import asset_api_plugins_projects_assets_client_js from '../../../../plugins/projects/dist/client.js' with { type: 'file' }
-import asset_api_plugins_projects_assets_index_js from '../../../../plugins/projects/dist/index.js' with { type: 'file' }
 import asset_api_plugins_health_assets_client_js from '../../../../plugins/health/dist/client.js' with { type: 'file' }
 import asset_api_plugins_health_assets_index_js from '../../../../plugins/health/dist/index.js' with { type: 'file' }
 import asset_api_plugins_workflows_assets_client_js from '../../../../plugins/workflows/dist/client.js' with { type: 'file' }
@@ -52,8 +52,7 @@ import asset_api_plugins_team_assets_index_js from '../../../../plugins/team/dis
 import asset_api_plugins_team_assets_client_css from '../../../../plugins/team/dist/client.css' with { type: 'file' }
 import asset_api_plugins_assets_assets_client_js from '../../../../plugins/assets/dist/client.js' with { type: 'file' }
 import asset_api_plugins_assets_assets_index_js from '../../../../plugins/assets/dist/index.js' with { type: 'file' }
-import asset_api_plugins_messaging_assets_client_js from '../../../../plugins/messaging/dist/client.js' with { type: 'file' }
-import asset_api_plugins_messaging_assets_index_js from '../../../../plugins/messaging/dist/index.js' with { type: 'file' }
+import asset_api_plugins_git_assets_index_js from '../../../../plugins/git/dist/index.js' with { type: 'file' }
 import asset_data_curated_agents_json from '../data/curated-agents.json' with { type: 'file' }
 
 /** URL path → embedded file path. Keys are the exact paths the HTTP
@@ -66,6 +65,7 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/bakin-hop.svg', asset_bakin_hop_svg],
   ['/globals.css', asset_globals_css],
   ['/vendor/sdk-ui.js', asset_vendor_sdk_ui_js],
+  ['/vendor/sdk-routing.js', asset_vendor_sdk_routing_js],
   ['/vendor/react.js', asset_vendor_react_js],
   ['/vendor/jsx-runtime.js', asset_vendor_jsx_runtime_js],
   ['/vendor/sdk-utils.js', asset_vendor_sdk_utils_js],
@@ -73,6 +73,7 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/vendor/react-dom.js', asset_vendor_react_dom_js],
   ['/vendor/sdk-index.js', asset_vendor_sdk_index_js],
   ['/vendor/sdk-slots.js', asset_vendor_sdk_slots_js],
+  ['/vendor/sdk-metadata.js', asset_vendor_sdk_metadata_js],
   ['/vendor/sdk-components.js', asset_vendor_sdk_components_js],
   ['/vendor/sdk-hooks.js', asset_vendor_sdk_hooks_js],
   ['/vendor/tanstack-router.js', asset_vendor_tanstack_router_js],
@@ -83,8 +84,6 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/api/plugins/tasks/assets/index.js', asset_api_plugins_tasks_assets_index_js],
   ['/api/plugins/memory/assets/client.js', asset_api_plugins_memory_assets_client_js],
   ['/api/plugins/memory/assets/index.js', asset_api_plugins_memory_assets_index_js],
-  ['/api/plugins/projects/assets/client.js', asset_api_plugins_projects_assets_client_js],
-  ['/api/plugins/projects/assets/index.js', asset_api_plugins_projects_assets_index_js],
   ['/api/plugins/health/assets/client.js', asset_api_plugins_health_assets_client_js],
   ['/api/plugins/health/assets/index.js', asset_api_plugins_health_assets_index_js],
   ['/api/plugins/workflows/assets/client.js', asset_api_plugins_workflows_assets_client_js],
@@ -97,9 +96,8 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/api/plugins/team/assets/client.css', asset_api_plugins_team_assets_client_css],
   ['/api/plugins/assets/assets/client.js', asset_api_plugins_assets_assets_client_js],
   ['/api/plugins/assets/assets/index.js', asset_api_plugins_assets_assets_index_js],
-  ['/api/plugins/messaging/assets/client.js', asset_api_plugins_messaging_assets_client_js],
-  ['/api/plugins/messaging/assets/index.js', asset_api_plugins_messaging_assets_index_js],
+  ['/api/plugins/git/assets/index.js', asset_api_plugins_git_assets_index_js],
   ['/data/curated-agents.json', asset_data_curated_agents_json],
 ])
 
-export const EMBEDDED_ASSET_COUNT = 40
+export const EMBEDDED_ASSET_COUNT = 39

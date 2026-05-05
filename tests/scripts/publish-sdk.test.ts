@@ -3,6 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import {
+  PUBLIC_SDK_PACKAGE_NAME,
   distTagForVersion,
   parseArgs,
   publishSdkPackage,
@@ -20,7 +21,7 @@ function packageBuilder(): SdkPackageBuilder {
   return async ({ version, outDir }) => {
     mkdirSync(outDir, { recursive: true })
     writeFileSync(join(outDir, 'package.json'), JSON.stringify({
-      name: '@bakin/sdk',
+      name: PUBLIC_SDK_PACKAGE_NAME,
       version,
     }, null, 2))
   }
@@ -100,7 +101,7 @@ describe('publishSdkPackage', () => {
     })
 
     expect(result).toBe('exists')
-    expect(calls).toEqual(['npm view @bakin/sdk@0.1.0 version --json'])
+    expect(calls).toEqual([`npm view ${PUBLIC_SDK_PACKAGE_NAME}@0.1.0 version --json`])
   })
 
   it('publishes with provenance after an npm 404 pre-check', async () => {
@@ -123,7 +124,7 @@ describe('publishSdkPackage', () => {
     })
 
     expect(result).toBe('published')
-    expect(calls[0]).toContain('npm view @bakin/sdk@0.1.0-rc.1 version --json')
+    expect(calls[0]).toContain(`npm view ${PUBLIC_SDK_PACKAGE_NAME}@0.1.0-rc.1 version --json`)
     expect(calls[1]).toContain('npm publish --provenance --access public --tag next')
   })
 

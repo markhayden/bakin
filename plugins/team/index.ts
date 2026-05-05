@@ -20,7 +20,7 @@ import {
   writeFileSync,
 } from 'fs'
 import { basename, dirname, join, relative } from 'path'
-import type { APIRoute, BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
+import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { defineRoute, definePlugin } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
 import { createLogger } from '../../src/core/logger'
@@ -1306,7 +1306,7 @@ function populateTeamRoutes(arr: any[]): void {
     summary: 'Per-agent dispatch + error counts across 5m / 1h / 24h windows (resets on server restart)',
     params: z.object({ agentId: z.string() }),
     responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
-    handler: async (req: Request, ctx: PluginContextLite) => {
+    handler: async (req: Request, _ctx: PluginContextLite) => {
       const url = new URL(req.url)
       const agentId = url.searchParams.get('agentId')
       if (!agentId) return Response.json({ ok: false, error: 'agentId required' }, { status: 400 })
@@ -1337,7 +1337,7 @@ function populateTeamRoutes(arr: any[]): void {
     summary: 'Serve agent avatar image',
     params: z.object({ agentId: z.string() }),
     responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
-    handler: async (req: Request, ctx: PluginContextLite) => {
+    handler: async (req: Request, _ctx: PluginContextLite) => {
       const url = new URL(req.url)
       const agentId = url.searchParams.get('agentId')
       if (!agentId) return new Response(null, { status: 400 })
@@ -1389,7 +1389,7 @@ function populateTeamRoutes(arr: any[]): void {
     summary: 'Stop an agent',
     params: z.object({ agentId: z.string() }),
     responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
-    handler: async (req: Request, ctx: PluginContextLite) => {
+    handler: async (req: Request, _ctx: PluginContextLite) => {
       const url = new URL(req.url)
       const agentId = url.searchParams.get('agentId')
       if (!agentId) return Response.json({ error: 'agentId required' }, { status: 400 })
@@ -1419,7 +1419,7 @@ function populateTeamRoutes(arr: any[]): void {
     description: 'Update agent display settings',
     summary: 'Update agent display settings',
     responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
-    handler: async (req: Request, ctx: PluginContextLite) => {
+    handler: async (req: Request, _ctx: PluginContextLite) => {
       const body = await req.json() as AgentDisplaySettingsMap
       writeDisplaySettings(body)
       return Response.json({ ok: true })
@@ -1435,7 +1435,7 @@ function populateTeamRoutes(arr: any[]): void {
     description: 'List organizational teams',
     summary: 'List organizational teams',
     responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
-    handler: async (_req: Request, ctx: PluginContextLite) => {
+    handler: async (_req: Request, _ctx: PluginContextLite) => {
       return Response.json({ teams: readTeams() })
     },
   }))
@@ -1630,6 +1630,7 @@ const teamPlugin: BakinPlugin = definePlugin({
     // Reset routes on every activate (hot-reload safety).
     // teamRoutes is populated at module load now (T20+); reset would wipe the static array
     staleSettingsCtx = ctx
+    pluginCtx = ctx
 
     // ─── Search Content Type Registration ─────────────────────────────
 

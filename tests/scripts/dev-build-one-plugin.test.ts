@@ -41,6 +41,11 @@ const EXTERNAL = [
   '@bakin/sdk', '@bakin/sdk/ui', '@bakin/sdk/hooks',
   '@bakin/sdk/components', '@bakin/sdk/slots',
   '@bakin/sdk/types', '@bakin/sdk/utils',
+  '@bakin/sdk/metadata', '@bakin/sdk/routing',
+  '@makinbakin/sdk', '@makinbakin/sdk/ui', '@makinbakin/sdk/hooks',
+  '@makinbakin/sdk/components', '@makinbakin/sdk/slots',
+  '@makinbakin/sdk/types', '@makinbakin/sdk/utils',
+  '@makinbakin/sdk/metadata', '@makinbakin/sdk/routing',
 ]
 
 const testRoot = join(tmpdir(), `bakin-test-buildone-${Date.now()}`)

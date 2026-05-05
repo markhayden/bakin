@@ -65,10 +65,10 @@ jobs:
           mkdir -p "${scratch}"
           cd "${scratch}"
           bun init -y
-          bun add react@^19 react-dom@^19 "@bakin/sdk@${version}"
-          bun -e "const m = await import('@bakin/sdk'); if (typeof m.registerPlugin !== 'function') throw new Error('missing registerPlugin')"
+          bun add react@^19 react-dom@^19 "@makinbakin/sdk@${version}"
+          bun -e "const m = await import('@makinbakin/sdk'); if (typeof m.registerPlugin !== 'function') throw new Error('missing registerPlugin')"
           for subpath in ui hooks components slots types utils metadata routing; do
-            bun -e "await import('@bakin/sdk/${subpath}')"
+            bun -e "await import('@makinbakin/sdk/${subpath}')"
           done
 
   homebrew:

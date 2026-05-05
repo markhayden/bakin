@@ -63,7 +63,7 @@ Main CI for the exact head SHA, has non-empty `[Unreleased]` changelog
 bullets, and will create the release commit/tag before an atomic push.
 
 CI then builds all binaries, signs/notarizes macOS, computes checksums,
-publishes `@bakin/sdk` with npm trusted publishing/provenance, updates
+publishes `@makinbakin/sdk` with npm trusted publishing/provenance, updates
 `markhayden/homebrew-tap` for stable releases, publishes the GitHub
 release, and runs post-publish smoke.
 

@@ -271,7 +271,7 @@ const routes = [
     method: 'DELETE',
     summary: 'Delete a task',
     params: taskIdParams,
-    body: { contentType: '*/*' },  // optional body fallback (id/title)
+    body: { contentType: '*/*', schema: deleteTaskBody },  // optional body fallback (id/title)
     responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
     handler: async (req, ctx, { params }) => {
       let body: any = {}

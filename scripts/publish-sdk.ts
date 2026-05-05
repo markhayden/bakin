@@ -1,5 +1,5 @@
 /**
- * Build and publish the public @bakin/sdk package.
+ * Build and publish the public SDK package.
  *
  * The source workspace package is intentionally not publishable directly.
  * This script always publishes from a generated package directory and uses
@@ -9,11 +9,13 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
-import { buildSdkPackage } from './build-sdk-package'
+import { PUBLIC_SDK_PACKAGE_NAME, buildSdkPackage } from './build-sdk-package'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
-const SDK_PACKAGE_NAME = '@bakin/sdk'
+const SDK_PACKAGE_NAME = PUBLIC_SDK_PACKAGE_NAME
 const RELEASE_VERSION_RE = /^\d+\.\d+\.\d+(?:-rc\.\d+)?$/
+
+export { PUBLIC_SDK_PACKAGE_NAME }
 
 export interface PublishSdkOptions {
   version: string

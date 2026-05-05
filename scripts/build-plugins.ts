@@ -8,7 +8,7 @@
  * bundle. The host process already has them installed; native Bun modules
  * are resolved at runtime by Bun itself.
  *
- * Client entries use --target=browser. Only react + @bakin/sdk/* are
+ * Client entries use --target=browser. Only react + SDK package aliases are
  * externalized — other client deps (lucide-react, zustand, shadcn
  * primitives) bundle into client.js so the plugin is self-contained
  * from the browser's point of view.
@@ -28,6 +28,11 @@ const EXTERNAL = [
   '@bakin/sdk', '@bakin/sdk/ui', '@bakin/sdk/hooks',
   '@bakin/sdk/components', '@bakin/sdk/slots',
   '@bakin/sdk/types', '@bakin/sdk/utils',
+  '@bakin/sdk/metadata', '@bakin/sdk/routing',
+  '@makinbakin/sdk', '@makinbakin/sdk/ui', '@makinbakin/sdk/hooks',
+  '@makinbakin/sdk/components', '@makinbakin/sdk/slots',
+  '@makinbakin/sdk/types', '@makinbakin/sdk/utils',
+  '@makinbakin/sdk/metadata', '@makinbakin/sdk/routing',
 ]
 
 for (const id of CORE_PLUGINS) {
