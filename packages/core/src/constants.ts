@@ -7,7 +7,7 @@
 
 export const APP_NAME = 'Bakin'
 export const APP_SLUG = 'bakin'
-export const APP_VERSION = '1.0.0'
+export { APP_VERSION } from './generated-version'
 export const APP_HOME_DEFAULT = '~/.bakin'
 export const CONFIG_FILE = 'bakin.config.ts'
 export const PLUGIN_MANIFEST_FILE = 'bakin-plugin.json'
