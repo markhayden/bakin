@@ -267,6 +267,9 @@ jobs:
         run: |
           set -euo pipefail
           release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --jq .id 2>/dev/null || true)"
+          if [[ ! "${release_id}" =~ ^[0-9]+$ ]]; then
+            release_id=""
+          fi
           body="$(cat .release-notes.md)"
           if [[ -n "${release_id}" ]]; then
             gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
