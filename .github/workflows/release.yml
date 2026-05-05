@@ -264,6 +264,7 @@ jobs:
         run: bun run scripts/extract-release-notes.ts --version "${VERSION}" --out .release-notes.md
 
       - name: Create or update draft GitHub release
+        id: draft_release
         shell: bash
         run: |
           set -euo pipefail
@@ -273,20 +274,23 @@ jobs:
           fi
           body="$(cat .release-notes.md)"
           if [[ -n "${release_id}" ]]; then
-            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+            release_id="$(gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
               -f tag_name="${TAG}" \
               -f name="${TAG}" \
               -f body="${body}" \
               -F draft=true \
-              -F prerelease="${PRERELEASE}"
+              -F prerelease="${PRERELEASE}" \
+              --jq .id)"
           else
-            gh api -X POST "repos/${GITHUB_REPOSITORY}/releases" \
+            release_id="$(gh api -X POST "repos/${GITHUB_REPOSITORY}/releases" \
               -f tag_name="${TAG}" \
               -f name="${TAG}" \
               -f body="${body}" \
               -F draft=true \
-              -F prerelease="${PRERELEASE}"
+              -F prerelease="${PRERELEASE}" \
+              --jq .id)"
           fi
+          echo "release_id=${release_id}" >> "${GITHUB_OUTPUT}"
           gh release upload "${TAG}" \
             "dist/${DARWIN_BINARY}" \
             "dist/${LINUX_X64_BINARY}" \
@@ -332,7 +336,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" --jq .id)"
+          release_id="${{ steps.draft_release.outputs.release_id }}"
+          if [[ ! "${release_id}" =~ ^[0-9]+$ ]]; then
+            echo "::error::Missing draft release id for ${TAG}"
+            exit 1
+          fi
           gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
             -F draft=false \
             -F prerelease="${PRERELEASE}"
