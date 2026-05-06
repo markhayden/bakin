@@ -1,6 +1,4 @@
 ---
-import logo from '../assets/bakin-logo.svg'
-
 const normalizePath = (path: string) => {
   if (!path) return '/'
   return path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path
@@ -28,7 +26,7 @@ const isLinkActive = (href: string, matchNested = false) => {
 <nav class="bakin-site-header" aria-label="Main navigation">
   <div class="bakin-site-header__inner">
     <a href="/" class="bakin-site-header__brand" aria-label="Bakin home">
-      <img src={logo.src} alt="" aria-hidden="true" />
+      <img src="/images/bakin-hop.svg" alt="Bakin" />
       <span>Bakin</span>
     </a>
 
@@ -105,24 +103,23 @@ const isLinkActive = (href: string, matchNested = false) => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1.5rem;
-    height: 100%;
+    gap: 1rem;
     width: 100%;
-    padding: 0 1.5rem;
+    padding: 1rem 1.5rem;
   }
 
   .bakin-site-header__brand {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    color: #fff;
+    color: #ffffff;
     text-decoration: none;
   }
 
   .bakin-site-header__brand img {
     width: auto;
     height: 1.25rem;
-    flex: 0 0 auto;
+    flex-shrink: 0;
     filter: brightness(0) saturate(100%) invert(69%) sepia(36%) saturate(1831%) hue-rotate(292deg) brightness(102%) contrast(101%);
   }
 
@@ -139,7 +136,9 @@ const isLinkActive = (href: string, matchNested = false) => {
   .bakin-site-header__brand span {
     font-style: italic;
     font-size: 1rem;
-    letter-spacing: 0.12em;
+    line-height: 1.5rem;
+    color: #ffffff;
+    letter-spacing: 0.1em;
   }
 
   .bakin-site-header__links {
@@ -149,10 +148,10 @@ const isLinkActive = (href: string, matchNested = false) => {
   }
 
   .bakin-site-header__link {
-    color: #ded8d8;
+    color: #aeaaaa;
     font-size: 0.75rem;
-    line-height: 1;
-    letter-spacing: 0.04em;
+    line-height: 1rem;
+    letter-spacing: 0.025em;
     text-decoration: none;
     transition: color 160ms ease;
   }
@@ -166,18 +165,19 @@ const isLinkActive = (href: string, matchNested = false) => {
     display: none;
     align-items: center;
     justify-content: center;
-    min-height: 2rem;
-    padding: 0.4rem 1.25rem;
+    padding: 0.375rem 1.25rem;
     border: 1px solid rgba(255, 112, 158, 0.6);
     border-radius: 0.5rem;
     background: rgba(255, 112, 158, 0.1);
     color: var(--bakin-brand-pink);
     font-size: 0.6875rem;
+    line-height: 1rem;
     letter-spacing: 0.03em;
     text-decoration: none;
     transition:
-      background-color 160ms ease,
-      color 160ms ease;
+      background-color 300ms ease,
+      color 300ms ease,
+      filter 300ms ease;
   }
 
   .bakin-site-header__cta:hover {
@@ -280,7 +280,7 @@ const isLinkActive = (href: string, matchNested = false) => {
 
   @media (min-width: 48rem) {
     .bakin-site-header__inner {
-      padding: 0 3rem;
+      padding: 1rem 3rem;
     }
 
     .bakin-site-header__links {
