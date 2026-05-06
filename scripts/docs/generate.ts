@@ -1825,16 +1825,19 @@ Primary docs:
 - Daily Operation: ${docsUrl}/start/operation/
   Use this for lifecycle commands, health checks, updates, and runtime operation.
 
-- Core workflows: ${docsUrl}/core/tasks/
-  Use this for built-in Bakin areas such as tasks, workflows, assets, schedule, memory, models, team, and health. Official add-on plugins such as Messaging and Projects are installed separately but documented in the same site.
+- Essentials: ${docsUrl}/using/essentials/
+  Use this for the core Bakin areas and the quickest map of day-to-day product concepts.
 
-- Plugin authoring: ${docsUrl}/extend/plugins/overview/
+- Tasks: ${docsUrl}/using/tasks/
+  Use this for the task model, task lifecycle, approvals, output, and agent execution flow.
+
+- Plugin authoring: ${docsUrl}/extending/plugins/overview/
   Use this when building Bakin plugins with @makinbakin/sdk.
 
-- Agent authoring: ${docsUrl}/extend/agents/overview/
+- Agent authoring: ${docsUrl}/extending/agents/overview/
   Use this when creating agent packages or writing instructions for coding agents working with Bakin.
 
-- SDK docs: ${docsUrl}/extend/sdk/overview/
+- SDK docs: ${docsUrl}/extending/sdk/overview/
   Use this for @makinbakin/sdk imports, UI components, hooks, slots, and public extension contracts.
 
 LLM bundles:

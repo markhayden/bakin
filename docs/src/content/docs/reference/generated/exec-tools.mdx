@@ -489,40 +489,40 @@ mcporter call bakin-<agent>.bakin_exec_post_channel --args '{
 </McpToolCard>
 </div>
 
-## Projects
+## Project
 
-<p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
+<p class="mcp-section-description">Project tools let agents create, update, read, and maintain project specs and linked checklist items.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="projects-add-item" name="bakin_exec_projects_add_item" label="Added project item" description="Add a new checklist item to a project." source="bakin-bits-official/plugins/projects/index.ts:614" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"title","type":"string","required":true,"description":"Checklist item title"}]}>
+<McpToolCard id="project-add-item" name="bakin_exec_project_add_item" label="Added project item" description="Add a new checklist item to a project." source="bakin-bits-official/plugins/projects/index.ts:614" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"title","type":"string","required":true,"description":"Checklist item title"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_add_item --args '{
+mcporter call bakin-<agent>.bakin_exec_project_add_item --args '{
   "projectId": "value",
   "title": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="projects-ask" name="bakin_exec_projects_ask" label="Asked project question" description="Ask an agent a question about a project. Sends the project context (spec, checklist, assets) along with the message to the agent for brainstorming." source="bakin-bits-official/plugins/projects/index.ts:804" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"message","type":"string","required":true,"description":"Question or prompt for the agent"},{"name":"agent","type":"string","required":false,"description":"Agent ID to ask (defaults to main)"}]}>
+<McpToolCard id="project-ask" name="bakin_exec_project_ask" label="Asked project question" description="Ask an agent a question about a project. Sends the project context (spec, checklist, assets) along with the message to the agent for brainstorming." source="bakin-bits-official/plugins/projects/index.ts:804" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"message","type":"string","required":true,"description":"Question or prompt for the agent"},{"name":"agent","type":"string","required":false,"description":"Agent ID to ask (defaults to main)"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_ask --args '{
+mcporter call bakin-<agent>.bakin_exec_project_ask --args '{
   "projectId": "value",
   "message": "value",
   "agent": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="projects-attach-asset" name="bakin_exec_projects_attach_asset" label="Attached asset to project" description="Attach an existing asset to a project by filename. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in project_get — use asset tools to read full content when needed." source="bakin-bits-official/plugins/projects/index.ts:716" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"filename","type":"string","required":true,"description":"Asset filename (e.g., \"20260327-hero-a1b2c3d4.png\") — globally unique, stable across retype/relink"},{"name":"label","type":"string","required":false,"description":"Human-readable label or summary of what this asset contains"}]}>
+<McpToolCard id="project-attach-asset" name="bakin_exec_project_attach_asset" label="Attached asset to project" description="Attach an existing asset to a project by filename. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in project_get — use asset tools to read full content when needed." source="bakin-bits-official/plugins/projects/index.ts:716" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"filename","type":"string","required":true,"description":"Asset filename (e.g., \"20260327-hero-a1b2c3d4.png\") — globally unique, stable across retype/relink"},{"name":"label","type":"string","required":false,"description":"Human-readable label or summary of what this asset contains"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_attach_asset --args '{
+mcporter call bakin-<agent>.bakin_exec_project_attach_asset --args '{
   "projectId": "value",
   "filename": "value",
   "label": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="projects-create" name="bakin_exec_projects_create" label="Created a project" description="Create a new project with title, markdown body, and optional initial checklist items. Returns project ID and generated task item IDs." source="bakin-bits-official/plugins/projects/index.ts:547" parameters={[{"name":"title","type":"string","required":true,"description":"Project title"},{"name":"body","type":"string","required":false,"description":"Markdown body (spec/plan)"},{"name":"owner","type":"string","required":false,"description":"Project owner"},{"name":"tasks","type":"array","required":false,"description":"Initial checklist item titles"}]}>
+<McpToolCard id="project-create" name="bakin_exec_project_create" label="Created a project" description="Create a new project with title, markdown body, and optional initial checklist items. Returns project ID and generated task item IDs." source="bakin-bits-official/plugins/projects/index.ts:547" parameters={[{"name":"title","type":"string","required":true,"description":"Project title"},{"name":"body","type":"string","required":false,"description":"Markdown body (spec/plan)"},{"name":"owner","type":"string","required":false,"description":"Project owner"},{"name":"tasks","type":"array","required":false,"description":"Initial checklist item titles"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_create --args '{
+mcporter call bakin-<agent>.bakin_exec_project_create --args '{
   "title": "value",
   "body": "value",
   "owner": "value",
@@ -532,82 +532,82 @@ mcporter call bakin-<agent>.bakin_exec_projects_create --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="projects-delete" name="bakin_exec_projects_delete" label="Deleted a project" description="Delete a project by ID." source="bakin-bits-official/plugins/projects/index.ts:596" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"}]}>
+<McpToolCard id="project-delete" name="bakin_exec_project_delete" label="Deleted a project" description="Delete a project by ID." source="bakin-bits-official/plugins/projects/index.ts:596" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_delete --args '{
+mcporter call bakin-<agent>.bakin_exec_project_delete --args '{
   "projectId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="projects-detach-asset" name="bakin_exec_projects_detach_asset" label="Detached asset from project" description="Remove an asset reference from a project by filename. Does not delete the asset itself." source="bakin-bits-official/plugins/projects/index.ts:736" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"filename","type":"string","required":true,"description":"Asset filename to detach"}]}>
+<McpToolCard id="project-detach-asset" name="bakin_exec_project_detach_asset" label="Detached asset from project" description="Remove an asset reference from a project by filename. Does not delete the asset itself." source="bakin-bits-official/plugins/projects/index.ts:736" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"filename","type":"string","required":true,"description":"Asset filename to detach"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_detach_asset --args '{
+mcporter call bakin-<agent>.bakin_exec_project_detach_asset --args '{
   "projectId": "value",
   "filename": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="projects-get" name="bakin_exec_projects_get" label="Read project details" description="Get a project by ID including full spec, checklist, progress, and linked board task statuses." source="bakin-bits-official/plugins/projects/index.ts:533" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"}]}>
+<McpToolCard id="project-get" name="bakin_exec_project_get" label="Read project details" description="Get a project by ID including full spec, checklist, progress, and linked board task statuses." source="bakin-bits-official/plugins/projects/index.ts:533" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_get --args '{
+mcporter call bakin-<agent>.bakin_exec_project_get --args '{
   "projectId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="projects-link-item" name="bakin_exec_projects_link_item" label="Linked project item" description="Link an existing board task to a project checklist item. Use this when a task was created separately and should be associated with a project." source="bakin-bits-official/plugins/projects/index.ts:668" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID"},{"name":"taskId","type":"string","required":true,"description":"Board task ID to link"}]}>
+<McpToolCard id="project-link-item" name="bakin_exec_project_link_item" label="Linked project item" description="Link an existing board task to a project checklist item. Use this when a task was created separately and should be associated with a project." source="bakin-bits-official/plugins/projects/index.ts:668" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID"},{"name":"taskId","type":"string","required":true,"description":"Board task ID to link"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_link_item --args '{
+mcporter call bakin-<agent>.bakin_exec_project_link_item --args '{
   "projectId": "value",
   "taskItemId": "value",
   "taskId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="projects-list" name="bakin_exec_projects_list" label="Listed projects" description="List all projects with optional status filter. Returns summaries with id, title, status, progress, taskCount." source="bakin-bits-official/plugins/projects/index.ts:517" parameters={[{"name":"status","type":"choice","required":false,"description":"Filter by status"}]}>
+<McpToolCard id="project-list" name="bakin_exec_project_list" label="Listed projects" description="List all projects with optional status filter. Returns summaries with id, title, status, progress, taskCount." source="bakin-bits-official/plugins/projects/index.ts:517" parameters={[{"name":"status","type":"choice","required":false,"description":"Filter by status"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_list --args '{
+mcporter call bakin-<agent>.bakin_exec_project_list --args '{
   "status": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="projects-mark-item" name="bakin_exec_projects_mark_item" label="Marked project item" description="Mark a checklist item as checked (done) or unchecked. Returns updated progress percentage." source="bakin-bits-official/plugins/projects/index.ts:629" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID (e.g., t001)"},{"name":"checked","type":"boolean","required":true,"description":"true to mark as done, false to uncheck"}]}>
+<McpToolCard id="project-mark-item" name="bakin_exec_project_mark_item" label="Marked project item" description="Mark a checklist item as checked (done) or unchecked. Returns updated progress percentage." source="bakin-bits-official/plugins/projects/index.ts:629" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID (e.g., t001)"},{"name":"checked","type":"boolean","required":true,"description":"true to mark as done, false to uncheck"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_mark_item --args '{
+mcporter call bakin-<agent>.bakin_exec_project_mark_item --args '{
   "projectId": "value",
   "taskItemId": "value",
   "checked": true
 }'
 ```
 </McpToolCard>
-<McpToolCard id="projects-promote-item" name="bakin_exec_projects_promote_item" label="Promoted project item" description="Create a NEW board task from a project checklist item and automatically link it. The task appears on the task board with the item title and projectId set." source="bakin-bits-official/plugins/projects/index.ts:692" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID to promote to a board task"},{"name":"assignee","type":"string","required":false,"description":"Agent to assign the task to"}]}>
+<McpToolCard id="project-promote-item" name="bakin_exec_project_promote_item" label="Promoted project item" description="Create a NEW board task from a project checklist item and automatically link it. The task appears on the task board with the item title and projectId set." source="bakin-bits-official/plugins/projects/index.ts:692" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID to promote to a board task"},{"name":"assignee","type":"string","required":false,"description":"Agent to assign the task to"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_promote_item --args '{
+mcporter call bakin-<agent>.bakin_exec_project_promote_item --args '{
   "projectId": "value",
   "taskItemId": "value",
   "assignee": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="projects-remove-item" name="bakin_exec_projects_remove_item" label="Removed project item" description="Remove a checklist item from a project." source="bakin-bits-official/plugins/projects/index.ts:649" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID to remove"}]}>
+<McpToolCard id="project-remove-item" name="bakin_exec_project_remove_item" label="Removed project item" description="Remove a checklist item from a project." source="bakin-bits-official/plugins/projects/index.ts:649" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"taskItemId","type":"string","required":true,"description":"Checklist item ID to remove"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_remove_item --args '{
+mcporter call bakin-<agent>.bakin_exec_project_remove_item --args '{
   "projectId": "value",
   "taskItemId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="projects-toggle-item" name="bakin_exec_projects_toggle_item" label="Toggled project item" description="Toggle a checklist item checked/unchecked by item ID. Returns updated progress percentage." source="bakin-bits-official/plugins/projects/index.ts:755" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"itemId","type":"string","required":true,"description":"Checklist item ID (e.g., t001)"},{"name":"checked","type":"boolean","required":true,"description":"true to mark as done, false to uncheck"}]}>
+<McpToolCard id="project-toggle-item" name="bakin_exec_project_toggle_item" label="Toggled project item" description="Toggle a checklist item checked/unchecked by item ID. Returns updated progress percentage." source="bakin-bits-official/plugins/projects/index.ts:755" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"itemId","type":"string","required":true,"description":"Checklist item ID (e.g., t001)"},{"name":"checked","type":"boolean","required":true,"description":"true to mark as done, false to uncheck"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_toggle_item --args '{
+mcporter call bakin-<agent>.bakin_exec_project_toggle_item --args '{
   "projectId": "value",
   "itemId": "value",
   "checked": true
 }'
 ```
 </McpToolCard>
-<McpToolCard id="projects-update" name="bakin_exec_projects_update" label="Updated a project" description="Update a project's title, status, body, or owner. Cannot set status to &quot;completed&quot; if unchecked items remain." source="bakin-bits-official/plugins/projects/index.ts:569" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"title","type":"string","required":false,"description":"New title"},{"name":"status","type":"choice","required":false,"description":"New status"},{"name":"body","type":"string","required":false,"description":"New markdown body"},{"name":"owner","type":"string","required":false,"description":"New owner"}]}>
+<McpToolCard id="project-update" name="bakin_exec_project_update" label="Updated a project" description="Update a project's title, status, body, or owner. Cannot set status to &quot;completed&quot; if unchecked items remain." source="bakin-bits-official/plugins/projects/index.ts:569" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"title","type":"string","required":false,"description":"New title"},{"name":"status","type":"choice","required":false,"description":"New status"},{"name":"body","type":"string","required":false,"description":"New markdown body"},{"name":"owner","type":"string","required":false,"description":"New owner"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_update --args '{
+mcporter call bakin-<agent>.bakin_exec_project_update --args '{
   "projectId": "value",
   "title": "value",
   "status": "value",
@@ -616,9 +616,9 @@ mcporter call bakin-<agent>.bakin_exec_projects_update --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="projects-update-item" name="bakin_exec_projects_update_item" label="Updated project item" description="Update a checklist item's title and/or description." source="bakin-bits-official/plugins/projects/index.ts:776" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"itemId","type":"string","required":true,"description":"Checklist item ID (e.g., t001)"},{"name":"title","type":"string","required":false,"description":"New title for the checklist item"},{"name":"description","type":"string","required":false,"description":"New description for the checklist item"}]}>
+<McpToolCard id="project-update-item" name="bakin_exec_project_update_item" label="Updated project item" description="Update a checklist item's title and/or description." source="bakin-bits-official/plugins/projects/index.ts:776" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"itemId","type":"string","required":true,"description":"Checklist item ID (e.g., t001)"},{"name":"title","type":"string","required":false,"description":"New title for the checklist item"},{"name":"description","type":"string","required":false,"description":"New description for the checklist item"}]}>
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_projects_update_item --args '{
+mcporter call bakin-<agent>.bakin_exec_project_update_item --args '{
   "projectId": "value",
   "itemId": "value",
   "title": "value",
@@ -1075,5 +1075,5 @@ mcporter call bakin-<agent>.bakin_exec_workflows_start --args '{
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 5, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 6, 2026 · Bakin 0.0.0-dev</span>
 </aside>
