@@ -59,10 +59,15 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+html {
+  background: #0f0e0e;
+}
+
 :global(.header:has(.bakin-site-header)) {
   border-bottom: 0;
   padding: 0;
   background: transparent;
+  overflow: visible;
 }
 
 h1,
