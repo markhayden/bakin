@@ -8,7 +8,7 @@
  */
 import { randomBytes } from 'crypto'
 
-/** 8-char hex suffix. 4 bytes = 2^32 distinct values — collision-free at single-user scale. */
+/** 8-char hex suffix. 4 bytes = 2^32 distinct values; callers retry on collision. */
 export function generateId8(): string {
   return randomBytes(4).toString('hex')
 }
