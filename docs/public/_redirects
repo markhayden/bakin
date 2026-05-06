@@ -1,5 +1,6 @@
 # Cloudflare Pages redirects for public docs.
 # Add redirects here before renaming or moving any published page.
+/docs/ /docs/start/install/ 302
 /docs/start/overview/ /docs/start/install/ 301
 /docs/start/documentation-plan/ /docs/contribute/overview/ 301
 /docs/run/install/ /docs/start/install/ 301

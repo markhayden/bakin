@@ -1,0 +1,8 @@
+# Keep raw Pages origins out of search results. The makinbakin.com/docs
+# router strips this header before serving canonical docs URLs.
+https://bakin-docs.pages.dev/*
+  X-Robots-Tag: noindex
+
+https://:version.bakin-docs.pages.dev/*
+  X-Robots-Tag: noindex
+
