@@ -59,6 +59,12 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+:global(.header:has(.bakin-site-header)) {
+  border-bottom: 0;
+  padding: 0;
+  background: transparent;
+}
+
 h1,
 h2,
 h3,
