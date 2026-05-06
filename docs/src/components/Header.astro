@@ -6,8 +6,31 @@ const normalizePath = (path: string) => {
 
 const currentPath = normalizePath(Astro.url.pathname)
 
+const exploreLinks = [
+  {
+    label: 'Tasks',
+    href: '/features/tasks',
+    description: 'Autonomous execution. Full visibility.',
+  },
+  {
+    label: 'Planning',
+    href: '/features/planning',
+    description: 'Strategy, timing, and narrative in one place',
+  },
+  {
+    label: 'Memory',
+    href: '/features/memory',
+    description: 'Conversations, assets, and decisions that stick',
+  },
+  {
+    label: 'Operations',
+    href: '/features/operations',
+    description: "See what's running, what it costs, and where to tune",
+  },
+] as const
+
 const navLinks = [
-  { label: 'Explore', href: '/features', matchNested: true },
+  { label: 'Explore', href: '/features', matchNested: true, children: exploreLinks },
   { label: 'Customize', href: '/customize' },
   { label: 'Possibilities', href: '/possibilities' },
   { label: 'About', href: '/about' },
@@ -35,7 +58,57 @@ const isLinkActive = (href: string, matchNested = false) => {
         navLinks.map((link) => {
           const active = isLinkActive(link.href, Boolean(link.matchNested))
 
-          return (
+          return 'children' in link ? (
+            <div class="bakin-site-header__link-group">
+              <a
+                href={link.href}
+                aria-current={active ? 'page' : undefined}
+                class:list={[
+                  'bakin-site-header__link',
+                  'bakin-site-header__link--parent',
+                  active && 'bakin-site-header__link--active',
+                ]}
+              >
+                {link.label}
+                <svg
+                  class="bakin-site-header__chevron"
+                  viewBox="0 0 12 12"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M2.5 4.5 6 8l3.5-3.5" />
+                </svg>
+              </a>
+
+              <div class="bakin-site-header__submenu">
+                <div class="bakin-site-header__submenu-panel">
+                  {
+                    link.children.map((child) => {
+                      const childActive = isLinkActive(child.href)
+
+                      return (
+                        <a
+                          href={child.href}
+                          aria-current={childActive ? 'page' : undefined}
+                          class:list={[
+                            'bakin-site-header__submenu-link',
+                            childActive && 'bakin-site-header__submenu-link--active',
+                          ]}
+                        >
+                          <div class="bakin-site-header__submenu-label">{child.label}</div>
+                          <div class="bakin-site-header__submenu-description">{child.description}</div>
+                        </a>
+                      )
+                    })
+                  }
+                </div>
+              </div>
+            </div>
+          ) : (
             <a
               href={link.href}
               aria-current={active ? 'page' : undefined}
@@ -66,7 +139,40 @@ const isLinkActive = (href: string, matchNested = false) => {
           navLinks.map((link) => {
             const active = isLinkActive(link.href, Boolean(link.matchNested))
 
-            return (
+            return 'children' in link ? (
+              <div class="bakin-site-header__mobile-group">
+                <a
+                  href={link.href}
+                  aria-current={active ? 'page' : undefined}
+                  class:list={[
+                    'bakin-site-header__mobile-link',
+                    active && 'bakin-site-header__mobile-link--active',
+                  ]}
+                >
+                  {link.label}
+                </a>
+                <div class="bakin-site-header__mobile-children">
+                  {
+                    link.children.map((child) => {
+                      const childActive = isLinkActive(child.href)
+
+                      return (
+                        <a
+                          href={child.href}
+                          aria-current={childActive ? 'page' : undefined}
+                          class:list={[
+                            'bakin-site-header__mobile-child',
+                            childActive && 'bakin-site-header__mobile-child--active',
+                          ]}
+                        >
+                          {child.label}
+                        </a>
+                      )
+                    })
+                  }
+                </div>
+              </div>
+            ) : (
               <a
                 href={link.href}
                 aria-current={active ? 'page' : undefined}
@@ -159,6 +265,89 @@ const isLinkActive = (href: string, matchNested = false) => {
   .bakin-site-header__link:hover,
   .bakin-site-header__link--active {
     color: var(--bakin-brand-pink);
+  }
+
+  .bakin-site-header__link-group {
+    position: relative;
+  }
+
+  .bakin-site-header__link--parent {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .bakin-site-header__chevron {
+    width: 0.75rem;
+    height: 0.75rem;
+    transition: transform 200ms ease;
+  }
+
+  .bakin-site-header__link-group:hover .bakin-site-header__chevron,
+  .bakin-site-header__link-group:focus-within .bakin-site-header__chevron {
+    transform: rotate(180deg);
+  }
+
+  .bakin-site-header__submenu {
+    pointer-events: none;
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    z-index: 50;
+    width: 18rem;
+    padding-top: 0.75rem;
+    opacity: 0;
+    transform: translateX(-50%);
+    transition: opacity 200ms ease;
+  }
+
+  .bakin-site-header__link-group:hover .bakin-site-header__submenu,
+  .bakin-site-header__link-group:focus-within .bakin-site-header__submenu {
+    pointer-events: auto;
+    opacity: 1;
+  }
+
+  .bakin-site-header__submenu-panel {
+    padding: 0.75rem;
+    border: 1px solid rgba(74, 71, 71, 0.15);
+    border-radius: 1.5rem;
+    background: rgba(27, 25, 25, 0.95);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.38);
+    backdrop-filter: blur(24px);
+  }
+
+  .bakin-site-header__submenu-link {
+    display: block;
+    padding: 0.75rem 1rem;
+    border-radius: 1rem;
+    text-decoration: none;
+    transition: background-color 160ms ease;
+  }
+
+  .bakin-site-header__submenu-link:hover,
+  .bakin-site-header__submenu-link--active {
+    background: rgba(33, 31, 31, 0.8);
+  }
+
+  .bakin-site-header__submenu-label {
+    color: #ffffff;
+    font-family: var(--font-bakin-body);
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    line-height: 1.25rem;
+    text-transform: uppercase;
+  }
+
+  .bakin-site-header__submenu-link--active .bakin-site-header__submenu-label {
+    color: var(--bakin-brand-pink);
+  }
+
+  .bakin-site-header__submenu-description {
+    margin-top: 0.25rem;
+    color: #aeaaaa;
+    font-size: 0.75rem;
+    line-height: 1rem;
   }
 
   .bakin-site-header__cta {
@@ -255,6 +444,7 @@ const isLinkActive = (href: string, matchNested = false) => {
   }
 
   .bakin-site-header__mobile-link,
+  .bakin-site-header__mobile-child,
   .bakin-site-header__mobile-cta {
     display: block;
     border-radius: 1rem;
@@ -269,6 +459,24 @@ const isLinkActive = (href: string, matchNested = false) => {
   .bakin-site-header__mobile-link--active {
     background: rgba(39, 37, 37, 0.7);
     color: var(--bakin-brand-pink);
+  }
+
+  .bakin-site-header__mobile-children {
+    display: grid;
+    gap: 0.25rem;
+    padding: 0.25rem 0 0.5rem 1rem;
+  }
+
+  .bakin-site-header__mobile-child {
+    color: #aeaaaa;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  .bakin-site-header__mobile-child:hover,
+  .bakin-site-header__mobile-child--active {
+    color: var(--bakin-brand-pink);
+    background: rgba(39, 37, 37, 0.45);
   }
 
   .bakin-site-header__mobile-cta {
