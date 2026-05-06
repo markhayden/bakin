@@ -1,9 +1,6 @@
 name: Docs Deploy
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       version_ref:
@@ -24,7 +21,7 @@ jobs:
     name: Build and deploy docs
     runs-on: ubuntu-latest
     env:
-      DOCS_DEPLOY_BRANCH: ${{ inputs.version_ref || github.ref_name }}
+      DOCS_DEPLOY_BRANCH: ${{ vars.CLOUDFLARE_DOCS_PRODUCTION_BRANCH || 'main' }}
       PUBLIC_GTM_ID: ${{ vars.PUBLIC_GTM_ID || 'GTM-KZQK989V' }}
     permissions:
       contents: read

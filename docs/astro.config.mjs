@@ -32,7 +32,7 @@ export default defineConfig({
       },
       customCss: ['./src/styles/docs.css'],
       components: {
-        SiteTitle: './src/components/SiteTitle.astro',
+        Header: './src/components/Header.astro',
         PageTitle: './src/components/PageTitle.astro',
         PageSidebar: './src/components/PageSidebar.astro',
         Footer: './src/components/DocsFooter.astro',
