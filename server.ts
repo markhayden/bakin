@@ -676,6 +676,10 @@ const eventBus = new BakinEventBus(broadcast)
   server.listen(port, '0.0.0.0', () => {
     log.info(`Bakin ready on http://localhost:${port}`)
     log.info(`Listening on 0.0.0.0:${port} (Tailscale: http://100.91.112.69:${port})`)
+    if (process.env.BAKIN_DEV === '1') {
+      const logPath = join(getBakinPaths().logs, 'server.log')
+      log.info(`Full logs: ${logPath}`, { path: logPath })
+    }
 
     void (async () => {
       let recovered = 0

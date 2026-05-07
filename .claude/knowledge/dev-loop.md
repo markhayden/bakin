@@ -46,6 +46,9 @@ bun run dev
     ▼
 scripts/dev.ts (process.env.BAKIN_DEV = '1', BAKIN_DEV_HOTRELOAD = '1')
     │
+    ├── Sets BAKIN_CONSOLE_FORMAT=pretty by default
+    │     • `bakin dev --verbose` switches to verbose console logs
+    │     • `bakin dev --no-color` sets NO_COLOR=1
     ├── Initial prestart build (css, vendors, plugins, host-shell)
     ├── Bun.build(dev-client.ts → public/__bakin-dev/client.js)
     ├── Spawn bunx @tailwindcss/cli --watch=always   (child process)

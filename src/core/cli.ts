@@ -644,7 +644,7 @@ async function cmdHelp(): Promise<number> {
  * packages/host/src/ to watch, so it errors out with a clear pointer.
  * Exported so the legacy cli/bakin.ts entry point can delegate here.
  */
-export async function cmdDev(): Promise<number> {
+export async function cmdDev(devArgs: string[] = process.argv.slice(3)): Promise<number> {
   // Source mode: this file resolves from the on-disk repo layout so we can
   // locate the sibling scripts/dev.ts. In the compiled binary the module
   // lives under the `/$bunfs/` virtual filesystem, which doesn't contain
@@ -666,7 +666,7 @@ export async function cmdDev(): Promise<number> {
   }
 
   const { spawn } = await import('node:child_process')
-  const proc = spawn('bun', ['run', devScript], { stdio: 'inherit', cwd: repoRoot })
+  const proc = spawn('bun', ['run', devScript, ...devArgs], { stdio: 'inherit', cwd: repoRoot })
   return await new Promise<number>((resolvePromise) => {
     proc.once('close', (code: number | null) => resolvePromise(code ?? 0))
     proc.once('error', (err) => {
@@ -718,7 +718,7 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
         return { startServer: false, exitCode: await cmdUpdate() }
 
       case 'dev':
-        return { startServer: false, exitCode: await cmdDev() }
+        return { startServer: false, exitCode: await cmdDev(args.slice(1)) }
 
       // `restart` falls through to the legacy delegation below so there's
       // a single implementation (cmdReboot in cli/bakin.ts).

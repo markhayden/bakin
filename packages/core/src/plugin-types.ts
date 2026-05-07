@@ -171,6 +171,13 @@ export interface ActivityAPI {
   audit(event: string, agent: string, data?: Record<string, unknown>): void
 }
 
+export interface PluginLogger {
+  debug(message: string, data?: Record<string, unknown>): void
+  info(message: string, data?: Record<string, unknown>): void
+  warn(message: string, errorOrData?: unknown, data?: Record<string, unknown>): void
+  error(message: string, errorOrData?: unknown, data?: Record<string, unknown>): void
+}
+
 // ---------------------------------------------------------------------------
 // Plugin Context (provided to activate())
 // ---------------------------------------------------------------------------
@@ -382,6 +389,8 @@ export interface PluginContext {
   updateSettings(patch: Record<string, unknown>): void
   /** Structured activity logging */
   activity: ActivityAPI
+  /** Plugin-scoped server log. Prefer this over console.* for lifecycle logs. */
+  log?: PluginLogger
   /** Cross-plugin hook registration */
   hooks: HookAPI
   /** Adapter-backed search — register content types, index, query */
