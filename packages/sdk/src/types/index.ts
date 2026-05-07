@@ -241,6 +241,13 @@ export interface ActivityAPI {
   audit(event: string, agent: string, data?: Record<string, unknown>): void
 }
 
+export interface PluginLogger {
+  debug(message: string, data?: Record<string, unknown>): void
+  info(message: string, data?: Record<string, unknown>): void
+  warn(message: string, errorOrData?: unknown, data?: Record<string, unknown>): void
+  error(message: string, errorOrData?: unknown, data?: Record<string, unknown>): void
+}
+
 export interface HookAPI {
   register(name: string, handler: (data: unknown) => unknown, metadata?: HookRegistrationMetadata): () => void
   call<T>(name: string, data: T): Promise<T>
@@ -841,6 +848,7 @@ export interface PluginContext {
   getSettings<T = Record<string, unknown>>(): T
   updateSettings(patch: Record<string, unknown>): void
   activity: ActivityAPI
+  log?: PluginLogger
   hooks: HookAPI
   search: SearchAPI
 }

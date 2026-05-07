@@ -14,6 +14,44 @@
 process.env.BAKIN_DEV = '1'
 process.env.BAKIN_DEV_HOTRELOAD = '1'
 
+interface DevOptions {
+  verbose: boolean
+  noColor: boolean
+}
+
+function parseDevOptions(args: string[]): DevOptions {
+  const options: DevOptions = { verbose: false, noColor: false }
+  for (const arg of args) {
+    if (arg === '--verbose') {
+      options.verbose = true
+    } else if (arg === '--no-color') {
+      options.noColor = true
+    } else {
+      console.error(`Unknown dev option: ${arg}`)
+      console.error('Usage: bakin dev [--verbose] [--no-color]')
+      process.exit(1)
+    }
+  }
+  return options
+}
+
+const DEV_OPTIONS = parseDevOptions(process.argv.slice(2))
+// scripts/dev.ts runs server.ts in-process. Consume dev-only flags here so
+// server.ts's CLI dispatcher sees the same argv shape as plain `bakin start`.
+process.argv.splice(2)
+const DEV_VERBOSE = DEV_OPTIONS.verbose
+  || process.env.BAKIN_DEV_VERBOSE === '1'
+  || process.env.BAKIN_CONSOLE_FORMAT === 'verbose'
+if (DEV_OPTIONS.noColor) process.env.NO_COLOR = '1'
+if (DEV_VERBOSE) {
+  process.env.BAKIN_CONSOLE_FORMAT = 'verbose'
+} else if (!process.env.BAKIN_CONSOLE_FORMAT) {
+  process.env.BAKIN_CONSOLE_FORMAT = 'pretty'
+}
+if (DEV_VERBOSE && !process.env.BAKIN_LOG_LEVEL) {
+  process.env.BAKIN_LOG_LEVEL = 'debug'
+}
+
 import { spawn as nodeSpawn, type ChildProcess } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -53,20 +91,109 @@ const DEFAULT_PLUGIN_DEV_WATCH = [
 
 const DEBOUNCE_MS = 50
 
-// ---------- Initial build ------------------------------------------------
+const COLOR_RESET = '\x1b[0m'
+const DEV_COLORS = {
+  blue: '\x1b[34m',
+  cyan: '\x1b[36m',
+  dim: '\x1b[2m',
+  green: '\x1b[32m',
+  red: '\x1b[31m',
+  yellow: '\x1b[33m',
+} as const
 
-async function runStep(label: string, cmd: string[]): Promise<void> {
-  console.log(`[dev] ${label}...`)
-  const proc = Bun.spawn(cmd, { stdout: 'inherit', stderr: 'inherit', cwd: REPO_ROOT })
-  const code = await proc.exited
-  if (code !== 0) {
-    console.error(`[dev] ${label} failed (exit ${code})`)
-    process.exit(1)
+type DevLevel = 'debug' | 'build' | 'info' | 'ready' | 'warn' | 'error'
+
+function devColorEnabled(): boolean {
+  if (process.env.NO_COLOR || process.env.BAKIN_NO_COLOR === '1') return false
+  return process.stdout.isTTY === true
+}
+
+function devColor(text: string, color: keyof typeof DEV_COLORS): string {
+  return devColorEnabled() ? `${DEV_COLORS[color]}${text}${COLOR_RESET}` : text
+}
+
+function devLevelColor(level: DevLevel): keyof typeof DEV_COLORS {
+  if (level === 'build') return 'cyan'
+  if (level === 'ready') return 'green'
+  if (level === 'warn') return 'yellow'
+  if (level === 'error') return 'red'
+  if (level === 'debug') return 'dim'
+  return 'blue'
+}
+
+function devLog(level: DevLevel, source: string, message: string): void {
+  if (level === 'debug' && !DEV_VERBOSE) return
+  const time = new Date().toTimeString().slice(0, 8)
+  const levelPart = devColor(level.padEnd(5), devLevelColor(level))
+  const sourcePart = devColor(source.padEnd(18), source === 'dev' ? 'cyan' : 'dim')
+  const line = `${devColor(time, 'dim')}  ${levelPart}  ${sourcePart}  ${message}`
+  if (level === 'error') console.error(line)
+  else if (level === 'warn') console.warn(line)
+  else console.log(line)
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
+function summarizeBuildOutput(output: string): string | null {
+  const summaries = [
+    /(\d+ bundles built)/,
+    /(\d+ plugins built)/,
+    /(wrote \d+ entries)/,
+  ]
+  for (const pattern of summaries) {
+    const match = pattern.exec(output)
+    if (match) return match[1]
+  }
+  return null
+}
+
+async function readSpawnOutput(stream: ReadableStream<Uint8Array> | null | undefined): Promise<string> {
+  if (!stream) return ''
+  return await new Response(stream).text()
+}
+
+function printCapturedOutput(output: string): void {
+  const trimmed = output.trim()
+  if (!trimmed) return
+  for (const line of trimmed.split(/\r?\n/)) {
+    console.error(`  ${line}`)
   }
 }
 
+// ---------- Initial build ------------------------------------------------
+
+async function runStep(label: string, cmd: string[]): Promise<void> {
+  const started = Date.now()
+  devLog('build', 'dev', `${label}...`)
+  if (DEV_VERBOSE) devLog('debug', 'dev', `$ ${cmd.join(' ')}`)
+  const proc = Bun.spawn(cmd, {
+    stdout: DEV_VERBOSE ? 'inherit' : 'pipe',
+    stderr: DEV_VERBOSE ? 'inherit' : 'pipe',
+    cwd: REPO_ROOT,
+  })
+  const stdoutPromise = DEV_VERBOSE ? Promise.resolve('') : readSpawnOutput(proc.stdout)
+  const stderrPromise = DEV_VERBOSE ? Promise.resolve('') : readSpawnOutput(proc.stderr)
+  const code = await proc.exited
+  const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise])
+  if (code !== 0) {
+    devLog('error', 'dev', `${label} failed (exit ${code})`)
+    if (!DEV_VERBOSE) {
+      printCapturedOutput(stdout)
+      printCapturedOutput(stderr)
+    }
+    process.exit(1)
+  }
+  const summary = summarizeBuildOutput(`${stdout}\n${stderr}`)
+  const summaryText = summary ? ` (${summary})` : ''
+  devLog('ready', 'dev', `${label} completed in ${formatDuration(Date.now() - started)}${summaryText}`)
+}
+
 async function buildDevClient(): Promise<void> {
-  console.log('[dev] building dev-client...')
+  const started = Date.now()
+  devLog('build', 'dev', 'building dev-client...')
   const result = await Bun.build({
     entrypoints: [DEV_CLIENT_ENTRY],
     outdir: DEV_CLIENT_OUTDIR,
@@ -77,18 +204,26 @@ async function buildDevClient(): Promise<void> {
     naming: 'client.[ext]',
   })
   if (!result.success) {
-    console.error('[dev] dev-client build failed:')
+    devLog('error', 'dev', 'dev-client build failed')
     for (const log of result.logs) console.error(log)
     process.exit(1)
   }
+  devLog('ready', 'dev', `dev-client completed in ${formatDuration(Date.now() - started)}`)
 }
 
 // ---------- Tailwind child process --------------------------------------
 
 let tailwindChild: ChildProcess | null = null
 
+function isBenignTailwindLine(line: string): boolean {
+  return !line
+    || line.startsWith('≈ tailwindcss')
+    || line.startsWith('Done in ')
+    || line === 'Saved lockfile'
+}
+
 function startTailwindWatch(): void {
-  console.log('[dev] starting tailwind --watch=always...')
+  devLog('build', 'tailwind', 'starting --watch=always...')
   // --watch=always keeps the watcher alive when stdin is closed (we use
   // stdio:'ignore' for stdin). Plain --watch exits on stdin close and
   // silently stops emitting output.
@@ -100,11 +235,27 @@ function startTailwindWatch(): void {
       '-o', './packages/host/public/globals.css',
       '--watch=always',
     ],
-    { stdio: ['ignore', 'inherit', 'inherit'], cwd: REPO_ROOT },
+    { stdio: ['ignore', DEV_VERBOSE ? 'inherit' : 'pipe', DEV_VERBOSE ? 'inherit' : 'pipe'], cwd: REPO_ROOT },
   )
+  if (!DEV_VERBOSE) {
+    tailwindChild.stdout?.on('data', (data: Buffer) => {
+      for (const line of data.toString().split(/\r?\n/)) {
+        const trimmed = line.trim()
+        if (isBenignTailwindLine(trimmed)) continue
+        devLog('info', 'tailwind', trimmed)
+      }
+    })
+    tailwindChild.stderr?.on('data', (data: Buffer) => {
+      for (const line of data.toString().split(/\r?\n/)) {
+        const trimmed = line.trim()
+        if (isBenignTailwindLine(trimmed)) continue
+        devLog('warn', 'tailwind', trimmed)
+      }
+    })
+  }
   tailwindChild.on('exit', (code) => {
     if (code !== 0 && code !== null) {
-      console.warn(`[dev] tailwind --watch exited with code ${code}`)
+      devLog('warn', 'tailwind', `--watch exited with code ${code}`)
     }
   })
 }
@@ -172,11 +323,12 @@ async function rebuildShell(): Promise<void> {
   const code = await proc.exited
   if (code === 0) {
     emitSuccess('shell', { type: 'dev:reload', scope: 'shell' })
-    console.log('[dev] shell rebuilt')
+    devLog('ready', 'dev', 'shell rebuilt')
   } else {
     const stderr = await new Response(proc.stderr).text()
     emitError('shell', 'shell build failed', stderr)
-    console.error('[dev] shell rebuild failed:\n' + stderr)
+    devLog('error', 'dev', 'shell rebuild failed')
+    printCapturedOutput(stderr)
   }
 }
 
@@ -196,10 +348,11 @@ async function rebuildPlugin(id: string): Promise<void> {
       broadcast({ type: 'dev:recover', scope: 'plugin' })
     }
     broadcast({ type: 'dev:hot-swap', scope: 'plugin', id, version })
-    console.log(`[dev] plugin ${id} rebuilt → hot-swap ${version}`)
+    devLog('ready', `plugin:${id}`, `rebuilt, hot-swap ${version}`)
   } else {
     emitError('plugin', `plugin ${id} build failed`, result.stderr)
-    console.error(`[dev] plugin ${id} rebuild failed:\n${result.stderr}`)
+    devLog('error', `plugin:${id}`, 'rebuild failed')
+    printCapturedOutput(result.stderr)
   }
 }
 
@@ -211,11 +364,12 @@ async function rebuildSdk(): Promise<void> {
   const code = await proc.exited
   if (code === 0) {
     emitSuccess('sdk', { type: 'dev:reload', scope: 'sdk' })
-    console.log('[dev] sdk (vendor bundles) rebuilt')
+    devLog('ready', 'sdk', 'vendor bundles rebuilt')
   } else {
     const stderr = await new Response(proc.stderr).text()
     emitError('sdk', 'sdk build failed', stderr)
-    console.error('[dev] sdk rebuild failed:\n' + stderr)
+    devLog('error', 'sdk', 'rebuild failed')
+    printCapturedOutput(stderr)
   }
 }
 
@@ -335,7 +489,7 @@ function startCssWatcher(): void {
     if (m === lastMtime) return
     lastMtime = m
     broadcast({ type: 'dev:css' })
-    console.log('[dev] css updated')
+    devLog('ready', 'css', 'updated')
   })
 }
 
@@ -373,7 +527,7 @@ async function main(): Promise<void> {
   startSdkWatcher()
   startCssWatcher()
 
-  console.log('[dev] watchers ready — starting server...')
+  devLog('ready', 'dev', 'watchers ready - starting server...')
   await import('../server')
 }
 

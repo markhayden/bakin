@@ -205,7 +205,8 @@ Most commands hit the local HTTP API (`http://localhost:3737` or `$BAKIN_URL`). 
 bakin start                            # boot the server
 bakin stop                             # graceful shutdown
 bakin restart                          # stop + start
-bakin dev                              # watch-mode dev loop (HMR) — source-tree only
+bakin dev                              # watch-mode dev loop (HMR) - source-tree only
+bakin dev --verbose                    # include raw build/service output
 bakin status                           # dispatch + server + doctor status
 bakin version                          # print version
 bakin update                           # replace binary with latest release
@@ -390,7 +391,7 @@ bun install
 bun run dev       # or `bakin dev` if the CLI is on your PATH
 ```
 
-Both `bun run dev` and `bakin dev` launch the same watch-mode coordinator. Edits flow through a dev SSE channel:
+Both `bun run dev` and `bakin dev` launch the same watch-mode coordinator. Normal output is compact and source-labeled; use `bakin dev --verbose` for raw build commands, child-process output, debug logs, and structured data payloads. Edits flow through a dev SSE channel:
 
 - Edit `packages/host/src/**` → full page reload (~2 s)
 - Edit `plugins/<id>/**` → that plugin remounts without a reload; shell, other plugins, URL, scroll, and SSE connection all survive

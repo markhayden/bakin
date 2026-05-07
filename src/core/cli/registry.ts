@@ -47,11 +47,11 @@ export const CLI_COMMANDS = [
   }),
   cli({
     name: 'dev',
-    usage: 'bakin dev',
+    usage: 'bakin dev [--verbose] [--no-color]',
     group: 'Lifecycle',
     summary: 'Run the source-tree development loop.',
-    description: 'Runs Bakin in watch-mode development from a source checkout. The compiled binary refuses this command outside a repo clone.',
-    examples: [{ title: 'Run development server', code: 'bakin dev', test: 'illustrative', reason: 'Starts a long-running development process.' }],
+    description: 'Runs Bakin in watch-mode development from a source checkout. By default output is compact; use --verbose for raw child-process output and debug logs.',
+    examples: [{ title: 'Run development server', code: 'bakin dev --verbose', test: 'illustrative', reason: 'Starts a long-running development process.' }],
   }),
   cli({
     name: 'version',

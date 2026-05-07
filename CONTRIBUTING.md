@@ -38,6 +38,7 @@ bun test --isolate
 ```bash
 bun run dev          # watch mode: rebuild on change, hot-swap plugins in the browser
                      # (same as `bakin dev` — either form works)
+bakin dev --verbose  # same dev loop with raw build/service output and debug logs
 bun run start        # one-shot prestart build + boot (production-style preview)
 bun run server       # boot without rebuilding (use when dist/ is fresh)
 bun run build        # full production build (ends with bun build --compile)
@@ -74,7 +75,7 @@ Do not add an `NPM_TOKEN`; npm publishing is OIDC/trusted-publisher based.
 
 ## Development loop
 
-`bun run dev` is what you use daily. It sets `BAKIN_DEV=1`, runs the same prestart build as `bun run start`, then starts a watcher coordinator + the server in the same process.
+`bun run dev` is what you use daily. It sets `BAKIN_DEV=1`, runs the same prestart build as `bun run start`, then starts a watcher coordinator + the server in the same process. The default console output is compact and source-labeled; pass `--verbose` through `bakin dev --verbose` when you need raw child-process logs, commands, debug lines, and structured data payloads.
 
 What it watches, and what happens when you save:
 
