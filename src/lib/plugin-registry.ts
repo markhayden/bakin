@@ -2,8 +2,10 @@
  * Server-side plugin registry singleton.
  * Loads plugins, stores their registrations, and provides lookups.
  */
+import { AsyncLocalStorage } from 'async_hooks'
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
 import { join } from 'path'
+import { inspect } from 'util'
 import type {
   BakinConfig,
   BakinPlugin,
@@ -85,6 +87,125 @@ export function registerCorePlugins(table: Readonly<Record<string, BakinPlugin>>
 }
 
 const log = createLogger('plugin-registry')
+
+type CapturedConsoleLevel = 'debug' | 'error' | 'info' | 'warn'
+type CapturedConsoleMethod = CapturedConsoleLevel | 'log'
+interface CapturedConsoleContext {
+  pluginId: string
+}
+
+const capturedConsoleContext = new AsyncLocalStorage<CapturedConsoleContext | undefined>()
+
+function withoutCapturedPluginConsole<T>(action: () => T): T {
+  return capturedConsoleContext.run(undefined, action)
+}
+
+function stripPluginConsolePrefix(pluginId: string, message: string): string {
+  const escaped = pluginId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return message.replace(new RegExp(`^\\[${escaped}\\]\\s*`), '')
+}
+
+function formatPluginConsoleArgs(pluginId: string, args: unknown[]): string {
+  return stripPluginConsolePrefix(
+    pluginId,
+    args.map((arg) => {
+      if (typeof arg === 'string') return arg
+      return inspect(arg, { breakLength: Infinity, colors: false, compact: true, depth: 5 })
+    }).join(' '),
+  ).trim()
+}
+
+async function withCapturedPluginConsole<T>(pluginId: string, action: () => Promise<T> | T): Promise<T> {
+  const original: Record<CapturedConsoleMethod, (...args: unknown[]) => void> = {
+    debug: console.debug.bind(console),
+    error: console.error.bind(console),
+    info: console.info.bind(console),
+    log: console.log.bind(console),
+    warn: console.warn.bind(console),
+  }
+
+  const restore = () => {
+    console.debug = original.debug as typeof console.debug
+    console.error = original.error as typeof console.error
+    console.info = original.info as typeof console.info
+    console.log = original.log as typeof console.log
+    console.warn = original.warn as typeof console.warn
+  }
+
+  const install = () => {
+    console.debug = ((...args: unknown[]) => emit('debug', 'debug', args)) as typeof console.debug
+    console.error = ((...args: unknown[]) => emit('error', 'error', args)) as typeof console.error
+    console.info = ((...args: unknown[]) => emit('info', 'info', args)) as typeof console.info
+    console.log = ((...args: unknown[]) => emit('info', 'log', args)) as typeof console.log
+    console.warn = ((...args: unknown[]) => emit('warn', 'warn', args)) as typeof console.warn
+  }
+
+  const emit = (level: CapturedConsoleLevel, method: CapturedConsoleMethod, args: unknown[]) => {
+    const context = capturedConsoleContext.getStore()
+    if (!context) {
+      original[method](...args)
+      return
+    }
+
+    const message = formatPluginConsoleArgs(context.pluginId, args)
+    if (!message) return
+
+    // createLogger writes through console.*. Clear the plugin context while
+    // forwarding so the rendered logger line is not captured recursively.
+    withoutCapturedPluginConsole(() => {
+      const data = { source: 'plugin', pluginId: context.pluginId, console: true }
+      if (level === 'debug') log.debug(message, data)
+      else if (level === 'error') log.error(message, data)
+      else if (level === 'warn') log.warn(message, data)
+      else log.info(message, data)
+    })
+  }
+
+  install()
+  try {
+    return await capturedConsoleContext.run({ pluginId }, action)
+  } finally {
+    restore()
+  }
+}
+
+function withPluginLogData(pluginId: string, data?: unknown): Record<string, unknown> {
+  return {
+    ...(data && typeof data === 'object' && !Array.isArray(data) ? data as Record<string, unknown> : {}),
+    source: 'plugin',
+    pluginId,
+  }
+}
+
+function createPluginScopedLogger(pluginId: string) {
+  const pluginLog = createLogger(`plugin:${pluginId}`)
+  return {
+    debug: (message: string, data?: Record<string, unknown>) => {
+      withoutCapturedPluginConsole(() => pluginLog.debug(message, withPluginLogData(pluginId, data)))
+    },
+    info: (message: string, data?: Record<string, unknown>) => {
+      withoutCapturedPluginConsole(() => pluginLog.info(message, withPluginLogData(pluginId, data)))
+    },
+    warn: (message: string, errorOrData?: unknown, data?: Record<string, unknown>) => {
+      withoutCapturedPluginConsole(() => {
+        if (errorOrData instanceof Error || typeof errorOrData === 'string') {
+          pluginLog.warn(message, errorOrData, withPluginLogData(pluginId, data))
+        } else {
+          pluginLog.warn(message, withPluginLogData(pluginId, errorOrData))
+        }
+      })
+    },
+    error: (message: string, errorOrData?: unknown, data?: Record<string, unknown>) => {
+      withoutCapturedPluginConsole(() => {
+        if (errorOrData instanceof Error || typeof errorOrData === 'string') {
+          pluginLog.error(message, errorOrData, withPluginLogData(pluginId, data))
+        } else {
+          pluginLog.error(message, withPluginLogData(pluginId, errorOrData))
+        }
+      })
+    },
+  }
+}
 
 function resolveAppServices(services?: AppServices): AppServices {
   return services ?? getAppServices()
@@ -788,6 +909,7 @@ class PluginRegistryImpl {
           appendAudit(getContentDir(), `${pluginId}.${event}`, agent, data || {})
         },
       },
+      log: createPluginScopedLogger(pluginId),
       search: buildSearchAPI(pluginId, { registerRoute }),
       hooks: {
         register: (name: string, handler: (data: any) => any, metadata) => {
@@ -897,7 +1019,12 @@ class PluginRegistryImpl {
       // `cat ~/.bakin/audit.jsonl | jq 'select(.event=="plugin.activate")'`
       // shows the full surface the user authorized.
       logPluginActivation({ plugin, source: 'core', manifestPath })
-      console.log(`  ✓ Plugin loaded: ${plugin.name} v${plugin.version}`)
+      log.info(`Plugin loaded: ${plugin.name} v${plugin.version}`, {
+        source: 'plugin',
+        pluginId: plugin.id,
+        version: plugin.version,
+        pluginSource: 'core',
+      })
     } catch (err) {
       log.error(`Failed to load plugin at ${pluginPath}`, err)
       this.markPluginFailed({
@@ -927,7 +1054,11 @@ class PluginRegistryImpl {
     // Tear down the currently active registration set before activating
     // the new module so routes/hooks/tools/search tables don't pile up.
     if (this.plugins.has(pluginId)) {
-      console.log(`  ↻ User plugin reloads: ${pluginId}`)
+      log.info(`User plugin reloads: ${pluginId}`, {
+        source: 'plugin',
+        pluginId,
+        pluginSource: 'user',
+      })
       await this.deactivatePlugin(pluginId, { callShutdown: true, removeState: true })
     }
 
@@ -941,7 +1072,7 @@ class PluginRegistryImpl {
       importTarget = `${importTarget}?v=${Date.now()}-${userPluginImportCounter}`
     }
 
-    const mod = await import(/* webpackIgnore: true */ importTarget)
+    const mod = await withCapturedPluginConsole(pluginId, () => import(/* webpackIgnore: true */ importTarget))
     const plugin: BakinPlugin = mod.default || mod.plugin || mod
 
     if (!plugin.id || !plugin.activate) {
@@ -964,7 +1095,7 @@ class PluginRegistryImpl {
 
     const ctx = this.buildContext(plugin.id, state, storage, events, services)
     this.registerDeclarativeRoutes(plugin, state)
-    await plugin.activate(ctx)
+    await withCapturedPluginConsole(plugin.id, () => plugin.activate(ctx))
     state.ctx = ctx
     // #142 layer 1 — surface user-plugin permissions to the audit log.
     // Source is read from the lockfile (github vs local) by the helper.
@@ -978,7 +1109,12 @@ class PluginRegistryImpl {
     this.plugins.set(plugin.id, state)
     this.failedPlugins.delete(plugin.id)
     corePluginIds.delete(plugin.id)
-    console.log(`  ✓ User plugin loaded: ${plugin.name} v${plugin.version}`)
+    log.info(`User plugin loaded: ${plugin.name} v${plugin.version}`, {
+      source: 'plugin',
+      pluginId: plugin.id,
+      version: plugin.version,
+      pluginSource: 'user',
+    })
     return { id: plugin.id, version: plugin.version }
   }
 
@@ -1196,7 +1332,11 @@ class PluginRegistryImpl {
   async onAllReady(): Promise<void> {
     for (const [id, state] of this.plugins) {
       try {
-        await state.plugin.onReady?.()
+        if (state.source === 'user') {
+          await withCapturedPluginConsole(id, () => state.plugin.onReady?.())
+        } else {
+          await state.plugin.onReady?.()
+        }
       } catch (err) {
         log.error(`onReady failed for plugin "${id}"`, err)
       }

@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach, mock, type Mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach, mock, spyOn, type Mock } from 'bun:test'
+import { AsyncResource } from 'async_hooks'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -101,12 +102,16 @@ describe('HookRegistry', () => {
 
 // These vi.mock calls are hoisted — they use paths relative to THIS file,
 // matching how vitest resolves them (same as the source's imports via aliases).
+const loggerInfo = mock()
+const loggerWarn = mock()
+const loggerError = mock()
+const loggerDebug = mock()
 mock.module('@/core/logger', () => ({
   createLogger: () => ({
-    info: mock(),
-    warn: mock(),
-    error: mock(),
-    debug: mock(),
+    info: loggerInfo,
+    warn: loggerWarn,
+    error: loggerError,
+    debug: loggerDebug,
   }),
 }))
 
@@ -177,6 +182,10 @@ describe('PluginRegistryImpl', () => {
     delete (globalThis as any).__bakinPluginRegistry
     delete (globalThis as any).__bakinHookRegistry
     mockedExecTools.clear()
+    loggerInfo.mockClear()
+    loggerWarn.mockClear()
+    loggerError.mockClear()
+    loggerDebug.mockClear()
     const runtime = createMockRuntimeAdapter()
     const search = createMockSearchAdapter()
     ;(globalThis as any).__bakinAppServices = {
@@ -299,6 +308,7 @@ describe('PluginRegistryImpl', () => {
     opts: {
       deps?: string[]
       activate?: string
+      onReady?: string
       manifest?: Record<string, unknown>
       root?: string
     } = {},
@@ -324,6 +334,7 @@ describe('PluginRegistryImpl', () => {
         name: '${id.charAt(0).toUpperCase() + id.slice(1)}',
         version: '1.0.0',
         activate: function(ctx) { ${opts.activate || ''} },
+        onReady: ${opts.onReady || 'undefined'},
       }
       module.exports = plugin
       module.exports.default = plugin`,
@@ -567,6 +578,88 @@ describe('PluginRegistryImpl', () => {
   })
 
   describe('user plugin failure states', () => {
+    it('captures user plugin console output into plugin-scoped logs', async () => {
+      writeUserPlugin('projects', {
+        activate: `
+          console.log('[projects] Project index rebuilt', { entries: 0 })
+          console.warn('[projects] Index warning', { code: 'stale' })
+          ctx.log.info('ctx logger activated', { count: 2 })
+        `,
+        onReady: `function() { console.log('[projects] Ready projects', { draft: 1 }) }`,
+      })
+      const consoleLog = spyOn(console, 'log').mockImplementation(() => {})
+      const consoleWarn = spyOn(console, 'warn').mockImplementation(() => {})
+
+      try {
+        await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+        await pluginRegistry.onAllReady()
+      } finally {
+        consoleLog.mockRestore()
+        consoleWarn.mockRestore()
+      }
+
+      expect(consoleLog).not.toHaveBeenCalled()
+      expect(consoleWarn).not.toHaveBeenCalled()
+
+      const infoCalls = loggerInfo.mock.calls as unknown as Array<[string, Record<string, unknown>?]>
+      const warnCalls = loggerWarn.mock.calls as unknown as Array<[string, Record<string, unknown>?]>
+      expect(infoCalls).toContainEqual([
+        'Project index rebuilt { entries: 0 }',
+        { source: 'plugin', pluginId: 'projects', console: true },
+      ])
+      expect(infoCalls).toContainEqual([
+        'Ready projects { draft: 1 }',
+        { source: 'plugin', pluginId: 'projects', console: true },
+      ])
+      expect(infoCalls).toContainEqual([
+        'ctx logger activated',
+        { count: 2, source: 'plugin', pluginId: 'projects' },
+      ])
+      expect(warnCalls).toContainEqual([
+        'Index warning { code: \'stale\' }',
+        { source: 'plugin', pluginId: 'projects', console: true },
+      ])
+    })
+
+    it('does not capture unrelated console output during async user plugin activation', async () => {
+      let markStarted!: () => void
+      const started = new Promise<void>((resolve) => { markStarted = resolve })
+      ;(globalThis as any).__asyncUserMarkStarted = markStarted
+
+      writeUserPlugin('async-user', {
+        activate: `
+          console.log('[async-user] activation started')
+          global.__asyncUserMarkStarted()
+          return new Promise(resolve => { global.__asyncUserRelease = resolve })
+        `,
+      })
+
+      const outsideMessage = 'outside lifecycle'
+      const outsideResource = new AsyncResource('outside-console')
+      const consoleLog = spyOn(console, 'log').mockImplementation(() => {})
+
+      try {
+        const initializePromise = pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+        await started
+        outsideResource.runInAsyncScope(() => console.log(outsideMessage))
+        const release = (globalThis as any).__asyncUserRelease
+        expect(typeof release).toBe('function')
+        release()
+        await initializePromise
+        expect(consoleLog).toHaveBeenCalledWith(outsideMessage)
+      } finally {
+        outsideResource.emitDestroy()
+        consoleLog.mockRestore()
+      }
+
+      const infoCalls = loggerInfo.mock.calls as unknown as Array<[string, Record<string, unknown>?]>
+      expect(infoCalls).toContainEqual([
+        'activation started',
+        { source: 'plugin', pluginId: 'async-user', console: true },
+      ])
+      expect(infoCalls.some(([message]) => message === outsideMessage)).toBe(false)
+    })
+
     it('loads user plugins installed as symlinks', async () => {
       const sourceDir = writeUserPlugin('linked-user', {
         root: join(tempDir, 'dev-sources'),
