@@ -1966,7 +1966,7 @@ export async function main(): Promise<void> {
         // tree detection + spawn logic lives in one place (and the
         // compiled binary's `bakin dev` uses the same code path).
         const { cmdDev } = await import('../src/core/cli')
-        process.exit(await cmdDev())
+        process.exit(await cmdDev(args.slice(1)))
         break  // unreachable, but eslint's no-fallthrough doesn't know that
       }
 

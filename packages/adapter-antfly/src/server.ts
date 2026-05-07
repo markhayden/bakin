@@ -9,6 +9,14 @@ export interface AntflyServerSettings {
   url: string
 }
 
+type AntflyLogLevel = 'debug' | 'info' | 'warn' | 'error'
+
+export interface ParsedAntflyLogLine {
+  level: AntflyLogLevel
+  message: string
+  data: Record<string, unknown>
+}
+
 const noopLogger: AdapterLogger = {
   debug: () => {},
   info: () => {},
@@ -19,6 +27,74 @@ const noopLogger: AdapterLogger = {
 let antflyProcess: ChildProcess | null = null
 let isRunning = false
 let recheckTimer: NodeJS.Timeout | null = null
+
+function unquoteAntflyValue(value: string): string {
+  if (value.startsWith('"') && value.endsWith('"')) {
+    return value.slice(1, -1).replace(/\\"/g, '"')
+  }
+  return value
+}
+
+function parseAntflyFields(line: string): Record<string, string> {
+  const fields: Record<string, string> = {}
+  const pattern = /([A-Za-z0-9_.-]+)=("(?:\\.|[^"])*"|[^\s]+)/g
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(line)) !== null) {
+    fields[match[1]] = unquoteAntflyValue(match[2])
+  }
+  return fields
+}
+
+export function parseAntflyLogLine(line: string, streamLevel: AntflyLogLevel): ParsedAntflyLogLine {
+  const fields = parseAntflyFields(line)
+  const parsedLevel = fields.lvl
+  const level: AntflyLogLevel = parsedLevel === 'debug'
+    || parsedLevel === 'info'
+    || parsedLevel === 'warn'
+    || parsedLevel === 'error'
+    ? parsedLevel
+    : streamLevel
+
+  const data: Record<string, unknown> = { source: 'antfly', raw: line }
+  for (const [key, value] of Object.entries(fields)) {
+    if (key === 'ts' || key === 'lvl' || key === 'msg') continue
+    data[key] = value
+  }
+
+  return {
+    level,
+    message: fields.msg || line,
+    data,
+  }
+}
+
+function writeParsedAntflyLog(logger: AdapterLogger, parsed: ParsedAntflyLogLine): void {
+  if (parsed.level === 'debug') logger.debug(parsed.message, parsed.data)
+  else if (parsed.level === 'info') logger.info(parsed.message, parsed.data)
+  else if (parsed.level === 'warn') logger.warn(parsed.message, parsed.data)
+  else logger.error(parsed.message, parsed.data)
+}
+
+function createAntflyLogBuffer(logger: AdapterLogger, streamLevel: AntflyLogLevel) {
+  let pending = ''
+  const flushLine = (line: string) => {
+    const trimmed = line.trim()
+    if (!trimmed) return
+    writeParsedAntflyLog(logger, parseAntflyLogLine(trimmed, streamLevel))
+  }
+  return {
+    push(data: Buffer) {
+      pending += data.toString()
+      const lines = pending.split(/\r?\n/)
+      pending = lines.pop() ?? ''
+      for (const line of lines) flushLine(line)
+    },
+    flush() {
+      flushLine(pending)
+      pending = ''
+    },
+  }
+}
 
 export function findAntflyBinary(): string | null {
   const candidates = [
@@ -83,17 +159,19 @@ export async function startAntflyServer(
       },
     })
 
+    const stdoutLogs = createAntflyLogBuffer(logger, 'info')
+    const stderrLogs = createAntflyLogBuffer(logger, 'warn')
     antflyProcess.stdout?.on('data', (data: Buffer) => {
-      const line = data.toString().trim()
-      if (line) logger.info(`[antfly] ${line}`)
+      stdoutLogs.push(data)
     })
 
     antflyProcess.stderr?.on('data', (data: Buffer) => {
-      const line = data.toString().trim()
-      if (line) logger.warn(`[antfly] ${line}`)
+      stderrLogs.push(data)
     })
 
     antflyProcess.on('exit', (code, signal) => {
+      stdoutLogs.flush()
+      stderrLogs.flush()
       isRunning = false
       antflyProcess = null
       clearRecheckTimer()
