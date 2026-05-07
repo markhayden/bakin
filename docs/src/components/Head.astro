@@ -1,0 +1,123 @@
+---
+const { entry, head, lang, lastUpdated } = Astro.locals.starlightRoute;
+
+const siteOrigin = Astro.site?.origin ?? "https://makinbakin.com";
+const defaultDescription =
+  "Bakin' extends the power of OpenClaw with full visibility, real collaboration, and AI agents that feel like a team.";
+const pageTitle = entry.data.title;
+const description = entry.data.description || defaultDescription;
+const fullTitle =
+  pageTitle === "Bakin'"
+    ? "Bakin' — Automate Anything, Understand Everything"
+    : `${pageTitle} | Bakin'`;
+const canonicalFromHead = head.find(
+  ({ tag, attrs }) => tag === "link" && attrs?.rel === "canonical"
+)?.attrs?.href;
+const canonicalURL = canonicalFromHead
+  ? String(canonicalFromHead)
+  : new URL(Astro.url.pathname, siteOrigin).href;
+const ogImageURL = `${siteOrigin}/og-image-v2.jpg`;
+
+const organization = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "Bakin'",
+  url: "https://makinbakin.com",
+  logo: "https://makinbakin.com/favicon.svg",
+  description: defaultDescription,
+  founder: {
+    "@type": "Person",
+    name: "Mark Hayden",
+    url: "https://github.com/markhayden",
+  },
+  sameAs: [
+    "https://github.com/markhayden",
+    "https://www.linkedin.com/in/markjhayden/",
+  ],
+};
+
+const website = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "Bakin'",
+  url: "https://makinbakin.com",
+  description: defaultDescription,
+};
+
+const techArticle = {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  headline: pageTitle,
+  description,
+  url: canonicalURL,
+  dateModified: lastUpdated?.toISOString(),
+  inLanguage: lang,
+  isPartOf: {
+    "@type": "WebSite",
+    name: "Bakin'",
+    url: "https://makinbakin.com",
+  },
+  publisher: {
+    "@type": "Organization",
+    name: "Bakin'",
+    url: "https://makinbakin.com",
+    logo: "https://makinbakin.com/favicon.svg",
+  },
+};
+
+const shouldReplaceHeadEntry = ({ tag, attrs }: (typeof head)[number]) => {
+  if (tag === "title") return true;
+  if (tag === "link") {
+    return attrs?.rel === "canonical" || attrs?.rel === "shortcut icon" || attrs?.rel === "icon";
+  }
+  if (tag !== "meta") return false;
+  return (
+    attrs?.name === "description" ||
+    attrs?.name === "twitter:card" ||
+    attrs?.name === "twitter:title" ||
+    attrs?.name === "twitter:description" ||
+    attrs?.name === "twitter:image" ||
+    attrs?.property === "og:title" ||
+    attrs?.property === "og:type" ||
+    attrs?.property === "og:url" ||
+    attrs?.property === "og:description" ||
+    attrs?.property === "og:image" ||
+    attrs?.property === "og:site_name"
+  );
+};
+
+const preservedHead = head.filter((entry) => !shouldReplaceHeadEntry(entry));
+---
+
+{
+  preservedHead.map(({ tag: Tag, attrs, content }) => (
+    <Tag {...attrs} set:html={content} />
+  ))
+}
+
+<title>{fullTitle}</title>
+<meta name="description" content={description} />
+<link rel="canonical" href={canonicalURL} />
+
+<!-- Favicon -->
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.jpg" />
+
+<!-- Open Graph -->
+<meta property="og:type" content="website" />
+<meta property="og:url" content={canonicalURL} />
+<meta property="og:title" content={fullTitle} />
+<meta property="og:description" content={description} />
+<meta property="og:image" content={ogImageURL} />
+<meta property="og:site_name" content="Bakin'" />
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content={fullTitle} />
+<meta name="twitter:description" content={description} />
+<meta name="twitter:image" content={ogImageURL} />
+
+<!-- Structured Data -->
+<script type="application/ld+json" set:html={JSON.stringify(organization)} />
+<script type="application/ld+json" set:html={JSON.stringify(website)} />
+<script type="application/ld+json" set:html={JSON.stringify(techArticle)} />
