@@ -1,283 +1,78 @@
 ---
 name: bakin
-description: Mission control integration for multi-agent coordination. Provides task management, logging, search, and agent communication via mcporter MCP tools. Required for all agents in the Bakin ecosystem.
+description: Mission control integration for multi-agent coordination through Bakin MCP tools via mcporter.
 ---
 
 # Bakin Mission Control
 
-You are part of a multi-agent team coordinated by Bakin. You interact with Bakin through **mcporter** — a CLI that calls Bakin's MCP server.
+Use Bakin for task-board work, workflow routing, team coordination, assets, schedules, and channel posting.
 
-Your Bakin MCP server is `bakin-<your-agent-name>` (e.g., `bakin-pixel`, `bakin-chef`). Your dispatch message will tell you which server to use.
+Your MCP server is `bakin-<agent>`. Main Operator/main uses `bakin-main`.
 
-## Quick Reference
+## Live Tool Discovery
 
-```bash
-# Log progress (mandatory, every major step)
-mcporter call bakin-<agent>.bakin_log_progress taskId=<id> message="<update>"
-# Report complete (moves to done + notifies orchestrator)
-mcporter call bakin-<agent>.bakin_report_complete taskId=<id> summary="<what you did>"
-# Block task (if stuck)
-mcporter call bakin-<agent>.bakin_block_task taskId=<id> reason="<what went wrong>"
-# Move task between columns
-mcporter call bakin-<agent>.bakin_move_task taskId=<id> to=inProgress
-# Create subtask for another agent
-mcporter call bakin-<agent>.bakin_create_task title="<subtask>" assignee="<agent>" description="<brief>"
-# Register dependency (then stop — you'll be re-dispatched)
-mcporter call bakin-<agent>.bakin_register_dependency taskId=<id> dependsOn="<other-id>"
-# Check your task details
-mcporter call bakin-<agent>.bakin_get_task taskId=<id>
-# Discover filesystem paths (never hardcode)
-mcporter call bakin-<agent>.bakin_get_paths
-# Workflow: submit step output
-mcporter call bakin-<agent>.bakin_submit_step taskId=<id> stepId=<step> --args '<json>'
-# Workflow: check current step
-mcporter call bakin-<agent>.bakin_get_step taskId=<id>```
+The live MCP server is authoritative. If a tool name or argument is uncertain, run:
 
-## MCP Tools
-
-| Tool | Purpose |
-|------|---------|
-| `bakin_log_progress` | Log what you're doing (mandatory, every major step) |
-| `bakin_move_task` | Move task between columns |
-| `bakin_create_task` | Create subtasks for other agents |
-| `bakin_block_task` | Block a task with a reason |
-| `bakin_report_complete` | Mark task done + notify orchestrator (includes summary) |
-| `bakin_get_task` | Check your task details |
-| `bakin_get_step` | Get current workflow step details |
-| `bakin_submit_step` | Submit workflow step output |
-| `bakin_get_paths` | Discover filesystem paths (never hardcode) |
-| `bakin_register_dependency` | Register a dependency on another task |
-
-Your agent identity is automatically injected by the MCP server — you do not need to specify it.
-
-**Tool discovery:** The table below is auto-generated and may not reflect recently installed plugins. For the live, authoritative list of all available tools, run:
 ```bash
 mcporter list bakin-<agent> --schema
 ```
 
+Do not rely on old non-exec tool names such as `bakin_create_task`, `bakin_report_complete`, `bakin_get_task`, or `bakin_post_discord`. Current task-board and plugin tools use the `bakin_exec_*` namespace.
+
 <!-- bakin:exec-tools:start -->
 <!--
-  The exec-tools block is generated at sync time by bakin doctor
-  (src/core/doctor.ts → checkAndSyncSkill) and written only to the
-  installed copy at ~/.openclaw/workspace/skills/bakin/SKILL.md. The
-  repo template intentionally keeps this block empty so the file
-  stays stable across deploys regardless of which exec tools are
-  registered at runtime.
+  The exec-tools block is rendered at sync time. Keep it compact; agents can
+  use live discovery for full schemas when a less-common tool is needed.
 -->
 <!-- bakin:exec-tools:end -->
 
+## Core Calls
+
+Use these current tool names for the common paths:
+
+- Create task: `bakin_exec_tasks_create`
+- List/get task: `bakin_exec_tasks_list`, `bakin_exec_tasks_get`
+- Move task: `bakin_exec_tasks_move`
+- Log progress: `bakin_exec_tasks_log_progress` or `bakin_exec_log`
+- Complete task: `bakin_exec_tasks_complete`
+- Block task: `bakin_exec_tasks_block`
+- Assign/update/delete task: `bakin_exec_tasks_assign`, `bakin_exec_tasks_update`, `bakin_exec_tasks_delete`
+- Set dependency: `bakin_exec_tasks_set_dependency`
+- Workflows: `bakin_exec_workflows_list`, `bakin_exec_workflows_get_definition`, `bakin_exec_workflows_start`, `bakin_exec_get_step`, `bakin_exec_submit_step`, `bakin_exec_check_gates`
+- Team: `bakin_exec_team_list`, `bakin_exec_team_profile`, `bakin_exec_team_status`, `bakin_exec_team_message`
+- Assets: `bakin_exec_assets_save`, `bakin_exec_assets_list`, `bakin_exec_assets_get`
+- Channels: `bakin_exec_post_channel`
+- Paths: `bakin_exec_get_paths`
+- Health: `bakin_exec_health_status`, `bakin_exec_health_doctor`
+- Schedule: `bakin_exec_schedule_list`, `bakin_exec_schedule_create`, `bakin_exec_schedule_get`, `bakin_exec_schedule_run_now`
+
+## Task Creation Discipline
+
+When Mark or main asks to assign work to another agent, create a Bakin task first. Do not directly spawn or message OpenClaw agents unless Bakin is unavailable and the user explicitly wants a fallback.
+
+Before `bakin_exec_tasks_create`:
+
+1. Call `bakin_exec_workflows_list` when the request could map to a workflow.
+2. Choose the matching `workflowId`, or set `skipWorkflowReason` for a one-off request.
+3. Include `parentId` when this is a subtask of an existing task.
+4. Include enough brief/context for the assigned agent to act without asking for the original chat.
+
+Example shape:
+
+```bash
+mcporter call bakin-main.bakin_exec_tasks_create --args '{"title":"Write todays story","assignee":"trainer","description":"Write a short story and post the result back to #danger-zone.","skipWorkflowReason":"one-off chat request"}'
+```
+
 ## Task Lifecycle
 
-Tasks flow through columns: **TODO** -> **In Progress** -> **Done** (or **Blocked**).
+Tasks flow through backlog, todo, inProgress, blocked, done, and archived. Start assigned work by moving the task to `inProgress` and logging progress. Before marking a task done, log what changed. If blocked, use `bakin_exec_tasks_block` with the concrete reason.
 
-When you receive a task:
-1. **Move it to In Progress immediately** (before doing any work)
-2. Log that you've started working on it
-3. Log progress at every major step (not just start and done)
-4. If blocked, block the task with a clear reason
-5. When done, report complete with a summary
+Workflow step assignments are different: submit step output with `bakin_exec_submit_step`. Do not move workflow tasks to done directly.
 
-Valid transitions: backlog→todo, todo→inProgress/blocked/done/backlog, inProgress→done/blocked/todo, blocked→todo/inProgress/backlog, done→archived/todo. The `archived` column holds completed work — tasks auto-archive after 24 hours in done, and can be recovered back to done or todo. The `backlog` column is for planning only — tasks there are never auto-dispatched to agents.
+## Error Handling
 
-### Report Completion
+If a Bakin MCP call fails, report the exact tool and error. Do not silently fall back to direct OpenClaw dispatch for task-board work. A fallback is acceptable only when the user has asked for best-effort delivery despite Bakin being down.
 
-Use `bakin_report_complete` — it moves the task to Done, logs the summary, and notifies the orchestrator automatically.
+## Path Discipline
 
-**Do NOT use this for workflow tasks.** Workflow tasks complete via `bakin_submit_step`.
-
-## Creating Subtasks
-
-If your task requires work from another agent, create a subtask with `bakin_create_task`. Include `parentId` for immediate dispatch.
-
-### Workflow preflight — run this sequence every time before `bakin_create_task`
-
-Workflows are the default. Skipping one is the exception, and skipping silently is never allowed.
-
-1. **Check the catalog.** Call `bakin_exec_workflows_list` and read what's available.
-2. **Match against the subtask.** Does any workflow fit by title keywords, target agent, or intent? (e.g., a subtask for Pixel to produce an image matches `image-generation`.)
-3. **If a match exists, STOP. Do not create the task yet.** Message your parent task's requester (via `bakin_log_progress` on your own task, or by messaging the main agent if you need a decision back) and ask whether they want the full workflow or a one-off. Example: *"I need Pixel to produce a hero image — there's an `image-generation` workflow with a prompt-approval gate. Use the workflow, or one-off?"* Silence is not permission to skip.
-4. **Only after the decision**, call `bakin_create_task` with either `workflowId` set to the chosen workflow, or `skipWorkflowReason` citing the confirmation (e.g., `"main agent confirmed one-off — no approval gate needed for quick reference image"`).
-
-**Chat requests that sound simple are still workflow candidates if a matching workflow exists.** "Quick image," "just a draft," and "one-off" are NOT reasons to bypass a workflow on your own. The user's phrasing doesn't change the rule — the catalog does.
-
-**Your judgment alone is not enough to skip.** The only valid reasons to skip without asking: (a) no workflow in the catalog matches, or (b) the requester has already said in this conversation they want a one-off.
-
-## Dependencies
-
-Register a dependency with `bakin_register_dependency`, then **stop**. You will be automatically re-dispatched when the dependency completes.
-
-## Search
-
-Search across all indexed content (tasks, decisions, assets, projects):
-
-```bash
-curl -s 'http://localhost:3737/api/search?q=<query>&limit=10'
-```
-
-## Agent Communication
-
-Check another agent's status:
-```bash
-curl -s http://localhost:3737/api/agents/<agent-id>/status
-```
-
-See what tasks an agent has:
-```bash
-curl -s http://localhost:3737/api/agents/<agent-id>/tasks
-```
-
-## API Discovery
-
-Get full API documentation:
-```bash
-curl -s http://localhost:3737/api/docs
-```
-
-## Discovering Paths (REQUIRED)
-
-**NEVER hardcode or construct filesystem paths.** Always use `bakin_get_paths` to discover where files live.
-
-Available path keys: `home`, `memoryLog`, `calendar`, `audit`, `assets`, `assets.store`, `assets.inbox`, `assets.trash`, `personas`, `team`, `heartbeats`, `inbox`, `projects`, `workflows`, `settings`.
-
-### Querying Assets
-
-List all indexed assets (supports filters):
-```bash
-# All assets
-curl -s http://localhost:3737/api/plugins/assets/list
-
-# Filter by type, agent, taskId, or tag
-curl -s 'http://localhost:3737/api/plugins/assets/list?type=images&agent=pixel'
-curl -s 'http://localhost:3737/api/plugins/assets/list?taskId=task-abc'
-curl -s 'http://localhost:3737/api/plugins/assets/list?tag=hero'
-```
-
-Serve an asset file:
-```bash
-curl -s 'http://localhost:3737/api/plugins/assets/file?path=assets/images/task-abc/hero.png'
-```
-
-Soft-delete an asset (moves to .trash/):
-```bash
-curl -s -X DELETE 'http://localhost:3737/api/plugins/assets/assets%2Fimages%2Ftask-abc%2Fhero.png'
-```
-
-### Writing Assets
-
-Use `bakin_exec_save_asset` to save any agent-created content. The tool handles
-directory creation, naming conventions (YYYYMMDD-slug.ext), and sidecar metadata
-automatically. Never write assets manually.
-
-## Rules — SERVER ENFORCED
-
-These rules are not suggestions. The API enforces them. Violations are logged, tracked, and escalated.
-
-### Mandatory: Block on ANY error
-
-If you encounter ANY error, unexpected result, missing file, failed API call, or situation you weren't briefed on — you MUST block the task immediately. Do NOT attempt workarounds, fallbacks, or creative alternatives. Block first, then explain.
-
-### Mandatory: Log before Done
-
-The API will reject any attempt to move a task to Done if it has zero log entries. You must log your work before completing. This is enforced server-side — there is no workaround.
-
-### Mandatory: Agent identity on moves
-
-Your agent identity is automatically injected by the MCP server. Use your real agent name when connecting — never impersonate another agent.
-
-### Mandatory: Use the API, never edit files
-
-Always use Bakin tools (via mcporter) to manage tasks. Direct database edits bypass locking, validation, and audit logging.
-
-### Mandatory: Never run scripts/bin/*.ts directly
-
-The `scripts/bin/` directory contains debug wrappers that call tool functions directly, bypassing Bakin's MCP server entirely. This means no Health metrics, no audit log, no tracking. Always use the MCP tool via `mcporter call bakin-<agent>.bakin_exec_<tool> ...` instead.
-
-### Mandatory: Discover paths via bakin_get_paths
-
-Never hardcode `content/`, `~/.bakin/`, or any absolute path. Always use `bakin_get_paths`. Paths change between environments.
-
-### Mandatory: Log progress every major step
-
-The watchdog monitors for stuck tasks. If no log update in 30 minutes and your heartbeat is stale, the task is automatically moved back to Todo for re-dispatch. After 3 auto-recoveries, the task is escalated to Blocked. Keep logs flowing to prevent this.
-
-### Mandatory: Report back
-
-Always use `bakin_report_complete` when done — it handles notification automatically. For blocks, use `bakin_block_task`.
-
-### What happens when you violate these rules
-
-- **Invalid state transition** → Tool returns error with allowed transitions
-- **Move without agent** → Tool returns error
-- **Done without logs** → Tool returns error
-- **Direct database edit** → Bypasses all validation, breaks locking
-- **Bypass patterns detected** (workaround language in logs) → Alert sent to the main agent, audit logged
-- **Stuck task + stale heartbeat** → Auto-recovered to Todo, then Blocked after 3 recoveries
-
-## Subagent Rules
-
-These rules apply to ALL subagents (Chef, Pixel, Rolo, Patch, etc.). Violating them breaks the pipeline.
-
-1. **Never edit the task database directly.** Always use Bakin tools.
-
-2. **Never hardcode filesystem paths.** Always use `bakin_get_paths`.
-
-3. **Stay in your lane.** Don't do work assigned to another agent. Create subtasks instead.
-
-4. **Only spawn agents when you have a concrete brief.** Don't speculatively create subtasks.
-
-5. **Use your own agent name.** Log as `chef`, `pixel`, `patch`, etc. — never as `system`, `main`, or another agent.
-
-6. **Never send messages directly to Mark.** Report to `main` — the main agent decides what to surface.
-
-7. **Never mark a task done prematurely.** Only move to Done after output is delivered and confirmed.
-
-8. **Always exit after registering a dependency.** Register it and stop. You'll be re-dispatched automatically.
-
-9. **Block immediately on errors.** Do NOT work around blockers. Block the task and explain.
-
-## Workflow Step Discipline
-
-When you receive a message that starts with "# WORKFLOW STEP ASSIGNMENT", you are in **workflow mode**. These rules override all other instructions for the duration of that step.
-
-### What workflow mode means
-
-- You are executing ONE step of a multi-step pipeline
-- You cannot see other steps — by design, not by accident
-- The ONLY valid completion is calling `bakin_submit_step` via mcporter
-- The workflow engine advances the pipeline — you do not
-
-### What you MUST do
-
-1. Read the step instructions completely before starting
-2. Produce output that matches the JSON schema provided in the dispatch message
-3. Submit output via `bakin_submit_step`
-4. Log progress at each major milestone via `bakin_log_progress`
-5. Your `agentId` is automatically included in tool calls
-
-### What you MUST NOT do
-
-- Generate deliverables outside your step's scope (e.g., do not generate images if your step is "write copy")
-- Move the task to Done or any other column — the workflow engine handles task state
-- Message the main agent with "TASK COMPLETE" — workflow tasks complete through `bakin_submit_step`, not messages
-- Create subtasks for other agents — the workflow defines who does what
-- Attempt to read or infer what future steps contain
-- Resubmit the same output after a rejection without addressing the feedback — the server detects near-duplicates and rejects them
-- Use tools listed in "TOOL RESTRICTIONS" if present in the dispatch message
-
-### After rejection
-
-If your step is re-dispatched with a "REVISION REQUIRED" section, the reviewer found a problem with your previous output. You MUST:
-1. Read the rejection reason carefully
-2. Identify what specifically needs to change
-3. Produce genuinely revised output — not the same output with minor tweaks
-4. Submit via `bakin_submit_step` as before
-
-### What happens automatically
-
-- Output is validated against JSON Schema server-side (invalid = error with details)
-- Extra fields beyond the schema are rejected (additionalProperties is enforced)
-- The workflow engine advances to the next step or gate after valid submission
-- Gates pause the workflow for human review — you are never asked to review gates
-- If a gate rejects, the relevant agent is re-dispatched with feedback and previous output
-- The watchdog monitors for stuck or out-of-scope behavior
-- Workflow tasks cannot be moved to Done directly — only the workflow engine can do this
+Use `bakin_exec_get_paths` before reading or writing Bakin content paths. Do not hardcode `~/.bakin` in normal agent work.
