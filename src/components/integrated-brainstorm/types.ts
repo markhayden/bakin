@@ -3,9 +3,11 @@ import type { ReactNode } from 'react'
 
 export interface BrainstormMessage {
   id: string
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'activity'
   content: string
   agentId?: string
+  kind?: 'runtime_status' | 'tool_call' | 'error' | string
+  data?: unknown
   timestamp?: string
 }
 
