@@ -27,19 +27,52 @@ function mockReq(opts: {
 
 function mockRes() {
   let body = ''
+  const chunks: string[] = []
+  const waiters: Array<() => void> = []
+  const notify = () => {
+    const pending = waiters.splice(0)
+    for (const resolve of pending) resolve()
+  }
   const res = {
     headersSent: false,
-    writeHead: mock(),
+    writeHead: mock(() => {
+      res.headersSent = true
+    }),
+    flushHeaders: mock(),
+    write: mock((data?: string | Buffer) => {
+      if (data) {
+        const text = Buffer.isBuffer(data) ? data.toString('utf-8') : data
+        chunks.push(text)
+        body += text
+      }
+      notify()
+      return true
+    }),
     end: mock((data?: string | Buffer) => {
-      if (data) body = Buffer.isBuffer(data) ? data.toString('utf-8') : data
+      if (data) {
+        const text = Buffer.isBuffer(data) ? data.toString('utf-8') : data
+        chunks.push(text)
+        body += text
+      }
+      notify()
     }),
   } as unknown as ServerResponse & {
     headersSent: boolean
     writeHead: ReturnType<typeof mock>
+    flushHeaders: ReturnType<typeof mock>
+    write: ReturnType<typeof mock>
     end: ReturnType<typeof mock>
+    _chunks: string[]
     _body: string
+    _waitForChunkCount: (count: number) => Promise<void>
   }
   Object.defineProperty(res, '_body', { get: () => body })
+  Object.defineProperty(res, '_chunks', { get: () => chunks })
+  res._waitForChunkCount = async (count: number) => {
+    while (chunks.length < count) {
+      await new Promise<void>((resolve) => waiters.push(resolve))
+    }
+  }
   return res
 }
 
@@ -70,5 +103,37 @@ describe('dispatchWebHandler', () => {
     expect(handler).not.toHaveBeenCalled()
     expect(res.writeHead).toHaveBeenCalledWith(413, { 'Content-Type': 'application/json' })
     expect(res._body).toContain('Request body too large')
+  })
+
+  it('streams Web response body chunks before the handler completes', async () => {
+    const encoder = new TextEncoder()
+    let controller!: ReadableStreamDefaultController<Uint8Array>
+    const req = mockReq({ method: 'GET' })
+    const res = mockRes()
+    const handler = mock(() => new Response(new ReadableStream<Uint8Array>({
+      start(c) {
+        controller = c
+        c.enqueue(encoder.encode('event: activity\ndata: {"content":"first"}\n\n'))
+      },
+    }), {
+      headers: { 'Content-Type': 'text/event-stream' },
+    }))
+
+    const pending = dispatchWebHandler(req, res, handler)
+    await res._waitForChunkCount(1)
+
+    expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
+      'Content-Type': 'text/event-stream',
+    }))
+    expect(res.flushHeaders).toHaveBeenCalled()
+    expect(res._chunks[0]).toContain('first')
+    expect(res.end).not.toHaveBeenCalled()
+
+    controller.enqueue(encoder.encode('event: done\ndata: {"content":"ok"}\n\n'))
+    controller.close()
+    await pending
+
+    expect(res._body).toContain('event: done')
+    expect(res.end).toHaveBeenCalled()
   })
 })
