@@ -1651,6 +1651,10 @@ function summarizeOpenClawToolPurpose(name: string, args: unknown): string | und
     return summarizeShellCommandPurpose(command)
   }
 
+  if (name === 'web_fetch') {
+    return summarizeWebFetchPurpose(args)
+  }
+
   return summarizeToolNamePurpose(name)
 }
 
@@ -1678,6 +1682,7 @@ function summarizeToolNamePurpose(toolName: string): string | undefined {
   if (/^bakin_exec_projects_add_item$/.test(toolName)) return 'Adding a project checklist item'
   if (/^bakin_exec_projects_(list|search)$/.test(toolName)) return 'Inspecting projects'
   if (/^bakin_exec_messaging_/.test(toolName)) return 'Updating messaging content'
+  if (toolName === 'web_fetch') return 'Fetching web content'
   return undefined
 }
 
@@ -1692,7 +1697,32 @@ function summarizeRuntimeToolPurpose(toolName: string, inputPreview: string | un
     const path = typeof parsed?.path === 'string' ? parsed.path : undefined
     if (path) return summarizeOpenClawToolPurpose('read', { path })
   }
+  if (toolName === 'web_fetch' && inputPreview) {
+    return summarizeWebFetchPurpose(parseJsonObject(inputPreview) ?? inputPreview)
+  }
   return summarizeToolNamePurpose(toolName)
+}
+
+function summarizeWebFetchPurpose(args: unknown): string {
+  const url = extractUrlForDisplay(args)
+  return url ? `Fetching ${url}` : 'Fetching web content'
+}
+
+function extractUrlForDisplay(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    const parsed = parseJsonObject(value)
+    if (parsed) return extractUrlForDisplay(parsed)
+    const trimmed = value.trim()
+    return /^https?:\/\//i.test(trimmed) ? truncateMiddle(redactSensitiveText(trimmed), 140) : undefined
+  }
+  if (!isPlainObject(value)) return undefined
+  for (const key of ['url', 'uri', 'href']) {
+    const raw = value[key]
+    if (typeof raw === 'string' && raw.trim()) {
+      return truncateMiddle(redactSensitiveText(raw.trim()), 140)
+    }
+  }
+  return undefined
 }
 
 function basenameForDisplay(path: string): string {
@@ -1720,7 +1750,8 @@ function redactSensitiveText(value: string): string {
   return value
     .replace(/(authorization:\s*bearer\s+)[^\s"'`]+/gi, '$1[redacted]')
     .replace(/(x-access-token:)[^\s"'`@]+/gi, '$1[redacted]')
-    .replace(/\b([A-Za-z0-9_]*(?:token|password|secret|api[_-]?key)[A-Za-z0-9_]*\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,}]+)/gi, '$1[redacted]')
+    .replace(/([?&][^=\s"'`]*(?:token|password|secret|api[_-]?key)[^=\s"'`]*=)[^&\s"'`]+/gi, '$1[redacted]')
+    .replace(/\b([A-Za-z0-9_]*(?:token|password|secret|api[_-]?key)[A-Za-z0-9_]*\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,"'`}]+)/gi, '$1[redacted]')
 }
 
 function parseStreamFrame(frame: string): ChatChunk | null {
@@ -1900,7 +1931,7 @@ function normalizeRuntimeToolActivity(payload: unknown, fallbackPhase: RuntimeTo
   const inputPreview = firstString(
     payload.inputPreview,
     payload.argumentsPreview,
-    functionArgs,
+    functionArgs !== undefined ? previewUnknown(functionArgs) : undefined,
     payload.arguments !== undefined ? previewUnknown(payload.arguments) : undefined,
   )
   const outputPreview = firstString(
