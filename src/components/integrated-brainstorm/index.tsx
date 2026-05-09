@@ -17,6 +17,17 @@ export type {
   SendContext,
   AssistantTransformed,
 } from './types'
+export {
+  brainstormActivityMessageFromCustom,
+  runtimeChunkToBrainstormActivity,
+  toBrainstormTimeline,
+} from './activity'
+export type {
+  BrainstormActivityInput,
+  BrainstormTimelineActivityInput,
+  BrainstormTimelineMessageInput,
+} from './activity'
+export { readBrainstormSseResponse } from './sse'
 
 export function IntegratedBrainstorm({
   messages,
