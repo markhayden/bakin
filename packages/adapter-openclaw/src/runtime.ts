@@ -892,18 +892,28 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   private async *streamChat(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): AsyncIterable<ChatChunk> {
-    const activityAbort = new AbortController()
-    const activityCursor = opts.sessionKey
-      ? createOpenClawSessionActivityCursor(opts.agentId, opts.sessionKey)
-      : null
-    const response = await this.fetchChat(opts, true)
-    const primary = this.readChatCompletionStream(response)
-    if (!activityCursor || !opts.sessionKey) {
+    const primary = this.fetchAndReadChatCompletionStream(opts)
+    if (!opts.sessionKey) {
       yield* primary
       return
     }
+
+    const activityCursor = opts.sessionKey
+      ? createOpenClawSessionActivityCursor(opts.agentId, opts.sessionKey)
+      : null
+    if (!activityCursor) {
+      yield* primary
+      return
+    }
+
+    const activityAbort = new AbortController()
     const activity = watchOpenClawSessionActivity(opts.agentId, opts.sessionKey, activityCursor, activityAbort.signal)
     yield* mergeChatStreams(primary, activity, () => activityAbort.abort())
+  }
+
+  private async *fetchAndReadChatCompletionStream(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): AsyncIterable<ChatChunk> {
+    const response = await this.fetchChat(opts, true)
+    yield* this.readChatCompletionStream(response)
   }
 
   private async *readChatCompletionStream(response: Response): AsyncIterable<ChatChunk> {

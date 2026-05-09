@@ -207,4 +207,84 @@ describe('OpenClaw runtime stream parsing', () => {
       { type: 'done' },
     ])
   })
+
+  it('emits transcript activity before OpenClaw chat response headers arrive', async () => {
+    const sessionsDir = join(testDir, 'agents', 'main', 'sessions')
+    mkdirSync(sessionsDir, { recursive: true })
+    const sessionFile = join(sessionsDir, 'session-2.jsonl')
+    writeFileSync(sessionFile, [
+      JSON.stringify({ type: 'session', id: 'session-2' }),
+      '',
+    ].join('\n'), 'utf-8')
+    writeFileSync(join(sessionsDir, 'sessions.json'), JSON.stringify({
+      'thread-2': { sessionId: 'session-2', sessionFile },
+    }), 'utf-8')
+
+    let fetchResolved = false
+    const encoder = new TextEncoder()
+    globalThis.fetch = mock(async () => {
+      setTimeout(() => {
+        appendFileSync(sessionFile, `${JSON.stringify({
+          type: 'message',
+          message: {
+            role: 'assistant',
+            content: [{
+              type: 'toolCall',
+              id: 'call-2',
+              name: 'read',
+              arguments: { path: '/tmp/project.md' },
+            }],
+          },
+        })}\n`)
+      }, 20)
+
+      await wait(800)
+      fetchResolved = true
+      return new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: 'After tools.' } }] })}\n\n`))
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+          controller.close()
+        },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      })
+    }) as unknown as typeof fetch
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+    const iterator = runtime.messaging.stream({
+      agentId: 'main',
+      content: 'hello',
+      threadId: 'thread-2',
+    })[Symbol.asyncIterator]()
+
+    const first = await Promise.race([
+      iterator.next(),
+      wait(500).then(() => 'timeout' as const),
+    ])
+
+    expect(first).not.toBe('timeout')
+    expect(fetchResolved).toBe(false)
+    if (first !== 'timeout') {
+      expect(first.value).toEqual({
+        type: 'tool',
+        content: 'read: /tmp/project.md',
+        data: {
+          phase: 'call',
+          id: 'call-2',
+          name: 'read',
+          argumentsPreview: '{"path":"/tmp/project.md"}',
+        },
+      })
+    }
+
+    const remaining: unknown[] = []
+    for await (const chunk of { [Symbol.asyncIterator]: () => iterator }) {
+      remaining.push(chunk)
+    }
+    expect(remaining).toContainEqual({ type: 'text', content: 'After tools.' })
+    expect(remaining).toContainEqual({ type: 'done' })
+  })
 })
