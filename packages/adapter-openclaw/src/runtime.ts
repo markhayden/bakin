@@ -16,6 +16,7 @@ import type {
   RuntimeMetadata,
   RuntimeMemorySearchResult,
   RuntimeSkill,
+  RuntimeToolActivity,
   UpdateCronJobInput,
   WorkspaceFile,
 } from '@bakin/core/adapters/runtime'
@@ -1575,9 +1576,10 @@ function activityChunksFromAssistantMessage(message: Record<string, unknown>): C
       content: summarizeOpenClawToolCall(name, args),
       data: {
         phase: 'call',
-        id: typeof part.id === 'string' ? part.id : undefined,
-        name,
-        argumentsPreview: previewUnknown(args),
+        callId: typeof part.id === 'string' ? part.id : undefined,
+        toolName: name,
+        status: 'running',
+        inputPreview: previewUnknown(args),
       },
     })
   }
@@ -1591,17 +1593,23 @@ function activityChunkFromToolResultMessage(message: Record<string, unknown>): C
   const label = status ? `${toolName} ${status}` : `${toolName} finished`
   return [{
     type: 'tool',
-    content: label,
-    data: {
-      phase: 'result',
-      toolName,
-      toolCallId: typeof message.toolCallId === 'string' ? message.toolCallId : undefined,
-      status,
-      exitCode: typeof details.exitCode === 'number' ? details.exitCode : undefined,
-      durationMs: typeof details.durationMs === 'number' ? details.durationMs : undefined,
-      outputPreview: previewUnknown(message.content),
-    },
+      content: label,
+      data: {
+        phase: 'result',
+        toolName,
+        callId: typeof message.toolCallId === 'string' ? message.toolCallId : undefined,
+        status: normalizeToolResultStatus(status, typeof details.exitCode === 'number' ? details.exitCode : undefined),
+        exitCode: typeof details.exitCode === 'number' ? details.exitCode : undefined,
+        durationMs: typeof details.durationMs === 'number' ? details.durationMs : undefined,
+        outputPreview: previewUnknown(message.content),
+      },
   }]
+}
+
+function normalizeToolResultStatus(status: string | undefined, exitCode: number | undefined): string {
+  if (status && status.length > 0) return status
+  if (typeof exitCode === 'number') return exitCode === 0 ? 'completed' : 'failed'
+  return 'completed'
 }
 
 function summarizeOpenClawToolCall(name: string, args: unknown): string {
@@ -1708,10 +1716,11 @@ function parseActivityChunk(parsed: {
       }
     }
     if (kind === 'tool_call' || kind === 'tool') {
+      const toolActivity = normalizeRuntimeToolActivity(parsed.activity.data, 'call')
       return {
         type: 'tool',
-        content: parsed.activity.content || describeToolPayload(parsed.activity.data),
-        data: parsed.activity.data,
+        content: parsed.activity.content || describeToolPayload(toolActivity ?? parsed.activity.data),
+        data: toolActivity ?? fallbackToolActivity(parsed.activity.data, 'call'),
       }
     }
   }
@@ -1725,32 +1734,118 @@ function parseActivityChunk(parsed: {
     }
   }
   if (frameKind === 'tool' || frameKind === 'tool_call') {
+    const payload = parsed.data ?? parsed.tool ?? parsed.tool_call ?? parsed.toolCall
+    const toolActivity = normalizeRuntimeToolActivity(payload, 'call')
     return {
       type: 'tool',
-      content: parsed.content || describeToolPayload(parsed.data ?? parsed.tool ?? parsed.tool_call ?? parsed.toolCall),
-      data: parsed.data ?? parsed.tool ?? parsed.tool_call ?? parsed.toolCall,
+      content: parsed.content || describeToolPayload(toolActivity ?? payload),
+      data: toolActivity ?? fallbackToolActivity(payload, 'call'),
     }
   }
 
   const toolCalls = parsed.choices?.[0]?.delta?.tool_calls ?? parsed.choices?.[0]?.message?.tool_calls
   if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+    const toolActivity = normalizeRuntimeToolActivity({ toolCalls }, 'call')
     return {
       type: 'tool',
       content: describeToolPayload(toolCalls),
-      data: { toolCalls },
+      data: toolActivity ?? fallbackToolActivity(toolCalls, 'call'),
     }
   }
 
   const toolPayload = parsed.tool ?? parsed.tool_call ?? parsed.toolCall
   if (toolPayload !== undefined) {
+    const toolActivity = normalizeRuntimeToolActivity(toolPayload, 'call')
     return {
       type: 'tool',
       content: parsed.content || describeToolPayload(toolPayload),
-      data: toolPayload,
+      data: toolActivity ?? fallbackToolActivity(toolPayload, 'call'),
     }
   }
 
   return null
+}
+
+function fallbackToolActivity(payload: unknown, phase: RuntimeToolActivity['phase']): RuntimeToolActivity {
+  return {
+    phase,
+    toolName: describeToolPayload(payload),
+    status: phase === 'call' ? 'running' : 'completed',
+  }
+}
+
+function normalizeRuntimeToolActivity(payload: unknown, fallbackPhase: RuntimeToolActivity['phase']): RuntimeToolActivity | null {
+  const toolCallPayload = firstToolCallPayload(payload)
+  if (toolCallPayload) return normalizeRuntimeToolActivity(toolCallPayload, fallbackPhase)
+
+  if (typeof payload === 'string' && payload.trim()) {
+    return {
+      phase: fallbackPhase,
+      toolName: payload.trim(),
+      status: fallbackPhase === 'call' ? 'running' : 'completed',
+    }
+  }
+
+  if (!isPlainObject(payload)) return null
+
+  const functionValue = payload.function
+  const functionName = isPlainObject(functionValue) && typeof functionValue.name === 'string'
+    ? functionValue.name
+    : undefined
+  const functionArgs = isPlainObject(functionValue) && typeof functionValue.arguments === 'string'
+    ? functionValue.arguments
+    : undefined
+  const phase = payload.phase === 'result' ? 'result' : payload.phase === 'call' ? 'call' : fallbackPhase
+  const toolName = firstString(
+    payload.toolName,
+    payload.name,
+    payload.tool,
+    functionName,
+    payload.id,
+  ) ?? 'tool'
+  const callId = firstString(payload.callId, payload.toolCallId, payload.id)
+  const status = typeof payload.status === 'string'
+    ? payload.status
+    : phase === 'call'
+      ? 'running'
+      : normalizeToolResultStatus(undefined, typeof payload.exitCode === 'number' ? payload.exitCode : undefined)
+  const inputPreview = firstString(
+    payload.inputPreview,
+    payload.argumentsPreview,
+    functionArgs,
+    payload.arguments !== undefined ? previewUnknown(payload.arguments) : undefined,
+  )
+  const outputPreview = firstString(
+    payload.outputPreview,
+    payload.resultPreview,
+    payload.output !== undefined ? previewUnknown(payload.output) : undefined,
+  )
+
+  return {
+    phase,
+    ...(callId ? { callId } : {}),
+    toolName,
+    status,
+    ...(inputPreview ? { inputPreview } : {}),
+    ...(outputPreview ? { outputPreview } : {}),
+    ...(typeof payload.durationMs === 'number' ? { durationMs: payload.durationMs } : {}),
+    ...(typeof payload.exitCode === 'number' ? { exitCode: payload.exitCode } : {}),
+  }
+}
+
+function firstToolCallPayload(payload: unknown): unknown | null {
+  if (Array.isArray(payload)) return payload.find(isPlainObject) ?? null
+  if (!isPlainObject(payload)) return null
+  const toolCalls = payload.toolCalls
+  if (Array.isArray(toolCalls)) return toolCalls.find(isPlainObject) ?? null
+  return null
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.length > 0) return value
+  }
+  return undefined
 }
 
 function describeToolPayload(payload: unknown): string {
