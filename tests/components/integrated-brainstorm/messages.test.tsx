@@ -128,6 +128,26 @@ describe('IntegratedBrainstorm — message list rendering', () => {
     expect(bubble.style.borderLeftColor.toLowerCase()).toMatch(/10b981|rgba?\(16,\s*185,\s*129/)
   })
 
+  it('renders activity messages as collapsed timeline rows', () => {
+    const messages: BrainstormMessage[] = [
+      { id: 'u1', role: 'user', content: 'check this' },
+      {
+        id: 'act1',
+        role: 'activity',
+        kind: 'tool_call',
+        content: 'Read project file',
+        data: { tool: 'bakin_exec_projects_get' },
+      },
+      { id: 'a1', role: 'assistant', content: 'done' },
+    ]
+    const { container } = render(<IntegratedBrainstorm {...baseProps} messages={messages} />)
+    const activity = container.querySelector('[data-testid="activity-bubble"]')
+    expect(activity).toBeTruthy()
+    expect(activity!.textContent).toContain('Tool')
+    expect(activity!.textContent).toContain('Read project file')
+    expect(activity!.querySelector('details')?.open).toBe(false)
+  })
+
   it('hides the message list when collapsed', () => {
     const messages: BrainstormMessage[] = [{ id: 'u1', role: 'user', content: 'hey' }]
     const { container } = render(

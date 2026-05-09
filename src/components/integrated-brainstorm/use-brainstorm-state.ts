@@ -14,6 +14,25 @@ function newId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+function activityMessageFromCustom(name: string, data: unknown): BrainstormMessage | null {
+  if (name !== 'activity') return null
+  const payload = data && typeof data === 'object' && 'activity' in data
+    ? (data as { activity?: unknown }).activity
+    : data
+  if (!payload || typeof payload !== 'object') return null
+  const activity = payload as Record<string, unknown>
+  const content = typeof activity.content === 'string' ? activity.content : ''
+  if (!content) return null
+  return {
+    id: typeof activity.id === 'string' ? activity.id : newId('act'),
+    role: 'activity',
+    kind: typeof activity.kind === 'string' ? activity.kind : 'runtime_status',
+    content,
+    data: activity.data,
+    timestamp: typeof activity.timestamp === 'string' ? activity.timestamp : new Date().toISOString(),
+  }
+}
+
 interface UseBrainstormStateOpts {
   messages: BrainstormMessage[]
   onMessagesChange: (next: BrainstormMessage[]) => void
@@ -79,6 +98,7 @@ export function useBrainstormState({
       abortRef.current = controller
 
       let accumulated = ''
+      const customMessages: BrainstormMessage[] = []
       try {
         const result = await onSend(trimmed, messages, {
           signal: controller.signal,
@@ -87,7 +107,14 @@ export function useBrainstormState({
             setStreamingContent(accumulated)
             setStatus('streaming')
           },
-          onCustom: options?.onCustom,
+          onCustom: (name: string, data: unknown) => {
+            const activityMessage = activityMessageFromCustom(name, data)
+            if (activityMessage) {
+              customMessages.push(activityMessage)
+              onMessagesChange([...historyWithUser, ...customMessages])
+            }
+            options?.onCustom?.(name, data)
+          },
         })
         const resolvedContent = result?.content?.trim() ?? ''
         const finalContent = resolvedContent.length > 0 ? resolvedContent : accumulated.trim()
@@ -99,7 +126,7 @@ export function useBrainstormState({
             agentId: defaultAgentId,
             timestamp: new Date().toISOString(),
           }
-          onMessagesChange([...historyWithUser, assistantMsg])
+          onMessagesChange([...historyWithUser, ...customMessages, assistantMsg])
         }
       } catch (err) {
         if (controller.signal.aborted) {
@@ -113,7 +140,7 @@ export function useBrainstormState({
               agentId: defaultAgentId,
               timestamp: new Date().toISOString(),
             }
-            onMessagesChange([...historyWithUser, assistantMsg])
+            onMessagesChange([...historyWithUser, ...customMessages, assistantMsg])
           }
         } else {
           setErrorMessage(err instanceof Error ? err.message : String(err))

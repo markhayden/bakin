@@ -1366,16 +1366,115 @@ function parseStreamFrame(frame: string): ChatChunk | null {
   if (data === '[DONE]') return { type: 'done' }
   try {
     const parsed = JSON.parse(data) as {
-      choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>
-      error?: { message?: string }
+      type?: string
+      event?: string
+      content?: string
+      data?: unknown
+      activity?: { kind?: string; content?: string; data?: unknown }
+      tool?: unknown
+      tool_call?: unknown
+      toolCall?: unknown
+      choices?: Array<{
+        delta?: { content?: string; tool_calls?: unknown[] }
+        message?: { content?: string; tool_calls?: unknown[] }
+      }>
+      error?: { message?: string } | string
     }
-    const error = parsed.error?.message
+    const error = typeof parsed.error === 'string' ? parsed.error : parsed.error?.message
     if (error) return { type: 'error', content: error }
+    const activity = parseActivityChunk(parsed)
+    if (activity) return activity
     const content = parsed.choices?.[0]?.delta?.content ?? parsed.choices?.[0]?.message?.content
     return content ? { type: 'text', content } : null
   } catch {
     return data ? { type: 'text', content: data } : null
   }
+}
+
+function parseActivityChunk(parsed: {
+  type?: string
+  event?: string
+  content?: string
+  data?: unknown
+  activity?: { kind?: string; content?: string; data?: unknown }
+  tool?: unknown
+  tool_call?: unknown
+  toolCall?: unknown
+  choices?: Array<{
+    delta?: { tool_calls?: unknown[] }
+    message?: { tool_calls?: unknown[] }
+  }>
+}): ChatChunk | null {
+  if (parsed.activity) {
+    const kind = parsed.activity.kind
+    if (kind === 'runtime_status' || kind === 'status') {
+      return {
+        type: 'status',
+        content: parsed.activity.content || 'Agent status update',
+        data: parsed.activity.data,
+      }
+    }
+    if (kind === 'tool_call' || kind === 'tool') {
+      return {
+        type: 'tool',
+        content: parsed.activity.content || describeToolPayload(parsed.activity.data),
+        data: parsed.activity.data,
+      }
+    }
+  }
+
+  const frameKind = parsed.type ?? parsed.event
+  if (frameKind === 'status' || frameKind === 'runtime_status') {
+    return {
+      type: 'status',
+      content: parsed.content || 'Agent status update',
+      data: parsed.data,
+    }
+  }
+  if (frameKind === 'tool' || frameKind === 'tool_call') {
+    return {
+      type: 'tool',
+      content: parsed.content || describeToolPayload(parsed.data ?? parsed.tool ?? parsed.tool_call ?? parsed.toolCall),
+      data: parsed.data ?? parsed.tool ?? parsed.tool_call ?? parsed.toolCall,
+    }
+  }
+
+  const toolCalls = parsed.choices?.[0]?.delta?.tool_calls ?? parsed.choices?.[0]?.message?.tool_calls
+  if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+    return {
+      type: 'tool',
+      content: describeToolPayload(toolCalls),
+      data: { toolCalls },
+    }
+  }
+
+  const toolPayload = parsed.tool ?? parsed.tool_call ?? parsed.toolCall
+  if (toolPayload !== undefined) {
+    return {
+      type: 'tool',
+      content: parsed.content || describeToolPayload(toolPayload),
+      data: toolPayload,
+    }
+  }
+
+  return null
+}
+
+function describeToolPayload(payload: unknown): string {
+  if (Array.isArray(payload)) {
+    const first = payload[0]
+    const label = describeToolPayload(first)
+    return payload.length > 1 ? `${label} + ${payload.length - 1} more` : label
+  }
+  if (isPlainObject(payload)) {
+    const functionValue = payload.function
+    if (isPlainObject(functionValue) && typeof functionValue.name === 'string') return functionValue.name
+    for (const key of ['name', 'tool', 'toolName', 'id']) {
+      const value = payload[key]
+      if (typeof value === 'string' && value.length > 0) return value
+    }
+  }
+  return 'Tool call'
 }
 
 function parseJsonObject(raw: string): Record<string, unknown> | null {
