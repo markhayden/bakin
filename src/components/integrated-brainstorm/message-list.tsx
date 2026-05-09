@@ -87,6 +87,9 @@ const TOOL_DATA_KEYS = new Set([
   'name',
   'tool',
   'status',
+  'summary',
+  'purpose',
+  'displayLabel',
   'inputPreview',
   'argumentsPreview',
   'outputPreview',
@@ -174,7 +177,7 @@ function ToolActivityContent({ view, icon }: { view: ToolActivityView; icon: Rea
         )}
       </div>
       {view.summary && (
-        <div className="mt-1 break-words text-xs leading-5 text-zinc-400">
+        <div data-testid="tool-activity-summary" className="mt-1 break-words text-xs leading-5 text-zinc-400">
           {view.summary}
         </div>
       )}
@@ -262,7 +265,7 @@ function toolActivityView(message: BrainstormMessage): ToolActivityView | null {
     callId: stringField(data.callId) ?? stringField(data.toolCallId) ?? stringField(data.id),
     toolName,
     status,
-    summary: message.content,
+    summary: stringField(data.summary) ?? stringField(data.purpose) ?? stringField(data.displayLabel) ?? message.content,
     inputPreview: stringField(data.inputPreview) ?? stringField(data.argumentsPreview),
     outputPreview: stringField(data.outputPreview) ?? stringField(data.resultPreview),
     durationMs: numberField(data.durationMs),

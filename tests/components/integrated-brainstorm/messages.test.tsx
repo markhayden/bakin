@@ -157,6 +157,32 @@ describe('IntegratedBrainstorm — message list rendering', () => {
     expect(activity!.querySelector('details')?.open).toBe(false)
   })
 
+  it('prefers runtime tool summaries for visible activity text', () => {
+    const messages: BrainstormMessage[] = [
+      {
+        id: 'act1',
+        role: 'activity',
+        kind: 'tool_call',
+        content: "exec: mcporter call --help | sed -n '1,120p'",
+        data: {
+          phase: 'call',
+          callId: 'call-1',
+          toolName: 'exec',
+          status: 'running',
+          summary: 'Checking Bakin tool call syntax',
+          inputPreview: '{"command":"mcporter call --help | sed -n \'1,120p\'"}',
+        },
+      },
+    ]
+    const { container } = render(<IntegratedBrainstorm {...baseProps} messages={messages} />)
+    const activity = container.querySelector('[data-testid="activity-bubble"]')
+    const summary = container.querySelector('[data-testid="tool-activity-summary"]')
+    expect(activity).toBeTruthy()
+    expect(summary?.textContent).toBe('Checking Bakin tool call syntax')
+    expect(summary?.textContent).not.toContain('mcporter call --help')
+    expect(activity!.textContent).toContain('Input')
+  })
+
   it('groups matching tool call and result activity into one completed row', () => {
     const messages: BrainstormMessage[] = [
       {
