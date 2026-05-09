@@ -153,7 +153,7 @@ interface BrainstormMessage {
 
 - **User**: right-aligned bubble, accent-tinted background.
 - **Assistant**: left-aligned with `<AgentAvatar size="sm">` + left border tinted with agent color from `useAgentColor`. Body rendered via `<MarkdownContent>`. Consecutive assistant messages grouped with negative top margin (`-mt-2`); avatar shown only on the first of a run.
-- **Activity**: runtime/tool events render as assistant-style rows with the same avatar + tinted left border. Tool call/result pairs with the same `callId` collapse into one row; the compact row shows tool name, status, duration, summary, and expandable `Input` / `Output` / `Metadata` sections.
+- **Activity**: runtime/tool events render as assistant-style rows with the same avatar + tinted left border. Tool call/result pairs with the same `callId` collapse into one row; the compact row shows tool name, status, duration, and a human-readable `summary` when the runtime provides one. Raw commands and payloads stay in expandable `Input` / `Output` / `Metadata` sections.
 - **Streaming**: partial text renders in the same bubble shape; the message's `id` is provisional (`streaming-<ts>`) and gets replaced with the server-final id when `onSend` resolves.
 - **Empty state**: default is `<AgentAvatar size="xl">` above `Brainstorm with ${agentName}` + a one-line hint. `emptyState` prop overrides.
 

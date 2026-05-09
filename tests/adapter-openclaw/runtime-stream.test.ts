@@ -76,6 +76,7 @@ describe('OpenClaw runtime stream parsing', () => {
           phase: 'call',
           toolName: 'bakin_exec_projects_get',
           status: 'running',
+          summary: 'Read project file',
         },
       },
       { choices: [{ delta: { content: 'Done.' } }] },
@@ -99,6 +100,7 @@ describe('OpenClaw runtime stream parsing', () => {
           phase: 'call',
           toolName: 'bakin_exec_projects_get',
           status: 'running',
+          summary: 'Read project file',
         },
       },
       { type: 'text', content: 'Done.' },
@@ -138,7 +140,46 @@ describe('OpenClaw runtime stream parsing', () => {
         callId: 'call-1',
         toolName: 'bakin_exec_projects_get',
         status: 'running',
+        summary: 'Reading project details',
         inputPreview: '{"projectId":"p1"}',
+      },
+    })
+  })
+
+  it('adds fallback summaries for reliable shell command patterns', async () => {
+    globalThis.fetch = mock(async () => sseResponse([
+      {
+        choices: [{
+          delta: {
+            tool_calls: [{
+              id: 'call-help',
+              type: 'function',
+              function: { name: 'exec', arguments: '{"command":"mcporter call --help | sed -n \\"1,120p\\""}' },
+            }],
+          },
+        }],
+      },
+    ])) as unknown as typeof fetch
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const chunks = await collect(runtime.messaging.stream({
+      agentId: 'main',
+      content: 'hello',
+      threadId: 'thread-1',
+    }))
+
+    expect(chunks[0]).toEqual({
+      type: 'tool',
+      content: 'exec',
+      data: {
+        phase: 'call',
+        callId: 'call-help',
+        toolName: 'exec',
+        status: 'running',
+        summary: 'Checking Bakin tool call syntax',
+        inputPreview: '{"command":"mcporter call --help | sed -n \\"1,120p\\""}',
       },
     })
   })
@@ -204,6 +245,7 @@ describe('OpenClaw runtime stream parsing', () => {
           callId: 'call-1',
           toolName: 'exec',
           status: 'running',
+          summary: 'Checking GitHub issues',
           inputPreview: '{"command":"gh issue list --repo markhayden/bakin --search messaging"}',
         },
       },
@@ -293,6 +335,7 @@ describe('OpenClaw runtime stream parsing', () => {
           callId: 'call-2',
           toolName: 'read',
           status: 'running',
+          summary: 'Reading project.md',
           inputPreview: '{"path":"/tmp/project.md"}',
         },
       })

@@ -1571,6 +1571,8 @@ function activityChunksFromAssistantMessage(message: Record<string, unknown>): C
     if (!isPlainObject(part) || part.type !== 'toolCall') continue
     const name = typeof part.name === 'string' && part.name.length > 0 ? part.name : 'tool'
     const args = part.arguments
+    const summary = firstString(part.summary, part.purpose, part.displayLabel)
+      ?? summarizeOpenClawToolPurpose(name, args)
     chunks.push({
       type: 'tool',
       content: summarizeOpenClawToolCall(name, args),
@@ -1579,6 +1581,7 @@ function activityChunksFromAssistantMessage(message: Record<string, unknown>): C
         callId: typeof part.id === 'string' ? part.id : undefined,
         toolName: name,
         status: 'running',
+        ...(summary ? { summary } : {}),
         inputPreview: previewUnknown(args),
       },
     })
@@ -1628,6 +1631,73 @@ function summarizeOpenClawToolCall(name: string, args: unknown): string {
     }
   }
   return name
+}
+
+function summarizeOpenClawToolPurpose(name: string, args: unknown): string | undefined {
+  if (name === 'read' && isPlainObject(args)) {
+    const path = typeof args.path === 'string' ? args.path.trim() : ''
+    if (!path) return undefined
+    if (/\/skills\/[^/]+\/SKILL\.md$/.test(path)) return 'Reading workflow instructions'
+    return `Reading ${basenameForDisplay(path)}`
+  }
+
+  if (name === 'process' && isPlainObject(args)) {
+    const action = typeof args.action === 'string' ? args.action.trim() : ''
+    if (action === 'poll') return 'Waiting for command output'
+  }
+
+  if (name === 'exec' && isPlainObject(args)) {
+    const command = typeof args.command === 'string' ? args.command.trim() : ''
+    return summarizeShellCommandPurpose(command)
+  }
+
+  return summarizeToolNamePurpose(name)
+}
+
+function summarizeShellCommandPurpose(command: string): string | undefined {
+  if (!command) return undefined
+  const first = command.split(/\r?\n/)[0]?.trim() ?? ''
+  if (/\bmcporter\s+call\s+--help\b/.test(first)) return 'Checking Bakin tool call syntax'
+  const mcporterCall = first.match(/\bmcporter\s+call\s+([^\s]+)/)
+  if (mcporterCall) {
+    const tool = mcporterCall[1].split('.').pop() ?? mcporterCall[1]
+    return summarizeToolNamePurpose(tool) ?? 'Calling a Bakin tool'
+  }
+  if (/\bmcporter\s+list\b/.test(first)) return 'Inspecting available Bakin tools'
+  if (/\bgh\s+issue\b/.test(first)) return 'Checking GitHub issues'
+  if (/\bgh\s+pr\b/.test(first)) return 'Checking GitHub pull requests'
+  if (/^python3?\s+-\s*<<|^python3?\s+-c\b/.test(first)) return 'Preparing structured tool arguments'
+  if (/^cat\s+>\s+\/tmp\//.test(first)) return 'Preparing a temporary helper script'
+  return undefined
+}
+
+function summarizeToolNamePurpose(toolName: string): string | undefined {
+  if (/^bakin_exec_projects_get$/.test(toolName)) return 'Reading project details'
+  if (/^bakin_exec_projects_apply_plan$/.test(toolName)) return 'Applying confirmed project plan'
+  if (/^bakin_exec_projects_update$/.test(toolName)) return 'Updating project details'
+  if (/^bakin_exec_projects_add_item$/.test(toolName)) return 'Adding a project checklist item'
+  if (/^bakin_exec_projects_(list|search)$/.test(toolName)) return 'Inspecting projects'
+  if (/^bakin_exec_messaging_/.test(toolName)) return 'Updating messaging content'
+  return undefined
+}
+
+function summarizeRuntimeToolPurpose(toolName: string, inputPreview: string | undefined): string | undefined {
+  if (toolName === 'exec' && inputPreview) {
+    const parsed = parseJsonObject(inputPreview)
+    const command = typeof parsed?.command === 'string' ? parsed.command : inputPreview
+    return summarizeShellCommandPurpose(command)
+  }
+  if (toolName === 'read' && inputPreview) {
+    const parsed = parseJsonObject(inputPreview)
+    const path = typeof parsed?.path === 'string' ? parsed.path : undefined
+    if (path) return summarizeOpenClawToolPurpose('read', { path })
+  }
+  return summarizeToolNamePurpose(toolName)
+}
+
+function basenameForDisplay(path: string): string {
+  const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '')
+  return normalized.split('/').pop() || normalized
 }
 
 function firstLine(value: string): string {
@@ -1717,10 +1787,14 @@ function parseActivityChunk(parsed: {
     }
     if (kind === 'tool_call' || kind === 'tool') {
       const toolActivity = normalizeRuntimeToolActivity(parsed.activity.data, 'call')
+      const data = withRuntimeToolSummary(
+        toolActivity ?? fallbackToolActivity(parsed.activity.data, 'call'),
+        parsed.activity.content,
+      )
       return {
         type: 'tool',
         content: parsed.activity.content || describeToolPayload(toolActivity ?? parsed.activity.data),
-        data: toolActivity ?? fallbackToolActivity(parsed.activity.data, 'call'),
+        data,
       }
     }
   }
@@ -1736,10 +1810,14 @@ function parseActivityChunk(parsed: {
   if (frameKind === 'tool' || frameKind === 'tool_call') {
     const payload = parsed.data ?? parsed.tool ?? parsed.tool_call ?? parsed.toolCall
     const toolActivity = normalizeRuntimeToolActivity(payload, 'call')
+    const data = withRuntimeToolSummary(
+      toolActivity ?? fallbackToolActivity(payload, 'call'),
+      parsed.content,
+    )
     return {
       type: 'tool',
       content: parsed.content || describeToolPayload(toolActivity ?? payload),
-      data: toolActivity ?? fallbackToolActivity(payload, 'call'),
+      data,
     }
   }
 
@@ -1772,6 +1850,11 @@ function fallbackToolActivity(payload: unknown, phase: RuntimeToolActivity['phas
     toolName: describeToolPayload(payload),
     status: phase === 'call' ? 'running' : 'completed',
   }
+}
+
+function withRuntimeToolSummary(activity: RuntimeToolActivity, summary: string | undefined): RuntimeToolActivity {
+  if (!summary || activity.summary) return activity
+  return { ...activity, summary }
 }
 
 function metadataFromUnknown(value: unknown): RuntimeMetadata | undefined {
@@ -1825,12 +1908,20 @@ function normalizeRuntimeToolActivity(payload: unknown, fallbackPhase: RuntimeTo
     payload.resultPreview,
     payload.output !== undefined ? previewUnknown(payload.output) : undefined,
   )
+  const summary = firstString(
+    payload.summary,
+    payload.purpose,
+    payload.displayLabel,
+  ) ?? (phase === 'call'
+    ? summarizeRuntimeToolPurpose(toolName, inputPreview)
+    : undefined)
 
   return {
     phase,
     ...(callId ? { callId } : {}),
     toolName,
     status,
+    ...(summary ? { summary } : {}),
     ...(inputPreview ? { inputPreview } : {}),
     ...(outputPreview ? { outputPreview } : {}),
     ...(typeof payload.durationMs === 'number' ? { durationMs: payload.durationMs } : {}),

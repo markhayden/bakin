@@ -64,6 +64,7 @@ export interface RuntimeToolActivity {
   callId?: string
   toolName: string
   status?: 'running' | 'completed' | 'failed' | string
+  summary?: string
   inputPreview?: string
   outputPreview?: string
   durationMs?: number
