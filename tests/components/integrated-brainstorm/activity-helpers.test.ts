@@ -6,6 +6,7 @@ import {
   toBrainstormTimeline,
 } from '@/components/integrated-brainstorm'
 import type { BrainstormMessage } from '@/components/integrated-brainstorm'
+import { runtimeChunkToBrainstormActivity as runtimeChunkToBrainstormActivityFromUtils } from '@bakin/sdk/utils'
 import type { RuntimeChatChunk } from '@bakin/sdk/types'
 
 function sseResponse(events: Array<{ event: string; data: unknown }>): Response {
@@ -37,6 +38,11 @@ describe('brainstorm activity helpers', () => {
     }
 
     expect(runtimeChunkToBrainstormActivity(chunk)).toEqual({
+      kind: 'tool_call',
+      content: 'exec: gh issue list',
+      data: chunk.data,
+    })
+    expect(runtimeChunkToBrainstormActivityFromUtils(chunk)).toEqual({
       kind: 'tool_call',
       content: 'exec: gh issue list',
       data: chunk.data,
@@ -140,7 +146,9 @@ describe('readBrainstormSseResponse', () => {
         onCustom: (event, data) => custom.push({ event, data }),
       },
       {
-        onCustomEvent: (event, data) => sideEffects.push({ event, data }),
+        onCustomEvent: (event, data) => {
+          sideEffects.push({ event, data })
+        },
       },
     )
 
@@ -161,5 +169,28 @@ describe('readBrainstormSseResponse', () => {
         onToken: () => {},
       },
     )).rejects.toThrow('runtime rejected')
+  })
+
+  it('lets callers own custom event handling when needed', async () => {
+    const custom: Array<{ event: string; data: unknown }> = []
+    const sideEffects: Array<{ event: string; data: unknown }> = []
+
+    await readBrainstormSseResponse(
+      sseResponse([{ event: 'proposals', data: { proposals: [{ id: 'p1' }] } }]),
+      {
+        signal: new AbortController().signal,
+        onToken: () => {},
+        onCustom: (event, data) => custom.push({ event, data }),
+      },
+      {
+        onCustomEvent: (event, data) => {
+          sideEffects.push({ event, data })
+          return true
+        },
+      },
+    )
+
+    expect(sideEffects).toEqual([{ event: 'proposals', data: { proposals: [{ id: 'p1' }] } }])
+    expect(custom).toEqual([])
   })
 })

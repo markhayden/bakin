@@ -7,3 +7,14 @@
  */
 export { cn } from '@/lib/utils'
 export { formatAge, formatSize, isStale } from '@bakin/core/format'
+export {
+  brainstormActivityMessageFromCustom,
+  runtimeChunkToBrainstormActivity,
+  toBrainstormTimeline,
+} from '@/components/integrated-brainstorm/activity'
+export type {
+  BrainstormActivityInput,
+  BrainstormTimelineActivityInput,
+  BrainstormTimelineMessageInput,
+} from '@/components/integrated-brainstorm/activity'
+export { readBrainstormSseResponse } from '@/components/integrated-brainstorm/sse'
