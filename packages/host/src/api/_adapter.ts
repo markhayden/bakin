@@ -68,10 +68,10 @@ export async function dispatchWebHandler(
       nodeHeaders[key] = value
     })
     res.writeHead(webRes.status, nodeHeaders)
+    res.flushHeaders?.()
 
     if (webRes.body) {
-      const buf = Buffer.from(await webRes.arrayBuffer())
-      res.end(buf)
+      await writeWebResponseBody(res, webRes.body)
     } else {
       res.end()
     }
@@ -83,5 +83,26 @@ export async function dispatchWebHandler(
         error: err instanceof Error ? err.message : String(err),
       }))
     }
+  }
+}
+
+async function writeWebResponseBody(
+  res: ServerResponse,
+  body: ReadableStream<Uint8Array>,
+): Promise<void> {
+  const reader = body.getReader()
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (!value || value.byteLength === 0) continue
+      const canContinue = res.write(Buffer.from(value))
+      if (!canContinue) {
+        await new Promise<void>((resolve) => res.once('drain', resolve))
+      }
+    }
+    res.end()
+  } finally {
+    reader.releaseLock()
   }
 }

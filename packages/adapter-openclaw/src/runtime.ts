@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
@@ -71,6 +71,8 @@ const TRANSIENT_FETCH_CODES = new Set([
 ])
 
 const SEND_MESSAGE_RETRY_BACKOFF_MS = [1000, 2000]
+const OPENCLAW_SESSION_ACTIVITY_POLL_MS = 200
+const OPENCLAW_ACTIVITY_PREVIEW_CHARS = 500
 const OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS = 600000
 const OPENCLAW_PLUGIN_APPROVAL_REF_PREFIX = 'openclaw-plugin-approval:'
 const OPENCLAW_PLUGIN_ID = 'bakin'
@@ -140,6 +142,17 @@ interface OpenClawModelListJson {
     tags?: string[]
     missing?: boolean
   }>
+}
+
+interface OpenClawSessionStoreEntry {
+  sessionId?: string
+  sessionFile?: string
+}
+
+interface OpenClawSessionActivityCursor {
+  sessionFile?: string
+  offset: number
+  partial: string
 }
 
 export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
@@ -879,7 +892,31 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   private async *streamChat(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): AsyncIterable<ChatChunk> {
+    const primary = this.fetchAndReadChatCompletionStream(opts)
+    if (!opts.sessionKey) {
+      yield* primary
+      return
+    }
+
+    const activityCursor = opts.sessionKey
+      ? createOpenClawSessionActivityCursor(opts.agentId, opts.sessionKey)
+      : null
+    if (!activityCursor) {
+      yield* primary
+      return
+    }
+
+    const activityAbort = new AbortController()
+    const activity = watchOpenClawSessionActivity(opts.agentId, opts.sessionKey, activityCursor, activityAbort.signal)
+    yield* mergeChatStreams(primary, activity, () => activityAbort.abort())
+  }
+
+  private async *fetchAndReadChatCompletionStream(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): AsyncIterable<ChatChunk> {
     const response = await this.fetchChat(opts, true)
+    yield* this.readChatCompletionStream(response)
+  }
+
+  private async *readChatCompletionStream(response: Response): AsyncIterable<ChatChunk> {
     const reader = response.body?.getReader()
     if (!reader) return
     const decoder = new TextDecoder()
@@ -1352,6 +1389,262 @@ function readPath(source: Record<string, unknown>, key: string): unknown {
   return current
 }
 
+async function* mergeChatStreams(
+  primary: AsyncIterable<ChatChunk>,
+  secondary: AsyncIterable<ChatChunk>,
+  stopSecondary: () => void,
+): AsyncIterable<ChatChunk> {
+  type QueueItem =
+    | { source: 'primary' | 'secondary'; chunk: ChatChunk }
+    | { source: 'primary' | 'secondary'; done: true }
+    | { source: 'primary' | 'secondary'; error: unknown }
+
+  const queue: QueueItem[] = []
+  let notify: (() => void) | null = null
+  const push = (item: QueueItem): void => {
+    queue.push(item)
+    notify?.()
+    notify = null
+  }
+
+  const pump = async (source: 'primary' | 'secondary', iterable: AsyncIterable<ChatChunk>): Promise<void> => {
+    try {
+      for await (const chunk of iterable) {
+        if (source === 'primary' && chunk.type === 'done') {
+          push({ source, done: true })
+          return
+        }
+        push({ source, chunk })
+      }
+      push({ source, done: true })
+    } catch (error) {
+      push({ source, error })
+    }
+  }
+
+  void pump('primary', primary)
+  void pump('secondary', secondary)
+
+  let primaryDone = false
+  let secondaryDone = false
+  while (!primaryDone || !secondaryDone) {
+    if (queue.length === 0) {
+      await new Promise<void>((resolve) => { notify = resolve })
+    }
+    const item = queue.shift()
+    if (!item) continue
+    if ('error' in item) {
+      if (item.source === 'primary') stopSecondary()
+      throw item.error
+    }
+    if ('done' in item) {
+      if (item.source === 'primary') {
+        primaryDone = true
+        stopSecondary()
+      } else {
+        secondaryDone = true
+      }
+      continue
+    }
+    yield item.chunk
+  }
+
+  yield { type: 'done' }
+}
+
+async function* watchOpenClawSessionActivity(
+  agentId: string,
+  sessionKey: string,
+  cursor: OpenClawSessionActivityCursor,
+  signal: AbortSignal,
+): AsyncIterable<ChatChunk> {
+  while (true) {
+    for (const chunk of readOpenClawSessionActivity(agentId, sessionKey, cursor)) {
+      yield chunk
+    }
+    if (signal.aborted) break
+    await sleep(OPENCLAW_SESSION_ACTIVITY_POLL_MS)
+  }
+
+  for (const chunk of readOpenClawSessionActivity(agentId, sessionKey, cursor)) {
+    yield chunk
+  }
+}
+
+function createOpenClawSessionActivityCursor(agentId: string, sessionKey: string): OpenClawSessionActivityCursor {
+  const sessionFile = resolveOpenClawSessionFile(agentId, sessionKey)
+  return {
+    sessionFile,
+    offset: sessionFile ? safeFileSize(sessionFile) : 0,
+    partial: '',
+  }
+}
+
+function readOpenClawSessionActivity(
+  agentId: string,
+  sessionKey: string,
+  cursor: OpenClawSessionActivityCursor,
+): ChatChunk[] {
+  if (!cursor.sessionFile) {
+    cursor.sessionFile = resolveOpenClawSessionFile(agentId, sessionKey)
+    cursor.offset = 0
+    cursor.partial = ''
+  }
+  if (!cursor.sessionFile) return []
+
+  const next = readFileTail(cursor.sessionFile, cursor.offset)
+  if (!next) return []
+  cursor.offset = next.offset
+
+  const text = cursor.partial + next.text
+  const lines = text.split('\n')
+  cursor.partial = lines.pop() ?? ''
+
+  const chunks: ChatChunk[] = []
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    const parsed = parseJsonObject(trimmed)
+    if (parsed) chunks.push(...activityChunksFromOpenClawTranscriptRecord(parsed))
+  }
+  return chunks
+}
+
+function resolveOpenClawSessionFile(agentId: string, sessionKey: string): string | undefined {
+  const storePath = join(getOpenClawHome(), 'agents', agentId, 'sessions', 'sessions.json')
+  const store = readJsonFile<Record<string, OpenClawSessionStoreEntry>>(storePath)
+  const entry = store?.[sessionKey]
+  if (!entry) return undefined
+  if (typeof entry.sessionFile === 'string' && entry.sessionFile.length > 0) return entry.sessionFile
+  if (typeof entry.sessionId === 'string' && entry.sessionId.length > 0) {
+    return join(getOpenClawHome(), 'agents', agentId, 'sessions', `${entry.sessionId}.jsonl`)
+  }
+  return undefined
+}
+
+function safeFileSize(path: string): number {
+  try {
+    return statSync(path).size
+  } catch {
+    return 0
+  }
+}
+
+function readFileTail(path: string, offset: number): { text: string; offset: number } | null {
+  let size: number
+  try {
+    size = statSync(path).size
+  } catch {
+    return null
+  }
+  if (size < offset) offset = 0
+  if (size === offset) return null
+  const length = size - offset
+  const buffer = Buffer.alloc(length)
+  let fd: number | undefined
+  try {
+    fd = openSync(path, 'r')
+    const bytesRead = readSync(fd, buffer, 0, length, offset)
+    return { text: buffer.subarray(0, bytesRead).toString('utf-8'), offset: offset + bytesRead }
+  } catch {
+    return null
+  } finally {
+    if (fd !== undefined) closeSync(fd)
+  }
+}
+
+function activityChunksFromOpenClawTranscriptRecord(record: Record<string, unknown>): ChatChunk[] {
+  if (record.type !== 'message') return []
+  const message = record.message
+  if (!isPlainObject(message)) return []
+  const role = message.role
+  if (role === 'assistant') return activityChunksFromAssistantMessage(message)
+  if (role === 'toolResult') return activityChunkFromToolResultMessage(message)
+  return []
+}
+
+function activityChunksFromAssistantMessage(message: Record<string, unknown>): ChatChunk[] {
+  const content = Array.isArray(message.content) ? message.content : []
+  const chunks: ChatChunk[] = []
+  for (const part of content) {
+    if (!isPlainObject(part) || part.type !== 'toolCall') continue
+    const name = typeof part.name === 'string' && part.name.length > 0 ? part.name : 'tool'
+    const args = part.arguments
+    chunks.push({
+      type: 'tool',
+      content: summarizeOpenClawToolCall(name, args),
+      data: {
+        phase: 'call',
+        id: typeof part.id === 'string' ? part.id : undefined,
+        name,
+        argumentsPreview: previewUnknown(args),
+      },
+    })
+  }
+  return chunks
+}
+
+function activityChunkFromToolResultMessage(message: Record<string, unknown>): ChatChunk[] {
+  const toolName = typeof message.toolName === 'string' && message.toolName.length > 0 ? message.toolName : 'tool'
+  const details = isPlainObject(message.details) ? message.details : {}
+  const status = typeof details.status === 'string' ? details.status : undefined
+  const label = status ? `${toolName} ${status}` : `${toolName} finished`
+  return [{
+    type: 'tool',
+    content: label,
+    data: {
+      phase: 'result',
+      toolName,
+      toolCallId: typeof message.toolCallId === 'string' ? message.toolCallId : undefined,
+      status,
+      exitCode: typeof details.exitCode === 'number' ? details.exitCode : undefined,
+      durationMs: typeof details.durationMs === 'number' ? details.durationMs : undefined,
+      outputPreview: previewUnknown(message.content),
+    },
+  }]
+}
+
+function summarizeOpenClawToolCall(name: string, args: unknown): string {
+  if (isPlainObject(args)) {
+    const command = args.command
+    if (name === 'exec' && typeof command === 'string' && command.trim()) {
+      return `exec: ${firstLine(command)}`
+    }
+    const path = args.path
+    if (name === 'read' && typeof path === 'string' && path.trim()) {
+      return `read: ${truncateMiddle(path.trim(), 140)}`
+    }
+    const action = args.action
+    if (name === 'process' && typeof action === 'string' && action.trim()) {
+      return `process: ${action.trim()}`
+    }
+  }
+  return name
+}
+
+function firstLine(value: string): string {
+  return truncateMiddle(redactSensitiveText(value.trim().split(/\r?\n/)[0] ?? ''), 160)
+}
+
+function previewUnknown(value: unknown): string {
+  const raw = typeof value === 'string' ? value : JSON.stringify(value)
+  return truncateMiddle(redactSensitiveText(raw ?? ''), OPENCLAW_ACTIVITY_PREVIEW_CHARS)
+}
+
+function truncateMiddle(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value
+  const head = Math.max(1, Math.floor((maxChars - 3) * 0.65))
+  const tail = Math.max(1, maxChars - 3 - head)
+  return `${value.slice(0, head)}...${value.slice(-tail)}`
+}
+
+function redactSensitiveText(value: string): string {
+  return value
+    .replace(/(authorization:\s*bearer\s+)[^\s"'`]+/gi, '$1[redacted]')
+    .replace(/(x-access-token:)[^\s"'`@]+/gi, '$1[redacted]')
+    .replace(/\b([A-Za-z0-9_]*(?:token|password|secret|api[_-]?key)[A-Za-z0-9_]*\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,}]+)/gi, '$1[redacted]')
+}
+
 function parseStreamFrame(frame: string): ChatChunk | null {
   const dataLines = frame
     .split('\n')
@@ -1366,16 +1659,115 @@ function parseStreamFrame(frame: string): ChatChunk | null {
   if (data === '[DONE]') return { type: 'done' }
   try {
     const parsed = JSON.parse(data) as {
-      choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>
-      error?: { message?: string }
+      type?: string
+      event?: string
+      content?: string
+      data?: unknown
+      activity?: { kind?: string; content?: string; data?: unknown }
+      tool?: unknown
+      tool_call?: unknown
+      toolCall?: unknown
+      choices?: Array<{
+        delta?: { content?: string; tool_calls?: unknown[] }
+        message?: { content?: string; tool_calls?: unknown[] }
+      }>
+      error?: { message?: string } | string
     }
-    const error = parsed.error?.message
+    const error = typeof parsed.error === 'string' ? parsed.error : parsed.error?.message
     if (error) return { type: 'error', content: error }
+    const activity = parseActivityChunk(parsed)
+    if (activity) return activity
     const content = parsed.choices?.[0]?.delta?.content ?? parsed.choices?.[0]?.message?.content
     return content ? { type: 'text', content } : null
   } catch {
     return data ? { type: 'text', content: data } : null
   }
+}
+
+function parseActivityChunk(parsed: {
+  type?: string
+  event?: string
+  content?: string
+  data?: unknown
+  activity?: { kind?: string; content?: string; data?: unknown }
+  tool?: unknown
+  tool_call?: unknown
+  toolCall?: unknown
+  choices?: Array<{
+    delta?: { tool_calls?: unknown[] }
+    message?: { tool_calls?: unknown[] }
+  }>
+}): ChatChunk | null {
+  if (parsed.activity) {
+    const kind = parsed.activity.kind
+    if (kind === 'runtime_status' || kind === 'status') {
+      return {
+        type: 'status',
+        content: parsed.activity.content || 'Agent status update',
+        data: parsed.activity.data,
+      }
+    }
+    if (kind === 'tool_call' || kind === 'tool') {
+      return {
+        type: 'tool',
+        content: parsed.activity.content || describeToolPayload(parsed.activity.data),
+        data: parsed.activity.data,
+      }
+    }
+  }
+
+  const frameKind = parsed.type ?? parsed.event
+  if (frameKind === 'status' || frameKind === 'runtime_status') {
+    return {
+      type: 'status',
+      content: parsed.content || 'Agent status update',
+      data: parsed.data,
+    }
+  }
+  if (frameKind === 'tool' || frameKind === 'tool_call') {
+    return {
+      type: 'tool',
+      content: parsed.content || describeToolPayload(parsed.data ?? parsed.tool ?? parsed.tool_call ?? parsed.toolCall),
+      data: parsed.data ?? parsed.tool ?? parsed.tool_call ?? parsed.toolCall,
+    }
+  }
+
+  const toolCalls = parsed.choices?.[0]?.delta?.tool_calls ?? parsed.choices?.[0]?.message?.tool_calls
+  if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+    return {
+      type: 'tool',
+      content: describeToolPayload(toolCalls),
+      data: { toolCalls },
+    }
+  }
+
+  const toolPayload = parsed.tool ?? parsed.tool_call ?? parsed.toolCall
+  if (toolPayload !== undefined) {
+    return {
+      type: 'tool',
+      content: parsed.content || describeToolPayload(toolPayload),
+      data: toolPayload,
+    }
+  }
+
+  return null
+}
+
+function describeToolPayload(payload: unknown): string {
+  if (Array.isArray(payload)) {
+    const first = payload[0]
+    const label = describeToolPayload(first)
+    return payload.length > 1 ? `${label} + ${payload.length - 1} more` : label
+  }
+  if (isPlainObject(payload)) {
+    const functionValue = payload.function
+    if (isPlainObject(functionValue) && typeof functionValue.name === 'string') return functionValue.name
+    for (const key of ['name', 'tool', 'toolName', 'id']) {
+      const value = payload[key]
+      if (typeof value === 'string' && value.length > 0) return value
+    }
+  }
+  return 'Tool call'
 }
 
 function parseJsonObject(raw: string): Record<string, unknown> | null {

@@ -1,5 +1,6 @@
 'use client'
 
+import { AlertTriangle, CircleDot, Wrench } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { AgentAvatar, MarkdownContent } from '@bakin/sdk/components'
 import { useAgentColor } from '@bakin/sdk/hooks'
@@ -21,6 +22,9 @@ export function MessageList({ messages, defaultAgentId, transform }: MessageList
         if (msg.role === 'user') {
           return <UserBubble key={msg.id} content={msg.content} />
         }
+        if (msg.role === 'activity') {
+          return <ActivityBubble key={msg.id} message={msg} />
+        }
         const prev = idx > 0 ? messages[idx - 1] : null
         const isConsecutive = prev?.role === 'assistant'
         const transformed = transform ? transform(msg.content) : { text: msg.content }
@@ -34,6 +38,47 @@ export function MessageList({ messages, defaultAgentId, transform }: MessageList
           />
         )
       })}
+    </div>
+  )
+}
+
+function formatActivityData(data: unknown): string | null {
+  if (data === undefined || data === null) return null
+  try {
+    return JSON.stringify(data, null, 2)
+  } catch {
+    return String(data)
+  }
+}
+
+function ActivityBubble({ message }: { message: BrainstormMessage }) {
+  const data = formatActivityData(message.data)
+  const kind = message.kind ?? 'runtime_status'
+  const Icon = kind === 'tool_call' ? Wrench : kind === 'error' ? AlertTriangle : CircleDot
+  const label = kind === 'tool_call' ? 'Tool' : kind === 'error' ? 'Error' : 'Status'
+
+  return (
+    <div
+      data-testid="activity-bubble"
+      className="ml-8 flex items-start gap-2 text-[11px] leading-5 text-zinc-500"
+    >
+      <Icon className="mt-0.5 size-3 shrink-0 text-zinc-600" aria-hidden="true" />
+      <div className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+          <span className="font-medium uppercase tracking-wide text-zinc-600">{label}</span>
+          <span className="break-words text-zinc-400">{message.content}</span>
+        </div>
+        {data && (
+          <details className="mt-1">
+            <summary className="cursor-pointer select-none text-zinc-600 hover:text-zinc-400">
+              Details
+            </summary>
+            <pre className="mt-1 max-h-40 overflow-auto rounded border border-[rgba(255,255,255,0.06)] bg-zinc-950/60 p-2 text-[10px] leading-4 text-zinc-500">
+              {data}
+            </pre>
+          </details>
+        )}
+      </div>
     </div>
   )
 }

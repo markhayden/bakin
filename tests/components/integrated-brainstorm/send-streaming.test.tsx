@@ -154,6 +154,37 @@ describe('IntegratedBrainstorm — send state machine & streaming', () => {
     })
   })
 
+  it('renders custom activity events during send and preserves them after final reply', async () => {
+    const fake = createFakeOnSend()
+    render(<Harness fake={fake} />)
+    const textarea = screen.getByLabelText(/Ask Pixel/) as HTMLTextAreaElement
+    act(() => {
+      type(textarea, 'inspect')
+      pressEnter(textarea)
+    })
+    await waitFor(() => fake.isPending())
+    act(() => {
+      fake.emitCustom('activity', {
+        activity: {
+          id: 'act1',
+          kind: 'tool_call',
+          content: 'Read project file',
+          data: { tool: 'bakin_exec_projects_get' },
+        },
+      })
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('activity-bubble').textContent).toContain('Read project file')
+    })
+    act(() => {
+      fake.resolve('All set')
+    })
+    await waitFor(() => {
+      expect(screen.getByText('All set')).toBeDefined()
+      expect(screen.getByTestId('activity-bubble').textContent).toContain('Read project file')
+    })
+  })
+
   it('falls back to accumulated content when resolve content is empty', async () => {
     const fake = createFakeOnSend()
     render(<Harness fake={fake} />)
