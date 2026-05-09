@@ -155,6 +155,10 @@ describe('IntegratedBrainstorm — message list rendering', () => {
     expect(activity!.textContent).toContain('exec: set -e')
     expect(activity!.querySelector('div[style*="border-left-color"]')).toBeTruthy()
     expect(activity!.querySelector('details')?.open).toBe(false)
+    const detailsToggle = activity!.querySelector('[data-testid="activity-details-toggle"]') as HTMLElement
+    expect(detailsToggle).toBeTruthy()
+    expect(detailsToggle.className).toContain('absolute')
+    expect(detailsToggle.className).toContain('right-0')
   })
 
   it('prefers runtime tool summaries for visible activity text', () => {
