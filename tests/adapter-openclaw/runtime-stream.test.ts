@@ -69,7 +69,15 @@ describe('OpenClaw runtime stream parsing', () => {
   it('preserves OpenClaw status and tool frames as chat chunks', async () => {
     globalThis.fetch = mock(async () => sseResponse([
       { type: 'status', content: 'Checking project notes' },
-      { type: 'tool', content: 'Read project file', data: { tool: 'bakin_exec_projects_get' } },
+      {
+        type: 'tool',
+        content: 'Read project file',
+        data: {
+          phase: 'call',
+          toolName: 'bakin_exec_projects_get',
+          status: 'running',
+        },
+      },
       { choices: [{ delta: { content: 'Done.' } }] },
     ])) as unknown as typeof fetch
 
@@ -84,7 +92,15 @@ describe('OpenClaw runtime stream parsing', () => {
 
     expect(chunks).toEqual([
       { type: 'status', content: 'Checking project notes', data: undefined },
-      { type: 'tool', content: 'Read project file', data: { tool: 'bakin_exec_projects_get' } },
+      {
+        type: 'tool',
+        content: 'Read project file',
+        data: {
+          phase: 'call',
+          toolName: 'bakin_exec_projects_get',
+          status: 'running',
+        },
+      },
       { type: 'text', content: 'Done.' },
       { type: 'done' },
     ])
@@ -118,11 +134,11 @@ describe('OpenClaw runtime stream parsing', () => {
       type: 'tool',
       content: 'bakin_exec_projects_get',
       data: {
-        toolCalls: [{
-          id: 'call-1',
-          type: 'function',
-          function: { name: 'bakin_exec_projects_get', arguments: '{"projectId":"p1"}' },
-        }],
+        phase: 'call',
+        callId: 'call-1',
+        toolName: 'bakin_exec_projects_get',
+        status: 'running',
+        inputPreview: '{"projectId":"p1"}',
       },
     })
   })
@@ -185,9 +201,10 @@ describe('OpenClaw runtime stream parsing', () => {
         content: 'exec: gh issue list --repo markhayden/bakin --search messaging',
         data: {
           phase: 'call',
-          id: 'call-1',
-          name: 'exec',
-          argumentsPreview: '{"command":"gh issue list --repo markhayden/bakin --search messaging"}',
+          callId: 'call-1',
+          toolName: 'exec',
+          status: 'running',
+          inputPreview: '{"command":"gh issue list --repo markhayden/bakin --search messaging"}',
         },
       },
       {
@@ -196,7 +213,7 @@ describe('OpenClaw runtime stream parsing', () => {
         data: {
           phase: 'result',
           toolName: 'exec',
-          toolCallId: 'call-1',
+          callId: 'call-1',
           status: 'completed',
           exitCode: 0,
           durationMs: 12,
@@ -273,9 +290,10 @@ describe('OpenClaw runtime stream parsing', () => {
         content: 'read: /tmp/project.md',
         data: {
           phase: 'call',
-          id: 'call-2',
-          name: 'read',
-          argumentsPreview: '{"path":"/tmp/project.md"}',
+          callId: 'call-2',
+          toolName: 'read',
+          status: 'running',
+          inputPreview: '{"path":"/tmp/project.md"}',
         },
       })
     }

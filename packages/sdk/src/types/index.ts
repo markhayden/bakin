@@ -344,10 +344,22 @@ export interface RuntimeMessageResult {
   metadata?: Record<string, unknown>
 }
 
+export interface RuntimeToolActivity {
+  phase: 'call' | 'result'
+  callId?: string
+  toolName: string
+  status?: 'running' | 'completed' | 'failed' | string
+  inputPreview?: string
+  outputPreview?: string
+  durationMs?: number
+  exitCode?: number
+  metadata?: Record<string, unknown>
+}
+
 export interface RuntimeChatChunk {
   type: 'text' | 'tool' | 'status' | 'done' | 'error'
   content?: string
-  data?: unknown
+  data?: Record<string, unknown> | RuntimeToolActivity
 }
 
 export interface CronJob {
