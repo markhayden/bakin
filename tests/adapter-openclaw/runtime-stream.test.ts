@@ -184,6 +184,44 @@ describe('OpenClaw runtime stream parsing', () => {
     })
   })
 
+  it('includes the URL in web_fetch tool summaries', async () => {
+    globalThis.fetch = mock(async () => sseResponse([
+      {
+        choices: [{
+          delta: {
+            tool_calls: [{
+              id: 'call-web',
+              type: 'function',
+              function: { name: 'web_fetch', arguments: '{"url":"https://example.com/docs?token=secret"}' },
+            }],
+          },
+        }],
+      },
+    ])) as unknown as typeof fetch
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const chunks = await collect(runtime.messaging.stream({
+      agentId: 'main',
+      content: 'hello',
+      threadId: 'thread-1',
+    }))
+
+    expect(chunks[0]).toEqual({
+      type: 'tool',
+      content: 'web_fetch',
+      data: {
+        phase: 'call',
+        callId: 'call-web',
+        toolName: 'web_fetch',
+        status: 'running',
+        summary: 'Fetching https://example.com/docs?token=[redacted]',
+        inputPreview: '{"url":"https://example.com/docs?token=[redacted]"}',
+      },
+    })
+  })
+
   it('emits OpenClaw transcript tool activity while the chat stream is pending', async () => {
     const sessionsDir = join(testDir, 'agents', 'main', 'sessions')
     mkdirSync(sessionsDir, { recursive: true })

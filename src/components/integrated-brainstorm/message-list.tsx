@@ -145,7 +145,7 @@ function ActivityBubble({ group, agentId }: { group: MessageItem; agentId: strin
     >
       <AgentAvatar agentId={agentId} size="sm" className="mt-0.5 shrink-0 opacity-85" />
       <div
-        className="max-w-[90%] rounded-lg border-l-2 bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm"
+        className="min-w-[50%] max-w-[90%] rounded-lg border-l-2 bg-[rgba(255,255,255,0.03)] px-3 py-2 text-sm"
         style={{ borderLeftColor: isError ? 'rgba(248, 113, 113, 0.8)' : `${color}80` }}
       >
         {view.kind === 'tool' ? (
