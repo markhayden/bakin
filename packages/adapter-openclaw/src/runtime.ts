@@ -1712,7 +1712,7 @@ function parseActivityChunk(parsed: {
       return {
         type: 'status',
         content: parsed.activity.content || 'Agent status update',
-        data: parsed.activity.data,
+        data: metadataFromUnknown(parsed.activity.data),
       }
     }
     if (kind === 'tool_call' || kind === 'tool') {
@@ -1730,7 +1730,7 @@ function parseActivityChunk(parsed: {
     return {
       type: 'status',
       content: parsed.content || 'Agent status update',
-      data: parsed.data,
+      data: metadataFromUnknown(parsed.data),
     }
   }
   if (frameKind === 'tool' || frameKind === 'tool_call') {
@@ -1772,6 +1772,11 @@ function fallbackToolActivity(payload: unknown, phase: RuntimeToolActivity['phas
     toolName: describeToolPayload(payload),
     status: phase === 'call' ? 'running' : 'completed',
   }
+}
+
+function metadataFromUnknown(value: unknown): RuntimeMetadata | undefined {
+  if (value === undefined) return undefined
+  return isPlainObject(value) ? value : { value }
 }
 
 function normalizeRuntimeToolActivity(payload: unknown, fallbackPhase: RuntimeToolActivity['phase']): RuntimeToolActivity | null {

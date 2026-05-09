@@ -1,5 +1,3 @@
-'use client'
-
 import type { RuntimeChatChunk } from '@bakin/sdk/types'
 import type { BrainstormMessage } from './types'
 

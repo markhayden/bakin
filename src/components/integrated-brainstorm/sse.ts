@@ -1,9 +1,7 @@
-'use client'
-
 import type { SendContext } from './types'
 
 interface BrainstormSseReadOptions {
-  onCustomEvent?: (event: string, data: unknown) => void
+  onCustomEvent?: (event: string, data: unknown) => boolean | void
 }
 
 interface SseFrame {
@@ -50,7 +48,7 @@ export async function readBrainstormSseResponse(
     if (frame.event === 'error') {
       throw new Error(textField(frame.data, 'message') || 'Unknown error')
     }
-    options.onCustomEvent?.(frame.event, frame.data)
+    if (options.onCustomEvent?.(frame.event, frame.data) === true) return
     ctx.onCustom?.(frame.event, frame.data)
   }
 
