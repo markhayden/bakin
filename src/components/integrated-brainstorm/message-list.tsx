@@ -1,6 +1,6 @@
 'use client'
 
-import { AlertTriangle, CheckCircle2, CircleDot, Clock3, Wrench, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, ChevronRight, CircleDot, Clock3, Wrench, XCircle } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { AgentAvatar, MarkdownContent } from '@bakin/sdk/components'
 import { useAgentColor } from '@bakin/sdk/hooks'
@@ -160,8 +160,9 @@ function ActivityBubble({ group, agentId }: { group: MessageItem; agentId: strin
 
 function ToolActivityContent({ view, icon }: { view: ToolActivityView; icon: ReactNode }) {
   const details = toolDetailSections(view)
+  const hasDetails = details.length > 0
   return (
-    <div className="min-w-0">
+    <div className={hasDetails ? 'relative min-w-0 pr-20' : 'min-w-0'}>
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
         <span className={isFailedTool(view) ? 'text-red-400' : 'text-zinc-500'}>{icon}</span>
         <span className="font-medium uppercase tracking-wide text-zinc-500">Tool</span>
@@ -181,39 +182,49 @@ function ToolActivityContent({ view, icon }: { view: ToolActivityView; icon: Rea
           {view.summary}
         </div>
       )}
-      {details.length > 0 && (
-        <details className="mt-2">
-          <summary className="cursor-pointer select-none text-[11px] text-zinc-500 hover:text-zinc-300">
-            Details
-          </summary>
-          <div className="mt-2 space-y-2">
-            {details.map((section) => (
-              <ActivityDetailSection key={section.label} label={section.label} value={section.value} />
-            ))}
-          </div>
-        </details>
+      {hasDetails && (
+        <InlineActivityDetails>
+          {details.map((section) => (
+            <ActivityDetailSection key={section.label} label={section.label} value={section.value} />
+          ))}
+        </InlineActivityDetails>
       )}
     </div>
   )
 }
 
 function GenericActivityContent({ view, icon }: { view: GenericActivityView; icon: ReactNode }) {
+  const hasDetails = view.data !== undefined
   return (
-    <div className="min-w-0">
+    <div className={hasDetails ? 'relative min-w-0 pr-20' : 'min-w-0'}>
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
         <span className={view.kind === 'error' ? 'text-red-400' : 'text-zinc-500'}>{icon}</span>
         <span className="font-medium uppercase tracking-wide text-zinc-500">{view.label}</span>
         <span className="break-words text-zinc-400">{view.summary}</span>
       </div>
-      {view.data !== undefined && (
-        <details className="mt-2">
-          <summary className="cursor-pointer select-none text-[11px] text-zinc-500 hover:text-zinc-300">
-            Details
-          </summary>
+      {hasDetails && (
+        <InlineActivityDetails>
           <ActivityDetailSection label="Data" value={view.data} />
-        </details>
+        </InlineActivityDetails>
       )}
     </div>
+  )
+}
+
+function InlineActivityDetails({ children }: { children: ReactNode }) {
+  return (
+    <details className="group">
+      <summary
+        data-testid="activity-details-toggle"
+        className="absolute right-0 top-0 inline-flex min-w-[4.5rem] cursor-pointer list-none items-center justify-end gap-1 rounded-sm text-[11px] leading-5 text-zinc-500 hover:text-zinc-300 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-blue-400 [&::-webkit-details-marker]:hidden"
+      >
+        <ChevronRight className="size-3 transition-transform group-open:rotate-90" aria-hidden="true" />
+        <span>Details</span>
+      </summary>
+      <div className="mt-2 space-y-2">
+        {children}
+      </div>
+    </details>
   )
 }
 
