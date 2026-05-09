@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import { appendFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -24,6 +24,23 @@ function sseResponse(frames: unknown[]): Response {
     status: 200,
     headers: { 'Content-Type': 'text/event-stream' },
   })
+}
+
+function delayedSseResponse(run: (controller: ReadableStreamDefaultController<Uint8Array>) => Promise<void>): Response {
+  const body = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      await run(controller)
+      controller.close()
+    },
+  })
+  return new Response(body, {
+    status: 200,
+    headers: { 'Content-Type': 'text/event-stream' },
+  })
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 describe('OpenClaw runtime stream parsing', () => {
@@ -108,5 +125,86 @@ describe('OpenClaw runtime stream parsing', () => {
         }],
       },
     })
+  })
+
+  it('emits OpenClaw transcript tool activity while the chat stream is pending', async () => {
+    const sessionsDir = join(testDir, 'agents', 'main', 'sessions')
+    mkdirSync(sessionsDir, { recursive: true })
+    const sessionFile = join(sessionsDir, 'session-1.jsonl')
+    writeFileSync(sessionFile, [
+      JSON.stringify({ type: 'session', id: 'session-1' }),
+      JSON.stringify({ type: 'message', message: { role: 'user', content: [{ type: 'text', text: 'before' }] } }),
+      '',
+    ].join('\n'), 'utf-8')
+    writeFileSync(join(sessionsDir, 'sessions.json'), JSON.stringify({
+      'thread-1': { sessionId: 'session-1', sessionFile },
+    }), 'utf-8')
+
+    const encoder = new TextEncoder()
+    globalThis.fetch = mock(async () => delayedSseResponse(async (controller) => {
+      await wait(20)
+      appendFileSync(sessionFile, `${JSON.stringify({
+        type: 'message',
+        message: {
+          role: 'assistant',
+          content: [{
+            type: 'toolCall',
+            id: 'call-1',
+            name: 'exec',
+            arguments: { command: 'gh issue list --repo markhayden/bakin --search messaging' },
+          }],
+        },
+      })}\n`)
+      appendFileSync(sessionFile, `${JSON.stringify({
+        type: 'message',
+        message: {
+          role: 'toolResult',
+          toolName: 'exec',
+          toolCallId: 'call-1',
+          content: [{ type: 'text', text: 'Found #190' }],
+          details: { status: 'completed', exitCode: 0, durationMs: 12 },
+        },
+      })}\n`)
+      await wait(260)
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: 'Done.' } }] })}\n\n`))
+      controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+    })) as unknown as typeof fetch
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const chunks = await collect(runtime.messaging.stream({
+      agentId: 'main',
+      content: 'hello',
+      threadId: 'thread-1',
+    }))
+
+    expect(chunks).toEqual([
+      {
+        type: 'tool',
+        content: 'exec: gh issue list --repo markhayden/bakin --search messaging',
+        data: {
+          phase: 'call',
+          id: 'call-1',
+          name: 'exec',
+          argumentsPreview: '{"command":"gh issue list --repo markhayden/bakin --search messaging"}',
+        },
+      },
+      {
+        type: 'tool',
+        content: 'exec completed',
+        data: {
+          phase: 'result',
+          toolName: 'exec',
+          toolCallId: 'call-1',
+          status: 'completed',
+          exitCode: 0,
+          durationMs: 12,
+          outputPreview: '[{"type":"text","text":"Found #190"}]',
+        },
+      },
+      { type: 'text', content: 'Done.' },
+      { type: 'done' },
+    ])
   })
 })
