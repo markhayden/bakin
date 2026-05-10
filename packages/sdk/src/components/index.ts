@@ -25,11 +25,16 @@ export type {
   SendContext,
   AssistantTransformed,
   BrainstormActivityInput,
+  BrainstormActivityStorageInput,
+  BrainstormActivityStorageRecord,
   BrainstormTimelineActivityInput,
   BrainstormTimelineMessageInput,
 } from '@/components/integrated-brainstorm'
 export {
   brainstormActivityMessageFromCustom,
+  brainstormThreadId,
+  normalizeBrainstormActivityForStorage,
+  normalizeBrainstormActivityMessageForStorage,
   readBrainstormSseResponse,
   runtimeChunkToBrainstormActivity,
   toBrainstormTimeline,

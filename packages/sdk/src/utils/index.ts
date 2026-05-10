@@ -12,9 +12,18 @@ export {
   runtimeChunkToBrainstormActivity,
   toBrainstormTimeline,
 } from '@/components/integrated-brainstorm/activity'
+export {
+  brainstormThreadId,
+  normalizeBrainstormActivityForStorage,
+  normalizeBrainstormActivityMessageForStorage,
+} from '@/components/integrated-brainstorm/session'
 export type {
   BrainstormActivityInput,
   BrainstormTimelineActivityInput,
   BrainstormTimelineMessageInput,
 } from '@/components/integrated-brainstorm/activity'
+export type {
+  BrainstormActivityStorageInput,
+  BrainstormActivityStorageRecord,
+} from '@/components/integrated-brainstorm/session'
 export { readBrainstormSseResponse } from '@/components/integrated-brainstorm/sse'

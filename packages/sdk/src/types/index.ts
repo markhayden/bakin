@@ -334,6 +334,10 @@ export interface RuntimeChannel {
 export interface RuntimeMessageArgs {
   agentId: string
   content: string
+  /**
+   * Adapter-neutral durable conversation key. Runtime adapters should map the
+   * same agentId + threadId pair to the same provider/runtime session.
+   */
   threadId?: string
   metadata?: Record<string, unknown>
 }

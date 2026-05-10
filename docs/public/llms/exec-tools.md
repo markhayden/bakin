@@ -972,11 +972,9 @@ mcporter call bakin-<agent>.bakin_exec_post_channel --args '{
 }'
 ```
 
-## Project
+## Projects
 
-Project tools let agents create, update, read, and maintain project specs and linked checklist items.
-
-### bakin_exec_project_add_item
+### bakin_exec_projects_add_item
 
 Label: Added project item
 Purpose: Add a new checklist item to a project.
@@ -989,13 +987,44 @@ Purpose: Add a new checklist item to a project.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_project_add_item --args '{
+mcporter call bakin-<agent>.bakin_exec_projects_add_item --args '{
   "projectId": "value",
   "title": "value"
 }'
 ```
 
-### bakin_exec_project_ask
+### bakin_exec_projects_apply_plan
+
+Label: Applied a project plan
+Purpose: Apply a confirmed project plan update in one operation. Use this after the user confirms exact body/checklist changes so agents do not need shell scripts or multiple low-level calls.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `projectId` | string | yes | Project ID |
+| `title` | string | no | Optional new project title |
+| `status` | choice | no | Optional new status |
+| `body` | string | no | Replacement markdown body for the project plan |
+| `appendBody` | string | no | Markdown to append to the existing project body; cannot be combined with body |
+| `owner` | string | no | Optional new owner |
+| `checklistItems` | array | no | New unchecked checklist item titles to append |
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_projects_apply_plan --args '{
+  "projectId": "value",
+  "title": "value",
+  "status": "value",
+  "body": "value",
+  "appendBody": "value",
+  "owner": "value",
+  "checklistItems": [
+    "value"
+  ]
+}'
+```
+
+### bakin_exec_projects_ask
 
 Label: Asked project question
 Purpose: Ask an agent a question about a project. Sends the project context (spec, checklist, assets) along with the message to the agent for brainstorming.
@@ -1009,17 +1038,17 @@ Purpose: Ask an agent a question about a project. Sends the project context (spe
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_project_ask --args '{
+mcporter call bakin-<agent>.bakin_exec_projects_ask --args '{
   "projectId": "value",
   "message": "value",
   "agent": "value"
 }'
 ```
 
-### bakin_exec_project_attach_asset
+### bakin_exec_projects_attach_asset
 
 Label: Attached asset to project
-Purpose: Attach an existing asset to a project by filename. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in project_get — use asset tools to read full content when needed.
+Purpose: Attach an existing asset to a project by filename. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in projects_get — use asset tools to read full content when needed.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1030,14 +1059,14 @@ Purpose: Attach an existing asset to a project by filename. Assets provide addit
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_project_attach_asset --args '{
+mcporter call bakin-<agent>.bakin_exec_projects_attach_asset --args '{
   "projectId": "value",
   "filename": "value",
   "label": "value"
 }'
 ```
 
-### bakin_exec_project_create
+### bakin_exec_projects_create
 
 Label: Created a project
 Purpose: Create a new project with title, markdown body, and optional initial checklist items. Returns project ID and generated task item IDs.
@@ -1052,7 +1081,7 @@ Purpose: Create a new project with title, markdown body, and optional initial ch
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_project_create --args '{
+mcporter call bakin-<agent>.bakin_exec_projects_create --args '{
   "title": "value",
   "body": "value",
   "owner": "value",
@@ -1062,7 +1091,7 @@ mcporter call bakin-<agent>.bakin_exec_project_create --args '{
 }'
 ```
 
-### bakin_exec_project_delete
+### bakin_exec_projects_delete
 
 Label: Deleted a project
 Purpose: Delete a project by ID.
@@ -1074,12 +1103,12 @@ Purpose: Delete a project by ID.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_project_delete --args '{
+mcporter call bakin-<agent>.bakin_exec_projects_delete --args '{
   "projectId": "value"
 }'
 ```
 
-### bakin_exec_project_detach_asset
+### bakin_exec_projects_detach_asset
 
 Label: Detached asset from project
 Purpose: Remove an asset reference from a project by filename. Does not delete the asset itself.
@@ -1092,13 +1121,13 @@ Purpose: Remove an asset reference from a project by filename. Does not delete t
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_project_detach_asset --args '{
+mcporter call bakin-<agent>.bakin_exec_projects_detach_asset --args '{
   "projectId": "value",
   "filename": "value"
 }'
 ```
 
-### bakin_exec_project_get
+### bakin_exec_projects_get
 
 Label: Read project details
 Purpose: Get a project by ID including full spec, checklist, progress, and linked board task statuses.
@@ -1110,12 +1139,12 @@ Purpose: Get a project by ID including full spec, checklist, progress, and linke
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_project_get --args '{
+mcporter call bakin-<agent>.bakin_exec_projects_get --args '{
   "projectId": "value"
 }'
 ```
 
-### bakin_exec_project_link_item
+### bakin_exec_projects_link_item
 
 Label: Linked project item
 Purpose: Link an existing board task to a project checklist item. Use this when a task was created separately and should be associated with a project.
@@ -1129,14 +1158,14 @@ Purpose: Link an existing board task to a project checklist item. Use this when 
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_project_link_item --args '{
+mcporter call bakin-<agent>.bakin_exec_projects_link_item --args '{
   "projectId": "value",
   "taskItemId": "value",
   "taskId": "value"
 }'
 ```
 
-### bakin_exec_project_list
+### bakin_exec_projects_list
 
 Label: Listed projects
 Purpose: List all projects with optional status filter. Returns summaries with id, title, status, progress, taskCount.
@@ -1148,12 +1177,12 @@ Purpose: List all projects with optional status filter. Returns summaries with i
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_project_list --args '{
+mcporter call bakin-<agent>.bakin_exec_projects_list --args '{
   "status": "value"
 }'
 ```
 
-### bakin_exec_project_mark_item
+### bakin_exec_projects_mark_item
 
 Label: Marked project item
 Purpose: Mark a checklist item as checked (done) or unchecked. Returns updated progress percentage.
@@ -1167,14 +1196,14 @@ Purpose: Mark a checklist item as checked (done) or unchecked. Returns updated p
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_project_mark_item --args '{
+mcporter call bakin-<agent>.bakin_exec_projects_mark_item --args '{
   "projectId": "value",
   "taskItemId": "value",
   "checked": true
 }'
 ```
 
-### bakin_exec_project_promote_item
+### bakin_exec_projects_promote_item
 
 Label: Promoted project item
 Purpose: Create a NEW board task from a project checklist item and automatically link it. The task appears on the task board with the item title and projectId set.
@@ -1188,14 +1217,14 @@ Purpose: Create a NEW board task from a project checklist item and automatically
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_project_promote_item --args '{
+mcporter call bakin-<agent>.bakin_exec_projects_promote_item --args '{
   "projectId": "value",
   "taskItemId": "value",
   "assignee": "value"
 }'
 ```
 
-### bakin_exec_project_remove_item
+### bakin_exec_projects_remove_item
 
 Label: Removed project item
 Purpose: Remove a checklist item from a project.
@@ -1208,13 +1237,13 @@ Purpose: Remove a checklist item from a project.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_project_remove_item --args '{
+mcporter call bakin-<agent>.bakin_exec_projects_remove_item --args '{
   "projectId": "value",
   "taskItemId": "value"
 }'
 ```
 
-### bakin_exec_project_toggle_item
+### bakin_exec_projects_toggle_item
 
 Label: Toggled project item
 Purpose: Toggle a checklist item checked/unchecked by item ID. Returns updated progress percentage.
@@ -1228,14 +1257,14 @@ Purpose: Toggle a checklist item checked/unchecked by item ID. Returns updated p
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_project_toggle_item --args '{
+mcporter call bakin-<agent>.bakin_exec_projects_toggle_item --args '{
   "projectId": "value",
   "itemId": "value",
   "checked": true
 }'
 ```
 
-### bakin_exec_project_update
+### bakin_exec_projects_update
 
 Label: Updated a project
 Purpose: Update a project's title, status, body, or owner. Cannot set status to "completed" if unchecked items remain.
@@ -1251,7 +1280,7 @@ Purpose: Update a project's title, status, body, or owner. Cannot set status to 
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_project_update --args '{
+mcporter call bakin-<agent>.bakin_exec_projects_update --args '{
   "projectId": "value",
   "title": "value",
   "status": "value",
@@ -1260,7 +1289,7 @@ mcporter call bakin-<agent>.bakin_exec_project_update --args '{
 }'
 ```
 
-### bakin_exec_project_update_item
+### bakin_exec_projects_update_item
 
 Label: Updated project item
 Purpose: Update a checklist item's title and/or description.
@@ -1275,7 +1304,7 @@ Purpose: Update a checklist item's title and/or description.
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_project_update_item --args '{
+mcporter call bakin-<agent>.bakin_exec_projects_update_item --args '{
   "projectId": "value",
   "itemId": "value",
   "title": "value",
