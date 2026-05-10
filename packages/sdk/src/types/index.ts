@@ -77,6 +77,15 @@ export interface PluginEntryPoints {
   client?: string
 }
 
+export interface SecretDeclaration {
+  /** Canonical environment variable name, for example `ANTHROPIC_API_KEY`. */
+  name: string
+  /** Human-readable setup note. Never include a secret value here. */
+  description: string
+  /** Missing required secrets should be reported by setup/health checks. Defaults to true. */
+  required: boolean
+}
+
 export interface ApiRouteContribution {
   method: HttpMethod
   /** Plugin-relative path. Exposed as `/api/plugins/{pluginId}{path}`. */
@@ -189,7 +198,7 @@ export interface PluginManifest {
   description: string
   entry: PluginEntryPoints
   contentFiles?: string[]
-  secrets?: string[]
+  secrets?: SecretDeclaration[]
   tests?: string
   dependencies?: string[]
   permissions?: PluginPermission[]

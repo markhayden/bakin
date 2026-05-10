@@ -22,6 +22,17 @@ describe('plugin manifest schema', () => {
   it('parses a strict manifest with declared contributions', () => {
     const manifest = parsePluginManifest({
       ...baseManifest,
+      secrets: [
+        {
+          name: 'ANTHROPIC_API_KEY',
+          description: 'Anthropic API key used to fetch provider model metadata.',
+          required: false,
+        },
+        {
+          name: 'OPENCLAW_GATEWAY_TOKEN',
+          description: 'OpenClaw gateway token used by runtime gateway integrations.',
+        },
+      ],
       runtimeCapabilities: ['agents', 'cron', 'channels.message'],
       contributes: {
         apiRoutes: [
@@ -82,6 +93,18 @@ describe('plugin manifest schema', () => {
 
     expect(manifest.id).toBe('messaging')
     expect(manifest.entry.client).toBe('client.tsx')
+    expect(manifest.secrets).toEqual([
+      {
+        name: 'ANTHROPIC_API_KEY',
+        description: 'Anthropic API key used to fetch provider model metadata.',
+        required: false,
+      },
+      {
+        name: 'OPENCLAW_GATEWAY_TOKEN',
+        description: 'OpenClaw gateway token used by runtime gateway integrations.',
+        required: true,
+      },
+    ])
     expect(manifest.contributes?.apiRoutes?.[1]?.path).toBe('/:itemId/approve')
     expect(manifest.contributes?.apiRoutes?.[1]?.operationId).toBe('messaging-approve-item')
     expect(manifest.contributes?.apiRoutes?.[1]?.parameters?.[0]?.name).toBe('itemId')
@@ -92,6 +115,26 @@ describe('plugin manifest schema', () => {
   it('rejects invalid plugin ids', () => {
     expect(() => parsePluginManifest({ ...baseManifest, id: 'Messaging' })).toThrow(PluginManifestError)
     expect(() => parsePluginManifest({ ...baseManifest, id: 'message_board' })).toThrow(/Invalid plugin id/)
+  })
+
+  it('rejects legacy string-array secrets', () => {
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      secrets: ['ANTHROPIC_API_KEY'],
+    })).toThrow(/secrets/)
+  })
+
+  it('rejects non-env-var secret names', () => {
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      secrets: [
+        {
+          name: 'anthropic-api-key',
+          description: 'Anthropic API key.',
+          required: true,
+        },
+      ],
+    })).toThrow(/secrets\[0\]\.name/)
   })
 
   it('requires strict contract fields by default', () => {

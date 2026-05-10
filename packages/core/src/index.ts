@@ -28,6 +28,7 @@ export type {
   BakinPlugin,
   PluginManifest,
   PluginManifestSignature,
+  SecretDeclaration,
   PluginEntry,
   BakinConfig,
 } from './plugin-types'

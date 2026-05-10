@@ -63,6 +63,36 @@ describe('manifest schema — happy path', () => {
     expect(m.dependencies?.skills?.[0].installAs).toBeNull()
   })
 
+  it('parses shared top-level secret declarations', () => {
+    const input = loadFixture('agent') as Record<string, unknown>
+    input.secrets = [
+      {
+        name: 'RUNWAY_API_KEY',
+        description: 'Runway API key used by video generation workflows.',
+        required: true,
+      },
+      {
+        name: 'ELEVENLABS_API_KEY',
+        description: 'ElevenLabs API key used by voice generation workflows.',
+      },
+    ]
+
+    const m = parseManifest(input)
+
+    expect(m.secrets).toEqual([
+      {
+        name: 'RUNWAY_API_KEY',
+        description: 'Runway API key used by video generation workflows.',
+        required: true,
+      },
+      {
+        name: 'ELEVENLABS_API_KEY',
+        description: 'ElevenLabs API key used by voice generation workflows.',
+        required: true,
+      },
+    ])
+  })
+
   it('parses a skill-pack manifest', () => {
     const m = parseManifest(loadFixture('skill-pack'))
     expect(m.kind).toBe('skill-pack')
@@ -157,6 +187,37 @@ describe('manifest schema — version rules', () => {
     const m = loadFixture('skill-pack') as Record<string, unknown>
     m.version = '1.2.3-alpha.1'
     expect(() => parseManifest(m)).not.toThrow()
+  })
+})
+
+describe('manifest schema — secret declarations', () => {
+  it('rejects legacy string-array secrets', () => {
+    const m = loadFixture('agent') as Record<string, unknown>
+    m.secrets = ['RUNWAY_API_KEY']
+    expect(() => parseManifest(m)).toThrow()
+  })
+
+  it('rejects non-env-var secret names', () => {
+    const m = loadFixture('agent') as Record<string, unknown>
+    m.secrets = [
+      {
+        name: 'runway-api-key',
+        description: 'Runway API key.',
+        required: true,
+      },
+    ]
+    expect(() => parseManifest(m)).toThrow()
+  })
+
+  it('rejects missing secret descriptions', () => {
+    const m = loadFixture('agent') as Record<string, unknown>
+    m.secrets = [
+      {
+        name: 'RUNWAY_API_KEY',
+        required: true,
+      },
+    ]
+    expect(() => parseManifest(m)).toThrow()
   })
 })
 

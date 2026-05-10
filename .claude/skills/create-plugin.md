@@ -4,7 +4,7 @@ Scaffold a new Bakin plugin with all required files following the established pa
 
 ## Steps
 
-1. Ask for: plugin id (kebab-case), display name, description, dependencies (other plugin ids), required secrets (vault keys)
+1. Ask for: plugin id (kebab-case), display name, description, dependencies (other plugin ids), required secrets (canonical env var names)
 
 2. Create `plugins/{id}/bakin-plugin.json`:
 ```json
@@ -16,7 +16,13 @@ Scaffold a new Bakin plugin with all required files following the established pa
   "description": "{description}",
   "entry": { "server": "index.ts" },
   "contentFiles": [],
-  "secrets": ["{required-vault-keys}"],
+  "secrets": [
+    {
+      "name": "{ENV_VAR_NAME}",
+      "description": "{what this secret is used for}",
+      "required": true
+    }
+  ],
   "tests": "tests/",
   "dependencies": ["{dependencies}"],
   "permissions": ["storage.read", "storage.write", "events.emit"]
@@ -116,13 +122,11 @@ A generic `<PluginSettings pluginId="{id}" />` component auto-renders the schema
 Stored in `~/.bakin/plugin-settings/{id}.json`. Accessed via `ctx.getSettings()` / `ctx.updateSettings()`.
 
 ### Secrets (sensitive)
-Declared in manifest `secrets` array. Pulled from vault at runtime, never persisted in plugin settings.
-Vault resolution: OpenClaw config (`~/.openclaw/openclaw.json` skill entries) → env vars → `~/.bakin/secrets.json`.
-Accessed via scoped `ctx.vault.get("key")` — plugin can only read keys declared in its manifest.
-`createPluginVault()` in `src/core/vault.ts` already implements scoped access.
+Declared in manifest `secrets` array as metadata objects keyed by canonical env var name. Secret values are never persisted in plugin settings, manifests, or lockfiles.
+Bakin declares and checks required secret names; the runtime adapter or local environment owns value storage and lookup.
 
 ### Dependencies
-Manifest `dependencies` array lists required plugins. `secrets` array lists required vault keys.
+Manifest `dependencies` array lists required plugins. `secrets` array lists required runtime secret declarations.
 `bakin doctor` validates all requirements are met.
 
 ## Checklist
@@ -133,5 +137,5 @@ Manifest `dependencies` array lists required plugins. `secrets` array lists requ
 - [ ] Plugin added to bakin.config.ts
 - [ ] tsconfig paths updated
 - [ ] Plugin manifest updated
-- [ ] Secrets declared if needed, vault keys documented
+- [ ] Secrets declared if needed, env var names documented
 - [ ] `npm run dev` starts without errors

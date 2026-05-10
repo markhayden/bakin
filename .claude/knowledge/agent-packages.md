@@ -40,6 +40,7 @@ atomically.
 - `agent` only: `agent: { identity, role, defaultModel?, dispatchableBy[], allowedTools[], allowedSkills[] }` and `install: { createIfMissing, adoptIfExists, writeWorkspaceFiles, installSkills, installWorkflows, enableLessons[] }`
 - `contributions`: shape per kind. agent has all six (workspaceFiles/skills/workflows/workflowSkills/lessons/assets); skill-pack requires `skills` non-empty; workflow-pack requires at least one of workflows/workflowSkills; lesson-pack requires `lessons` non-empty.
 - `dependencies`: cross-kind. `{skills?: Dependency[], workflows?: Dependency[], lessons?: Dependency[]}` where each `Dependency = {source, ref, items?, installAs?}`.
+- `secrets`: shared top-level runtime requirements. Each declaration is `{name, description, required}` where `name` is a canonical env var name such as `RUNWAY_API_KEY`. Secret values never live in package manifests or lockfiles.
 
 ID rule: `/^[a-z0-9][a-z0-9-_]{0,39}$/i` — same as plugin install. Source rule: `github:user/repo[@ref][#subpath]` or local path (`./` `../` `/` `~/`); bare names refuse with a clear error. GitHub `#subpath` installs stage only the package directory and reject empty, absolute, traversal, dot-segment, multi-`#`, and whitespace subpaths.
 

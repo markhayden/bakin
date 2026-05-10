@@ -9,6 +9,7 @@ import type {
   PluginManifestSignature,
   PluginPermission,
   RuntimeCapability,
+  SecretDeclaration,
   SettingsContribution,
 } from '@bakin/sdk/types'
 
@@ -73,6 +74,48 @@ function stringArrayField(obj: Record<string, unknown>, key: string): string[] |
       throw new PluginManifestError(`bakin-plugin.json field "${key}" must contain only non-empty strings`)
     }
     if (!out.includes(item)) out.push(item)
+  }
+  return out
+}
+
+function secretDeclarationsField(obj: Record<string, unknown>, key: string): SecretDeclaration[] | undefined {
+  const value = obj[key]
+  if (value === undefined || value === null) return undefined
+  if (!Array.isArray(value)) {
+    throw new PluginManifestError(`bakin-plugin.json field "${key}" must be an array of secret declaration objects`)
+  }
+
+  const out: SecretDeclaration[] = []
+  const seen = new Set<string>()
+  for (let index = 0; index < value.length; index++) {
+    const item = value[index]
+    if (!isRecord(item)) {
+      throw new PluginManifestError(`bakin-plugin.json field "${key}[${index}]" must be an object`)
+    }
+
+    const name = item.name
+    if (typeof name !== 'string' || !/^[A-Z_][A-Z0-9_]*$/.test(name)) {
+      throw new PluginManifestError(`bakin-plugin.json field "${key}[${index}].name" must be an environment variable name`)
+    }
+
+    if (seen.has(name)) continue
+    seen.add(name)
+
+    const description = item.description
+    if (typeof description !== 'string' || description.trim().length === 0) {
+      throw new PluginManifestError(`bakin-plugin.json field "${key}[${index}].description" must be a non-empty string`)
+    }
+
+    const required = item.required
+    if (required !== undefined && typeof required !== 'boolean') {
+      throw new PluginManifestError(`bakin-plugin.json field "${key}[${index}].required" must be a boolean`)
+    }
+
+    out.push({
+      name,
+      description,
+      required: required ?? true,
+    })
   }
   return out
 }
@@ -311,7 +354,7 @@ export function parsePluginManifest(raw: unknown, options: ParsePluginManifestOp
     description: stringField(raw, 'description', { required }) ?? '',
     entry,
     contentFiles: stringArrayField(raw, 'contentFiles'),
-    secrets: stringArrayField(raw, 'secrets'),
+    secrets: secretDeclarationsField(raw, 'secrets'),
     tests: stringField(raw, 'tests'),
     dependencies: stringArrayField(raw, 'dependencies'),
     permissions: stringArrayField(raw, 'permissions') as PluginPermission[] | undefined,

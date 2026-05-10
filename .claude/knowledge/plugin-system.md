@@ -642,7 +642,11 @@ interface PluginManifest {
   server: string               // path to server bundle (e.g. "dist/index.js")
   client?: string              // path to client bundle (e.g. "dist/client.js")
   contentFiles?: string[]
-  secrets?: string[]           // vault keys this plugin needs
+  secrets?: Array<{
+    name: string                // canonical env var name, e.g. ANTHROPIC_API_KEY
+    description: string         // setup note; never include a secret value
+    required: boolean           // omitted JSON values default to true when parsed
+  }>
   tests?: string
   dependencies?: string[]      // other plugin IDs — drives topological sort
   permissions?: Permission[]   // strict Zod enum — see PermissionSchema. Empty/missing → []

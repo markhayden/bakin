@@ -9,8 +9,16 @@
   },
   "contentFiles": [],
   "secrets": [
-    "anthropic-api-key",
-    "gateway-token"
+    {
+      "name": "ANTHROPIC_API_KEY",
+      "description": "Anthropic API key used to fetch provider model metadata when available.",
+      "required": false
+    },
+    {
+      "name": "OPENCLAW_GATEWAY_TOKEN",
+      "description": "OpenClaw gateway token used when model operations are routed through the runtime gateway.",
+      "required": false
+    }
   ],
   "tests": "tests/",
   "dependencies": [

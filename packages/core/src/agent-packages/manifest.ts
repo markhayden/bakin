@@ -34,6 +34,19 @@ const SemverSchema = z
     message: 'version must be MAJOR.MINOR.PATCH (optional -prerelease)',
   })
 
+/** Secret names are canonical environment variable names. Values never live in manifests. */
+const SecretNameSchema = z
+  .string()
+  .regex(/^[A-Z_][A-Z0-9_]*$/, {
+    message: 'secret name must be an environment variable name',
+  })
+
+export const SecretDeclarationSchema = z.object({
+  name: SecretNameSchema,
+  description: z.string().min(1),
+  required: z.boolean().default(true),
+})
+
 /**
  * Dependency source. Allowed forms:
  *   - github:user/repo                         (no ref — installer resolves to default branch SHA)
@@ -174,6 +187,8 @@ const BaseManifestFields = {
   /** Bakin version range the package is compatible with (semver range). Cosmetic in V1. */
   bakin: z.string().optional(),
   author: z.string().optional(),
+  /** Required runtime secrets by env-var name. Secret values are never stored in packages. */
+  secrets: z.array(SecretDeclarationSchema).optional(),
 }
 
 export const AgentManifestSchema = z.object({
@@ -221,6 +236,7 @@ export type WorkflowPackManifest = z.infer<typeof WorkflowPackManifestSchema>
 export type LessonPackManifest = z.infer<typeof LessonPackManifestSchema>
 export type Manifest = z.infer<typeof ManifestSchema>
 export type Dependency = z.infer<typeof DependencySchema>
+export type SecretDeclaration = z.infer<typeof SecretDeclarationSchema>
 export type PackageKind = Manifest['kind']
 
 // ─── Parse entry points ──────────────────────────────────────────────────────

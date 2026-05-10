@@ -11,7 +11,11 @@
     "schedule/"
   ],
   "secrets": [
-    "gateway-token"
+    {
+      "name": "OPENCLAW_GATEWAY_TOKEN",
+      "description": "OpenClaw gateway token used when schedule operations are routed through the runtime gateway.",
+      "required": false
+    }
   ],
   "tests": "tests/",
   "dependencies": [
