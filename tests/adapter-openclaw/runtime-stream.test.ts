@@ -69,7 +69,16 @@ describe('OpenClaw runtime stream parsing', () => {
   it('preserves OpenClaw status and tool frames as chat chunks', async () => {
     globalThis.fetch = mock(async () => sseResponse([
       { type: 'status', content: 'Checking project notes' },
-      { type: 'tool', content: 'Read project file', data: { tool: 'bakin_exec_projects_get' } },
+      {
+        type: 'tool',
+        content: 'Read project file',
+        data: {
+          phase: 'call',
+          toolName: 'bakin_exec_projects_get',
+          status: 'running',
+          summary: 'Read project file',
+        },
+      },
       { choices: [{ delta: { content: 'Done.' } }] },
     ])) as unknown as typeof fetch
 
@@ -84,7 +93,16 @@ describe('OpenClaw runtime stream parsing', () => {
 
     expect(chunks).toEqual([
       { type: 'status', content: 'Checking project notes', data: undefined },
-      { type: 'tool', content: 'Read project file', data: { tool: 'bakin_exec_projects_get' } },
+      {
+        type: 'tool',
+        content: 'Read project file',
+        data: {
+          phase: 'call',
+          toolName: 'bakin_exec_projects_get',
+          status: 'running',
+          summary: 'Read project file',
+        },
+      },
       { type: 'text', content: 'Done.' },
       { type: 'done' },
     ])
@@ -118,11 +136,164 @@ describe('OpenClaw runtime stream parsing', () => {
       type: 'tool',
       content: 'bakin_exec_projects_get',
       data: {
-        toolCalls: [{
-          id: 'call-1',
-          type: 'function',
-          function: { name: 'bakin_exec_projects_get', arguments: '{"projectId":"p1"}' },
+        phase: 'call',
+        callId: 'call-1',
+        toolName: 'bakin_exec_projects_get',
+        status: 'running',
+        summary: 'Reading project details',
+        inputPreview: '{"projectId":"p1"}',
+      },
+    })
+  })
+
+  it('adds fallback summaries for reliable shell command patterns', async () => {
+    globalThis.fetch = mock(async () => sseResponse([
+      {
+        choices: [{
+          delta: {
+            tool_calls: [{
+              id: 'call-help',
+              type: 'function',
+              function: { name: 'exec', arguments: '{"command":"mcporter call --help | sed -n \\"1,120p\\""}' },
+            }],
+          },
         }],
+      },
+    ])) as unknown as typeof fetch
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const chunks = await collect(runtime.messaging.stream({
+      agentId: 'main',
+      content: 'hello',
+      threadId: 'thread-1',
+    }))
+
+    expect(chunks[0]).toEqual({
+      type: 'tool',
+      content: 'exec',
+      data: {
+        phase: 'call',
+        callId: 'call-help',
+        toolName: 'exec',
+        status: 'running',
+        summary: 'Checking Bakin tool call syntax',
+        inputPreview: '{"command":"mcporter call --help | sed -n \\"1,120p\\""}',
+      },
+    })
+  })
+
+  it('summarizes exec-based context lookups without changing the real tool name', async () => {
+    globalThis.fetch = mock(async () => sseResponse([
+      {
+        choices: [{
+          delta: {
+            tool_calls: [{
+              id: 'call-context',
+              type: 'function',
+              function: {
+                name: 'exec',
+                arguments: JSON.stringify({
+                  command: 'bx context "OpenClaw GitHub releases latest openclaw/openclaw" --max-tokens 4096',
+                }),
+              },
+            }],
+          },
+        }],
+      },
+    ])) as unknown as typeof fetch
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const chunks = await collect(runtime.messaging.stream({
+      agentId: 'main',
+      content: 'hello',
+      threadId: 'thread-1',
+    }))
+
+    expect(chunks[0]).toMatchObject({
+      type: 'tool',
+      data: {
+        toolName: 'exec',
+        summary: 'Checking GitHub releases for openclaw/openclaw',
+      },
+    })
+  })
+
+  it('summarizes exec-based web fetches when commands contain URLs', async () => {
+    globalThis.fetch = mock(async () => sseResponse([
+      {
+        choices: [{
+          delta: {
+            tool_calls: [{
+              id: 'call-python-fetch',
+              type: 'function',
+              function: {
+                name: 'exec',
+                arguments: JSON.stringify({
+                  command: "python3 - <<'PY'\nurl='https://api.github.com/repos/openclaw/openclaw/releases?per_page=3'\nPY",
+                }),
+              },
+            }],
+          },
+        }],
+      },
+    ])) as unknown as typeof fetch
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const chunks = await collect(runtime.messaging.stream({
+      agentId: 'main',
+      content: 'hello',
+      threadId: 'thread-1',
+    }))
+
+    expect(chunks[0]).toMatchObject({
+      type: 'tool',
+      data: {
+        toolName: 'exec',
+        summary: 'Fetching https://api.github.com/repos/openclaw/openclaw/releases?per_page=3',
+      },
+    })
+  })
+
+  it('includes the URL in web_fetch tool summaries', async () => {
+    globalThis.fetch = mock(async () => sseResponse([
+      {
+        choices: [{
+          delta: {
+            tool_calls: [{
+              id: 'call-web',
+              type: 'function',
+              function: { name: 'web_fetch', arguments: '{"url":"https://example.com/docs?token=secret"}' },
+            }],
+          },
+        }],
+      },
+    ])) as unknown as typeof fetch
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const chunks = await collect(runtime.messaging.stream({
+      agentId: 'main',
+      content: 'hello',
+      threadId: 'thread-1',
+    }))
+
+    expect(chunks[0]).toEqual({
+      type: 'tool',
+      content: 'web_fetch',
+      data: {
+        phase: 'call',
+        callId: 'call-web',
+        toolName: 'web_fetch',
+        status: 'running',
+        summary: 'Fetching https://example.com/docs?token=[redacted]',
+        inputPreview: '{"url":"https://example.com/docs?token=[redacted]"}',
       },
     })
   })
@@ -185,9 +356,11 @@ describe('OpenClaw runtime stream parsing', () => {
         content: 'exec: gh issue list --repo markhayden/bakin --search messaging',
         data: {
           phase: 'call',
-          id: 'call-1',
-          name: 'exec',
-          argumentsPreview: '{"command":"gh issue list --repo markhayden/bakin --search messaging"}',
+          callId: 'call-1',
+          toolName: 'exec',
+          status: 'running',
+          summary: 'Checking GitHub issues',
+          inputPreview: '{"command":"gh issue list --repo markhayden/bakin --search messaging"}',
         },
       },
       {
@@ -196,7 +369,7 @@ describe('OpenClaw runtime stream parsing', () => {
         data: {
           phase: 'result',
           toolName: 'exec',
-          toolCallId: 'call-1',
+          callId: 'call-1',
           status: 'completed',
           exitCode: 0,
           durationMs: 12,
@@ -273,9 +446,11 @@ describe('OpenClaw runtime stream parsing', () => {
         content: 'read: /tmp/project.md',
         data: {
           phase: 'call',
-          id: 'call-2',
-          name: 'read',
-          argumentsPreview: '{"path":"/tmp/project.md"}',
+          callId: 'call-2',
+          toolName: 'read',
+          status: 'running',
+          summary: 'Reading project.md',
+          inputPreview: '{"path":"/tmp/project.md"}',
         },
       })
     }

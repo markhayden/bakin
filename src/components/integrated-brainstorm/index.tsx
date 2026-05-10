@@ -17,6 +17,26 @@ export type {
   SendContext,
   AssistantTransformed,
 } from './types'
+export {
+  brainstormActivityMessageFromCustom,
+  runtimeChunkToBrainstormActivity,
+  toBrainstormTimeline,
+} from './activity'
+export {
+  brainstormThreadId,
+  normalizeBrainstormActivityForStorage,
+  normalizeBrainstormActivityMessageForStorage,
+} from './session'
+export type {
+  BrainstormActivityInput,
+  BrainstormTimelineActivityInput,
+  BrainstormTimelineMessageInput,
+} from './activity'
+export type {
+  BrainstormActivityStorageInput,
+  BrainstormActivityStorageRecord,
+} from './session'
+export { readBrainstormSseResponse } from './sse'
 
 export function IntegratedBrainstorm({
   messages,
@@ -30,8 +50,8 @@ export function IntegratedBrainstorm({
   emptyState,
   collapsible = true,
   defaultOpen = true,
-  conversationStartHeight = 400,
-  minHeight = 100,
+  defaultHeight = 480,
+  minHeight = 260,
   maxHeight = 720,
   maxInputHeight = 200,
   storageKey,
@@ -50,13 +70,12 @@ export function IntegratedBrainstorm({
   const agent = useAgent(agentId)
   const agentName = agent?.name ?? agentId
 
-  const { height, setHeight, handleProps } = useVerticalResize({
-    defaultHeight: minHeight,
+  const { height, handleProps } = useVerticalResize({
+    defaultHeight,
     minHeight,
     maxHeight,
     storageKey: fitParent ? undefined : storageKey,
   })
-  const didAutoExpandRef = useRef(fitParent || height > minHeight + 10 || messages.length > 0)
 
   const { status, streamingContent, thinkingVerb, errorMessage, wasAborted, send, abort } = useBrainstormState({
     messages,
@@ -67,13 +86,9 @@ export function IntegratedBrainstorm({
 
   const handleSend = useCallback(
     (prompt: string) => {
-      if (!didAutoExpandRef.current) {
-        didAutoExpandRef.current = true
-        setHeight(conversationStartHeight)
-      }
       return send(prompt)
     },
-    [send, setHeight, conversationStartHeight],
+    [send],
   )
 
   const replyCount = messages.filter((m) => m.role === 'assistant').length

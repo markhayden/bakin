@@ -6,7 +6,7 @@ A unified, protocol-agnostic agent-chat component in `@bakin/sdk/components`, re
 
 Bakin has two separate brainstorm chat implementations today, neither of which share code:
 
-- `plugins/projects/components/project-detail.tsx` (bottom panel, lines 646+) — synchronous JSON reply, collapsible, auto-expand-on-first-message, markdown-rendered, textarea with broken native `resize-y` grip.
+- `plugins/projects/components/project-detail.tsx` (bottom panel, lines 646+) — synchronous JSON reply, collapsible, markdown-rendered, textarea with broken native `resize-y` grip.
 - `plugins/messaging/components/session-chat.tsx` — full-pane split layout, SSE token stream with inline `json` proposal blocks, plain-text rendering, `<AgentAvatar>` + agent-colored border, manual input-pane drag handle.
 
 Plus `plugins/messaging/components/brainstorm-panel.tsx` is dead code (not imported anywhere).
@@ -95,9 +95,9 @@ interface IntegratedBrainstormProps {
   collapsible?: boolean
   /** Default open state when collapsible. Default: true. */
   defaultOpen?: boolean
-  /** Height the panel auto-expands to on first send. Default: 400. */
-  conversationStartHeight?: number
-  /** Min panel height (collapsed-ish state, before first send). Default: 100. */
+  /** Default open panel height. Default: 480. */
+  defaultHeight?: number
+  /** Min panel height the user can drag down to. Default: 260. */
   minHeight?: number
   /** Max panel height the user can drag to. Default: 720. */
   maxHeight?: number
@@ -127,10 +127,14 @@ interface IntegratedBrainstormProps {
 ```ts
 interface BrainstormMessage {
   id: string
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'activity'
   content: string
   /** Agent attribution for assistant messages (defaults to current agentId). */
   agentId?: string
+  /** Activity kind for non-chat runtime events such as tool calls. */
+  kind?: 'runtime_status' | 'tool_call' | 'error' | string
+  /** Normalized runtime activity payload or plugin-specific event data. */
+  data?: unknown
   timestamp?: string
 }
 ```
@@ -139,7 +143,7 @@ interface BrainstormMessage {
 
 ### Visual shape
 
-- **Outer panel**: border-top, auto-expand on first send to `conversationStartHeight`, vertical drag handle at top edge (uses existing `useVerticalResize`). User-adjustable from `minHeight` to `maxHeight`.
+- **Outer panel**: border-top, opens at `defaultHeight` (480px by default), vertical drag handle at top edge (uses existing `useVerticalResize`). User-adjustable from `minHeight` to `maxHeight`.
 - **Collapsed**: shows only the centered header — `<icon> <label> (N replies) ▼`. Clicking anywhere on the header toggles open.
 - **Open**: two stacked regions.
   - **History** (flex-grow, `overflow-y-auto`, always scrolls to bottom on new message/token).
@@ -149,6 +153,7 @@ interface BrainstormMessage {
 
 - **User**: right-aligned bubble, accent-tinted background.
 - **Assistant**: left-aligned with `<AgentAvatar size="sm">` + left border tinted with agent color from `useAgentColor`. Body rendered via `<MarkdownContent>`. Consecutive assistant messages grouped with negative top margin (`-mt-2`); avatar shown only on the first of a run.
+- **Activity**: runtime/tool events render as assistant-style rows with the same avatar + tinted left border. Tool call/result pairs with the same `callId` collapse into one row; the compact row shows tool name, status, duration, and a human-readable `summary` when the runtime provides one. Raw commands and payloads stay in expandable `Input` / `Output` / `Metadata` sections.
 - **Streaming**: partial text renders in the same bubble shape; the message's `id` is provisional (`streaming-<ts>`) and gets replaced with the server-final id when `onSend` resolves.
 - **Empty state**: default is `<AgentAvatar size="xl">` above `Brainstorm with ${agentName}` + a one-line hint. `emptyState` prop overrides.
 
@@ -165,9 +170,9 @@ crisping, churning, seasoning, scorching, folding, charring, toasting
 
 Once the first token arrives, the thinking indicator is replaced by the streaming message bubble.
 
-### Auto-expand
+### Panel sizing
 
-On the first `onSend` call after mount, the panel's height is set to `conversationStartHeight`. After that, the user's drag wins — no further automatic expansion. Guarded by an internal ref so toggling collapsed/open doesn't re-fire.
+Open bottom-sheet mode starts at `defaultHeight` (480px by default) so the empty state and recent history are visible immediately. Sending a message does not change the panel height. After a manual drag, the user's height wins and can persist through `storageKey`.
 
 ### Textarea
 
@@ -222,6 +227,9 @@ packages/sdk/src/components/integrated-brainstorm/
   thinking-indicator.tsx   — verb picker + spinner
   use-auto-grow.ts         — textarea scrollHeight → height effect
   use-brainstorm-state.ts  — send/abort/streaming state machine
+  activity.ts              — runtime chunk → brainstorm activity helpers
+  session.ts               — durable thread id + activity storage helpers
+  sse.ts                   — reusable SSE reader for brainstorm transports
   types.ts                 — BrainstormMessage, prop types
 ```
 
@@ -233,6 +241,26 @@ export type { BrainstormMessage, IntegratedBrainstormProps } from '@/components/
 ```
 
 Component name registered in vendor bundle externalization: no change needed — it's inside `@bakin/sdk/components` which is already externalized.
+
+Pure helpers are also exported from `@bakin/sdk/utils` for server-side plugin route code:
+
+```ts
+export {
+  brainstormThreadId,
+  normalizeBrainstormActivityForStorage,
+  normalizeBrainstormActivityMessageForStorage,
+  runtimeChunkToBrainstormActivity,
+  readBrainstormSseResponse,
+  toBrainstormTimeline,
+} from '@bakin/sdk/utils'
+```
+
+Durable session rules:
+
+- Use `brainstormThreadId(scope, entityId, agentId)` for adapter-neutral runtime continuity. The same `agentId + threadId` pair must map to the same provider/runtime session.
+- Store plugin-owned messages for UI hydration and auditability, not as prompt replay. Replaying every prior turn into every request grows tokens and bypasses the runtime adapter's session model.
+- Normalize activity with `normalizeBrainstormActivityForStorage()` before persistence. It trims/limits summaries and preview payloads so tool transparency does not turn session files into unbounded logs.
+- Persist streamed `activity` events when the plugin owns a durable session. One-shot brainstorm endpoints may stream activity without storing it.
 
 ### State machine
 
@@ -250,7 +278,7 @@ idle ─▶ sending ─▶ streaming ─▶ idle
 
 ### Outer panel resize
 
-Reuses existing `src/hooks/use-vertical-resize.ts` (exported through `@bakin/sdk/hooks`). Auto-expand-on-first-send is layered on top via a one-shot effect guarded by a ref.
+Reuses existing `src/hooks/use-vertical-resize.ts` (exported through `@bakin/sdk/hooks`). `defaultHeight` controls the initial open height; `minHeight` is only the lower drag bound.
 
 ### Streaming shape
 
@@ -259,11 +287,12 @@ Reuses existing `src/hooks/use-vertical-resize.ts` (exported through `@bakin/sdk
 1. Open the SSE stream (fetch + `body.getReader()` — messaging already does this; projects gets a new handler).
 2. Parse `event: token` / `event: done` / `event: error` / custom events.
 3. Forward text chunks via `onToken(text)`.
-4. Forward domain events (e.g. `proposal`, `proposals`) via `onCustom(name, data)`.
-5. Honor `signal.aborted` — close the reader, abandon the fetch.
-6. Resolve with `{ content }` on `done`, reject with an `Error` on server error or transport failure.
+4. Forward `event: activity` via `onCustom('activity', data)`; SDK helpers render it as assistant-style tool/status rows.
+5. Forward domain events (e.g. `proposal`, `proposals`) via `onCustom(name, data)`.
+6. Honor `signal.aborted` — close the reader, abandon the fetch.
+7. Resolve with `{ content }` on `done`, reject with an `Error` on server error or transport failure.
 
-The component itself never touches fetch, headers, or SSE parsing — it's purely UI.
+`readBrainstormSseResponse(response, ctx, options)` is the reusable SDK parser for common brainstorm SSE streams. Plugin clients should use it instead of duplicating the token/activity/done/error loop. The component itself still never opens fetch or EventSource — callers own transport and pass an `onSend`.
 
 ## Migration plan
 
@@ -328,7 +357,7 @@ Per `CLAUDE.md` testing rules: content-dir mocking is mandatory for anything tou
 
 ### Location & runner
 
-- Tests co-located: `packages/sdk/src/components/integrated-brainstorm/__tests__/`.
+- Tests live under `tests/components/integrated-brainstorm/`.
 - Runner: `bun test --isolate` (jsdom via `happy-dom` or Bun's built-in DOM shim — choose whichever other SDK component tests use; if none exist, go with Bun's built-in).
 - Helpers: one shared `fake-on-send.ts` that returns a controllable mock — exposes `onSend`, `emitToken`, `emitCustom`, `resolve`, `reject` — so tests drive the streaming state machine deterministically without real timers or fetch.
 
@@ -361,9 +390,9 @@ Every exported prop must have at least one test that exercises it at a non-defau
 - 2.6 Custom `icon` and `label` props rendered in place of defaults.
 - 2.7 Default icon = lucide `Sparkles`, default label = `Brainstorm`.
 
-**3. Auto-expand & resize**
-- 3.1 First `onSend` sets panel height to `conversationStartHeight`.
-- 3.2 Second `onSend` does NOT re-fire auto-expand (ref guard).
+**3. Default sizing & resize**
+- 3.1 Open bottom-sheet mode starts at `defaultHeight` (480px by default).
+- 3.2 First `onSend` does not change panel height.
 - 3.3 Manual drag updates height inside `[minHeight, maxHeight]`.
 - 3.4 Drag below `minHeight` clamps to `minHeight`.
 - 3.5 Drag above `maxHeight` clamps to `maxHeight`.
@@ -475,7 +504,7 @@ Every exported prop must have at least one test that exercises it at a non-defau
 
 Against `bun run dev`:
 
-- [ ] Projects: new project → open it → expand Brainstorm → ask question → tokens stream → reply arrives → panel auto-expanded to 400px on first send.
+- [ ] Projects: new project → open it → Brainstorm opens around 480px tall → ask question → tokens stream → reply arrives → panel height remains user-controlled.
 - [ ] Projects: drag outer handle up → more history visible; drag down → clamps at min.
 - [ ] Projects: mid-stream press Esc → stream stops, partial reply preserved, can send again immediately.
 - [ ] Projects: collapse chevron → panel collapses to header; chevron flips; click again → expands, textarea focused.
@@ -538,7 +567,7 @@ A PR merges only when all of these are true:
 bun install                                          # install deps
 bun run build                                        # type-check + compile the world
 bun test --isolate                                   # full test suite
-bun test packages/sdk/src/components/integrated-brainstorm/__tests__ --isolate   # component tests only
+bun test --isolate tests/components/integrated-brainstorm   # component tests only
 bun run dev                                          # watch-mode for manual verification
 ```
 

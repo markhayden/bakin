@@ -334,6 +334,10 @@ export interface RuntimeChannel {
 export interface RuntimeMessageArgs {
   agentId: string
   content: string
+  /**
+   * Adapter-neutral durable conversation key. Runtime adapters should map the
+   * same agentId + threadId pair to the same provider/runtime session.
+   */
   threadId?: string
   metadata?: Record<string, unknown>
 }
@@ -344,10 +348,23 @@ export interface RuntimeMessageResult {
   metadata?: Record<string, unknown>
 }
 
+export interface RuntimeToolActivity {
+  phase: 'call' | 'result'
+  callId?: string
+  toolName: string
+  status?: 'running' | 'completed' | 'failed' | string
+  summary?: string
+  inputPreview?: string
+  outputPreview?: string
+  durationMs?: number
+  exitCode?: number
+  metadata?: Record<string, unknown>
+}
+
 export interface RuntimeChatChunk {
   type: 'text' | 'tool' | 'status' | 'done' | 'error'
   content?: string
-  data?: unknown
+  data?: Record<string, unknown> | RuntimeToolActivity
 }
 
 export interface CronJob {

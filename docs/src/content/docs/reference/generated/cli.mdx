@@ -340,10 +340,17 @@ bakin restart
 bakin status
 ```
 </CliCommandCard>
-<CliCommandCard id="dev" name="dev" summary="Run the source-tree development loop." description="Runs Bakin in watch-mode development from a source checkout. The compiled binary refuses this command outside a repo clone.">
+<CliCommandCard id="dev" name="dev" summary="Run the source-tree development loop." description="Runs Bakin in watch-mode development from a source checkout. By default output is compact; use --verbose for raw child-process output and debug logs.">
 ```sh frame="terminal"
-bakin dev
+bakin dev [--verbose] [--no-color]
 ```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--verbose]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[--no-color]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+    </tbody>
+  </table>
 </CliCommandCard>
 <CliCommandCard id="version" name="version" summary="Print the Bakin version." description="Prints the version embedded in the running CLI/binary.">
 ```sh frame="terminal"
@@ -746,5 +753,5 @@ bakin workflows submit <taskId> <stepId> <json>
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 6, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 9, 2026 · Bakin 0.0.0-dev</span>
 </aside>

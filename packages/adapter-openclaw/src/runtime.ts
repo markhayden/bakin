@@ -16,6 +16,7 @@ import type {
   RuntimeMetadata,
   RuntimeMemorySearchResult,
   RuntimeSkill,
+  RuntimeToolActivity,
   UpdateCronJobInput,
   WorkspaceFile,
 } from '@bakin/core/adapters/runtime'
@@ -1570,14 +1571,18 @@ function activityChunksFromAssistantMessage(message: Record<string, unknown>): C
     if (!isPlainObject(part) || part.type !== 'toolCall') continue
     const name = typeof part.name === 'string' && part.name.length > 0 ? part.name : 'tool'
     const args = part.arguments
+    const summary = firstString(part.summary, part.purpose, part.displayLabel)
+      ?? summarizeOpenClawToolPurpose(name, args)
     chunks.push({
       type: 'tool',
       content: summarizeOpenClawToolCall(name, args),
       data: {
         phase: 'call',
-        id: typeof part.id === 'string' ? part.id : undefined,
-        name,
-        argumentsPreview: previewUnknown(args),
+        callId: typeof part.id === 'string' ? part.id : undefined,
+        toolName: name,
+        status: 'running',
+        ...(summary ? { summary } : {}),
+        inputPreview: previewUnknown(args),
       },
     })
   }
@@ -1591,17 +1596,23 @@ function activityChunkFromToolResultMessage(message: Record<string, unknown>): C
   const label = status ? `${toolName} ${status}` : `${toolName} finished`
   return [{
     type: 'tool',
-    content: label,
-    data: {
-      phase: 'result',
-      toolName,
-      toolCallId: typeof message.toolCallId === 'string' ? message.toolCallId : undefined,
-      status,
-      exitCode: typeof details.exitCode === 'number' ? details.exitCode : undefined,
-      durationMs: typeof details.durationMs === 'number' ? details.durationMs : undefined,
-      outputPreview: previewUnknown(message.content),
-    },
+      content: label,
+      data: {
+        phase: 'result',
+        toolName,
+        callId: typeof message.toolCallId === 'string' ? message.toolCallId : undefined,
+        status: normalizeToolResultStatus(status, typeof details.exitCode === 'number' ? details.exitCode : undefined),
+        exitCode: typeof details.exitCode === 'number' ? details.exitCode : undefined,
+        durationMs: typeof details.durationMs === 'number' ? details.durationMs : undefined,
+        outputPreview: previewUnknown(message.content),
+      },
   }]
+}
+
+function normalizeToolResultStatus(status: string | undefined, exitCode: number | undefined): string {
+  if (status && status.length > 0) return status
+  if (typeof exitCode === 'number') return exitCode === 0 ? 'completed' : 'failed'
+  return 'completed'
 }
 
 function summarizeOpenClawToolCall(name: string, args: unknown): string {
@@ -1620,6 +1631,129 @@ function summarizeOpenClawToolCall(name: string, args: unknown): string {
     }
   }
   return name
+}
+
+function summarizeOpenClawToolPurpose(name: string, args: unknown): string | undefined {
+  if (name === 'read' && isPlainObject(args)) {
+    const path = typeof args.path === 'string' ? args.path.trim() : ''
+    if (!path) return undefined
+    if (/\/skills\/[^/]+\/SKILL\.md$/.test(path)) return 'Reading workflow instructions'
+    return `Reading ${basenameForDisplay(path)}`
+  }
+
+  if (name === 'process' && isPlainObject(args)) {
+    const action = typeof args.action === 'string' ? args.action.trim() : ''
+    if (action === 'poll') return 'Waiting for command output'
+  }
+
+  if (name === 'exec' && isPlainObject(args)) {
+    const command = typeof args.command === 'string' ? args.command.trim() : ''
+    return summarizeShellCommandPurpose(command)
+  }
+
+  if (name === 'web_fetch') {
+    return summarizeWebFetchPurpose(args)
+  }
+
+  return summarizeToolNamePurpose(name)
+}
+
+function summarizeShellCommandPurpose(command: string): string | undefined {
+  if (!command) return undefined
+  const first = command.split(/\r?\n/)[0]?.trim() ?? ''
+  if (/\bmcporter\s+call\s+--help\b/.test(first)) return 'Checking Bakin tool call syntax'
+  const mcporterCall = first.match(/\bmcporter\s+call\s+([^\s]+)/)
+  if (mcporterCall) {
+    const tool = mcporterCall[1].split('.').pop() ?? mcporterCall[1]
+    return summarizeToolNamePurpose(tool) ?? 'Calling a Bakin tool'
+  }
+  if (/\bmcporter\s+list\b/.test(first)) return 'Inspecting available Bakin tools'
+  if (/\bgh\s+issue\b/.test(first)) return 'Checking GitHub issues'
+  if (/\bgh\s+pr\b/.test(first)) return 'Checking GitHub pull requests'
+  const bxContextSummary = summarizeBxContextCommand(first)
+  if (bxContextSummary) return bxContextSummary
+  const fetchedUrl = extractUrlForDisplay(command)
+  if (fetchedUrl) return `Fetching ${fetchedUrl}`
+  if (/^python3?\s+-\s*<<|^python3?\s+-c\b/.test(first)) return 'Preparing structured tool arguments'
+  if (/^cat\s+>\s+\/tmp\//.test(first)) return 'Preparing a temporary helper script'
+  return undefined
+}
+
+function summarizeBxContextCommand(command: string): string | undefined {
+  const match = command.match(/^bx\s+context\s+(.+?)(?:\s+--\S+|$)/)
+  if (!match) return undefined
+  const topic = cleanShellArgumentForDisplay(match[1])
+  const githubReleaseRepo = topic.match(/\bgithub\s+releases?\b.*\b([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\b/i)
+  if (githubReleaseRepo) return `Checking GitHub releases for ${githubReleaseRepo[1]}`
+  return topic ? `Looking up ${truncateMiddle(topic, 100)}` : 'Looking up context'
+}
+
+function summarizeToolNamePurpose(toolName: string): string | undefined {
+  if (/^bakin_exec_projects_get$/.test(toolName)) return 'Reading project details'
+  if (/^bakin_exec_projects_apply_plan$/.test(toolName)) return 'Applying confirmed project plan'
+  if (/^bakin_exec_projects_update$/.test(toolName)) return 'Updating project details'
+  if (/^bakin_exec_projects_add_item$/.test(toolName)) return 'Adding a project checklist item'
+  if (/^bakin_exec_projects_(list|search)$/.test(toolName)) return 'Inspecting projects'
+  if (/^bakin_exec_messaging_/.test(toolName)) return 'Updating messaging content'
+  if (toolName === 'web_fetch') return 'Fetching web content'
+  return undefined
+}
+
+function summarizeRuntimeToolPurpose(toolName: string, inputPreview: string | undefined): string | undefined {
+  if (toolName === 'exec' && inputPreview) {
+    const parsed = parseJsonObject(inputPreview)
+    const command = typeof parsed?.command === 'string' ? parsed.command : inputPreview
+    return summarizeShellCommandPurpose(command)
+  }
+  if (toolName === 'read' && inputPreview) {
+    const parsed = parseJsonObject(inputPreview)
+    const path = typeof parsed?.path === 'string' ? parsed.path : undefined
+    if (path) return summarizeOpenClawToolPurpose('read', { path })
+  }
+  if (toolName === 'web_fetch' && inputPreview) {
+    return summarizeWebFetchPurpose(parseJsonObject(inputPreview) ?? inputPreview)
+  }
+  return summarizeToolNamePurpose(toolName)
+}
+
+function summarizeWebFetchPurpose(args: unknown): string {
+  const url = extractUrlForDisplay(args)
+  return url ? `Fetching ${url}` : 'Fetching web content'
+}
+
+function extractUrlForDisplay(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    const parsed = parseJsonObject(value)
+    if (parsed) return extractUrlForDisplay(parsed)
+    const trimmed = value.trim()
+    if (/^https?:\/\//i.test(trimmed)) return truncateMiddle(redactSensitiveText(trimmed), 140)
+    const match = trimmed.match(/https?:\/\/[^\s"'`\\]+/i)
+    return match ? truncateMiddle(redactSensitiveText(match[0]), 140) : undefined
+  }
+  if (!isPlainObject(value)) return undefined
+  for (const key of ['url', 'uri', 'href']) {
+    const raw = value[key]
+    if (typeof raw === 'string' && raw.trim()) {
+      return truncateMiddle(redactSensitiveText(raw.trim()), 140)
+    }
+  }
+  return undefined
+}
+
+function cleanShellArgumentForDisplay(value: string): string {
+  const trimmed = value.trim()
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim()
+  }
+  return trimmed
+}
+
+function basenameForDisplay(path: string): string {
+  const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '')
+  return normalized.split('/').pop() || normalized
 }
 
 function firstLine(value: string): string {
@@ -1642,7 +1776,8 @@ function redactSensitiveText(value: string): string {
   return value
     .replace(/(authorization:\s*bearer\s+)[^\s"'`]+/gi, '$1[redacted]')
     .replace(/(x-access-token:)[^\s"'`@]+/gi, '$1[redacted]')
-    .replace(/\b([A-Za-z0-9_]*(?:token|password|secret|api[_-]?key)[A-Za-z0-9_]*\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,}]+)/gi, '$1[redacted]')
+    .replace(/([?&][^=\s"'`]*(?:token|password|secret|api[_-]?key)[^=\s"'`]*=)[^&\s"'`]+/gi, '$1[redacted]')
+    .replace(/\b([A-Za-z0-9_]*(?:token|password|secret|api[_-]?key)[A-Za-z0-9_]*\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,"'`}]+)/gi, '$1[redacted]')
 }
 
 function parseStreamFrame(frame: string): ChatChunk | null {
@@ -1704,14 +1839,19 @@ function parseActivityChunk(parsed: {
       return {
         type: 'status',
         content: parsed.activity.content || 'Agent status update',
-        data: parsed.activity.data,
+        data: metadataFromUnknown(parsed.activity.data),
       }
     }
     if (kind === 'tool_call' || kind === 'tool') {
+      const toolActivity = normalizeRuntimeToolActivity(parsed.activity.data, 'call')
+      const data = withRuntimeToolSummary(
+        toolActivity ?? fallbackToolActivity(parsed.activity.data, 'call'),
+        parsed.activity.content,
+      )
       return {
         type: 'tool',
-        content: parsed.activity.content || describeToolPayload(parsed.activity.data),
-        data: parsed.activity.data,
+        content: parsed.activity.content || describeToolPayload(toolActivity ?? parsed.activity.data),
+        data,
       }
     }
   }
@@ -1721,36 +1861,144 @@ function parseActivityChunk(parsed: {
     return {
       type: 'status',
       content: parsed.content || 'Agent status update',
-      data: parsed.data,
+      data: metadataFromUnknown(parsed.data),
     }
   }
   if (frameKind === 'tool' || frameKind === 'tool_call') {
+    const payload = parsed.data ?? parsed.tool ?? parsed.tool_call ?? parsed.toolCall
+    const toolActivity = normalizeRuntimeToolActivity(payload, 'call')
+    const data = withRuntimeToolSummary(
+      toolActivity ?? fallbackToolActivity(payload, 'call'),
+      parsed.content,
+    )
     return {
       type: 'tool',
-      content: parsed.content || describeToolPayload(parsed.data ?? parsed.tool ?? parsed.tool_call ?? parsed.toolCall),
-      data: parsed.data ?? parsed.tool ?? parsed.tool_call ?? parsed.toolCall,
+      content: parsed.content || describeToolPayload(toolActivity ?? payload),
+      data,
     }
   }
 
   const toolCalls = parsed.choices?.[0]?.delta?.tool_calls ?? parsed.choices?.[0]?.message?.tool_calls
   if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+    const toolActivity = normalizeRuntimeToolActivity({ toolCalls }, 'call')
     return {
       type: 'tool',
       content: describeToolPayload(toolCalls),
-      data: { toolCalls },
+      data: toolActivity ?? fallbackToolActivity(toolCalls, 'call'),
     }
   }
 
   const toolPayload = parsed.tool ?? parsed.tool_call ?? parsed.toolCall
   if (toolPayload !== undefined) {
+    const toolActivity = normalizeRuntimeToolActivity(toolPayload, 'call')
     return {
       type: 'tool',
       content: parsed.content || describeToolPayload(toolPayload),
-      data: toolPayload,
+      data: toolActivity ?? fallbackToolActivity(toolPayload, 'call'),
     }
   }
 
   return null
+}
+
+function fallbackToolActivity(payload: unknown, phase: RuntimeToolActivity['phase']): RuntimeToolActivity {
+  return {
+    phase,
+    toolName: describeToolPayload(payload),
+    status: phase === 'call' ? 'running' : 'completed',
+  }
+}
+
+function withRuntimeToolSummary(activity: RuntimeToolActivity, summary: string | undefined): RuntimeToolActivity {
+  if (!summary || activity.summary) return activity
+  return { ...activity, summary }
+}
+
+function metadataFromUnknown(value: unknown): RuntimeMetadata | undefined {
+  if (value === undefined) return undefined
+  return isPlainObject(value) ? value : { value }
+}
+
+function normalizeRuntimeToolActivity(payload: unknown, fallbackPhase: RuntimeToolActivity['phase']): RuntimeToolActivity | null {
+  const toolCallPayload = firstToolCallPayload(payload)
+  if (toolCallPayload) return normalizeRuntimeToolActivity(toolCallPayload, fallbackPhase)
+
+  if (typeof payload === 'string' && payload.trim()) {
+    return {
+      phase: fallbackPhase,
+      toolName: payload.trim(),
+      status: fallbackPhase === 'call' ? 'running' : 'completed',
+    }
+  }
+
+  if (!isPlainObject(payload)) return null
+
+  const functionValue = payload.function
+  const functionName = isPlainObject(functionValue) && typeof functionValue.name === 'string'
+    ? functionValue.name
+    : undefined
+  const functionArgs = isPlainObject(functionValue) && typeof functionValue.arguments === 'string'
+    ? functionValue.arguments
+    : undefined
+  const phase = payload.phase === 'result' ? 'result' : payload.phase === 'call' ? 'call' : fallbackPhase
+  const toolName = firstString(
+    payload.toolName,
+    payload.name,
+    payload.tool,
+    functionName,
+    payload.id,
+  ) ?? 'tool'
+  const callId = firstString(payload.callId, payload.toolCallId, payload.id)
+  const status = typeof payload.status === 'string'
+    ? payload.status
+    : phase === 'call'
+      ? 'running'
+      : normalizeToolResultStatus(undefined, typeof payload.exitCode === 'number' ? payload.exitCode : undefined)
+  const inputPreview = firstString(
+    payload.inputPreview,
+    payload.argumentsPreview,
+    functionArgs !== undefined ? previewUnknown(functionArgs) : undefined,
+    payload.arguments !== undefined ? previewUnknown(payload.arguments) : undefined,
+  )
+  const outputPreview = firstString(
+    payload.outputPreview,
+    payload.resultPreview,
+    payload.output !== undefined ? previewUnknown(payload.output) : undefined,
+  )
+  const summary = firstString(
+    payload.summary,
+    payload.purpose,
+    payload.displayLabel,
+  ) ?? (phase === 'call'
+    ? summarizeRuntimeToolPurpose(toolName, inputPreview)
+    : undefined)
+
+  return {
+    phase,
+    ...(callId ? { callId } : {}),
+    toolName,
+    status,
+    ...(summary ? { summary } : {}),
+    ...(inputPreview ? { inputPreview } : {}),
+    ...(outputPreview ? { outputPreview } : {}),
+    ...(typeof payload.durationMs === 'number' ? { durationMs: payload.durationMs } : {}),
+    ...(typeof payload.exitCode === 'number' ? { exitCode: payload.exitCode } : {}),
+  }
+}
+
+function firstToolCallPayload(payload: unknown): unknown | null {
+  if (Array.isArray(payload)) return payload.find(isPlainObject) ?? null
+  if (!isPlainObject(payload)) return null
+  const toolCalls = payload.toolCalls
+  if (Array.isArray(toolCalls)) return toolCalls.find(isPlainObject) ?? null
+  return null
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.length > 0) return value
+  }
+  return undefined
 }
 
 function describeToolPayload(payload: unknown): string {

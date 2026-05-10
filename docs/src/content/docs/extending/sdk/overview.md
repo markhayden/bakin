@@ -68,6 +68,34 @@ import { PluginHeader } from '@makinbakin/sdk/components'
 
 Avoid copying host component files into a plugin. If a component is broadly useful, promote it to the SDK instead.
 
+## Brainstorm Components
+
+Use `IntegratedBrainstorm` for plugin-owned back-and-forth agent work. The component owns the chat UI, streaming state, keyboard behavior, tool/activity rendering, abort behavior, and resize persistence. The plugin still owns transport, storage, and domain side effects.
+
+```tsx
+import {
+  IntegratedBrainstorm,
+  readBrainstormSseResponse,
+} from '@makinbakin/sdk/components'
+```
+
+Server routes and exec tools should use the matching utilities from `@makinbakin/sdk/utils`:
+
+```ts
+import {
+  brainstormThreadId,
+  normalizeBrainstormActivityForStorage,
+  runtimeChunkToBrainstormActivity,
+} from '@makinbakin/sdk/utils'
+```
+
+- `brainstormThreadId(scope, entityId, agentId)` builds a stable adapter-neutral runtime thread key. Use it for durable sessions, for example `projects:${projectId}:${agentId}` or `messaging:${sessionId}:${agentId}`.
+- `runtimeChunkToBrainstormActivity(chunk)` maps runtime stream chunks such as status and tool events into UI activity records.
+- `normalizeBrainstormActivityForStorage(activity)` bounds and normalizes activity before a plugin persists it.
+- `readBrainstormSseResponse(response, ctx, options)` parses `token`, `activity`, `done`, and `error` events for client-side `onSend` handlers.
+
+Do not replay an entire plugin-stored transcript into every prompt when a durable runtime thread is available. Store chat messages and activity for UI hydration and search, but let the active runtime adapter map repeated `agentId + threadId` calls to the same provider session.
+
 ## Metadata Helpers
 
 `@makinbakin/sdk/metadata` re-exports docs-aware contract types and helper functions. New HTTP APIs should use `defineRoute()` from `@makinbakin/sdk` or `@makinbakin/sdk/routing`; older metadata helpers remain for compatibility with existing contracts.

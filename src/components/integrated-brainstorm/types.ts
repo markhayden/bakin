@@ -49,16 +49,16 @@ export interface IntegratedBrainstormProps {
   position?: 'bottom'
   collapsible?: boolean
   defaultOpen?: boolean
-  conversationStartHeight?: number
+  defaultHeight?: number
   minHeight?: number
   maxHeight?: number
   maxInputHeight?: number
   storageKey?: string
   /**
    * Fill parent height via flex-1/h-full instead of a fixed pixel height.
-   * Drops the drag handle (nothing to drag against) and disables auto-expand
-   * (already full-size). Use when the panel IS the pane — e.g. a dedicated
-   * chat route — rather than a bottom sheet above other content.
+   * Drops the drag handle because there is nothing fixed to drag against. Use
+   * when the panel IS the pane — e.g. a dedicated chat route — rather than a
+   * bottom sheet above other content.
    */
   fitParent?: boolean
   /**
