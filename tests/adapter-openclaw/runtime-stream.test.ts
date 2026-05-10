@@ -184,6 +184,82 @@ describe('OpenClaw runtime stream parsing', () => {
     })
   })
 
+  it('summarizes exec-based context lookups without changing the real tool name', async () => {
+    globalThis.fetch = mock(async () => sseResponse([
+      {
+        choices: [{
+          delta: {
+            tool_calls: [{
+              id: 'call-context',
+              type: 'function',
+              function: {
+                name: 'exec',
+                arguments: JSON.stringify({
+                  command: 'bx context "OpenClaw GitHub releases latest openclaw/openclaw" --max-tokens 4096',
+                }),
+              },
+            }],
+          },
+        }],
+      },
+    ])) as unknown as typeof fetch
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const chunks = await collect(runtime.messaging.stream({
+      agentId: 'main',
+      content: 'hello',
+      threadId: 'thread-1',
+    }))
+
+    expect(chunks[0]).toMatchObject({
+      type: 'tool',
+      data: {
+        toolName: 'exec',
+        summary: 'Checking GitHub releases for openclaw/openclaw',
+      },
+    })
+  })
+
+  it('summarizes exec-based web fetches when commands contain URLs', async () => {
+    globalThis.fetch = mock(async () => sseResponse([
+      {
+        choices: [{
+          delta: {
+            tool_calls: [{
+              id: 'call-python-fetch',
+              type: 'function',
+              function: {
+                name: 'exec',
+                arguments: JSON.stringify({
+                  command: "python3 - <<'PY'\nurl='https://api.github.com/repos/openclaw/openclaw/releases?per_page=3'\nPY",
+                }),
+              },
+            }],
+          },
+        }],
+      },
+    ])) as unknown as typeof fetch
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const chunks = await collect(runtime.messaging.stream({
+      agentId: 'main',
+      content: 'hello',
+      threadId: 'thread-1',
+    }))
+
+    expect(chunks[0]).toMatchObject({
+      type: 'tool',
+      data: {
+        toolName: 'exec',
+        summary: 'Fetching https://api.github.com/repos/openclaw/openclaw/releases?per_page=3',
+      },
+    })
+  })
+
   it('includes the URL in web_fetch tool summaries', async () => {
     globalThis.fetch = mock(async () => sseResponse([
       {
