@@ -1,0 +1,165 @@
+#!/bin/bash
+# Run Bakin against isolated onboarding-test homes.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$REPO_ROOT"
+
+usage() {
+  cat <<'EOF'
+Usage: ./cmd/bakin-instance <repo|installed> <command> [args...]
+
+Commands:
+  path                 Print the BAKIN_HOME used by this instance
+  env                  Print the environment exported for this instance
+  reset                Delete and recreate this instance's Bakin home
+  onboard [args...]    Run bakin onboard in this instance
+  check [args...]      Run bakin check in this instance
+  doctor [args...]     Run bakin doctor in this instance
+  start                Start Bakin with this instance's home
+  run <args...>        Run an arbitrary Bakin CLI command in this instance
+  shell                Open a shell with BAKIN_HOME and OpenClaw env set
+
+Examples:
+  ./cmd/bakin-instance repo reset
+  ./cmd/bakin-instance repo onboard --yes --json
+  ./cmd/bakin-instance installed reset
+  ./cmd/bakin-instance installed onboard
+  ./cmd/bakin-instance repo start
+EOF
+}
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  usage
+  exit 0
+fi
+
+MODE="${1:-}"
+COMMAND="${2:-}"
+
+if [ -z "$MODE" ] || [ -z "$COMMAND" ]; then
+  usage
+  exit 1
+fi
+
+case "$MODE" in
+  repo|installed) ;;
+  *)
+    echo "Unknown instance mode: $MODE" >&2
+    usage
+    exit 1
+    ;;
+esac
+
+shift 2
+
+INSTANCE_ROOT="$REPO_ROOT/dev/bakin-instances/$MODE"
+BAKIN_HOME_DIR="$INSTANCE_ROOT/home"
+OPENCLAW_HOME_DIR="$REPO_ROOT/dev/openclaw-home"
+OPENCLAW_SHIM="$REPO_ROOT/dev/docker/openclaw-shim.sh"
+
+export BAKIN_HOME="$BAKIN_HOME_DIR"
+export OPENCLAW_HOME="$OPENCLAW_HOME_DIR"
+export OPENCLAW_PATH="$OPENCLAW_SHIM"
+export BAKIN_CONSOLE_FORMAT="${BAKIN_CONSOLE_FORMAT:-pretty}"
+
+ensure_instance_dirs() {
+  mkdir -p "$BAKIN_HOME_DIR" "$OPENCLAW_HOME_DIR"
+}
+
+ensure_openclaw_running() {
+  docker compose -f "$REPO_ROOT/dev/docker/docker-compose.yml" up -d openclaw-gateway >/dev/null
+}
+
+run_bakin_cli() {
+  case "$MODE" in
+    repo)
+      bun run "$REPO_ROOT/cli/bakin.ts" "$@"
+      ;;
+    installed)
+      if ! command -v bakin >/dev/null 2>&1; then
+        echo "No installed 'bakin' found on PATH. Install with Homebrew or use mode 'repo'." >&2
+        exit 1
+      fi
+      bakin "$@"
+      ;;
+  esac
+}
+
+start_bakin() {
+  ensure_instance_dirs
+  ensure_openclaw_running
+  export BAKIN_URL="${BAKIN_URL:-http://host.docker.internal:3737}"
+  case "$MODE" in
+    repo)
+      bun run prestart
+      bun run "$REPO_ROOT/server.ts"
+      ;;
+    installed)
+      if ! command -v bakin >/dev/null 2>&1; then
+        echo "No installed 'bakin' found on PATH. Install with Homebrew or use mode 'repo'." >&2
+        exit 1
+      fi
+      bakin start
+      ;;
+  esac
+}
+
+case "$COMMAND" in
+  path)
+    echo "$BAKIN_HOME_DIR"
+    ;;
+  env)
+    cat <<EOF
+BAKIN_HOME=$BAKIN_HOME
+OPENCLAW_HOME=$OPENCLAW_HOME
+OPENCLAW_PATH=$OPENCLAW_PATH
+BAKIN_CONSOLE_FORMAT=$BAKIN_CONSOLE_FORMAT
+EOF
+    ;;
+  reset)
+    rm -rf "$BAKIN_HOME_DIR"
+    mkdir -p "$BAKIN_HOME_DIR"
+    echo "Reset $MODE instance: $BAKIN_HOME_DIR"
+    ;;
+  onboard)
+    ensure_instance_dirs
+    ensure_openclaw_running
+    run_bakin_cli onboard "$@"
+    ;;
+  check)
+    ensure_instance_dirs
+    ensure_openclaw_running
+    run_bakin_cli check "$@"
+    ;;
+  doctor)
+    ensure_instance_dirs
+    ensure_openclaw_running
+    run_bakin_cli doctor "$@"
+    ;;
+  start)
+    start_bakin
+    ;;
+  run)
+    if [ "$#" -eq 0 ]; then
+      echo "Usage: ./cmd/bakin-instance <repo|installed> run <bakin args...>" >&2
+      exit 1
+    fi
+    ensure_instance_dirs
+    ensure_openclaw_running
+    run_bakin_cli "$@"
+    ;;
+  shell)
+    ensure_instance_dirs
+    ensure_openclaw_running
+    echo "Entering $MODE instance shell"
+    echo "BAKIN_HOME=$BAKIN_HOME"
+    echo "OPENCLAW_HOME=$OPENCLAW_HOME"
+    exec "${SHELL:-/bin/bash}"
+    ;;
+  *)
+    echo "Unknown command: $COMMAND" >&2
+    usage
+    exit 1
+    ;;
+esac

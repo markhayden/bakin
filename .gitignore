@@ -63,6 +63,7 @@ public/headshots/full/
 
 # Docker dev environment (runtime data + secrets)
 dev/openclaw-home/
+dev/bakin-instances/
 dev/docker/.env
 dev/docker/auth-profiles.backup.json
 

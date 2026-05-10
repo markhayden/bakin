@@ -40,6 +40,26 @@ function hasCredentialField(entry: unknown): boolean {
   for (const field of CHANNEL_CREDENTIAL_FIELDS) {
     const value = obj[field]
     if (typeof value === 'string' && value.trim().length > 0) return true
+    if (value !== null && typeof value === 'object') {
+      const ref = value as Record<string, unknown>
+      const hasSource = typeof ref.source === 'string' && ref.source.trim().length > 0
+      const hasId = typeof ref.id === 'string' && ref.id.trim().length > 0
+      if (hasSource && hasId) return true
+    }
+  }
+  return false
+}
+
+function profileHasCredential(profile: unknown): profile is { provider: string } {
+  if (profile === null || typeof profile !== 'object') return false
+  const entry = profile as Record<string, unknown>
+  if (typeof entry.provider !== 'string' || entry.provider.trim().length === 0) return false
+  if (typeof entry.apiKey === 'string' && entry.apiKey.trim().length > 0) return true
+  const authMode = entry.mode ?? entry.type
+  if (authMode === 'oauth') {
+    return (typeof entry.access === 'string' && entry.access.trim().length > 0)
+      || (typeof entry.refresh === 'string' && entry.refresh.trim().length > 0)
+      || entry.provider === 'openai-codex'
   }
   return false
 }
@@ -123,14 +143,13 @@ async function checkLlm(): Promise<CheckResult> {
     }
   }
   const providers = entries
-    .filter((p): p is { provider?: string; apiKey?: string } => p !== null && typeof p === 'object')
-    .filter((p) => typeof p.provider === 'string' && typeof p.apiKey === 'string' && p.apiKey.trim().length > 0)
-    .map((p) => p.provider as string)
+    .filter(profileHasCredential)
+    .map((p) => p.provider)
   if (providers.length === 0) {
     return {
       name: 'llm',
       status: 'warn',
-      message: 'No LLM provider in auth profiles has a non-empty apiKey',
+      message: 'No LLM provider in auth profiles has a usable API key or OAuth credential',
       remediation: `Configure at least one LLM provider via the runtime adapter. Docs: ${RUNTIME_DOCS}`,
       details: { configKey, installUrl: RUNTIME_DOCS },
     }
@@ -236,4 +255,4 @@ export const channelsComponent: OnboardingComponent = {
 }
 
 export const RUNTIME_DOCS_URL = RUNTIME_DOCS
-export const _internals = { CHANNEL_CREDENTIAL_FIELDS, hasCredentialField }
+export const _internals = { CHANNEL_CREDENTIAL_FIELDS, hasCredentialField, profileHasCredential }

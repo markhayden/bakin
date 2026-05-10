@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -7,6 +7,10 @@ import { readOpenClawConfig, resetOpenClawConfigCache } from '../../packages/ada
 describe('OpenClaw config cache', () => {
   const originalOpenClawHome = process.env.OPENCLAW_HOME
   const homes: string[] = []
+
+  beforeEach(() => {
+    resetOpenClawConfigCache()
+  })
 
   afterEach(() => {
     if (originalOpenClawHome === undefined) delete process.env.OPENCLAW_HOME

@@ -35,6 +35,29 @@ export interface OpenClawConfig {
 
 let cachedConfig: { path: string; mtimeMs: number; config: OpenClawConfig | null } | null = null
 
+function normalizeOpenClawConfig(config: OpenClawConfig | null): OpenClawConfig | null {
+  if (!config?.agents?.defaults) return config
+  if (Object.keys(config.agents.defaults).length === 0) return config
+
+  const existing = Array.isArray(config.agents.list) ? config.agents.list : []
+  if (existing.some((agent) => agent?.id === 'main')) return config
+
+  return {
+    ...config,
+    agents: {
+      ...config.agents,
+      list: [
+        {
+          id: 'main',
+          model: config.agents.defaults.model,
+          workspace: config.agents.defaults.workspace,
+        },
+        ...existing,
+      ],
+    },
+  }
+}
+
 export function readOpenClawConfig(): OpenClawConfig | null {
   let path: string
   try {
@@ -56,7 +79,7 @@ export function readOpenClawConfig(): OpenClawConfig | null {
 
   let config: OpenClawConfig | null
   try {
-    config = JSON.parse(readFileSync(path, 'utf-8')) as OpenClawConfig
+    config = normalizeOpenClawConfig(JSON.parse(readFileSync(path, 'utf-8')) as OpenClawConfig)
   } catch {
     config = null
   }

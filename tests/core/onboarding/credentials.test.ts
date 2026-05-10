@@ -144,7 +144,24 @@ describe('onboarding credentials component', () => {
       }))
       const result = await llmComponent.check()
       expect(result.status).toBe('ok')
-      expect(result.details?.providers).toEqual(['anthropic'])
+      expect(result.details?.providers).toEqual(['anthropic', 'openai-codex'])
+    })
+
+    it('reports ok from OpenClaw OAuth profile shape', async () => {
+      writeFileSync(authProfilesPath(), JSON.stringify({
+        version: 1,
+        profiles: {
+          'openai-codex:user@example.com': {
+            type: 'oauth',
+            provider: 'openai-codex',
+            access: 'oauth-access-token',
+            refresh: 'oauth-refresh-token',
+          },
+        },
+      }))
+      const result = await llmComponent.check()
+      expect(result.status).toBe('ok')
+      expect(result.details?.providers).toEqual(['openai-codex'])
     })
 
     it('reports ok with multiple providers when several are configured', async () => {
@@ -215,6 +232,19 @@ describe('onboarding credentials component', () => {
         channels: {
           discord: { token: 'fake-discord-token' },
           telegram: { apiKey: '' },
+        },
+      }))
+      const result = await channelsComponent.check()
+      expect(result.status).toBe('ok')
+      expect(result.details?.channels).toEqual(['discord'])
+    })
+
+    it('reports ok when a channel uses an env-backed credential reference', async () => {
+      writeFileSync(runtimeConfigPath(), JSON.stringify({
+        channels: {
+          discord: {
+            token: { source: 'env', provider: 'default', id: 'DISCORD_BOT_TOKEN' },
+          },
         },
       }))
       const result = await channelsComponent.check()

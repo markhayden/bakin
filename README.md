@@ -50,6 +50,41 @@ For CI or scripted installs:
 bakin onboard --yes --json
 ```
 
+### Replaying onboarding in disposable instances
+
+For development and audit work, use isolated instance homes instead of your real `~/.bakin/`. These commands reuse the Docker OpenClaw runtime in `dev/openclaw-home/`, but keep Bakin state under `dev/bakin-instances/`.
+
+```bash
+bun run docker:setup
+bun run instance:repo:reset
+bun run instance:repo:onboard
+bun run instance:repo:start
+```
+
+`instance:repo` runs the CLI from this checkout. To smoke-test the installed/Homebrew-style CLI on your `PATH`, use the installed profile:
+
+```bash
+bun run instance:installed:reset
+bun run instance:installed:onboard
+bun run instance:installed:start
+```
+
+Use the scripted onboarding variants when you want repeatable non-interactive runs:
+
+```bash
+bun run instance:repo:onboard:yes
+bun run instance:installed:onboard:yes
+```
+
+Advanced helpers:
+
+```bash
+bun run instance:repo -- path
+bun run instance:repo -- env
+bun run instance:repo -- shell
+bun run instance:repo -- run doctor
+```
+
 Individual commands for piecemeal use:
 
 | Command | Purpose |

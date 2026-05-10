@@ -68,11 +68,12 @@ describe('imitation-crab onboarding contract', () => {
   it('reports a broken runtime check when the seeded roster loses main', async () => {
     const { env } = await openHarness()
     const config = readRuntimeConfig(env.home) as {
-      agents?: { list?: Array<{ id?: string }> }
+      agents?: { defaults?: unknown; list?: Array<{ id?: string }> }
     }
     const main = config.agents?.list?.find((agent) => agent.id === 'main')
     if (!main) throw new Error('Fixture invariant failed: main agent is missing')
     main.id = 'crab'
+    if (config.agents) delete config.agents.defaults
     writeRuntimeConfig(env.home, config as Record<string, unknown>)
 
     const result = await runtimeComponent.check()

@@ -37,6 +37,49 @@ Open http://127.0.0.1:18789 — that's the OpenClaw dashboard (use gateway token
 ./cmd/stop                # Stop OpenClaw container
 ```
 
+## Onboarding Test Instances
+
+Use isolated Bakin homes when you want to replay first-run onboarding without touching `~/.bakin/`.
+
+```bash
+bun run instance:repo:reset
+bun run instance:repo:onboard
+bun run instance:repo:start
+```
+
+`repo` runs the CLI from this checkout. `installed` runs the `bakin` executable on `PATH`, which is the closer Homebrew/release smoke test:
+
+```bash
+bun run instance:installed:reset
+bun run instance:installed:onboard
+bun run instance:installed:start
+```
+
+Both modes share the Docker OpenClaw runtime in `dev/openclaw-home/`, but keep separate Bakin data under `dev/bakin-instances/<mode>/home/`.
+
+For repeatable scripted onboarding, use the non-interactive aliases:
+
+```bash
+bun run instance:repo:onboard:yes
+bun run instance:installed:onboard:yes
+```
+
+The base aliases pass through to `cmd/bakin-instance`, so you can inspect or run arbitrary commands in either profile:
+
+```bash
+bun run instance:repo -- path
+bun run instance:repo -- env
+bun run instance:repo -- shell
+bun run instance:repo -- run doctor
+```
+
+Equivalent lower-level form:
+
+```bash
+./cmd/bakin-instance repo onboard --yes --json
+./cmd/bakin-instance installed start
+```
+
 ## LLM Provider Options
 
 Set `LLM_PROVIDER` in `dev/docker/.env`:
@@ -66,9 +109,10 @@ Setup validates the right key is present and sets the default model automaticall
 ./cmd/restart             # Restart OpenClaw + Bakin
 ./cmd/wipe                # Full reset (wipes state, restores auth from backup)
 ./cmd/logs                # Tail gateway logs (./cmd/logs 100 for more lines)
+./cmd/bakin-instance      # Isolated Bakin onboarding-test instances
 ```
 
-npm scripts still work too (`./cmd/setup`, `npm run dev:docker`, etc.).
+Bun scripts are available for the common paths (`bun run docker:setup`, `bun run instance:repo:start`, `bun run instance:installed:onboard`, etc.).
 
 ## How It Works
 

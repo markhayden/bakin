@@ -73,6 +73,26 @@ describe('openclaw-config', () => {
       expect(config?.agents?.list?.[0].id).toBe('main')
     })
 
+    it('normalizes OpenClaw default agent config to an implicit main agent', () => {
+      mockFile(1000, JSON.stringify({
+        agents: {
+          defaults: {
+            model: { primary: 'openai-codex/gpt-5.4' },
+            workspace: '/tmp/main-workspace',
+          },
+        },
+      }))
+
+      const config = readOpenClawConfig()
+      expect(config?.agents?.list?.[0]).toEqual({
+        id: 'main',
+        model: { primary: 'openai-codex/gpt-5.4' },
+        workspace: '/tmp/main-workspace',
+      })
+      expect(getAgentIds()).toEqual(['main'])
+      expect(findAgentById('main')?.workspace).toBe('/tmp/main-workspace')
+    })
+
     it('returns null when file content is malformed JSON', () => {
       mockFile(1000, '{ not valid json')
       expect(readOpenClawConfig()).toBeNull()
