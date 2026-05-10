@@ -22,11 +22,20 @@ export {
   runtimeChunkToBrainstormActivity,
   toBrainstormTimeline,
 } from './activity'
+export {
+  brainstormThreadId,
+  normalizeBrainstormActivityForStorage,
+  normalizeBrainstormActivityMessageForStorage,
+} from './session'
 export type {
   BrainstormActivityInput,
   BrainstormTimelineActivityInput,
   BrainstormTimelineMessageInput,
 } from './activity'
+export type {
+  BrainstormActivityStorageInput,
+  BrainstormActivityStorageRecord,
+} from './session'
 export { readBrainstormSseResponse } from './sse'
 
 export function IntegratedBrainstorm({

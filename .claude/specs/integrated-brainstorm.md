@@ -228,6 +228,7 @@ packages/sdk/src/components/integrated-brainstorm/
   use-auto-grow.ts         — textarea scrollHeight → height effect
   use-brainstorm-state.ts  — send/abort/streaming state machine
   activity.ts              — runtime chunk → brainstorm activity helpers
+  session.ts               — durable thread id + activity storage helpers
   sse.ts                   — reusable SSE reader for brainstorm transports
   types.ts                 — BrainstormMessage, prop types
 ```
@@ -245,11 +246,21 @@ Pure helpers are also exported from `@bakin/sdk/utils` for server-side plugin ro
 
 ```ts
 export {
+  brainstormThreadId,
+  normalizeBrainstormActivityForStorage,
+  normalizeBrainstormActivityMessageForStorage,
   runtimeChunkToBrainstormActivity,
   readBrainstormSseResponse,
   toBrainstormTimeline,
 } from '@bakin/sdk/utils'
 ```
+
+Durable session rules:
+
+- Use `brainstormThreadId(scope, entityId, agentId)` for adapter-neutral runtime continuity. The same `agentId + threadId` pair must map to the same provider/runtime session.
+- Store plugin-owned messages for UI hydration and auditability, not as prompt replay. Replaying every prior turn into every request grows tokens and bypasses the runtime adapter's session model.
+- Normalize activity with `normalizeBrainstormActivityForStorage()` before persistence. It trims/limits summaries and preview payloads so tool transparency does not turn session files into unbounded logs.
+- Persist streamed `activity` events when the plugin owns a durable session. One-shot brainstorm endpoints may stream activity without storing it.
 
 ### State machine
 
@@ -276,9 +287,10 @@ Reuses existing `src/hooks/use-vertical-resize.ts` (exported through `@bakin/sdk
 1. Open the SSE stream (fetch + `body.getReader()` — messaging already does this; projects gets a new handler).
 2. Parse `event: token` / `event: done` / `event: error` / custom events.
 3. Forward text chunks via `onToken(text)`.
-4. Forward domain events (e.g. `proposal`, `proposals`) via `onCustom(name, data)`.
-5. Honor `signal.aborted` — close the reader, abandon the fetch.
-6. Resolve with `{ content }` on `done`, reject with an `Error` on server error or transport failure.
+4. Forward `event: activity` via `onCustom('activity', data)`; SDK helpers render it as assistant-style tool/status rows.
+5. Forward domain events (e.g. `proposal`, `proposals`) via `onCustom(name, data)`.
+6. Honor `signal.aborted` — close the reader, abandon the fetch.
+7. Resolve with `{ content }` on `done`, reject with an `Error` on server error or transport failure.
 
 `readBrainstormSseResponse(response, ctx, options)` is the reusable SDK parser for common brainstorm SSE streams. Plugin clients should use it instead of duplicating the token/activity/done/error loop. The component itself still never opens fetch or EventSource — callers own transport and pass an `onSend`.
 

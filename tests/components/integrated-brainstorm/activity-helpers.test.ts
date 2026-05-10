@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test'
 import {
   brainstormActivityMessageFromCustom,
+  brainstormThreadId,
+  normalizeBrainstormActivityForStorage,
   readBrainstormSseResponse,
   runtimeChunkToBrainstormActivity,
   toBrainstormTimeline,
@@ -85,6 +87,36 @@ describe('brainstorm activity helpers', () => {
       content: 'read: plan.md',
       data: { phase: 'call', toolName: 'read' },
       timestamp: '2026-05-09T10:00:00.000Z',
+    })
+  })
+
+  it('builds stable URL-safe brainstorm thread ids', () => {
+    expect(brainstormThreadId('projects', 'proj/one', 'main agent')).toBe('projects:proj%2Fone:main%20agent')
+    expect(brainstormThreadId('projects', 'proj/one', 'main agent')).toBe('projects:proj%2Fone:main%20agent')
+  })
+
+  it('normalizes activity payloads before durable storage', () => {
+    const huge = 'x'.repeat(2500)
+    const normalized = normalizeBrainstormActivityForStorage({
+      kind: 'tool_call',
+      content: '  Reading project details  ',
+      data: {
+        phase: 'call',
+        toolName: 'exec',
+        inputPreview: huge,
+        nested: { value: huge },
+      },
+    })
+
+    expect(normalized).toEqual({
+      kind: 'tool_call',
+      content: 'Reading project details',
+      data: {
+        phase: 'call',
+        toolName: 'exec',
+        inputPreview: `${'x'.repeat(1997)}...`,
+        nested: expect.stringContaining('"value"'),
+      },
     })
   })
 

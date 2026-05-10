@@ -632,6 +632,8 @@ interface NotificationArgs {
 interface MessageArgs {
   channels: string[]
   text: string
+  // Adapter-neutral durable conversation key. Runtime adapters should map the
+  // same agentId + threadId pair to the same provider/runtime session.
   threadId?: string
   mentionAgentId?: string
   assets?: Asset[]

@@ -1,5 +1,6 @@
 import type { RuntimeChatChunk } from '@bakin/sdk/types'
 import type { BrainstormMessage } from './types'
+import { normalizeBrainstormActivityForStorage } from './session'
 
 export interface BrainstormActivityInput {
   kind: string
@@ -57,12 +58,18 @@ export function brainstormActivityMessageFromCustom(name: string, data: unknown)
   const activity = payload as Record<string, unknown>
   const content = typeof activity.content === 'string' ? activity.content : ''
   if (!content) return null
-  return {
-    id: typeof activity.id === 'string' ? activity.id : newActivityId(),
-    role: 'activity',
+  const normalized = normalizeBrainstormActivityForStorage({
     kind: typeof activity.kind === 'string' ? activity.kind : 'runtime_status',
     content,
     data: activity.data,
+  })
+  if (!normalized) return null
+  return {
+    id: typeof activity.id === 'string' ? activity.id : newActivityId(),
+    role: 'activity',
+    kind: normalized.kind,
+    content: normalized.content,
+    ...(normalized.data !== undefined ? { data: normalized.data } : {}),
     timestamp: typeof activity.timestamp === 'string' ? activity.timestamp : new Date().toISOString(),
   }
 }

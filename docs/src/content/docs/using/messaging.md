@@ -70,6 +70,12 @@ Where the work starts. Open the brainstorm view, hit `New Session`, pick an agen
 
 Every calendar item links back to the session it came from. You can always trace a published post to the conversation behind it.
 
+### Session continuity and tool activity
+
+Brainstorm sessions are durable. When you leave a session and come back, Bakin reloads the stored user, assistant, and tool-activity timeline from the session file. New messages also reuse the same adapter-neutral runtime thread key for that session and agent, so the active runtime adapter can continue the same underlying conversation instead of starting over.
+
+Tool calls and runtime status updates stream into the chat while the agent is working. They render in the same assistant-style thread with compact summaries and expandable details. Those activity rows are persisted with the session so the "what happened behind the scenes" trail is still there after reload. Search indexes user/assistant planning text and proposal summaries, not raw tool output.
+
 ### What are proposals?
 
 <figure class="screenshot-frame">
@@ -118,7 +124,7 @@ Each calendar item picks one or more channels from that registry. Channels show 
 ~/.bakin/
   messaging.json                  # flat array of every calendar item
   messaging/
-    sessions/<id>.json            # one file per brainstorm session
+    sessions/<id>.json            # brainstorm messages, activity rows, and proposals
   plugin-settings/
     messaging.json                # content types, default view, etc.
 ```
