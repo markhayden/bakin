@@ -17,6 +17,25 @@ The live MCP server is authoritative. If a tool name or argument is uncertain, r
 mcporter list bakin-<agent> --schema
 ```
 
+Runtime shells are intentionally minimal. Do not assume `rg`, `jq`, GNU-only flags, or stdin JSON helpers exist. If you need to filter schema output, use portable tools such as `grep`, `sed`, `awk`, and `head`:
+
+```bash
+mcporter list bakin-main --schema | grep -n -E 'bakin_exec_projects_apply_plan|bakin_exec_projects_get'
+```
+
+Call tools with valid `mcporter` argument syntax. Use `--args '<json object>'` as one shell argument, or simple `key=value` arguments when the schema is obvious. Do not use `--args @-`, heredocs, process substitution, or stdin-fed JSON with `mcporter call`; this mcporter version does not parse them.
+
+```bash
+mcporter call bakin-main.bakin_exec_projects_get --args '{"projectId":"proj_123"}'
+```
+
+For larger or multiline payloads, generate compact JSON first and pass it as a quoted variable:
+
+```bash
+ARGS=$(node -e 'process.stdout.write(JSON.stringify({projectId:"proj_123",body:"Updated plan\n\nNext step"}))')
+mcporter call bakin-main.bakin_exec_projects_apply_plan --args "$ARGS"
+```
+
 Do not rely on old non-exec tool names such as `bakin_create_task`, `bakin_report_complete`, `bakin_get_task`, or `bakin_post_discord`. Current task-board and plugin tools use the `bakin_exec_*` namespace.
 
 <!-- bakin:exec-tools:start -->
