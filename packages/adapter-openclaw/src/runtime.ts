@@ -1670,9 +1670,22 @@ function summarizeShellCommandPurpose(command: string): string | undefined {
   if (/\bmcporter\s+list\b/.test(first)) return 'Inspecting available Bakin tools'
   if (/\bgh\s+issue\b/.test(first)) return 'Checking GitHub issues'
   if (/\bgh\s+pr\b/.test(first)) return 'Checking GitHub pull requests'
+  const bxContextSummary = summarizeBxContextCommand(first)
+  if (bxContextSummary) return bxContextSummary
+  const fetchedUrl = extractUrlForDisplay(command)
+  if (fetchedUrl) return `Fetching ${fetchedUrl}`
   if (/^python3?\s+-\s*<<|^python3?\s+-c\b/.test(first)) return 'Preparing structured tool arguments'
   if (/^cat\s+>\s+\/tmp\//.test(first)) return 'Preparing a temporary helper script'
   return undefined
+}
+
+function summarizeBxContextCommand(command: string): string | undefined {
+  const match = command.match(/^bx\s+context\s+(.+?)(?:\s+--\S+|$)/)
+  if (!match) return undefined
+  const topic = cleanShellArgumentForDisplay(match[1])
+  const githubReleaseRepo = topic.match(/\bgithub\s+releases?\b.*\b([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\b/i)
+  if (githubReleaseRepo) return `Checking GitHub releases for ${githubReleaseRepo[1]}`
+  return topic ? `Looking up ${truncateMiddle(topic, 100)}` : 'Looking up context'
 }
 
 function summarizeToolNamePurpose(toolName: string): string | undefined {
@@ -1713,7 +1726,9 @@ function extractUrlForDisplay(value: unknown): string | undefined {
     const parsed = parseJsonObject(value)
     if (parsed) return extractUrlForDisplay(parsed)
     const trimmed = value.trim()
-    return /^https?:\/\//i.test(trimmed) ? truncateMiddle(redactSensitiveText(trimmed), 140) : undefined
+    if (/^https?:\/\//i.test(trimmed)) return truncateMiddle(redactSensitiveText(trimmed), 140)
+    const match = trimmed.match(/https?:\/\/[^\s"'`\\]+/i)
+    return match ? truncateMiddle(redactSensitiveText(match[0]), 140) : undefined
   }
   if (!isPlainObject(value)) return undefined
   for (const key of ['url', 'uri', 'href']) {
@@ -1723,6 +1738,17 @@ function extractUrlForDisplay(value: unknown): string | undefined {
     }
   }
   return undefined
+}
+
+function cleanShellArgumentForDisplay(value: string): string {
+  const trimmed = value.trim()
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim()
+  }
+  return trimmed
 }
 
 function basenameForDisplay(path: string): string {
