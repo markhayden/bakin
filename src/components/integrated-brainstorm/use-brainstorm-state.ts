@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
+import { brainstormActivityMessageFromCustom } from './activity'
 import { THINKING_VERBS } from './thinking-indicator'
 import type { BrainstormMessage, BrainstormOnSend } from './types'
 
@@ -12,25 +13,6 @@ function pickVerb(): string {
 
 function newId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-function activityMessageFromCustom(name: string, data: unknown): BrainstormMessage | null {
-  if (name !== 'activity') return null
-  const payload = data && typeof data === 'object' && 'activity' in data
-    ? (data as { activity?: unknown }).activity
-    : data
-  if (!payload || typeof payload !== 'object') return null
-  const activity = payload as Record<string, unknown>
-  const content = typeof activity.content === 'string' ? activity.content : ''
-  if (!content) return null
-  return {
-    id: typeof activity.id === 'string' ? activity.id : newId('act'),
-    role: 'activity',
-    kind: typeof activity.kind === 'string' ? activity.kind : 'runtime_status',
-    content,
-    data: activity.data,
-    timestamp: typeof activity.timestamp === 'string' ? activity.timestamp : new Date().toISOString(),
-  }
 }
 
 interface UseBrainstormStateOpts {
@@ -108,7 +90,7 @@ export function useBrainstormState({
             setStatus('streaming')
           },
           onCustom: (name: string, data: unknown) => {
-            const activityMessage = activityMessageFromCustom(name, data)
+            const activityMessage = brainstormActivityMessageFromCustom(name, data)
             if (activityMessage) {
               customMessages.push(activityMessage)
               onMessagesChange([...historyWithUser, ...customMessages])

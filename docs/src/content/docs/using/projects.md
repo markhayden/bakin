@@ -25,6 +25,8 @@ Most of the work happens here. Open the panel, pick an agent, start the conversa
 
 Hammer the plan out here before any real work starts.
 
+Project brainstorm uses a stable runtime thread per project and agent, so a reopened project continues the same adapter-backed conversation instead of replaying the old transcript into every prompt. The project file still stores the visible chat timeline, including streamed tool/status activity, so you can see how the agent reached an answer after navigation or reload.
+
 ### Tasks
 
 <figure class="screenshot-frame">
@@ -70,6 +72,7 @@ Projects index into search (table `bakin_projects`) on `title` and `body`, facet
 | `bakin projects get <projectId>` | Get a project |
 | `bakin projects create <title>` | Create a project |
 | `bakin projects update <projectId>` | Update a project |
+| `bakin projects apply-plan <projectId>` | Apply a confirmed project plan update |
 | `bakin projects delete <projectId>` | Delete a project |
 | `bakin projects add-item <projectId> <title>` | Add a checklist item |
 | `bakin projects toggle-item <projectId> <itemId> <checked>` | Toggle a checklist item |

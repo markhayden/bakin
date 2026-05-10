@@ -59,11 +59,11 @@ function Harness(props: {
 }
 
 describe('IntegratedBrainstorm — fitParent', () => {
-  it('default mode has inline height style and a drag handle', () => {
+  it('default mode has readable inline height style and a drag handle', () => {
     const fake = createFakeOnSend()
     render(<Harness fake={fake} />)
     const panel = screen.getByTestId('integrated-brainstorm') as HTMLDivElement
-    expect(panel.style.height).toBe('100px')
+    expect(panel.style.height).toBe('480px')
     expect(screen.getByTestId('resize-handle')).toBeDefined()
     expect(panel.className).toContain('shrink-0')
     expect(panel.className).not.toMatch(/\bh-full\b/)
@@ -80,7 +80,7 @@ describe('IntegratedBrainstorm — fitParent', () => {
     expect(panel.className).not.toMatch(/\bshrink-0\b/)
   })
 
-  it('fitParent=true disables auto-expand on first send (no inline height appears)', async () => {
+  it('fitParent=true keeps parent-owned height on first send', async () => {
     const fake = createFakeOnSend()
     render(<Harness fake={fake} fitParent />)
     const panel = screen.getByTestId('integrated-brainstorm') as HTMLDivElement

@@ -24,6 +24,20 @@ export type {
   BrainstormOnSend,
   SendContext,
   AssistantTransformed,
+  BrainstormActivityInput,
+  BrainstormActivityStorageInput,
+  BrainstormActivityStorageRecord,
+  BrainstormTimelineActivityInput,
+  BrainstormTimelineMessageInput,
+} from '@/components/integrated-brainstorm'
+export {
+  brainstormActivityMessageFromCustom,
+  brainstormThreadId,
+  normalizeBrainstormActivityForStorage,
+  normalizeBrainstormActivityMessageForStorage,
+  readBrainstormSseResponse,
+  runtimeChunkToBrainstormActivity,
+  toBrainstormTimeline,
 } from '@/components/integrated-brainstorm'
 export { MarkdownContent } from '@/components/markdown-content'
 export { MarkdownEditor } from '@/components/markdown-editor'

@@ -332,7 +332,7 @@ Set `disabled` while a search is active so the upstream relevance order (e.g. An
 
 - You need a chat with a single agent.
 - Responses stream from an SSE-shaped backend (OpenAI-style `choices[].delta.content` chunks work, as does any transport you wrap yourself).
-- You want consistent chrome: avatar-tinted assistant bubbles, markdown rendering, `json`-block transform hook, thinking indicator, Esc-to-abort, culinary-verb personality, collapse chrome, empty state.
+- You want consistent chrome: avatar-tinted assistant bubbles, normalized tool/activity rows, markdown rendering, `json`-block transform hook, thinking indicator, Esc-to-abort, culinary-verb personality, collapse chrome, empty state.
 
 Not for: one-shot prompts without history (use `sendMessage` + a button), multi-agent threads, or anything that needs a chat list / session list above it — render those separately in the page, not in this component.
 
@@ -349,17 +349,17 @@ Not for: one-shot prompts without history (use `sendMessage` + a button), multi-
 | `emptyState` | no | Replace default "Brainstorm with {agent}" welcome. |
 | `collapsible` | no | Default `true`. `false` shows a static header. |
 | `defaultOpen` | no | Default `true`. |
-| `fitParent` | no | `true` → panel fills parent height (no inline `height`, no top border, no drag handle, no auto-expand). Use for full-pane surfaces (messaging session chat). Default `false` (bottom-sheet mode). |
+| `fitParent` | no | `true` → panel fills parent height (no inline `height`, no top border, no drag handle). Use for full-pane surfaces (messaging session chat). Default `false` (bottom-sheet mode). |
 | `showHeader` | no | Default `true`. Set `false` when the parent page already has its own title chrome. |
 | `readOnly` | no | Swaps the input row for `readOnlyNotice` (defaults to "Chat is read-only."). History stays scrollable. Used by messaging for completed sessions. |
 | `transformAssistantMessage` | no | `(raw) => { text, extras? }`. Strip inline `json` blocks before rendering; surface the extracted count as a badge. Applied to streaming AND finalized content. |
-| `conversationStartHeight` / `minHeight` / `maxHeight` | no | Outer panel sizing. Default 400 / 100 / 720 (bottom-sheet mode only). |
+| `defaultHeight` / `minHeight` / `maxHeight` | no | Outer panel sizing. Default 480 / 260 / 720 (bottom-sheet mode only). `minHeight` is the lower drag bound, not the initial height. |
 | `maxInputHeight` | no | Textarea auto-grow cap. Default 200px. Textarea has no drag grip — content-driven height only. |
 | `storageKey` | no | When set, outer-panel drag height persists in `localStorage['bakin-vresize:{key}']`. Ignored when `fitParent` is on. |
 
 ### Two call-site shapes
 
-1. **Bottom sheet** (projects) — panel is pinned below other content, auto-expands to 400px on first send, drag handle to resize.
+1. **Bottom sheet** (projects) — panel is pinned below other content, opens at 480px by default, and has a drag handle to resize.
    ```tsx
    <IntegratedBrainstorm
      messages={m} onMessagesChange={setM}
@@ -394,46 +394,28 @@ Not for: one-shot prompts without history (use `sendMessage` + a button), multi-
 
 ### Transport layer
 
-`IntegratedBrainstorm` doesn't own the transport — the plugin writes a small `onSend` adapter around its backend. For OpenAI-shaped SSE, the pattern is identical to what's in `plugins/projects/components/project-detail.tsx` and `plugins/messaging/components/session-chat.tsx`:
+`IntegratedBrainstorm` doesn't own the transport — the plugin writes a small `onSend` adapter around its backend. Use `readBrainstormSseResponse` from `@bakin/sdk/components` on the client side for the common token/activity/done/error loop:
 
 ```ts
 const onSend: BrainstormOnSend = async (prompt, history, { signal, onToken, onCustom }) => {
   const res = await fetch(endpoint, { method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, history }) })
-  const reader = res.body!.getReader()
-  const decoder = new TextDecoder()
-  let buffer = '', currentEvent = '', accumulated = '', finalContent = ''
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n'); buffer = lines.pop() || ''
-    for (const line of lines) {
-      if (line.startsWith('event: ')) currentEvent = line.slice(7).trim()
-      else if (line.startsWith('data: ') && currentEvent) {
-        const data = JSON.parse(line.slice(6))
-        if (currentEvent === 'token') { accumulated += data.text; onToken(data.text) }
-        else if (currentEvent === 'done') finalContent = data.content ?? accumulated
-        else if (currentEvent === 'proposal') onCustom?.('proposal', data.proposal)
-        currentEvent = ''
-      }
-    }
-  }
-  return { content: finalContent || accumulated }
+  return readBrainstormSseResponse(res, { signal, onToken, onCustom })
 }
 ```
 
-Server-side agent calls go through the active runtime adapter (`ctx.runtime` in plugins, `getAppServices().runtime` in core). Project and messaging brainstorm routes write SSE events themselves while using `runtime.messaging.send()` for non-streaming provider calls.
+Server-side agent calls go through the active runtime adapter (`ctx.runtime` in plugins, `getAppServices().runtime` in core). Routes should map runtime chunks with `runtimeChunkToBrainstormActivity` from `@bakin/sdk/utils` and emit `event: activity` frames, rather than modeling provider-specific tool payloads in each plugin.
 
 ### Architecture notes
 
 - State lives in `use-brainstorm-state.ts` — a small `idle → sending → streaming → idle` machine. Optimistic user-message append, concurrent-send guard via ref (not state), culinary thinking verb stable per request, error-bubble rendering.
+- Activity helpers live in `activity.ts` and are also exported from `@bakin/sdk/utils` for server-side route code. Tool call/result messages with the same `callId` are grouped in `message-list.tsx` and shown with readable details sections instead of raw JSON.
 - Auto-growing textarea uses `use-auto-grow.ts` — `scrollHeight` measurement on every input change, capped at `maxInputHeight`, overflow-y auto past the cap. No native `resize-y` grip (removed — it conflicted with the outer panel drag).
-- Outer panel drag handle is wired via `useVerticalResize` from `@bakin/sdk/hooks` — same hook as messaging input panel and the prior brainstorm. Auto-expand to `conversationStartHeight` is one-shot on first send; subsequent height is user-owned (drag) and optionally persisted via `storageKey`.
+- Outer panel drag handle is wired via `useVerticalResize` from `@bakin/sdk/hooks` — same hook as messaging input panel and the prior brainstorm. `defaultHeight` is the initial open size; subsequent height is user-owned (drag) and optionally persisted via `storageKey`.
 - Send button is embedded inside the textarea's bottom-right (claude.ai pattern) — hidden when input is empty, visible with spinner during send, disabled when not ready.
 
 ### Test coverage
 
-`tests/components/integrated-brainstorm/` — ~95 unit cases across 10 files: collapse, empty state, message rendering, send state machine, streaming, keyboard + IME + abort, textarea auto-grow, outer panel resize, read-only, transform, onCustom pass-through, focus, scroll, agent picker, accessibility, edge cases, fit-parent, aborted-notice. Plugin-level integration at `tests/plugins/projects/routes.test.ts` (SSE `/ask` route) and `tests/plugins/messaging/session-chat-proposals.test.tsx` (proposal forwarding end-to-end).
+`tests/components/integrated-brainstorm/` — 100+ unit cases across 11 files: collapse, empty state, message/activity rendering, send state machine, streaming, keyboard + IME + abort, textarea auto-grow, outer panel resize, read-only, transform, onCustom pass-through, focus, scroll, agent picker, accessibility, edge cases, fit-parent, aborted-notice, and reusable activity/SSE helpers. Plugin-level integration at `tests/plugins/projects/routes.test.ts` (SSE `/ask` route) and `tests/plugins/messaging/session-chat-proposals.test.tsx` (proposal forwarding end-to-end).
 
 ## Key Files
 

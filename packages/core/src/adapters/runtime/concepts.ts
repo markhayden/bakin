@@ -49,6 +49,10 @@ export interface WorkspaceFile {
 export interface MessageArgs {
   agentId: string
   content: string
+  /**
+   * Adapter-neutral durable conversation key. Runtime adapters should map the
+   * same agentId + threadId pair to the same provider/runtime session.
+   */
   threadId?: string
   metadata?: RuntimeMetadata
 }
@@ -59,10 +63,23 @@ export interface MessageResult {
   metadata?: RuntimeMetadata
 }
 
+export interface RuntimeToolActivity {
+  phase: 'call' | 'result'
+  callId?: string
+  toolName: string
+  status?: 'running' | 'completed' | 'failed' | string
+  summary?: string
+  inputPreview?: string
+  outputPreview?: string
+  durationMs?: number
+  exitCode?: number
+  metadata?: RuntimeMetadata
+}
+
 export interface ChatChunk {
   type: 'text' | 'tool' | 'status' | 'done' | 'error'
   content?: string
-  data?: unknown
+  data?: RuntimeMetadata | RuntimeToolActivity
 }
 
 export interface ToolDefinition {

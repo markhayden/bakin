@@ -42,7 +42,7 @@ import { createFakeOnSend } from './fake-on-send'
 
 function Harness(props: {
   fake: ReturnType<typeof createFakeOnSend>
-  conversationStartHeight?: number
+  defaultHeight?: number
   minHeight?: number
   maxHeight?: number
   storageKey?: string
@@ -55,7 +55,7 @@ function Harness(props: {
       onMessagesChange={setMessages}
       onSend={props.fake.onSend}
       agentId="pixel"
-      conversationStartHeight={props.conversationStartHeight}
+      defaultHeight={props.defaultHeight}
       minHeight={props.minHeight}
       maxHeight={props.maxHeight}
       storageKey={props.storageKey}
@@ -69,54 +69,63 @@ beforeEach(() => {
   } catch {}
 })
 
-describe('IntegratedBrainstorm — auto-expand', () => {
-  it('sets panel height to conversationStartHeight on first send', async () => {
+describe('IntegratedBrainstorm — default sizing', () => {
+  it('opens at the readable default height before any message is sent', () => {
     const fake = createFakeOnSend()
-    render(<Harness fake={fake} conversationStartHeight={400} />)
+    render(<Harness fake={fake} />)
     const panel = screen.getByTestId('integrated-brainstorm') as HTMLDivElement
-    expect(panel.style.height).toBe('100px')
+    expect(panel.style.height).toBe('480px')
+  })
+
+  it('honors an explicit defaultHeight without changing min drag height', () => {
+    const fake = createFakeOnSend()
+    render(<Harness fake={fake} defaultHeight={500} minHeight={260} />)
+    const panel = screen.getByTestId('integrated-brainstorm') as HTMLDivElement
+    expect(panel.style.height).toBe('500px')
+    const handle = screen.getByTestId('resize-handle')
+    act(() => {
+      fireEvent.mouseDown(handle, { clientY: 100 })
+      fireEvent.mouseMove(document, { clientY: 5000 })
+      fireEvent.mouseUp(document)
+    })
+    expect(panel.style.height).toBe('260px')
+  })
+
+  it('does not resize the panel on first send', async () => {
+    const fake = createFakeOnSend()
+    render(<Harness fake={fake} defaultHeight={480} />)
+    const panel = screen.getByTestId('integrated-brainstorm') as HTMLDivElement
     const ta = screen.getByLabelText(/Ask Pixel/) as HTMLTextAreaElement
     act(() => {
       fireEvent.change(ta, { target: { value: 'hi' } })
       fireEvent.keyDown(ta, { key: 'Enter' })
     })
-    await waitFor(() => expect(panel.style.height).toBe('400px'))
+    await waitFor(() => expect(fake.isPending()).toBe(true))
+    expect(panel.style.height).toBe('480px')
   })
 
-  it('does NOT re-fire auto-expand on subsequent sends', async () => {
+  it('preserves a manual resize across subsequent sends', async () => {
     const fake = createFakeOnSend()
-    render(<Harness fake={fake} conversationStartHeight={400} />)
+    render(<Harness fake={fake} defaultHeight={480} minHeight={260} />)
     const panel = screen.getByTestId('integrated-brainstorm') as HTMLDivElement
     const ta = screen.getByLabelText(/Ask Pixel/) as HTMLTextAreaElement
-    // First send
+    const handle = screen.getByTestId('resize-handle')
+    act(() => {
+      fireEvent.mouseDown(handle, { clientY: 500 })
+      fireEvent.mouseMove(document, { clientY: 700 })
+      fireEvent.mouseUp(document)
+    })
+    const shrunk = panel.style.height
+    expect(shrunk).toBe('280px')
     act(() => {
       fireEvent.change(ta, { target: { value: 'one' } })
       fireEvent.keyDown(ta, { key: 'Enter' })
     })
-    await waitFor(() => expect(panel.style.height).toBe('400px'))
-    act(() => {
-      fake.resolve('reply one')
-    })
-    await waitFor(() => fake.isPending() === false)
-    // Manually shrink
-    const handle = screen.getByTestId('resize-handle')
-    act(() => {
-      fireEvent.mouseDown(handle, { clientY: 0 })
-      fireEvent.mouseMove(document, { clientY: 200 })
-      fireEvent.mouseUp(document)
-    })
-    const shrunk = panel.style.height
-    expect(shrunk).not.toBe('400px')
-    // Second send should NOT reset to 400
-    act(() => {
-      fireEvent.change(ta, { target: { value: 'two' } })
-      fireEvent.keyDown(ta, { key: 'Enter' })
-    })
-    await new Promise((r) => setTimeout(r, 20))
+    await waitFor(() => expect(fake.isPending()).toBe(true))
     expect(panel.style.height).toBe(shrunk)
   })
 
-  it('skips auto-expand when seeded with existing messages', async () => {
+  it('keeps default height when seeded with existing messages', async () => {
     const fake = createFakeOnSend()
     const seed: BrainstormMessage[] = [
       { id: 's1', role: 'user', content: 'seed' },
@@ -126,42 +135,41 @@ describe('IntegratedBrainstorm — auto-expand', () => {
       <Harness
         fake={fake}
         initialMessages={seed}
-        conversationStartHeight={400}
-        minHeight={100}
+        defaultHeight={480}
+        minHeight={260}
       />,
     )
     const panel = screen.getByTestId('integrated-brainstorm') as HTMLDivElement
-    expect(panel.style.height).toBe('100px')
+    expect(panel.style.height).toBe('480px')
     const ta = screen.getByLabelText(/Ask Pixel/) as HTMLTextAreaElement
     act(() => {
       fireEvent.change(ta, { target: { value: 'new send' } })
       fireEvent.keyDown(ta, { key: 'Enter' })
     })
-    await new Promise((r) => setTimeout(r, 20))
-    // Height did not change
-    expect(panel.style.height).toBe('100px')
+    await waitFor(() => expect(fake.isPending()).toBe(true))
+    expect(panel.style.height).toBe('480px')
   })
 })
 
 describe('IntegratedBrainstorm — drag resize', () => {
   it('mouse drag updates panel height', () => {
     const fake = createFakeOnSend()
-    render(<Harness fake={fake} minHeight={100} maxHeight={720} />)
+    render(<Harness fake={fake} defaultHeight={480} minHeight={260} maxHeight={720} />)
     const panel = screen.getByTestId('integrated-brainstorm') as HTMLDivElement
-    expect(panel.style.height).toBe('100px')
+    expect(panel.style.height).toBe('480px')
     const handle = screen.getByTestId('resize-handle')
     act(() => {
       fireEvent.mouseDown(handle, { clientY: 500 })
       fireEvent.mouseMove(document, { clientY: 300 })
       fireEvent.mouseUp(document)
     })
-    // Drag upward by 200px grew panel by 200 → 300
-    expect(panel.style.height).toBe('300px')
+    // Drag upward by 200px grew panel by 200 → 680
+    expect(panel.style.height).toBe('680px')
   })
 
   it('clamps to minHeight on downward over-drag', () => {
     const fake = createFakeOnSend()
-    render(<Harness fake={fake} minHeight={100} maxHeight={720} />)
+    render(<Harness fake={fake} defaultHeight={480} minHeight={260} maxHeight={720} />)
     const panel = screen.getByTestId('integrated-brainstorm') as HTMLDivElement
     const handle = screen.getByTestId('resize-handle')
     act(() => {
@@ -169,12 +177,12 @@ describe('IntegratedBrainstorm — drag resize', () => {
       fireEvent.mouseMove(document, { clientY: 5000 })
       fireEvent.mouseUp(document)
     })
-    expect(panel.style.height).toBe('100px')
+    expect(panel.style.height).toBe('260px')
   })
 
   it('clamps to maxHeight on upward over-drag', () => {
     const fake = createFakeOnSend()
-    render(<Harness fake={fake} minHeight={100} maxHeight={720} />)
+    render(<Harness fake={fake} defaultHeight={480} minHeight={260} maxHeight={720} />)
     const panel = screen.getByTestId('integrated-brainstorm') as HTMLDivElement
     const handle = screen.getByTestId('resize-handle')
     act(() => {
@@ -196,7 +204,7 @@ describe('IntegratedBrainstorm — drag resize', () => {
 
   it('touch drag updates panel height', () => {
     const fake = createFakeOnSend()
-    render(<Harness fake={fake} minHeight={100} maxHeight={720} />)
+    render(<Harness fake={fake} defaultHeight={480} minHeight={260} maxHeight={720} />)
     const panel = screen.getByTestId('integrated-brainstorm') as HTMLDivElement
     const handle = screen.getByTestId('resize-handle')
     act(() => {
@@ -204,14 +212,14 @@ describe('IntegratedBrainstorm — drag resize', () => {
       fireEvent.touchMove(document, { touches: [{ clientY: 300 }] })
       fireEvent.touchEnd(document)
     })
-    expect(panel.style.height).toBe('300px')
+    expect(panel.style.height).toBe('680px')
   })
 })
 
 describe('IntegratedBrainstorm — height persistence', () => {
   it('persists drag-applied height to localStorage under the storageKey', () => {
     const fake = createFakeOnSend()
-    render(<Harness fake={fake} storageKey="resize-test-a" minHeight={100} maxHeight={720} />)
+    render(<Harness fake={fake} storageKey="resize-test-a" defaultHeight={480} minHeight={260} maxHeight={720} />)
     const handle = screen.getByTestId('resize-handle')
     act(() => {
       fireEvent.mouseDown(handle, { clientY: 500 })
@@ -219,7 +227,7 @@ describe('IntegratedBrainstorm — height persistence', () => {
       fireEvent.mouseUp(document)
     })
     const stored = window.localStorage.getItem('bakin-vresize:resize-test-a')
-    expect(stored).toBe('400')
+    expect(stored).toBe('720')
   })
 
   it('reads persisted height on mount', () => {
@@ -230,11 +238,11 @@ describe('IntegratedBrainstorm — height persistence', () => {
     expect(panel.style.height).toBe('555px')
   })
 
-  it('skips auto-expand when persisted height is already above min', async () => {
+  it('uses persisted height and does not resize on submit', async () => {
     window.localStorage.setItem('bakin-vresize:resize-test-c', '555')
     const fake = createFakeOnSend()
     render(
-      <Harness fake={fake} storageKey="resize-test-c" conversationStartHeight={400} minHeight={100} />,
+      <Harness fake={fake} storageKey="resize-test-c" defaultHeight={480} minHeight={260} />,
     )
     const panel = screen.getByTestId('integrated-brainstorm') as HTMLDivElement
     expect(panel.style.height).toBe('555px')
@@ -243,7 +251,7 @@ describe('IntegratedBrainstorm — height persistence', () => {
       fireEvent.change(ta, { target: { value: 'hi' } })
       fireEvent.keyDown(ta, { key: 'Enter' })
     })
-    await new Promise((r) => setTimeout(r, 20))
+    await waitFor(() => expect(fake.isPending()).toBe(true))
     // Height unchanged — user's persisted preference wins.
     expect(panel.style.height).toBe('555px')
   })

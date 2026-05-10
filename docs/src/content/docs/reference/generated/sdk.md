@@ -90,6 +90,7 @@ Source: `packages/sdk/src/components/index.ts`
 | `export type { FacetOption } from '@/components/facet-filter'` |
 | `export { IntegratedBrainstorm } from '@/components/integrated-brainstorm'` |
 | `export type {` |
+| `export {` |
 | `export { MarkdownContent } from '@/components/markdown-content'` |
 | `export { MarkdownEditor } from '@/components/markdown-editor'` |
 | `export { ModelSelect } from '@/components/model-select'` |
@@ -146,6 +147,7 @@ Source: `packages/sdk/src/types/index.ts`
 | `export interface StorageAdapter {` |
 | `export interface EventBus {` |
 | `export interface ActivityAPI {` |
+| `export interface PluginLogger {` |
 | `export interface HookAPI {` |
 | `export interface HookRegistrationMetadata {` |
 | `export type HookKind = 'rpc' \| 'event' \| 'waterfall'` |
@@ -157,6 +159,7 @@ Source: `packages/sdk/src/types/index.ts`
 | `export interface RuntimeChannel {` |
 | `export interface RuntimeMessageArgs {` |
 | `export interface RuntimeMessageResult {` |
+| `export interface RuntimeToolActivity {` |
 | `export interface RuntimeChatChunk {` |
 | `export interface CronJob {` |
 | `export interface CronRun {` |
@@ -231,6 +234,11 @@ Source: `packages/sdk/src/utils/index.ts`
 | --- |
 | `export { cn } from '@/lib/utils'` |
 | `export { formatAge, formatSize, isStale } from '@bakin/core/format'` |
+| `export {` |
+| `export {` |
+| `export type {` |
+| `export type {` |
+| `export { readBrainstormSseResponse } from '@/components/integrated-brainstorm/sse'` |
 
 ## `@makinbakin/sdk/metadata`
 
@@ -251,5 +259,5 @@ Source: `packages/sdk/src/routing/index.ts`
 | `export type {` |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 6, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 9, 2026 · Bakin 0.0.0-dev</span>
 </aside>
