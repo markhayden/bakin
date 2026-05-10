@@ -7,7 +7,7 @@ description: Mission control integration for multi-agent coordination through Ba
 
 Use Bakin for task-board work, workflow routing, team coordination, assets, schedules, and channel posting.
 
-Your MCP server is `bakin-<agent>`. Main Operator/main uses `bakin-main`.
+Your MCP server is `bakin-<agent>`. The main operator uses `bakin-main`.
 
 ## Live Tool Discovery
 
@@ -67,7 +67,7 @@ Use these current tool names for the common paths:
 
 ## Task Creation Discipline
 
-When Mark or main asks to assign work to another agent, create a Bakin task first. Do not directly spawn or message OpenClaw agents unless Bakin is unavailable and the user explicitly wants a fallback.
+When the operator or main asks to assign work to another agent, create a Bakin task first. Do not directly spawn or message OpenClaw agents unless Bakin is unavailable and the user explicitly wants a fallback.
 
 Before `bakin_exec_tasks_create`:
 
@@ -79,7 +79,7 @@ Before `bakin_exec_tasks_create`:
 Example shape:
 
 ```bash
-mcporter call bakin-main.bakin_exec_tasks_create --args '{"title":"Write todays story","assignee":"trainer","description":"Write a short story and post the result back to #danger-zone.","skipWorkflowReason":"one-off chat request"}'
+mcporter call bakin-main.bakin_exec_tasks_create --args '{"title":"Write todays story","assignee":"trainer","description":"Write a short story and post the result back to #general.","skipWorkflowReason":"one-off chat request"}'
 ```
 
 ## Task Lifecycle

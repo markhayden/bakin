@@ -386,7 +386,7 @@ Detailed per-commit plan lives in `.claude/specs/doctor-decoupling-plan.md` (nex
 ## 10. Acceptance
 
 - [ ] `grep -nE "function check[A-Z]" src/core/doctor.ts` returns zero matches.
-- [ ] `grep -nE "interface DiagnosticResult" /Users/dev/go/src/github.com/markhayden/bakin -r --include="*.ts" --include="*.tsx"` returns zero matches.
+- [ ] `grep -nE "interface DiagnosticResult" /path/to/bakin -r --include="*.ts" --include="*.tsx"` returns zero matches.
 - [ ] `wc -l src/core/doctor.ts` is ≤ 100.
 - [ ] `bun test --isolate` is green.
 - [ ] `bunx tsc --noEmit -p tsconfig.app.json` is green.

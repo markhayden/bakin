@@ -57,8 +57,8 @@ Contribution integrity rule: install/update preflights declared contributions be
     "pixel": {
       "kind": "agent",
       "version": "0.1.0",
-      "source": "github:markhayden/bakin-bits-official",
-      "ref": "v0.1.0",
+      "source": "github:markhayden/bakin-bits-official#agents/pixel",
+      "ref": "pixel-v0.1.0",
       "commitSha": "abc123...",
       "installedAt": "2026-04-24T...Z",
       "state": "managed",          // agent only — managed | adopted
@@ -350,13 +350,9 @@ plugins/workflows/lib/
 scripts/migration/
 └── validate-package.ts     zod-validate a candidate package directory
 
-agents/                      In-repo reference packages (8 backfilled). NOT bundled
-└── <id>/                    in the binary — install via `bakin agents install ./agents/<id>`.
-    ├── bakin-package.json
-    ├── workspace/
-    ├── lessons/
-    ├── assets/
-    └── README.md
+Agent packages now live outside the Bakin core repo:
+- Public first-party agents: `github:markhayden/bakin-bits-official#agents/<id>`
+- Private agents: `github:markhayden/bakin-bits-official-private#agents/<id>`
 ```
 
 ## Companion future work (issues)

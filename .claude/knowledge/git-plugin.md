@@ -28,11 +28,11 @@ The plugin resolves real paths for both requested repos and allowed roots. A rep
 
 Developer agents should call `bakin_exec_git_prepare_worktree` before code edits, work only inside the returned `worktreePath`, call `bakin_exec_git_status` before handoff, and call `bakin_exec_git_release_worktree` only after local cleanup is safe. Release refuses dirty worktrees unless `force=true` is explicitly provided.
 
-Patch is the first package wired to this contract through:
+Patch is wired to this contract in the public bits repo through:
 
-- `agents/patch/bakin-package.json` tool allowlist: `bakin_exec_git_*`
-- `agents/patch/skills/git-isolation/SKILL.md`
-- `agents/patch/workspace/TOOLS.md`
+- `github:markhayden/bakin-bits-official#agents/patch` manifest tool allowlist: `bakin_exec_git_*`
+- `github:markhayden/bakin-bits-official#agents/patch` `skills/git-isolation/SKILL.md`
+- `github:markhayden/bakin-bits-official#agents/patch` `workspace/TOOLS.md`
 
 ## Deliberate Scope
 

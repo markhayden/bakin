@@ -79,18 +79,18 @@ function seedLocalPackage(rel = 'pixel'): string {
 
 describe('parseGithubSpec', () => {
   it('parses owner/repo with no ref', () => {
-    expect(parseGithubSpec('github:markhayden/bakin-bits-official')).toEqual({
-      owner: 'markhayden',
-      repo: 'bakin-bits-official',
+    expect(parseGithubSpec('github:owner/example-agent')).toEqual({
+      owner: 'owner',
+      repo: 'example-agent',
       ref: null,
       subpath: '',
     })
   })
 
   it('parses owner/repo@ref', () => {
-    expect(parseGithubSpec('github:markhayden/bakin-bits-official@v0.1.0')).toEqual({
-      owner: 'markhayden',
-      repo: 'bakin-bits-official',
+    expect(parseGithubSpec('github:owner/example-agent@v0.1.0')).toEqual({
+      owner: 'owner',
+      repo: 'example-agent',
       ref: 'v0.1.0',
       subpath: '',
     })

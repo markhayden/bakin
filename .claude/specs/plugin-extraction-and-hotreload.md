@@ -200,7 +200,7 @@ Symlinks `~/.bakin/plugins/<id>/` → `<local-path>`. Reads the manifest at the 
 `bakin plugins list` shows linked plugins distinctly:
 ```
 ID         VERSION   SOURCE                         STATUS
-messaging  1.0.0     /Users/dev/dev/bakin-bits   linked
+messaging  1.0.0     /Users/dev/bakin-bits   linked
 team       2.0.0     core                           built-in
 ```
 

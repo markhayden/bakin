@@ -67,8 +67,8 @@ function pixelEntry(version = '0.1.0'): PackageEntry {
   return {
     kind: 'agent',
     version,
-    source: 'github:markhayden/bakin-bits-official',
-    ref: `v${version}`,
+    source: 'github:markhayden/bakin-bits-official#agents/pixel',
+    ref: `pixel-v${version}`,
     commitSha: 'abc123',
     installedAt: NOW,
     state: 'managed',

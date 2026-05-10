@@ -4,7 +4,7 @@
  * Coverage:
  *   - Static catalog returns 200 + parsed shape
  *   - Schema enforced on read (malformed catalog file → 500)
- *   - The agents/ dev directory is NOT included by the embedded-assets
+ *   - The agents/ package directory is NOT included by the embedded-assets
  *     builder (key contract: no agent packages get baked into the binary)
  */
 import { tmpdir } from 'os'
@@ -66,6 +66,24 @@ describe('GET /api/curated', () => {
 
     for (const agent of body.catalog.agents) {
       expect(agent.source.startsWith('github:')).toBe(true)
+    }
+  })
+
+  it('catalog points public agents at the official bits repo only', async () => {
+    const url = new URL('http://localhost:3737/api/curated')
+    const req = new Request(url, { method: 'GET' })
+    const res = await curatedRoute.get(req, url)
+    const body = await res.json()
+
+    expect(body.catalog.agents.map((agent: { id: string }) => agent.id).sort()).toEqual([
+      'jessica-fetcher',
+      'patch',
+      'pixel',
+      'rolo',
+    ])
+
+    for (const agent of body.catalog.agents) {
+      expect(agent.source).toBe(`github:markhayden/bakin-bits-official#agents/${agent.id}`)
     }
   })
 

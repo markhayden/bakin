@@ -577,7 +577,7 @@ export function buildDispatchMessage(
   const mc = (tool: string, args: string) => `mcporter call ${server}.${tool} ${args}`
 
   if (!task.agent) {
-    return `Triage this task: "${task.title}".${detailsBlock}${assetsBlock}${lessonSection}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=content/comms, chef=research/strategy) via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
+    return `Triage this task: "${task.title}".${detailsBlock}${assetsBlock}${lessonSection}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=video/audio, jessica-fetcher=research) via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
   if (task.agent === mainAgentId) {

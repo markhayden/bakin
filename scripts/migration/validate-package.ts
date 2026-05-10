@@ -12,7 +12,7 @@
  *
  * Usage:
  *   bun scripts/migration/validate-package.ts <path-to-package-dir>
- *   bun scripts/migration/validate-package.ts agents/pixel
+ *   bun scripts/migration/validate-package.ts ../bakin-bits-official/agents/pixel
  */
 import { existsSync, readFileSync, statSync } from 'fs'
 import { join, resolve } from 'path'

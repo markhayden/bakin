@@ -183,7 +183,7 @@ describe('MemoryIndexer.indexTier("durable")', () => {
     // 1 chunk per file × 2 files = 2 rows.
     expect(indexed).toHaveLength(2)
     const agents = indexed.map((d) => d.doc.agent).sort()
-    expect(agents).toEqual(['main', 'explorer'])
+    expect(agents).toEqual(['explorer', 'main'])
   })
 
   it('produces multiple rows per file when it has H1 boundaries', async () => {

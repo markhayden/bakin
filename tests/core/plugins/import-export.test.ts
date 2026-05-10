@@ -35,13 +35,13 @@ describe('plugin import/export manifest', () => {
           version: '1.0.0',
         }),
         localdev: entry({
-          source: '/Users/dev/dev/localdev',
+          source: '/Users/dev/localdev',
           type: 'local',
           ref: '',
           commitSha: '',
           version: '0.1.0',
           linked: true,
-          linkedSource: '/Users/dev/dev/localdev',
+          linkedSource: '/Users/dev/localdev',
         }),
       },
     }
@@ -59,13 +59,13 @@ describe('plugin import/export manifest', () => {
         },
         {
           id: 'localdev',
-          source: '/Users/dev/dev/localdev',
+          source: '/Users/dev/localdev',
           type: 'local',
           ref: '',
           commitSha: '',
           version: '0.1.0',
           linked: true,
-          linkedSource: '/Users/dev/dev/localdev',
+          linkedSource: '/Users/dev/localdev',
         },
       ],
     })

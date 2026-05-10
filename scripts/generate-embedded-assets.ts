@@ -118,14 +118,11 @@ function collectAssets(): AssetSource[] {
     }
   }
 
-  // CRITICAL exclusion: agents/ is the in-repo dev location for
-  // reference packages (PLAN.md D-3 settled-decision: no agent
-  // packages bundled in the binary; users install via curated catalog
-  // or `bakin agents install`). The walk paths above never enter
-  // agents/, so this is enforced by omission. The
-  // tests/scripts/embedded-assets-no-agents.test.ts test pins this
-  // contract so a future regression that adds an `agents/` walker
-  // breaks the build instead of silently shipping bytes.
+  // CRITICAL exclusion: agent packages live outside the Bakin core repo and
+  // must not be bundled in the binary. Users install them via curated catalog
+  // entries or `bakin agents install`. The walk paths above never enter
+  // agents/, so a future regression that adds an `agents/` walker breaks the
+  // API curated-catalog test instead of silently shipping package bytes.
 
   return assets
 }
