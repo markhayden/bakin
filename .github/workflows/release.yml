@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, with or without the leading v.
+        required: true
+        type: string
 
 permissions:
   actions: write
@@ -29,32 +35,61 @@ jobs:
       npm_tag: ${{ steps.release.outputs.npm_tag }}
       prerelease: ${{ steps.release.outputs.prerelease }}
       commit: ${{ steps.release.outputs.commit }}
+      release_id: ${{ steps.release.outputs.release_id }}
     steps:
       - name: Checkout full history
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Validate tag grammar and main ancestry
+      - name: Validate release and resolve tag
         id: release
         shell: bash
         run: |
           set -euo pipefail
 
-          tag="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            if [[ "${GITHUB_REF_NAME}" != "main" ]]; then
+              echo "::error::Run manual releases from main, not ${GITHUB_REF_NAME}"
+              exit 1
+            fi
+            version="${{ inputs.version }}"
+            version="${version#v}"
+            tag="v${version}"
+          else
+            tag="${GITHUB_REF_NAME}"
+            version="${tag#v}"
+          fi
+
           if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
             echo "::error::Malformed release tag: ${tag}"
             exit 1
           fi
 
           git fetch origin main --depth=1
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            if ! grep -Fq "## [${version}]" CHANGELOG.md; then
+              echo "::error::CHANGELOG.md is missing ## [${version}]"
+              exit 1
+            fi
+
+            if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+              git fetch origin "refs/tags/${tag}:refs/tags/${tag}" --force
+            else
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git tag "${tag}" "${GITHUB_SHA}"
+              git push origin "${tag}"
+            fi
+          fi
+
           commit="$(git rev-list -n 1 "${tag}")"
           if ! git merge-base --is-ancestor "${commit}" origin/main; then
             echo "::error::Release tag ${tag} does not point at main history"
             exit 1
           fi
 
-          version="${tag#v}"
           if [[ "${version}" == *-rc.* ]]; then
             npm_tag="next"
             prerelease="true"
@@ -69,6 +104,7 @@ jobs:
             echo "npm_tag=${npm_tag}"
             echo "prerelease=${prerelease}"
             echo "commit=${commit}"
+            echo "release_id=${tag}-${commit}"
           } >> "${GITHUB_OUTPUT}"
 
   build:
@@ -346,5 +382,92 @@ jobs:
             -F draft=false \
             -F prerelease="${PRERELEASE}"
 
-      - name: Dispatch post-publish smoke
-        run: gh workflow run release-smoke.yml --ref main -f tag="${TAG}" -f prerelease="${PRERELEASE}"
+  smoke-binaries:
+    name: Smoke binaries (${{ matrix.asset }})
+    runs-on: ${{ matrix.runner }}
+    needs:
+      - gate
+      - publish
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            asset: bakin-darwin-arm64
+            macos: true
+          - runner: ubuntu-latest
+            asset: bakin-linux-x64
+            macos: false
+          - runner: ubuntu-24.04-arm
+            asset: bakin-linux-arm64
+            macos: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.gate.outputs.tag }}
+      ASSET: ${{ matrix.asset }}
+    steps:
+      - name: Download release asset
+        run: gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" --pattern "${ASSET}" --dir release-assets --clobber
+
+      - name: Verify and run binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary="release-assets/${ASSET}"
+          chmod +x "${binary}"
+          if [[ "${{ matrix.macos }}" == "true" ]]; then
+            codesign --verify --verbose=3 --strict "${binary}"
+          fi
+          expected="${TAG#v}"
+          actual="$("${binary}" --version)"
+          echo "Expected version: ${expected}"
+          echo "Actual version:   ${actual}"
+          test "${actual}" = "${expected}"
+
+  smoke-sdk:
+    name: Smoke SDK install
+    runs-on: ubuntu-latest
+    needs:
+      - gate
+      - publish
+    env:
+      VERSION: ${{ needs.gate.outputs.version }}
+    steps:
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install exact SDK version and import subpaths
+        shell: bash
+        run: |
+          set -euo pipefail
+          scratch="${RUNNER_TEMP}/bakin-sdk-smoke"
+          mkdir -p "${scratch}"
+          cd "${scratch}"
+          bun init -y
+          bun add react@^19 react-dom@^19 "@makinbakin/sdk@${VERSION}"
+          bun -e "const m = await import('@makinbakin/sdk'); if (typeof m.registerPlugin !== 'function') throw new Error('missing registerPlugin')"
+          for subpath in ui hooks components slots types utils metadata routing; do
+            bun -e "await import('@makinbakin/sdk/${subpath}')"
+          done
+
+  smoke-homebrew:
+    name: Smoke Homebrew install
+    runs-on: macos-latest
+    needs:
+      - gate
+      - publish
+    if: ${{ needs.gate.outputs.prerelease == 'false' }}
+    env:
+      VERSION: ${{ needs.gate.outputs.version }}
+    steps:
+      - name: Install and test formula
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew update
+          brew install markhayden/tap/bakin
+          actual="$(bakin version)"
+          echo "Expected version: ${VERSION}"
+          echo "Actual version:   ${actual}"
+          test "${actual}" = "${VERSION}"
+          brew test markhayden/tap/bakin
