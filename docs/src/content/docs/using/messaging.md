@@ -4,10 +4,10 @@ description: "Plan with agents, turn ideas into Deliverables, and publish approv
 ---
 
 Messaging is the content planning surface for Bakin. It starts with an
-agent-assisted brainstorm, materializes accepted ideas into Plans, fans each
-Plan out into channel-specific Deliverables, starts prep work when the prep
-window opens, routes drafts through review, and publishes approved content at
-the right time.
+agent-assisted brainstorm, turns accepted ideas into Plans, fans each Plan out
+into channel-specific Deliverables, starts prep work when the prep window
+opens, routes drafts through review, and publishes approved content at the
+right time.
 
 Use Quick Post when you need a one-off Deliverable without a larger Plan.
 
@@ -84,7 +84,7 @@ concrete topic, it emits a fenced JSON Plan proposal with:
 - `brief`
 - optional `suggestedChannels`
 
-Approve the proposals you want and click `Materialize approved`. Each approved
+Approve the proposals you want and click `Create Plans`. Each approved
 proposal becomes a Plan and the session records the created Plan ids. Sessions
 stay active, so you can return later and create more Plans from the same
 conversation.
@@ -201,7 +201,7 @@ filter locally in the plugin UI.
 | `bakin messaging session-update <sessionId>` | Update a planning session |
 | `bakin messaging session-delete <sessionId>` | Delete a planning session |
 | `bakin messaging message <sessionId> <message>` | Message a planning session |
-| `bakin messaging materialize <sessionId>` | Materialize planning-session proposals |
+| `bakin messaging materialize <sessionId>` | Create Plans from approved proposals |
 | `bakin messaging proposal <sessionId> <proposalId>` | Update a planning-session proposal |
 <!-- /docs:cli-commands -->
 
@@ -234,7 +234,7 @@ publish recovery through MCP exec tools.
 - `bakin_exec_messaging_session_delete`: Delete a planning session
 - `bakin_exec_messaging_session_get`: Get a planning session with full message history and proposals
 - `bakin_exec_messaging_session_list`: List planning sessions with optional filters
-- `bakin_exec_messaging_session_materialize`: Materialize approved Plan proposals into Plans
+- `bakin_exec_messaging_session_materialize`: Create Plans from approved brainstorm proposals
 - `bakin_exec_messaging_session_message`: Send a message in a planning session (non-streaming, returns full response)
 - `bakin_exec_messaging_session_update`: Update a planning session title or status
 <!-- /docs:exec-tools -->

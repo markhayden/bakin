@@ -995,8 +995,8 @@ mcporter call bakin-<agent>.bakin_exec_messaging_session_list --args '{
 
 ### bakin_exec_messaging_session_materialize
 
-Label: Materialized brainstorm proposals
-Purpose: Materialize approved Plan proposals into Plans
+Label: Created Plans from brainstorm proposals
+Purpose: Create Plans from approved brainstorm proposals
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |

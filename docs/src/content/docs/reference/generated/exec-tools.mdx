@@ -491,7 +491,7 @@ mcporter call bakin-<agent>.bakin_exec_messaging_session_list --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-session-materialize" name="bakin_exec_messaging_session_materialize" label="Materialized brainstorm proposals" description="Materialize approved Plan proposals into Plans" source="bakin-bits-official/plugins/messaging/index.ts:1865" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"}]}>
+<McpToolCard id="messaging-session-materialize" name="bakin_exec_messaging_session_materialize" label="Created Plans from brainstorm proposals" description="Create Plans from approved brainstorm proposals" source="bakin-bits-official/plugins/messaging/index.ts:1865" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_session_materialize --args '{
   "sessionId": "value"
