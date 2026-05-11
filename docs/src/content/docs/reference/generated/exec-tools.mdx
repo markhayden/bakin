@@ -306,14 +306,14 @@ mcporter call bakin-<agent>.bakin_exec_memory_status
 <p class="mcp-section-description">Messaging tools let agents create, update, approve, reject, and inspect human-facing messages and sessions.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="messaging-deliverable-approve" name="bakin_exec_messaging_deliverable_approve" label="Approved content deliverable" description="Approve a Deliverable after review." source="bakin-bits-official/plugins/messaging/index.ts:1638" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"}]}>
+<McpToolCard id="messaging-deliverable-approve" name="bakin_exec_messaging_deliverable_approve" label="Approved content deliverable" description="Approve a Deliverable after review." source="bakin-bits-official/plugins/messaging/index.ts:1732" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_approve --args '{
   "deliverableId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-deliverable-create" name="bakin_exec_messaging_deliverable_create" label="Created content deliverable" description="Create a content Deliverable. Omit planId or pass null for a Quick Post." source="bakin-bits-official/plugins/messaging/index.ts:1514" parameters={[{"name":"planId","type":"union","required":false,"description":"Optional Plan ID; null creates a Quick Post"},{"name":"channel","type":"string","required":true,"description":"Runtime channel ID"},{"name":"contentType","type":"string","required":true,"description":"Messaging content type ID"},{"name":"tone","type":"string","required":true,"description":"Tone"},{"name":"agent","type":"string","required":true,"description":"Prep agent"},{"name":"title","type":"string","required":true,"description":"Deliverable title"},{"name":"brief","type":"string","required":true,"description":"Deliverable brief"},{"name":"publishAt","type":"string","required":true,"description":"Publish datetime"},{"name":"prepStartAt","type":"string","required":false,"description":"Optional explicit prep start datetime"},{"name":"prepStartAtOverride","type":"string","required":false,"description":"Optional prep start override datetime"},{"name":"status","type":"string","required":false,"description":"Optional initial status; defaults to planned"},{"name":"draft","type":"object","required":false,"description":"Optional draft fields"}]}>
+<McpToolCard id="messaging-deliverable-create" name="bakin_exec_messaging_deliverable_create" label="Created content deliverable" description="Create a content Deliverable. Omit planId or pass null for a Quick Post." source="bakin-bits-official/plugins/messaging/index.ts:1608" parameters={[{"name":"planId","type":"union","required":false,"description":"Optional Plan ID; null creates a Quick Post"},{"name":"channel","type":"string","required":true,"description":"Runtime channel ID"},{"name":"contentType","type":"string","required":true,"description":"Messaging content type ID"},{"name":"tone","type":"string","required":true,"description":"Tone"},{"name":"agent","type":"string","required":true,"description":"Prep agent"},{"name":"title","type":"string","required":true,"description":"Deliverable title"},{"name":"brief","type":"string","required":true,"description":"Deliverable brief"},{"name":"publishAt","type":"string","required":true,"description":"Publish datetime"},{"name":"prepStartAt","type":"string","required":false,"description":"Optional explicit prep start datetime"},{"name":"prepStartAtOverride","type":"string","required":false,"description":"Optional prep start override datetime"},{"name":"status","type":"string","required":false,"description":"Optional initial status; defaults to planned"},{"name":"draft","type":"object","required":false,"description":"Optional draft fields"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_create --args '{
   "planId": "value",
@@ -333,14 +333,14 @@ mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_create --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-deliverable-get" name="bakin_exec_messaging_deliverable_get" label="Read content deliverable" description="Get a content Deliverable" source="bakin-bits-official/plugins/messaging/index.ts:1499" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"}]}>
+<McpToolCard id="messaging-deliverable-get" name="bakin_exec_messaging_deliverable_get" label="Read content deliverable" description="Get a content Deliverable" source="bakin-bits-official/plugins/messaging/index.ts:1593" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_get --args '{
   "deliverableId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-deliverable-list" name="bakin_exec_messaging_deliverable_list" label="Listed content deliverables" description="List content Deliverables with optional filters" source="bakin-bits-official/plugins/messaging/index.ts:1476" parameters={[{"name":"planId","type":"union","required":false,"description":"Filter by Plan ID; null returns Quick Posts"},{"name":"status","type":"string","required":false,"description":"Filter by Deliverable status"},{"name":"channel","type":"string","required":false,"description":"Filter by channel"},{"name":"publishAfter","type":"string","required":false,"description":"Filter by publishAt at or after this date"},{"name":"publishBefore","type":"string","required":false,"description":"Filter by publishAt at or before this date"}]}>
+<McpToolCard id="messaging-deliverable-list" name="bakin_exec_messaging_deliverable_list" label="Listed content deliverables" description="List content Deliverables with optional filters" source="bakin-bits-official/plugins/messaging/index.ts:1570" parameters={[{"name":"planId","type":"union","required":false,"description":"Filter by Plan ID; null returns Quick Posts"},{"name":"status","type":"string","required":false,"description":"Filter by Deliverable status"},{"name":"channel","type":"string","required":false,"description":"Filter by channel"},{"name":"publishAfter","type":"string","required":false,"description":"Filter by publishAt at or after this date"},{"name":"publishBefore","type":"string","required":false,"description":"Filter by publishAt at or before this date"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_list --args '{
   "planId": "value",
@@ -351,14 +351,14 @@ mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_list --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-deliverable-ready-for-review" name="bakin_exec_messaging_deliverable_ready_for_review" label="Marked content deliverable ready for review" description="Signal that a bare-task Deliverable draft is ready for user review or auto-approval." source="bakin-bits-official/plugins/messaging/index.ts:1623" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"}]}>
+<McpToolCard id="messaging-deliverable-ready-for-review" name="bakin_exec_messaging_deliverable_ready_for_review" label="Marked content deliverable ready for review" description="Signal that a bare-task Deliverable draft is ready for user review or auto-approval." source="bakin-bits-official/plugins/messaging/index.ts:1717" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_ready_for_review --args '{
   "deliverableId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-deliverable-reject" name="bakin_exec_messaging_deliverable_reject" label="Rejected content deliverable" description="Request changes for a Deliverable after review." source="bakin-bits-official/plugins/messaging/index.ts:1653" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"},{"name":"note","type":"string","required":false,"description":"Review note for the prep agent"}]}>
+<McpToolCard id="messaging-deliverable-reject" name="bakin_exec_messaging_deliverable_reject" label="Rejected content deliverable" description="Request changes for a Deliverable after review." source="bakin-bits-official/plugins/messaging/index.ts:1747" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"},{"name":"note","type":"string","required":false,"description":"Review note for the prep agent"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_reject --args '{
   "deliverableId": "value",
@@ -366,7 +366,7 @@ mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_reject --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-deliverable-update" name="bakin_exec_messaging_deliverable_update" label="Updated content deliverable" description="Update a content Deliverable. Draft fields are deep-merged." source="bakin-bits-official/plugins/messaging/index.ts:1565" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"},{"name":"planId","type":"union","required":false,"description":"Optional Plan ID; null makes it a Quick Post"},{"name":"channel","type":"string","required":false,"description":"Runtime channel ID"},{"name":"contentType","type":"string","required":false,"description":"Messaging content type ID"},{"name":"tone","type":"string","required":false,"description":"Tone"},{"name":"agent","type":"string","required":false,"description":"Prep agent"},{"name":"title","type":"string","required":false,"description":"Deliverable title"},{"name":"brief","type":"string","required":false,"description":"Deliverable brief"},{"name":"publishAt","type":"string","required":false,"description":"Publish datetime"},{"name":"prepStartAt","type":"string","required":false,"description":"Optional explicit prep start datetime"},{"name":"prepStartAtOverride","type":"string","required":false,"description":"Optional prep start override datetime"},{"name":"status","type":"string","required":false,"description":"Deliverable status"},{"name":"rejectionNote","type":"string","required":false,"description":"Optional rejection note"},{"name":"draft","type":"object","required":false,"description":"Draft fields to deep-merge"}]}>
+<McpToolCard id="messaging-deliverable-update" name="bakin_exec_messaging_deliverable_update" label="Updated content deliverable" description="Update a content Deliverable. Draft fields are deep-merged." source="bakin-bits-official/plugins/messaging/index.ts:1659" parameters={[{"name":"deliverableId","type":"string","required":true,"description":"Deliverable ID (required)"},{"name":"planId","type":"union","required":false,"description":"Optional Plan ID; null makes it a Quick Post"},{"name":"channel","type":"string","required":false,"description":"Runtime channel ID"},{"name":"contentType","type":"string","required":false,"description":"Messaging content type ID"},{"name":"tone","type":"string","required":false,"description":"Tone"},{"name":"agent","type":"string","required":false,"description":"Prep agent"},{"name":"title","type":"string","required":false,"description":"Deliverable title"},{"name":"brief","type":"string","required":false,"description":"Deliverable brief"},{"name":"publishAt","type":"string","required":false,"description":"Publish datetime"},{"name":"prepStartAt","type":"string","required":false,"description":"Optional explicit prep start datetime"},{"name":"prepStartAtOverride","type":"string","required":false,"description":"Optional prep start override datetime"},{"name":"status","type":"string","required":false,"description":"Deliverable status"},{"name":"rejectionNote","type":"string","required":false,"description":"Optional rejection note"},{"name":"draft","type":"object","required":false,"description":"Draft fields to deep-merge"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_update --args '{
   "deliverableId": "value",
@@ -388,7 +388,7 @@ mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_update --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-plan-create" name="bakin_exec_messaging_plan_create" label="Created content plan" description="Create a content Plan" source="bakin-bits-official/plugins/messaging/index.ts:1378" parameters={[{"name":"title","type":"string","required":true,"description":"Plan title"},{"name":"targetDate","type":"string","required":true,"description":"Target ISO date"},{"name":"agent","type":"string","required":true,"description":"Lead agent"},{"name":"brief","type":"string","required":false,"description":"Plan brief"},{"name":"campaign","type":"string","required":false,"description":"Campaign tag"},{"name":"suggestedChannels","type":"array","required":false,"description":"Suggested channel IDs"}]}>
+<McpToolCard id="messaging-plan-create" name="bakin_exec_messaging_plan_create" label="Created content plan" description="Create a content Plan" source="bakin-bits-official/plugins/messaging/index.ts:1448" parameters={[{"name":"title","type":"string","required":true,"description":"Plan title"},{"name":"targetDate","type":"string","required":true,"description":"Target ISO date"},{"name":"agent","type":"string","required":true,"description":"Lead agent"},{"name":"brief","type":"string","required":false,"description":"Plan brief"},{"name":"campaign","type":"string","required":false,"description":"Campaign tag"},{"name":"suggestedChannels","type":"array","required":false,"description":"Suggested channel IDs"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_plan_create --args '{
   "title": "value",
@@ -402,14 +402,22 @@ mcporter call bakin-<agent>.bakin_exec_messaging_plan_create --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-plan-get" name="bakin_exec_messaging_plan_get" label="Read content plan" description="Get a content Plan and its Deliverables" source="bakin-bits-official/plugins/messaging/index.ts:1363" parameters={[{"name":"planId","type":"string","required":true,"description":"Plan ID (required)"}]}>
+<McpToolCard id="messaging-plan-delete" name="bakin_exec_messaging_plan_delete" label="Deleted content plan" description="Delete a content Plan, its content pieces, and linked board tasks." source="bakin-bits-official/plugins/messaging/index.ts:1478" parameters={[{"name":"planId","type":"string","required":true,"description":"Plan ID (required)"},{"name":"deleteLinkedTasks","type":"boolean","required":false,"description":"Delete linked board tasks; defaults to true"}]}>
+```sh frame="terminal"
+mcporter call bakin-<agent>.bakin_exec_messaging_plan_delete --args '{
+  "planId": "value",
+  "deleteLinkedTasks": true
+}'
+```
+</McpToolCard>
+<McpToolCard id="messaging-plan-get" name="bakin_exec_messaging_plan_get" label="Read content plan" description="Get a content Plan and its Deliverables" source="bakin-bits-official/plugins/messaging/index.ts:1433" parameters={[{"name":"planId","type":"string","required":true,"description":"Plan ID (required)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_plan_get --args '{
   "planId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-plan-list" name="bakin_exec_messaging_plan_list" label="Listed content plans" description="List content Plans with optional filters" source="bakin-bits-official/plugins/messaging/index.ts:1345" parameters={[{"name":"status","type":"string","required":false,"description":"Filter by Plan status"},{"name":"agent","type":"string","required":false,"description":"Filter by lead agent"},{"name":"campaign","type":"string","required":false,"description":"Filter by campaign"}]}>
+<McpToolCard id="messaging-plan-list" name="bakin_exec_messaging_plan_list" label="Listed content plans" description="List content Plans with optional filters" source="bakin-bits-official/plugins/messaging/index.ts:1415" parameters={[{"name":"status","type":"string","required":false,"description":"Filter by Plan status"},{"name":"agent","type":"string","required":false,"description":"Filter by lead agent"},{"name":"campaign","type":"string","required":false,"description":"Filter by campaign"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_plan_list --args '{
   "status": "value",
@@ -418,14 +426,14 @@ mcporter call bakin-<agent>.bakin_exec_messaging_plan_list --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-plan-start-fanout" name="bakin_exec_messaging_plan_start_fanout" label="Started content plan fan-out" description="Create the phase-2 Bakin task for a content Plan" source="bakin-bits-official/plugins/messaging/index.ts:1408" parameters={[{"name":"planId","type":"string","required":true,"description":"Plan ID (required)"}]}>
+<McpToolCard id="messaging-plan-start-fanout" name="bakin_exec_messaging_plan_start_fanout" label="Started content piece planning" description="Create the content piece planning task for a content Plan" source="bakin-bits-official/plugins/messaging/index.ts:1502" parameters={[{"name":"planId","type":"string","required":true,"description":"Plan ID (required)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_plan_start_fanout --args '{
   "planId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-proposal-update" name="bakin_exec_messaging_proposal_update" label="Updated brainstorm proposal" description="Update a proposal status or fields (approve, reject, edit)" source="bakin-bits-official/plugins/messaging/index.ts:1833" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"},{"name":"proposalId","type":"string","required":true,"description":"Proposal ID (required)"},{"name":"status","type":"string","required":false,"description":"New status (proposed, approved, rejected, revised)"},{"name":"title","type":"string","required":false,"description":"Updated title"},{"name":"brief","type":"string","required":false,"description":"Updated brief"},{"name":"targetDate","type":"string","required":false,"description":"Updated Plan target date"},{"name":"suggestedChannels","type":"array","required":false,"description":"Updated suggested channels"},{"name":"rejectionNote","type":"string","required":false,"description":"Note explaining rejection"}]}>
+<McpToolCard id="messaging-proposal-update" name="bakin_exec_messaging_proposal_update" label="Updated brainstorm proposal" description="Update a proposal status or fields (approve, reject, edit)" source="bakin-bits-official/plugins/messaging/index.ts:1951" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"},{"name":"proposalId","type":"string","required":true,"description":"Proposal ID (required)"},{"name":"status","type":"string","required":false,"description":"New status (proposed, approved, rejected, revised)"},{"name":"title","type":"string","required":false,"description":"Updated title"},{"name":"brief","type":"string","required":false,"description":"Updated brief"},{"name":"targetDate","type":"string","required":false,"description":"Updated Plan target date"},{"name":"suggestedChannels","type":"array","required":false,"description":"Updated suggested channels"},{"name":"rejectionNote","type":"string","required":false,"description":"Note explaining rejection"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_proposal_update --args '{
   "sessionId": "value",
@@ -441,7 +449,7 @@ mcporter call bakin-<agent>.bakin_exec_messaging_proposal_update --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-propose-deliverable" name="bakin_exec_messaging_propose_deliverable" label="Proposed content deliverable" description="Propose a channel-specific Deliverable for a content Plan during phase-2 fan-out." source="bakin-bits-official/plugins/messaging/index.ts:1424" parameters={[{"name":"planId","type":"string","required":true,"description":"Plan ID (required)"},{"name":"channel","type":"string","required":true,"description":"Runtime channel ID"},{"name":"contentType","type":"string","required":true,"description":"Messaging content type ID"},{"name":"tone","type":"string","required":true,"description":"Tone"},{"name":"title","type":"string","required":true,"description":"Deliverable title"},{"name":"brief","type":"string","required":true,"description":"Deliverable brief"},{"name":"publishAt","type":"string","required":true,"description":"Publish datetime"},{"name":"agent","type":"string","required":false,"description":"Optional prep agent; defaults to Plan agent"},{"name":"prepStartAt","type":"string","required":false,"description":"Optional explicit prep start datetime"},{"name":"prepStartAtOverride","type":"string","required":false,"description":"Optional prep start override datetime"},{"name":"draft","type":"object","required":false,"description":"Optional draft fields"}]}>
+<McpToolCard id="messaging-propose-deliverable" name="bakin_exec_messaging_propose_deliverable" label="Proposed content deliverable" description="Propose a channel-specific content piece for a content Plan." source="bakin-bits-official/plugins/messaging/index.ts:1518" parameters={[{"name":"planId","type":"string","required":true,"description":"Plan ID (required)"},{"name":"channel","type":"string","required":true,"description":"Runtime channel ID"},{"name":"contentType","type":"string","required":true,"description":"Messaging content type ID"},{"name":"tone","type":"string","required":true,"description":"Tone"},{"name":"title","type":"string","required":true,"description":"Deliverable title"},{"name":"brief","type":"string","required":true,"description":"Deliverable brief"},{"name":"publishAt","type":"string","required":true,"description":"Publish datetime"},{"name":"agent","type":"string","required":false,"description":"Optional prep agent; defaults to Plan agent"},{"name":"prepStartAt","type":"string","required":false,"description":"Optional explicit prep start datetime"},{"name":"prepStartAtOverride","type":"string","required":false,"description":"Optional prep start override datetime"},{"name":"draft","type":"object","required":false,"description":"Optional draft fields"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_propose_deliverable --args '{
   "planId": "value",
@@ -460,7 +468,7 @@ mcporter call bakin-<agent>.bakin_exec_messaging_propose_deliverable --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-session-create" name="bakin_exec_messaging_session_create" label="Created brainstorm session" description="Create a new planning session for an agent" source="bakin-bits-official/plugins/messaging/index.ts:1703" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID (required)"},{"name":"title","type":"string","required":false,"description":"Session title"},{"name":"scope","type":"string","required":false,"description":"Optional brainstorm scope"}]}>
+<McpToolCard id="messaging-session-create" name="bakin_exec_messaging_session_create" label="Created brainstorm session" description="Create a new planning session for an agent" source="bakin-bits-official/plugins/messaging/index.ts:1797" parameters={[{"name":"agentId","type":"string","required":true,"description":"Agent ID (required)"},{"name":"title","type":"string","required":false,"description":"Session title"},{"name":"scope","type":"string","required":false,"description":"Optional brainstorm scope"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_session_create --args '{
   "agentId": "value",
@@ -469,21 +477,23 @@ mcporter call bakin-<agent>.bakin_exec_messaging_session_create --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-session-delete" name="bakin_exec_messaging_session_delete" label="Deleted brainstorm session" description="Delete a planning session" source="bakin-bits-official/plugins/messaging/index.ts:1749" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"}]}>
+<McpToolCard id="messaging-session-delete" name="bakin_exec_messaging_session_delete" label="Deleted brainstorm session" description="Delete a planning session and optionally the Plans prepared from it." source="bakin-bits-official/plugins/messaging/index.ts:1843" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"},{"name":"deleteCreatedPlans","type":"boolean","required":false,"description":"Delete Plans created from the session; defaults to true"},{"name":"deleteLinkedTasks","type":"boolean","required":false,"description":"Delete linked board tasks; defaults to true"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_session_delete --args '{
-  "sessionId": "value"
+  "sessionId": "value",
+  "deleteCreatedPlans": true,
+  "deleteLinkedTasks": true
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-session-get" name="bakin_exec_messaging_session_get" label="Read brainstorm session" description="Get a planning session with full message history and proposals" source="bakin-bits-official/plugins/messaging/index.ts:1688" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"}]}>
+<McpToolCard id="messaging-session-get" name="bakin_exec_messaging_session_get" label="Read brainstorm session" description="Get a planning session with full message history and proposals" source="bakin-bits-official/plugins/messaging/index.ts:1782" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_session_get --args '{
   "sessionId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-session-list" name="bakin_exec_messaging_session_list" label="Listed brainstorm sessions" description="List planning sessions with optional filters" source="bakin-bits-official/plugins/messaging/index.ts:1671" parameters={[{"name":"status","type":"string","required":false,"description":"Filter by status (active, archived)"},{"name":"agentId","type":"string","required":false,"description":"Filter by agent ID"}]}>
+<McpToolCard id="messaging-session-list" name="bakin_exec_messaging_session_list" label="Listed brainstorm sessions" description="List planning sessions with optional filters" source="bakin-bits-official/plugins/messaging/index.ts:1765" parameters={[{"name":"status","type":"string","required":false,"description":"Filter by status (active, archived)"},{"name":"agentId","type":"string","required":false,"description":"Filter by agent ID"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_session_list --args '{
   "status": "value",
@@ -491,14 +501,14 @@ mcporter call bakin-<agent>.bakin_exec_messaging_session_list --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-session-materialize" name="bakin_exec_messaging_session_materialize" label="Created Plans from brainstorm proposals" description="Create Plans from approved brainstorm proposals" source="bakin-bits-official/plugins/messaging/index.ts:1865" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"}]}>
+<McpToolCard id="messaging-session-materialize" name="bakin_exec_messaging_session_materialize" label="Prepared Plans from brainstorm proposals" description="Prepare Plans from accepted brainstorm proposals" source="bakin-bits-official/plugins/messaging/index.ts:1983" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_session_materialize --args '{
   "sessionId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-session-message" name="bakin_exec_messaging_session_message" label="Sent brainstorm message" description="Send a message in a planning session (non-streaming, returns full response)" source="bakin-bits-official/plugins/messaging/index.ts:1766" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"},{"name":"message","type":"string","required":true,"description":"User message content (required)"}]}>
+<McpToolCard id="messaging-session-message" name="bakin_exec_messaging_session_message" label="Sent brainstorm message" description="Send a message in a planning session (non-streaming, returns full response)" source="bakin-bits-official/plugins/messaging/index.ts:1884" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"},{"name":"message","type":"string","required":true,"description":"User message content (required)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_session_message --args '{
   "sessionId": "value",
@@ -506,7 +516,7 @@ mcporter call bakin-<agent>.bakin_exec_messaging_session_message --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="messaging-session-update" name="bakin_exec_messaging_session_update" label="Updated brainstorm session" description="Update a planning session title or status" source="bakin-bits-official/plugins/messaging/index.ts:1726" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"},{"name":"title","type":"string","required":false,"description":"New title"},{"name":"status","type":"string","required":false,"description":"New status (active, archived)"}]}>
+<McpToolCard id="messaging-session-update" name="bakin_exec_messaging_session_update" label="Updated brainstorm session" description="Update a planning session title or status" source="bakin-bits-official/plugins/messaging/index.ts:1820" parameters={[{"name":"sessionId","type":"string","required":true,"description":"Session ID (required)"},{"name":"title","type":"string","required":false,"description":"New title"},{"name":"status","type":"string","required":false,"description":"New status (active, archived)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_messaging_session_update --args '{
   "sessionId": "value",

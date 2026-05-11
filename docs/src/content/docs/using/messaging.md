@@ -4,10 +4,10 @@ description: "Plan with agents, turn ideas into Deliverables, and publish approv
 ---
 
 Messaging is the content planning surface for Bakin. It starts with an
-agent-assisted brainstorm, turns accepted ideas into Plans, fans each Plan out
-into channel-specific Deliverables, starts prep work when the prep window
-opens, routes drafts through review, and publishes approved content at the
-right time.
+agent-assisted brainstorm, turns accepted ideas into Plans, helps shape each
+Plan into channel-specific content pieces, starts prep work when the prep
+window opens, routes drafts through review, and publishes approved content at
+the right time.
 
 Use Quick Post when you need a one-off Deliverable without a larger Plan.
 
@@ -33,7 +33,7 @@ or video assets must be present before approval.
 
 | Status | What it means |
 | --- | --- |
-| `proposed` | Suggested during Plan fan-out, waiting for human review. |
+| `proposed` | Suggested for a Plan, waiting for human review. |
 | `planned` | Approved for prep, waiting for the prep window. |
 | `in_prep` | A Bakin task or workflow is preparing the draft. |
 | `in_review` | Draft is ready for human approval or changes. |
@@ -53,21 +53,23 @@ the gate.
 ## Plans
 
 <figure class="screenshot-frame">
-  <figcaption>A Plan workspace with proposed Deliverables and fan-out controls.</figcaption>
+  <figcaption>A Plan workspace with timeline, tasks, brainstorm context, and content-piece review.</figcaption>
 </figure>
 
 A Plan is one topic or date focus, such as "Taco Tuesday". It carries a lead
 agent, brief, optional campaign label, soft `targetDate`, and suggested
 channels from the brainstorm proposal.
 
-Open a Plan to start fan-out. Messaging creates one Bakin task for the lead
-agent. The agent reads the Plan and calls
-`bakin_exec_messaging_propose_deliverable` once for each channel it recommends.
-Those proposed Deliverables appear in the Plan workspace, where you approve,
-edit, or reject them before they enter prep.
+Open a Plan to manage the work leading up to release. The workspace keeps the
+Plan in the center, next-step tasks on the right, and the brainstorm context at
+the bottom. When you are ready to plan channel-specific pieces, a Bakin task
+can ask the lead agent to call `bakin_exec_messaging_propose_deliverable` once
+for each recommended channel. Those suggestions appear in the Plan workspace,
+where you accept, edit, or decline them before they enter prep.
 
-Plan status is derived from child Deliverables: planning, fanning out, in prep,
-in review, scheduled, overdue, partially published, done, cancelled, or failed.
+Plan status is derived from child Deliverables: planning, planning content
+pieces, in production, in review, scheduled, needs attention, partially
+published, published, cancelled, or needs repair.
 
 ## Brainstorm
 
@@ -84,10 +86,10 @@ concrete topic, it emits a fenced JSON Plan proposal with:
 - `brief`
 - optional `suggestedChannels`
 
-Approve the proposals you want and click `Create Plans`. Each approved
-proposal becomes a Plan and the session records the created Plan ids. Sessions
-stay active, so you can return later and create more Plans from the same
-conversation.
+Accept the proposals you want and click `Complete session and prepare plans`.
+Each accepted proposal becomes a Plan. No production work starts at this step.
+Sessions stay active, so you can return later and prepare more Plans from the
+same conversation.
 
 ### Session continuity and activity
 
@@ -103,7 +105,7 @@ output.
 
 Quick Post creates a Deliverable with `planId: null`. Use it for a single
 social post, announcement, or media item that does not need brainstorm or Plan
-fan-out.
+content-piece planning.
 
 Media-required content types can still be created without attaching an asset up
 front. The prep agent can generate or attach the asset later. Approval and
@@ -201,7 +203,7 @@ filter locally in the plugin UI.
 | `bakin messaging session-update <sessionId>` | Update a planning session |
 | `bakin messaging session-delete <sessionId>` | Delete a planning session |
 | `bakin messaging message <sessionId> <message>` | Message a planning session |
-| `bakin messaging materialize <sessionId>` | Create Plans from approved proposals |
+| `bakin messaging materialize <sessionId>` | Prepare Plans from accepted proposals |
 | `bakin messaging proposal <sessionId> <proposalId>` | Update a planning-session proposal |
 <!-- /docs:cli-commands -->
 
@@ -213,8 +215,8 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents
 
-Agents drive brainstorm sessions, Plan fan-out, Deliverable prep, review, and
-publish recovery through MCP exec tools.
+Agents support brainstorm sessions, content-piece planning, Deliverable prep,
+review, and publish recovery through MCP exec tools.
 
 <!-- docs:exec-tools messaging -->
 - `bakin_exec_messaging_deliverable_approve`: Approve a Deliverable after review.
@@ -225,16 +227,17 @@ publish recovery through MCP exec tools.
 - `bakin_exec_messaging_deliverable_reject`: Request changes for a Deliverable after review.
 - `bakin_exec_messaging_deliverable_update`: Update a content Deliverable. Draft fields are deep-merged.
 - `bakin_exec_messaging_plan_create`: Create a content Plan
+- `bakin_exec_messaging_plan_delete`: Delete a content Plan, its content pieces, and linked board tasks.
 - `bakin_exec_messaging_plan_get`: Get a content Plan and its Deliverables
 - `bakin_exec_messaging_plan_list`: List content Plans with optional filters
-- `bakin_exec_messaging_plan_start_fanout`: Create the phase-2 Bakin task for a content Plan
+- `bakin_exec_messaging_plan_start_fanout`: Create the content piece planning task for a content Plan
 - `bakin_exec_messaging_proposal_update`: Update a proposal status or fields (approve, reject, edit)
-- `bakin_exec_messaging_propose_deliverable`: Propose a channel-specific Deliverable for a content Plan during phase-2 fan-out.
+- `bakin_exec_messaging_propose_deliverable`: Propose a channel-specific content piece for a content Plan.
 - `bakin_exec_messaging_session_create`: Create a new planning session for an agent
-- `bakin_exec_messaging_session_delete`: Delete a planning session
+- `bakin_exec_messaging_session_delete`: Delete a planning session and optionally the Plans prepared from it.
 - `bakin_exec_messaging_session_get`: Get a planning session with full message history and proposals
 - `bakin_exec_messaging_session_list`: List planning sessions with optional filters
-- `bakin_exec_messaging_session_materialize`: Create Plans from approved brainstorm proposals
+- `bakin_exec_messaging_session_materialize`: Prepare Plans from accepted brainstorm proposals
 - `bakin_exec_messaging_session_message`: Send a message in a planning session (non-streaming, returns full response)
 - `bakin_exec_messaging_session_update`: Update a planning session title or status
 <!-- /docs:exec-tools -->
@@ -248,5 +251,5 @@ Full schemas in the [Exec tools reference](/docs/reference/generated/exec-tools/
 - [Team](/docs/using/team/): the agents you brainstorm and plan with
 - [Workflows](/docs/using/workflows/): workflow-backed prep and review gates
 - [Schedule](/docs/using/schedule/): cron-backed plugin sweeps
-- [Tasks](/docs/using/tasks/): fan-out and prep work run as Bakin tasks
+- [Tasks](/docs/using/tasks/): content planning and prep work run as Bakin tasks
 - [Assets](/docs/using/assets/): draft images and videos used for publishing

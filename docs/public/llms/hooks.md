@@ -242,7 +242,7 @@ const result = await ctx.hooks.invoke(
 Label: Run messaging content sweep
 Purpose: Run messaging content sweep
 Kind: rpc
-Source: bakin-bits-official/plugins/messaging/index.ts:551
+Source: bakin-bits-official/plugins/messaging/index.ts:595
 
 Example:
 

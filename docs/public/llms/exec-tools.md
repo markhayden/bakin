@@ -792,6 +792,25 @@ mcporter call bakin-<agent>.bakin_exec_messaging_plan_create --args '{
 }'
 ```
 
+### bakin_exec_messaging_plan_delete
+
+Label: Deleted content plan
+Purpose: Delete a content Plan, its content pieces, and linked board tasks.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `planId` | string | yes | Plan ID (required) |
+| `deleteLinkedTasks` | boolean | no | Delete linked board tasks; defaults to true |
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_messaging_plan_delete --args '{
+  "planId": "value",
+  "deleteLinkedTasks": true
+}'
+```
+
 ### bakin_exec_messaging_plan_get
 
 Label: Read content plan
@@ -832,8 +851,8 @@ mcporter call bakin-<agent>.bakin_exec_messaging_plan_list --args '{
 
 ### bakin_exec_messaging_plan_start_fanout
 
-Label: Started content plan fan-out
-Purpose: Create the phase-2 Bakin task for a content Plan
+Label: Started content piece planning
+Purpose: Create the content piece planning task for a content Plan
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -883,7 +902,7 @@ mcporter call bakin-<agent>.bakin_exec_messaging_proposal_update --args '{
 ### bakin_exec_messaging_propose_deliverable
 
 Label: Proposed content deliverable
-Purpose: Propose a channel-specific Deliverable for a content Plan during phase-2 fan-out.
+Purpose: Propose a channel-specific content piece for a content Plan.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -943,17 +962,21 @@ mcporter call bakin-<agent>.bakin_exec_messaging_session_create --args '{
 ### bakin_exec_messaging_session_delete
 
 Label: Deleted brainstorm session
-Purpose: Delete a planning session
+Purpose: Delete a planning session and optionally the Plans prepared from it.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
 | `sessionId` | string | yes | Session ID (required) |
+| `deleteCreatedPlans` | boolean | no | Delete Plans created from the session; defaults to true |
+| `deleteLinkedTasks` | boolean | no | Delete linked board tasks; defaults to true |
 
 Example:
 
 ```sh
 mcporter call bakin-<agent>.bakin_exec_messaging_session_delete --args '{
-  "sessionId": "value"
+  "sessionId": "value",
+  "deleteCreatedPlans": true,
+  "deleteLinkedTasks": true
 }'
 ```
 
@@ -995,8 +1018,8 @@ mcporter call bakin-<agent>.bakin_exec_messaging_session_list --args '{
 
 ### bakin_exec_messaging_session_materialize
 
-Label: Created Plans from brainstorm proposals
-Purpose: Create Plans from approved brainstorm proposals
+Label: Prepared Plans from brainstorm proposals
+Purpose: Prepare Plans from accepted brainstorm proposals
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
