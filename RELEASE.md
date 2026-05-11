@@ -3,16 +3,16 @@
 Bakin releases are prepared locally and published by GitHub Actions.
 
 Local commands must never create release tags or publish artifacts. The only
-manual publish step is running the `Start Release` workflow after the release
-PR has merged to `main`.
+manual publish step is running the `Release` workflow after the release PR has
+merged to `main`.
 
 ## Summary
 
 1. Create a release branch from `main`.
 2. Run `bun run release ...` to prepare `CHANGELOG.md`.
-3. Open and merge a release PR.
-4. Run the `Start Release` workflow on `main`.
-5. Watch the tag-triggered `Release` workflow publish artifacts.
+3. Curate release notes in the release PR.
+4. Run the `Release` workflow on `main`.
+5. Watch the single `Release` workflow through publish and smoke.
 
 ## Prepare A Release
 
@@ -52,8 +52,8 @@ The helper:
 - Leaves an existing target version section unchanged.
 - Does not tag, push, or publish.
 
-Review the changelog and make any final docs or install-copy edits on the
-release branch.
+Review and curate the changelog on the release branch. The version section in
+`CHANGELOG.md` is the source of truth for GitHub release notes.
 
 ## Open The Release PR
 
@@ -69,6 +69,9 @@ The PR should normally contain only:
 - Release-specific docs/install updates.
 - Small fixes that are explicitly required to ship the release.
 
+Use the PR review to edit the release notes until they read like public-facing
+product notes, not a commit log.
+
 Merge the PR after CI passes.
 
 ## Publish
@@ -76,7 +79,7 @@ Merge the PR after CI passes.
 After the release PR is merged, go to GitHub Actions and run:
 
 ```text
-Start Release
+Release
 ```
 
 Run it from `main` with:
@@ -87,7 +90,7 @@ version: X.Y.Z
 
 Use the version without the leading `v`.
 
-`Start Release` validates that:
+`Release` validates that:
 
 - It is running from `main`.
 - The input version is valid.
@@ -95,9 +98,7 @@ Use the version without the leading `v`.
 - `CHANGELOG.md` has a matching `## [X.Y.Z]` section.
 - Release notes can be extracted.
 
-If validation passes, it creates and pushes `vX.Y.Z`.
-
-That tag starts the `Release` workflow, which:
+If validation passes, it creates and pushes `vX.Y.Z`, then continues to:
 
 - Builds and tests.
 - Builds Linux and macOS binaries.
@@ -106,15 +107,12 @@ That tag starts the `Release` workflow, which:
 - Publishes `@makinbakin/sdk`.
 - Updates the Homebrew tap for stable releases.
 - Publishes the GitHub release.
-- Dispatches post-publish smoke tests.
+- Runs post-publish smoke tests for binaries, SDK install/imports, and stable
+  Homebrew installs.
 
 ## After Publish
 
-Watch these workflows:
-
-1. `Start Release`
-2. `Release`
-3. `Release Smoke`
+Watch the `Release` workflow until all publish and smoke jobs pass.
 
 If publish fails before the GitHub release is made public, fix the issue and
 rerun the failed workflow/job if possible.
@@ -130,4 +128,3 @@ a forward fix with a new patch release.
 - Version selection uses remote tags, not local tags.
 - If local tags are stale, they should not affect `bun run release`, but they
   can still confuse manual git commands and local version stamping.
-
