@@ -130,6 +130,7 @@ Source: `packages/sdk/src/types/index.ts`
 | `export type PluginPermission =` |
 | `export type RuntimeCapability =` |
 | `export interface PluginEntryPoints {` |
+| `export interface SecretDeclaration {` |
 | `export interface ApiRouteContribution {` |
 | `export type JsonSchemaContribution = Record<string, unknown>` |
 | `export interface ApiParameterContribution {` |
@@ -259,5 +260,5 @@ Source: `packages/sdk/src/routing/index.ts`
 | `export type {` |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 9, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 11, 2026 · Bakin 0.0.0-dev</span>
 </aside>

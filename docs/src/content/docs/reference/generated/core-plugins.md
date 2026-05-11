@@ -45,7 +45,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td><code>messaging</code></td>
       <td>Official</td>
       <td><code>1.0.0</code></td>
-      <td><code>team</code> <code>workflows</code></td>
+      <td><code>team</code> <code>workflows</code> <code>schedule</code></td>
     </tr>
     <tr>
       <td>Models<br/><span>Agent model configuration — per-agent models, aliases, task profiles, available models from Anthropic API</span></td>
@@ -93,5 +93,5 @@ description: Generated catalog of official plugins supported by Bakin.
 </table>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 9, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 11, 2026 · Bakin 0.0.0-dev</span>
 </aside>

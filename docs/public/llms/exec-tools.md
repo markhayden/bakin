@@ -582,110 +582,268 @@ mcporter call bakin-<agent>.bakin_exec_memory_status
 
 Messaging tools let agents create, update, approve, reject, and inspect human-facing messages and sessions.
 
-### bakin_exec_messaging_approve
+### bakin_exec_messaging_deliverable_approve
 
-Label: Approved a message
-Purpose: Approve a messaging item (draft → scheduled, review → published)
+Label: Approved content deliverable
+Purpose: Approve a Deliverable after review.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
-| `itemId` | string | yes | Item ID (required) |
+| `deliverableId` | string | yes | Deliverable ID (required) |
 
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_approve --args '{
-  "itemId": "value"
+mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_approve --args '{
+  "deliverableId": "value"
 }'
 ```
 
-### bakin_exec_messaging_create
+### bakin_exec_messaging_deliverable_create
 
-Label: Created a message
-Purpose: Create a new messaging item
+Label: Created content deliverable
+Purpose: Create a content Deliverable. Omit planId or pass null for a Quick Post.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | string | yes | Item title (required) |
-| `agent` | string | yes | Assigned agent (required) |
-| `scheduledAt` | string | yes | ISO datetime for scheduling (required) |
-| `channels` | array | no | Runtime channel IDs (default: ["general"]) |
-| `contentType` | string | no | Content type id from the messaging contentTypes setting (e.g. post, article, video) |
-| `tone` | string | no | Content tone (energetic, calm, educational, etc.) |
-| `brief` | string | no | Content brief |
-| `status` | string | no | Initial status (default: draft) |
+| `planId` | union | no | Optional Plan ID; null creates a Quick Post |
+| `channel` | string | yes | Runtime channel ID |
+| `contentType` | string | yes | Messaging content type ID |
+| `tone` | string | yes | Tone |
+| `agent` | string | yes | Prep agent |
+| `title` | string | yes | Deliverable title |
+| `brief` | string | yes | Deliverable brief |
+| `publishAt` | string | yes | Publish datetime |
+| `prepStartAt` | string | no | Optional explicit prep start datetime |
+| `prepStartAtOverride` | string | no | Optional prep start override datetime |
+| `status` | string | no | Optional initial status; defaults to planned |
+| `draft` | object | no | Optional draft fields |
 
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_create --args '{
-  "title": "value",
-  "agent": "value",
-  "scheduledAt": "value",
-  "channels": [
-    "value"
-  ],
+mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_create --args '{
+  "planId": "value",
+  "channel": "value",
   "contentType": "value",
   "tone": "value",
+  "agent": "value",
+  "title": "value",
   "brief": "value",
-  "status": "value"
+  "publishAt": "value",
+  "prepStartAt": "value",
+  "prepStartAtOverride": "value",
+  "status": "value",
+  "draft": {
+    "key": "value"
+  }
 }'
 ```
 
-### bakin_exec_messaging_delete
+### bakin_exec_messaging_deliverable_get
 
-Label: Deleted a message
-Purpose: Delete a messaging item
+Label: Read content deliverable
+Purpose: Get a content Deliverable
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
-| `itemId` | string | yes | Item ID (required) |
+| `deliverableId` | string | yes | Deliverable ID (required) |
 
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_delete --args '{
-  "itemId": "value"
+mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_get --args '{
+  "deliverableId": "value"
 }'
 ```
 
-### bakin_exec_messaging_get
+### bakin_exec_messaging_deliverable_list
 
-Label: Read message details
-Purpose: Get details for a single messaging item
+Label: Listed content deliverables
+Purpose: List content Deliverables with optional filters
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
-| `itemId` | string | yes | Item ID (required) |
+| `planId` | union | no | Filter by Plan ID; null returns Quick Posts |
+| `status` | string | no | Filter by Deliverable status |
+| `channel` | string | no | Filter by channel |
+| `publishAfter` | string | no | Filter by publishAt at or after this date |
+| `publishBefore` | string | no | Filter by publishAt at or before this date |
 
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_get --args '{
-  "itemId": "value"
+mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_list --args '{
+  "planId": "value",
+  "status": "value",
+  "channel": "value",
+  "publishAfter": "value",
+  "publishBefore": "value"
 }'
 ```
 
-### bakin_exec_messaging_list
+### bakin_exec_messaging_deliverable_ready_for_review
 
-Label: Listed messages
-Purpose: List messaging items with optional filters
+Label: Marked content deliverable ready for review
+Purpose: Signal that a bare-task Deliverable draft is ready for user review or auto-approval.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
-| `month` | string | no | Filter by month (YYYY-MM) |
-| `status` | string | no | Filter by status (draft, scheduled, review, published, etc.) |
-| `agent` | string | no | Filter by assigned agent |
-| `channel` | string | no | Filter by runtime channel ID (e.g. general, announcements) |
+| `deliverableId` | string | yes | Deliverable ID (required) |
 
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_list --args '{
-  "month": "value",
+mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_ready_for_review --args '{
+  "deliverableId": "value"
+}'
+```
+
+### bakin_exec_messaging_deliverable_reject
+
+Label: Rejected content deliverable
+Purpose: Request changes for a Deliverable after review.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `deliverableId` | string | yes | Deliverable ID (required) |
+| `note` | string | no | Review note for the prep agent |
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_reject --args '{
+  "deliverableId": "value",
+  "note": "value"
+}'
+```
+
+### bakin_exec_messaging_deliverable_update
+
+Label: Updated content deliverable
+Purpose: Update a content Deliverable. Draft fields are deep-merged.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `deliverableId` | string | yes | Deliverable ID (required) |
+| `planId` | union | no | Optional Plan ID; null makes it a Quick Post |
+| `channel` | string | no | Runtime channel ID |
+| `contentType` | string | no | Messaging content type ID |
+| `tone` | string | no | Tone |
+| `agent` | string | no | Prep agent |
+| `title` | string | no | Deliverable title |
+| `brief` | string | no | Deliverable brief |
+| `publishAt` | string | no | Publish datetime |
+| `prepStartAt` | string | no | Optional explicit prep start datetime |
+| `prepStartAtOverride` | string | no | Optional prep start override datetime |
+| `status` | string | no | Deliverable status |
+| `rejectionNote` | string | no | Optional rejection note |
+| `draft` | object | no | Draft fields to deep-merge |
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_update --args '{
+  "deliverableId": "value",
+  "planId": "value",
+  "channel": "value",
+  "contentType": "value",
+  "tone": "value",
+  "agent": "value",
+  "title": "value",
+  "brief": "value",
+  "publishAt": "value",
+  "prepStartAt": "value",
+  "prepStartAtOverride": "value",
+  "status": "value",
+  "rejectionNote": "value",
+  "draft": {
+    "key": "value"
+  }
+}'
+```
+
+### bakin_exec_messaging_plan_create
+
+Label: Created content plan
+Purpose: Create a content Plan
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `title` | string | yes | Plan title |
+| `targetDate` | string | yes | Target ISO date |
+| `agent` | string | yes | Lead agent |
+| `brief` | string | no | Plan brief |
+| `campaign` | string | no | Campaign tag |
+| `suggestedChannels` | array | no | Suggested channel IDs |
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_messaging_plan_create --args '{
+  "title": "value",
+  "targetDate": "value",
+  "agent": "value",
+  "brief": "value",
+  "campaign": "value",
+  "suggestedChannels": [
+    "value"
+  ]
+}'
+```
+
+### bakin_exec_messaging_plan_get
+
+Label: Read content plan
+Purpose: Get a content Plan and its Deliverables
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `planId` | string | yes | Plan ID (required) |
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_messaging_plan_get --args '{
+  "planId": "value"
+}'
+```
+
+### bakin_exec_messaging_plan_list
+
+Label: Listed content plans
+Purpose: List content Plans with optional filters
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `status` | string | no | Filter by Plan status |
+| `agent` | string | no | Filter by lead agent |
+| `campaign` | string | no | Filter by campaign |
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_messaging_plan_list --args '{
   "status": "value",
   "agent": "value",
-  "channel": "value"
+  "campaign": "value"
+}'
+```
+
+### bakin_exec_messaging_plan_start_fanout
+
+Label: Started content plan fan-out
+Purpose: Create the phase-2 Bakin task for a content Plan
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `planId` | string | yes | Plan ID (required) |
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_messaging_plan_start_fanout --args '{
+  "planId": "value"
 }'
 ```
 
@@ -701,9 +859,8 @@ Purpose: Update a proposal status or fields (approve, reject, edit)
 | `status` | string | no | New status (proposed, approved, rejected, revised) |
 | `title` | string | no | Updated title |
 | `brief` | string | no | Updated brief |
-| `tone` | string | no | Updated tone |
-| `scheduledAt` | string | no | Updated schedule datetime |
-| `channels` | array | no | Updated channels |
+| `targetDate` | string | no | Updated Plan target date |
+| `suggestedChannels` | array | no | Updated suggested channels |
 | `rejectionNote` | string | no | Note explaining rejection |
 
 Example:
@@ -715,50 +872,50 @@ mcporter call bakin-<agent>.bakin_exec_messaging_proposal_update --args '{
   "status": "value",
   "title": "value",
   "brief": "value",
-  "tone": "value",
-  "scheduledAt": "value",
-  "channels": [
+  "targetDate": "value",
+  "suggestedChannels": [
     "value"
   ],
   "rejectionNote": "value"
 }'
 ```
 
-### bakin_exec_messaging_reject
+### bakin_exec_messaging_propose_deliverable
 
-Label: Rejected a message
-Purpose: Reject a messaging item back to draft status
+Label: Proposed content deliverable
+Purpose: Propose a channel-specific Deliverable for a content Plan during phase-2 fan-out.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
-| `itemId` | string | yes | Item ID (required) |
-| `note` | string | no | Rejection note / feedback |
+| `planId` | string | yes | Plan ID (required) |
+| `channel` | string | yes | Runtime channel ID |
+| `contentType` | string | yes | Messaging content type ID |
+| `tone` | string | yes | Tone |
+| `title` | string | yes | Deliverable title |
+| `brief` | string | yes | Deliverable brief |
+| `publishAt` | string | yes | Publish datetime |
+| `agent` | string | no | Optional prep agent; defaults to Plan agent |
+| `prepStartAt` | string | no | Optional explicit prep start datetime |
+| `prepStartAtOverride` | string | no | Optional prep start override datetime |
+| `draft` | object | no | Optional draft fields |
 
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_reject --args '{
-  "itemId": "value",
-  "note": "value"
-}'
-```
-
-### bakin_exec_messaging_session_confirm
-
-Label: Confirmed brainstorm proposal
-Purpose: Confirm a planning session — creates messaging items from approved proposals
-
-| Argument | Type | Required | Description |
-| --- | --- | --- | --- |
-| `sessionId` | string | yes | Session ID (required) |
-| `autoApprove` | boolean | no | Auto-approve: create items in scheduled status instead of draft |
-
-Example:
-
-```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_session_confirm --args '{
-  "sessionId": "value",
-  "autoApprove": true
+mcporter call bakin-<agent>.bakin_exec_messaging_propose_deliverable --args '{
+  "planId": "value",
+  "channel": "value",
+  "contentType": "value",
+  "tone": "value",
+  "title": "value",
+  "brief": "value",
+  "publishAt": "value",
+  "agent": "value",
+  "prepStartAt": "value",
+  "prepStartAtOverride": "value",
+  "draft": {
+    "key": "value"
+  }
 }'
 ```
 
@@ -771,13 +928,15 @@ Purpose: Create a new planning session for an agent
 | --- | --- | --- | --- |
 | `agentId` | string | yes | Agent ID (required) |
 | `title` | string | no | Session title |
+| `scope` | string | no | Optional brainstorm scope |
 
 Example:
 
 ```sh
 mcporter call bakin-<agent>.bakin_exec_messaging_session_create --args '{
   "agentId": "value",
-  "title": "value"
+  "title": "value",
+  "scope": "value"
 }'
 ```
 
@@ -822,7 +981,7 @@ Purpose: List planning sessions with optional filters
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
-| `status` | string | no | Filter by status (active, completed) |
+| `status` | string | no | Filter by status (active, archived) |
 | `agentId` | string | no | Filter by agent ID |
 
 Example:
@@ -831,6 +990,23 @@ Example:
 mcporter call bakin-<agent>.bakin_exec_messaging_session_list --args '{
   "status": "value",
   "agentId": "value"
+}'
+```
+
+### bakin_exec_messaging_session_materialize
+
+Label: Materialized brainstorm proposals
+Purpose: Materialize approved Plan proposals into Plans
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `sessionId` | string | yes | Session ID (required) |
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_messaging_session_materialize --args '{
+  "sessionId": "value"
 }'
 ```
 
@@ -862,7 +1038,7 @@ Purpose: Update a planning session title or status
 | --- | --- | --- | --- |
 | `sessionId` | string | yes | Session ID (required) |
 | `title` | string | no | New title |
-| `status` | string | no | New status (active, completed) |
+| `status` | string | no | New status (active, archived) |
 
 Example:
 
@@ -871,33 +1047,6 @@ mcporter call bakin-<agent>.bakin_exec_messaging_session_update --args '{
   "sessionId": "value",
   "title": "value",
   "status": "value"
-}'
-```
-
-### bakin_exec_messaging_update
-
-Label: Updated a message
-Purpose: Update a messaging item
-
-| Argument | Type | Required | Description |
-| --- | --- | --- | --- |
-| `itemId` | string | yes | Item ID (required) |
-| `title` | string | no | New title |
-| `scheduledAt` | string | no | New schedule datetime |
-| `status` | string | no | New status |
-| `brief` | string | no | Updated brief |
-| `tone` | string | no | Updated tone |
-
-Example:
-
-```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_update --args '{
-  "itemId": "value",
-  "title": "value",
-  "scheduledAt": "value",
-  "status": "value",
-  "brief": "value",
-  "tone": "value"
 }'
 ```
 

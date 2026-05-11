@@ -113,6 +113,46 @@ import { PluginHeader } from '@makinbakin/sdk/components'
 
 Custom UI is fine when the domain needs it, but keep Bakin conventions: small radii, clear tables and filters, keyboard-friendly controls, visible empty states, and no layout shift when data loads.
 
+## Agent Chat Surfaces
+
+Use `IntegratedBrainstorm` when a plugin needs a durable agent chat panel
+inside its own page. Keep the plugin-owned record as the source of truth for
+visible messages and pass a stable thread id to the server route so the runtime
+adapter can preserve conversation continuity.
+
+`transformAssistantMessage` lets the plugin render structured artifacts below
+assistant text without forking the chat component. For example, a content
+planning plugin can parse proposal ids from an assistant message and render
+review cards inline:
+
+```tsx
+import { IntegratedBrainstorm } from '@makinbakin/sdk/components'
+
+function PlanningChat({ sessionId, agentId, proposalByMessageId }) {
+  return (
+    <IntegratedBrainstorm
+      endpoint={`/api/plugins/messaging/sessions/${sessionId}/messages`}
+      agentId={agentId}
+      transformAssistantMessage={(message) => {
+        const proposals = proposalByMessageId.get(message.id) ?? []
+        return (
+          <>
+            <p>{message.content}</p>
+            {proposals.map((proposal) => (
+              <PlanProposalCard key={proposal.id} proposal={proposal} />
+            ))}
+          </>
+        )
+      }}
+    />
+  )
+}
+```
+
+Persist activity rows and parsed artifacts in plugin storage for reloads. Do
+not replay the whole stored transcript into every agent call unless the agent
+task explicitly needs that context.
+
 ## Runtime Cleanup
 
 During development, Bakin can unregister and reload client contributions. If a plugin maintains a client-side registry outside `registerPlugin()`, enroll cleanup with `registerPluginCleanup(id, fn)`.
