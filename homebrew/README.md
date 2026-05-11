@@ -5,9 +5,12 @@ any change to the install surface (new platform, test command update,
 license change) lands in one place and gets reviewed with the rest of
 the code.
 
+This file is maintainer-facing. User install instructions live in the
+[public install docs](https://makinbakin.com/docs/start/install/).
+
 ## User install
 
-After the first stable release, the preferred macOS install path is:
+The preferred macOS install path is:
 
 ```sh
 brew install markhayden/tap/bakin
@@ -49,6 +52,6 @@ bun run scripts/update-homebrew-formula.ts --version 0.1.0 --checksums dist/chec
 ## Why a single file per release, not `brew install --build-from-source`
 
 Bakin is distributed as a Bun-compiled single-file binary. Building
-from source would require Bun + Node + Python + every dependency of
-every plugin on the end user's machine. The binary is ~70 MB on macOS
-arm64 and already embeds everything the server needs.
+from source would require Bun plus every dependency of every plugin on
+the end user's machine. The binary already embeds everything the server
+needs.

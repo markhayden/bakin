@@ -9,6 +9,12 @@ runtime React + `@makinbakin/sdk/*` are externalized and resolved through
 the host's import map — so plugins don't ship a second copy of any of
 them.
 
+Full SDK docs:
+
+- [SDK overview](https://makinbakin.com/docs/extending/sdk/overview/)
+- [SDK reference](https://makinbakin.com/docs/reference/generated/sdk/)
+- [Build a plugin](https://makinbakin.com/docs/extending/plugins/build/)
+
 ## Install
 
 ```sh
@@ -26,7 +32,7 @@ the actual instances at runtime.
 bakin plugins scaffold my-plugin
 cd my-plugin
 bun install
-bakin plugins install .
+bakin plugins install --dev .
 ```
 
 ## Minimal client entry
@@ -84,17 +90,21 @@ component for a slot via `registerPlugin({ slots: { 'slot-name': Component } })`
 
 ## Sub-path imports
 
-The `exports` map covers these sub-paths:
+The public npm package exposes these sub-paths:
 
 | Import path              | What it exposes                              |
 | ------------------------ | -------------------------------------------- |
-| `@makinbakin/sdk`             | `registerPlugin`, top-level re-exports       |
-| `@makinbakin/sdk/ui`          | Base UI components (buttons, cards, inputs)  |
-| `@makinbakin/sdk/hooks`       | Shared React hooks (useQueryState, useDebug) |
-| `@makinbakin/sdk/components`  | Higher-level shell components                |
-| `@makinbakin/sdk/slots`       | Slot runtime + provider                      |
-| `@makinbakin/sdk/types`       | TypeScript types (`BakinPlugin`, `PluginContext`, etc.) |
-| `@makinbakin/sdk/utils`       | Shared utilities                             |
+| `@makinbakin/sdk` | Plugin registration, route helpers, top-level exports |
+| `@makinbakin/sdk/ui` | Base UI components |
+| `@makinbakin/sdk/hooks` | Shared React hooks |
+| `@makinbakin/sdk/components` | Higher-level shell components |
+| `@makinbakin/sdk/slots` | Slot runtime and provider |
+| `@makinbakin/sdk/types` | TypeScript contract types |
+| `@makinbakin/sdk/utils` | Shared utilities |
+| `@makinbakin/sdk/metadata` | Docs-aware contract metadata helpers |
+| `@makinbakin/sdk/routing` | Typed declarative route helpers |
+
+Use `@makinbakin/sdk/*` imports for external plugin code. The in-repo `@bakin/sdk/*` package name is for Bakin's workspace build.
 
 ## Repository
 
@@ -104,4 +114,4 @@ This package is developed alongside Bakin in the
 
 ## License
 
-MIT © markhayden
+Apache-2.0

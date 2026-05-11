@@ -12,7 +12,7 @@
 class Bakin < Formula
   desc "Self-hosted multi-agent orchestration platform"
   homepage "https://github.com/markhayden/bakin"
-  license "MIT"
+  license "Apache-2.0"
 
   on_macos do
     on_arm do
