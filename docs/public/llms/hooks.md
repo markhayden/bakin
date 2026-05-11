@@ -334,7 +334,7 @@ Task hooks let plugins enrich task details and react to task lifecycle changes.
 Label: Add project task context.
 Purpose: Adds project title, status, progress, and excerpt data to task detail payloads. Use it when a task surface wants project context without depending on project storage.
 Kind: waterfall
-Source: bakin-bits-official/plugins/projects/index.ts:222
+Source: bakin-bits-official/plugins/projects/index.ts:160
 
 Example:
 
@@ -355,7 +355,7 @@ const next = await ctx.hooks.call(
 Label: Sync project task state.
 Purpose: Updates linked project checklist items when a task moves into a completed state. Use it to keep project progress in sync with task lifecycle events.
 Kind: event
-Source: bakin-bits-official/plugins/projects/index.ts:211
+Source: bakin-bits-official/plugins/projects/index.ts:149
 
 Example:
 

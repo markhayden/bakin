@@ -993,37 +993,6 @@ mcporter call bakin-<agent>.bakin_exec_projects_add_item --args '{
 }'
 ```
 
-### bakin_exec_projects_apply_plan
-
-Label: Applied a project plan
-Purpose: Apply a confirmed project plan update in one operation. Use this after the user confirms exact body/checklist changes so agents do not need shell scripts or multiple low-level calls.
-
-| Argument | Type | Required | Description |
-| --- | --- | --- | --- |
-| `projectId` | string | yes | Project ID |
-| `title` | string | no | Optional new project title |
-| `status` | choice | no | Optional new status |
-| `body` | string | no | Replacement markdown body for the project plan |
-| `appendBody` | string | no | Markdown to append to the existing project body; cannot be combined with body |
-| `owner` | string | no | Optional new owner |
-| `checklistItems` | array | no | New unchecked checklist item titles to append |
-
-Example:
-
-```sh
-mcporter call bakin-<agent>.bakin_exec_projects_apply_plan --args '{
-  "projectId": "value",
-  "title": "value",
-  "status": "value",
-  "body": "value",
-  "appendBody": "value",
-  "owner": "value",
-  "checklistItems": [
-    "value"
-  ]
-}'
-```
-
 ### bakin_exec_projects_ask
 
 Label: Asked project question
