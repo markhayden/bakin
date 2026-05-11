@@ -239,8 +239,74 @@ interface ProcessRunResult {
   body: BridgeResult
 }
 
+interface BakinCommand {
+  pluginId: string
+  action: string
+}
+
+interface PluginRunHookResult {
+  ok?: boolean
+  error?: string
+  taskId?: string
+}
+
+const BAKIN_COMMAND_RE = /^bakin:([^:]+):([^:]+)$/
+
+function parseBakinCommand(command: string | undefined): BakinCommand | null {
+  if (!command) return null
+  const match = command.match(BAKIN_COMMAND_RE)
+  if (!match) return null
+  return { pluginId: match[1], action: match[2] }
+}
+
+async function getRuntimeJobCommand(jobId: string): Promise<string | undefined> {
+  if (!pluginCtx) return undefined
+  try {
+    return (await pluginCtx.runtime.cron.get(jobId))?.command
+  } catch (err) {
+    log.warn('Failed to inspect runtime cron command', { jobId, error: err instanceof Error ? err.message : String(err) })
+    return undefined
+  }
+}
+
+async function processPluginScheduledRun(
+  payload: BridgePayload,
+  command: string,
+  parsed: BakinCommand,
+): Promise<ProcessRunResult> {
+  if (!pluginCtx) {
+    return { status: 503, body: { ok: false, error: 'bridge not ready' } }
+  }
+
+  const hookName = `${parsed.pluginId}.${parsed.action}.run`
+  if (!pluginCtx.hooks.has(hookName)) {
+    return { status: 500, body: { ok: false, error: `hook ${hookName} not registered` } }
+  }
+
+  try {
+    const result = await pluginCtx.hooks.invoke<PluginRunHookResult | undefined>(hookName, {
+      ...payload,
+      command,
+      pluginId: parsed.pluginId,
+      action: parsed.action,
+    })
+    if (result?.ok === false) {
+      return { status: 500, body: { ok: false, error: result.error ?? `hook ${hookName} failed` } }
+    }
+    return { status: 200, body: { ok: true, ...(result?.taskId ? { taskId: result.taskId } : {}) } }
+  } catch (err) {
+    return { status: 500, body: { ok: false, error: err instanceof Error ? err.message : String(err) } }
+  }
+}
+
 async function processScheduledRun(payload: BridgePayload): Promise<ProcessRunResult> {
   const { jobId, runId } = payload
+  const command = await getRuntimeJobCommand(jobId)
+  const parsedCommand = parseBakinCommand(command)
+  if (parsedCommand && parsedCommand.pluginId !== 'schedule') {
+    return processPluginScheduledRun(payload, command!, parsedCommand)
+  }
+
   const meta = getJob(jobId)
   if (!meta || !meta.isBakinJob) {
     return { status: 200, body: { ok: true, skipped: 'not-bakin' } }

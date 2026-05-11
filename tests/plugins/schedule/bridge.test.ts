@@ -87,7 +87,7 @@ const mockHookRegistry = {
     return undefined
   }),
   register: mock(),
-  has: mock(() => false),
+  has: mock((_name: string) => false),
 }
 
 mock.module('../../../src/lib/plugin-registry', () => ({
@@ -123,6 +123,14 @@ const TEST_BRIDGE_SECRET = 'a'.repeat(64)
 // bridge call — needed so getOrCreateBridgeSecret returns the same value the
 // test is passing as the query param.
 let mockSettings: Record<string, unknown> = {}
+let runtimeCronJobs: Record<string, {
+  id: string
+  name: string
+  schedule: string
+  command: string
+  enabled: boolean
+  metadata?: Record<string, unknown>
+}> = {}
 
 interface CallBridgeOptions {
   /** Override settings for this call. */
@@ -179,7 +187,7 @@ async function callBridge(
     },
     hooks: {
       register: mock(),
-      has: mock(() => false),
+      has: mockHookRegistry.has,
       invoke: mockHookRegistry.invoke,
     },
     getSettings: mock(() => ({ ...mockSettings })),
@@ -216,14 +224,18 @@ async function callBridge(
 
 function makeBridgeRuntime() {
   const runtime = createMockRuntimeAdapter()
-  runtime.cron.list = async () => Object.values(readSidecar().jobs).map((job) => ({
-    id: job.jobId,
-    name: job.displayName ?? job.jobId,
-    schedule: '0 9 * * *',
-    command: job.taskPrompt ?? `bakin:schedule:${job.displayName ?? job.jobId}`,
-    enabled: true,
-    metadata: { tz: job.tz, createdAt: job.createdAt, updatedAt: job.updatedAt },
-  }))
+  runtime.cron.get = async (jobId) => runtimeCronJobs[jobId] ?? null
+  runtime.cron.list = async () => [
+    ...Object.values(runtimeCronJobs),
+    ...Object.values(readSidecar().jobs).map((job) => ({
+      id: job.jobId,
+      name: job.displayName ?? job.jobId,
+      schedule: '0 9 * * *',
+      command: job.taskPrompt ?? `bakin:schedule:${job.displayName ?? job.jobId}`,
+      enabled: true,
+      metadata: { tz: job.tz, createdAt: job.createdAt, updatedAt: job.updatedAt },
+    })),
+  ]
   return runtime
 }
 
@@ -234,6 +246,9 @@ describe('schedule/bridge', () => {
     mock.clearAllMocks()
     mkdirSync(sidecarDir, { recursive: true })
     mockCreateTask.mockResolvedValue({ id: 'task-abc', workflowId: undefined })
+    runtimeCronJobs = {}
+    mockHookRegistry.has.mockImplementation((_name: string) => false)
+    mockHookRegistry.invoke.mockImplementation(async () => undefined)
 
     // Reset taskboard
     for (const col of Object.values(mockTaskboard.columns)) col.length = 0
@@ -373,6 +388,120 @@ describe('schedule/bridge', () => {
     const { body } = await callBridge({ jobId: 'test-job', runId: 'r1', timestamp: '2026-03-27T09:00:00Z' })
     expect(body.ok).toBe(true)
     expect(body.taskId).toBe('task-abc')
+  })
+
+  it('dispatches bakin:<pluginId>:<action> commands to plugin hooks without creating a task', async () => {
+    runtimeCronJobs['messaging-sweep'] = {
+      id: 'messaging-sweep',
+      name: 'Messaging sweep',
+      schedule: '*/5 * * * *',
+      command: 'bakin:messaging:sweep',
+      enabled: true,
+    }
+    mockHookRegistry.has.mockImplementation((name: string) => {
+      return name === 'messaging.sweep.run'
+    })
+    mockHookRegistry.invoke.mockResolvedValue({ ok: true, taskId: 'task-from-hook' })
+
+    const { status, body } = await callBridge({
+      jobId: 'messaging-sweep',
+      runId: 'r-plugin-1',
+      timestamp: '2026-03-27T09:00:00Z',
+    })
+
+    expect(status).toBe(200)
+    expect(body).toMatchObject({ ok: true, taskId: 'task-from-hook' })
+    expect(mockHookRegistry.invoke).toHaveBeenCalledWith('messaging.sweep.run', {
+      jobId: 'messaging-sweep',
+      runId: 'r-plugin-1',
+      timestamp: '2026-03-27T09:00:00Z',
+      command: 'bakin:messaging:sweep',
+      pluginId: 'messaging',
+      action: 'sweep',
+    })
+    expect(mockCreateTask).not.toHaveBeenCalled()
+  })
+
+  it('keeps bakin:schedule:* commands on the existing sidecar task path', async () => {
+    runtimeCronJobs['schedule-owned'] = {
+      id: 'schedule-owned',
+      name: 'Schedule owned',
+      schedule: '0 9 * * *',
+      command: 'bakin:schedule:daily-brief',
+      enabled: true,
+    }
+    upsertJob(makeMeta({ jobId: 'schedule-owned', displayName: 'Schedule owned' }))
+
+    const { body } = await callBridge({ jobId: 'schedule-owned', runId: 'r1', timestamp: '2026-03-27T09:00:00Z' })
+
+    expect(body.ok).toBe(true)
+    expect(body.taskId).toBe('task-abc')
+    expect(mockCreateTask).toHaveBeenCalledTimes(1)
+    expect(mockHookRegistry.invoke).not.toHaveBeenCalled()
+  })
+
+  it('keeps non-bakin runtime commands on the existing sidecar task path', async () => {
+    runtimeCronJobs['plain-command'] = {
+      id: 'plain-command',
+      name: 'Plain command',
+      schedule: '0 10 * * *',
+      command: 'post-daily-special',
+      enabled: true,
+    }
+    upsertJob(makeMeta({ jobId: 'plain-command', displayName: 'Plain command' }))
+
+    const { body } = await callBridge({ jobId: 'plain-command', runId: 'r-plain-1', timestamp: '2026-03-27T10:00:00Z' })
+
+    expect(body.ok).toBe(true)
+    expect(body.taskId).toBe('task-abc')
+    expect(mockCreateTask).toHaveBeenCalledTimes(1)
+    expect(mockHookRegistry.invoke).not.toHaveBeenCalled()
+  })
+
+  it('records plugin-command failure when the target hook is missing', async () => {
+    runtimeCronJobs['messaging-sweep'] = {
+      id: 'messaging-sweep',
+      name: 'Messaging sweep',
+      schedule: '*/5 * * * *',
+      command: 'bakin:messaging:sweep',
+      enabled: true,
+    }
+
+    const { status, body } = await callBridge({
+      jobId: 'messaging-sweep',
+      runId: 'r-plugin-missing',
+      timestamp: '2026-03-27T09:00:00Z',
+    })
+
+    expect(status).toBe(500)
+    expect(body.ok).toBe(false)
+    expect(body.error).toBe('hook messaging.sweep.run not registered')
+    expect(mockCreateTask).not.toHaveBeenCalled()
+  })
+
+  it('records plugin-command failure when the hook returns ok=false', async () => {
+    runtimeCronJobs['messaging-sweep'] = {
+      id: 'messaging-sweep',
+      name: 'Messaging sweep',
+      schedule: '*/5 * * * *',
+      command: 'bakin:messaging:sweep',
+      enabled: true,
+    }
+    mockHookRegistry.has.mockImplementation((name: string) => {
+      return name === 'messaging.sweep.run'
+    })
+    mockHookRegistry.invoke.mockResolvedValue({ ok: false, error: 'sweep failed' })
+
+    const { status, body } = await callBridge({
+      jobId: 'messaging-sweep',
+      runId: 'r-plugin-fail',
+      timestamp: '2026-03-27T09:00:00Z',
+    })
+
+    expect(status).toBe(500)
+    expect(body.ok).toBe(false)
+    expect(body.error).toBe('sweep failed')
+    expect(mockCreateTask).not.toHaveBeenCalled()
   })
 
   it('resets failure counter when last task succeeded', async () => {
