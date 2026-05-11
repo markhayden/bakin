@@ -61,10 +61,24 @@ When recovery returns tasks to `todo`, `server.ts` starts the loops and then
 immediately triggers one dispatch cycle so recovered work does not wait for the
 next interval.
 
+## Plugin-Owned Cron Commands
+
+The schedule plugin bridge recognizes runtime cron commands shaped like
+`bakin:<pluginId>:<action>`. The reserved `pluginId` value `schedule` keeps the
+legacy schedule-owned task path: the bridge looks up the schedule sidecar and
+creates a Bakin task as before.
+
+For any other plugin id, the bridge bypasses sidecar lookup and invokes
+`${pluginId}.${action}.run` through `ctx.hooks`. The hook owns the work and may
+return `{ ok: true, taskId? }` or `{ ok: false, error }`; no Bakin task is
+created by the schedule bridge itself. Missing hooks are recorded as bridge
+failures with a clear `hook plugin.action.run not registered` error.
+
 ## Where to look
 
 - `src/core/app-services.ts` — boot-created runtime/search/task service object
 - `packages/adapter-openclaw/src/runtime.ts` — OpenClaw adapter transport
 - `src/core/dispatch.ts` — `classifyDispatchError`, cooldown selection, blocked escalation
 - `src/core/restart-recovery.ts` — post-boot recovery of orphaned `inProgress` tasks
+- `plugins/schedule/index.ts` — cron bridge, including `bakin:<pluginId>:<action>` hook dispatch
 - `.claude/knowledge/adapter-architecture.md` — adapter boundaries and task/runtime ownership

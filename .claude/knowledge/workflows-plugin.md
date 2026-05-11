@@ -178,6 +178,31 @@ Channel approval requests include a Bakin-owned fallback URL in the request cont
 
 Startup calls `rehydratePendingApprovals()` from `plugins/workflows/lib/approval-rehydration.ts`. It reattaches stored delivery refs to pending workflow instances and retries `runtime.channels.createApproval()` for pending records that were written before rendering completed. Duplicate render windows are tolerated; the durable Bakin approval record remains the source of truth.
 
+### Cross-Plugin Gate Resolution Hooks
+
+Plugins that own their own review UI resolve workflow gates through
+HookRegistry, never by importing workflow runtime internals or calling the
+workflows REST routes from inside the server process:
+
+- `workflows.approveGate` takes `{ taskId, stepId, approver?, contentDir? }`
+  and returns the same result shape as `approveGate()`.
+- `workflows.rejectGate` takes `{ taskId, stepId, reason, approver?,
+  rewindTo?, contentDir? }` and returns the same result shape as
+  `rejectGate()`.
+
+`approver` should use the `ApprovalActor` shape from
+`packages/core/src/plugin-types.ts`: `{ id, displayName?, source }`. Passing a
+bare string does not produce a useful decision actor for downstream audit,
+notifications, or UI rendering.
+
+Workflow-backed tasks should still be spawned by creating a Bakin task with
+`workflowId` set. `src/core/task-service.ts` invokes
+`workflows.createInstance` automatically during task creation. A plugin that
+needs the resulting workflow state should look it up afterward with
+`workflows.loadInstance`; it should not call `workflows.createInstance`
+directly unless it is intentionally attaching a workflow to an already-created
+task.
+
 ## CRUD Routes
 
 | Method | Path | Behavior |
