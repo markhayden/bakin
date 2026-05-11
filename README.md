@@ -1,7 +1,7 @@
 # Bakin'
 
 <p align="center">
-  <img src=".github/assets/welcome-main-image.webp" alt="Bakin" width="520" />
+  <img src=".github/assets/welcome-main-image.webp" alt="Bakin" width="400" />
 </p>
 
 <p align="center"><em>Bakin' sits on top of your agent runtime, like <a href="https://openclaw.ai/">OpenClaw</a>, and turns raw agent execution into a visible, collaborative, productive operating layer with tasks, schedules, workflows, memory, observability, and extension points you can adapt to the way your team actually works.</em></p>
