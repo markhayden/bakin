@@ -7,6 +7,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '@/core/content-dir'
+import { broadcastPluginSettingsChanged } from '@/core/sse'
 import { pluginRegistry } from '@/lib/plugin-registry'
 
 function getSettingsPath(pluginId: string): string {
@@ -47,6 +48,7 @@ export async function put(req: Request, url: URL): Promise<Response> {
 
   // Notify the plugin of settings change
   pluginRegistry.notifySettingsChange(pluginId, body).catch(() => {})
+  broadcastPluginSettingsChanged(pluginId)
 
   return Response.json({ ok: true })
 }
