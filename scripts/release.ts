@@ -1,17 +1,10 @@
 /**
- * Local release driver.
+ * Shared release helpers.
  *
- * This script owns version bumping, CHANGELOG movement, release commit/tag,
- * and the atomic push that starts `.github/workflows/release.yml`.
+ * Local release publishing has been retired. `bun run release` runs
+ * scripts/prep-release.ts, while GitHub Actions owns publishing.
  */
-import { readFileSync, writeFileSync } from 'node:fs'
-import { spawnSync } from 'node:child_process'
-import { resolve } from 'node:path'
-import { createInterface } from 'node:readline/promises'
-import { stdin as input, stdout as output } from 'node:process'
 
-const REPO_ROOT = resolve(import.meta.dir, '..')
-const CHANGELOG_PATH = resolve(REPO_ROOT, 'CHANGELOG.md')
 const RELEASE_TAG_RE = /^v(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$/
 const EMPTY_UNRELEASED = '## [Unreleased]'
 
@@ -35,12 +28,6 @@ interface ResolveTargetOpts {
 interface CliOptions extends ResolveTargetOpts {
   dryRun: boolean
   yes: boolean
-}
-
-interface CommandResult {
-  status: number | null
-  stdout: string
-  stderr: string
 }
 
 interface ReleaseWorkflowRun {
@@ -325,135 +312,10 @@ export function moveReleaseNotesToVersion(
   return insertVersionNotes(source, target.version, date, notes.body)
 }
 
-function run(cmd: string, args: string[], opts: { inherit?: boolean } = {}): CommandResult {
-  const result = spawnSync(cmd, args, {
-    cwd: REPO_ROOT,
-    encoding: 'utf-8',
-    stdio: opts.inherit ? 'inherit' : 'pipe',
-  })
-  return {
-    status: result.status,
-    stdout: result.stdout ?? '',
-    stderr: result.stderr ?? '',
-  }
-}
-
-function requireOk(label: string, result: CommandResult): string {
-  if (result.status !== 0) {
-    throw new Error(`${label} failed:\n${result.stderr || result.stdout}`)
-  }
-  return result.stdout.trim()
-}
-
-function git(args: string[]): string {
-  return requireOk(`git ${args.join(' ')}`, run('git', args))
-}
-
-function gh(args: string[]): string {
-  return requireOk(`gh ${args.join(' ')}`, run('gh', args))
-}
-
 export function releaseWorkflowUrlFromRuns(json: string, targetTag: string): string | null {
   const runs = JSON.parse(json) as ReleaseWorkflowRun[]
   const runInfo = runs.find((item) => item.headBranch === targetTag && item.url)
   return runInfo?.url ?? null
-}
-
-function releaseWorkflowFallbackUrl(targetTag: string): string {
-  const query = encodeURIComponent(`branch:${targetTag}`)
-  return `https://github.com/markhayden/bakin/actions/workflows/release.yml?query=${query}`
-}
-
-function releaseWorkflowUrl(targetTag: string): string | null {
-  const output = gh([
-    'run', 'list',
-    '--workflow', 'Release',
-    '--branch', targetTag,
-    '--json', 'conclusion,databaseId,headBranch,status,url',
-    '--limit', '10',
-  ])
-  return releaseWorkflowUrlFromRuns(output, targetTag)
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolveSleep) => setTimeout(resolveSleep, ms))
-}
-
-async function waitForReleaseWorkflowUrl(
-  targetTag: string,
-  opts: { attempts?: number; delayMs?: number } = {},
-): Promise<string | null> {
-  const attempts = opts.attempts ?? 12
-  const delayMs = opts.delayMs ?? 5_000
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      const url = releaseWorkflowUrl(targetTag)
-      if (url) return url
-    } catch {
-      // The release tag is already pushed; workflow discovery is best-effort UX.
-    }
-    if (attempt < attempts) await sleep(delayMs)
-  }
-  return null
-}
-
-function listReleaseTags(): string[] {
-  const output = git(['tag', '--list', 'v[0-9]*'])
-  return output.split('\n').map((tag) => tag.trim()).filter(Boolean)
-}
-
-function assertWorktreeClean(): void {
-  const status = git(['status', '--porcelain'])
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => !line.endsWith('packages/core/src/generated-version.ts'))
-  if (status.length > 0) {
-    throw new Error(`Worktree is not clean:\n${status.join('\n')}`)
-  }
-}
-
-function assertTagDoesNotExist(tag: string): void {
-  const local = run('git', ['rev-parse', '-q', '--verify', `refs/tags/${tag}`])
-  if (local.status === 0) throw new Error(`Tag already exists locally: ${tag}`)
-  const remote = git(['ls-remote', '--tags', 'origin', `refs/tags/${tag}`])
-  if (remote.trim()) throw new Error(`Tag already exists on origin: ${tag}`)
-}
-
-function assertMainCiGreen(head: string): string {
-  const output = gh([
-    'run', 'list',
-    '--workflow', 'Main CI',
-    '--branch', 'main',
-    '--commit', head,
-    '--json', 'conclusion,databaseId,url',
-    '--limit', '1',
-  ])
-  const runs = JSON.parse(output) as Array<{ conclusion?: string; databaseId?: number; url?: string }>
-  const runInfo = runs[0]
-  if (!runInfo || runInfo.conclusion !== 'success') {
-    throw new Error(`Main CI is not green for ${head}`)
-  }
-  return runInfo.url ?? `run #${runInfo.databaseId}`
-}
-
-function preflight(targetTag: string, opts: CliOptions, tags: string[]): { head: string; ciUrl: string; bulletCount: number } {
-  const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'])
-  if (branch !== 'main') throw new Error(`Release must be cut from main, currently on ${branch}`)
-
-  assertWorktreeClean()
-  git(['fetch', 'origin', 'main'])
-  const head = git(['rev-parse', 'HEAD'])
-  const originMain = git(['rev-parse', 'origin/main'])
-  if (head !== originMain) throw new Error('Local main does not match origin/main')
-
-  const ciUrl = assertMainCiGreen(head)
-  assertTagDoesNotExist(targetTag)
-  const target = parseReleaseTag(targetTag)
-  if (!target) throw new Error(`Malformed release tag: ${targetTag}`)
-  const changelog = readFileSync(CHANGELOG_PATH, 'utf-8')
-  const notes = releaseNotesForTarget(changelog, target, opts, tags)
-  return { head, ciUrl, bulletCount: notes.bulletCount }
 }
 
 export function parseArgs(argv: string[]): CliOptions {
@@ -473,34 +335,6 @@ export function parseArgs(argv: string[]): CliOptions {
     throw new Error('release promote cannot be combined with --rc')
   }
   return { verb, prerelease, dryRun, yes }
-}
-
-async function confirmProceed(targetTag: string, yes: boolean): Promise<void> {
-  if (yes) return
-  const rl = createInterface({ input, output })
-  try {
-    const answer = await rl.question(`Proceed with ${targetTag}? [y/N] `)
-    if (answer.trim().toLowerCase() !== 'y') {
-      throw new Error('Release cancelled')
-    }
-  } finally {
-    rl.close()
-  }
-}
-
-function printPlan(targetTag: string, opts: CliOptions, preflightResult: { head: string; ciUrl: string; bulletCount: number }): void {
-  const parsed = parseReleaseTag(targetTag)
-  if (!parsed) throw new Error(`Malformed release tag: ${targetTag}`)
-  const channel = parsed.rc === null ? 'stable (npm dist-tag: latest)' : 'rc (npm dist-tag: next)'
-  console.log('Release plan')
-  console.log('------------')
-  console.log(`Target version:  ${targetTag}`)
-  console.log(`Channel:         ${channel}`)
-  console.log(`Action:          ${opts.verb}${opts.prerelease ? ' --rc' : ''}`)
-  console.log(`Head:            ${preflightResult.head.slice(0, 12)}`)
-  console.log(`Main CI:         ${preflightResult.ciUrl}`)
-  console.log(`CHANGELOG notes: ${preflightResult.bulletCount} bullets`)
-  console.log(`Mode:            ${opts.dryRun ? 'dry-run' : 'write'}`)
 }
 
 async function main(): Promise<void> {
