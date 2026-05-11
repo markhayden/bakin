@@ -13,8 +13,12 @@ const changelog = `# Changelog
 ### Added
 - Release automation.
 
+### Changed
+
 ### Fixed
 - Stable release notes.
+
+### Removed
 
 ## [0.1.0] - 2026-05-05
 
@@ -29,6 +33,8 @@ describe('extractReleaseNotes', () => {
     expect(notes).toContain('### Added')
     expect(notes).toContain('- Release automation.')
     expect(notes).toContain('### Fixed')
+    expect(notes).not.toContain('### Changed')
+    expect(notes).not.toContain('### Removed')
     expect(notes).not.toContain('Future thing')
     expect(notes).not.toContain('Initial public release')
     expect(notes.endsWith('\n')).toBe(true)
