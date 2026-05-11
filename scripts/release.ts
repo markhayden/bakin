@@ -13,17 +13,7 @@ import { stdin as input, stdout as output } from 'node:process'
 const REPO_ROOT = resolve(import.meta.dir, '..')
 const CHANGELOG_PATH = resolve(REPO_ROOT, 'CHANGELOG.md')
 const RELEASE_TAG_RE = /^v(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$/
-const EMPTY_UNRELEASED = `## [Unreleased]
-
-### Added
-
-### Changed
-
-### Fixed
-
-### Removed
-
-### Security`
+const EMPTY_UNRELEASED = '## [Unreleased]'
 
 type BumpVerb = 'patch' | 'minor' | 'major'
 type ReleaseVerb = BumpVerb | 'promote'
@@ -156,7 +146,7 @@ function unreleasedRange(changelog: string): { start: number; bodyStart: number;
   const start = changelog.indexOf(header)
   if (start === -1) throw new Error('CHANGELOG.md is missing [Unreleased]')
   const bodyStart = start + header.length
-  const nextMatch = /\n## \[[^\]]+\]/.exec(changelog.slice(bodyStart))
+  const nextMatch = /\n(?:## \[[^\]]+\]|\[[^\]]+\]:)/.exec(changelog.slice(bodyStart))
   const end = nextMatch ? bodyStart + nextMatch.index : changelog.length
   return {
     start,
@@ -172,7 +162,7 @@ function versionRange(changelog: string, version: string): { start: number; body
   if (start === -1) return null
   const lineEnd = changelog.indexOf('\n', start)
   const bodyStart = lineEnd === -1 ? changelog.length : lineEnd + 1
-  const nextMatch = /\n## \[[^\]]+\]/.exec(changelog.slice(bodyStart))
+  const nextMatch = /\n(?:## \[[^\]]+\]|\[[^\]]+\]:)/.exec(changelog.slice(bodyStart))
   const end = nextMatch ? bodyStart + nextMatch.index : changelog.length
   return {
     start,
@@ -188,6 +178,40 @@ function hasBullets(body: string): boolean {
 
 function bulletCount(body: string): number {
   return (body.match(/^\s*-\s+\S/gm) ?? []).length
+}
+
+export function stripEmptyChangelogSections(body: string): string {
+  const lines = body.trim().split('\n')
+  const loose: string[] = []
+  const order: string[] = []
+  const sections = new Map<string, string[]>()
+  let current: string | null = null
+
+  for (const line of lines) {
+    if (line.startsWith('### ')) {
+      current = line
+      if (!sections.has(current)) {
+        sections.set(current, [])
+        order.push(current)
+      }
+      continue
+    }
+
+    if (!current) {
+      if (line.trim()) loose.push(line)
+      continue
+    }
+
+    sections.get(current)?.push(line)
+  }
+
+  const chunks = [...loose]
+  for (const heading of order) {
+    const sectionBody = (sections.get(heading) ?? []).join('\n').trim()
+    if (hasBullets(sectionBody)) chunks.push(`${heading}\n${sectionBody}`)
+  }
+
+  return chunks.join('\n\n').trim()
 }
 
 export function assertHasUnreleasedBullets(changelog: string): void {
@@ -216,6 +240,21 @@ function removeVersionSection(changelog: string, version: string): string {
   return `${changelog.slice(0, range.start)}${changelog.slice(range.end)}`.replace(/\n{3,}/g, '\n\n')
 }
 
+function removeVersionLinkRef(changelog: string, version: string): string {
+  return changelog
+    .replace(new RegExp(`^\\[${version.replace(/\./g, '\\.')}\\]: .*$`, 'm'), '')
+    .replace(/\n{3,}/g, '\n\n')
+}
+
+function removeRcSectionsForVersion(changelog: string, version: string, tags: string[]): string {
+  let next = changelog
+  for (const rc of rcTagsForVersion(tags, version)) {
+    next = removeVersionSection(next, rc.version)
+    next = removeVersionLinkRef(next, rc.version)
+  }
+  return next
+}
+
 function insertVersionNotes(changelog: string, version: string, date: string, notes: string): string {
   const withoutDuplicateVersion = removeVersionSection(changelog, version)
   const range = unreleasedRange(withoutDuplicateVersion)
@@ -234,6 +273,10 @@ export function latestRcForVersion(tags: string[], version: string): ParsedRelea
     .at(-1) ?? null
 }
 
+function rcTagsForVersion(tags: string[], version: string): ParsedReleaseTag[] {
+  return parseReleaseTags(tags).filter((tag) => tag.rc !== null && baseVersion(tag) === version)
+}
+
 export function releaseNotesForTarget(
   changelog: string,
   target: ParsedReleaseTag,
@@ -245,16 +288,19 @@ export function releaseNotesForTarget(
     if (!hasBullets(unreleased)) {
       throw new Error('CHANGELOG.md [Unreleased] has no release-note bullets')
     }
-    return { body: unreleased.trim(), bulletCount: bulletCount(unreleased) }
+    return { body: stripEmptyChangelogSections(unreleased), bulletCount: bulletCount(unreleased) }
   }
 
-  const rc = latestRcForVersion(tags, target.version)
-  if (!rc) throw new Error(`No release candidate notes found for ${target.version}`)
-  const rcNotes = versionRange(changelog, rc.version)?.body.trim() ?? ''
+  const rcs = rcTagsForVersion(tags, target.version)
+  if (rcs.length === 0) throw new Error(`No release candidate notes found for ${target.version}`)
+  const rcNotes = rcs
+    .map((rc) => versionRange(changelog, rc.version)?.body.trim() ?? '')
+    .filter(Boolean)
+    .join('\n\n')
   const extraNotes = hasBullets(unreleased) ? unreleased.trim() : ''
-  const notes = [rcNotes, extraNotes].filter(Boolean).join('\n\n')
+  const notes = stripEmptyChangelogSections([rcNotes, extraNotes].filter(Boolean).join('\n\n'))
   if (!hasBullets(notes)) {
-    throw new Error(`CHANGELOG.md has no release-note bullets for ${rc.tag} or [Unreleased]`)
+    throw new Error(`CHANGELOG.md has no release-note bullets for ${target.version} release candidates or [Unreleased]`)
   }
   return { body: notes, bulletCount: bulletCount(notes) }
 }
@@ -273,7 +319,10 @@ export function moveReleaseNotesToVersion(
   opts: { verb: ReleaseVerb; tags?: string[] },
 ): string {
   const notes = releaseNotesForTarget(changelog, target, opts, opts.tags ?? [])
-  return insertVersionNotes(changelog, target.version, date, notes.body)
+  const source = opts.verb === 'promote'
+    ? removeRcSectionsForVersion(changelog, target.version, opts.tags ?? [])
+    : changelog
+  return insertVersionNotes(source, target.version, date, notes.body)
 }
 
 function run(cmd: string, args: string[], opts: { inherit?: boolean } = {}): CommandResult {
@@ -455,35 +504,7 @@ function printPlan(targetTag: string, opts: CliOptions, preflightResult: { head:
 }
 
 async function main(): Promise<void> {
-  const opts = parseArgs(process.argv.slice(2))
-  const tags = listReleaseTags()
-  const targetTag = resolveReleaseTarget(tags, opts)
-  const target = parseReleaseTag(targetTag)
-  if (!target) throw new Error(`Malformed release tag: ${targetTag}`)
-  if (opts.verb === 'major' && target.major === 1 && !opts.yes && !opts.dryRun) {
-    const rl = createInterface({ input, output })
-    try {
-      const answer = await rl.question('Type 1.0.0 to confirm first major release: ')
-      if (answer.trim() !== '1.0.0') throw new Error('Release cancelled')
-    } finally {
-      rl.close()
-    }
-  }
-
-  const checks = preflight(targetTag, opts, tags)
-  printPlan(targetTag, opts, checks)
-  if (opts.dryRun) return
-  await confirmProceed(targetTag, opts.yes)
-
-  const current = readFileSync(CHANGELOG_PATH, 'utf-8')
-  const today = new Date().toISOString().slice(0, 10)
-  writeFileSync(CHANGELOG_PATH, moveReleaseNotesToVersion(current, target, today, { verb: opts.verb, tags }), 'utf-8')
-  git(['add', 'CHANGELOG.md'])
-  git(['commit', '-m', `chore(release): ${targetTag}`])
-  git(['tag', targetTag])
-  git(['push', '--atomic', 'origin', 'main', targetTag])
-  const runUrl = await waitForReleaseWorkflowUrl(targetTag)
-  console.log(`Release tag pushed. Workflow: ${runUrl ?? releaseWorkflowFallbackUrl(targetTag)}`)
+  throw new Error('Local release publishing has been retired. Use `bun run release ...` to prepare a release branch, then run the GitHub Actions Release workflow to publish.')
 }
 
 if (import.meta.main) {

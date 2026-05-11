@@ -16,6 +16,44 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+function hasBullets(body: string): boolean {
+  return /^\s*-\s+\S/m.test(body)
+}
+
+export function stripEmptyChangelogSections(body: string): string {
+  const lines = body.trim().split('\n')
+  const loose: string[] = []
+  const order: string[] = []
+  const sections = new Map<string, string[]>()
+  let current: string | null = null
+
+  for (const line of lines) {
+    if (line.startsWith('### ')) {
+      current = line
+      if (!sections.has(current)) {
+        sections.set(current, [])
+        order.push(current)
+      }
+      continue
+    }
+
+    if (!current) {
+      if (line.trim()) loose.push(line)
+      continue
+    }
+
+    sections.get(current)?.push(line)
+  }
+
+  const chunks = [...loose]
+  for (const heading of order) {
+    const sectionBody = (sections.get(heading) ?? []).join('\n').trim()
+    if (hasBullets(sectionBody)) chunks.push(`${heading}\n${sectionBody}`)
+  }
+
+  return chunks.join('\n\n').trim()
+}
+
 export function extractReleaseNotes(changelog: string, version: string): string {
   if (!version) throw new Error('version is required')
   const headerRe = new RegExp(`^## \\[${escapeRegExp(version)}\\](?: - .*)?$`, 'm')
@@ -24,13 +62,13 @@ export function extractReleaseNotes(changelog: string, version: string): string 
     throw new Error(`CHANGELOG.md is missing [${version}]`)
   }
   const bodyStart = match.index + match[0].length
-  const next = /^\n## \[[^\]]+\]/m.exec(changelog.slice(bodyStart))
+  const next = /^\n(?:## \[[^\]]+\]|\[[^\]]+\]:)/m.exec(changelog.slice(bodyStart))
   const end = next ? bodyStart + next.index : changelog.length
   const notes = changelog.slice(bodyStart, end).trim()
-  if (!/^\s*-\s+\S/m.test(notes)) {
+  if (!hasBullets(notes)) {
     throw new Error(`CHANGELOG.md [${version}] has no release-note bullets`)
   }
-  return `${notes}\n`
+  return `${stripEmptyChangelogSections(notes)}\n`
 }
 
 export function parseArgs(argv: string[]): ExtractOptions {
