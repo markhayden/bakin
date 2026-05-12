@@ -60,6 +60,14 @@ interface ScheduleSettings {
   reconcileLookbackHours?: number
 }
 
+interface EnsureBakinJobResult {
+  ok: boolean
+  jobId?: string
+  cron?: string
+  human?: string
+  error?: string
+}
+
 /** Constant-time string comparison. Returns false for any length mismatch. */
 function safeEqual(a: string, b: string): boolean {
   const aBuf = Buffer.from(a, 'utf-8')
@@ -85,6 +93,76 @@ function getOrCreateBridgeSecret(): string | null {
 
 async function getScheduleDefaultOwner(): Promise<string> {
   return pluginCtx?.runtime ? getRuntimeMainAgentId(pluginCtx.runtime) : 'main'
+}
+
+async function ensureBakinJob(ctx: PluginContext, input: Record<string, unknown>): Promise<EnsureBakinJobResult> {
+  const jobId = typeof input.jobId === 'string' && input.jobId.trim() ? input.jobId.trim() : undefined
+  const name = typeof input.name === 'string' ? input.name.trim() : ''
+  const schedule = typeof input.schedule === 'string' ? input.schedule.trim() : ''
+  const command = typeof input.command === 'string' ? input.command.trim() : ''
+  if (!jobId || !name || !schedule || !command) {
+    return { ok: false, error: 'jobId, name, schedule, and command are required' }
+  }
+
+  const parsed = parseSchedule(schedule)
+  if (!parsed) return { ok: false, error: 'Could not parse schedule expression' }
+
+  const metadata = input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata)
+    ? input.metadata as Record<string, unknown>
+    : {}
+  const tz = typeof input.tz === 'string' && input.tz.trim() ? input.tz.trim() : getSystemTimezone()
+  const enabled = typeof input.enabled === 'boolean' ? input.enabled : true
+  const now = new Date().toISOString()
+  const runtimePatch = {
+    name,
+    schedule: parsed.cron,
+    command,
+    enabled,
+    metadata: {
+      ...metadata,
+      tz,
+      source: metadata.source ?? 'bakin',
+      scheduleType: 'cron',
+      bakinSchedule: true,
+    },
+  }
+
+  const existingRuntime = await ctx.runtime.cron.get(jobId)
+  if (existingRuntime) {
+    await ctx.runtime.cron.update(jobId, runtimePatch)
+  } else {
+    await ctx.runtime.cron.create({ id: jobId, ...runtimePatch })
+  }
+
+  const existing = getJob(jobId)
+  const owner = typeof input.owner === 'string' && input.owner.trim()
+    ? input.owner.trim()
+    : existing?.owner ?? await getRuntimeMainAgentId(ctx.runtime)
+  const description = typeof input.description === 'string' ? input.description : existing?.description
+  const meta: BakinJobMeta = {
+    ...(existing ?? {}),
+    jobId,
+    isBakinJob: true,
+    source: 'bakin',
+    displayName: name,
+    description,
+    owner,
+    requireTriage: typeof input.requireTriage === 'boolean' ? input.requireTriage : existing?.requireTriage ?? false,
+    agentId: typeof input.agentId === 'string' ? input.agentId : existing?.agentId,
+    workflowId: typeof input.workflowId === 'string' ? input.workflowId : existing?.workflowId,
+    taskPrompt: typeof input.taskPrompt === 'string' ? input.taskPrompt : existing?.taskPrompt,
+    taskTitle: typeof input.taskTitle === 'string' ? input.taskTitle : existing?.taskTitle,
+    allowOverlap: typeof input.allowOverlap === 'boolean' ? input.allowOverlap : existing?.allowOverlap ?? false,
+    maxFailures: typeof input.maxFailures === 'number' ? input.maxFailures : existing?.maxFailures ?? 3,
+    consecutiveFailures: existing?.consecutiveFailures ?? 0,
+    tz,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  }
+  upsertJob(meta)
+  indexJob(jobId)
+
+  return { ok: true, jobId, cron: parsed.cron, human: parsed.human }
 }
 
 // ---------------------------------------------------------------------------
@@ -918,6 +996,12 @@ const schedulePlugin: BakinPlugin = definePlugin({
 
   async activate(ctx: PluginContext) {
     pluginCtx = ctx
+
+    ctx.hooks.register('schedule.ensureBakinJob', (data: Record<string, unknown>) => ensureBakinJob(ctx, data), {
+      hookKind: 'rpc',
+      label: 'Ensure Bakin schedule',
+      summary: 'Create or update a deterministic Bakin-managed runtime cron job.',
+    })
 
     // ─── Search Content Type Registration ─────────────────────────────
 
