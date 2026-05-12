@@ -34,6 +34,7 @@ let readOpenClawConfig: typeof import('../../packages/adapter-openclaw/src/confi
 let getAgentList: typeof import('../../packages/adapter-openclaw/src/config').getAgentList
 let getAgentIds: typeof import('../../packages/adapter-openclaw/src/config').getAgentIds
 let findAgentById: typeof import('../../packages/adapter-openclaw/src/config').findAgentById
+let materializeImplicitMainAgent: typeof import('../../packages/adapter-openclaw/src/config').materializeImplicitMainAgent
 let resetOpenClawConfigCache: typeof import('../../packages/adapter-openclaw/src/config').resetOpenClawConfigCache
 
 function configBody(list: Array<Record<string, unknown>>, defaults: Record<string, unknown> = {}): string {
@@ -56,6 +57,7 @@ describe('openclaw-config', () => {
     getAgentList = mod.getAgentList
     getAgentIds = mod.getAgentIds
     findAgentById = mod.findAgentById
+    materializeImplicitMainAgent = mod.materializeImplicitMainAgent
     resetOpenClawConfigCache = mod.resetOpenClawConfigCache
     // bun:test has no vi.resetModules equivalent; use the module's own cache reset
     resetOpenClawConfigCache()
@@ -119,6 +121,47 @@ describe('openclaw-config', () => {
       expect(getAgentIds()).toEqual(['main', 'patch'])
       expect(findAgentById('main')?.identity?.name).toBe('Main Operator')
       expect(findAgentById('ghost')).toBeNull()
+    })
+
+    it('synthesizes OpenClaw implicit main when agents.list is missing', () => {
+      mockFile(1000, JSON.stringify({
+        agents: {
+          defaults: {
+            workspace: '/tmp/openclaw/workspace',
+            model: { primary: 'openai-codex/gpt-5.5' },
+          },
+        },
+      }))
+
+      expect(getAgentIds()).toEqual(['main'])
+      expect(findAgentById('main')).toEqual(expect.objectContaining({
+        id: 'main',
+        name: 'Main',
+        workspace: '/tmp/openclaw/workspace',
+        agentDir: expect.stringContaining('agents/main/agent'),
+        model: { primary: 'openai-codex/gpt-5.5' },
+      }))
+    })
+
+    it('materializes implicit main for write paths without losing defaults', () => {
+      const config: import('../../packages/adapter-openclaw/src/config').OpenClawConfig = {
+        agents: {
+          defaults: {
+            workspace: '/tmp/openclaw/workspace',
+            model: { primary: 'openai-codex/gpt-5.5' },
+          },
+        },
+      }
+
+      const agent = materializeImplicitMainAgent(config)
+
+      expect(agent.id).toBe('main')
+      expect(config.agents!.list).toEqual([expect.objectContaining({
+        id: 'main',
+        workspace: '/tmp/openclaw/workspace',
+        model: { primary: 'openai-codex/gpt-5.5' },
+      })])
+      expect(config.agents!.defaults!.workspace).toBe('/tmp/openclaw/workspace')
     })
 
     it('shares a cache across helper calls — only one parse', () => {

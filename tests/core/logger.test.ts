@@ -19,6 +19,20 @@ describe('Logger', () => {
     }
   }
 
+  function withStdoutTty(isTTY: boolean, run: () => void): void {
+    const descriptor = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
+    Object.defineProperty(process.stdout, 'isTTY', {
+      configurable: true,
+      value: isTTY,
+    })
+    try {
+      run()
+    } finally {
+      if (descriptor) Object.defineProperty(process.stdout, 'isTTY', descriptor)
+      else delete (process.stdout as unknown as { isTTY?: boolean }).isTTY
+    }
+  }
+
   it('creates a logger with the given module name', () => {
     const log = createLogger('test-module')
     expect(log).toHaveProperty('debug')
@@ -64,6 +78,39 @@ describe('Logger', () => {
     log.info('with data', { key: 'value' })
     expect(spy.mock.calls[0][0]).toContain('"key":"value"')
     spy.mockRestore()
+  })
+
+  it('defaults to pretty output for interactive terminals', () => {
+    withConsoleEnv({
+      BAKIN_CONSOLE_FORMAT: undefined,
+      BAKIN_LOG_LEVEL: undefined,
+      NO_COLOR: '1',
+    }, () => withStdoutTty(true, () => {
+      const spy = spyOn(console, 'log').mockImplementation(() => {})
+      const log = createLogger('server')
+      log.info('booting')
+
+      expect(spy).toHaveBeenCalledTimes(1)
+      expect(spy.mock.calls[0][0]).toMatch(/^\d\d:\d\d:\d\d\s+info\s+server\s+booting$/)
+      spy.mockRestore()
+    }))
+  })
+
+  it('defaults to plain output when stdout is not a terminal', () => {
+    withConsoleEnv({
+      BAKIN_CONSOLE_FORMAT: undefined,
+      BAKIN_LOG_LEVEL: undefined,
+      NO_COLOR: '1',
+    }, () => withStdoutTty(false, () => {
+      const spy = spyOn(console, 'log').mockImplementation(() => {})
+      const log = createLogger('server')
+      log.info('booting')
+
+      expect(spy).toHaveBeenCalledTimes(1)
+      expect(spy.mock.calls[0][0]).toContain('[INFO]')
+      expect(spy.mock.calls[0][0]).toContain('[server]')
+      spy.mockRestore()
+    }))
   })
 
   it('renders pretty console output with compact source labels', () => {

@@ -65,8 +65,11 @@ export function readOpenClawConfig(): OpenClawConfig | null {
 }
 
 export function getAgentList(): OpenClawAgent[] {
-  const list = readOpenClawConfig()?.agents?.list
-  return Array.isArray(list) ? list : []
+  const config = readOpenClawConfig()
+  if (!config) return []
+  const list = config.agents?.list
+  if (Array.isArray(list) && list.length > 0) return list
+  return [implicitMainAgent(config)]
 }
 
 export function getAgentIds(): string[] {
@@ -79,4 +82,25 @@ export function findAgentById(id: string): OpenClawAgent | null {
 
 export function resetOpenClawConfigCache(): void {
   cachedConfig = null
+}
+
+function implicitMainAgent(config: OpenClawConfig): OpenClawAgent {
+  const defaults = config.agents?.defaults
+  return {
+    id: 'main',
+    name: 'Main',
+    workspace: defaults?.workspace,
+    agentDir: getOpenClawPath('agents', 'main', 'agent'),
+    model: defaults?.model,
+  }
+}
+
+export function materializeImplicitMainAgent(config: OpenClawConfig): OpenClawAgent {
+  const existing = config.agents?.list?.find((agent) => agent.id === 'main')
+  if (existing) return existing
+  config.agents ??= {}
+  config.agents.list ??= []
+  const agent = implicitMainAgent(config)
+  config.agents.list.push(agent)
+  return agent
 }

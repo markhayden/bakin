@@ -25,6 +25,7 @@ import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
   findAgentById,
   getAgentList,
+  materializeImplicitMainAgent,
   readOpenClawConfig,
   resetOpenClawConfigCache,
 } from './config'
@@ -1002,7 +1003,9 @@ function writeOpenClawConfig(config: Record<string, unknown>): void {
 
 function updateAgentAllowlist(agentId: string, updater: (current: string[]) => string[]): void {
   const config = readOpenClawConfig()
-  const agent = config?.agents?.list?.find((entry) => entry.id === agentId)
+  const agent = agentId === 'main' && config
+    ? materializeImplicitMainAgent(config)
+    : config?.agents?.list?.find((entry) => entry.id === agentId)
   if (!agent) throw new Error(`Agent not found: ${agentId}`)
   agent.subagents ??= {}
   agent.subagents.allowAgents = updater(agent.subagents.allowAgents ?? [])

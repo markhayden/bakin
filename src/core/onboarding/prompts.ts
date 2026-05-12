@@ -9,6 +9,20 @@
  */
 import { createInterface } from 'readline'
 
+const PRETTY_PROMPT_GUTTER = '  '
+
+function shouldAlignPrompt(): boolean {
+  if (process.env.BAKIN_CONSOLE_FORMAT === 'plain') return false
+  if (process.env.NO_COLOR || process.env.BAKIN_NO_COLOR === '1') {
+    return process.stdout.isTTY === true
+  }
+  return process.stdout.isTTY === true
+}
+
+export function formatPrompt(prompt: string): string {
+  return shouldAlignPrompt() ? `${PRETTY_PROMPT_GUTTER}${prompt}` : prompt
+}
+
 /**
  * Read a single line from stdin. Resolves with trimmed user input.
  * Caller supplies the prompt text (no trailing space needed — added here).
@@ -16,7 +30,7 @@ import { createInterface } from 'readline'
 export function readLine(prompt: string): Promise<string> {
   return new Promise((resolve) => {
     const rl = createInterface({ input: process.stdin, output: process.stdout })
-    rl.question(`${prompt} `, (answer) => {
+    rl.question(`${formatPrompt(prompt)} `, (answer) => {
       rl.close()
       resolve(answer.trim())
     })
