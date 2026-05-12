@@ -569,7 +569,7 @@ export function buildDispatchMessage(
   // Project context — lightweight mention if task has a projectId
   let projectBlock = ''
   if (task.projectId) {
-    projectBlock = `\n\n**Project:** id ${task.projectId}\nThe project spec may contain detailed requirements. Call bakin_exec_project_get to read it before starting work.`
+    projectBlock = `\n\n**Project:** id ${task.projectId}\nThe project spec may contain detailed requirements. Call bakin_exec_projects_get to read it before starting work.`
   }
   const contactsRef = `Reference info is in ${join(contentDir, 'team/CONTACTS.md')}.`
 
@@ -633,7 +633,7 @@ These tools help you accomplish the work. Use them as your primary way to save f
 
 \`\`\`bash
 # Save any file as a managed asset (handles naming + sidecar metadata)
-${mc('bakin_exec_save_asset', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"`)}
+${mc('bakin_exec_assets_save', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"`)}
 
 # Post to a runtime channel (with optional image/video attachment)
 ${mc('bakin_exec_post_channel', `channel="<name>" content="<message>" taskId=${task.id}`)}
@@ -645,10 +645,10 @@ ${mc('bakin_exec_gen_image', `taskId=${task.id} prompt="<text>" preset=social-po
 ${mc('bakin_exec_check_gates', `taskId=${task.id}`)}
 ${task.projectId ? `
 # Project tools (this task is part of a project)
-${mc('bakin_exec_project_get', `projectId="${task.projectId}"`)}
-${mc('bakin_exec_project_mark_item', `projectId="${task.projectId}" taskItemId="<itemId>" checked=true`)}
-${mc('bakin_exec_project_add_item', `projectId="${task.projectId}" title="<item title>"`)}` : `
-# Projects: bakin_exec_project_list, bakin_exec_project_create, bakin_exec_project_get`}
+${mc('bakin_exec_projects_get', `projectId="${task.projectId}"`)}
+${mc('bakin_exec_projects_mark_item', `projectId="${task.projectId}" taskItemId="<itemId>" checked=true`)}
+${mc('bakin_exec_projects_add_item', `projectId="${task.projectId}" title="<item title>"`)}` : `
+# Projects: bakin_exec_projects_list, bakin_exec_projects_create, bakin_exec_projects_get`}
 \`\`\`
 
 ## DEPENDENCY PATTERN
@@ -956,7 +956,7 @@ function buildWorkflowDispatchMessage(
   lines.push('# --- Execution tools for doing actual work ---')
   lines.push('')
   lines.push(`# Save any file as a managed asset`)
-  lines.push(`${wfMc('bakin_exec_save_asset', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what>"`)}`);
+  lines.push(`${wfMc('bakin_exec_assets_save', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what>"`)}`);
   lines.push('')
   lines.push(`# Generate image via Nano Banana`)
   lines.push(`${wfMc('bakin_exec_gen_image', `taskId=${task.id} prompt="<text>" preset=social-portrait model=flash`)}`);

@@ -129,7 +129,7 @@ Agent identity is the teammate record: name, role, default model, tags, dispatch
 
 Use agent identity when you are adding a roster member, not just sharing a procedure. A research agent, launch producer, account explorer, QA reviewer, or content operator all need identity.
 
-Agent identity belongs to agent kits with `kind: "agent"`. Define it in the `agent` stanza of `bakin-package.json`. Tool access lives in `agent.allowedTools`; skill access lives in `agent.allowedSkills`.
+Agent identity belongs to agent kits with `kind: "agent"`. Define it in the `agent` stanza of `bakin-package.json`. Optional tool restrictions live in `agent.allowedTools`; skill access lives in `agent.allowedSkills`.
 
 Start with [Agent Kits](/docs/extending/agents/overview/) and [Package Manifest](/docs/extending/agents/packages/).
 
@@ -180,6 +180,8 @@ Agent kits use `bakin-package.json`. The manifest declares package kind, agent i
   }
 }
 ```
+
+Omit `allowedTools` or set it to an empty array for unrestricted tool access. Add entries only when the agent package should be deliberately scoped down.
 
 For exact fields, use [Plugin Manifest](/docs/extending/plugins/manifest/) and [Package Manifest](/docs/extending/agents/packages/).
 

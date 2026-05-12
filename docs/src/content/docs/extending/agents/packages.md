@@ -103,7 +103,7 @@ Package IDs may contain letters, numbers, dashes, and underscores, up to 40 char
 | `agent.defaultModel` | Preferred model assignment. |
 | `agent.dispatchableBy` | Agent IDs allowed to dispatch work to this agent. `main` is the normal human entry point. |
 | `agent.tags` | Search and grouping metadata. |
-| `agent.allowedTools` | MCP tool allow-list enforced by Bakin's MCP server for installed package manifests. |
+| `agent.allowedTools` | Optional MCP tool restriction list. Missing or empty means unrestricted; non-empty lists are enforced by Bakin's MCP server. |
 | `agent.allowedSkills` | Declarative skill allow-list. |
 
 </div>
@@ -192,7 +192,7 @@ Dependency sources may be `github:user/repo`, `github:user/repo#agents/package-i
 
 - Keep package IDs stable and short.
 - Pin external refs when sharing packages.
-- Keep `allowedTools` narrow enough for review.
+- Omit `allowedTools` for normal unrestricted agents. Add entries only when the package should intentionally restrict tool access.
 - Add `bakin_exec_lesson_search` when the agent should be able to look up its enabled package lessons after dispatch.
 - Put reusable behavior in skills and workflows, not only in prose.
 - Use lesson files for durable domain context, not one-off task state.

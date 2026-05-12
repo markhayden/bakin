@@ -139,10 +139,10 @@ describe('MCP tool policy', () => {
     }
   })
 
-  it('keeps adopted agents with no package policy unrestricted until configured', async () => {
-    const toolName = `bakin_exec_policy_adopted_unconfigured_${Date.now()}`
+  it('keeps packaged agents with no tool restrictions unrestricted until configured', async () => {
+    const toolName = `bakin_exec_policy_package_unconfigured_${Date.now()}`
     registerDummyTool(toolName)
-    writeAgentPackage('pixel', 'adopted', undefined)
+    writeAgentPackage('pixel', 'managed', undefined)
 
     const { client, close } = await connectPolicyClient('pixel')
     try {
@@ -156,19 +156,18 @@ describe('MCP tool policy', () => {
     }
   })
 
-  it('fails closed for managed agents whose package has no tool policy', async () => {
-    const toolName = `bakin_exec_policy_missing_${Date.now()}`
+  it('keeps packaged agents with empty tool restrictions unrestricted', async () => {
+    const toolName = `bakin_exec_policy_empty_${Date.now()}`
     registerDummyTool(toolName)
-    writeAgentPackage('pixel', 'managed', undefined)
+    writeAgentPackage('pixel', 'managed', [])
 
     const { client, close } = await connectPolicyClient('pixel')
     try {
       const listed = await client.listTools()
-      expect(listed.tools.map((tool) => tool.name)).not.toContain(toolName)
+      expect(listed.tools.map((tool) => tool.name)).toContain(toolName)
 
-      const denied = await client.callTool({ name: toolName, arguments: {} })
-      expect(denied.isError).toBe(true)
-      expect(toolText(denied)).toContain('no allowedTools policy')
+      const result = await client.callTool({ name: toolName, arguments: {} })
+      expect(result.isError).toBeFalsy()
     } finally {
       await close()
     }

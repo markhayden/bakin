@@ -160,12 +160,12 @@ MCP sessions bind agent identity via `?agent=chef` query param at connection tim
 MCP session is created:
 
 - Unmanaged runtime agents have legacy unrestricted access.
-- Managed agent-package agents must have a non-empty
-  `agent.allowedTools` policy in their installed `bakin-package.json`; missing
-  or malformed package policy fails closed.
-- Adopted package agents with an explicit `allowedTools` policy are scoped by
-  that policy. Adopted agents without a policy remain unrestricted until
-  configured.
+- Managed and adopted agent-package agents with missing or empty
+  `agent.allowedTools` remain unrestricted.
+- Managed and adopted agent-package agents with a non-empty `allowedTools`
+  policy are scoped by that policy.
+- Missing manifests, malformed manifests, and malformed lockfile entries still
+  fail closed.
 - Patterns are tool-name based and support exact names plus `*` wildcards, e.g.
   `bakin_exec_assets_*`.
 
