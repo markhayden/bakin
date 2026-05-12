@@ -179,6 +179,19 @@ describe('Antfly search setup component', () => {
       expect(result.message).toContain('/opt/homebrew/bin/antfly')
     })
 
+    it('keeps stdin interactive while capturing Homebrew output', async () => {
+      findBinaryQueue = [null, '/opt/homebrew/bin/antfly']
+      brewExists = true
+
+      const result = await dependencyComponent.install(optsInteractive)
+
+      expect(lastSpawnArgs).not.toBeNull()
+      expect(lastSpawnArgs!.opts).toEqual(expect.objectContaining({
+        stdio: ['inherit', 'pipe', 'pipe'],
+      }))
+      expect(result.status).toBe('installed')
+    })
+
     it('reports failed when brew exits non-zero', async () => {
       findBinaryQueue = [null]
       spawnExitCode = 1

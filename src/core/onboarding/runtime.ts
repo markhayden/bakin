@@ -194,7 +194,11 @@ async function check(): Promise<CheckResult> {
     }
   }
 
-  const integrityIssues = validateRuntimeIntegrity(config ?? configFromRuntimeAgents(agents))
+  const rawAgentList = Array.isArray(config?.agents?.list) ? config.agents!.list! : null
+  const integrityConfig = rawAgentList && rawAgentList.length > 0
+    ? config
+    : configFromRuntimeAgents(agents)
+  const integrityIssues = validateRuntimeIntegrity(integrityConfig)
   if (integrityIssues.length > 0) {
     return {
       name: 'runtime',

@@ -19,6 +19,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { APP_VERSION } from '../../packages/core/src/constants'
 import { renderCliUsage } from './cli/registry'
 import { parsePluginInstallArgs, PLUGIN_INSTALL_USAGE } from './cli/plugin-install-args'
+import { isOnboarded } from './onboarding/state'
 import {
   createPluginExportManifest,
   installPluginExportManifest,
@@ -112,6 +113,20 @@ interface ListPluginRow {
   upgradeAvailable: boolean
   staleHintDays: number | null
   installed: { version: string; linked?: boolean; linkedSource?: string } | null
+}
+
+function shouldSkipOnboardingCheck(args: string[]): boolean {
+  return process.env.BAKIN_SKIP_ONBOARDING_CHECK === '1'
+    || args.includes('--skip-onboarding-check')
+}
+
+function checkOnboardedBeforeStart(args: string[]): number | null {
+  if (shouldSkipOnboardingCheck(args)) return null
+  if (isOnboarded()) return null
+  console.error('Bakin has not been onboarded on this machine.')
+  console.error('Run: bakin onboard')
+  console.error('To inspect readiness without changing anything, run: bakin onboard --check')
+  return 1
 }
 
 function renderPluginsList(rows: ListPluginRow[]): string[] {
@@ -699,7 +714,11 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
     return { startServer: false, exitCode: await cmdHelp() }
   }
 
-  if (cmd === 'start') return { startServer: true, exitCode: 0 }
+  if (cmd === 'start') {
+    const gateExitCode = checkOnboardedBeforeStart(args)
+    if (gateExitCode !== null) return { startServer: false, exitCode: gateExitCode }
+    return { startServer: true, exitCode: 0 }
+  }
 
   try {
     switch (cmd) {
