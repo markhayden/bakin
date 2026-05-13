@@ -675,6 +675,33 @@ describe('PluginRegistryImpl', () => {
       expect(active).toMatchObject({ status: 'active' })
     })
 
+    it('loads user plugins that import SDK subpaths from the content directory', async () => {
+      const pluginDir = writeUserPlugin('sdk-utils-user', {
+        manifest: { entry: { server: 'index.ts' } },
+      })
+      writeFileSync(
+        join(pluginDir, 'index.ts'),
+        `import { cn, formatSize } from '@bakin/sdk/utils'
+
+        const plugin = {
+          id: 'sdk-utils-user',
+          name: 'SDK Utils User',
+          version: '1.0.0',
+          activate(ctx) {
+            ctx.log.info(cn('sdk', 'utils'), { size: formatSize(1024) })
+          },
+        }
+
+        export default plugin`,
+      )
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      expect(pluginRegistry.getPluginIds()).toContain('sdk-utils-user')
+      const active = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'sdk-utils-user')
+      expect(active).toMatchObject({ status: 'active' })
+    })
+
     it('reports missing dependencies without exposing plugin routes', async () => {
       writeUserPlugin('needs-missing', {
         deps: ['not-installed'],

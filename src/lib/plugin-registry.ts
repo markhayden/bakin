@@ -3,8 +3,19 @@
  * Loads plugins, stores their registrations, and provides lookups.
  */
 import { AsyncLocalStorage } from 'async_hooks'
-import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
-import { join } from 'path'
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readlinkSync,
+  readdirSync,
+  statSync,
+  symlinkSync,
+  unlinkSync,
+} from 'fs'
+import { dirname, join, resolve } from 'path'
+import { fileURLToPath } from 'url'
 import { inspect } from 'util'
 import type {
   BakinConfig,
@@ -87,6 +98,7 @@ export function registerCorePlugins(table: Readonly<Record<string, BakinPlugin>>
 }
 
 const log = createLogger('plugin-registry')
+const moduleDir = dirname(fileURLToPath(import.meta.url))
 
 type CapturedConsoleLevel = 'debug' | 'error' | 'info' | 'warn'
 type CapturedConsoleMethod = CapturedConsoleLevel | 'log'
@@ -98,6 +110,45 @@ const capturedConsoleContext = new AsyncLocalStorage<CapturedConsoleContext | un
 
 function withoutCapturedPluginConsole<T>(action: () => T): T {
   return capturedConsoleContext.run(undefined, action)
+}
+
+function resolveWorkspacePackagePath(packageDir: string): string | null {
+  const candidates = [
+    resolve(process.cwd(), 'packages', packageDir),
+    resolve(moduleDir, '..', '..', 'packages', packageDir),
+  ]
+  return candidates.find(candidate => existsSync(join(candidate, 'package.json'))) ?? null
+}
+
+function ensureWorkspacePackageLink(pluginPath: string, scope: string, name: string, packageDir: string): void {
+  const packagePath = resolveWorkspacePackagePath(packageDir)
+  if (!packagePath) {
+    log.warn(`User plugin SDK package link skipped; workspace package not found: ${packageDir}`, {
+      pluginPath,
+      packageDir,
+    })
+    return
+  }
+
+  const scopeDir = join(pluginPath, 'node_modules', scope)
+  mkdirSync(scopeDir, { recursive: true })
+  const linkPath = join(scopeDir, name)
+
+  if (existsSync(linkPath)) {
+    const existing = lstatSync(linkPath)
+    if (!existing.isSymbolicLink()) return
+
+    const existingTarget = resolve(dirname(linkPath), readlinkSync(linkPath))
+    if (existingTarget === packagePath) return
+    unlinkSync(linkPath)
+  }
+
+  symlinkSync(packagePath, linkPath, 'dir')
+}
+
+function ensureUserPluginWorkspaceLinks(pluginPath: string): void {
+  ensureWorkspacePackageLink(pluginPath, '@bakin', 'sdk', 'sdk')
+  ensureWorkspacePackageLink(pluginPath, '@bakin', 'core', 'core')
 }
 
 function stripPluginConsolePrefix(pluginId: string, message: string): string {
@@ -1064,6 +1115,7 @@ class PluginRegistryImpl {
 
     const distServer = join(entry.path, 'dist', 'index.js')
     const sourceServer = join(entry.path, manifest.entry?.server || 'index.ts')
+    ensureUserPluginWorkspaceLinks(entry.path)
     let importTarget = opts.preferDist && existsSync(distServer)
       ? distServer
       : sourceServer

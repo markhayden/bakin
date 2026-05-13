@@ -5,25 +5,25 @@
  * needs. The `format*` helpers are re-exported from `@bakin/core/format`
  * so plugins have a single import path instead of reaching into `@/lib/*`.
  */
-export { cn } from '@/lib/utils'
+export { cn } from '../../../../src/lib/utils'
 export { formatAge, formatSize, isStale } from '@bakin/core/format'
 export {
   brainstormActivityMessageFromCustom,
   runtimeChunkToBrainstormActivity,
   toBrainstormTimeline,
-} from '@/components/integrated-brainstorm/activity'
+} from '../../../../src/components/integrated-brainstorm/activity'
 export {
   brainstormThreadId,
   normalizeBrainstormActivityForStorage,
   normalizeBrainstormActivityMessageForStorage,
-} from '@/components/integrated-brainstorm/session'
+} from '../../../../src/components/integrated-brainstorm/session'
 export type {
   BrainstormActivityInput,
   BrainstormTimelineActivityInput,
   BrainstormTimelineMessageInput,
-} from '@/components/integrated-brainstorm/activity'
+} from '../../../../src/components/integrated-brainstorm/activity'
 export type {
   BrainstormActivityStorageInput,
   BrainstormActivityStorageRecord,
-} from '@/components/integrated-brainstorm/session'
-export { readBrainstormSseResponse } from '@/components/integrated-brainstorm/sse'
+} from '../../../../src/components/integrated-brainstorm/session'
+export { readBrainstormSseResponse } from '../../../../src/components/integrated-brainstorm/sse'
