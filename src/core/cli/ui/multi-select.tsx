@@ -1,4 +1,5 @@
-import { Box, Text, useInput } from 'ink'
+import { MultiSelect as InkMultiSelect } from '@inkjs/ui'
+import { Box, Text } from 'ink'
 
 export interface MultiSelectItem {
   id: string
@@ -68,31 +69,36 @@ export interface MultiSelectProps {
 }
 
 export function MultiSelect({ title, items, state, onChange, onSubmit }: MultiSelectProps) {
-  useInput((_input, key) => {
-    if (key.upArrow) onChange(updateMultiSelectState(state, items, { type: 'up' }))
-    else if (key.downArrow) onChange(updateMultiSelectState(state, items, { type: 'down' }))
-    else if (key.return) onSubmit([...state.selectedIds])
-    else if (_input === ' ') onChange(updateMultiSelectState(state, items, { type: 'toggle' }))
-  })
+  const enabledItems = items.filter(item => !item.disabled)
+  const disabledItems = items.filter(item => item.disabled)
+  const options = enabledItems.map(item => ({
+    value: item.id,
+    label: item.description ? `${item.label} — ${item.description}` : item.label,
+  }))
 
   return (
     <Box flexDirection="column">
       <Text bold>{title}</Text>
       <Text dimColor>Use up/down to move, space to select, enter to continue.</Text>
       <Box flexDirection="column" marginTop={1}>
-        {items.map((item, index) => {
-          const focused = index === state.focusIndex
-          const selected = state.selectedIds.has(item.id)
-          const marker = selected ? '◉' : '○'
-          return (
-            <Box key={item.id} flexDirection="column">
-              <Text color={item.disabled ? 'gray' : focused ? 'cyan' : undefined}>
-                {focused ? '>' : ' '} {marker} {item.label}{item.note ? ` (${item.note})` : ''}
+        <InkMultiSelect
+          options={options}
+          defaultValue={[...state.selectedIds]}
+          visibleOptionCount={Math.max(5, Math.min(8, options.length || 5))}
+          onChange={(selectedIds) => {
+            onChange({ ...state, selectedIds: new Set(selectedIds) })
+          }}
+          onSubmit={onSubmit}
+        />
+        {disabledItems.length > 0 ? (
+          <Box flexDirection="column" marginTop={1}>
+            {disabledItems.map(item => (
+              <Text key={item.id} color="gray">
+                {item.label}{item.note ? ` (${item.note})` : ''}
               </Text>
-              {item.description ? <Text dimColor>      {item.description}</Text> : null}
-            </Box>
-          )
-        })}
+            ))}
+          </Box>
+        ) : null}
       </Box>
     </Box>
   )

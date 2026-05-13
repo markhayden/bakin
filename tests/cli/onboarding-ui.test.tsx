@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { renderToString } from 'ink'
 
 import { buildSelectionItems } from '../../src/core/cli/onboarding-interactive'
-import { OnboardingBusy, OnboardingSummary } from '../../src/core/cli/ui/onboarding'
+import { OnboardingBusy, OnboardingProgress, OnboardingSummary } from '../../src/core/cli/ui/onboarding'
 import type { ComponentOutcome } from '../../src/core/onboarding'
 
 describe('onboarding CLI UI', () => {
@@ -68,5 +68,10 @@ describe('onboarding CLI UI', () => {
   it('renders an async onboarding busy state', () => {
     const rendered = renderToString(<OnboardingBusy label="Running onboarding checks and installs" />)
     expect(rendered).toContain('Running onboarding checks and installs')
+  })
+
+  it('renders bounded onboarding progress with Ink UI', () => {
+    const rendered = renderToString(<OnboardingProgress label="Installing official agents" value={50} />)
+    expect(rendered).toContain('Installing official agents')
   })
 })

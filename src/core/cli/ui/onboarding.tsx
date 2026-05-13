@@ -1,9 +1,7 @@
 import { Box, Text } from 'ink'
-import { useEffect, useState } from 'react'
+import { ProgressBar, Spinner } from '@inkjs/ui'
 import { Report, type ReportRow } from './report'
 import type { ComponentOutcome } from '../../onboarding'
-
-const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const
 
 export function onboardingStatus(status: ComponentOutcome['finalStatus']): ReportRow['status'] {
   switch (status) {
@@ -69,19 +67,14 @@ export function OnboardingSummary({ outcomes, exitCode }: {
 }
 
 export function OnboardingBusy({ label = 'Running onboarding' }: { label?: string }) {
-  const [frame, setFrame] = useState(0)
+  return <Spinner label={label} />
+}
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setFrame(current => (current + 1) % SPINNER_FRAMES.length)
-    }, 90)
-    return () => clearInterval(timer)
-  }, [])
-
+export function OnboardingProgress({ label, value }: { label: string; value: number }) {
   return (
-    <Box>
-      <Text color="cyan">{SPINNER_FRAMES[frame]}</Text>
-      <Text> {label}</Text>
+    <Box flexDirection="column">
+      <Text>{label}</Text>
+      <ProgressBar value={value} />
     </Box>
   )
 }
