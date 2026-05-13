@@ -132,12 +132,9 @@ function OnboardingIntro() {
         ░▀▀░░▀░▀░▀░▀░▀▀▀░▀░▀░░
       </Text>
       <Text dimColor>
-        This wizard will walk you through the initial Bakin setup. You will
-        choose official plugins and agents, approve required local dependencies,
-        and then Bakin will run the setup steps with live progress.
-      </Text>
-      <Text dimColor>
-        You can decline optional installs and rerun `bakin onboard` later.
+        Let's walk through the initial Bakin setup and optional plugin/agent kit
+        installs. You can revisit the configuration at any time with `bakin
+        onboard`
       </Text>
     </Box>
   );
