@@ -93,8 +93,12 @@ function ConfirmStep({ title, description, defaultChoice, onSubmit }: {
 
 function OnboardingIntro() {
   return (
-    <Box flexDirection="column" marginBottom={1}>
-      <Text bold>Bakin onboarding</Text>
+    <Box flexDirection="column">
+      <Text color="#ff2bd6" bold>████  ███  ██  ██ ██ ███  ██</Text>
+      <Text color="#ff2bd6" bold>██  ██ ██ ██ ██ ██ ██ ████ ██</Text>
+      <Text color="#ff2bd6" bold>████  █████ ██ ██ ██ ██ ████</Text>
+      <Text color="#ff2bd6" bold>██  ██ ██ ██ ██ ██ ██ ██ ███</Text>
+      <Text color="#ff2bd6" bold>████  ██ ██  ████  ██ ██  ██</Text>
       <Text dimColor>
         This wizard will walk you through the initial Bakin setup. You will choose official plugins and agents,
         approve required local dependencies, and then Bakin will run the setup steps with live progress.
