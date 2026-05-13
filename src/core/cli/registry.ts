@@ -72,7 +72,7 @@ export const CLI_COMMANDS = [
   }),
   cli({
     name: 'doctor',
-    usage: 'bakin doctor',
+    usage: 'bakin doctor [--json]',
     group: 'Lifecycle',
     summary: 'Run health checks.',
     description: 'Runs Bakin diagnostics for local dependencies, server state, agents, plugin assets, runtime behavior, and recoverable issues.',

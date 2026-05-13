@@ -715,9 +715,39 @@ async function cmdSearchStats(): Promise<void> {
 }
 
 async function cmdDoctor(): Promise<void> {
+  const json = process.argv.slice(2).includes('--json')
+  const isTTY = Boolean(process.stdout.isTTY)
   const result = await apiGet('/api/plugins/health/doctor?fresh=true') as {
     results: Array<{ check: string; status: string; message: string }>
     summary: { total: number; errors: number; warnings: number }
+  }
+
+  if (json) {
+    console.log(JSON.stringify({
+      ok: result.summary.errors === 0,
+      command: 'doctor',
+      exitCode: result.summary.errors > 0 ? 1 : result.summary.warnings > 0 ? 2 : 0,
+      data: result,
+      error: result.summary.errors > 0
+        ? { code: 'DOCTOR_ERRORS', message: `${result.summary.errors} doctor check${result.summary.errors === 1 ? '' : 's'} failed` }
+        : null,
+    }, null, 2))
+    if (result.summary.errors > 0) process.exit(1)
+    if (result.summary.warnings > 0) process.exit(2)
+    return
+  }
+
+  if (isTTY) {
+    const { DoctorReport } = await import('../src/core/cli/ui/doctor')
+    const { renderToString } = await import('ink')
+    const { createElement } = await import('react')
+    console.log(renderToString(createElement(DoctorReport, {
+      results: result.results,
+      summary: result.summary,
+    })))
+    if (result.summary.errors > 0) process.exit(1)
+    if (result.summary.warnings > 0) process.exit(2)
+    return
   }
 
   const statusIcon: Record<string, string> = { ok: 'OK', warn: 'WARN', error: 'FAIL', fixed: 'FIXED' }
@@ -736,6 +766,8 @@ async function cmdDoctor(): Promise<void> {
   } else {
     console.log(`All ${total} checks passed`)
   }
+  if (errors > 0) process.exit(1)
+  if (warnings > 0) process.exit(2)
 }
 
 // ---------------------------------------------------------------------------
