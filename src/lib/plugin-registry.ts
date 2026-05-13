@@ -10,6 +10,7 @@ import {
   readFileSync,
   readlinkSync,
   readdirSync,
+  rmSync,
   statSync,
   symlinkSync,
   unlinkSync,
@@ -134,13 +135,19 @@ function ensureWorkspacePackageLink(pluginPath: string, scope: string, name: str
   mkdirSync(scopeDir, { recursive: true })
   const linkPath = join(scopeDir, name)
 
-  if (existsSync(linkPath)) {
+  try {
     const existing = lstatSync(linkPath)
-    if (!existing.isSymbolicLink()) return
-
-    const existingTarget = resolve(dirname(linkPath), readlinkSync(linkPath))
-    if (existingTarget === packagePath) return
-    unlinkSync(linkPath)
+    if (existing.isSymbolicLink()) {
+      const existingTarget = resolve(dirname(linkPath), readlinkSync(linkPath))
+      if (existingTarget === packagePath) return
+      unlinkSync(linkPath)
+    } else {
+      rmSync(linkPath, { recursive: true, force: true })
+    }
+  } catch (err) {
+    if (!(err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT')) {
+      throw err
+    }
   }
 
   symlinkSync(packagePath, linkPath, 'dir')

@@ -694,6 +694,13 @@ describe('PluginRegistryImpl', () => {
 
         export default plugin`,
       )
+      const staleSdkDir = join(pluginDir, 'node_modules', '@bakin', 'sdk')
+      mkdirSync(staleSdkDir, { recursive: true })
+      writeFileSync(join(staleSdkDir, 'package.json'), JSON.stringify({
+        name: '@bakin/sdk',
+        version: '0.0.0-stale',
+        exports: { '.': './index.js' },
+      }))
 
       await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
 
