@@ -1,4 +1,4 @@
-import { MultiSelect as InkMultiSelect } from '@inkjs/ui'
+import { MultiSelect as InkMultiSelect, ThemeProvider, defaultTheme, extendTheme } from '@inkjs/ui'
 import { Box, Text } from 'ink'
 
 export interface MultiSelectItem {
@@ -68,12 +68,32 @@ export interface MultiSelectProps {
   onSubmit: (selectedIds: string[]) => void
 }
 
+const multiSelectTheme = extendTheme(defaultTheme, {
+  components: {
+    MultiSelect: {
+      styles: {
+        focusIndicator: () => ({ color: 'cyan' }),
+        selectedIndicator: () => ({ color: 'gray', dimColor: true }),
+        label: ({ isFocused }: { isFocused: boolean }) => ({
+          color: isFocused ? 'cyan' : undefined,
+        }),
+      },
+    },
+  },
+})
+
+function optionLabel(item: MultiSelectItem, selected: boolean): string {
+  const marker = selected ? '◉' : '○'
+  const name = `[${item.label}]`
+  return item.description ? `${marker} ${name} ${item.description}` : `${marker} ${name}`
+}
+
 export function MultiSelect({ title, items, state, onChange, onSubmit }: MultiSelectProps) {
   const enabledItems = items.filter(item => !item.disabled)
   const disabledItems = items.filter(item => item.disabled)
   const options = enabledItems.map(item => ({
     value: item.id,
-    label: item.description ? `${item.label} — ${item.description}` : item.label,
+    label: optionLabel(item, state.selectedIds.has(item.id)),
   }))
 
   return (
@@ -81,20 +101,22 @@ export function MultiSelect({ title, items, state, onChange, onSubmit }: MultiSe
       <Text bold>{title}</Text>
       <Text dimColor>Use up/down to move, space to select, enter to continue.</Text>
       <Box flexDirection="column" marginTop={1}>
-        <InkMultiSelect
-          options={options}
-          defaultValue={[...state.selectedIds]}
-          visibleOptionCount={Math.max(5, Math.min(8, options.length || 5))}
-          onChange={(selectedIds) => {
-            onChange({ ...state, selectedIds: new Set(selectedIds) })
-          }}
-          onSubmit={onSubmit}
-        />
+        <ThemeProvider theme={multiSelectTheme}>
+          <InkMultiSelect
+            options={options}
+            defaultValue={[...state.selectedIds]}
+            visibleOptionCount={Math.max(5, Math.min(8, options.length || 5))}
+            onChange={(selectedIds) => {
+              onChange({ ...state, selectedIds: new Set(selectedIds) })
+            }}
+            onSubmit={onSubmit}
+          />
+        </ThemeProvider>
         {disabledItems.length > 0 ? (
           <Box flexDirection="column" marginTop={1}>
             {disabledItems.map(item => (
               <Text key={item.id} color="gray">
-                {item.label}{item.note ? ` (${item.note})` : ''}
+                {optionLabel(item, false)}{item.note ? ` (${item.note})` : ''}
               </Text>
             ))}
           </Box>
