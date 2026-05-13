@@ -1562,7 +1562,7 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
 async function cmdOnboard(args: string[]): Promise<void> {
   const { runOnboard, isOnboarded, loadState } = await import('../src/core/onboarding/index')
   const { collectOnboardingSelections } = await import('../src/core/cli/onboarding-interactive')
-  const { OnboardingBusy, OnboardingSummary } = await import('../src/core/cli/ui/onboarding')
+  const { OnboardingBusy, OnboardingFinalStatus } = await import('../src/core/cli/ui/onboarding')
   const { render, renderToString } = await import('ink')
   const { createElement } = await import('react')
   const checkOnly = args.includes('--check')
@@ -1598,7 +1598,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
   }
   try {
     const selections = await collectOnboardingSelections(baseOpts)
-    const opts = { ...baseOpts, ...selections, autoApprove: baseOpts.autoApprove || baseOpts.interactive }
+    const opts = { ...baseOpts, ...selections, interactive: false }
 
     let busyFrame = 0
     let busyDetail: string | undefined
@@ -1661,7 +1661,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
     if (!json) {
       if (isTTY) {
         console.log('')
-        console.log(renderToString(createElement(OnboardingSummary, { outcomes: result.outcomes, exitCode: result.exitCode })))
+        console.log(renderToString(createElement(OnboardingFinalStatus, { outcomes: result.outcomes, exitCode: result.exitCode })))
       } else {
         console.log('')
         for (const o of result.outcomes) {

@@ -64,7 +64,7 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
   // Gate on user consent before shelling out to npm.
   const alreadyInstalled = isMcporterInstalled()
   if (!alreadyInstalled) {
-    if (opts.interactive && !opts.autoApprove) {
+    if (opts.interactive && !opts.autoApprove && opts.approvedComponents?.includes('mcporter') !== true) {
       const proceed = await askYesNo(
         'Install mcporter globally via `npm install -g mcporter`? Requires npm on PATH.',
         true
@@ -77,7 +77,7 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
           durationMs: Date.now() - start,
         }
       }
-    } else if (!opts.autoApprove) {
+    } else if (!opts.autoApprove && opts.approvedComponents?.includes('mcporter') !== true) {
       return {
         name: 'mcporter',
         status: 'skipped',

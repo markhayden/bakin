@@ -59,17 +59,28 @@ export function OnboardingSummary({ outcomes, exitCode }: {
           },
         ]}
       />
-      <Box flexDirection="column" marginTop={1}>
-        {blocker ? (
-          <Alert variant="error" title="Onboarding blocked">
-            {blocker.remediation ? `${blocker.message}\n${blocker.remediation}` : blocker.message}
-          </Alert>
-        ) : exitCode === 0 ? (
-          <Alert variant="success">Onboarding complete. Run `bakin start` to launch Bakin.</Alert>
-        ) : (
-          <Alert variant="warning">Onboarding finished with warnings. Run `bakin doctor` for details.</Alert>
-        )}
-      </Box>
+      <OnboardingFinalStatus outcomes={outcomes} exitCode={exitCode} />
+    </Box>
+  )
+}
+
+export function OnboardingFinalStatus({ outcomes, exitCode }: {
+  outcomes: ComponentOutcome[]
+  exitCode: 0 | 1 | 2
+}) {
+  const blocker = outcomes.find(outcome => outcome.finalStatus === 'error')
+
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      {blocker ? (
+        <Alert variant="error" title="Onboarding blocked">
+          {blocker.remediation ? `${blocker.message}\n${blocker.remediation}` : blocker.message}
+        </Alert>
+      ) : exitCode === 0 ? (
+        <Alert variant="success">Onboarding complete. Run `bakin start` to launch Bakin.</Alert>
+      ) : (
+        <Alert variant="warning">Onboarding finished with warnings. Run `bakin doctor` for details.</Alert>
+      )}
     </Box>
   )
 }
@@ -88,17 +99,19 @@ export function OnboardingBusy({ label = 'Running onboarding', detail, frame = 0
   const safeDetails = details.length > 0 ? details : ONBOARDING_BUSY_DETAILS
   const spinnerFrame = ONBOARDING_SPINNER_FRAMES[frame % ONBOARDING_SPINNER_FRAMES.length]
   const fallbackDetail = safeDetails[Math.floor(frame / 12) % safeDetails.length]
+  const prerequisites = completed?.filter(item => ['mkdir', 'settings', 'runtime'].includes(item.name)) ?? []
+  const setup = completed?.filter(item => !['mkdir', 'settings', 'runtime'].includes(item.name)) ?? []
 
   return (
     <Box flexDirection="column" marginTop={1}>
       {completed && completed.length > 0 ? (
         <Box flexDirection="column" marginBottom={1}>
-          {completed.map(item => (
-            <Box key={item.name}>
-              <StatusBadge status={item.status} />
-              <Text> {item.name.padEnd(18)} {formatOnboardingMessage(item.message)}</Text>
-            </Box>
-          ))}
+          {prerequisites.length > 0 ? (
+            <CompletedGroup title="Prerequisites" rows={prerequisites} />
+          ) : null}
+          {setup.length > 0 ? (
+            <CompletedGroup title="Setup" rows={setup} marginTop={prerequisites.length > 0 ? 1 : 0} />
+          ) : null}
         </Box>
       ) : null}
       <Box>
@@ -106,6 +119,28 @@ export function OnboardingBusy({ label = 'Running onboarding', detail, frame = 0
         <Text bold> {label}</Text>
       </Box>
       <Text dimColor>  {detail ?? fallbackDetail}</Text>
+    </Box>
+  )
+}
+
+function CompletedGroup({ title, rows, marginTop = 0 }: {
+  title: string
+  rows: Array<{
+    name: string
+    status: ReportRow['status']
+    message: string
+  }>
+  marginTop?: number
+}) {
+  return (
+    <Box flexDirection="column" marginTop={marginTop}>
+      <Text color={BAKIN_PINK} bold>{title}</Text>
+      {rows.map(item => (
+        <Box key={item.name}>
+          <StatusBadge status={item.status} />
+          <Text> {item.name.padEnd(18)} {formatOnboardingMessage(item.message)}</Text>
+        </Box>
+      ))}
     </Box>
   )
 }

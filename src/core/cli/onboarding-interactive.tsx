@@ -1,4 +1,5 @@
-import { render, renderToString, Text } from 'ink'
+import { Badge, ConfirmInput } from '@inkjs/ui'
+import { render, renderToString, Box, Text } from 'ink'
 import { useState } from 'react'
 import {
   MultiSelect,
@@ -9,6 +10,9 @@ import {
 import { recommendedAgentsComponent } from '../onboarding/recommended-agents'
 import { recommendedPluginsComponent } from '../onboarding/recommended-plugins'
 import { runtimeComponent } from '../onboarding/runtime'
+import { searchComponent } from '../onboarding/search'
+import { searchModelsComponent } from '../onboarding/search-models'
+import { mcporterComponent } from '../onboarding/mcporter'
 import type { CheckResult, OnboardingOptions } from '../onboarding/types'
 
 interface CatalogChoice {
@@ -21,6 +25,7 @@ interface CatalogChoice {
 export interface OnboardingSelections {
   selectedRecommendedPluginIds?: readonly string[]
   selectedRecommendedAgentIds?: readonly string[]
+  approvedComponents?: readonly string[]
 }
 
 function choicesFromCheck(check: CheckResult): CatalogChoice[] {
@@ -64,6 +69,28 @@ function MultiSelectPrompt({ title, items, onSubmit }: {
   return <MultiSelect title={title} items={items} state={state} onChange={setState} onSubmit={onSubmit} marginTop={1} />
 }
 
+function ConfirmStep({ title, description, defaultChoice, onSubmit }: {
+  title: string
+  description: string
+  defaultChoice: 'confirm' | 'cancel'
+  onSubmit: (approved: boolean) => void
+}) {
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      <Badge color="#ff2bd6">{title}</Badge>
+      <Text dimColor>{description}</Text>
+      <Box marginTop={1}>
+        <Text>Continue? </Text>
+        <ConfirmInput
+          defaultChoice={defaultChoice}
+          onConfirm={() => onSubmit(true)}
+          onCancel={() => onSubmit(false)}
+        />
+      </Box>
+    </Box>
+  )
+}
+
 export async function promptMultiSelect(title: string, items: MultiSelectItem[]): Promise<string[]> {
   if (items.filter(item => !item.disabled).length === 0) return []
 
@@ -82,16 +109,66 @@ export async function promptMultiSelect(title: string, items: MultiSelectItem[])
   })
 }
 
+async function promptConfirm(title: string, description: string, defaultChoice: 'confirm' | 'cancel' = 'confirm'): Promise<boolean> {
+  return await new Promise((resolve) => {
+    let app: ReturnType<typeof render> | null = null
+    app = render(
+      <ConfirmStep
+        title={title}
+        description={description}
+        defaultChoice={defaultChoice}
+        onSubmit={(approved) => {
+          app?.unmount()
+          resolve(approved)
+        }}
+      />,
+    )
+  })
+}
+
 export async function collectOnboardingSelections(opts: Pick<OnboardingOptions, 'interactive' | 'autoApprove' | 'json' | 'checkOnly'>): Promise<OnboardingSelections> {
   if (!opts.interactive || opts.autoApprove || opts.json || opts.checkOnly) return {}
 
   const runtime = await runtimeComponent.check()
   if (runtime.status !== 'ok') return {}
 
+  const searchCheck = await searchComponent.check()
+  const searchModelsCheck = await searchModelsComponent.check()
+  const mcporterCheck = await mcporterComponent.check()
   const pluginCheck = await recommendedPluginsComponent.check()
   const agentCheck = await recommendedAgentsComponent.check()
-  if (pluginCheck.status === 'missing' || agentCheck.status === 'missing') {
+  const hasWizardSteps = [searchCheck, searchModelsCheck, mcporterCheck, pluginCheck, agentCheck].some(check => check.status === 'missing' || check.status === 'broken')
+  if (hasWizardSteps) {
     console.log(renderToString(<Text bold>Bakin onboarding</Text>))
+  }
+
+  const approvedComponents: string[] = []
+  const searchNeedsInstall = searchCheck.status === 'missing' || searchCheck.status === 'broken'
+  const searchApproved = searchNeedsInstall
+    ? await promptConfirm(
+      'Search adapter',
+      `${searchCheck.message}. Bakin will install Antfly via Homebrew if you continue.`,
+      'confirm',
+    )
+    : true
+  if (searchNeedsInstall && searchApproved) approvedComponents.push('search')
+
+  if (searchApproved && (searchModelsCheck.status === 'missing' || searchModelsCheck.status === 'broken')) {
+    const approved = await promptConfirm(
+      'Search models',
+      `${searchModelsCheck.message}. Bakin will download the required Termite models if you continue.`,
+      'confirm',
+    )
+    if (approved) approvedComponents.push('search-models')
+  }
+
+  if (mcporterCheck.status === 'missing' || mcporterCheck.status === 'broken') {
+    const approved = await promptConfirm(
+      'MCP porter',
+      `${mcporterCheck.message}. Bakin will install and configure mcporter if you continue.`,
+      'confirm',
+    )
+    if (approved) approvedComponents.push('mcporter')
   }
 
   const selectedRecommendedPluginIds = pluginCheck.status === 'missing'
@@ -104,5 +181,6 @@ export async function collectOnboardingSelections(opts: Pick<OnboardingOptions, 
   return {
     selectedRecommendedPluginIds,
     selectedRecommendedAgentIds,
+    approvedComponents,
   }
 }
