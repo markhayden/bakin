@@ -1076,96 +1076,6 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): 
   }
 }
 
-// ---------------------------------------------------------------------------
-// Start / Setup mcporter
-// ---------------------------------------------------------------------------
-
-async function cmdStart(): Promise<void> {
-  const { resolve, dirname, join } = await import('path')
-  const { execSync, spawn } = await import('child_process')
-
-  const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
-  const port = Number(process.env.PORT || 3737)
-
-  // Step 1: Setup mcporter
-  console.log('[..] Checking mcporter...')
-  const mcporter = await import('../src/core/mcporter')
-
-  if (!mcporter.isMcporterInstalled()) {
-    console.log('[..] Installing mcporter...')
-    if (!mcporter.installMcporter()) {
-      console.error('[FAIL] Could not install mcporter. Run manually: npm i -g mcporter')
-      process.exit(1)
-    }
-    console.log('[OK] mcporter installed')
-  } else {
-    console.log('[OK] mcporter available')
-  }
-
-  // Step 2: Sync mcporter config
-  console.log('[..] Syncing mcporter config...')
-  const changes = await mcporter.syncConfig(port)
-  if (changes.length > 0) {
-    for (const c of changes) console.log(`  ${c}`)
-    console.log(`[OK] mcporter config updated (${changes.length} changes)`)
-  } else {
-    console.log('[OK] mcporter config up to date')
-  }
-
-  // Step 3: Kill any existing Bakin server
-  console.log('[..] Checking for running Bakin...')
-  try {
-    const pids = execSync("pgrep -f 'tsx.*server\\.ts'", { encoding: 'utf-8' }).trim()
-    if (pids) {
-      for (const pid of pids.split('\n')) {
-        if (pid && pid !== String(process.pid)) {
-          process.kill(Number(pid), 'SIGTERM')
-        }
-      }
-      console.log('[OK] Stopped existing Bakin server')
-      await new Promise(r => setTimeout(r, 2000))
-    }
-  } catch {
-    // No running process
-  }
-
-  // Step 4: Start the server
-  const serverPath = join(projectDir, 'server.ts')
-  console.log('[..] Starting Bakin server...')
-  const child = spawn('npx', ['tsx', serverPath], {
-    cwd: projectDir,
-    detached: true,
-    stdio: ['ignore', 'ignore', 'ignore'],
-    env: { ...process.env },
-  })
-  child.unref()
-  console.log(`[OK] Bakin starting (pid ${child.pid})`)
-
-  // Step 5: Wait for server to come up
-  console.log('[..] Waiting for server...')
-  for (let i = 0; i < 15; i++) {
-    await new Promise(r => setTimeout(r, 1000))
-    try {
-      const res = await fetch(`${BASE_URL}/api/version`, { signal: AbortSignal.timeout(2000) })
-      if (res.ok) {
-        const data = await res.json() as { version: string }
-        console.log(`[OK] Bakin is up (${data.version})`)
-        console.log('')
-        console.log('MCP endpoints:')
-        const roster = await getCliRoster()
-        for (const agent of roster.agentIds) {
-          console.log(`  ${agent}: mcporter call bakin-${agent}.<tool> ...`)
-        }
-        console.log('')
-        console.log(`Stats: curl ${BASE_URL}/mcp/stats`)
-        console.log(`Audit: tail -f ~/.bakin/audit.jsonl | jq '{event,agent,channel}'`)
-        return
-      }
-    } catch { /* not ready yet */ }
-  }
-  console.log('[WARN] Server not responding after 15s — check logs')
-}
-
 async function cmdLogs(filter?: string): Promise<void> {
   const { spawn, execSync } = await import('child_process')
   const { existsSync } = await import('fs')
@@ -1508,7 +1418,8 @@ async function dispatchPluginCliCommand(cmd: string, args: string[]): Promise<bo
   return false
 }
 
-const USAGE = renderCliUsage({ bakinUrl: BASE_URL })
+const BINARY_ONLY_COMMANDS = new Set(['start'])
+const USAGE = renderCliUsage({ bakinUrl: BASE_URL }, { excludeNames: BINARY_ONLY_COMMANDS })
 
 // ---------------------------------------------------------------------------
 // Onboarding CLI handlers
@@ -1891,10 +1802,6 @@ export async function main(): Promise<void> {
         }
         break
 
-      case 'start':
-        await cmdStart()
-        break
-
       case 'stop':
         await cmdStop()
         break
@@ -2067,7 +1974,7 @@ export async function main(): Promise<void> {
         break
 
       default:
-        if (await dispatchPluginCliCommand(cmd, args.slice(1))) {
+        if (!BINARY_ONLY_COMMANDS.has(cmd) && await dispatchPluginCliCommand(cmd, args.slice(1))) {
           break
         }
         console.error(`Unknown command: ${cmd}`)
