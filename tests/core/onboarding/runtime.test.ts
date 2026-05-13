@@ -47,7 +47,7 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 describe('onboarding runtime component', () => {
-  let runtimeComponent: typeof import('../../../src/core/onboarding/runtime').runtimeComponent
+  let runtimeComponent: typeof import('@/core/onboarding/runtime').runtimeComponent
   let RUNTIME_SETUP_URL: string
 
   beforeEach(async () => {
@@ -58,7 +58,7 @@ describe('onboarding runtime component', () => {
     runtimeConfig = { agents: { list: [{ id: 'main' }] } }
     runtimeConfigError = null
     vi.resetModules()
-    const mod = await import('../../../src/core/onboarding/runtime')
+    const mod = await import('@/core/onboarding/runtime')
     runtimeComponent = mod.runtimeComponent
     RUNTIME_SETUP_URL = mod.RUNTIME_SETUP_URL
   })

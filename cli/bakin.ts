@@ -1529,11 +1529,21 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
 
 async function cmdOnboard(args: string[]): Promise<void> {
   const { runOnboard, isOnboarded, loadState } = await import('../src/core/onboarding/index')
+  const { collectOnboardingSelections } = await import('../src/core/cli/onboarding-interactive')
+  const { OnboardingSummary } = await import('../src/core/cli/ui/onboarding')
+  const { renderToString } = await import('ink')
+  const { createElement } = await import('react')
   const checkOnly = args.includes('--check')
   const yes = args.includes('--yes')
   const json = args.includes('--json')
   const force = args.includes('--force')
+  const verbose = args.includes('--verbose')
   const isTTY = Boolean(process.stdout.isTTY)
+
+  const previousConsoleFormat = process.env.BAKIN_CONSOLE_FORMAT
+  if (!verbose && previousConsoleFormat === undefined) {
+    process.env.BAKIN_CONSOLE_FORMAT = 'silent'
+  }
 
   // Early exit for already-onboarded machines unless --force or --check
   if (!force && !checkOnly && isOnboarded()) {
@@ -1547,36 +1557,49 @@ async function cmdOnboard(args: string[]): Promise<void> {
     process.exit(0)
   }
 
-  const opts = {
+  const baseOpts = {
     interactive: isTTY && !json && !checkOnly,
     autoApprove: yes || (!isTTY && !json),
     json,
     checkOnly,
     force,
   }
+  try {
+    const selections = await collectOnboardingSelections(baseOpts)
+    const opts = { ...baseOpts, ...selections }
 
-  const result = await runOnboard(opts)
+    const result = await runOnboard(opts)
 
-  if (!json) {
-    console.log('')
-    for (const o of result.outcomes) {
-      console.log(`${statusIcon(o.finalStatus)} ${o.name.padEnd(10)} ${o.message}`)
-      if (o.remediation && o.finalStatus !== 'ok') {
-        console.log(`  → ${o.remediation}`)
+    if (!json) {
+      if (isTTY) {
+        console.log('')
+        console.log(renderToString(createElement(OnboardingSummary, { outcomes: result.outcomes, exitCode: result.exitCode })))
+      } else {
+        console.log('')
+        for (const o of result.outcomes) {
+          console.log(`${statusIcon(o.finalStatus)} ${o.name.padEnd(10)} ${o.message}`)
+          if (o.remediation && (o.finalStatus === 'error' || o.finalStatus === 'warn')) {
+            console.log(`  → ${o.remediation}`)
+          }
+        }
+        console.log('')
+        if (result.exitCode === 0) {
+          console.log('Onboarding complete. Run `bakin start` to launch Bakin.')
+        } else if (result.exitCode === 2) {
+          console.log('Onboarding finished with warnings. Bakin will start but some features may be limited.')
+          console.log('Run `bakin start` to launch Bakin.')
+        } else {
+          console.log('Onboarding failed. Fix the errors above and rerun `bakin onboard`.')
+        }
       }
     }
-    console.log('')
-    if (result.exitCode === 0) {
-      console.log('Onboarding complete. Run `bakin start` to launch Bakin.')
-    } else if (result.exitCode === 2) {
-      console.log('Onboarding finished with warnings. Bakin will start but some features may be limited.')
-      console.log('Run `bakin start` to launch Bakin.')
-    } else {
-      console.log('Onboarding failed. Fix the errors above and rerun `bakin onboard`.')
+
+    process.exit(result.exitCode)
+  } finally {
+    if (!verbose && previousConsoleFormat === undefined) {
+      delete process.env.BAKIN_CONSOLE_FORMAT
     }
   }
-
-  process.exit(result.exitCode)
 }
 
 export async function main(): Promise<void> {

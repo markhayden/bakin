@@ -149,6 +149,29 @@ describe('Logger', () => {
     })
   })
 
+  it('suppresses console output in silent mode', () => {
+    withConsoleEnv({
+      BAKIN_CONSOLE_FORMAT: 'silent',
+      BAKIN_LOG_LEVEL: undefined,
+      NO_COLOR: '1',
+    }, () => {
+      const logSpy = spyOn(console, 'log').mockImplementation(() => {})
+      const warnSpy = spyOn(console, 'warn').mockImplementation(() => {})
+      const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+      const log = createLogger('app-services')
+      log.info('booting')
+      log.warn('not ready')
+      log.error('failed')
+
+      expect(logSpy).not.toHaveBeenCalled()
+      expect(warnSpy).not.toHaveBeenCalled()
+      expect(errorSpy).not.toHaveBeenCalled()
+      logSpy.mockRestore()
+      warnSpy.mockRestore()
+      errorSpy.mockRestore()
+    })
+  })
+
   it('suppresses noisy Antfly info in pretty mode but keeps readiness lines', () => {
     withConsoleEnv({
       BAKIN_CONSOLE_FORMAT: 'pretty',

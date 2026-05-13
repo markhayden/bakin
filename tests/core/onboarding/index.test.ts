@@ -10,7 +10,7 @@
  * when saveState/clearMarker are called without touching the real
  * filesystem.
  */
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { CheckResult, InstallResult, OnboardingComponent } from '../../../src/core/onboarding/types'
 
 // ---------------------------------------------------------------------------
@@ -148,6 +148,10 @@ describe('runOnboard orchestrator', () => {
 
   afterEach(() => {
     stdoutWriteSpy.mockRestore()
+  })
+
+  afterAll(() => {
+    mock.restore()
   })
 
   const opts = {

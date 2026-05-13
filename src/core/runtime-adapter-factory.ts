@@ -9,7 +9,7 @@ export interface RuntimeAdapterSupportInfo {
 
 const RUNTIME_ADAPTER_SUPPORT: Record<RuntimeAdapterName, RuntimeAdapterSupportInfo> = {
   openclaw: {
-    setupUrl: 'https://openclaw.ai/',
+    setupUrl: 'https://makinbakin.com/docs/start/first-time-setup/',
     docsUrl: 'https://openclaw.ai/docs/',
   },
 }

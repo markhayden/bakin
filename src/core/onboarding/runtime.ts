@@ -29,7 +29,7 @@ import type { CheckResult, InstallResult, OnboardingComponent } from './types'
 const log = createLogger('onboarding:runtime')
 
 const SETUP_URL = DEFAULT_RUNTIME_ADAPTER_SUPPORT.setupUrl
-const SETUP_MESSAGE = `A runtime adapter is required. Configure the active runtime adapter and rerun onboarding. Current runtime adapter setup docs: ${SETUP_URL}`
+const SETUP_MESSAGE = `Bakin requires an active agent runtime such as OpenClaw. Review the prerequisites and setup guide, then rerun onboarding: ${SETUP_URL}`
 
 interface RuntimeConfigForIntegrity {
   agents?: {
