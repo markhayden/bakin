@@ -94,11 +94,13 @@ function ConfirmStep({ title, description, defaultChoice, onSubmit }: {
 function OnboardingIntro() {
   return (
     <Box flexDirection="column">
-      <Text color="#ff2bd6" bold>████  ███  ██  ██ ██ ███  ██</Text>
-      <Text color="#ff2bd6" bold>██  ██ ██ ██ ██ ██ ██ ████ ██</Text>
-      <Text color="#ff2bd6" bold>████  █████ ██ ██ ██ ██ ████</Text>
-      <Text color="#ff2bd6" bold>██  ██ ██ ██ ██ ██ ██ ██ ███</Text>
-      <Text color="#ff2bd6" bold>████  ██ ██  ████  ██ ██  ██</Text>
+      <Text color="#ff2bd6" bold>oooooooooo.            oooo         o8o              o8o </Text>
+      <Text color="#ff2bd6" bold>`888'   `Y8b           `888         `"'              `YP </Text>
+      <Text color="#ff2bd6" bold> 888     888  .oooo.    888  oooo  oooo  ooo. .oo.    '  </Text>
+      <Text color="#ff2bd6" bold> 888oooo888' `P  )88b   888 .8P'   `888  `888P"Y88b      </Text>
+      <Text color="#ff2bd6" bold> 888    `88b  .oP"888   888888.     888   888   888      </Text>
+      <Text color="#ff2bd6" bold> 888    .88P d8(  888   888 `88b.   888   888   888      </Text>
+      <Text color="#ff2bd6" bold>o888bood8P'  `Y888""8o o888o o888o o888o o888o o888o     </Text>
       <Text dimColor>
         This wizard will walk you through the initial Bakin setup. You will choose official plugins and agents,
         approve required local dependencies, and then Bakin will run the setup steps with live progress.
