@@ -25,7 +25,7 @@ interface ScriptedComponent {
   installCalls: number
 }
 
-const COMPONENT_NAMES = ['mkdir', 'settings', 'runtime', 'search', 'search-models', 'mcporter', 'plugin-assets', 'agent-assets', 'llm', 'channels', 'recommended-plugins'] as const
+const COMPONENT_NAMES = ['mkdir', 'settings', 'runtime', 'search', 'search-models', 'mcporter', 'plugin-assets', 'agent-assets', 'llm', 'channels', 'recommended-plugins', 'recommended-agents'] as const
 
 let scripts: Record<(typeof COMPONENT_NAMES)[number], ScriptedComponent>
 
@@ -66,6 +66,11 @@ mock.module('../../../src/core/onboarding/credentials', () => ({
 }))
 mock.module('../../../src/core/onboarding/recommended-plugins', () => ({
   recommendedPluginsComponent: makeMock('recommended-plugins'),
+  RECOMMENDED_PLUGINS: [],
+}))
+mock.module('../../../src/core/onboarding/recommended-agents', () => ({
+  recommendedAgentsComponent: makeMock('recommended-agents'),
+  RECOMMENDED_AGENTS: [],
 }))
 
 mock.module('../../../src/core/onboarding/state', () => ({
@@ -158,7 +163,7 @@ describe('runOnboard orchestrator', () => {
   // ---------------------------------------------------------------------------
 
   describe('COMPONENT_ORDER', () => {
-    it('contains exactly the 11 expected components in the spec order', () => {
+    it('contains exactly the 12 expected components in the spec order', () => {
       expect(COMPONENT_ORDER.map((c) => c.name)).toEqual([
         'mkdir',
         'settings',
@@ -171,6 +176,7 @@ describe('runOnboard orchestrator', () => {
         'llm',
         'channels',
         'recommended-plugins',
+        'recommended-agents',
       ])
     })
   })
@@ -185,7 +191,7 @@ describe('runOnboard orchestrator', () => {
       expect(result.exitCode).toBe(0)
       expect(result.markerWritten).toBe(true)
       expect(result.outcomes.map((o) => o.finalStatus)).toEqual([
-        'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok',
+        'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok',
       ])
       // check() was called on every component
       for (const n of COMPONENT_NAMES) {
@@ -208,6 +214,7 @@ describe('runOnboard orchestrator', () => {
         llm: 'ok',
         channels: 'ok',
         'recommended-plugins': 'ok',
+        'recommended-agents': 'ok',
       })
     })
   })
@@ -324,7 +331,7 @@ describe('runOnboard orchestrator', () => {
       expect(scripts.llm.checkCalls).toBe(0)
       expect(scripts.channels.checkCalls).toBe(0)
       // All components still appear in outcomes
-      expect(result.outcomes).toHaveLength(11)
+      expect(result.outcomes).toHaveLength(COMPONENT_NAMES.length)
       // Runtime is error (missing prerequisite), downstream all skipped
       expect(result.outcomes.find((o) => o.name === 'runtime')?.finalStatus).toBe('error')
       expect(result.outcomes.find((o) => o.name === 'search')?.finalStatus).toBe('skipped')
@@ -401,7 +408,7 @@ describe('runOnboard orchestrator', () => {
   describe('json output', () => {
     it('emits one JSON line per outcome', async () => {
       await runOnboard({ ...opts, json: true })
-      expect(stdoutLines).toHaveLength(11)
+      expect(stdoutLines).toHaveLength(COMPONENT_NAMES.length)
       for (const line of stdoutLines) {
         const parsed = JSON.parse(line)
         expect(COMPONENT_NAMES).toContain(parsed.component)
@@ -414,7 +421,7 @@ describe('runOnboard orchestrator', () => {
       scripts.runtime.install = { name: 'runtime', status: 'noop', message: 'required', durationMs: 0 }
       await runOnboard({ ...opts, json: true })
       // Should emit every component: those before runtime plus downstream cascade-skips.
-      expect(stdoutLines).toHaveLength(11)
+      expect(stdoutLines).toHaveLength(COMPONENT_NAMES.length)
     })
 
     it('does not emit JSON when json flag is false', async () => {
@@ -431,7 +438,7 @@ describe('runOnboard orchestrator', () => {
     it('calls check() on every component and never install()', async () => {
       scripts.search.check = { name: 'search', status: 'missing', message: 'search missing' }
       const results = await checkAll()
-      expect(results).toHaveLength(11)
+      expect(results).toHaveLength(COMPONENT_NAMES.length)
       expect(results.map((r) => r.name)).toEqual([...COMPONENT_NAMES])
       for (const n of COMPONENT_NAMES) {
         expect(scripts[n].checkCalls).toBe(1)

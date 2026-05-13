@@ -39,6 +39,10 @@ export interface OnboardingOptions {
   checkOnly: boolean
   /** --force flag. Delete the existing marker before running. */
   force: boolean
+  /** Explicit official plugin ids selected by the TUI. Undefined means use defaults/prompts. */
+  selectedRecommendedPluginIds?: readonly string[]
+  /** Explicit official agent ids selected by the TUI. Undefined means use defaults/prompts. */
+  selectedRecommendedAgentIds?: readonly string[]
 }
 
 export interface OnboardingComponent {
