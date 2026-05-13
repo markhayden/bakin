@@ -36,7 +36,7 @@ import {
 } from '../../../packages/core/src/agent-packages/manifest'
 import { readFileSync, statSync, readdirSync } from 'fs'
 import { join } from 'path'
-import { fetchSource, type FetchedSource } from './source-fetcher'
+import { fetchSource, fetchSourceAsync, type FetchedSource } from './source-fetcher'
 import { createLogger } from '../logger'
 
 const log = createLogger('agent-pkg:resolve')
@@ -220,6 +220,87 @@ function visitDep(
   state.out.push(entry)
 }
 
+async function visitDepAsync(
+  state: ResolutionState,
+  spec: Dependency,
+  category: keyof NonNullable<Manifest['dependencies']>,
+  pulledBy: string,
+  depth: number,
+  maxDepth: number,
+): Promise<void> {
+  if (depth > maxDepth) {
+    throw new Error(
+      `Dependency tree exceeds max depth ${maxDepth} (resolving ${spec.source}@${spec.ref} pulled by "${pulledBy}"). ` +
+        `Likely a packaging bug — flatten the tree or raise the limit explicitly.`,
+    )
+  }
+
+  const cacheKey = depCacheKey(spec)
+  const ancestorChain = state.visiting.get(cacheKey)
+  if (ancestorChain !== undefined) {
+    const loop = [...ancestorChain, cacheKey].join(' → ')
+    throw new Error(
+      `Dependency cycle detected: ${loop}. Break the cycle in one of the manifests.`,
+    )
+  }
+  if (state.resolved.has(cacheKey)) return
+
+  const sourceWithRef = spec.source.startsWith('github:')
+    ? `${spec.source}@${spec.ref}`
+    : spec.source
+  const fetched = await fetchSourceAsync(sourceWithRef)
+
+  const manifestPath = join(fetched.stagingDir, 'bakin-package.json')
+  let subManifest: Manifest
+  try {
+    const raw = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+    const parseResult = safeParseManifest(raw)
+    if (!parseResult.success) {
+      throw new Error(
+        `Dependency manifest at ${spec.source}@${spec.ref} failed validation: ${formatManifestError(parseResult.error)}`,
+      )
+    }
+    subManifest = parseResult.data
+  } catch (err) {
+    if (err instanceof Error && err.message.includes('failed validation')) throw err
+    throw new Error(
+      `Dependency manifest at ${spec.source}@${spec.ref} unreadable: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+
+  const declaredKind = kindForDepCategory(category)
+  if (subManifest.kind !== declaredKind) {
+    throw new Error(
+      `Dependency declared as "${category}" but its manifest reports kind="${subManifest.kind}" ` +
+        `(${spec.source}@${spec.ref})`,
+    )
+  }
+
+  state.totalSize += estimateStagedSize(fetched.stagingDir)
+
+  const newAncestors = [...(ancestorChain ?? []), cacheKey]
+  state.visiting.set(cacheKey, newAncestors)
+  try {
+    for (const childDep of listDirectDeps(subManifest)) {
+      await visitDepAsync(state, childDep.spec, childDep.kind, subManifest.id, depth + 1, maxDepth)
+    }
+  } finally {
+    state.visiting.delete(cacheKey)
+  }
+
+  const resolvedId = spec.installAs ?? subManifest.id
+  const entry: ResolvedDep = {
+    manifest: subManifest,
+    fetched,
+    resolvedId,
+    spec,
+    pulledBy,
+    depth,
+  }
+  state.resolved.set(cacheKey, entry)
+  state.out.push(entry)
+}
+
 /**
  * Resolve every dep in a manifest's `dependencies` block, recursively.
  * Returns deps in topological order (leaves first) so the installer can
@@ -250,6 +331,45 @@ export function resolveDependencies(
   // a confirm prompt; here we just log so the install proceeds. Phase H-2
   // acceptance criteria called for "confirm prompt" — that lives in the
   // CLI (Phase F-1 extension) when this signal makes its way up.
+  if (state.out.length > WARN_PACKAGE_COUNT) {
+    log.warn('Large dependency tree', {
+      parent: parent.id,
+      packages: state.out.length,
+      sizeMb: Math.round(state.totalSize / (1024 * 1024)),
+    })
+  }
+  if (state.totalSize > WARN_TREE_SIZE_BYTES) {
+    log.warn('Dependency tree size exceeds soft limit', {
+      parent: parent.id,
+      sizeMb: Math.round(state.totalSize / (1024 * 1024)),
+      limitMb: Math.round(WARN_TREE_SIZE_BYTES / (1024 * 1024)),
+    })
+  }
+
+  return state.out
+}
+
+export async function resolveDependenciesAsync(
+  parent: Manifest,
+  options: ResolveOptions = {},
+): Promise<ResolvedDep[]> {
+  const directDeps = listDirectDeps(parent)
+  if (directDeps.length === 0) return []
+
+  const maxDepth = options.maxDepth ?? MAX_DEPTH
+  const state: ResolutionState = {
+    visiting: new Map(),
+    resolved: new Map(),
+    out: [],
+    totalSize: 0,
+  }
+
+  log.info('Resolving dependencies', { parent: parent.id, directCount: directDeps.length })
+
+  for (const { kind, spec } of directDeps) {
+    await visitDepAsync(state, spec, kind, parent.id, 1, maxDepth)
+  }
+
   if (state.out.length > WARN_PACKAGE_COUNT) {
     log.warn('Large dependency tree', {
       parent: parent.id,

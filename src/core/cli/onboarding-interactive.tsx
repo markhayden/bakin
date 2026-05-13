@@ -1,4 +1,4 @@
-import { render } from 'ink'
+import { render, renderToString, Text } from 'ink'
 import { useState } from 'react'
 import {
   MultiSelect,
@@ -90,6 +90,9 @@ export async function collectOnboardingSelections(opts: Pick<OnboardingOptions, 
 
   const pluginCheck = await recommendedPluginsComponent.check()
   const agentCheck = await recommendedAgentsComponent.check()
+  if (pluginCheck.status === 'missing' || agentCheck.status === 'missing') {
+    console.log(renderToString(<Text bold>Bakin onboarding</Text>))
+  }
 
   const selectedRecommendedPluginIds = pluginCheck.status === 'missing'
     ? await promptMultiSelect('Install official plugins', buildSelectionItems(pluginCheck))

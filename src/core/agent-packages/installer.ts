@@ -48,10 +48,10 @@ import {
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
 import {
   type FetchedSource,
-  fetchSource,
+  fetchSourceAsync,
 } from './source-fetcher'
 import {
-  resolveDependencies,
+  resolveDependenciesAsync,
   type ResolvedDep,
 } from './dependency-resolver'
 import {
@@ -274,7 +274,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
   try {
     // ─── 1. Fetch top-level source ─────────────────────────────────────────
     log.info('Fetching package source', { source: options.source })
-    topFetched = fetchSource(options.source)
+    topFetched = await fetchSourceAsync(options.source)
 
     // ─── 2. Parse + validate manifest ──────────────────────────────────────
     const manifestPath = join(topFetched.stagingDir, 'bakin-package.json')
@@ -351,7 +351,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     }
 
     // ─── 4. Resolve dependencies ───────────────────────────────────────────
-    const resolved = resolveDependencies(manifest)
+    const resolved = await resolveDependenciesAsync(manifest)
     for (const r of resolved) depFetched.push(r.fetched)
     for (const r of resolved) {
       validatePackageContributionIntegrity({
