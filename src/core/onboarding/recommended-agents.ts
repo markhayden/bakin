@@ -1,5 +1,6 @@
 import curatedCatalog from '../../../packages/host/src/data/curated-agents.json'
 import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
+import { getAgentState, type AgentState } from '../agent-packages/agent-state'
 import { installPackage } from '../agent-packages/installer'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 
@@ -23,6 +24,11 @@ interface CuratedAgentRow {
   ref?: string | null
   trust?: 'official' | 'verified' | 'community'
   defaultSelected?: boolean
+}
+
+interface AgentInstallCandidate {
+  agent: RecommendedAgent
+  state: AgentState
 }
 
 function catalogAgents(): RecommendedAgent[] {
@@ -59,15 +65,24 @@ function installedAgentIds(): Set<string> {
   return installed
 }
 
-function missingAgents(): RecommendedAgent[] {
+async function agentCandidates(): Promise<AgentInstallCandidate[]> {
   const installed = installedAgentIds()
-  return catalogAgents().filter(agent => !installed.has(agent.id))
+  const candidates: AgentInstallCandidate[] = []
+
+  for (const agent of catalogAgents()) {
+    if (installed.has(agent.id)) continue
+    const stateInfo = await getAgentState(agent.id)
+    if (stateInfo.state === 'managed' || stateInfo.state === 'adopted') continue
+    candidates.push({ agent, state: stateInfo.state })
+  }
+
+  return candidates
 }
 
 async function check(): Promise<CheckResult> {
-  let missing: RecommendedAgent[]
+  let candidates: AgentInstallCandidate[]
   try {
-    missing = missingAgents()
+    candidates = await agentCandidates()
   } catch (err) {
     return {
       name: 'recommended-agents',
@@ -76,7 +91,7 @@ async function check(): Promise<CheckResult> {
     }
   }
 
-  if (missing.length === 0) {
+  if (candidates.length === 0) {
     return {
       name: 'recommended-agents',
       status: 'ok',
@@ -85,11 +100,12 @@ async function check(): Promise<CheckResult> {
     }
   }
 
+  const byId = new Map(candidates.map(candidate => [candidate.agent.id, candidate.state]))
   return {
     name: 'recommended-agents',
     status: 'missing',
-    message: `${missing.length} official agent package${missing.length === 1 ? '' : 's'} not installed`,
-    remediation: 'Select official agents during onboarding or later with `bakin agents install github:markhayden/bakin-bits-official#agents/<id>`.',
+    message: `${candidates.length} official agent package${candidates.length === 1 ? '' : 's'} not installed or adopted`,
+    remediation: 'Select official agents during onboarding or later with `bakin agents install github:markhayden/bakin-bits-official#agents/<id> --adopt` for existing runtime agents.',
     details: {
       available: catalogAgents().map(agent => ({
         id: agent.id,
@@ -100,17 +116,19 @@ async function check(): Promise<CheckResult> {
         ref: agent.ref,
         trust: agent.trust,
         defaultSelected: agent.defaultSelected,
+        state: byId.get(agent.id) ?? 'installed',
       })),
-      missing: missing.map(agent => agent.id),
+      missing: candidates.map(candidate => candidate.agent.id),
+      adoptable: candidates.filter(candidate => candidate.state === 'unmanaged').map(candidate => candidate.agent.id),
     },
   }
 }
 
 async function install(opts: OnboardingOptions): Promise<InstallResult> {
   const start = Date.now()
-  let missing: RecommendedAgent[]
+  let candidates: AgentInstallCandidate[]
   try {
-    missing = missingAgents()
+    candidates = await agentCandidates()
   } catch (err) {
     return {
       name: 'recommended-agents',
@@ -120,7 +138,7 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
     }
   }
 
-  if (missing.length === 0) {
+  if (candidates.length === 0) {
     return {
       name: 'recommended-agents',
       status: 'noop',
@@ -133,9 +151,9 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
     ? new Set(opts.selectedRecommendedAgentIds)
     : null
   const selected = explicitSelectedIds
-    ? missing.filter(agent => explicitSelectedIds.has(agent.id))
+    ? candidates.filter(candidate => explicitSelectedIds.has(candidate.agent.id))
     : opts.autoApprove
-      ? missing.filter(agent => agent.defaultSelected)
+      ? candidates.filter(candidate => candidate.agent.defaultSelected)
       : []
 
   if (selected.length === 0) {
@@ -148,14 +166,20 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
   }
 
   const installed: string[] = []
+  const adopted: string[] = []
   const failures: string[] = []
-  for (const agent of selected) {
+  for (const { agent, state } of selected) {
     try {
+      opts.onProgress?.(state === 'unmanaged'
+        ? `Adopting existing agent ${agent.id}`
+        : `Installing official agent ${agent.id}`)
       await installPackage({
         source: sourceWithRef(agent.source, agent.ref),
         installAs: agent.id,
+        adopt: state === 'unmanaged',
       })
-      installed.push(agent.id)
+      if (state === 'unmanaged') adopted.push(agent.id)
+      else installed.push(agent.id)
     } catch (err) {
       failures.push(`${agent.id}: ${err instanceof Error ? err.message : String(err)}`)
     }
@@ -170,10 +194,15 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
     }
   }
 
+  const parts = [
+    installed.length > 0 ? `installed ${installed.join(', ')}` : null,
+    adopted.length > 0 ? `adopted ${adopted.join(', ')}` : null,
+  ].filter(Boolean)
+
   return {
     name: 'recommended-agents',
     status: 'installed',
-    message: `Installed official agent package${installed.length === 1 ? '' : 's'}: ${installed.join(', ')}`,
+    message: `Installed official agent package${selected.length === 1 ? '' : 's'}: ${parts.join('; ')}`,
     durationMs: Date.now() - start,
   }
 }

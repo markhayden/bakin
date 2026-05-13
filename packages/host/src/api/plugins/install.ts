@@ -23,7 +23,7 @@
 import { existsSync, readFileSync, mkdirSync, cpSync, rmSync, statSync, realpathSync } from 'fs'
 import { homedir } from 'os'
 import { join, basename, resolve, isAbsolute, sep } from 'path'
-import { execFileSync } from 'child_process'
+import { execFileSync, spawn } from 'child_process'
 import { createHash } from 'crypto'
 import { getContentDir } from '@/core/content-dir'
 import { createLogger } from '@/core/logger'
@@ -278,18 +278,40 @@ function formatGitError(err: unknown): string {
   return (stderr || stdout || maybe.message || String(err)).trim()
 }
 
-function cloneGithubSource(cloneUrl: string, stagingDir: string, ref: string): void {
+async function execFileAsync(cmd: string, args: string[], opts: { cwd?: string } = {}): Promise<void> {
+  return await new Promise((resolvePromise, reject) => {
+    const child = spawn(cmd, args, {
+      cwd: opts.cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    const stdout: Buffer[] = []
+    const stderr: Buffer[] = []
+
+    child.stdout?.on('data', (chunk: Buffer) => stdout.push(chunk))
+    child.stderr?.on('data', (chunk: Buffer) => stderr.push(chunk))
+    child.on('error', reject)
+    child.on('exit', (code) => {
+      if (code === 0) {
+        resolvePromise()
+        return
+      }
+      const error = new Error(`${cmd} ${args.join(' ')} exited with code ${code}`) as Error & {
+        stdout?: Buffer
+        stderr?: Buffer
+      }
+      error.stdout = Buffer.concat(stdout)
+      error.stderr = Buffer.concat(stderr)
+      reject(error)
+    })
+  })
+}
+
+async function cloneGithubSource(cloneUrl: string, stagingDir: string, ref: string): Promise<void> {
   try {
     if (ref) {
-      execFileSync('git', ['clone', '--depth', '1', '--branch', ref, '--', cloneUrl, stagingDir], {
-        stdio: 'pipe',
-        maxBuffer: 10 * 1024 * 1024,
-      })
+      await execFileAsync('git', ['clone', '--depth', '1', '--branch', ref, '--', cloneUrl, stagingDir])
     } else {
-      execFileSync('git', ['clone', '--depth', '1', '--', cloneUrl, stagingDir], {
-        stdio: 'pipe',
-        maxBuffer: 10 * 1024 * 1024,
-      })
+      await execFileAsync('git', ['clone', '--depth', '1', '--', cloneUrl, stagingDir])
     }
     return
   } catch (firstErr) {
@@ -299,15 +321,8 @@ function cloneGithubSource(cloneUrl: string, stagingDir: string, ref: string): v
     rmSync(stagingDir, { recursive: true, force: true })
     mkdirSync(stagingDir, { recursive: true })
     try {
-      execFileSync('git', ['clone', '--no-checkout', '--', cloneUrl, stagingDir], {
-        stdio: 'pipe',
-        maxBuffer: 10 * 1024 * 1024,
-      })
-      execFileSync('git', ['checkout', '--detach', ref], {
-        cwd: stagingDir,
-        stdio: 'pipe',
-        maxBuffer: 10 * 1024 * 1024,
-      })
+      await execFileAsync('git', ['clone', '--no-checkout', '--', cloneUrl, stagingDir])
+      await execFileAsync('git', ['checkout', '--detach', ref], { cwd: stagingDir })
       return
     } catch (fallbackErr) {
       const detail = formatGitError(fallbackErr) || formatGitError(firstErr)
@@ -453,7 +468,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         requestedRef = body.ref ?? parsedUrl.ref
 
         try {
-          cloneGithubSource(parsedUrl.url, stagingDir, requestedRef)
+          await cloneGithubSource(parsedUrl.url, stagingDir, requestedRef)
           gitProvenance = resolveGitProvenance(stagingDir, body.type, requestedRef)
         } catch (err) {
           rmSync(stagingDir, { recursive: true, force: true })

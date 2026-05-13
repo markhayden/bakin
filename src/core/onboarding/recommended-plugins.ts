@@ -177,6 +177,7 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
   }
 
   for (const plugin of plan.ordered) {
+    opts.onProgress?.(`Installing official plugin ${plugin.id}`)
     const result = await installSource(plugin.source)
     if (result.ok) installed.push(plugin.id)
     else failures.push(`${plugin.id}: ${result.error}`)

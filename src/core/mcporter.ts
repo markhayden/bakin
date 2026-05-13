@@ -10,7 +10,7 @@
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
-import { execSync } from 'child_process'
+import { execSync, spawn } from 'child_process'
 import { createLogger } from './logger'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import { createAppServices, maybeGetAppServices } from './app-services'
@@ -50,6 +50,33 @@ export function installMcporter(): boolean {
     log.error('Failed to install mcporter', err)
     return false
   }
+}
+
+export async function installMcporterAsync(): Promise<boolean> {
+  log.info('Installing mcporter globally...')
+  return await new Promise((resolve) => {
+    const child = spawn('npm', ['install', '-g', 'mcporter'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let stderr = ''
+
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf-8')
+    })
+    child.on('error', (err) => {
+      log.error('Failed to install mcporter', err)
+      resolve(false)
+    })
+    child.on('exit', (code) => {
+      if (code === 0) {
+        log.info('mcporter installed successfully')
+        resolve(true)
+        return
+      }
+      log.error('Failed to install mcporter', { code, stderr: stderr.trim() })
+      resolve(false)
+    })
+  })
 }
 
 /**

@@ -58,9 +58,11 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 let runtimeAgents: Array<{ id: string; identity?: { name?: string } }> = []
+let updateAllowlistError: Error | null = null
 
-const adapterCalls: { addAgent: unknown[]; addToAllowLists: unknown[] } = {
+const adapterCalls: { addAgent: unknown[]; removeAgent: unknown[]; addToAllowLists: unknown[] } = {
   addAgent: [],
+  removeAgent: [],
   addToAllowLists: [],
 }
 
@@ -126,6 +128,7 @@ function installRuntimeMock(): void {
       },
       update: async (id: string, input: { name?: string }) => ({ id, name: input.name ?? id, status: 'active' }),
       remove: async (id: string) => {
+        adapterCalls.removeAgent.push(id)
         runtimeAgents = runtimeAgents.filter((agent) => agent.id !== id)
       },
       readWorkspaceFile: async (agentId: string, path: string): Promise<WorkspaceFile | null> => {
@@ -158,6 +161,7 @@ function installRuntimeMock(): void {
       },
       updatePermissions: async () => {},
       updateAllowlist: async (agentId: string, patch: Record<string, unknown>) => {
+        if (updateAllowlistError) throw updateAllowlistError
         adapterCalls.addToAllowLists.push({ agentId, patch })
       },
       heartbeat: async () => true,
@@ -215,7 +219,9 @@ beforeEach(() => {
   mkdirSync(testDir, { recursive: true })
   mkdirSync(openClawDir, { recursive: true })
   runtimeAgents = []
+  updateAllowlistError = null
   adapterCalls.addAgent.length = 0
+  adapterCalls.removeAgent.length = 0
   adapterCalls.addToAllowLists.length = 0
   installRuntimeMock()
 })
@@ -449,6 +455,20 @@ describe('installPackage — refuse paths', () => {
     expect(existsSync(join(testDir, 'packages', 'agents', 'x@0.0.0'))).toBe(false)
     expect(adapterCalls.addAgent).toHaveLength(0)
     expect(isInstallLockHeld()).toBe(false)
+  })
+
+  it('removes a freshly-created runtime agent when later install work fails', async () => {
+    const src = seedAgentPackage()
+    updateAllowlistError = new Error('allowlist failed')
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow(/allowlist failed/)
+
+    expect(adapterCalls.addAgent).toHaveLength(1)
+    expect(adapterCalls.removeAgent).toEqual(['pixel'])
+    expect(runtimeAgents.some(agent => agent.id === 'pixel')).toBe(false)
+    expect(Object.keys(readLockfile().packages)).toEqual([])
   })
 
   it('refuses an agent package when a contributed lesson file is missing', async () => {

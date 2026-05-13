@@ -20,6 +20,7 @@ interface CatalogChoice {
   name?: string;
   description?: string;
   defaultSelected?: boolean;
+  state?: string;
 }
 
 export interface OnboardingSelections {
@@ -42,6 +43,7 @@ function choicesFromCheck(check: CheckResult): CatalogChoice[] {
       description:
         typeof entry.description === "string" ? entry.description : undefined,
       defaultSelected: entry.defaultSelected === true,
+      state: typeof entry.state === "string" ? entry.state : undefined,
     }))
     .filter((choice) => choice.id.length > 0);
 }
@@ -61,10 +63,13 @@ export function buildSelectionItems(check: CheckResult): MultiSelectItem[] {
   return choicesFromCheck(check).map((choice) => ({
     id: choice.id,
     label: choice.name ?? choice.id,
-    description: choice.description,
+    description:
+      choice.state === "unmanaged"
+        ? `${choice.description ?? ""} Adopt existing runtime agent.`.trim()
+        : choice.description,
     selected: missing.has(choice.id) && choice.defaultSelected === true,
     disabled: !missing.has(choice.id),
-    note: missing.has(choice.id) ? undefined : "installed",
+    note: missing.has(choice.id) ? undefined : choice.state ?? "installed",
   }));
 }
 
