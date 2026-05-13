@@ -65,9 +65,29 @@ describe('onboarding CLI UI', () => {
     expect(rendered).toContain('https://makinbakin.com/docs/start/first-time-setup/')
   })
 
+  it('compacts home paths in the human onboarding summary', () => {
+    const home = process.env.HOME
+    if (!home) return
+
+    const outcomes: ComponentOutcome[] = [
+      {
+        name: 'settings',
+        finalStatus: 'ok',
+        check: { name: 'settings', status: 'ok', message: 'settings ready' },
+        message: `settings.json is present and parses at ${home}/.bakin/settings.json`,
+        durationMs: 1,
+      },
+    ]
+
+    const rendered = renderToString(<OnboardingSummary outcomes={outcomes} exitCode={0} />)
+    expect(rendered).toContain('settings.json ready: ~/.bakin/settings.json')
+    expect(rendered).not.toContain(`${home}/.bakin/settings.json`)
+  })
+
   it('renders an async onboarding busy state', () => {
     const rendered = renderToString(<OnboardingBusy label="Running onboarding checks and installs" />)
     expect(rendered).toContain('Running onboarding checks and installs')
+    expect(rendered).toContain('Checking prerequisites and runtime access')
   })
 
   it('renders bounded onboarding progress with Ink UI', () => {

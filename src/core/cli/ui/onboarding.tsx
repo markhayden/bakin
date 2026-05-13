@@ -1,7 +1,15 @@
+import { useEffect, useMemo, useState } from 'react'
 import { Box, Text } from 'ink'
-import { ProgressBar, Spinner } from '@inkjs/ui'
+import { Alert, ProgressBar, Spinner } from '@inkjs/ui'
 import { Report, type ReportRow } from './report'
 import type { ComponentOutcome } from '../../onboarding'
+
+const ONBOARDING_BUSY_DETAILS = [
+  'Checking prerequisites and runtime access',
+  'Verifying local search and model dependencies',
+  'Installing selected plugins and agents',
+  'Writing Bakin configuration and assets',
+]
 
 export function onboardingStatus(status: ComponentOutcome['finalStatus']): ReportRow['status'] {
   switch (status) {
@@ -34,7 +42,7 @@ export function OnboardingSummary({ outcomes, exitCode }: {
             rows: prerequisites.map(outcome => ({
               label: outcome.name,
               status: onboardingStatus(outcome.finalStatus),
-              message: outcome.message,
+              message: formatOnboardingMessage(outcome.message),
               remediation: outcome.finalStatus === 'error' || outcome.finalStatus === 'warn' ? outcome.remediation : undefined,
             })),
           },
@@ -43,7 +51,7 @@ export function OnboardingSummary({ outcomes, exitCode }: {
             rows: setup.map(outcome => ({
               label: outcome.name,
               status: onboardingStatus(outcome.finalStatus),
-              message: outcome.message,
+              message: formatOnboardingMessage(outcome.message),
               remediation: outcome.finalStatus === 'error' || outcome.finalStatus === 'warn' ? outcome.remediation : undefined,
             })),
           },
@@ -51,23 +59,40 @@ export function OnboardingSummary({ outcomes, exitCode }: {
       />
       <Box flexDirection="column" marginTop={1}>
         {blocker ? (
-          <>
-            <Text color="red" bold>Onboarding blocked</Text>
-            <Text>{blocker.message}</Text>
-            {blocker.remediation ? <Text dimColor>{blocker.remediation}</Text> : null}
-          </>
+          <Alert variant="error" title="Onboarding blocked">
+            {blocker.remediation ? `${blocker.message}\n${blocker.remediation}` : blocker.message}
+          </Alert>
         ) : exitCode === 0 ? (
-          <Text color="green">Onboarding complete. Run `bakin start` to launch Bakin.</Text>
+          <Alert variant="success">Onboarding complete. Run `bakin start` to launch Bakin.</Alert>
         ) : (
-          <Text color="yellow">Onboarding finished with warnings. Run `bakin doctor` for details.</Text>
+          <Alert variant="warning">Onboarding finished with warnings. Run `bakin doctor` for details.</Alert>
         )}
       </Box>
     </Box>
   )
 }
 
-export function OnboardingBusy({ label = 'Running onboarding' }: { label?: string }) {
-  return <Spinner label={label} />
+export function OnboardingBusy({ label = 'Running onboarding', details = ONBOARDING_BUSY_DETAILS }: {
+  label?: string
+  details?: string[]
+}) {
+  const safeDetails = useMemo(() => details.length > 0 ? details : ONBOARDING_BUSY_DETAILS, [details])
+  const [detailIndex, setDetailIndex] = useState(0)
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setDetailIndex(index => (index + 1) % safeDetails.length)
+    }, 1200)
+
+    return () => clearInterval(timer)
+  }, [safeDetails.length])
+
+  return (
+    <Box flexDirection="column" marginTop={1}>
+      <Spinner label={label} />
+      <Text dimColor>  {safeDetails[detailIndex]}</Text>
+    </Box>
+  )
 }
 
 export function OnboardingProgress({ label, value }: { label: string; value: number }) {
@@ -77,4 +102,17 @@ export function OnboardingProgress({ label, value }: { label: string; value: num
       <ProgressBar value={value} />
     </Box>
   )
+}
+
+function formatOnboardingMessage(message: string): string {
+  const home = process.env.HOME
+  const compacted = home ? message.replaceAll(home, '~') : message
+
+  return compacted
+    .replace(/^Bakin home directory is initialized at (.+)$/, 'Bakin home ready: $1')
+    .replace(/^settings\.json is present and parses at (.+)$/, 'settings.json ready: $1')
+    .replace(/^All (\d+) Termite models present at (.+)$/, '$1 Termite models ready: $2')
+    .replace(/^mcporter is installed and configured at (.+)$/, 'mcporter ready: $1')
+    .replace(/^0 plugin assets to install \(no plugin ships defaults\/runtime-skills\/\)$/, 'No plugin assets to install')
+    .replace(/^0 agent-package projections \(no agent or pack installed yet\)$/, 'No agent-package projections yet')
 }
