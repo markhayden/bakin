@@ -1600,19 +1600,40 @@ async function cmdOnboard(args: string[]): Promise<void> {
     const selections = await collectOnboardingSelections(baseOpts)
     const opts = { ...baseOpts, ...selections }
 
-    const busy = isTTY && !json
-      ? render(createElement(OnboardingBusy, { label: 'Running onboarding checks and installs' }))
-      : null
-    const result = await runOnboard({
-      ...opts,
-      onProgress: busy
-        ? (detail: string) => busy?.rerender(createElement(OnboardingBusy, {
-          label: 'Running onboarding checks and installs',
-          detail,
-        }))
-        : undefined,
+    let busyFrame = 0
+    let busyDetail: string | undefined
+    let busyTimer: ReturnType<typeof setInterval> | undefined
+    const renderBusy = () => createElement(OnboardingBusy, {
+      label: 'Running onboarding checks and installs',
+      detail: busyDetail,
+      frame: busyFrame,
     })
-    busy?.unmount()
+    const busy = isTTY && !json
+      ? render(renderBusy())
+      : null
+    if (busy) {
+      busyTimer = setInterval(() => {
+        busyFrame += 1
+        busy.rerender(renderBusy())
+      }, 80)
+    }
+
+    let result: Awaited<ReturnType<typeof runOnboard>>
+    try {
+      result = await runOnboard({
+        ...opts,
+        onProgress: busy
+          ? (detail: string) => {
+            busyDetail = detail
+            busyFrame += 1
+            busy.rerender(renderBusy())
+          }
+          : undefined,
+      })
+    } finally {
+      if (busyTimer) clearInterval(busyTimer)
+      busy?.unmount()
+    }
 
     if (!json) {
       if (isTTY) {

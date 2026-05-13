@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
 import { Box, Text } from 'ink'
-import { Alert, ProgressBar, Spinner } from '@inkjs/ui'
-import { Report, type ReportRow } from './report'
+import { Alert, ProgressBar } from '@inkjs/ui'
+import { BAKIN_PINK, Report, type ReportRow } from './report'
 import type { ComponentOutcome } from '../../onboarding'
 
 const ONBOARDING_BUSY_DETAILS = [
@@ -10,6 +9,8 @@ const ONBOARDING_BUSY_DETAILS = [
   'Installing selected plugins and agents',
   'Writing Bakin configuration and assets',
 ]
+
+const ONBOARDING_SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
 export function onboardingStatus(status: ComponentOutcome['finalStatus']): ReportRow['status'] {
   switch (status) {
@@ -72,26 +73,23 @@ export function OnboardingSummary({ outcomes, exitCode }: {
   )
 }
 
-export function OnboardingBusy({ label = 'Running onboarding', detail, details = ONBOARDING_BUSY_DETAILS }: {
+export function OnboardingBusy({ label = 'Running onboarding', detail, frame = 0, details = ONBOARDING_BUSY_DETAILS }: {
   label?: string
   detail?: string
+  frame?: number
   details?: string[]
 }) {
-  const safeDetails = useMemo(() => details.length > 0 ? details : ONBOARDING_BUSY_DETAILS, [details])
-  const [detailIndex, setDetailIndex] = useState(0)
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setDetailIndex(index => (index + 1) % safeDetails.length)
-    }, 1200)
-
-    return () => clearInterval(timer)
-  }, [safeDetails.length])
+  const safeDetails = details.length > 0 ? details : ONBOARDING_BUSY_DETAILS
+  const spinnerFrame = ONBOARDING_SPINNER_FRAMES[frame % ONBOARDING_SPINNER_FRAMES.length]
+  const fallbackDetail = safeDetails[Math.floor(frame / 12) % safeDetails.length]
 
   return (
     <Box flexDirection="column" marginTop={1}>
-      <Spinner label={label} />
-      <Text dimColor>  {detail ?? safeDetails[detailIndex]}</Text>
+      <Box>
+        <Text color={BAKIN_PINK}>{spinnerFrame}</Text>
+        <Text bold> {label}</Text>
+      </Box>
+      <Text dimColor>  {detail ?? fallbackDetail}</Text>
     </Box>
   )
 }
