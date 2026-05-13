@@ -79,7 +79,7 @@ export function OnboardingFinalStatus({ outcomes, exitCode }: {
       ) : exitCode === 0 ? (
         <Alert variant="success">Onboarding complete. Run `bakin start` to launch Bakin.</Alert>
       ) : (
-        <Alert variant="warning">Onboarding finished with warnings. Run `bakin doctor` for details.</Alert>
+        <Alert variant="warning">Onboarding finished with warnings. Run `bakin start`, then `bakin doctor` for details.</Alert>
       )}
     </Box>
   )

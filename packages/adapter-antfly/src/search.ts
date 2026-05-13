@@ -96,6 +96,10 @@ const TRANSIENT_BATCH_ERROR_PATTERNS = [
   'socket hang up',
 ]
 
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 export class AntflySearchAdapter implements SearchAdapter {
   readonly name = 'antfly'
   readonly version = '0.1.0'
@@ -142,7 +146,7 @@ export class AntflySearchAdapter implements SearchAdapter {
 
     const client = new AntflyClient(config)
     try {
-      const status = await client.getStatus()
+      const status = await this.waitForOperationalClient(client)
       this.client = client
       this.embedderHashAtInit = this.embedderHash()
       this.logger.info('Antfly connected', { url: this.settings.url, health: status?.health })
@@ -150,6 +154,26 @@ export class AntflySearchAdapter implements SearchAdapter {
       this.client = null
       this.logger.error('Failed to connect to Antfly - falling back to file-only mode', err)
     }
+  }
+
+  private async waitForOperationalClient(client: AntflyClient, timeoutMs = 15000): Promise<{ health?: unknown }> {
+    const startedAt = Date.now()
+    let lastError: unknown
+
+    while (Date.now() - startedAt < timeoutMs) {
+      try {
+        const status = await client.getStatus()
+        await client.tables.list()
+        return status as { health?: unknown }
+      } catch (err) {
+        lastError = err
+        await sleep(500)
+      }
+    }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error('Antfly did not become operational before timeout')
   }
 
   async shutdown(): Promise<void> {

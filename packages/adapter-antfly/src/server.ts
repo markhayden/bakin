@@ -28,6 +28,10 @@ let antflyProcess: ChildProcess | null = null
 let isRunning = false
 let recheckTimer: NodeJS.Timeout | null = null
 
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 function unquoteAntflyValue(value: string): string {
   if (value.startsWith('"') && value.endsWith('"')) {
     return value.slice(1, -1).replace(/\\"/g, '"')
@@ -131,6 +135,12 @@ export async function startAntflyServer(
   const url = settings.url
 
   if (await isAlreadyRunning(url)) {
+    const stable = await waitForReady(url, 3000, 3)
+    if (!stable) {
+      logger.warn('Antfly status endpoint is responding but not stable yet', { url })
+      return false
+    }
+
     logger.info('Antfly already running', { url })
     isRunning = true
     scheduleExternalRecheck(settings, logger)
@@ -247,12 +257,21 @@ async function isAlreadyRunning(url: string): Promise<boolean> {
   }
 }
 
-async function waitForReady(url: string, timeoutMs = 15000): Promise<boolean> {
+async function waitForReady(url: string, timeoutMs = 15000, stableChecks = 1): Promise<boolean> {
   const start = Date.now()
+  let consecutiveReadyChecks = 0
+
   while (Date.now() - start < timeoutMs) {
-    if (await isAlreadyRunning(url)) return true
-    await new Promise(r => setTimeout(r, 500))
+    if (await isAlreadyRunning(url)) {
+      consecutiveReadyChecks += 1
+      if (consecutiveReadyChecks >= stableChecks) return true
+    } else {
+      consecutiveReadyChecks = 0
+    }
+
+    await sleep(500)
   }
+
   return false
 }
 
