@@ -18,6 +18,7 @@ import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
 import { toast } from "@bakin/sdk/hooks"
 import type { Task, ColumnId } from '../types'
 import { isRenderableAssetImageFilename } from '../lib/output-assets'
+import { createShortClientId } from '../lib/client-id'
 
 /** Normalize step output — handles string (possibly JSON), object, or unexpected types. */
 function normalizeOutput(raw: unknown): Record<string, unknown> {
@@ -147,7 +148,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
   const [pasting, setPasting] = useState(false)
   const descriptionRef = useRef<HTMLTextAreaElement>(null)
   // Provisional ID for new tasks — ensures pasted assets land in the right directory
-  const [provisionalId] = useState(() => crypto.randomUUID().slice(0, 8))
+  const [provisionalId] = useState(() => createShortClientId())
   const [logMessage, setLogMessage] = useState('')
   const [addingLog, setAddingLog] = useState(false)
   const [showAllNotes, setShowAllNotes] = useState(false)
