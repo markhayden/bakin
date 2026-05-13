@@ -869,7 +869,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         if (!existsSync(profilePath)) return null as T
         return JSON.parse(readFileSync(profilePath, 'utf-8')) as T
       }
-      const config = readOpenClawConfig() ?? {}
+      const config = readOpenClawConfig()
+      if (!config) return null as T
       return (key === '*' ? config : readPath(config as Record<string, unknown>, key)) as T
     },
   }

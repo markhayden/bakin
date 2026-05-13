@@ -142,17 +142,6 @@ async function check(): Promise<CheckResult> {
     }
   }
 
-  const available = await runtime.ping().catch(() => false)
-  if (!available) {
-    return {
-      name: 'runtime',
-      status: 'missing',
-      message: `${runtime.name} runtime adapter is not reachable`,
-      remediation: SETUP_MESSAGE,
-      details: { runtime: runtime.name, installUrl: SETUP_URL },
-    }
-  }
-
   let config: RuntimeConfigForIntegrity | null
   try {
     config = await readAllowedRuntimeConfigRaw<RuntimeConfigForIntegrity>(
@@ -175,6 +164,17 @@ async function check(): Promise<CheckResult> {
       name: 'runtime',
       status: 'missing',
       message: `${runtime.name} runtime config is not present`,
+      remediation: SETUP_MESSAGE,
+      details: { runtime: runtime.name, installUrl: SETUP_URL },
+    }
+  }
+
+  const available = await runtime.ping().catch(() => false)
+  if (!available) {
+    return {
+      name: 'runtime',
+      status: 'missing',
+      message: `${runtime.name} runtime adapter is not reachable`,
       remediation: SETUP_MESSAGE,
       details: { runtime: runtime.name, installUrl: SETUP_URL },
     }
