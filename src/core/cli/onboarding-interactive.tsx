@@ -91,6 +91,21 @@ function ConfirmStep({ title, description, defaultChoice, onSubmit }: {
   )
 }
 
+function OnboardingIntro() {
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Text bold>Bakin onboarding</Text>
+      <Text dimColor>
+        This wizard will walk you through the initial Bakin setup. You will choose official plugins and agents,
+        approve required local dependencies, and then Bakin will run the setup steps with live progress.
+      </Text>
+      <Text dimColor>
+        You can decline optional installs and rerun `bakin onboard` later.
+      </Text>
+    </Box>
+  )
+}
+
 export async function promptMultiSelect(title: string, items: MultiSelectItem[]): Promise<string[]> {
   if (items.filter(item => !item.disabled).length === 0) return []
 
@@ -139,10 +154,17 @@ export async function collectOnboardingSelections(opts: Pick<OnboardingOptions, 
   const agentCheck = await recommendedAgentsComponent.check()
   const hasWizardSteps = [searchCheck, searchModelsCheck, mcporterCheck, pluginCheck, agentCheck].some(check => check.status === 'missing' || check.status === 'broken')
   if (hasWizardSteps) {
-    console.log(renderToString(<Text bold>Bakin onboarding</Text>))
+    console.log(renderToString(<OnboardingIntro />))
   }
 
   const approvedComponents: string[] = []
+  const selectedRecommendedPluginIds = pluginCheck.status === 'missing'
+    ? await promptMultiSelect('Install official plugins', buildSelectionItems(pluginCheck))
+    : undefined
+  const selectedRecommendedAgentIds = agentCheck.status === 'missing'
+    ? await promptMultiSelect('Install official agents', buildSelectionItems(agentCheck))
+    : undefined
+
   const searchNeedsInstall = searchCheck.status === 'missing' || searchCheck.status === 'broken'
   const searchApproved = searchNeedsInstall
     ? await promptConfirm(
@@ -170,13 +192,6 @@ export async function collectOnboardingSelections(opts: Pick<OnboardingOptions, 
     )
     if (approved) approvedComponents.push('mcporter')
   }
-
-  const selectedRecommendedPluginIds = pluginCheck.status === 'missing'
-    ? await promptMultiSelect('Install official plugins', buildSelectionItems(pluginCheck))
-    : undefined
-  const selectedRecommendedAgentIds = agentCheck.status === 'missing'
-    ? await promptMultiSelect('Install official agents', buildSelectionItems(agentCheck))
-    : undefined
 
   return {
     selectedRecommendedPluginIds,
