@@ -1,4 +1,4 @@
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
+import { accessSync, closeSync, constants, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
@@ -54,7 +54,7 @@ interface OpenClawSettings {
 }
 
 const DEFAULT_SETTINGS: OpenClawSettings = {
-  binaryPath: process.env.OPENCLAW_PATH || '/opt/homebrew/bin/openclaw',
+  binaryPath: process.env.OPENCLAW_PATH || findOpenClawBinary() || '/opt/homebrew/bin/openclaw',
   gatewayUrl: 'http://127.0.0.1',
   gatewayPort: 18789,
 }
@@ -994,7 +994,40 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
 function mergeSettings(raw: Record<string, unknown> | undefined): OpenClawSettings {
   const input = (raw ?? {}) as Partial<OpenClawSettings>
-  return { ...DEFAULT_SETTINGS, ...input }
+  const requestedBinary = typeof input.binaryPath === 'string'
+    ? input.binaryPath
+    : DEFAULT_SETTINGS.binaryPath
+  return {
+    ...DEFAULT_SETTINGS,
+    ...input,
+    binaryPath: resolveOpenClawBinary(requestedBinary),
+  }
+}
+
+function isExecutable(path: string | undefined): path is string {
+  if (!path) return false
+  try {
+    accessSync(path, constants.X_OK)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function findOpenClawBinary(): string | null {
+  const candidates = [
+    process.env.OPENCLAW_PATH,
+    ...((process.env.PATH ?? '').split(':').filter(Boolean).map(dir => join(dir, 'openclaw'))),
+    '/opt/homebrew/bin/openclaw',
+    '/usr/local/bin/openclaw',
+  ]
+
+  return candidates.find(isExecutable) ?? null
+}
+
+function resolveOpenClawBinary(requested: string): string {
+  if (isExecutable(requested)) return requested
+  return findOpenClawBinary() ?? requested
 }
 
 function writeOpenClawConfig(config: Record<string, unknown>): void {
