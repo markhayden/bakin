@@ -153,6 +153,33 @@ async function check(): Promise<CheckResult> {
     }
   }
 
+  let config: RuntimeConfigForIntegrity | null
+  try {
+    config = await readAllowedRuntimeConfigRaw<RuntimeConfigForIntegrity>(
+      runtime,
+      '*',
+      'onboarding.runtime.integrity'
+    )
+  } catch (err) {
+    return {
+      name: 'runtime',
+      status: 'broken',
+      message: `Runtime config could not be read: ${err instanceof Error ? err.message : String(err)}`,
+      remediation: 'Fix or regenerate the runtime config, then rerun onboarding.',
+      details: { runtime: runtime.name, parseError: String(err) },
+    }
+  }
+
+  if (!config) {
+    return {
+      name: 'runtime',
+      status: 'missing',
+      message: `${runtime.name} runtime config is not present`,
+      remediation: SETUP_MESSAGE,
+      details: { runtime: runtime.name, installUrl: SETUP_URL },
+    }
+  }
+
   let agents: RuntimeAgent[]
   try {
     agents = await runtime.agents.list()
@@ -174,23 +201,6 @@ async function check(): Promise<CheckResult> {
       message: 'Runtime adapter returned no agents',
       remediation: 'Create at least one orchestrator agent, then rerun onboarding.',
       details: { runtime: runtime.name, installUrl: SETUP_URL },
-    }
-  }
-
-  let config: RuntimeConfigForIntegrity | null
-  try {
-    config = await readAllowedRuntimeConfigRaw<RuntimeConfigForIntegrity>(
-      runtime,
-      '*',
-      'onboarding.runtime.integrity'
-    )
-  } catch (err) {
-    return {
-      name: 'runtime',
-      status: 'broken',
-      message: `Runtime config could not be read: ${err instanceof Error ? err.message : String(err)}`,
-      remediation: 'Fix or regenerate the runtime config, then rerun onboarding.',
-      details: { runtime: runtime.name, parseError: String(err) },
     }
   }
 

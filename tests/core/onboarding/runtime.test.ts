@@ -82,6 +82,16 @@ describe('onboarding runtime component', () => {
       expect(result.message).toContain('not reachable')
     })
 
+    it('reports missing when the runtime config is absent before reading agents', async () => {
+      runtimeAgents = []
+      runtimeConfig = null
+
+      const result = await runtimeComponent.check()
+      expect(result.status).toBe('missing')
+      expect(result.message).toContain('runtime config is not present')
+      expect(result.remediation).toContain(RUNTIME_SETUP_URL)
+    })
+
     it('reports broken when the runtime returns no agents', async () => {
       runtimeAgents = []
       runtimeConfig = { agents: { list: [] } }
