@@ -43,6 +43,8 @@ export interface OnboardingOptions {
   selectedRecommendedPluginIds?: readonly string[]
   /** Explicit official agent ids selected by the TUI. Undefined means use defaults/prompts. */
   selectedRecommendedAgentIds?: readonly string[]
+  /** Optional human UI progress callback. Never used for JSON output. */
+  onProgress?: (message: string) => void
 }
 
 export interface OnboardingComponent {

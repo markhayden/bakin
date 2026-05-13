@@ -1,5 +1,6 @@
-import { MultiSelect as InkMultiSelect, ThemeProvider, defaultTheme, extendTheme } from '@inkjs/ui'
+import { Badge, MultiSelect as InkMultiSelect, ThemeProvider, defaultTheme, extendTheme } from '@inkjs/ui'
 import { Box, Text } from 'ink'
+import { BAKIN_PINK } from './report'
 
 export interface MultiSelectItem {
   id: string
@@ -73,20 +74,19 @@ const multiSelectTheme = extendTheme(defaultTheme, {
   components: {
     MultiSelect: {
       styles: {
-        focusIndicator: () => ({ color: 'cyan' }),
-        selectedIndicator: () => ({ color: 'gray', dimColor: true }),
+        focusIndicator: () => ({ color: BAKIN_PINK }),
+        selectedIndicator: () => ({ color: BAKIN_PINK }),
         label: ({ isFocused }: { isFocused: boolean }) => ({
-          color: isFocused ? 'cyan' : undefined,
+          color: isFocused ? BAKIN_PINK : undefined,
         }),
       },
     },
   },
 })
 
-function optionLabel(item: MultiSelectItem, selected: boolean): string {
-  const marker = selected ? '◉' : '○'
+function optionLabel(item: MultiSelectItem): string {
   const name = `[${item.label}]`
-  return item.description ? `${marker} ${name} ${item.description}` : `${marker} ${name}`
+  return item.description ? `${name} ${item.description}` : name
 }
 
 export function MultiSelect({ title, items, state, onChange, onSubmit, marginTop = 0 }: MultiSelectProps) {
@@ -94,12 +94,12 @@ export function MultiSelect({ title, items, state, onChange, onSubmit, marginTop
   const disabledItems = items.filter(item => item.disabled)
   const options = enabledItems.map(item => ({
     value: item.id,
-    label: optionLabel(item, state.selectedIds.has(item.id)),
+    label: optionLabel(item),
   }))
 
   return (
     <Box flexDirection="column" marginTop={marginTop}>
-      <Text bold>{title}</Text>
+      <Badge color={BAKIN_PINK}>{title}</Badge>
       <Text dimColor>Use up/down to move, space to select, enter to continue.</Text>
       <Box flexDirection="column">
         <ThemeProvider theme={multiSelectTheme}>
@@ -117,7 +117,7 @@ export function MultiSelect({ title, items, state, onChange, onSubmit, marginTop
           <Box flexDirection="column" marginTop={1}>
             {disabledItems.map(item => (
               <Text key={item.id} color="gray">
-                {optionLabel(item, false)}{item.note ? ` (${item.note})` : ''}
+                {optionLabel(item)}{item.note ? ` (${item.note})` : ''}
               </Text>
             ))}
           </Box>

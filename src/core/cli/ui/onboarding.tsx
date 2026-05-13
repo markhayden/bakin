@@ -72,8 +72,9 @@ export function OnboardingSummary({ outcomes, exitCode }: {
   )
 }
 
-export function OnboardingBusy({ label = 'Running onboarding', details = ONBOARDING_BUSY_DETAILS }: {
+export function OnboardingBusy({ label = 'Running onboarding', detail, details = ONBOARDING_BUSY_DETAILS }: {
   label?: string
+  detail?: string
   details?: string[]
 }) {
   const safeDetails = useMemo(() => details.length > 0 ? details : ONBOARDING_BUSY_DETAILS, [details])
@@ -90,7 +91,7 @@ export function OnboardingBusy({ label = 'Running onboarding', details = ONBOARD
   return (
     <Box flexDirection="column" marginTop={1}>
       <Spinner label={label} />
-      <Text dimColor>  {safeDetails[detailIndex]}</Text>
+      <Text dimColor>  {detail ?? safeDetails[detailIndex]}</Text>
     </Box>
   )
 }

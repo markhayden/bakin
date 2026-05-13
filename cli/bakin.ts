@@ -1603,7 +1603,15 @@ async function cmdOnboard(args: string[]): Promise<void> {
     const busy = isTTY && !json
       ? render(createElement(OnboardingBusy, { label: 'Running onboarding checks and installs' }))
       : null
-    const result = await runOnboard(opts)
+    const result = await runOnboard({
+      ...opts,
+      onProgress: busy
+        ? (detail: string) => busy?.rerender(createElement(OnboardingBusy, {
+          label: 'Running onboarding checks and installs',
+          detail,
+        }))
+        : undefined,
+    })
     busy?.unmount()
 
     if (!json) {
