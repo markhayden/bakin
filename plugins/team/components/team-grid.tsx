@@ -116,19 +116,21 @@ export function AgentCardNode({ data }: NodeProps) {
     >
       <Handle type="target" position={Position.Top} className="!bg-zinc-600" />
       <div className="relative w-full" style={{ paddingBottom: '100%' }}>
-        <img
-          src={agent.headshot}
-          alt={agent.name}
-          className="absolute inset-0 w-full h-full object-cover object-top"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-        />
-        <div
-          className="absolute inset-0 flex items-center justify-center text-4xl"
-          style={{ display: 'none' }}
-          aria-hidden
-        >
-          {agent.emoji}
-        </div>
+        {agent.headshot ? (
+          <img
+            src={agent.headshot}
+            alt={agent.name}
+            className="absolute inset-0 w-full h-full object-cover object-top"
+          />
+        ) : (
+          <div
+            className="absolute inset-0 flex items-center justify-center text-5xl text-white"
+            style={{ backgroundColor: accentColor }}
+            aria-hidden
+          >
+            {agent.emoji || agent.name.charAt(0).toUpperCase()}
+          </div>
+        )}
         <div className="absolute top-2 right-2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-950/80 backdrop-blur-sm shadow-lg">
           <span className={`size-2 rounded-full ${dotColor}`} />
           <span className="text-xs font-medium text-zinc-100 leading-none">{statusLabel}</span>
