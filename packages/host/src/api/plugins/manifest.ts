@@ -11,7 +11,7 @@
  * registered by the plugin's `client.mjs` at runtime via `registerPlugin`,
  * so they don't live in the manifest.
  */
-import { existsSync } from 'fs'
+import { existsSync, statSync } from 'fs'
 import { join } from 'path'
 import { isCorePlugin, pluginRegistry } from '@/lib/plugin-registry'
 import { getContentDir } from '@/core/content-dir'
@@ -30,6 +30,7 @@ interface ManifestPlugin {
   name: string
   version: string
   clientEntry?: string
+  clientVersion?: string
   /** Optional stylesheet URL — present only if the plugin build emitted one. */
   clientCss?: string
   /** Where the plugin came from. `core` ships with the binary; `github`/`local` are user-installed. */
@@ -69,12 +70,33 @@ function daysSince(iso: string): number {
  * map wins for every core plugin, so probe it first to avoid a syscall
  * for each plugin on every manifest fetch.
  */
+function pluginAssetPath(pluginId: string, relPath: string): string | null {
+  const embeddedPath = EMBEDDED_ASSETS.get(`/api/plugins/${pluginId}/assets/${relPath}`)
+  if (embeddedPath && existsSync(embeddedPath)) return embeddedPath
+
+  const userPath = join(getContentDir(), 'plugins', pluginId, 'dist', relPath)
+  if (existsSync(userPath)) return userPath
+
+  const repoPath = join(process.cwd(), 'plugins', pluginId, 'dist', relPath)
+  if (existsSync(repoPath)) return repoPath
+
+  return null
+}
+
+function pluginAssetVersion(pluginId: string, relPath: string): string | null {
+  const path = pluginAssetPath(pluginId, relPath)
+  if (!path) return null
+  try {
+    const stat = statSync(path)
+    if (!stat.isFile()) return null
+    return String(Math.trunc(stat.mtimeMs))
+  } catch {
+    return null
+  }
+}
+
 function hasClientCss(pluginId: string): boolean {
-  const relPath = 'client.css'
-  if (EMBEDDED_ASSETS.has(`/api/plugins/${pluginId}/assets/${relPath}`)) return true
-  if (existsSync(join(getContentDir(), 'plugins', pluginId, 'dist', relPath))) return true
-  if (existsSync(join(process.cwd(), 'plugins', pluginId, 'dist', relPath))) return true
-  return false
+  return pluginAssetVersion(pluginId, 'client.css') !== null
 }
 
 export async function get(req: Request): Promise<Response> {
@@ -142,9 +164,13 @@ export async function get(req: Request): Promise<Response> {
       status: entry.status,
       contributes: entry.contributes,
     }
-    if (entry.status === 'active') {
+    const clientVersion = entry.status === 'active'
+      ? pluginAssetVersion(entry.id, 'client.js')
+      : null
+    if (entry.status === 'active' && clientVersion) {
       plugin.clientEntry = `/api/plugins/${entry.id}/assets/client.js`
-    } else {
+      plugin.clientVersion = clientVersion
+    } else if (entry.status === 'failed') {
       plugin.errorCode = entry.errorCode
       plugin.errorMessage = entry.errorMessage
       plugin.missingDependencies = entry.missingDependencies
