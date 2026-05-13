@@ -1,5 +1,5 @@
 import { Box, Text } from 'ink'
-import { Alert, ProgressBar } from '@inkjs/ui'
+import { Alert, Badge, ProgressBar } from '@inkjs/ui'
 import { BAKIN_PINK, Report, type ReportRow } from './report'
 import { StatusBadge } from './status'
 import type { ComponentOutcome } from '../../onboarding'
@@ -134,7 +134,7 @@ function CompletedGroup({ title, rows, marginTop = 0 }: {
 }) {
   return (
     <Box flexDirection="column" marginTop={marginTop}>
-      <Text color={BAKIN_PINK} bold>{title}</Text>
+      <Badge color={BAKIN_PINK}>{title}</Badge>
       {rows.map(item => (
         <Box key={item.name}>
           <StatusBadge status={item.status} />
