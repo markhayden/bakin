@@ -1201,7 +1201,8 @@ class PluginRegistryImpl {
         try {
           await this.activateUserPluginEntry(entry, storage, events, services)
         } catch (err) {
-          log.error(`Failed to load user plugin "${entry.id}"`, err)
+          const message = err instanceof Error ? err.message : String(err)
+          log.error(`Failed to load user plugin "${entry.id}": ${message}`, err, { pluginId: entry.id })
           this.markPluginFailed({
             id: entry.id,
             name: entry.manifest?.name ?? entry.id,
@@ -1209,7 +1210,7 @@ class PluginRegistryImpl {
             description: entry.manifest?.description ?? '',
             source: 'user',
             errorCode: 'activation_failed',
-            errorMessage: err instanceof Error ? err.message : String(err),
+            errorMessage: message,
           })
         }
       }

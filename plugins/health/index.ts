@@ -56,6 +56,32 @@ function buildDoctorResponse(results: Array<{ status: string }> & unknown[]) {
   return { results, summary: { total: results.length, errors, warnings } }
 }
 
+function checkPluginRegistry() {
+  const failed = getRegistrySnapshot().filter(plugin => plugin.status === 'failed')
+  if (failed.length === 0) {
+    return [{
+      check: 'plugin-registry',
+      status: 'ok' as const,
+      message: 'All plugins activated',
+      autoFixable: false,
+    }]
+  }
+
+  return failed.map(plugin => {
+    const id = String(plugin.id ?? 'unknown')
+    const code = typeof plugin.errorCode === 'string' ? plugin.errorCode : 'activation_failed'
+    const message = typeof plugin.errorMessage === 'string' && plugin.errorMessage.length > 0
+      ? plugin.errorMessage
+      : 'No failure details recorded'
+    return {
+      check: `plugin-registry:${id}`,
+      status: 'error' as const,
+      message: `${id} failed (${code}): ${message}`,
+      autoFixable: false,
+    }
+  })
+}
+
 // ─── Schemas ─────────────────────────────────────────────────────────────
 
 const passthrough = z.object({}).passthrough()
@@ -388,6 +414,11 @@ const healthPlugin: BakinPlugin = definePlugin({
       id: 'plugin-assets',
       name: 'Plugin-shipped runtime skills install state',
       run: () => checkPluginAssets(),
+    })
+    ctx.registerHealthCheck({
+      id: 'plugin-registry',
+      name: 'Plugin activation state',
+      run: () => Promise.resolve(checkPluginRegistry()),
     })
     ctx.registerHealthCheck({
       id: 'managed-blocks',

@@ -525,7 +525,7 @@ describe('checkPluginAssets', () => {
 // ─── Registration smoke test ──────────────────────────────────────────────
 
 describe('plugin registration', () => {
-  it('registers all 11 system + managed-blocks health checks on activate', async () => {
+  it('registers all 12 system + managed-blocks health checks on activate', async () => {
     const healthPlugin = (await import('../../../plugins/health')).default
     const registeredIds: string[] = []
     const noop = mock()
@@ -552,7 +552,7 @@ describe('plugin registration', () => {
     }
     await healthPlugin.activate(ctx as unknown as Parameters<typeof healthPlugin.activate>[0])
 
-    // 11 health checks: 9 health-owned checks plus the 2 core managed-block scopes.
+    // 12 health checks: 10 health-owned checks plus the 2 core managed-block scopes.
     expect(registeredIds).toContain('content-dir')
     expect(registeredIds).toContain('service')
     expect(registeredIds).toContain('mcporter')
@@ -563,6 +563,7 @@ describe('plugin registration', () => {
     expect(registeredIds).toContain('orchestrator-rules')
     expect(registeredIds).toContain('skill')
     expect(registeredIds).toContain('plugin-assets')
+    expect(registeredIds).toContain('plugin-registry')
     expect(registeredIds).toContain('managed-blocks')
   })
 })

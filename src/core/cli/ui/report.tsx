@@ -29,8 +29,8 @@ export function Report({ title, groups, color = true }: ReportProps) {
       {groups.map((group, groupIndex) => (
         <Box key={group.title} flexDirection="column" marginTop={groupIndex === 0 ? 1 : 2}>
           <Badge color={color ? BAKIN_PINK : 'white'}>{group.title}</Badge>
-          {group.rows.map((row) => (
-            <Box key={row.label} flexDirection="column">
+          {group.rows.map((row, rowIndex) => (
+            <Box key={`${row.label}-${rowIndex}`} flexDirection="column">
               <Box>
                 <StatusBadge status={row.status} color={color} />
                 <Text> {row.label.padEnd(18)} {row.message}</Text>

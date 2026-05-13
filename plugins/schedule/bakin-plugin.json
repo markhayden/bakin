@@ -25,6 +25,7 @@
     "storage.read",
     "storage.write",
     "events.emit",
+    "runtime.agents",
     "runtime.read",
     "runtime.cron",
     "search.read",
