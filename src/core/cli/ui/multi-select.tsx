@@ -1,5 +1,6 @@
 import { Badge, MultiSelect as InkMultiSelect, ThemeProvider, defaultTheme, extendTheme } from '@inkjs/ui'
 import { Box, Text } from 'ink'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { BAKIN_PINK } from './report'
 
 export interface MultiSelectItem {
@@ -89,13 +90,36 @@ function optionLabel(item: MultiSelectItem): string {
   return item.description ? `${name} ${item.description}` : name
 }
 
+function sameSelectedIds(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false
+  for (const id of a) {
+    if (!b.has(id)) return false
+  }
+  return true
+}
+
 export function MultiSelect({ title, items, state, onChange, onSubmit, marginTop = 0 }: MultiSelectProps) {
-  const enabledItems = items.filter(item => !item.disabled)
-  const disabledItems = items.filter(item => item.disabled)
-  const options = enabledItems.map(item => ({
+  const stateRef = useRef(state)
+  const onChangeRef = useRef(onChange)
+  const enabledItems = useMemo(() => items.filter(item => !item.disabled), [items])
+  const disabledItems = useMemo(() => items.filter(item => item.disabled), [items])
+  const options = useMemo(() => enabledItems.map(item => ({
     value: item.id,
     label: optionLabel(item),
-  }))
+  })), [enabledItems])
+  const defaultValue = useMemo(() => [...state.selectedIds], [])
+
+  useEffect(() => {
+    stateRef.current = state
+    onChangeRef.current = onChange
+  }, [onChange, state])
+
+  const handleChange = useCallback((selectedIds: string[]) => {
+    const selectedIdsSet = new Set(selectedIds)
+    const current = stateRef.current
+    if (sameSelectedIds(current.selectedIds, selectedIdsSet)) return
+    onChangeRef.current({ ...current, selectedIds: selectedIdsSet })
+  }, [])
 
   return (
     <Box flexDirection="column" marginTop={marginTop}>
@@ -105,11 +129,9 @@ export function MultiSelect({ title, items, state, onChange, onSubmit, marginTop
         <ThemeProvider theme={multiSelectTheme}>
           <InkMultiSelect
             options={options}
-            defaultValue={[...state.selectedIds]}
+            defaultValue={defaultValue}
             visibleOptionCount={Math.max(5, Math.min(8, options.length || 5))}
-            onChange={(selectedIds) => {
-              onChange({ ...state, selectedIds: new Set(selectedIds) })
-            }}
+            onChange={handleChange}
             onSubmit={onSubmit}
           />
         </ThemeProvider>
