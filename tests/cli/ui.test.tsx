@@ -79,6 +79,7 @@ describe('CLI UI primitives', () => {
         state={createMultiSelectState(items)}
         onChange={() => {}}
         onSubmit={() => {}}
+        marginTop={1}
       />,
     )
 

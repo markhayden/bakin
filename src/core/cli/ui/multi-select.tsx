@@ -66,6 +66,7 @@ export interface MultiSelectProps {
   state: MultiSelectState
   onChange: (state: MultiSelectState) => void
   onSubmit: (selectedIds: string[]) => void
+  marginTop?: number
 }
 
 const multiSelectTheme = extendTheme(defaultTheme, {
@@ -88,7 +89,7 @@ function optionLabel(item: MultiSelectItem, selected: boolean): string {
   return item.description ? `${marker} ${name} ${item.description}` : `${marker} ${name}`
 }
 
-export function MultiSelect({ title, items, state, onChange, onSubmit }: MultiSelectProps) {
+export function MultiSelect({ title, items, state, onChange, onSubmit, marginTop = 0 }: MultiSelectProps) {
   const enabledItems = items.filter(item => !item.disabled)
   const disabledItems = items.filter(item => item.disabled)
   const options = enabledItems.map(item => ({
@@ -97,10 +98,10 @@ export function MultiSelect({ title, items, state, onChange, onSubmit }: MultiSe
   }))
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" marginTop={marginTop}>
       <Text bold>{title}</Text>
       <Text dimColor>Use up/down to move, space to select, enter to continue.</Text>
-      <Box flexDirection="column" marginTop={1}>
+      <Box flexDirection="column">
         <ThemeProvider theme={multiSelectTheme}>
           <InkMultiSelect
             options={options}

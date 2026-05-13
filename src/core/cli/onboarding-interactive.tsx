@@ -61,7 +61,7 @@ function MultiSelectPrompt({ title, items, onSubmit }: {
   onSubmit: (ids: string[]) => void
 }) {
   const [state, setState] = useState<MultiSelectState>(() => createMultiSelectState(items))
-  return <MultiSelect title={title} items={items} state={state} onChange={setState} onSubmit={onSubmit} />
+  return <MultiSelect title={title} items={items} state={state} onChange={setState} onSubmit={onSubmit} marginTop={1} />
 }
 
 export async function promptMultiSelect(title: string, items: MultiSelectItem[]): Promise<string[]> {
