@@ -45,6 +45,13 @@ export interface OnboardingOptions {
   selectedRecommendedAgentIds?: readonly string[]
   /** Optional human UI progress callback. Never used for JSON output. */
   onProgress?: (message: string) => void
+  /** Optional human UI completion callback. Never used for JSON output. */
+  onOutcome?: (outcome: {
+    name: string
+    finalStatus: 'ok' | 'warn' | 'skipped' | 'error'
+    message: string
+    remediation?: string
+  }) => void
 }
 
 export interface OnboardingComponent {

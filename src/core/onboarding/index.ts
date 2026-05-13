@@ -136,6 +136,15 @@ function emitJson(outcome: ComponentOutcome): void {
   process.stdout.write(JSON.stringify(line) + '\n')
 }
 
+function emitOutcome(opts: OnboardingOptions, outcome: ComponentOutcome): void {
+  opts.onOutcome?.({
+    name: outcome.name,
+    finalStatus: outcome.finalStatus,
+    message: outcome.message,
+    remediation: outcome.remediation,
+  })
+}
+
 /**
  * Run one component through the full check → (optional install) → outcome
  * pipeline. Never throws — all errors are converted into an outcome with
@@ -369,6 +378,7 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
           durationMs: 0,
         }
         outcomes.push(skip)
+        emitOutcome(opts, skip)
         if (opts.json) emitJson(skip)
         continue
       }
@@ -383,6 +393,7 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
     if (component.name === 'runtime') {
       const outcome = await runRuntimeInline(component, opts.onProgress)
       outcomes.push(outcome)
+      emitOutcome(opts, outcome)
       if (opts.json) emitJson(outcome)
       if (outcome.finalStatus !== 'ok') {
         log.warn('Runtime is not ready; aborting remaining onboarding steps')
@@ -401,6 +412,7 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
             durationMs: 0,
           }
           outcomes.push(skip)
+          emitOutcome(opts, skip)
           if (opts.json) emitJson(skip)
         }
         break
@@ -410,6 +422,7 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
 
     const outcome = await runComponent(component, opts)
     outcomes.push(outcome)
+    emitOutcome(opts, outcome)
     if (opts.json) emitJson(outcome)
   }
 

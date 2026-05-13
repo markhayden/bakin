@@ -224,12 +224,19 @@ describe('runOnboard orchestrator', () => {
 
     it('emits human progress updates without affecting outcomes', async () => {
       const progress: string[] = []
-      const result = await runOnboard({ ...opts, onProgress: message => progress.push(message) })
+      const outcomes: string[] = []
+      const result = await runOnboard({
+        ...opts,
+        onProgress: message => progress.push(message),
+        onOutcome: outcome => outcomes.push(`${outcome.finalStatus}:${outcome.name}`),
+      })
 
       expect(result.exitCode).toBe(0)
       expect(progress).toContain('Checking mkdir')
       expect(progress).toContain('Checking runtime')
       expect(progress).toContain('Writing onboarding marker')
+      expect(outcomes).toContain('ok:mkdir')
+      expect(outcomes).toContain('ok:recommended-agents')
     })
   })
 

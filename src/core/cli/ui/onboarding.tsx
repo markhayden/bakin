@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink'
 import { Alert, ProgressBar } from '@inkjs/ui'
 import { BAKIN_PINK, Report, type ReportRow } from './report'
+import { StatusBadge } from './status'
 import type { ComponentOutcome } from '../../onboarding'
 
 const ONBOARDING_BUSY_DETAILS = [
@@ -73,11 +74,16 @@ export function OnboardingSummary({ outcomes, exitCode }: {
   )
 }
 
-export function OnboardingBusy({ label = 'Running onboarding', detail, frame = 0, details = ONBOARDING_BUSY_DETAILS }: {
+export function OnboardingBusy({ label = 'Running onboarding', detail, frame = 0, details = ONBOARDING_BUSY_DETAILS, completed }: {
   label?: string
   detail?: string
   frame?: number
   details?: string[]
+  completed?: Array<{
+    name: string
+    status: ReportRow['status']
+    message: string
+  }>
 }) {
   const safeDetails = details.length > 0 ? details : ONBOARDING_BUSY_DETAILS
   const spinnerFrame = ONBOARDING_SPINNER_FRAMES[frame % ONBOARDING_SPINNER_FRAMES.length]
@@ -85,6 +91,16 @@ export function OnboardingBusy({ label = 'Running onboarding', detail, frame = 0
 
   return (
     <Box flexDirection="column" marginTop={1}>
+      {completed && completed.length > 0 ? (
+        <Box flexDirection="column" marginBottom={1}>
+          {completed.map(item => (
+            <Box key={item.name}>
+              <StatusBadge status={item.status} />
+              <Text> {item.name.padEnd(18)} {formatOnboardingMessage(item.message)}</Text>
+            </Box>
+          ))}
+        </Box>
+      ) : null}
       <Box>
         <Text color={BAKIN_PINK}>{spinnerFrame}</Text>
         <Text bold> {label}</Text>

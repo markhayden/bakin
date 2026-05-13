@@ -1598,15 +1598,27 @@ async function cmdOnboard(args: string[]): Promise<void> {
   }
   try {
     const selections = await collectOnboardingSelections(baseOpts)
-    const opts = { ...baseOpts, ...selections }
+    const opts = { ...baseOpts, ...selections, autoApprove: baseOpts.autoApprove || baseOpts.interactive }
 
     let busyFrame = 0
     let busyDetail: string | undefined
+    const completedOutcomes: Array<{
+      name: string
+      status: 'complete' | 'warning' | 'skipped' | 'blocked'
+      message: string
+    }> = []
     let busyTimer: ReturnType<typeof setInterval> | undefined
+    const statusForOutcome = (status: 'ok' | 'warn' | 'skipped' | 'error') => {
+      if (status === 'ok') return 'complete'
+      if (status === 'warn') return 'warning'
+      if (status === 'skipped') return 'skipped'
+      return 'blocked'
+    }
     const renderBusy = () => createElement(OnboardingBusy, {
       label: 'Running onboarding checks and installs',
       detail: busyDetail,
       frame: busyFrame,
+      completed: completedOutcomes,
     })
     const busy = isTTY && !json
       ? render(renderBusy())
@@ -1625,6 +1637,17 @@ async function cmdOnboard(args: string[]): Promise<void> {
         onProgress: busy
           ? (detail: string) => {
             busyDetail = detail
+            busyFrame += 1
+            busy.rerender(renderBusy())
+          }
+          : undefined,
+        onOutcome: busy
+          ? (outcome) => {
+            completedOutcomes.push({
+              name: outcome.name,
+              status: statusForOutcome(outcome.finalStatus),
+              message: outcome.message,
+            })
             busyFrame += 1
             busy.rerender(renderBusy())
           }

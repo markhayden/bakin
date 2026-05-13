@@ -90,6 +90,20 @@ describe('onboarding CLI UI', () => {
     expect(rendered).toContain('Checking prerequisites and runtime access')
   })
 
+  it('renders completed onboarding rows above the busy state', () => {
+    const rendered = renderToString(
+      <OnboardingBusy
+        label="Running onboarding checks and installs"
+        detail="Installing search"
+        completed={[{ name: 'settings', status: 'complete', message: 'settings.json ready: ~/.bakin/settings.json' }]}
+      />,
+    )
+
+    expect(rendered).toContain('[OK] settings')
+    expect(rendered).toContain('settings.json ready: ~/.bakin/settings.json')
+    expect(rendered).toContain('Installing search')
+  })
+
   it('renders bounded onboarding progress with Ink UI', () => {
     const rendered = renderToString(<OnboardingProgress label="Installing official agents" value={50} />)
     expect(rendered).toContain('Installing official agents')
