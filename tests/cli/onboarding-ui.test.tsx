@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { renderToString } from 'ink'
 
 import { buildSelectionItems } from '../../src/core/cli/onboarding-interactive'
-import { OnboardingSummary } from '../../src/core/cli/ui/onboarding'
+import { OnboardingBusy, OnboardingSummary } from '../../src/core/cli/ui/onboarding'
 import type { ComponentOutcome } from '../../src/core/onboarding'
 
 describe('onboarding CLI UI', () => {
@@ -63,5 +63,10 @@ describe('onboarding CLI UI', () => {
     expect(rendered).toContain('Bakin onboarding')
     expect(rendered).toContain('[BLOCKED')
     expect(rendered).toContain('https://makinbakin.com/docs/start/first-time-setup/')
+  })
+
+  it('renders an async onboarding busy state', () => {
+    const rendered = renderToString(<OnboardingBusy label="Running onboarding checks and installs" />)
+    expect(rendered).toContain('Running onboarding checks and installs')
   })
 })

@@ -1562,8 +1562,8 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
 async function cmdOnboard(args: string[]): Promise<void> {
   const { runOnboard, isOnboarded, loadState } = await import('../src/core/onboarding/index')
   const { collectOnboardingSelections } = await import('../src/core/cli/onboarding-interactive')
-  const { OnboardingSummary } = await import('../src/core/cli/ui/onboarding')
-  const { renderToString } = await import('ink')
+  const { OnboardingBusy, OnboardingSummary } = await import('../src/core/cli/ui/onboarding')
+  const { render, renderToString } = await import('ink')
   const { createElement } = await import('react')
   const checkOnly = args.includes('--check')
   const yes = args.includes('--yes')
@@ -1600,7 +1600,11 @@ async function cmdOnboard(args: string[]): Promise<void> {
     const selections = await collectOnboardingSelections(baseOpts)
     const opts = { ...baseOpts, ...selections }
 
+    const busy = isTTY && !json
+      ? render(createElement(OnboardingBusy, { label: 'Running onboarding checks and installs' }))
+      : null
     const result = await runOnboard(opts)
+    busy?.unmount()
 
     if (!json) {
       if (isTTY) {

@@ -84,8 +84,8 @@ describe('CLI UI primitives', () => {
 
     expect(output).toContain('Install official plugins')
     expect(output).toContain('Use up/down to move, space to select, enter to continue.')
-    expect(output).toContain('> [x] Messaging')
+    expect(output).toContain('> ◉ Messaging')
     expect(output).toContain('Planning and approvals')
-    expect(output).toContain('[-] Projects (installed)')
+    expect(output).toContain('○ Projects (installed)')
   })
 })

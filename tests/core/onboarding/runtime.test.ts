@@ -5,7 +5,10 @@
  * runtime adapter for readiness, roster, and raw config integrity data.
  */
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { join } from 'path'
+import { tmpdir } from 'os'
 
+const testDir = join(tmpdir(), `bakin-runtime-onboarding-test-${Date.now()}`)
 let useExistingServices = true
 let initError: Error | null = null
 let runtimeAvailable = true
@@ -37,7 +40,24 @@ mock.module('../../../src/core/app-services', () => ({
   },
 }))
 
+mock.module('@/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ logs: join(testDir, 'logs') }),
+}))
+mock.module('../../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ logs: join(testDir, 'logs') }),
+}))
+
 mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
+  }),
+}))
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
     info: mock(),
     warn: mock(),

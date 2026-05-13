@@ -83,11 +83,11 @@ export function MultiSelect({ title, items, state, onChange, onSubmit }: MultiSe
         {items.map((item, index) => {
           const focused = index === state.focusIndex
           const selected = state.selectedIds.has(item.id)
-          const marker = item.disabled ? '-' : selected ? 'x' : ' '
+          const marker = selected ? '◉' : '○'
           return (
             <Box key={item.id} flexDirection="column">
               <Text color={item.disabled ? 'gray' : focused ? 'cyan' : undefined}>
-                {focused ? '>' : ' '} [{marker}] {item.label}{item.note ? ` (${item.note})` : ''}
+                {focused ? '>' : ' '} {marker} {item.label}{item.note ? ` (${item.note})` : ''}
               </Text>
               {item.description ? <Text dimColor>      {item.description}</Text> : null}
             </Box>

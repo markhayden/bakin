@@ -1,6 +1,9 @@
 import { Box, Text } from 'ink'
+import { useEffect, useState } from 'react'
 import { Report, type ReportRow } from './report'
 import type { ComponentOutcome } from '../../onboarding'
+
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const
 
 export function onboardingStatus(status: ComponentOutcome['finalStatus']): ReportRow['status'] {
   switch (status) {
@@ -61,6 +64,24 @@ export function OnboardingSummary({ outcomes, exitCode }: {
           <Text color="yellow">Onboarding finished with warnings. Run `bakin doctor` for details.</Text>
         )}
       </Box>
+    </Box>
+  )
+}
+
+export function OnboardingBusy({ label = 'Running onboarding' }: { label?: string }) {
+  const [frame, setFrame] = useState(0)
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setFrame(current => (current + 1) % SPINNER_FRAMES.length)
+    }, 90)
+    return () => clearInterval(timer)
+  }, [])
+
+  return (
+    <Box>
+      <Text color="cyan">{SPINNER_FRAMES[frame]}</Text>
+      <Text> {label}</Text>
     </Box>
   )
 }
