@@ -37,15 +37,6 @@ export class PluginManifestError extends Error {
   }
 }
 
-export interface ParsePluginManifestOptions {
-  /**
-   * Existing core/plugin tests created minimal manifests before this contract
-   * existed. Keep the parser able to read those while install/activation paths
-   * use the strict default.
-   */
-  allowLegacy?: boolean
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -312,12 +303,10 @@ function parseSignature(raw: unknown): PluginManifestSignature | undefined {
   }
 }
 
-export function parsePluginManifest(raw: unknown, options: ParsePluginManifestOptions = {}): PluginManifest {
+export function parsePluginManifest(raw: unknown): PluginManifest {
   if (!isRecord(raw)) {
     throw new PluginManifestError('bakin-plugin.json must contain a JSON object')
   }
-  const required = !options.allowLegacy
-
   const id = stringField(raw, 'id', { required: true })!
   if (!PLUGIN_ID_RE.test(id)) {
     throw new PluginManifestError(`Invalid plugin id "${id}" - must match ${PLUGIN_ID_RE}`)
@@ -325,16 +314,12 @@ export function parsePluginManifest(raw: unknown, options: ParsePluginManifestOp
 
   const entryRaw = raw.entry
   let entry: PluginManifest['entry']
-  if (entryRaw === undefined && options.allowLegacy) {
-    entry = { server: 'index.ts' }
-  } else {
-    if (!isRecord(entryRaw)) {
-      throw new PluginManifestError('bakin-plugin.json field "entry" must be an object')
-    }
-    entry = {
-      server: stringField(entryRaw, 'server', { required: true })!,
-      client: stringField(entryRaw, 'client'),
-    }
+  if (!isRecord(entryRaw)) {
+    throw new PluginManifestError('bakin-plugin.json field "entry" must be an object')
+  }
+  entry = {
+    server: stringField(entryRaw, 'server', { required: true })!,
+    client: stringField(entryRaw, 'client'),
   }
 
   const runtimeCapabilities = stringArrayField(raw, 'runtimeCapabilities') as RuntimeCapability[] | undefined
@@ -350,8 +335,8 @@ export function parsePluginManifest(raw: unknown, options: ParsePluginManifestOp
     id,
     name: stringField(raw, 'name', { required: true })!,
     version: stringField(raw, 'version', { required: true })!,
-    bakin: stringField(raw, 'bakin', { required }) ?? '>=1.0.0',
-    description: stringField(raw, 'description', { required }) ?? '',
+    bakin: stringField(raw, 'bakin', { required: true })!,
+    description: stringField(raw, 'description', { required: true })!,
     entry,
     contentFiles: stringArrayField(raw, 'contentFiles'),
     secrets: secretDeclarationsField(raw, 'secrets'),
@@ -365,12 +350,12 @@ export function parsePluginManifest(raw: unknown, options: ParsePluginManifestOp
   }
 }
 
-export function readPluginManifestJson(text: string, options?: ParsePluginManifestOptions): PluginManifest {
+export function readPluginManifestJson(text: string): PluginManifest {
   let raw: unknown
   try {
     raw = JSON.parse(text)
   } catch (err) {
     throw new PluginManifestError(`Invalid bakin-plugin.json: ${err instanceof Error ? err.message : String(err)}`)
   }
-  return parsePluginManifest(raw, options)
+  return parsePluginManifest(raw)
 }

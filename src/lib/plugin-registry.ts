@@ -399,7 +399,7 @@ class PluginRegistryImpl {
       let manifest: PublicPluginManifest | undefined
       if (existsSync(manifestPath)) {
         try {
-          manifest = readPluginManifestJson(readFileSync(manifestPath, 'utf-8'), { allowLegacy: true })
+          manifest = readPluginManifestJson(readFileSync(manifestPath, 'utf-8'))
           id = manifest.id || id
           deps = manifest.dependencies || []
         } catch (err) {

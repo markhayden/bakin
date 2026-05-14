@@ -23,6 +23,7 @@ import { existsSync, statSync, readdirSync, readFileSync } from 'node:fs'
 import type { Dirent } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { join, resolve } from 'node:path'
+import { builtinModules } from 'node:module'
 
 const CLIENT_EXTERNAL = [
   'react', 'react-dom', 'react-dom/client',
@@ -52,6 +53,17 @@ const SDK_ENTRYPOINTS: Record<string, string> = {
   '@makinbakin/sdk/metadata': join(REPO_ROOT, 'packages/sdk/src/metadata/index.ts'),
   '@makinbakin/sdk/routing': join(REPO_ROOT, 'packages/sdk/src/routing/index.ts'),
 }
+
+const HOST_PROVIDED_IMPORTS = new Set([
+  ...CLIENT_EXTERNAL,
+])
+const BUILTIN_IMPORTS = new Set([
+  ...builtinModules,
+  ...builtinModules.map((name) => `node:${name}`),
+])
+const SOURCE_EXT_RE = /\.(?:ts|tsx|js|jsx|mjs|cjs)$/
+const IMPORT_SPECIFIER_RE = /\bfrom\s+["']([^"']+)["']|\bimport\s+["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)/g
+const OLD_SDK_PACKAGE_NAME = '@bakin' + '/sdk'
 
 interface RunResult {
   exitCode: number
@@ -129,6 +141,98 @@ function oldestMtimeMs(paths: string[]): number {
   return oldest === Number.POSITIVE_INFINITY ? 0 : oldest
 }
 
+interface PluginPackageJson {
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+  peerDependencies?: Record<string, string>
+}
+
+function packageName(specifier: string): string {
+  if (specifier.startsWith('@')) {
+    const [scope, name] = specifier.split('/')
+    return `${scope}/${name}`
+  }
+  return specifier.split('/')[0]!
+}
+
+function isRelativeOrAbsoluteSpecifier(specifier: string): boolean {
+  return specifier.startsWith('.') || specifier.startsWith('/') || specifier.startsWith('file:')
+}
+
+function collectSourceFiles(dir: string): string[] {
+  const out: string[] = []
+  const walk = (current: string): void => {
+    let entries: Dirent[]
+    try {
+      entries = readdirSync(current, { withFileTypes: true }) as Dirent[]
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      const name = String(entry.name)
+      if (name === 'dist' || name === 'node_modules' || name.startsWith('.')) continue
+      const full = join(current, name)
+      if (entry.isDirectory()) walk(full)
+      else if (entry.isFile() && SOURCE_EXT_RE.test(name)) out.push(full)
+    }
+  }
+  walk(dir)
+  return out
+}
+
+function readPackageJson(pluginDir: string): PluginPackageJson {
+  const pkgJsonPath = join(pluginDir, 'package.json')
+  if (!existsSync(pkgJsonPath)) return {}
+  try {
+    return JSON.parse(readFileSync(pkgJsonPath, 'utf-8')) as PluginPackageJson
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      throw new Error(`Invalid package.json in ${pluginDir}: ${err.message}`)
+    }
+    throw err
+  }
+}
+
+function validatePluginImports(pluginDir: string, pkg: PluginPackageJson): void {
+  const declared = new Set([
+    ...Object.keys(pkg.dependencies ?? {}),
+    ...Object.keys(pkg.devDependencies ?? {}),
+    ...Object.keys(pkg.peerDependencies ?? {}),
+  ])
+  const violations: string[] = []
+
+  for (const file of collectSourceFiles(pluginDir)) {
+    const source = readFileSync(file, 'utf-8')
+    for (const match of source.matchAll(IMPORT_SPECIFIER_RE)) {
+      const specifier = match[1] ?? match[2] ?? match[3]
+      if (!specifier || isRelativeOrAbsoluteSpecifier(specifier) || BUILTIN_IMPORTS.has(specifier)) continue
+
+      if (specifier === OLD_SDK_PACKAGE_NAME || specifier.startsWith(`${OLD_SDK_PACKAGE_NAME}/`)) {
+        violations.push(`${file}: ${specifier} is no longer supported; use @makinbakin/sdk`)
+        continue
+      }
+      if (specifier === '@bakin/core' || specifier.startsWith('@bakin/core/') || specifier.startsWith('@bakin/')) {
+        violations.push(`${file}: ${specifier} imports Bakin internals; use @makinbakin/sdk or a declared plugin API`)
+        continue
+      }
+      if (specifier.startsWith('@/')) {
+        violations.push(`${file}: ${specifier} imports app internals; use @makinbakin/sdk or a declared plugin API`)
+        continue
+      }
+      if (HOST_PROVIDED_IMPORTS.has(specifier)) continue
+
+      const pkgName = packageName(specifier)
+      if (!declared.has(pkgName)) {
+        violations.push(`${file}: ${specifier} is not declared in package.json dependencies`)
+      }
+    }
+  }
+
+  if (violations.length > 0) {
+    throw new Error(`Plugin dependency validation failed:\n${violations.join('\n')}`)
+  }
+}
+
 /**
  * Build a user plugin's dist/ from its sources.
  *
@@ -149,6 +253,8 @@ export async function buildUserPlugin(pluginDir: string): Promise<void> {
 
   const clientEntry = join(pluginDir, 'client.tsx')
   const hasClient = existsSync(clientEntry)
+  const pkg = readPackageJson(pluginDir)
+  validatePluginImports(pluginDir, pkg)
 
   const distDir = join(pluginDir, 'dist')
   const distServer = join(distDir, 'index.js')
@@ -167,27 +273,15 @@ export async function buildUserPlugin(pluginDir: string): Promise<void> {
   }
 
   // Install deps if the plugin has its own package.json + declared deps.
-  const pkgJsonPath = join(pluginDir, 'package.json')
-  if (existsSync(pkgJsonPath)) {
-    try {
-      const pkg = JSON.parse(readFileSync(pkgJsonPath, 'utf-8')) as {
-        dependencies?: Record<string, string>
-        devDependencies?: Record<string, string>
+  if (existsSync(join(pluginDir, 'package.json'))) {
+    const hasDeps =
+      (pkg.dependencies && Object.keys(pkg.dependencies).length > 0) ||
+      (pkg.devDependencies && Object.keys(pkg.devDependencies).length > 0)
+    if (hasDeps) {
+      const installResult = await runSubprocess('bun', ['install'], pluginDir)
+      if (installResult.exitCode !== 0) {
+        throw new Error(`bun install failed in ${pluginDir}:\n${installResult.stderr}`)
       }
-      const hasDeps =
-        (pkg.dependencies && Object.keys(pkg.dependencies).length > 0) ||
-        (pkg.devDependencies && Object.keys(pkg.devDependencies).length > 0)
-      if (hasDeps) {
-        const installResult = await runSubprocess('bun', ['install'], pluginDir)
-        if (installResult.exitCode !== 0) {
-          throw new Error(`bun install failed in ${pluginDir}:\n${installResult.stderr}`)
-        }
-      }
-    } catch (err) {
-      if (err instanceof SyntaxError) {
-        throw new Error(`Invalid package.json in ${pluginDir}: ${err.message}`)
-      }
-      throw err
     }
   }
 

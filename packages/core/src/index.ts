@@ -38,7 +38,6 @@ export {
   parsePluginManifest,
   readPluginManifestJson,
 } from './plugins/manifest'
-export type { ParsePluginManifestOptions } from './plugins/manifest'
 export {
   PluginSignatureError,
   canonicalizePluginManifestForSignature,

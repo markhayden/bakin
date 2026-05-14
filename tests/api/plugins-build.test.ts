@@ -20,6 +20,7 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from 'fs'
 import { join } from 'path'
 
@@ -61,6 +62,20 @@ import { buildUserPlugin } from '../../packages/host/src/plugin-host/user-plugin
 
 const FIXTURE_DIR = join(__dirname, '..', 'fixtures', 'sample-user-plugin')
 const targetDir = join(testDir, 'plugins', 'sample')
+
+function writeMinimalPlugin(dir: string, source: string, packageJson?: Record<string, unknown>): void {
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'bakin-plugin.json'), JSON.stringify({
+    id: 'minimal',
+    name: 'Minimal',
+    version: '0.1.0',
+    bakin: '>=0.0.0-dev',
+    description: 'Minimal test plugin',
+    entry: { server: 'index.ts' },
+  }))
+  writeFileSync(join(dir, 'index.ts'), source)
+  if (packageJson) writeFileSync(join(dir, 'package.json'), JSON.stringify(packageJson, null, 2))
+}
 
 beforeAll(() => {
   mkdirSync(targetDir, { recursive: true })
@@ -108,4 +123,26 @@ describe('buildUserPlugin', () => {
     expect(server).not.toMatch(/from\s+["']@makinbakin\/sdk/)
     expect(server).not.toMatch(/import\(["']@makinbakin\/sdk/)
   }, 60_000)
+
+  it('rejects old SDK imports before building', async () => {
+    const dir = join(testDir, 'plugins', 'old-sdk')
+    const oldSdk = '@bakin' + '/sdk/utils'
+    writeMinimalPlugin(dir, `import { cn } from '${oldSdk}'; export default { id: 'minimal', name: cn('x'), version: '0.1.0', activate() {} }`)
+
+    await expect(buildUserPlugin(dir)).rejects.toThrow(/no longer supported/)
+  })
+
+  it('rejects app and Bakin internal imports before building', async () => {
+    const dir = join(testDir, 'plugins', 'internal-import')
+    writeMinimalPlugin(dir, `import { readPluginLockfile } from '@bakin/core/plugins/lockfile'; export default { id: 'minimal', name: 'x', version: '0.1.0', activate() { readPluginLockfile() } }`)
+
+    await expect(buildUserPlugin(dir)).rejects.toThrow(/imports Bakin internals/)
+  })
+
+  it('rejects undeclared third-party imports before building', async () => {
+    const dir = join(testDir, 'plugins', 'undeclared')
+    writeMinimalPlugin(dir, `import { z } from 'zod'; export default { id: 'minimal', name: 'x', version: '0.1.0', activate() { z.string() } }`)
+
+    await expect(buildUserPlugin(dir)).rejects.toThrow(/not declared/)
+  })
 })

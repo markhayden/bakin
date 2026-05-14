@@ -278,7 +278,9 @@ describe('PluginRegistryImpl', () => {
       id,
       name: id.charAt(0).toUpperCase() + id.slice(1),
       version: '1.0.0',
+      bakin: '>=1.0.0',
       description: `Test plugin ${id}`,
+      entry: { server: 'index.js' },
       dependencies: opts.deps || [],
     }
     writeFileSync(join(pluginDir, 'bakin-plugin.json'), JSON.stringify(manifest))
