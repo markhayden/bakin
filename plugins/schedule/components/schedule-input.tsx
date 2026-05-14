@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Clock } from 'lucide-react'
-import { Input } from "@bakin/sdk/ui"
+import { Input } from "@makinbakin/sdk/ui"
 import type { ParseResult } from '../types'
 
 export function ScheduleInput({

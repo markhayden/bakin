@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useSSE, useContentStore, useSidebar } from '@bakin/sdk/hooks'
+import { useSSE, useContentStore, useSidebar } from '@makinbakin/sdk/hooks'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { Toaster } from '../components/layout/toaster'
 import { SidebarContext } from '@/context/sidebar-context'

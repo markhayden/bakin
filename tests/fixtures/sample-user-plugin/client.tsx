@@ -1,10 +1,10 @@
 /**
  * Sample user plugin — client entry (fixture for #147 TE14).
  *
- * Imports `registerSlot` from @bakin/sdk/slots and React hooks from
+ * Imports `registerSlot` from @makinbakin/sdk/slots and React hooks from
  * `react` so the smoke test can assert the externals survive the build.
  */
-import { registerSlot } from '@bakin/sdk/slots'
+import { registerSlot } from '@makinbakin/sdk/slots'
 import { useMemo } from 'react'
 import { jsx } from 'react/jsx-runtime'
 

@@ -5,8 +5,8 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@bakin/sdk/ui"
-import { Button } from "@bakin/sdk/ui"
+} from "@makinbakin/sdk/ui"
+import { Button } from "@makinbakin/sdk/ui"
 
 interface DeleteAssetDialogProps {
   open: boolean

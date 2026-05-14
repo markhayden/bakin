@@ -1,6 +1,6 @@
 'use client'
 
-import { useSearchParams, useRouter, usePathname } from '@bakin/sdk/hooks'
+import { useSearchParams, useRouter, usePathname } from '@makinbakin/sdk/hooks'
 import { useCallback, useMemo, useRef } from 'react'
 
 /**

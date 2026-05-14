@@ -66,7 +66,7 @@ import {
 } from '../../packages/core/src/plugins/manifest'
 import { ScopedPluginStorageAdapter } from '../../packages/core/src/storage/scoped-plugin-storage'
 import { getAppServices } from '../core/app-services'
-import type { PluginManifest as PublicPluginManifest } from '@bakin/sdk/types'
+import type { PluginManifest as PublicPluginManifest } from '@makinbakin/sdk/types'
 import {
   createPluginAssetsAPI,
   createPluginRuntimeFacade,
@@ -154,7 +154,7 @@ function ensureWorkspacePackageLink(pluginPath: string, scope: string, name: str
 }
 
 function ensureUserPluginWorkspaceLinks(pluginPath: string): void {
-  ensureWorkspacePackageLink(pluginPath, '@bakin', 'sdk', 'sdk')
+  ensureWorkspacePackageLink(pluginPath, '@makinbakin', 'sdk', 'sdk')
   ensureWorkspacePackageLink(pluginPath, '@bakin', 'core', 'core')
 }
 

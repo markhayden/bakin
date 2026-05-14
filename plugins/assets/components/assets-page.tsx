@@ -1,11 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { useSearchParams, useRouter, usePathname } from '@bakin/sdk/hooks'
-import { useQueryState, useQueryArrayState } from "@bakin/sdk/hooks"
-import { useDebug } from "@bakin/sdk/hooks"
-import { useSearch } from "@bakin/sdk/hooks"
-import { useAssets, useTrash } from "@bakin/sdk/hooks"
+import { useSearchParams, useRouter, usePathname } from '@makinbakin/sdk/hooks'
+import { useQueryState, useQueryArrayState } from "@makinbakin/sdk/hooks"
+import { useDebug } from "@makinbakin/sdk/hooks"
+import { useSearch } from "@makinbakin/sdk/hooks"
+import { useAssets, useTrash } from "@makinbakin/sdk/hooks"
 import { AssetsGrid } from './assets-grid'
 import { AssetsList, type SortField, type SortDir } from './assets-list'
 import { TrashGrid } from './trash-grid'
@@ -13,7 +13,7 @@ import { AssetDetail } from './asset-detail'
 import { AssetFilters } from './asset-filters'
 import { AssetPagination } from './asset-pagination'
 import { UploadDialog } from './upload-dialog'
-import type { AssetMeta } from "@bakin/sdk/types"
+import type { AssetMeta } from "@makinbakin/sdk/types"
 
 const DEFAULT_PAGE_SIZE = 24
 const STORAGE_KEY = 'assets-page-size'

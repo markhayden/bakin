@@ -10,9 +10,9 @@
  */
 import { useEffect, useState } from 'react'
 import { createRoute, useNavigate } from '@tanstack/react-router'
-import { Skeleton } from '@bakin/sdk/ui'
-import { Slot } from '@bakin/sdk/slots'
-import type { WorkflowDefinition } from '@bakin/sdk/types'
+import { Skeleton } from '@makinbakin/sdk/ui'
+import { Slot } from '@makinbakin/sdk/slots'
+import type { WorkflowDefinition } from '@makinbakin/sdk/types'
 import { Route as RootRoute } from './__root'
 
 function WorkflowEditPage() {

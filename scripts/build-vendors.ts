@@ -135,26 +135,26 @@ const targets: VendorTarget[] = [
   { specifier: 'react/jsx-runtime', name: 'jsx-runtime', entrypoint: jsxRuntimeEntry },
   { specifier: 'react/jsx-dev-runtime', name: 'jsx-dev-runtime', entrypoint: jsxDevRuntimeEntry },
   { specifier: '@tanstack/react-router', name: 'tanstack-router', entrypoint: tanstackRouterEntry },
-  { specifier: '@bakin/sdk', name: 'sdk-index', entrypoint: './packages/sdk/src/index.ts' },
-  { specifier: '@bakin/sdk/ui', name: 'sdk-ui', entrypoint: './packages/sdk/src/ui/index.ts' },
-  { specifier: '@bakin/sdk/hooks', name: 'sdk-hooks', entrypoint: './packages/sdk/src/hooks/index.ts' },
-  { specifier: '@bakin/sdk/components', name: 'sdk-components', entrypoint: './packages/sdk/src/components/index.ts' },
-  { specifier: '@bakin/sdk/slots', name: 'sdk-slots', entrypoint: './packages/sdk/src/slots/index.tsx' },
-  { specifier: '@bakin/sdk/types', name: 'sdk-types', entrypoint: './packages/sdk/src/types/index.ts' },
-  { specifier: '@bakin/sdk/utils', name: 'sdk-utils', entrypoint: './packages/sdk/src/utils/index.ts' },
-  { specifier: '@bakin/sdk/metadata', name: 'sdk-metadata', entrypoint: './packages/sdk/src/metadata/index.ts' },
-  { specifier: '@bakin/sdk/routing', name: 'sdk-routing', entrypoint: './packages/sdk/src/routing/index.ts' },
+  { specifier: '@makinbakin/sdk', name: 'sdk-index', entrypoint: './packages/sdk/src/index.ts' },
+  { specifier: '@makinbakin/sdk/ui', name: 'sdk-ui', entrypoint: './packages/sdk/src/ui/index.ts' },
+  { specifier: '@makinbakin/sdk/hooks', name: 'sdk-hooks', entrypoint: './packages/sdk/src/hooks/index.ts' },
+  { specifier: '@makinbakin/sdk/components', name: 'sdk-components', entrypoint: './packages/sdk/src/components/index.ts' },
+  { specifier: '@makinbakin/sdk/slots', name: 'sdk-slots', entrypoint: './packages/sdk/src/slots/index.tsx' },
+  { specifier: '@makinbakin/sdk/types', name: 'sdk-types', entrypoint: './packages/sdk/src/types/index.ts' },
+  { specifier: '@makinbakin/sdk/utils', name: 'sdk-utils', entrypoint: './packages/sdk/src/utils/index.ts' },
+  { specifier: '@makinbakin/sdk/metadata', name: 'sdk-metadata', entrypoint: './packages/sdk/src/metadata/index.ts' },
+  { specifier: '@makinbakin/sdk/routing', name: 'sdk-routing', entrypoint: './packages/sdk/src/routing/index.ts' },
 ]
 
-const SDK_SPECIFIERS = ['@bakin/sdk', '@bakin/sdk/ui', '@bakin/sdk/hooks', '@bakin/sdk/components', '@bakin/sdk/slots', '@bakin/sdk/types', '@bakin/sdk/utils', '@bakin/sdk/metadata', '@bakin/sdk/routing']
+const SDK_SPECIFIERS = ['@makinbakin/sdk', '@makinbakin/sdk/ui', '@makinbakin/sdk/hooks', '@makinbakin/sdk/components', '@makinbakin/sdk/slots', '@makinbakin/sdk/types', '@makinbakin/sdk/utils', '@makinbakin/sdk/metadata', '@makinbakin/sdk/routing']
 
 function externalsFor(target: VendorTarget): string[] {
   // Every non-react bundle externalizes `react` so the browser ends up
   // with exactly one React instance resolved through the import map.
   // SDK bundles also externalize their siblings to avoid duplicating
-  // code across @bakin/sdk subpath bundles.
+  // code across @makinbakin/sdk subpath bundles.
   const react = target.specifier === 'react' ? [] : ['react']
-  const sdk = target.specifier.startsWith('@bakin/sdk')
+  const sdk = target.specifier.startsWith('@makinbakin/sdk')
     ? SDK_SPECIFIERS.filter((s) => s !== target.specifier)
     : []
   // Every bundle except the tanstack-router bundle itself externalizes

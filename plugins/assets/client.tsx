@@ -2,8 +2,8 @@
  * Assets plugin — client entry point.
  * Registers nav items and client-side slot contributions via registerPlugin.
  */
-import { registerPlugin } from '@bakin/sdk'
-import type { NavItem } from '@bakin/sdk'
+import { registerPlugin } from '@makinbakin/sdk'
+import type { NavItem } from '@makinbakin/sdk'
 import { AssetRenderer } from './components/asset-renderer'
 import { AssetDetailModal } from './components/asset-detail'
 import { TaskAssets } from './components/task-assets'

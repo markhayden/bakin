@@ -1,8 +1,8 @@
 'use client'
 
-import { PluginHeader } from "@bakin/sdk/components"
-import { FacetFilter } from "@bakin/sdk/components"
-import { Button } from "@bakin/sdk/ui"
+import { PluginHeader } from "@makinbakin/sdk/components"
+import { FacetFilter } from "@makinbakin/sdk/components"
+import { Button } from "@makinbakin/sdk/ui"
 import { FileText, Image, Video, Music, Map, Database, Package, LayoutGrid, List, ListFilter, Trash2, Plus } from 'lucide-react'
 
 const TYPE_OPTIONS = [

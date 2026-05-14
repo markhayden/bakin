@@ -19,7 +19,7 @@ import { createLogger } from '@/core/logger'
 import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { runChecks } from '@/core/plugins/upgrade'
 import { EMBEDDED_ASSETS } from '../_embedded-assets'
-import type { PluginContributions } from '@bakin/sdk/types'
+import type { PluginContributions } from '@makinbakin/sdk/types'
 
 const log = createLogger('plugin-manifest')
 

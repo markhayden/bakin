@@ -1,4 +1,4 @@
-import type { RuntimeChatChunk } from '@bakin/sdk/types'
+import type { RuntimeChatChunk } from '@makinbakin/sdk/types'
 import type { BrainstormMessage } from './types'
 import { normalizeBrainstormActivityForStorage } from './session'
 

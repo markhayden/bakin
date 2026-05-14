@@ -1,8 +1,8 @@
 'use client'
 
 import { Workflow, Lock } from 'lucide-react'
-import { Badge } from "@bakin/sdk/ui"
-import { AgentAvatar } from "@bakin/sdk/components"
+import { Badge } from "@makinbakin/sdk/ui"
+import { AgentAvatar } from "@makinbakin/sdk/components"
 import type { WorkflowTemplate, WorkflowStep, AgentStep } from '../types'
 
 /** Collect unique agent IDs from workflow steps */

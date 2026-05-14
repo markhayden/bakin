@@ -1,7 +1,7 @@
 'use client'
 
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@bakin/sdk/ui"
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@makinbakin/sdk/ui"
 
 const PAGE_SIZES = [12, 24, 48, 96] as const
 

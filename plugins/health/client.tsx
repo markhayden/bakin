@@ -1,8 +1,8 @@
 /**
  * Health plugin — client entry point.
  */
-import { registerPlugin } from '@bakin/sdk'
-import type { NavItem } from '@bakin/sdk'
+import { registerPlugin } from '@makinbakin/sdk'
+import type { NavItem } from '@makinbakin/sdk'
 import { HealthPage } from './components/health-page'
 
 const navItems: NavItem[] = [

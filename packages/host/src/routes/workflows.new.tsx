@@ -7,7 +7,7 @@
  * list on cancel.
  */
 import { createRoute, useNavigate } from '@tanstack/react-router'
-import { Slot } from '@bakin/sdk/slots'
+import { Slot } from '@makinbakin/sdk/slots'
 import { Route as RootRoute } from './__root'
 
 function WorkflowsNewPage() {

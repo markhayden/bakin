@@ -681,7 +681,7 @@ describe('PluginRegistryImpl', () => {
       })
       writeFileSync(
         join(pluginDir, 'index.ts'),
-        `import { cn, formatSize } from '@bakin/sdk/utils'
+        `import { cn, formatSize } from '@makinbakin/sdk/utils'
 
         const plugin = {
           id: 'sdk-utils-user',
@@ -694,10 +694,10 @@ describe('PluginRegistryImpl', () => {
 
         export default plugin`,
       )
-      const staleSdkDir = join(pluginDir, 'node_modules', '@bakin', 'sdk')
+      const staleSdkDir = join(pluginDir, 'node_modules', '@makinbakin', 'sdk')
       mkdirSync(staleSdkDir, { recursive: true })
       writeFileSync(join(staleSdkDir, 'package.json'), JSON.stringify({
-        name: '@bakin/sdk',
+        name: '@makinbakin/sdk',
         version: '0.0.0-stale',
         exports: { '.': './index.js' },
       }))

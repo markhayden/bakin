@@ -1,5 +1,5 @@
 /**
- * `@bakin/sdk/metadata` — docs-aware contract helpers.
+ * `@makinbakin/sdk/metadata` — docs-aware contract helpers.
  *
  * Re-exports the canonical `RouteContract`, `CliCommandContract`,
  * `HookContract`, `SlotContract`, `ExecToolContract`, and the corresponding
@@ -10,7 +10,7 @@
  *
  * `defineApiRoute` / `definePluginRoute` are kept as re-exports for backward
  * compatibility with existing call sites; new code should use `defineRoute`
- * from `@bakin/sdk/routing` (the typed declarative shape).
+ * from `@makinbakin/sdk/routing` (the typed declarative shape).
  */
 
 export type {

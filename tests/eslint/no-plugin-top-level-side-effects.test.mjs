@@ -46,7 +46,7 @@ function expectOneError(code, expectedText) {
 describe('bakin/no-plugin-top-level-side-effects', () => {
   it('allows lifetime work inside plugin lifecycle hooks', () => {
     expectClean(`
-      import type { BakinPlugin } from '@bakin/sdk/types'
+      import type { BakinPlugin } from '@makinbakin/sdk/types'
 
       let timer
       const plugin: BakinPlugin = {

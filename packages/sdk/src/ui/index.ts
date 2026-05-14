@@ -1,9 +1,9 @@
 /**
- * `@bakin/sdk/ui` — shadcn base UI primitives for plugin authors.
+ * `@makinbakin/sdk/ui` — shadcn base UI primitives for plugin authors.
  *
  * These are re-exports from Bakin's `src/components/ui/*`. At Bakin build time
  * they resolve to source. At plugin build time (Phase 3) the plugin author
- * marks `@bakin/sdk` and `@bakin/sdk/ui` as externals so the plugin bundle
+ * marks `@makinbakin/sdk` and `@makinbakin/sdk/ui` as externals so the plugin bundle
  * doesn't duplicate these. At runtime the browser's import map resolves the
  * externals to Bakin's bundled copy.
  */

@@ -5,11 +5,11 @@ structure, SDK surface, install flow, and lifecycle. It targets
 post-#147 Bakin, where plugins are ordinary source trees that Bakin
 builds for you on install — not pre-bundled `dist/` drops.
 
-The **only supported import path** from a plugin is `@bakin/sdk/*`.
+The **only supported import path** from a plugin is `@makinbakin/sdk/*`.
 Direct imports from other plugins (`@bakin/tasks/...`,
 `@bakin/workflows/...`) or from Bakin internals (`@/components/*`,
 `@/hooks/*`) are blocked by the `no-restricted-imports` lint rule and
-will fail CI. Cross-plugin data goes through `@bakin/sdk/hooks` on the
+will fail CI. Cross-plugin data goes through `@makinbakin/sdk/hooks` on the
 client and `ctx.hooks.invoke(...)` on the server.
 
 ## Prerequisites
@@ -30,7 +30,7 @@ bun install
 
 `bakin plugins scaffold` writes a starter tree at `./my-plugin/` with a
 `bakin-plugin.json` manifest, a `package.json` pinning
-`@bakin/sdk` + `react` as devDependencies, `src/index.ts` (server entry),
+`@makinbakin/sdk` + `react` as devDependencies, `src/index.ts` (server entry),
 `src/client.tsx` (client entry), a `.gitignore`, and a minimal
 `README.md`. The plugin name must match `/^[a-z0-9][a-z0-9-_]{0,39}$/i`.
 
@@ -44,7 +44,7 @@ manifest's `server` / `client` keys at your build output either way.
 ```
 my-plugin/
 ├── bakin-plugin.json      ← manifest (id, name, version, permissions)
-├── package.json           ← devDependencies: @bakin/sdk, react, typescript
+├── package.json           ← devDependencies: @makinbakin/sdk, react, typescript
 ├── index.ts               ← server entry — default-exports BakinPlugin
 ├── client.tsx             ← client entry — calls registerPlugin({...})
 ├── components/            ← plugin-owned React components
@@ -87,7 +87,7 @@ loader topo-sorts activation accordingly.
 ## Server entry (`index.ts`)
 
 ```ts
-import type { BakinPlugin, PluginContext } from '@bakin/sdk/types'
+import type { BakinPlugin, PluginContext } from '@makinbakin/sdk/types'
 
 const plugin: BakinPlugin = {
   id: 'my-plugin',
@@ -160,8 +160,8 @@ adapter contract first.
 ## Client entry (`client.tsx`)
 
 ```tsx
-import { registerPlugin } from '@bakin/sdk'
-import type { NavItem } from '@bakin/sdk'
+import { registerPlugin } from '@makinbakin/sdk'
+import type { NavItem } from '@makinbakin/sdk'
 import { MyPage } from './components/my-page'
 
 const navItems: NavItem[] = [
@@ -187,10 +187,10 @@ to run and `registerPlugin` to populate the shared browser-global
 registry.
 
 Want finer-grained slot ordering? Call `registerSlot` from
-`@bakin/sdk/slots` directly alongside `registerPlugin`:
+`@makinbakin/sdk/slots` directly alongside `registerPlugin`:
 
 ```tsx
-import { registerSlot } from '@bakin/sdk/slots'
+import { registerSlot } from '@makinbakin/sdk/slots'
 // Override the default asset preview for .glb files; lower `order` wins.
 registerSlot('asset-preview', GlbRenderer, 50)  // default built-in is 100
 ```
@@ -217,17 +217,17 @@ is 100.
 
 ## SDK surface
 
-Plugin authors import from `@bakin/sdk/*`. Full map:
+Plugin authors import from `@makinbakin/sdk/*`. Full map:
 
 | Path | What it exports |
 |------|-----------------|
-| `@bakin/sdk` | `registerPlugin`, `getAllNavItems`, `NavItem` type |
-| `@bakin/sdk/ui` | shadcn primitives — Button, Card, Dialog, Input, Select, Table, Tabs, Tooltip, ... |
-| `@bakin/sdk/hooks` | `useAgent`, `useAgentList`, `useSSE`, `useSearch`, `useQueryState`, `useQueryArrayState`, `useDebug`, `useNotificationChannels`, ... |
-| `@bakin/sdk/components` | `PluginHeader`, `FacetFilter`, `AgentAvatar`, `AgentSelect`, `ChannelIcon`, `BakinDrawer`, `MarkdownContent`, `PageLayout`, ... |
-| `@bakin/sdk/slots` | `Slot` component, `registerSlot`, `__clearSlot` (test helper) |
-| `@bakin/sdk/types` | `PluginContext`, `BakinPlugin`, `AssetMeta`, `Task`, `TaskBoard`, `AvailableModel`, `WorkflowDefinition`, `NavItem`, ... |
-| `@bakin/sdk/utils` | `cn` (tailwind class merger), `formatAge`, `formatSize`, `isStale` |
+| `@makinbakin/sdk` | `registerPlugin`, `getAllNavItems`, `NavItem` type |
+| `@makinbakin/sdk/ui` | shadcn primitives — Button, Card, Dialog, Input, Select, Table, Tabs, Tooltip, ... |
+| `@makinbakin/sdk/hooks` | `useAgent`, `useAgentList`, `useSSE`, `useSearch`, `useQueryState`, `useQueryArrayState`, `useDebug`, `useNotificationChannels`, ... |
+| `@makinbakin/sdk/components` | `PluginHeader`, `FacetFilter`, `AgentAvatar`, `AgentSelect`, `ChannelIcon`, `BakinDrawer`, `MarkdownContent`, `PageLayout`, ... |
+| `@makinbakin/sdk/slots` | `Slot` component, `registerSlot`, `__clearSlot` (test helper) |
+| `@makinbakin/sdk/types` | `PluginContext`, `BakinPlugin`, `AssetMeta`, `Task`, `TaskBoard`, `AvailableModel`, `WorkflowDefinition`, `NavItem`, ... |
+| `@makinbakin/sdk/utils` | `cn` (tailwind class merger), `formatAge`, `formatSize`, `isStale` |
 
 Never reach past the SDK into `@/components/*`, `@/hooks/*`, `@/lib/*`,
 or another plugin's internals — the lint rule will reject the PR.
@@ -279,7 +279,7 @@ What happens under the hood:
    peerDeps) and then `Bun.build()` on `index.ts` + `client.tsx` with
    the shared externals (`react`, `react-dom`, `react-dom/client`,
    `react/jsx-runtime`, `react/jsx-dev-runtime`, `@tanstack/react-router`,
-   and every `@bakin/sdk/*`). These are resolved at runtime via the
+   and every `@makinbakin/sdk/*`). These are resolved at runtime via the
    browser import map so the plugin shares the shell's singletons — never
    inline your own copy of them.
 3. Server-side `activate(ctx)` runs on the next Bakin restart
@@ -569,7 +569,7 @@ load side effect must be reversible through a registered teardown path**.
 **Do:**
 
 ```ts
-import { registerPlugin, registerPluginCleanup } from '@bakin/sdk'
+import { registerPlugin, registerPluginCleanup } from '@makinbakin/sdk'
 
 registerPlugin({
   id: 'my-plugin',
@@ -586,7 +586,7 @@ plugin's node-renderer registry), wire it through `registerPluginCleanup`
 so it participates in the teardown:
 
 ```ts
-import { registerPlugin, registerPluginCleanup } from '@bakin/sdk'
+import { registerPlugin, registerPluginCleanup } from '@makinbakin/sdk'
 import { registerMyThing, clearMyThingsOwnedBy } from './lib/my-registry'
 
 registerPlugin({ id: 'my-plugin', ... })
@@ -627,13 +627,13 @@ full React Fast Refresh is deferred to v3. See
 
 ## Reusable patterns from core plugins
 
-A few patterns the team plugin landed during the agent-detail rework are worth knowing about — they aren't in `@bakin/sdk` *yet*, but they're stable patterns other plugins can adopt by referencing the source.
+A few patterns the team plugin landed during the agent-detail rework are worth knowing about — they aren't in `@makinbakin/sdk` *yet*, but they're stable patterns other plugins can adopt by referencing the source.
 
 ### View→Edit markdown tabs (Assets-style)
 
 `plugins/team/components/markdown-edit-tab.tsx` provides a reusable view/edit component for markdown workspace files. Default state renders `<MarkdownContent>`; a pencil button in the absolute top-right corner toggles to a textarea editor with Save (green check) + Cancel (X) buttons in the same corner. Cmd+S saves when dirty; Esc cancels. Save POSTs to a configurable endpoint.
 
-If a plugin author needs the same pattern, copy the component and adjust the save endpoint. If multiple plugins end up wanting it, lift to `@bakin/sdk/components` as a follow-up.
+If a plugin author needs the same pattern, copy the component and adjust the save endpoint. If multiple plugins end up wanting it, lift to `@makinbakin/sdk/components` as a follow-up.
 
 ### Per-tab fetch waterfall in dashboards
 

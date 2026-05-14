@@ -20,7 +20,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
-import { getNavItemsSnapshot, subscribeRegistry } from '@bakin/sdk'
+import { getNavItemsSnapshot, subscribeRegistry } from '@makinbakin/sdk'
 import { useSidebarContext } from '@/context/sidebar-context'
 import { usePathname } from '../../hooks/use-pathname'
 import {

@@ -1,20 +1,20 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { useRouter } from '@bakin/sdk/hooks'
+import { useRouter } from '@makinbakin/sdk/hooks'
 import { ArrowLeft, Loader2, Camera, Trash2, BookOpen, Sparkles, Calendar } from 'lucide-react'
-import { Button } from "@bakin/sdk/ui"
+import { Button } from "@makinbakin/sdk/ui"
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@bakin/sdk/ui"
-import { Skeleton } from "@bakin/sdk/ui"
-import { useRuntimeStatus } from "@bakin/sdk/hooks"
-import type { AvailableModel } from "@bakin/sdk/types"
-import { useAgentStore, useAgentColor, useMainAgentId, usePackageState } from '@bakin/sdk/hooks'
-import { useQueryState } from "@bakin/sdk/hooks"
+} from "@makinbakin/sdk/ui"
+import { Skeleton } from "@makinbakin/sdk/ui"
+import { useRuntimeStatus } from "@makinbakin/sdk/hooks"
+import type { AvailableModel } from "@makinbakin/sdk/types"
+import { useAgentStore, useAgentColor, useMainAgentId, usePackageState } from '@makinbakin/sdk/hooks'
+import { useQueryState } from "@makinbakin/sdk/hooks"
 import { LessonToggleList } from './lesson-toggle-list'
 import { MarkdownEditTab } from './markdown-edit-tab'
 import { HeartbeatTab } from './heartbeat-tab'

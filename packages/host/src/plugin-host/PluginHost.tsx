@@ -26,7 +26,7 @@
  * window handle stays undefined there.
  */
 import { useEffect, useState, type ReactNode } from 'react'
-import { unregisterPlugin } from '@bakin/sdk'
+import { unregisterPlugin } from '@makinbakin/sdk'
 import { assertReactInstance } from '../lib/react-identity'
 import {
   installVersionMismatchDetector,

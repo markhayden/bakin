@@ -1,21 +1,21 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { BakinDrawer } from "@bakin/sdk/components"
-import { Button } from "@bakin/sdk/ui"
-import { Input } from "@bakin/sdk/ui"
-import { Textarea } from "@bakin/sdk/ui"
-import { Separator } from "@bakin/sdk/ui"
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@bakin/sdk/ui"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@bakin/sdk/ui"
+import { BakinDrawer } from "@makinbakin/sdk/components"
+import { Button } from "@makinbakin/sdk/ui"
+import { Input } from "@makinbakin/sdk/ui"
+import { Textarea } from "@makinbakin/sdk/ui"
+import { Separator } from "@makinbakin/sdk/ui"
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@makinbakin/sdk/ui"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@makinbakin/sdk/ui"
 import { Send, Check, X, RefreshCw, MoreHorizontal, Copy, Trash2, Pencil, Loader2 } from 'lucide-react'
-import { MarkdownContent } from "@bakin/sdk/components"
-import { Slot } from '@bakin/sdk/slots'
-import { AgentAvatar } from "@bakin/sdk/components"
-import { AgentSelect } from "@bakin/sdk/components"
-import { useAgent } from "@bakin/sdk/hooks"
+import { MarkdownContent } from "@makinbakin/sdk/components"
+import { Slot } from '@makinbakin/sdk/slots'
+import { AgentAvatar } from "@makinbakin/sdk/components"
+import { AgentSelect } from "@makinbakin/sdk/components"
+import { useAgent } from "@makinbakin/sdk/hooks"
 import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
-import { toast } from "@bakin/sdk/hooks"
+import { toast } from "@makinbakin/sdk/hooks"
 import type { Task, ColumnId } from '../types'
 import { isRenderableAssetImageFilename } from '../lib/output-assets'
 import { createShortClientId } from '../lib/client-id'

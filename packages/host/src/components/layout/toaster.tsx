@@ -1,4 +1,4 @@
-import { useToastStore } from '@bakin/sdk/hooks'
+import { useToastStore } from '@makinbakin/sdk/hooks'
 import { X, CheckCircle, AlertCircle, Info } from 'lucide-react'
 
 const ICONS = {

@@ -6,7 +6,7 @@
  * so the route body is just the slot.
  */
 import { createRoute } from '@tanstack/react-router'
-import { Slot } from '@bakin/sdk/slots'
+import { Slot } from '@makinbakin/sdk/slots'
 import { Route as RootRoute } from './__root'
 
 function MemoryPage() {

@@ -1,5 +1,5 @@
 /**
- * `@bakin/sdk/utils` — tiny utilities for plugin authors.
+ * `@makinbakin/sdk/utils` — tiny utilities for plugin authors.
  *
  * `cn(...)` is the Tailwind class merger every shadcn-flavored component
  * needs. The `format*` helpers are re-exported from `@bakin/core/format`

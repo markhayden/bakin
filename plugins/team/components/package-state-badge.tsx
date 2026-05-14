@@ -1,6 +1,6 @@
 'use client'
 
-import { Badge } from '@bakin/sdk/ui'
+import { Badge } from '@makinbakin/sdk/ui'
 
 /**
  * Visual badge for an agent's agent-package state. Five states map to

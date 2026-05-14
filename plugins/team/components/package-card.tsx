@@ -8,8 +8,8 @@
  */
 import { useState } from 'react'
 import { Copy, Info } from 'lucide-react'
-import { Badge, Button } from '@bakin/sdk/ui'
-import { useAgentStore, useMainAgentId } from '@bakin/sdk/hooks'
+import { Badge, Button } from '@makinbakin/sdk/ui'
+import { useAgentStore, useMainAgentId } from '@makinbakin/sdk/hooks'
 import { PackageStateBadge } from './package-state-badge'
 import { AdoptDialog } from './adopt-dialog'
 import type { PackageStateRow } from '../types'

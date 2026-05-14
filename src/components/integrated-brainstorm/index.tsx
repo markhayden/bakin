@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
-import { useAgent, useVerticalResize } from '@bakin/sdk/hooks'
+import { useAgent, useVerticalResize } from '@makinbakin/sdk/hooks'
 import { CollapsedHeader, DEFAULT_ICON, DEFAULT_LABEL } from './collapsed-header'
 import { DefaultEmptyState } from './empty-state'
 import { InputRow, type InputRowHandle } from './input-row'

@@ -14,8 +14,8 @@
  */
 import { useEffect, useState } from 'react'
 import { Loader2, MessageCircle } from 'lucide-react'
-import { Badge } from '@bakin/sdk/ui'
-import { MarkdownContent } from '@bakin/sdk/components'
+import { Badge } from '@makinbakin/sdk/ui'
+import { MarkdownContent } from '@makinbakin/sdk/components'
 import type { SessionMessage, SessionTranscript } from '../types'
 import { EmptyState } from './empty-state'
 

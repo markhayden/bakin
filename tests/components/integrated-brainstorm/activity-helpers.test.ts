@@ -8,8 +8,8 @@ import {
   toBrainstormTimeline,
 } from '@/components/integrated-brainstorm'
 import type { BrainstormMessage } from '@/components/integrated-brainstorm'
-import { runtimeChunkToBrainstormActivity as runtimeChunkToBrainstormActivityFromUtils } from '@bakin/sdk/utils'
-import type { RuntimeChatChunk } from '@bakin/sdk/types'
+import { runtimeChunkToBrainstormActivity as runtimeChunkToBrainstormActivityFromUtils } from '@makinbakin/sdk/utils'
+import type { RuntimeChatChunk } from '@makinbakin/sdk/types'
 
 function sseResponse(events: Array<{ event: string; data: unknown }>): Response {
   const encoder = new TextEncoder()

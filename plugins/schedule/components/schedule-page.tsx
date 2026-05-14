@@ -1,18 +1,18 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { useSearchParams, useRouter, usePathname } from '@bakin/sdk/hooks'
+import { useSearchParams, useRouter, usePathname } from '@makinbakin/sdk/hooks'
 import { List, CalendarDays, CalendarRange, Clock, Plus } from 'lucide-react'
-import { Button } from "@bakin/sdk/ui"
-import { BakinDrawer } from "@bakin/sdk/components"
-import { PluginHeader } from "@bakin/sdk/components"
-import { Skeleton } from "@bakin/sdk/ui"
-import { AgentFilter } from "@bakin/sdk/components"
-import { useAgentIds } from "@bakin/sdk/hooks"
-import { useQueryState } from "@bakin/sdk/hooks"
-import { useSearch } from "@bakin/sdk/hooks"
-import { useDebug } from "@bakin/sdk/hooks"
-import { useScheduleJobs, type ScheduleJob } from "@bakin/sdk/hooks"
+import { Button } from "@makinbakin/sdk/ui"
+import { BakinDrawer } from "@makinbakin/sdk/components"
+import { PluginHeader } from "@makinbakin/sdk/components"
+import { Skeleton } from "@makinbakin/sdk/ui"
+import { AgentFilter } from "@makinbakin/sdk/components"
+import { useAgentIds } from "@makinbakin/sdk/hooks"
+import { useQueryState } from "@makinbakin/sdk/hooks"
+import { useSearch } from "@makinbakin/sdk/hooks"
+import { useDebug } from "@makinbakin/sdk/hooks"
+import { useScheduleJobs, type ScheduleJob } from "@makinbakin/sdk/hooks"
 import { JobList } from './job-list'
 import { JobDrawer } from './job-drawer'
 import { JobForm, type JobFormData } from './job-form'

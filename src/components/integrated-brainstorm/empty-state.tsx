@@ -1,7 +1,7 @@
 'use client'
 
-import { AgentAvatar } from '@bakin/sdk/components'
-import { useAgent } from '@bakin/sdk/hooks'
+import { AgentAvatar } from '@makinbakin/sdk/components'
+import { useAgent } from '@makinbakin/sdk/hooks'
 
 interface DefaultEmptyStateProps {
   agentId: string

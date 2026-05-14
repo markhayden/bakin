@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { User } from 'lucide-react'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
-import { useAgent, useAgentColor } from '@bakin/sdk/hooks'
+import { useAgent, useAgentColor } from '@makinbakin/sdk/hooks'
 import { cn } from '@/lib/utils'
 
 type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl'

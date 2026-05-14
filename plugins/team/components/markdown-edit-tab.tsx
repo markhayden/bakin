@@ -15,7 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Check, Loader2, Pencil, X } from 'lucide-react'
-import { MarkdownContent } from '@bakin/sdk/components'
+import { MarkdownContent } from '@makinbakin/sdk/components'
 
 export interface MarkdownEditTabProps {
   agentId: string

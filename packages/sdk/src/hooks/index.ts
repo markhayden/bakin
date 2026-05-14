@@ -1,5 +1,5 @@
 /**
- * `@bakin/sdk/hooks` — React hooks plugin authors can use.
+ * `@makinbakin/sdk/hooks` — React hooks plugin authors can use.
  *
  * Three groups, all re-exports so plugins have one import path:
  *   1. Bakin-wide hooks from `src/hooks/*` (SSE, search, query-state, debug, etc.)

@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useCallback, useState } from 'react'
-import { useRouter } from '@bakin/sdk/hooks'
+import { useRouter } from '@makinbakin/sdk/hooks'
 import { Plus, Users, Settings2, Loader2 } from 'lucide-react'
 import {
   ReactFlow,
@@ -15,17 +15,17 @@ import {
   type NodeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Badge } from "@bakin/sdk/ui"
-import { Button } from "@bakin/sdk/ui"
+import { Badge } from "@makinbakin/sdk/ui"
+import { Button } from "@makinbakin/sdk/ui"
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@bakin/sdk/ui"
-import { BakinDrawer } from "@bakin/sdk/components"
-import { useRuntimeStatus } from "@bakin/sdk/hooks"
-import { useAgentStore, useAgentColor, useMainAgentId, usePackageState } from '@bakin/sdk/hooks'
+} from "@makinbakin/sdk/ui"
+import { BakinDrawer } from "@makinbakin/sdk/components"
+import { useRuntimeStatus } from "@makinbakin/sdk/hooks"
+import { useAgentStore, useAgentColor, useMainAgentId, usePackageState } from '@makinbakin/sdk/hooks'
 import { buildGraph } from '../lib/build-graph'
 import { AgentForm, type AgentFormData } from './agent-form'
 import { TeamManager } from './team-manager'

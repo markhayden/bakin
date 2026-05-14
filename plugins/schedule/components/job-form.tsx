@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import { Button } from "@bakin/sdk/ui"
-import { Input } from "@bakin/sdk/ui"
-import { Label } from "@bakin/sdk/ui"
-import { Textarea } from "@bakin/sdk/ui"
-import { AgentSelect } from "@bakin/sdk/components"
-import { useMainAgentId } from "@bakin/sdk/hooks"
+import { Button } from "@makinbakin/sdk/ui"
+import { Input } from "@makinbakin/sdk/ui"
+import { Label } from "@makinbakin/sdk/ui"
+import { Textarea } from "@makinbakin/sdk/ui"
+import { AgentSelect } from "@makinbakin/sdk/components"
+import { useMainAgentId } from "@makinbakin/sdk/hooks"
 import { ScheduleInput } from './schedule-input'
 
 export interface JobFormData {

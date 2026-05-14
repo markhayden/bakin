@@ -8,8 +8,8 @@
  *   `subflowGroup`); plugin-owned kinds arrive pre-namespaced as
  *   `{pluginId}.{kind}`.
  */
-import { registerPlugin, registerPluginCleanup } from '@bakin/sdk'
-import type { NavItem } from '@bakin/sdk'
+import { registerPlugin, registerPluginCleanup } from '@makinbakin/sdk'
+import type { NavItem } from '@makinbakin/sdk'
 
 import { TriggerNode } from './components/nodes/trigger-node'
 import { AgentNode } from './components/nodes/agent-node'

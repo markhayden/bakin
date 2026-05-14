@@ -11,7 +11,7 @@ import type {
   RuntimeCapability,
   SecretDeclaration,
   SettingsContribution,
-} from '@bakin/sdk/types'
+} from '@makinbakin/sdk/types'
 
 export const PLUGIN_ID_RE = /^[a-z][a-z0-9-]{0,39}$/
 

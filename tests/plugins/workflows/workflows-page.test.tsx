@@ -59,7 +59,7 @@ mock.module('@/core/task-store', () => ({
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
 const routerPush = mock()
-mock.module('@bakin/sdk/hooks', () => {
+mock.module('@makinbakin/sdk/hooks', () => {
   const actual = require('@/core/content-dir') as Record<string, unknown>
   return {
     ...actual,

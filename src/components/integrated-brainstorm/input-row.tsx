@@ -2,7 +2,7 @@
 
 import { forwardRef, useImperativeHandle, useRef, useState, type KeyboardEvent } from 'react'
 import { Loader2, Send } from 'lucide-react'
-import { AgentSelect } from '@bakin/sdk/components'
+import { AgentSelect } from '@makinbakin/sdk/components'
 import { useAutoGrow } from './use-auto-grow'
 import type { BrainstormStatus } from './use-brainstorm-state'
 

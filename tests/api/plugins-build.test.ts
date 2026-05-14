@@ -5,7 +5,7 @@
  * invokes buildUserPlugin(), and asserts:
  *   1. dist/index.js + dist/client.js appear
  *   2. the outputs retain unresolved imports for the shell's externals
- *      (`react`, `react/jsx-runtime`, `@bakin/sdk/*`)
+ *      (`react`, `react/jsx-runtime`, `@makinbakin/sdk/*`)
  *
  * Per CLAUDE.md testing rules, getContentDir is mocked to a temp dir so
  * nothing leaks into ~/.bakin/ even though buildUserPlugin operates on
@@ -76,11 +76,11 @@ describe('buildUserPlugin', () => {
     expect(existsSync(join(targetDir, 'dist', 'client.js'))).toBe(true)
   }, 60_000)
 
-  it('preserves externals for @bakin/sdk/* in client.js', () => {
+  it('preserves externals for @makinbakin/sdk/* in client.js', () => {
     const client = readFileSync(join(targetDir, 'dist', 'client.js'), 'utf-8')
-    // The `@bakin/sdk/slots` import must survive so the runtime loader can
+    // The `@makinbakin/sdk/slots` import must survive so the runtime loader can
     // resolve it via the browser import map (not get bundled into client.js).
-    expect(client).toMatch(/from\s+["']@bakin\/sdk\/slots["']/)
+    expect(client).toMatch(/from\s+["']@makinbakin\/sdk\/slots["']/)
   }, 60_000)
 
   it('preserves externals for react + react/jsx-runtime in client.js', () => {

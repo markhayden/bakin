@@ -2,8 +2,8 @@
 
 import { AlertTriangle, CheckCircle2, ChevronRight, CircleDot, Clock3, Wrench, XCircle } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { AgentAvatar, MarkdownContent } from '@bakin/sdk/components'
-import { useAgentColor } from '@bakin/sdk/hooks'
+import { AgentAvatar, MarkdownContent } from '@makinbakin/sdk/components'
+import { useAgentColor } from '@makinbakin/sdk/hooks'
 import type { AssistantTransformed, BrainstormMessage } from './types'
 
 interface MessageListProps {

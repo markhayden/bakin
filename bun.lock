@@ -101,7 +101,7 @@
       "version": "0.0.0-workspace",
     },
     "packages/sdk": {
-      "name": "@bakin/sdk",
+      "name": "@makinbakin/sdk",
       "version": "0.0.0-workspace",
       "peerDependencies": {
         "react": "^19.0.0",
@@ -209,7 +209,7 @@
 
     "@bakin/host": ["@bakin/host@workspace:packages/host"],
 
-    "@bakin/sdk": ["@bakin/sdk@workspace:packages/sdk"],
+    "@makinbakin/sdk": ["@makinbakin/sdk@workspace:packages/sdk"],
 
     "@base-ui/react": ["@base-ui/react@1.4.1", "", { "dependencies": { "@babel/runtime": "^7.29.2", "@base-ui/utils": "0.2.8", "@floating-ui/react-dom": "^2.1.8", "@floating-ui/utils": "^0.2.11", "use-sync-external-store": "^1.6.0" }, "peerDependencies": { "@date-fns/tz": "^1.2.0", "@types/react": "^17 || ^18 || ^19", "date-fns": "^4.0.0", "react": "^17 || ^18 || ^19", "react-dom": "^17 || ^18 || ^19" }, "optionalPeers": ["@date-fns/tz", "@types/react", "date-fns"] }, "sha512-Ab5/LIhcmL8BQcsBUYiOfkSDRdLpvgUBzMK30cu684JPcLclYlztharvCZyNNgzJtbAiREzI9q0pI5erHCMgCw=="],
 

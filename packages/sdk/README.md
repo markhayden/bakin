@@ -104,7 +104,7 @@ The public npm package exposes these sub-paths:
 | `@makinbakin/sdk/metadata` | Docs-aware contract metadata helpers |
 | `@makinbakin/sdk/routing` | Typed declarative route helpers |
 
-Use `@makinbakin/sdk/*` imports for external plugin code. The in-repo `@bakin/sdk/*` package name is for Bakin's workspace build.
+Use `@makinbakin/sdk/*` imports for external plugin code.
 
 ## Repository
 

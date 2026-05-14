@@ -11,9 +11,9 @@
  */
 import { useEffect, useState } from 'react'
 import { Microscope } from 'lucide-react'
-import { Card } from "@bakin/sdk/ui"
-import { Skeleton } from "@bakin/sdk/ui"
-import { ErrorBanner } from "@bakin/sdk/components"
+import { Card } from "@makinbakin/sdk/ui"
+import { Skeleton } from "@makinbakin/sdk/ui"
+import { ErrorBanner } from "@makinbakin/sdk/components"
 import { tierStyle } from './tier-colors'
 
 // Tiers that only surface under the page-local "System Logs" toggle. The

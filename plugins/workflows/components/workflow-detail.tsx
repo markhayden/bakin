@@ -1,14 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { useRouter } from '@bakin/sdk/hooks'
+import { useRouter } from '@makinbakin/sdk/hooks'
 import { ArrowLeft, Workflow, Lock, Pencil } from 'lucide-react'
-import { Button } from "@bakin/sdk/ui"
-import { Badge } from "@bakin/sdk/ui"
+import { Button } from "@makinbakin/sdk/ui"
+import { Badge } from "@makinbakin/sdk/ui"
 import { WorkflowCanvas } from './workflow-canvas'
 import { StepDetailDrawer } from './step-detail-drawer'
 import { collectAgents } from './workflow-card'
-import { AgentAvatar } from "@bakin/sdk/components"
+import { AgentAvatar } from "@makinbakin/sdk/components"
 import type { WorkflowDefinition, WorkflowStep, ParallelStep, NestedWorkflowStep } from '../types'
 
 /** Find a step by ID in the step tree (top-level, parallel children, sub-workflow expansions) */
