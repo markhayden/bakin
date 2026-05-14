@@ -292,11 +292,12 @@ async function projectWorkspaceFiles(
       continue
     }
 
-    // Adopt mode: never write workspace template files.
-    if (options.mode === 'adopt') continue
-
-    // Update mode: only rewrite when --refresh-template is requested.
-    if (options.mode === 'update' && !options.refreshTemplate) continue
+    // Adopt/update should preserve existing workspace files unless the user
+    // explicitly refreshes templates, but a missing template is repairable and
+    // should be restored. Otherwise adopting a runtime agent with a partial
+    // workspace leaves it permanently half-installed.
+    if (options.mode === 'adopt' && existing) continue
+    if (options.mode === 'update' && existing && !options.refreshTemplate) continue
 
     if (existing) {
       writeLog.recordModifiedWorkspaceFile(agentId, existing)

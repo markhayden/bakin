@@ -365,6 +365,25 @@ describe('projectPackage — adopt mode', () => {
     expect(result.projections.some((p) => p.kind === 'skill')).toBe(true)
     expect(result.projections.some((p) => p.kind === 'asset')).toBe(true)
   })
+
+  it('restores missing workspace template files while preserving existing ones', async () => {
+    const wsDir = join(openClawDir, 'workspaces', 'pixel')
+    mkdirSync(wsDir, { recursive: true })
+    writeFileSync(join(wsDir, 'SOUL.md'), `# Existing Pixel SOUL\n\nUser-written content.\n`)
+
+    const opts = freshOptions()
+    opts.mode = 'adopt'
+
+    const result = await projectPackage(opts)
+
+    expect(readFileSync(join(wsDir, 'SOUL.md'), 'utf-8')).toContain('User-written content.')
+    expect(existsSync(join(wsDir, 'IDENTITY.md'))).toBe(true)
+
+    const wsProjections = result.projections.filter((p) => p.kind === 'workspace-file')
+    expect(wsProjections.map((p) => p.target).sort()).toEqual([
+      'runtime:workspace-file:pixel:IDENTITY.md',
+    ])
+  })
 })
 
 // ─── Update mode ─────────────────────────────────────────────────────────────

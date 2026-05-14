@@ -81,7 +81,7 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
     // No-op when the commit SHA hasn't moved. Local sources have empty
     // commitSha — for those we always re-project (the user just ran
     // update, presumably because something changed locally).
-    if (entry.commitSha && fetched.commitSha === entry.commitSha) {
+    if (entry.commitSha && fetched.commitSha === entry.commitSha && !options.refreshTemplate) {
       log.info('Update no-op — commit SHA unchanged', {
         packageId: options.packageId,
         commitSha: entry.commitSha,
