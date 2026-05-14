@@ -268,6 +268,26 @@ describe('dispatchRoute — response validation (NODE_ENV=test)', () => {
     )
   })
 
+  it('includes route and request context when response JSON validation fails', async () => {
+    const route = defineRoute({
+      path: '/:agentId/avatar',
+      method: 'GET',
+      summary: 'Avatar',
+      responses: { 404: z.object({ error: z.string() }) },
+      handler: async () => new Response('missing', { status: 404 }),
+    })
+    const req = new Request('http://x/api/plugins/team/patch/avatar')
+
+    await expect(dispatchRoute({
+      req,
+      ctx: stubCtx,
+      route,
+      params: { agentId: 'patch' },
+    })).rejects.toThrow(
+      /GET \/:agentId\/avatar .*api\/plugins\/team\/patch\/avatar.*response 404: expected JSON body/i,
+    )
+  })
+
   it('does not validate non-JSON responses', async () => {
     const route = defineRoute({
       path: '/sse',

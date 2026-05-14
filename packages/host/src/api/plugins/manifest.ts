@@ -65,17 +65,12 @@ function daysSince(iso: string): number {
   return Math.floor(ms / (1000 * 60 * 60 * 24))
 }
 
-/**
- * Check each asset-resolution layer. In a compiled binary the embedded
- * map wins for every core plugin, so probe it first to avoid a syscall
- * for each plugin on every manifest fetch.
- */
 function pluginAssetPath(pluginId: string, relPath: string): string | null {
-  const embeddedPath = EMBEDDED_ASSETS.get(`/api/plugins/${pluginId}/assets/${relPath}`)
-  if (embeddedPath && existsSync(embeddedPath)) return embeddedPath
-
   const userPath = join(getContentDir(), 'plugins', pluginId, 'dist', relPath)
   if (existsSync(userPath)) return userPath
+
+  const embeddedPath = EMBEDDED_ASSETS.get(`/api/plugins/${pluginId}/assets/${relPath}`)
+  if (embeddedPath && existsSync(embeddedPath)) return embeddedPath
 
   const repoPath = join(process.cwd(), 'plugins', pluginId, 'dist', relPath)
   if (existsSync(repoPath)) return repoPath

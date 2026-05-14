@@ -125,7 +125,11 @@ export async function dispatchRoute(input: DispatchInput): Promise<Response> {
 
   // ─── 9. Validate response in dev / test ─────────────────────────────────
   if (shouldValidateResponses() && responses) {
-    await validateResponse(res, responses)
+    await validateResponse(res, responses, {
+      method: route.method,
+      path: route.path,
+      url: req.url,
+    })
   }
 
   return res
@@ -214,6 +218,7 @@ function shouldValidateResponses(): boolean {
 async function validateResponse(
   res: Response,
   responses: Partial<Record<string, ResponseSpec>>,
+  context: { method: string; path: string; url: string },
 ): Promise<void> {
   const statusKey = String(res.status)
   const spec = responses[statusKey]
@@ -221,15 +226,15 @@ async function validateResponse(
     // Allow auto-emitted error responses (400/415) to skip validation —
     // the dispatcher emits these with the global error envelope shape.
     if (statusKey === '400' || statusKey === '415') return
-    fail(`undeclared response status ${statusKey}`)
+    fail(`undeclared response status ${statusKey}`, context)
     return
   }
   // Zod shorthand → validate JSON
-  if (isZodType(spec)) return validateJsonResponse(res, spec, statusKey)
+  if (isZodType(spec)) return validateJsonResponse(res, spec, statusKey, context)
   if (spec.contentType === 'none') return
   if (spec.contentType === 'application/json') {
     const json = spec as { contentType: 'application/json'; schema: z.ZodType<unknown> }
-    return validateJsonResponse(res, json.schema, statusKey)
+    return validateJsonResponse(res, json.schema, statusKey, context)
   }
   // NonJson — no validation.
 }
@@ -238,25 +243,27 @@ async function validateJsonResponse(
   res: Response,
   schema: z.ZodType<unknown>,
   statusKey: string,
+  context: { method: string; path: string; url: string },
 ): Promise<void> {
   let body: unknown
   try {
     body = await res.clone().json()
   } catch {
-    fail(`response ${statusKey}: expected JSON body but parse failed`)
+    fail(`response ${statusKey}: expected JSON body but parse failed`, context)
     return
   }
   const r = schema.safeParse(body)
   if (!r.success) {
-    fail(`response ${statusKey} body did not match schema: ${formatIssues(r.error.issues)}`)
+    fail(`response ${statusKey} body did not match schema: ${formatIssues(r.error.issues)}`, context)
   }
 }
 
-function fail(message: string): void {
+function fail(message: string, context: { method: string; path: string; url: string }): void {
+  const scoped = `${context.method.toUpperCase()} ${context.path} (${context.url}): ${message}`
   if (process.env.NODE_ENV === 'test' || (process.env as Record<string, string>).VITEST) {
-    throw new Error(message)
+    throw new Error(scoped)
   }
-  console.warn(`[dispatcher] ${message}`)
+  console.warn(`[dispatcher] ${scoped}`)
 }
 
 function formatIssues(issues: unknown[]): string {

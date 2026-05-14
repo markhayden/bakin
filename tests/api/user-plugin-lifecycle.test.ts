@@ -112,7 +112,7 @@ describe('user plugin lifecycle', () => {
     const assetBody = await assetRes.text()
     // The fixture client.tsx imports registerSlot + react/jsx-runtime; after
     // externalized build, both import specifiers survive verbatim.
-    expect(assetBody).toMatch(/@bakin\/sdk\/slots/)
+    expect(assetBody).toMatch(/@makinbakin\/sdk\/slots/)
     expect(assetBody).toMatch(/react\/jsx-runtime/)
 
     // 3. GET an asset that shouldn't exist

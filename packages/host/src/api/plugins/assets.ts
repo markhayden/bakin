@@ -6,9 +6,8 @@
  *   2. EMBEDDED_ASSETS map                 (core plugins embedded at build time)
  *   3. plugins/<id>/dist/<path>            (repo core plugins, dev fallback)
  *
- * In the compiled binary the EMBEDDED_ASSETS lookup wins for every core
- * plugin. User plugins still live on disk under ~/.bakin/ because they're
- * installed post-launch.
+ * User plugins always win over embedded/core assets so installed plugins can
+ * override their own rebuilt bundles after startup.
  */
 import { readFileSync, existsSync, statSync } from 'fs'
 import { join, extname } from 'path'
