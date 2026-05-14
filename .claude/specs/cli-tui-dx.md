@@ -1,5 +1,10 @@
 # Spec: CLI TUI Developer Experience
 
+> Superseded for unfinished work by
+> `.claude/specs/cli-tui-dx-hardening.md`.
+>
+> This document remains as historical context for the first CLI TUI DX pass.
+
 ## Objective
 
 Rework the Bakin CLI into a unified, polished developer experience where every public entry point is served by the same compiled `bakin` tool and every human-facing command renders through a shared Ink-based terminal UI.
