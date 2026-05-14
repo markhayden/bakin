@@ -1,6 +1,7 @@
 import { accessSync, closeSync, constants, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { execFile } from 'child_process'
+import { createHash } from 'crypto'
 import { promisify } from 'util'
 import type {
   AgentRuntimeAdapter,
@@ -1015,7 +1016,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   private async runOpenClawAgentCli(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): Promise<string> {
     const args = ['agent', '--agent', opts.agentId, '--message', messagesToOpenClawPrompt(opts.messages), '--json']
-    if (opts.sessionKey) args.push('--session-id', opts.sessionKey)
+    if (opts.sessionKey) args.push('--session-id', openClawCliSessionId(opts.agentId, opts.sessionKey))
     try {
       const { stdout } = await execFileAsync(this.settings.binaryPath, args, {
         timeout: OPENCLAW_AGENT_TIMEOUT_MS,
@@ -1668,13 +1669,43 @@ function readOpenClawSessionActivity(
 function resolveOpenClawSessionFile(agentId: string, sessionKey: string): string | undefined {
   const storePath = join(getOpenClawHome(), 'agents', agentId, 'sessions', 'sessions.json')
   const store = readJsonFile<Record<string, OpenClawSessionStoreEntry>>(storePath)
-  const entry = store?.[sessionKey]
+  const entry = findOpenClawSessionStoreEntry(store, agentId, sessionKey)
   if (!entry) return undefined
   if (typeof entry.sessionFile === 'string' && entry.sessionFile.length > 0) return entry.sessionFile
   if (typeof entry.sessionId === 'string' && entry.sessionId.length > 0) {
     return join(getOpenClawHome(), 'agents', agentId, 'sessions', `${entry.sessionId}.jsonl`)
   }
   return undefined
+}
+
+function findOpenClawSessionStoreEntry(
+  store: Record<string, OpenClawSessionStoreEntry> | null,
+  agentId: string,
+  sessionKey: string,
+): OpenClawSessionStoreEntry | undefined {
+  if (!store) return undefined
+  const cliSessionId = openClawCliSessionId(agentId, sessionKey)
+  return store[sessionKey]
+    ?? store[cliSessionId]
+    ?? store[`agent:${agentId}:${cliSessionId}`]
+}
+
+function openClawCliSessionId(agentId: string, sessionKey: string): string {
+  if (isOpenClawCliSessionId(sessionKey)) return sessionKey
+  return deterministicUuid(`bakin:${agentId}:${sessionKey}`)
+}
+
+function isOpenClawCliSessionId(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
+function deterministicUuid(value: string): string {
+  const hex = createHash('sha256').update(value).digest('hex').slice(0, 32).split('')
+  hex[12] = '5'
+  const variant = Number.parseInt(hex[16] ?? '0', 16)
+  hex[16] = ((variant & 0x3) | 0x8).toString(16)
+  const id = hex.join('')
+  return `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`
 }
 
 function safeFileSize(path: string): number {

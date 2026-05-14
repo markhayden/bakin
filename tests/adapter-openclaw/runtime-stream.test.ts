@@ -132,11 +132,12 @@ JSON
     const result = await runtime.messaging.send({
       agentId: 'pixel',
       content: 'Say ok.',
-      threadId: 'brainstorm-1',
+      threadId: 'messaging:a50b420e:pixel',
     })
 
     expect(result.content).toBe('ok from cli')
-    expect(readFileSync(callsFile, 'utf-8').split('\n').filter(Boolean)).toEqual([
+    const args = readFileSync(callsFile, 'utf-8').split('\n').filter(Boolean)
+    expect(args.slice(0, 7)).toEqual([
       'agent',
       '--agent',
       'pixel',
@@ -144,8 +145,8 @@ JSON
       'Say ok.',
       '--json',
       '--session-id',
-      'brainstorm-1',
     ])
+    expect(args[7]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
   })
 
   it('streams a CLI-backed OpenClaw agent response when the REST stream route is unavailable', async () => {
