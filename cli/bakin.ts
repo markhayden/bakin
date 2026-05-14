@@ -714,13 +714,95 @@ async function cmdSearchStats(): Promise<void> {
   }
 }
 
-async function cmdDoctor(): Promise<void> {
-  const json = process.argv.slice(2).includes('--json')
-  const isTTY = Boolean(process.stdout.isTTY)
-  const result = await apiGet('/api/plugins/health/doctor?fresh=true') as {
-    results: Array<{ check: string; status: string; message: string }>
-    summary: { total: number; errors: number; warnings: number }
+type CliDoctorResult = {
+  results: Array<{ check: string; status: string; message: string }>
+  summary: { total: number; errors: number; warnings: number }
+  mode?: 'offline' | 'full'
+}
+
+function summarizeDoctorResults(results: CliDoctorResult['results']): CliDoctorResult['summary'] {
+  return {
+    total: results.length,
+    errors: results.filter(r => r.status === 'error').length,
+    warnings: results.filter(r => r.status === 'warn').length,
   }
+}
+
+async function runOfflineDoctor(): Promise<CliDoctorResult> {
+  const [
+    { mkdirComponent },
+    { settingsComponent },
+    { searchComponent },
+    { searchModelsComponent },
+    { mcporterComponent },
+    { agentAssetsComponent },
+    { recommendedPluginsComponent },
+  ] = await Promise.all([
+    import('../src/core/onboarding/mkdir'),
+    import('../src/core/onboarding/settings'),
+    import('../src/core/onboarding/search'),
+    import('../src/core/onboarding/search-models'),
+    import('../src/core/onboarding/mcporter'),
+    import('../src/core/onboarding/agent-assets'),
+    import('../src/core/onboarding/recommended-plugins'),
+  ])
+  const checks = []
+  for (const component of [
+    mkdirComponent,
+    settingsComponent,
+    searchComponent,
+    searchModelsComponent,
+    mcporterComponent,
+    agentAssetsComponent,
+    recommendedPluginsComponent,
+  ]) {
+    try {
+      checks.push(await component.check())
+    } catch (err) {
+      checks.push({
+        name: component.name,
+        status: 'error' as const,
+        message: `check() threw: ${err instanceof Error ? err.message : String(err)}`,
+      })
+    }
+  }
+  const results: CliDoctorResult['results'] = checks.map(check => ({
+    check: check.name,
+    status: check.status === 'ok' ? 'ok' : check.status === 'warn' ? 'warn' : 'error',
+    message: check.remediation ? `${check.message} ${check.remediation}` : check.message,
+  }))
+  results.push({
+    check: 'runtime',
+    status: 'warn',
+    message: 'Skipped live runtime checks in offline mode. Run `bakin doctor --full` after `bakin start` to verify runtime reachability, agents, LLM providers, and channels.',
+  })
+  results.push({
+    check: 'plugin-assets',
+    status: 'warn',
+    message: 'Skipped runtime skill projection checks in offline mode. Run `bakin doctor --full` after `bakin start` to verify plugin assets.',
+  })
+  results.push({
+    check: 'server-backed-checks',
+    status: 'warn',
+    message: 'Skipped plugin, search index, workflow, task, and server health checks that require the Bakin server. Run `bakin doctor --full` after `bakin start`.',
+  })
+  return { results, summary: summarizeDoctorResults(results), mode: 'offline' }
+}
+
+async function runFullDoctor(options: { notifyAgent: boolean }): Promise<CliDoctorResult> {
+  const query = options.notifyAgent
+    ? '/api/plugins/health/doctor?fresh=true&notifyAgent=true'
+    : '/api/plugins/health/doctor?fresh=true'
+  const result = await apiGet(query) as CliDoctorResult
+  return { ...result, mode: 'full' }
+}
+
+async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> {
+  const json = args.includes('--json')
+  const full = args.includes('--full')
+  const notifyAgent = args.includes('--notify-agent')
+  const isTTY = Boolean(process.stdout.isTTY)
+  const result = full ? await runFullDoctor({ notifyAgent }) : await runOfflineDoctor()
 
   if (json) {
     console.log(JSON.stringify({
@@ -1978,7 +2060,7 @@ export async function main(): Promise<void> {
         break
 
       case 'doctor':
-        await cmdDoctor()
+        await cmdDoctor(args.slice(1))
         break
 
       case 'dev': {

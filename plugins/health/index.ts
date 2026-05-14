@@ -118,6 +118,7 @@ const usageFeedQuery = z.object({
 
 const doctorQuery = z.object({
   fresh: z.union([z.literal('true'), z.literal('false')]).optional(),
+  notifyAgent: z.union([z.literal('true'), z.literal('false')]).optional(),
 })
 
 const doctorResponse = z.object({
@@ -259,7 +260,9 @@ const routes = [
         }
       }
       try {
-        const results = await runDiagnostics(getContentDir(), process.cwd())
+        const results = await runDiagnostics(getContentDir(), process.cwd(), {
+          notifyAgent: query.notifyAgent === 'true',
+        })
         return Response.json({
           ...buildDoctorResponse(results),
           cachedAt: new Date().toISOString(),

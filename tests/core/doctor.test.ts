@@ -192,7 +192,30 @@ describe('doctor', () => {
     }
   })
 
-  it('notifies the runtime main agent about unfixable plugin issues', async () => {
+  it('does not notify the runtime main agent unless explicitly requested', async () => {
+    const registry = await import('../../src/core/health-check-registry')
+    registry.registerHealthCheck({
+      runtime: 'plugin',
+      pluginId: 'doctor-test',
+      id: 'doctor-test.report-only',
+      name: 'Report only',
+      run: async () => [{
+        check: 'report-only-row',
+        status: 'error',
+        message: 'Needs operator attention',
+        autoFixable: false,
+      }],
+    })
+    try {
+      const doctor = await import('@/core/doctor')
+      await doctor.runDiagnostics(contentDir, tempDir)
+      expect(mockRuntimeSend).not.toHaveBeenCalled()
+    } finally {
+      registry.unregisterHealthCheck('doctor-test.report-only')
+    }
+  })
+
+  it('notifies the runtime main agent about unfixable plugin issues when requested', async () => {
     const registry = await import('../../src/core/health-check-registry')
     registry.registerHealthCheck({
       runtime: 'plugin',
@@ -208,7 +231,7 @@ describe('doctor', () => {
     })
     try {
       const doctor = await import('@/core/doctor')
-      await doctor.runDiagnostics(contentDir, tempDir)
+      await doctor.runDiagnostics(contentDir, tempDir, { notifyAgent: true })
       expect(mockRuntimeSend).toHaveBeenCalledWith(expect.objectContaining({
         agentId: 'main',
         content: expect.stringContaining('Needs operator attention'),

@@ -96,6 +96,7 @@ async function notifyUnfixableIssues(results: HealthCheckResult[]): Promise<void
 export async function runDiagnostics(
   contentDir: string,
   _projectRoot: string,
+  options: { notifyAgent?: boolean } = {},
 ): Promise<HealthCheckResult[]> {
   void _projectRoot
   const settings = getSettings()
@@ -133,7 +134,9 @@ export async function runDiagnostics(
     fixes,
   })
 
-  await notifyUnfixableIssues(results)
+  if (options.notifyAgent) {
+    await notifyUnfixableIssues(results)
+  }
 
   lastResults = results
   lastResultTime = Date.now()
