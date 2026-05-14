@@ -1,7 +1,7 @@
 /**
  * Tests for models plugin routes, exec tools, and hooks.
  */
-import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
+import { describe, it, expect, beforeAll, afterAll, mock, spyOn } from 'bun:test'
 import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -332,6 +332,29 @@ describe('GET /available', () => {
     const { body } = await callRoute(route, activated.ctx)
     // stale is defined on every successful response (true|false)
     expect(typeof body.stale).toBe('boolean')
+  })
+
+  it('returns a structured error when runtime model listing fails without dumping the thrown object', async () => {
+    const restartRoute = findRoute(activated.routes, 'POST', '/runtime/restart')!
+    await callRoute(restartRoute, activated.ctx)
+
+    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {})
+    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    runtimeMocks.listAvailable.mockImplementationOnce(async () => {
+      throw new Error('OpenClaw model list failed: code=1; killed=true')
+    })
+
+    const route = findRoute(activated.routes, 'GET', '/available')!
+    const { status, body } = await callRoute(route, activated.ctx)
+
+    expect(status).toBe(200)
+    expect(body.models).toEqual([])
+    expect(body.error).toBe('OpenClaw model list failed: code=1; killed=true')
+    expect(warnSpy).toHaveBeenCalledWith('Failed to fetch models from runtime: OpenClaw model list failed: code=1; killed=true')
+    expect(errorSpy).not.toHaveBeenCalled()
+
+    warnSpy.mockRestore()
+    errorSpy.mockRestore()
   })
 
   it('enriches catalog-matched models with description, bestFor, costRange', async () => {

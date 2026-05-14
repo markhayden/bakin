@@ -169,6 +169,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   private approvalGatewayClient: OpenClawApprovalGatewayClient | null = null
   private emittedApprovalResponseKeys: string[] = []
   private emittedApprovalResponseKeySet = new Set<string>()
+  private lastModelListFailureMessage: string | null = null
 
   constructor(options: OpenClawRuntimeAdapterOptions = {}) {
     this.settings = mergeSettings(options.settings)
@@ -716,7 +717,18 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   models = {
     listAvailable: async (opts?: { includeUnavailable?: boolean }): Promise<RuntimeAvailableModel[]> => {
-      const stdout = await this.exec(['models', 'list', '--all', '--json'])
+      let stdout: string
+      try {
+        stdout = await this.exec(['models', 'list', '--all', '--json'])
+        this.lastModelListFailureMessage = null
+      } catch (err) {
+        const message = formatOpenClawExecError(err)
+        if (message !== this.lastModelListFailureMessage) {
+          this.logger.warn('OpenClaw model list failed', { error: message })
+          this.lastModelListFailureMessage = message
+        }
+        throw new Error(`OpenClaw model list failed: ${message}`)
+      }
       const parsed = parseJsonObject(stdout) as OpenClawModelListJson | null
       return (parsed?.models ?? [])
         .map((model): RuntimeAvailableModel | null => {
@@ -990,6 +1002,20 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     const { stdout } = await execFileAsync(this.settings.binaryPath, args, { timeout: 15000 })
     return stdout
   }
+}
+
+function formatOpenClawExecError(err: unknown): string {
+  if (!err || typeof err !== 'object') return String(err)
+  const record = err as Record<string, unknown>
+  const parts: string[] = []
+  const message = typeof record.message === 'string' ? record.message : ''
+  if (message) parts.push(message)
+  if (record.code !== undefined) parts.push(`code=${String(record.code)}`)
+  if (record.signal !== undefined && record.signal !== null) parts.push(`signal=${String(record.signal)}`)
+  if (record.killed !== undefined) parts.push(`killed=${String(record.killed)}`)
+  const stderr = typeof record.stderr === 'string' ? record.stderr.trim() : ''
+  if (stderr) parts.push(`stderr=${stderr.slice(0, 500)}`)
+  return parts.length > 0 ? parts.join('; ') : 'unknown error'
 }
 
 function mergeSettings(raw: Record<string, unknown> | undefined): OpenClawSettings {

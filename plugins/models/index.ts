@@ -239,6 +239,21 @@ interface FetchResult {
 // model list, which can be slow. With this, the second caller awaits
 // the first's result.
 let inflightFetch: Promise<FetchResult> | null = null
+let lastRuntimeModelFetchWarning: { message: string; at: number } | null = null
+const MODEL_FETCH_WARNING_TTL = 60_000
+
+function warnRuntimeModelFetchFailed(message: string): void {
+  const now = Date.now()
+  if (
+    lastRuntimeModelFetchWarning &&
+    lastRuntimeModelFetchWarning.message === message &&
+    now - lastRuntimeModelFetchWarning.at < MODEL_FETCH_WARNING_TTL
+  ) {
+    return
+  }
+  lastRuntimeModelFetchWarning = { message, at: now }
+  console.warn(`Failed to fetch models from runtime: ${message}`)
+}
 
 async function fetchAvailableModels(ctx: PluginContext): Promise<FetchResult> {
   // 1. Hot read — in-memory cache (fresh by TTL)
@@ -270,7 +285,7 @@ async function fetchAvailableModels(ctx: PluginContext): Promise<FetchResult> {
       return { models, cached: false, cachedAt: now, stale: false }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      console.error('Failed to fetch models from runtime:', err)
+      warnRuntimeModelFetchFailed(message)
       return { models: [], cached: false, cachedAt: null, stale: false, error: message }
     } finally {
       inflightFetch = null
