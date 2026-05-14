@@ -145,4 +145,14 @@ describe('buildUserPlugin', () => {
 
     await expect(buildUserPlugin(dir)).rejects.toThrow(/not declared/)
   })
+
+  it('ignores test-only imports during runtime dependency validation', async () => {
+    const dir = join(testDir, 'plugins', 'test-only-import')
+    writeMinimalPlugin(dir, `export default { id: 'minimal', name: 'x', version: '0.1.0', activate() {} }`)
+    mkdirSync(join(dir, 'tests'), { recursive: true })
+    writeFileSync(join(dir, 'tests', 'component.test.tsx'), `import { render } from '@testing-library/react'; render(null)`)
+
+    await expect(buildUserPlugin(dir)).resolves.toBeUndefined()
+    expect(existsSync(join(dir, 'dist', 'index.js'))).toBe(true)
+  }, 60_000)
 })

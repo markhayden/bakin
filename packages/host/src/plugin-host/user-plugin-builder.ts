@@ -62,6 +62,7 @@ const BUILTIN_IMPORTS = new Set([
   ...builtinModules.map((name) => `node:${name}`),
 ])
 const SOURCE_EXT_RE = /\.(?:ts|tsx|js|jsx|mjs|cjs)$/
+const NON_RUNTIME_DIRS = new Set(['dist', 'node_modules', 'tests', '__tests__', 'coverage'])
 const IMPORT_SPECIFIER_RE = /\bfrom\s+["']([^"']+)["']|\bimport\s+["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)/g
 const OLD_SDK_PACKAGE_NAME = '@bakin' + '/sdk'
 
@@ -110,7 +111,7 @@ function newestMtimeMs(dir: string, skip: Set<string>): number {
     }
     for (const entry of entries) {
       const name = String(entry.name)
-      if (skip.has(name)) continue
+      if (skip.has(name) || NON_RUNTIME_DIRS.has(name)) continue
       const full = join(current, name)
       if (entry.isDirectory()) {
         walk(full)
@@ -170,7 +171,7 @@ function collectSourceFiles(dir: string): string[] {
     }
     for (const entry of entries) {
       const name = String(entry.name)
-      if (name === 'dist' || name === 'node_modules' || name.startsWith('.')) continue
+      if (NON_RUNTIME_DIRS.has(name) || name.startsWith('.')) continue
       const full = join(current, name)
       if (entry.isDirectory()) walk(full)
       else if (entry.isFile() && SOURCE_EXT_RE.test(name)) out.push(full)
