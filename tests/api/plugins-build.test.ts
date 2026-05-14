@@ -4,8 +4,10 @@
  * Copies tests/fixtures/sample-user-plugin/ into an isolated temp dir,
  * invokes buildUserPlugin(), and asserts:
  *   1. dist/index.js + dist/client.js appear
- *   2. the outputs retain unresolved imports for the shell's externals
+ *   2. client output retains unresolved imports for the shell's externals
  *      (`react`, `react/jsx-runtime`, `@makinbakin/sdk/*`)
+ *   3. server output bundles SDK imports so runtime activation does not
+ *      depend on plugin-local SDK symlinks.
  *
  * Per CLAUDE.md testing rules, getContentDir is mocked to a temp dir so
  * nothing leaks into ~/.bakin/ even though buildUserPlugin operates on
@@ -99,5 +101,11 @@ describe('buildUserPlugin', () => {
     const client = readFileSync(join(targetDir, 'dist', 'client.js'), 'utf-8')
     expect(client).not.toMatch(/React\.createElement\s*=\s*function/)
     expect(client).not.toMatch(/__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED/)
+  }, 60_000)
+
+  it('bundles SDK imports into dist/index.js for runtime activation', () => {
+    const server = readFileSync(join(targetDir, 'dist', 'index.js'), 'utf-8')
+    expect(server).not.toMatch(/from\s+["']@makinbakin\/sdk/)
+    expect(server).not.toMatch(/import\(["']@makinbakin\/sdk/)
   }, 60_000)
 })

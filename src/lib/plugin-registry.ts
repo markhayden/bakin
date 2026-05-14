@@ -5,18 +5,11 @@
 import { AsyncLocalStorage } from 'async_hooks'
 import {
   existsSync,
-  lstatSync,
-  mkdirSync,
   readFileSync,
-  readlinkSync,
   readdirSync,
-  rmSync,
   statSync,
-  symlinkSync,
-  unlinkSync,
 } from 'fs'
-import { dirname, join, resolve } from 'path'
-import { fileURLToPath } from 'url'
+import { join } from 'path'
 import { inspect } from 'util'
 import type {
   BakinConfig,
@@ -99,8 +92,6 @@ export function registerCorePlugins(table: Readonly<Record<string, BakinPlugin>>
 }
 
 const log = createLogger('plugin-registry')
-const moduleDir = dirname(fileURLToPath(import.meta.url))
-
 type CapturedConsoleLevel = 'debug' | 'error' | 'info' | 'warn'
 type CapturedConsoleMethod = CapturedConsoleLevel | 'log'
 interface CapturedConsoleContext {
@@ -111,51 +102,6 @@ const capturedConsoleContext = new AsyncLocalStorage<CapturedConsoleContext | un
 
 function withoutCapturedPluginConsole<T>(action: () => T): T {
   return capturedConsoleContext.run(undefined, action)
-}
-
-function resolveWorkspacePackagePath(packageDir: string): string | null {
-  const candidates = [
-    resolve(process.cwd(), 'packages', packageDir),
-    resolve(moduleDir, '..', '..', 'packages', packageDir),
-  ]
-  return candidates.find(candidate => existsSync(join(candidate, 'package.json'))) ?? null
-}
-
-function ensureWorkspacePackageLink(pluginPath: string, scope: string, name: string, packageDir: string): void {
-  const packagePath = resolveWorkspacePackagePath(packageDir)
-  if (!packagePath) {
-    log.warn(`User plugin SDK package link skipped; workspace package not found: ${packageDir}`, {
-      pluginPath,
-      packageDir,
-    })
-    return
-  }
-
-  const scopeDir = join(pluginPath, 'node_modules', scope)
-  mkdirSync(scopeDir, { recursive: true })
-  const linkPath = join(scopeDir, name)
-
-  try {
-    const existing = lstatSync(linkPath)
-    if (existing.isSymbolicLink()) {
-      const existingTarget = resolve(dirname(linkPath), readlinkSync(linkPath))
-      if (existingTarget === packagePath) return
-      unlinkSync(linkPath)
-    } else {
-      rmSync(linkPath, { recursive: true, force: true })
-    }
-  } catch (err) {
-    if (!(err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT')) {
-      throw err
-    }
-  }
-
-  symlinkSync(packagePath, linkPath, 'dir')
-}
-
-function ensureUserPluginWorkspaceLinks(pluginPath: string): void {
-  ensureWorkspacePackageLink(pluginPath, '@makinbakin', 'sdk', 'sdk')
-  ensureWorkspacePackageLink(pluginPath, '@bakin', 'core', 'core')
 }
 
 function stripPluginConsolePrefix(pluginId: string, message: string): string {
@@ -690,7 +636,7 @@ class PluginRegistryImpl {
     return report
   }
 
-  async activateUserPluginFromDir(pluginPath: string, opts: { cacheBust?: boolean; preferDist?: boolean } = {}): Promise<{ id: string; version: string }> {
+  async activateUserPluginFromDir(pluginPath: string, opts: { cacheBust?: boolean } = {}): Promise<{ id: string; version: string }> {
     if (!this.runtime) {
       throw new Error('plugin registry is not initialized; cannot activate user plugin')
     }
@@ -1102,7 +1048,7 @@ class PluginRegistryImpl {
     storage: StorageAdapter,
     events: EventBus,
     services: AppServices,
-    opts: { cacheBust?: boolean; preferDist?: boolean } = {},
+    opts: { cacheBust?: boolean } = {},
   ): Promise<{ id: string; version: string }> {
     const manifest = entry.manifest!
     const pluginId = manifest.id
@@ -1121,11 +1067,11 @@ class PluginRegistryImpl {
     }
 
     const distServer = join(entry.path, 'dist', 'index.js')
-    const sourceServer = join(entry.path, manifest.entry?.server || 'index.ts')
-    ensureUserPluginWorkspaceLinks(entry.path)
-    let importTarget = opts.preferDist && existsSync(distServer)
-      ? distServer
-      : sourceServer
+    if (!existsSync(distServer)) {
+      throw new Error(`User plugin "${pluginId}" is not built. Expected ${distServer}. Reinstall the plugin or rebuild it before starting Bakin.`)
+    }
+
+    let importTarget = distServer
     if (opts.cacheBust) {
       userPluginImportCounter += 1
       importTarget = `${importTarget}?v=${Date.now()}-${userPluginImportCounter}`

@@ -11,9 +11,10 @@
  * the disk layout is identical for core vs user plugins — the runtime
  * loader doesn't care which bucket a plugin came from.
  *
- * Externals held: react, @tanstack/react-router, and SDK package aliases so the
- * host shell and plugin share the singletons wired in via the browser
- * import map.
+ * Client externals hold React, @tanstack/react-router, and SDK package aliases
+ * so the host shell and plugin share the browser singletons wired by the
+ * import map. Server builds bundle the SDK so activation of dist/index.js does
+ * not depend on a workspace symlink or a locally installed SDK package.
  *
  * Rebuild skip: if every dist output is newer than every source entry,
  * the build is a no-op. This keeps server boot fast when nothing changed.
@@ -21,9 +22,9 @@
 import { existsSync, statSync, readdirSync, readFileSync } from 'node:fs'
 import type { Dirent } from 'node:fs'
 import { spawn } from 'node:child_process'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
-const EXTERNAL = [
+const CLIENT_EXTERNAL = [
   'react', 'react-dom', 'react-dom/client',
   'react/jsx-runtime', 'react/jsx-dev-runtime',
   '@tanstack/react-router',
@@ -32,6 +33,25 @@ const EXTERNAL = [
   '@makinbakin/sdk/types', '@makinbakin/sdk/utils',
   '@makinbakin/sdk/metadata', '@makinbakin/sdk/routing',
 ]
+
+const SERVER_EXTERNAL = [
+  'react', 'react-dom', 'react-dom/client',
+  'react/jsx-runtime', 'react/jsx-dev-runtime',
+  '@tanstack/react-router',
+]
+
+const REPO_ROOT = resolve(import.meta.dir, '../../../..')
+const SDK_ENTRYPOINTS: Record<string, string> = {
+  '@makinbakin/sdk': join(REPO_ROOT, 'packages/sdk/src/index.ts'),
+  '@makinbakin/sdk/ui': join(REPO_ROOT, 'packages/sdk/src/ui/index.ts'),
+  '@makinbakin/sdk/hooks': join(REPO_ROOT, 'packages/sdk/src/hooks/index.ts'),
+  '@makinbakin/sdk/components': join(REPO_ROOT, 'packages/sdk/src/components/index.ts'),
+  '@makinbakin/sdk/slots': join(REPO_ROOT, 'packages/sdk/src/slots/index.tsx'),
+  '@makinbakin/sdk/types': join(REPO_ROOT, 'packages/sdk/src/types/index.ts'),
+  '@makinbakin/sdk/utils': join(REPO_ROOT, 'packages/sdk/src/utils/index.ts'),
+  '@makinbakin/sdk/metadata': join(REPO_ROOT, 'packages/sdk/src/metadata/index.ts'),
+  '@makinbakin/sdk/routing': join(REPO_ROOT, 'packages/sdk/src/routing/index.ts'),
+}
 
 interface RunResult {
   exitCode: number
@@ -117,7 +137,8 @@ function oldestMtimeMs(paths: string[]): number {
  *   externals list, so this is mostly for dev deps / rare plugin-owned
  *   npm packages.
  * - Runs `bun build` on `index.ts` (server) and `client.tsx` (browser, if
- *   present). Both land in `dist/` with `index.js` / `client.js`.
+ *   present). Both land in `dist/` with `index.js` / `client.js`. The server
+ *   bundle is self-contained except for shared runtime singletons.
  * - Skips the build when the dist outputs are newer than every source file.
  */
 export async function buildUserPlugin(pluginDir: string): Promise<void> {
@@ -170,18 +191,27 @@ export async function buildUserPlugin(pluginDir: string): Promise<void> {
     }
   }
 
-  // Server entry — target=bun, keep node_modules external.
-  const serverResult = await runSubprocess('bun', [
-    'build', serverEntry,
-    '--outdir', distDir,
-    '--target', 'bun',
-    '--format', 'esm',
-    '--entry-naming', 'index.[ext]',
-    '--packages', 'external',
-    ...EXTERNAL.flatMap(e => ['--external', e]),
-  ])
-  if (serverResult.exitCode !== 0) {
-    throw new Error(`Failed to build server entry for ${pluginDir}:\n${serverResult.stderr}`)
+  const serverBuildConfig = {
+    entrypoints: [serverEntry],
+    outdir: distDir,
+    target: 'bun',
+    format: 'esm',
+    naming: 'index.[ext]',
+    external: SERVER_EXTERNAL,
+    plugins: [{
+      name: 'bakin-sdk-server-resolver',
+      setup(build: any) {
+        build.onResolve({ filter: /^@makinbakin\/sdk(\/.*)?$/ }, (args: { path: string }) => {
+          const path = SDK_ENTRYPOINTS[args.path]
+          if (!path) return
+          return { path }
+        })
+      },
+    }],
+  } as Parameters<typeof Bun.build>[0] & { plugins: Array<unknown> }
+  const serverResult = await Bun.build(serverBuildConfig)
+  if (!serverResult.success) {
+    throw new Error(`Failed to build server entry for ${pluginDir}:\n${serverResult.logs.join('\n')}`)
   }
 
   if (hasClient) {
@@ -191,7 +221,7 @@ export async function buildUserPlugin(pluginDir: string): Promise<void> {
       '--target', 'browser',
       '--format', 'esm',
       '--entry-naming', 'client.[ext]',
-      ...EXTERNAL.flatMap(e => ['--external', e]),
+      ...CLIENT_EXTERNAL.flatMap(e => ['--external', e]),
     ])
     if (clientResult.exitCode !== 0) {
       throw new Error(`Failed to build client entry for ${pluginDir}:\n${clientResult.stderr}`)
@@ -202,10 +232,10 @@ export async function buildUserPlugin(pluginDir: string): Promise<void> {
 /**
  * Walk `~/.bakin/plugins/` and build any user plugin whose dist is stale
  * or missing. Invoked from server.ts BEFORE pluginRegistry.initialize(),
- * so the registry's dynamic import of `<pluginDir>/<server-entry>` sees
- * a fresh build on disk. Failures are logged but never fatal — a plugin
- * that fails to build is skipped, and the registry will surface a more
- * specific error when it tries to import.
+ * so the registry's dynamic import of `<pluginDir>/dist/index.js` sees a
+ * fresh build on disk. Failures are logged but never fatal — a plugin that
+ * fails to build is skipped, and the registry will surface a more specific
+ * error when it tries to import.
  */
 export interface BuildLogger {
   info: (msg: string, meta?: Record<string, unknown>) => void

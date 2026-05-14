@@ -136,9 +136,8 @@ const eventBus = new BakinEventBus(broadcast)
   const appServices = await createAppServices()
 
   // Rebuild any stale user plugin dist/ before the registry imports them.
-  // The registry dynamic-imports `<pluginDir>/<server-entry>` (typically
-  // `index.ts` as-is for core plugins in the repo, but user plugins
-  // installed from a tarball / GitHub clone need to be bundled first).
+  // User plugins activate only from `<pluginDir>/dist/index.js`; source
+  // entries are build inputs, not runtime entrypoints.
   // Failures inside `buildAllUserPlugins` are logged; they don't block
   // startup — the registry will surface a clearer error on import.
   const userPluginsDir = join(CONTENT_DIR, 'plugins')

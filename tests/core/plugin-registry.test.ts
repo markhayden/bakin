@@ -327,8 +327,10 @@ describe('PluginRegistryImpl', () => {
       ...opts.manifest,
     }
     writeFileSync(join(pluginDir, 'bakin-plugin.json'), JSON.stringify(manifest))
+    const distDir = join(pluginDir, 'dist')
+    mkdirSync(distDir, { recursive: true })
     writeFileSync(
-      join(pluginDir, 'index.js'),
+      join(distDir, 'index.js'),
       `const plugin = {
         id: '${id}',
         name: '${id.charAt(0).toUpperCase() + id.slice(1)}',
@@ -675,38 +677,37 @@ describe('PluginRegistryImpl', () => {
       expect(active).toMatchObject({ status: 'active' })
     })
 
-    it('loads user plugins that import SDK subpaths from the content directory', async () => {
-      const pluginDir = writeUserPlugin('sdk-utils-user', {
+    it('loads user plugins from dist even when the source entry is not runnable', async () => {
+      const pluginDir = writeUserPlugin('dist-only-user', {
         manifest: { entry: { server: 'index.ts' } },
+        activate: `ctx.log.info('loaded dist entry')`,
       })
       writeFileSync(
         join(pluginDir, 'index.ts'),
-        `import { cn, formatSize } from '@makinbakin/sdk/utils'
-
-        const plugin = {
-          id: 'sdk-utils-user',
-          name: 'SDK Utils User',
-          version: '1.0.0',
-          activate(ctx) {
-            ctx.log.info(cn('sdk', 'utils'), { size: formatSize(1024) })
-          },
-        }
-
-        export default plugin`,
+        `throw new Error('source entry should not be imported')`,
       )
-      const staleSdkDir = join(pluginDir, 'node_modules', '@makinbakin', 'sdk')
-      mkdirSync(staleSdkDir, { recursive: true })
-      writeFileSync(join(staleSdkDir, 'package.json'), JSON.stringify({
-        name: '@makinbakin/sdk',
-        version: '0.0.0-stale',
-        exports: { '.': './index.js' },
-      }))
 
       await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
 
-      expect(pluginRegistry.getPluginIds()).toContain('sdk-utils-user')
-      const active = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'sdk-utils-user')
+      expect(pluginRegistry.getPluginIds()).toContain('dist-only-user')
+      const active = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'dist-only-user')
       expect(active).toMatchObject({ status: 'active' })
+    })
+
+    it('reports a clear failure when a user plugin is not built', async () => {
+      const pluginDir = writeUserPlugin('unbuilt-user')
+      rmSync(join(pluginDir, 'dist'), { recursive: true, force: true })
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      expect(pluginRegistry.getPluginIds()).not.toContain('unbuilt-user')
+      const failed = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'unbuilt-user')
+      expect(failed).toMatchObject({
+        status: 'failed',
+        errorCode: 'activation_failed',
+      })
+      expect(failed?.errorMessage).toContain('Expected')
+      expect(failed?.errorMessage).toContain('dist/index.js')
     })
 
     it('reports missing dependencies without exposing plugin routes', async () => {
