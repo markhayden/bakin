@@ -285,6 +285,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
   let adopted = false
   let agentId: string | undefined
   const finalInstallDirs: string[] = [] // for cleanup-on-failure
+  let originalLock: Lockfile | null = null
 
   try {
     // ─── 1. Fetch top-level source ─────────────────────────────────────────
@@ -316,6 +317,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
 
     // ─── 3. Compute install mode for kind:"agent" ──────────────────────────
     const lock = readLockfile()
+    originalLock = lock
     let mode: ProjectionMode = 'fresh'
 
     // Lockfile key conventions:
@@ -605,6 +607,15 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
         } catch {
           /* best-effort */
         }
+      }
+    }
+    if (originalLock) {
+      try {
+        writeLockfile(originalLock)
+      } catch (rollbackErr) {
+        log.warn('Lockfile rollback during install failure threw', {
+          error: rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr),
+        })
       }
     }
     // Clean up staging dirs (top + deps)

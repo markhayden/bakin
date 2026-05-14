@@ -206,7 +206,7 @@ function installRuntimeMock(): void {
 }
 
 import { installPackage } from '../../src/core/agent-packages/installer'
-import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
+import { readLockfile, writeLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { extractBlock, hasBlock } from '../../packages/core/src/agent-packages/managed-blocks'
 import { isInstallLockHeld } from '../../src/core/agent-packages/install-lock'
 
@@ -469,6 +469,49 @@ describe('installPackage — refuse paths', () => {
     expect(adapterCalls.removeAgent).toEqual(['pixel'])
     expect(runtimeAgents.some(agent => agent.id === 'pixel')).toBe(false)
     expect(Object.keys(readLockfile().packages)).toEqual([])
+  })
+
+  it('restores the previous lockfile when failure happens after lockfile write', async () => {
+    const src = seedAgentPackage()
+    writeLockfile({
+      version: 1,
+      packages: {
+        existing: {
+          kind: 'skill-pack',
+          version: '9.9.9',
+          source: '/existing',
+          ref: '',
+          commitSha: '',
+          installedAt: '2026-01-01T00:00:00.000Z',
+          projections: [],
+          refCount: 0,
+          dependents: [],
+        },
+      },
+    })
+    const agentsParent = join(testDir, 'packages', 'agents')
+    mkdirSync(dirname(agentsParent), { recursive: true })
+    writeFileSync(agentsParent, 'not a directory', 'utf-8')
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow()
+
+    expect(readLockfile().packages).toEqual({
+      existing: {
+        kind: 'skill-pack',
+        version: '9.9.9',
+        source: '/existing',
+        ref: '',
+        commitSha: '',
+        installedAt: '2026-01-01T00:00:00.000Z',
+        projections: [],
+        refCount: 0,
+        dependents: [],
+      },
+    })
+    expect(runtimeAgents.some(agent => agent.id === 'pixel')).toBe(false)
+    expect(existsSync(join(openClawDir, 'workspaces', 'pixel', 'SOUL.md'))).toBe(false)
   })
 
   it('refuses an agent package when a contributed lesson file is missing', async () => {
