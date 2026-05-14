@@ -73,6 +73,7 @@ const TRANSIENT_FETCH_CODES = new Set([
 ])
 
 const SEND_MESSAGE_RETRY_BACKOFF_MS = [1000, 2000]
+const OPENCLAW_AGENT_TIMEOUT_MS = 600000
 const OPENCLAW_SESSION_ACTIVITY_POLL_MS = 200
 const OPENCLAW_ACTIVITY_PREVIEW_CHARS = 500
 const OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS = 600000
@@ -901,9 +902,18 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   private async chatCompletion(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): Promise<string> {
-    const response = await this.fetchChat(opts, false)
-    const data = await response.json()
-    return data?.choices?.[0]?.message?.content || ''
+    try {
+      const response = await this.fetchChat(opts, false)
+      const data = await response.json()
+      return data?.choices?.[0]?.message?.content || ''
+    } catch (err) {
+      if (!isOpenClawRestChatUnavailable(err)) throw err
+      this.logger.debug('OpenClaw REST chat route unavailable; using CLI agent command', {
+        agentId: opts.agentId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      return this.runOpenClawAgentCli(opts)
+    }
   }
 
   private async *streamChat(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): AsyncIterable<ChatChunk> {
@@ -927,8 +937,19 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   private async *fetchAndReadChatCompletionStream(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): AsyncIterable<ChatChunk> {
-    const response = await this.fetchChat(opts, true)
-    yield* this.readChatCompletionStream(response)
+    try {
+      const response = await this.fetchChat(opts, true)
+      yield* this.readChatCompletionStream(response)
+    } catch (err) {
+      if (!isOpenClawRestChatUnavailable(err)) throw err
+      this.logger.debug('OpenClaw REST stream route unavailable; using CLI agent command', {
+        agentId: opts.agentId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      const content = await this.runOpenClawAgentCli(opts)
+      if (content) yield { type: 'text', content }
+      yield { type: 'done' }
+    }
   }
 
   private async *readChatCompletionStream(response: Response): AsyncIterable<ChatChunk> {
@@ -984,8 +1005,26 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       }
     }
     if (!response) throw new Error('OpenClaw chat failed before receiving a response')
-    if (!response.ok) throw new Error(`OpenClaw chat failed (${response.status}): ${await response.text()}`)
+    const contentType = response.headers.get('content-type') ?? ''
+    if (!response.ok) throw new OpenClawChatHttpError(response.status, await response.text(), contentType)
+    if (contentType.includes('text/html')) {
+      throw new OpenClawChatHttpError(response.status, 'OpenClaw returned the Control UI instead of a chat response', contentType)
+    }
     return response
+  }
+
+  private async runOpenClawAgentCli(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): Promise<string> {
+    const args = ['agent', '--agent', opts.agentId, '--message', messagesToOpenClawPrompt(opts.messages), '--json']
+    if (opts.sessionKey) args.push('--session-id', opts.sessionKey)
+    try {
+      const { stdout } = await execFileAsync(this.settings.binaryPath, args, {
+        timeout: OPENCLAW_AGENT_TIMEOUT_MS,
+        maxBuffer: 10 * 1024 * 1024,
+      })
+      return extractOpenClawAgentText(stdout)
+    } catch (err) {
+      throw new Error(`OpenClaw chat failed: ${formatOpenClawExecError(err)}`)
+    }
   }
 
   private async invokeTool(toolName: string, args: Record<string, unknown> = {}): Promise<unknown> {
@@ -1016,6 +1055,58 @@ function formatOpenClawExecError(err: unknown): string {
   const stderr = typeof record.stderr === 'string' ? record.stderr.trim() : ''
   if (stderr) parts.push(`stderr=${stderr.slice(0, 500)}`)
   return parts.length > 0 ? parts.join('; ') : 'unknown error'
+}
+
+class OpenClawChatHttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly body: string,
+    readonly contentType: string,
+  ) {
+    super(`OpenClaw chat HTTP route failed (${status}): ${body || contentType || 'empty response'}`)
+  }
+}
+
+function isOpenClawRestChatUnavailable(err: unknown): boolean {
+  if (!(err instanceof OpenClawChatHttpError)) return false
+  if (err.status === 404 || err.status === 405) return true
+  return err.contentType.includes('text/html')
+}
+
+function messagesToOpenClawPrompt(messages: Array<{ role: string; content: string }>): string {
+  const lastUser = [...messages].reverse().find((message) => message.role === 'user' && message.content.trim())
+  if (lastUser) return lastUser.content
+  return messages.map((message) => message.content).filter(Boolean).join('\n\n')
+}
+
+function extractOpenClawAgentText(stdout: string): string {
+  const trimmed = stdout.trim()
+  if (!trimmed) return ''
+  const parsed = parseJsonObject(trimmed)
+  if (!parsed) return trimmed
+
+  const finalVisible = getJsonPath(parsed, ['result', 'meta', 'finalAssistantVisibleText'])
+  if (typeof finalVisible === 'string') return finalVisible
+  const finalRaw = getJsonPath(parsed, ['result', 'meta', 'finalAssistantRawText'])
+  if (typeof finalRaw === 'string') return finalRaw
+  const payloads = getJsonPath(parsed, ['result', 'payloads'])
+  if (Array.isArray(payloads)) {
+    return payloads
+      .map((payload) => isPlainObject(payload) && typeof payload.text === 'string' ? payload.text : '')
+      .filter(Boolean)
+      .join('\n\n')
+  }
+  const summary = getJsonPath(parsed, ['summary'])
+  return typeof summary === 'string' ? summary : ''
+}
+
+function getJsonPath(value: unknown, path: string[]): unknown {
+  let current = value
+  for (const part of path) {
+    if (!isPlainObject(current)) return undefined
+    current = current[part]
+  }
+  return current
 }
 
 function mergeSettings(raw: Record<string, unknown> | undefined): OpenClawSettings {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { appendFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import { appendFileSync, chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -104,6 +104,77 @@ describe('OpenClaw runtime stream parsing', () => {
         },
       },
       { type: 'text', content: 'Done.' },
+      { type: 'done' },
+    ])
+  })
+
+  it('falls back to the OpenClaw agent CLI when the REST chat route is unavailable', async () => {
+    globalThis.fetch = mock(async () => new Response('Not Found', {
+      status: 404,
+      headers: { 'Content-Type': 'text/plain' },
+    })) as unknown as typeof fetch
+
+    const binDir = join(testDir, 'bin')
+    mkdirSync(binDir, { recursive: true })
+    const callsFile = join(testDir, 'agent-args.txt')
+    const openclaw = join(binDir, 'openclaw')
+    writeFileSync(openclaw, `#!/bin/sh
+printf '%s\\n' "$@" > "${callsFile}"
+cat <<'JSON'
+{"status":"ok","result":{"payloads":[{"text":"ok from cli","mediaUrl":null}],"meta":{"finalAssistantVisibleText":"ok from cli"}}}
+JSON
+`, 'utf-8')
+    chmodSync(openclaw, 0o755)
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: openclaw } })
+
+    const result = await runtime.messaging.send({
+      agentId: 'pixel',
+      content: 'Say ok.',
+      threadId: 'brainstorm-1',
+    })
+
+    expect(result.content).toBe('ok from cli')
+    expect(readFileSync(callsFile, 'utf-8').split('\n').filter(Boolean)).toEqual([
+      'agent',
+      '--agent',
+      'pixel',
+      '--message',
+      'Say ok.',
+      '--json',
+      '--session-id',
+      'brainstorm-1',
+    ])
+  })
+
+  it('streams a CLI-backed OpenClaw agent response when the REST stream route is unavailable', async () => {
+    globalThis.fetch = mock(async () => new Response('Not Found', {
+      status: 404,
+      headers: { 'Content-Type': 'text/plain' },
+    })) as unknown as typeof fetch
+
+    const binDir = join(testDir, 'bin')
+    mkdirSync(binDir, { recursive: true })
+    const openclaw = join(binDir, 'openclaw')
+    writeFileSync(openclaw, `#!/bin/sh
+cat <<'JSON'
+{"status":"ok","result":{"payloads":[{"text":"streamed cli text","mediaUrl":null}]}}
+JSON
+`, 'utf-8')
+    chmodSync(openclaw, 0o755)
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: openclaw } })
+
+    const chunks = await collect(runtime.messaging.stream({
+      agentId: 'pixel',
+      content: 'Say ok.',
+      threadId: 'brainstorm-2',
+    }))
+
+    expect(chunks).toEqual([
+      { type: 'text', content: 'streamed cli text' },
       { type: 'done' },
     ])
   })
