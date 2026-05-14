@@ -50,4 +50,10 @@ describe('CLI start onboarding gate', () => {
 
     await expect(dispatchCli(['node', 'bakin', 'start'])).resolves.toEqual({ startServer: true, exitCode: 0 })
   })
+
+  it('allows serve without the human onboarding gate for service managers', async () => {
+    const { dispatchCli } = await import('../../src/core/cli')
+
+    await expect(dispatchCli(['node', 'bakin', 'serve'])).resolves.toEqual({ startServer: true, exitCode: 0 })
+  })
 })

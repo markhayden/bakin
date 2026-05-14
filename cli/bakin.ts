@@ -903,174 +903,189 @@ async function cmdPaths(key?: string): Promise<void> {
   }
 }
 
-const SERVICE_LABEL = 'com.bakin.mc'
+const SERVICE_LABEL = 'com.makinbakin.bakin'
+const LEGACY_SERVICE_LABELS = ['com.bakin.mc']
 
-// ---------------------------------------------------------------------------
-// LaunchAgent auto-start — commented out for now, run manually instead.
-// To re-enable: uncomment generatePlist, the install path in cmdSetupService,
-// and the launchctl path in cmdReboot.
-// ---------------------------------------------------------------------------
+function xmlEscape(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;')
+}
 
-// function generatePlist(opts: {
-//   nodePath: string
-//   tsxPath: string
-//   serverPath: string
-//   workingDir: string
-//   stdoutPath: string
-//   stderrPath: string
-// }): string {
-//   return `<?xml version="1.0" encoding="UTF-8"?>
-// <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-//   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-// <plist version="1.0">
-// <dict>
-//   <key>Label</key>
-//   <string>${SERVICE_LABEL}</string>
-//   <key>ProgramArguments</key>
-//   <array>
-//     <string>${opts.nodePath}</string>
-//     <string>${opts.tsxPath}</string>
-//     <string>${opts.serverPath}</string>
-//   </array>
-//   <key>EnvironmentVariables</key>
-//   <dict>
-//     <key>PATH</key>
-//     <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-//     <key>NODE_ENV</key>
-//     <string>development</string>
-//   </dict>
-//   <key>WorkingDirectory</key>
-//   <string>${opts.workingDir}</string>
-//   <key>RunAtLoad</key>
-//   <true/>
-//   <key>KeepAlive</key>
-//   <true/>
-//   <key>StandardOutPath</key>
-//   <string>${opts.stdoutPath}</string>
-//   <key>StandardErrorPath</key>
-//   <string>${opts.stderrPath}</string>
-// </dict>
-// </plist>
-// `
-// }
+function systemdEscape(value: string): string {
+  return `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
+}
+
+async function serviceProgramArgs(): Promise<string[]> {
+  const { existsSync } = await import('fs')
+  const { join, resolve, dirname } = await import('path')
+  const argvScript = process.argv[1]
+  if (argvScript && existsSync(argvScript) && /\.(ts|js|mjs|cjs)$/.test(argvScript)) {
+    const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
+    const serverPath = join(projectDir, 'server.ts')
+    if (existsSync(serverPath)) return [process.execPath, serverPath, 'serve']
+    return [process.execPath, argvScript, 'serve']
+  }
+  return [argvScript || process.execPath, 'serve']
+}
+
+function generateLaunchAgentPlist(opts: {
+  programArgs: string[]
+  workingDir: string
+  stdoutPath: string
+  stderrPath: string
+}): string {
+  const args = opts.programArgs.map(arg => `    <string>${xmlEscape(arg)}</string>`).join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${SERVICE_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+${args}
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>${xmlEscape(opts.workingDir)}</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>${xmlEscape(opts.stdoutPath)}</string>
+  <key>StandardErrorPath</key>
+  <string>${xmlEscape(opts.stderrPath)}</string>
+</dict>
+</plist>
+`
+}
+
+function generateSystemdUnit(opts: {
+  programArgs: string[]
+  workingDir: string
+  stdoutPath: string
+  stderrPath: string
+}): string {
+  return `[Unit]
+Description=Bakin server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${systemdEscape(opts.workingDir)}
+ExecStart=${opts.programArgs.map(systemdEscape).join(' ')}
+Restart=on-failure
+RestartSec=3
+Environment=PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin
+StandardOutput=append:${opts.stdoutPath}
+StandardError=append:${opts.stderrPath}
+
+[Install]
+WantedBy=default.target
+`
+}
+
+function serverProcessPattern(): string {
+  return 'tsx.*server\\.ts|bakin.*serve'
+}
 
 async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<void> {
-  const { execSync } = await import('child_process')
-  const { existsSync, unlinkSync } = await import('fs')
-  const { join } = await import('path')
+  const { execFileSync } = await import('child_process')
+  const { existsSync, mkdirSync, unlinkSync, writeFileSync } = await import('fs')
+  const { join, dirname, resolve } = await import('path')
   const { homedir } = await import('os')
+  const { getBakinPaths } = await import('../packages/core/src/content-dir')
 
-  const plistPath = join(homedir(), 'Library', 'LaunchAgents', `${SERVICE_LABEL}.plist`)
-  const uid = execSync('id -u', { encoding: 'utf-8' }).trim()
+  const programArgs = await serviceProgramArgs()
+  const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
+  const paths = getBakinPaths()
+  const stdoutPath = join(paths.logs, 'server.out.log')
+  const stderrPath = join(paths.logs, 'server.err.log')
+  mkdirSync(paths.logs, { recursive: true })
 
-  // Always clean up any existing LaunchAgent
-  if (options.uninstall || existsSync(plistPath)) {
-    console.log('[..] Removing LaunchAgent...')
-    try { execSync(`launchctl bootout gui/${uid} ${plistPath}`, { stdio: 'pipe' }) } catch { /* may not be loaded */ }
-    if (existsSync(plistPath)) {
-      unlinkSync(plistPath)
-      console.log('[OK] Removed plist and stopped service')
-    } else {
-      console.log('[OK] No LaunchAgent found')
+  if (process.platform === 'darwin') {
+    const launchAgentsDir = join(homedir(), 'Library', 'LaunchAgents')
+    const plistPath = join(launchAgentsDir, `${SERVICE_LABEL}.plist`)
+    const uid = execFileSync('id', ['-u'], { encoding: 'utf-8' }).trim()
+    const removePlist = (path: string) => {
+      try { execFileSync('launchctl', ['bootout', `gui/${uid}`, path], { stdio: 'pipe' }) } catch { /* not loaded */ }
+      if (existsSync(path)) unlinkSync(path)
     }
-    if (options.uninstall) return
+
+    if (options.uninstall) {
+      console.log('[..] Removing Bakin LaunchAgent...')
+      removePlist(plistPath)
+      for (const label of LEGACY_SERVICE_LABELS) {
+        removePlist(join(launchAgentsDir, `${label}.plist`))
+      }
+      console.log('[OK] Bakin autostart disabled')
+      return
+    }
+
+    mkdirSync(launchAgentsDir, { recursive: true })
+    removePlist(plistPath)
+    for (const label of LEGACY_SERVICE_LABELS) {
+      removePlist(join(launchAgentsDir, `${label}.plist`))
+    }
+    writeFileSync(plistPath, generateLaunchAgentPlist({
+      programArgs,
+      workingDir: projectDir,
+      stdoutPath,
+      stderrPath,
+    }), 'utf-8')
+    execFileSync('launchctl', ['bootstrap', `gui/${uid}`, plistPath], { stdio: 'pipe' })
+    execFileSync('launchctl', ['kickstart', '-k', `gui/${uid}/${SERVICE_LABEL}`], { stdio: 'pipe' })
+    console.log('[OK] Bakin autostart enabled')
+    console.log(`  Service: ${SERVICE_LABEL}`)
+    console.log(`  Logs:    ${stdoutPath}`)
+    console.log('  Disable: bakin setup service --uninstall')
+    return
   }
 
-  // --- LaunchAgent install path commented out — run manually for now ---
-  // const { writeFileSync, mkdirSync } = await import('fs')
-  // const { resolve, dirname } = await import('path')
-  // const launchAgentsDir = join(homedir(), 'Library', 'LaunchAgents')
-  //
-  // const { getSettings } = await import('../src/core/settings')
-  // const settings = getSettings()
-  // if (!settings.service.enabled) {
-  //   console.error('[SKIP] Service management is disabled in settings.')
-  //   console.error('  Enable with: bakin settings set service.enabled true')
-  //   return
-  // }
-  //
-  // const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
-  // console.log(`[..] Detecting paths for ${projectDir}`)
-  //
-  // let nodePath: string
-  // try {
-  //   nodePath = execSync('which node', { encoding: 'utf-8' }).trim()
-  // } catch {
-  //   console.error('[FAIL] Could not find node binary. Is Node.js installed?')
-  //   process.exit(1)
-  // }
-  //
-  // const tsxPath = join(projectDir, 'node_modules', '.bin', 'tsx')
-  // if (!existsSync(tsxPath)) {
-  //   console.error('[FAIL] tsx not found at node_modules/.bin/tsx — run: npm install')
-  //   process.exit(1)
-  // }
-  //
-  // const serverPath = join(projectDir, 'server.ts')
-  // if (!existsSync(serverPath)) {
-  //   console.error('[FAIL] server.ts not found — are you in the bakin project directory?')
-  //   process.exit(1)
-  // }
-  //
-  // console.log(`  node:    ${nodePath}`)
-  // console.log(`  tsx:     ${tsxPath}`)
-  // console.log(`  server:  ${serverPath}`)
-  // console.log(`  workdir: ${projectDir}`)
-  //
-  // try { execSync(`launchctl bootout gui/${uid} ${plistPath}`, { stdio: 'pipe' }) } catch { /* ignore */ }
-  //
-  // if (!existsSync(launchAgentsDir)) {
-  //   mkdirSync(launchAgentsDir, { recursive: true })
-  // }
-  //
-  // const plist = generatePlist({
-  //   nodePath,
-  //   tsxPath,
-  //   serverPath,
-  //   workingDir: projectDir,
-  //   stdoutPath: join(projectDir, 'mc-server.log'),
-  //   stderrPath: join(projectDir, 'mc-server-error.log'),
-  // })
-  //
-  // writeFileSync(plistPath, plist, 'utf-8')
-  // console.log(`[OK] Wrote ${plistPath}`)
-  //
-  // console.log('[..] Loading service...')
-  // try {
-  //   execSync(`launchctl bootstrap gui/${uid} ${plistPath}`, { stdio: 'pipe' })
-  //   console.log('[OK] Service loaded')
-  // } catch (err) {
-  //   try {
-  //     execSync(`launchctl kickstart -k gui/${uid}/${SERVICE_LABEL}`, { stdio: 'pipe' })
-  //     console.log('[OK] Service restarted')
-  //   } catch {
-  //     console.error('[FAIL] Could not load service:', err instanceof Error ? err.message : String(err))
-  //     console.error(`  Try manually: launchctl bootstrap gui/${uid} ${plistPath}`)
-  //     process.exit(1)
-  //   }
-  // }
-  //
-  // try {
-  //   execSync(`launchctl list ${SERVICE_LABEL}`, { encoding: 'utf-8', stdio: 'pipe' })
-  //   console.log('[OK] Service is running')
-  // } catch {
-  //   console.log('[WARN] Service loaded but may not be running yet — check: bakin status')
-  // }
-  //
-  // console.log('')
-  // console.log('Bakin service installed. It will auto-start on login.')
-  // console.log('  Status:    bakin status')
-  // console.log('  Uninstall: bakin setup service --uninstall')
+  if (process.platform === 'linux') {
+    const systemdDir = join(homedir(), '.config', 'systemd', 'user')
+    const unitPath = join(systemdDir, `${SERVICE_LABEL}.service`)
+    if (options.uninstall) {
+      console.log('[..] Removing Bakin user service...')
+      try { execFileSync('systemctl', ['--user', 'disable', '--now', `${SERVICE_LABEL}.service`], { stdio: 'pipe' }) } catch { /* not enabled */ }
+      if (existsSync(unitPath)) unlinkSync(unitPath)
+      try { execFileSync('systemctl', ['--user', 'daemon-reload'], { stdio: 'pipe' }) } catch { /* systemd unavailable */ }
+      console.log('[OK] Bakin autostart disabled')
+      return
+    }
 
-  console.log('')
-  console.log('LaunchAgent auto-start is disabled. Run Bakin manually:')
-  console.log('  cd /path/to/bakin && npx tsx server.ts')
-  console.log('')
-  console.log('Or use: bakin reboot')
+    mkdirSync(systemdDir, { recursive: true })
+    writeFileSync(unitPath, generateSystemdUnit({
+      programArgs,
+      workingDir: projectDir,
+      stdoutPath,
+      stderrPath,
+    }), 'utf-8')
+    execFileSync('systemctl', ['--user', 'daemon-reload'], { stdio: 'pipe' })
+    execFileSync('systemctl', ['--user', 'enable', '--now', `${SERVICE_LABEL}.service`], { stdio: 'pipe' })
+    console.log('[OK] Bakin autostart enabled')
+    console.log(`  Service: ${SERVICE_LABEL}.service`)
+    console.log(`  Logs:    ${stdoutPath}`)
+    console.log('  Disable: bakin setup service --uninstall')
+    return
+  }
+
+  console.error(`Service management is not supported on ${process.platform}.`)
+  process.exit(1)
 }
 
 async function cmdReboot(): Promise<void> {
-  const { execSync } = await import('child_process')
+  const { execFileSync } = await import('child_process')
   const { join, resolve, dirname } = await import('path')
 
   // --- launchctl restart path commented out — manual process management only ---
@@ -1102,7 +1117,7 @@ async function cmdReboot(): Promise<void> {
   // Kill any running Bakin server processes
   console.log('[..] Stopping Bakin server...')
   try {
-    const pids = execSync("pgrep -f 'tsx.*server\\.ts'", { encoding: 'utf-8' }).trim()
+    const pids = execFileSync('pgrep', ['-f', serverProcessPattern()], { encoding: 'utf-8' }).trim()
     if (pids) {
       for (const pid of pids.split('\n')) {
         if (pid && pid !== String(process.pid)) {
@@ -1119,12 +1134,12 @@ async function cmdReboot(): Promise<void> {
 
   // Start the server in background
   const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
-  const serverPath = join(projectDir, 'server.ts')
   const logPath = join(projectDir, 'mc-server.log')
 
   console.log('[..] Starting Bakin server...')
   const { spawn } = await import('child_process')
-  const child = spawn('npx', ['tsx', serverPath], {
+  const programArgs = await serviceProgramArgs()
+  const child = spawn(programArgs[0], programArgs.slice(1), {
     cwd: projectDir,
     detached: true,
     stdio: ['ignore', 'ignore', 'ignore'],
@@ -1233,11 +1248,11 @@ async function cmdLogs(filter?: string): Promise<void> {
 }
 
 async function cmdStop(): Promise<void> {
-  const { execSync } = await import('child_process')
+  const { execFileSync } = await import('child_process')
 
   console.log('[..] Stopping Bakin server...')
   try {
-    const pids = execSync("pgrep -f 'tsx.*server\\.ts'", { encoding: 'utf-8' }).trim()
+    const pids = execFileSync('pgrep', ['-f', serverProcessPattern()], { encoding: 'utf-8' }).trim()
     if (pids) {
       for (const pid of pids.split('\n')) {
         if (pid && pid !== String(process.pid)) {
