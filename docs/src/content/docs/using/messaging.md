@@ -141,19 +141,17 @@ Channels are runtime destinations for published content. A Deliverable picks
 one channel. The publish helper resolves draft asset filenames and calls
 `ctx.runtime.channels.deliverContent` with caption and file refs.
 
-## Sweep And Workflows
+## Activation, Task Timing, And Workflows
 
-Messaging registers one cron job:
+Messaging does not register cron jobs and does not use Schedule for Plan
+execution. A Plan starts only when a user explicitly activates it.
 
-```text
-bakin:messaging:sweep
-```
-
-The schedule bridge invokes the `messaging.sweep.run` hook. The sweep:
-
-1. Starts prep for planned Deliverables whose prep window has opened.
-2. Publishes due approved bare-task Deliverables.
-3. Marks due unapproved Deliverables as `overdue`.
+Activation validates that the Plan has concrete channels, creates one
+Deliverable per channel, and creates one kickoff task per Deliverable through
+`ctx.tasks.create`. Each kickoff task carries `availableAt` from the
+Deliverable `prepStartAt`, `dueAt` from the target publish time, and `source`
+metadata that links the task back to the Messaging Deliverable. Dispatch is the
+single wakeup path: it ignores future tasks until `availableAt` is reached.
 
 Workflow-backed prep is created through `ctx.tasks.create({ workflowId })`.
 Messaging listens for `workflow.gate_reached` and `workflow.complete`, and
@@ -226,15 +224,16 @@ review, and publish recovery through MCP exec tools.
 - `bakin_exec_messaging_deliverable_ready_for_review`: Signal that a bare-task Deliverable draft is ready for user review or auto-approval.
 - `bakin_exec_messaging_deliverable_reject`: Request changes for a Deliverable after review.
 - `bakin_exec_messaging_deliverable_update`: Update a content Deliverable. Draft fields are deep-merged.
+- `bakin_exec_messaging_plan_activate`: Activate a content Plan and create scheduled kickoff tasks for its configured channels.
+- `bakin_exec_messaging_plan_channel_delete`: Delete one configured Plan channel, its Deliverables, and linked board tasks.
 - `bakin_exec_messaging_plan_create`: Create a content Plan
 - `bakin_exec_messaging_plan_delete`: Delete a content Plan, its content pieces, and linked board tasks.
 - `bakin_exec_messaging_plan_get`: Get a content Plan and its Deliverables
 - `bakin_exec_messaging_plan_list`: List content Plans with optional filters
-- `bakin_exec_messaging_plan_start_fanout`: Create the content piece planning task for a content Plan
 - `bakin_exec_messaging_proposal_update`: Update a proposal status or fields (approve, reject, edit)
 - `bakin_exec_messaging_propose_deliverable`: Propose a channel-specific content piece for a content Plan.
 - `bakin_exec_messaging_session_create`: Create a new planning session for an agent
-- `bakin_exec_messaging_session_delete`: Delete a planning session and optionally the Plans prepared from it.
+- `bakin_exec_messaging_session_delete`: Delete a planning session without deleting Plans prepared from it.
 - `bakin_exec_messaging_session_get`: Get a planning session with full message history and proposals
 - `bakin_exec_messaging_session_list`: List planning sessions with optional filters
 - `bakin_exec_messaging_session_materialize`: Prepare Plans from accepted brainstorm proposals

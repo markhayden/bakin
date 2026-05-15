@@ -169,6 +169,7 @@ Source: `packages/sdk/src/types/index.ts`
 | `export interface AgentRuntimeAdapter {` |
 | `export interface TaskLogEntry {` |
 | `export interface Task {` |
+| `export interface TaskSource {` |
 | `export interface TaskColumns {` |
 | `export interface TaskBoard {` |
 | `export type ColumnId = keyof TaskColumns` |
@@ -260,5 +261,5 @@ Source: `packages/sdk/src/routing/index.ts`
 | `export type {` |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 11, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 12, 2026 · Bakin 0.0.0-dev</span>
 </aside>

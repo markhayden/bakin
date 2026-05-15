@@ -78,6 +78,7 @@ const OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS = 600000
 const OPENCLAW_PLUGIN_APPROVAL_REF_PREFIX = 'openclaw-plugin-approval:'
 const OPENCLAW_PLUGIN_ID = 'bakin'
 const OPENCLAW_WORKFLOW_GATE_TOOL = 'workflow.gate'
+const OPENCLAW_MODELS_LIST_MAX_BUFFER = 16 * 1024 * 1024
 const RENDER_ONLY_APPROVAL_NOTICE = [
   'This channel cannot return approval decisions to Bakin.',
   'Use the Bakin approval link or approve/reject this gate in the Bakin UI.',
@@ -715,7 +716,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   models = {
     listAvailable: async (opts?: { includeUnavailable?: boolean }): Promise<RuntimeAvailableModel[]> => {
-      const stdout = await this.exec(['models', 'list', '--all', '--json'])
+      const args = ['models', 'list']
+      if (opts?.includeUnavailable) args.push('--all')
+      args.push('--json')
+      const stdout = await this.exec(args, opts?.includeUnavailable ? { maxBuffer: OPENCLAW_MODELS_LIST_MAX_BUFFER } : undefined)
       const parsed = parseJsonObject(stdout) as OpenClawModelListJson | null
       return (parsed?.models ?? [])
         .map((model): RuntimeAvailableModel | null => {
@@ -984,8 +988,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return res.json()
   }
 
-  private async exec(args: string[]): Promise<string> {
-    const { stdout } = await execFileAsync(this.settings.binaryPath, args, { timeout: 15000 })
+  private async exec(args: string[], opts: { maxBuffer?: number } = {}): Promise<string> {
+    const { stdout } = await execFileAsync(this.settings.binaryPath, args, { timeout: 15000, ...opts })
     return stdout
   }
 }

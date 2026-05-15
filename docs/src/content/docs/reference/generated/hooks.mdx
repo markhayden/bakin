@@ -141,21 +141,6 @@ const result = await ctx.hooks.invoke(
 </HookCard>
 </div>
 
-## Messaging
-
-<p class="hook-section-description">Hooks discovered from source registration audit.</p>
-
-<div class="hook-card-list">
-<HookCard id="messaging-sweep-run" name="messaging.sweep.run" label="Run messaging content sweep" summary="Run messaging content sweep" source="bakin-bits-official/plugins/messaging/index.ts:595" badges={["rpc"]}>
-```ts frame="terminal"
-const result = await ctx.hooks.invoke(
-  'messaging.sweep.run',
-  {},
-)
-```
-</HookCard>
-</div>
-
 ## Models
 
 <p class="hook-section-description">Model hooks expose the effective model configuration and notify dependent surfaces when runtime model state changes.</p>
@@ -203,6 +188,21 @@ await ctx.hooks.callAll(
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'models.markRuntimeRestarted',
+  {},
+)
+```
+</HookCard>
+</div>
+
+## Schedule
+
+<p class="hook-section-description">Hooks discovered from source registration audit.</p>
+
+<div class="hook-card-list">
+<HookCard id="schedule-ensurebakinjob" name="schedule.ensureBakinJob" label="Ensure Bakin schedule" summary="Create or update a deterministic Bakin-managed runtime cron job." source="plugins/schedule/index.ts:1000" badges={["rpc"]}>
+```ts frame="terminal"
+const result = await ctx.hooks.invoke(
+  'schedule.ensureBakinJob',
   {},
 )
 ```
@@ -518,5 +518,5 @@ const result = await ctx.hooks.invoke(
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 11, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 12, 2026 · Bakin 0.0.0-dev</span>
 </aside>

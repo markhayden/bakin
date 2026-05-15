@@ -32,6 +32,16 @@ const createTaskHook = mock(async (data: Record<string, unknown>) => {
   })
   return { id }
 })
+const createTaskWithEffectsHook = mock(async (data: Record<string, unknown>) => {
+  const id = data.id as string
+  hookTasks.set(id, {
+    id,
+    title: data.title as string,
+    column: data.column as string,
+    description: data.description as string | undefined,
+  })
+  return { id, workflowId: data.workflowId as string | undefined }
+})
 const addTaskLogHook = mock(async (_data?: Record<string, unknown>) => undefined)
 const moveTaskHook = mock(async (data: Record<string, unknown>) => {
   const task = hookTasks.get(data.identifier as string)
@@ -73,6 +83,13 @@ const taskStoreMock = {
 mock.module('../../../src/core/task-store', () => taskStoreMock)
 mock.module('@/core/task-store', () => taskStoreMock)
 
+mock.module('../../../src/core/task-service', () => ({
+  createTaskWithEffects: (data: Record<string, unknown>) => createTaskWithEffectsHook(data),
+}))
+mock.module('@/core/task-service', () => ({
+  createTaskWithEffects: (data: Record<string, unknown>) => createTaskWithEffectsHook(data),
+}))
+
 // Mock audit to prevent writes to audit.jsonl
 mock.module('../../../src/core/audit', () => ({
   appendAudit: mock(),
@@ -103,12 +120,14 @@ import {
   completeStep,
   approveGate,
   rejectGate,
+  reopenFromStep,
   listInstances,
   getActiveAgents,
   authorizeWorkflowToolUse,
   cancelInstance,
 } from '@bakin/workflows/lib/runtime'
 import { invalidateSkillCache } from '@bakin/workflows/lib/skill-loader'
+import { setEventBus } from '@bakin/workflows/lib/notifications'
 import { getHookRegistry } from '../../../src/lib/plugin-registry'
 
 describe('runtime', () => {
@@ -220,6 +239,7 @@ steps:
     invalidateSkillCache()
     hookTasks.clear()
     createTaskHook.mockClear()
+    createTaskWithEffectsHook.mockClear()
     addTaskLogHook.mockClear()
     moveTaskHook.mockClear()
     mkdirSync(defsDir, { recursive: true })
@@ -230,6 +250,30 @@ steps:
     writeFileSync(join(defsDir, 'parallel.yaml'), parallelWorkflow)
     writeFileSync(join(defsDir, 'gate.yaml'), gateWorkflow)
     writeFileSync(join(defsDir, 'skill-test.yaml'), skillWorkflow)
+    writeFileSync(join(defsDir, 'task-node.yaml'), `
+name: Task Node Test
+description: Builtin createTask node
+version: 1
+steps:
+  - id: make-task
+    type: createTask
+    label: Make Task
+    title: Prep Instagram Reel
+    agent: patch
+    description: Prepare the channel deliverable.
+    availableAt: '2026-05-18T15:00:00.000Z'
+    dueAt: '2026-05-22T15:00:00.000Z'
+    source:
+      pluginId: messaging
+      entityType: deliverable
+      entityId: deliverable-1
+      purpose: kickoff
+  - id: after-create
+    type: agent
+    label: Continue
+    agent: chef
+    description: Continue after task creation
+`)
 
     writeFileSync(join(skillsDir, 'test-skill.md'), `---
 name: Test Skill
@@ -249,6 +293,7 @@ Write a great caption.
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true })
     getHookRegistry().clearAll()
+    setEventBus({ emit: () => {} } as never)
   })
 
   // ─── createInstance ─────────────────────────────────────────────────
@@ -263,6 +308,57 @@ Write a great caption.
       expect(instance.stepStates['step-one'].status).toBe('in_progress')
       expect(instance.stepStates['step-two'].status).toBe('pending')
       expect(instance.stepStates['step-three'].status).toBe('pending')
+    })
+
+    it('executes a builtin createTask node once and advances to the next step', async () => {
+      createTaskWithEffectsHook.mockResolvedValueOnce({ id: 'task-parent--make-task', workflowId: undefined })
+
+      const instance = createInstance('task-parent', 'task-node', testDir)
+      await new Promise(resolve => setTimeout(resolve, 0))
+
+      const saved = loadInstance('task-parent', testDir)!
+      expect(instance.workflowId).toBe('task-node')
+      expect(saved.currentStepId).toBe('after-create')
+      expect(saved.stepStates['make-task'].status).toBe('complete')
+      expect(saved.stepStates['make-task'].output).toEqual({
+        taskId: 'task-parent--make-task',
+        created: true,
+      })
+      expect(createTaskWithEffectsHook).toHaveBeenCalledWith(expect.objectContaining({
+        id: 'task-parent--make-task',
+        title: 'Prep Instagram Reel',
+        assignee: 'patch',
+        description: 'Prepare the channel deliverable.',
+        parentId: 'task-parent',
+        availableAt: '2026-05-18T15:00:00.000Z',
+        dueAt: '2026-05-22T15:00:00.000Z',
+        source: {
+          pluginId: 'messaging',
+          entityType: 'deliverable',
+          entityId: 'deliverable-1',
+          purpose: 'kickoff',
+        },
+        channel: 'system',
+      }))
+    })
+
+    it('treats an existing createTask node task as idempotent', async () => {
+      hookTasks.set('task-parent--make-task', {
+        id: 'task-parent--make-task',
+        title: 'Existing',
+        column: 'todo',
+      })
+
+      createInstance('task-parent', 'task-node', testDir)
+      await new Promise(resolve => setTimeout(resolve, 0))
+
+      const saved = loadInstance('task-parent', testDir)!
+      expect(saved.currentStepId).toBe('after-create')
+      expect(saved.stepStates['make-task'].output).toEqual({
+        taskId: 'task-parent--make-task',
+        created: false,
+      })
+      expect(createTaskWithEffectsHook).not.toHaveBeenCalled()
     })
 
     it('persists the instance to disk', () => {
@@ -524,6 +620,23 @@ Write a great caption.
       })
     })
 
+    it('approveGate emits the gate approver in the workflow event', () => {
+      const emitted: Array<{ event: string; data: Record<string, unknown> }> = []
+      setEventBus({
+        emit: (event: string, data: Record<string, unknown>) => emitted.push({ event, data }),
+      } as never)
+      createInstance('task-gate-event', 'gate', testDir)
+      completeStep('task-gate-event', 'write-copy', { text: 'hello' }, undefined, testDir)
+
+      approveGate('task-gate-event', 'review-gate', {
+        contentDir: testDir,
+        approver: { source: 'web', id: 'roscoe', displayName: 'roscoe' },
+      })
+
+      const approved = emitted.find(item => item.event === 'workflow.gate_approved')
+      expect(approved?.data.approver).toEqual({ source: 'web', id: 'roscoe', displayName: 'roscoe' })
+    })
+
     it('rejectGate records decidedAt and approver in history (durable across rewind reset)', () => {
       createInstance('task-gate-rej', 'gate', testDir)
       completeStep('task-gate-rej', 'write-copy', { text: 'hello' }, undefined, testDir)
@@ -580,6 +693,92 @@ Write a great caption.
       expect(instance!.stepStates['write-copy'].status).toBe('in_progress')
       expect(instance!.stepStates['review-gate'].status).toBe('pending')
       expect(instance!.stepStates['publish'].status).toBe('pending')
+    })
+  })
+
+  describe('reopenFromStep', () => {
+    it('reopens a completed workflow at the actionable step before a gate', async () => {
+      createInstance('task-reopen-gate', 'gate', testDir)
+      completeStep('task-reopen-gate', 'write-copy', { text: 'hello' }, undefined, testDir)
+      approveGate('task-reopen-gate', 'review-gate', { contentDir: testDir })
+      completeStep('task-reopen-gate', 'publish', { ref: 'posted' }, undefined, testDir)
+
+      const result = reopenFromStep('task-reopen-gate', {
+        stepId: 'review-gate',
+        reason: 'Messaging recovery requested',
+        actor: { id: 'mark', source: 'web' },
+        contentDir: testDir,
+      })
+
+      expect(result.success).toBe(true)
+      expect(result.reopenedStepId).toBe('write-copy')
+      const instance = loadInstance('task-reopen-gate', testDir)!
+      expect(instance.status).toBe('in_progress')
+      expect(instance.currentStepId).toBe('write-copy')
+      expect(instance.stepStates['write-copy'].status).toBe('in_progress')
+      expect(instance.stepStates['review-gate'].status).toBe('pending')
+      expect(instance.stepStates.publish.status).toBe('pending')
+
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(addTaskLogHook).toHaveBeenCalledWith(expect.objectContaining({
+        identifier: 'task-reopen-gate',
+        author: 'workflow',
+        message: expect.stringContaining('Messaging recovery requested'),
+      }))
+      expect(moveTaskHook).toHaveBeenCalledWith({ identifier: 'task-reopen-gate', to: 'inProgress', from: undefined })
+    })
+
+    it('reopens a completed workflow at a direct step', () => {
+      createInstance('task-reopen-direct', 'linear', testDir)
+      completeStep('task-reopen-direct', 'step-one', { result: 'a' }, undefined, testDir)
+      completeStep('task-reopen-direct', 'step-two', { result: 'b' }, undefined, testDir)
+      completeStep('task-reopen-direct', 'step-three', { result: 'c' }, undefined, testDir)
+
+      const result = reopenFromStep('task-reopen-direct', {
+        stepId: 'step-two',
+        reason: 'Redo the middle step',
+        actor: { id: 'mark', source: 'web' },
+        contentDir: testDir,
+      })
+
+      expect(result.success).toBe(true)
+      expect(result.reopenedStepId).toBe('step-two')
+      const instance = loadInstance('task-reopen-direct', testDir)!
+      expect(instance.status).toBe('in_progress')
+      expect(instance.currentStepId).toBe('step-two')
+      expect(instance.stepStates['step-one'].status).toBe('complete')
+      expect(instance.stepStates['step-two'].status).toBe('in_progress')
+      expect(instance.stepStates['step-three'].status).toBe('pending')
+    })
+
+    it('rejects cancelled workflow instances', () => {
+      createInstance('task-reopen-cancelled', 'linear', testDir)
+      cancelInstance('task-reopen-cancelled', testDir)
+
+      const result = reopenFromStep('task-reopen-cancelled', {
+        stepId: 'step-one',
+        reason: 'Try to recover',
+        actor: { id: 'mark', source: 'web' },
+        contentDir: testDir,
+      })
+
+      expect(result.success).toBe(false)
+      expect(result.errors).toEqual(['Cancelled workflow instances cannot be reopened'])
+    })
+
+    it('rejects mismatched workflow instance ids', () => {
+      createInstance('task-reopen-mismatch', 'linear', testDir)
+
+      const result = reopenFromStep('task-reopen-mismatch', {
+        instanceId: 'different-instance',
+        stepId: 'step-one',
+        reason: 'Try to recover the wrong instance',
+        actor: { id: 'mark', source: 'web' },
+        contentDir: testDir,
+      })
+
+      expect(result.success).toBe(false)
+      expect(result.errors).toEqual(['Workflow instance does not match task'])
     })
   })
 

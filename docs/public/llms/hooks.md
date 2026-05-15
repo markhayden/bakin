@@ -235,24 +235,6 @@ const result = await ctx.hooks.invoke(
 )
 ```
 
-## Messaging
-
-### messaging.sweep.run
-
-Label: Run messaging content sweep
-Purpose: Run messaging content sweep
-Kind: rpc
-Source: bakin-bits-official/plugins/messaging/index.ts:595
-
-Example:
-
-```ts
-const result = await ctx.hooks.invoke(
-  'messaging.sweep.run',
-  {},
-)
-```
-
 ## Models
 
 Model hooks expose the effective model configuration and notify dependent surfaces when runtime model state changes.
@@ -339,6 +321,24 @@ Example:
 ```ts
 await ctx.hooks.callAll(
   'models.markRuntimeRestarted',
+  {},
+)
+```
+
+## Schedule
+
+### schedule.ensureBakinJob
+
+Label: Ensure Bakin schedule
+Purpose: Create or update a deterministic Bakin-managed runtime cron job.
+Kind: rpc
+Source: plugins/schedule/index.ts:1000
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'schedule.ensureBakinJob',
   {},
 )
 ```

@@ -763,6 +763,44 @@ mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_update --args '{
 }'
 ```
 
+### bakin_exec_messaging_plan_activate
+
+Label: Activated content plan
+Purpose: Activate a content Plan and create scheduled kickoff tasks for its configured channels.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `planId` | string | yes | Plan ID (required) |
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_messaging_plan_activate --args '{
+  "planId": "value"
+}'
+```
+
+### bakin_exec_messaging_plan_channel_delete
+
+Label: Deleted content plan channel
+Purpose: Delete one configured Plan channel, its Deliverables, and linked board tasks.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `planId` | string | yes | Plan ID (required) |
+| `channelId` | string | yes | Plan channel ID (required) |
+| `deleteLinkedTasks` | boolean | no | Delete linked board tasks; defaults to true |
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_messaging_plan_channel_delete --args '{
+  "planId": "value",
+  "channelId": "value",
+  "deleteLinkedTasks": true
+}'
+```
+
 ### bakin_exec_messaging_plan_create
 
 Label: Created content plan
@@ -775,7 +813,17 @@ Purpose: Create a content Plan
 | `agent` | string | yes | Lead agent |
 | `brief` | string | no | Plan brief |
 | `campaign` | string | no | Campaign tag |
-| `suggestedChannels` | array | no | Suggested channel IDs |
+| `channels` | array | yes |  |
+| `id` | string | no |  |
+| `channel` | string | yes |  |
+| `contentType` | string | yes |  |
+| `publishAt` | string | yes |  |
+| `prepStartAt` | string | no |  |
+| `workflowId` | string | no |  |
+| `agent` | string | no |  |
+| `tone` | string | no |  |
+| `title` | string | no |  |
+| `brief` | string | no | Concrete channel deliverables to create when the Plan is activated |
 
 Example:
 
@@ -786,9 +834,16 @@ mcporter call bakin-<agent>.bakin_exec_messaging_plan_create --args '{
   "agent": "value",
   "brief": "value",
   "campaign": "value",
-  "suggestedChannels": [
+  "channels": [
     "value"
-  ]
+  ],
+  "id": "value",
+  "channel": "value",
+  "contentType": "value",
+  "publishAt": "value",
+  "prepStartAt": "value",
+  "workflowId": "value",
+  "tone": "value"
 }'
 ```
 
@@ -846,23 +901,6 @@ mcporter call bakin-<agent>.bakin_exec_messaging_plan_list --args '{
   "status": "value",
   "agent": "value",
   "campaign": "value"
-}'
-```
-
-### bakin_exec_messaging_plan_start_fanout
-
-Label: Started content piece planning
-Purpose: Create the content piece planning task for a content Plan
-
-| Argument | Type | Required | Description |
-| --- | --- | --- | --- |
-| `planId` | string | yes | Plan ID (required) |
-
-Example:
-
-```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_plan_start_fanout --args '{
-  "planId": "value"
 }'
 ```
 
@@ -962,21 +1000,17 @@ mcporter call bakin-<agent>.bakin_exec_messaging_session_create --args '{
 ### bakin_exec_messaging_session_delete
 
 Label: Deleted brainstorm session
-Purpose: Delete a planning session and optionally the Plans prepared from it.
+Purpose: Delete a planning session without deleting Plans prepared from it.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
 | `sessionId` | string | yes | Session ID (required) |
-| `deleteCreatedPlans` | boolean | no | Delete Plans created from the session; defaults to true |
-| `deleteLinkedTasks` | boolean | no | Delete linked board tasks; defaults to true |
 
 Example:
 
 ```sh
 mcporter call bakin-<agent>.bakin_exec_messaging_session_delete --args '{
-  "sessionId": "value",
-  "deleteCreatedPlans": true,
-  "deleteLinkedTasks": true
+  "sessionId": "value"
 }'
 ```
 
@@ -1929,6 +1963,12 @@ Purpose: Create a new task on the task board. Workflows are auto-matched by titl
 | `workflowId` | string | no | Workflow to start (e.g. image-social-post, video-script). Use bakin_exec_workflows_list to see options. |
 | `skipWorkflowReason` | string | no | Reason no workflow applies (required if workflowId is not set and this is not a subtask) |
 | `projectId` | string | no | Project ID to link this task to |
+| `availableAt` | string | no | ISO timestamp before which dispatch should not pick up the task |
+| `dueAt` | string | no | ISO timestamp representing the task deadline or target delivery time |
+| `sourcePluginId` | string | no | Plugin that owns the source entity for this task |
+| `sourceEntityType` | string | no | Source entity type, such as plan or deliverable |
+| `sourceEntityId` | string | no | Source entity ID |
+| `sourcePurpose` | string | no | Source purpose, such as kickoff or publish |
 
 Example:
 
@@ -1940,7 +1980,13 @@ mcporter call bakin-<agent>.bakin_exec_tasks_create --args '{
   "parentId": "value",
   "workflowId": "value",
   "skipWorkflowReason": "value",
-  "projectId": "value"
+  "projectId": "value",
+  "availableAt": "value",
+  "dueAt": "value",
+  "sourcePluginId": "value",
+  "sourceEntityType": "value",
+  "sourceEntityId": "value",
+  "sourcePurpose": "value"
 }'
 ```
 
@@ -2067,6 +2113,8 @@ Purpose: Update a task on the board — change title, description, or assigned a
 | `title` | string | no | New task title |
 | `description` | string | no | New task description |
 | `agent` | string | no | New assigned agent |
+| `availableAt` | string | no | ISO timestamp before which dispatch should not pick up the task |
+| `dueAt` | string | no | ISO timestamp representing the task deadline or target delivery time |
 
 Example:
 
@@ -2075,7 +2123,9 @@ mcporter call bakin-<agent>.bakin_exec_tasks_update --args '{
   "taskId": "value",
   "title": "value",
   "description": "value",
-  "agent": "value"
+  "agent": "value",
+  "availableAt": "value",
+  "dueAt": "value"
 }'
 ```
 

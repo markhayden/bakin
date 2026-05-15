@@ -107,8 +107,22 @@ type DispatchTask = {
   workflowId?: string
   description?: string
   projectId?: string
+  availableAt?: string
+  dependsOn?: string
   log?: Array<{ timestamp: string }>
 }
+
+type DispatchEligibilityContext = {
+  nowMs: number
+  runtimeAgentIds: Set<string>
+  completedTaskIds: Set<string>
+}
+
+export type DispatchIneligibleReason = 'scheduled' | 'dependency' | 'agent'
+
+export type DispatchEligibility =
+  | { eligible: true }
+  | { eligible: false; reason: DispatchIneligibleReason }
 
 type DispatchColumns = {
   backlog: DispatchTask[]
@@ -135,6 +149,28 @@ function emptyDispatchColumns(): DispatchColumns {
 async function readDispatchColumns(): Promise<DispatchColumns> {
   const board = readTaskboard() as unknown as { columns: Partial<DispatchColumns> }
   return { ...emptyDispatchColumns(), ...(board?.columns ?? {}) }
+}
+
+export function isTaskDispatchEligible(
+  task: DispatchTask,
+  context: DispatchEligibilityContext,
+): DispatchEligibility {
+  if (task.availableAt) {
+    const availableMs = Date.parse(task.availableAt)
+    if (!Number.isNaN(availableMs) && availableMs > context.nowMs) {
+      return { eligible: false, reason: 'scheduled' }
+    }
+  }
+
+  if (task.dependsOn && !context.completedTaskIds.has(task.dependsOn)) {
+    return { eligible: false, reason: 'dependency' }
+  }
+
+  if (task.agent && !context.runtimeAgentIds.has(task.agent)) {
+    return { eligible: false, reason: 'agent' }
+  }
+
+  return { eligible: true }
 }
 
 async function addTaskLog(taskId: string, author: string, message: string): Promise<void> {
@@ -251,6 +287,10 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       ...columns.done.map(t => t.id),
       ...columns.archived.map(t => t.id),
     ])
+    const completedTaskIds = new Set([
+      ...columns.done.map(t => t.id),
+      ...columns.archived.map(t => t.id),
+    ])
     state.dispatched = state.dispatched.filter(id => activeIds.has(getDispatchMarkerTaskId(id)))
     // Rebuild dispatchedSet AFTER reconciliation so tasks moved back to todo are eligible
     const dispatchedSet = new Set(state.dispatched)
@@ -294,6 +334,13 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
     for (const task of todoTasks) {
       if (dispatchedSet.has(task.id)) continue
 
+      const eligibility = isTaskDispatchEligible(task, {
+        nowMs: Date.now(),
+        runtimeAgentIds,
+        completedTaskIds,
+      })
+      if (!eligibility.eligible) continue
+
       // Check failure history with max retries
       const failure = getFailureRecord(state.failedDispatches?.[task.id])
       if (failure) {
@@ -311,8 +358,6 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         }
         if (Date.now() - failure.lastAttempt < cooldownForFailure(failure, settings)) continue
       }
-
-      if (task.agent && !runtimeAgentIds.has(task.agent)) continue
 
       // Workflow-aware dispatch path
       const taskWithWorkflow = task as typeof task & { workflowId?: string }
@@ -401,8 +446,18 @@ export async function dispatchSingleTask(
     const runtime = getAppServices().runtime
     const runtimeAgentIds = new Set((await runtime.agents.list()).map((agent) => agent.id))
     const mainAgentId = await getRuntimeMainAgentId(runtime)
-    if (task.agent && !runtimeAgentIds.has(task.agent)) {
-      log.warn('dispatchSingleTask: agent not in allowed list', { taskId, agent: task.agent })
+    const completedTaskIds = new Set([
+      ...columns.done.map(t => t.id),
+      ...columns.archived.map(t => t.id),
+    ])
+    const eligibilityTask = source === 'kick' ? { ...task, availableAt: undefined } : task
+    const eligibility = isTaskDispatchEligible(eligibilityTask, {
+      nowMs: Date.now(),
+      runtimeAgentIds,
+      completedTaskIds,
+    })
+    if (!eligibility.eligible) {
+      log.debug('dispatchSingleTask: task not dispatch eligible', { taskId, reason: eligibility.reason })
       return
     }
 

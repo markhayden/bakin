@@ -113,7 +113,7 @@ owner of the active `output` step.
 
 ## Node-Type Registry
 
-`plugins/workflows/lib/node-type-registry.ts`. 5 builtins self-register at module load; plugins add more via `ctx.registerNodeType`:
+`plugins/workflows/lib/node-type-registry.ts`. Builtins self-register at module load; plugins add more via `ctx.registerNodeType`:
 
 | Kind | Schema | Purpose |
 |------|--------|---------|
@@ -122,6 +122,7 @@ owner of the active `output` step.
 | `parallel` | `parallelStepSchema` | Fan out to multiple steps; converge on completion |
 | `output` | `outputStepSchema` | Final step that materializes workflow output |
 | `workflow` | `nestedWorkflowStepSchema` | Invoke another workflow as a sub-step |
+| `createTask` | `createTaskStepSchema` | Create a real board task from a workflow |
 
 Each `NodeTypeDef<T>` carries:
 - `kind` — string discriminator (plugin kinds are auto-namespaced as `{pluginId}.{kind}`)
@@ -189,6 +190,11 @@ workflows REST routes from inside the server process:
 - `workflows.rejectGate` takes `{ taskId, stepId, reason, approver?,
   rewindTo?, contentDir? }` and returns the same result shape as
   `rejectGate()`.
+- `workflows.reopenFromStep` takes `{ taskId, stepId?, reason, actor?,
+  contentDir? }` and reopens the same workflow instance/task at an actionable
+  step. If `stepId` is a gate, the runtime resolves the gate's reject target or
+  previous actionable top-level step. This is for explicit user recovery flows;
+  it is not a generic background retry mechanism.
 
 `approver` should use the `ApprovalActor` shape from
 `packages/core/src/plugin-types.ts`: `{ id, displayName?, source }`. Passing a
@@ -202,6 +208,31 @@ needs the resulting workflow state should look it up afterward with
 `workflows.loadInstance`; it should not call `workflows.createInstance`
 directly unless it is intentionally attaching a workflow to an already-created
 task.
+
+### Built-In `createTask` Step
+
+`createTask` is the workflow-native way to schedule follow-up board work. It
+creates a task through `createTaskWithEffects`, so normal task side effects,
+workflow instance creation, audit, dispatch eligibility, and task provenance all
+stay centralized.
+
+Supported task fields include:
+
+- `title`
+- `description`
+- `agent`
+- `column`
+- `workflowId`
+- `parentId`
+- `projectId`
+- `availableAt`
+- `dueAt`
+- `source`
+
+The runtime uses a deterministic task id by default
+`${parentTaskId}--${step.id}`. If that task already exists, the step completes
+without creating a duplicate. Use this for one-time scheduled work; do not model
+that as plugin-owned cron or health-check behavior.
 
 ## CRUD Routes
 

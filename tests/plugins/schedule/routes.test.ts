@@ -1693,33 +1693,33 @@ describe('schedule plugin activation', () => {
     expect(call).toBeDefined()
     const handler = call![1]
     const result = await handler({
-      jobId: 'plugin-sweep',
-      name: 'Plugin sweep',
+      jobId: 'plugin-nightly-sync',
+      name: 'Plugin nightly sync',
       schedule: '*/5 * * * *',
-      command: 'bakin:messaging:sweep',
-      metadata: { pluginId: 'messaging' },
+      command: 'bakin:reports:refresh',
+      metadata: { pluginId: 'reports' },
     })
 
     expect(result).toEqual(expect.objectContaining({
       ok: true,
-      jobId: 'plugin-sweep',
+      jobId: 'plugin-nightly-sync',
       cron: '*/5 * * * *',
     }))
     expect(mockCronCreate).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'plugin-sweep',
-      name: 'Plugin sweep',
+      id: 'plugin-nightly-sync',
+      name: 'Plugin nightly sync',
       schedule: '*/5 * * * *',
-      command: 'bakin:messaging:sweep',
+      command: 'bakin:reports:refresh',
       metadata: expect.objectContaining({
-        pluginId: 'messaging',
+        pluginId: 'reports',
         bakinSchedule: true,
         scheduleType: 'cron',
       }),
     }))
-    expect(getJob('plugin-sweep')).toEqual(expect.objectContaining({
+    expect(getJob('plugin-nightly-sync')).toEqual(expect.objectContaining({
       isBakinJob: true,
       source: 'bakin',
-      displayName: 'Plugin sweep',
+      displayName: 'Plugin nightly sync',
     }))
   })
 

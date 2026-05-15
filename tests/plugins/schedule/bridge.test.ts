@@ -391,33 +391,33 @@ describe('schedule/bridge', () => {
   })
 
   it('dispatches bakin:<pluginId>:<action> commands to plugin hooks without creating a task', async () => {
-    runtimeCronJobs['messaging-sweep'] = {
-      id: 'messaging-sweep',
-      name: 'Messaging sweep',
+    runtimeCronJobs['reports-refresh'] = {
+      id: 'reports-refresh',
+      name: 'Reports refresh',
       schedule: '*/5 * * * *',
-      command: 'bakin:messaging:sweep',
+      command: 'bakin:reports:refresh',
       enabled: true,
     }
     mockHookRegistry.has.mockImplementation((name: string) => {
-      return name === 'messaging.sweep.run'
+      return name === 'reports.refresh.run'
     })
     mockHookRegistry.invoke.mockResolvedValue({ ok: true, taskId: 'task-from-hook' })
 
     const { status, body } = await callBridge({
-      jobId: 'messaging-sweep',
+      jobId: 'reports-refresh',
       runId: 'r-plugin-1',
       timestamp: '2026-03-27T09:00:00Z',
     })
 
     expect(status).toBe(200)
     expect(body).toMatchObject({ ok: true, taskId: 'task-from-hook' })
-    expect(mockHookRegistry.invoke).toHaveBeenCalledWith('messaging.sweep.run', {
-      jobId: 'messaging-sweep',
+    expect(mockHookRegistry.invoke).toHaveBeenCalledWith('reports.refresh.run', {
+      jobId: 'reports-refresh',
       runId: 'r-plugin-1',
       timestamp: '2026-03-27T09:00:00Z',
-      command: 'bakin:messaging:sweep',
-      pluginId: 'messaging',
-      action: 'sweep',
+      command: 'bakin:reports:refresh',
+      pluginId: 'reports',
+      action: 'refresh',
     })
     expect(mockCreateTask).not.toHaveBeenCalled()
   })
@@ -459,48 +459,48 @@ describe('schedule/bridge', () => {
   })
 
   it('records plugin-command failure when the target hook is missing', async () => {
-    runtimeCronJobs['messaging-sweep'] = {
-      id: 'messaging-sweep',
-      name: 'Messaging sweep',
+    runtimeCronJobs['reports-refresh'] = {
+      id: 'reports-refresh',
+      name: 'Reports refresh',
       schedule: '*/5 * * * *',
-      command: 'bakin:messaging:sweep',
+      command: 'bakin:reports:refresh',
       enabled: true,
     }
 
     const { status, body } = await callBridge({
-      jobId: 'messaging-sweep',
+      jobId: 'reports-refresh',
       runId: 'r-plugin-missing',
       timestamp: '2026-03-27T09:00:00Z',
     })
 
     expect(status).toBe(500)
     expect(body.ok).toBe(false)
-    expect(body.error).toBe('hook messaging.sweep.run not registered')
+    expect(body.error).toBe('hook reports.refresh.run not registered')
     expect(mockCreateTask).not.toHaveBeenCalled()
   })
 
   it('records plugin-command failure when the hook returns ok=false', async () => {
-    runtimeCronJobs['messaging-sweep'] = {
-      id: 'messaging-sweep',
-      name: 'Messaging sweep',
+    runtimeCronJobs['reports-refresh'] = {
+      id: 'reports-refresh',
+      name: 'Reports refresh',
       schedule: '*/5 * * * *',
-      command: 'bakin:messaging:sweep',
+      command: 'bakin:reports:refresh',
       enabled: true,
     }
     mockHookRegistry.has.mockImplementation((name: string) => {
-      return name === 'messaging.sweep.run'
+      return name === 'reports.refresh.run'
     })
-    mockHookRegistry.invoke.mockResolvedValue({ ok: false, error: 'sweep failed' })
+    mockHookRegistry.invoke.mockResolvedValue({ ok: false, error: 'refresh failed' })
 
     const { status, body } = await callBridge({
-      jobId: 'messaging-sweep',
+      jobId: 'reports-refresh',
       runId: 'r-plugin-fail',
       timestamp: '2026-03-27T09:00:00Z',
     })
 
     expect(status).toBe(500)
     expect(body.ok).toBe(false)
-    expect(body.error).toBe('sweep failed')
+    expect(body.error).toBe('refresh failed')
     expect(mockCreateTask).not.toHaveBeenCalled()
   })
 

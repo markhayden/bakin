@@ -27,11 +27,12 @@ import type {
   GateStep,
   OutputStep,
   NestedWorkflowStep,
+  CreateTaskStep,
 } from '../types'
 import { loadDefinition } from './parser'
 import { loadSkill } from './skill-loader'
 import { validateStepOutput, detectRejectionRepeat } from './schema-validator'
-import { notifyGateReached, notifyGateApproved, notifyGateRejected, notifyWorkflowComplete, notifyStepDispatched, notifyStepComplete, sendGateApprovalRequest, getGateNotificationSettings } from './notifications'
+import { notifyGateReached, notifyGateApproved, notifyGateRejected, notifyWorkflowComplete, notifyWorkflowReopened, notifyStepDispatched, notifyStepComplete, sendGateApprovalRequest, getGateNotificationSettings } from './notifications'
 import { getContentDir } from './content-dir'
 import { isPluginKind } from './node-type-registry'
 import { getHookRegistry } from '../../../src/lib/plugin-registry'
@@ -270,6 +271,8 @@ export function createInstance(
   } else if (isPluginKind(firstStep.type)) {
     // First step is a plugin-owned kind — fire its executeNode hook.
     dispatchPluginNode(instance, firstStep, dir)
+  } else if (firstStep.type === 'createTask') {
+    dispatchCreateTaskNode(instance, firstStep as CreateTaskStep, dir)
   }
 
   return instance
@@ -288,6 +291,80 @@ function getStepOwner(step: WorkflowStep, instance: WorkflowInstance): string | 
   if (step.type === 'agent') return resolveAgent((step as AgentStep).agent, instance)
   if (step.type === 'output') return resolveAgent((step as OutputStep).agent, instance)
   return undefined
+}
+
+function getCreateTaskNodeId(instance: WorkflowInstance, step: CreateTaskStep): string {
+  return step.taskId || `${instance.taskId}--${step.id}`
+}
+
+function failSystemNode(
+  taskId: string,
+  stepId: string,
+  error: unknown,
+  contentDir: string,
+): void {
+  const instance = loadInstance(taskId, contentDir)
+  if (!instance) return
+  const stepState = instance.stepStates[stepId]
+  if (!stepState || stepState.status !== 'in_progress') return
+
+  const message = error instanceof Error ? error.message : String(error)
+  const now = new Date().toISOString()
+  stepState.status = 'failed'
+  stepState.completedAt = now
+  stepState.output = { error: message }
+  instance.status = 'failed'
+  instance.history.push({ stepId, status: 'failed', completedAt: now, output: { error: message } })
+  saveInstance(instance, contentDir)
+  addTaskLogToStore(taskId, 'workflow', `Workflow node "${stepId}" failed: ${message}`)
+    .catch((err) => { log.warn('Failed to log workflow node failure', err) })
+}
+
+function dispatchCreateTaskNode(
+  instance: WorkflowInstance,
+  step: CreateTaskStep,
+  contentDir: string,
+): void {
+  void (async () => {
+    const fresh = loadInstance(instance.taskId, contentDir)
+    if (!fresh) return
+    if (fresh.stepStates[step.id]?.status !== 'in_progress') return
+
+    const childTaskId = getCreateTaskNodeId(fresh, step)
+    let created = false
+    if (!(await findTaskFromStore(childTaskId))) {
+      const { createTaskWithEffects } = await import('../../../src/core/task-service')
+      await createTaskWithEffects({
+        id: childTaskId,
+        title: step.title,
+        column: step.column || 'todo',
+        assignee: step.agent,
+        description: step.description,
+        workflowId: step.workflowId,
+        skipWorkflowReason: step.skipWorkflowReason,
+        createdBy: 'workflow',
+        parentId: step.parentId ?? fresh.taskId,
+        projectId: step.projectId,
+        availableAt: step.availableAt,
+        dueAt: step.dueAt,
+        source: step.source,
+        channel: 'system',
+      })
+      created = true
+    }
+
+    const result = completeStep(fresh.taskId, step.id, { taskId: childTaskId, created }, undefined, contentDir)
+    if (!result.success) {
+      throw new Error(result.errors?.join('; ') || `Failed to complete createTask node "${step.id}"`)
+    }
+  })().catch((err) => {
+    log.error(`Create-task node '${step.id}' failed`, err as Error, {
+      workflowId: instance.workflowId,
+      taskId: instance.taskId,
+      stepId: step.id,
+    })
+    failSystemNode(instance.taskId, step.id, err, contentDir)
+  })
 }
 
 /**
@@ -907,6 +984,9 @@ function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinition, co
     // The owning plugin is responsible for driving completion.
     instance.stepStates[nextStep.id] = { status: 'in_progress', startedAt: now }
     dispatchPluginNode(instance, nextStep, contentDir)
+  } else if (nextStep.type === 'createTask') {
+    instance.stepStates[nextStep.id] = { status: 'in_progress', startedAt: now }
+    dispatchCreateTaskNode(instance, nextStep as CreateTaskStep, contentDir)
   } else {
     instance.stepStates[nextStep.id] = { status: 'in_progress', startedAt: now }
     // Notify that a step has been dispatched to an agent
@@ -930,6 +1010,22 @@ export interface RejectGateOptions {
   approver?: ApprovalActor
   rewindTo?: string
   contentDir?: string
+}
+
+export interface ReopenFromStepOptions {
+  actor?: ApprovalActor
+  instanceId?: string
+  stepId?: string
+  reason: string
+  contentDir?: string
+}
+
+export interface ReopenFromStepResult {
+  success: boolean
+  errors?: string[]
+  taskId?: string
+  instanceId?: string
+  reopenedStepId?: string
 }
 
 /** Decision record returned by approveGate/rejectGate so callers
@@ -998,7 +1094,7 @@ export function approveGate(
   saveInstance(instance, dir)
 
   // Emit SSE event and clear notification tracking
-  notifyGateApproved(instance, stepId, step.label || stepId)
+  notifyGateApproved(instance, stepId, step.label || stepId, opts.approver)
   clearGateNotified(taskId, stepId, dir)
 
   // Log gate approval to the task so watchdog sees recent activity
@@ -1136,7 +1232,7 @@ export function rejectGate(
   saveInstance(instance, dir)
 
   // Emit SSE event and clear notification tracking
-  notifyGateRejected(instance, stepId, step.label || stepId, reason)
+  notifyGateRejected(instance, stepId, step.label || stepId, reason, opts.approver)
   clearGateNotified(taskId, stepId, dir)
 
   // Log gate rejection and move task back to inProgress (from review)
@@ -1145,6 +1241,149 @@ export function rejectGate(
     .catch((err) => { log.warn('Failed to log gate rejection', err) })
 
   return { success: true, rewoundTo: targetId, decision }
+}
+
+function resolveReopenStep(def: WorkflowDefinition, requestedStepId: string): { stepId: string } | { errors: string[] } {
+  const requestedStep = findStep(def, requestedStepId)
+  if (!requestedStep) return { errors: [`Step not found: ${requestedStepId}`] }
+  if (requestedStep.type !== 'gate') return { stepId: requestedStepId }
+
+  const gateStep = requestedStep as GateStep
+  if (gateStep.on_reject?.goto) {
+    const targetStep = findStep(def, gateStep.on_reject.goto)
+    if (!targetStep) return { errors: [`Gate reopen target step not found: ${gateStep.on_reject.goto}`] }
+    return { stepId: gateStep.on_reject.goto }
+  }
+
+  const gateTopIdx = getTopLevelIndex(def, requestedStepId)
+  for (let index = gateTopIdx - 1; index >= 0; index--) {
+    const candidate = def.steps[index]
+    if (candidate.type !== 'gate') return { stepId: candidate.id }
+  }
+
+  return { errors: [`Gate "${requestedStepId}" has no actionable previous step`] }
+}
+
+function resetWorkflowFromStep(
+  instance: WorkflowInstance,
+  def: WorkflowDefinition,
+  targetId: string,
+  reason: string,
+  now: string,
+): { success: true; reopenedStepId: string } | { success: false; errors: string[] } {
+  const targetStep = findStep(def, targetId)
+  if (!targetStep) return { success: false, errors: [`Reopen target step not found: ${targetId}`] }
+  if (targetStep.type === 'gate') return { success: false, errors: [`Reopen target "${targetId}" is a gate, not an actionable step`] }
+
+  const targetTopIdx = getTopLevelIndex(def, targetId)
+  if (targetTopIdx < 0) return { success: false, errors: [`Reopen target step not found: ${targetId}`] }
+
+  const targetTopStep = def.steps[targetTopIdx]
+  const currentOutput = instance.stepStates[targetId]?.output
+
+  for (let index = targetTopIdx; index < def.steps.length; index++) {
+    const step = def.steps[index]
+    instance.stepStates[step.id] = { status: 'pending' }
+    if (step.type === 'parallel') {
+      for (const child of (step as ParallelStep).steps) {
+        instance.stepStates[child.id] = { status: 'pending' }
+      }
+    }
+  }
+
+  instance.currentStepId = targetTopStep.id
+  instance.status = 'in_progress'
+
+  if (targetTopStep.type === 'parallel') {
+    instance.stepStates[targetTopStep.id] = { status: 'in_progress', startedAt: now, rejectionReason: reason }
+    for (const child of (targetTopStep as ParallelStep).steps) {
+      instance.stepStates[child.id] = { status: 'in_progress', startedAt: now }
+    }
+  } else {
+    instance.stepStates[targetTopStep.id] = {
+      status: 'in_progress',
+      startedAt: now,
+      rejectionReason: reason,
+      previousOutput: currentOutput,
+    }
+  }
+
+  return { success: true, reopenedStepId: targetTopStep.id }
+}
+
+function dispatchReopenedStep(instance: WorkflowInstance, def: WorkflowDefinition, reopenedStepId: string, contentDir: string): void {
+  const step = findStep(def, reopenedStepId)
+  if (!step) return
+
+  if (step.type === 'parallel') {
+    for (const child of (step as ParallelStep).steps) {
+      if (child.type === 'agent') {
+        notifyStepDispatched(instance, child.id, resolveAgent((child as AgentStep).agent, instance) || 'unknown', child.label)
+      }
+    }
+  } else if (step.type === 'workflow') {
+    const state = instance.stepStates[step.id]
+    if (state?.childTaskId) {
+      const child = loadInstance(state.childTaskId, contentDir)
+      if (child && child.status !== 'cancelled') {
+        child.status = 'in_progress'
+        saveInstance(child, contentDir)
+      }
+    }
+  } else if (isPluginKind(step.type)) {
+    dispatchPluginNode(instance, step, contentDir)
+  } else if (step.type === 'createTask') {
+    dispatchCreateTaskNode(instance, step as CreateTaskStep, contentDir)
+  } else if (step.type === 'agent' || step.type === 'output') {
+    notifyStepDispatched(instance, step.id, getStepOwner(step, instance) || 'unknown', step.label)
+  }
+}
+
+export function reopenFromStep(taskId: string, opts: ReopenFromStepOptions): ReopenFromStepResult {
+  const dir = opts.contentDir || getContentDir()
+  const instance = loadInstance(taskId, dir)
+  if (!instance) return { success: false, errors: ['Workflow instance not found'] }
+  if (opts.instanceId && instance.instanceId !== opts.instanceId) {
+    return { success: false, errors: ['Workflow instance does not match task'] }
+  }
+  if (instance.status === 'cancelled') return { success: false, errors: ['Cancelled workflow instances cannot be reopened'] }
+
+  const def = loadDefinition(instance.workflowId, dir)
+  if (!def) return { success: false, errors: ['Workflow definition not found'] }
+
+  const requestedStepId = opts.stepId || instance.currentStepId
+  const resolved = resolveReopenStep(def, requestedStepId)
+  if ('errors' in resolved) return { success: false, errors: resolved.errors }
+
+  const now = new Date().toISOString()
+  const reset = resetWorkflowFromStep(instance, def, resolved.stepId, opts.reason, now)
+  if (!reset.success) return { success: false, errors: reset.errors }
+
+  instance.history.push({
+    stepId: reset.reopenedStepId,
+    status: 'in_progress',
+    completedAt: now,
+    output: {
+      reopened: true,
+      reason: opts.reason,
+      actor: opts.actor,
+      requestedStepId,
+    },
+  })
+  saveInstance(instance, dir)
+  dispatchReopenedStep(instance, def, reset.reopenedStepId, dir)
+  notifyWorkflowReopened(instance, reset.reopenedStepId, opts.reason, opts.actor)
+
+  addTaskLogToStore(taskId, 'workflow', `Workflow reopened at "${reset.reopenedStepId}": ${opts.reason}`)
+    .then(() => moveTaskInStore(taskId, 'inProgress'))
+    .catch((err) => { log.warn('Failed to log workflow reopen', err) })
+
+  return {
+    success: true,
+    taskId: instance.taskId,
+    instanceId: instance.instanceId,
+    reopenedStepId: reset.reopenedStepId,
+  }
 }
 
 /**

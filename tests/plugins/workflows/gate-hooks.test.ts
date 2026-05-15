@@ -185,6 +185,7 @@ describe('workflows gate hooks', () => {
     const hooks = await activateWithHooks()
     expect(hooks.has('workflows.approveGate')).toBe(true)
     expect(hooks.has('workflows.rejectGate')).toBe(true)
+    expect(hooks.has('workflows.reopenFromStep')).toBe(true)
   })
 
   it('workflows.approveGate resolves a pending gate and returns approveGate result shape', async () => {
@@ -245,5 +246,31 @@ describe('workflows gate hooks', () => {
     }) as Record<string, unknown>
     expect(missingStep.success).toBe(false)
     expect((missingStep.errors as string[])[0]).toContain('not a gate')
+  })
+
+  it('workflows.reopenFromStep reopens the same workflow instance', async () => {
+    const hooks = await activateWithHooks()
+    createPendingGate('task-reopen-hook')
+    await hooks.get('workflows.approveGate')!({
+      taskId: 'task-reopen-hook',
+      stepId: 'review',
+      contentDir: testDir,
+      approver: { id: 'mark', source: 'web' },
+    })
+
+    const result = await hooks.get('workflows.reopenFromStep')!({
+      taskId: 'task-reopen-hook',
+      stepId: 'review',
+      reason: 'Messaging recovery requested',
+      contentDir: testDir,
+      actor: { id: 'mark', source: 'web' },
+    }) as Record<string, unknown>
+
+    expect(result.success).toBe(true)
+    expect(result.reopenedStepId).toBe('draft')
+    const instance = loadInstance('task-reopen-hook', testDir)!
+    expect(instance.status).toBe('in_progress')
+    expect(instance.currentStepId).toBe('draft')
+    expect(instance.stepStates.draft.status).toBe('in_progress')
   })
 })

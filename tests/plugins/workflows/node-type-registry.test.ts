@@ -35,19 +35,20 @@ import {
   parallelStepSchema,
   outputStepSchema,
   nestedWorkflowStepSchema,
+  createTaskStepSchema,
   type NodeTypeDef,
 } from '@bakin/workflows/lib/node-type-registry'
 import { z } from 'zod'
 
 describe('node-type-registry', () => {
   describe('builtin registration', () => {
-    it('registers all 5 builtin node types at module load', () => {
+    it('registers all 6 builtin node types at module load', () => {
       const kinds = listNodeTypes().map(n => n.kind).sort()
-      expect(kinds).toEqual(['agent', 'gate', 'output', 'parallel', 'workflow'])
+      expect(kinds).toEqual(['agent', 'createTask', 'gate', 'output', 'parallel', 'workflow'])
     })
 
     it('exposes each builtin via getNodeType()', () => {
-      for (const kind of ['agent', 'gate', 'output', 'parallel', 'workflow']) {
+      for (const kind of ['agent', 'createTask', 'gate', 'output', 'parallel', 'workflow']) {
         const def = getNodeType(kind)
         expect(def, `expected ${kind} to be registered`).toBeDefined()
         expect(def!.kind).toBe(kind)
@@ -182,6 +183,36 @@ describe('node-type-registry', () => {
     })
   })
 
+  describe('createTaskStepSchema', () => {
+    it('accepts a scheduled source-linked task creation step', () => {
+      const result = createTaskStepSchema.safeParse({
+        id: 'make-task',
+        type: 'createTask',
+        label: 'Make Task',
+        title: 'Prep channel deliverable',
+        agent: 'patch',
+        availableAt: '2026-05-18T15:00:00.000Z',
+        dueAt: '2026-05-22T15:00:00.000Z',
+        source: {
+          pluginId: 'messaging',
+          entityType: 'deliverable',
+          entityId: 'deliverable-1',
+          purpose: 'kickoff',
+        },
+      })
+      expect(result.success).toBe(true)
+    })
+
+    it('rejects a task creation step missing title', () => {
+      const result = createTaskStepSchema.safeParse({
+        id: 'make-task',
+        type: 'createTask',
+        label: 'Make Task',
+      })
+      expect(result.success).toBe(false)
+    })
+  })
+
   describe('workflowDefinitionSchema (discriminated union per step)', () => {
     it('accepts a valid multi-step definition', () => {
       const result = workflowDefinitionSchema.safeParse({
@@ -261,8 +292,8 @@ describe('node-type-registry', () => {
   })
 
   describe('edgeRules (builtin defaults)', () => {
-    it('sets maxOutbound=1 for agent/gate/parallel/workflow kinds', () => {
-      for (const kind of ['agent', 'gate', 'parallel', 'workflow']) {
+    it('sets maxOutbound=1 for agent/gate/parallel/workflow/createTask kinds', () => {
+      for (const kind of ['agent', 'gate', 'parallel', 'workflow', 'createTask']) {
         expect(getNodeType(kind)?.edgeRules?.maxOutbound, `${kind}`).toBe(1)
       }
     })

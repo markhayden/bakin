@@ -112,13 +112,32 @@ export function notifyWorkflowComplete(instance: WorkflowInstance): void {
   })
 }
 
+export function notifyWorkflowReopened(
+  instance: WorkflowInstance,
+  reopenedStepId: string,
+  reason: string,
+  actor?: ApprovalActor,
+): void {
+  if (!eventBus) return
+
+  eventBus.emit('workflow.reopened', {
+    instanceId: instance.instanceId,
+    taskId: instance.taskId,
+    workflowId: instance.workflowId,
+    stepId: reopenedStepId,
+    reason,
+    actor,
+  })
+}
+
 /**
  * Notify that a gate step has been approved.
  */
 export function notifyGateApproved(
   instance: WorkflowInstance,
   stepId: string,
-  label: string
+  label: string,
+  approver?: ApprovalActor,
 ): void {
   if (!eventBus) return
 
@@ -128,6 +147,7 @@ export function notifyGateApproved(
     workflowId: instance.workflowId,
     stepId,
     label,
+    approver,
   })
 }
 
@@ -138,7 +158,8 @@ export function notifyGateRejected(
   instance: WorkflowInstance,
   stepId: string,
   label: string,
-  reason: string
+  reason: string,
+  approver?: ApprovalActor,
 ): void {
   if (!eventBus) return
 
@@ -149,6 +170,7 @@ export function notifyGateRejected(
     stepId,
     label,
     reason,
+    approver,
   })
 }
 
