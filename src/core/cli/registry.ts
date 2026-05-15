@@ -145,9 +145,10 @@ export const CLI_COMMANDS = [
   cli({ name: 'trash', usage: 'bakin trash [list|restore|empty] ...', group: 'Assets and search', summary: 'Manage trashed assets.', description: 'Lists, restores, or permanently empties soft-deleted assets.', examples: [{ title: 'List trash', code: 'bakin trash list', test: 'illustrative', reason: 'Depends on local asset state.' }] }),
 ] as const satisfies readonly CliDef[]
 
-export function renderCliUsage(env: { bakinUrl?: string } = {}): string {
+export function renderCliUsage(env: { bakinUrl?: string } = {}, opts: { excludeNames?: ReadonlySet<string> } = {}): string {
   const grouped = new Map<string, CliDef[]>()
   for (const command of CLI_COMMANDS) {
+    if (opts.excludeNames?.has(command.name)) continue
     const group = command.group ?? 'Commands'
     if (!grouped.has(group)) grouped.set(group, [])
     grouped.get(group)!.push(command)
@@ -165,6 +166,8 @@ export function renderCliUsage(env: { bakinUrl?: string } = {}): string {
   lines.push('Environment:')
   lines.push(`  BAKIN_URL${' '.repeat(18)}Base URL for the running server (default: ${env.bakinUrl ?? 'http://localhost:3737'})`)
   lines.push(`  BAKIN_HOME${' '.repeat(17)}Override for ~/.bakin`)
-  lines.push(`  PORT${' '.repeat(23)}Port to bind when \`start\` launches (default: 3737)`)
+  if (!opts.excludeNames?.has('start')) {
+    lines.push(`  PORT${' '.repeat(23)}Port to bind when \`start\` launches (default: 3737)`)
+  }
   return lines.join('\n')
 }

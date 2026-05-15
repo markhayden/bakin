@@ -35,7 +35,7 @@
     "url": "https://github.com/markhayden/bakin/issues"
   },
   "author": "markhayden",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "keywords": [
     "bakin",
     "plugin",

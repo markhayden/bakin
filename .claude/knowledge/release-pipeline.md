@@ -57,7 +57,7 @@ On success, the script moves `[Unreleased]` into a concrete changelog section, c
 11. Render the Homebrew formula for all tags.
 12. Stable only: push `Formula/bakin.rb` to `markhayden/homebrew-tap`.
 13. Publish/undraft the GitHub release.
-14. `release.yml` dispatches `.github/workflows/release-smoke.yml`, which verifies binaries, SDK install/imports, and stable Homebrew install/test after publish.
+14. `release.yml` runs post-publish smoke jobs, which verify binaries, SDK install/imports, and stable Homebrew install/test.
 
 If the Homebrew push fails, the GitHub release remains draft. Fix the tap/push issue and rerun the tail before publishing the release.
 

@@ -105,7 +105,7 @@ function consoleFormat(): ConsoleFormat {
   if (configured === 'pretty' || configured === 'verbose' || configured === 'plain') {
     return configured
   }
-  return 'plain'
+  return process.stdout.isTTY === true ? 'pretty' : 'plain'
 }
 
 function consoleMinLevel(format: ConsoleFormat): LogLevel {

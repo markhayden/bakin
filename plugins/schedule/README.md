@@ -2,6 +2,12 @@
 
 Cron job visibility and Bakin task scheduling through the active runtime adapter. The schedule page shows all runtime cron jobs, but only Bakin-owned or explicitly adopted jobs create Bakin tasks when they fire.
 
+This README is maintainer-facing implementation notes for the first-party
+Schedule plugin. User docs live at
+[makinbakin.com/docs/using/schedule](https://makinbakin.com/docs/using/schedule/);
+generated API, CLI, settings, and exec-tool references live under
+[Reference](https://makinbakin.com/docs/reference/generated/).
+
 ## How It Works
 
 The schedule plugin sits between the **runtime cron adapter** and **Bakin's task board**:

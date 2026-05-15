@@ -2,6 +2,9 @@
 
 Run OpenClaw in a Docker container so it's never exposed on your host network. Bakin runs natively on your Mac with full hot reload.
 
+This is contributor/dev setup. End-user install and operation live in the
+[public docs](https://makinbakin.com/docs/start/install/).
+
 ## Prerequisites
 
 - Docker Desktop (or OrbStack)
@@ -53,9 +56,9 @@ Setup validates the right key is present and sets the default model automaticall
 
 | Command | OpenClaw | Best for |
 |---------|----------|----------|
-| `npm run dev:docker` | Containerized (real) | Integration testing, agent work |
-| `npm run dev:mock` | Imitation Crab (mock) | UI development, offline, zero API cost |
-| `npm run dev` | Native install | Production-like (requires OpenClaw installed) |
+| `bun run dev:docker` | Containerized (real) | Integration testing, agent work |
+| `bun run dev:mock` | Imitation Crab (mock) | UI development, offline, zero API cost |
+| `bun run dev` | Native install | Production-like (requires OpenClaw installed) |
 
 ## Commands
 
@@ -68,7 +71,7 @@ Setup validates the right key is present and sets the default model automaticall
 ./cmd/logs                # Tail gateway logs (./cmd/logs 100 for more lines)
 ```
 
-npm scripts still work too (`./cmd/setup`, `npm run dev:docker`, etc.).
+Bun scripts still work too (`bun run docker:setup`, `bun run dev:docker`, etc.).
 
 ## How It Works
 

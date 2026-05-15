@@ -602,7 +602,7 @@ mcporter call bakin-<agent>.bakin_exec_messaging_deliverable_approve --args '{
 ### bakin_exec_messaging_deliverable_create
 
 Label: Created content deliverable
-Purpose: Create a content Deliverable. Omit planId or pass null for a Quick Post.
+Purpose: Create a Quick Post Deliverable. Plan Deliverables are created only by Plan activation.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -934,45 +934,6 @@ mcporter call bakin-<agent>.bakin_exec_messaging_proposal_update --args '{
     "value"
   ],
   "rejectionNote": "value"
-}'
-```
-
-### bakin_exec_messaging_propose_deliverable
-
-Label: Proposed content deliverable
-Purpose: Propose a channel-specific content piece for a content Plan.
-
-| Argument | Type | Required | Description |
-| --- | --- | --- | --- |
-| `planId` | string | yes | Plan ID (required) |
-| `channel` | string | yes | Runtime channel ID |
-| `contentType` | string | yes | Messaging content type ID |
-| `tone` | string | yes | Tone |
-| `title` | string | yes | Deliverable title |
-| `brief` | string | yes | Deliverable brief |
-| `publishAt` | string | yes | Publish datetime |
-| `agent` | string | no | Optional prep agent; defaults to Plan agent |
-| `prepStartAt` | string | no | Optional explicit prep start datetime |
-| `prepStartAtOverride` | string | no | Optional prep start override datetime |
-| `draft` | object | no | Optional draft fields |
-
-Example:
-
-```sh
-mcporter call bakin-<agent>.bakin_exec_messaging_propose_deliverable --args '{
-  "planId": "value",
-  "channel": "value",
-  "contentType": "value",
-  "tone": "value",
-  "title": "value",
-  "brief": "value",
-  "publishAt": "value",
-  "agent": "value",
-  "prepStartAt": "value",
-  "prepStartAtOverride": "value",
-  "draft": {
-    "key": "value"
-  }
 }'
 ```
 

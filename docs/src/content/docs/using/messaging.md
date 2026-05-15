@@ -185,6 +185,8 @@ filter locally in the plugin UI.
 | Default view | `select` | `month` | Default messaging view on page load |
 | Show schedule jobs | `boolean` | `false` | Display recurring schedule jobs on the content calendar |
 | Channels | `string` | `DEFAULT_CHANNEL` | Comma-separated runtime channel IDs available for distribution (e.g., general,announcements,email) |
+| Agent plan activation | `select` | `blocked` | Controls whether MCP agents can activate Plans and create kickoff tasks. |
+| Agent deliverable approval | `select` | `blocked` | Controls whether MCP agents can approve or reject Deliverables. |
 | Content types | `list` | `true` | Categories used across the content calendar and brainstorm proposals. |
 
 </div>
@@ -218,7 +220,7 @@ review, and publish recovery through MCP exec tools.
 
 <!-- docs:exec-tools messaging -->
 - `bakin_exec_messaging_deliverable_approve`: Approve a Deliverable after review.
-- `bakin_exec_messaging_deliverable_create`: Create a content Deliverable. Omit planId or pass null for a Quick Post.
+- `bakin_exec_messaging_deliverable_create`: Create a Quick Post Deliverable. Plan Deliverables are created only by Plan activation.
 - `bakin_exec_messaging_deliverable_get`: Get a content Deliverable
 - `bakin_exec_messaging_deliverable_list`: List content Deliverables with optional filters
 - `bakin_exec_messaging_deliverable_ready_for_review`: Signal that a bare-task Deliverable draft is ready for user review or auto-approval.
@@ -231,7 +233,6 @@ review, and publish recovery through MCP exec tools.
 - `bakin_exec_messaging_plan_get`: Get a content Plan and its Deliverables
 - `bakin_exec_messaging_plan_list`: List content Plans with optional filters
 - `bakin_exec_messaging_proposal_update`: Update a proposal status or fields (approve, reject, edit)
-- `bakin_exec_messaging_propose_deliverable`: Propose a channel-specific content piece for a content Plan.
 - `bakin_exec_messaging_session_create`: Create a new planning session for an agent
 - `bakin_exec_messaging_session_delete`: Delete a planning session without deleting Plans prepared from it.
 - `bakin_exec_messaging_session_get`: Get a planning session with full message history and proposals

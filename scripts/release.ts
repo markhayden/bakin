@@ -1,29 +1,12 @@
 /**
- * Local release driver.
+ * Shared release helpers.
  *
- * This script owns version bumping, CHANGELOG movement, release commit/tag,
- * and the atomic push that starts `.github/workflows/release.yml`.
+ * Local release publishing has been retired. `bun run release` runs
+ * scripts/prep-release.ts, while GitHub Actions owns publishing.
  */
-import { readFileSync, writeFileSync } from 'node:fs'
-import { spawnSync } from 'node:child_process'
-import { resolve } from 'node:path'
-import { createInterface } from 'node:readline/promises'
-import { stdin as input, stdout as output } from 'node:process'
 
-const REPO_ROOT = resolve(import.meta.dir, '..')
-const CHANGELOG_PATH = resolve(REPO_ROOT, 'CHANGELOG.md')
 const RELEASE_TAG_RE = /^v(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$/
-const EMPTY_UNRELEASED = `## [Unreleased]
-
-### Added
-
-### Changed
-
-### Fixed
-
-### Removed
-
-### Security`
+const EMPTY_UNRELEASED = '## [Unreleased]'
 
 type BumpVerb = 'patch' | 'minor' | 'major'
 type ReleaseVerb = BumpVerb | 'promote'
@@ -45,12 +28,6 @@ interface ResolveTargetOpts {
 interface CliOptions extends ResolveTargetOpts {
   dryRun: boolean
   yes: boolean
-}
-
-interface CommandResult {
-  status: number | null
-  stdout: string
-  stderr: string
 }
 
 interface ReleaseWorkflowRun {
@@ -156,7 +133,7 @@ function unreleasedRange(changelog: string): { start: number; bodyStart: number;
   const start = changelog.indexOf(header)
   if (start === -1) throw new Error('CHANGELOG.md is missing [Unreleased]')
   const bodyStart = start + header.length
-  const nextMatch = /\n## \[[^\]]+\]/.exec(changelog.slice(bodyStart))
+  const nextMatch = /\n(?:## \[[^\]]+\]|\[[^\]]+\]:)/.exec(changelog.slice(bodyStart))
   const end = nextMatch ? bodyStart + nextMatch.index : changelog.length
   return {
     start,
@@ -172,7 +149,7 @@ function versionRange(changelog: string, version: string): { start: number; body
   if (start === -1) return null
   const lineEnd = changelog.indexOf('\n', start)
   const bodyStart = lineEnd === -1 ? changelog.length : lineEnd + 1
-  const nextMatch = /\n## \[[^\]]+\]/.exec(changelog.slice(bodyStart))
+  const nextMatch = /\n(?:## \[[^\]]+\]|\[[^\]]+\]:)/.exec(changelog.slice(bodyStart))
   const end = nextMatch ? bodyStart + nextMatch.index : changelog.length
   return {
     start,
@@ -188,6 +165,40 @@ function hasBullets(body: string): boolean {
 
 function bulletCount(body: string): number {
   return (body.match(/^\s*-\s+\S/gm) ?? []).length
+}
+
+export function stripEmptyChangelogSections(body: string): string {
+  const lines = body.trim().split('\n')
+  const loose: string[] = []
+  const order: string[] = []
+  const sections = new Map<string, string[]>()
+  let current: string | null = null
+
+  for (const line of lines) {
+    if (line.startsWith('### ')) {
+      current = line
+      if (!sections.has(current)) {
+        sections.set(current, [])
+        order.push(current)
+      }
+      continue
+    }
+
+    if (!current) {
+      if (line.trim()) loose.push(line)
+      continue
+    }
+
+    sections.get(current)?.push(line)
+  }
+
+  const chunks = [...loose]
+  for (const heading of order) {
+    const sectionBody = (sections.get(heading) ?? []).join('\n').trim()
+    if (hasBullets(sectionBody)) chunks.push(`${heading}\n${sectionBody}`)
+  }
+
+  return chunks.join('\n\n').trim()
 }
 
 export function assertHasUnreleasedBullets(changelog: string): void {
@@ -216,6 +227,21 @@ function removeVersionSection(changelog: string, version: string): string {
   return `${changelog.slice(0, range.start)}${changelog.slice(range.end)}`.replace(/\n{3,}/g, '\n\n')
 }
 
+function removeVersionLinkRef(changelog: string, version: string): string {
+  return changelog
+    .replace(new RegExp(`^\\[${version.replace(/\./g, '\\.')}\\]: .*$`, 'm'), '')
+    .replace(/\n{3,}/g, '\n\n')
+}
+
+function removeRcSectionsForVersion(changelog: string, version: string, tags: string[]): string {
+  let next = changelog
+  for (const rc of rcTagsForVersion(tags, version)) {
+    next = removeVersionSection(next, rc.version)
+    next = removeVersionLinkRef(next, rc.version)
+  }
+  return next
+}
+
 function insertVersionNotes(changelog: string, version: string, date: string, notes: string): string {
   const withoutDuplicateVersion = removeVersionSection(changelog, version)
   const range = unreleasedRange(withoutDuplicateVersion)
@@ -234,6 +260,10 @@ export function latestRcForVersion(tags: string[], version: string): ParsedRelea
     .at(-1) ?? null
 }
 
+function rcTagsForVersion(tags: string[], version: string): ParsedReleaseTag[] {
+  return parseReleaseTags(tags).filter((tag) => tag.rc !== null && baseVersion(tag) === version)
+}
+
 export function releaseNotesForTarget(
   changelog: string,
   target: ParsedReleaseTag,
@@ -245,16 +275,19 @@ export function releaseNotesForTarget(
     if (!hasBullets(unreleased)) {
       throw new Error('CHANGELOG.md [Unreleased] has no release-note bullets')
     }
-    return { body: unreleased.trim(), bulletCount: bulletCount(unreleased) }
+    return { body: stripEmptyChangelogSections(unreleased), bulletCount: bulletCount(unreleased) }
   }
 
-  const rc = latestRcForVersion(tags, target.version)
-  if (!rc) throw new Error(`No release candidate notes found for ${target.version}`)
-  const rcNotes = versionRange(changelog, rc.version)?.body.trim() ?? ''
+  const rcs = rcTagsForVersion(tags, target.version)
+  if (rcs.length === 0) throw new Error(`No release candidate notes found for ${target.version}`)
+  const rcNotes = rcs
+    .map((rc) => versionRange(changelog, rc.version)?.body.trim() ?? '')
+    .filter(Boolean)
+    .join('\n\n')
   const extraNotes = hasBullets(unreleased) ? unreleased.trim() : ''
-  const notes = [rcNotes, extraNotes].filter(Boolean).join('\n\n')
+  const notes = stripEmptyChangelogSections([rcNotes, extraNotes].filter(Boolean).join('\n\n'))
   if (!hasBullets(notes)) {
-    throw new Error(`CHANGELOG.md has no release-note bullets for ${rc.tag} or [Unreleased]`)
+    throw new Error(`CHANGELOG.md has no release-note bullets for ${target.version} release candidates or [Unreleased]`)
   }
   return { body: notes, bulletCount: bulletCount(notes) }
 }
@@ -273,138 +306,16 @@ export function moveReleaseNotesToVersion(
   opts: { verb: ReleaseVerb; tags?: string[] },
 ): string {
   const notes = releaseNotesForTarget(changelog, target, opts, opts.tags ?? [])
-  return insertVersionNotes(changelog, target.version, date, notes.body)
-}
-
-function run(cmd: string, args: string[], opts: { inherit?: boolean } = {}): CommandResult {
-  const result = spawnSync(cmd, args, {
-    cwd: REPO_ROOT,
-    encoding: 'utf-8',
-    stdio: opts.inherit ? 'inherit' : 'pipe',
-  })
-  return {
-    status: result.status,
-    stdout: result.stdout ?? '',
-    stderr: result.stderr ?? '',
-  }
-}
-
-function requireOk(label: string, result: CommandResult): string {
-  if (result.status !== 0) {
-    throw new Error(`${label} failed:\n${result.stderr || result.stdout}`)
-  }
-  return result.stdout.trim()
-}
-
-function git(args: string[]): string {
-  return requireOk(`git ${args.join(' ')}`, run('git', args))
-}
-
-function gh(args: string[]): string {
-  return requireOk(`gh ${args.join(' ')}`, run('gh', args))
+  const source = opts.verb === 'promote'
+    ? removeRcSectionsForVersion(changelog, target.version, opts.tags ?? [])
+    : changelog
+  return insertVersionNotes(source, target.version, date, notes.body)
 }
 
 export function releaseWorkflowUrlFromRuns(json: string, targetTag: string): string | null {
   const runs = JSON.parse(json) as ReleaseWorkflowRun[]
   const runInfo = runs.find((item) => item.headBranch === targetTag && item.url)
   return runInfo?.url ?? null
-}
-
-function releaseWorkflowFallbackUrl(targetTag: string): string {
-  const query = encodeURIComponent(`branch:${targetTag}`)
-  return `https://github.com/markhayden/bakin/actions/workflows/release.yml?query=${query}`
-}
-
-function releaseWorkflowUrl(targetTag: string): string | null {
-  const output = gh([
-    'run', 'list',
-    '--workflow', 'Release',
-    '--branch', targetTag,
-    '--json', 'conclusion,databaseId,headBranch,status,url',
-    '--limit', '10',
-  ])
-  return releaseWorkflowUrlFromRuns(output, targetTag)
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolveSleep) => setTimeout(resolveSleep, ms))
-}
-
-async function waitForReleaseWorkflowUrl(
-  targetTag: string,
-  opts: { attempts?: number; delayMs?: number } = {},
-): Promise<string | null> {
-  const attempts = opts.attempts ?? 12
-  const delayMs = opts.delayMs ?? 5_000
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      const url = releaseWorkflowUrl(targetTag)
-      if (url) return url
-    } catch {
-      // The release tag is already pushed; workflow discovery is best-effort UX.
-    }
-    if (attempt < attempts) await sleep(delayMs)
-  }
-  return null
-}
-
-function listReleaseTags(): string[] {
-  const output = git(['tag', '--list', 'v[0-9]*'])
-  return output.split('\n').map((tag) => tag.trim()).filter(Boolean)
-}
-
-function assertWorktreeClean(): void {
-  const status = git(['status', '--porcelain'])
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => !line.endsWith('packages/core/src/generated-version.ts'))
-  if (status.length > 0) {
-    throw new Error(`Worktree is not clean:\n${status.join('\n')}`)
-  }
-}
-
-function assertTagDoesNotExist(tag: string): void {
-  const local = run('git', ['rev-parse', '-q', '--verify', `refs/tags/${tag}`])
-  if (local.status === 0) throw new Error(`Tag already exists locally: ${tag}`)
-  const remote = git(['ls-remote', '--tags', 'origin', `refs/tags/${tag}`])
-  if (remote.trim()) throw new Error(`Tag already exists on origin: ${tag}`)
-}
-
-function assertMainCiGreen(head: string): string {
-  const output = gh([
-    'run', 'list',
-    '--workflow', 'Main CI',
-    '--branch', 'main',
-    '--commit', head,
-    '--json', 'conclusion,databaseId,url',
-    '--limit', '1',
-  ])
-  const runs = JSON.parse(output) as Array<{ conclusion?: string; databaseId?: number; url?: string }>
-  const runInfo = runs[0]
-  if (!runInfo || runInfo.conclusion !== 'success') {
-    throw new Error(`Main CI is not green for ${head}`)
-  }
-  return runInfo.url ?? `run #${runInfo.databaseId}`
-}
-
-function preflight(targetTag: string, opts: CliOptions, tags: string[]): { head: string; ciUrl: string; bulletCount: number } {
-  const branch = git(['rev-parse', '--abbrev-ref', 'HEAD'])
-  if (branch !== 'main') throw new Error(`Release must be cut from main, currently on ${branch}`)
-
-  assertWorktreeClean()
-  git(['fetch', 'origin', 'main'])
-  const head = git(['rev-parse', 'HEAD'])
-  const originMain = git(['rev-parse', 'origin/main'])
-  if (head !== originMain) throw new Error('Local main does not match origin/main')
-
-  const ciUrl = assertMainCiGreen(head)
-  assertTagDoesNotExist(targetTag)
-  const target = parseReleaseTag(targetTag)
-  if (!target) throw new Error(`Malformed release tag: ${targetTag}`)
-  const changelog = readFileSync(CHANGELOG_PATH, 'utf-8')
-  const notes = releaseNotesForTarget(changelog, target, opts, tags)
-  return { head, ciUrl, bulletCount: notes.bulletCount }
 }
 
 export function parseArgs(argv: string[]): CliOptions {
@@ -426,64 +337,8 @@ export function parseArgs(argv: string[]): CliOptions {
   return { verb, prerelease, dryRun, yes }
 }
 
-async function confirmProceed(targetTag: string, yes: boolean): Promise<void> {
-  if (yes) return
-  const rl = createInterface({ input, output })
-  try {
-    const answer = await rl.question(`Proceed with ${targetTag}? [y/N] `)
-    if (answer.trim().toLowerCase() !== 'y') {
-      throw new Error('Release cancelled')
-    }
-  } finally {
-    rl.close()
-  }
-}
-
-function printPlan(targetTag: string, opts: CliOptions, preflightResult: { head: string; ciUrl: string; bulletCount: number }): void {
-  const parsed = parseReleaseTag(targetTag)
-  if (!parsed) throw new Error(`Malformed release tag: ${targetTag}`)
-  const channel = parsed.rc === null ? 'stable (npm dist-tag: latest)' : 'rc (npm dist-tag: next)'
-  console.log('Release plan')
-  console.log('------------')
-  console.log(`Target version:  ${targetTag}`)
-  console.log(`Channel:         ${channel}`)
-  console.log(`Action:          ${opts.verb}${opts.prerelease ? ' --rc' : ''}`)
-  console.log(`Head:            ${preflightResult.head.slice(0, 12)}`)
-  console.log(`Main CI:         ${preflightResult.ciUrl}`)
-  console.log(`CHANGELOG notes: ${preflightResult.bulletCount} bullets`)
-  console.log(`Mode:            ${opts.dryRun ? 'dry-run' : 'write'}`)
-}
-
 async function main(): Promise<void> {
-  const opts = parseArgs(process.argv.slice(2))
-  const tags = listReleaseTags()
-  const targetTag = resolveReleaseTarget(tags, opts)
-  const target = parseReleaseTag(targetTag)
-  if (!target) throw new Error(`Malformed release tag: ${targetTag}`)
-  if (opts.verb === 'major' && target.major === 1 && !opts.yes && !opts.dryRun) {
-    const rl = createInterface({ input, output })
-    try {
-      const answer = await rl.question('Type 1.0.0 to confirm first major release: ')
-      if (answer.trim() !== '1.0.0') throw new Error('Release cancelled')
-    } finally {
-      rl.close()
-    }
-  }
-
-  const checks = preflight(targetTag, opts, tags)
-  printPlan(targetTag, opts, checks)
-  if (opts.dryRun) return
-  await confirmProceed(targetTag, opts.yes)
-
-  const current = readFileSync(CHANGELOG_PATH, 'utf-8')
-  const today = new Date().toISOString().slice(0, 10)
-  writeFileSync(CHANGELOG_PATH, moveReleaseNotesToVersion(current, target, today, { verb: opts.verb, tags }), 'utf-8')
-  git(['add', 'CHANGELOG.md'])
-  git(['commit', '-m', `chore(release): ${targetTag}`])
-  git(['tag', targetTag])
-  git(['push', '--atomic', 'origin', 'main', targetTag])
-  const runUrl = await waitForReleaseWorkflowUrl(targetTag)
-  console.log(`Release tag pushed. Workflow: ${runUrl ?? releaseWorkflowFallbackUrl(targetTag)}`)
+  throw new Error('Local release publishing has been retired. Use `bun run release ...` to prepare a release branch, then run the GitHub Actions Release workflow to publish.')
 }
 
 if (import.meta.main) {

@@ -42,22 +42,93 @@ function runSpawn(
   opts: { interactive: boolean }
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
+    const compact = opts.interactive && !process.env.CI && process.stdout.isTTY === true
     const child = spawn(cmd, args, {
-      stdio: opts.interactive ? 'inherit' : ['ignore', 'pipe', 'pipe'],
+      // Keep stdin attached so Homebrew can still ask Y/n questions, but
+      // capture stdout/stderr so onboarding stays readable.
+      stdio: opts.interactive ? ['inherit', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
     })
     let stdout = ''
     let stderr = ''
-    if (!opts.interactive) {
-      child.stdout?.on('data', (chunk) => {
-        stdout += chunk.toString()
-      })
-      child.stderr?.on('data', (chunk) => {
-        stderr += chunk.toString()
-      })
+    const status = compact ? createCompactProcessStatus('Installing Antfly via Homebrew') : null
+    const onData = (target: 'stdout' | 'stderr', chunk: unknown) => {
+      const text = chunk?.toString?.() ?? String(chunk ?? '')
+      if (target === 'stdout') stdout += text
+      else stderr += text
+      status?.update(text)
     }
-    child.on('error', (err) => reject(err))
-    child.on('close', (code) => resolve({ code, stdout, stderr }))
+    child.stdout?.on('data', (chunk) => onData('stdout', chunk))
+    child.stderr?.on('data', (chunk) => onData('stderr', chunk))
+    child.on('error', (err) => {
+      status?.stop()
+      reject(err)
+    })
+    child.on('close', (code) => {
+      status?.stop()
+      resolve({ code, stdout, stderr })
+    })
   })
+}
+
+function stripAnsi(text: string): string {
+  return text.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
+}
+
+function summarizeProcessText(text: string): { status?: string; prompt?: string } {
+  const cleaned = stripAnsi(text).replace(/\r/g, '\n')
+  const parts = cleaned.split('\n').map(line => line.trim()).filter(Boolean)
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const line = parts[i]
+    if (/\[[Yy]\/n\]|\[y\/N\]|\(y\/n\)|\?$/i.test(line)) {
+      return { prompt: line }
+    }
+    if (
+      line.startsWith('==>') ||
+      line.includes('Cask ') ||
+      line.includes('Downloading') ||
+      line.includes('Installing') ||
+      line.includes('Tapping') ||
+      line.includes('Fetching')
+    ) {
+      return { status: line.replace(/^==>\s*/, '') }
+    }
+  }
+  return {}
+}
+
+function createCompactProcessStatus(label: string) {
+  const frames = ['-', '\\', '|', '/']
+  let frame = 0
+  let detail = 'starting'
+  let promptActive = false
+
+  const write = () => {
+    if (promptActive) return
+    process.stdout.write(`\r\x1b[2K${frames[frame++ % frames.length]} ${label}: ${detail}`)
+  }
+
+  const timer = setInterval(write, 120)
+  write()
+
+  return {
+    update(text: string) {
+      const summary = summarizeProcessText(text)
+      if (summary.prompt) {
+        promptActive = true
+        process.stdout.write(`\r\x1b[2K${summary.prompt} `)
+        return
+      }
+      if (summary.status) {
+        detail = summary.status
+        promptActive = false
+        write()
+      }
+    },
+    stop() {
+      clearInterval(timer)
+      process.stdout.write('\r\x1b[2K')
+    },
+  }
 }
 
 async function checkAntflyDependency() {

@@ -261,5 +261,5 @@ Source: `packages/sdk/src/routing/index.ts`
 | `export type {` |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 12, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 14, 2026 · Bakin 0.0.0-dev</span>
 </aside>

@@ -129,7 +129,7 @@ describe('CHANGELOG helpers', () => {
   it('moves Unreleased notes into a concrete version', () => {
     const next = moveUnreleasedToVersion(changelog, '0.2.0', '2026-05-05')
 
-    expect(next).toContain('## [Unreleased]\n\n### Added\n\n### Changed\n\n### Fixed\n\n### Removed\n\n### Security\n\n## [0.2.0] - 2026-05-05')
+    expect(next).toContain('## [Unreleased]\n\n## [0.2.0] - 2026-05-05')
     expect(next).toContain('- Release script.')
     expect(next).toContain('[Unreleased]: https://github.com/markhayden/bakin/compare/v0.2.0...HEAD')
     expect(next).toContain('[0.2.0]: https://github.com/markhayden/bakin/releases/tag/v0.2.0')
@@ -140,35 +140,41 @@ describe('CHANGELOG helpers', () => {
 
 ## [Unreleased]
 
-### Added
+### Fixed
+- Final polish.
 
-### Changed
+## [0.2.0-rc.2] - 2026-05-05
 
 ### Fixed
-
-### Removed
-
-### Security
+- Release pipeline fix.
 
 ## [0.2.0-rc.1] - 2026-05-05
 
 ### Added
 - Release pipeline.
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.2.0-rc.1...HEAD
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.2.0-rc.2...HEAD
+[0.2.0-rc.2]: https://github.com/markhayden/bakin/releases/tag/v0.2.0-rc.2
 [0.2.0-rc.1]: https://github.com/markhayden/bakin/releases/tag/v0.2.0-rc.1
 `
     const target = parseReleaseTag('v0.2.0')!
-    const notes = releaseNotesForTarget(afterRc, target, { verb: 'promote' }, ['v0.2.0-rc.1'])
-    expect(notes.bulletCount).toBe(1)
+    const notes = releaseNotesForTarget(afterRc, target, { verb: 'promote' }, ['v0.2.0-rc.1', 'v0.2.0-rc.2'])
+    expect(notes.bulletCount).toBe(3)
+    expect(notes.body).toContain('### Added')
     expect(notes.body).toContain('- Release pipeline.')
+    expect(notes.body).toContain('### Fixed')
+    expect(notes.body).toContain('- Release pipeline fix.')
+    expect(notes.body).toContain('- Final polish.')
 
     const promoted = moveReleaseNotesToVersion(afterRc, target, '2026-05-06', {
       verb: 'promote',
-      tags: ['v0.2.0-rc.1'],
+      tags: ['v0.2.0-rc.1', 'v0.2.0-rc.2'],
     })
     expect(promoted).toContain('## [0.2.0] - 2026-05-06')
-    expect(promoted).toContain('## [0.2.0-rc.1] - 2026-05-05')
+    expect(promoted).not.toContain('## [0.2.0-rc.1] - 2026-05-05')
+    expect(promoted).not.toContain('## [0.2.0-rc.2] - 2026-05-05')
+    expect(promoted).not.toContain('[0.2.0-rc.1]:')
+    expect(promoted).not.toContain('[0.2.0-rc.2]:')
     expect(promoted).toContain('[0.2.0]: https://github.com/markhayden/bakin/releases/tag/v0.2.0')
   })
 })

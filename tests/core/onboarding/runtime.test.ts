@@ -105,6 +105,22 @@ describe('onboarding runtime component', () => {
       expect(result.message).toContain('runtime adapter is available')
       expect(result.details?.mainAgentId).toBe('main')
     })
+
+    it('accepts OpenClaw default-agent configs where agents.list is absent', async () => {
+      runtimeAgents = [{ id: 'main', name: 'Main', role: 'Orchestrator', status: 'active' }]
+      runtimeConfig = {
+        agents: {
+          defaults: {
+            workspace: '/Users/markhayden/.openclaw/workspace',
+            model: { primary: 'openai-codex/gpt-5.5' },
+          },
+        },
+      }
+
+      const result = await runtimeComponent.check()
+      expect(result.status).toBe('ok')
+      expect(result.details?.mainAgentId).toBe('main')
+    })
   })
 
   describe('integrity check', () => {
