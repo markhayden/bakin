@@ -38,6 +38,7 @@ import {
   type OpenClawPluginApprovalDecision,
   type OpenClawPluginApprovalResolvedPayload,
 } from './approval-gateway'
+import { OpenClawGatewayRpcClient } from './gateway-rpc'
 import {
   getOpenClawMemoryEntry,
   getOpenClawMemoryWatchPaths,
@@ -69,11 +70,6 @@ const noopLogger: AdapterLogger = {
   error: () => {},
 }
 
-const TRANSIENT_FETCH_CODES = new Set([
-  'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'UND_ERR_SOCKET', 'EPIPE',
-])
-
-const SEND_MESSAGE_RETRY_BACKOFF_MS = [1000, 2000]
 const OPENCLAW_AGENT_TIMEOUT_MS = 600000
 const OPENCLAW_SESSION_ACTIVITY_POLL_MS = 200
 const OPENCLAW_ACTIVITY_PREVIEW_CHARS = 500
@@ -170,6 +166,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   private approvalResponsesWarningLogged = false
   private approvalResolveWarningLogged = false
   private approvalGatewayClient: OpenClawApprovalGatewayClient | null = null
+  private chatGatewayClient: OpenClawGatewayRpcClient | null = null
   private emittedApprovalResponseKeys: string[] = []
   private emittedApprovalResponseKeySet = new Set<string>()
   private lastModelListFailureMessage: string | null = null
@@ -186,6 +183,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   async shutdown(): Promise<void> {
     this.approvalGatewayClient?.close()
     this.approvalGatewayClient = null
+    this.chatGatewayClient?.close()
+    this.chatGatewayClient = null
   }
 
   async ping(): Promise<boolean> {
@@ -896,22 +895,11 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   private async chatCompletion(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): Promise<string> {
-    try {
-      const response = await this.fetchChat(opts, false)
-      const data = await response.json()
-      return data?.choices?.[0]?.message?.content || ''
-    } catch (err) {
-      if (!isOpenClawRestChatUnavailable(err)) throw err
-      this.logger.debug('OpenClaw REST chat route unavailable; using CLI agent command', {
-        agentId: opts.agentId,
-        error: err instanceof Error ? err.message : String(err),
-      })
-      return this.runOpenClawAgentCli(opts)
-    }
+    return this.runOpenClawAgentGateway(opts)
   }
 
   private async *streamChat(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): AsyncIterable<ChatChunk> {
-    const primary = this.fetchAndReadChatCompletionStream(opts)
+    const primary = this.runOpenClawAgentGatewayStream(opts)
     if (!opts.sessionKey) {
       yield* primary
       return
@@ -930,95 +918,44 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     yield* mergeChatStreams(primary, activity, () => activityAbort.abort())
   }
 
-  private async *fetchAndReadChatCompletionStream(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): AsyncIterable<ChatChunk> {
-    try {
-      const response = await this.fetchChat(opts, true)
-      yield* this.readChatCompletionStream(response)
-    } catch (err) {
-      if (!isOpenClawRestChatUnavailable(err)) throw err
-      this.logger.debug('OpenClaw REST stream route unavailable; using CLI agent command', {
-        agentId: opts.agentId,
-        error: err instanceof Error ? err.message : String(err),
-      })
-      const content = await this.runOpenClawAgentCli(opts)
-      if (content) yield { type: 'text', content }
-      yield { type: 'done' }
-    }
-  }
-
-  private async *readChatCompletionStream(response: Response): AsyncIterable<ChatChunk> {
-    const reader = response.body?.getReader()
-    if (!reader) return
-    const decoder = new TextDecoder()
-    let buffer = ''
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      const frames = buffer.split('\n\n')
-      buffer = frames.pop() ?? ''
-      for (const frame of frames) {
-        const chunk = parseStreamFrame(frame)
-        if (chunk?.type === 'done') {
-          yield chunk
-          return
-        }
-        if (chunk) yield chunk
-      }
-    }
-    if (buffer.trim()) {
-      const chunk = parseStreamFrame(buffer)
-      if (chunk?.type === 'text') yield chunk
-    }
+  private async *runOpenClawAgentGatewayStream(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): AsyncIterable<ChatChunk> {
+    const content = await this.runOpenClawAgentGateway(opts)
+    if (content) yield { type: 'text', content }
     yield { type: 'done' }
   }
 
-  private async fetchChat(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }, stream: boolean): Promise<Response> {
-    let response: Response | undefined
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        response = await fetch(`${this.baseUrl()}/v1/chat/completions`, {
-          method: 'POST',
-          headers: this.headers(opts.agentId, opts.sessionKey),
-          body: JSON.stringify({
-            model: 'openclaw:main',
-            max_tokens: 2048,
-            stream,
-            messages: opts.messages,
-          }),
-        })
-        break
-      } catch (err) {
-        if (stream || !isTransientFetchError(err) || attempt === 3) throw err
-        this.logger.warn('OpenClaw chat transient fetch failure; retrying', {
-          agentId: opts.agentId,
-          attempt,
-          error: err instanceof Error ? err.message : String(err),
-        })
-        await sleep(SEND_MESSAGE_RETRY_BACKOFF_MS[attempt - 1] ?? 0)
-      }
+  private async runOpenClawAgentGateway(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): Promise<string> {
+    const params: Record<string, unknown> = {
+      agentId: opts.agentId,
+      message: messagesToOpenClawPrompt(opts.messages),
+      deliver: false,
+      expectFinal: true,
+      timeoutMs: OPENCLAW_AGENT_TIMEOUT_MS,
     }
-    if (!response) throw new Error('OpenClaw chat failed before receiving a response')
-    const contentType = response.headers.get('content-type') ?? ''
-    if (!response.ok) throw new OpenClawChatHttpError(response.status, await response.text(), contentType)
-    if (contentType.includes('text/html')) {
-      throw new OpenClawChatHttpError(response.status, 'OpenClaw returned the Control UI instead of a chat response', contentType)
+    if (opts.sessionKey) params.sessionId = openClawCliSessionId(opts.agentId, opts.sessionKey)
+    try {
+      const payload = await this.openClawChatGateway().request('agent', params, OPENCLAW_AGENT_TIMEOUT_MS)
+      const content = extractOpenClawAgentText(payload)
+      if (content) return content
+      throw new Error('OpenClaw agent response did not include assistant text')
+    } catch (err) {
+      throw new Error(`OpenClaw chat failed: ${err instanceof Error ? err.message : String(err)}`)
     }
-    return response
   }
 
-  private async runOpenClawAgentCli(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): Promise<string> {
-    const args = ['agent', '--agent', opts.agentId, '--message', messagesToOpenClawPrompt(opts.messages), '--json']
-    if (opts.sessionKey) args.push('--session-id', openClawCliSessionId(opts.agentId, opts.sessionKey))
-    try {
-      const { stdout } = await execFileAsync(this.settings.binaryPath, args, {
-        timeout: OPENCLAW_AGENT_TIMEOUT_MS,
-        maxBuffer: 10 * 1024 * 1024,
-      })
-      return extractOpenClawAgentText(stdout)
-    } catch (err) {
-      throw new Error(`OpenClaw chat failed: ${formatOpenClawExecError(err)}`)
-    }
+  private openClawChatGateway(): OpenClawGatewayRpcClient {
+    if (this.chatGatewayClient) return this.chatGatewayClient
+    this.chatGatewayClient = new OpenClawGatewayRpcClient({
+      url: gatewayWebSocketUrl(this.settings),
+      token: readGatewayToken,
+      logger: this.logger,
+      clientId: 'bakin-chat-gateway',
+      displayName: 'Bakin',
+      clientMode: 'backend',
+      scopes: ['operator.read', 'operator.write'],
+      label: 'OpenClaw chat gateway',
+    })
+    return this.chatGatewayClient
   }
 
   private async invokeTool(toolName: string, args: Record<string, unknown> = {}): Promise<unknown> {
@@ -1037,47 +974,16 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 }
 
-function formatOpenClawExecError(err: unknown): string {
-  if (!err || typeof err !== 'object') return String(err)
-  const record = err as Record<string, unknown>
-  const parts: string[] = []
-  const message = typeof record.message === 'string' ? record.message : ''
-  if (message) parts.push(message)
-  if (record.code !== undefined) parts.push(`code=${String(record.code)}`)
-  if (record.signal !== undefined && record.signal !== null) parts.push(`signal=${String(record.signal)}`)
-  if (record.killed !== undefined) parts.push(`killed=${String(record.killed)}`)
-  const stderr = typeof record.stderr === 'string' ? record.stderr.trim() : ''
-  if (stderr) parts.push(`stderr=${stderr.slice(0, 500)}`)
-  return parts.length > 0 ? parts.join('; ') : 'unknown error'
-}
-
-class OpenClawChatHttpError extends Error {
-  constructor(
-    readonly status: number,
-    readonly body: string,
-    readonly contentType: string,
-  ) {
-    super(`OpenClaw chat HTTP route failed (${status}): ${body || contentType || 'empty response'}`)
-  }
-}
-
-function isOpenClawRestChatUnavailable(err: unknown): boolean {
-  if (!(err instanceof OpenClawChatHttpError)) return false
-  if (err.status === 404 || err.status === 405) return true
-  return err.contentType.includes('text/html')
-}
-
 function messagesToOpenClawPrompt(messages: Array<{ role: string; content: string }>): string {
   const lastUser = [...messages].reverse().find((message) => message.role === 'user' && message.content.trim())
   if (lastUser) return lastUser.content
   return messages.map((message) => message.content).filter(Boolean).join('\n\n')
 }
 
-function extractOpenClawAgentText(stdout: string): string {
-  const trimmed = stdout.trim()
-  if (!trimmed) return ''
-  const parsed = parseJsonObject(trimmed)
-  if (!parsed) return trimmed
+function extractOpenClawAgentText(value: unknown): string {
+  const parsed = typeof value === 'string' ? parseJsonObject(value.trim()) ?? value.trim() : value
+  if (!parsed) return ''
+  if (typeof parsed === 'string') return parsed
 
   const finalVisible = getJsonPath(parsed, ['result', 'meta', 'finalAssistantVisibleText'])
   if (typeof finalVisible === 'string') return finalVisible
@@ -1958,242 +1864,11 @@ function redactSensitiveText(value: string): string {
     .replace(/\b([A-Za-z0-9_]*(?:token|password|secret|api[_-]?key)[A-Za-z0-9_]*\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,"'`}]+)/gi, '$1[redacted]')
 }
 
-function parseStreamFrame(frame: string): ChatChunk | null {
-  const dataLines = frame
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith('data: '))
-    .map((line) => line.slice(6).trim())
-  if (dataLines.length === 0) {
-    const text = frame.trim()
-    return text ? { type: 'text', content: text } : null
-  }
-  const data = dataLines.join('\n')
-  if (data === '[DONE]') return { type: 'done' }
-  try {
-    const parsed = JSON.parse(data) as {
-      type?: string
-      event?: string
-      content?: string
-      data?: unknown
-      activity?: { kind?: string; content?: string; data?: unknown }
-      tool?: unknown
-      tool_call?: unknown
-      toolCall?: unknown
-      choices?: Array<{
-        delta?: { content?: string; tool_calls?: unknown[] }
-        message?: { content?: string; tool_calls?: unknown[] }
-      }>
-      error?: { message?: string } | string
-    }
-    const error = typeof parsed.error === 'string' ? parsed.error : parsed.error?.message
-    if (error) return { type: 'error', content: error }
-    const activity = parseActivityChunk(parsed)
-    if (activity) return activity
-    const content = parsed.choices?.[0]?.delta?.content ?? parsed.choices?.[0]?.message?.content
-    return content ? { type: 'text', content } : null
-  } catch {
-    return data ? { type: 'text', content: data } : null
-  }
-}
-
-function parseActivityChunk(parsed: {
-  type?: string
-  event?: string
-  content?: string
-  data?: unknown
-  activity?: { kind?: string; content?: string; data?: unknown }
-  tool?: unknown
-  tool_call?: unknown
-  toolCall?: unknown
-  choices?: Array<{
-    delta?: { tool_calls?: unknown[] }
-    message?: { tool_calls?: unknown[] }
-  }>
-}): ChatChunk | null {
-  if (parsed.activity) {
-    const kind = parsed.activity.kind
-    if (kind === 'runtime_status' || kind === 'status') {
-      return {
-        type: 'status',
-        content: parsed.activity.content || 'Agent status update',
-        data: metadataFromUnknown(parsed.activity.data),
-      }
-    }
-    if (kind === 'tool_call' || kind === 'tool') {
-      const toolActivity = normalizeRuntimeToolActivity(parsed.activity.data, 'call')
-      const data = withRuntimeToolSummary(
-        toolActivity ?? fallbackToolActivity(parsed.activity.data, 'call'),
-        parsed.activity.content,
-      )
-      return {
-        type: 'tool',
-        content: parsed.activity.content || describeToolPayload(toolActivity ?? parsed.activity.data),
-        data,
-      }
-    }
-  }
-
-  const frameKind = parsed.type ?? parsed.event
-  if (frameKind === 'status' || frameKind === 'runtime_status') {
-    return {
-      type: 'status',
-      content: parsed.content || 'Agent status update',
-      data: metadataFromUnknown(parsed.data),
-    }
-  }
-  if (frameKind === 'tool' || frameKind === 'tool_call') {
-    const payload = parsed.data ?? parsed.tool ?? parsed.tool_call ?? parsed.toolCall
-    const toolActivity = normalizeRuntimeToolActivity(payload, 'call')
-    const data = withRuntimeToolSummary(
-      toolActivity ?? fallbackToolActivity(payload, 'call'),
-      parsed.content,
-    )
-    return {
-      type: 'tool',
-      content: parsed.content || describeToolPayload(toolActivity ?? payload),
-      data,
-    }
-  }
-
-  const toolCalls = parsed.choices?.[0]?.delta?.tool_calls ?? parsed.choices?.[0]?.message?.tool_calls
-  if (Array.isArray(toolCalls) && toolCalls.length > 0) {
-    const toolActivity = normalizeRuntimeToolActivity({ toolCalls }, 'call')
-    return {
-      type: 'tool',
-      content: describeToolPayload(toolCalls),
-      data: toolActivity ?? fallbackToolActivity(toolCalls, 'call'),
-    }
-  }
-
-  const toolPayload = parsed.tool ?? parsed.tool_call ?? parsed.toolCall
-  if (toolPayload !== undefined) {
-    const toolActivity = normalizeRuntimeToolActivity(toolPayload, 'call')
-    return {
-      type: 'tool',
-      content: parsed.content || describeToolPayload(toolPayload),
-      data: toolActivity ?? fallbackToolActivity(toolPayload, 'call'),
-    }
-  }
-
-  return null
-}
-
-function fallbackToolActivity(payload: unknown, phase: RuntimeToolActivity['phase']): RuntimeToolActivity {
-  return {
-    phase,
-    toolName: describeToolPayload(payload),
-    status: phase === 'call' ? 'running' : 'completed',
-  }
-}
-
-function withRuntimeToolSummary(activity: RuntimeToolActivity, summary: string | undefined): RuntimeToolActivity {
-  if (!summary || activity.summary) return activity
-  return { ...activity, summary }
-}
-
-function metadataFromUnknown(value: unknown): RuntimeMetadata | undefined {
-  if (value === undefined) return undefined
-  return isPlainObject(value) ? value : { value }
-}
-
-function normalizeRuntimeToolActivity(payload: unknown, fallbackPhase: RuntimeToolActivity['phase']): RuntimeToolActivity | null {
-  const toolCallPayload = firstToolCallPayload(payload)
-  if (toolCallPayload) return normalizeRuntimeToolActivity(toolCallPayload, fallbackPhase)
-
-  if (typeof payload === 'string' && payload.trim()) {
-    return {
-      phase: fallbackPhase,
-      toolName: payload.trim(),
-      status: fallbackPhase === 'call' ? 'running' : 'completed',
-    }
-  }
-
-  if (!isPlainObject(payload)) return null
-
-  const functionValue = payload.function
-  const functionName = isPlainObject(functionValue) && typeof functionValue.name === 'string'
-    ? functionValue.name
-    : undefined
-  const functionArgs = isPlainObject(functionValue) && typeof functionValue.arguments === 'string'
-    ? functionValue.arguments
-    : undefined
-  const phase = payload.phase === 'result' ? 'result' : payload.phase === 'call' ? 'call' : fallbackPhase
-  const toolName = firstString(
-    payload.toolName,
-    payload.name,
-    payload.tool,
-    functionName,
-    payload.id,
-  ) ?? 'tool'
-  const callId = firstString(payload.callId, payload.toolCallId, payload.id)
-  const status = typeof payload.status === 'string'
-    ? payload.status
-    : phase === 'call'
-      ? 'running'
-      : normalizeToolResultStatus(undefined, typeof payload.exitCode === 'number' ? payload.exitCode : undefined)
-  const inputPreview = firstString(
-    payload.inputPreview,
-    payload.argumentsPreview,
-    functionArgs !== undefined ? previewUnknown(functionArgs) : undefined,
-    payload.arguments !== undefined ? previewUnknown(payload.arguments) : undefined,
-  )
-  const outputPreview = firstString(
-    payload.outputPreview,
-    payload.resultPreview,
-    payload.output !== undefined ? previewUnknown(payload.output) : undefined,
-  )
-  const summary = firstString(
-    payload.summary,
-    payload.purpose,
-    payload.displayLabel,
-  ) ?? (phase === 'call'
-    ? summarizeRuntimeToolPurpose(toolName, inputPreview)
-    : undefined)
-
-  return {
-    phase,
-    ...(callId ? { callId } : {}),
-    toolName,
-    status,
-    ...(summary ? { summary } : {}),
-    ...(inputPreview ? { inputPreview } : {}),
-    ...(outputPreview ? { outputPreview } : {}),
-    ...(typeof payload.durationMs === 'number' ? { durationMs: payload.durationMs } : {}),
-    ...(typeof payload.exitCode === 'number' ? { exitCode: payload.exitCode } : {}),
-  }
-}
-
-function firstToolCallPayload(payload: unknown): unknown | null {
-  if (Array.isArray(payload)) return payload.find(isPlainObject) ?? null
-  if (!isPlainObject(payload)) return null
-  const toolCalls = payload.toolCalls
-  if (Array.isArray(toolCalls)) return toolCalls.find(isPlainObject) ?? null
-  return null
-}
-
 function firstString(...values: unknown[]): string | undefined {
   for (const value of values) {
     if (typeof value === 'string' && value.length > 0) return value
   }
   return undefined
-}
-
-function describeToolPayload(payload: unknown): string {
-  if (Array.isArray(payload)) {
-    const first = payload[0]
-    const label = describeToolPayload(first)
-    return payload.length > 1 ? `${label} + ${payload.length - 1} more` : label
-  }
-  if (isPlainObject(payload)) {
-    const functionValue = payload.function
-    if (isPlainObject(functionValue) && typeof functionValue.name === 'string') return functionValue.name
-    for (const key of ['name', 'tool', 'toolName', 'id']) {
-      const value = payload[key]
-      if (typeof value === 'string' && value.length > 0) return value
-    }
-  }
-  return 'Tool call'
 }
 
 function parseJsonObject(raw: string): Record<string, unknown> | null {
@@ -2333,13 +2008,6 @@ function resolveRole(agentId: string): string {
 
 function slug(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `agent-${Date.now()}`
-}
-
-function isTransientFetchError(err: unknown): boolean {
-  if (err instanceof TypeError && err.message.includes('fetch failed')) return true
-  const cause = (err as { cause?: { code?: string } })?.cause
-  if (cause?.code && TRANSIENT_FETCH_CODES.has(cause.code)) return true
-  return err instanceof Error && err.name === 'AbortError'
 }
 
 function sleep(ms: number): Promise<void> {

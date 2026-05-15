@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { handleGatewayRequest } from '../../dev/imitation-crab/gateway'
+import { handleGatewayRequest, handleGatewayRpcRequest } from '../../dev/imitation-crab/gateway'
 
 describe('mock gateway request handling', () => {
   it('GET /health returns ok with mock flag', async () => {
@@ -10,41 +10,24 @@ describe('mock gateway request handling', () => {
     expect(body.mock).toBe(true)
   })
 
-  it('POST /v1/chat/completions returns canned response', async () => {
-    const res = await handleGatewayRequest({
-      method: 'POST',
-      url: '/v1/chat/completions',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-openclaw-agent-id': 'pixel',
-      },
-      body: JSON.stringify({
-        model: 'openclaw',
-        messages: [{ role: 'user', content: 'Generate a thumbnail' }],
-      }),
+  it('RPC agent returns canned Gateway agent payloads', async () => {
+    const res = await handleGatewayRpcRequest('agent', {
+      agentId: 'pixel',
+      message: 'Generate a thumbnail',
+      expectFinal: true,
     })
 
-    expect(res.status).toBe(200)
-    const body = res.body as { choices: Array<{ message: { role: string; content: string } }> }
-    expect(body.choices).toHaveLength(1)
-    expect(body.choices[0].message.role).toBe('assistant')
-    expect(body.choices[0].message.content).toContain('mock:Pixel')
+    expect(res.ok).toBe(true)
+    const payload = res.payload as Record<string, unknown>
+    expect(payload.status).toBe('ok')
+    expect(JSON.stringify(payload)).toContain('mock:Pixel')
   })
 
-  it('POST /v1/chat/completions handles missing agent header', async () => {
-    const res = await handleGatewayRequest({
-      method: 'POST',
-      url: '/v1/chat/completions',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'openclaw',
-        messages: [{ role: 'user', content: 'test' }],
-      }),
-    })
+  it('RPC agent handles missing agent IDs', async () => {
+    const res = await handleGatewayRpcRequest('agent', { message: 'test' })
 
-    expect(res.status).toBe(200)
-    const body = res.body as { choices: Array<{ message: { content: string } }> }
-    expect(body.choices[0].message.content).toContain('mock:unknown')
+    expect(res.ok).toBe(true)
+    expect(JSON.stringify(res.payload)).toContain('mock:unknown')
   })
 
   it('POST /tools/invoke returns ok', async () => {
@@ -65,7 +48,7 @@ describe('mock gateway request handling', () => {
     expect(body.mock).toBe(true)
   })
 
-  it('returns 404 for unknown routes', async () => {
+  it('returns 404 for unknown HTTP routes', async () => {
     const res = await handleGatewayRequest({ method: 'GET', url: '/v2/unknown' })
     expect(res.status).toBe(404)
   })

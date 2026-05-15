@@ -1,9 +1,10 @@
 /**
- * Mock OpenClaw HTTP gateway.
- * Handles the three endpoints Bakin uses:
+ * Mock OpenClaw gateway.
+ * Handles the HTTP endpoints Bakin uses plus the Gateway RPC contract used
+ * by chat:
  *   GET  /health
- *   POST /v1/chat/completions
  *   POST /tools/invoke
+ *   RPC  agent
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'http'
 import { getChatMode, getGatewayPort, getToolMode } from './env'
@@ -60,6 +61,58 @@ type GatewayResponse = {
   body: unknown
 }
 
+type GatewayRpcResponse = {
+  ok: boolean
+  payload?: unknown
+  error?: { message: string; code?: string }
+}
+
+export async function handleGatewayRpcRequest(method: string, params: Record<string, unknown>): Promise<GatewayRpcResponse> {
+  if (method === 'connect') {
+    return {
+      ok: true,
+      payload: { auth: { scopes: Array.isArray(params.scopes) ? params.scopes : [] } },
+    }
+  }
+
+  if (method === 'agent') {
+    const agentId = typeof params.agentId === 'string' && params.agentId.length > 0 ? params.agentId : 'unknown'
+    const agentName = AGENT_NAMES[agentId] || agentId
+    const userMessage = typeof params.message === 'string' ? params.message : ''
+
+    let reply: string
+    switch (getChatMode()) {
+      case 'echo':
+        reply = `[mock:${agentName}] ${userMessage}`
+        break
+      case 'error':
+        return { ok: false, error: { message: 'Mock error mode', code: 'mock_error' } }
+      case 'canned':
+      default:
+        reply = `[mock:${agentName}] Acknowledged. Task understood — working on it.`
+    }
+
+    console.log(`  → rpc=agent agent=${agentId} message=${userMessage.slice(0, 80)}${userMessage.length > 80 ? '...' : ''}`)
+    return {
+      ok: true,
+      payload: {
+        runId: 'mock-run',
+        status: 'ok',
+        summary: 'completed',
+        result: {
+          payloads: [{ text: reply, mediaUrl: null }],
+          meta: {
+            finalAssistantVisibleText: reply,
+            finalAssistantRawText: reply,
+          },
+        },
+      },
+    }
+  }
+
+  return { ok: false, error: { message: `Unknown mock Gateway method: ${method}`, code: 'not_found' } }
+}
+
 export async function handleGatewayRequest(req: GatewayRequest): Promise<GatewayResponse> {
   const method = req.method || 'GET'
   const url = req.url || '/'
@@ -69,53 +122,6 @@ export async function handleGatewayRequest(req: GatewayRequest): Promise<Gateway
   // GET /health or /healthz (compat with Docker OpenClaw)
   if ((url === '/health' || url === '/healthz') && method === 'GET') {
     return { status: 200, body: { status: 'ok', mock: true } }
-  }
-
-  // POST /v1/chat/completions
-  if (url === '/v1/chat/completions' && method === 'POST') {
-    const body = req.body || ''
-    const agentHeader = req.headers?.['x-openclaw-agent-id']
-    const agentId = (Array.isArray(agentHeader) ? agentHeader[0] : agentHeader) || 'unknown'
-    const agentName = AGENT_NAMES[agentId] || agentId
-
-    let parsed: { messages?: Array<{ content?: string }>; stream?: boolean } = {}
-    try { parsed = JSON.parse(body) } catch { /* */ }
-
-    const userMessage = parsed.messages?.[parsed.messages.length - 1]?.content || ''
-
-    let reply: string
-    switch (getChatMode()) {
-      case 'echo':
-        reply = `[mock:${agentName}] ${userMessage}`
-        break
-      case 'error':
-        return { status: 500, body: { error: 'Mock error mode' } }
-      case 'canned':
-      default:
-        reply = `[mock:${agentName}] Acknowledged. Task understood — working on it.`
-    }
-
-    console.log(`  → agent=${agentId} stream=${!!parsed.stream} message=${userMessage.slice(0, 80)}${userMessage.length > 80 ? '...' : ''}`)
-
-    // Streaming: return a marker so handleRequest can send SSE
-    if (parsed.stream) {
-      return {
-        status: 200,
-        body: { __stream: true, content: reply },
-      }
-    }
-
-    return {
-      status: 200,
-      body: {
-        choices: [{
-          message: {
-            role: 'assistant',
-            content: reply,
-          },
-        }],
-      },
-    }
   }
 
   // POST /tools/invoke
@@ -143,30 +149,6 @@ export async function handleGatewayRequest(req: GatewayRequest): Promise<Gateway
   return { status: 404, body: { error: 'Not found', mock: true } }
 }
 
-/**
- * Stream a response as SSE chunks in OpenAI-compatible format.
- * Splits content into word-level chunks for realistic streaming simulation.
- */
-function sendSSE(res: ServerResponse, content: string): void {
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-  })
-
-  const words = content.split(/(\s+)/)
-  for (const word of words) {
-    if (!word) continue
-    const chunk = JSON.stringify({
-      choices: [{ delta: { content: word } }],
-    })
-    res.write(`data: ${chunk}\n\n`)
-  }
-
-  res.write('data: [DONE]\n\n')
-  res.end()
-}
-
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const body = await readBody(req)
   const response = await handleGatewayRequest({
@@ -175,13 +157,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     headers: req.headers,
     body,
   })
-
-  // Check for streaming marker
-  const responseBody = response.body as Record<string, unknown>
-  if (responseBody && responseBody.__stream === true) {
-    sendSSE(res, responseBody.content as string)
-    return
-  }
 
   json(res, response.body, response.status)
 }
