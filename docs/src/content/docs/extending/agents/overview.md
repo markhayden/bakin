@@ -40,7 +40,7 @@ Use these pages for the details:
 
 ## Tool Access
 
-Keep `allowedTools` narrow. The manifest is where reviewers can see what an agent may do before they install it. Start with read-only tools, add write tools only when the agent's job requires them, and prefer plugin-specific tools over broad runtime access.
+Omit `allowedTools` for normal unrestricted agents. Add entries only when a package should intentionally restrict MCP tool access; once present, the list is enforced by Bakin's MCP server.
 
 `allowedSkills` is a declarative skill allow-list. It documents intent today and gives package authors a stable place to express skill boundaries as routing becomes stricter.
 

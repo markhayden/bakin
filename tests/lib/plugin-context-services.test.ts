@@ -15,6 +15,14 @@ describe('plugin context services', () => {
       agent: 'trainer',
       column: 'todo',
       projectId: 'project-1',
+      availableAt: '2026-05-18T15:00:00.000Z',
+      dueAt: '2026-05-22T15:00:00.000Z',
+      source: {
+        pluginId: 'messaging',
+        entityType: 'deliverable',
+        entityId: 'deliverable-1',
+        purpose: 'kickoff',
+      },
     })
 
     const tasks = createPluginTaskService(store)
@@ -26,6 +34,14 @@ describe('plugin context services', () => {
         checked: false,
         column: 'todo',
         projectId: 'project-1',
+        availableAt: '2026-05-18T15:00:00.000Z',
+        dueAt: '2026-05-22T15:00:00.000Z',
+        source: {
+          pluginId: 'messaging',
+          entityType: 'deliverable',
+          entityId: 'deliverable-1',
+          purpose: 'kickoff',
+        },
       },
     ])
 

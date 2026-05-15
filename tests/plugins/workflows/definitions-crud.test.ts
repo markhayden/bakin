@@ -48,6 +48,17 @@ describe('workflows CRUD routes', () => {
     clearSourceRegistry()
   })
 
+  it('declares workflow gate approval fallback routes as HTML responses', async () => {
+    const activated = await activatePlugin(workflowsPlugin, testDir)
+    const getRoute = findRoute(activated.routes, 'GET', '/gates/:taskId/decision') as { responses?: Record<string, { contentType?: string }> } | undefined
+    const postRoute = findRoute(activated.routes, 'POST', '/gates/:taskId/decision') as { responses?: Record<string, { contentType?: string }> } | undefined
+
+    expect(getRoute?.responses?.[200]?.contentType).toBe('text/html')
+    expect(getRoute?.responses?.[400]?.contentType).toBe('text/html')
+    expect(postRoute?.responses?.[200]?.contentType).toBe('text/html')
+    expect(postRoute?.responses?.[400]?.contentType).toBe('text/html')
+  })
+
   describe('POST /definitions', () => {
     it('creates a new user-owned YAML on disk', async () => {
       const activated = await activatePlugin(workflowsPlugin, testDir)

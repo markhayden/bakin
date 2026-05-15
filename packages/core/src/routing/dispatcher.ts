@@ -20,6 +20,9 @@
 import { z } from 'zod'
 import type { BodySpec, ResponseSpec } from './types'
 import { errorResponseBody } from '../openapi/errors'
+import { createLogger } from '../logger'
+
+const log = createLogger('dispatcher')
 
 /**
  * Loose route shape accepted by the dispatcher. Concrete `APIRoute<...>`
@@ -125,7 +128,7 @@ export async function dispatchRoute(input: DispatchInput): Promise<Response> {
 
   // ─── 9. Validate response in dev / test ─────────────────────────────────
   if (shouldValidateResponses() && responses) {
-    await validateResponse(res, responses)
+    await validateResponse(res, responses, route)
   }
 
   return res
@@ -214,6 +217,7 @@ function shouldValidateResponses(): boolean {
 async function validateResponse(
   res: Response,
   responses: Partial<Record<string, ResponseSpec>>,
+  route: DispatchableRoute,
 ): Promise<void> {
   const statusKey = String(res.status)
   const spec = responses[statusKey]
@@ -221,15 +225,15 @@ async function validateResponse(
     // Allow auto-emitted error responses (400/415) to skip validation —
     // the dispatcher emits these with the global error envelope shape.
     if (statusKey === '400' || statusKey === '415') return
-    fail(`undeclared response status ${statusKey}`)
+    fail(`${routeLabel(route)}: undeclared response status ${statusKey}`)
     return
   }
   // Zod shorthand → validate JSON
-  if (isZodType(spec)) return validateJsonResponse(res, spec, statusKey)
+  if (isZodType(spec)) return validateJsonResponse(res, spec, statusKey, route)
   if (spec.contentType === 'none') return
   if (spec.contentType === 'application/json') {
     const json = spec as { contentType: 'application/json'; schema: z.ZodType<unknown> }
-    return validateJsonResponse(res, json.schema, statusKey)
+    return validateJsonResponse(res, json.schema, statusKey, route)
   }
   // NonJson — no validation.
 }
@@ -238,17 +242,18 @@ async function validateJsonResponse(
   res: Response,
   schema: z.ZodType<unknown>,
   statusKey: string,
+  route: DispatchableRoute,
 ): Promise<void> {
   let body: unknown
   try {
     body = await res.clone().json()
   } catch {
-    fail(`response ${statusKey}: expected JSON body but parse failed`)
+    fail(`${routeLabel(route)}: response ${statusKey}: expected JSON body but parse failed`)
     return
   }
   const r = schema.safeParse(body)
   if (!r.success) {
-    fail(`response ${statusKey} body did not match schema: ${formatIssues(r.error.issues)}`)
+    fail(`${routeLabel(route)}: response ${statusKey} body did not match schema: ${formatIssues(r.error.issues)}`)
   }
 }
 
@@ -256,7 +261,11 @@ function fail(message: string): void {
   if (process.env.NODE_ENV === 'test' || (process.env as Record<string, string>).VITEST) {
     throw new Error(message)
   }
-  console.warn(`[dispatcher] ${message}`)
+  log.warn(message)
+}
+
+function routeLabel(route: DispatchableRoute): string {
+  return `${route.method.toUpperCase()} ${route.path}`
 }
 
 function formatIssues(issues: unknown[]): string {

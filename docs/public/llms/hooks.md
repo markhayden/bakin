@@ -325,6 +325,24 @@ await ctx.hooks.callAll(
 )
 ```
 
+## Schedule
+
+### schedule.ensureBakinJob
+
+Label: Ensure Bakin schedule
+Purpose: Create or update a deterministic Bakin-managed runtime cron job.
+Kind: rpc
+Source: plugins/schedule/index.ts:1000
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'schedule.ensureBakinJob',
+  {},
+)
+```
+
 ## Tasks
 
 Task hooks let plugins enrich task details and react to task lifecycle changes.
@@ -334,7 +352,7 @@ Task hooks let plugins enrich task details and react to task lifecycle changes.
 Label: Add project task context.
 Purpose: Adds project title, status, progress, and excerpt data to task detail payloads. Use it when a task surface wants project context without depending on project storage.
 Kind: waterfall
-Source: bakin-bits-official/plugins/projects/index.ts:160
+Source: bakin-bits-official/plugins/projects/index.ts:222
 
 Example:
 
@@ -355,7 +373,7 @@ const next = await ctx.hooks.call(
 Label: Sync project task state.
 Purpose: Updates linked project checklist items when a task moves into a completed state. Use it to keep project progress in sync with task lifecycle events.
 Kind: event
-Source: bakin-bits-official/plugins/projects/index.ts:149
+Source: bakin-bits-official/plugins/projects/index.ts:211
 
 Example:
 
@@ -498,12 +516,28 @@ const result = await ctx.hooks.invoke(
 
 Workflow hooks expose workflow definitions, instances, steps, gates, and notification helpers for task automation.
 
+### workflows.approveGate
+
+Label: Approve workflow gate.
+Purpose: Approves a pending workflow gate and advances the instance. Use it from plugins that own an external review surface for workflow-backed tasks.
+Kind: rpc
+Source: plugins/workflows/index.ts:1456
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'workflows.approveGate',
+  {},
+)
+```
+
 ### workflows.authorizeToolUse
 
 Label: Authorize workflow tool use.
 Purpose: Checks whether an agent may perform a workflow-scoped tool action for a task. Use it before executing workflow-sensitive automation.
 Kind: rpc
-Source: plugins/workflows/index.ts:1461
+Source: plugins/workflows/index.ts:1479
 
 Example:
 
@@ -519,7 +553,7 @@ const result = await ctx.hooks.invoke(
 Label: Cancel workflow instance.
 Purpose: Cancels the workflow instance attached to a task. Use it when task state changes make the workflow no longer relevant or safe to continue.
 Kind: event
-Source: plugins/workflows/index.ts:1465
+Source: plugins/workflows/index.ts:1483
 
 Example:
 
@@ -537,7 +571,7 @@ await ctx.hooks.callAll(
 Label: Complete workflow step.
 Purpose: Submits output for a workflow step and advances the instance when validation passes. Use it from agents or tools that finish a workflow action.
 Kind: rpc
-Source: plugins/workflows/index.ts:1456
+Source: plugins/workflows/index.ts:1474
 
 Example:
 
@@ -559,7 +593,7 @@ const result = await ctx.hooks.invoke(
 Label: Create workflow instance.
 Purpose: Creates a workflow instance for a task and optional assignee context. Use it when task creation or routing should immediately attach a workflow.
 Kind: rpc
-Source: plugins/workflows/index.ts:1453
+Source: plugins/workflows/index.ts:1455
 
 Example:
 
@@ -579,7 +613,7 @@ const result = await ctx.hooks.invoke(
 Label: List workflow definitions.
 Purpose: Returns available workflow definitions from the configured content directory. Use it to populate workflow selectors or validate workflow ids before creating instances.
 Kind: rpc
-Source: plugins/workflows/index.ts:1458
+Source: plugins/workflows/index.ts:1476
 
 Example:
 
@@ -595,7 +629,7 @@ const result = await ctx.hooks.invoke(
 Label: List active workflow agents.
 Purpose: Returns agents currently active in a workflow task. Use it for coordination, notification, or assignment views that need live workflow participants.
 Kind: rpc
-Source: plugins/workflows/index.ts:1460
+Source: plugins/workflows/index.ts:1478
 
 Example:
 
@@ -613,7 +647,7 @@ const result = await ctx.hooks.invoke(
 Label: Get current step.
 Purpose: Returns the current workflow step for a task, optionally scoped to an agent. Use it when a plugin needs to know what work is currently actionable.
 Kind: rpc
-Source: plugins/workflows/index.ts:1455
+Source: plugins/workflows/index.ts:1473
 
 Example:
 
@@ -632,7 +666,7 @@ const result = await ctx.hooks.invoke(
 Label: Get notification channel.
 Purpose: Returns one workflow notification channel by id. Use it before sending or configuring alerts that depend on a specific channel implementation.
 Kind: rpc
-Source: plugins/workflows/index.ts:1471
+Source: plugins/workflows/index.ts:1489
 
 Example:
 
@@ -650,7 +684,7 @@ const result = await ctx.hooks.invoke(
 Label: List workflow instances.
 Purpose: Returns workflow instances, optionally filtered by status. Use it for dashboards, queues, and maintenance flows that need a broad view of active workflow state.
 Kind: rpc
-Source: plugins/workflows/index.ts:1454
+Source: plugins/workflows/index.ts:1472
 
 Example:
 
@@ -668,7 +702,7 @@ const result = await ctx.hooks.invoke(
 Label: Check gate notification.
 Purpose: Checks whether a workflow gate notification has already been sent. Use it to avoid duplicate alerts for the same task and gate step.
 Kind: rpc
-Source: plugins/workflows/index.ts:1462
+Source: plugins/workflows/index.ts:1480
 
 Example:
 
@@ -687,7 +721,7 @@ const result = await ctx.hooks.invoke(
 Label: Load workflow definition.
 Purpose: Loads one workflow definition by name. Use it when a plugin needs the template shape, steps, or metadata behind a workflow id.
 Kind: rpc
-Source: plugins/workflows/index.ts:1459
+Source: plugins/workflows/index.ts:1477
 
 Example:
 
@@ -705,7 +739,7 @@ const result = await ctx.hooks.invoke(
 Label: Load workflow instance.
 Purpose: Loads the workflow instance attached to a task. Use it when a plugin needs current workflow state without reading workflow files directly.
 Kind: rpc
-Source: plugins/workflows/index.ts:1451
+Source: plugins/workflows/index.ts:1453
 
 Example:
 
@@ -723,7 +757,7 @@ const result = await ctx.hooks.invoke(
 Label: Mark gate notified.
 Purpose: Records that a workflow gate notification was sent. Use it immediately after notifying a reviewer or channel so future checks can suppress duplicates.
 Kind: rpc
-Source: plugins/workflows/index.ts:1463
+Source: plugins/workflows/index.ts:1481
 
 Example:
 
@@ -742,7 +776,7 @@ const result = await ctx.hooks.invoke(
 Label: Match workflow.
 Purpose: Suggests a workflow based on a task title and description. Use it when creating tasks that should automatically pick the most relevant workflow template.
 Kind: rpc
-Source: plugins/workflows/index.ts:1457
+Source: plugins/workflows/index.ts:1475
 
 Example:
 
@@ -761,7 +795,7 @@ const result = await ctx.hooks.invoke(
 Label: List notification channels.
 Purpose: Returns workflow notification channels registered by core or plugins. Use it to show available delivery targets for gate and workflow alerts.
 Kind: rpc
-Source: plugins/workflows/index.ts:1470
+Source: plugins/workflows/index.ts:1488
 
 Example:
 
@@ -772,12 +806,44 @@ const result = await ctx.hooks.invoke(
 )
 ```
 
+### workflows.rejectGate
+
+Label: Reject workflow gate.
+Purpose: Rejects a pending workflow gate, records the reason, and rewinds the instance per the workflow gate policy. Use it from plugins that own an external review surface for workflow-backed tasks.
+Kind: rpc
+Source: plugins/workflows/index.ts:1460
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'workflows.rejectGate',
+  {},
+)
+```
+
+### workflows.reopenFromStep
+
+Label: Reopen workflow from step.
+Purpose: Reopens an existing workflow instance at a prior actionable step. Use it when a plugin needs explicit user recovery without creating a replacement workflow task.
+Kind: rpc
+Source: plugins/workflows/index.ts:1465
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'workflows.reopenFromStep',
+  {},
+)
+```
+
 ### workflows.saveInstance
 
 Label: Save workflow instance.
 Purpose: Persists a workflow instance after a plugin has changed its state. Use it to keep workflow updates routed through the workflow plugin storage layer.
 Kind: rpc
-Source: plugins/workflows/index.ts:1452
+Source: plugins/workflows/index.ts:1454
 
 Example:
 
@@ -798,7 +864,7 @@ const result = await ctx.hooks.invoke(
 Label: Validate step output.
 Purpose: Validates workflow step output against the step schema. Use it before accepting agent or tool output that should advance a workflow.
 Kind: rpc
-Source: plugins/workflows/index.ts:1464
+Source: plugins/workflows/index.ts:1482
 
 Example:
 

@@ -72,6 +72,7 @@ Projects index into search (table `bakin_projects`) on `title` and `body`, facet
 | `bakin projects get <projectId>` | Get a project |
 | `bakin projects create <title>` | Create a project |
 | `bakin projects update <projectId>` | Update a project |
+| `bakin projects apply-plan <projectId>` | Apply a confirmed project plan update |
 | `bakin projects delete <projectId>` | Delete a project |
 | `bakin projects add-item <projectId> <title>` | Add a checklist item |
 | `bakin projects toggle-item <projectId> <itemId> <checked>` | Toggle a checklist item |

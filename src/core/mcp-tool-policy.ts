@@ -16,7 +16,7 @@ const log = createLogger('mcp-tool-policy')
 export type McpToolPolicy =
   | {
     kind: 'unrestricted'
-    reason: 'unmanaged-agent' | 'adopted-agent-unconfigured'
+    reason: 'unmanaged-agent' | 'agent-package-unrestricted'
     packageId?: string
   }
   | {
@@ -93,18 +93,10 @@ export function resolveMcpToolPolicy(agentId: string): McpToolPolicy {
       }
     }
 
-    if (state === 'adopted') {
-      return {
-        kind: 'unrestricted',
-        reason: 'adopted-agent-unconfigured',
-        packageId: found.id,
-      }
-    }
-
     return {
-      kind: 'deny-all',
+      kind: 'unrestricted',
       packageId: found.id,
-      reason: 'managed agent package has no allowedTools policy',
+      reason: 'agent-package-unrestricted',
     }
   } catch (err) {
     log.warn('Failed to parse agent-package manifest for MCP policy; denying tools', {

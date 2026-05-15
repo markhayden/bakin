@@ -14,6 +14,7 @@ import { PluginHeader } from "@bakin/sdk/components"
 import { TaskFilters } from './task-filters'
 import { TaskLogTable } from './task-log-table'
 import { filterBoardColumns, useTaskFilters } from '../hooks/use-task-filters'
+import { countVisibleTasks } from '../lib/scheduled'
 import { useContentStore } from "@bakin/sdk/hooks"
 import { useDebug } from "@bakin/sdk/hooks"
 import { useQueryState, useQueryArrayState } from "@bakin/sdk/hooks"
@@ -159,7 +160,9 @@ export function KanbanBoard() {
   const [view, setView] = useQueryState('view', 'kanban')
   const [search, setSearch] = useQueryState('q', '')
   const [agentFilter, setAgentFilter] = useQueryState('agent', 'all')
+  const [scheduledView, setScheduledView] = useQueryState('scheduled', 'show')
   const [statusFilter, setStatusFilter] = useQueryArrayState('status')
+  const showScheduled = scheduledView !== 'hide'
 
   const displayColumns = useMemo(() => {
     if (view === 'table') return columns
@@ -409,7 +412,7 @@ export function KanbanBoard() {
           <PluginHeader
             title="Tasks"
             count={view === 'kanban'
-              ? Object.values(filteredColumns).reduce((s, c) => s + c.length, 0)
+              ? countVisibleTasks(filteredColumns, showScheduled)
               : allTasksFlat.length
             }
             search={{ value: search, onChange: setSearch, placeholder: 'Search tasks...' }}
@@ -455,6 +458,8 @@ export function KanbanBoard() {
             statusFilter={statusFilter}
             onStatusChange={setStatusFilter}
             showStatusFilter={view === 'table'}
+            showScheduled={showScheduled}
+            onShowScheduledChange={(show) => setScheduledView(show ? 'show' : 'hide')}
             statusCounts={aggregations?.status ? Object.fromEntries(aggregations.status.map(a => [a.value, a.count])) : undefined}
           />
         </div>
@@ -480,6 +485,7 @@ export function KanbanBoard() {
                       onTaskClick={(task, columnId) => { setDetailTask({ task, columnId }); setEditing(false) }}
                       compact={colId === 'archived'}
                       totalCount={colId === 'archived' ? columns.archived.length : undefined}
+                      showScheduled={showScheduled}
                       onHeaderClick={colId === 'archived' ? openArchivedLog : undefined}
                     />
                   </div>

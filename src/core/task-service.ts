@@ -15,6 +15,7 @@ import { recordUsage } from './usage'
 import { checkAndContinueDependents } from './continuation'
 import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
+import type { TaskSource } from '@bakin/core/tasks/store'
 import { getHookRegistry } from '../lib/plugin-registry'
 import { assertWorkflowToolAllowed } from './workflow-tool-authorization'
 import {
@@ -230,6 +231,12 @@ export async function createTaskWithEffects(opts: {
   createdBy?: string
   parentId?: string
   projectId?: string
+  availableAt?: string
+  dueAt?: string
+  source?: TaskSource
+  scheduleJobId?: string
+  dependsOn?: string
+  date?: string
   channel?: Channel
 }): Promise<{ id: string; workflowId?: string; suggestedWorkflow?: string }> {
   // Auto-match workflow if none was explicitly provided
@@ -261,7 +268,18 @@ export async function createTaskWithEffects(opts: {
     opts.id,
     opts.parentId,
     opts.projectId,
+    {
+      availableAt: opts.availableAt,
+      dueAt: opts.dueAt,
+      source: opts.source,
+      scheduleJobId: opts.scheduleJobId,
+      dependsOn: opts.dependsOn,
+    },
   )
+
+  if (opts.date) {
+    await updateStoredTask(task.id, { date: opts.date })
+  }
 
   // Start workflow instance if one was specified
   if (effectiveWorkflowId) {
@@ -281,6 +299,9 @@ export async function createTaskWithEffects(opts: {
     title: opts.title,
     assignee: opts.assignee,
     workflowId: effectiveWorkflowId,
+    availableAt: opts.availableAt,
+    dueAt: opts.dueAt,
+    source: opts.source,
     skipWorkflowReason: opts.skipWorkflowReason,
     suggestedWorkflow: suggested,
   }, opts.channel)
@@ -290,7 +311,15 @@ export async function createTaskWithEffects(opts: {
     agent: opts.createdBy || 'system',
     durationMs: null,
     status: 'ok',
-    meta: { taskId: task.id, title: opts.title, assignee: opts.assignee, workflowId: effectiveWorkflowId },
+    meta: {
+      taskId: task.id,
+      title: opts.title,
+      assignee: opts.assignee,
+      workflowId: effectiveWorkflowId,
+      availableAt: opts.availableAt,
+      dueAt: opts.dueAt,
+      source: opts.source,
+    },
   })
   return { id: task.id, workflowId: effectiveWorkflowId, suggestedWorkflow: suggested }
 }

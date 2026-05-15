@@ -17,6 +17,9 @@ export interface BakinTask {
   projectId?: string
   parentId?: string | null
   dependsOn?: string
+  availableAt?: string
+  dueAt?: string
+  source?: TaskSource
   date?: string
   blockedReason?: string
   blockedBy: string[]
@@ -38,6 +41,13 @@ export interface BakinTask {
   updatedAt: string
 }
 
+export interface TaskSource {
+  pluginId?: string
+  entityType?: string
+  entityId?: string
+  purpose?: string
+}
+
 export interface CreateBakinTaskInput {
   id?: string
   title: string
@@ -52,6 +62,9 @@ export interface CreateBakinTaskInput {
   projectId?: string
   parentId?: string | null
   dependsOn?: string
+  availableAt?: string
+  dueAt?: string
+  source?: TaskSource
 }
 
 export type BakinTaskPatch = Partial<Pick<
@@ -68,6 +81,9 @@ export type BakinTaskPatch = Partial<Pick<
   | 'projectId'
   | 'parentId'
   | 'dependsOn'
+  | 'availableAt'
+  | 'dueAt'
+  | 'source'
   | 'date'
   | 'blockedReason'
   | 'blockedBy'
@@ -155,6 +171,9 @@ export function createEmptyBakinTask(input: CreateBakinTaskInput, now = new Date
     projectId: input.projectId,
     parentId: input.parentId ?? null,
     dependsOn: input.dependsOn,
+    availableAt: input.availableAt,
+    dueAt: input.dueAt,
+    source: input.source,
     blockedBy: [],
     blocking: [],
     comments: [],

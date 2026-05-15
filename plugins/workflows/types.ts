@@ -82,7 +82,29 @@ export interface NestedWorkflowStep extends BaseStep {
   dependsOn?: string | string[]
 }
 
-export type WorkflowStep = AgentStep | GateStep | ParallelStep | OutputStep | NestedWorkflowStep
+export interface CreateTaskStep extends BaseStep {
+  type: 'createTask'
+  taskId?: string
+  title: string
+  description?: string
+  agent?: string
+  column?: string
+  workflowId?: string
+  parentId?: string
+  projectId?: string
+  availableAt?: string
+  dueAt?: string
+  source?: {
+    pluginId?: string
+    entityType?: string
+    entityId?: string
+    purpose?: string
+  }
+  skipWorkflowReason?: string
+  dependsOn?: string | string[]
+}
+
+export type WorkflowStep = AgentStep | GateStep | ParallelStep | OutputStep | NestedWorkflowStep | CreateTaskStep
 
 export interface NodePosition {
   x: number

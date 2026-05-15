@@ -21,6 +21,11 @@ Tasks are stored by `packages/core/src/tasks/store.ts` as one JSON document per 
 
 `src/core/task-store.ts` is the shared task service used by routes, workflows, dispatch, and tests. It delegates to `createFileBakinTaskStore(getBakinPaths().tasks)` and is owned by Bakin core, not by the tasks plugin or runtime execution adapter.
 
+Scheduled task fields are task-native. Plugins should create real board tasks
+with `availableAt` instead of registering private cron/sweep loops when the work
+belongs on the board. `availableAt` gates dispatcher eligibility; it does not
+move the task to a different column. `dueAt` is display/deadline metadata.
+
 ### Task JSON Shape
 
 ```typescript
@@ -35,6 +40,14 @@ interface BakinTaskState {
   workflowId?: string      // linked workflow definition ID
   projectId?: string       // linked project ID
   scheduleJobId?: string   // linked schedule job ID
+  availableAt?: string     // earliest dispatcher pickup timestamp
+  dueAt?: string           // deadline/expectation timestamp
+  source?: {               // plugin/domain provenance for repair and UI links
+    pluginId: string
+    entityType?: string
+    entityId?: string
+    purpose?: string
+  }
   date?: string            // YYYY-MM-DD, set when entering inProgress/review/done/archived
   log?: TaskLogEntry[]     // timestamped progress entries
   comments?: TaskComment[] // human comments
@@ -60,6 +73,13 @@ interface BakinTaskState {
 ### Task (UI type)
 
 ```typescript
+interface TaskSource {
+  pluginId: string
+  entityType?: string
+  entityId?: string
+  purpose?: string
+}
+
 interface Task {
   id: string              // 8-char hex (e.g., "a1b2c3d4") or compound "parentId--stepId"
   title: string
@@ -69,6 +89,9 @@ interface Task {
   date?: string            // YYYY-MM-DD
   blockedReason?: string
   description?: string
+  availableAt?: string
+  dueAt?: string
+  source?: TaskSource
   log?: TaskLogEntry[]
   dependsOn?: string
   parentId?: string
@@ -171,6 +194,11 @@ The board follows the official multi-list pattern:
 **Filtered board caveat.** When search/agent filters are active, drag reorder operates on the visible subset first and then merges that visible order back into the full column order so hidden tasks keep their relative positions.
 
 **Ordering.** Tasks are ordered explicitly by `task.order` (zero-indexed, contiguous within each column). Reads sort by `order ASC, updatedAt DESC`. New tasks and cross-column moves append with `order = count`; `/reorder` writes the final zero-indexed order snapshot.
+
+**Scheduled grouping.** Tasks with future `availableAt` stay in their real
+column but render at the bottom under a Scheduled divider. The board has a
+Scheduled toggle that hides/shows future scheduled work without mutating task
+state. Once `availableAt <= now`, the task naturally renders in the normal group.
 
 ### Real-Time Updates (SSE)
 

@@ -264,7 +264,21 @@ describe('dispatchRoute — response validation (NODE_ENV=test)', () => {
     })
     const req = new Request('http://x/', { method: 'POST' })
     await expect(dispatchRoute({ req, ctx: stubCtx, route, params: {} })).rejects.toThrow(
-      /undeclared response status 201/i,
+      /POST \/: undeclared response status 201/i,
+    )
+  })
+
+  it('includes route context when a JSON response cannot be parsed', async () => {
+    const route = defineRoute({
+      path: '/bad-json',
+      method: 'GET',
+      summary: 'Bad JSON',
+      responses: { 200: z.object({ ok: z.literal(true) }) },
+      handler: async () => new Response('', { status: 200 }),
+    })
+    const req = new Request('http://x/bad-json')
+    await expect(dispatchRoute({ req, ctx: stubCtx, route, params: {} })).rejects.toThrow(
+      /GET \/bad-json: response 200: expected JSON body but parse failed/i,
     )
   })
 

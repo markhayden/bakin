@@ -58,6 +58,12 @@ function taskToSearchDoc(task: Task, column: ColumnId): Record<string, unknown> 
     status: column,
     project_id: task.projectId || '',
     workflow_id: task.workflowId || '',
+    source_plugin_id: task.source?.pluginId || '',
+    source_entity_type: task.source?.entityType || '',
+    source_entity_id: task.source?.entityId || '',
+    source_purpose: task.source?.purpose || '',
+    available_at: task.availableAt || '',
+    due_at: task.dueAt || '',
     log_text: logText,
     blocked_reason: task.blockedReason || '',
     updated_at: new Date().toISOString(),
@@ -89,6 +95,13 @@ const errorResponse = z.object({ error: z.string() })
 
 const taskBoardResponse = z.object({}).passthrough()  // structural; defined elsewhere
 
+const taskSourceSchema = z.object({
+  pluginId: z.string().optional(),
+  entityType: z.string().optional(),
+  entityId: z.string().optional(),
+  purpose: z.string().optional(),
+})
+
 const createTaskBody = z.object({
   id: z.string().optional(),
   title: z.string().min(1),
@@ -100,6 +113,9 @@ const createTaskBody = z.object({
   createdBy: z.string().optional(),
   parentId: z.string().optional(),
   projectId: z.string().optional(),
+  availableAt: z.string().optional(),
+  dueAt: z.string().optional(),
+  source: taskSourceSchema.optional(),
 })
 const createTaskResponse = z.object({
   ok: z.literal(true),
@@ -116,6 +132,9 @@ const updateTaskBody = z.object({
   agent: z.string().optional(),
   column: z.string().optional(),
   workflowId: z.string().optional(),
+  availableAt: z.string().nullable().optional(),
+  dueAt: z.string().nullable().optional(),
+  source: taskSourceSchema.nullable().optional(),
 })
 
 const deleteTaskBody = z.object({
@@ -224,6 +243,9 @@ const routes = [
           createdBy: body.createdBy || 'system',
           parentId: body.parentId,
           projectId: body.projectId,
+          availableAt: body.availableAt,
+          dueAt: body.dueAt,
+          source: body.source,
           channel: 'rest',
         })
         ctx.activity.log(body.createdBy || 'system', `Created task "${body.title}"`, { taskId: result.id })
@@ -254,6 +276,9 @@ const routes = [
           agent: body.agent,
           column: body.column as ColumnId | undefined,
           workflowId: body.workflowId,
+          availableAt: body.availableAt,
+          dueAt: body.dueAt,
+          source: body.source,
         })
         const agent = body.agent || 'system'
         ctx.activity.audit('updated', agent, { taskId: identifier })
@@ -511,6 +536,12 @@ const tasksPlugin: BakinPlugin = definePlugin({
         status: { type: 'keyword' },
         project_id: { type: 'keyword' },
         workflow_id: { type: 'keyword' },
+        source_plugin_id: { type: 'keyword' },
+        source_entity_type: { type: 'keyword' },
+        source_entity_id: { type: 'keyword' },
+        source_purpose: { type: 'keyword' },
+        available_at: { type: 'datetime' },
+        due_at: { type: 'datetime' },
         log_text: { type: 'text' },
         blocked_reason: { type: 'text' },
         updated_at: { type: 'datetime' },
@@ -518,7 +549,7 @@ const tasksPlugin: BakinPlugin = definePlugin({
       searchableFields: ['title', 'description', 'log_text', 'blocked_reason'],
       rerankField: 'description',
       embeddingTemplate: '{{title}} {{description}} {{log_text}}',
-      facets: ['status', 'agent', 'created_by', 'project_id'],
+      facets: ['status', 'agent', 'created_by', 'project_id', 'source_plugin_id', 'source_entity_type'],
       chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
       reindex: async function* () {
         const board = readTaskboard()
@@ -602,17 +633,32 @@ const tasksPlugin: BakinPlugin = definePlugin({
         workflowId: z.string().optional().describe('Workflow to start (e.g. image-social-post, video-script). Use bakin_exec_workflows_list to see options.'),
         skipWorkflowReason: z.string().optional().describe('Reason no workflow applies (required if workflowId is not set and this is not a subtask)'),
         projectId: z.string().optional().describe('Project ID to link this task to'),
+        availableAt: z.string().optional().describe('ISO timestamp before which dispatch should not pick up the task'),
+        dueAt: z.string().optional().describe('ISO timestamp representing the task deadline or target delivery time'),
+        sourcePluginId: z.string().optional().describe('Plugin that owns the source entity for this task'),
+        sourceEntityType: z.string().optional().describe('Source entity type, such as plan or deliverable'),
+        sourceEntityId: z.string().optional().describe('Source entity ID'),
+        sourcePurpose: z.string().optional().describe('Source purpose, such as kickoff or publish'),
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
-        const { title, assignee, description, parentId, workflowId, skipWorkflowReason, projectId } = params as {
+        const {
+          title, assignee, description, parentId, workflowId, skipWorkflowReason, projectId,
+          availableAt, dueAt, sourcePluginId, sourceEntityType, sourceEntityId, sourcePurpose,
+        } = params as {
           title: string; assignee?: string; description?: string; parentId?: string
           workflowId?: string; skipWorkflowReason?: string; projectId?: string
+          availableAt?: string; dueAt?: string
+          sourcePluginId?: string; sourceEntityType?: string; sourceEntityId?: string; sourcePurpose?: string
         }
 
         try {
           const result = await createTaskWithEffects({
             title, assignee, description, workflowId, skipWorkflowReason,
-            createdBy: agent, parentId, projectId, channel: 'mcp',
+            createdBy: agent, parentId, projectId, availableAt, dueAt,
+            source: sourcePluginId || sourceEntityType || sourceEntityId || sourcePurpose
+              ? { pluginId: sourcePluginId, entityType: sourceEntityType, entityId: sourceEntityId, purpose: sourcePurpose }
+              : undefined,
+            channel: 'mcp',
           })
           if (parentId || assignee) triggerDispatch()
           indexTask(ctx, result.id).catch(() => {})
@@ -747,16 +793,25 @@ const tasksPlugin: BakinPlugin = definePlugin({
         title: z.string().optional().describe('New task title'),
         description: z.string().optional().describe('New task description'),
         agent: z.string().optional().describe('New assigned agent'),
+        availableAt: z.string().nullable().optional().describe('ISO timestamp before which dispatch should not pick up the task'),
+        dueAt: z.string().nullable().optional().describe('ISO timestamp representing the task deadline or target delivery time'),
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
-        const { taskId, title, description, agent: assignee } = params as {
-          taskId: string; title?: string; description?: string; agent?: string
+        const { taskId, title, description, agent: assignee, availableAt, dueAt } = params as {
+          taskId: string
+          title?: string
+          description?: string
+          agent?: string
+          availableAt?: string | null
+          dueAt?: string | null
         }
         try {
           const updates: Record<string, unknown> = {}
           if (title !== undefined) updates.title = title
           if (description !== undefined) updates.description = description
           if (assignee !== undefined) updates.agent = assignee
+          if (availableAt !== undefined) updates.availableAt = availableAt
+          if (dueAt !== undefined) updates.dueAt = dueAt
           const result = await updateTask(taskId, updates)
           ctx.activity.audit('updated', agent, { taskId })
           indexTask(ctx, taskId).catch(() => {})

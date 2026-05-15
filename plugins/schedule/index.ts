@@ -60,6 +60,14 @@ interface ScheduleSettings {
   reconcileLookbackHours?: number
 }
 
+interface EnsureBakinJobResult {
+  ok: boolean
+  jobId?: string
+  cron?: string
+  human?: string
+  error?: string
+}
+
 /** Constant-time string comparison. Returns false for any length mismatch. */
 function safeEqual(a: string, b: string): boolean {
   const aBuf = Buffer.from(a, 'utf-8')
@@ -85,6 +93,76 @@ function getOrCreateBridgeSecret(): string | null {
 
 async function getScheduleDefaultOwner(): Promise<string> {
   return pluginCtx?.runtime ? getRuntimeMainAgentId(pluginCtx.runtime) : 'main'
+}
+
+async function ensureBakinJob(ctx: PluginContext, input: Record<string, unknown>): Promise<EnsureBakinJobResult> {
+  const jobId = typeof input.jobId === 'string' && input.jobId.trim() ? input.jobId.trim() : undefined
+  const name = typeof input.name === 'string' ? input.name.trim() : ''
+  const schedule = typeof input.schedule === 'string' ? input.schedule.trim() : ''
+  const command = typeof input.command === 'string' ? input.command.trim() : ''
+  if (!jobId || !name || !schedule || !command) {
+    return { ok: false, error: 'jobId, name, schedule, and command are required' }
+  }
+
+  const parsed = parseSchedule(schedule)
+  if (!parsed) return { ok: false, error: 'Could not parse schedule expression' }
+
+  const metadata = input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata)
+    ? input.metadata as Record<string, unknown>
+    : {}
+  const tz = typeof input.tz === 'string' && input.tz.trim() ? input.tz.trim() : getSystemTimezone()
+  const enabled = typeof input.enabled === 'boolean' ? input.enabled : true
+  const now = new Date().toISOString()
+  const runtimePatch = {
+    name,
+    schedule: parsed.cron,
+    command,
+    enabled,
+    metadata: {
+      ...metadata,
+      tz,
+      source: metadata.source ?? 'bakin',
+      scheduleType: 'cron',
+      bakinSchedule: true,
+    },
+  }
+
+  const existingRuntime = await ctx.runtime.cron.get(jobId)
+  if (existingRuntime) {
+    await ctx.runtime.cron.update(jobId, runtimePatch)
+  } else {
+    await ctx.runtime.cron.create({ id: jobId, ...runtimePatch })
+  }
+
+  const existing = getJob(jobId)
+  const owner = typeof input.owner === 'string' && input.owner.trim()
+    ? input.owner.trim()
+    : existing?.owner ?? await getRuntimeMainAgentId(ctx.runtime)
+  const description = typeof input.description === 'string' ? input.description : existing?.description
+  const meta: BakinJobMeta = {
+    ...(existing ?? {}),
+    jobId,
+    isBakinJob: true,
+    source: 'bakin',
+    displayName: name,
+    description,
+    owner,
+    requireTriage: typeof input.requireTriage === 'boolean' ? input.requireTriage : existing?.requireTriage ?? false,
+    agentId: typeof input.agentId === 'string' ? input.agentId : existing?.agentId,
+    workflowId: typeof input.workflowId === 'string' ? input.workflowId : existing?.workflowId,
+    taskPrompt: typeof input.taskPrompt === 'string' ? input.taskPrompt : existing?.taskPrompt,
+    taskTitle: typeof input.taskTitle === 'string' ? input.taskTitle : existing?.taskTitle,
+    allowOverlap: typeof input.allowOverlap === 'boolean' ? input.allowOverlap : existing?.allowOverlap ?? false,
+    maxFailures: typeof input.maxFailures === 'number' ? input.maxFailures : existing?.maxFailures ?? 3,
+    consecutiveFailures: existing?.consecutiveFailures ?? 0,
+    tz,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  }
+  upsertJob(meta)
+  indexJob(jobId)
+
+  return { ok: true, jobId, cron: parsed.cron, human: parsed.human }
 }
 
 // ---------------------------------------------------------------------------
@@ -239,8 +317,74 @@ interface ProcessRunResult {
   body: BridgeResult
 }
 
+interface BakinCommand {
+  pluginId: string
+  action: string
+}
+
+interface PluginRunHookResult {
+  ok?: boolean
+  error?: string
+  taskId?: string
+}
+
+const BAKIN_COMMAND_RE = /^bakin:([^:]+):([^:]+)$/
+
+function parseBakinCommand(command: string | undefined): BakinCommand | null {
+  if (!command) return null
+  const match = command.match(BAKIN_COMMAND_RE)
+  if (!match) return null
+  return { pluginId: match[1], action: match[2] }
+}
+
+async function getRuntimeJobCommand(jobId: string): Promise<string | undefined> {
+  if (!pluginCtx) return undefined
+  try {
+    return (await pluginCtx.runtime.cron.get(jobId))?.command
+  } catch (err) {
+    log.warn('Failed to inspect runtime cron command', { jobId, error: err instanceof Error ? err.message : String(err) })
+    return undefined
+  }
+}
+
+async function processPluginScheduledRun(
+  payload: BridgePayload,
+  command: string,
+  parsed: BakinCommand,
+): Promise<ProcessRunResult> {
+  if (!pluginCtx) {
+    return { status: 503, body: { ok: false, error: 'bridge not ready' } }
+  }
+
+  const hookName = `${parsed.pluginId}.${parsed.action}.run`
+  if (!pluginCtx.hooks.has(hookName)) {
+    return { status: 500, body: { ok: false, error: `hook ${hookName} not registered` } }
+  }
+
+  try {
+    const result = await pluginCtx.hooks.invoke<PluginRunHookResult | undefined>(hookName, {
+      ...payload,
+      command,
+      pluginId: parsed.pluginId,
+      action: parsed.action,
+    })
+    if (result?.ok === false) {
+      return { status: 500, body: { ok: false, error: result.error ?? `hook ${hookName} failed` } }
+    }
+    return { status: 200, body: { ok: true, ...(result?.taskId ? { taskId: result.taskId } : {}) } }
+  } catch (err) {
+    return { status: 500, body: { ok: false, error: err instanceof Error ? err.message : String(err) } }
+  }
+}
+
 async function processScheduledRun(payload: BridgePayload): Promise<ProcessRunResult> {
   const { jobId, runId } = payload
+  const command = await getRuntimeJobCommand(jobId)
+  const parsedCommand = parseBakinCommand(command)
+  if (parsedCommand && parsedCommand.pluginId !== 'schedule') {
+    return processPluginScheduledRun(payload, command!, parsedCommand)
+  }
+
   const meta = getJob(jobId)
   if (!meta || !meta.isBakinJob) {
     return { status: 200, body: { ok: true, skipped: 'not-bakin' } }
@@ -852,6 +996,12 @@ const schedulePlugin: BakinPlugin = definePlugin({
 
   async activate(ctx: PluginContext) {
     pluginCtx = ctx
+
+    ctx.hooks.register('schedule.ensureBakinJob', (data: Record<string, unknown>) => ensureBakinJob(ctx, data), {
+      hookKind: 'rpc',
+      label: 'Ensure Bakin schedule',
+      summary: 'Create or update a deterministic Bakin-managed runtime cron job.',
+    })
 
     // ─── Search Content Type Registration ─────────────────────────────
 
