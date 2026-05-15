@@ -183,7 +183,7 @@ function sortModels(a: AvailableModel, b: AvailableModel): number {
 }
 
 async function loadConfiguredModelsFromRuntime(ctx: PluginContext): Promise<AvailableModel[]> {
-  const runtimeModels = await ctx.runtime.models.listAvailable({ includeUnavailable: true })
+  const runtimeModels = await ctx.runtime.models.listAvailable()
   const config = await readConfig(ctx as unknown as PluginContext)
   const defaultModel = normalizeModelId(config.agents.defaults.model.primary)
   const fallbackModels = (config.agents.defaults.model.fallbacks ?? []).map(normalizeModelId)

@@ -631,6 +631,14 @@ renders them via `PluginSettingsRenderer`. Values persist at
 `~/.bakin/plugin-settings/{pluginId}.json` via
 `GET/PUT /api/plugin-settings/{pluginId}`.
 
+`PUT /api/plugin-settings/{pluginId}` also broadcasts an SSE event:
+`{ type: 'plugin:settings-changed', pluginId, timestamp }`. Plugin
+clients that cache settings-derived labels, filters, or routing data should
+listen on the global SSE stream and refetch their own settings when this
+event references their plugin id. The server still calls
+`pluginRegistry.notifySettingsChange(pluginId, settings)` for plugin-side
+`onSettingsChange` handlers.
+
 ### PluginManifest (`bakin-plugin.json`)
 ```typescript
 interface PluginManifest {
@@ -826,7 +834,7 @@ Same pattern is used for the plugin registry
 | Plugin | Hooks | Examples |
 |--------|-------|---------|
 | tasks | 0 task-metadata hooks | Task metadata is owned by `src/core/task-store.ts` and is not exposed through plugin hooks |
-| workflows | 17 | `workflows.loadInstance`, `workflows.createInstance`, `workflows.getCurrentStep`, `workflows.completeStep`, `workflows.authorizeToolUse`, `workflows.matchWorkflow`, `workflows.definitions.list`, `workflows.loadDefinition`, `workflows.getActiveAgents`, `workflows.saveInstance`, etc. |
+| workflows | 19 | `workflows.loadInstance`, `workflows.createInstance`, `workflows.approveGate`, `workflows.rejectGate`, `workflows.getCurrentStep`, `workflows.completeStep`, `workflows.authorizeToolUse`, `workflows.matchWorkflow`, `workflows.definitions.list`, `workflows.loadDefinition`, `workflows.getActiveAgents`, `workflows.saveInstance`, etc. |
 | assets | 8 | `assets.validateSidecar`, `assets.getSidecarPath`, `assets.createStub`, `assets.detectVariant`, `assets.getAssetTypes`, `assets.trash.list`, `assets.restoreAsset`, `assets.emptyTrash` |
 | team | 7 | `team.list`, `team.getAgent`, `team.getAgentIds`, `team.resolveProfile`, `team.getTeamMembers`, `team.getAgentTeam`, `team.getOrgStructure` |
 | models | 5 | `models.configChanged`, `models.getEffectiveModel`, `models.getAvailableModels`, `models.markConfigDirty`, `models.markGatewayRestarted` |

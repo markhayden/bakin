@@ -122,6 +122,46 @@ const unsubscribe = ctx.hooks.register(
 
 Store unsubscribe functions when a handler has a shorter lifetime than the plugin. Public hooks need metadata because generated docs and agent bundles depend on it.
 
+## Plugin-Owned Cron Jobs
+
+Use `ctx.runtime.cron` for scheduled work owned by a plugin. When the schedule
+should call back into the plugin instead of creating a Bakin task, register a
+hook and create a cron command with the `bakin:<pluginId>:<action>` convention.
+The schedule bridge invokes `${pluginId}.${action}.run`.
+
+```ts
+async activate(ctx) {
+  ctx.hooks.register(
+    'reports.refresh.run',
+    async ({ jobId, runId }) => {
+      await refreshReports({ jobId, runId })
+      return { ok: true }
+    },
+    {
+      hookKind: 'rpc',
+      summary: 'Refresh report snapshots.',
+      visibility: 'public',
+      stability: 'stable',
+    },
+  )
+
+  await ctx.runtime.cron.create({
+    id: 'reports-refresh',
+    name: 'Reports refresh',
+    schedule: '*/15 * * * *',
+    command: 'bakin:reports:refresh',
+    metadata: {
+      source: 'bakin',
+      isBakinJob: true,
+      description: 'Refresh plugin-owned report snapshots.',
+    },
+  })
+}
+```
+
+Reserve `bakin:schedule:*` for the schedule plugin itself. If the hook is not
+registered or returns `{ ok: false, error }`, the run is recorded as a failure.
+
 ## Health Checks
 
 Doctor checks are plugin-registered. Each `ctx.registerHealthCheck()` call adds one row to the registry; the doctor sweep runs registered checks and isolates failures.

@@ -44,5 +44,13 @@ export function humanizeExecName(name: string): string {
 /** Filter out infrastructure noise that isn't useful in the user-facing feed */
 export function isNoisyEvent(evt: ActivityEvent): boolean {
   if (evt.agent === 'system' && evt.message.startsWith('Dispatch failed')) return true
+  if (evt.eventName && isReadOnlyExecOk(evt.eventName)) return true
   return false
+}
+
+function isReadOnlyExecOk(eventName: string): boolean {
+  if (!eventName.startsWith('exec.') || !eventName.endsWith('.ok')) return false
+  const toolName = eventName.replace(/^exec\./, '').replace(/\.ok$/, '')
+  if (toolName === 'bakin_exec_get_paths' || toolName === 'bakin_exec_heartbeat') return true
+  return /_(list|get|query|search)$/.test(toolName)
 }

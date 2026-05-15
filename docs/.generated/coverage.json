@@ -23,7 +23,7 @@
     },
     "hookRegistrations": {
       "status": "audited",
-      "count": 43,
+      "count": 47,
       "source": "source scan"
     },
     "slots": {
@@ -34,7 +34,7 @@
     },
     "execTools": {
       "status": "audited",
-      "count": 111,
+      "count": 118,
       "source": "source scan"
     },
     "corePlugins": {

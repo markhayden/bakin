@@ -108,7 +108,7 @@ For a complete restore, also back up the configured runtime home, such as `~/.op
 - Restrict network access to the Bakin port.
 - Keep secrets out of docs, tasks, assets, project specs, messaging sessions, and agent lessons files.
 - Treat `audit.jsonl` and `logs/` as sensitive operational records.
-- Review agent package `allowedTools` and `allowedSkills` before adopting packages.
+- Review agent package `allowedTools` and `allowedSkills` before adopting packages. Missing or empty `allowedTools` means unrestricted MCP tool access.
 - Review third-party plugin permissions and source before install or upgrade.
 - Prefer release binaries over ad hoc local builds for production use.
 - Run `bakin doctor` after upgrades, plugin installs, and agent package changes.

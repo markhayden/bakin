@@ -122,7 +122,7 @@ Higher-numbered paths exist as backstops for the lower ones.
 
 All Antfly tables use the `bakin_` prefix: `bakin_tasks`, `bakin_assets`, `bakin_projects`, etc.
 
-**Registered tables:** core tables are registered by their owning core plugin. Official external plugins add tables when installed; for example Projects owns `bakin_projects` and Messaging owns `bakin_messaging_brainstorm`. The **memory** plugin owns `bakin_memory` — a single unified table with a `tier` facet that discriminates across 7 memory tiers (audit, session, turn, checkpoint, daily_note, durable, dream). This replaced the former `bakin_audit` table during the memory-plugin-rebuild (2026-04-18) — the old table was dropped with no shim.
+**Registered tables:** core tables are registered by their owning core plugin. Official external plugins add tables when installed; for example Projects owns `bakin_projects` and Messaging owns `bakin_messaging_brainstorm` plus `bakin_messaging_deliverables`. The **memory** plugin owns `bakin_memory` — a single unified table with a `tier` facet that discriminates across 7 memory tiers (audit, session, turn, checkpoint, daily_note, durable, dream). This replaced the former `bakin_audit` table during the memory-plugin-rebuild (2026-04-18) — the old table was dropped with no shim.
 
 **Multi-index tables:** `bakin_assets` is currently the only table with more than one embedding index — it has `assets_text` (BGE over sidecar metadata + extracted PDF/text content) and `assets_visual` (CLIP over raster image pixels). All other tables use a single default embedding index named `embeddings`.
 
@@ -252,6 +252,7 @@ Optional cross-encoder reranking after initial retrieval. Configured globally vi
 | `bakin_team` | `soul` | Agent persona text |
 | `bakin_memory` | `content` | Memory observability body — full text across 7 tiers (audit, session, turn, checkpoint, daily_note, durable, dream), owned by **memory** plugin |
 | `bakin_messaging_brainstorm` | `message_body` | Brainstorm session messages (owned by **messaging** plugin) |
+| `bakin_messaging_deliverables` | `brief`, `draft_caption` | Planned and quick-post deliverables (owned by **messaging** plugin) |
 | **`bakin_assets`** | **(unset)** | **Intentionally skipped — see below** |
 
 **Why `bakin_assets` skips the reranker**

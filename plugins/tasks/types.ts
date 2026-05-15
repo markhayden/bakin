@@ -4,6 +4,13 @@ export interface TaskLogEntry {
   message: string
 }
 
+export interface TaskSource {
+  pluginId?: string
+  entityType?: string
+  entityId?: string
+  purpose?: string
+}
+
 export interface Task {
   id: string
   title: string
@@ -19,6 +26,9 @@ export interface Task {
   workflowId?: string
   scheduleJobId?: string
   projectId?: string
+  availableAt?: string
+  dueAt?: string
+  source?: TaskSource
   order?: number
   /** Wall-clock ms of the last DB row update — used by the watchdog as a fallback "last activity" when a task has no log entries yet. */
   updatedAt?: number

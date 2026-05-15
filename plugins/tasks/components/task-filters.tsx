@@ -3,6 +3,8 @@
 import { AgentFilter } from "@makinbakin/sdk/components"
 import { FacetFilter } from "@makinbakin/sdk/components"
 import { useAgentIds } from "@makinbakin/sdk/hooks"
+import { Switch } from "@makinbakin/sdk/ui"
+import { Eye, EyeOff } from 'lucide-react'
 import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
 import type { ColumnId } from '../types'
 
@@ -19,6 +21,8 @@ interface TaskFiltersProps {
   statusFilter?: string[]
   onStatusChange?: (statuses: string[]) => void
   showStatusFilter?: boolean
+  showScheduled?: boolean
+  onShowScheduledChange?: (show: boolean) => void
   /** Aggregation counts from search (status → count) */
   statusCounts?: Record<string, number>
 }
@@ -27,6 +31,8 @@ export function TaskFilters({
   agentFilter, onAgentChange,
   statusFilter, onStatusChange,
   showStatusFilter = false,
+  showScheduled = true,
+  onShowScheduledChange,
   statusCounts,
 }: TaskFiltersProps) {
   const agentIds = useAgentIds()
@@ -44,6 +50,22 @@ export function TaskFilters({
           onChange={onStatusChange}
           counts={statusCounts}
         />
+      )}
+
+      {onShowScheduledChange && (
+        <label
+          className="flex h-8 items-center gap-2 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground cursor-pointer select-none"
+          title={showScheduled ? 'Hide scheduled tasks' : 'Show scheduled tasks'}
+        >
+          {showScheduled ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
+          <span>Scheduled Tasks</span>
+          <Switch
+            checked={showScheduled}
+            onCheckedChange={(checked: boolean) => onShowScheduledChange(checked)}
+            size="sm"
+            aria-label={showScheduled ? 'Hide scheduled tasks' : 'Show scheduled tasks'}
+          />
+        </label>
       )}
 
     </div>

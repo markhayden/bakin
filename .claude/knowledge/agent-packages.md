@@ -269,10 +269,12 @@ loads the installed package's `bakin-package.json`, and resolves policy for the
 session agent:
 
 - No lockfile entry means an unmanaged legacy agent and remains unrestricted.
-- A managed package agent with no readable, non-empty `allowedTools` policy
-  fails closed.
-- An adopted package agent with `allowedTools` is scoped by that list; an adopted
-  package agent without a policy remains unrestricted until configured.
+- A managed or adopted package agent with missing or empty `allowedTools`
+  remains unrestricted.
+- A managed or adopted package agent with non-empty `allowedTools` is scoped by
+  that list.
+- Missing manifests, malformed manifests, and malformed lockfile entries still
+  fail closed.
 - Allow entries are MCP tool-name patterns. Exact names and `*` wildcards are
   supported, e.g. `bakin_exec_assets_get` or `bakin_exec_assets_*`.
 

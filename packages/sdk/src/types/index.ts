@@ -478,9 +478,19 @@ export interface Task {
   workflowId?: string
   scheduleJobId?: string
   projectId?: string
+  availableAt?: string
+  dueAt?: string
+  source?: TaskSource
   order?: number
   createdAt?: string
   updatedAt?: string
+}
+
+export interface TaskSource {
+  pluginId?: string
+  entityType?: string
+  entityId?: string
+  purpose?: string
 }
 
 export interface TaskColumns {
@@ -511,6 +521,9 @@ export interface TaskCreateInput {
   workflowId?: string
   projectId?: string
   parentId?: string | null
+  availableAt?: string
+  dueAt?: string
+  source?: TaskSource
   skipWorkflowReason?: string
 }
 
@@ -527,6 +540,9 @@ export interface TaskUpdateInput {
   scheduleJobId?: string
   projectId?: string
   parentId?: string | null
+  availableAt?: string | null
+  dueAt?: string | null
+  source?: TaskSource | null
 }
 
 export interface TaskService {

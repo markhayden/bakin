@@ -20,6 +20,9 @@
 import { z } from 'zod'
 import type { BodySpec, ResponseSpec } from './types'
 import { errorResponseBody } from '../openapi/errors'
+import { createLogger } from '../logger'
+
+const log = createLogger('dispatcher')
 
 /**
  * Loose route shape accepted by the dispatcher. Concrete `APIRoute<...>`
@@ -263,7 +266,7 @@ function fail(message: string, context: { method: string; path: string; url: str
   if (process.env.NODE_ENV === 'test' || (process.env as Record<string, string>).VITEST) {
     throw new Error(scoped)
   }
-  console.warn(`[dispatcher] ${scoped}`)
+  log.warn(scoped)
 }
 
 function formatIssues(issues: unknown[]): string {

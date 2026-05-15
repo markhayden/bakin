@@ -306,6 +306,38 @@ describe('POST / — Create Task', () => {
     )
   })
 
+  it('passes scheduling and provenance fields through on create', async () => {
+    mockCreateTaskWithEffects.mockResolvedValue({ id: 'scheduled-1' })
+
+    const route = findRoute(activated.routes, 'POST', '/')!
+    await callRoute(route, activated.ctx, {
+      body: {
+        title: 'Scheduled kickoff',
+        availableAt: '2026-05-18T15:00:00.000Z',
+        dueAt: '2026-05-22T15:00:00.000Z',
+        source: {
+          pluginId: 'messaging',
+          entityType: 'deliverable',
+          entityId: 'deliverable-1',
+          purpose: 'kickoff',
+        },
+      },
+    })
+
+    expect(mockCreateTaskWithEffects).toHaveBeenCalledWith(
+      expect.objectContaining({
+        availableAt: '2026-05-18T15:00:00.000Z',
+        dueAt: '2026-05-22T15:00:00.000Z',
+        source: {
+          pluginId: 'messaging',
+          entityType: 'deliverable',
+          entityId: 'deliverable-1',
+          purpose: 'kickoff',
+        },
+      }),
+    )
+  })
+
   it('returns 500 on creation error', async () => {
     mockCreateTaskWithEffects.mockRejectedValue(new Error('create failed'))
 
@@ -335,6 +367,27 @@ describe('PUT /:taskId — Update Task', () => {
     expect(body.ok).toBe(true)
     expect(mockUpdateTask).toHaveBeenCalledWith('task-1', expect.objectContaining({ title: 'Updated Title' }))
     expect(activated.ctx.activity.audit).toHaveBeenCalledWith('updated', 'pixel', { taskId: 'task-1' })
+  })
+
+  it('passes scheduling fields through on update', async () => {
+    mockUpdateTask.mockResolvedValue(undefined)
+
+    const route = findRoute(activated.routes, 'PUT', '/:taskId')!
+    const { status } = await callRoute(route, activated.ctx, {
+      searchParams: { taskId: 'task-1' },
+      body: {
+        availableAt: '2026-05-18T15:00:00.000Z',
+        dueAt: null,
+        source: null,
+      },
+    })
+
+    expect(status).toBe(200)
+    expect(mockUpdateTask).toHaveBeenCalledWith('task-1', expect.objectContaining({
+      availableAt: '2026-05-18T15:00:00.000Z',
+      dueAt: null,
+      source: null,
+    }))
   })
 
 
@@ -932,6 +985,35 @@ describe('bakin_exec_tasks_create', () => {
         createdBy: 'chef',
         channel: 'mcp',
       })
+    )
+  })
+
+  it('creates a scheduled source-linked task from MCP parameters', async () => {
+    mockCreateTaskWithEffects.mockResolvedValue({ id: 'scheduled-mcp' })
+
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
+    const result = await callTool(tool, {
+      title: 'Scheduled channel kickoff',
+      availableAt: '2026-05-18T15:00:00.000Z',
+      dueAt: '2026-05-22T15:00:00.000Z',
+      sourcePluginId: 'messaging',
+      sourceEntityType: 'deliverable',
+      sourceEntityId: 'deliverable-1',
+      sourcePurpose: 'kickoff',
+    }, 'chef')
+
+    expect(result.ok).toBe(true)
+    expect(mockCreateTaskWithEffects).toHaveBeenCalledWith(
+      expect.objectContaining({
+        availableAt: '2026-05-18T15:00:00.000Z',
+        dueAt: '2026-05-22T15:00:00.000Z',
+        source: {
+          pluginId: 'messaging',
+          entityType: 'deliverable',
+          entityId: 'deliverable-1',
+          purpose: 'kickoff',
+        },
+      }),
     )
   })
 

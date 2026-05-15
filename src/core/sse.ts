@@ -94,6 +94,12 @@ export type PluginManifestChangedEvent = {
   timestamp: string
 }
 
+export type PluginSettingsChangedEvent = {
+  type: 'plugin:settings-changed'
+  pluginId: string
+  timestamp: string
+}
+
 export function broadcastPluginReload(pluginId: string, version: number, opts: { hasClientCss?: boolean } = {}): void {
   broadcast({
     type: 'dev:plugin:reload',
@@ -114,6 +120,14 @@ export function broadcastPluginManifestChanged(pluginId: string, action: PluginM
     action,
     timestamp: new Date().toISOString(),
   } satisfies PluginManifestChangedEvent)
+}
+
+export function broadcastPluginSettingsChanged(pluginId: string): void {
+  broadcast({
+    type: 'plugin:settings-changed',
+    pluginId,
+    timestamp: new Date().toISOString(),
+  } satisfies PluginSettingsChangedEvent)
 }
 
 export function broadcastPluginError(pluginId: string, message: string, stderr?: string): void {

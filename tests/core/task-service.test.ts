@@ -287,6 +287,51 @@ describe('task-service', () => {
         undefined, // id
         undefined, // parentId
         undefined, // projectId
+        {
+          availableAt: undefined,
+          dueAt: undefined,
+          source: undefined,
+          scheduleJobId: undefined,
+          dependsOn: undefined,
+        },
+      )
+    })
+
+    it('passes scheduling and provenance fields into the task store', async () => {
+      await service.createTaskWithEffects({
+        title: 'Prep channel deliverable',
+        assignee: 'patch',
+        createdBy: 'messaging',
+        availableAt: '2026-05-18T15:00:00.000Z',
+        dueAt: '2026-05-22T15:00:00.000Z',
+        source: {
+          pluginId: 'messaging',
+          entityType: 'deliverable',
+          entityId: 'deliverable-1',
+          purpose: 'kickoff',
+        },
+      })
+
+      expect(mockCreateTask).toHaveBeenCalledWith(
+        'Prep channel deliverable',
+        undefined,
+        'patch',
+        undefined,
+        undefined,
+        'messaging',
+        undefined,
+        undefined,
+        undefined,
+        expect.objectContaining({
+          availableAt: '2026-05-18T15:00:00.000Z',
+          dueAt: '2026-05-22T15:00:00.000Z',
+          source: {
+            pluginId: 'messaging',
+            entityType: 'deliverable',
+            entityId: 'deliverable-1',
+            purpose: 'kickoff',
+          },
+        }),
       )
     })
 

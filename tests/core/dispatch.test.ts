@@ -130,7 +130,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawPath: (sub: string) => join(sentinelContentDir, sub),
 }))
 
-import { loadDispatchState, start, stop, getDispatchInfo } from '../../src/core/dispatch'
+import { loadDispatchState, start, stop, getDispatchInfo, isTaskDispatchEligible } from '../../src/core/dispatch'
 import { dispatchTasks } from '../../src/core/dispatch'
 import { getHookRegistry } from '../../src/lib/plugin-registry'
 import type { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
@@ -153,6 +153,51 @@ describe('dispatch', () => {
     vi.useRealTimers()
     rmSync(tempDir, { recursive: true, force: true })
     mock.restore()
+  })
+
+  // -------------------------------------------------------------------------
+  // isTaskDispatchEligible
+  // -------------------------------------------------------------------------
+
+  describe('isTaskDispatchEligible', () => {
+    const nowMs = Date.parse('2026-05-12T12:00:00.000Z')
+    const runtimeAgentIds = new Set(['main', 'pixel'])
+    const completedTaskIds = new Set(['done-task'])
+
+    it('skips tasks whose availableAt is in the future', () => {
+      expect(isTaskDispatchEligible(
+        { id: 'future', title: 'Future task', availableAt: '2026-05-12T13:00:00.000Z' },
+        { nowMs, runtimeAgentIds, completedTaskIds },
+      )).toEqual({ eligible: false, reason: 'scheduled' })
+    })
+
+    it('allows tasks once availableAt has passed', () => {
+      expect(isTaskDispatchEligible(
+        { id: 'ready', title: 'Ready task', availableAt: '2026-05-12T11:59:00.000Z' },
+        { nowMs, runtimeAgentIds, completedTaskIds },
+      )).toEqual({ eligible: true })
+    })
+
+    it('skips tasks whose dependency is not complete', () => {
+      expect(isTaskDispatchEligible(
+        { id: 'blocked', title: 'Blocked task', dependsOn: 'other-task' },
+        { nowMs, runtimeAgentIds, completedTaskIds },
+      )).toEqual({ eligible: false, reason: 'dependency' })
+    })
+
+    it('allows tasks whose dependency is complete', () => {
+      expect(isTaskDispatchEligible(
+        { id: 'unblocked', title: 'Unblocked task', dependsOn: 'done-task' },
+        { nowMs, runtimeAgentIds, completedTaskIds },
+      )).toEqual({ eligible: true })
+    })
+
+    it('skips tasks assigned to missing agents', () => {
+      expect(isTaskDispatchEligible(
+        { id: 'missing-agent', title: 'Missing agent task', agent: 'ghost' },
+        { nowMs, runtimeAgentIds, completedTaskIds },
+      )).toEqual({ eligible: false, reason: 'agent' })
+    })
   })
 
   // -------------------------------------------------------------------------

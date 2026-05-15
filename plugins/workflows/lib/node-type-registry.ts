@@ -203,6 +203,32 @@ export const nestedWorkflowStepSchema = z.object({
   dependsOn: dependsOnSchema,
 })
 
+const taskSourceSchema = z.object({
+  pluginId: z.string().optional(),
+  entityType: z.string().optional(),
+  entityId: z.string().optional(),
+  purpose: z.string().optional(),
+})
+
+export const createTaskStepSchema = z.object({
+  id: z.string().min(1),
+  type: z.literal('createTask'),
+  label: z.string().min(1),
+  taskId: z.string().optional(),
+  title: z.string().min(1),
+  description: z.string().optional(),
+  agent: z.string().optional(),
+  column: z.string().optional(),
+  workflowId: z.string().optional(),
+  parentId: z.string().optional(),
+  projectId: z.string().optional(),
+  availableAt: z.string().optional(),
+  dueAt: z.string().optional(),
+  source: taskSourceSchema.optional(),
+  skipWorkflowReason: z.string().optional(),
+  dependsOn: dependsOnSchema,
+})
+
 // Parallel children are a closed subset (agent | gate). Defined separately so
 // the parallel schema can reference them without recursion through the union.
 const parallelChildSchema = z.discriminatedUnion('type', [agentStepSchema, gateStepSchema])
@@ -250,6 +276,19 @@ const nestedWorkflowFormFields: FormField[] = [
   { name: 'description', type: 'text' },
 ]
 
+const createTaskFormFields: FormField[] = [
+  { name: 'title', type: 'string', required: true, description: 'Task title' },
+  { name: 'description', type: 'text', description: 'Task description' },
+  { name: 'agent', type: 'agent', description: 'Agent to assign' },
+  { name: 'column', type: 'select', description: 'Initial task column', options: [
+    { value: 'todo', label: 'Todo' },
+    { value: 'backlog', label: 'Backlog' },
+  ] },
+  { name: 'workflowId', type: 'string', description: 'Workflow to attach to the created task' },
+  { name: 'availableAt', type: 'string', description: 'ISO timestamp before which dispatch must not pick up the task' },
+  { name: 'dueAt', type: 'string', description: 'ISO deadline or target delivery time' },
+]
+
 // ─── Self-registration of builtins ──────────────────────────────────────────
 
 registerNodeType({
@@ -287,10 +326,17 @@ registerNodeType({
   formFields: nestedWorkflowFormFields,
   edgeRules: { maxOutbound: 1 },
 })
+registerNodeType({
+  kind: 'createTask',
+  runtime: 'builtin',
+  zodSchema: createTaskStepSchema,
+  formFields: createTaskFormFields,
+  edgeRules: { maxOutbound: 1 },
+})
 
 // ─── Top-level workflow schema ──────────────────────────────────────────────
 
-const BUILTIN_KINDS = new Set(['agent', 'gate', 'parallel', 'output', 'workflow'])
+const BUILTIN_KINDS = new Set(['agent', 'gate', 'parallel', 'output', 'workflow', 'createTask'])
 
 const builtinStepSchema = z.discriminatedUnion('type', [
   agentStepSchema,
@@ -298,6 +344,7 @@ const builtinStepSchema = z.discriminatedUnion('type', [
   parallelStepSchema,
   outputStepSchema,
   nestedWorkflowStepSchema,
+  createTaskStepSchema,
 ])
 
 /**

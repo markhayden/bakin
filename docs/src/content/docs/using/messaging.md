@@ -1,135 +1,179 @@
 ---
 title: Messaging
-description: "Plan with agents, schedule on a calendar, publish to your channels. One pipeline from idea to delivered."
+description: "Plan with agents, turn ideas into Deliverables, and publish approved content through your channels."
 ---
 
-Time to get creative. Sit down with any of your agents and pound out bad ass content that connects with your audience: social posts, outreach, internal updates, all of it. You build the plan together: what to post, when, who runs it. Approve and the rest is automatic. Items become scheduled tasks, your agent army picks them up, content gets made and shipped to your channels.
+Messaging is the content planning surface for Bakin. It starts with an
+agent-assisted brainstorm, turns accepted ideas into Plans, helps shape each
+Plan into channel-specific content pieces, starts prep work when the prep
+window opens, routes drafts through review, and publishes approved content at
+the right time.
+
+Use Quick Post when you need a one-off Deliverable without a larger Plan.
 
 ## Calendar
 
 <figure class="screenshot-frame">
-  <figcaption>The content calendar in week view, with status, agent, type, and channel filters above.</figcaption>
+  <figcaption>The content calendar with status, agent, content type, channel, and search filters above.</figcaption>
 </figure>
 
-The canonical schedule. Three views from the header pill: `Month`, `Week`, `List`. Filters above the grid: agent, status, type, channel, plus search across title, brief, draft caption, and agent notes. Click any item to open the detail drawer with the full record and any draft media rendered inline.
+The calendar shows Deliverables, not brainstorm drafts. Filters cover agent,
+status, content type, channel, and local text search across title, brief, draft
+caption, and agent notes. Orphaned agent ids, content types, and channels still
+show up in filters so old content remains visible after settings or team
+changes.
 
-Items in the calendar are color-coded by status; cells get a subtle tint of the assigned agent's color so a single glance shows who's on what. Today gets an accent ring.
+Click a Deliverable to open the drawer. The drawer shows status, Plan context,
+draft text, asset previews, failure reasons, and review actions. Required image
+or video assets must be present before approval.
 
-### Item lifecycle
-
-Items move through seven statuses:
+### Deliverable lifecycle
 
 <div class="table-light-fit table-label">
 
 | Status | What it means |
 | --- | --- |
-| `draft` | Captured but not approved |
-| `scheduled` | Approved and queued |
-| `executing` | A workflow is running on it |
-| `waiting` | Workflow paused (e.g., waiting on agent-generated media) |
-| `review` | Work done, your sign-off needed before publish |
-| `published` | Sent to the channel |
-| `failed` | Something broke |
+| `proposed` | Suggested for a Plan, waiting for human review. |
+| `planned` | Approved for prep, waiting for the prep window. |
+| `in_prep` | A Bakin task or workflow is preparing the draft. |
+| `in_review` | Draft is ready for human approval or changes. |
+| `changes_requested` | The reviewer sent feedback back to prep. |
+| `approved` | Ready to publish at `publishAt`. |
+| `published` | Delivered through a runtime channel. |
+| `overdue` | Publish time passed before approval. |
+| `cancelled` | Intentionally stopped. |
+| `failed` | Publish or workflow handling failed, with `failureReason`. |
 
 </div>
 
-Approval flow: drafts approve to `scheduled`; review items approve to `published` (or reject back to `draft` with an optional note for the agent). Everything else is workflow-driven.
+Bare-task Deliverables publish from the sweep after approval. Workflow-backed
+Deliverables publish when their workflow completes after Messaging has approved
+the gate.
 
-### What's on an item
+## Plans
 
 <figure class="screenshot-frame">
-  <figcaption>The item detail drawer showing fields, draft media, and the back-link to the originating brainstorm session.</figcaption>
+  <figcaption>A Plan workspace with timeline, tasks, brainstorm context, and content-piece review.</figcaption>
 </figure>
 
-Each calendar item carries title, brief (what to say), tone (how to say it), scheduled date, owning agent, content type, and one or more channels. Once a workflow runs on it, a `draft` block fills in: caption, image prompt, video prompt, generated image filename, generated video filename, agent notes. Items also back-link to the brainstorm session that created them and the workflow task driving execution.
+A Plan is one topic or date focus, such as "Taco Tuesday". It carries a lead
+agent, brief, optional campaign label, soft `targetDate`, and suggested
+channels from the brainstorm proposal.
 
-### Calendar Management
+Open a Plan to manage the work leading up to release. The workspace keeps the
+Plan in the center, next-step tasks on the right, and the brainstorm context at
+the bottom. When you are ready to plan channel-specific pieces, a Bakin task
+can ask the lead agent to call `bakin_exec_messaging_propose_deliverable` once
+for each recommended channel. Those suggestions appear in the Plan workspace,
+where you accept, edit, or decline them before they enter prep.
 
-- `Create` an item from `+ New Item` with title, agent, scheduled date, and content type.
-- `Approve` drafts to schedule them; approve review items to publish.
-- `Reject` review items back to draft with an optional note.
-- `Edit` any field inline from the detail drawer.
-- `Delete` drafts that aren't going anywhere.
+Plan status is derived from child Deliverables: planning, planning content
+pieces, in production, in review, scheduled, needs attention, partially
+published, published, cancelled, or needs repair.
 
 ## Brainstorm
 
 <figure class="screenshot-frame">
-  <figcaption>A brainstorm session: chat thread on the left, proposal cards in the review panel on the right.</figcaption>
+  <figcaption>A brainstorm session with chat and Plan proposal review.</figcaption>
 </figure>
 
-Where the work starts. Open the brainstorm view, hit `New Session`, pick an agent. Name the session something you'll recognize ("Q4 launch posts", "weekly newsletter") and start the conversation. Talk through goals, audience, voice, what's on your mind. As ideas come together, the agent drops specific suggestions into the side panel: concrete items with title, date, content type, and brief.
+Brainstorm sessions are open-ended. Pick an agent, name the session, and talk
+through goals, audience, voice, dates, and ideas. When the agent proposes a
+concrete topic, it emits a fenced JSON Plan proposal with:
 
-### How it works
+- `title`
+- `targetDate`
+- `brief`
+- optional `suggestedChannels`
 
-1. You and an agent open a brainstorm session.
-2. The agent floats proposals as you work through the strategy.
-3. You approve the keepers, edit the ones close to right, reject what misses.
-4. Confirm the session. Approved proposals become calendar items.
-5. Each item moves through draft, scheduled, executing, review, and published as it gets made.
-6. When an item hits published, your channels deliver the content.
+Accept the proposals you want and click `Complete session and prepare plans`.
+Each accepted proposal becomes a Plan. No production work starts at this step.
+Sessions stay active, so you can return later and prepare more Plans from the
+same conversation.
 
-Every calendar item links back to the session it came from. You can always trace a published post to the conversation behind it.
+### Session continuity and activity
 
-### Session continuity and tool activity
+Messaging stores visible user, assistant, and activity rows under the session.
+New messages reuse a stable adapter-neutral runtime thread id for that session
+and agent, so the active runtime adapter can continue the same conversation.
 
-Brainstorm sessions are durable. When you leave a session and come back, Bakin reloads the stored user, assistant, and tool-activity timeline from the session file. New messages also reuse the same adapter-neutral runtime thread key for that session and agent, so the active runtime adapter can continue the same underlying conversation instead of starting over.
+Tool calls and runtime status stream into the chat as activity rows. Search
+indexes user/assistant planning text and proposal summaries, not raw tool
+output.
 
-Tool calls and runtime status updates stream into the chat while the agent is working. They render in the same assistant-style thread with compact summaries and expandable details. Those activity rows are persisted with the session so the "what happened behind the scenes" trail is still there after reload. Search indexes user/assistant planning text and proposal summaries, not raw tool output.
+## Quick Post
 
-### What are proposals?
+Quick Post creates a Deliverable with `planId: null`. Use it for a single
+social post, announcement, or media item that does not need brainstorm or Plan
+content-piece planning.
 
-<figure class="screenshot-frame">
-  <figcaption>A proposal card with title, scheduled date, content type, brief, and inline approve/reject/edit controls.</figcaption>
-</figure>
+Media-required content types can still be created without attaching an asset up
+front. The prep agent can generate or attach the asset later. Approval and
+publish-time validation enforce required media before anything is delivered.
 
-Each suggestion the agent floats is a proposal: a complete content idea you can act on. Title, scheduled date, owning agent, content type, channels, brief, tone. Same shape as a calendar item, just not committed yet.
+## Content Types
 
-Ask the agent to revise something. Make it punchier, push the date, swap the angle. They update the existing proposal in place instead of starting a new one. Even rejected proposals can come back this way. The revision history stays attached so you can see how an idea evolved.
+Five content types seed by default:
 
-### Reviewing proposals
+<div class="table-light-fit table-label">
 
-For each proposal you can:
+| Type | Prep lead | Workflow | Asset requirement | Approval |
+| --- | --- | --- | --- | --- |
+| `blog` | 72 hours | `messaging-blog-prep` | optional image | required |
+| `video` | 168 hours | `messaging-video-prep` | video | required |
+| `x-post` | 4 hours | none | optional image | required |
+| `image` | 24 hours | `messaging-image-post-prep` | image | required |
+| `announcement` | 1 hour | none | none | skipped |
 
-- `Approve` to mark it ready for the calendar.
-- `Reject` with an optional note so the agent learns what missed and iterates.
-- `Edit` to take the wheel and manually tweak title, brief, scheduled date, type, or tone before approving.
-- Or just leave it. Staying in `proposed` keeps the proposal on the table.
+</div>
 
-### Confirming the session plan
+Settings can add or edit content types. `prepLeadHours` derives each
+Deliverable's `prepStartAt`, `workflowId` opts into workflow-backed prep,
+`assetRequirement` controls validation, `requiresApproval` controls the
+bare-task review stop, and `defaultAgent` can route prep to a specialist.
 
-<figure class="screenshot-frame">
-  <figcaption>The confirm dialog with the auto-approve toggle, summarizing how many proposals will land on the calendar.</figcaption>
-</figure>
-
-Once you've got the proposals you want, hit `Confirm`. Approved proposals graduate into calendar items and the session locks. Two modes:
-
-- **Default**: each approved proposal becomes a `draft` calendar item. You approve again on the calendar to schedule it.
-- **Auto-approve**: each approved proposal lands as `scheduled` directly.
-
-Confirming flips the session to `completed` and disables further messages. Sessions stay searchable.
-
-## Content types
-
-Five seed by default: `post`, `article`, `video`, `image`, `announcement`. Add or rename in the messaging settings tab. The list drives the type facet on the calendar, the type select in the proposal editor, and the prompt fed to agents during brainstorm sessions.
+Changing Messaging settings broadcasts `plugin:settings-changed`, so calendar
+filters and badges update without a page reload.
 
 ## Channels
 
-Channels are where published content lands. The registry lives in the [Workflows](/docs/using/workflows/) plugin and ships with Discord, Slack, email, Instagram, Twitter, YouTube, and TikTok by default. Plugins can register more.
+Channels are runtime destinations for published content. A Deliverable picks
+one channel. The publish helper resolves draft asset filenames and calls
+`ctx.runtime.channels.deliverContent` with caption and file refs.
 
-Each calendar item picks one or more channels from that registry. Channels show up as a multi-select filter on the calendar and a dropdown in the proposal editor. Or leave channels blank and delegate the delivery decision downstream.
+## Activation, Task Timing, And Workflows
+
+Messaging does not register cron jobs and does not use Schedule for Plan
+execution. A Plan starts only when a user explicitly activates it.
+
+Activation validates that the Plan has concrete channels, creates one
+Deliverable per channel, and creates one kickoff task per Deliverable through
+`ctx.tasks.create`. Each kickoff task carries `availableAt` from the
+Deliverable `prepStartAt`, `dueAt` from the target publish time, and `source`
+metadata that links the task back to the Messaging Deliverable. Dispatch is the
+single wakeup path: it ignores future tasks until `availableAt` is reached.
+
+Workflow-backed prep is created through `ctx.tasks.create({ workflowId })`.
+Messaging listens for `workflow.gate_reached` and `workflow.complete`, and
+resolves gates through `workflows.approveGate` and `workflows.rejectGate`
+hooks. Messaging owns the final publish call in both bare-task and workflow
+paths.
 
 ## Where it lives
 
-```
-~/.bakin/
-  messaging.json                  # flat array of every calendar item
+```text
+~/.bakin/plugin-data/
   messaging/
-    sessions/<id>.json            # brainstorm messages, activity rows, and proposals
+    sessions/<id>.json            # brainstorm messages, activity rows, proposals
+    plans/<id>.json               # content Plans
+    deliverables/<id>.json        # channel-specific work and publish state
+    legacy/                       # archived pre-refactor messaging.json files
   plugin-settings/
-    messaging.json                # content types, default view, etc.
+    messaging.json                # content types, channels, sweep cron, defaults
 ```
 
-Sessions index into search (table `bakin_messaging_brainstorm`) so they reach across-plugin queries. Calendar items filter locally on the page rather than indexing.
+Sessions index into search as `messaging_brainstorm`. Plans and Deliverables
+filter locally in the plugin UI.
 
 ## Settings
 
@@ -141,7 +185,9 @@ Sessions index into search (table `bakin_messaging_brainstorm`) so they reach ac
 | Default view | `select` | `month` | Default messaging view on page load |
 | Show schedule jobs | `boolean` | `false` | Display recurring schedule jobs on the content calendar |
 | Channels | `string` | `DEFAULT_CHANNEL` | Comma-separated runtime channel IDs available for distribution (e.g., general,announcements,email) |
-| Content types | `list` |  | Categories used across the content calendar and brainstorm proposals. |
+| Agent plan activation | `select` | `blocked` | Controls whether MCP agents can activate Plans and create kickoff tasks. |
+| Agent deliverable approval | `select` | `blocked` | Controls whether MCP agents can approve or reject Deliverables. |
+| Content types | `list` | `true` | Categories used across the content calendar and brainstorm proposals. |
 
 </div>
 <!-- /docs:settings -->
@@ -151,20 +197,13 @@ Sessions index into search (table `bakin_messaging_brainstorm`) so they reach ac
 <!-- docs:cli-commands messaging -->
 | Command | Purpose |
 | --- | --- |
-| `bakin messaging list` | List messaging items |
-| `bakin messaging get <itemId>` | Get a messaging item |
-| `bakin messaging create <title> <agent> <scheduledAt>` | Create a messaging item |
-| `bakin messaging update <itemId>` | Update a messaging item |
-| `bakin messaging delete <itemId>` | Delete a messaging item |
-| `bakin messaging approve <itemId>` | Approve a messaging item |
-| `bakin messaging reject <itemId>` | Reject a messaging item |
 | `bakin messaging sessions` | List planning sessions |
 | `bakin messaging session <sessionId>` | Get a planning session |
 | `bakin messaging session-create <agentId>` | Create a planning session |
 | `bakin messaging session-update <sessionId>` | Update a planning session |
 | `bakin messaging session-delete <sessionId>` | Delete a planning session |
 | `bakin messaging message <sessionId> <message>` | Message a planning session |
-| `bakin messaging confirm <sessionId>` | Confirm planning-session proposals |
+| `bakin messaging materialize <sessionId>` | Prepare Plans from accepted proposals |
 | `bakin messaging proposal <sessionId> <proposalId>` | Update a planning-session proposal |
 <!-- /docs:cli-commands -->
 
@@ -176,24 +215,31 @@ HTTP API surface for this plugin: see the [API reference](/docs/reference/genera
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents
 
-Agents drive both the calendar and brainstorm sessions through MCP exec tools.
+Agents support brainstorm sessions, content-piece planning, Deliverable prep,
+review, and publish recovery through MCP exec tools.
 
 <!-- docs:exec-tools messaging -->
-- `bakin_exec_messaging_approve`: Approve a messaging item (draft → scheduled, review → published)
-- `bakin_exec_messaging_create`: Create a new messaging item
-- `bakin_exec_messaging_delete`: Delete a messaging item
-- `bakin_exec_messaging_get`: Get details for a single messaging item
-- `bakin_exec_messaging_list`: List messaging items with optional filters
+- `bakin_exec_messaging_deliverable_approve`: Approve a Deliverable after review.
+- `bakin_exec_messaging_deliverable_create`: Create a Quick Post Deliverable. Plan Deliverables are created only by Plan activation.
+- `bakin_exec_messaging_deliverable_get`: Get a content Deliverable
+- `bakin_exec_messaging_deliverable_list`: List content Deliverables with optional filters
+- `bakin_exec_messaging_deliverable_ready_for_review`: Signal that a bare-task Deliverable draft is ready for user review or auto-approval.
+- `bakin_exec_messaging_deliverable_reject`: Request changes for a Deliverable after review.
+- `bakin_exec_messaging_deliverable_update`: Update a content Deliverable. Draft fields are deep-merged.
+- `bakin_exec_messaging_plan_activate`: Activate a content Plan and create scheduled kickoff tasks for its configured channels.
+- `bakin_exec_messaging_plan_channel_delete`: Delete one configured Plan channel, its Deliverables, and linked board tasks.
+- `bakin_exec_messaging_plan_create`: Create a content Plan
+- `bakin_exec_messaging_plan_delete`: Delete a content Plan, its content pieces, and linked board tasks.
+- `bakin_exec_messaging_plan_get`: Get a content Plan and its Deliverables
+- `bakin_exec_messaging_plan_list`: List content Plans with optional filters
 - `bakin_exec_messaging_proposal_update`: Update a proposal status or fields (approve, reject, edit)
-- `bakin_exec_messaging_reject`: Reject a messaging item back to draft status
-- `bakin_exec_messaging_session_confirm`: Confirm a planning session — creates messaging items from approved proposals
 - `bakin_exec_messaging_session_create`: Create a new planning session for an agent
-- `bakin_exec_messaging_session_delete`: Delete a planning session
+- `bakin_exec_messaging_session_delete`: Delete a planning session without deleting Plans prepared from it.
 - `bakin_exec_messaging_session_get`: Get a planning session with full message history and proposals
 - `bakin_exec_messaging_session_list`: List planning sessions with optional filters
+- `bakin_exec_messaging_session_materialize`: Prepare Plans from accepted brainstorm proposals
 - `bakin_exec_messaging_session_message`: Send a message in a planning session (non-streaming, returns full response)
 - `bakin_exec_messaging_session_update`: Update a planning session title or status
-- `bakin_exec_messaging_update`: Update a messaging item
 <!-- /docs:exec-tools -->
 
 Full schemas in the [Exec tools reference](/docs/reference/generated/exec-tools/).
@@ -202,7 +248,8 @@ Full schemas in the [Exec tools reference](/docs/reference/generated/exec-tools/
 
 ## Related
 
-- [Team](/docs/using/team/): the agents you brainstorm with
-- [Workflows](/docs/using/workflows/): the channel registry and the workflows that move items through `executing` and `review`
-- [Tasks](/docs/using/tasks/): workflow execution on a calendar item creates a real task
-- [Assets](/docs/using/assets/): draft images and videos live here, rendered in the detail drawer via stable filenames
+- [Team](/docs/using/team/): the agents you brainstorm and plan with
+- [Workflows](/docs/using/workflows/): workflow-backed prep and review gates
+- [Schedule](/docs/using/schedule/): cron-backed plugin sweeps
+- [Tasks](/docs/using/tasks/): content planning and prep work run as Bakin tasks
+- [Assets](/docs/using/assets/): draft images and videos used for publishing

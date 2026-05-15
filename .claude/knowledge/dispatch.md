@@ -32,6 +32,24 @@ Cooldown chosen by class:
 
 Both classes share the `count` field. `settings.dispatch.maxRetries` (default 5) escalates to **blocked** regardless of classification.
 
+## Task Eligibility
+
+Dispatch only considers `todo` tasks that are actually eligible to run.
+
+Eligibility checks are centralized in `isTaskDispatchEligible(task, ctx)`:
+
+- `availableAt` is absent or at/before the current time
+- `dependsOn` is absent or already completed
+- assigned agent exists in the runtime roster
+
+Invalid `availableAt` values are treated as unscheduled so malformed metadata
+does not permanently strand a task. Explicit user kick dispatches can bypass the
+schedule gate, but automatic dispatch and automatic subtasks cannot.
+
+Plugins that need future work should create a real task with `availableAt`
+rather than registering a private heartbeat, health check, cron, or sweep.
+The dispatcher heartbeat is the wakeup surface for task-backed work.
+
 ## Persistence
 
 `FailureRecord` on disk is `{ lastAttempt, count, kind }` at `~/.bakin/.dispatch-state.json#failedDispatches`.
@@ -61,10 +79,28 @@ When recovery returns tasks to `todo`, `server.ts` starts the loops and then
 immediately triggers one dispatch cycle so recovered work does not wait for the
 next interval.
 
+## Plugin-Owned Cron Commands
+
+The schedule plugin bridge recognizes runtime cron commands shaped like
+`bakin:<pluginId>:<action>`. The reserved `pluginId` value `schedule` keeps the
+legacy schedule-owned task path: the bridge looks up the schedule sidecar and
+creates a Bakin task as before.
+
+This bridge is for recurring cron integrations, not for plugin business logic
+that should be represented as board tasks. Prefer `availableAt` tasks for
+one-time scheduled work.
+
+For any other plugin id, the bridge bypasses sidecar lookup and invokes
+`${pluginId}.${action}.run` through `ctx.hooks`. The hook owns the work and may
+return `{ ok: true, taskId? }` or `{ ok: false, error }`; no Bakin task is
+created by the schedule bridge itself. Missing hooks are recorded as bridge
+failures with a clear `hook plugin.action.run not registered` error.
+
 ## Where to look
 
 - `src/core/app-services.ts` — boot-created runtime/search/task service object
 - `packages/adapter-openclaw/src/runtime.ts` — OpenClaw adapter transport
 - `src/core/dispatch.ts` — `classifyDispatchError`, cooldown selection, blocked escalation
 - `src/core/restart-recovery.ts` — post-boot recovery of orphaned `inProgress` tasks
+- `plugins/schedule/index.ts` — cron bridge, including `bakin:<pluginId>:<action>` hook dispatch
 - `.claude/knowledge/adapter-architecture.md` — adapter boundaries and task/runtime ownership

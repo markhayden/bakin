@@ -157,6 +157,12 @@ home/config/client helpers, provider SQLite files, or `@antfly/sdk` from a
 plugin. If the context does not expose the capability you need, add it to the
 adapter contract first.
 
+For plugin-owned scheduled work, register a hook and create a cron command
+using `bakin:<pluginId>:<action>`. A command like `bakin:reports:refresh`
+invokes the `reports.refresh.run` hook through the schedule bridge instead of
+creating a synthetic Bakin task. Keep `bakin:schedule:*` reserved for the
+schedule plugin's own jobs.
+
 ## Client entry (`client.tsx`)
 
 ```tsx
@@ -194,6 +200,13 @@ import { registerSlot } from '@makinbakin/sdk/slots'
 // Override the default asset preview for .glb files; lower `order` wins.
 registerSlot('asset-preview', GlbRenderer, 50)  // default built-in is 100
 ```
+
+For durable plugin-owned agent chat, use `IntegratedBrainstorm` from
+`@bakin/sdk/components` instead of building a custom chat stack. Pass
+`transformAssistantMessage` when assistant messages should render structured
+plugin artifacts, such as proposal cards, below the assistant text. Persist
+messages and activity in plugin storage for reloads, but keep runtime
+conversation continuity in the adapter with a stable thread id.
 
 ## Slots
 

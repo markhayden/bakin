@@ -4,6 +4,7 @@ import { CollisionPriority } from '@dnd-kit/abstract'
 import { useDroppable } from '@dnd-kit/react'
 import { TaskCard, type TaskScoreInfo } from './task-card'
 import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
+import { splitScheduledTasks } from '../lib/scheduled'
 import type { Task, ColumnId } from '../types'
 
 interface KanbanColumnProps {
@@ -19,10 +20,11 @@ interface KanbanColumnProps {
   footer?: React.ReactNode
   compact?: boolean
   totalCount?: number
+  showScheduled?: boolean
   onHeaderClick?: () => void
 }
 
-export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, scoreMap, onDelete, onTaskClick, onAddTask, footer, compact, totalCount, onHeaderClick }: KanbanColumnProps) {
+export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, scoreMap, onDelete, onTaskClick, onAddTask, footer, compact, totalCount, showScheduled = true, onHeaderClick }: KanbanColumnProps) {
   const { ref, isDropTarget } = useDroppable({
     id,
     accept: 'item',
@@ -32,7 +34,8 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, scoreMap,
   const config = COLUMN_CONFIG[id]
   const dotColor = STATUS_DOT_COLORS[id]
 
-  const count = totalCount ?? tasks.length
+  const { ready, scheduled } = splitScheduledTasks(tasks)
+  const count = totalCount ?? (showScheduled ? tasks.length : ready.length)
 
   if (compact) {
     const isArchiveTarget = id === 'archived' && isDropTarget
@@ -109,12 +112,12 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, scoreMap,
         </div>
 
         <div className="flex flex-col gap-1.5 flex-1">
-          {tasks.map((task, index) => (
+          {ready.map((task) => (
             <div key={task.id}>
               <TaskCard
                 task={task}
                 columnId={id}
-                index={index}
+                index={tasks.findIndex(item => item.id === task.id)}
                 gateLabel={gateLabels?.[task.id]}
                 childTaskId={childTaskLabels?.[task.id]}
                 scoreInfo={scoreMap?.get(task.id)}
@@ -123,6 +126,34 @@ export function KanbanColumn({ id, tasks, gateLabels, childTaskLabels, scoreMap,
               />
             </div>
           ))}
+          {showScheduled && scheduled.length > 0 && (
+            <div className="mt-3 border-t border-border pt-3">
+              <div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                <span className="h-px flex-1 bg-border" />
+                <span>Scheduled</span>
+                <span className="rounded-full bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] leading-none tabular-nums">
+                  {scheduled.length}
+                </span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {scheduled.map((task) => (
+                  <div key={task.id}>
+                    <TaskCard
+                      task={task}
+                      columnId={id}
+                      index={tasks.findIndex(item => item.id === task.id)}
+                      gateLabel={gateLabels?.[task.id]}
+                      childTaskId={childTaskLabels?.[task.id]}
+                      scoreInfo={scoreMap?.get(task.id)}
+                      onDelete={onDelete}
+                      onClick={onTaskClick}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
       {footer && (

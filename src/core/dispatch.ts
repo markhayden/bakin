@@ -107,8 +107,22 @@ type DispatchTask = {
   workflowId?: string
   description?: string
   projectId?: string
+  availableAt?: string
+  dependsOn?: string
   log?: Array<{ timestamp: string }>
 }
+
+type DispatchEligibilityContext = {
+  nowMs: number
+  runtimeAgentIds: Set<string>
+  completedTaskIds: Set<string>
+}
+
+export type DispatchIneligibleReason = 'scheduled' | 'dependency' | 'agent'
+
+export type DispatchEligibility =
+  | { eligible: true }
+  | { eligible: false; reason: DispatchIneligibleReason }
 
 type DispatchColumns = {
   backlog: DispatchTask[]
@@ -135,6 +149,28 @@ function emptyDispatchColumns(): DispatchColumns {
 async function readDispatchColumns(): Promise<DispatchColumns> {
   const board = readTaskboard() as unknown as { columns: Partial<DispatchColumns> }
   return { ...emptyDispatchColumns(), ...(board?.columns ?? {}) }
+}
+
+export function isTaskDispatchEligible(
+  task: DispatchTask,
+  context: DispatchEligibilityContext,
+): DispatchEligibility {
+  if (task.availableAt) {
+    const availableMs = Date.parse(task.availableAt)
+    if (!Number.isNaN(availableMs) && availableMs > context.nowMs) {
+      return { eligible: false, reason: 'scheduled' }
+    }
+  }
+
+  if (task.dependsOn && !context.completedTaskIds.has(task.dependsOn)) {
+    return { eligible: false, reason: 'dependency' }
+  }
+
+  if (task.agent && !context.runtimeAgentIds.has(task.agent)) {
+    return { eligible: false, reason: 'agent' }
+  }
+
+  return { eligible: true }
 }
 
 async function addTaskLog(taskId: string, author: string, message: string): Promise<void> {
@@ -251,6 +287,10 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       ...columns.done.map(t => t.id),
       ...columns.archived.map(t => t.id),
     ])
+    const completedTaskIds = new Set([
+      ...columns.done.map(t => t.id),
+      ...columns.archived.map(t => t.id),
+    ])
     state.dispatched = state.dispatched.filter(id => activeIds.has(getDispatchMarkerTaskId(id)))
     // Rebuild dispatchedSet AFTER reconciliation so tasks moved back to todo are eligible
     const dispatchedSet = new Set(state.dispatched)
@@ -294,6 +334,13 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
     for (const task of todoTasks) {
       if (dispatchedSet.has(task.id)) continue
 
+      const eligibility = isTaskDispatchEligible(task, {
+        nowMs: Date.now(),
+        runtimeAgentIds,
+        completedTaskIds,
+      })
+      if (!eligibility.eligible) continue
+
       // Check failure history with max retries
       const failure = getFailureRecord(state.failedDispatches?.[task.id])
       if (failure) {
@@ -311,8 +358,6 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         }
         if (Date.now() - failure.lastAttempt < cooldownForFailure(failure, settings)) continue
       }
-
-      if (task.agent && !runtimeAgentIds.has(task.agent)) continue
 
       // Workflow-aware dispatch path
       const taskWithWorkflow = task as typeof task & { workflowId?: string }
@@ -401,8 +446,18 @@ export async function dispatchSingleTask(
     const runtime = getAppServices().runtime
     const runtimeAgentIds = new Set((await runtime.agents.list()).map((agent) => agent.id))
     const mainAgentId = await getRuntimeMainAgentId(runtime)
-    if (task.agent && !runtimeAgentIds.has(task.agent)) {
-      log.warn('dispatchSingleTask: agent not in allowed list', { taskId, agent: task.agent })
+    const completedTaskIds = new Set([
+      ...columns.done.map(t => t.id),
+      ...columns.archived.map(t => t.id),
+    ])
+    const eligibilityTask = source === 'kick' ? { ...task, availableAt: undefined } : task
+    const eligibility = isTaskDispatchEligible(eligibilityTask, {
+      nowMs: Date.now(),
+      runtimeAgentIds,
+      completedTaskIds,
+    })
+    if (!eligibility.eligible) {
+      log.debug('dispatchSingleTask: task not dispatch eligible', { taskId, reason: eligibility.reason })
       return
     }
 
@@ -569,7 +624,7 @@ export function buildDispatchMessage(
   // Project context — lightweight mention if task has a projectId
   let projectBlock = ''
   if (task.projectId) {
-    projectBlock = `\n\n**Project:** id ${task.projectId}\nThe project spec may contain detailed requirements. Call bakin_exec_project_get to read it before starting work.`
+    projectBlock = `\n\n**Project:** id ${task.projectId}\nThe project spec may contain detailed requirements. Call bakin_exec_projects_get to read it before starting work.`
   }
   const contactsRef = `Reference info is in ${join(contentDir, 'team/CONTACTS.md')}.`
 
@@ -633,7 +688,7 @@ These tools help you accomplish the work. Use them as your primary way to save f
 
 \`\`\`bash
 # Save any file as a managed asset (handles naming + sidecar metadata)
-${mc('bakin_exec_save_asset', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"`)}
+${mc('bakin_exec_assets_save', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"`)}
 
 # Post to a runtime channel (with optional image/video attachment)
 ${mc('bakin_exec_post_channel', `channel="<name>" content="<message>" taskId=${task.id}`)}
@@ -645,10 +700,10 @@ ${mc('bakin_exec_gen_image', `taskId=${task.id} prompt="<text>" preset=social-po
 ${mc('bakin_exec_check_gates', `taskId=${task.id}`)}
 ${task.projectId ? `
 # Project tools (this task is part of a project)
-${mc('bakin_exec_project_get', `projectId="${task.projectId}"`)}
-${mc('bakin_exec_project_mark_item', `projectId="${task.projectId}" taskItemId="<itemId>" checked=true`)}
-${mc('bakin_exec_project_add_item', `projectId="${task.projectId}" title="<item title>"`)}` : `
-# Projects: bakin_exec_project_list, bakin_exec_project_create, bakin_exec_project_get`}
+${mc('bakin_exec_projects_get', `projectId="${task.projectId}"`)}
+${mc('bakin_exec_projects_mark_item', `projectId="${task.projectId}" taskItemId="<itemId>" checked=true`)}
+${mc('bakin_exec_projects_add_item', `projectId="${task.projectId}" title="<item title>"`)}` : `
+# Projects: bakin_exec_projects_list, bakin_exec_projects_create, bakin_exec_projects_get`}
 \`\`\`
 
 ## DEPENDENCY PATTERN
@@ -956,7 +1011,7 @@ function buildWorkflowDispatchMessage(
   lines.push('# --- Execution tools for doing actual work ---')
   lines.push('')
   lines.push(`# Save any file as a managed asset`)
-  lines.push(`${wfMc('bakin_exec_save_asset', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what>"`)}`);
+  lines.push(`${wfMc('bakin_exec_assets_save', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what>"`)}`);
   lines.push('')
   lines.push(`# Generate image via Nano Banana`)
   lines.push(`${wfMc('bakin_exec_gen_image', `taskId=${task.id} prompt="<text>" preset=social-portrait model=flash`)}`);

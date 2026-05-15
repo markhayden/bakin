@@ -11,6 +11,7 @@ import {
   type BakinTask,
   type BakinTaskPatch,
   type SyncBakinTaskStore,
+  type TaskSource,
 } from '@bakin/core/tasks/store'
 import { generateTaskId } from '@bakin/core/ids'
 import { join } from 'path'
@@ -37,6 +38,9 @@ export interface Task {
   workflowId?: string
   scheduleJobId?: string
   projectId?: string
+  availableAt?: string
+  dueAt?: string
+  source?: TaskSource
   order?: number
   updatedAt?: number
 }
@@ -133,6 +137,9 @@ function taskToView(task: BakinTask): Task {
     workflowId: task.workflowId,
     scheduleJobId: task.scheduleJobId,
     projectId: task.projectId,
+    availableAt: task.availableAt,
+    dueAt: task.dueAt,
+    source: task.source,
     order: task.order,
     updatedAt: Date.parse(task.updatedAt),
   }
@@ -243,6 +250,13 @@ export function createTask(
   id?: string,
   parentId?: string,
   projectId?: string,
+  options?: {
+    availableAt?: string
+    dueAt?: string
+    source?: TaskSource
+    scheduleJobId?: string
+    dependsOn?: string
+  },
 ): Promise<Task> {
   try {
     const colId = column ? (normalizeColumn(column) || 'todo') : 'todo'
@@ -256,6 +270,11 @@ export function createTask(
       parentId,
       workflowId,
       projectId,
+      scheduleJobId: options?.scheduleJobId,
+      dependsOn: options?.dependsOn,
+      availableAt: options?.availableAt,
+      dueAt: options?.dueAt,
+      source: options?.source,
       column: colId,
       order: getColumnTaskCount(colId),
     })
@@ -343,7 +362,21 @@ export function blockTask(identifier: string, reason: string, agent?: string): P
 
 export function updateTask(
   identifier: string,
-  updates: { title?: string; description?: string; agent?: string; column?: ColumnId; workflowId?: string; projectId?: string; channel?: string },
+  updates: {
+    title?: string
+    description?: string
+    agent?: string
+    column?: ColumnId
+    workflowId?: string
+    projectId?: string
+    availableAt?: string | null
+    dueAt?: string | null
+    source?: TaskSource | null
+    scheduleJobId?: string | null
+    dependsOn?: string | null
+    date?: string | null
+    channel?: string
+  },
 ): Promise<void> {
   try {
     const task = requireTask(identifier)
@@ -355,6 +388,12 @@ export function updateTask(
     if ('agent' in updates) patch.agent = updates.agent || undefined
     if ('workflowId' in updates) patch.workflowId = updates.workflowId || undefined
     if ('projectId' in updates) patch.projectId = updates.projectId || undefined
+    if ('availableAt' in updates) patch.availableAt = updates.availableAt || undefined
+    if ('dueAt' in updates) patch.dueAt = updates.dueAt || undefined
+    if ('source' in updates) patch.source = updates.source || undefined
+    if ('scheduleJobId' in updates) patch.scheduleJobId = updates.scheduleJobId || undefined
+    if ('dependsOn' in updates) patch.dependsOn = updates.dependsOn || undefined
+    if ('date' in updates) patch.date = updates.date || undefined
 
     if (updates.column !== undefined && updates.column !== asColumnId(task)) {
       assertTransitionAllowed(task, updates.column, isHuman)

@@ -125,4 +125,30 @@ describe('isNoisyEvent', () => {
   it('does not flag duplicate events as noisy (separate concern)', () => {
     expect(isNoisyEvent(makeEvent({ agent: 'system', message: 'Created a task', duplicate: true }))).toBe(false)
   })
+
+  it('flags successful read-only exec tool events as noisy', () => {
+    expect(isNoisyEvent(makeEvent({
+      agent: 'main',
+      message: 'Listed content deliverables',
+      eventName: 'exec.bakin_exec_messaging_deliverable_list.ok',
+    }))).toBe(true)
+    expect(isNoisyEvent(makeEvent({
+      agent: 'main',
+      message: 'Resolved paths',
+      eventName: 'exec.bakin_exec_get_paths.ok',
+    }))).toBe(true)
+  })
+
+  it('keeps write exec events and failed reads visible', () => {
+    expect(isNoisyEvent(makeEvent({
+      agent: 'main',
+      message: 'Created a task',
+      eventName: 'exec.bakin_exec_tasks_create.ok',
+    }))).toBe(false)
+    expect(isNoisyEvent(makeEvent({
+      agent: 'main',
+      message: 'Read task details (failed)',
+      eventName: 'exec.bakin_exec_tasks_get.fail',
+    }))).toBe(false)
+  })
 })

@@ -426,9 +426,19 @@ export interface PluginTask {
   workflowId?: string
   scheduleJobId?: string
   projectId?: string
+  availableAt?: string
+  dueAt?: string
+  source?: PluginTaskSource
   order?: number
   createdAt?: string
   updatedAt?: string
+}
+
+export interface PluginTaskSource {
+  pluginId?: string
+  entityType?: string
+  entityId?: string
+  purpose?: string
 }
 
 export interface TaskLogEntry {
@@ -449,6 +459,9 @@ export interface PluginTaskCreateInput {
   workflowId?: string
   projectId?: string
   parentId?: string | null
+  availableAt?: string
+  dueAt?: string
+  source?: PluginTaskSource
   skipWorkflowReason?: string
 }
 
@@ -465,6 +478,9 @@ export interface PluginTaskUpdateInput {
   scheduleJobId?: string
   projectId?: string
   parentId?: string | null
+  availableAt?: string | null
+  dueAt?: string | null
+  source?: PluginTaskSource | null
 }
 
 export interface PluginTaskService {

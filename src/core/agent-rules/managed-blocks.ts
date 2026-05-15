@@ -507,6 +507,7 @@ mcporter call bakin-${agentId}.bakin_exec_schedule_create name="daily-recipe" sc
 - \`bakin_exec_schedule_briefing\` — Today's schedule summary (for daily standup)
 
 ### When to Use Scheduling vs One-Off Tasks
+- Create a scheduled job only when the requester or task brief explicitly asks for recurring work ("daily", "weekly", "every weekday", etc.). Do not infer a schedule from a content type or channel.
 - **Recurring work** (daily posts, weekly reports, periodic checks) → \`bakin_exec_schedule_create\`
 - **One-time deliverables** → \`bakin_exec_tasks_create\``,
   },

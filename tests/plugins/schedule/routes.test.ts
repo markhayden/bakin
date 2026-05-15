@@ -1683,6 +1683,46 @@ describe('schedule plugin activation', () => {
     }
   })
 
+  it('registers a hook for deterministic Bakin-managed plugin jobs', async () => {
+    const activated = await activatePlugin(schedulePlugin, testDir)
+    const registerMock = activated.ctx.hooks.register as unknown as {
+      mock: { calls: Array<[string, (data: Record<string, unknown>) => Promise<Record<string, unknown>>, Record<string, unknown>]> }
+    }
+    const call = registerMock.mock.calls.find(([name]) => name === 'schedule.ensureBakinJob')
+
+    expect(call).toBeDefined()
+    const handler = call![1]
+    const result = await handler({
+      jobId: 'plugin-nightly-sync',
+      name: 'Plugin nightly sync',
+      schedule: '*/5 * * * *',
+      command: 'bakin:reports:refresh',
+      metadata: { pluginId: 'reports' },
+    })
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      jobId: 'plugin-nightly-sync',
+      cron: '*/5 * * * *',
+    }))
+    expect(mockCronCreate).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'plugin-nightly-sync',
+      name: 'Plugin nightly sync',
+      schedule: '*/5 * * * *',
+      command: 'bakin:reports:refresh',
+      metadata: expect.objectContaining({
+        pluginId: 'reports',
+        bakinSchedule: true,
+        scheduleType: 'cron',
+      }),
+    }))
+    expect(getJob('plugin-nightly-sync')).toEqual(expect.objectContaining({
+      isBakinJob: true,
+      source: 'bakin',
+      displayName: 'Plugin nightly sync',
+    }))
+  })
+
   it('sets pluginId to schedule', () => {
     expect(schedulePlugin.id).toBe('schedule')
   })

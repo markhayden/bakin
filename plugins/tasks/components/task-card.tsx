@@ -5,6 +5,7 @@ import { useSortable } from '@dnd-kit/react/sortable'
 import { X } from 'lucide-react'
 import { AgentAvatar } from "@makinbakin/sdk/components"
 import { STATUS_BADGE_STYLES } from '../constants'
+import { getTaskAvailableAtMs } from '../lib/scheduled'
 import type { Task, ColumnId } from '../types'
 
 export interface TaskScoreInfo {
@@ -26,6 +27,28 @@ function formatRelativeDate(dateStr: string): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+function formatWaitingLabel(dateStr: string): string {
+  const date = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00')
+  if (isNaN(date.getTime())) return `Waiting until ${dateStr}`
+
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const diffDays = Math.round((target.getTime() - today.getTime()) / 86400000)
+  const hasTime = dateStr.includes('T') && (date.getHours() !== 0 || date.getMinutes() !== 0)
+  const time = hasTime
+    ? date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(/\s/g, '').toLowerCase()
+    : ''
+
+  let day: string
+  if (diffDays === 0) day = 'today'
+  else if (diffDays === 1) day = 'tomorrow'
+  else if (diffDays > 1 && diffDays < 7) day = date.toLocaleDateString('en-US', { weekday: 'short' })
+  else day = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+
+  return time ? `Waiting till after ${day}, ${time}` : `Waiting until ${day}`
+}
+
 function shortId(id: string): string {
   return id.slice(0, 6).toUpperCase()
 }
@@ -33,6 +56,8 @@ function shortId(id: string): string {
 export function TaskCardContent({ task, columnId, className, gateLabel, childTaskId, style, scoreInfo }: { task: Task; columnId: string; className?: string; gateLabel?: string; childTaskId?: string; style?: CSSProperties; scoreInfo?: TaskScoreInfo }) {
   const badge = STATUS_BADGE_STYLES[columnId as ColumnId]
   const isComplete = task.checked || columnId === 'done' || columnId === 'archived'
+  const availableAtMs = getTaskAvailableAtMs(task)
+  const isFutureScheduled = availableAtMs !== null && availableAtMs > Date.now()
 
   const semKey = 'embeddings'
   const bm25Key = scoreInfo?.indexScores
@@ -113,6 +138,12 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
       {/* Blocked reason */}
       {task.blockedReason && (
         <p className="text-xs text-destructive mt-1.5">{task.blockedReason}</p>
+      )}
+
+      {isFutureScheduled && task.availableAt && (
+        <div className="mt-2 inline-flex items-center rounded-md border border-sky-500/20 bg-sky-500/10 px-2 py-1 text-[11px] font-medium text-sky-300">
+          {formatWaitingLabel(task.availableAt)}
+        </div>
       )}
 
       {/* Footer: avatar bottom-left, date right */}
