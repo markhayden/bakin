@@ -76,6 +76,10 @@ const taskStoreMock = {
     id?: string,
   ) => createTaskHook({ id, title, column, description }),
   getTask: (id: string) => hookTasks.get(id) ?? null,
+  getTaskWithColumn: (id: string) => {
+    const task = hookTasks.get(id)
+    return task ? { task, column: task.column } : null
+  },
   moveTask: (identifier: string, to: string, from?: string) => moveTaskHook({ identifier, to, from }),
   readTaskboard: readTaskboardForTest,
 }
@@ -118,6 +122,7 @@ import {
   loadInstance,
   getCurrentStep,
   completeStep,
+  reconcilePendingApprovalTaskColumns,
   approveGate,
   rejectGate,
   reopenFromStep,
@@ -393,6 +398,19 @@ Write a great caption.
       expect((step as Record<string, unknown>).status).toBe('pending_approval')
     })
 
+    it('returns pending approval gate status for agent-scoped lookups', () => {
+      createInstance('task-gate-agent', 'gate', testDir)
+      completeStep('task-gate-agent', 'write-copy', { result: 'done' }, 'chef', testDir)
+
+      const step = getCurrentStep('task-gate-agent', 'chef', testDir)
+
+      expect(step).toMatchObject({
+        status: 'pending_approval',
+        stepId: 'review-gate',
+        label: 'Review',
+      })
+    })
+
     it('returns completion status when workflow is done', () => {
       createInstance('task-done', 'linear', testDir)
       completeStep('task-done', 'step-one', { result: 'a' }, undefined, testDir)
@@ -418,6 +436,71 @@ Write a great caption.
       expect(instance!.currentStepId).toBe('step-two')
       expect(instance!.stepStates['step-one'].status).toBe('complete')
       expect(instance!.stepStates['step-two'].status).toBe('in_progress')
+    })
+
+    it('returns pending approval as the next step when completion reaches a gate', () => {
+      createInstance('task-next-gate', 'gate', testDir)
+
+      const result = completeStep('task-next-gate', 'write-copy', { text: 'hello' }, 'chef', testDir)
+
+      expect(result.success).toBe(true)
+      expect(result.nextStep).toMatchObject({
+        status: 'pending_approval',
+        stepId: 'review-gate',
+      })
+    })
+
+    it('moves a todo workflow task through inProgress before review when a gate is reached', async () => {
+      hookTasks.set('task-review-from-todo', {
+        id: 'task-review-from-todo',
+        title: 'Review from todo',
+        column: 'todo',
+      })
+      createInstance('task-review-from-todo', 'gate', testDir)
+
+      completeStep('task-review-from-todo', 'write-copy', { text: 'hello' }, 'chef', testDir)
+      await new Promise(resolve => setTimeout(resolve, 0))
+
+      expect(moveTaskHook).toHaveBeenNthCalledWith(1, {
+        identifier: 'task-review-from-todo',
+        to: 'inProgress',
+        from: undefined,
+      })
+      expect(moveTaskHook).toHaveBeenNthCalledWith(2, {
+        identifier: 'task-review-from-todo',
+        to: 'review',
+        from: undefined,
+      })
+      expect(hookTasks.get('task-review-from-todo')?.column).toBe('review')
+    })
+
+    it('repairs pending approval workflow tasks that were left in todo', async () => {
+      hookTasks.set('task-reconcile-review', {
+        id: 'task-reconcile-review',
+        title: 'Reconcile review',
+        column: 'todo',
+      })
+      createInstance('task-reconcile-review', 'gate', testDir)
+      completeStep('task-reconcile-review', 'write-copy', { text: 'hello' }, 'chef', testDir)
+      await new Promise(resolve => setTimeout(resolve, 0))
+
+      hookTasks.get('task-reconcile-review')!.column = 'todo'
+      moveTaskHook.mockClear()
+
+      const result = await reconcilePendingApprovalTaskColumns(testDir)
+
+      expect(result).toMatchObject({ checked: 1, moved: 1, skipped: 0 })
+      expect(moveTaskHook).toHaveBeenNthCalledWith(1, {
+        identifier: 'task-reconcile-review',
+        to: 'inProgress',
+        from: undefined,
+      })
+      expect(moveTaskHook).toHaveBeenNthCalledWith(2, {
+        identifier: 'task-reconcile-review',
+        to: 'review',
+        from: undefined,
+      })
+      expect(hookTasks.get('task-reconcile-review')?.column).toBe('review')
     })
 
     it('rejects invalid output and does not advance', () => {

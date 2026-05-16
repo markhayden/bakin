@@ -41,6 +41,7 @@ import {
   addTaskLog,
   createTask,
   getTask,
+  getTaskWithColumn,
   moveTask,
 } from '../../../src/core/task-store'
 
@@ -57,6 +58,74 @@ async function addTaskLogToStore(identifier: string, author: string, message: st
 
 async function moveTaskInStore(identifier: string, to: string, from?: string): Promise<void> {
   await moveTask(identifier, to, from)
+}
+
+interface WorkflowTaskReviewMoveResult {
+  moved: boolean
+  skipped: boolean
+  reason?: string
+}
+
+async function moveWorkflowTaskToReview(identifier: string): Promise<WorkflowTaskReviewMoveResult> {
+  const taskWithColumn = getTaskWithColumn(identifier)
+  const currentColumn = taskWithColumn?.column
+
+  if (currentColumn === 'review') return { moved: false, skipped: false }
+
+  if (currentColumn === 'todo') {
+    await moveTaskInStore(identifier, 'inProgress')
+    await moveTaskInStore(identifier, 'review')
+    return { moved: true, skipped: false }
+  }
+
+  if (currentColumn === 'inProgress') {
+    await moveTaskInStore(identifier, 'review')
+    return { moved: true, skipped: false }
+  }
+
+  if (!currentColumn) {
+    await moveTaskInStore(identifier, 'review')
+    return { moved: true, skipped: false }
+  }
+
+  log.warn('Workflow reached a review gate but task is in a non-reviewable column', {
+    taskId: identifier,
+    column: currentColumn,
+  })
+  return { moved: false, skipped: true, reason: `non-reviewable column: ${currentColumn}` }
+}
+
+export interface PendingApprovalTaskColumnReconcileResult {
+  checked: number
+  moved: number
+  skipped: number
+  failed: Array<{ taskId: string; error: string }>
+}
+
+export async function reconcilePendingApprovalTaskColumns(contentDir?: string): Promise<PendingApprovalTaskColumnReconcileResult> {
+  const dir = contentDir || getContentDir()
+  const result: PendingApprovalTaskColumnReconcileResult = {
+    checked: 0,
+    moved: 0,
+    skipped: 0,
+    failed: [],
+  }
+
+  for (const instance of listInstances('pending_approval', dir)) {
+    result.checked += 1
+    try {
+      const move = await moveWorkflowTaskToReview(instance.taskId)
+      if (move.moved) result.moved += 1
+      if (move.skipped) result.skipped += 1
+    } catch (err) {
+      result.failed.push({
+        taskId: instance.taskId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  return result
 }
 
 async function completeTaskViaHooks(instance: WorkflowInstance, from: string): Promise<void> {
@@ -491,7 +560,6 @@ export function getCurrentStep(
 
   // Gate pending approval
   if (step.type === 'gate' && instance.stepStates[currentId]?.status === 'pending_approval') {
-    if (agentId) return null
     return {
       status: 'pending_approval',
       stepId: currentId,
@@ -976,7 +1044,7 @@ function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinition, co
     }
 
     // Move the task to the review column while awaiting approval.
-    moveTaskInStore(instance.taskId, 'review').catch((err) => {
+    moveWorkflowTaskToReview(instance.taskId).catch((err) => {
       log.warn('Failed to move workflow task to review', err)
     })
   } else if (isPluginKind(nextStep.type)) {

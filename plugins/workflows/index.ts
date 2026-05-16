@@ -13,6 +13,7 @@ import type { ApprovalActor, BakinPlugin, PluginContext } from '@bakin/core/plug
 import { defineRoute, definePlugin } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
 import { listDefinitions, loadDefinition, validateDefinition } from './lib/parser'
+import { workflowDefinitionNameFromHookInput } from './lib/hook-input'
 import { loadDefaultWorkflows } from './lib/load-defaults'
 import { workflowDefinitionSchema, listNodeTypes } from './lib/node-type-registry'
 import {
@@ -37,6 +38,7 @@ import {
   listInstances,
   getActiveAgents,
   authorizeWorkflowToolUse,
+  reconcilePendingApprovalTaskColumns,
   isGateNotified,
   markGateNotified,
   cancelInstance,
@@ -233,6 +235,26 @@ function formatSchema(schema: Record<string, unknown>, indent = 0): string {
 }
 
 function formatStepContext(step: Record<string, unknown>): string {
+  if (step.status === 'pending_approval') {
+    const sections: string[] = []
+    sections.push(`STEP: ${step.stepId ?? '(gate)'}`)
+    sections.push('STATUS: pending_approval')
+    if (step.label) sections.push(`LABEL: ${step.label}`)
+    sections.push('')
+    sections.push('WAITING FOR HUMAN APPROVAL')
+    sections.push('No agent action is required until this gate is approved or rejected.')
+    sections.push('Use bakin_exec_check_gates for the current approval status.')
+    return sections.join('\n')
+  }
+
+  if (step.status === 'complete') {
+    return [
+      'STATUS: complete',
+      'WORKFLOW COMPLETE',
+      'No further workflow step is active for this task.',
+    ].join('\n')
+  }
+
   const sections: string[] = []
   sections.push(`STEP: ${step.stepId}`)
   sections.push(`STATUS: ${step.status}`)
@@ -1474,7 +1496,10 @@ const workflowsPlugin: BakinPlugin = definePlugin({
     ctx.hooks.register('workflows.completeStep', (d: Record<string, unknown>) => completeStep(d.taskId as string, d.stepId as string, d.output as Record<string, unknown>, d.callerAgentId as string | undefined, d.contentDir as string | undefined), { label: 'Complete workflow step.', summary: 'Submits output for a workflow step and advances the instance when validation passes. Use it from agents or tools that finish a workflow action.', hookKind: 'rpc' })
     ctx.hooks.register('workflows.matchWorkflow', (d: Record<string, unknown>) => matchWorkflow(d.title as string, d.description as string | undefined), { label: 'Match workflow.', summary: 'Suggests a workflow based on a task title and description. Use it when creating tasks that should automatically pick the most relevant workflow template.', hookKind: 'rpc' })
     ctx.hooks.register('workflows.definitions.list', (d: Record<string, unknown>) => listDefinitions(d.contentDir as string | undefined), { label: 'List workflow definitions.', summary: 'Returns available workflow definitions from the configured content directory. Use it to populate workflow selectors or validate workflow ids before creating instances.', hookKind: 'rpc' })
-    ctx.hooks.register('workflows.loadDefinition', (d: Record<string, unknown>) => loadDefinition(d.name as string, d.contentDir as string | undefined), { label: 'Load workflow definition.', summary: 'Loads one workflow definition by name. Use it when a plugin needs the template shape, steps, or metadata behind a workflow id.', hookKind: 'rpc' })
+    ctx.hooks.register('workflows.loadDefinition', (d: Record<string, unknown>) => {
+      const name = workflowDefinitionNameFromHookInput(d)
+      return name ? loadDefinition(name, d.contentDir as string | undefined) : null
+    }, { label: 'Load workflow definition.', summary: 'Loads one workflow definition by name. Use it when a plugin needs the template shape, steps, or metadata behind a workflow id.', hookKind: 'rpc' })
     ctx.hooks.register('workflows.getActiveAgents', (d: Record<string, unknown>) => getActiveAgents(d.taskId as string, d.contentDir as string | undefined), { label: 'List active workflow agents.', summary: 'Returns agents currently active in a workflow task. Use it for coordination, notification, or assignment views that need live workflow participants.', hookKind: 'rpc' })
     ctx.hooks.register('workflows.authorizeToolUse', (d: Record<string, unknown>) => authorizeWorkflowToolUse(d.taskId as string, d.agent as string, d.action as WorkflowToolUseAction, d.contentDir as string | undefined), { label: 'Authorize workflow tool use.', summary: 'Checks whether an agent may perform a workflow-scoped tool action for a task. Use it before executing workflow-sensitive automation.', hookKind: 'rpc' })
     ctx.hooks.register('workflows.isGateNotified', (d: Record<string, unknown>) => isGateNotified(d.taskId as string, d.stepId as string, d.contentDir as string | undefined), { label: 'Check gate notification.', summary: 'Checks whether a workflow gate notification has already been sent. Use it to avoid duplicate alerts for the same task and gate step.', hookKind: 'rpc' })
@@ -1655,7 +1680,7 @@ const workflowsPlugin: BakinPlugin = definePlugin({
           triggerDispatch()
         }
 
-        return { ok: true, workflowComplete: result.workflowComplete }
+        return { ok: true, workflowComplete: result.workflowComplete, nextStep: result.nextStep }
       },
     })
 
@@ -1726,7 +1751,7 @@ const workflowsPlugin: BakinPlugin = definePlugin({
             triggerDispatch()
           }
 
-          return { ok: true, workflowComplete: result.workflowComplete }
+          return { ok: true, workflowComplete: result.workflowComplete, nextStep: result.nextStep }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           if (msg.includes('near-duplicate') || msg.includes('rejection')) {
@@ -1797,6 +1822,23 @@ const workflowsPlugin: BakinPlugin = definePlugin({
     if (active.length > 0) {
       log.info(`Ready — ${active.length} active workflow instance(s)`)
     }
+    reconcilePendingApprovalTaskColumns()
+      .then((result) => {
+        if (result.moved > 0) {
+          log.info(`Reconciled ${result.moved} pending approval workflow task card(s)`, {
+            checked: result.checked,
+            skipped: result.skipped,
+          })
+        }
+        if (result.failed.length > 0) {
+          log.warn('Pending approval workflow task reconciliation had failures', {
+            failed: result.failed,
+          })
+        }
+      })
+      .catch((err) => {
+        log.warn('Pending approval workflow task reconciliation failed', err)
+      })
     const defs = listDefinitions()
     log.info(`Ready — ${defs.length} workflow definition(s) loaded`)
   },

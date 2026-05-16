@@ -27,6 +27,7 @@
     "events.emit",
     "runtime.agents",
     "runtime.read",
+    "runtime.agents",
     "runtime.cron",
     "search.read",
     "search.write"

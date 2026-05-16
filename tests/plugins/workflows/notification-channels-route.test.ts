@@ -56,6 +56,7 @@ mock.module('@/core/task-store', () => ({
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,
+  getTaskWithColumn: () => null,
   createTask: mock(),
   moveTask: mock(),
   addTaskLog: mock(),
