@@ -54,6 +54,8 @@ describe('OpenClaw runtime Gateway chat', () => {
     const connectRequest = ws.sentFrames.find(frame => frame.method === 'connect')
     const agentRequest = ws.sentFrames.find(frame => frame.method === 'agent')
     expect(connectRequest?.params).toMatchObject({
+      minProtocol: 1,
+      maxProtocol: 10,
       client: {
         id: 'gateway-client',
         displayName: 'Bakin',
@@ -110,6 +112,32 @@ describe('OpenClaw runtime Gateway chat', () => {
       content: 'hello',
       threadId: 'messaging:a50b420e:pixel',
     })).rejects.toThrow('OpenClaw chat failed: Invalid session ID: messaging:a50b420e:pixel; code=invalid_session')
+  })
+
+  it('includes safe Gateway error details in chat failures', async () => {
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method === 'agent') {
+        ws.emitMessage({
+          type: 'res',
+          id: frame.id,
+          ok: false,
+          error: {
+            message: 'protocol mismatch',
+            code: 'INVALID_REQUEST',
+            details: { expectedProtocol: 4, token: 'secret' },
+          },
+        })
+      }
+    }
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    await expect(runtime.messaging.send({
+      agentId: 'pixel',
+      content: 'hello',
+      threadId: 'messaging:a50b420e:pixel',
+    })).rejects.toThrow('OpenClaw chat failed: protocol mismatch; code=INVALID_REQUEST; details={"expectedProtocol":4}')
   })
 
   it('emits OpenClaw transcript tool activity while the Gateway agent request is pending', async () => {

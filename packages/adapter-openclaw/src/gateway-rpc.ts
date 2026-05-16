@@ -1,7 +1,8 @@
 import { randomUUID } from 'crypto'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 
-const GATEWAY_PROTOCOL_VERSION = 3
+const GATEWAY_MIN_PROTOCOL_VERSION = 1
+const GATEWAY_MAX_PROTOCOL_VERSION = 10
 const DEFAULT_REQUEST_TIMEOUT_MS = 10000
 const CONNECT_TIMEOUT_MS = 5000
 const RECONNECT_DELAY_MS = 1000
@@ -150,8 +151,8 @@ export class OpenClawGatewayRpcClient {
     this.connectSent = true
     const token = this.opts.token()
     this.sendRequest('connect', {
-      minProtocol: GATEWAY_PROTOCOL_VERSION,
-      maxProtocol: GATEWAY_PROTOCOL_VERSION,
+      minProtocol: GATEWAY_MIN_PROTOCOL_VERSION,
+      maxProtocol: GATEWAY_MAX_PROTOCOL_VERSION,
       client: {
         id: this.opts.clientId,
         displayName: this.opts.displayName,
@@ -247,7 +248,12 @@ export class OpenClawGatewayRpcClient {
       return
     }
     const message = frame.error?.message ?? `${this.label()} request failed`
-    pending.reject(new Error(frame.error?.code ? `${message}; code=${frame.error.code}` : message))
+    const details = formatGatewayErrorDetails(frame.error?.details)
+    pending.reject(new Error([
+      message,
+      ...(frame.error?.code ? [`code=${frame.error.code}`] : []),
+      ...(details ? [`details=${details}`] : []),
+    ].join('; ')))
   }
 
   private handleClose(): void {
@@ -300,4 +306,18 @@ function messageDataToString(data: unknown): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function formatGatewayErrorDetails(details: unknown): string | null {
+  if (!isRecord(details)) return null
+  const safeDetails: Record<string, unknown> = {}
+  for (const key of ['expectedProtocol', 'minProtocol', 'maxProtocol', 'reason', 'requestId']) {
+    if (key in details) safeDetails[key] = details[key]
+  }
+  if (Object.keys(safeDetails).length === 0) return null
+  try {
+    return JSON.stringify(safeDetails)
+  } catch {
+    return null
+  }
 }
