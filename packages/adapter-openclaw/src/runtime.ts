@@ -1,7 +1,7 @@
 import { accessSync, closeSync, constants, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { execFile } from 'child_process'
-import { createHash } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import { promisify } from 'util'
 import type {
   AgentRuntimeAdapter,
@@ -1024,12 +1024,15 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       agentId: opts.agentId,
       message: messagesToOpenClawPrompt(opts.messages),
       deliver: false,
-      expectFinal: true,
-      timeoutMs: OPENCLAW_AGENT_TIMEOUT_MS,
+      timeout: OPENCLAW_AGENT_TIMEOUT_MS,
+      idempotencyKey: `bakin-${randomUUID()}`,
     }
     if (opts.sessionKey) params.sessionId = openClawCliSessionId(opts.agentId, opts.sessionKey)
     try {
-      const payload = await this.openClawChatGateway().request('agent', params, OPENCLAW_AGENT_TIMEOUT_MS)
+      const payload = await this.openClawChatGateway().request('agent', params, {
+        expectFinal: true,
+        timeoutMs: OPENCLAW_AGENT_TIMEOUT_MS,
+      })
       const content = extractOpenClawAgentText(payload)
       if (content) return content
       throw new Error('OpenClaw agent response did not include assistant text')

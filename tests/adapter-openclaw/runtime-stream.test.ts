@@ -1,7 +1,36 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { appendFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { randomUUID } from 'crypto'
+
+const mockBakinHome = join(tmpdir(), `bakin-openclaw-stream-home-${Date.now()}-${randomUUID()}`)
+process.env.BAKIN_HOME = mockBakinHome
+
+const mockedContentDir = {
+  getContentDir: () => mockBakinHome,
+  getBakinPaths: () => ({
+    root: mockBakinHome,
+    settings: join(mockBakinHome, 'settings.json'),
+    pluginSettings: join(mockBakinHome, 'plugin-settings'),
+    plugins: join(mockBakinHome, 'plugins'),
+    pluginData: join(mockBakinHome, 'plugin-data'),
+    agents: join(mockBakinHome, 'agents'),
+    packages: join(mockBakinHome, 'packages'),
+    assets: join(mockBakinHome, 'assets'),
+    heartbeats: join(mockBakinHome, 'heartbeats'),
+    tasks: join(mockBakinHome, 'tasks'),
+    schedule: join(mockBakinHome, 'schedule'),
+    workflows: join(mockBakinHome, 'workflows'),
+    team: join(mockBakinHome, 'team'),
+    memoryLog: join(mockBakinHome, 'MEMORY-LOG.md'),
+    audit: join(mockBakinHome, 'audit.jsonl'),
+    logs: join(mockBakinHome, 'logs'),
+  }),
+}
+
+mock.module('../../src/core/content-dir', () => mockedContentDir)
+mock.module('../../packages/core/src/content-dir', () => mockedContentDir)
 
 async function collect<T>(iterable: AsyncIterable<T>): Promise<T[]> {
   const out: T[] = []
@@ -71,9 +100,36 @@ describe('OpenClaw runtime Gateway chat', () => {
       agentId: 'pixel',
       message: 'Say ok.',
       deliver: false,
-      expectFinal: true,
+      timeout: 600000,
     })
+    expect(agentRequest?.params.idempotencyKey).toMatch(/^bakin-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    expect(agentRequest?.params).not.toHaveProperty('expectFinal')
+    expect(agentRequest?.params).not.toHaveProperty('timeoutMs')
     expect(agentRequest?.params.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+  })
+
+  it('waits for the Gateway final response after the accepted ack', async () => {
+    let finalEmitted = false
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method !== 'agent') return
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentAcceptedAck() })
+      setTimeout(() => {
+        finalEmitted = true
+        ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentPayload('final reply') })
+      }, 50)
+    }
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const result = await runtime.messaging.send({
+      agentId: 'pixel',
+      content: 'are you there?',
+      threadId: 'messaging:a50b420e:pixel',
+    })
+
+    expect(finalEmitted).toBe(true)
+    expect(result.content).toBe('final reply')
   })
 
   it('streams Gateway agent responses as chat chunks', async () => {
@@ -354,6 +410,10 @@ describe('OpenClaw runtime Gateway chat', () => {
   })
 })
 
+function gatewayAgentAcceptedAck(): Record<string, unknown> {
+  return { runId: 'run-1', status: 'accepted', acceptedAt: Date.now() }
+}
+
 function gatewayAgentPayload(text: string): Record<string, unknown> {
   return {
     runId: 'run-1',
@@ -418,7 +478,10 @@ class FakeWebSocket {
       return
     }
     if (frame.method === 'agent') {
-      this.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentPayload('ok from gateway') })
+      this.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentAcceptedAck() })
+      queueMicrotask(() => {
+        this.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentPayload('ok from gateway') })
+      })
     }
   }
 

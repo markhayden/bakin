@@ -39,6 +39,12 @@ interface PendingRequest {
   resolve: (value: unknown) => void
   reject: (error: Error) => void
   timeout: ReturnType<typeof setTimeout>
+  expectFinal: boolean
+}
+
+export interface OpenClawGatewayRequestOptions {
+  expectFinal?: boolean
+  timeoutMs?: number
 }
 
 interface ConnectState {
@@ -60,9 +66,13 @@ export class OpenClawGatewayRpcClient {
 
   constructor(private readonly opts: OpenClawGatewayRpcClientOptions) {}
 
-  async request(method: string, params: Record<string, unknown>, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS): Promise<unknown> {
+  async request(method: string, params: Record<string, unknown>, opts: OpenClawGatewayRequestOptions | number = {}): Promise<unknown> {
     await this.ensureConnected()
-    return this.sendRequest(method, params, timeoutMs)
+    const normalized = typeof opts === 'number' ? { timeoutMs: opts } : opts
+    return this.sendRequest(method, params, {
+      timeoutMs: normalized.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+      expectFinal: normalized.expectFinal === true,
+    })
   }
 
   subscribe(event: string, handler: (payload: unknown, frame: OpenClawGatewayEventFrame) => void): () => void {
@@ -163,7 +173,7 @@ export class OpenClawGatewayRpcClient {
       role: this.opts.role ?? 'operator',
       scopes: this.opts.scopes,
       ...(token ? { auth: { token } } : {}),
-    }, CONNECT_TIMEOUT_MS)
+    }, { timeoutMs: CONNECT_TIMEOUT_MS, expectFinal: false })
       .then(() => {
         const state = this.connectState
         if (!state) return
@@ -178,7 +188,7 @@ export class OpenClawGatewayRpcClient {
       })
   }
 
-  private sendRequest(method: string, params: Record<string, unknown>, timeoutMs: number): Promise<unknown> {
+  private sendRequest(method: string, params: Record<string, unknown>, opts: { timeoutMs: number; expectFinal: boolean }): Promise<unknown> {
     const ws = this.ws
     if (!ws || ws.readyState !== WS_OPEN) {
       return Promise.reject(new Error(`${this.label()} is not connected`))
@@ -190,8 +200,8 @@ export class OpenClawGatewayRpcClient {
       const timeout = setTimeout(() => {
         this.pending.delete(id)
         reject(new Error(`${this.label()} request timed out: ${method}`))
-      }, timeoutMs)
-      this.pending.set(id, { resolve, reject, timeout })
+      }, opts.timeoutMs)
+      this.pending.set(id, { resolve, reject, timeout, expectFinal: opts.expectFinal })
     })
     ws.send(JSON.stringify(frame))
     return promise
@@ -241,6 +251,7 @@ export class OpenClawGatewayRpcClient {
   private handleResponse(frame: GatewayResponseFrame): void {
     const pending = this.pending.get(frame.id)
     if (!pending) return
+    if (pending.expectFinal && frame.ok && isAcceptedAckPayload(frame.payload)) return
     this.pending.delete(frame.id)
     clearTimeout(pending.timeout)
     if (frame.ok) {
@@ -306,6 +317,10 @@ function messageDataToString(data: unknown): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isAcceptedAckPayload(value: unknown): boolean {
+  return isRecord(value) && value.status === 'accepted'
 }
 
 function formatGatewayErrorDetails(details: unknown): string | null {
