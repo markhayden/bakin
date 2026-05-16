@@ -353,6 +353,85 @@ describe('OpenClaw runtime Gateway chat', () => {
     expect(remaining).toContainEqual({ type: 'done' })
   })
 
+  it('finds transcript activity stored under OpenClaw explicit session keys', async () => {
+    const sessionKey = 'messaging:session-explicit:main'
+    const sessionsDir = join(testDir, 'agents', 'main', 'sessions')
+    mkdirSync(sessionsDir, { recursive: true })
+    let sessionFile = ''
+
+    let gatewayResolved = false
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method !== 'agent') return
+      const openClawSessionId = String(frame.params.sessionId)
+      sessionFile = join(sessionsDir, `${openClawSessionId}.jsonl`)
+      writeFileSync(sessionFile, [
+        JSON.stringify({ type: 'session', id: openClawSessionId }),
+        '',
+      ].join('\n'), 'utf-8')
+      writeFileSync(join(sessionsDir, 'sessions.json'), JSON.stringify({
+        [`agent:main:explicit:${openClawSessionId}`]: {
+          sessionId: openClawSessionId,
+          sessionFile,
+        },
+      }), 'utf-8')
+      setTimeout(() => {
+        appendFileSync(sessionFile, `${JSON.stringify({
+          type: 'message',
+          message: {
+            role: 'assistant',
+            content: [{
+              type: 'toolCall',
+              id: 'call-explicit',
+              name: 'exec',
+              arguments: { command: 'mcporter call bakin-main.bakin_exec_messaging_session_get --args {"sessionId":"session-explicit"}' },
+            }],
+          },
+        })}\n`)
+      }, 20)
+      setTimeout(() => {
+        gatewayResolved = true
+        ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: gatewayAgentPayload('Final reply.') })
+      }, 800)
+    }
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+    const iterator = runtime.messaging.stream({
+      agentId: 'main',
+      content: 'hello',
+      threadId: sessionKey,
+    })[Symbol.asyncIterator]()
+
+    const first = await Promise.race([
+      iterator.next(),
+      wait(500).then(() => 'timeout' as const),
+    ])
+
+    expect(first).not.toBe('timeout')
+    expect(gatewayResolved).toBe(false)
+    if (first !== 'timeout') {
+      expect(first.value).toEqual({
+        type: 'tool',
+        content: 'exec: mcporter call bakin-main.bakin_exec_messaging_session_get --args {"sessionId":"session-explicit"}',
+        data: {
+          phase: 'call',
+          callId: 'call-explicit',
+          toolName: 'exec',
+          status: 'running',
+          summary: 'Updating messaging content',
+          inputPreview: '{"command":"mcporter call bakin-main.bakin_exec_messaging_session_get --args {\\"sessionId\\":\\"session-explicit\\"}"}',
+        },
+      })
+    }
+
+    const remaining: unknown[] = []
+    for await (const chunk of { [Symbol.asyncIterator]: () => iterator }) {
+      remaining.push(chunk)
+    }
+    expect(remaining).toContainEqual({ type: 'text', content: 'Final reply.' })
+    expect(remaining).toContainEqual({ type: 'done' })
+  })
+
   it('summarizes transcript web fetch tools without leaking query secrets', async () => {
     const sessionsDir = join(testDir, 'agents', 'main', 'sessions')
     mkdirSync(sessionsDir, { recursive: true })

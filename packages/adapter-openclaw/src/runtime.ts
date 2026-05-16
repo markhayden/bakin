@@ -1756,6 +1756,7 @@ function findOpenClawSessionStoreEntry(
   const cliSessionId = openClawCliSessionId(agentId, sessionKey)
   return store[sessionKey]
     ?? store[cliSessionId]
+    ?? store[`agent:${agentId}:explicit:${cliSessionId}`]
     ?? store[`agent:${agentId}:${cliSessionId}`]
 }
 

@@ -23,7 +23,7 @@ export function ThinkingIndicator({ agentId, verb }: ThinkingIndicatorProps) {
   return (
     <div
       data-testid="thinking-indicator"
-      className="flex items-center gap-2.5 text-muted-foreground"
+      className="mt-[5px] flex items-center gap-2.5 text-muted-foreground"
       aria-live="polite"
     >
       <AgentAvatar agentId={agentId} size="sm" className="shrink-0" />

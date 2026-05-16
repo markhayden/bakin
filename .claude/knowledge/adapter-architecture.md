@@ -119,6 +119,18 @@ into runtime provider metadata. The runtime may expose execution status through
 `runtime.tasks.*`, but task title, column, priority, blockers, workflow state,
 and logs belong to the Bakin task store.
 
+## Runtime Messaging Streams
+
+Messaging callers pass stable Bakin `threadId` values such as
+`messaging:<sessionId>:<agentId>` through `runtime.messaging.stream()`. The
+OpenClaw adapter maps those to provider session ids and tails the provider
+transcript while the Gateway request is pending so tool calls/results become
+`ChatChunk { type: 'tool' }` events before final assistant text. OpenClaw may
+store the live transcript entry under `agent:<agentId>:explicit:<uuid>` in
+`sessions.json`; the adapter owns that provider-specific lookup. Plugins and UI
+code must continue to consume normalized runtime chunks instead of reading
+OpenClaw session files directly.
+
 ## Approvals And Channels
 
 Workflow approvals persist as Bakin-owned durable records. Runtime channel
