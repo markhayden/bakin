@@ -59,6 +59,7 @@ import chokidar from 'chokidar'
 
 import { broadcastDev, type DevEvent, type DevScope } from '../packages/host/src/api/dev/events'
 import { buildOnePlugin } from './dev-build-one-plugin'
+import { isBenignTailwindLine } from './dev-log-classifier'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
 const PLUGINS_DIR = join(REPO_ROOT, 'plugins')
@@ -214,13 +215,6 @@ async function buildDevClient(): Promise<void> {
 // ---------- Tailwind child process --------------------------------------
 
 let tailwindChild: ChildProcess | null = null
-
-function isBenignTailwindLine(line: string): boolean {
-  return !line
-    || line.startsWith('≈ tailwindcss')
-    || line.startsWith('Done in ')
-    || line === 'Saved lockfile'
-}
 
 function startTailwindWatch(): void {
   devLog('build', 'tailwind', 'starting --watch=always...')

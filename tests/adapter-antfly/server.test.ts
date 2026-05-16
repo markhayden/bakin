@@ -65,4 +65,21 @@ describe('Antfly server log parsing', () => {
       'Failed to add index (indexName=embeddings, shardID=b009cb75eee1aa90, error=invalid vector dimension)',
     )
   })
+
+  it('demotes optional Termite model registry directory warnings', () => {
+    const parsed = parseAntflyLogLine(
+      'ts=19:54:17 lvl=warn caller=termite/chunker_registry.go:178 msg="Chunker models directory does not exist" dir=/Users/roscoe/.termite/models/chunkers',
+      'warn',
+    )
+
+    expect(parsed.level).toBe('debug')
+    expect(parsed.message).toBe(
+      'Antfly skipped optional Termite chunker registry with no local models (dir=/Users/roscoe/.termite/models/chunkers)',
+    )
+    expect(parsed.data).toMatchObject({
+      source: 'antfly',
+      caller: 'termite/chunker_registry.go:178',
+      dir: '/Users/roscoe/.termite/models/chunkers',
+    })
+  })
 })

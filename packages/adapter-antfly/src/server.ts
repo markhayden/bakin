@@ -50,6 +50,15 @@ const TRANSIENT_RECONCILER_MESSAGES = new Set([
   'Failed to add index',
   'Failed to update schema',
 ])
+const OPTIONAL_TERMITE_MODEL_DIRECTORY_MESSAGES = new Set([
+  'Chunker models directory does not exist',
+  'Generator models directory does not exist',
+  'NER models directory does not exist',
+  'Seq2Seq models directory does not exist',
+  'Classifier models directory does not exist',
+  'Reader models directory does not exist',
+  'Transcriber models directory does not exist',
+])
 const ANTFLY_WARNING_DETAIL_KEYS = [
   'tableName',
   'table',
@@ -77,6 +86,17 @@ function isTransientReconcilerWarning(message: string, fields: Record<string, st
   return TRANSIENT_RECONCILER_MESSAGES.has(message) && fields.error === SHARD_INITIALIZING_ERROR
 }
 
+function isOptionalTermiteModelDirectoryWarning(message: string, fields: Record<string, string>): boolean {
+  return OPTIONAL_TERMITE_MODEL_DIRECTORY_MESSAGES.has(message)
+    && fields.caller?.startsWith('termite/') === true
+    && typeof fields.dir === 'string'
+}
+
+function isExpectedStartupDebug(message: string, fields: Record<string, string>): boolean {
+  return isTransientReconcilerWarning(message, fields)
+    || isOptionalTermiteModelDirectoryWarning(message, fields)
+}
+
 function transientReconcilerMessage(message: string, fields: Record<string, string>): string {
   if (message === 'Failed to add index') {
     return `Antfly reconciler deferred index update until shard initialization completes${
@@ -88,6 +108,13 @@ function transientReconcilerMessage(message: string, fields: Record<string, stri
   }`
 }
 
+function optionalTermiteModelDirectoryMessage(message: string, fields: Record<string, string>): string {
+  const registry = message.replace(' models directory does not exist', '').toLowerCase()
+  return `Antfly skipped optional Termite ${registry} registry with no local models${
+    summarizeAntflyFields(fields, ['dir'])
+  }`
+}
+
 function formatAntflyLogMessage(
   message: string,
   level: AntflyLogLevel,
@@ -95,6 +122,9 @@ function formatAntflyLogMessage(
 ): string {
   if (isTransientReconcilerWarning(message, fields)) {
     return transientReconcilerMessage(message, fields)
+  }
+  if (isOptionalTermiteModelDirectoryWarning(message, fields)) {
+    return optionalTermiteModelDirectoryMessage(message, fields)
   }
   if (level !== 'warn' && level !== 'error') return message
   return `${message}${summarizeAntflyFields(fields, ANTFLY_WARNING_DETAIL_KEYS)}`
@@ -110,7 +140,7 @@ export function parseAntflyLogLine(line: string, streamLevel: AntflyLogLevel): P
     ? parsedLevel
     : streamLevel
   const rawMessage = fields.msg || line
-  const level = isTransientReconcilerWarning(rawMessage, fields) ? 'debug' : rawLevel
+  const level = isExpectedStartupDebug(rawMessage, fields) ? 'debug' : rawLevel
 
   const data: Record<string, unknown> = { source: 'antfly', raw: line }
   for (const [key, value] of Object.entries(fields)) {
