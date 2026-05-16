@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from '@tanstack/react-router'
 import { FolderOpen, Image, Video, Music, FileText, Plus, X } from 'lucide-react'
 import { AssetDetailModal } from './asset-detail'
-import type { AssetMeta } from "@bakin/sdk/types"
+import type { AssetMeta } from "@makinbakin/sdk/types"
 
 const TYPE_ICONS: Record<string, typeof FileText> = {
   text: FileText,

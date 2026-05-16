@@ -1,20 +1,20 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { useRouter } from '@bakin/sdk/hooks'
+import { useRouter } from '@makinbakin/sdk/hooks'
 import { ArrowLeft, Loader2, Camera, Trash2, BookOpen, Sparkles, Calendar } from 'lucide-react'
-import { Button } from "@bakin/sdk/ui"
+import { Button } from "@makinbakin/sdk/ui"
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@bakin/sdk/ui"
-import { Skeleton } from "@bakin/sdk/ui"
-import { useRuntimeStatus } from "@bakin/sdk/hooks"
-import type { AvailableModel } from "@bakin/sdk/types"
-import { useAgentStore, useAgentColor, useMainAgentId, usePackageState } from '@bakin/sdk/hooks'
-import { useQueryState } from "@bakin/sdk/hooks"
+} from "@makinbakin/sdk/ui"
+import { Skeleton } from "@makinbakin/sdk/ui"
+import { useRuntimeStatus } from "@makinbakin/sdk/hooks"
+import type { AvailableModel } from "@makinbakin/sdk/types"
+import { useAgentStore, useAgentColor, useMainAgentId, usePackageState } from '@makinbakin/sdk/hooks'
+import { useQueryState } from "@makinbakin/sdk/hooks"
 import { LessonToggleList } from './lesson-toggle-list'
 import { MarkdownEditTab } from './markdown-edit-tab'
 import { HeartbeatTab } from './heartbeat-tab'
@@ -159,12 +159,18 @@ export function AgentDetail({ agentId }: { agentId: string }) {
           onClick={() => avatarInputRef.current?.click()}
         >
           <div className="size-16 rounded-full overflow-hidden bg-muted">
-            <img
-              src={`/api/plugins/team/${agentId}/avatar${avatarKey ? `?t=${avatarKey}` : ''}`}
-              alt={profile?.name ?? agentId}
-              className="w-full h-full object-cover object-top"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-            />
+            {profile?.headshot || avatarKey ? (
+              <img
+                src={`/api/plugins/team/${agentId}/avatar${avatarKey ? `?t=${avatarKey}` : ''}`}
+                alt={profile?.name ?? agentId}
+                className="w-full h-full object-cover object-top"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+              />
+            ) : (
+              <div className="flex size-full items-center justify-center bg-muted text-lg font-semibold text-muted-foreground">
+                {(profile?.emoji || profile?.name?.charAt(0) || agentId.charAt(0)).toUpperCase()}
+              </div>
+            )}
           </div>
           <div className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
             <Camera className="size-5 text-white" />

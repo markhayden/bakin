@@ -218,10 +218,18 @@ bakin trash [list|restore|empty] ...
 <p class="cli-section-description">Diagnostics commands expose the information needed when something is not behaving as expected: logs, resolved paths, health checks, API docs, and generated agent rules.</p>
 
 <div class="cli-command-list">
-<CliCommandCard id="doctor" name="doctor" summary="Run health checks." description="Runs Bakin diagnostics for local dependencies, server state, agents, plugin assets, runtime behavior, and recoverable issues.">
+<CliCommandCard id="doctor" name="doctor" summary="Run health checks." description="Runs local offline diagnostics by default. Pass --full to include server-backed plugin, task, workflow, search, and runtime checks. Pass --notify-agent with --full to send unfixable issues to the runtime main agent.">
 ```sh frame="terminal"
-bakin doctor
+bakin doctor [--json] [--full] [--notify-agent]
 ```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+      <tr><td><code>[--full]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[--notify-agent]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+    </tbody>
+  </table>
 </CliCommandCard>
 <CliCommandCard id="paths" name="paths" summary="Show content directory paths." description="Prints Bakin runtime paths, optionally for one key.">
 ```sh frame="terminal"
@@ -278,29 +286,29 @@ bakin mkdir
 </CliCommandCard>
 <CliCommandCard id="check" name="check" summary="Run onboarding checks." description="Runs one or all first-run readiness checks.">
 ```sh frame="terminal"
-bakin check <runtime|search|search-models|llm|channels|plugin-assets|agent-assets|recommended-plugins|all>
+bakin check <runtime|search|search-models|llm|channels|plugin-assets|agent-assets|recommended-plugins|recommended-agents|all>
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
-      <tr><td><code>&lt;target&gt;</code><span class="cli-command__choices"><span>runtime</span><span>search</span><span>search-models</span><span>llm</span><span>channels</span><span>plugin-assets</span><span>agent-assets</span><span>recommended-plugins</span><span>all</span></span></td><td>choice</td><td>yes</td><td>Check target.</td></tr>
+      <tr><td><code>&lt;value&gt;</code><span class="cli-command__choices"><span>runtime</span><span>search</span><span>search-models</span><span>llm</span><span>channels</span><span>plugin-assets</span><span>agent-assets</span><span>recommended-plugins</span><span>recommended-agents</span><span>all</span></span></td><td>choice</td><td>yes</td><td>Choose one of these values.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="install" name="install" summary="Install onboarding components." description="Installs Bakin dependencies, plugin/agent assets, or official recommended plugins.">
+<CliCommandCard id="install" name="install" summary="Install onboarding components." description="Installs Bakin dependencies, plugin/agent assets, or official recommended plugins and agents.">
 ```sh frame="terminal"
-bakin install <search|search-models|mcporter|plugin-assets|agent-assets|recommended-plugins>
+bakin install <search|search-models|mcporter|plugin-assets|agent-assets|recommended-plugins|recommended-agents>
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
-      <tr><td><code>&lt;component&gt;</code><span class="cli-command__choices"><span>search</span><span>search-models</span><span>mcporter</span><span>plugin-assets</span><span>agent-assets</span><span>recommended-plugins</span></span></td><td>choice</td><td>yes</td><td>Install target.</td></tr>
+      <tr><td><code>&lt;value&gt;</code><span class="cli-command__choices"><span>search</span><span>search-models</span><span>mcporter</span><span>plugin-assets</span><span>agent-assets</span><span>recommended-plugins</span><span>recommended-agents</span></span></td><td>choice</td><td>yes</td><td>Choose one of these values.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="onboard" name="onboard" summary="Run first-time onboarding." description="Runs the full first-run setup flow.">
+<CliCommandCard id="onboard" name="onboard" summary="Run first-time onboarding." description="Runs the full first-run setup flow. By default it hides raw service logs and shows a structured setup report; use --verbose for underlying logs.">
 ```sh frame="terminal"
-bakin onboard [--check] [--yes] [--json] [--force]
+bakin onboard [--check] [--yes] [--json] [--force] [--verbose]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
@@ -309,6 +317,7 @@ bakin onboard [--check] [--yes] [--json] [--force]
       <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
       <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
       <tr><td><code>[--force]</code></td><td>option</td><td>no</td><td>Bypass the normal safety guard.</td></tr>
+      <tr><td><code>[--verbose]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
@@ -363,7 +372,7 @@ bakin version
 bakin update
 ```
 </CliCommandCard>
-<CliCommandCard id="setup-service" name="setup service" summary="Install or remove macOS service integration." description="Installs or removes the LaunchAgent used for auto-start behavior on macOS.">
+<CliCommandCard id="setup-service" name="setup service" summary="Install or remove autostart service integration." description="Installs or removes a macOS LaunchAgent or Linux user systemd service that runs `bakin serve` on login. Manual startup remains the default until this command is run.">
 ```sh frame="terminal"
 bakin setup service [--uninstall]
 ```
@@ -752,6 +761,18 @@ bakin workflows submit <taskId> <stepId> <json>
 </CliCommandCard>
 </div>
 
+## Other
+
+<p class="cli-section-description">Commands without a dedicated reference family.</p>
+
+<div class="cli-command-list">
+<CliCommandCard id="serve" name="serve" summary="Run the Bakin server in the foreground." description="Foreground server entrypoint for service managers and process supervisors. Humans should use `bakin start`.">
+```sh frame="terminal"
+bakin serve
+```
+</CliCommandCard>
+</div>
+
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 14, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 15, 2026 · Bakin 0.0.0-dev</span>
 </aside>

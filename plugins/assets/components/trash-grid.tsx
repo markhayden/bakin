@@ -2,10 +2,10 @@
 
 import { useState } from 'react'
 import { FileText, Image, Video, Music, Map, Database, Package, RotateCcw, Trash2 } from 'lucide-react'
-import { formatAge, formatSize } from "@bakin/sdk/utils"
-import { EmptyState } from "@bakin/sdk/components"
+import { formatAge, formatSize } from "@makinbakin/sdk/utils"
+import { EmptyState } from "@makinbakin/sdk/components"
 import { DeleteAssetDialog } from './delete-asset-dialog'
-import type { TrashedAssetMeta } from "@bakin/sdk/types"
+import type { TrashedAssetMeta } from "@makinbakin/sdk/types"
 
 function daysUntil(dateStr: string): string {
   const diff = new Date(dateStr).getTime() - Date.now()

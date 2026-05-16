@@ -5,7 +5,7 @@ import { DispatchTimer } from './dispatch-timer'
 import { NotificationToggle } from './notification-toggle'
 import { AppSidebar } from './app-sidebar'
 import { useSidebarContext } from '@/context/sidebar-context'
-import { useDebug } from '@bakin/sdk/hooks'
+import { useDebug } from '@makinbakin/sdk/hooks'
 
 function DebugToggle() {
   const [debug, toggleDebug] = useDebug()

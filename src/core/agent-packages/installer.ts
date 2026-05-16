@@ -48,10 +48,10 @@ import {
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
 import {
   type FetchedSource,
-  fetchSource,
+  fetchSourceAsync,
 } from './source-fetcher'
 import {
-  resolveDependencies,
+  resolveDependenciesAsync,
   type ResolvedDep,
 } from './dependency-resolver'
 import {
@@ -194,6 +194,20 @@ async function createRuntimeAgent(input: AdapterCreateAgentInput): Promise<void>
   })
 }
 
+async function removeRuntimeAgent(agentId: string): Promise<void> {
+  await getAppServices().runtime.agents.remove(agentId)
+}
+
+async function removeRuntimeAllowListReferences(agentId: string): Promise<void> {
+  const runtime = getAppServices().runtime
+  const agents = await runtime.agents.list()
+  await Promise.all(
+    agents
+      .filter((agent) => agent.id !== agentId)
+      .map((agent) => runtime.agents.updateAllowlist(agent.id, { remove: [agentId] })),
+  )
+}
+
 async function addRuntimeAllowLists(newAgentId: string, dispatchable: 'all' | 'main' | string[]): Promise<void> {
   const runtime = getAppServices().runtime
   if (dispatchable === 'main') {
@@ -269,12 +283,14 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
   const projected: { resolvedId: string; result: ProjectorResult }[] = []
   let createdAgent = false
   let adopted = false
+  let agentId: string | undefined
   const finalInstallDirs: string[] = [] // for cleanup-on-failure
+  let originalLock: Lockfile | null = null
 
   try {
     // ─── 1. Fetch top-level source ─────────────────────────────────────────
     log.info('Fetching package source', { source: options.source })
-    topFetched = fetchSource(options.source)
+    topFetched = await fetchSourceAsync(options.source)
 
     // ─── 2. Parse + validate manifest ──────────────────────────────────────
     const manifestPath = join(topFetched.stagingDir, 'bakin-package.json')
@@ -301,8 +317,8 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
 
     // ─── 3. Compute install mode for kind:"agent" ──────────────────────────
     const lock = readLockfile()
+    originalLock = lock
     let mode: ProjectionMode = 'fresh'
-    let agentId: string | undefined
 
     // Lockfile key conventions:
     //   - agent kind:        plain id (e.g. "pixel")        — one agent per id
@@ -351,7 +367,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
     }
 
     // ─── 4. Resolve dependencies ───────────────────────────────────────────
-    const resolved = resolveDependencies(manifest)
+    const resolved = await resolveDependenciesAsync(manifest)
     for (const r of resolved) depFetched.push(r.fetched)
     for (const r of resolved) {
       validatePackageContributionIntegrity({
@@ -552,6 +568,25 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
       skipped: parentResult.skipped,
     }
   } catch (err) {
+    if (createdAgent && agentId) {
+      try {
+        await removeRuntimeAllowListReferences(agentId)
+      } catch (rollbackErr) {
+        log.warn('Runtime allowlist cleanup during install failure threw', {
+          agentId,
+          error: rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr),
+        })
+      }
+      try {
+        await removeRuntimeAgent(agentId)
+      } catch (rollbackErr) {
+        log.warn('Runtime agent cleanup during install failure threw', {
+          agentId,
+          error: rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr),
+        })
+      }
+    }
+
     // Roll back projections (every staged write so far)
     for (const p of [...projected].reverse()) {
       try {
@@ -572,6 +607,15 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
         } catch {
           /* best-effort */
         }
+      }
+    }
+    if (originalLock) {
+      try {
+        writeLockfile(originalLock)
+      } catch (rollbackErr) {
+        log.warn('Lockfile rollback during install failure threw', {
+          error: rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr),
+        })
       }
     }
     // Clean up staging dirs (top + deps)

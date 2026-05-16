@@ -23,7 +23,6 @@ const REPO_ROOT = resolve(import.meta.dir, '..')
 const SDK_DIR = join(REPO_ROOT, 'packages/sdk')
 const ROOT_PACKAGE_PATH = join(REPO_ROOT, 'package.json')
 const SDK_PACKAGE_PATH = join(SDK_DIR, 'package.json')
-const INTERNAL_SDK_PACKAGE_NAME = '@bakin/sdk'
 export const PUBLIC_SDK_PACKAGE_NAME = '@makinbakin/sdk'
 
 export interface SdkExportEntry {
@@ -55,7 +54,6 @@ const EXTERNAL_JS_PEERS = [
 
 const FORBIDDEN_BARE_PREFIXES = [
   '@/',
-  '@bakin/sdk',
   '@bakin/core',
   '@bakin/team',
   '@bakin/workflows',
@@ -181,20 +179,12 @@ function aliasTarget(specifier: string): string | null {
   return null
 }
 
-function toPublicSdkSpecifier(specifier: string): string {
-  if (specifier === INTERNAL_SDK_PACKAGE_NAME) return PUBLIC_SDK_PACKAGE_NAME
-  if (specifier.startsWith(`${INTERNAL_SDK_PACKAGE_NAME}/`)) {
-    return `${PUBLIC_SDK_PACKAGE_NAME}${specifier.slice(INTERNAL_SDK_PACKAGE_NAME.length)}`
-  }
-  return specifier
-}
-
 function rewriteModuleSpecifier(
   specifier: string,
   originalFileRel: string,
   outputFileRel: string,
 ): string {
-  if (specifier.startsWith(INTERNAL_SDK_PACKAGE_NAME)) return toPublicSdkSpecifier(specifier)
+  if (specifier.startsWith(PUBLIC_SDK_PACKAGE_NAME)) return specifier
   const target = aliasTarget(specifier)
     ?? (specifier.startsWith('.') ? resolveOriginalRelativeSpecifier(originalFileRel, specifier) : null)
   if (!target) return specifier
@@ -204,12 +194,11 @@ function rewriteModuleSpecifier(
 }
 
 function rewriteDeclarationImports(content: string, originalFileRel: string, outputFileRel: string): string {
-  const rewrittenImports = content.replace(IMPORT_SPECIFIER_RE, (match, fromSpec, bareSpec, dynamicSpec) => {
+  return content.replace(IMPORT_SPECIFIER_RE, (match, fromSpec, bareSpec, dynamicSpec) => {
     const specifier = fromSpec ?? bareSpec ?? dynamicSpec
     const rewritten = rewriteModuleSpecifier(specifier, originalFileRel, outputFileRel)
     return match.replace(specifier, rewritten)
   })
-  return rewrittenImports.replaceAll(INTERNAL_SDK_PACKAGE_NAME, PUBLIC_SDK_PACKAGE_NAME)
 }
 
 function copyDeclarationTree(tempDtsDir: string, outDir: string): void {
@@ -283,7 +272,7 @@ function collectBareDeclarationDependencies(outDir: string): string[] {
     const content = readFileSync(file, 'utf-8')
     for (const match of content.matchAll(IMPORT_SPECIFIER_RE)) {
       const specifier = match[1] ?? match[2] ?? match[3]
-      if (!specifier || specifier.startsWith('.') || specifier.startsWith(PUBLIC_SDK_PACKAGE_NAME) || specifier.startsWith(INTERNAL_SDK_PACKAGE_NAME)) continue
+      if (!specifier || specifier.startsWith('.') || specifier.startsWith(PUBLIC_SDK_PACKAGE_NAME)) continue
       packages.add(packageName(specifier))
     }
   }
@@ -352,7 +341,7 @@ function writePackageJson(outDir: string, version: string): void {
 function copyReadme(outDir: string): void {
   const source = join(SDK_DIR, 'README.md')
   if (!existsSync(source)) return
-  const content = readFileSync(source, 'utf-8').replaceAll(INTERNAL_SDK_PACKAGE_NAME, PUBLIC_SDK_PACKAGE_NAME)
+  const content = readFileSync(source, 'utf-8')
   writeFileSync(join(outDir, 'README.md'), content, 'utf-8')
 }
 

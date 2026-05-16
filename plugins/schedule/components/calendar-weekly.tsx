@@ -2,9 +2,9 @@
 
 import { Fragment, useState, useMemo } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { Button } from "@bakin/sdk/ui"
+import { Button } from "@makinbakin/sdk/ui"
 import { AgentBadge } from './agent-badge'
-import type { ScheduleJob } from "@bakin/sdk/hooks"
+import type { ScheduleJob } from "@makinbakin/sdk/hooks"
 
 // Agent-keyed style tokens — each entry is a self-contained visual identity
 // Uses inline style objects for gradient backgrounds (Tailwind can't do arbitrary gradients)

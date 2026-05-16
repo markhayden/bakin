@@ -29,7 +29,7 @@ import type { CheckResult, InstallResult, OnboardingComponent } from './types'
 const log = createLogger('onboarding:runtime')
 
 const SETUP_URL = DEFAULT_RUNTIME_ADAPTER_SUPPORT.setupUrl
-const SETUP_MESSAGE = `A runtime adapter is required. Configure the active runtime adapter and rerun onboarding. Current runtime adapter setup docs: ${SETUP_URL}`
+const SETUP_MESSAGE = `Bakin requires an active agent runtime such as OpenClaw. Review the prerequisites and setup guide, then rerun onboarding: ${SETUP_URL}`
 
 interface RuntimeConfigForIntegrity {
   agents?: {
@@ -142,6 +142,33 @@ async function check(): Promise<CheckResult> {
     }
   }
 
+  let config: RuntimeConfigForIntegrity | null
+  try {
+    config = await readAllowedRuntimeConfigRaw<RuntimeConfigForIntegrity>(
+      runtime,
+      '*',
+      'onboarding.runtime.integrity'
+    )
+  } catch (err) {
+    return {
+      name: 'runtime',
+      status: 'broken',
+      message: `Runtime config could not be read: ${err instanceof Error ? err.message : String(err)}`,
+      remediation: 'Fix or regenerate the runtime config, then rerun onboarding.',
+      details: { runtime: runtime.name, parseError: String(err) },
+    }
+  }
+
+  if (!config) {
+    return {
+      name: 'runtime',
+      status: 'missing',
+      message: `${runtime.name} runtime config is not present`,
+      remediation: SETUP_MESSAGE,
+      details: { runtime: runtime.name, installUrl: SETUP_URL },
+    }
+  }
+
   const available = await runtime.ping().catch(() => false)
   if (!available) {
     return {
@@ -174,23 +201,6 @@ async function check(): Promise<CheckResult> {
       message: 'Runtime adapter returned no agents',
       remediation: 'Create at least one orchestrator agent, then rerun onboarding.',
       details: { runtime: runtime.name, installUrl: SETUP_URL },
-    }
-  }
-
-  let config: RuntimeConfigForIntegrity | null
-  try {
-    config = await readAllowedRuntimeConfigRaw<RuntimeConfigForIntegrity>(
-      runtime,
-      '*',
-      'onboarding.runtime.integrity'
-    )
-  } catch (err) {
-    return {
-      name: 'runtime',
-      status: 'broken',
-      message: `Runtime config could not be read: ${err instanceof Error ? err.message : String(err)}`,
-      remediation: 'Fix or regenerate the runtime config, then rerun onboarding.',
-      details: { runtime: runtime.name, parseError: String(err) },
     }
   }
 

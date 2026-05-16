@@ -13,7 +13,7 @@ export interface OpenClawAgent {
   name?: string
   workspace?: string
   agentDir?: string
-  model?: { primary?: string }
+  model?: string | { primary?: string }
   identity?: { name?: string; emoji?: string }
   subagents?: { allowAgents?: string[]; model?: string }
 }

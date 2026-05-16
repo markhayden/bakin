@@ -32,7 +32,7 @@ mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   resetOpenClawHome: () => {},
 }))
 
-mock.module('@bakin/sdk/components', () => ({
+mock.module('@makinbakin/sdk/components', () => ({
   ModelSelect: ({ value, onChange, models }: { value: string; onChange: (id: string) => void; models: { id: string; label: string }[] }) => (
     <select data-testid="model-select" value={value} onChange={(e) => onChange(e.target.value)}>
       {models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}

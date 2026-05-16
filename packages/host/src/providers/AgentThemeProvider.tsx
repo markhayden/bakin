@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useAgentStore, hexToMuted } from '@bakin/sdk/hooks'
+import { useAgentStore, hexToMuted } from '@makinbakin/sdk/hooks'
 
 /**
  * Fetches agent data on mount and injects per-agent CSS custom properties

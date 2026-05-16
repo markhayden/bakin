@@ -35,15 +35,15 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Copy, LayoutGrid, Save, Trash2 } from 'lucide-react'
-import { Button } from "@bakin/sdk/ui"
-import { Input } from "@bakin/sdk/ui"
+import { Button } from "@makinbakin/sdk/ui"
+import { Input } from "@makinbakin/sdk/ui"
 
 import { getNodeRendererSnapshot, subscribeNodeRenderers } from '../lib/node-renderer-registry'
 import { NodeTypePalette, PALETTE_DRAG_MIME_TYPE } from './node-type-palette'
 import { NodeConfigDrawer } from './node-config-drawer'
 import { canConnect } from '../lib/edge-rules'
 import { layoutNodes } from '../lib/dagre-layout'
-import { toast } from "@bakin/sdk/hooks"
+import { toast } from "@makinbakin/sdk/hooks"
 import type {
   WorkflowDefinition,
   WorkflowStep,

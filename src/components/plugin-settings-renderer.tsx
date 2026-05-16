@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
-import { useToastStore } from '@bakin/sdk/hooks'
+import { useToastStore } from '@makinbakin/sdk/hooks'
 import type {
   SettingsField,
   StringSettingsField,

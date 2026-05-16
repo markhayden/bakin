@@ -35,6 +35,9 @@ mock.module('@bakin/core/main-agent', () => ({
 }))
 
 mock.module('../../../src/core/content-dir', () => ({
+  initBakinHome: () => ({ created: [], seeded: [] }),
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     agents: join(testDir, 'agents'),
@@ -43,6 +46,9 @@ mock.module('../../../src/core/content-dir', () => ({
 }))
 
 mock.module('../../../packages/core/src/content-dir', () => ({
+  initBakinHome: () => ({ created: [], seeded: [] }),
+  isUsingBakinHome: () => true,
+  resetContentDir: () => {},
   getContentDir: () => testDir,
   getBakinPaths: () => ({
     agents: join(testDir, 'agents'),
@@ -319,6 +325,23 @@ describe('team plugin — non-search routes', () => {
     const route = findRoute(activated.routes, 'GET', '/')
     expect(route).toBeDefined()
     expect(route?.description).toMatch(/agent/i)
+  })
+
+  it('omits headshot URLs when no avatar file exists', async () => {
+    const activated = await activatePlugin(teamPlugin, testDir)
+    const route = findRoute(activated.routes, 'GET', '/')!
+    const { status, body } = await callRoute(route, activated.ctx)
+    expect(status).toBe(200)
+    const agents = (body as { agents: Array<{ id: string; headshot: string }> }).agents
+    expect(agents.find((agent) => agent.id === 'main')?.headshot).toBe('')
+  })
+
+  it('returns JSON for missing avatar files', async () => {
+    const activated = await activatePlugin(teamPlugin, testDir)
+    const route = findRoute(activated.routes, 'GET', '/:agentId/avatar')!
+    const { status, body } = await callRoute(route, activated.ctx, { searchParams: { agentId: 'main' } })
+    expect(status).toBe(404)
+    expect(body).toEqual({ error: 'Avatar not found' })
   })
 })
 

@@ -10,9 +10,9 @@
  */
 import { useEffect, useState } from 'react'
 import { Download } from 'lucide-react'
-import { Skeleton } from '@bakin/sdk/ui'
-import { MarkdownContent } from '@bakin/sdk/components'
-import type { AssetMeta } from '@bakin/sdk/types'
+import { Skeleton } from '@makinbakin/sdk/ui'
+import { MarkdownContent } from '@makinbakin/sdk/components'
+import type { AssetMeta } from '@makinbakin/sdk/types'
 
 export function AssetRenderer({ asset }: { asset: AssetMeta }) {
   const fileUrl = `/api/assets/${encodeURIComponent(asset.filename)}?v=${asset.mtimeMs || ''}`

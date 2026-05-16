@@ -1,10 +1,10 @@
 'use client'
 
-import { Table, TableBody, TableHead, TableHeader, TableRow } from "@bakin/sdk/ui"
-import { EmptyState } from "@bakin/sdk/components"
+import { Table, TableBody, TableHead, TableHeader, TableRow } from "@makinbakin/sdk/ui"
+import { EmptyState } from "@makinbakin/sdk/components"
 import { CalendarClock } from 'lucide-react'
 import { JobRow, type JobScoreInfo } from './job-row'
-import type { ScheduleJob } from "@bakin/sdk/hooks"
+import type { ScheduleJob } from "@makinbakin/sdk/hooks"
 
 export function JobList({
   jobs,

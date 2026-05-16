@@ -2,17 +2,17 @@
 
 import { useState } from 'react'
 import { Plus, Trash2, Users } from 'lucide-react'
-import { Button } from "@bakin/sdk/ui"
-import { EmptyState } from "@bakin/sdk/components"
-import { Input } from "@bakin/sdk/ui"
-import { Label } from "@bakin/sdk/ui"
+import { Button } from "@makinbakin/sdk/ui"
+import { EmptyState } from "@makinbakin/sdk/components"
+import { Input } from "@makinbakin/sdk/ui"
+import { Label } from "@makinbakin/sdk/ui"
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@bakin/sdk/ui"
-import { useAgentStore } from '@bakin/sdk/hooks'
+} from "@makinbakin/sdk/ui"
+import { useAgentStore } from '@makinbakin/sdk/hooks'
 import type { OrgTeam } from '../types'
 
 export function TeamManager() {

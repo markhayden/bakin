@@ -2,8 +2,8 @@
 
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { User } from 'lucide-react'
-import { useAgent } from "@bakin/sdk/hooks"
-import { AgentAvatar } from "@bakin/sdk/components"
+import { useAgent } from "@makinbakin/sdk/hooks"
+import { AgentAvatar } from "@makinbakin/sdk/components"
 
 interface AgentNodeData extends Record<string, unknown> {
   label: string

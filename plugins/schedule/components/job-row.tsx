@@ -1,17 +1,17 @@
 'use client'
 
 import { MoreHorizontal, Play, Pause, RotateCcw, Trash2, Pencil, Copy, SkipForward, CirclePlus, Undo2, ShieldAlert } from 'lucide-react'
-import { TableRow, TableCell } from "@bakin/sdk/ui"
-import { Badge } from "@bakin/sdk/ui"
+import { TableRow, TableCell } from "@makinbakin/sdk/ui"
+import { Badge } from "@makinbakin/sdk/ui"
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-} from "@bakin/sdk/ui"
+} from "@makinbakin/sdk/ui"
 import { AgentBadge } from './agent-badge'
-import type { ScheduleJob } from "@bakin/sdk/hooks"
+import type { ScheduleJob } from "@makinbakin/sdk/hooks"
 
 export interface JobScoreInfo {
   score: number

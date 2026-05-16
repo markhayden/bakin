@@ -1,21 +1,21 @@
 /**
- * `@bakin/sdk` — plugin author SDK.
+ * `@makinbakin/sdk` — plugin author SDK.
  *
  * The main entry re-exports types + the single-call `registerPlugin` helper
- * so plugin authors can write `import { registerPlugin } from '@bakin/sdk'`
+ * so plugin authors can write `import { registerPlugin } from '@makinbakin/sdk'`
  * without having to remember which sub-path it lives at. UI primitives,
  * hooks, and components stay on sub-paths (`/ui`, `/hooks`, `/components`,
  * `/slots`) to keep the top-level namespace from exploding.
  *
  * Sub-paths:
- *   - `@bakin/sdk/ui`         — shadcn UI primitives (Button, Card, Dialog, ...)
- *   - `@bakin/sdk/hooks`      — React hooks (useAgent, useSSE, useSearch, ...)
- *   - `@bakin/sdk/components` — shared components (PluginHeader, FacetFilter, ...)
- *   - `@bakin/sdk/slots`      — Slot + registerSlot primitive
- *   - `@bakin/sdk/types`      — full type re-exports
- *   - `@bakin/sdk/metadata`   — docs-aware contract helpers
+ *   - `@makinbakin/sdk/ui`         — shadcn UI primitives (Button, Card, Dialog, ...)
+ *   - `@makinbakin/sdk/hooks`      — React hooks (useAgent, useSSE, useSearch, ...)
+ *   - `@makinbakin/sdk/components` — shared components (PluginHeader, FacetFilter, ...)
+ *   - `@makinbakin/sdk/slots`      — Slot + registerSlot primitive
+ *   - `@makinbakin/sdk/types`      — full type re-exports
+ *   - `@makinbakin/sdk/metadata`   — docs-aware contract helpers
  *
- * Plugin authors: at build time, mark `@bakin/sdk`, `@bakin/sdk/*`, and
+ * Plugin authors: at build time, mark `@makinbakin/sdk`, `@makinbakin/sdk/*`, and
  * `react`/`react-dom` as externals. At runtime the browser's import map
  * (emitted by Bakin) resolves those to the host's bundled copies so there
  * is a single React instance and a single SDK.

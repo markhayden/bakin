@@ -21,5 +21,9 @@ if (!setup.models) throw new Error('Configured search adapter does not expose a 
 export const searchModelsComponent: OnboardingComponent = {
   name: 'search-models',
   check: () => setup.models!.check().then((result) => ({ ...result, name: 'search-models' })),
-  install: (opts) => setup.models!.install({ ...opts, askYesNo }).then((result) => ({ ...result, name: 'search-models' })),
+  install: (opts) => setup.models!.install({
+    ...opts,
+    autoApprove: opts.autoApprove || opts.approvedComponents?.includes('search-models') === true,
+    askYesNo,
+  }).then((result) => ({ ...result, name: 'search-models' })),
 }

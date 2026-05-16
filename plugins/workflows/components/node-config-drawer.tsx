@@ -11,19 +11,19 @@
 
 import { useMemo, useState } from 'react'
 import { X } from 'lucide-react'
-import { Button } from "@bakin/sdk/ui"
-import { Input } from "@bakin/sdk/ui"
-import { Textarea } from "@bakin/sdk/ui"
-import { Label } from "@bakin/sdk/ui"
-import { Checkbox } from "@bakin/sdk/ui"
+import { Button } from "@makinbakin/sdk/ui"
+import { Input } from "@makinbakin/sdk/ui"
+import { Textarea } from "@makinbakin/sdk/ui"
+import { Label } from "@makinbakin/sdk/ui"
+import { Checkbox } from "@makinbakin/sdk/ui"
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@bakin/sdk/ui"
-import { AgentSelect } from "@bakin/sdk/components"
+} from "@makinbakin/sdk/ui"
+import { AgentSelect } from "@makinbakin/sdk/components"
 import { getNodeType, type FormField } from '../lib/node-type-registry'
 
 export interface NodeConfigDrawerProps {

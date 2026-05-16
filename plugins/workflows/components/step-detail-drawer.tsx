@@ -1,10 +1,10 @@
 'use client'
 
-import { BakinDrawer } from "@bakin/sdk/components"
-import { Badge } from "@bakin/sdk/ui"
-import { Separator } from "@bakin/sdk/ui"
-import { AgentAvatar } from "@bakin/sdk/components"
-import { useAgent } from "@bakin/sdk/hooks"
+import { BakinDrawer } from "@makinbakin/sdk/components"
+import { Badge } from "@makinbakin/sdk/ui"
+import { Separator } from "@makinbakin/sdk/ui"
+import { AgentAvatar } from "@makinbakin/sdk/components"
+import { useAgent } from "@makinbakin/sdk/hooks"
 import {
   useNotificationChannels,
   getChannelLabel,

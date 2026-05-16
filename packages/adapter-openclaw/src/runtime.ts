@@ -1,6 +1,7 @@
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
+import { accessSync, closeSync, constants, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import { execFile } from 'child_process'
+import { createHash, randomUUID } from 'crypto'
 import { promisify } from 'util'
 import type {
   AgentRuntimeAdapter,
@@ -16,7 +17,6 @@ import type {
   RuntimeMetadata,
   RuntimeMemorySearchResult,
   RuntimeSkill,
-  RuntimeToolActivity,
   UpdateCronJobInput,
   WorkspaceFile,
 } from '@bakin/core/adapters/runtime'
@@ -28,6 +28,8 @@ import {
   materializeImplicitMainAgent,
   readOpenClawConfig,
   resetOpenClawConfigCache,
+  type OpenClawAgent,
+  type OpenClawConfig,
 } from './config'
 import { getOpenClawHome, getOpenClawPath } from './home'
 import { tryGetMainAgentId } from './main-agent'
@@ -37,6 +39,7 @@ import {
   type OpenClawPluginApprovalDecision,
   type OpenClawPluginApprovalResolvedPayload,
 } from './approval-gateway'
+import { OpenClawGatewayRpcClient } from './gateway-rpc'
 import {
   getOpenClawMemoryEntry,
   getOpenClawMemoryWatchPaths,
@@ -54,7 +57,7 @@ interface OpenClawSettings {
 }
 
 const DEFAULT_SETTINGS: OpenClawSettings = {
-  binaryPath: process.env.OPENCLAW_PATH || '/opt/homebrew/bin/openclaw',
+  binaryPath: process.env.OPENCLAW_PATH || findOpenClawBinary() || '/opt/homebrew/bin/openclaw',
   gatewayUrl: 'http://127.0.0.1',
   gatewayPort: 18789,
 }
@@ -68,11 +71,10 @@ const noopLogger: AdapterLogger = {
   error: () => {},
 }
 
-const TRANSIENT_FETCH_CODES = new Set([
-  'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'UND_ERR_SOCKET', 'EPIPE',
-])
-
-const SEND_MESSAGE_RETRY_BACKOFF_MS = [1000, 2000]
+const OPENCLAW_AGENT_TIMEOUT_MS = 600000
+const OPENCLAW_AGENT_TIMEOUT_SECONDS = Math.ceil(OPENCLAW_AGENT_TIMEOUT_MS / 1000)
+// Transport must outlast the server-side agent budget so the Gateway can deliver its own timeout.
+const OPENCLAW_AGENT_TRANSPORT_TIMEOUT_MS = OPENCLAW_AGENT_TIMEOUT_MS + 30_000
 const OPENCLAW_SESSION_ACTIVITY_POLL_MS = 200
 const OPENCLAW_ACTIVITY_PREVIEW_CHARS = 500
 const OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS = 600000
@@ -93,6 +95,76 @@ const NATIVE_APPROVAL_NOTICE = [
   'The durable Bakin approval record remains canonical.',
 ].join(' ')
 const NATIVE_APPROVAL_PROVIDERS = new Set(['discord', 'telegram', 'slack', 'matrix', 'qqbot'])
+const OPENCLAW_PLUGIN_ALLOWLIST_WARNING = 'plugins.allow is empty'
+const ANSI_RE = /\x1b\[[0-?]*[ -/]*[@-~]/g
+
+class OpenClawCommandError extends Error {
+  readonly args: string[]
+  readonly stdout: string
+  readonly stderr: string
+  readonly exitCode: number | string | undefined
+
+  constructor(args: string[], cause: unknown) {
+    const stdout = processOutput(cause, 'stdout')
+    const stderr = processOutput(cause, 'stderr')
+    const exitCode = processExitCode(cause)
+    const details = [stderr, stdout].filter((part) => part.trim().length > 0).join('\n')
+    super([
+      `OpenClaw command failed${exitCode === undefined ? '' : ` (${exitCode})`}: openclaw ${args.join(' ')}`,
+      details,
+    ].filter(Boolean).join('\n'), { cause })
+    this.name = 'OpenClawCommandError'
+    this.args = args
+    this.stdout = stdout
+    this.stderr = stderr
+    this.exitCode = exitCode
+  }
+}
+
+function processOutput(cause: unknown, field: 'stdout' | 'stderr'): string {
+  if (!cause || typeof cause !== 'object') return ''
+  const value = (cause as Record<string, unknown>)[field]
+  if (typeof value === 'string') return value
+  if (Buffer.isBuffer(value)) return value.toString('utf-8')
+  return ''
+}
+
+function processExitCode(cause: unknown): number | string | undefined {
+  if (!cause || typeof cause !== 'object') return undefined
+  const value = (cause as Record<string, unknown>).code
+  return typeof value === 'number' || typeof value === 'string' ? value : undefined
+}
+
+function openClawErrorOutput(err: unknown): string {
+  if (err instanceof OpenClawCommandError) {
+    return [err.stderr, err.stdout, err.message].filter(Boolean).join('\n')
+  }
+  if (!err || typeof err !== 'object') return String(err ?? '')
+  const record = err as Record<string, unknown>
+  return [
+    typeof record.stderr === 'string' ? record.stderr : '',
+    typeof record.stdout === 'string' ? record.stdout : '',
+    typeof record.message === 'string' ? record.message : '',
+  ].filter(Boolean).join('\n')
+}
+
+function stripAnsi(value: string): string {
+  return value.replace(ANSI_RE, '')
+}
+
+function isPluginAllowlistOpenFailure(err: unknown): boolean {
+  if (err instanceof OpenClawCommandError) {
+    const stderr = stripAnsi(err.stderr).trim()
+    const stdout = stripAnsi(err.stdout).trim()
+    const nonWarningStderr = stderr
+      .split('\n')
+      .filter((line) => !line.includes(OPENCLAW_PLUGIN_ALLOWLIST_WARNING))
+      .join('\n')
+      .trim()
+    return stdout.length === 0 && stderr.includes(OPENCLAW_PLUGIN_ALLOWLIST_WARNING) && nonWarningStderr.length === 0
+  }
+  return stripAnsi(openClawErrorOutput(err)).includes(OPENCLAW_PLUGIN_ALLOWLIST_WARNING)
+}
 
 interface OpenClawCronStore {
   version?: number
@@ -168,8 +240,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   private approvalResponsesWarningLogged = false
   private approvalResolveWarningLogged = false
   private approvalGatewayClient: OpenClawApprovalGatewayClient | null = null
+  private chatGatewayClient: OpenClawGatewayRpcClient | null = null
   private emittedApprovalResponseKeys: string[] = []
   private emittedApprovalResponseKeySet = new Set<string>()
+  private lastModelListFailureMessage: string | null = null
 
   constructor(options: OpenClawRuntimeAdapterOptions = {}) {
     this.settings = mergeSettings(options.settings)
@@ -183,6 +257,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   async shutdown(): Promise<void> {
     this.approvalGatewayClient?.close()
     this.approvalGatewayClient = null
+    this.chatGatewayClient?.close()
+    this.chatGatewayClient = null
   }
 
   async ping(): Promise<boolean> {
@@ -247,12 +323,36 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       if (findAgentById(id)) throw new Error(`Agent already exists: ${id}`)
       const args = ['agents', 'add', id, '--workspace', workspace, '--non-interactive', '--json']
       if (input.model) args.splice(3, 0, '--model', input.model)
-      await this.exec(args)
       const emoji = metadataValue(input.metadata, 'emoji')
-      const identityArgs = ['agents', 'set-identity', '--agent', id]
-      if (input.name) identityArgs.push('--name', input.name)
-      if (emoji) identityArgs.push('--emoji', emoji)
-      if (identityArgs.length > 4) await this.exec(identityArgs)
+      let createdViaConfigFallback = false
+      try {
+        await this.exec(args)
+      } catch (err) {
+        if (!isPluginAllowlistOpenFailure(err)) throw err
+        this.logger.warn('OpenClaw CLI agent creation was blocked by plugin allow-list warning; writing agent config directly', {
+          agentId: id,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        upsertOpenClawAgentConfig({ id, name: input.name, workspace, model: input.model, emoji })
+        createdViaConfigFallback = true
+      }
+      if (!createdViaConfigFallback) {
+        const identityArgs = ['agents', 'set-identity', '--agent', id]
+        if (input.name) identityArgs.push('--name', input.name)
+        if (emoji) identityArgs.push('--emoji', emoji)
+        if (identityArgs.length > 4) {
+          try {
+            await this.exec(identityArgs)
+          } catch (err) {
+            if (!isPluginAllowlistOpenFailure(err)) throw err
+            this.logger.warn('OpenClaw CLI identity update was blocked by plugin allow-list warning; writing agent identity directly', {
+              agentId: id,
+              error: err instanceof Error ? err.message : String(err),
+            })
+            updateOpenClawAgentIdentity(id, { name: input.name, emoji })
+          }
+        }
+      }
       resetOpenClawConfigCache()
       if (!existsSync(workspace)) mkdirSync(workspace, { recursive: true })
       return {
@@ -873,7 +973,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         if (!existsSync(profilePath)) return null as T
         return JSON.parse(readFileSync(profilePath, 'utf-8')) as T
       }
-      const config = readOpenClawConfig() ?? {}
+      const config = readOpenClawConfig()
+      if (!config) return null as T
       return (key === '*' ? config : readPath(config as Record<string, unknown>, key)) as T
     },
   }
@@ -892,13 +993,11 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   private async chatCompletion(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): Promise<string> {
-    const response = await this.fetchChat(opts, false)
-    const data = await response.json()
-    return data?.choices?.[0]?.message?.content || ''
+    return this.runOpenClawAgentGateway(opts)
   }
 
   private async *streamChat(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): AsyncIterable<ChatChunk> {
-    const primary = this.fetchAndReadChatCompletionStream(opts)
+    const primary = this.runOpenClawAgentGatewayStream(opts)
     if (!opts.sessionKey) {
       yield* primary
       return
@@ -917,66 +1016,47 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     yield* mergeChatStreams(primary, activity, () => activityAbort.abort())
   }
 
-  private async *fetchAndReadChatCompletionStream(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): AsyncIterable<ChatChunk> {
-    const response = await this.fetchChat(opts, true)
-    yield* this.readChatCompletionStream(response)
-  }
-
-  private async *readChatCompletionStream(response: Response): AsyncIterable<ChatChunk> {
-    const reader = response.body?.getReader()
-    if (!reader) return
-    const decoder = new TextDecoder()
-    let buffer = ''
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      const frames = buffer.split('\n\n')
-      buffer = frames.pop() ?? ''
-      for (const frame of frames) {
-        const chunk = parseStreamFrame(frame)
-        if (chunk?.type === 'done') {
-          yield chunk
-          return
-        }
-        if (chunk) yield chunk
-      }
-    }
-    if (buffer.trim()) {
-      const chunk = parseStreamFrame(buffer)
-      if (chunk?.type === 'text') yield chunk
-    }
+  private async *runOpenClawAgentGatewayStream(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): AsyncIterable<ChatChunk> {
+    const content = await this.runOpenClawAgentGateway(opts)
+    if (content) yield { type: 'text', content }
     yield { type: 'done' }
   }
 
-  private async fetchChat(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }, stream: boolean): Promise<Response> {
-    let response: Response | undefined
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        response = await fetch(`${this.baseUrl()}/v1/chat/completions`, {
-          method: 'POST',
-          headers: this.headers(opts.agentId, opts.sessionKey),
-          body: JSON.stringify({
-            model: 'openclaw:main',
-            max_tokens: 2048,
-            stream,
-            messages: opts.messages,
-          }),
-        })
-        break
-      } catch (err) {
-        if (stream || !isTransientFetchError(err) || attempt === 3) throw err
-        this.logger.warn('OpenClaw chat transient fetch failure; retrying', {
-          agentId: opts.agentId,
-          attempt,
-          error: err instanceof Error ? err.message : String(err),
-        })
-        await sleep(SEND_MESSAGE_RETRY_BACKOFF_MS[attempt - 1] ?? 0)
-      }
+  private async runOpenClawAgentGateway(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): Promise<string> {
+    const params: Record<string, unknown> = {
+      agentId: opts.agentId,
+      message: messagesToOpenClawPrompt(opts.messages),
+      deliver: false,
+      timeout: OPENCLAW_AGENT_TIMEOUT_SECONDS,
+      idempotencyKey: `bakin-${randomUUID()}`,
     }
-    if (!response) throw new Error('OpenClaw chat failed before receiving a response')
-    if (!response.ok) throw new Error(`OpenClaw chat failed (${response.status}): ${await response.text()}`)
-    return response
+    if (opts.sessionKey) params.sessionId = openClawCliSessionId(opts.agentId, opts.sessionKey)
+    try {
+      const payload = await this.openClawChatGateway().request('agent', params, {
+        expectFinal: true,
+        timeoutMs: OPENCLAW_AGENT_TRANSPORT_TIMEOUT_MS,
+      })
+      const content = extractOpenClawAgentText(payload)
+      if (content) return content
+      throw new Error('OpenClaw agent response did not include assistant text')
+    } catch (err) {
+      throw new Error(`OpenClaw chat failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  private openClawChatGateway(): OpenClawGatewayRpcClient {
+    if (this.chatGatewayClient) return this.chatGatewayClient
+    this.chatGatewayClient = new OpenClawGatewayRpcClient({
+      url: gatewayWebSocketUrl(this.settings),
+      token: readGatewayToken,
+      logger: this.logger,
+      clientId: 'gateway-client',
+      displayName: 'Bakin',
+      clientMode: 'backend',
+      scopes: ['operator.read', 'operator.write'],
+      label: 'OpenClaw chat gateway',
+    })
+    return this.chatGatewayClient
   }
 
   private async invokeTool(toolName: string, args: Record<string, unknown> = {}): Promise<unknown> {
@@ -990,19 +1070,156 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   private async exec(args: string[], opts: { maxBuffer?: number } = {}): Promise<string> {
-    const { stdout } = await execFileAsync(this.settings.binaryPath, args, { timeout: 15000, ...opts })
-    return stdout
+    try {
+      const { stdout } = await execFileAsync(this.settings.binaryPath, args, { timeout: 15000, ...opts })
+      return stdout
+    } catch (err) {
+      throw new OpenClawCommandError(args, err)
+    }
   }
+}
+
+function messagesToOpenClawPrompt(messages: Array<{ role: string; content: string }>): string {
+  const lastUser = [...messages].reverse().find((message) => message.role === 'user' && message.content.trim())
+  if (lastUser) return lastUser.content
+  return messages.map((message) => message.content).filter(Boolean).join('\n\n')
+}
+
+function extractOpenClawAgentText(value: unknown): string {
+  const parsed = typeof value === 'string' ? parseJsonObject(value.trim()) ?? value.trim() : value
+  if (!parsed) return ''
+  if (typeof parsed === 'string') return parsed
+
+  const finalVisible = getJsonPath(parsed, ['result', 'meta', 'finalAssistantVisibleText'])
+  if (typeof finalVisible === 'string') return finalVisible
+  const finalRaw = getJsonPath(parsed, ['result', 'meta', 'finalAssistantRawText'])
+  if (typeof finalRaw === 'string') return finalRaw
+  const payloads = getJsonPath(parsed, ['result', 'payloads'])
+  if (Array.isArray(payloads)) {
+    return payloads
+      .map((payload) => isPlainObject(payload) && typeof payload.text === 'string' ? payload.text : '')
+      .filter(Boolean)
+      .join('\n\n')
+  }
+  const summary = getJsonPath(parsed, ['summary'])
+  return typeof summary === 'string' ? summary : ''
+}
+
+function getJsonPath(value: unknown, path: string[]): unknown {
+  let current = value
+  for (const part of path) {
+    if (!isPlainObject(current)) return undefined
+    current = current[part]
+  }
+  return current
 }
 
 function mergeSettings(raw: Record<string, unknown> | undefined): OpenClawSettings {
   const input = (raw ?? {}) as Partial<OpenClawSettings>
-  return { ...DEFAULT_SETTINGS, ...input }
+  const requestedBinary = typeof input.binaryPath === 'string'
+    ? input.binaryPath
+    : DEFAULT_SETTINGS.binaryPath
+  return {
+    ...DEFAULT_SETTINGS,
+    ...input,
+    binaryPath: resolveOpenClawBinary(requestedBinary),
+  }
+}
+
+function isExecutable(path: string | undefined): path is string {
+  if (!path) return false
+  try {
+    accessSync(path, constants.X_OK)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function findOpenClawBinary(): string | null {
+  const candidates = [
+    process.env.OPENCLAW_PATH,
+    ...((process.env.PATH ?? '').split(':').filter(Boolean).map(dir => join(dir, 'openclaw'))),
+    '/opt/homebrew/bin/openclaw',
+    '/usr/local/bin/openclaw',
+  ]
+
+  return candidates.find(isExecutable) ?? null
+}
+
+function resolveOpenClawBinary(requested: string): string {
+  if (isExecutable(requested)) return requested
+  return findOpenClawBinary() ?? requested
 }
 
 function writeOpenClawConfig(config: Record<string, unknown>): void {
+  mkdirSync(getOpenClawHome(), { recursive: true })
   writeFileSync(getOpenClawPath('openclaw.json'), JSON.stringify(config, null, 2), 'utf-8')
   resetOpenClawConfigCache()
+}
+
+function agentModelPrimary(model: OpenClawAgent['model']): string | undefined {
+  if (typeof model === 'string') return model
+  return model?.primary
+}
+
+function openClawAgentsList(config: OpenClawConfig): OpenClawAgent[] {
+  config.agents ??= {}
+  config.agents.list ??= []
+  return config.agents.list
+}
+
+function upsertOpenClawAgentConfig(input: {
+  id: string
+  name: string
+  workspace: string
+  model?: string
+  emoji?: string
+}): void {
+  const config: OpenClawConfig = readOpenClawConfig() ?? {}
+  const list = openClawAgentsList(config)
+  const existing = list.find((agent) => agent.id === input.id)
+  const agentDir = getOpenClawPath('agents', input.id, 'agent')
+  const identity = input.name || input.emoji
+    ? {
+        ...(existing?.identity ?? {}),
+        ...(input.name ? { name: input.name } : {}),
+        ...(input.emoji ? { emoji: input.emoji } : {}),
+      }
+    : existing?.identity
+
+  if (!existing && list.length === 0 && input.id !== 'main') {
+    list.push({ id: 'main' })
+  }
+
+  const next = {
+    ...(existing ?? { id: input.id }),
+    name: input.name,
+    workspace: input.workspace,
+    agentDir,
+    ...(input.model ? { model: input.model } : {}),
+    ...(identity ? { identity } : {}),
+  }
+
+  if (existing) Object.assign(existing, next)
+  else list.push(next)
+
+  mkdirSync(agentDir, { recursive: true })
+  mkdirSync(join(agentDir, 'sessions'), { recursive: true })
+  mkdirSync(input.workspace, { recursive: true })
+  writeOpenClawConfig(config as unknown as Record<string, unknown>)
+}
+
+function updateOpenClawAgentIdentity(agentId: string, input: { name?: string; emoji?: string }): void {
+  const config = readOpenClawConfig()
+  const agent = config?.agents?.list?.find((entry) => entry.id === agentId)
+  if (!agent) throw new Error(`Agent not found: ${agentId}`)
+  agent.identity = {
+    ...(agent.identity ?? {}),
+    ...(input.name ? { name: input.name } : {}),
+    ...(input.emoji ? { emoji: input.emoji } : {}),
+  }
+  writeOpenClawConfig(config as unknown as Record<string, unknown>)
 }
 
 function updateAgentAllowlist(agentId: string, updater: (current: string[]) => string[]): void {
@@ -1521,13 +1738,43 @@ function readOpenClawSessionActivity(
 function resolveOpenClawSessionFile(agentId: string, sessionKey: string): string | undefined {
   const storePath = join(getOpenClawHome(), 'agents', agentId, 'sessions', 'sessions.json')
   const store = readJsonFile<Record<string, OpenClawSessionStoreEntry>>(storePath)
-  const entry = store?.[sessionKey]
+  const entry = findOpenClawSessionStoreEntry(store, agentId, sessionKey)
   if (!entry) return undefined
   if (typeof entry.sessionFile === 'string' && entry.sessionFile.length > 0) return entry.sessionFile
   if (typeof entry.sessionId === 'string' && entry.sessionId.length > 0) {
     return join(getOpenClawHome(), 'agents', agentId, 'sessions', `${entry.sessionId}.jsonl`)
   }
   return undefined
+}
+
+function findOpenClawSessionStoreEntry(
+  store: Record<string, OpenClawSessionStoreEntry> | null,
+  agentId: string,
+  sessionKey: string,
+): OpenClawSessionStoreEntry | undefined {
+  if (!store) return undefined
+  const cliSessionId = openClawCliSessionId(agentId, sessionKey)
+  return store[sessionKey]
+    ?? store[cliSessionId]
+    ?? store[`agent:${agentId}:${cliSessionId}`]
+}
+
+function openClawCliSessionId(agentId: string, sessionKey: string): string {
+  if (isOpenClawCliSessionId(sessionKey)) return sessionKey
+  return deterministicUuid(`bakin:${agentId}:${sessionKey}`)
+}
+
+function isOpenClawCliSessionId(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
+function deterministicUuid(value: string): string {
+  const hex = createHash('sha256').update(value).digest('hex').slice(0, 32).split('')
+  hex[12] = '5'
+  const variant = Number.parseInt(hex[16] ?? '0', 16)
+  hex[16] = ((variant & 0x3) | 0x8).toString(16)
+  const id = hex.join('')
+  return `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`
 }
 
 function safeFileSize(path: string): number {
@@ -1706,23 +1953,6 @@ function summarizeToolNamePurpose(toolName: string): string | undefined {
   return undefined
 }
 
-function summarizeRuntimeToolPurpose(toolName: string, inputPreview: string | undefined): string | undefined {
-  if (toolName === 'exec' && inputPreview) {
-    const parsed = parseJsonObject(inputPreview)
-    const command = typeof parsed?.command === 'string' ? parsed.command : inputPreview
-    return summarizeShellCommandPurpose(command)
-  }
-  if (toolName === 'read' && inputPreview) {
-    const parsed = parseJsonObject(inputPreview)
-    const path = typeof parsed?.path === 'string' ? parsed.path : undefined
-    if (path) return summarizeOpenClawToolPurpose('read', { path })
-  }
-  if (toolName === 'web_fetch' && inputPreview) {
-    return summarizeWebFetchPurpose(parseJsonObject(inputPreview) ?? inputPreview)
-  }
-  return summarizeToolNamePurpose(toolName)
-}
-
 function summarizeWebFetchPurpose(args: unknown): string {
   const url = extractUrlForDisplay(args)
   return url ? `Fetching ${url}` : 'Fetching web content'
@@ -1787,242 +2017,11 @@ function redactSensitiveText(value: string): string {
     .replace(/\b([A-Za-z0-9_]*(?:token|password|secret|api[_-]?key)[A-Za-z0-9_]*\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,"'`}]+)/gi, '$1[redacted]')
 }
 
-function parseStreamFrame(frame: string): ChatChunk | null {
-  const dataLines = frame
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith('data: '))
-    .map((line) => line.slice(6).trim())
-  if (dataLines.length === 0) {
-    const text = frame.trim()
-    return text ? { type: 'text', content: text } : null
-  }
-  const data = dataLines.join('\n')
-  if (data === '[DONE]') return { type: 'done' }
-  try {
-    const parsed = JSON.parse(data) as {
-      type?: string
-      event?: string
-      content?: string
-      data?: unknown
-      activity?: { kind?: string; content?: string; data?: unknown }
-      tool?: unknown
-      tool_call?: unknown
-      toolCall?: unknown
-      choices?: Array<{
-        delta?: { content?: string; tool_calls?: unknown[] }
-        message?: { content?: string; tool_calls?: unknown[] }
-      }>
-      error?: { message?: string } | string
-    }
-    const error = typeof parsed.error === 'string' ? parsed.error : parsed.error?.message
-    if (error) return { type: 'error', content: error }
-    const activity = parseActivityChunk(parsed)
-    if (activity) return activity
-    const content = parsed.choices?.[0]?.delta?.content ?? parsed.choices?.[0]?.message?.content
-    return content ? { type: 'text', content } : null
-  } catch {
-    return data ? { type: 'text', content: data } : null
-  }
-}
-
-function parseActivityChunk(parsed: {
-  type?: string
-  event?: string
-  content?: string
-  data?: unknown
-  activity?: { kind?: string; content?: string; data?: unknown }
-  tool?: unknown
-  tool_call?: unknown
-  toolCall?: unknown
-  choices?: Array<{
-    delta?: { tool_calls?: unknown[] }
-    message?: { tool_calls?: unknown[] }
-  }>
-}): ChatChunk | null {
-  if (parsed.activity) {
-    const kind = parsed.activity.kind
-    if (kind === 'runtime_status' || kind === 'status') {
-      return {
-        type: 'status',
-        content: parsed.activity.content || 'Agent status update',
-        data: metadataFromUnknown(parsed.activity.data),
-      }
-    }
-    if (kind === 'tool_call' || kind === 'tool') {
-      const toolActivity = normalizeRuntimeToolActivity(parsed.activity.data, 'call')
-      const data = withRuntimeToolSummary(
-        toolActivity ?? fallbackToolActivity(parsed.activity.data, 'call'),
-        parsed.activity.content,
-      )
-      return {
-        type: 'tool',
-        content: parsed.activity.content || describeToolPayload(toolActivity ?? parsed.activity.data),
-        data,
-      }
-    }
-  }
-
-  const frameKind = parsed.type ?? parsed.event
-  if (frameKind === 'status' || frameKind === 'runtime_status') {
-    return {
-      type: 'status',
-      content: parsed.content || 'Agent status update',
-      data: metadataFromUnknown(parsed.data),
-    }
-  }
-  if (frameKind === 'tool' || frameKind === 'tool_call') {
-    const payload = parsed.data ?? parsed.tool ?? parsed.tool_call ?? parsed.toolCall
-    const toolActivity = normalizeRuntimeToolActivity(payload, 'call')
-    const data = withRuntimeToolSummary(
-      toolActivity ?? fallbackToolActivity(payload, 'call'),
-      parsed.content,
-    )
-    return {
-      type: 'tool',
-      content: parsed.content || describeToolPayload(toolActivity ?? payload),
-      data,
-    }
-  }
-
-  const toolCalls = parsed.choices?.[0]?.delta?.tool_calls ?? parsed.choices?.[0]?.message?.tool_calls
-  if (Array.isArray(toolCalls) && toolCalls.length > 0) {
-    const toolActivity = normalizeRuntimeToolActivity({ toolCalls }, 'call')
-    return {
-      type: 'tool',
-      content: describeToolPayload(toolCalls),
-      data: toolActivity ?? fallbackToolActivity(toolCalls, 'call'),
-    }
-  }
-
-  const toolPayload = parsed.tool ?? parsed.tool_call ?? parsed.toolCall
-  if (toolPayload !== undefined) {
-    const toolActivity = normalizeRuntimeToolActivity(toolPayload, 'call')
-    return {
-      type: 'tool',
-      content: parsed.content || describeToolPayload(toolPayload),
-      data: toolActivity ?? fallbackToolActivity(toolPayload, 'call'),
-    }
-  }
-
-  return null
-}
-
-function fallbackToolActivity(payload: unknown, phase: RuntimeToolActivity['phase']): RuntimeToolActivity {
-  return {
-    phase,
-    toolName: describeToolPayload(payload),
-    status: phase === 'call' ? 'running' : 'completed',
-  }
-}
-
-function withRuntimeToolSummary(activity: RuntimeToolActivity, summary: string | undefined): RuntimeToolActivity {
-  if (!summary || activity.summary) return activity
-  return { ...activity, summary }
-}
-
-function metadataFromUnknown(value: unknown): RuntimeMetadata | undefined {
-  if (value === undefined) return undefined
-  return isPlainObject(value) ? value : { value }
-}
-
-function normalizeRuntimeToolActivity(payload: unknown, fallbackPhase: RuntimeToolActivity['phase']): RuntimeToolActivity | null {
-  const toolCallPayload = firstToolCallPayload(payload)
-  if (toolCallPayload) return normalizeRuntimeToolActivity(toolCallPayload, fallbackPhase)
-
-  if (typeof payload === 'string' && payload.trim()) {
-    return {
-      phase: fallbackPhase,
-      toolName: payload.trim(),
-      status: fallbackPhase === 'call' ? 'running' : 'completed',
-    }
-  }
-
-  if (!isPlainObject(payload)) return null
-
-  const functionValue = payload.function
-  const functionName = isPlainObject(functionValue) && typeof functionValue.name === 'string'
-    ? functionValue.name
-    : undefined
-  const functionArgs = isPlainObject(functionValue) && typeof functionValue.arguments === 'string'
-    ? functionValue.arguments
-    : undefined
-  const phase = payload.phase === 'result' ? 'result' : payload.phase === 'call' ? 'call' : fallbackPhase
-  const toolName = firstString(
-    payload.toolName,
-    payload.name,
-    payload.tool,
-    functionName,
-    payload.id,
-  ) ?? 'tool'
-  const callId = firstString(payload.callId, payload.toolCallId, payload.id)
-  const status = typeof payload.status === 'string'
-    ? payload.status
-    : phase === 'call'
-      ? 'running'
-      : normalizeToolResultStatus(undefined, typeof payload.exitCode === 'number' ? payload.exitCode : undefined)
-  const inputPreview = firstString(
-    payload.inputPreview,
-    payload.argumentsPreview,
-    functionArgs !== undefined ? previewUnknown(functionArgs) : undefined,
-    payload.arguments !== undefined ? previewUnknown(payload.arguments) : undefined,
-  )
-  const outputPreview = firstString(
-    payload.outputPreview,
-    payload.resultPreview,
-    payload.output !== undefined ? previewUnknown(payload.output) : undefined,
-  )
-  const summary = firstString(
-    payload.summary,
-    payload.purpose,
-    payload.displayLabel,
-  ) ?? (phase === 'call'
-    ? summarizeRuntimeToolPurpose(toolName, inputPreview)
-    : undefined)
-
-  return {
-    phase,
-    ...(callId ? { callId } : {}),
-    toolName,
-    status,
-    ...(summary ? { summary } : {}),
-    ...(inputPreview ? { inputPreview } : {}),
-    ...(outputPreview ? { outputPreview } : {}),
-    ...(typeof payload.durationMs === 'number' ? { durationMs: payload.durationMs } : {}),
-    ...(typeof payload.exitCode === 'number' ? { exitCode: payload.exitCode } : {}),
-  }
-}
-
-function firstToolCallPayload(payload: unknown): unknown | null {
-  if (Array.isArray(payload)) return payload.find(isPlainObject) ?? null
-  if (!isPlainObject(payload)) return null
-  const toolCalls = payload.toolCalls
-  if (Array.isArray(toolCalls)) return toolCalls.find(isPlainObject) ?? null
-  return null
-}
-
 function firstString(...values: unknown[]): string | undefined {
   for (const value of values) {
     if (typeof value === 'string' && value.length > 0) return value
   }
   return undefined
-}
-
-function describeToolPayload(payload: unknown): string {
-  if (Array.isArray(payload)) {
-    const first = payload[0]
-    const label = describeToolPayload(first)
-    return payload.length > 1 ? `${label} + ${payload.length - 1} more` : label
-  }
-  if (isPlainObject(payload)) {
-    const functionValue = payload.function
-    if (isPlainObject(functionValue) && typeof functionValue.name === 'string') return functionValue.name
-    for (const key of ['name', 'tool', 'toolName', 'id']) {
-      const value = payload[key]
-      if (typeof value === 'string' && value.length > 0) return value
-    }
-  }
-  return 'Tool call'
 }
 
 function parseJsonObject(raw: string): Record<string, unknown> | null {
@@ -2041,7 +2040,7 @@ function agentToRuntime(agent: NonNullable<ReturnType<typeof findAgentById>>): R
     id: agent.id,
     name: agent.identity?.name ?? agent.name ?? agent.id,
     role: resolveRole(agent.id),
-    model: agent.model?.primary,
+    model: agentModelPrimary(agent.model),
     status: 'active',
     metadata: {
       emoji: agent.identity?.emoji ?? '',
@@ -2162,13 +2161,6 @@ function resolveRole(agentId: string): string {
 
 function slug(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `agent-${Date.now()}`
-}
-
-function isTransientFetchError(err: unknown): boolean {
-  if (err instanceof TypeError && err.message.includes('fetch failed')) return true
-  const cause = (err as { cause?: { code?: string } })?.cause
-  if (cause?.code && TRANSIENT_FETCH_CODES.has(cause.code)) return true
-  return err instanceof Error && err.name === 'AbortError'
 }
 
 function sleep(ms: number): Promise<void> {

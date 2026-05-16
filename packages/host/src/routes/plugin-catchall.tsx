@@ -12,7 +12,7 @@ import {
   getPluginRoute,
   getRegistryVersion,
   subscribeRegistry,
-} from '@bakin/sdk'
+} from '@makinbakin/sdk'
 import { Route as RootRoute } from './__root'
 
 function PluginCatchAllPage() {

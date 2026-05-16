@@ -714,10 +714,122 @@ async function cmdSearchStats(): Promise<void> {
   }
 }
 
-async function cmdDoctor(): Promise<void> {
-  const result = await apiGet('/api/plugins/health/doctor?fresh=true') as {
-    results: Array<{ check: string; status: string; message: string }>
-    summary: { total: number; errors: number; warnings: number }
+type CliDoctorResult = {
+  results: Array<{ check: string; status: string; message: string }>
+  summary: { total: number; errors: number; warnings: number }
+  mode?: 'offline' | 'full'
+}
+
+function summarizeDoctorResults(results: CliDoctorResult['results']): CliDoctorResult['summary'] {
+  return {
+    total: results.length,
+    errors: results.filter(r => r.status === 'error').length,
+    warnings: results.filter(r => r.status === 'warn').length,
+  }
+}
+
+async function runOfflineDoctor(): Promise<CliDoctorResult> {
+  const [
+    { mkdirComponent },
+    { settingsComponent },
+    { searchComponent },
+    { searchModelsComponent },
+    { mcporterComponent },
+    { agentAssetsComponent },
+    { recommendedPluginsComponent },
+  ] = await Promise.all([
+    import('../src/core/onboarding/mkdir'),
+    import('../src/core/onboarding/settings'),
+    import('../src/core/onboarding/search'),
+    import('../src/core/onboarding/search-models'),
+    import('../src/core/onboarding/mcporter'),
+    import('../src/core/onboarding/agent-assets'),
+    import('../src/core/onboarding/recommended-plugins'),
+  ])
+  const checks = []
+  for (const component of [
+    mkdirComponent,
+    settingsComponent,
+    searchComponent,
+    searchModelsComponent,
+    mcporterComponent,
+    agentAssetsComponent,
+    recommendedPluginsComponent,
+  ]) {
+    try {
+      checks.push(await component.check())
+    } catch (err) {
+      checks.push({
+        name: component.name,
+        status: 'error' as const,
+        message: `check() threw: ${err instanceof Error ? err.message : String(err)}`,
+      })
+    }
+  }
+  const results: CliDoctorResult['results'] = checks.map(check => ({
+    check: check.name,
+    status: check.status === 'ok' ? 'ok' : check.status === 'warn' ? 'warn' : 'error',
+    message: check.remediation ? `${check.message} ${check.remediation}` : check.message,
+  }))
+  results.push({
+    check: 'runtime',
+    status: 'warn',
+    message: 'Skipped live runtime checks in offline mode. Run `bakin doctor --full` after `bakin start` to verify runtime reachability, agents, LLM providers, and channels.',
+  })
+  results.push({
+    check: 'plugin-assets',
+    status: 'warn',
+    message: 'Skipped runtime skill projection checks in offline mode. Run `bakin doctor --full` after `bakin start` to verify plugin assets.',
+  })
+  results.push({
+    check: 'server-backed-checks',
+    status: 'warn',
+    message: 'Skipped plugin, search index, workflow, task, and server health checks that require the Bakin server. Run `bakin doctor --full` after `bakin start`.',
+  })
+  return { results, summary: summarizeDoctorResults(results), mode: 'offline' }
+}
+
+async function runFullDoctor(options: { notifyAgent: boolean }): Promise<CliDoctorResult> {
+  const query = options.notifyAgent
+    ? '/api/plugins/health/doctor?fresh=true&notifyAgent=true'
+    : '/api/plugins/health/doctor?fresh=true'
+  const result = await apiGet(query) as CliDoctorResult
+  return { ...result, mode: 'full' }
+}
+
+async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> {
+  const json = args.includes('--json')
+  const full = args.includes('--full')
+  const notifyAgent = args.includes('--notify-agent')
+  const isTTY = Boolean(process.stdout.isTTY)
+  const result = full ? await runFullDoctor({ notifyAgent }) : await runOfflineDoctor()
+
+  if (json) {
+    console.log(JSON.stringify({
+      ok: result.summary.errors === 0,
+      command: 'doctor',
+      exitCode: result.summary.errors > 0 ? 1 : result.summary.warnings > 0 ? 2 : 0,
+      data: result,
+      error: result.summary.errors > 0
+        ? { code: 'DOCTOR_ERRORS', message: `${result.summary.errors} doctor check${result.summary.errors === 1 ? '' : 's'} failed` }
+        : null,
+    }, null, 2))
+    if (result.summary.errors > 0) process.exit(1)
+    if (result.summary.warnings > 0) process.exit(2)
+    return
+  }
+
+  if (isTTY) {
+    const { DoctorReport } = await import('../src/core/cli/ui/doctor')
+    const { renderToString } = await import('ink')
+    const { createElement } = await import('react')
+    console.log(renderToString(createElement(DoctorReport, {
+      results: result.results,
+      summary: result.summary,
+    })))
+    if (result.summary.errors > 0) process.exit(1)
+    if (result.summary.warnings > 0) process.exit(2)
+    return
   }
 
   const statusIcon: Record<string, string> = { ok: 'OK', warn: 'WARN', error: 'FAIL', fixed: 'FIXED' }
@@ -736,6 +848,8 @@ async function cmdDoctor(): Promise<void> {
   } else {
     console.log(`All ${total} checks passed`)
   }
+  if (errors > 0) process.exit(1)
+  if (warnings > 0) process.exit(2)
 }
 
 // ---------------------------------------------------------------------------
@@ -789,174 +903,189 @@ async function cmdPaths(key?: string): Promise<void> {
   }
 }
 
-const SERVICE_LABEL = 'com.bakin.mc'
+const SERVICE_LABEL = 'com.makinbakin.bakin'
+const LEGACY_SERVICE_LABELS = ['com.bakin.mc']
 
-// ---------------------------------------------------------------------------
-// LaunchAgent auto-start — commented out for now, run manually instead.
-// To re-enable: uncomment generatePlist, the install path in cmdSetupService,
-// and the launchctl path in cmdReboot.
-// ---------------------------------------------------------------------------
+function xmlEscape(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;')
+}
 
-// function generatePlist(opts: {
-//   nodePath: string
-//   tsxPath: string
-//   serverPath: string
-//   workingDir: string
-//   stdoutPath: string
-//   stderrPath: string
-// }): string {
-//   return `<?xml version="1.0" encoding="UTF-8"?>
-// <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-//   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-// <plist version="1.0">
-// <dict>
-//   <key>Label</key>
-//   <string>${SERVICE_LABEL}</string>
-//   <key>ProgramArguments</key>
-//   <array>
-//     <string>${opts.nodePath}</string>
-//     <string>${opts.tsxPath}</string>
-//     <string>${opts.serverPath}</string>
-//   </array>
-//   <key>EnvironmentVariables</key>
-//   <dict>
-//     <key>PATH</key>
-//     <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-//     <key>NODE_ENV</key>
-//     <string>development</string>
-//   </dict>
-//   <key>WorkingDirectory</key>
-//   <string>${opts.workingDir}</string>
-//   <key>RunAtLoad</key>
-//   <true/>
-//   <key>KeepAlive</key>
-//   <true/>
-//   <key>StandardOutPath</key>
-//   <string>${opts.stdoutPath}</string>
-//   <key>StandardErrorPath</key>
-//   <string>${opts.stderrPath}</string>
-// </dict>
-// </plist>
-// `
-// }
+function systemdEscape(value: string): string {
+  return `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
+}
+
+async function serviceProgramArgs(): Promise<string[]> {
+  const { existsSync } = await import('fs')
+  const { join, resolve, dirname } = await import('path')
+  const argvScript = process.argv[1]
+  if (argvScript && existsSync(argvScript) && /\.(ts|js|mjs|cjs)$/.test(argvScript)) {
+    const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
+    const serverPath = join(projectDir, 'server.ts')
+    if (existsSync(serverPath)) return [process.execPath, serverPath, 'serve']
+    return [process.execPath, argvScript, 'serve']
+  }
+  return [argvScript || process.execPath, 'serve']
+}
+
+function generateLaunchAgentPlist(opts: {
+  programArgs: string[]
+  workingDir: string
+  stdoutPath: string
+  stderrPath: string
+}): string {
+  const args = opts.programArgs.map(arg => `    <string>${xmlEscape(arg)}</string>`).join('\n')
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>${SERVICE_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+${args}
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>${xmlEscape(opts.workingDir)}</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>${xmlEscape(opts.stdoutPath)}</string>
+  <key>StandardErrorPath</key>
+  <string>${xmlEscape(opts.stderrPath)}</string>
+</dict>
+</plist>
+`
+}
+
+function generateSystemdUnit(opts: {
+  programArgs: string[]
+  workingDir: string
+  stdoutPath: string
+  stderrPath: string
+}): string {
+  return `[Unit]
+Description=Bakin server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${systemdEscape(opts.workingDir)}
+ExecStart=${opts.programArgs.map(systemdEscape).join(' ')}
+Restart=on-failure
+RestartSec=3
+Environment=PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin
+StandardOutput=append:${opts.stdoutPath}
+StandardError=append:${opts.stderrPath}
+
+[Install]
+WantedBy=default.target
+`
+}
+
+function serverProcessPattern(): string {
+  return 'tsx.*server\\.ts|bakin.*serve'
+}
 
 async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<void> {
-  const { execSync } = await import('child_process')
-  const { existsSync, unlinkSync } = await import('fs')
-  const { join } = await import('path')
+  const { execFileSync } = await import('child_process')
+  const { existsSync, mkdirSync, unlinkSync, writeFileSync } = await import('fs')
+  const { join, dirname, resolve } = await import('path')
   const { homedir } = await import('os')
+  const { getBakinPaths } = await import('../packages/core/src/content-dir')
 
-  const plistPath = join(homedir(), 'Library', 'LaunchAgents', `${SERVICE_LABEL}.plist`)
-  const uid = execSync('id -u', { encoding: 'utf-8' }).trim()
+  const programArgs = await serviceProgramArgs()
+  const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
+  const paths = getBakinPaths()
+  const stdoutPath = join(paths.logs, 'server.out.log')
+  const stderrPath = join(paths.logs, 'server.err.log')
+  mkdirSync(paths.logs, { recursive: true })
 
-  // Always clean up any existing LaunchAgent
-  if (options.uninstall || existsSync(plistPath)) {
-    console.log('[..] Removing LaunchAgent...')
-    try { execSync(`launchctl bootout gui/${uid} ${plistPath}`, { stdio: 'pipe' }) } catch { /* may not be loaded */ }
-    if (existsSync(plistPath)) {
-      unlinkSync(plistPath)
-      console.log('[OK] Removed plist and stopped service')
-    } else {
-      console.log('[OK] No LaunchAgent found')
+  if (process.platform === 'darwin') {
+    const launchAgentsDir = join(homedir(), 'Library', 'LaunchAgents')
+    const plistPath = join(launchAgentsDir, `${SERVICE_LABEL}.plist`)
+    const uid = execFileSync('id', ['-u'], { encoding: 'utf-8' }).trim()
+    const removePlist = (path: string) => {
+      try { execFileSync('launchctl', ['bootout', `gui/${uid}`, path], { stdio: 'pipe' }) } catch { /* not loaded */ }
+      if (existsSync(path)) unlinkSync(path)
     }
-    if (options.uninstall) return
+
+    if (options.uninstall) {
+      console.log('[..] Removing Bakin LaunchAgent...')
+      removePlist(plistPath)
+      for (const label of LEGACY_SERVICE_LABELS) {
+        removePlist(join(launchAgentsDir, `${label}.plist`))
+      }
+      console.log('[OK] Bakin autostart disabled')
+      return
+    }
+
+    mkdirSync(launchAgentsDir, { recursive: true })
+    removePlist(plistPath)
+    for (const label of LEGACY_SERVICE_LABELS) {
+      removePlist(join(launchAgentsDir, `${label}.plist`))
+    }
+    writeFileSync(plistPath, generateLaunchAgentPlist({
+      programArgs,
+      workingDir: projectDir,
+      stdoutPath,
+      stderrPath,
+    }), 'utf-8')
+    execFileSync('launchctl', ['bootstrap', `gui/${uid}`, plistPath], { stdio: 'pipe' })
+    execFileSync('launchctl', ['kickstart', '-k', `gui/${uid}/${SERVICE_LABEL}`], { stdio: 'pipe' })
+    console.log('[OK] Bakin autostart enabled')
+    console.log(`  Service: ${SERVICE_LABEL}`)
+    console.log(`  Logs:    ${stdoutPath}`)
+    console.log('  Disable: bakin setup service --uninstall')
+    return
   }
 
-  // --- LaunchAgent install path commented out — run manually for now ---
-  // const { writeFileSync, mkdirSync } = await import('fs')
-  // const { resolve, dirname } = await import('path')
-  // const launchAgentsDir = join(homedir(), 'Library', 'LaunchAgents')
-  //
-  // const { getSettings } = await import('../src/core/settings')
-  // const settings = getSettings()
-  // if (!settings.service.enabled) {
-  //   console.error('[SKIP] Service management is disabled in settings.')
-  //   console.error('  Enable with: bakin settings set service.enabled true')
-  //   return
-  // }
-  //
-  // const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
-  // console.log(`[..] Detecting paths for ${projectDir}`)
-  //
-  // let nodePath: string
-  // try {
-  //   nodePath = execSync('which node', { encoding: 'utf-8' }).trim()
-  // } catch {
-  //   console.error('[FAIL] Could not find node binary. Is Node.js installed?')
-  //   process.exit(1)
-  // }
-  //
-  // const tsxPath = join(projectDir, 'node_modules', '.bin', 'tsx')
-  // if (!existsSync(tsxPath)) {
-  //   console.error('[FAIL] tsx not found at node_modules/.bin/tsx — run: npm install')
-  //   process.exit(1)
-  // }
-  //
-  // const serverPath = join(projectDir, 'server.ts')
-  // if (!existsSync(serverPath)) {
-  //   console.error('[FAIL] server.ts not found — are you in the bakin project directory?')
-  //   process.exit(1)
-  // }
-  //
-  // console.log(`  node:    ${nodePath}`)
-  // console.log(`  tsx:     ${tsxPath}`)
-  // console.log(`  server:  ${serverPath}`)
-  // console.log(`  workdir: ${projectDir}`)
-  //
-  // try { execSync(`launchctl bootout gui/${uid} ${plistPath}`, { stdio: 'pipe' }) } catch { /* ignore */ }
-  //
-  // if (!existsSync(launchAgentsDir)) {
-  //   mkdirSync(launchAgentsDir, { recursive: true })
-  // }
-  //
-  // const plist = generatePlist({
-  //   nodePath,
-  //   tsxPath,
-  //   serverPath,
-  //   workingDir: projectDir,
-  //   stdoutPath: join(projectDir, 'mc-server.log'),
-  //   stderrPath: join(projectDir, 'mc-server-error.log'),
-  // })
-  //
-  // writeFileSync(plistPath, plist, 'utf-8')
-  // console.log(`[OK] Wrote ${plistPath}`)
-  //
-  // console.log('[..] Loading service...')
-  // try {
-  //   execSync(`launchctl bootstrap gui/${uid} ${plistPath}`, { stdio: 'pipe' })
-  //   console.log('[OK] Service loaded')
-  // } catch (err) {
-  //   try {
-  //     execSync(`launchctl kickstart -k gui/${uid}/${SERVICE_LABEL}`, { stdio: 'pipe' })
-  //     console.log('[OK] Service restarted')
-  //   } catch {
-  //     console.error('[FAIL] Could not load service:', err instanceof Error ? err.message : String(err))
-  //     console.error(`  Try manually: launchctl bootstrap gui/${uid} ${plistPath}`)
-  //     process.exit(1)
-  //   }
-  // }
-  //
-  // try {
-  //   execSync(`launchctl list ${SERVICE_LABEL}`, { encoding: 'utf-8', stdio: 'pipe' })
-  //   console.log('[OK] Service is running')
-  // } catch {
-  //   console.log('[WARN] Service loaded but may not be running yet — check: bakin status')
-  // }
-  //
-  // console.log('')
-  // console.log('Bakin service installed. It will auto-start on login.')
-  // console.log('  Status:    bakin status')
-  // console.log('  Uninstall: bakin setup service --uninstall')
+  if (process.platform === 'linux') {
+    const systemdDir = join(homedir(), '.config', 'systemd', 'user')
+    const unitPath = join(systemdDir, `${SERVICE_LABEL}.service`)
+    if (options.uninstall) {
+      console.log('[..] Removing Bakin user service...')
+      try { execFileSync('systemctl', ['--user', 'disable', '--now', `${SERVICE_LABEL}.service`], { stdio: 'pipe' }) } catch { /* not enabled */ }
+      if (existsSync(unitPath)) unlinkSync(unitPath)
+      try { execFileSync('systemctl', ['--user', 'daemon-reload'], { stdio: 'pipe' }) } catch { /* systemd unavailable */ }
+      console.log('[OK] Bakin autostart disabled')
+      return
+    }
 
-  console.log('')
-  console.log('LaunchAgent auto-start is disabled. Run Bakin manually:')
-  console.log('  cd /path/to/bakin && npx tsx server.ts')
-  console.log('')
-  console.log('Or use: bakin reboot')
+    mkdirSync(systemdDir, { recursive: true })
+    writeFileSync(unitPath, generateSystemdUnit({
+      programArgs,
+      workingDir: projectDir,
+      stdoutPath,
+      stderrPath,
+    }), 'utf-8')
+    execFileSync('systemctl', ['--user', 'daemon-reload'], { stdio: 'pipe' })
+    execFileSync('systemctl', ['--user', 'enable', '--now', `${SERVICE_LABEL}.service`], { stdio: 'pipe' })
+    console.log('[OK] Bakin autostart enabled')
+    console.log(`  Service: ${SERVICE_LABEL}.service`)
+    console.log(`  Logs:    ${stdoutPath}`)
+    console.log('  Disable: bakin setup service --uninstall')
+    return
+  }
+
+  console.error(`Service management is not supported on ${process.platform}.`)
+  process.exit(1)
 }
 
 async function cmdReboot(): Promise<void> {
-  const { execSync } = await import('child_process')
+  const { execFileSync } = await import('child_process')
   const { join, resolve, dirname } = await import('path')
 
   // --- launchctl restart path commented out — manual process management only ---
@@ -988,7 +1117,7 @@ async function cmdReboot(): Promise<void> {
   // Kill any running Bakin server processes
   console.log('[..] Stopping Bakin server...')
   try {
-    const pids = execSync("pgrep -f 'tsx.*server\\.ts'", { encoding: 'utf-8' }).trim()
+    const pids = execFileSync('pgrep', ['-f', serverProcessPattern()], { encoding: 'utf-8' }).trim()
     if (pids) {
       for (const pid of pids.split('\n')) {
         if (pid && pid !== String(process.pid)) {
@@ -1005,12 +1134,12 @@ async function cmdReboot(): Promise<void> {
 
   // Start the server in background
   const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
-  const serverPath = join(projectDir, 'server.ts')
   const logPath = join(projectDir, 'mc-server.log')
 
   console.log('[..] Starting Bakin server...')
   const { spawn } = await import('child_process')
-  const child = spawn('npx', ['tsx', serverPath], {
+  const programArgs = await serviceProgramArgs()
+  const child = spawn(programArgs[0], programArgs.slice(1), {
     cwd: projectDir,
     detached: true,
     stdio: ['ignore', 'ignore', 'ignore'],
@@ -1119,11 +1248,11 @@ async function cmdLogs(filter?: string): Promise<void> {
 }
 
 async function cmdStop(): Promise<void> {
-  const { execSync } = await import('child_process')
+  const { execFileSync } = await import('child_process')
 
   console.log('[..] Stopping Bakin server...')
   try {
-    const pids = execSync("pgrep -f 'tsx.*server\\.ts'", { encoding: 'utf-8' }).trim()
+    const pids = execFileSync('pgrep', ['-f', serverProcessPattern()], { encoding: 'utf-8' }).trim()
     if (pids) {
       for (const pid of pids.split('\n')) {
         if (pid && pid !== String(process.pid)) {
@@ -1465,7 +1594,7 @@ async function cmdOnboardingSettingsInit(): Promise<void> {
   if (result.status === 'failed') process.exit(1)
 }
 
-async function cmdOnboardingCheckSingle(target: 'runtime' | 'search' | 'search-models' | 'llm' | 'channels' | 'plugin-assets' | 'agent-assets' | 'recommended-plugins'): Promise<void> {
+async function cmdOnboardingCheckSingle(target: 'runtime' | 'search' | 'search-models' | 'llm' | 'channels' | 'plugin-assets' | 'agent-assets' | 'recommended-plugins' | 'recommended-agents'): Promise<void> {
   const componentMap: Record<string, () => Promise<{ check(): Promise<import('../src/core/onboarding/types').CheckResult> }>> = {
     runtime: async () => (await import('../src/core/onboarding/runtime')).runtimeComponent,
     search: async () => (await import('../src/core/onboarding/search')).searchComponent,
@@ -1475,6 +1604,7 @@ async function cmdOnboardingCheckSingle(target: 'runtime' | 'search' | 'search-m
     'plugin-assets': async () => (await import('../src/core/onboarding/plugin-assets')).pluginAssetsComponent,
     'agent-assets': async () => (await import('../src/core/onboarding/agent-assets')).agentAssetsComponent,
     'recommended-plugins': async () => (await import('../src/core/onboarding/recommended-plugins')).recommendedPluginsComponent,
+    'recommended-agents': async () => (await import('../src/core/onboarding/recommended-agents')).recommendedAgentsComponent,
   }
   const component = await componentMap[target]()
   const result = await component.check()
@@ -1504,6 +1634,7 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
     'plugin-assets': async () => (await import('../src/core/onboarding/plugin-assets')).pluginAssetsComponent,
     'agent-assets': async () => (await import('../src/core/onboarding/agent-assets')).agentAssetsComponent,
     'recommended-plugins': async () => (await import('../src/core/onboarding/recommended-plugins')).recommendedPluginsComponent,
+    'recommended-agents': async () => (await import('../src/core/onboarding/recommended-agents')).recommendedAgentsComponent,
   }
   const component = await componentMap[target]()
   const isTTY = Boolean(process.stdout.isTTY)
@@ -1527,11 +1658,21 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
 
 async function cmdOnboard(args: string[]): Promise<void> {
   const { runOnboard, isOnboarded, loadState } = await import('../src/core/onboarding/index')
+  const { collectOnboardingSelections } = await import('../src/core/cli/onboarding-interactive')
+  const { OnboardingBusy, OnboardingFinalStatus } = await import('../src/core/cli/ui/onboarding')
+  const { render, renderToString } = await import('ink')
+  const { createElement } = await import('react')
   const checkOnly = args.includes('--check')
   const yes = args.includes('--yes')
   const json = args.includes('--json')
   const force = args.includes('--force')
+  const verbose = args.includes('--verbose')
   const isTTY = Boolean(process.stdout.isTTY)
+
+  const previousConsoleFormat = process.env.BAKIN_CONSOLE_FORMAT
+  if (!verbose && previousConsoleFormat === undefined) {
+    process.env.BAKIN_CONSOLE_FORMAT = 'silent'
+  }
 
   // Early exit for already-onboarded machines unless --force or --check
   if (!force && !checkOnly && isOnboarded()) {
@@ -1545,36 +1686,105 @@ async function cmdOnboard(args: string[]): Promise<void> {
     process.exit(0)
   }
 
-  const opts = {
+  const baseOpts = {
     interactive: isTTY && !json && !checkOnly,
     autoApprove: yes || (!isTTY && !json),
     json,
     checkOnly,
     force,
   }
+  try {
+    const selections = await collectOnboardingSelections(baseOpts)
+    const opts = { ...baseOpts, ...selections, interactive: false }
 
-  const result = await runOnboard(opts)
+    let busyFrame = 0
+    let busyDetail: string | undefined
+    const completedOutcomes: Array<{
+      name: string
+      status: 'complete' | 'warning' | 'skipped' | 'blocked'
+      message: string
+    }> = []
+    let busyTimer: ReturnType<typeof setInterval> | undefined
+    const statusForOutcome = (status: 'ok' | 'warn' | 'skipped' | 'error') => {
+      if (status === 'ok') return 'complete'
+      if (status === 'warn') return 'warning'
+      if (status === 'skipped') return 'skipped'
+      return 'blocked'
+    }
+    const renderBusy = () => createElement(OnboardingBusy, {
+      label: 'Running onboarding checks and installs',
+      detail: busyDetail,
+      frame: busyFrame,
+      completed: completedOutcomes,
+    })
+    const busy = isTTY && !json
+      ? render(renderBusy())
+      : null
+    if (busy) {
+      busyTimer = setInterval(() => {
+        busyFrame += 1
+        busy.rerender(renderBusy())
+      }, 80)
+    }
 
-  if (!json) {
-    console.log('')
-    for (const o of result.outcomes) {
-      console.log(`${statusIcon(o.finalStatus)} ${o.name.padEnd(10)} ${o.message}`)
-      if (o.remediation && o.finalStatus !== 'ok') {
-        console.log(`  → ${o.remediation}`)
+    let result: Awaited<ReturnType<typeof runOnboard>>
+    try {
+      result = await runOnboard({
+        ...opts,
+        onProgress: busy
+          ? (detail: string) => {
+            busyDetail = detail
+            busyFrame += 1
+            busy.rerender(renderBusy())
+          }
+          : undefined,
+        onOutcome: busy
+          ? (outcome) => {
+            completedOutcomes.push({
+              name: outcome.name,
+              status: statusForOutcome(outcome.finalStatus),
+              message: outcome.message,
+            })
+            busyFrame += 1
+            busy.rerender(renderBusy())
+          }
+          : undefined,
+      })
+    } finally {
+      if (busyTimer) clearInterval(busyTimer)
+      busy?.unmount()
+    }
+
+    if (!json) {
+      if (isTTY) {
+        console.log('')
+        console.log(renderToString(createElement(OnboardingFinalStatus, { outcomes: result.outcomes, exitCode: result.exitCode })))
+      } else {
+        console.log('')
+        for (const o of result.outcomes) {
+          console.log(`${statusIcon(o.finalStatus)} ${o.name.padEnd(10)} ${o.message}`)
+          if (o.remediation && (o.finalStatus === 'error' || o.finalStatus === 'warn')) {
+            console.log(`  → ${o.remediation}`)
+          }
+        }
+        console.log('')
+        if (result.exitCode === 0) {
+          console.log('Onboarding complete. Run `bakin start` to launch Bakin.')
+        } else if (result.exitCode === 2) {
+          console.log('Onboarding finished with warnings. Bakin will start but some features may be limited.')
+          console.log('Run `bakin start` to launch Bakin.')
+        } else {
+          console.log('Onboarding failed. Fix the errors above and rerun `bakin onboard`.')
+        }
       }
     }
-    console.log('')
-    if (result.exitCode === 0) {
-      console.log('Onboarding complete. Run `bakin start` to launch Bakin.')
-    } else if (result.exitCode === 2) {
-      console.log('Onboarding finished with warnings. Bakin will start but some features may be limited.')
-      console.log('Run `bakin start` to launch Bakin.')
-    } else {
-      console.log('Onboarding failed. Fix the errors above and rerun `bakin onboard`.')
+
+    process.exit(result.exitCode)
+  } finally {
+    if (!verbose && previousConsoleFormat === undefined) {
+      delete process.env.BAKIN_CONSOLE_FORMAT
     }
   }
-
-  process.exit(result.exitCode)
 }
 
 export async function main(): Promise<void> {
@@ -1839,23 +2049,23 @@ export async function main(): Promise<void> {
         break
 
       case 'check':
-        if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-assets' || sub === 'recommended-plugins') {
+        if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-assets' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
           await cmdOnboardingCheckSingle(sub)
         } else if (sub === 'all') {
           await cmdOnboardingCheckAll()
         } else {
           console.error(`Unknown check target: ${sub}`)
-          console.error('Available: bakin check runtime | search | search-models | llm | channels | plugin-assets | agent-assets | all')
+          console.error('Available: bakin check runtime | search | search-models | llm | channels | plugin-assets | agent-assets | recommended-plugins | recommended-agents | all')
           process.exit(1)
         }
         break
 
       case 'install':
-        if (sub === 'search' || sub === 'search-models' || sub === 'mcporter' || sub === 'plugin-assets' || sub === 'agent-assets' || sub === 'recommended-plugins') {
+        if (sub === 'search' || sub === 'search-models' || sub === 'mcporter' || sub === 'plugin-assets' || sub === 'agent-assets' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
           await cmdOnboardingInstallSingle(sub, args)
         } else {
           console.error(`Unknown install target: ${sub}`)
-          console.error('Available: bakin install search | search-models | mcporter | plugin-assets | agent-assets | recommended-plugins')
+          console.error('Available: bakin install search | search-models | mcporter | plugin-assets | agent-assets | recommended-plugins | recommended-agents')
           process.exit(1)
         }
         break
@@ -1865,7 +2075,7 @@ export async function main(): Promise<void> {
         break
 
       case 'doctor':
-        await cmdDoctor()
+        await cmdDoctor(args.slice(1))
         break
 
       case 'dev': {

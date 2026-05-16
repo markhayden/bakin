@@ -67,7 +67,7 @@ export function scaffoldPlugin(name: string): number {
           private: true,
           type: 'module',
           devDependencies: {
-            '@bakin/sdk': `^${APP_VERSION}`,
+            '@makinbakin/sdk': `^${APP_VERSION}`,
             react: '^19.0.0',
             'react-dom': '^19.0.0',
             typescript: '^5.0.0',
@@ -87,7 +87,7 @@ export function scaffoldPlugin(name: string): number {
  * Use ctx.registerRoute / registerExecTool / registerHook etc. to wire in
  * functionality.
  */
-import type { BakinPlugin, PluginContext } from '@bakin/sdk/types'
+import type { BakinPlugin, PluginContext } from '@makinbakin/sdk/types'
 
 const plugin: BakinPlugin = {
   id: '${name}',
@@ -111,7 +111,7 @@ export default plugin
  * \`registerPlugin\` contributes nav items + slot implementations into the
  * shared shell runtime.
  */
-import { registerPlugin } from '@bakin/sdk'
+import { registerPlugin } from '@makinbakin/sdk'
 
 registerPlugin({
   id: '${name}',
@@ -136,7 +136,7 @@ A Bakin plugin.
 ## Develop
 
 \`\`\`sh
-bun install           # install @bakin/sdk + react for typechecking
+bun install           # install @makinbakin/sdk + react for typechecking
 \`\`\`
 
 ## Install into Bakin

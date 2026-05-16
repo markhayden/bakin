@@ -168,7 +168,7 @@ const eslintConfig = defineConfig([
     },
   },
   // Plugin isolation: every plugin talks to Bakin's shell and to other
-  // plugins exclusively through @bakin/sdk/*. Direct imports from another
+  // plugins exclusively through @makinbakin/sdk/*. Direct imports from another
   // plugin's internals or from Bakin's src/ components/hooks are banned so
   // the SDK surface stays the contract. This is the architectural lock
   // established in #141 (SDK + slot system) and enforced through the Bun
@@ -193,7 +193,7 @@ const eslintConfig = defineConfig([
               "@bakin/memory/*",
               "@bakin/models/*",
             ],
-            message: "Plugins cannot import from other plugins. Use @bakin/sdk/* instead.",
+            message: "Plugins cannot import from other plugins. Use @makinbakin/sdk/* instead.",
           },
           {
             group: [
@@ -220,7 +220,7 @@ const eslintConfig = defineConfig([
               "../../src/hooks/**",
               "../../src/types",
             ],
-            message: "Plugins must import via @bakin/sdk/{ui,hooks,components,slots,types,utils}.",
+            message: "Plugins must import via @makinbakin/sdk/{ui,hooks,components,slots,types,utils}.",
           },
         ],
       }],

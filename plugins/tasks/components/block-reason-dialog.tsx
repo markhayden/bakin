@@ -8,9 +8,9 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from "@bakin/sdk/ui"
-import { Button } from "@bakin/sdk/ui"
-import { Input } from "@bakin/sdk/ui"
+} from "@makinbakin/sdk/ui"
+import { Button } from "@makinbakin/sdk/ui"
+import { Input } from "@makinbakin/sdk/ui"
 
 interface BlockReasonDialogProps {
   taskTitle: string | null

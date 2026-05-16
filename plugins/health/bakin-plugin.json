@@ -77,8 +77,8 @@
       },
       {
         "name": "doctor",
-        "usage": "bakin doctor",
-        "summary": "Run health checks."
+        "usage": "bakin doctor [--full] [--notify-agent]",
+        "summary": "Run offline or full server-backed health checks."
       }
     ],
     "docs": {

@@ -53,8 +53,8 @@ mock.module('../../packages/core/src/content-dir', () => {
 })
 
 import { PluginHost } from '../../packages/host/src/plugin-host/PluginHost'
-import { registerPlugin, unregisterPlugin } from '@bakin/sdk'
-import { Slot } from '@bakin/sdk/slots'
+import { registerPlugin, unregisterPlugin } from '@makinbakin/sdk'
+import { Slot } from '@makinbakin/sdk/slots'
 
 function SlotPage() {
   return <span data-testid="slot-content">rendered-from-x</span>

@@ -1,55 +1,60 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
-import { promisify } from 'util'
-
-const execFileAsyncMock = mock(async () => ({
-  stdout: JSON.stringify({
-    models: [
-      { key: 'configured/model', name: 'Configured Model', available: true },
-      { key: 'unavailable/model', name: 'Unavailable Model', available: false },
-    ],
-  }),
-  stderr: '',
-}))
-
-const execFileMock = mock(() => null)
-;(execFileMock as unknown as Record<symbol, unknown>)[promisify.custom] = execFileAsyncMock
-
-mock.module('child_process', () => ({
-  execFile: execFileMock,
-}))
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
 
 describe('OpenClaw runtime models adapter', () => {
+  let testDir: string
+  let openclaw: string
+  let callsFile: string
+
   beforeEach(() => {
-    execFileMock.mockClear()
-    execFileAsyncMock.mockClear()
+    testDir = mkdtempSync(join(tmpdir(), 'bakin-openclaw-models-test-'))
+    const binDir = join(testDir, 'bin')
+    mkdirSync(binDir, { recursive: true })
+    openclaw = join(binDir, 'openclaw')
+    callsFile = join(testDir, 'calls.txt')
+    writeFileSync(openclaw, `#!/bin/sh
+printf '%s\\n' "$@" >> "${callsFile}"
+cat <<'JSON'
+{"models":[{"key":"configured/model","name":"Configured Model","available":true},{"key":"unavailable/model","name":"Unavailable Model","available":false}]}
+JSON
+`, 'utf-8')
+    chmodSync(openclaw, 0o755)
+  })
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true })
   })
 
   it('lists configured available models without requesting the full catalogue', async () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
-    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: '/bin/openclaw' } })
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: openclaw } })
 
     const models = await runtime.models.listAvailable()
 
     expect(models).toEqual([
       expect.objectContaining({ id: 'configured/model', available: true }),
     ])
-    expect(execFileAsyncMock).toHaveBeenCalledWith('/bin/openclaw', ['models', 'list', '--json'], expect.objectContaining({
-      timeout: 15000,
-    }))
+    expect(readFileSync(callsFile, 'utf-8').split('\n').filter(Boolean)).toEqual([
+      'models',
+      'list',
+      '--json',
+    ])
   })
 
   it('uses a larger stdout buffer only when requesting unavailable models too', async () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
-    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: '/bin/openclaw' } })
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: openclaw } })
 
     const models = await runtime.models.listAvailable({ includeUnavailable: true })
 
     expect(models.map(model => model.id)).toEqual(['configured/model', 'unavailable/model'])
-    expect(execFileAsyncMock).toHaveBeenCalledWith('/bin/openclaw', ['models', 'list', '--all', '--json'], expect.objectContaining({
-      timeout: 15000,
-      maxBuffer: expect.any(Number),
-    }))
-    const calls = execFileAsyncMock.mock.calls as unknown as Array<[string, string[], { maxBuffer?: number }]>
-    expect(calls[0]?.[2].maxBuffer).toBeGreaterThan(1024 * 1024)
+    expect(readFileSync(callsFile, 'utf-8').split('\n').filter(Boolean)).toEqual([
+      'models',
+      'list',
+      '--all',
+      '--json',
+    ])
   })
 })

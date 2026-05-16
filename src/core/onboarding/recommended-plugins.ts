@@ -1,5 +1,6 @@
 import { existsSync } from 'fs'
 import { join } from 'path'
+import curatedCatalog from '../../../packages/host/src/data/curated-plugins.json'
 import { getContentDir } from '../content-dir'
 import { readPluginLockfile } from '@bakin/core/plugins/lockfile'
 import { getInstalledPluginIds, planPluginDependencyOrder } from '../plugins/dependencies'
@@ -12,27 +13,34 @@ export interface RecommendedPlugin {
   source: string
   description: string
   dependencies: readonly string[]
+  trust: 'official' | 'verified' | 'community'
   defaultSelected: boolean
 }
 
-export const RECOMMENDED_PLUGINS = [
-  {
-    id: 'messaging',
-    name: 'Messaging',
-    source: 'github:markhayden/bakin-bits-official#plugins/messaging',
-    description: 'Content planning, calendar items, brainstorming sessions, approvals, and channel delivery.',
-    dependencies: ['team', 'workflows'],
-    defaultSelected: true,
-  },
-  {
-    id: 'projects',
-    name: 'Projects',
-    source: 'github:markhayden/bakin-bits-official#plugins/projects',
-    description: 'Project specs, checklists, task links, assets, and project-context agent tools.',
-    dependencies: ['tasks', 'assets', 'team'],
-    defaultSelected: true,
-  },
-] as const satisfies readonly RecommendedPlugin[]
+interface CuratedPluginRow {
+  id: string
+  name: string
+  source: string
+  description: string
+  dependencies?: string[]
+  trust?: 'official' | 'verified' | 'community'
+  defaultSelected?: boolean
+}
+
+function catalogPlugins(): RecommendedPlugin[] {
+  const rows = (curatedCatalog as { plugins?: CuratedPluginRow[] }).plugins ?? []
+  return rows
+    .filter(plugin => plugin.trust === undefined || plugin.trust === 'official')
+    .map(plugin => ({
+      id: plugin.id,
+      name: plugin.name,
+      source: plugin.source,
+      description: plugin.description,
+      dependencies: plugin.dependencies ?? [],
+      trust: plugin.trust ?? 'official',
+      defaultSelected: plugin.defaultSelected === true,
+    }))
+}
 
 function isInstalled(id: string): boolean {
   if (existsSync(join(getContentDir(), 'plugins', id, 'bakin-plugin.json'))) return true
@@ -44,7 +52,7 @@ function isInstalled(id: string): boolean {
 }
 
 function missingPlugins(): RecommendedPlugin[] {
-  return RECOMMENDED_PLUGINS.filter(plugin => !isInstalled(plugin.id))
+  return catalogPlugins().filter(plugin => !isInstalled(plugin.id))
 }
 
 async function installSource(source: string): Promise<{ ok: true; id?: string } | { ok: false; error: string }> {
@@ -92,6 +100,7 @@ async function check(): Promise<CheckResult> {
       name: 'recommended-plugins',
       status: 'ok',
       message: 'Recommended official plugins are installed',
+      details: { available: catalogPlugins().map(plugin => plugin.id), missing: [] },
     }
   }
   return {
@@ -99,7 +108,18 @@ async function check(): Promise<CheckResult> {
     status: 'missing',
     message: `${missing.length} recommended official plugin${missing.length === 1 ? '' : 's'} not installed`,
     remediation: 'Install during onboarding or later with `bakin plugins install github:markhayden/bakin-bits-official#plugins/<id> --yes`.',
-    details: { missing: missing.map(plugin => plugin.id) },
+    details: {
+      available: catalogPlugins().map(plugin => ({
+        id: plugin.id,
+        name: plugin.name,
+        description: plugin.description,
+        dependencies: plugin.dependencies,
+        source: plugin.source,
+        trust: plugin.trust,
+        defaultSelected: plugin.defaultSelected,
+      })),
+      missing: missing.map(plugin => plugin.id),
+    },
   }
 }
 
@@ -115,15 +135,23 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
     }
   }
 
-  const selected: RecommendedPlugin[] = []
-  for (const plugin of missing) {
-    if (opts.autoApprove) {
-      selected.push(plugin)
-      continue
-    }
-    if (!opts.interactive) continue
-    if (await askYesNo(`Install official plugin ${plugin.name}?`, plugin.defaultSelected)) {
-      selected.push(plugin)
+  const explicitSelectedIds = opts.selectedRecommendedPluginIds
+    ? new Set(opts.selectedRecommendedPluginIds)
+    : null
+  const selected: RecommendedPlugin[] = explicitSelectedIds
+    ? missing.filter(plugin => explicitSelectedIds.has(plugin.id))
+    : []
+
+  if (!explicitSelectedIds) {
+    for (const plugin of missing) {
+      if (opts.autoApprove && plugin.defaultSelected) {
+        selected.push(plugin)
+        continue
+      }
+      if (!opts.interactive) continue
+      if (await askYesNo(`Install official plugin ${plugin.name}?`, plugin.defaultSelected)) {
+        selected.push(plugin)
+      }
     }
   }
 
@@ -149,6 +177,7 @@ async function install(opts: OnboardingOptions): Promise<InstallResult> {
   }
 
   for (const plugin of plan.ordered) {
+    opts.onProgress?.(`Installing official plugin ${plugin.id}`)
     const result = await installSource(plugin.source)
     if (result.ok) installed.push(plugin.id)
     else failures.push(`${plugin.id}: ${result.error}`)
@@ -176,3 +205,5 @@ export const recommendedPluginsComponent: OnboardingComponent = {
   check,
   install,
 }
+
+export const RECOMMENDED_PLUGINS = catalogPlugins()

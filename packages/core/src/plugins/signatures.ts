@@ -1,5 +1,5 @@
 import { createHash, createPublicKey, verify as verifyBytes } from 'crypto'
-import type { PluginManifestSignature } from '@bakin/sdk/types'
+import type { PluginManifestSignature } from '@makinbakin/sdk/types'
 
 export interface PluginSignaturePolicy {
   requireSignatures?: boolean

@@ -525,12 +525,15 @@ describe('search-registry', () => {
     })
 
     searchHarness.calls.tablesCreate.mockRejectedValueOnce(new Error('bad config'))
-    await createRegisteredTables()
+    const result = await createRegisteredTables()
 
     expect(searchHarness.calls.tablesCreate).toHaveBeenCalledWith(
       'bakin_broken',
       expect.anything(),
     )
+    expect(result.failures).toEqual([
+      { table: 'bakin_broken', pluginId: 'broken', error: 'bad config' },
+    ])
   })
 
   it('query returns fallback when no content type registered', async () => {

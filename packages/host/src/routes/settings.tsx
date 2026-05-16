@@ -12,7 +12,7 @@
  * fine during TC migration — the root tsconfig maps `@/*` to `./src/*`
  * and packages/host inherits it — but TC26/TC27 should revisit whether
  * these components want to move under packages/host/src/components or
- * get promoted into @bakin/sdk.
+ * get promoted into @makinbakin/sdk.
  */
 import { createRoute } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'

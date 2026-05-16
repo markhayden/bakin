@@ -11,7 +11,7 @@ import {
   DialogTitle,
   Input,
   Label,
-} from '@bakin/sdk/ui'
+} from '@makinbakin/sdk/ui'
 import { Loader2 } from 'lucide-react'
 
 /**

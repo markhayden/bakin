@@ -5,7 +5,7 @@
  * a `<RouterProvider>` context. The real TanStack Router hooks throw when
  * called outside that context (`useLocation`'s `isServer` check reads from
  * a null-in-tests state). This shim returns inert values for the hooks
- * used by `@bakin/sdk/hooks/router.ts`, plus no-op stubs for the few
+ * used by `@makinbakin/sdk/hooks/router.ts`, plus no-op stubs for the few
  * components (`<Outlet />`, `<Link />`, `<RouterProvider />`) we touch.
  *
  * Wire via alias in `vitest.config.ts`:

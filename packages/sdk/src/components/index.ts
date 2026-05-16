@@ -1,5 +1,5 @@
 /**
- * `@bakin/sdk/components` — shared layout + compound components.
+ * `@makinbakin/sdk/components` — shared layout + compound components.
  *
  * Plugin-author-visible components that wrap shadcn primitives with Bakin-
  * specific behavior (headers, filters, markdown, agent displays, etc.). Does

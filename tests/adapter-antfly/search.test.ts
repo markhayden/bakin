@@ -77,6 +77,7 @@ const baseSettings = {
 
 const realFetch = globalThis.fetch
 let adapters: SearchAdapter[] = []
+let previousExternalRecheckDelay: string | undefined
 
 async function createInitializedAdapter(settings: Record<string, unknown> = {}): Promise<SearchAdapter> {
   const { createAntflySearchAdapter } = await import('@bakin/adapter-antfly')
@@ -112,6 +113,8 @@ function multiQueryRequests(index = 0): Array<Record<string, unknown>> {
 describe('AntflySearchAdapter', () => {
   beforeEach(() => {
     adapters = []
+    previousExternalRecheckDelay = process.env.BAKIN_ANTFLY_EXTERNAL_RECHECK_MS
+    process.env.BAKIN_ANTFLY_EXTERNAL_RECHECK_MS = '0'
     mock.clearAllMocks()
     ;(globalThis as { fetch: typeof fetch }).fetch = mock(async () => (
       new Response(JSON.stringify({ health: 'healthy' }), { status: 200 })
@@ -144,6 +147,11 @@ describe('AntflySearchAdapter', () => {
       await adapter.shutdown()
     }
     ;(globalThis as { fetch: typeof fetch }).fetch = realFetch
+    if (previousExternalRecheckDelay === undefined) {
+      delete process.env.BAKIN_ANTFLY_EXTERNAL_RECHECK_MS
+    } else {
+      process.env.BAKIN_ANTFLY_EXTERNAL_RECHECK_MS = previousExternalRecheckDelay
+    }
   })
 
   it('attaches reranker config when enabled and rerankField is supplied', async () => {

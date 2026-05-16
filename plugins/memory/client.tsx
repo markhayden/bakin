@@ -1,8 +1,8 @@
 /**
  * Memory plugin — client entry point.
  */
-import { registerPlugin } from '@bakin/sdk'
-import type { NavItem } from '@bakin/sdk'
+import { registerPlugin } from '@makinbakin/sdk'
+import type { NavItem } from '@makinbakin/sdk'
 import { MemoryShell } from './components/memory-shell'
 
 const navItems: NavItem[] = [

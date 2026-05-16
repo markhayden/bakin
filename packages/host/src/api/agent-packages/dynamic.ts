@@ -171,10 +171,7 @@ async function handleUpdate(req: Request, agentId: string): Promise<Response> {
 function handleLessonsList(agentId: string): Response {
   const packageId = resolvePackageIdForAgent(agentId)
   if (!packageId) {
-    return Response.json(
-      { ok: false, error: `No package installed for agent "${agentId}".` },
-      { status: 404 },
-    )
+    return Response.json({ ok: true, packageId: null, lessons: [] })
   }
   try {
     const lessons = listLessons(packageId)

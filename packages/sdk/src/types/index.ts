@@ -2,7 +2,7 @@
  * Public Bakin plugin contract types.
  *
  * This module is intentionally self-contained. External plugins must be able
- * to typecheck against `@bakin/sdk/types` without resolving `@bakin/core`,
+ * to typecheck against `@makinbakin/sdk/types` without resolving `@bakin/core`,
  * Bakin source aliases, adapter packages, or another plugin's internals.
  */
 

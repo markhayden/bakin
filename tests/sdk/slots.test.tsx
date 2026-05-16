@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 /**
- * Tests for @bakin/sdk/slots — the client-side plugin slot system.
+ * Tests for @makinbakin/sdk/slots — the client-side plugin slot system.
  *
  * Verifies registration accumulation, Slot rendering, ordering, prop pass-
  * through, and the empty-registration fallback. The registry is a browser-
@@ -39,7 +39,7 @@ mock.module('../../packages/core/src/content-dir', () => {
   }
 })
 
-import { Slot, registerSlot, getSlotEntries, clearSlotsOwnedBy } from '@bakin/sdk/slots'
+import { Slot, registerSlot, getSlotEntries, clearSlotsOwnedBy } from '@makinbakin/sdk/slots'
 
 const TEST_OWNER = '__test_slots'
 
@@ -56,7 +56,7 @@ afterEach(() => {
   cleanup()
 })
 
-describe('@bakin/sdk/slots — registry', () => {
+describe('@makinbakin/sdk/slots — registry', () => {
   it('starts empty for an unknown name', () => {
     expect(getSlotEntries('test.empty')).toHaveLength(0)
   })
@@ -76,7 +76,7 @@ describe('@bakin/sdk/slots — registry', () => {
   })
 })
 
-describe('@bakin/sdk/slots — <Slot>', () => {
+describe('@makinbakin/sdk/slots — <Slot>', () => {
   it('renders nothing when nothing is registered', () => {
     const { container } = render(<Slot name="test.empty" text="hi" />)
     expect(container.firstChild).toBeNull()
@@ -110,7 +110,7 @@ describe('@bakin/sdk/slots — <Slot>', () => {
   })
 })
 
-describe('@bakin/sdk/slots — clearSlotsOwnedBy', () => {
+describe('@makinbakin/sdk/slots — clearSlotsOwnedBy', () => {
   it('removes only entries owned by the given plugin', () => {
     registerSlot('test.caption', Caption, 50, 'plugin-a')
     registerSlot('test.caption', Alt, 60, 'plugin-b')

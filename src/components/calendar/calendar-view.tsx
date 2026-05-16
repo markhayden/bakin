@@ -1,6 +1,6 @@
 'use client'
 
-import { useContentStore } from '@bakin/sdk/hooks'
+import { useContentStore } from '@makinbakin/sdk/hooks'
 import { parseCalendar } from '@/lib/parsers/calendar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'

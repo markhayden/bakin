@@ -22,12 +22,12 @@ describe('imitation-crab runtime failure contract', () => {
     await expect(runtime.messaging.send({
       agentId: 'pixel',
       content: 'This should fail',
-    })).rejects.toThrow('OpenClaw chat failed (500)')
+    })).rejects.toThrow('OpenClaw chat failed: Mock error mode; code=mock_error')
 
     await expect(drain(runtime.messaging.stream({
       agentId: 'chef',
       content: 'This stream should fail',
-    }))).rejects.toThrow('OpenClaw chat failed (500)')
+    }))).rejects.toThrow('OpenClaw chat failed: Mock error mode; code=mock_error')
   })
 
   it('rejects loudly when the mock tool gateway returns an error', async () => {

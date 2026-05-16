@@ -5,7 +5,10 @@
  * runtime adapter for readiness, roster, and raw config integrity data.
  */
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { join } from 'path'
+import { tmpdir } from 'os'
 
+const testDir = join(tmpdir(), `bakin-runtime-onboarding-test-${Date.now()}`)
 let useExistingServices = true
 let initError: Error | null = null
 let runtimeAvailable = true
@@ -37,7 +40,24 @@ mock.module('../../../src/core/app-services', () => ({
   },
 }))
 
+mock.module('@/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ logs: join(testDir, 'logs') }),
+}))
+mock.module('../../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ logs: join(testDir, 'logs') }),
+}))
+
 mock.module('../../../src/core/logger', () => ({
+  createLogger: () => ({
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
+  }),
+}))
+mock.module('@/core/logger', () => ({
   createLogger: () => ({
     info: mock(),
     warn: mock(),
@@ -47,7 +67,7 @@ mock.module('../../../src/core/logger', () => ({
 }))
 
 describe('onboarding runtime component', () => {
-  let runtimeComponent: typeof import('../../../src/core/onboarding/runtime').runtimeComponent
+  let runtimeComponent: typeof import('@/core/onboarding/runtime').runtimeComponent
   let RUNTIME_SETUP_URL: string
 
   beforeEach(async () => {
@@ -58,7 +78,7 @@ describe('onboarding runtime component', () => {
     runtimeConfig = { agents: { list: [{ id: 'main' }] } }
     runtimeConfigError = null
     vi.resetModules()
-    const mod = await import('../../../src/core/onboarding/runtime')
+    const mod = await import('@/core/onboarding/runtime')
     runtimeComponent = mod.runtimeComponent
     RUNTIME_SETUP_URL = mod.RUNTIME_SETUP_URL
   })
@@ -80,6 +100,16 @@ describe('onboarding runtime component', () => {
       const result = await runtimeComponent.check()
       expect(result.status).toBe('missing')
       expect(result.message).toContain('not reachable')
+    })
+
+    it('reports missing when the runtime config is absent before reading agents', async () => {
+      runtimeAgents = []
+      runtimeConfig = null
+
+      const result = await runtimeComponent.check()
+      expect(result.status).toBe('missing')
+      expect(result.message).toContain('runtime config is not present')
+      expect(result.remediation).toContain(RUNTIME_SETUP_URL)
     })
 
     it('reports broken when the runtime returns no agents', async () => {

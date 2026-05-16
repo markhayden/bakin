@@ -1,17 +1,17 @@
 'use client'
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { useContentStore } from "@bakin/sdk/hooks"
-import { useQueryState } from "@bakin/sdk/hooks"
-import { Card, CardHeader, CardTitle, CardContent } from "@bakin/sdk/ui"
-import { Badge } from "@bakin/sdk/ui"
-import { Button } from "@bakin/sdk/ui"
-import { Input } from "@bakin/sdk/ui"
-import { Skeleton } from "@bakin/sdk/ui"
-import { PluginHeader } from "@bakin/sdk/components"
-import { UnderlineTabs } from "@bakin/sdk/components"
+import { useContentStore } from "@makinbakin/sdk/hooks"
+import { useQueryState } from "@makinbakin/sdk/hooks"
+import { Card, CardHeader, CardTitle, CardContent } from "@makinbakin/sdk/ui"
+import { Badge } from "@makinbakin/sdk/ui"
+import { Button } from "@makinbakin/sdk/ui"
+import { Input } from "@makinbakin/sdk/ui"
+import { Skeleton } from "@makinbakin/sdk/ui"
+import { PluginHeader } from "@makinbakin/sdk/components"
+import { UnderlineTabs } from "@makinbakin/sdk/components"
 import { Search, CircleCheck, Clock, AlertCircle } from 'lucide-react'
-import type { HealthCheckResult } from '@bakin/sdk'
+import type { HealthCheckResult } from '@makinbakin/sdk'
 
 const USAGE_TABS = [
   { id: 'tools', label: 'Tool Usage' },

@@ -11,9 +11,10 @@
  * the disk layout is identical for core vs user plugins — the runtime
  * loader doesn't care which bucket a plugin came from.
  *
- * Externals held: react, @tanstack/react-router, and SDK package aliases so the
- * host shell and plugin share the singletons wired in via the browser
- * import map.
+ * Client externals hold React, @tanstack/react-router, and SDK package aliases
+ * so the host shell and plugin share the browser singletons wired by the
+ * import map. Server builds bundle the SDK so activation of dist/index.js does
+ * not depend on a workspace symlink or a locally installed SDK package.
  *
  * Rebuild skip: if every dist output is newer than every source entry,
  * the build is a no-op. This keeps server boot fast when nothing changed.
@@ -21,21 +22,58 @@
 import { existsSync, statSync, readdirSync, readFileSync } from 'node:fs'
 import type { Dirent } from 'node:fs'
 import { spawn } from 'node:child_process'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
+import { builtinModules } from 'node:module'
 
-const EXTERNAL = [
+const CLIENT_EXTERNAL = [
   'react', 'react-dom', 'react-dom/client',
   'react/jsx-runtime', 'react/jsx-dev-runtime',
   '@tanstack/react-router',
-  '@bakin/sdk', '@bakin/sdk/ui', '@bakin/sdk/hooks',
-  '@bakin/sdk/components', '@bakin/sdk/slots',
-  '@bakin/sdk/types', '@bakin/sdk/utils',
-  '@bakin/sdk/metadata', '@bakin/sdk/routing',
   '@makinbakin/sdk', '@makinbakin/sdk/ui', '@makinbakin/sdk/hooks',
   '@makinbakin/sdk/components', '@makinbakin/sdk/slots',
   '@makinbakin/sdk/types', '@makinbakin/sdk/utils',
   '@makinbakin/sdk/metadata', '@makinbakin/sdk/routing',
 ]
+
+const SERVER_EXTERNAL = [
+  'react', 'react-dom', 'react-dom/client',
+  'react/jsx-runtime', 'react/jsx-dev-runtime',
+  '@tanstack/react-router',
+]
+
+const REPO_ROOT = resolve(import.meta.dir, '../../../..')
+const SDK_ENTRYPOINTS: Record<string, string> = {
+  '@makinbakin/sdk': join(REPO_ROOT, 'packages/sdk/src/index.ts'),
+  '@makinbakin/sdk/ui': join(REPO_ROOT, 'packages/sdk/src/ui/index.ts'),
+  '@makinbakin/sdk/hooks': join(REPO_ROOT, 'packages/sdk/src/hooks/index.ts'),
+  '@makinbakin/sdk/components': join(REPO_ROOT, 'packages/sdk/src/components/index.ts'),
+  '@makinbakin/sdk/slots': join(REPO_ROOT, 'packages/sdk/src/slots/index.tsx'),
+  '@makinbakin/sdk/types': join(REPO_ROOT, 'packages/sdk/src/types/index.ts'),
+  '@makinbakin/sdk/utils': join(REPO_ROOT, 'packages/sdk/src/utils/index.ts'),
+  '@makinbakin/sdk/metadata': join(REPO_ROOT, 'packages/sdk/src/metadata/index.ts'),
+  '@makinbakin/sdk/routing': join(REPO_ROOT, 'packages/sdk/src/routing/index.ts'),
+}
+
+const HOST_PROVIDED_IMPORTS = new Set([
+  ...CLIENT_EXTERNAL,
+])
+const BUILTIN_IMPORTS = new Set([
+  ...builtinModules,
+  ...builtinModules.map((name) => `node:${name}`),
+])
+const SOURCE_EXT_RE = /\.(?:ts|tsx|js|jsx|mjs|cjs)$/
+const NON_RUNTIME_DIRS = new Set(['dist', 'node_modules', 'tests', '__tests__', 'coverage'])
+const OLD_SDK_PACKAGE_NAME = '@bakin' + '/sdk'
+type SourceLoader = 'ts' | 'tsx' | 'js' | 'jsx'
+interface BunImportScanEntry {
+  path?: string
+}
+interface BunImportScanner {
+  scanImports(source: string): BunImportScanEntry[]
+}
+const BunTranspiler = (Bun as unknown as {
+  Transpiler: new (options: { loader: SourceLoader }) => BunImportScanner
+}).Transpiler
 
 interface RunResult {
   exitCode: number
@@ -82,7 +120,7 @@ function newestMtimeMs(dir: string, skip: Set<string>): number {
     }
     for (const entry of entries) {
       const name = String(entry.name)
-      if (skip.has(name)) continue
+      if (skip.has(name) || NON_RUNTIME_DIRS.has(name)) continue
       const full = join(current, name)
       if (entry.isDirectory()) {
         walk(full)
@@ -113,6 +151,116 @@ function oldestMtimeMs(paths: string[]): number {
   return oldest === Number.POSITIVE_INFINITY ? 0 : oldest
 }
 
+interface PluginPackageJson {
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+  peerDependencies?: Record<string, string>
+}
+
+function packageName(specifier: string): string {
+  if (specifier.startsWith('@')) {
+    const [scope, name] = specifier.split('/')
+    return `${scope}/${name}`
+  }
+  return specifier.split('/')[0]!
+}
+
+function isRelativeOrAbsoluteSpecifier(specifier: string): boolean {
+  return specifier.startsWith('.') || specifier.startsWith('/') || specifier.startsWith('file:')
+}
+
+function collectSourceFiles(dir: string): string[] {
+  const out: string[] = []
+  const walk = (current: string): void => {
+    let entries: Dirent[]
+    try {
+      entries = readdirSync(current, { withFileTypes: true }) as Dirent[]
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      const name = String(entry.name)
+      if (NON_RUNTIME_DIRS.has(name) || name.startsWith('.')) continue
+      const full = join(current, name)
+      if (entry.isDirectory()) walk(full)
+      else if (entry.isFile() && SOURCE_EXT_RE.test(name)) out.push(full)
+    }
+  }
+  walk(dir)
+  return out
+}
+
+function readPackageJson(pluginDir: string): PluginPackageJson {
+  const pkgJsonPath = join(pluginDir, 'package.json')
+  if (!existsSync(pkgJsonPath)) return {}
+  try {
+    return JSON.parse(readFileSync(pkgJsonPath, 'utf-8')) as PluginPackageJson
+  } catch (err) {
+    if (err instanceof SyntaxError) {
+      throw new Error(`Invalid package.json in ${pluginDir}: ${err.message}`)
+    }
+    throw err
+  }
+}
+
+function sourceLoader(file: string): SourceLoader {
+  if (file.endsWith('.tsx')) return 'tsx'
+  if (file.endsWith('.ts')) return 'ts'
+  if (file.endsWith('.jsx')) return 'jsx'
+  return 'js'
+}
+
+function collectImportSpecifiers(file: string, source: string): string[] {
+  try {
+    const transpiler = new BunTranspiler({ loader: sourceLoader(file) })
+    return transpiler
+      .scanImports(source)
+      .map((entry) => entry.path)
+      .filter((specifier): specifier is string => typeof specifier === 'string' && specifier.length > 0)
+  } catch (err) {
+    throw new Error(`Failed to parse imports in ${file}: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
+function validatePluginImports(pluginDir: string, pkg: PluginPackageJson): void {
+  const declared = new Set([
+    ...Object.keys(pkg.dependencies ?? {}),
+    ...Object.keys(pkg.devDependencies ?? {}),
+    ...Object.keys(pkg.peerDependencies ?? {}),
+  ])
+  const violations: string[] = []
+
+  for (const file of collectSourceFiles(pluginDir)) {
+    const source = readFileSync(file, 'utf-8')
+    for (const specifier of collectImportSpecifiers(file, source)) {
+      if (!specifier || isRelativeOrAbsoluteSpecifier(specifier) || BUILTIN_IMPORTS.has(specifier)) continue
+
+      if (specifier === OLD_SDK_PACKAGE_NAME || specifier.startsWith(`${OLD_SDK_PACKAGE_NAME}/`)) {
+        violations.push(`${file}: ${specifier} is no longer supported; use @makinbakin/sdk`)
+        continue
+      }
+      if (specifier === '@bakin/core' || specifier.startsWith('@bakin/core/') || specifier.startsWith('@bakin/')) {
+        violations.push(`${file}: ${specifier} imports Bakin internals; use @makinbakin/sdk or a declared plugin API`)
+        continue
+      }
+      if (specifier.startsWith('@/')) {
+        violations.push(`${file}: ${specifier} imports app internals; use @makinbakin/sdk or a declared plugin API`)
+        continue
+      }
+      if (HOST_PROVIDED_IMPORTS.has(specifier)) continue
+
+      const pkgName = packageName(specifier)
+      if (!declared.has(pkgName)) {
+        violations.push(`${file}: ${specifier} is not declared in package.json dependencies`)
+      }
+    }
+  }
+
+  if (violations.length > 0) {
+    throw new Error(`Plugin dependency validation failed:\n${violations.join('\n')}`)
+  }
+}
+
 /**
  * Build a user plugin's dist/ from its sources.
  *
@@ -121,7 +269,8 @@ function oldestMtimeMs(paths: string[]): number {
  *   externals list, so this is mostly for dev deps / rare plugin-owned
  *   npm packages.
  * - Runs `bun build` on `index.ts` (server) and `client.tsx` (browser, if
- *   present). Both land in `dist/` with `index.js` / `client.js`.
+ *   present). Both land in `dist/` with `index.js` / `client.js`. The server
+ *   bundle is self-contained except for shared runtime singletons.
  * - Skips the build when the dist outputs are newer than every source file.
  */
 export async function buildUserPlugin(pluginDir: string): Promise<void> {
@@ -132,6 +281,8 @@ export async function buildUserPlugin(pluginDir: string): Promise<void> {
 
   const clientEntry = join(pluginDir, 'client.tsx')
   const hasClient = existsSync(clientEntry)
+  const pkg = readPackageJson(pluginDir)
+  validatePluginImports(pluginDir, pkg)
 
   const distDir = join(pluginDir, 'dist')
   const distServer = join(distDir, 'index.js')
@@ -150,42 +301,39 @@ export async function buildUserPlugin(pluginDir: string): Promise<void> {
   }
 
   // Install deps if the plugin has its own package.json + declared deps.
-  const pkgJsonPath = join(pluginDir, 'package.json')
-  if (existsSync(pkgJsonPath)) {
-    try {
-      const pkg = JSON.parse(readFileSync(pkgJsonPath, 'utf-8')) as {
-        dependencies?: Record<string, string>
-        devDependencies?: Record<string, string>
+  if (existsSync(join(pluginDir, 'package.json'))) {
+    const hasDeps =
+      (pkg.dependencies && Object.keys(pkg.dependencies).length > 0) ||
+      (pkg.devDependencies && Object.keys(pkg.devDependencies).length > 0)
+    if (hasDeps) {
+      const installResult = await runSubprocess('bun', ['install'], pluginDir)
+      if (installResult.exitCode !== 0) {
+        throw new Error(`bun install failed in ${pluginDir}:\n${installResult.stderr}`)
       }
-      const hasDeps =
-        (pkg.dependencies && Object.keys(pkg.dependencies).length > 0) ||
-        (pkg.devDependencies && Object.keys(pkg.devDependencies).length > 0)
-      if (hasDeps) {
-        const installResult = await runSubprocess('bun', ['install'], pluginDir)
-        if (installResult.exitCode !== 0) {
-          throw new Error(`bun install failed in ${pluginDir}:\n${installResult.stderr}`)
-        }
-      }
-    } catch (err) {
-      if (err instanceof SyntaxError) {
-        throw new Error(`Invalid package.json in ${pluginDir}: ${err.message}`)
-      }
-      throw err
     }
   }
 
-  // Server entry — target=bun, keep node_modules external.
-  const serverResult = await runSubprocess('bun', [
-    'build', serverEntry,
-    '--outdir', distDir,
-    '--target', 'bun',
-    '--format', 'esm',
-    '--entry-naming', 'index.[ext]',
-    '--packages', 'external',
-    ...EXTERNAL.flatMap(e => ['--external', e]),
-  ])
-  if (serverResult.exitCode !== 0) {
-    throw new Error(`Failed to build server entry for ${pluginDir}:\n${serverResult.stderr}`)
+  const serverBuildConfig = {
+    entrypoints: [serverEntry],
+    outdir: distDir,
+    target: 'bun',
+    format: 'esm',
+    naming: 'index.[ext]',
+    external: SERVER_EXTERNAL,
+    plugins: [{
+      name: 'bakin-sdk-server-resolver',
+      setup(build: any) {
+        build.onResolve({ filter: /^@makinbakin\/sdk(\/.*)?$/ }, (args: { path: string }) => {
+          const path = SDK_ENTRYPOINTS[args.path]
+          if (!path) return
+          return { path }
+        })
+      },
+    }],
+  } as Parameters<typeof Bun.build>[0] & { plugins: Array<unknown> }
+  const serverResult = await Bun.build(serverBuildConfig)
+  if (!serverResult.success) {
+    throw new Error(`Failed to build server entry for ${pluginDir}:\n${serverResult.logs.join('\n')}`)
   }
 
   if (hasClient) {
@@ -195,7 +343,7 @@ export async function buildUserPlugin(pluginDir: string): Promise<void> {
       '--target', 'browser',
       '--format', 'esm',
       '--entry-naming', 'client.[ext]',
-      ...EXTERNAL.flatMap(e => ['--external', e]),
+      ...CLIENT_EXTERNAL.flatMap(e => ['--external', e]),
     ])
     if (clientResult.exitCode !== 0) {
       throw new Error(`Failed to build client entry for ${pluginDir}:\n${clientResult.stderr}`)
@@ -206,10 +354,10 @@ export async function buildUserPlugin(pluginDir: string): Promise<void> {
 /**
  * Walk `~/.bakin/plugins/` and build any user plugin whose dist is stale
  * or missing. Invoked from server.ts BEFORE pluginRegistry.initialize(),
- * so the registry's dynamic import of `<pluginDir>/<server-entry>` sees
- * a fresh build on disk. Failures are logged but never fatal — a plugin
- * that fails to build is skipped, and the registry will surface a more
- * specific error when it tries to import.
+ * so the registry's dynamic import of `<pluginDir>/dist/index.js` sees a
+ * fresh build on disk. Failures are logged but never fatal — a plugin that
+ * fails to build is skipped, and the registry will surface a more specific
+ * error when it tries to import.
  */
 export interface BuildLogger {
   info: (msg: string, meta?: Record<string, unknown>) => void

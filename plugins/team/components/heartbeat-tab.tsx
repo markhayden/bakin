@@ -10,7 +10,7 @@
  */
 import { useEffect, useState } from 'react'
 import { Loader2, Heart, Pencil } from 'lucide-react'
-import { MarkdownContent } from '@bakin/sdk/components'
+import { MarkdownContent } from '@makinbakin/sdk/components'
 import type { HeartbeatRaw } from '../types'
 import { EmptyState } from './empty-state'
 

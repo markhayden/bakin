@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * `@bakin/sdk/slots` — client-side slot registry + `<Slot>` primitive.
+ * `@makinbakin/sdk/slots` — client-side slot registry + `<Slot>` primitive.
  *
  * The slot system lets a plugin render components contributed by other
  * plugins at a named extension point. Today it's used for:

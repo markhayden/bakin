@@ -38,10 +38,10 @@ const EXTERNAL = [
   'react', 'react-dom', 'react-dom/client',
   'react/jsx-runtime', 'react/jsx-dev-runtime',
   '@tanstack/react-router',
-  '@bakin/sdk', '@bakin/sdk/ui', '@bakin/sdk/hooks',
-  '@bakin/sdk/components', '@bakin/sdk/slots',
-  '@bakin/sdk/types', '@bakin/sdk/utils',
-  '@bakin/sdk/metadata', '@bakin/sdk/routing',
+  '@makinbakin/sdk', '@makinbakin/sdk/ui', '@makinbakin/sdk/hooks',
+  '@makinbakin/sdk/components', '@makinbakin/sdk/slots',
+  '@makinbakin/sdk/types', '@makinbakin/sdk/utils',
+  '@makinbakin/sdk/metadata', '@makinbakin/sdk/routing',
   '@makinbakin/sdk', '@makinbakin/sdk/ui', '@makinbakin/sdk/hooks',
   '@makinbakin/sdk/components', '@makinbakin/sdk/slots',
   '@makinbakin/sdk/types', '@makinbakin/sdk/utils',
@@ -65,7 +65,7 @@ export default {
 }
 `)
   writeFileSync(join(okDir, 'client.tsx'), `
-import { registerPlugin } from '@bakin/sdk'
+import { registerPlugin } from '@makinbakin/sdk'
 registerPlugin({ id: 'ok-plugin', navItems: [] })
 `)
 

@@ -73,16 +73,15 @@ describe('buildSdkPackage', () => {
     expect(leaks).toEqual([])
   }, 120_000)
 
-  it('rewrites the npm README to the public package name', async () => {
+  it('copies the npm README with the public package name', async () => {
     const outDir = join(testRoot, 'package-readme')
     await buildSdkPackage({ version: '0.9.0', outDir })
 
     const readme = readFileSync(join(outDir, 'README.md'), 'utf-8')
     expect(readme).toContain(PUBLIC_SDK_PACKAGE_NAME)
-    expect(readme).not.toContain('@bakin/sdk')
   }, 120_000)
 
-  it('rewrites declaration docs to the public package name', async () => {
+  it('emits declaration docs with the public package name', async () => {
     const outDir = join(testRoot, 'package-declaration-docs')
     await buildSdkPackage({ version: '0.9.0', outDir })
 
@@ -92,7 +91,6 @@ describe('buildSdkPackage', () => {
       .join('\n')
 
     expect(declarations).toContain(PUBLIC_SDK_PACKAGE_NAME)
-    expect(declarations).not.toContain('@bakin/sdk')
   }, 120_000)
 
   it('refuses missing required options', async () => {

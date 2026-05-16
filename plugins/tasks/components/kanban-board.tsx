@@ -4,23 +4,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { KeyboardSensor, PointerSensor } from '@dnd-kit/dom'
 import { move } from '@dnd-kit/helpers'
 import { DragDropProvider, type DragDropEventHandlers } from '@dnd-kit/react'
-import { usePathname, useRouter, useSearchParams } from '@bakin/sdk/hooks'
+import { usePathname, useRouter, useSearchParams } from '@makinbakin/sdk/hooks'
 import { KanbanColumn } from './kanban-column'
 import { DeleteTaskDialog } from './delete-task-dialog'
 import { BlockReasonDialog } from './block-reason-dialog'
 import { TaskDetailDrawer } from './task-detail-dialog'
 import { TaskMetrics } from './task-metrics'
-import { PluginHeader } from "@bakin/sdk/components"
+import { PluginHeader } from "@makinbakin/sdk/components"
 import { TaskFilters } from './task-filters'
 import { TaskLogTable } from './task-log-table'
 import { filterBoardColumns, useTaskFilters } from '../hooks/use-task-filters'
 import { countVisibleTasks } from '../lib/scheduled'
-import { useContentStore } from "@bakin/sdk/hooks"
-import { useDebug } from "@bakin/sdk/hooks"
-import { useQueryState, useQueryArrayState } from "@bakin/sdk/hooks"
-import { toast } from "@bakin/sdk/hooks"
+import { useContentStore } from "@makinbakin/sdk/hooks"
+import { useDebug } from "@makinbakin/sdk/hooks"
+import { useQueryState, useQueryArrayState } from "@makinbakin/sdk/hooks"
+import { toast } from "@makinbakin/sdk/hooks"
 import { useGateStatus } from '../hooks/use-gate-status'
-import { Button, Skeleton } from "@bakin/sdk/ui"
+import { Button, Skeleton } from "@makinbakin/sdk/ui"
 import { Kanban, Table2, Plus } from 'lucide-react'
 import type { TaskScoreInfo } from './task-card'
 import type { Task, TaskColumns, ColumnId } from '../types'

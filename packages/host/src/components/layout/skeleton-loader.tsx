@@ -1,4 +1,4 @@
-import { useContentStore } from '@bakin/sdk/hooks'
+import { useContentStore } from '@makinbakin/sdk/hooks'
 import { Skeleton } from '@/components/ui/skeleton'
 
 /** Full-page skeleton while initial data loads */

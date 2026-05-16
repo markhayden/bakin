@@ -1,9 +1,9 @@
 'use client'
 
-import { AgentFilter } from "@bakin/sdk/components"
-import { FacetFilter } from "@bakin/sdk/components"
-import { useAgentIds } from "@bakin/sdk/hooks"
-import { Switch } from "@bakin/sdk/ui"
+import { AgentFilter } from "@makinbakin/sdk/components"
+import { FacetFilter } from "@makinbakin/sdk/components"
+import { useAgentIds } from "@makinbakin/sdk/hooks"
+import { Switch } from "@makinbakin/sdk/ui"
 import { Eye, EyeOff } from 'lucide-react'
 import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
 import type { ColumnId } from '../types'

@@ -1,5 +1,5 @@
 /**
- * Router hooks — TanStack Router wrappers exposed through `@bakin/sdk/hooks`.
+ * Router hooks — TanStack Router wrappers exposed through `@makinbakin/sdk/hooks`.
  *
  * `useRouter()` returns `{ push, replace, refresh, back, forward }`,
  * `useSearchParams()` returns a `URLSearchParams`, and `usePathname()`

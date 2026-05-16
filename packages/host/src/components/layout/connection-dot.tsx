@@ -1,4 +1,4 @@
-import { useContentStore } from '@bakin/sdk/hooks'
+import { useContentStore } from '@makinbakin/sdk/hooks'
 
 export function ConnectionDot() {
   const connected = useContentStore((s) => s.connected)

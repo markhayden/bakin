@@ -32,7 +32,7 @@ mock.module('../../../packages/adapter-openclaw/src/home', () => ({
 }))
 
 // MarkdownContent renders raw text in tests so we can assert on content.
-mock.module('@bakin/sdk/components', () => ({
+mock.module('@makinbakin/sdk/components', () => ({
   MarkdownContent: ({ content }: { content: string }) => <div data-testid="markdown">{content}</div>,
 }))
 

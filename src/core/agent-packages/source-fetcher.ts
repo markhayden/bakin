@@ -32,7 +32,7 @@
  * staging directory before throwing. Callers never have to clean up.
  */
 import { cpSync, existsSync, mkdirSync, rmSync, statSync } from 'fs'
-import { execFileSync } from 'child_process'
+import { execFileSync, spawn } from 'child_process'
 import { homedir, tmpdir } from 'os'
 import { isAbsolute, join, resolve } from 'path'
 import { randomUUID } from 'crypto'
@@ -263,8 +263,32 @@ interface GitRunner {
   (args: string[]): string
 }
 
+interface AsyncGitRunner {
+  /** Run `git <args>` and return stdout; throw on non-zero exit. */
+  (args: string[]): Promise<string>
+}
+
 const realGit: GitRunner = (args) =>
   execFileSync('git', args, { stdio: ['ignore', 'pipe', 'pipe'] }).toString('utf-8')
+
+const realGitAsync: AsyncGitRunner = (args) => new Promise((resolve, reject) => {
+  const child = spawn('git', args, { stdio: ['ignore', 'pipe', 'pipe'] })
+  let stdout = ''
+  let stderr = ''
+
+  child.stdout.setEncoding('utf-8')
+  child.stderr.setEncoding('utf-8')
+  child.stdout.on('data', chunk => { stdout += chunk })
+  child.stderr.on('data', chunk => { stderr += chunk })
+  child.on('error', reject)
+  child.on('close', code => {
+    if (code === 0) {
+      resolve(stdout)
+      return
+    }
+    reject(new Error(stderr.trim() || `git ${args.join(' ')} exited with code ${code}`))
+  })
+})
 
 /**
  * Internal helper — split out so unit tests can pass a mock runner.
@@ -318,10 +342,65 @@ export function fetchGithubWithRunner(
   }
 }
 
+export async function fetchGithubWithRunnerAsync(
+  source: string,
+  git: AsyncGitRunner,
+  staging: string,
+): Promise<FetchedSource> {
+  const spec = parseGithubSpec(source)
+  const url = `https://github.com/${spec.owner}/${spec.repo}.git`
+  const cloneTarget = spec.subpath ? `${staging}.clone` : staging
+
+  cleanupStaging(staging)
+  if (spec.subpath) cleanupStaging(cloneTarget)
+  mkdirSync(staging, { recursive: true })
+
+  try {
+    if (spec.ref) {
+      try {
+        await git(['clone', '--depth', '1', '--branch', spec.ref, url, cloneTarget])
+      } catch {
+        cleanupStaging(cloneTarget)
+        if (!spec.subpath) mkdirSync(cloneTarget, { recursive: true })
+        await git(['clone', '--depth', '50', url, cloneTarget])
+        await git(['-C', cloneTarget, 'checkout', spec.ref])
+      }
+    } else {
+      await git(['clone', '--depth', '1', url, cloneTarget])
+    }
+
+    if (spec.subpath) {
+      const packageDir = ensureGithubSubpathPackagePresent(cloneTarget, spec.subpath)
+      cpSync(packageDir, staging, { recursive: true, dereference: false })
+      ensureManifestPresent(staging)
+    } else {
+      ensureManifestPresent(staging)
+    }
+
+    const commitSha = (await git(['-C', cloneTarget, 'rev-parse', 'HEAD'])).trim()
+    if (spec.subpath) cleanupStaging(cloneTarget)
+    return { stagingDir: staging, commitSha, kind: 'github', ref: spec.ref ?? '' }
+  } catch (err) {
+    cleanupStaging(staging)
+    if (spec.subpath) cleanupStaging(cloneTarget)
+    throw err
+  }
+}
+
 function fetchGithub(source: string): FetchedSource {
   const staging = freshStagingDir('github')
   try {
     return fetchGithubWithRunner(source, realGit, staging)
+  } catch (err) {
+    cleanupStaging(staging)
+    throw err
+  }
+}
+
+async function fetchGithubAsync(source: string): Promise<FetchedSource> {
+  const staging = freshStagingDir('github')
+  try {
+    return await fetchGithubWithRunnerAsync(source, realGitAsync, staging)
   } catch (err) {
     cleanupStaging(staging)
     throw err
@@ -344,6 +423,18 @@ export function fetchSource(source: string): FetchedSource {
   if (isLocalPath(source)) return fetchLocal(source)
 
   // Bare name → explicit error per Q5 of the spec refinement.
+  throw new Error(
+    `"${source}" is not a valid source. Use github:user/repo[@ref][#subpath] or a local path (./, ../, /, ~/).`,
+  )
+}
+
+export async function fetchSourceAsync(source: string): Promise<FetchedSource> {
+  if (typeof source !== 'string' || source.length === 0) {
+    throw new Error('Source must be a non-empty string')
+  }
+  if (isGithubSource(source)) return await fetchGithubAsync(source)
+  if (isLocalPath(source)) return fetchLocal(source)
+
   throw new Error(
     `"${source}" is not a valid source. Use github:user/repo[@ref][#subpath] or a local path (./, ../, /, ~/).`,
   )

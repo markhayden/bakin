@@ -6,7 +6,7 @@ This document adapts the Makin Bakin brand for technical documentation. The docs
 
 - Use `Bakin` for the product and app in prose.
 - Use `bakin` for the CLI/binary literal.
-- Use exact package names such as `@bakin/sdk`.
+- Use exact package names such as `@makinbakin/sdk`.
 - Existing logo art may include the apostrophe as a brand asset, but page copy should use `Bakin`.
 
 ## Voice

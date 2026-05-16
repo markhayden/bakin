@@ -21,6 +21,15 @@ export const CLI_COMMANDS = [
     examples: [{ title: 'Start Bakin', code: 'bakin start', test: 'illustrative', reason: 'Starts a long-running server process.' }],
   }),
   cli({
+    name: 'serve',
+    usage: 'bakin serve',
+    visibility: 'internal',
+    group: 'Lifecycle',
+    summary: 'Run the Bakin server in the foreground.',
+    description: 'Foreground server entrypoint for service managers and process supervisors. Humans should use `bakin start`.',
+    examples: [{ title: 'Run under a supervisor', code: 'bakin serve', test: 'illustrative', reason: 'Starts a long-running server process.' }],
+  }),
+  cli({
     name: 'stop',
     usage: 'bakin stop',
     group: 'Lifecycle',
@@ -72,11 +81,14 @@ export const CLI_COMMANDS = [
   }),
   cli({
     name: 'doctor',
-    usage: 'bakin doctor',
+    usage: 'bakin doctor [--json] [--full] [--notify-agent]',
     group: 'Lifecycle',
     summary: 'Run health checks.',
-    description: 'Runs Bakin diagnostics for local dependencies, server state, agents, plugin assets, runtime behavior, and recoverable issues.',
-    examples: [{ title: 'Run diagnostics', code: 'bakin doctor', test: 'illustrative', reason: 'Depends on local Bakin/runtime state.' }],
+    description: 'Runs local offline diagnostics by default. Pass --full to include server-backed plugin, task, workflow, search, and runtime checks. Pass --notify-agent with --full to send unfixable issues to the runtime main agent.',
+    examples: [
+      { title: 'Run offline diagnostics', code: 'bakin doctor', test: 'illustrative', reason: 'Depends on local Bakin/runtime state.' },
+      { title: 'Run full diagnostics against the server', code: 'bakin doctor --full', test: 'illustrative', reason: 'Requires a running Bakin server.' },
+    ],
   }),
 
   cli({
@@ -127,11 +139,11 @@ export const CLI_COMMANDS = [
   cli({ name: 'settings get', usage: 'bakin settings get [key]', group: 'Setup and config', summary: 'Read settings.', description: 'Reads all settings or one dot-notation key.', examples: [{ title: 'Read settings', code: 'bakin settings get dispatch.intervalMin', test: 'illustrative', reason: 'Depends on local settings state.' }] }),
   cli({ name: 'settings set', usage: 'bakin settings set <key> <value>', group: 'Setup and config', summary: 'Update a setting.', description: 'Updates one setting using dot notation.', examples: [{ title: 'Update setting', code: 'bakin settings set dispatch.intervalMin 5', test: 'illustrative', reason: 'Mutates local settings.' }] }),
   cli({ name: 'settings init', usage: 'bakin settings init', group: 'Setup and config', summary: 'Seed default settings.', description: 'Creates default settings if missing.', examples: [{ title: 'Initialize settings', code: 'bakin settings init', test: 'illustrative', reason: 'Writes local settings state.' }] }),
-  cli({ name: 'setup service', usage: 'bakin setup service [--uninstall]', group: 'Setup and config', summary: 'Install or remove macOS service integration.', description: 'Installs or removes the LaunchAgent used for auto-start behavior on macOS.', examples: [{ title: 'Install service', code: 'bakin setup service', test: 'illustrative', reason: 'Mutates host service configuration.' }] }),
+  cli({ name: 'setup service', usage: 'bakin setup service [--uninstall]', group: 'Setup and config', summary: 'Install or remove autostart service integration.', description: 'Installs or removes a macOS LaunchAgent or Linux user systemd service that runs `bakin serve` on login. Manual startup remains the default until this command is run.', examples: [{ title: 'Enable autostart', code: 'bakin setup service', test: 'illustrative', reason: 'Mutates host service configuration.' }, { title: 'Disable autostart', code: 'bakin setup service --uninstall', test: 'illustrative', reason: 'Mutates host service configuration.' }] }),
   cli({ name: 'mkdir', usage: 'bakin mkdir', group: 'Setup and config', summary: 'Create the Bakin home directory tree.', description: 'Creates or verifies the `~/.bakin` directory tree.', examples: [{ title: 'Create directories', code: 'bakin mkdir', test: 'illustrative', reason: 'Writes local home directory state.' }] }),
-  cli({ name: 'check', usage: 'bakin check <runtime|search|search-models|llm|channels|plugin-assets|agent-assets|recommended-plugins|all>', group: 'Setup and config', summary: 'Run onboarding checks.', description: 'Runs one or all first-run readiness checks.', examples: [{ title: 'Run all checks', code: 'bakin check all', test: 'illustrative', reason: 'Depends on local environment.' }] }),
-  cli({ name: 'install', usage: 'bakin install <search|search-models|mcporter|plugin-assets|agent-assets|recommended-plugins>', group: 'Setup and config', summary: 'Install onboarding components.', description: 'Installs Bakin dependencies, plugin/agent assets, or official recommended plugins.', examples: [{ title: 'Install mcporter', code: 'bakin install mcporter', test: 'illustrative', reason: 'Downloads or mutates local dependencies.' }] }),
-  cli({ name: 'onboard', usage: 'bakin onboard [--check] [--yes] [--json] [--force]', group: 'Setup and config', summary: 'Run first-time onboarding.', description: 'Runs the full first-run setup flow.', examples: [{ title: 'Scripted onboarding', code: 'bakin onboard --yes --json', test: 'illustrative', reason: 'Writes local state and may install dependencies.' }] }),
+  cli({ name: 'check', usage: 'bakin check <runtime|search|search-models|llm|channels|plugin-assets|agent-assets|recommended-plugins|recommended-agents|all>', group: 'Setup and config', summary: 'Run onboarding checks.', description: 'Runs one or all first-run readiness checks.', examples: [{ title: 'Run all checks', code: 'bakin check all', test: 'illustrative', reason: 'Depends on local environment.' }] }),
+  cli({ name: 'install', usage: 'bakin install <search|search-models|mcporter|plugin-assets|agent-assets|recommended-plugins|recommended-agents>', group: 'Setup and config', summary: 'Install onboarding components.', description: 'Installs Bakin dependencies, plugin/agent assets, or official recommended plugins and agents.', examples: [{ title: 'Install mcporter', code: 'bakin install mcporter', test: 'illustrative', reason: 'Downloads or mutates local dependencies.' }] }),
+  cli({ name: 'onboard', usage: 'bakin onboard [--check] [--yes] [--json] [--force] [--verbose]', group: 'Setup and config', summary: 'Run first-time onboarding.', description: 'Runs the full first-run setup flow. By default it hides raw service logs and shows a structured setup report; use --verbose for underlying logs.', examples: [{ title: 'Scripted onboarding', code: 'bakin onboard --yes --json', test: 'illustrative', reason: 'Writes local state and may install dependencies.' }] }),
   cli({ name: 'paths', usage: 'bakin paths [key]', group: 'Setup and config', summary: 'Show content directory paths.', description: 'Prints Bakin runtime paths, optionally for one key.', examples: [{ title: 'Show paths', code: 'bakin paths', test: 'illustrative', reason: 'Depends on local Bakin home settings.' }] }),
   cli({ name: 'agent-rules', usage: 'bakin agent-rules [--apply|--check|--apply-all|--check-all]', group: 'Setup and config', summary: 'Manage AGENTS.md context.', description: 'Applies or checks Bakin-managed AGENTS.md context sections.', examples: [{ title: 'Check rules', code: 'bakin agent-rules --check', test: 'illustrative', reason: 'Depends on local agent files.' }] }),
 

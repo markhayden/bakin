@@ -16,4 +16,4 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
-OPENCLAW_HOME=./dev/openclaw-home OPENCLAW_PATH=./dev/docker/openclaw-shim.sh BAKIN_URL=http://host.docker.internal:3737 npx tsx server.ts
+OPENCLAW_HOME=./dev/openclaw-home OPENCLAW_PATH=./dev/docker/openclaw-shim.sh BAKIN_URL=http://host.docker.internal:3737 bun run server.ts serve

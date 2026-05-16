@@ -145,15 +145,12 @@ describe('plugin manifest schema', () => {
     expect(() => parsePluginManifest(missingDescription)).toThrow(/description/)
   })
 
-  it('can parse legacy minimal manifests only when explicitly allowed', () => {
-    const manifest = parsePluginManifest({
+  it('rejects legacy minimal manifests', () => {
+    expect(() => parsePluginManifest({
       id: 'legacy',
       name: 'Legacy',
       version: '0.1.0',
-    }, { allowLegacy: true })
-
-    expect(manifest.entry.server).toBe('index.ts')
-    expect(manifest.bakin).toBe('>=1.0.0')
+    })).toThrow(/entry/)
   })
 
   it('accepts an optional ed25519 signature block', () => {

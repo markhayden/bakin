@@ -237,6 +237,14 @@ describe('agent-packages dynamic — DELETE /api/agent-packages/{agentId}', () =
 })
 
 describe('agent-packages dynamic — lessons endpoints', () => {
+  it('GET /lessons returns an empty list for unmanaged agents', async () => {
+    const { req, url } = makeRequest('GET', '/api/agent-packages/patch/lessons')
+    const res = await dynamicRoute.handler(req, url)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body).toEqual({ ok: true, packageId: null, lessons: [] })
+  })
+
   it('GET /lessons lists lessons with current enabled state', async () => {
     const src = seedAgentPackage()
     {

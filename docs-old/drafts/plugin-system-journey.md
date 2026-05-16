@@ -21,12 +21,12 @@ Not good.
 
 ## The plan
 
-Build a plugin SDK (`@bakin/sdk`), migrate all plugins to import through it, introduce a slot system (`<Slot name="asset-preview" />` so plugins can inject UI anywhere), and finally add a runtime bundle loader that dynamically imports user plugins' pre-built JS at browser load.
+Build a plugin SDK (`@makinbakin/sdk`), migrate all plugins to import through it, introduce a slot system (`<Slot name="asset-preview" />` so plugins can inject UI anywhere), and finally add a runtime bundle loader that dynamically imports user plugins' pre-built JS at browser load.
 
 The first 60% shipped cleanly. PR #145 landed 10 commits:
-- `@bakin/sdk/{ui,hooks,components,slots,types,utils}` scaffolded
+- `@makinbakin/sdk/{ui,hooks,components,slots,types,utils}` scaffolded
 - Slot primitive (`registerSlot('slot-name', Component)` + `<Slot name="..." />`)
-- All ~65 plugin files rewired to import only from `@bakin/sdk`
+- All ~65 plugin files rewired to import only from `@makinbakin/sdk`
 - ESLint rule locking the contract
 - Cross-plugin component embeds (`AssetDetailModal`, `TaskAssets`) converted to slots
 - `src/app/*/page.tsx` wrappers decoupled — each renders `<Slot name="page:/route" />`, plugins register their pages via `registerSlot` at load time
@@ -85,7 +85,7 @@ Locked architecture:
 - **Plugin model:** authors ship source, Bakin compiles on install, loaded at runtime via import maps
 - **Core plugins:** compiled into the binary at release time (Obsidian model)
 - **User plugins:** `~/.bakin/plugins/<id>/`, built on install, loaded dynamically, no restart required
-- **SDK:** `@bakin/sdk` published to npm for plugin author IDE types
+- **SDK:** `@makinbakin/sdk` published to npm for plugin author IDE types
 
 Migration spec is written, tracking issue is #147, ~5 calendar weeks of work estimated. Nine phases with explicit commit checkpoints and rollback strategy per phase.
 
@@ -111,7 +111,7 @@ A few concrete takeaways, some expected, some not:
 
 ## What's next
 
-Migration to Bun across 9 phases, ~25 working days. Binary distribution (Mac arm64 + Linux x64/arm64 day one). `@bakin/sdk` on npm. `bakin plugins install github:foo/bar` as the canonical install. Six months from now the success measure is: "a hobbyist self-hoster downloads the binary, installs a plugin from a friend's GitHub link, has working UI in under 2 minutes."
+Migration to Bun across 9 phases, ~25 working days. Binary distribution (Mac arm64 + Linux x64/arm64 day one). `@makinbakin/sdk` on npm. `bakin plugins install github:foo/bar` as the canonical install. Six months from now the success measure is: "a hobbyist self-hoster downloads the binary, installs a plugin from a friend's GitHub link, has working UI in under 2 minutes."
 
 The plugin system survived the migration. That's the part I'm proud of. The SDK surface, the slot system, the hook registry, the `BakinPlugin.activate(ctx)` contract — all of that stays identical. We're replacing the runtime underneath, not the plugin contract on top. That's possible because the #145 work drew a clean boundary before the framework question got asked.
 

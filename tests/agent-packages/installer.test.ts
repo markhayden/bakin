@@ -58,9 +58,11 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 let runtimeAgents: Array<{ id: string; identity?: { name?: string } }> = []
+let updateAllowlistError: Error | null = null
 
-const adapterCalls: { addAgent: unknown[]; addToAllowLists: unknown[] } = {
+const adapterCalls: { addAgent: unknown[]; removeAgent: unknown[]; addToAllowLists: unknown[] } = {
   addAgent: [],
+  removeAgent: [],
   addToAllowLists: [],
 }
 
@@ -126,6 +128,7 @@ function installRuntimeMock(): void {
       },
       update: async (id: string, input: { name?: string }) => ({ id, name: input.name ?? id, status: 'active' }),
       remove: async (id: string) => {
+        adapterCalls.removeAgent.push(id)
         runtimeAgents = runtimeAgents.filter((agent) => agent.id !== id)
       },
       readWorkspaceFile: async (agentId: string, path: string): Promise<WorkspaceFile | null> => {
@@ -158,6 +161,7 @@ function installRuntimeMock(): void {
       },
       updatePermissions: async () => {},
       updateAllowlist: async (agentId: string, patch: Record<string, unknown>) => {
+        if (updateAllowlistError) throw updateAllowlistError
         adapterCalls.addToAllowLists.push({ agentId, patch })
       },
       heartbeat: async () => true,
@@ -202,7 +206,7 @@ function installRuntimeMock(): void {
 }
 
 import { installPackage } from '../../src/core/agent-packages/installer'
-import { readLockfile } from '../../packages/core/src/agent-packages/lockfile'
+import { readLockfile, writeLockfile } from '../../packages/core/src/agent-packages/lockfile'
 import { extractBlock, hasBlock } from '../../packages/core/src/agent-packages/managed-blocks'
 import { isInstallLockHeld } from '../../src/core/agent-packages/install-lock'
 
@@ -215,7 +219,9 @@ beforeEach(() => {
   mkdirSync(testDir, { recursive: true })
   mkdirSync(openClawDir, { recursive: true })
   runtimeAgents = []
+  updateAllowlistError = null
   adapterCalls.addAgent.length = 0
+  adapterCalls.removeAgent.length = 0
   adapterCalls.addToAllowLists.length = 0
   installRuntimeMock()
 })
@@ -449,6 +455,63 @@ describe('installPackage — refuse paths', () => {
     expect(existsSync(join(testDir, 'packages', 'agents', 'x@0.0.0'))).toBe(false)
     expect(adapterCalls.addAgent).toHaveLength(0)
     expect(isInstallLockHeld()).toBe(false)
+  })
+
+  it('removes a freshly-created runtime agent when later install work fails', async () => {
+    const src = seedAgentPackage()
+    updateAllowlistError = new Error('allowlist failed')
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow(/allowlist failed/)
+
+    expect(adapterCalls.addAgent).toHaveLength(1)
+    expect(adapterCalls.removeAgent).toEqual(['pixel'])
+    expect(runtimeAgents.some(agent => agent.id === 'pixel')).toBe(false)
+    expect(Object.keys(readLockfile().packages)).toEqual([])
+  })
+
+  it('restores the previous lockfile when failure happens after lockfile write', async () => {
+    const src = seedAgentPackage()
+    writeLockfile({
+      version: 1,
+      packages: {
+        existing: {
+          kind: 'skill-pack',
+          version: '9.9.9',
+          source: '/existing',
+          ref: '',
+          commitSha: '',
+          installedAt: '2026-01-01T00:00:00.000Z',
+          projections: [],
+          refCount: 0,
+          dependents: [],
+        },
+      },
+    })
+    const agentsParent = join(testDir, 'packages', 'agents')
+    mkdirSync(dirname(agentsParent), { recursive: true })
+    writeFileSync(agentsParent, 'not a directory', 'utf-8')
+
+    expect(async () => {
+      await installPackage({ source: src })
+    }).toThrow()
+
+    expect(readLockfile().packages).toEqual({
+      existing: {
+        kind: 'skill-pack',
+        version: '9.9.9',
+        source: '/existing',
+        ref: '',
+        commitSha: '',
+        installedAt: '2026-01-01T00:00:00.000Z',
+        projections: [],
+        refCount: 0,
+        dependents: [],
+      },
+    })
+    expect(runtimeAgents.some(agent => agent.id === 'pixel')).toBe(false)
+    expect(existsSync(join(openClawDir, 'workspaces', 'pixel', 'SOUL.md'))).toBe(false)
   })
 
   it('refuses an agent package when a contributed lesson file is missing', async () => {

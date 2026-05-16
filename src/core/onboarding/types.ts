@@ -39,6 +39,21 @@ export interface OnboardingOptions {
   checkOnly: boolean
   /** --force flag. Delete the existing marker before running. */
   force: boolean
+  /** Explicit official plugin ids selected by the TUI. Undefined means use defaults/prompts. */
+  selectedRecommendedPluginIds?: readonly string[]
+  /** Explicit official agent ids selected by the TUI. Undefined means use defaults/prompts. */
+  selectedRecommendedAgentIds?: readonly string[]
+  /** Component ids explicitly approved by the human onboarding TUI. */
+  approvedComponents?: readonly string[]
+  /** Optional human UI progress callback. Never used for JSON output. */
+  onProgress?: (message: string) => void
+  /** Optional human UI completion callback. Never used for JSON output. */
+  onOutcome?: (outcome: {
+    name: string
+    finalStatus: 'ok' | 'warn' | 'skipped' | 'error'
+    message: string
+    remediation?: string
+  }) => void
 }
 
 export interface OnboardingComponent {

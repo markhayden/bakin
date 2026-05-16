@@ -3,7 +3,7 @@
  *
  * runOnboard() walks every component in a fixed dependency order:
  *
- *   mkdir -> settings -> runtime -> search -> search-models -> mcporter -> plugin-assets -> agent-assets -> llm -> channels -> recommended-plugins
+ *   mkdir -> settings -> runtime -> search -> search-models -> mcporter -> plugin-assets -> agent-assets -> llm -> channels -> recommended-plugins -> recommended-agents
  *
  * For each component:
  *   1. Call `check()`. If it reports `ok` or `warn`, record and move on.
@@ -51,6 +51,7 @@ import { pluginAssetsComponent } from './plugin-assets'
 import { agentAssetsComponent } from './agent-assets'
 import { llmComponent, channelsComponent } from './credentials'
 import { recommendedPluginsComponent } from './recommended-plugins'
+import { recommendedAgentsComponent } from './recommended-agents'
 import { saveState, clearMarker } from './state'
 import type { CheckResult, OnboardingComponent, OnboardingOptions } from './types'
 import type { ComponentStatus } from './state'
@@ -78,6 +79,7 @@ export const COMPONENT_ORDER: readonly OnboardingComponent[] = [
   llmComponent,
   channelsComponent,
   recommendedPluginsComponent,
+  recommendedAgentsComponent,
 ] as const
 
 /**
@@ -134,6 +136,15 @@ function emitJson(outcome: ComponentOutcome): void {
   process.stdout.write(JSON.stringify(line) + '\n')
 }
 
+function emitOutcome(opts: OnboardingOptions, outcome: ComponentOutcome): void {
+  opts.onOutcome?.({
+    name: outcome.name,
+    finalStatus: outcome.finalStatus,
+    message: outcome.message,
+    remediation: outcome.remediation,
+  })
+}
+
 /**
  * Run one component through the full check → (optional install) → outcome
  * pipeline. Never throws — all errors are converted into an outcome with
@@ -146,6 +157,7 @@ async function runComponent(
   const start = Date.now()
   let check: CheckResult
   try {
+    opts.onProgress?.(`Checking ${component.name}`)
     check = await component.check()
   } catch (err) {
     log.error('Component check() threw', { component: component.name, error: String(err) })
@@ -210,6 +222,7 @@ async function runComponent(
   }
 
   try {
+    opts.onProgress?.(`Installing ${component.name}`)
     const install = await component.install(opts)
     const durationMs = Date.now() - start
     switch (install.status) {
@@ -264,10 +277,11 @@ async function runComponent(
  * check result directly and translate any non-ok status into the
  * appropriate outcome for the orchestrator to cascade-skip on.
  */
-async function runRuntimeInline(component: OnboardingComponent): Promise<ComponentOutcome> {
+async function runRuntimeInline(component: OnboardingComponent, onProgress?: (message: string) => void): Promise<ComponentOutcome> {
   const start = Date.now()
   let check: CheckResult
   try {
+    onProgress?.('Checking runtime')
     check = await component.check()
   } catch (err) {
     return {
@@ -337,6 +351,7 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
   // Clear the marker upfront if --force was passed. The user wants to
   // replay the whole flow regardless of prior state.
   if (opts.force) {
+    opts.onProgress?.('Clearing previous onboarding marker')
     clearMarker()
   }
 
@@ -363,6 +378,7 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
           durationMs: 0,
         }
         outcomes.push(skip)
+        emitOutcome(opts, skip)
         if (opts.json) emitJson(skip)
         continue
       }
@@ -375,8 +391,9 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
     // inline: call check() only, derive the outcome from that, and
     // cascade-skip downstream if anything other than ok.
     if (component.name === 'runtime') {
-      const outcome = await runRuntimeInline(component)
+      const outcome = await runRuntimeInline(component, opts.onProgress)
       outcomes.push(outcome)
+      emitOutcome(opts, outcome)
       if (opts.json) emitJson(outcome)
       if (outcome.finalStatus !== 'ok') {
         log.warn('Runtime is not ready; aborting remaining onboarding steps')
@@ -395,6 +412,7 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
             durationMs: 0,
           }
           outcomes.push(skip)
+          emitOutcome(opts, skip)
           if (opts.json) emitJson(skip)
         }
         break
@@ -404,6 +422,7 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
 
     const outcome = await runComponent(component, opts)
     outcomes.push(outcome)
+    emitOutcome(opts, outcome)
     if (opts.json) emitJson(outcome)
   }
 
@@ -418,6 +437,7 @@ export async function runOnboard(opts: OnboardingOptions): Promise<RunOnboardRes
     const components: Record<string, ComponentStatus> = {}
     for (const o of outcomes) components[o.name] = o.finalStatus
     try {
+      opts.onProgress?.('Writing onboarding marker')
       saveState(components, resolveBakinVersion())
       markerWritten = true
     } catch (err) {

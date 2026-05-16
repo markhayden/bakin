@@ -2,7 +2,7 @@
  * `@bakin/core/routing` — typed route contracts.
  *
  * Re-exports the route types and authoring helpers used by both the host and
- * plugin authors (via `@bakin/sdk/routing`).
+ * plugin authors (via `@makinbakin/sdk/routing`).
  */
 
 export type {

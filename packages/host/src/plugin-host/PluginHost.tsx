@@ -26,7 +26,7 @@
  * window handle stays undefined there.
  */
 import { useEffect, useState, type ReactNode } from 'react'
-import { unregisterPlugin } from '@bakin/sdk'
+import { unregisterPlugin } from '@makinbakin/sdk'
 import { assertReactInstance } from '../lib/react-identity'
 import {
   installVersionMismatchDetector,
@@ -39,6 +39,7 @@ interface ManifestPlugin {
   name: string
   version: string
   clientEntry?: string
+  clientVersion?: string
   clientCss?: string
   status?: 'active' | 'failed'
 }
@@ -85,8 +86,11 @@ function swapPluginCss(plugin: ManifestPlugin, version: string): void {
 async function loadPluginClient(plugin: ManifestPlugin): Promise<void> {
   if (plugin.status === 'failed' || !plugin.clientEntry) return
   injectPluginCss(plugin)
+  const importUrl = plugin.clientVersion
+    ? `${plugin.clientEntry}?v=${plugin.clientVersion}`
+    : plugin.clientEntry
   try {
-    const mod = await import(/* @vite-ignore */ plugin.clientEntry) as LoadedPluginModule
+    const mod = await import(/* @vite-ignore */ importUrl) as LoadedPluginModule
     // If the plugin exports its React instance (e.g. via `export { React }`
     // or a marker), verify it matches the shell's. Plugins aren't required
     // to expose this — the lack of an export is a non-event.
@@ -95,7 +99,7 @@ async function loadPluginClient(plugin: ManifestPlugin): Promise<void> {
     }
   } catch (err) {
     // One bad plugin shouldn't prevent the rest from loading. Log + skip.
-    console.error(`[bakin] Plugin ${plugin.id} failed to load from ${plugin.clientEntry}:`, err)
+    console.error(`[bakin] Plugin ${plugin.id} failed to load from ${importUrl}:`, err)
   }
 }
 

@@ -206,7 +206,7 @@ Health hooks expose registered readiness and diagnostic checks so other surfaces
 Label: Get a health check.
 Purpose: Returns metadata for one registered health check by id, without running the check. Use it when a plugin needs the check name, owner, and autofix capability before deciding what to show or run.
 Kind: rpc
-Source: plugins/health/index.ts:272
+Source: plugins/health/index.ts:301
 
 Example:
 
@@ -224,7 +224,7 @@ const result = await ctx.hooks.invoke(
 Label: List health checks.
 Purpose: Returns the health checks registered by core and plugins without executing them. Use it when another surface needs to show the available diagnostics or autofix support.
 Kind: rpc
-Source: plugins/health/index.ts:271
+Source: plugins/health/index.ts:300
 
 Example:
 
@@ -244,7 +244,7 @@ Model hooks expose the effective model configuration and notify dependent surfac
 Label: Model config changed.
 Purpose: Notifies listeners after an agent model assignment changes. Use it to refresh dependent state, update UI, or invalidate plugin caches that depend on model routing.
 Kind: event
-Source: plugins/models/index.ts:685
+Source: plugins/models/index.ts:700
 
 Example:
 
@@ -264,7 +264,7 @@ await ctx.hooks.callAll(
 Label: List available models.
 Purpose: Returns the model catalog available from the currently configured providers. Use it to populate pickers, validate assignments, or compare model options before saving config.
 Kind: rpc
-Source: plugins/models/index.ts:701
+Source: plugins/models/index.ts:716
 
 Example:
 
@@ -280,7 +280,7 @@ const result = await ctx.hooks.invoke(
 Label: Get effective model.
 Purpose: Resolves the model an agent will actually use after defaults, overrides, and provider settings are applied. Use it when a plugin needs runtime-ready model information for one agent.
 Kind: rpc
-Source: plugins/models/index.ts:689
+Source: plugins/models/index.ts:704
 
 Example:
 
@@ -298,7 +298,7 @@ const result = await ctx.hooks.invoke(
 Label: Mark config dirty.
 Purpose: Marks model configuration as changed so the runtime knows a refresh is needed. Use it after writing model settings that should not be treated as live yet.
 Kind: event
-Source: plugins/models/index.ts:697
+Source: plugins/models/index.ts:712
 
 Example:
 
@@ -314,7 +314,7 @@ await ctx.hooks.callAll(
 Label: Mark runtime refreshed.
 Purpose: Records that the runtime has picked up the latest model configuration. Use it after restart or reload flows so stale dirty-state warnings can clear.
 Kind: event
-Source: plugins/models/index.ts:699
+Source: plugins/models/index.ts:714
 
 Example:
 
@@ -397,7 +397,7 @@ Team hooks expose runtime agent and team metadata for plugins that need agent-aw
 Label: Get an agent.
 Purpose: Returns one runtime agent by id, including team-aware metadata when available. Use it when a plugin already has an agent id and needs the full display record.
 Kind: rpc
-Source: plugins/team/index.ts:1744
+Source: plugins/team/index.ts:1748
 
 Example:
 
@@ -415,7 +415,7 @@ const result = await ctx.hooks.invoke(
 Label: List agent ids.
 Purpose: Returns the ids of agents currently known to the runtime. Use it for lightweight validation, assignment pickers, or loops that do not need full agent metadata.
 Kind: rpc
-Source: plugins/team/index.ts:1749
+Source: plugins/team/index.ts:1753
 
 Example:
 
@@ -431,7 +431,7 @@ const result = await ctx.hooks.invoke(
 Label: Get agent team.
 Purpose: Returns the team currently assigned to an agent, or null when the agent is unassigned. Use it to add team context to task, workflow, or activity views.
 Kind: rpc
-Source: plugins/team/index.ts:1756
+Source: plugins/team/index.ts:1760
 
 Example:
 
@@ -449,7 +449,7 @@ const result = await ctx.hooks.invoke(
 Label: Get org structure.
 Purpose: Returns the current organization structure for teams and agents. Use it when a plugin needs the full hierarchy instead of individual team or agent records.
 Kind: rpc
-Source: plugins/team/index.ts:1762
+Source: plugins/team/index.ts:1766
 
 Example:
 
@@ -465,7 +465,7 @@ const result = await ctx.hooks.invoke(
 Label: List team members.
 Purpose: Returns the agents assigned to one team. Use it for team dashboards, routing rules, or workflow logic that needs team membership.
 Kind: rpc
-Source: plugins/team/index.ts:1753
+Source: plugins/team/index.ts:1757
 
 Example:
 
@@ -483,7 +483,7 @@ const result = await ctx.hooks.invoke(
 Label: List agents.
 Purpose: Returns runtime agents with their display and team metadata attached. Use it when another plugin needs the agent roster as Bakin presents it.
 Kind: rpc
-Source: plugins/team/index.ts:1743
+Source: plugins/team/index.ts:1747
 
 Example:
 
@@ -499,7 +499,7 @@ const result = await ctx.hooks.invoke(
 Label: Resolve agent profile.
 Purpose: Returns the runtime profile for an agent id. Use it when a plugin needs the lower-level profile data behind an agent display record.
 Kind: rpc
-Source: plugins/team/index.ts:1750
+Source: plugins/team/index.ts:1754
 
 Example:
 
@@ -521,7 +521,7 @@ Workflow hooks expose workflow definitions, instances, steps, gates, and notific
 Label: Approve workflow gate.
 Purpose: Approves a pending workflow gate and advances the instance. Use it from plugins that own an external review surface for workflow-backed tasks.
 Kind: rpc
-Source: plugins/workflows/index.ts:1456
+Source: plugins/workflows/index.ts:1478
 
 Example:
 
@@ -537,7 +537,7 @@ const result = await ctx.hooks.invoke(
 Label: Authorize workflow tool use.
 Purpose: Checks whether an agent may perform a workflow-scoped tool action for a task. Use it before executing workflow-sensitive automation.
 Kind: rpc
-Source: plugins/workflows/index.ts:1479
+Source: plugins/workflows/index.ts:1504
 
 Example:
 
@@ -553,7 +553,7 @@ const result = await ctx.hooks.invoke(
 Label: Cancel workflow instance.
 Purpose: Cancels the workflow instance attached to a task. Use it when task state changes make the workflow no longer relevant or safe to continue.
 Kind: event
-Source: plugins/workflows/index.ts:1483
+Source: plugins/workflows/index.ts:1508
 
 Example:
 
@@ -571,7 +571,7 @@ await ctx.hooks.callAll(
 Label: Complete workflow step.
 Purpose: Submits output for a workflow step and advances the instance when validation passes. Use it from agents or tools that finish a workflow action.
 Kind: rpc
-Source: plugins/workflows/index.ts:1474
+Source: plugins/workflows/index.ts:1496
 
 Example:
 
@@ -593,7 +593,7 @@ const result = await ctx.hooks.invoke(
 Label: Create workflow instance.
 Purpose: Creates a workflow instance for a task and optional assignee context. Use it when task creation or routing should immediately attach a workflow.
 Kind: rpc
-Source: plugins/workflows/index.ts:1455
+Source: plugins/workflows/index.ts:1477
 
 Example:
 
@@ -613,7 +613,7 @@ const result = await ctx.hooks.invoke(
 Label: List workflow definitions.
 Purpose: Returns available workflow definitions from the configured content directory. Use it to populate workflow selectors or validate workflow ids before creating instances.
 Kind: rpc
-Source: plugins/workflows/index.ts:1476
+Source: plugins/workflows/index.ts:1498
 
 Example:
 
@@ -629,7 +629,7 @@ const result = await ctx.hooks.invoke(
 Label: List active workflow agents.
 Purpose: Returns agents currently active in a workflow task. Use it for coordination, notification, or assignment views that need live workflow participants.
 Kind: rpc
-Source: plugins/workflows/index.ts:1478
+Source: plugins/workflows/index.ts:1503
 
 Example:
 
@@ -647,7 +647,7 @@ const result = await ctx.hooks.invoke(
 Label: Get current step.
 Purpose: Returns the current workflow step for a task, optionally scoped to an agent. Use it when a plugin needs to know what work is currently actionable.
 Kind: rpc
-Source: plugins/workflows/index.ts:1473
+Source: plugins/workflows/index.ts:1495
 
 Example:
 
@@ -666,7 +666,7 @@ const result = await ctx.hooks.invoke(
 Label: Get notification channel.
 Purpose: Returns one workflow notification channel by id. Use it before sending or configuring alerts that depend on a specific channel implementation.
 Kind: rpc
-Source: plugins/workflows/index.ts:1489
+Source: plugins/workflows/index.ts:1514
 
 Example:
 
@@ -684,7 +684,7 @@ const result = await ctx.hooks.invoke(
 Label: List workflow instances.
 Purpose: Returns workflow instances, optionally filtered by status. Use it for dashboards, queues, and maintenance flows that need a broad view of active workflow state.
 Kind: rpc
-Source: plugins/workflows/index.ts:1472
+Source: plugins/workflows/index.ts:1494
 
 Example:
 
@@ -702,7 +702,7 @@ const result = await ctx.hooks.invoke(
 Label: Check gate notification.
 Purpose: Checks whether a workflow gate notification has already been sent. Use it to avoid duplicate alerts for the same task and gate step.
 Kind: rpc
-Source: plugins/workflows/index.ts:1480
+Source: plugins/workflows/index.ts:1505
 
 Example:
 
@@ -721,7 +721,7 @@ const result = await ctx.hooks.invoke(
 Label: Load workflow definition.
 Purpose: Loads one workflow definition by name. Use it when a plugin needs the template shape, steps, or metadata behind a workflow id.
 Kind: rpc
-Source: plugins/workflows/index.ts:1477
+Source: plugins/workflows/index.ts:1499
 
 Example:
 
@@ -739,7 +739,7 @@ const result = await ctx.hooks.invoke(
 Label: Load workflow instance.
 Purpose: Loads the workflow instance attached to a task. Use it when a plugin needs current workflow state without reading workflow files directly.
 Kind: rpc
-Source: plugins/workflows/index.ts:1453
+Source: plugins/workflows/index.ts:1475
 
 Example:
 
@@ -757,7 +757,7 @@ const result = await ctx.hooks.invoke(
 Label: Mark gate notified.
 Purpose: Records that a workflow gate notification was sent. Use it immediately after notifying a reviewer or channel so future checks can suppress duplicates.
 Kind: rpc
-Source: plugins/workflows/index.ts:1481
+Source: plugins/workflows/index.ts:1506
 
 Example:
 
@@ -776,7 +776,7 @@ const result = await ctx.hooks.invoke(
 Label: Match workflow.
 Purpose: Suggests a workflow based on a task title and description. Use it when creating tasks that should automatically pick the most relevant workflow template.
 Kind: rpc
-Source: plugins/workflows/index.ts:1475
+Source: plugins/workflows/index.ts:1497
 
 Example:
 
@@ -795,7 +795,7 @@ const result = await ctx.hooks.invoke(
 Label: List notification channels.
 Purpose: Returns workflow notification channels registered by core or plugins. Use it to show available delivery targets for gate and workflow alerts.
 Kind: rpc
-Source: plugins/workflows/index.ts:1488
+Source: plugins/workflows/index.ts:1513
 
 Example:
 
@@ -811,7 +811,7 @@ const result = await ctx.hooks.invoke(
 Label: Reject workflow gate.
 Purpose: Rejects a pending workflow gate, records the reason, and rewinds the instance per the workflow gate policy. Use it from plugins that own an external review surface for workflow-backed tasks.
 Kind: rpc
-Source: plugins/workflows/index.ts:1460
+Source: plugins/workflows/index.ts:1482
 
 Example:
 
@@ -827,7 +827,7 @@ const result = await ctx.hooks.invoke(
 Label: Reopen workflow from step.
 Purpose: Reopens an existing workflow instance at a prior actionable step. Use it when a plugin needs explicit user recovery without creating a replacement workflow task.
 Kind: rpc
-Source: plugins/workflows/index.ts:1465
+Source: plugins/workflows/index.ts:1487
 
 Example:
 
@@ -843,7 +843,7 @@ const result = await ctx.hooks.invoke(
 Label: Save workflow instance.
 Purpose: Persists a workflow instance after a plugin has changed its state. Use it to keep workflow updates routed through the workflow plugin storage layer.
 Kind: rpc
-Source: plugins/workflows/index.ts:1454
+Source: plugins/workflows/index.ts:1476
 
 Example:
 
@@ -864,7 +864,7 @@ const result = await ctx.hooks.invoke(
 Label: Validate step output.
 Purpose: Validates workflow step output against the step schema. Use it before accepting agent or tool output that should advance a workflow.
 Kind: rpc
-Source: plugins/workflows/index.ts:1482
+Source: plugins/workflows/index.ts:1507
 
 Example:
 

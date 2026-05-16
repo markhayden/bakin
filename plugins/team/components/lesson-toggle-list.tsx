@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Loader2, Package } from 'lucide-react'
-import { Switch } from '@bakin/sdk/ui'
+import { Switch } from '@makinbakin/sdk/ui'
 
 /**
  * Per-agent lessons toggle list. Fetches from

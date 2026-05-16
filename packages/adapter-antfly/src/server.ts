@@ -28,6 +28,19 @@ let antflyProcess: ChildProcess | null = null
 let isRunning = false
 let recheckTimer: NodeJS.Timeout | null = null
 
+const DEFAULT_EXTERNAL_RECHECK_DELAY_MS = 3000
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function readExternalRecheckDelayMs(): number {
+  const raw = process.env.BAKIN_ANTFLY_EXTERNAL_RECHECK_MS
+  if (raw === undefined) return DEFAULT_EXTERNAL_RECHECK_DELAY_MS
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_EXTERNAL_RECHECK_DELAY_MS
+}
+
 function unquoteAntflyValue(value: string): string {
   if (value.startsWith('"') && value.endsWith('"')) {
     return value.slice(1, -1).replace(/\\"/g, '"')
@@ -46,6 +59,8 @@ function parseAntflyFields(line: string): Record<string, string> {
 }
 
 const SHARD_INITIALIZING_ERROR = 'shard is still initializing'
+const SHARD_NOT_FOUND_ERROR_RE = /^shard ([A-Za-z0-9]+) not found$/
+const STALE_SHARD_SCAN_MESSAGE = 'Failed to scan shard'
 const TRANSIENT_RECONCILER_MESSAGES = new Set([
   'Failed to add index',
   'Failed to update schema',
@@ -86,6 +101,13 @@ function isTransientReconcilerWarning(message: string, fields: Record<string, st
   return TRANSIENT_RECONCILER_MESSAGES.has(message) && fields.error === SHARD_INITIALIZING_ERROR
 }
 
+function isStaleShardScan(message: string, fields: Record<string, string>): boolean {
+  if (message !== STALE_SHARD_SCAN_MESSAGE) return false
+  const shardID = fields.shardID
+  const match = fields.error?.match(SHARD_NOT_FOUND_ERROR_RE)
+  return typeof shardID === 'string' && match?.[1] === shardID
+}
+
 function isOptionalTermiteModelDirectoryWarning(message: string, fields: Record<string, string>): boolean {
   return OPTIONAL_TERMITE_MODEL_DIRECTORY_MESSAGES.has(message)
     && fields.caller?.startsWith('termite/') === true
@@ -94,6 +116,7 @@ function isOptionalTermiteModelDirectoryWarning(message: string, fields: Record<
 
 function isExpectedStartupDebug(message: string, fields: Record<string, string>): boolean {
   return isTransientReconcilerWarning(message, fields)
+    || isStaleShardScan(message, fields)
     || isOptionalTermiteModelDirectoryWarning(message, fields)
 }
 
@@ -115,6 +138,12 @@ function optionalTermiteModelDirectoryMessage(message: string, fields: Record<st
   }`
 }
 
+function staleShardScanMessage(fields: Record<string, string>): string {
+  return `Antfly skipped stale shard scan while metadata catches up${
+    summarizeAntflyFields(fields, ['shardID'])
+  }`
+}
+
 function formatAntflyLogMessage(
   message: string,
   level: AntflyLogLevel,
@@ -122,6 +151,9 @@ function formatAntflyLogMessage(
 ): string {
   if (isTransientReconcilerWarning(message, fields)) {
     return transientReconcilerMessage(message, fields)
+  }
+  if (isStaleShardScan(message, fields)) {
+    return staleShardScanMessage(fields)
   }
   if (isOptionalTermiteModelDirectoryWarning(message, fields)) {
     return optionalTermiteModelDirectoryMessage(message, fields)
@@ -206,6 +238,24 @@ export function isAntflyRunning(): boolean {
   return isRunning
 }
 
+export type ExternalAntflyStability = 'ready' | 'unstable' | 'disappeared'
+
+export async function checkExternalAntflyStability(
+  url: string,
+  opts: {
+    initialTimeoutMs?: number
+    stableChecks?: number
+    recheckDelayMs?: number
+  } = {},
+): Promise<ExternalAntflyStability> {
+  const stable = await waitForReady(url, opts.initialTimeoutMs ?? 3000, opts.stableChecks ?? 3)
+  if (!stable) return await isAlreadyRunning(url) ? 'unstable' : 'disappeared'
+
+  const recheckDelayMs = opts.recheckDelayMs ?? readExternalRecheckDelayMs()
+  if (recheckDelayMs > 0) await sleep(recheckDelayMs)
+  return await isAlreadyRunning(url) ? 'ready' : 'disappeared'
+}
+
 export async function startAntflyServer(
   settings: AntflyServerSettings,
   logger: AdapterLogger = noopLogger,
@@ -218,10 +268,20 @@ export async function startAntflyServer(
   const url = settings.url
 
   if (await isAlreadyRunning(url)) {
-    logger.info('Antfly already running', { url })
-    isRunning = true
-    scheduleExternalRecheck(settings, logger)
-    return true
+    const stability = await checkExternalAntflyStability(url)
+    if (stability === 'ready') {
+      logger.info('Antfly already running', { url })
+      isRunning = true
+      scheduleExternalRecheck(settings, logger)
+      return true
+    }
+
+    if (stability === 'unstable') {
+      logger.warn('Antfly status endpoint is responding but not stable yet', { url })
+      return false
+    }
+
+    logger.warn('Antfly disappeared during startup check, attempting takeover restart', { url })
   }
 
   const binary = findAntflyBinary()
@@ -334,12 +394,21 @@ async function isAlreadyRunning(url: string): Promise<boolean> {
   }
 }
 
-async function waitForReady(url: string, timeoutMs = 15000): Promise<boolean> {
+async function waitForReady(url: string, timeoutMs = 15000, stableChecks = 1): Promise<boolean> {
   const start = Date.now()
+  let consecutiveReadyChecks = 0
+
   while (Date.now() - start < timeoutMs) {
-    if (await isAlreadyRunning(url)) return true
-    await new Promise(r => setTimeout(r, 500))
+    if (await isAlreadyRunning(url)) {
+      consecutiveReadyChecks += 1
+      if (consecutiveReadyChecks >= stableChecks) return true
+    } else {
+      consecutiveReadyChecks = 0
+    }
+
+    await sleep(500)
   }
+
   return false
 }
 
@@ -352,6 +421,8 @@ function clearRecheckTimer(): void {
 
 function scheduleExternalRecheck(settings: AntflyServerSettings, logger: AdapterLogger): void {
   clearRecheckTimer()
+  const delayMs = readExternalRecheckDelayMs()
+  if (delayMs <= 0) return
   recheckTimer = setTimeout(async () => {
     recheckTimer = null
 
@@ -362,5 +433,5 @@ function scheduleExternalRecheck(settings: AntflyServerSettings, logger: Adapter
 
     logger.warn('Antfly disappeared after startup check, attempting takeover restart', { url: settings.url })
     await startAntflyServer(settings, logger)
-  }, 3000)
+  }, delayMs)
 }

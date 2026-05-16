@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { ChevronRight, Workflow, Zap, Radio, MonitorDot, Plug } from 'lucide-react'
 import { useActivityContext } from '@/context/activity-context'
-import { useContentStore } from '@bakin/sdk/hooks'
+import { useContentStore } from '@makinbakin/sdk/hooks'
 import { AgentAvatar } from '@/components/agent-avatar'
 
 /** Non-agent sources that will never have a headshot image */

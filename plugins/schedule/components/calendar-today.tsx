@@ -9,7 +9,7 @@ import {
   jobOnDow,
   JobCard,
 } from './calendar-weekly'
-import type { ScheduleJob } from "@bakin/sdk/hooks"
+import type { ScheduleJob } from "@makinbakin/sdk/hooks"
 
 const HOURS = Array.from({ length: 17 }, (_, i) => i + 6) // 6am–10pm
 

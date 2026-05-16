@@ -3,7 +3,7 @@
  *
  * The compiled `bakin` binary embeds server.ts as its entry point.
  * server.ts parses argv via `dispatchCli` and either starts the server
- * (`start`, the default) or runs a one-shot subcommand and exits.
+ * (`start`, `serve`, or the default) or runs a one-shot subcommand and exits.
  *
  * Subcommands that talk to a running server do so over HTTP via
  * `${BAKIN_URL || http://localhost:3737}` — same shape as the legacy
@@ -717,6 +717,10 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
   if (cmd === 'start') {
     const gateExitCode = checkOnboardedBeforeStart(args)
     if (gateExitCode !== null) return { startServer: false, exitCode: gateExitCode }
+    return { startServer: true, exitCode: 0 }
+  }
+
+  if (cmd === 'serve') {
     return { startServer: true, exitCode: 0 }
   }
 

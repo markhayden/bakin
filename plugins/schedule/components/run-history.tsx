@@ -1,8 +1,8 @@
 'use client'
 
-import { useRunHistory } from "@bakin/sdk/hooks"
-import { Badge } from "@bakin/sdk/ui"
-import { Skeleton } from "@bakin/sdk/ui"
+import { useRunHistory } from "@makinbakin/sdk/hooks"
+import { Badge } from "@makinbakin/sdk/ui"
+import { Skeleton } from "@makinbakin/sdk/ui"
 
 function formatTime(ts: string): string {
   const d = new Date(ts)

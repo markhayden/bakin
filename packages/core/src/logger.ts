@@ -11,7 +11,7 @@ import { join } from 'path'
 import { getBakinPaths } from './content-dir'
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error'
-type ConsoleFormat = 'plain' | 'pretty' | 'verbose'
+type ConsoleFormat = 'plain' | 'pretty' | 'verbose' | 'silent'
 
 interface LogEntry {
   ts: string
@@ -102,7 +102,7 @@ function formatEntry(entry: LogEntry): string {
 
 function consoleFormat(): ConsoleFormat {
   const configured = process.env.BAKIN_CONSOLE_FORMAT
-  if (configured === 'pretty' || configured === 'verbose' || configured === 'plain') {
+  if (configured === 'pretty' || configured === 'verbose' || configured === 'plain' || configured === 'silent') {
     return configured
   }
   return process.stdout.isTTY === true ? 'pretty' : 'plain'
@@ -114,6 +114,7 @@ function consoleMinLevel(format: ConsoleFormat): LogLevel {
     return configured
   }
   if (format === 'verbose') return 'debug'
+  if (format === 'silent') return 'error'
   if (format === 'pretty') return 'info'
   return 'debug'
 }
@@ -189,6 +190,7 @@ function suppressPrettyInfo(entry: LogEntry): boolean {
 }
 
 function shouldWriteConsole(entry: LogEntry, format: ConsoleFormat): boolean {
+  if (format === 'silent') return false
   const minLevel = consoleMinLevel(format)
   if (LEVEL_RANK[entry.level] < LEVEL_RANK[minLevel]) return false
   if (format === 'pretty' && suppressPrettyInfo(entry)) return false
@@ -218,6 +220,7 @@ function formatPrettyEntry(entry: LogEntry, format: Exclude<ConsoleFormat, 'plai
 function formatConsoleEntry(entry: LogEntry): string {
   const format = consoleFormat()
   if (format === 'plain') return formatEntry(entry)
+  if (format === 'silent') return ''
   return formatPrettyEntry(entry, format)
 }
 

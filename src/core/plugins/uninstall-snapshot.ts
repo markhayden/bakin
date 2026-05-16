@@ -649,7 +649,7 @@ function synthesizeLockEntryFromSnapshot(
   const manifestText = readFileSync(manifestPath, 'utf-8')
   let manifest: ReturnType<typeof readPluginManifestJson>
   try {
-    manifest = readPluginManifestJson(manifestText, { allowLegacy: true })
+    manifest = readPluginManifestJson(manifestText)
   } catch (err) {
     throw new PluginRestoreError({
       status: 400,

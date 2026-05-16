@@ -39,13 +39,13 @@ import {
   ListFilter,
   Microscope,
 } from 'lucide-react'
-import { PluginHeader } from "@bakin/sdk/components"
-import { FacetFilter, type FacetOption } from "@bakin/sdk/components"
-import { AgentFilter } from "@bakin/sdk/components"
-import { Switch } from "@bakin/sdk/ui"
-import { useSearch, type SearchResult } from "@bakin/sdk/hooks"
-import { useQueryState, useQueryArrayState } from "@bakin/sdk/hooks"
-import { useAgentList } from "@bakin/sdk/hooks"
+import { PluginHeader } from "@makinbakin/sdk/components"
+import { FacetFilter, type FacetOption } from "@makinbakin/sdk/components"
+import { AgentFilter } from "@makinbakin/sdk/components"
+import { Switch } from "@makinbakin/sdk/ui"
+import { useSearch, type SearchResult } from "@makinbakin/sdk/hooks"
+import { useQueryState, useQueryArrayState } from "@makinbakin/sdk/hooks"
+import { useAgentList } from "@makinbakin/sdk/hooks"
 import { TierOverviewCards } from './tier-overview-cards'
 import { MemorySearchResults } from './memory-search-results'
 import { MemoryDetailDrawer } from './memory-detail-drawer'

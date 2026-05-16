@@ -3,8 +3,10 @@
  *
  * This is deliberately minimal: no routes, no hooks, no state. The
  * smoke test only cares that buildUserPlugin produces dist/ artifacts
- * with externals held.
+ * with browser externals held and server SDK imports bundled.
  */
+import { registerSlot } from '@makinbakin/sdk/slots'
+
 interface PluginLike {
   id: string
   name: string
@@ -17,7 +19,7 @@ const plugin: PluginLike = {
   name: 'Sample',
   version: '0.1.0',
   async activate() {
-    // no-op
+    void registerSlot
   },
 }
 

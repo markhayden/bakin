@@ -20,7 +20,6 @@ export function isLiveActivationUnavailable(err: unknown): boolean {
 export async function activateUserPluginDir(pluginDir: string): Promise<LiveActivationResult> {
   const result = await pluginRegistry.activateUserPluginFromDir(pluginDir, {
     cacheBust: true,
-    preferDist: true,
   })
   try {
     await ensurePluginSearchReady(result.id)

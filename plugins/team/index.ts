@@ -188,12 +188,16 @@ function metadataStringArray(agent: RuntimeAgent, key: string): string[] | null 
 }
 
 function agentToMeta(agent: RuntimeAgent): AgentMeta {
+  const { agents } = getBakinPaths()
+  const avatarPath = join(agents, agent.id, 'avatar.jpg')
+  const headshot = existsSync(avatarPath) ? `/api/plugins/team/${agent.id}/avatar` : ''
+
   return {
     id: agent.id,
     name: agent.name || agent.id,
     emoji: metadataString(agent, 'emoji') ?? '',
     role: agent.role ?? metadataString(agent, 'role') ?? '',
-    headshot: `/api/plugins/team/${agent.id}/avatar`,
+    headshot,
   }
 }
 
@@ -1346,7 +1350,7 @@ function populateTeamRoutes(arr: any[]): void {
       const avatarPath = join(agents, agentId, 'avatar.jpg')
 
       if (!existsSync(avatarPath)) {
-        return new Response(null, { status: 404 })
+        return Response.json({ error: 'Avatar not found' }, { status: 404 })
       }
 
       const data = readFileSync(avatarPath)

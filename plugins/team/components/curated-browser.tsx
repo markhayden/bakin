@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Loader2, Sparkles } from 'lucide-react'
-import { Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@bakin/sdk/ui'
+import { Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@makinbakin/sdk/ui'
 import { InstallDialog, type InstallResult } from './install-dialog'
 
 /**

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 /**
- * Tests for @bakin/sdk registerPlugin / unregisterPlugin / registry version.
+ * Tests for @makinbakin/sdk registerPlugin / unregisterPlugin / registry version.
  *
  * The registry is browser-global, so between-test isolation explicitly
  * unregisters any plugin ids used by the test.
@@ -39,8 +39,8 @@ import {
   getPluginNavItems,
   getPluginRoute,
   getPluginRoutes,
-} from '@bakin/sdk'
-import { getSlotEntries } from '@bakin/sdk/slots'
+} from '@makinbakin/sdk'
+import { getSlotEntries } from '@makinbakin/sdk/slots'
 
 function NoopComp() { return null }
 

@@ -260,14 +260,15 @@ export async function ensureRegisteredTables(): Promise<EnsureTablesResult> {
  * Create tables for all registered content types.
  * Called during server startup after all plugins have activated.
  */
-export async function createRegisteredTables(): Promise<void> {
+export async function createRegisteredTables(): Promise<EnsureTablesResult> {
   const registry = getRegistry()
-  if (registry.tablesCreated) return
+  if (registry.tablesCreated) return { created: 0, failures: [] }
   const { created, failures } = await ensureRegisteredTables()
   log.info(`Search tables ready: ${registry.contentTypes.size} content types (${created} created)`)
   if (failures.length > 0) {
     log.error(`Search table creation failures: ${failures.length}`, { failures })
   }
+  return { created, failures }
 }
 
 /**

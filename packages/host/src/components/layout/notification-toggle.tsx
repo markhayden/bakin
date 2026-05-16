@@ -1,6 +1,6 @@
 import { useState, useEffect, createElement } from 'react'
 import { Bell, BellOff } from 'lucide-react'
-import { toast } from '@bakin/sdk/hooks'
+import { toast } from '@makinbakin/sdk/hooks'
 import {
   isNotificationsSupported,
   isNotificationsEnabled,

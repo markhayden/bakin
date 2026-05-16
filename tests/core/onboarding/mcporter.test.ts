@@ -4,7 +4,7 @@
  * This component is a thin wrapper over the existing src/core/mcporter
  * module — we mock the underlying module directly rather than mocking
  * child_process or fs, because the wrapper's whole job is to translate
- * isMcporterInstalled/installMcporter/syncConfig into CheckResult and
+ * isMcporterInstalled/installMcporterAsync/syncConfig into CheckResult and
  * InstallResult shapes. Testing the underlying module's behavior is
  * already covered by tests/core/mcporter.test.ts.
  */
@@ -19,10 +19,10 @@ let syncConfigError: Error | null
 let configFileExists: boolean
 let askYesNoReturn: boolean
 
-mock.module('../../../src/core/mcporter', () => ({
+const mcporterMock = () => ({
   isMcporterInstalled: () =>
     typeof isInstalledReturn === 'function' ? isInstalledReturn() : isInstalledReturn,
-  installMcporter: () => {
+  installMcporterAsync: async () => {
     installMcporterCalls++
     // A successful install mutates isInstalledReturn so the post-install
     // re-check passes. Failed installs leave it alone.
@@ -34,7 +34,10 @@ mock.module('../../../src/core/mcporter', () => ({
     if (syncConfigError) throw syncConfigError
     return typeof syncConfigReturn === 'function' ? syncConfigReturn() : syncConfigReturn
   },
-}))
+})
+
+mock.module('../../../src/core/mcporter', mcporterMock)
+mock.module('../../../src/core/mcporter.ts', mcporterMock)
 
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({

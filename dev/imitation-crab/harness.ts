@@ -8,7 +8,7 @@ import { createFileBakinTaskStore } from '@bakin/core/tasks/store'
 import { createOpenClawRuntimeAdapter } from '@bakin/adapter-openclaw'
 import { getGatewayPort, getMockHome, type MockChatMode, type MockToolMode } from './env'
 import { installCliShim } from './cli-shim-install'
-import { handleGatewayRequest, startGateway, type ImitationCrabGateway } from './gateway'
+import { handleGatewayRequest, handleGatewayRpcRequest, startGateway, type ImitationCrabGateway } from './gateway'
 import { seed } from './seed'
 
 const logger = {
@@ -81,25 +81,6 @@ function requestBodyToString(body: BodyInit | null | undefined): string {
   return String(body)
 }
 
-function streamResponse(content: string): Response {
-  const encoder = new TextEncoder()
-  const words = content.split(/(\s+)/)
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const word of words) {
-        if (!word) continue
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: word } }] })}\n\n`))
-      }
-      controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-      controller.close()
-    },
-  })
-  return new Response(stream, {
-    status: 200,
-    headers: { 'Content-Type': 'text/event-stream' },
-  })
-}
-
 function installGatewayFetchInterceptor(gatewayUrl: string): () => void {
   const originalFetch = globalThis.fetch
   const interceptedFetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -117,10 +98,6 @@ function installGatewayFetchInterceptor(gatewayUrl: string): () => void {
       headers: normalizeHeaders(init?.headers ?? (input instanceof Request ? input.headers : undefined)),
       body: requestBodyToString(init?.body),
     })
-    const body = response.body as Record<string, unknown>
-    if (body?.__stream === true) {
-      return streamResponse(String(body.content ?? ''))
-    }
     return new Response(JSON.stringify(response.body), {
       status: response.status,
       headers: { 'Content-Type': 'application/json' },
@@ -132,6 +109,86 @@ function installGatewayFetchInterceptor(gatewayUrl: string): () => void {
   globalThis.fetch = interceptedFetch
   return () => {
     globalThis.fetch = originalFetch
+  }
+}
+
+function installGatewayWebSocketInterceptor(gatewayUrl: string): () => void {
+  const originalWebSocket = globalThis.WebSocket
+  void gatewayUrl
+
+  class ImitationCrabWebSocket {
+    readyState = 0
+    private listeners = new Map<string, Set<(event: { data?: string }) => void>>()
+
+    constructor(readonly url: string) {
+      queueMicrotask(() => {
+        this.readyState = 1
+        this.emit('open', {})
+        this.emitMessage({
+          type: 'event',
+          event: 'connect.challenge',
+          payload: { nonce: 'imitation-crab' },
+        })
+      })
+    }
+
+    addEventListener(type: string, listener: (event: { data?: string }) => void): void {
+      const listeners = this.listeners.get(type) ?? new Set()
+      listeners.add(listener)
+      this.listeners.set(type, listeners)
+    }
+
+    removeEventListener(type: string, listener: (event: { data?: string }) => void): void {
+      this.listeners.get(type)?.delete(listener)
+    }
+
+    send(raw: string): void {
+      let frame: { id?: string; method?: string; params?: Record<string, unknown> }
+      try {
+        frame = JSON.parse(raw)
+      } catch {
+        return
+      }
+      const id = typeof frame.id === 'string' ? frame.id : ''
+      const method = typeof frame.method === 'string' ? frame.method : ''
+      const params = frame.params ?? {}
+      handleGatewayRpcRequest(method, params)
+        .then((response) => {
+          this.emitMessage({
+            type: 'res',
+            id,
+            ok: response.ok,
+            ...(response.ok ? { payload: response.payload } : { error: response.error }),
+          })
+        })
+        .catch((err) => {
+          this.emitMessage({
+            type: 'res',
+            id,
+            ok: false,
+            error: { message: err instanceof Error ? err.message : String(err) },
+          })
+        })
+    }
+
+    close(): void {
+      this.readyState = 3
+      this.emit('close', {})
+    }
+
+    private emitMessage(frame: Record<string, unknown>): void {
+      this.emit('message', { data: JSON.stringify(frame) })
+    }
+
+    private emit(type: string, event: { data?: string }): void {
+      for (const listener of this.listeners.get(type) ?? []) listener(event)
+    }
+  }
+
+  globalThis.WebSocket = ImitationCrabWebSocket as unknown as typeof WebSocket
+
+  return () => {
+    globalThis.WebSocket = originalWebSocket
   }
 }
 
@@ -176,6 +233,7 @@ export async function createImitationCrabHarness(options: ImitationCrabHarnessOp
   const restoreFetch = options.interceptFetch === false
     ? () => {}
     : installGatewayFetchInterceptor(env.gatewayUrl)
+  const restoreWebSocket = installGatewayWebSocketInterceptor(env.gatewayUrl)
 
   const runtime = createOpenClawRuntimeAdapter({
     settings: {
@@ -205,6 +263,7 @@ export async function createImitationCrabHarness(options: ImitationCrabHarnessOp
       await runtime.shutdown()
       await search.shutdown()
       await gateway?.close()
+      restoreWebSocket()
       restoreFetch()
       env.cleanup()
       env.restoreEnv()

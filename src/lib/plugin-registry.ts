@@ -3,7 +3,12 @@
  * Loads plugins, stores their registrations, and provides lookups.
  */
 import { AsyncLocalStorage } from 'async_hooks'
-import { existsSync, readdirSync, readFileSync, statSync } from 'fs'
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+} from 'fs'
 import { join } from 'path'
 import { inspect } from 'util'
 import type {
@@ -54,7 +59,7 @@ import {
 } from '../../packages/core/src/plugins/manifest'
 import { ScopedPluginStorageAdapter } from '../../packages/core/src/storage/scoped-plugin-storage'
 import { getAppServices } from '../core/app-services'
-import type { PluginManifest as PublicPluginManifest } from '@bakin/sdk/types'
+import type { PluginManifest as PublicPluginManifest } from '@makinbakin/sdk/types'
 import {
   createPluginAssetsAPI,
   createPluginRuntimeFacade,
@@ -87,7 +92,6 @@ export function registerCorePlugins(table: Readonly<Record<string, BakinPlugin>>
 }
 
 const log = createLogger('plugin-registry')
-
 type CapturedConsoleLevel = 'debug' | 'error' | 'info' | 'warn'
 type CapturedConsoleMethod = CapturedConsoleLevel | 'log'
 interface CapturedConsoleContext {
@@ -395,7 +399,7 @@ class PluginRegistryImpl {
       let manifest: PublicPluginManifest | undefined
       if (existsSync(manifestPath)) {
         try {
-          manifest = readPluginManifestJson(readFileSync(manifestPath, 'utf-8'), { allowLegacy: true })
+          manifest = readPluginManifestJson(readFileSync(manifestPath, 'utf-8'))
           id = manifest.id || id
           deps = manifest.dependencies || []
         } catch (err) {
@@ -632,7 +636,7 @@ class PluginRegistryImpl {
     return report
   }
 
-  async activateUserPluginFromDir(pluginPath: string, opts: { cacheBust?: boolean; preferDist?: boolean } = {}): Promise<{ id: string; version: string }> {
+  async activateUserPluginFromDir(pluginPath: string, opts: { cacheBust?: boolean } = {}): Promise<{ id: string; version: string }> {
     if (!this.runtime) {
       throw new Error('plugin registry is not initialized; cannot activate user plugin')
     }
@@ -1044,7 +1048,7 @@ class PluginRegistryImpl {
     storage: StorageAdapter,
     events: EventBus,
     services: AppServices,
-    opts: { cacheBust?: boolean; preferDist?: boolean } = {},
+    opts: { cacheBust?: boolean } = {},
   ): Promise<{ id: string; version: string }> {
     const manifest = entry.manifest!
     const pluginId = manifest.id
@@ -1063,10 +1067,11 @@ class PluginRegistryImpl {
     }
 
     const distServer = join(entry.path, 'dist', 'index.js')
-    const sourceServer = join(entry.path, manifest.entry?.server || 'index.ts')
-    let importTarget = opts.preferDist && existsSync(distServer)
-      ? distServer
-      : sourceServer
+    if (!existsSync(distServer)) {
+      throw new Error(`User plugin "${pluginId}" is not built. Expected ${distServer}. Reinstall the plugin or rebuild it before starting Bakin.`)
+    }
+
+    let importTarget = distServer
     if (opts.cacheBust) {
       userPluginImportCounter += 1
       importTarget = `${importTarget}?v=${Date.now()}-${userPluginImportCounter}`
@@ -1201,7 +1206,8 @@ class PluginRegistryImpl {
         try {
           await this.activateUserPluginEntry(entry, storage, events, services)
         } catch (err) {
-          log.error(`Failed to load user plugin "${entry.id}"`, err)
+          const message = err instanceof Error ? err.message : String(err)
+          log.error(`Failed to load user plugin "${entry.id}": ${message}`, err, { pluginId: entry.id })
           this.markPluginFailed({
             id: entry.id,
             name: entry.manifest?.name ?? entry.id,
@@ -1209,7 +1215,7 @@ class PluginRegistryImpl {
             description: entry.manifest?.description ?? '',
             source: 'user',
             errorCode: 'activation_failed',
-            errorMessage: err instanceof Error ? err.message : String(err),
+            errorMessage: message,
           })
         }
       }
