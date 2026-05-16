@@ -37,6 +37,7 @@ import {
   listInstances,
   getActiveAgents,
   authorizeWorkflowToolUse,
+  reconcilePendingApprovalTaskColumns,
   isGateNotified,
   markGateNotified,
   cancelInstance,
@@ -233,6 +234,26 @@ function formatSchema(schema: Record<string, unknown>, indent = 0): string {
 }
 
 function formatStepContext(step: Record<string, unknown>): string {
+  if (step.status === 'pending_approval') {
+    const sections: string[] = []
+    sections.push(`STEP: ${step.stepId ?? '(gate)'}`)
+    sections.push('STATUS: pending_approval')
+    if (step.label) sections.push(`LABEL: ${step.label}`)
+    sections.push('')
+    sections.push('WAITING FOR HUMAN APPROVAL')
+    sections.push('No agent action is required until this gate is approved or rejected.')
+    sections.push('Use bakin_exec_check_gates for the current approval status.')
+    return sections.join('\n')
+  }
+
+  if (step.status === 'complete') {
+    return [
+      'STATUS: complete',
+      'WORKFLOW COMPLETE',
+      'No further workflow step is active for this task.',
+    ].join('\n')
+  }
+
   const sections: string[] = []
   sections.push(`STEP: ${step.stepId}`)
   sections.push(`STATUS: ${step.status}`)
@@ -1655,7 +1676,7 @@ const workflowsPlugin: BakinPlugin = definePlugin({
           triggerDispatch()
         }
 
-        return { ok: true, workflowComplete: result.workflowComplete }
+        return { ok: true, workflowComplete: result.workflowComplete, nextStep: result.nextStep }
       },
     })
 
@@ -1726,7 +1747,7 @@ const workflowsPlugin: BakinPlugin = definePlugin({
             triggerDispatch()
           }
 
-          return { ok: true, workflowComplete: result.workflowComplete }
+          return { ok: true, workflowComplete: result.workflowComplete, nextStep: result.nextStep }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           if (msg.includes('near-duplicate') || msg.includes('rejection')) {
@@ -1797,6 +1818,23 @@ const workflowsPlugin: BakinPlugin = definePlugin({
     if (active.length > 0) {
       log.info(`Ready — ${active.length} active workflow instance(s)`)
     }
+    reconcilePendingApprovalTaskColumns()
+      .then((result) => {
+        if (result.moved > 0) {
+          log.info(`Reconciled ${result.moved} pending approval workflow task card(s)`, {
+            checked: result.checked,
+            skipped: result.skipped,
+          })
+        }
+        if (result.failed.length > 0) {
+          log.warn('Pending approval workflow task reconciliation had failures', {
+            failed: result.failed,
+          })
+        }
+      })
+      .catch((err) => {
+        log.warn('Pending approval workflow task reconciliation failed', err)
+      })
     const defs = listDefinitions()
     log.info(`Ready — ${defs.length} workflow definition(s) loaded`)
   },
