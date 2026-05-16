@@ -128,18 +128,25 @@ function OnboardingIntro() {
   return (
     <Box flexDirection="column">
       <Text color="#ff2bd6" bold>
-        ░█▀▄░█▀█░█░█░▀█▀░█▀█░▀
+        ██████   █████  ██   ██ ██ ███    ██
       </Text>
       <Text color="#ff2bd6" bold>
-        ░█▀▄░█▀█░█▀▄░░█░░█░█░░
+        ██   ██ ██   ██ ██  ██  ██ ████   ██
       </Text>
       <Text color="#ff2bd6" bold>
-        ░▀▀░░▀░▀░▀░▀░▀▀▀░▀░▀░░
+        ██████  ███████ █████   ██ ██ ██  ██
+      </Text>
+      <Text color="#ff2bd6" bold>
+        ██   ██ ██   ██ ██  ██  ██ ██  ██ ██
+      </Text>
+      <Text color="#ff2bd6" bold>
+        ██████  ██   ██ ██   ██ ██ ██   ████
       </Text>
       <Text dimColor>
-        Let's walk through the initial Bakin setup and optional plugin/agent kit
-        installs. You can revisit the configuration at any time with `bakin
-        onboard`
+        Welcome to Bakin'! Let's walk through the initial setup.
+      </Text>
+      <Text dimColor>
+        You can revisit the configuration at any time with `bakin onboard --force`
       </Text>
     </Box>
   );
