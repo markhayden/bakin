@@ -17,7 +17,6 @@ import type {
   RuntimeMetadata,
   RuntimeMemorySearchResult,
   RuntimeSkill,
-  RuntimeToolActivity,
   UpdateCronJobInput,
   WorkspaceFile,
 } from '@bakin/core/adapters/runtime'
@@ -1946,23 +1945,6 @@ function summarizeToolNamePurpose(toolName: string): string | undefined {
   if (/^bakin_exec_messaging_/.test(toolName)) return 'Updating messaging content'
   if (toolName === 'web_fetch') return 'Fetching web content'
   return undefined
-}
-
-function summarizeRuntimeToolPurpose(toolName: string, inputPreview: string | undefined): string | undefined {
-  if (toolName === 'exec' && inputPreview) {
-    const parsed = parseJsonObject(inputPreview)
-    const command = typeof parsed?.command === 'string' ? parsed.command : inputPreview
-    return summarizeShellCommandPurpose(command)
-  }
-  if (toolName === 'read' && inputPreview) {
-    const parsed = parseJsonObject(inputPreview)
-    const path = typeof parsed?.path === 'string' ? parsed.path : undefined
-    if (path) return summarizeOpenClawToolPurpose('read', { path })
-  }
-  if (toolName === 'web_fetch' && inputPreview) {
-    return summarizeWebFetchPurpose(parseJsonObject(inputPreview) ?? inputPreview)
-  }
-  return summarizeToolNamePurpose(toolName)
 }
 
 function summarizeWebFetchPurpose(args: unknown): string {

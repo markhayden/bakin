@@ -1,5 +1,14 @@
-import { describe, expect, it } from 'bun:test'
-import { parseAntflyLogLine } from '../../packages/adapter-antfly/src/server'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
+import {
+  checkExternalAntflyStability,
+  parseAntflyLogLine,
+} from '../../packages/adapter-antfly/src/server'
+
+const realFetch = globalThis.fetch
+
+afterEach(() => {
+  ;(globalThis as { fetch: typeof fetch }).fetch = realFetch
+})
 
 describe('Antfly server log parsing', () => {
   it('uses the inner Antfly level instead of the child stream level', () => {
@@ -81,5 +90,26 @@ describe('Antfly server log parsing', () => {
       caller: 'termite/chunker_registry.go:178',
       dir: '/Users/roscoe/.termite/models/chunkers',
     })
+  })
+
+  it('does not trust an external Antfly endpoint that disappears during startup recheck', async () => {
+    let calls = 0
+    const fetchMock = mock(async () => {
+      calls++
+      if (calls === 1) {
+        return new Response(JSON.stringify({ health: 'healthy' }), { status: 200 })
+      }
+      throw new Error('connection refused')
+    })
+    ;(globalThis as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
+
+    const stability = await checkExternalAntflyStability('http://localhost:8080/api/v1', {
+      initialTimeoutMs: 50,
+      stableChecks: 1,
+      recheckDelayMs: 1,
+    })
+
+    expect(stability).toBe('disappeared')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })

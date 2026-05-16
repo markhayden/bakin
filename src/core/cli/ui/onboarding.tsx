@@ -30,7 +30,6 @@ export function OnboardingSummary({ outcomes, exitCode }: {
   outcomes: ComponentOutcome[]
   exitCode: 0 | 1 | 2
 }) {
-  const blocker = outcomes.find(outcome => outcome.finalStatus === 'error')
   const prerequisites = outcomes.filter(outcome => ['mkdir', 'settings', 'runtime'].includes(outcome.name))
   const setup = outcomes.filter(outcome => !['mkdir', 'settings', 'runtime'].includes(outcome.name))
 

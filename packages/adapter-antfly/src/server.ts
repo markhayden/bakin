@@ -28,8 +28,17 @@ let antflyProcess: ChildProcess | null = null
 let isRunning = false
 let recheckTimer: NodeJS.Timeout | null = null
 
+const DEFAULT_EXTERNAL_RECHECK_DELAY_MS = 3000
+
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function readExternalRecheckDelayMs(): number {
+  const raw = process.env.BAKIN_ANTFLY_EXTERNAL_RECHECK_MS
+  if (raw === undefined) return DEFAULT_EXTERNAL_RECHECK_DELAY_MS
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_EXTERNAL_RECHECK_DELAY_MS
 }
 
 function unquoteAntflyValue(value: string): string {
@@ -210,6 +219,24 @@ export function isAntflyRunning(): boolean {
   return isRunning
 }
 
+export type ExternalAntflyStability = 'ready' | 'unstable' | 'disappeared'
+
+export async function checkExternalAntflyStability(
+  url: string,
+  opts: {
+    initialTimeoutMs?: number
+    stableChecks?: number
+    recheckDelayMs?: number
+  } = {},
+): Promise<ExternalAntflyStability> {
+  const stable = await waitForReady(url, opts.initialTimeoutMs ?? 3000, opts.stableChecks ?? 3)
+  if (!stable) return await isAlreadyRunning(url) ? 'unstable' : 'disappeared'
+
+  const recheckDelayMs = opts.recheckDelayMs ?? readExternalRecheckDelayMs()
+  if (recheckDelayMs > 0) await sleep(recheckDelayMs)
+  return await isAlreadyRunning(url) ? 'ready' : 'disappeared'
+}
+
 export async function startAntflyServer(
   settings: AntflyServerSettings,
   logger: AdapterLogger = noopLogger,
@@ -222,16 +249,20 @@ export async function startAntflyServer(
   const url = settings.url
 
   if (await isAlreadyRunning(url)) {
-    const stable = await waitForReady(url, 3000, 3)
-    if (!stable) {
+    const stability = await checkExternalAntflyStability(url)
+    if (stability === 'ready') {
+      logger.info('Antfly already running', { url })
+      isRunning = true
+      scheduleExternalRecheck(settings, logger)
+      return true
+    }
+
+    if (stability === 'unstable') {
       logger.warn('Antfly status endpoint is responding but not stable yet', { url })
       return false
     }
 
-    logger.info('Antfly already running', { url })
-    isRunning = true
-    scheduleExternalRecheck(settings, logger)
-    return true
+    logger.warn('Antfly disappeared during startup check, attempting takeover restart', { url })
   }
 
   const binary = findAntflyBinary()
@@ -371,6 +402,8 @@ function clearRecheckTimer(): void {
 
 function scheduleExternalRecheck(settings: AntflyServerSettings, logger: AdapterLogger): void {
   clearRecheckTimer()
+  const delayMs = readExternalRecheckDelayMs()
+  if (delayMs <= 0) return
   recheckTimer = setTimeout(async () => {
     recheckTimer = null
 
@@ -381,5 +414,5 @@ function scheduleExternalRecheck(settings: AntflyServerSettings, logger: Adapter
 
     logger.warn('Antfly disappeared after startup check, attempting takeover restart', { url: settings.url })
     await startAntflyServer(settings, logger)
-  }, 3000)
+  }, delayMs)
 }

@@ -313,11 +313,10 @@ export function parsePluginManifest(raw: unknown): PluginManifest {
   }
 
   const entryRaw = raw.entry
-  let entry: PluginManifest['entry']
   if (!isRecord(entryRaw)) {
     throw new PluginManifestError('bakin-plugin.json field "entry" must be an object')
   }
-  entry = {
+  const entry: PluginManifest['entry'] = {
     server: stringField(entryRaw, 'server', { required: true })!,
     client: stringField(entryRaw, 'client'),
   }
