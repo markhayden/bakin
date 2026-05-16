@@ -45,15 +45,72 @@ function parseAntflyFields(line: string): Record<string, string> {
   return fields
 }
 
+const SHARD_INITIALIZING_ERROR = 'shard is still initializing'
+const TRANSIENT_RECONCILER_MESSAGES = new Set([
+  'Failed to add index',
+  'Failed to update schema',
+])
+const ANTFLY_WARNING_DETAIL_KEYS = [
+  'tableName',
+  'table',
+  'indexName',
+  'name',
+  'shardID',
+  'error',
+] as const
+
+function compactAntflyValue(value: string): string {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function summarizeAntflyFields(fields: Record<string, string>, keys: readonly string[]): string {
+  const parts: string[] = []
+  for (const key of keys) {
+    const value = fields[key]
+    if (!value) continue
+    parts.push(`${key}=${compactAntflyValue(value)}`)
+  }
+  return parts.length > 0 ? ` (${parts.join(', ')})` : ''
+}
+
+function isTransientReconcilerWarning(message: string, fields: Record<string, string>): boolean {
+  return TRANSIENT_RECONCILER_MESSAGES.has(message) && fields.error === SHARD_INITIALIZING_ERROR
+}
+
+function transientReconcilerMessage(message: string, fields: Record<string, string>): string {
+  if (message === 'Failed to add index') {
+    return `Antfly reconciler deferred index update until shard initialization completes${
+      summarizeAntflyFields(fields, ['indexName', 'shardID'])
+    }`
+  }
+  return `Antfly reconciler deferred schema update until shard initialization completes${
+    summarizeAntflyFields(fields, ['shardID'])
+  }`
+}
+
+function formatAntflyLogMessage(
+  message: string,
+  level: AntflyLogLevel,
+  fields: Record<string, string>,
+): string {
+  if (isTransientReconcilerWarning(message, fields)) {
+    return transientReconcilerMessage(message, fields)
+  }
+  if (level !== 'warn' && level !== 'error') return message
+  return `${message}${summarizeAntflyFields(fields, ANTFLY_WARNING_DETAIL_KEYS)}`
+}
+
 export function parseAntflyLogLine(line: string, streamLevel: AntflyLogLevel): ParsedAntflyLogLine {
   const fields = parseAntflyFields(line)
   const parsedLevel = fields.lvl
-  const level: AntflyLogLevel = parsedLevel === 'debug'
+  const rawLevel: AntflyLogLevel = parsedLevel === 'debug'
     || parsedLevel === 'info'
     || parsedLevel === 'warn'
     || parsedLevel === 'error'
     ? parsedLevel
     : streamLevel
+  const rawMessage = fields.msg || line
+  const level = isTransientReconcilerWarning(rawMessage, fields) ? 'debug' : rawLevel
 
   const data: Record<string, unknown> = { source: 'antfly', raw: line }
   for (const [key, value] of Object.entries(fields)) {
@@ -63,7 +120,7 @@ export function parseAntflyLogLine(line: string, streamLevel: AntflyLogLevel): P
 
   return {
     level,
-    message: fields.msg || line,
+    message: formatAntflyLogMessage(rawMessage, rawLevel, fields),
     data,
   }
 }
