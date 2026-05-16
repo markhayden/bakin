@@ -58,7 +58,7 @@ describe('OpenClaw runtime binary resolution', () => {
     writeFileSync(shim, `#!/bin/sh
 echo "$@" >> "${callsFile}"
 if [ "$1" = "agents" ] && [ "$2" = "add" ]; then
-  echo "[plugins] plugins.allow is empty; discovered non-bundled plugins may auto-load: codex (${testDir}/codex.js). Set plugins.allow to explicit trusted ids." >&2
+  printf '\\033[35m[plugins]\\033[0m plugins.allow is empty; discovered non-bundled plugins may auto-load: codex (${testDir}/codex.js). Set plugins.allow to explicit trusted ids.\\n' >&2
   exit 1
 fi
 echo "{}"

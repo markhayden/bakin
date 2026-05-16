@@ -93,7 +93,8 @@ const NATIVE_APPROVAL_NOTICE = [
   'The durable Bakin approval record remains canonical.',
 ].join(' ')
 const NATIVE_APPROVAL_PROVIDERS = new Set(['discord', 'telegram', 'slack', 'matrix', 'qqbot'])
-const OPENCLAW_PLUGIN_ALLOWLIST_WARNING = '[plugins] plugins.allow is empty'
+const OPENCLAW_PLUGIN_ALLOWLIST_WARNING = 'plugins.allow is empty'
+const ANSI_RE = /\x1b\[[0-?]*[ -/]*[@-~]/g
 
 class OpenClawCommandError extends Error {
   readonly args: string[]
@@ -145,10 +146,14 @@ function openClawErrorOutput(err: unknown): string {
   ].filter(Boolean).join('\n')
 }
 
+function stripAnsi(value: string): string {
+  return value.replace(ANSI_RE, '')
+}
+
 function isPluginAllowlistOpenFailure(err: unknown): boolean {
   if (err instanceof OpenClawCommandError) {
-    const stderr = err.stderr.trim()
-    const stdout = err.stdout.trim()
+    const stderr = stripAnsi(err.stderr).trim()
+    const stdout = stripAnsi(err.stdout).trim()
     const nonWarningStderr = stderr
       .split('\n')
       .filter((line) => !line.includes(OPENCLAW_PLUGIN_ALLOWLIST_WARNING))
@@ -156,7 +161,7 @@ function isPluginAllowlistOpenFailure(err: unknown): boolean {
       .trim()
     return stdout.length === 0 && stderr.includes(OPENCLAW_PLUGIN_ALLOWLIST_WARNING) && nonWarningStderr.length === 0
   }
-  return openClawErrorOutput(err).includes(OPENCLAW_PLUGIN_ALLOWLIST_WARNING)
+  return stripAnsi(openClawErrorOutput(err)).includes(OPENCLAW_PLUGIN_ALLOWLIST_WARNING)
 }
 
 interface OpenClawCronStore {
@@ -1060,8 +1065,12 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   private async exec(args: string[], opts: { maxBuffer?: number } = {}): Promise<string> {
-    const { stdout } = await execFileAsync(this.settings.binaryPath, args, { timeout: 15000, ...opts })
-    return stdout
+    try {
+      const { stdout } = await execFileAsync(this.settings.binaryPath, args, { timeout: 15000, ...opts })
+      return stdout
+    } catch (err) {
+      throw new OpenClawCommandError(args, err)
+    }
   }
 }
 
