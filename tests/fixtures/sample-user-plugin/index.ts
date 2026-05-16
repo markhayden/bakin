@@ -5,7 +5,7 @@
  * smoke test only cares that buildUserPlugin produces dist/ artifacts
  * with browser externals held and server SDK imports bundled.
  */
-import { cn } from '@makinbakin/sdk/utils'
+import { registerSlot } from '@makinbakin/sdk/slots'
 
 interface PluginLike {
   id: string
@@ -16,10 +16,10 @@ interface PluginLike {
 
 const plugin: PluginLike = {
   id: 'sample',
-  name: cn('Sample'),
+  name: 'Sample',
   version: '0.1.0',
   async activate() {
-    // no-op
+    void registerSlot
   },
 }
 
