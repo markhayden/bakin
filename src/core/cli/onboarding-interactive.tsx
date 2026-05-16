@@ -127,19 +127,41 @@ function ConfirmStep({
 function OnboardingIntro() {
   return (
     <Box flexDirection="column">
-      <Text color="#ff2bd6" bold>
-        ░█▀▄░█▀█░█░█░▀█▀░█▀█░▀
+      <Text dimColor> 
+      
       </Text>
-      <Text color="#ff2bd6" bold>
-        ░█▀▄░█▀█░█▀▄░░█░░█░█░░
+      <Text color="#ff2bd6">
+              oooooooooo              oooo        o88               
       </Text>
-      <Text color="#ff2bd6" bold>
-        ░▀▀░░▀░▀░▀░▀░▀▀▀░▀░▀░░
+      <Text color="#ff2bd6">
+               888    888   ooooooo    888  ooooo oooo  oo oooooo  
+      </Text>
+      <Text color="#ff2bd6">
+               888oooo88    ooooo888   888o888     888   888   888  
+      </Text>
+      <Text color="#ff2bd6">
+               888    888 888    888   8888 88o    888   888   888  
+      </Text>
+      <Text color="#ff2bd6">
+              o888ooo888   88ooo88 8o o888o o888o o888o o888o o888o 
+      </Text>
+      <Text dimColor> 
+         ________________________________________________________________________________
+      </Text>
+      <Text dimColor> 
+         |                                                                              | 
+      </Text>
+      <Text dimColor> 
+         |  v1.0.0                                                                      | 
       </Text>
       <Text dimColor>
-        Let's walk through the initial Bakin setup and optional plugin/agent kit
-        installs. You can revisit the configuration at any time with `bakin
-        onboard`
+         |  Welcome to Bakin'! Let's walk through the initial setup.                    |
+      </Text>
+      <Text dimColor>
+         |  You can revisit the configuration at any time with `bakin onboard --force`  |
+      </Text>
+      <Text dimColor> 
+         |______________________________________________________________________________|
       </Text>
     </Box>
   );
