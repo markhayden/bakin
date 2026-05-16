@@ -1044,7 +1044,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       url: gatewayWebSocketUrl(this.settings),
       token: readGatewayToken,
       logger: this.logger,
-      clientId: 'bakin-chat-gateway',
+      clientId: 'gateway-client',
       displayName: 'Bakin',
       clientMode: 'backend',
       scopes: ['operator.read', 'operator.write'],

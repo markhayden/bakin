@@ -54,6 +54,13 @@ describe('OpenClaw runtime Gateway chat', () => {
     const connectRequest = ws.sentFrames.find(frame => frame.method === 'connect')
     const agentRequest = ws.sentFrames.find(frame => frame.method === 'agent')
     expect(connectRequest?.params).toMatchObject({
+      client: {
+        id: 'gateway-client',
+        displayName: 'Bakin',
+        version: '1.0.0',
+        platform: process.platform,
+        mode: 'backend',
+      },
       role: 'operator',
       scopes: ['operator.read', 'operator.write'],
       auth: { token: 'test-token' },
