@@ -29,6 +29,8 @@ import {
   materializeImplicitMainAgent,
   readOpenClawConfig,
   resetOpenClawConfigCache,
+  type OpenClawAgent,
+  type OpenClawConfig,
 } from './config'
 import { getOpenClawHome, getOpenClawPath } from './home'
 import { tryGetMainAgentId } from './main-agent'
@@ -91,6 +93,71 @@ const NATIVE_APPROVAL_NOTICE = [
   'The durable Bakin approval record remains canonical.',
 ].join(' ')
 const NATIVE_APPROVAL_PROVIDERS = new Set(['discord', 'telegram', 'slack', 'matrix', 'qqbot'])
+const OPENCLAW_PLUGIN_ALLOWLIST_WARNING = '[plugins] plugins.allow is empty'
+
+class OpenClawCommandError extends Error {
+  readonly args: string[]
+  readonly stdout: string
+  readonly stderr: string
+  readonly exitCode: number | string | undefined
+
+  constructor(args: string[], cause: unknown) {
+    const stdout = processOutput(cause, 'stdout')
+    const stderr = processOutput(cause, 'stderr')
+    const exitCode = processExitCode(cause)
+    const details = [stderr, stdout].filter((part) => part.trim().length > 0).join('\n')
+    super([
+      `OpenClaw command failed${exitCode === undefined ? '' : ` (${exitCode})`}: openclaw ${args.join(' ')}`,
+      details,
+    ].filter(Boolean).join('\n'), { cause })
+    this.name = 'OpenClawCommandError'
+    this.args = args
+    this.stdout = stdout
+    this.stderr = stderr
+    this.exitCode = exitCode
+  }
+}
+
+function processOutput(cause: unknown, field: 'stdout' | 'stderr'): string {
+  if (!cause || typeof cause !== 'object') return ''
+  const value = (cause as Record<string, unknown>)[field]
+  if (typeof value === 'string') return value
+  if (Buffer.isBuffer(value)) return value.toString('utf-8')
+  return ''
+}
+
+function processExitCode(cause: unknown): number | string | undefined {
+  if (!cause || typeof cause !== 'object') return undefined
+  const value = (cause as Record<string, unknown>).code
+  return typeof value === 'number' || typeof value === 'string' ? value : undefined
+}
+
+function openClawErrorOutput(err: unknown): string {
+  if (err instanceof OpenClawCommandError) {
+    return [err.stderr, err.stdout, err.message].filter(Boolean).join('\n')
+  }
+  if (!err || typeof err !== 'object') return String(err ?? '')
+  const record = err as Record<string, unknown>
+  return [
+    typeof record.stderr === 'string' ? record.stderr : '',
+    typeof record.stdout === 'string' ? record.stdout : '',
+    typeof record.message === 'string' ? record.message : '',
+  ].filter(Boolean).join('\n')
+}
+
+function isPluginAllowlistOpenFailure(err: unknown): boolean {
+  if (err instanceof OpenClawCommandError) {
+    const stderr = err.stderr.trim()
+    const stdout = err.stdout.trim()
+    const nonWarningStderr = stderr
+      .split('\n')
+      .filter((line) => !line.includes(OPENCLAW_PLUGIN_ALLOWLIST_WARNING))
+      .join('\n')
+      .trim()
+    return stdout.length === 0 && stderr.includes(OPENCLAW_PLUGIN_ALLOWLIST_WARNING) && nonWarningStderr.length === 0
+  }
+  return openClawErrorOutput(err).includes(OPENCLAW_PLUGIN_ALLOWLIST_WARNING)
+}
 
 interface OpenClawCronStore {
   version?: number
@@ -249,12 +316,36 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       if (findAgentById(id)) throw new Error(`Agent already exists: ${id}`)
       const args = ['agents', 'add', id, '--workspace', workspace, '--non-interactive', '--json']
       if (input.model) args.splice(3, 0, '--model', input.model)
-      await this.exec(args)
       const emoji = metadataValue(input.metadata, 'emoji')
-      const identityArgs = ['agents', 'set-identity', '--agent', id]
-      if (input.name) identityArgs.push('--name', input.name)
-      if (emoji) identityArgs.push('--emoji', emoji)
-      if (identityArgs.length > 4) await this.exec(identityArgs)
+      let createdViaConfigFallback = false
+      try {
+        await this.exec(args)
+      } catch (err) {
+        if (!isPluginAllowlistOpenFailure(err)) throw err
+        this.logger.warn('OpenClaw CLI agent creation was blocked by plugin allow-list warning; writing agent config directly', {
+          agentId: id,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        upsertOpenClawAgentConfig({ id, name: input.name, workspace, model: input.model, emoji })
+        createdViaConfigFallback = true
+      }
+      if (!createdViaConfigFallback) {
+        const identityArgs = ['agents', 'set-identity', '--agent', id]
+        if (input.name) identityArgs.push('--name', input.name)
+        if (emoji) identityArgs.push('--emoji', emoji)
+        if (identityArgs.length > 4) {
+          try {
+            await this.exec(identityArgs)
+          } catch (err) {
+            if (!isPluginAllowlistOpenFailure(err)) throw err
+            this.logger.warn('OpenClaw CLI identity update was blocked by plugin allow-list warning; writing agent identity directly', {
+              agentId: id,
+              error: err instanceof Error ? err.message : String(err),
+            })
+            updateOpenClawAgentIdentity(id, { name: input.name, emoji })
+          }
+        }
+      }
       resetOpenClawConfigCache()
       if (!existsSync(workspace)) mkdirSync(workspace, { recursive: true })
       return {
@@ -1048,8 +1139,73 @@ function resolveOpenClawBinary(requested: string): string {
 }
 
 function writeOpenClawConfig(config: Record<string, unknown>): void {
+  mkdirSync(getOpenClawHome(), { recursive: true })
   writeFileSync(getOpenClawPath('openclaw.json'), JSON.stringify(config, null, 2), 'utf-8')
   resetOpenClawConfigCache()
+}
+
+function agentModelPrimary(model: OpenClawAgent['model']): string | undefined {
+  if (typeof model === 'string') return model
+  return model?.primary
+}
+
+function openClawAgentsList(config: OpenClawConfig): OpenClawAgent[] {
+  config.agents ??= {}
+  config.agents.list ??= []
+  return config.agents.list
+}
+
+function upsertOpenClawAgentConfig(input: {
+  id: string
+  name: string
+  workspace: string
+  model?: string
+  emoji?: string
+}): void {
+  const config: OpenClawConfig = readOpenClawConfig() ?? {}
+  const list = openClawAgentsList(config)
+  const existing = list.find((agent) => agent.id === input.id)
+  const agentDir = getOpenClawPath('agents', input.id, 'agent')
+  const identity = input.name || input.emoji
+    ? {
+        ...(existing?.identity ?? {}),
+        ...(input.name ? { name: input.name } : {}),
+        ...(input.emoji ? { emoji: input.emoji } : {}),
+      }
+    : existing?.identity
+
+  if (!existing && list.length === 0 && input.id !== 'main') {
+    list.push({ id: 'main' })
+  }
+
+  const next = {
+    ...(existing ?? { id: input.id }),
+    name: input.name,
+    workspace: input.workspace,
+    agentDir,
+    ...(input.model ? { model: input.model } : {}),
+    ...(identity ? { identity } : {}),
+  }
+
+  if (existing) Object.assign(existing, next)
+  else list.push(next)
+
+  mkdirSync(agentDir, { recursive: true })
+  mkdirSync(join(agentDir, 'sessions'), { recursive: true })
+  mkdirSync(input.workspace, { recursive: true })
+  writeOpenClawConfig(config as unknown as Record<string, unknown>)
+}
+
+function updateOpenClawAgentIdentity(agentId: string, input: { name?: string; emoji?: string }): void {
+  const config = readOpenClawConfig()
+  const agent = config?.agents?.list?.find((entry) => entry.id === agentId)
+  if (!agent) throw new Error(`Agent not found: ${agentId}`)
+  agent.identity = {
+    ...(agent.identity ?? {}),
+    ...(input.name ? { name: input.name } : {}),
+    ...(input.emoji ? { emoji: input.emoji } : {}),
+  }
+  writeOpenClawConfig(config as unknown as Record<string, unknown>)
 }
 
 function updateAgentAllowlist(agentId: string, updater: (current: string[]) => string[]): void {
@@ -1887,7 +2043,7 @@ function agentToRuntime(agent: NonNullable<ReturnType<typeof findAgentById>>): R
     id: agent.id,
     name: agent.identity?.name ?? agent.name ?? agent.id,
     role: resolveRole(agent.id),
-    model: agent.model?.primary,
+    model: agentModelPrimary(agent.model),
     status: 'active',
     metadata: {
       emoji: agent.identity?.emoji ?? '',

@@ -146,6 +146,24 @@ describe('buildUserPlugin', () => {
     await expect(buildUserPlugin(dir)).rejects.toThrow(/not declared/)
   })
 
+  it('ignores import-like text inside plugin strings', async () => {
+    const dir = join(testDir, 'plugins', 'string-import-like-text')
+    writeMinimalPlugin(dir, `
+      const session = { title: 'Launch plan' }
+      export default {
+        id: 'minimal',
+        name: 'x',
+        version: '0.1.0',
+        activate() {
+          return \`Created Plan from "\${session.title}"\`
+        },
+      }
+    `)
+
+    await expect(buildUserPlugin(dir)).resolves.toBeUndefined()
+    expect(existsSync(join(dir, 'dist', 'index.js'))).toBe(true)
+  }, 60_000)
+
   it('ignores test-only imports during runtime dependency validation', async () => {
     const dir = join(testDir, 'plugins', 'test-only-import')
     writeMinimalPlugin(dir, `export default { id: 'minimal', name: 'x', version: '0.1.0', activate() {} }`)

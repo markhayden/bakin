@@ -63,8 +63,17 @@ const BUILTIN_IMPORTS = new Set([
 ])
 const SOURCE_EXT_RE = /\.(?:ts|tsx|js|jsx|mjs|cjs)$/
 const NON_RUNTIME_DIRS = new Set(['dist', 'node_modules', 'tests', '__tests__', 'coverage'])
-const IMPORT_SPECIFIER_RE = /\bfrom\s+["']([^"']+)["']|\bimport\s+["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)/g
 const OLD_SDK_PACKAGE_NAME = '@bakin' + '/sdk'
+type SourceLoader = 'ts' | 'tsx' | 'js' | 'jsx'
+interface BunImportScanEntry {
+  path?: string
+}
+interface BunImportScanner {
+  scanImports(source: string): BunImportScanEntry[]
+}
+const BunTranspiler = (Bun as unknown as {
+  Transpiler: new (options: { loader: SourceLoader }) => BunImportScanner
+}).Transpiler
 
 interface RunResult {
   exitCode: number
@@ -194,6 +203,25 @@ function readPackageJson(pluginDir: string): PluginPackageJson {
   }
 }
 
+function sourceLoader(file: string): SourceLoader {
+  if (file.endsWith('.tsx')) return 'tsx'
+  if (file.endsWith('.ts')) return 'ts'
+  if (file.endsWith('.jsx')) return 'jsx'
+  return 'js'
+}
+
+function collectImportSpecifiers(file: string, source: string): string[] {
+  try {
+    const transpiler = new BunTranspiler({ loader: sourceLoader(file) })
+    return transpiler
+      .scanImports(source)
+      .map((entry) => entry.path)
+      .filter((specifier): specifier is string => typeof specifier === 'string' && specifier.length > 0)
+  } catch (err) {
+    throw new Error(`Failed to parse imports in ${file}: ${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
 function validatePluginImports(pluginDir: string, pkg: PluginPackageJson): void {
   const declared = new Set([
     ...Object.keys(pkg.dependencies ?? {}),
@@ -204,8 +232,7 @@ function validatePluginImports(pluginDir: string, pkg: PluginPackageJson): void 
 
   for (const file of collectSourceFiles(pluginDir)) {
     const source = readFileSync(file, 'utf-8')
-    for (const match of source.matchAll(IMPORT_SPECIFIER_RE)) {
-      const specifier = match[1] ?? match[2] ?? match[3]
+    for (const specifier of collectImportSpecifiers(file, source)) {
       if (!specifier || isRelativeOrAbsoluteSpecifier(specifier) || BUILTIN_IMPORTS.has(specifier)) continue
 
       if (specifier === OLD_SDK_PACKAGE_NAME || specifier.startsWith(`${OLD_SDK_PACKAGE_NAME}/`)) {
