@@ -234,13 +234,13 @@ Source: `packages/sdk/src/utils/index.ts`
 
 | Export declaration |
 | --- |
-| `export { cn } from '@/lib/utils'` |
+| `export { cn } from '../../../../src/lib/utils'` |
 | `export { formatAge, formatSize, isStale } from '@bakin/core/format'` |
 | `export {` |
 | `export {` |
 | `export type {` |
 | `export type {` |
-| `export { readBrainstormSseResponse } from '@/components/integrated-brainstorm/sse'` |
+| `export { readBrainstormSseResponse } from '../../../../src/components/integrated-brainstorm/sse'` |
 
 ## `@makinbakin/sdk/metadata`
 
@@ -261,5 +261,5 @@ Source: `packages/sdk/src/routing/index.ts`
 | `export type {` |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 14, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 15, 2026 · Bakin 0.0.0-dev</span>
 </aside>
