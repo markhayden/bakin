@@ -59,6 +59,8 @@ function parseAntflyFields(line: string): Record<string, string> {
 }
 
 const SHARD_INITIALIZING_ERROR = 'shard is still initializing'
+const SHARD_NOT_FOUND_ERROR_RE = /^shard ([A-Za-z0-9]+) not found$/
+const STALE_SHARD_SCAN_MESSAGE = 'Failed to scan shard'
 const TRANSIENT_RECONCILER_MESSAGES = new Set([
   'Failed to add index',
   'Failed to update schema',
@@ -99,6 +101,13 @@ function isTransientReconcilerWarning(message: string, fields: Record<string, st
   return TRANSIENT_RECONCILER_MESSAGES.has(message) && fields.error === SHARD_INITIALIZING_ERROR
 }
 
+function isStaleShardScan(message: string, fields: Record<string, string>): boolean {
+  if (message !== STALE_SHARD_SCAN_MESSAGE) return false
+  const shardID = fields.shardID
+  const match = fields.error?.match(SHARD_NOT_FOUND_ERROR_RE)
+  return typeof shardID === 'string' && match?.[1] === shardID
+}
+
 function isOptionalTermiteModelDirectoryWarning(message: string, fields: Record<string, string>): boolean {
   return OPTIONAL_TERMITE_MODEL_DIRECTORY_MESSAGES.has(message)
     && fields.caller?.startsWith('termite/') === true
@@ -107,6 +116,7 @@ function isOptionalTermiteModelDirectoryWarning(message: string, fields: Record<
 
 function isExpectedStartupDebug(message: string, fields: Record<string, string>): boolean {
   return isTransientReconcilerWarning(message, fields)
+    || isStaleShardScan(message, fields)
     || isOptionalTermiteModelDirectoryWarning(message, fields)
 }
 
@@ -128,6 +138,12 @@ function optionalTermiteModelDirectoryMessage(message: string, fields: Record<st
   }`
 }
 
+function staleShardScanMessage(fields: Record<string, string>): string {
+  return `Antfly skipped stale shard scan while metadata catches up${
+    summarizeAntflyFields(fields, ['shardID'])
+  }`
+}
+
 function formatAntflyLogMessage(
   message: string,
   level: AntflyLogLevel,
@@ -135,6 +151,9 @@ function formatAntflyLogMessage(
 ): string {
   if (isTransientReconcilerWarning(message, fields)) {
     return transientReconcilerMessage(message, fields)
+  }
+  if (isStaleShardScan(message, fields)) {
+    return staleShardScanMessage(fields)
   }
   if (isOptionalTermiteModelDirectoryWarning(message, fields)) {
     return optionalTermiteModelDirectoryMessage(message, fields)

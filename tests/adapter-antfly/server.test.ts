@@ -75,6 +75,36 @@ describe('Antfly server log parsing', () => {
     )
   })
 
+  it('demotes stale shard scans while Antfly metadata catches up', () => {
+    const parsed = parseAntflyLogLine(
+      'ts=22:18:42 lvl=error caller=scanner msg="Failed to scan shard" shardID=1f50dadf5a77af69 error="shard 1f50dadf5a77af69 not found"',
+      'warn',
+    )
+
+    expect(parsed.level).toBe('debug')
+    expect(parsed.message).toBe(
+      'Antfly skipped stale shard scan while metadata catches up (shardID=1f50dadf5a77af69)',
+    )
+    expect(parsed.data).toMatchObject({
+      source: 'antfly',
+      caller: 'scanner',
+      shardID: '1f50dadf5a77af69',
+      error: 'shard 1f50dadf5a77af69 not found',
+    })
+  })
+
+  it('keeps shard scan errors visible when they are not exact stale-shard misses', () => {
+    const parsed = parseAntflyLogLine(
+      'ts=22:18:42 lvl=error caller=scanner msg="Failed to scan shard" shardID=1f50dadf5a77af69 error="permission denied"',
+      'warn',
+    )
+
+    expect(parsed.level).toBe('error')
+    expect(parsed.message).toBe(
+      'Failed to scan shard (shardID=1f50dadf5a77af69, error=permission denied)',
+    )
+  })
+
   it('demotes optional Termite model registry directory warnings', () => {
     const parsed = parseAntflyLogLine(
       'ts=19:54:17 lvl=warn caller=termite/chunker_registry.go:178 msg="Chunker models directory does not exist" dir=/Users/roscoe/.termite/models/chunkers',
