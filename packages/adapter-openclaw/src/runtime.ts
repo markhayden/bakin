@@ -72,6 +72,9 @@ const noopLogger: AdapterLogger = {
 }
 
 const OPENCLAW_AGENT_TIMEOUT_MS = 600000
+const OPENCLAW_AGENT_TIMEOUT_SECONDS = Math.ceil(OPENCLAW_AGENT_TIMEOUT_MS / 1000)
+// Transport must outlast the server-side agent budget so the Gateway can deliver its own timeout.
+const OPENCLAW_AGENT_TRANSPORT_TIMEOUT_MS = OPENCLAW_AGENT_TIMEOUT_MS + 30_000
 const OPENCLAW_SESSION_ACTIVITY_POLL_MS = 200
 const OPENCLAW_ACTIVITY_PREVIEW_CHARS = 500
 const OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS = 600000
@@ -1024,14 +1027,14 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       agentId: opts.agentId,
       message: messagesToOpenClawPrompt(opts.messages),
       deliver: false,
-      timeout: OPENCLAW_AGENT_TIMEOUT_MS,
+      timeout: OPENCLAW_AGENT_TIMEOUT_SECONDS,
       idempotencyKey: `bakin-${randomUUID()}`,
     }
     if (opts.sessionKey) params.sessionId = openClawCliSessionId(opts.agentId, opts.sessionKey)
     try {
       const payload = await this.openClawChatGateway().request('agent', params, {
         expectFinal: true,
-        timeoutMs: OPENCLAW_AGENT_TIMEOUT_MS,
+        timeoutMs: OPENCLAW_AGENT_TRANSPORT_TIMEOUT_MS,
       })
       const content = extractOpenClawAgentText(payload)
       if (content) return content
