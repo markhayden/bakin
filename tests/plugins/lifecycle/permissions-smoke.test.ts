@@ -5,7 +5,7 @@
  * suggestion, newPermissions diff. Full coverage in C10.
  */
 import { describe, it, expect, afterAll, mock } from 'bun:test'
-import { rmSync } from 'fs'
+import { readFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
@@ -124,5 +124,15 @@ describe('suggestPermission', () => {
   it('returns null when no known permission is close enough', () => {
     expect(suggestPermission('network.fetch')).toBe(null)
     expect(suggestPermission('completely.different.thing')).toBe(null)
+  })
+})
+
+describe('core plugin manifests', () => {
+  it('schedule declares runtime agent access used for owner defaults', () => {
+    const manifest = JSON.parse(
+      readFileSync(join(import.meta.dir, '../../../plugins/schedule/bakin-plugin.json'), 'utf-8'),
+    ) as { permissions?: string[] }
+
+    expect(manifest.permissions).toContain('runtime.agents')
   })
 })
