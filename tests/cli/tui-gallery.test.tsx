@@ -1,0 +1,58 @@
+import { describe, expect, it } from 'bun:test'
+
+import { GALLERY_SCREENS, isGalleryScreen, renderGalleryScreen } from '../../src/core/cli/ui/tui-gallery'
+
+function visibleLineLengths(output: string): number[] {
+  return output
+    .split('\n')
+    .filter(line => line.length > 0)
+    .map(line => line.length)
+}
+
+describe('CLI TUI style gallery', () => {
+  it('lists every prototype screen as a valid gallery target', () => {
+    expect(isGalleryScreen('all')).toBe(true)
+    for (const screen of GALLERY_SCREENS) {
+      expect(isGalleryScreen(screen)).toBe(true)
+    }
+    expect(isGalleryScreen('real-command')).toBe(false)
+  })
+
+  it('renders all prototype screens from fixture data', () => {
+    const output = renderGalleryScreen('all', { columns: 120 })
+
+    expect(output).toContain('--- doctor ---')
+    expect(output).toContain('--- doctor-fix ---')
+    expect(output).toContain('--- plugins ---')
+    expect(output).toContain('Bakin onboarding')
+    expect(output).toContain('Bakin command failed')
+  })
+
+  it('keeps status tokens intact in wide doctor output', () => {
+    const output = renderGalleryScreen('doctor', { columns: 132 })
+
+    expect(output).toContain('[WARN]     agent-assets')
+    expect(output).toContain('[SKIP]     runtime')
+    expect(output).not.toMatch(/\[(WARN|SKIP|OK|FAIL) [a-z]/)
+  })
+
+  it('wraps narrow doctor output within the requested terminal width', () => {
+    const output = renderGalleryScreen('doctor', { columns: 72 })
+    const maxLineLength = Math.max(...visibleLineLengths(output))
+
+    expect(maxLineLength).toBeLessThanOrEqual(72)
+    expect(output).toContain('1 agent-package projection needs')
+    expect(output).toContain('repair; patch is missing from the')
+    expect(output).toContain('runtime workspace.')
+  })
+
+  it('shows realistic repair and delegated follow-up actions', () => {
+    const repair = renderGalleryScreen('doctor-fix', { columns: 110 })
+    const delegated = renderGalleryScreen('doctor-delegate', { columns: 110 })
+
+    expect(repair).toContain('Run `bakin doctor --fix --yes`')
+    expect(repair).toContain('SAFE DETERMINISTIC REPAIRS')
+    expect(delegated).toContain('task-184')
+    expect(delegated).toContain('bakin doctor repair verify')
+  })
+})
