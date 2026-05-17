@@ -34,6 +34,23 @@ const mockApply = {
   summary: { planned: 1, applied: 1, skipped: 0, failed: 0, verificationErrors: 0, verificationWarnings: 0 },
 }
 
+const mockDelegate = {
+  status: 'sent',
+  request: {
+    id: 'repair-1',
+    kind: 'delegate',
+    status: 'sent',
+    createdAt: '2026-04-01T00:00:00.000Z',
+    updatedAt: '2026-04-01T00:01:00.000Z',
+    plan: mockPlan,
+    unresolved: mockPlan.diagnostics,
+    taskId: 'task-repair-1',
+    agentId: 'main',
+    events: [],
+  },
+  unresolved: mockPlan.diagnostics,
+}
+
 describe('legacy CLI doctor repair', () => {
   const originalArgv = process.argv
   const originalExit = process.exit
@@ -99,5 +116,84 @@ describe('legacy CLI doctor repair', () => {
     const body = JSON.parse(String(log.mock.calls[0][0]))
     expect(body.ok).toBe(true)
     expect(body.data.summary.applied).toBe(1)
+  })
+
+  it('previews delegated repair without creating the task when --yes is omitted', async () => {
+    const delegatePlan = {
+      ...mockPlan,
+      diagnostics: [
+        ...mockPlan.diagnostics,
+        { check: 'runtime', status: 'error', message: 'Runtime unreachable', autoFixable: false },
+      ],
+      summary: { ...mockPlan.summary, diagnostics: 2 },
+    }
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(delegatePlan),
+      text: () => Promise.resolve(''),
+    })
+    process.argv = ['bun', 'cli/bakin.ts', 'doctor', '--delegate', '--json']
+
+    const { main } = await import('../../cli/bakin')
+    await expect(main()).rejects.toThrow('exit:1')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toContain('/api/plugins/health/doctor/repair/plan')
+    const body = JSON.parse(String(log.mock.calls[0][0]))
+    expect(body.error.code).toBe('CONFIRMATION_REQUIRED')
+    expect(body.data.unresolved).toHaveLength(1)
+  })
+
+  it('creates a delegated repair task with --yes', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(mockDelegate),
+      text: () => Promise.resolve(''),
+    })
+    process.argv = ['bun', 'cli/bakin.ts', 'doctor', '--delegate', '--json', '--yes']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toContain('/api/plugins/health/doctor/delegate')
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST' })
+    expect(fetchMock.mock.calls[0][1]?.body).toBe(JSON.stringify({ accepted: true }))
+    const body = JSON.parse(String(log.mock.calls[0][0]))
+    expect(body.ok).toBe(true)
+    expect(body.data.request.taskId).toBe('task-repair-1')
+  })
+
+  it('lists delegated repair requests', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ requests: [mockDelegate.request] }),
+      text: () => Promise.resolve(''),
+    })
+    process.argv = ['bun', 'cli/bakin.ts', 'doctor', 'repair', 'list', '--json']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    expect(fetchMock.mock.calls[0][0]).toContain('/api/plugins/health/doctor/repair')
+    const body = JSON.parse(String(log.mock.calls[0][0]))
+    expect(body.data.requests[0].id).toBe('repair-1')
+  })
+
+  it('verifies delegated repair requests', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ request: { ...mockDelegate.request, status: 'verified' }, remaining: [], verified: true }),
+      text: () => Promise.resolve(''),
+    })
+    process.argv = ['bun', 'cli/bakin.ts', 'doctor', 'repair', 'verify', 'repair-1', '--json']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    expect(fetchMock.mock.calls[0][0]).toContain('/api/plugins/health/doctor/repair/repair-1/verify')
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST' })
+    const body = JSON.parse(String(log.mock.calls[0][0]))
+    expect(body.data.verified).toBe(true)
   })
 })
