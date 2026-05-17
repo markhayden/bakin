@@ -111,7 +111,7 @@ Soft delete first. Files move to `~/.bakin/assets/.trash/` with a `__deleted-{ti
   <figcaption>The trash view with restore and permanent-delete actions.</figcaption>
 </figure>
 
-The default recovery window is 7 days. Past that window, asset health checks can purge expired trash when doctor auto-fix is enabled. You can also empty trash manually at any time. Restore drops the file back at its canonical path, sidecar and all, and re-indexes.
+The default recovery window is 7 days. Past that window, asset health checks can purge expired trash through the explicit doctor repair workflow. You can also empty trash manually at any time. Restore drops the file back at its canonical path, sidecar and all, and re-indexes.
 
 Permanent delete is irreversible. Empty trash wipes everything in one shot.
 

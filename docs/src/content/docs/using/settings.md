@@ -21,7 +21,7 @@ The built-in tab covers the runtime knobs that don't belong to any single plugin
 | **Watchdog** | Stuck-task thresholds, auto-recovery toggle, MCP and REST error-rate alerts (window, threshold, sample size, alert cooldown). |
 | **Restart recovery** | Whether Bakin repairs stale `inProgress` tasks on server startup before kicking a dispatch cycle. |
 | **Models** | Global allowlist and blocklist. Models on the blocklist never get assigned, even by alias or profile. |
-| **Doctor** | Diagnostic interval, auto-fix toggle for skill drift, require-onboard guard so doctor stays quiet on fresh installs. |
+| **Doctor** | Diagnostic interval and require-onboard guard so doctor stays quiet on fresh installs. Repairs are explicit through `bakin doctor --fix` or `bakin doctor --delegate`. |
 | **Notifications** | Default notification channel and gate-alert toggle. |
 | **Workflow** | Step timeout, redispatch cap, repeat-rejection threshold, agent-scoping and workflow-guard enforcement. |
 | **Runtime adapter** | Which runtime adapter is active (today: `openclaw`) and any per-adapter settings. |

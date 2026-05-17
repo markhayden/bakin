@@ -218,9 +218,9 @@ bakin trash [list|restore|empty] ...
 <p class="cli-section-description">Diagnostics commands expose the information needed when something is not behaving as expected: logs, resolved paths, health checks, API docs, and generated agent rules.</p>
 
 <div class="cli-command-list">
-<CliCommandCard id="doctor" name="doctor" summary="Run health checks." description="Runs local offline diagnostics by default. Pass --full to include server-backed plugin, task, workflow, search, and runtime checks. Pass --notify-agent with --full to send unfixable issues to the runtime main agent.">
+<CliCommandCard id="doctor" name="doctor" summary="Run health checks." description="Runs local offline diagnostics by default. Pass --full to include server-backed plugin, task, workflow, search, and runtime checks. Pass --notify-agent with --full to send unfixable issues to the runtime main agent. Pass --fix to plan deterministic repairs or --delegate to create a linked repair task for the main agent; add --yes to execute either repair path.">
 ```sh frame="terminal"
-bakin doctor [--json] [--full] [--notify-agent]
+bakin doctor [--json] [--full] [--notify-agent] [--fix|--delegate] [--yes]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
@@ -228,6 +228,9 @@ bakin doctor [--json] [--full] [--notify-agent]
       <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
       <tr><td><code>[--full]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
       <tr><td><code>[--notify-agent]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[--fix]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[--delegate]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
@@ -774,5 +777,5 @@ bakin serve
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 15, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 16, 2026 · Bakin 0.0.0-dev</span>
 </aside>

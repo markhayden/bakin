@@ -5,7 +5,7 @@
     "cliCommands": {
       "status": "active",
       "count": 61,
-      "examples": 66,
+      "examples": 68,
       "source": "src/core/cli/registry.ts"
     },
     "httpRoutes": {
@@ -44,7 +44,7 @@
     },
     "settings": {
       "status": "active",
-      "count": 58,
+      "count": 57,
       "source": "packages/core/src/settings.ts"
     },
     "sdkSubpaths": {

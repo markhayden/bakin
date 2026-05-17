@@ -100,7 +100,7 @@ Any plugin can register a health check that surfaces here alongside the built-in
 | Command | Purpose |
 | --- | --- |
 | `bakin status` | Show dispatch and server status. |
-| `bakin doctor [--full] [--notify-agent]` | Run offline or full server-backed health checks. |
+| `bakin doctor [--full] [--notify-agent] [--fix\|--delegate] [--yes]` | Run health checks, apply explicit safe fixes, or create a delegated repair task. |
 <!-- /docs:cli-commands -->
 
 Full surface in the [CLI reference](/docs/reference/generated/cli/).
