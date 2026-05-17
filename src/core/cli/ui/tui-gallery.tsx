@@ -54,10 +54,13 @@ function Section({ title, children, marginTop = 1 }: {
   children: ReactNode
   marginTop?: number
 }) {
+  const divider = '-'.repeat(Math.max(12, title.length + 4))
+
   return (
     <Box flexDirection="column" marginTop={marginTop}>
-      <Text bold color={CLI_COLORS.brand}>{title.toUpperCase()}</Text>
-      <Box flexDirection="column" marginTop={0}>
+      <Text bold color="white">{title.toUpperCase()}</Text>
+      <Text bold color="white">{divider}</Text>
+      <Box flexDirection="column">
         {children}
       </Box>
     </Box>

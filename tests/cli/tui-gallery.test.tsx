@@ -24,6 +24,7 @@ describe('CLI TUI style gallery', () => {
     expect(output).toContain('--- doctor ---')
     expect(output).toContain('--- doctor-fix ---')
     expect(output).toContain('--- plugins ---')
+    expect(output).toContain('LOCAL CHECKS\n------------')
     expect(output).toContain('Bakin onboarding')
     expect(output).toContain('Bakin command failed')
   })

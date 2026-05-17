@@ -77,6 +77,7 @@ The gallery should feel like a quiet operational tool:
 - labels that scan vertically
 - messages that wrap into the available width
 - remediation grouped under the affected row
+- section headers rendered as bold white text with a bold white divider line
 - no decorative boxes or nested cards
 - summaries near the top and final next actions near the bottom
 
