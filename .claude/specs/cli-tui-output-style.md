@@ -16,6 +16,7 @@ see across common command families:
 
 - diagnostics
 - repairs and delegated repairs
+- onboarding progress, async feedback, blockers, and completion
 - plugin/package/task lists
 - setup blockers
 - command failures with remediation
@@ -35,6 +36,7 @@ Render one screen:
 
 ```bash
 bun run cli:tui-gallery doctor
+bun run cli:tui-gallery onboard
 bun run cli:tui-gallery doctor-fix
 bun run cli:tui-gallery plugins
 ```

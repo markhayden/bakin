@@ -10,6 +10,7 @@ export const GALLERY_SCREENS = [
   'doctor-delegate',
   'plugins',
   'tasks',
+  'onboard',
   'onboarding-blocked',
   'error',
 ] as const
@@ -164,6 +165,27 @@ function NextActions({ actions }: { actions: string[] }) {
         </Box>
       ))}
     </Section>
+  )
+}
+
+function ProgressMeter({ label, current, total, percent }: {
+  label: string
+  current: number
+  total: number
+  percent: number
+}) {
+  const width = 30
+  const filled = Math.max(0, Math.min(width, Math.round((percent / 100) * width)))
+  const bar = `${'#'.repeat(filled)}${'-'.repeat(width - filled)}`
+
+  return (
+    <Box flexDirection="column">
+      <Box>
+        <Text bold>{label}</Text>
+        <Text dimColor>  {current}/{total} steps  {percent}%</Text>
+      </Box>
+      <Text color={CLI_COLORS.info}>{bar}</Text>
+    </Box>
   )
 }
 
@@ -421,6 +443,59 @@ function TasksScreen() {
   )
 }
 
+function OnboardScreen() {
+  return (
+    <Box flexDirection="column">
+      <Header title="Bakin onboard" subtitle="Interactive setup in progress" meta="step 7 of 11" />
+      <SummaryStrip items={[
+        { label: 'complete', value: 6, status: 'ok' },
+        { label: 'running', value: 2, status: 'run' },
+        { label: 'pending', value: 3, status: 'todo' },
+        { label: 'warnings', value: 0, status: 'ok' },
+      ]} />
+      <Section title="Progress">
+        <ProgressMeter label="Setting up this machine" current={7} total={11} percent={64} />
+        <Box marginTop={1} flexDirection="column">
+          <FindingRows rows={[
+            { status: 'ok', label: 'home', message: 'Bakin home ready at ~/.bakin' },
+            { status: 'ok', label: 'settings', message: 'settings.json created and validated' },
+            { status: 'ok', label: 'runtime', message: 'OpenClaw reachable; main orchestrator agent found' },
+            { status: 'ok', label: 'search', message: 'Antfly installed and search index path prepared' },
+            { status: 'run', label: 'plugins', message: 'Installing selected official plugins and building their assets.' },
+            { status: 'run', label: 'agent-assets', message: 'Projecting selected agent packages into the runtime workspace.' },
+            { status: 'todo', label: 'channels', message: 'Approval and notification channels have not run yet.' },
+            { status: 'todo', label: 'doctor', message: 'Final health sweep will run after setup completes.' },
+          ]} />
+        </Box>
+      </Section>
+      <Section title="Current activity">
+        <FindingRows rows={[
+          {
+            status: 'run',
+            label: 'messaging',
+            message: 'Building plugin server and client bundles.',
+            detail: 'Async job 2 of 4; logs are hidden unless --verbose is enabled.',
+          },
+          {
+            status: 'run',
+            label: 'patch',
+            message: 'Installing agent package and writing managed runtime context.',
+            detail: 'The runtime agent will appear on the board after projection finishes.',
+          },
+        ]} />
+      </Section>
+      <Section title="Recent feedback">
+        <FindingRows rows={[
+          { status: 'ok', label: '10:42:11', message: 'Termite text, image, and embedding models are present.' },
+          { status: 'ok', label: '10:42:14', message: 'Tasks, assets, workflows, health, and team plugins are already installed.' },
+          { status: 'run', label: '10:42:18', message: 'Installing messaging plugin from the official catalog.' },
+          { status: 'todo', label: 'queued', message: 'Recommended agent package selection will be confirmed next.' },
+        ]} />
+      </Section>
+    </Box>
+  )
+}
+
 function OnboardingBlockedScreen() {
   return (
     <Box flexDirection="column">
@@ -515,6 +590,8 @@ export function GalleryApp({ screen }: { screen: GalleryScreen }) {
       return <PluginsScreen />
     case 'tasks':
       return <TasksScreen />
+    case 'onboard':
+      return <OnboardScreen />
     case 'onboarding-blocked':
       return <OnboardingBlockedScreen />
     case 'error':

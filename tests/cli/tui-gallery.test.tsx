@@ -24,6 +24,7 @@ describe('CLI TUI style gallery', () => {
     expect(output).toContain('--- doctor ---')
     expect(output).toContain('--- doctor-fix ---')
     expect(output).toContain('--- plugins ---')
+    expect(output).toContain('--- onboard ---')
     expect(output).toContain('LOCAL CHECKS\n------------')
     expect(output).toContain('Bakin onboarding')
     expect(output).toContain('Bakin command failed')
@@ -56,5 +57,18 @@ describe('CLI TUI style gallery', () => {
     expect(repair).toContain('SAFE DETERMINISTIC REPAIRS')
     expect(delegated).toContain('task-184')
     expect(delegated).toContain('bakin doctor repair verify')
+  })
+
+  it('renders an onboard mock with async setup feedback', () => {
+    const output = renderGalleryScreen('onboard', { columns: 100 })
+    const maxLineLength = Math.max(...visibleLineLengths(output))
+
+    expect(maxLineLength).toBeLessThanOrEqual(100)
+    expect(output).toContain('Bakin onboard')
+    expect(output).toContain('Setting up this machine')
+    expect(output).toContain('CURRENT ACTIVITY')
+    expect(output).toContain('Async job 2 of 4')
+    expect(output).toContain('RECENT FEEDBACK')
+    expect(output).toContain('Recommended agent package selection will be confirmed next.')
   })
 })
