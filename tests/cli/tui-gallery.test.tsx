@@ -31,9 +31,10 @@ describe('CLI TUI style gallery', () => {
   it('keeps status tokens intact in wide doctor output', () => {
     const output = renderGalleryScreen('doctor', { columns: 132 })
 
-    expect(output).toContain('[WARN]     agent-assets')
-    expect(output).toContain('[SKIP]     runtime')
-    expect(output).not.toMatch(/\[(WARN|SKIP|OK|FAIL) [a-z]/)
+    expect(output).toContain(' WARN      agent-assets')
+    expect(output).toContain(' SKIP      runtime')
+    expect(output).not.toContain('[WARN]')
+    expect(output).not.toContain('[SKIP]')
   })
 
   it('wraps narrow doctor output within the requested terminal width', () => {

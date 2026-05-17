@@ -80,17 +80,18 @@ The gallery should feel like a quiet operational tool:
 - no decorative boxes or nested cards
 - summaries near the top and final next actions near the bottom
 
-Status vocabulary:
+Status vocabulary uses fixed-width color blocks with contrasting foreground
+text, not bracketed labels:
 
 ```text
-[OK]       completed successfully
-[WARN]     usable, but attention needed
-[FAIL]     blocked or failed
-[SKIP]     intentionally not run
-[READY]    ready for action
-[RUN]      in progress or simulated running state
-[APPLIED]  deterministic change applied
-[SENT]     delegated request/task delivered
+ OK       completed successfully
+ WARN     usable, but attention needed
+ FAIL     blocked or failed
+ SKIP     intentionally not run
+ READY    ready for action
+ RUN      in progress or simulated running state
+ APPLIED  deterministic change applied
+ SENT     delegated request/task delivered
 ```
 
 ## Testing Strategy

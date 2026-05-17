@@ -66,7 +66,16 @@ function Section({ title, children, marginTop = 1 }: {
 
 function StatusToken({ status, color = true }: { status: TuiStatus; color?: boolean }) {
   const token = statusToken(status)
-  return <Text color={color ? token.color : undefined}>[{token.label}]</Text>
+  const label = ` ${token.label.padEnd(7)} `
+  return (
+    <Text
+      bold
+      color={color ? token.foreground : undefined}
+      backgroundColor={color ? token.color : undefined}
+    >
+      {label}
+    </Text>
+  )
 }
 
 function SummaryStrip({ items }: { items: SummaryItem[] }) {
