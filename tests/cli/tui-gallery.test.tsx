@@ -26,8 +26,15 @@ describe('CLI TUI style gallery', () => {
     expect(output).toContain('--- plugins ---')
     expect(output).toContain('--- onboard ---')
     expect(output).toContain('LOCAL CHECKS\n------------')
-    expect(output).toContain('Bakin onboarding')
-    expect(output).toContain('Bakin command failed')
+    expect(output).toContain('Onboarding')
+    expect(output).toContain('Command failed')
+  })
+
+  it('renders the Bakin brand header on every prototype screen', () => {
+    for (const screen of GALLERY_SCREENS) {
+      const output = renderGalleryScreen(screen, { columns: 100 })
+      expect(output.split('\n')[0]).toBe('Bakin')
+    }
   })
 
   it('keeps status tokens intact in wide doctor output', () => {
@@ -64,7 +71,7 @@ describe('CLI TUI style gallery', () => {
     const maxLineLength = Math.max(...visibleLineLengths(output))
 
     expect(maxLineLength).toBeLessThanOrEqual(100)
-    expect(output).toContain('Bakin onboard')
+    expect(output).toContain('Bakin\nOnboard')
     expect(output).toContain('Setting up this machine')
     expect(output).toContain('CURRENT ACTIVITY')
     expect(output).toContain('Async job 2 of 4')

@@ -41,6 +41,7 @@ interface TableColumn<TRow> {
 function Header({ title, subtitle, meta }: { title: string; subtitle?: string; meta?: string }) {
   return (
     <Box flexDirection="column">
+      <Text bold color={CLI_COLORS.brand}>Bakin</Text>
       <Box>
         <Text bold>{title}</Text>
         {meta ? <Text dimColor>  {meta}</Text> : null}
@@ -192,7 +193,7 @@ function ProgressMeter({ label, current, total, percent }: {
 function DoctorScreen() {
   return (
     <Box flexDirection="column">
-      <Header title="Bakin doctor" subtitle="Offline diagnostics from this machine" meta="mode: offline" />
+      <Header title="Doctor" subtitle="Offline diagnostics from this machine" meta="mode: offline" />
       <SummaryStrip items={[
         { label: 'errors', value: 0, status: 'ok' },
         { label: 'warnings', value: 4, status: 'warn' },
@@ -235,7 +236,7 @@ function DoctorScreen() {
 function DoctorFullScreen() {
   return (
     <Box flexDirection="column">
-      <Header title="Bakin doctor" subtitle="Fresh server-backed diagnostics" meta="mode: full" />
+      <Header title="Doctor" subtitle="Fresh server-backed diagnostics" meta="mode: full" />
       <SummaryStrip items={[
         { label: 'errors', value: 1, status: 'fail' },
         { label: 'warnings', value: 2, status: 'warn' },
@@ -391,7 +392,7 @@ function PluginsScreen() {
 
   return (
     <Box flexDirection="column">
-      <Header title="Bakin plugins" subtitle="Installed and recommended plugins" />
+      <Header title="Plugins" subtitle="Installed and recommended plugins" />
       <SummaryStrip items={[
         { label: 'installed', value: 8, status: 'ok' },
         { label: 'warnings', value: 1, status: 'warn' },
@@ -419,7 +420,7 @@ function PluginsScreen() {
 function TasksScreen() {
   return (
     <Box flexDirection="column">
-      <Header title="Bakin tasks" subtitle="Board snapshot" />
+      <Header title="Tasks" subtitle="Board snapshot" />
       <SummaryStrip items={[
         { label: 'todo', value: 3, status: 'todo' },
         { label: 'in progress', value: 1, status: 'run' },
@@ -446,7 +447,7 @@ function TasksScreen() {
 function OnboardScreen() {
   return (
     <Box flexDirection="column">
-      <Header title="Bakin onboard" subtitle="Interactive setup in progress" meta="step 7 of 11" />
+      <Header title="Onboard" subtitle="Interactive setup in progress" meta="step 7 of 11" />
       <SummaryStrip items={[
         { label: 'complete', value: 6, status: 'ok' },
         { label: 'running', value: 2, status: 'run' },
@@ -499,7 +500,7 @@ function OnboardScreen() {
 function OnboardingBlockedScreen() {
   return (
     <Box flexDirection="column">
-      <Header title="Bakin onboarding" subtitle="Step 3 of 8: runtime prerequisite" />
+      <Header title="Onboarding" subtitle="Step 3 of 8: runtime prerequisite" />
       <SummaryStrip items={[
         { label: 'complete', value: 2, status: 'ok' },
         { label: 'blocked', value: 1, status: 'blocked' },
@@ -532,7 +533,7 @@ function OnboardingBlockedScreen() {
 function ErrorScreen() {
   return (
     <Box flexDirection="column">
-      <Header title="Bakin command failed" subtitle="plugins install messaging" />
+      <Header title="Command failed" subtitle="plugins install messaging" />
       <SummaryStrip items={[
         { label: 'exit code', value: 1, status: 'fail' },
         { label: 'code', value: 'PLUGIN_BUILD_FAILED' },
