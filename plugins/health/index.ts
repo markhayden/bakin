@@ -11,6 +11,8 @@ import { createLogger } from '../../src/core/logger'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
 import { getContentDir } from '../../src/core/content-dir'
 import { applyDoctorRepair, planDoctorRepair } from '../../src/core/doctor-repair'
+import { delegateDoctorRepair, verifyDoctorRepairRequest } from '../../src/core/doctor-delegate'
+import { getDoctorRepairRequest, listDoctorRepairRequests } from '../../src/core/doctor-repair-store'
 import { getUsageFeed, getErrorCount, getStatsByMs, WINDOW_MS, type UsageKind, type WindowKey } from '../../src/core/usage'
 import {
   listHealthChecks,
@@ -182,6 +184,14 @@ const doctorResponse = z.object({
 const doctorRepairApplyBody = z.object({
   accepted: z.boolean(),
   itemIds: z.array(z.string()).optional(),
+})
+
+const acceptedBody = z.object({
+  accepted: z.boolean(),
+})
+
+const repairRequestParams = z.object({
+  requestId: z.string().min(1),
 })
 
 const searchStatusResponse = z.object({
@@ -365,6 +375,74 @@ const routes = [
         })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/doctor/delegate',
+    method: 'POST',
+    summary: 'Create a delegated doctor repair task',
+    description: 'Plans unresolved doctor findings and, after accepted=true, creates a linked task assigned to the runtime main agent and kicks dispatch.',
+    body: acceptedBody,
+    responses: { 200: passthrough, 409: passthrough, 500: errorResponse },
+    handler: async (_req, _ctx, { body }) => {
+      try {
+        const report = await delegateDoctorRepair({
+          contentDir: getContentDir(),
+          projectRoot: process.cwd(),
+          accepted: body.accepted,
+        })
+        return Response.json(report, {
+          status: report.status === 'confirmation_required' ? 409 : 200,
+        })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/doctor/repair',
+    method: 'GET',
+    summary: 'List doctor repair requests',
+    description: 'Returns durable delegated doctor repair requests.',
+    responses: { 200: passthrough },
+    handler: async () => Response.json({ requests: listDoctorRepairRequests(getContentDir()) }),
+  }),
+
+  defineRoute({
+    path: '/doctor/repair/:requestId',
+    method: 'GET',
+    summary: 'Show a doctor repair request',
+    description: 'Returns one durable doctor repair request by id.',
+    params: repairRequestParams,
+    responses: { 200: passthrough, 404: errorResponse },
+    handler: async (_req, _ctx, { params }) => {
+      const request = getDoctorRepairRequest(getContentDir(), params.requestId)
+      if (!request) return Response.json({ error: 'Doctor repair request not found' }, { status: 404 })
+      return Response.json({ request })
+    },
+  }),
+
+  defineRoute({
+    path: '/doctor/repair/:requestId/verify',
+    method: 'POST',
+    summary: 'Verify a doctor repair request',
+    description: 'Reruns doctor planning and records whether the original delegated findings still reproduce.',
+    params: repairRequestParams,
+    responses: { 200: passthrough, 404: errorResponse, 500: errorResponse },
+    handler: async (_req, _ctx, { params }) => {
+      try {
+        return Response.json(await verifyDoctorRepairRequest({
+          contentDir: getContentDir(),
+          projectRoot: process.cwd(),
+          requestId: params.requestId,
+        }))
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        const status = message.includes('not found') ? 404 : 500
+        return Response.json({ error: message }, { status })
       }
     },
   }),

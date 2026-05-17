@@ -111,6 +111,39 @@ mock.module('../../../src/core/doctor-repair', () => ({
   applyDoctorRepair: applyDoctorRepairMock,
 }))
 
+const mockDelegateRequest = {
+  id: 'repair-1',
+  kind: 'delegate',
+  status: 'sent',
+  createdAt: '2026-04-01T00:00:00.000Z',
+  updatedAt: '2026-04-01T00:01:00.000Z',
+  plan: mockRepairPlan,
+  unresolved: [mockDoctorResults[2]],
+  taskId: 'task-repair-1',
+  agentId: 'main',
+  events: [{ ts: '2026-04-01T00:00:00.000Z', type: 'created', message: 'created' }],
+}
+const delegateDoctorRepairMock = mock(async (options: { accepted: boolean }) => (
+  options.accepted
+    ? { status: 'sent', request: mockDelegateRequest, unresolved: mockDelegateRequest.unresolved }
+    : { status: 'confirmation_required', request: { ...mockDelegateRequest, status: 'planned', taskId: undefined, agentId: undefined }, unresolved: mockDelegateRequest.unresolved }
+))
+const verifyDoctorRepairRequestMock = mock(async () => ({
+  request: { ...mockDelegateRequest, status: 'verified' },
+  remaining: [],
+  verified: true,
+}))
+
+mock.module('../../../src/core/doctor-delegate', () => ({
+  delegateDoctorRepair: delegateDoctorRepairMock,
+  verifyDoctorRepairRequest: verifyDoctorRepairRequestMock,
+}))
+
+mock.module('../../../src/core/doctor-repair-store', () => ({
+  listDoctorRepairRequests: mock(() => [mockDelegateRequest]),
+  getDoctorRepairRequest: mock((_contentDir: string, id: string) => id === 'repair-1' ? mockDelegateRequest : null),
+}))
+
 mock.module('../../../src/core/agent-usage', () => ({
   getAllAgentUsage: () => [
     { agent: 'patch', sessionId: 's1', model: 'claude-4', messages: 10, tokens: { total: 1000 }, cost: { total: 0.05 } },
@@ -193,8 +226,8 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('Health Plugin Routes', () => {
-  it('registers 9 routes', () => {
-    expect(activated.routes.length).toBe(9)
+  it('registers 13 routes', () => {
+    expect(activated.routes.length).toBe(13)
   })
 
   it('registers 2 exec tools', () => {
@@ -420,6 +453,61 @@ describe('Health Plugin Routes', () => {
         accepted: true,
         itemIds: ['repair.taskboard'],
       }))
+    })
+  })
+
+  describe('delegated repair routes', () => {
+    it('requires accepted=true before creating a delegated repair task', async () => {
+      const route = findRoute(activated.routes, 'POST', '/doctor/delegate')!
+      expect(route).toBeDefined()
+
+      const { status, body } = await callRoute(route, activated.ctx, {
+        body: { accepted: false },
+      })
+
+      expect(status).toBe(409)
+      expect(body.status).toBe('confirmation_required')
+      expect(delegateDoctorRepairMock).toHaveBeenCalledWith(expect.objectContaining({ accepted: false }))
+    })
+
+    it('creates a delegated repair request when accepted=true', async () => {
+      const route = findRoute(activated.routes, 'POST', '/doctor/delegate')!
+
+      const { status, body } = await callRoute(route, activated.ctx, {
+        body: { accepted: true },
+      })
+
+      expect(status).toBe(200)
+      expect(body.status).toBe('sent')
+      expect((body.request as Record<string, unknown>).taskId).toBe('task-repair-1')
+      expect(delegateDoctorRepairMock).toHaveBeenCalledWith(expect.objectContaining({ accepted: true }))
+    })
+
+    it('lists and shows delegated repair requests', async () => {
+      const listRoute = findRoute(activated.routes, 'GET', '/doctor/repair')!
+      const showRoute = findRoute(activated.routes, 'GET', '/doctor/repair/:requestId')!
+
+      const list = await callRoute(listRoute, activated.ctx)
+      expect(list.status).toBe(200)
+      expect(list.body.requests).toEqual([mockDelegateRequest])
+
+      const show = await callRoute(showRoute, activated.ctx, {
+        path: '/doctor/repair/repair-1',
+      })
+      expect(show.status).toBe(200)
+      expect(show.body.request).toEqual(mockDelegateRequest)
+    })
+
+    it('verifies delegated repair requests', async () => {
+      const route = findRoute(activated.routes, 'POST', '/doctor/repair/:requestId/verify')!
+
+      const { status, body } = await callRoute(route, activated.ctx, {
+        path: '/doctor/repair/repair-1/verify',
+      })
+
+      expect(status).toBe(200)
+      expect(body.verified).toBe(true)
+      expect(verifyDoctorRepairRequestMock).toHaveBeenCalledWith(expect.objectContaining({ requestId: 'repair-1' }))
     })
   })
 })
