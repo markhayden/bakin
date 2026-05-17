@@ -59,9 +59,23 @@ const taskStoreMock = {
   readTaskboard: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getAllTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] } }),
   getTask: () => null,
+  getTaskWithColumn: () => null,
+  getTasksByAgent: () => [],
+  getTodoTasks: () => ({ columns: { todo: [], 'in-progress': [], done: [] }, todoTasks: [] }),
+  createTask: mock(async () => ({ id: 'task-1', title: 'Task', checked: false })),
+  updateTask: mock(async () => ({ id: 'task-1', title: 'Task', checked: false })),
+  deleteTask: mock(async () => {}),
+  assignTask: mock(async () => {}),
   addTaskLog: mock(async () => {}),
   blockTask: mock(async () => {}),
   moveTask: mock(async () => {}),
+  setDependency: mock(async () => {}),
+  clearDependency: mock(async () => {}),
+  reorderTasks: mock(async () => {}),
+  moveTaskToInProgress: mock(async () => {}),
+  archiveOldTasks: mock(async () => {}),
+  localDateString: () => '2026-01-01',
+  VALID_TRANSITIONS: {},
 }
 mock.module('@/core/task-store', () => taskStoreMock)
 mock.module('../../../src/core/task-store', () => taskStoreMock)

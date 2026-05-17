@@ -2138,16 +2138,20 @@ const teamPlugin: BakinPlugin = definePlugin({
     })
 
     // ─── Health checks (migrated out of core/doctor.ts per #139) ────────
+    const runtimeAgentReader = {
+      list: () => ctx.runtime.agents.list(),
+    }
+
     ctx.registerHealthCheck({
       id: 'agent-roster',
       name: 'Runtime agent roster',
-      run: () => checkAgentRoster(ctx.runtime.agents),
+      run: () => checkAgentRoster(runtimeAgentReader),
     })
     ctx.registerHealthCheck({
       id: 'personas',
       name: 'Persona files',
-      run: () => checkPersonas(getContentDir(), ctx.runtime.agents),
-      repair: personaRepair(getContentDir(), ctx.runtime.agents),
+      run: () => checkPersonas(getContentDir(), runtimeAgentReader),
+      repair: personaRepair(getContentDir(), runtimeAgentReader),
     })
     ctx.registerHealthCheck({
       id: 'agent-assets',
