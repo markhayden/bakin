@@ -7,7 +7,7 @@
  * against fixture workflow data written to a temp directory.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -73,6 +73,7 @@ import {
   checkWorkflowSkills,
   checkWorkflowDefinitions,
   checkStaleWorkflowInstances,
+  staleWorkflowInstancesRepair,
 } from '../../../plugins/workflows/lib/health-checks'
 
 const skillsDir = join(testDir, 'workflows', 'skills')
@@ -181,6 +182,28 @@ describe('checkStaleWorkflowInstances', () => {
     )
     const results = await checkStaleWorkflowInstances(testDir)
     expect(results.some(r => r.status === 'warn' && r.message.includes(orphanedId))).toBe(true)
+    expect(existsSync(join(instancesDir, `${orphanedId}.json`))).toBe(true)
+  })
+
+  it('removes orphaned instances through explicit repair', async () => {
+    const orphanedId = 'task-deleted'
+    writeFileSync(
+      join(instancesDir, `${orphanedId}.json`),
+      JSON.stringify({
+        instanceId: 'i1',
+        taskId: orphanedId,
+        status: 'in_progress',
+        currentStepId: 's1',
+        updatedAt: new Date().toISOString(),
+      }),
+    )
+    const results = await checkStaleWorkflowInstances(testDir)
+    const repair = staleWorkflowInstancesRepair(testDir)
+    const plan = await repair.plan(results)
+    expect(plan).toHaveLength(1)
+    const applied = await repair.apply(plan)
+    expect(applied[0].status).toBe('applied')
+    expect(existsSync(join(instancesDir, `${orphanedId}.json`))).toBe(false)
   })
 
   it('flags a stale in-progress instance (>2h old)', async () => {

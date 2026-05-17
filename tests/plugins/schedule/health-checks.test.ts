@@ -59,7 +59,7 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-import { checkScheduleSync } from '../../../plugins/schedule/lib/health-checks'
+import { checkScheduleSync, scheduleSyncRepair } from '../../../plugins/schedule/lib/health-checks'
 
 const sidecarPath = join(testDir, 'schedule', 'sidecar.json')
 let runtimeJobs: CronJob[] = []
@@ -140,16 +140,32 @@ describe('checkScheduleSync - orphan detection', () => {
   })
 })
 
-describe('checkScheduleSync - auto-track', () => {
-  it('tracks orphaned runtime cron jobs in the sidecar without guessing the agent', async () => {
+describe('checkScheduleSync - repair', () => {
+  it('does not track orphaned runtime cron jobs during diagnostics even when legacy autoFix setting is true', async () => {
     mockAutoFix = true
     runtimeJobs = [makeCronJob({ id: 'orphan-1', name: 'rogue-cron' })]
     writeFileSync(sidecarPath, JSON.stringify({ version: 1, jobs: {} }))
 
     const results = await checkScheduleSync(testDir, cronReader, 'boss')
     expect(results).toHaveLength(1)
-    expect(results[0].status).toBe('fixed')
-    expect(results[0].message).toMatch(/Tracked/)
+    expect(results[0].status).toBe('warn')
+
+    const updated = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
+    expect(updated.jobs['orphan-1']).toBeUndefined()
+  })
+
+  it('tracks orphaned runtime cron jobs in the sidecar through explicit repair without guessing the agent', async () => {
+    runtimeJobs = [makeCronJob({ id: 'orphan-1', name: 'rogue-cron' })]
+    writeFileSync(sidecarPath, JSON.stringify({ version: 1, jobs: {} }))
+
+    const results = await checkScheduleSync(testDir, cronReader, 'boss')
+    const repair = scheduleSyncRepair(testDir, cronReader, async () => 'boss')
+    const plan = await repair.plan(results)
+    expect(plan).toHaveLength(1)
+    const applied = await repair.apply(plan)
+    expect(results).toHaveLength(1)
+    expect(applied[0].status).toBe('applied')
+    expect(applied[0].message).toMatch(/Tracked/)
 
     const updated = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
     expect(updated.jobs['orphan-1']).toBeDefined()
@@ -161,13 +177,15 @@ describe('checkScheduleSync - auto-track', () => {
     expect(updated.jobs['orphan-1'].agentId).toBeUndefined()
   })
 
-  it('creates schedule/ directory when sidecar parent is missing', async () => {
-    mockAutoFix = true
+  it('creates schedule/ directory through explicit repair when sidecar parent is missing', async () => {
     runtimeJobs = [makeCronJob({ id: 'orphan-1', name: 'rogue-cron' })]
     rmSync(join(testDir, 'schedule'), { recursive: true, force: true })
     expect(existsSync(join(testDir, 'schedule'))).toBe(false)
 
-    await checkScheduleSync(testDir, cronReader, 'main')
+    const results = await checkScheduleSync(testDir, cronReader, 'main')
+    await scheduleSyncRepair(testDir, cronReader, async () => 'main').apply(
+      await scheduleSyncRepair(testDir, cronReader, async () => 'main').plan(results),
+    )
     expect(existsSync(sidecarPath)).toBe(true)
   })
 })

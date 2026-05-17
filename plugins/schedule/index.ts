@@ -15,7 +15,7 @@ import { createTaskWithEffects } from '../../src/core/task-service'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { readTaskboard } from '../../src/core/task-store'
-import { checkScheduleSync } from './lib/health-checks'
+import { checkScheduleSync, scheduleSyncRepair } from './lib/health-checks'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import type { BakinJobMeta, BridgePayload, BridgeResult, MergedJob } from './types'
 
@@ -1366,8 +1366,8 @@ const schedulePlugin: BakinPlugin = definePlugin({
     ctx.registerHealthCheck({
       id: 'schedule-sync',
       name: 'Runtime cron jobs and Bakin sidecar sync',
-      autoFix: true,
       run: async () => checkScheduleSync(getContentDir(), ctx.runtime.cron, await getRuntimeMainAgentId(ctx.runtime)),
+      repair: scheduleSyncRepair(getContentDir(), ctx.runtime.cron, () => getRuntimeMainAgentId(ctx.runtime)),
     })
 
     log.info('Schedule plugin activated')

@@ -13,8 +13,7 @@ import { dirname, join } from 'path'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
 import { createLogger } from '../../../src/core/logger'
-import { getSettings } from '../../../src/core/settings'
-import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
+import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/core/src/plugin-types'
 
 const log = createLogger('schedule:health')
 
@@ -49,8 +48,16 @@ export async function checkScheduleSync(
   cron: RuntimeCronReader,
   defaultOwner: string,
 ): Promise<HealthCheckResult[]> {
+  return checkScheduleSyncInternal(contentDir, cron, defaultOwner, false)
+}
+
+async function checkScheduleSyncInternal(
+  contentDir: string,
+  cron: RuntimeCronReader,
+  defaultOwner: string,
+  autoFix: boolean,
+): Promise<HealthCheckResult[]> {
   const checkName = 'schedule-sync'
-  const autoFix = getSettings().doctor.autoFixSkill
   const results: HealthCheckResult[] = []
 
   let runtimeJobs: Array<{ id: string; name: string }>
@@ -130,4 +137,51 @@ export async function checkScheduleSync(
   }
 
   return results
+}
+
+export function scheduleSyncRepair(
+  contentDir: string,
+  cron: RuntimeCronReader,
+  resolveDefaultOwner: () => Promise<string>,
+): HealthRepairHandler {
+  return {
+    async plan(rows) {
+      const matching = rows.filter(row => row.check === 'schedule-sync' && row.autoFixable)
+      if (matching.length === 0) return []
+      return [{
+        id: 'schedule.track-runtime-cron',
+        checkId: 'schedule-sync',
+        title: 'Track orphan runtime cron jobs',
+        reason: matching.map(row => row.message).join('; '),
+        safety: 'safe',
+        requiresConfirmation: true,
+        changes: [{
+          kind: 'file',
+          target: join(contentDir, 'schedule', 'sidecar.json'),
+          action: 'update',
+          description: 'Add orphan runtime cron jobs to the schedule sidecar for manual triage.',
+        }],
+      }]
+    },
+    async apply(items) {
+      if (items.length === 0) return []
+      const defaultOwner = await resolveDefaultOwner()
+      const rows = await checkScheduleSyncInternal(contentDir, cron, defaultOwner, true)
+      const failures = rows.filter(row => row.status === 'error')
+      return [{
+        id: 'schedule.track-runtime-cron',
+        checkId: 'schedule-sync',
+        status: failures.length > 0 ? 'failed' : 'applied',
+        message: rows.map(row => row.message).join('; '),
+        changes: rows
+          .filter(row => row.status === 'fixed')
+          .map(row => ({
+            kind: 'file' as const,
+            target: join(contentDir, 'schedule', 'sidecar.json'),
+            action: 'update' as const,
+            description: row.message,
+          })),
+      }]
+    },
+  }
 }

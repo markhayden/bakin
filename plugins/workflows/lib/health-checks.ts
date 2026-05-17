@@ -12,9 +12,8 @@
 import { existsSync, readFileSync, readdirSync, unlinkSync } from 'fs'
 import { join } from 'path'
 
-import { getSettings } from '../../../src/core/settings'
 import { readTaskboard } from '../../../src/core/task-store'
-import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
+import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/core/src/plugin-types'
 
 import { listDefinitions } from './parser'
 import { listInstances } from './runtime'
@@ -121,8 +120,11 @@ export async function checkWorkflowDefinitions(contentDir: string): Promise<Heal
  * hook.
  */
 export async function checkStaleWorkflowInstances(contentDir: string): Promise<HealthCheckResult[]> {
+  return checkStaleWorkflowInstancesInternal(contentDir, false)
+}
+
+async function checkStaleWorkflowInstancesInternal(contentDir: string, autoFix: boolean): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = []
-  const autoFix = getSettings().doctor.autoFixSkill
 
   try {
     const allInstances = listInstances(undefined, contentDir)
@@ -176,4 +178,46 @@ export async function checkStaleWorkflowInstances(contentDir: string): Promise<H
   }
 
   return results
+}
+
+export function staleWorkflowInstancesRepair(contentDir: string): HealthRepairHandler {
+  return {
+    async plan(rows) {
+      const matching = rows.filter(row => row.check === 'workflow-instances' && row.autoFixable)
+      if (matching.length === 0) return []
+      return [{
+        id: 'workflows.remove-orphan-instances',
+        checkId: 'workflow-instances',
+        title: 'Remove orphaned workflow instances',
+        reason: matching.map(row => row.message).join('; '),
+        safety: 'safe',
+        requiresConfirmation: true,
+        changes: [{
+          kind: 'file',
+          target: join(contentDir, 'workflows', 'instances'),
+          action: 'delete',
+          description: 'Delete workflow instance files whose tasks no longer exist on the board.',
+        }],
+      }]
+    },
+    async apply(items) {
+      if (items.length === 0) return []
+      const rows = await checkStaleWorkflowInstancesInternal(contentDir, true)
+      const failures = rows.filter(row => row.status === 'error')
+      return [{
+        id: 'workflows.remove-orphan-instances',
+        checkId: 'workflow-instances',
+        status: failures.length > 0 ? 'failed' : 'applied',
+        message: rows.map(row => row.message).join('; '),
+        changes: rows
+          .filter(row => row.status === 'fixed')
+          .map(row => ({
+            kind: 'file' as const,
+            target: join(contentDir, 'workflows', 'instances'),
+            action: 'delete' as const,
+            description: row.message,
+          })),
+      }]
+    },
+  }
 }
