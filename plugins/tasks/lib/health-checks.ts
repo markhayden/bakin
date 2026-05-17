@@ -13,8 +13,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { selectRuntimeMainAgent, type AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
-import { getSettings } from '../../../src/core/settings'
-import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
+import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/core/src/plugin-types'
 import { maybeGetAppServices } from '../../../src/core/app-services'
 import { clearDependency, readTaskboard, reorderTasks } from '../../../src/core/task-store'
 import type { ColumnId, Task } from '../types'
@@ -29,9 +28,6 @@ function warn(check: string, message: string, autoFixable = false): HealthCheckR
 }
 function error(check: string, message: string): HealthCheckResult {
   return { check, status: 'error', message, autoFixable: false }
-}
-function fixed(check: string, message: string): HealthCheckResult {
-  return { check, status: 'fixed', message, autoFixable: true }
 }
 
 type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list'>
@@ -68,16 +64,14 @@ export function checkTaskboard(): HealthCheckResult[] {
 // ─── Task consistency: orphaned, overloaded, or stale in-progress tasks ───
 
 /**
- * Detect orphaned, overloaded, or stale in-progress tasks. Auto-fixes
- * orphaned dependsOn refs on done tasks when settings.doctor.autoFixSkill is
- * true.
+ * Detect orphaned, overloaded, or stale in-progress tasks. Report-only:
+ * orphaned done-task dependencies are repaired by taskConsistencyRepair.
  */
 export async function checkTaskConsistency(
   contentDir: string,
   agentReader?: RuntimeAgentReader,
 ): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = []
-  const autoFix = getSettings().doctor.autoFixSkill
 
   try {
     interface TaskEntry { id: string; title: string; agent?: string; dependsOn?: string; log?: unknown[] }
@@ -122,16 +116,7 @@ export async function checkTaskConsistency(
     // Done tasks with orphaned dependsOn
     for (const task of columns.done) {
       if (task.dependsOn) {
-        if (autoFix) {
-          try {
-            await clearDependency(task.id)
-            results.push(fixed('task-consistency', `Cleared orphaned dependsOn on done task "${task.title}"`))
-          } catch {
-            results.push(warn('task-consistency', `Done task "${task.title}" has orphaned dependsOn="${task.dependsOn}" — failed to clear`))
-          }
-        } else {
-          results.push(warn('task-consistency', `Done task "${task.title}" has orphaned dependsOn="${task.dependsOn}"`, true))
-        }
+        results.push(warn('task-consistency', `Done task "${task.title}" has orphaned dependsOn="${task.dependsOn}"`, true))
       }
     }
 
@@ -145,12 +130,58 @@ export async function checkTaskConsistency(
   return results
 }
 
+export function taskConsistencyRepair(): HealthRepairHandler {
+  return {
+    async plan(rows) {
+      const matching = rows.filter(row =>
+        row.check === 'task-consistency'
+        && row.autoFixable
+        && row.message.includes('orphaned dependsOn')
+      )
+      if (matching.length === 0) return []
+      return [{
+        id: 'tasks.clear-done-depends-on',
+        checkId: 'task-consistency',
+        title: 'Clear orphaned dependencies from done tasks',
+        reason: `${matching.length} done task(s) still carry dependsOn links.`,
+        safety: 'safe',
+        requiresConfirmation: true,
+        changes: [{
+          kind: 'task',
+          target: 'done tasks with dependsOn',
+          action: 'update',
+          description: 'Remove dependsOn from done tasks so completed work no longer blocks unrelated tasks.',
+        }],
+      }]
+    },
+    async apply(items) {
+      if (items.length === 0) return []
+      const board = readTaskboard() as unknown as { columns: { done: Array<{ id: string; title: string; dependsOn?: string }> } }
+      const affected = board.columns.done.filter(task => task.dependsOn)
+      for (const task of affected) {
+        await clearDependency(task.id)
+      }
+      return [{
+        id: 'tasks.clear-done-depends-on',
+        checkId: 'task-consistency',
+        status: 'applied',
+        message: `Cleared orphaned dependsOn from ${affected.length} done task(s).`,
+        changes: affected.map(task => ({
+          kind: 'task' as const,
+          target: task.id,
+          action: 'update' as const,
+          description: `Cleared dependsOn from "${task.title}".`,
+        })),
+      }]
+    },
+  }
+}
+
 // ─── Task position integrity: unique order values per column ───────────────
 
 /**
  * Verify every Bakin task has a unique numeric order value within its
- * column. Auto-fixes by reassigning order zero-indexed by updated_at
- * desc when settings.doctor.autoFixSkill is true.
+ * column. Report-only; taskOrderRepair performs the deterministic reorder.
  *
  * Migration note (#139 C2): emitted check id renamed from
  * `tasks.order_integrity` to `order-integrity`. With plugin-namespacing
@@ -158,7 +189,6 @@ export async function checkTaskConsistency(
  */
 export async function checkTaskPositionIntegrity(): Promise<HealthCheckResult[]> {
   const CHECK = 'order-integrity'
-  const autoFix = getSettings().doctor.autoFixSkill
   try {
     const board = readTaskboard()
     const entries = Object.entries(board.columns) as Array<[ColumnId, Task[]]>
@@ -182,19 +212,56 @@ export async function checkTaskPositionIntegrity(): Promise<HealthCheckResult[]>
     if (missingCount > 0) issues.push(`${missingCount} missing`)
     if (duplicateCount > 0) issues.push(`${duplicateCount} duplicates`)
 
-    if (!autoFix) {
-      return [warn(CHECK, `Order issues: ${issues.join(', ')} across ${total} tasks`, true)]
-    }
-
-    for (const [column, tasks] of entries) {
-      const ordered = [...tasks]
-        .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-        .map((task) => task.id)
-      await reorderTasks(column, ordered)
-    }
-
-    return [fixed(CHECK, `Fixed order issues (${issues.join(', ')}) across ${total} tasks`)]
+    return [warn(CHECK, `Order issues: ${issues.join(', ')} across ${total} tasks`, true)]
   } catch (err) {
     return [error(CHECK, `Order check failed: ${(err as Error).message}`)]
+  }
+}
+
+export function taskOrderRepair(): HealthRepairHandler {
+  return {
+    async plan(rows) {
+      const matching = rows.filter(row => row.check === 'order-integrity' && row.autoFixable)
+      if (matching.length === 0) return []
+      return [{
+        id: 'tasks.reorder-columns',
+        checkId: 'order-integrity',
+        title: 'Rebuild task order values',
+        reason: matching.map(row => row.message).join('; '),
+        safety: 'safe',
+        requiresConfirmation: true,
+        changes: [{
+          kind: 'task',
+          target: 'task columns',
+          action: 'update',
+          description: 'Reassign contiguous order values within each column using updatedAt descending.',
+        }],
+      }]
+    },
+    async apply(items) {
+      if (items.length === 0) return []
+      const board = readTaskboard()
+      const entries = Object.entries(board.columns) as Array<[ColumnId, Task[]]>
+      const changes = []
+      for (const [column, tasks] of entries) {
+        const ordered = [...tasks]
+          .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+          .map((task) => task.id)
+        await reorderTasks(column, ordered)
+        changes.push({
+          kind: 'task' as const,
+          target: column,
+          action: 'update' as const,
+          description: `Rebuilt order values for ${ordered.length} task(s).`,
+        })
+      }
+      return [{
+        id: 'tasks.reorder-columns',
+        checkId: 'order-integrity',
+        status: 'applied',
+        message: 'Rebuilt task order values.',
+        changes,
+      }]
+    },
   }
 }
