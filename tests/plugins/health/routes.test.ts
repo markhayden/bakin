@@ -69,6 +69,48 @@ mock.module('../../../src/core/doctor', () => ({
   runDiagnostics: mock(async () => mockDoctorResults),
 }))
 
+const mockRepairPlan = {
+  diagnostics: mockDoctorResults,
+  items: [{
+    id: 'repair.taskboard',
+    checkId: 'taskboard',
+    healthCheckId: 'tasks.taskboard',
+    pluginId: 'tasks',
+    checkName: 'Task board',
+    title: 'Repair taskboard',
+    reason: 'Missing columns',
+    safety: 'safe',
+    requiresConfirmation: true,
+    changes: [{ kind: 'file', target: 'tasks/board.json', action: 'update', description: 'Add missing columns' }],
+  }],
+  errors: [],
+  summary: { diagnostics: 3, repairableChecks: 1, totalItems: 1, safeItems: 1, blockedItems: 0, planErrors: 0 },
+}
+const mockRepairApply = {
+  status: 'applied',
+  plan: mockRepairPlan,
+  applied: [{
+    id: 'repair.taskboard',
+    checkId: 'taskboard',
+    status: 'applied',
+    message: 'Added missing columns',
+    changes: [{ kind: 'file', target: 'tasks/board.json', action: 'update', description: 'Add missing columns' }],
+  }],
+  skipped: [],
+  errors: [],
+  verification: [{ check: 'taskboard', status: 'ok', message: 'Taskboard healthy', autoFixable: false }],
+  summary: { planned: 1, applied: 1, skipped: 0, failed: 0, verificationErrors: 0, verificationWarnings: 0 },
+}
+const planDoctorRepairMock = mock(async () => mockRepairPlan)
+const applyDoctorRepairMock = mock(async (options: { accepted: boolean }) => (
+  options.accepted ? mockRepairApply : { ...mockRepairApply, status: 'confirmation_required', applied: [], verification: [] }
+))
+
+mock.module('../../../src/core/doctor-repair', () => ({
+  planDoctorRepair: planDoctorRepairMock,
+  applyDoctorRepair: applyDoctorRepairMock,
+}))
+
 mock.module('../../../src/core/agent-usage', () => ({
   getAllAgentUsage: () => [
     { agent: 'patch', sessionId: 's1', model: 'claude-4', messages: 10, tokens: { total: 1000 }, cost: { total: 0.05 } },
@@ -151,8 +193,8 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('Health Plugin Routes', () => {
-  it('registers 7 routes', () => {
-    expect(activated.routes.length).toBe(7)
+  it('registers 9 routes', () => {
+    expect(activated.routes.length).toBe(9)
   })
 
   it('registers 2 exec tools', () => {
@@ -334,6 +376,50 @@ describe('Health Plugin Routes', () => {
       expect(status).toBe(200)
       expect(body.cachedAt).toBeDefined()
       expect(runDiagnostics).toHaveBeenCalled()
+    })
+  })
+
+  describe('doctor repair routes', () => {
+    it('returns a deterministic repair plan without applying it', async () => {
+      const route = findRoute(activated.routes, 'GET', '/doctor/repair/plan')!
+      expect(route).toBeDefined()
+
+      const { status, body } = await callRoute(route, activated.ctx)
+
+      expect(status).toBe(200)
+      expect(body.summary).toMatchObject({ totalItems: 1, safeItems: 1 })
+      expect(body.items).toEqual(mockRepairPlan.items)
+      expect(planDoctorRepairMock).toHaveBeenCalled()
+      expect(applyDoctorRepairMock).not.toHaveBeenCalled()
+    })
+
+    it('requires accepted=true before applying deterministic repairs', async () => {
+      const route = findRoute(activated.routes, 'POST', '/doctor/repair/apply')!
+      expect(route).toBeDefined()
+
+      const { status, body } = await callRoute(route, activated.ctx, {
+        body: { accepted: false },
+      })
+
+      expect(status).toBe(409)
+      expect(body.status).toBe('confirmation_required')
+      expect(applyDoctorRepairMock).toHaveBeenCalledWith(expect.objectContaining({ accepted: false }))
+    })
+
+    it('applies deterministic repairs when accepted=true', async () => {
+      const route = findRoute(activated.routes, 'POST', '/doctor/repair/apply')!
+
+      const { status, body } = await callRoute(route, activated.ctx, {
+        body: { accepted: true, itemIds: ['repair.taskboard'] },
+      })
+
+      expect(status).toBe(200)
+      expect(body.status).toBe('applied')
+      expect(body.summary).toMatchObject({ applied: 1, failed: 0 })
+      expect(applyDoctorRepairMock).toHaveBeenCalledWith(expect.objectContaining({
+        accepted: true,
+        itemIds: ['repair.taskboard'],
+      }))
     })
   })
 })

@@ -10,6 +10,7 @@ import { getLastResults, runDiagnostics } from '../../src/core/doctor'
 import { createLogger } from '../../src/core/logger'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
 import { getContentDir } from '../../src/core/content-dir'
+import { applyDoctorRepair, planDoctorRepair } from '../../src/core/doctor-repair'
 import { getUsageFeed, getErrorCount, getStatsByMs, WINDOW_MS, type UsageKind, type WindowKey } from '../../src/core/usage'
 import {
   listHealthChecks,
@@ -178,6 +179,11 @@ const doctorResponse = z.object({
   cachedAt: z.string().optional(),
 })
 
+const doctorRepairApplyBody = z.object({
+  accepted: z.boolean(),
+  itemIds: z.array(z.string()).optional(),
+})
+
 const searchStatusResponse = z.object({
   enabled: z.boolean(),
   tables: z.array(passthrough),
@@ -313,6 +319,49 @@ const routes = [
         return Response.json({
           ...buildDoctorResponse(results),
           cachedAt: new Date().toISOString(),
+        })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/doctor/repair/plan',
+    method: 'GET',
+    summary: 'Plan deterministic doctor repairs',
+    description: 'Runs diagnostics and returns safe/manual repair plan items without mutating state.',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async () => {
+      try {
+        const report = await planDoctorRepair({
+          contentDir: getContentDir(),
+          projectRoot: process.cwd(),
+        })
+        return Response.json(report)
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/doctor/repair/apply',
+    method: 'POST',
+    summary: 'Apply deterministic doctor repairs',
+    description: 'Applies safe repair plan items only after accepted=true, then reruns affected checks for verification.',
+    body: doctorRepairApplyBody,
+    responses: { 200: passthrough, 409: passthrough, 500: errorResponse },
+    handler: async (_req, _ctx, { body }) => {
+      try {
+        const report = await applyDoctorRepair({
+          contentDir: getContentDir(),
+          projectRoot: process.cwd(),
+          accepted: body.accepted,
+          itemIds: body.itemIds,
+        })
+        return Response.json(report, {
+          status: report.status === 'confirmation_required' ? 409 : 200,
         })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
