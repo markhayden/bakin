@@ -59,7 +59,7 @@ mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
 
-import { checkAssets } from '../../../plugins/assets/lib/health-checks'
+import { assetRepair, checkAssets } from '../../../plugins/assets/lib/health-checks'
 
 const assetsRoot = join(testDir, 'assets')
 const storeRoot = join(assetsRoot, 'store')
@@ -93,17 +93,18 @@ describe('checkAssets — store shape', () => {
     expect(results.some(r => r.status === 'warn' && r.message.includes('assets/ directory not found') && r.autoFixable)).toBe(true)
   })
 
-  it('creates the assets/ tree under autoFix', () => {
-    mockAutoFix = true
+  it('repairs the assets/ tree explicitly', async () => {
     const results = checkAssets(testDir)
+    const repair = assetRepair(testDir)
+    const plan = await repair.plan(results)
+    expect(plan).toHaveLength(1)
+    const applied = await repair.apply(plan)
     expect(existsSync(assetsRoot)).toBe(true)
     expect(existsSync(join(assetsRoot, 'store'))).toBe(true)
     expect(existsSync(join(assetsRoot, 'inbox'))).toBe(true)
     expect(existsSync(join(assetsRoot, '.trash'))).toBe(true)
-    expect(results.some(r => r.status === 'fixed' && r.message.includes('Created assets/ directory'))).toBe(true)
-    expect(results.some(r => r.status === 'fixed' && r.message.includes('assets/store/'))).toBe(true)
-    expect(results.some(r => r.status === 'fixed' && r.message.includes('assets/inbox/'))).toBe(true)
-    expect(results.some(r => r.status === 'fixed' && r.message.includes('Created assets/.trash/'))).toBe(true)
+    expect(applied[0].status).toBe('applied')
+    expect(applied[0].changes.some(change => change.description.includes('Created assets/ directory'))).toBe(true)
   })
 
   it('warns about missing required store directories without autoFix when assets/ exists', () => {
@@ -145,18 +146,28 @@ describe('checkAssets — missing sidecars', () => {
     expect(sidecarWarn!.autoFixable).toBe(true)
   })
 
-  it('creates stub sidecars in autoFix mode', () => {
+  it('does not create stub sidecars during diagnostics even when legacy autoFix setting is true', () => {
     mockAutoFix = true
     seedFullAssetsTree()
     writeFileSync(join(storeDir, '20260323-hero-a1b2c3d4.png'), 'fake-image')
 
     const results = checkAssets(testDir)
+    expect(results.some(r => r.status === 'warn' && r.message.includes('missing .meta.json sidecar'))).toBe(true)
+    expect(existsSync(join(storeDir, '20260323-hero-a1b2c3d4.png.meta.json'))).toBe(false)
+  })
+
+  it('creates stub sidecars through explicit repair', async () => {
+    seedFullAssetsTree()
+    writeFileSync(join(storeDir, '20260323-hero-a1b2c3d4.png'), 'fake-image')
+
+    const results = checkAssets(testDir)
+    const applied = await assetRepair(testDir).apply(await assetRepair(testDir).plan(results))
     expect(existsSync(join(storeDir, '20260323-hero-a1b2c3d4.png.meta.json'))).toBe(true)
     const stub = JSON.parse(readFileSync(join(storeDir, '20260323-hero-a1b2c3d4.png.meta.json'), 'utf-8'))
     expect(stub.agent).toBe('unknown')
     expect(stub.taskId).toBeNull()
     expect(stub.type).toBe('images')
-    expect(results.some(r => r.status === 'fixed' && r.message.includes('Created 1 stub sidecar'))).toBe(true)
+    expect(applied[0].changes.some(change => change.description.includes('Created 1 stub sidecar'))).toBe(true)
   })
 
   it('warns about non-canonical asset filenames in the store', () => {
@@ -185,8 +196,7 @@ describe('checkAssets — mismatched sidecars', () => {
     expect(warns.some(r => r.message.includes('misnamed') || r.message.includes('missing'))).toBe(true)
   })
 
-  it('merges misnamed sidecar into the correctly-named stub under autoFix, normalizing field names', () => {
-    mockAutoFix = true
+  it('merges misnamed sidecar into the correctly-named stub through explicit repair, normalizing field names', async () => {
     seedFullAssetsTree()
     writeFileSync(join(storeDir, '20260323-hero-a1b2c3d4.png'), 'fake-image')
 
@@ -215,7 +225,8 @@ describe('checkAssets — mismatched sidecars', () => {
     )
 
     const results = checkAssets(testDir)
-    expect(results.some(r => r.status === 'fixed' && (r.message.includes('Merged') || r.message.includes('misnamed')))).toBe(true)
+    const applied = await assetRepair(testDir).apply(await assetRepair(testDir).plan(results))
+    expect(applied[0].changes.some(change => change.description.includes('Merged') || change.description.includes('misnamed'))).toBe(true)
 
     const merged = JSON.parse(readFileSync(join(storeDir, '20260323-hero-a1b2c3d4.png.meta.json'), 'utf-8'))
     expect(merged.agent).toBe('pixel')           // normalized from author
@@ -224,8 +235,7 @@ describe('checkAssets — mismatched sidecars', () => {
     expect(existsSync(join(storeDir, 'hero.meta.json'))).toBe(false)  // mismatched removed
   })
 
-  it('removes the misnamed sidecar when the correctly-named one already has real content', () => {
-    mockAutoFix = true
+  it('removes the misnamed sidecar through explicit repair when the correctly-named one already has real content', async () => {
     seedFullAssetsTree()
     writeFileSync(join(storeDir, '20260323-hero-a1b2c3d4.png'), 'fake-image')
 
@@ -241,7 +251,8 @@ describe('checkAssets — mismatched sidecars', () => {
     // Misnamed orphan
     writeFileSync(join(storeDir, 'hero.meta.json'), JSON.stringify({ author: 'someone-else' }))
 
-    checkAssets(testDir)
+    const results = checkAssets(testDir)
+    await assetRepair(testDir).apply(await assetRepair(testDir).plan(results))
 
     // Real sidecar untouched, mismatched removed
     expect(JSON.parse(readFileSync(join(storeDir, '20260323-hero-a1b2c3d4.png.meta.json'), 'utf-8'))).toEqual(realMeta)
@@ -267,8 +278,7 @@ describe('checkAssets — orphaned meta', () => {
 // ─── Trash purge ──────────────────────────────────────────────────────────
 
 describe('checkAssets — trash purge', () => {
-  it('purges trash items older than 7 days under autoFix', () => {
-    mockAutoFix = true
+  it('purges trash items older than 7 days through explicit repair', async () => {
     seedFullAssetsTree()
     const trashDir = join(assetsRoot, '.trash')
     const oldFile = join(trashDir, 'ancient.bin')
@@ -280,9 +290,10 @@ describe('checkAssets — trash purge', () => {
     utimesSync(oldFile, thirtyDaysAgo / 1000, thirtyDaysAgo / 1000)
 
     const results = checkAssets(testDir)
+    const applied = await assetRepair(testDir).apply(await assetRepair(testDir).plan(results))
     expect(existsSync(oldFile)).toBe(false)
     expect(existsSync(freshFile)).toBe(true)
-    expect(results.some(r => r.status === 'fixed' && r.message.includes('Purged 1 expired'))).toBe(true)
+    expect(applied[0].changes.some(change => change.description.includes('Purged 1 expired'))).toBe(true)
   })
 
   it('does not purge trash items without autoFix', () => {

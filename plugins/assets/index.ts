@@ -32,7 +32,7 @@ import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
 import { buildAssetFileUrl } from './lib/asset-url'
 import { canExtractAssetContent, extractAssetContent } from './lib/content-extractor'
-import { checkAssets } from './lib/health-checks'
+import { assetRepair, checkAssets } from './lib/health-checks'
 
 /** Filename is the canonical identity under the filename-as-identity model. */
 function filenameFromRel(relPath: string): string {
@@ -1019,8 +1019,8 @@ const assetsPlugin: BakinPlugin = definePlugin({
     ctx.registerHealthCheck({
       id: 'assets',
       name: 'Asset directory + sidecar integrity',
-      autoFix: true,
       run: () => Promise.resolve(checkAssets(getContentDir())),
+      repair: assetRepair(getContentDir()),
     })
   },
 
