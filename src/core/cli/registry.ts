@@ -81,13 +81,14 @@ export const CLI_COMMANDS = [
   }),
   cli({
     name: 'doctor',
-    usage: 'bakin doctor [--json] [--full] [--notify-agent]',
+    usage: 'bakin doctor [--json] [--full] [--notify-agent] [--fix] [--yes]',
     group: 'Lifecycle',
     summary: 'Run health checks.',
-    description: 'Runs local offline diagnostics by default. Pass --full to include server-backed plugin, task, workflow, search, and runtime checks. Pass --notify-agent with --full to send unfixable issues to the runtime main agent.',
+    description: 'Runs local offline diagnostics by default. Pass --full to include server-backed plugin, task, workflow, search, and runtime checks. Pass --notify-agent with --full to send unfixable issues to the runtime main agent. Pass --fix to plan deterministic repairs; add --yes to apply safe repairs.',
     examples: [
       { title: 'Run offline diagnostics', code: 'bakin doctor', test: 'illustrative', reason: 'Depends on local Bakin/runtime state.' },
       { title: 'Run full diagnostics against the server', code: 'bakin doctor --full', test: 'illustrative', reason: 'Requires a running Bakin server.' },
+      { title: 'Apply safe deterministic repairs', code: 'bakin doctor --fix --yes', test: 'illustrative', reason: 'Requires a running Bakin server and may mutate local/runtime state.' },
     ],
   }),
 
