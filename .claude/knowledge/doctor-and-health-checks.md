@@ -82,12 +82,9 @@ The registry namespaces ids: a plugin with `id: 'team'` registering a check with
    function error(check: string, message: string): HealthCheckResult { ... }
    function fixed(check: string, message: string): HealthCheckResult { ... }
    ```
-2. Write the check function. Read settings inline:
+2. Write the check function. Keep it report-only:
    ```ts
-   import { getSettings } from '../../../src/core/settings'
-
    export function checkMyThing(): HealthCheckResult[] {
-     const autoFix = getSettings().doctor.autoFixSkill
      // ...
    }
    ```
@@ -96,11 +93,12 @@ The registry namespaces ids: a plugin with `id: 'team'` registering a check with
    ctx.registerHealthCheck({
      id: 'my-thing',
      name: 'Friendly description shown in admin UIs',
-     autoFix: true, // metadata only — orchestrator runs every check
      run: () => Promise.resolve(checkMyThing()),
+     repair: myThingRepair(), // optional; only called by explicit repair flows
    })
    ```
-4. Don't catch your own errors — the orchestrator's try/catch handles them. Throw freely.
+4. If the check is repairable, expose a `HealthRepairHandler` with `plan()` and `apply()`. Diagnostics must not mutate state; `bakin doctor --fix` and delegated repair flows are the only callers that apply repairs.
+5. Don't catch your own errors — the orchestrator's try/catch handles them. Throw freely.
 
 ## Authoring a system check (in the health plugin)
 
@@ -128,7 +126,6 @@ Projection shape after #208:
 
 Doctor settings stay in core `~/.bakin/settings.json` under `settings.doctor.*`:
 - `intervalMs` — cron period (default 30 minutes)
-- `autoFixSkill` — global autoFix flag, read inline by every check that supports auto-fix
 - `requireOnboard` — gate that returns a single `onboarded` error result when the machine isn't onboarded yet
 
 These remain core settings (not per-plugin) because the doctor cron itself is core-owned and `requireOnboard` is a global gate.
@@ -155,7 +152,8 @@ export interface PluginHealthCheckInput {
   id: string
   name: string
   run: () => Promise<HealthCheckResult[]>
-  autoFix?: boolean   // metadata-only flag for admin UIs
+  repair?: HealthRepairHandler
+  autoFix?: boolean   // legacy metadata only; don't use for new checks
 }
 ```
 

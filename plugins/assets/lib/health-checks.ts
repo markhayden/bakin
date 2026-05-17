@@ -50,7 +50,7 @@ const SIDECAR_FIELD_ALIASES: Record<string, string> = {
  * Verify directory structure, sidecar pairing, disk usage, and trash
  * retention for the assets tree under {contentDir}/assets/.
  *
- * Auto-fix paths (gated by settings.doctor.autoFixSkill):
+ * Explicit repair paths:
  *   - create missing assets/, store/, inbox/, and .trash/
  *   - write stub sidecars for canonical store assets missing .meta.json
  *   - merge misnamed sidecars into the correctly-named ones (normalizing

@@ -40,12 +40,6 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   isUsingBakinHome: () => true,
 }))
 
-let mockAutoFix = false
-mock.module('../../../src/core/settings', () => ({
-  getSettings: () => ({ doctor: { autoFixSkill: mockAutoFix } }),
-  resetSettingsCache: () => {},
-}))
-
 let mockKnownAgents: string[] = ['main', 'patch', 'pixel']
 mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
   getMainAgentId: () => 'main',
@@ -173,7 +167,6 @@ afterAll(() => {
 
 beforeEach(() => {
   storeBoard = emptyStoreBoard()
-  mockAutoFix = false
   mockKnownAgents = ['main', 'patch', 'pixel']
   clearedDependencies.length = 0
   clearDependencyShouldThrow = false
@@ -255,8 +248,7 @@ describe('checkTaskConsistency', () => {
     expect(results.some(r => r.status === 'warn' && r.message.includes('orphaned dependsOn') && r.autoFixable)).toBe(true)
   })
 
-  it('does not clear orphaned dependsOn during diagnostics even when legacy autoFix setting is true', async () => {
-    mockAutoFix = true
+  it('does not clear orphaned dependsOn during diagnostics', async () => {
     storeBoard.columns.done.push({ id: 'd2', title: 'Auto-clear', dependsOn: 'orphan' })
     const results = await checkTaskConsistency(testDir)
     expect(results.some(r => r.status === 'warn' && r.message.includes('orphaned dependsOn'))).toBe(true)
@@ -320,8 +312,7 @@ describe('checkTaskPositionIntegrity', () => {
     expect(results[0].message).toMatch(/duplicates/)
   })
 
-  it('does not reorder during diagnostics even when legacy autoFix setting is true', async () => {
-    mockAutoFix = true
+  it('does not reorder during diagnostics', async () => {
     const older: StoreTask = { id: 'older', title: 'Older', updatedAt: 100 }
     const newer: StoreTask = { id: 'newer', title: 'Newer', updatedAt: 200 }
     storeBoard.columns.todo.push(older, newer)

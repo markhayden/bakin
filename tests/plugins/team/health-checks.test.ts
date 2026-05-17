@@ -56,20 +56,6 @@ mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   resetOpenClawHome: () => {},
 }))
 
-let mockAutoFix = false
-mock.module('../../../src/core/settings', () => ({
-  getSettings: () => ({
-    doctor: { autoFixSkill: mockAutoFix },
-  }),
-  resetSettingsCache: () => {},
-}))
-mock.module('@/core/settings', () => ({
-  getSettings: () => ({
-    doctor: { autoFixSkill: mockAutoFix },
-  }),
-  resetSettingsCache: () => {},
-}))
-
 let runtimeAgents: RuntimeAgent[] = []
 let runtimeError: Error | null = null
 const runtimeAgentStore = new Map<string, RuntimeAgent>()
@@ -140,7 +126,6 @@ beforeEach(() => {
   runtimeAgentStore.clear()
   runtimeWorkspaceFiles.clear()
   runtimeError = null
-  mockAutoFix = false
 })
 
 // ─── checkAgentRoster ──────────────────────────────────────────────────────
@@ -214,8 +199,7 @@ describe('checkPersonas', () => {
     expect(results.some(r => r.status === 'warn' && r.message.includes('No personas directory'))).toBe(true)
   })
 
-  it('does not create stub persona files during diagnostics even when legacy autoFix setting is true', async () => {
-    mockAutoFix = true
+  it('does not create stub persona files during diagnostics', async () => {
     const personasDir = join(testDir, 'team', 'personas')
     mkdirSync(personasDir, { recursive: true })
     writeFileSync(join(personasDir, 'main.md'), '# Main')

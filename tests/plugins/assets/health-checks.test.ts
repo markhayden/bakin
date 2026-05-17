@@ -49,12 +49,6 @@ mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   resetOpenClawHome: () => {},
 }))
 
-let mockAutoFix = false
-mock.module('../../../src/core/settings', () => ({
-  getSettings: () => ({ doctor: { autoFixSkill: mockAutoFix } }),
-  resetSettingsCache: () => {},
-}))
-
 mock.module('../../../src/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
@@ -68,7 +62,6 @@ const storeDir = join(storeRoot, '2026-03')
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
-  mockAutoFix = false
 })
 
 afterAll(() => {
@@ -146,8 +139,7 @@ describe('checkAssets — missing sidecars', () => {
     expect(sidecarWarn!.autoFixable).toBe(true)
   })
 
-  it('does not create stub sidecars during diagnostics even when legacy autoFix setting is true', () => {
-    mockAutoFix = true
+  it('does not create stub sidecars during diagnostics', () => {
     seedFullAssetsTree()
     writeFileSync(join(storeDir, '20260323-hero-a1b2c3d4.png'), 'fake-image')
 

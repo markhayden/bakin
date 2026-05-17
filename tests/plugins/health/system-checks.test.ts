@@ -53,7 +53,6 @@ mock.module('../../../packages/adapter-openclaw/src/home', () => ({
 }))
 
 let mockServiceEnabled = false
-let mockAutoFix = false
 
 let mockMcporterInstalled = true
 let mockInstallMcporterReturn = true
@@ -98,7 +97,6 @@ function restoreFetch() {
 mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
     service: { enabled: mockServiceEnabled },
-    doctor: { autoFixSkill: mockAutoFix },
     search: { adapter: 'antfly', settings: { enabled: mockSearchEnabled, url: mockSearchUrl } },
   }),
   resetSettingsCache: () => {},
@@ -138,11 +136,11 @@ mock.module('../../../scripts/lib/registry', () => ({
 
 import { checkContentDir } from '../../../plugins/health/lib/system-checks/content-dir'
 import { checkService } from '../../../plugins/health/lib/system-checks/service'
-import { checkMcporter } from '../../../plugins/health/lib/system-checks/mcporter'
+import { checkMcporter, mcporterRepair } from '../../../plugins/health/lib/system-checks/mcporter'
 import { checkRuntime } from '../../../plugins/health/lib/system-checks/runtime'
 import { checkChannelApprovals } from '../../../plugins/health/lib/system-checks/channel-approvals'
 import { checkSearchAdapter } from '../../../plugins/health/lib/system-checks/search'
-import { checkAndSyncSkill } from '../../../plugins/health/lib/system-checks/sync-skill'
+import { checkAndSyncSkill, syncSkillRepair } from '../../../plugins/health/lib/system-checks/sync-skill'
 import { checkPluginAssets } from '../../../plugins/health/lib/system-checks/plugin-assets'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import type { AgentRuntimeAdapter, RuntimeSkill } from '@bakin/core/adapters/runtime'
@@ -178,7 +176,6 @@ beforeEach(() => {
   mockUsingBakinHome = true
   mockContentDir = testDir
   mockServiceEnabled = false
-  mockAutoFix = false
   mockMcporterInstalled = true
   mockInstallMcporterReturn = true
   mockAgentEntries = []
@@ -279,20 +276,32 @@ describe('checkMcporter', () => {
     expect(results[0].message).toMatch(/not installed/)
   })
 
-  it('installs mcporter under autoFix when missing', async () => {
+  it('does not install mcporter during diagnostics', async () => {
     mockMcporterInstalled = false
-    mockAutoFix = true
     mockAgentEntries = [{ agent: 'main', correct: true }]
     const results = await checkMcporter()
-    expect(results.some(r => r.status === 'fixed' && r.message.includes('Installed mcporter'))).toBe(true)
+    expect(results.some(r => r.status === 'warn' && r.message.includes('not installed'))).toBe(true)
+    expect(mockMcporterInstalled).toBe(false)
   })
 
-  it('returns an error when install fails under autoFix', async () => {
+  it('installs mcporter through explicit repair when missing', async () => {
     mockMcporterInstalled = false
-    mockAutoFix = true
+    const results = await checkMcporter()
+    const repair = mcporterRepair()
+    const plan = await repair.plan(results)
+    expect(plan).toHaveLength(1)
+    const applied = await repair.apply(plan)
+    expect(applied[0].status).toBe('applied')
+    expect(applied[0].message).toMatch(/Installed mcporter/)
+  })
+
+  it('returns a failed repair result when install fails', async () => {
+    mockMcporterInstalled = false
     mockInstallMcporterReturn = false
     const results = await checkMcporter()
-    expect(results.some(r => r.status === 'error' && r.message.includes('Failed to install mcporter'))).toBe(true)
+    const applied = await mcporterRepair().apply(await mcporterRepair().plan(results))
+    expect(applied[0].status).toBe('failed')
+    expect(applied[0].message).toMatch(/Failed to install mcporter/)
   })
 
   it('reports ok when all agent entries are correct', async () => {
@@ -310,12 +319,13 @@ describe('checkMcporter', () => {
     expect(results.some(r => r.status === 'warn' && r.message.includes('1 agent(s) missing or outdated'))).toBe(true)
   })
 
-  it('runs syncConfig under autoFix when entries are wrong', async () => {
-    mockAutoFix = true
+  it('runs syncConfig through explicit repair when entries are wrong', async () => {
     mockAgentEntries = [{ agent: 'main', correct: false }]
     const results = await checkMcporter()
+    const applied = await mcporterRepair().apply(await mcporterRepair().plan(results))
     expect(syncConfigCalls).toBeGreaterThanOrEqual(1)
-    expect(results.some(r => r.status === 'fixed' && r.message.includes('Config updated'))).toBe(true)
+    expect(applied[0].status).toBe('applied')
+    expect(applied[0].message).toMatch(/Config updated/)
   })
 })
 
@@ -481,8 +491,7 @@ describe('checkAndSyncSkill', () => {
     expect(results[0].message).toMatch(/not installed in runtime/)
   })
 
-  it('installs the skill under autoFix when missing', async () => {
-    mockAutoFix = true
+  it('installs the skill through explicit repair when missing', async () => {
     const projectRoot = pathJoin(testDir, 'project-install')
     mkdirSync(join(projectRoot, 'skill'), { recursive: true })
     writeFileSync(
@@ -490,8 +499,12 @@ describe('checkAndSyncSkill', () => {
       '# Bakin Skill\n<!-- bakin:exec-tools:start -->\n<!-- bakin:exec-tools:end -->\n',
     )
     const results = await checkAndSyncSkill(projectRoot, mockRuntime)
-    expect(results[0].status).toBe('fixed')
-    expect(results[0].message).toMatch(/installed in runtime/)
+    expect(results[0].status).toBe('warn')
+    const applied = await syncSkillRepair(projectRoot, mockRuntime).apply(
+      await syncSkillRepair(projectRoot, mockRuntime).plan(results),
+    )
+    expect(applied[0].status).toBe('applied')
+    expect(applied[0].message).toMatch(/installed in runtime/)
     expect(runtimeSkill?.instructions).toContain('<!-- bakin:exec-tools:start -->')
   })
 })

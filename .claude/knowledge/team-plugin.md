@@ -306,8 +306,8 @@ If a future iteration restores any of these, prefer adding back via new componen
 Team registers three checks via `ctx.registerHealthCheck` in `activate()`:
 
 - **`agent-roster`** — diff Bakin's agent ids against the active runtime adapter roster. Not auto-fixable (requires human judgment about which side is "right").
-- **`personas`** — verify each agent has a `team/personas/{agent}.md` file. Auto-fixable: under `settings.doctor.autoFixSkill=true` it stubs missing files.
-- **`agent-assets`** — wraps `agentAssetsComponent.check()` from `src/core/onboarding/agent-assets.ts` to surface drift in projected agent-package files. Auto-fixable: under autoFix, runs the same install flow as `bakin install agent-assets`.
+- **`personas`** — verify each agent has a `team/personas/{agent}.md` file. Repairable through the explicit doctor repair workflow, which stubs missing files.
+- **`agent-assets`** — wraps `agentAssetsComponent.check()` from `src/core/onboarding/agent-assets.ts` to surface drift in projected agent-package files. Repairable through explicit doctor repair flows, which run the same install flow as `bakin install agent-assets`.
 
 All three live at `plugins/team/lib/health-checks.ts`. Migrated out of `src/core/doctor.ts` in #139 C1. Deep reference: `.claude/knowledge/doctor-and-health-checks.md`.
 

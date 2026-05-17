@@ -5,9 +5,8 @@
  * ctx.registerHealthCheck and contributed through runPluginHealthChecks.
  * Deep reference: .claude/knowledge/doctor-and-health-checks.md.
  *
- * Auto-fix policy is per-check: each plugin reads getSettings().doctor.autoFixSkill
- * inline. Unsafe issues (warn / error with autoFixable=false) are escalated
- * to the runtime main agent so they show up in conversation.
+ * Diagnostics are report-only. Explicit repair flows are built on health-check
+ * repair handlers; notify-agent is only an explicit report notification.
  */
 import { createLogger } from './logger'
 import { getSettings } from './settings'

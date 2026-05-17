@@ -5,8 +5,7 @@
  * because it only installs a CLI tool and writes config.
  */
 import * as mcporter from '../../../../src/core/mcporter'
-import { getSettings } from '../../../../src/core/settings'
-import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
+import type { HealthCheckResult, HealthRepairHandler } from '../../../../packages/core/src/plugin-types'
 
 function ok(message: string): HealthCheckResult {
   return { check: 'mcporter', status: 'ok', message, autoFixable: false }
@@ -22,8 +21,11 @@ function fixed(message: string): HealthCheckResult {
 }
 
 export async function checkMcporter(): Promise<HealthCheckResult[]> {
+  return checkMcporterInternal(false)
+}
+
+async function checkMcporterInternal(autoFix: boolean): Promise<HealthCheckResult[]> {
   const port = Number(process.env.PORT || 3737)
-  const autoFix = getSettings().doctor.autoFixSkill
   const results: HealthCheckResult[] = []
 
   if (!mcporter.isMcporterInstalled()) {
@@ -57,4 +59,46 @@ export async function checkMcporter(): Promise<HealthCheckResult[]> {
   }
 
   return results
+}
+
+export function mcporterRepair(): HealthRepairHandler {
+  return {
+    async plan(rows) {
+      const matching = rows.filter(row => row.check === 'mcporter' && row.autoFixable)
+      if (matching.length === 0) return []
+      return [{
+        id: 'health.repair-mcporter',
+        checkId: 'mcporter',
+        title: 'Repair mcporter install/config',
+        reason: matching.map(row => row.message).join('; '),
+        safety: 'safe',
+        requiresConfirmation: true,
+        changes: [{
+          kind: 'service',
+          target: 'mcporter',
+          action: 'install',
+          description: 'Install mcporter if missing and synchronize Bakin agent server entries.',
+        }],
+      }]
+    },
+    async apply(items) {
+      if (items.length === 0) return []
+      const rows = await checkMcporterInternal(true)
+      const failures = rows.filter(row => row.status === 'error')
+      return [{
+        id: 'health.repair-mcporter',
+        checkId: 'mcporter',
+        status: failures.length > 0 ? 'failed' : 'applied',
+        message: rows.map(row => row.message).join('; '),
+        changes: rows
+          .filter(row => row.status === 'fixed')
+          .map(row => ({
+            kind: 'service' as const,
+            target: 'mcporter',
+            action: 'install' as const,
+            description: row.message,
+          })),
+      }]
+    },
+  }
 }

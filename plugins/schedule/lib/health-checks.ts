@@ -38,8 +38,7 @@ function fixed(check: string, message: string): HealthCheckResult {
 
 /**
  * Detect orphaned runtime cron jobs that aren't tracked in Bakin's
- * `schedule/sidecar.json`. Auto-tracks them when
- * settings.doctor.autoFixSkill is true - creates a minimal sidecar
+ * `schedule/sidecar.json`. The explicit repair handler creates a minimal sidecar
  * entry flagged `requireTriage: true` and explicitly leaves agentId
  * unset (the user must triage rather than have a guessed assignment).
  */

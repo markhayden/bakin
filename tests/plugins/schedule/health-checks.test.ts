@@ -38,12 +38,6 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   isUsingBakinHome: () => true,
 }))
 
-let mockAutoFix = false
-mock.module('../../../src/core/settings', () => ({
-  getSettings: () => ({ doctor: { autoFixSkill: mockAutoFix } }),
-  resetSettingsCache: () => {},
-}))
-
 mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
   getMainAgentId: () => 'main',
   tryGetMainAgentId: () => 'main',
@@ -86,7 +80,6 @@ function makeCronJob(overrides: Partial<CronJob> = {}): CronJob {
 beforeEach(() => {
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(join(testDir, 'schedule'), { recursive: true })
-  mockAutoFix = false
   runtimeJobs = []
   runtimeError = null
 })
@@ -141,8 +134,7 @@ describe('checkScheduleSync - orphan detection', () => {
 })
 
 describe('checkScheduleSync - repair', () => {
-  it('does not track orphaned runtime cron jobs during diagnostics even when legacy autoFix setting is true', async () => {
-    mockAutoFix = true
+  it('does not track orphaned runtime cron jobs during diagnostics', async () => {
     runtimeJobs = [makeCronJob({ id: 'orphan-1', name: 'rogue-cron' })]
     writeFileSync(sidecarPath, JSON.stringify({ version: 1, jobs: {} }))
 

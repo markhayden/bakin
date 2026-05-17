@@ -56,7 +56,7 @@ Three tabs sit below the cost cards, all feeding from the same in-memory recorde
 
 ## Doctor
 
-A green-light scan of every moving part in the stack. Agent roster, runtime adapter, search adapter, taskboard, assets, channel approvals, restart-recovery candidates, the works. Red means broken, yellow means drifting, and most rows have a one-click auto-fix so you don't have to know what went wrong to fix it.
+A green-light scan of every moving part in the stack. Agent roster, runtime adapter, search adapter, taskboard, assets, channel approvals, restart-recovery candidates, the works. Red means broken, yellow means drifting. The scan itself is report-only; repairable rows feed the explicit `bakin doctor --fix` and `bakin doctor --delegate` repair workflows.
 
 Run it before you start the day or any time something feels off. Results cache so the dashboard reads fast; the refresh button (or `bakin doctor` from the CLI) forces a fresh sweep.
 
@@ -79,7 +79,7 @@ Quick sanity check for "did everything actually start up?"
 
 ## Pluggable health checks
 
-Any plugin can register a health check that surfaces here alongside the built-ins. It picks up the same color coding (red / yellow / green) and the same auto-fix scaffolding. If a plugin owns external state worth watching (an API key, a queue, a cache, a daemon), wire a check.
+Any plugin can register a health check that surfaces here alongside the built-ins. It picks up the same color coding (red / yellow / green), and plugins can attach explicit repair handlers for operator-approved fixes. If a plugin owns external state worth watching (an API key, a queue, a cache, a daemon), wire a check.
 
 ## Settings
 

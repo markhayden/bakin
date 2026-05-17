@@ -10,10 +10,9 @@
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 
-import { getSettings } from '../../../../src/core/settings'
 import { getAllExecTools } from '../../../../scripts/lib/registry'
 import type { AgentRuntimeAdapter } from '../../../../packages/core/src/adapters/runtime'
-import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
+import type { HealthCheckResult, HealthRepairHandler } from '../../../../packages/core/src/plugin-types'
 
 const EXEC_TOOLS_START = '<!-- bakin:exec-tools:start -->'
 const EXEC_TOOLS_END = '<!-- bakin:exec-tools:end -->'
@@ -81,7 +80,14 @@ function renderSyncedSkill(templateContent: string): string {
 }
 
 export async function checkAndSyncSkill(projectRoot: string, runtime: AgentRuntimeAdapter): Promise<HealthCheckResult[]> {
-  const autoFix = getSettings().doctor.autoFixSkill
+  return checkAndSyncSkillInternal(projectRoot, runtime, false)
+}
+
+async function checkAndSyncSkillInternal(
+  projectRoot: string,
+  runtime: AgentRuntimeAdapter,
+  autoFix: boolean,
+): Promise<HealthCheckResult[]> {
   const sourceSkill = join(projectRoot, 'skill', 'SKILL.md')
   if (!existsSync(sourceSkill)) {
     return [error('Bakin skill source not found at skill/SKILL.md')]
@@ -123,5 +129,47 @@ export async function checkAndSyncSkill(projectRoot: string, runtime: AgentRunti
     return [fixed('Bakin skill updated in runtime')]
   } catch (err) {
     return [error(`Failed to update skill: ${err}`)]
+  }
+}
+
+export function syncSkillRepair(projectRoot: string, runtime: AgentRuntimeAdapter): HealthRepairHandler {
+  return {
+    async plan(rows) {
+      const matching = rows.filter(row => row.check === 'skill' && row.autoFixable)
+      if (matching.length === 0) return []
+      return [{
+        id: 'health.sync-skill',
+        checkId: 'skill',
+        title: 'Sync Bakin runtime skill',
+        reason: matching.map(row => row.message).join('; '),
+        safety: 'safe',
+        requiresConfirmation: true,
+        changes: [{
+          kind: 'runtime',
+          target: 'runtime skill:bakin',
+          action: 'update',
+          description: 'Write the rendered Bakin SKILL.md to the runtime skill store.',
+        }],
+      }]
+    },
+    async apply(items) {
+      if (items.length === 0) return []
+      const rows = await checkAndSyncSkillInternal(projectRoot, runtime, true)
+      const failures = rows.filter(row => row.status === 'error')
+      return [{
+        id: 'health.sync-skill',
+        checkId: 'skill',
+        status: failures.length > 0 ? 'failed' : 'applied',
+        message: rows.map(row => row.message).join('; '),
+        changes: rows
+          .filter(row => row.status === 'fixed')
+          .map(row => ({
+            kind: 'runtime' as const,
+            target: 'runtime skill:bakin',
+            action: 'update' as const,
+            description: row.message,
+          })),
+      }]
+    },
   }
 }
