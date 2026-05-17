@@ -349,12 +349,14 @@ export interface PluginHealthCheckInput {
    */
   run: () => Promise<HealthCheckResult[]>
   /**
-   * Advisory flag for admin UIs: `true` if `run()` may perform safe
-   * auto-fixes internally. Pure metadata in v1 — the orchestrator always
-   * invokes every registered check regardless of this value. Plugins that
-   * do internal auto-fixes gate on `getSettings().doctor.*` themselves.
+   * Legacy advisory flag for older admin surfaces. New code should derive
+   * repairability from `repair`.
    */
   autoFix?: boolean
+  /**
+   * Optional explicit repair contract. Diagnostics call only `run()`; repair
+   * flows call `plan()` first, then `apply()` after explicit confirmation.
+   */
   repair?: HealthRepairHandler
 }
 
