@@ -16,7 +16,7 @@ import { getAppServices } from './app-services'
 import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import { isOnboarded } from './onboarding/state'
 import { listHealthChecks } from './health-check-registry'
-import type { HealthCheckResult } from '../../packages/core/src/plugin-types'
+import type { HealthCheckDef, HealthCheckResult } from '../../packages/core/src/plugin-types'
 
 const log = createLogger('doctor')
 
@@ -27,6 +27,11 @@ let lastResultTime: number = 0
 // Track what we've already notified about to avoid spamming the main agent
 const notifiedIssues = new Set<string>()
 
+export interface DetailedHealthCheckRun {
+  def: HealthCheckDef
+  results: HealthCheckResult[]
+}
+
 /**
  * Run every plugin-registered health check in parallel. Per-check try/catch
  * isolates failures — a single bad handler yields one synthetic error result
@@ -34,33 +39,43 @@ const notifiedIssues = new Set<string>()
  * so the isolation behavior can be tested without mocking every plugin's
  * dependency tree.
  */
-export async function runPluginHealthChecks(): Promise<HealthCheckResult[]> {
+export async function runDetailedPluginHealthChecks(): Promise<DetailedHealthCheckRun[]> {
   const defs = listHealthChecks()
-  const arrays = await Promise.all(
+  return Promise.all(
     defs.map(async (def) => {
       try {
         const rows = await def.run()
         if (!Array.isArray(rows)) {
-          return [{
-            check: def.id,
-            status: 'error' as const,
-            message: `Plugin health check returned non-array: ${typeof rows}`,
-            autoFixable: false,
-          }]
+          return {
+            def,
+            results: [{
+              check: def.id,
+              status: 'error' as const,
+              message: `Plugin health check returned non-array: ${typeof rows}`,
+              autoFixable: false,
+            }],
+          }
         }
-        return rows
+        return { def, results: rows }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        return [{
-          check: def.id,
-          status: 'error' as const,
-          message: `Plugin health check threw: ${message}`,
-          autoFixable: false,
-        }]
+        return {
+          def,
+          results: [{
+            check: def.id,
+            status: 'error' as const,
+            message: `Plugin health check threw: ${message}`,
+            autoFixable: false,
+          }],
+        }
       }
     }),
   )
-  return arrays.flat()
+}
+
+export async function runPluginHealthChecks(): Promise<HealthCheckResult[]> {
+  const groups = await runDetailedPluginHealthChecks()
+  return groups.flatMap(group => group.results)
 }
 
 async function notifyUnfixableIssues(results: HealthCheckResult[]): Promise<void> {
