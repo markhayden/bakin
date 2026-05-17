@@ -47,7 +47,7 @@ mock.module('@/core/settings', () => ({
       settings: {},
     },
     search: { adapter: 'antfly', settings: { enabled: false } },
-    doctor: { intervalMs: 1800000, autoFixSkill: false },
+    doctor: { intervalMs: 1800000 },
     service: { enabled: false },
   })),
 }))
@@ -259,7 +259,7 @@ describe('doctor', () => {
           settings: {},
         },
         search: { adapter: 'antfly', settings: { enabled: false } },
-        doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
+        doctor: { intervalMs: 1800000, requireOnboard: true },
         service: { enabled: false },
       })
       // (vi.resetModules is a no-op in the bun:test shim — getSettings reads
@@ -283,7 +283,7 @@ describe('doctor', () => {
           settings: {},
         },
         search: { adapter: 'antfly', settings: { enabled: false } },
-        doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: true },
+        doctor: { intervalMs: 1800000, requireOnboard: true },
         service: { enabled: false },
       })
       // (vi.resetModules is a no-op in the bun:test shim — getSettings reads
@@ -309,7 +309,7 @@ describe('doctor', () => {
           settings: {},
         },
         search: { adapter: 'antfly', settings: { enabled: false } },
-        doctor: { intervalMs: 1800000, autoFixSkill: false, requireOnboard: false },
+        doctor: { intervalMs: 1800000, requireOnboard: false },
         service: { enabled: false },
       })
       // (vi.resetModules is a no-op in the bun:test shim — getSettings reads

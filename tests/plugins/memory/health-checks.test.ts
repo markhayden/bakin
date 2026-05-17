@@ -54,7 +54,6 @@ let mockSearchEnabled = true
 mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
     search: { adapter: 'antfly', settings: { enabled: mockSearchEnabled } },
-    doctor: { autoFixSkill: false },
   }),
   resetSettingsCache: () => {},
 }))

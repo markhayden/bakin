@@ -629,6 +629,55 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="health.post.doctor-delegate">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/health/doctor/delegate' \
+  -H 'Content-Type: application/json' \
+  --data '{"accepted":true}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health.get.doctor-repair">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/health/doctor/repair'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health.get.doctor-repair-request-id">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/health/doctor/repair/<requestId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health.post.doctor-repair-request-id-verify">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/health/doctor/repair/<requestId>/verify'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health.post.doctor-repair-apply">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/health/doctor/repair/apply' \
+  -H 'Content-Type: application/json' \
+  --data '{"accepted":true,"itemIds":["value"]}'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="health.get.doctor-repair-plan">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/health/doctor/repair/plan'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="health.get.registry">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -1482,5 +1531,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 15, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 16, 2026 · Bakin 0.0.0-dev</span>
 </aside>

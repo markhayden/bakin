@@ -4,13 +4,15 @@
  */
 import { totalmem } from 'os'
 import { z } from 'zod'
-import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
+import type { BakinPlugin, HealthRepairHandler, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
 import { getLastResults, runDiagnostics } from '../../src/core/doctor'
 import { createLogger } from '../../src/core/logger'
 import { getAllAgentUsage } from '../../src/core/agent-usage'
-import { getSettings } from '../../src/core/settings'
 import { getContentDir } from '../../src/core/content-dir'
+import { applyDoctorRepair, planDoctorRepair } from '../../src/core/doctor-repair'
+import { delegateDoctorRepair, verifyDoctorRepairRequest } from '../../src/core/doctor-delegate'
+import { getDoctorRepairRequest, listDoctorRepairRequests } from '../../src/core/doctor-repair-store'
 import { getUsageFeed, getErrorCount, getStatsByMs, WINDOW_MS, type UsageKind, type WindowKey } from '../../src/core/usage'
 import {
   listHealthChecks,
@@ -19,12 +21,12 @@ import {
 } from '../../src/core/health-check-registry'
 import { checkContentDir } from './lib/system-checks/content-dir'
 import { checkService } from './lib/system-checks/service'
-import { checkMcporter } from './lib/system-checks/mcporter'
+import { checkMcporter, mcporterRepair } from './lib/system-checks/mcporter'
 import { checkRuntime } from './lib/system-checks/runtime'
 import { checkChannelApprovals } from './lib/system-checks/channel-approvals'
 import { checkRestartRecovery } from './lib/system-checks/restart-recovery'
 import { checkSearchAdapter } from './lib/system-checks/search'
-import { checkAndSyncSkill } from './lib/system-checks/sync-skill'
+import { checkAndSyncSkill, syncSkillRepair } from './lib/system-checks/sync-skill'
 import { checkPluginAssets } from './lib/system-checks/plugin-assets'
 import { applyManagedBlocksForRuntime } from '../../src/core/agent-rules/managed-blocks'
 
@@ -47,8 +49,56 @@ const stripRun = (def: HealthCheckDef) => ({
   id: def.id,
   name: def.name,
   pluginId: def.pluginId,
-  autoFix: !!def.autoFix,
+  autoFix: !!def.repair || !!def.autoFix,
 })
+
+function managedBlockRepair(
+  runtime: PluginContext['runtime'],
+  scope: 'orchestrator' | 'subagents',
+  checkId: string,
+): HealthRepairHandler {
+  return {
+    async plan(rows) {
+      const matching = rows.filter(row => row.autoFixable)
+      if (matching.length === 0) return []
+      return [{
+        id: `health.${checkId}.managed-blocks`,
+        checkId,
+        title: scope === 'orchestrator'
+          ? 'Repair main agent managed context'
+          : 'Repair subagent managed context',
+        reason: matching.map(row => row.message).join('; '),
+        safety: 'safe',
+        requiresConfirmation: true,
+        changes: [{
+          kind: 'runtime',
+          target: scope === 'orchestrator' ? 'main AGENTS.md' : 'subagent AGENTS.md files',
+          action: 'update',
+          description: 'Apply Bakin managed-context blocks through the runtime adapter.',
+        }],
+      }]
+    },
+    async apply(items) {
+      if (items.length === 0) return []
+      const rows = await applyManagedBlocksForRuntime(runtime, true, { scope })
+      const failures = rows.filter(row => row.status === 'error')
+      return [{
+        id: `health.${checkId}.managed-blocks`,
+        checkId,
+        status: failures.length > 0 ? 'failed' : 'applied',
+        message: rows.map(row => row.message).join('; '),
+        changes: rows
+          .filter(row => row.status === 'fixed')
+          .map(row => ({
+            kind: 'runtime' as const,
+            target: scope === 'orchestrator' ? 'main AGENTS.md' : 'subagent AGENTS.md files',
+            action: 'update' as const,
+            description: row.message,
+          })),
+      }]
+    },
+  }
+}
 
 function buildDoctorResponse(results: Array<{ status: string }> & unknown[]) {
   const errors = results.filter(r => r.status === 'error').length
@@ -129,6 +179,19 @@ const doctorResponse = z.object({
     warnings: z.number(),
   }),
   cachedAt: z.string().optional(),
+})
+
+const doctorRepairApplyBody = z.object({
+  accepted: z.boolean(),
+  itemIds: z.array(z.string()).optional(),
+})
+
+const acceptedBody = z.object({
+  accepted: z.boolean(),
+})
+
+const repairRequestParams = z.object({
+  requestId: z.string().min(1),
 })
 
 const searchStatusResponse = z.object({
@@ -272,6 +335,117 @@ const routes = [
       }
     },
   }),
+
+  defineRoute({
+    path: '/doctor/repair/plan',
+    method: 'GET',
+    summary: 'Plan deterministic doctor repairs',
+    description: 'Runs diagnostics and returns safe/manual repair plan items without mutating state.',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async () => {
+      try {
+        const report = await planDoctorRepair({
+          contentDir: getContentDir(),
+          projectRoot: process.cwd(),
+        })
+        return Response.json(report)
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/doctor/repair/apply',
+    method: 'POST',
+    summary: 'Apply deterministic doctor repairs',
+    description: 'Applies safe repair plan items only after accepted=true, then reruns affected checks for verification.',
+    body: doctorRepairApplyBody,
+    responses: { 200: passthrough, 409: passthrough, 500: errorResponse },
+    handler: async (_req, _ctx, { body }) => {
+      try {
+        const report = await applyDoctorRepair({
+          contentDir: getContentDir(),
+          projectRoot: process.cwd(),
+          accepted: body.accepted,
+          itemIds: body.itemIds,
+        })
+        return Response.json(report, {
+          status: report.status === 'confirmation_required' ? 409 : 200,
+        })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/doctor/delegate',
+    method: 'POST',
+    summary: 'Create a delegated doctor repair task',
+    description: 'Plans unresolved doctor findings and, after accepted=true, creates a linked task assigned to the runtime main agent and kicks dispatch.',
+    body: acceptedBody,
+    responses: { 200: passthrough, 409: passthrough, 500: errorResponse },
+    handler: async (_req, _ctx, { body }) => {
+      try {
+        const report = await delegateDoctorRepair({
+          contentDir: getContentDir(),
+          projectRoot: process.cwd(),
+          accepted: body.accepted,
+        })
+        return Response.json(report, {
+          status: report.status === 'confirmation_required' ? 409 : 200,
+        })
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/doctor/repair',
+    method: 'GET',
+    summary: 'List doctor repair requests',
+    description: 'Returns durable delegated doctor repair requests.',
+    responses: { 200: passthrough },
+    handler: async () => Response.json({ requests: listDoctorRepairRequests(getContentDir()) }),
+  }),
+
+  defineRoute({
+    path: '/doctor/repair/:requestId',
+    method: 'GET',
+    summary: 'Show a doctor repair request',
+    description: 'Returns one durable doctor repair request by id.',
+    params: repairRequestParams,
+    responses: { 200: passthrough, 404: errorResponse },
+    handler: async (_req, _ctx, { params }) => {
+      const request = getDoctorRepairRequest(getContentDir(), params.requestId)
+      if (!request) return Response.json({ error: 'Doctor repair request not found' }, { status: 404 })
+      return Response.json({ request })
+    },
+  }),
+
+  defineRoute({
+    path: '/doctor/repair/:requestId/verify',
+    method: 'POST',
+    summary: 'Verify a doctor repair request',
+    description: 'Reruns doctor planning and records whether the original delegated findings still reproduce.',
+    params: repairRequestParams,
+    responses: { 200: passthrough, 404: errorResponse, 500: errorResponse },
+    handler: async (_req, _ctx, { params }) => {
+      try {
+        return Response.json(await verifyDoctorRepairRequest({
+          contentDir: getContentDir(),
+          projectRoot: process.cwd(),
+          requestId: params.requestId,
+        }))
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        const status = message.includes('not found') ? 404 : 500
+        return Response.json({ error: message }, { status })
+      }
+    },
+  }),
 ]
 
 const healthPlugin: BakinPlugin = definePlugin({
@@ -378,8 +552,8 @@ const healthPlugin: BakinPlugin = definePlugin({
     ctx.registerHealthCheck({
       id: 'mcporter',
       name: 'mcporter install + per-agent config',
-      autoFix: true,
       run: () => checkMcporter(),
+      repair: mcporterRepair(),
     })
     ctx.registerHealthCheck({
       id: 'runtime',
@@ -404,14 +578,14 @@ const healthPlugin: BakinPlugin = definePlugin({
     ctx.registerHealthCheck({
       id: 'orchestrator-rules',
       name: 'Main agent AGENTS.md managed context',
-      autoFix: true,
-      run: () => applyManagedBlocksForRuntime(ctx.runtime, getSettings().doctor.autoFixSkill, { scope: 'orchestrator' }),
+      run: () => applyManagedBlocksForRuntime(ctx.runtime, false, { scope: 'orchestrator' }),
+      repair: managedBlockRepair(ctx.runtime, 'orchestrator', 'orchestrator-rules'),
     })
     ctx.registerHealthCheck({
       id: 'skill',
       name: 'Bakin SKILL.md sync to runtime',
-      autoFix: true,
       run: () => checkAndSyncSkill(process.cwd(), ctx.runtime),
+      repair: syncSkillRepair(process.cwd(), ctx.runtime),
     })
     ctx.registerHealthCheck({
       id: 'plugin-assets',
@@ -426,8 +600,8 @@ const healthPlugin: BakinPlugin = definePlugin({
     ctx.registerHealthCheck({
       id: 'managed-blocks',
       name: 'Per-agent AGENTS.md managed context',
-      autoFix: true,
-      run: () => applyManagedBlocksForRuntime(ctx.runtime, getSettings().doctor.autoFixSkill, { scope: 'subagents' }),
+      run: () => applyManagedBlocksForRuntime(ctx.runtime, false, { scope: 'subagents' }),
+      repair: managedBlockRepair(ctx.runtime, 'subagents', 'managed-blocks'),
     })
   },
 

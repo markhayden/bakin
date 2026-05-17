@@ -720,6 +720,63 @@ type CliDoctorResult = {
   mode?: 'offline' | 'full'
 }
 
+type CliDoctorRepairChange = {
+  kind: string
+  target: string
+  action: string
+  description: string
+}
+
+type CliDoctorRepairPlanItem = {
+  id: string
+  checkId: string
+  healthCheckId?: string
+  pluginId?: string
+  checkName?: string
+  title: string
+  reason: string
+  safety: 'safe' | 'manual' | 'destructive'
+  requiresConfirmation: boolean
+  changes: CliDoctorRepairChange[]
+}
+
+type CliDoctorRepairPlan = {
+  diagnostics: Array<{ check: string; status: string; message: string; autoFixable?: boolean }>
+  items: CliDoctorRepairPlanItem[]
+  errors: Array<{ phase: string; healthCheckId: string; message: string }>
+  summary: {
+    diagnostics: number
+    repairableChecks: number
+    totalItems: number
+    safeItems: number
+    blockedItems: number
+    planErrors: number
+  }
+}
+
+type CliDoctorRepairApply = {
+  status: 'confirmation_required' | 'applied'
+  plan: CliDoctorRepairPlan
+  applied: Array<{ id: string; checkId: string; status: string; message: string; changes: CliDoctorRepairChange[] }>
+  skipped: Array<{ id: string; checkId: string; status: string; message: string; changes: CliDoctorRepairChange[] }>
+  errors: Array<{ phase: string; healthCheckId: string; message: string }>
+  verification: Array<{ check: string; status: string; message: string; autoFixable?: boolean }>
+  summary: {
+    planned: number
+    applied: number
+    skipped: number
+    failed: number
+    verificationErrors: number
+    verificationWarnings: number
+  }
+}
+
+type CliDoctorDelegateReport = {
+  status: 'confirmation_required' | 'sent' | 'no_unresolved'
+  request: Record<string, unknown>
+  unresolved: Array<{ check: string; status: string; message: string; autoFixable?: boolean }>
+}
+
 function summarizeDoctorResults(results: CliDoctorResult['results']): CliDoctorResult['summary'] {
   return {
     total: results.length,
@@ -797,11 +854,274 @@ async function runFullDoctor(options: { notifyAgent: boolean }): Promise<CliDoct
   return { ...result, mode: 'full' }
 }
 
+async function runDoctorRepairPlan(): Promise<CliDoctorRepairPlan> {
+  return await apiGet('/api/plugins/health/doctor/repair/plan') as CliDoctorRepairPlan
+}
+
+async function runDoctorRepairApply(): Promise<CliDoctorRepairApply> {
+  return await apiPost('/api/plugins/health/doctor/repair/apply', { accepted: true }) as CliDoctorRepairApply
+}
+
+async function runDoctorDelegateApply(): Promise<CliDoctorDelegateReport> {
+  return await apiPost('/api/plugins/health/doctor/delegate', { accepted: true }) as CliDoctorDelegateReport
+}
+
+function doctorRepairExitCode(report: CliDoctorRepairApply): 0 | 1 | 2 {
+  if (report.summary.failed > 0 || report.summary.verificationErrors > 0 || report.errors.length > 0) return 1
+  if (report.summary.verificationWarnings > 0) return 2
+  return 0
+}
+
+function printDoctorRepairJson(data: unknown, exitCode: 0 | 1 | 2, error: { code: string; message: string } | null = null): void {
+  console.log(JSON.stringify({
+    ok: error === null && exitCode !== 1,
+    command: 'doctor --fix',
+    exitCode,
+    data,
+    error,
+  }, null, 2))
+}
+
+function printDoctorRepairPlan(plan: CliDoctorRepairPlan): void {
+  console.log('Doctor repair plan')
+  console.log(`${plan.summary.safeItems} safe, ${plan.summary.blockedItems} blocked, ${plan.summary.planErrors} plan errors`)
+  if (plan.items.length === 0) {
+    console.log('No deterministic repairs available.')
+    return
+  }
+  for (const item of plan.items) {
+    console.log(`\n[${item.safety.toUpperCase()}] ${item.title}`)
+    console.log(`  id: ${item.id}`)
+    console.log(`  reason: ${item.reason}`)
+    for (const change of item.changes) {
+      console.log(`  - ${change.action} ${change.target}: ${change.description}`)
+    }
+  }
+}
+
+function printDoctorRepairApply(report: CliDoctorRepairApply): void {
+  console.log('Doctor repair results')
+  for (const result of report.applied) {
+    const label = result.status === 'applied' ? 'APPLIED' : result.status.toUpperCase()
+    console.log(`[${label}] ${result.id}: ${result.message}`)
+  }
+  for (const result of report.skipped) {
+    console.log(`[SKIPPED] ${result.id}: ${result.message}`)
+  }
+  console.log(`\n${report.summary.applied} applied, ${report.summary.skipped} skipped, ${report.summary.failed} failed`)
+  if (report.verification.length > 0) {
+    console.log(`${report.summary.verificationErrors} verification errors, ${report.summary.verificationWarnings} verification warnings`)
+  }
+}
+
+function unresolvedDelegateRows(plan: CliDoctorRepairPlan): CliDoctorRepairPlan['diagnostics'] {
+  const safeRepairChecks = new Set(
+    plan.items
+      .filter(item => item.safety === 'safe')
+      .map(item => item.checkId),
+  )
+  return plan.diagnostics.filter(row => (
+    (row.status === 'warn' || row.status === 'error')
+    && !safeRepairChecks.has(row.check)
+  ))
+}
+
+function printDoctorDelegatePreview(plan: CliDoctorRepairPlan, unresolved: CliDoctorRepairPlan['diagnostics']): void {
+  console.log('Doctor delegated repair preview')
+  if (unresolved.length === 0) {
+    console.log('No unresolved findings need delegated repair.')
+    return
+  }
+  for (const row of unresolved) {
+    console.log(`[${row.status.toUpperCase()}] ${row.check}: ${row.message}`)
+  }
+}
+
+function printDoctorDelegateResult(report: CliDoctorDelegateReport): void {
+  if (report.status === 'no_unresolved') {
+    console.log('No unresolved findings need delegated repair.')
+    return
+  }
+  const request = report.request as { id?: string; taskId?: string; agentId?: string }
+  console.log(`Delegated doctor repair ${request.id ?? ''}`)
+  if (request.taskId) console.log(`Task: ${request.taskId}`)
+  if (request.agentId) console.log(`Agent: ${request.agentId}`)
+}
+
+async function confirmDoctorRepair(plan: CliDoctorRepairPlan): Promise<boolean> {
+  if (plan.summary.safeItems === 0) return false
+  const readline = await import('node:readline/promises')
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    const answer = await rl.question(`Apply ${plan.summary.safeItems} safe repair item${plan.summary.safeItems === 1 ? '' : 's'}? [y/N] `)
+    return /^(y|yes)$/i.test(answer.trim())
+  } finally {
+    rl.close()
+  }
+}
+
+async function confirmDoctorDelegate(unresolved: CliDoctorRepairPlan['diagnostics']): Promise<boolean> {
+  if (unresolved.length === 0) return false
+  const readline = await import('node:readline/promises')
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    const answer = await rl.question(`Create a delegated repair task for ${unresolved.length} finding${unresolved.length === 1 ? '' : 's'}? [y/N] `)
+    return /^(y|yes)$/i.test(answer.trim())
+  } finally {
+    rl.close()
+  }
+}
+
+async function cmdDoctorFix(options: { json: boolean; yes: boolean; isTTY: boolean }): Promise<void> {
+  if (!options.yes) {
+    const plan = await runDoctorRepairPlan()
+    if (options.json) {
+      if (plan.summary.totalItems === 0) {
+        printDoctorRepairJson({ status: 'planned', plan }, 0)
+        return
+      }
+      printDoctorRepairJson(
+        { status: 'confirmation_required', plan },
+        1,
+        { code: 'CONFIRMATION_REQUIRED', message: 'Run `bakin doctor --fix --yes` to apply safe deterministic repairs.' },
+      )
+      process.exit(1)
+    }
+
+    printDoctorRepairPlan(plan)
+    if (plan.summary.totalItems === 0) return
+
+    if (!options.isTTY) {
+      console.log('\nRun `bakin doctor --fix --yes` to apply safe deterministic repairs.')
+      process.exit(1)
+    }
+    const accepted = await confirmDoctorRepair(plan)
+    if (!accepted) {
+      console.log('Repair cancelled.')
+      process.exit(1)
+    }
+  }
+
+  const report = await runDoctorRepairApply()
+  const exitCode = doctorRepairExitCode(report)
+  if (options.json) {
+    printDoctorRepairJson(report, exitCode, exitCode === 1
+      ? { code: 'DOCTOR_REPAIR_FAILED', message: 'One or more deterministic doctor repairs failed or did not verify.' }
+      : null)
+    if (exitCode !== 0) process.exit(exitCode)
+    return
+  }
+  printDoctorRepairApply(report)
+  if (exitCode !== 0) process.exit(exitCode)
+}
+
+async function cmdDoctorDelegate(options: { json: boolean; yes: boolean; isTTY: boolean }): Promise<void> {
+  if (!options.yes) {
+    const plan = await runDoctorRepairPlan()
+    const unresolved = unresolvedDelegateRows(plan)
+    if (options.json) {
+      if (unresolved.length === 0) {
+        printDoctorRepairJson({ status: 'no_unresolved', plan, unresolved }, 0)
+        return
+      }
+      printDoctorRepairJson(
+        { status: 'confirmation_required', plan, unresolved },
+        1,
+        { code: 'CONFIRMATION_REQUIRED', message: 'Run `bakin doctor --delegate --yes` to create the delegated repair task.' },
+      )
+      process.exit(1)
+    }
+
+    printDoctorDelegatePreview(plan, unresolved)
+    if (unresolved.length === 0) return
+    if (!options.isTTY) {
+      console.log('\nRun `bakin doctor --delegate --yes` to create the delegated repair task.')
+      process.exit(1)
+    }
+    const accepted = await confirmDoctorDelegate(unresolved)
+    if (!accepted) {
+      console.log('Delegated repair cancelled.')
+      process.exit(1)
+    }
+  }
+
+  const report = await runDoctorDelegateApply()
+  if (options.json) {
+    printDoctorRepairJson(report, 0)
+    return
+  }
+  printDoctorDelegateResult(report)
+}
+
+async function cmdDoctorRepair(args: string[], options: { json: boolean }): Promise<void> {
+  const sub = args[1] ?? 'list'
+  if (sub === 'list') {
+    const result = await apiGet('/api/plugins/health/doctor/repair') as { requests?: Array<Record<string, unknown>> }
+    if (options.json) {
+      printDoctorRepairJson(result, 0)
+      return
+    }
+    const requests = result.requests ?? []
+    if (requests.length === 0) {
+      console.log('No doctor repair requests.')
+      return
+    }
+    for (const request of requests) {
+      console.log(`${request.id ?? '(unknown)'}  ${request.status ?? 'unknown'}  task=${request.taskId ?? '-'}`)
+    }
+    return
+  }
+
+  const requestId = args[2]
+  if (!requestId) {
+    console.error(`Usage: bakin doctor repair ${sub} <request-id>`)
+    process.exit(1)
+  }
+
+  if (sub === 'show') {
+    const result = await apiGet(`/api/plugins/health/doctor/repair/${encodeURIComponent(requestId)}`)
+    if (options.json) {
+      printDoctorRepairJson(result, 0)
+      return
+    }
+    print(result)
+    return
+  }
+
+  if (sub === 'verify') {
+    const result = await apiPost(`/api/plugins/health/doctor/repair/${encodeURIComponent(requestId)}/verify`)
+    if (options.json) {
+      printDoctorRepairJson(result, 0)
+      return
+    }
+    print(result)
+    return
+  }
+
+  console.error(`Unknown doctor repair subcommand: ${sub}`)
+  process.exit(1)
+}
+
 async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> {
   const json = args.includes('--json')
   const full = args.includes('--full')
   const notifyAgent = args.includes('--notify-agent')
+  const fix = args.includes('--fix')
+  const delegate = args.includes('--delegate')
+  const yes = args.includes('--yes')
   const isTTY = Boolean(process.stdout.isTTY)
+  if (args[0] === 'repair') {
+    await cmdDoctorRepair(args, { json })
+    return
+  }
+  if (fix) {
+    await cmdDoctorFix({ json, yes, isTTY })
+    return
+  }
+  if (delegate) {
+    await cmdDoctorDelegate({ json, yes, isTTY })
+    return
+  }
   const result = full ? await runFullDoctor({ notifyAgent }) : await runOfflineDoctor()
 
   if (json) {

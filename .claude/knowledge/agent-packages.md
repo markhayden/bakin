@@ -211,7 +211,7 @@ fresh runtime agent with the same id, risking the user's existing setup.
 
 `plugins/team/lib/health-checks.ts:checkAgentAssets()` surfaces drift in the
 team-owned health checks. It delegates to
-`src/core/onboarding/agent-assets.ts`; with auto-fix enabled, drift triggers the
+`src/core/onboarding/agent-assets.ts`; explicit doctor repair flows trigger the
 standard install/update projection flow (workspace files stay
 templateOnly-protected; everything else re-projects through runtime adapters).
 

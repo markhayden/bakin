@@ -14,9 +14,8 @@ import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 
-import { getSettings } from '../../../src/core/settings'
 import { agentAssetsComponent } from '../../../src/core/onboarding/agent-assets'
-import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
+import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/core/src/plugin-types'
 
 type RuntimeAgentReader = Pick<AgentRuntimeAdapter['agents'], 'list'>
 
@@ -30,9 +29,6 @@ function warn(check: string, message: string, autoFixable = false): HealthCheckR
 }
 function error(check: string, message: string): HealthCheckResult {
   return { check, status: 'error', message, autoFixable: false }
-}
-function fixed(check: string, message: string): HealthCheckResult {
-  return { check, status: 'fixed', message, autoFixable: true }
 }
 
 // ─── Agent roster: runtime agents exposed to Bakin ─────────────────────────
@@ -73,15 +69,14 @@ export async function checkAgentRoster(runtime: RuntimeAgentReader): Promise<Hea
 // ─── Personas: each agent has a persona file under {contentDir}/team/personas
 
 /**
- * Verify each agent has a persona file. Auto-fixable — creates stub
- * files for missing agents when settings.doctor.autoFixSkill is true.
+ * Verify each agent has a persona file. Report-only; personaRepair creates
+ * missing stub files explicitly through the doctor repair workflow.
  */
 export async function checkPersonas(
   contentDir: string,
   runtime: RuntimeAgentReader,
 ): Promise<HealthCheckResult[]> {
   const results: HealthCheckResult[] = []
-  const autoFix = getSettings().doctor.autoFixSkill
   let agentIds: string[]
   try {
     agentIds = (await runtime.list()).map(agent => agent.id).filter(Boolean)
@@ -91,13 +86,8 @@ export async function checkPersonas(
   const personasDir = join(contentDir, 'team', 'personas')
 
   if (!existsSync(personasDir)) {
-    if (autoFix) {
-      mkdirSync(personasDir, { recursive: true })
-      results.push(fixed('personas', 'Created missing personas directory'))
-    } else {
-      results.push(warn('personas', `No personas directory at ${personasDir}`, true))
-      return results
-    }
+    results.push(warn('personas', `No personas directory at ${personasDir}`, true))
+    return results
   }
 
   const existing = new Set(
@@ -106,21 +96,10 @@ export async function checkPersonas(
       .map(f => f.replace('.md', ''))
   )
 
-  let created = 0
   for (const agent of agentIds) {
     if (!existing.has(agent)) {
-      if (autoFix) {
-        const stub = `# ${agent.charAt(0).toUpperCase() + agent.slice(1)}\n\n_Persona not yet configured. Update this file with the agent's personality, background, and communication style._\n`
-        writeFileSync(join(personasDir, `${agent}.md`), stub, 'utf-8')
-        created++
-      } else {
-        results.push(warn('personas', `Missing persona: ${join(personasDir, `${agent}.md`)}`, true))
-      }
+      results.push(warn('personas', `Missing persona: ${join(personasDir, `${agent}.md`)}`, true))
     }
-  }
-
-  if (autoFix && created > 0) {
-    results.push(fixed('personas', `Created ${created} stub persona file(s) — edit them to add real personalities`))
   }
 
   if (results.filter(r => r.check === 'personas').length === 0) {
@@ -130,13 +109,69 @@ export async function checkPersonas(
   return results
 }
 
+function personaStub(agent: string): string {
+  return `# ${agent.charAt(0).toUpperCase() + agent.slice(1)}\n\n_Persona not yet configured. Update this file with the agent's personality, background, and communication style._\n`
+}
+
+export function personaRepair(contentDir: string, runtime: RuntimeAgentReader): HealthRepairHandler {
+  return {
+    async plan(rows) {
+      const matching = rows.filter(row => row.check === 'personas' && row.autoFixable)
+      if (matching.length === 0) return []
+      return [{
+        id: 'team.create-personas',
+        checkId: 'personas',
+        title: 'Create missing persona files',
+        reason: matching.map(row => row.message).join('; '),
+        safety: 'safe',
+        requiresConfirmation: true,
+        changes: [{
+          kind: 'file',
+          target: join(contentDir, 'team', 'personas'),
+          action: 'create',
+          description: 'Create the personas directory and stub markdown files for runtime agents missing personas.',
+        }],
+      }]
+    },
+    async apply(items) {
+      if (items.length === 0) return []
+      const agentIds = (await runtime.list()).map(agent => agent.id).filter(Boolean)
+      const personasDir = join(contentDir, 'team', 'personas')
+      mkdirSync(personasDir, { recursive: true })
+      const existing = new Set(
+        existsSync(personasDir)
+          ? readdirSync(personasDir).filter(f => f.endsWith('.md')).map(f => f.replace('.md', ''))
+          : [],
+      )
+      const changes = []
+      for (const agent of agentIds) {
+        if (existing.has(agent)) continue
+        const path = join(personasDir, `${agent}.md`)
+        writeFileSync(path, personaStub(agent), 'utf-8')
+        changes.push({
+          kind: 'file' as const,
+          target: path,
+          action: 'create' as const,
+          description: `Created stub persona for ${agent}.`,
+        })
+      }
+      return [{
+        id: 'team.create-personas',
+        checkId: 'personas',
+        status: 'applied',
+        message: `Created ${changes.length} stub persona file(s).`,
+        changes,
+      }]
+    },
+  }
+}
+
 // ─── Agent-package projections: drift / missing / broken-marker findings ──
 
 /**
  * Surface drift / missing / broken-marker findings from the
- * agent-assets onboarding component. With autoFix enabled
- * (settings.doctor.autoFixSkill), runs the same install() flow as
- * `bakin install agent-assets` to repair detected drift in-place.
+ * agent-assets onboarding component. Report-only; agentAssetsRepair runs the
+ * same install() flow as `bakin install agent-assets` explicitly.
  *
  * Doctor sweep companion to the user-facing `bakin doctor` view; the
  * onboarding component (src/core/onboarding/agent-assets.ts) drives
@@ -144,14 +179,41 @@ export async function checkPersonas(
  * the two views never disagree.
  */
 export async function checkAgentAssets(): Promise<HealthCheckResult[]> {
-  const autoFix = getSettings().doctor.autoFixSkill
   try {
     const checkResult = await agentAssetsComponent.check()
     if (checkResult.status === 'ok') {
       return [ok('agent-assets', checkResult.message)]
     }
 
-    if (autoFix) {
+    const reminder = checkResult.remediation ?? 'Run `bakin install agent-assets` to repair.'
+    return [warn('agent-assets', `${checkResult.message} — ${reminder}`, true)]
+  } catch (err) {
+    return [warn('agent-assets', `agent-assets check failed: ${err}`)]
+  }
+}
+
+export function agentAssetsRepair(): HealthRepairHandler {
+  return {
+    async plan(rows) {
+      const matching = rows.filter(row => row.check === 'agent-assets' && row.autoFixable)
+      if (matching.length === 0) return []
+      return [{
+        id: 'team.install-agent-assets',
+        checkId: 'agent-assets',
+        title: 'Repair agent-package projections',
+        reason: matching.map(row => row.message).join('; '),
+        safety: 'safe',
+        requiresConfirmation: true,
+        changes: [{
+          kind: 'runtime',
+          target: 'agent-package projections',
+          action: 'invoke',
+          description: 'Run the agent-assets install flow to repair missing or drifted projected files.',
+        }],
+      }]
+    },
+    async apply(items) {
+      if (items.length === 0) return []
       const installResult = await agentAssetsComponent.install({
         interactive: false,
         autoApprove: true,
@@ -159,18 +221,18 @@ export async function checkAgentAssets(): Promise<HealthCheckResult[]> {
         checkOnly: false,
         force: false,
       })
-      if (installResult.status === 'installed') {
-        return [fixed('agent-assets', installResult.message)]
-      }
-      if (installResult.status === 'noop') {
-        return [ok('agent-assets', installResult.message)]
-      }
-      return [error('agent-assets', `Repair failed: ${installResult.message}`)]
-    }
-
-    const reminder = checkResult.remediation ?? 'Run `bakin install agent-assets` to repair.'
-    return [warn('agent-assets', `${checkResult.message} — ${reminder}`, true)]
-  } catch (err) {
-    return [warn('agent-assets', `agent-assets check failed: ${err}`)]
+      return [{
+        id: 'team.install-agent-assets',
+        checkId: 'agent-assets',
+        status: installResult.status === 'failed' ? 'failed' : 'applied',
+        message: installResult.message,
+        changes: [{
+          kind: 'runtime',
+          target: 'agent-package projections',
+          action: 'invoke',
+          description: `agent-assets install returned ${installResult.status}.`,
+        }],
+      }]
+    },
   }
 }

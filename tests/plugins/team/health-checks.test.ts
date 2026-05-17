@@ -56,20 +56,6 @@ mock.module('../../../packages/adapter-openclaw/src/home', () => ({
   resetOpenClawHome: () => {},
 }))
 
-let mockAutoFix = false
-mock.module('../../../src/core/settings', () => ({
-  getSettings: () => ({
-    doctor: { autoFixSkill: mockAutoFix },
-  }),
-  resetSettingsCache: () => {},
-}))
-mock.module('@/core/settings', () => ({
-  getSettings: () => ({
-    doctor: { autoFixSkill: mockAutoFix },
-  }),
-  resetSettingsCache: () => {},
-}))
-
 let runtimeAgents: RuntimeAgent[] = []
 let runtimeError: Error | null = null
 const runtimeAgentStore = new Map<string, RuntimeAgent>()
@@ -110,9 +96,11 @@ mock.module('../../../src/core/logger', () => ({
 import { agentAssetsComponent } from '../../../src/core/onboarding/agent-assets'
 import { installPackage } from '../../../src/core/agent-packages/installer'
 import {
+  agentAssetsRepair,
   checkAgentRoster,
   checkPersonas,
   checkAgentAssets,
+  personaRepair,
 } from '../../../plugins/team/lib/health-checks'
 
 const runtimeAgentReader = {
@@ -138,7 +126,6 @@ beforeEach(() => {
   runtimeAgentStore.clear()
   runtimeWorkspaceFiles.clear()
   runtimeError = null
-  mockAutoFix = false
 })
 
 // ─── checkAgentRoster ──────────────────────────────────────────────────────
@@ -212,31 +199,32 @@ describe('checkPersonas', () => {
     expect(results.some(r => r.status === 'warn' && r.message.includes('No personas directory'))).toBe(true)
   })
 
-  it('creates stub persona files in autoFix mode', async () => {
-    mockAutoFix = true
+  it('does not create stub persona files during diagnostics', async () => {
     const personasDir = join(testDir, 'team', 'personas')
     mkdirSync(personasDir, { recursive: true })
     writeFileSync(join(personasDir, 'main.md'), '# Main')
 
     const results = await checkPersonas(testDir, runtimeAgentReader)
-    const fixes = results.filter(r => r.status === 'fixed')
-    expect(fixes.length).toBeGreaterThan(0)
-    // Stubs were written
+    expect(results.some(r => r.status === 'warn' && r.message.includes('patch'))).toBe(true)
     const after = readdirSync(personasDir)
-    expect(after).toContain('patch.md')
-    expect(after).toContain('pixel.md')
-    const stub = readFileSync(join(personasDir, 'patch.md'), 'utf-8')
-    expect(stub).toMatch(/Persona not yet configured/)
+    expect(after).not.toContain('patch.md')
+    expect(after).not.toContain('pixel.md')
   })
 
-  it('creates the personas directory in autoFix mode when missing', async () => {
-    mockAutoFix = true
+  it('persona repair creates the personas directory and stub files explicitly', async () => {
     const personasDir = join(testDir, 'team', 'personas')
     expect(existsSync(personasDir)).toBe(false)
 
     const results = await checkPersonas(testDir, runtimeAgentReader)
+    const repair = personaRepair(testDir, runtimeAgentReader)
+    const plan = await repair.plan(results)
+    expect(plan).toHaveLength(1)
+    const applied = await repair.apply(plan)
+    expect(applied[0].status).toBe('applied')
     expect(existsSync(personasDir)).toBe(true)
-    expect(results.some(r => r.status === 'fixed' && r.message.includes('Created missing personas directory'))).toBe(true)
+    expect(readdirSync(personasDir)).toEqual(expect.arrayContaining(['main.md', 'patch.md', 'pixel.md']))
+    const stub = readFileSync(join(personasDir, 'patch.md'), 'utf-8')
+    expect(stub).toMatch(/Persona not yet configured/)
   })
 })
 
@@ -278,6 +266,30 @@ describe('checkAgentAssets — wrapper', () => {
     expect(results[0].status).toBe('warn')
     expect(results[0].autoFixable).toBe(true)
     expect(results[0].message).toMatch(/bakin install agent-assets/)
+  })
+
+  it('plans and applies agent-assets repair explicitly', async () => {
+    checkSpy = spyOn(agentAssetsComponent, 'check').mockImplementation(async () => ({
+      name: 'agent-assets',
+      status: 'warn' as const,
+      message: '1 projection drifted',
+      remediation: 'Run `bakin install agent-assets` to repair.',
+    }))
+    const installSpy = spyOn(agentAssetsComponent, 'install').mockImplementation(async () => ({
+      name: 'agent-assets',
+      status: 'installed' as const,
+      message: 'projection repaired',
+      durationMs: 1,
+    }))
+
+    const results = await checkAgentAssets()
+    const repair = agentAssetsRepair()
+    const plan = await repair.plan(results)
+    expect(plan).toHaveLength(1)
+    const applied = await repair.apply(plan)
+    expect(applied[0].status).toBe('applied')
+    expect(installSpy).toHaveBeenCalled()
+    installSpy.mockRestore()
   })
 })
 

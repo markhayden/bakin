@@ -36,7 +36,6 @@ describe('Settings', () => {
   it('returns doctor defaults including requireOnboard', () => {
     const settings = getSettings()
     expect(settings.doctor.intervalMs).toBe(30 * 60 * 1000)
-    expect(settings.doctor.autoFixSkill).toBe(true)
     // First-run onboarding gate — default true so new users get walked
     // through `bakin onboard` before doctor runs its full check suite.
     expect(settings.doctor.requireOnboard).toBe(true)
@@ -52,7 +51,6 @@ describe('Settings', () => {
     expect(settings.doctor.requireOnboard).toBe(false)
     // Other doctor defaults preserved
     expect(settings.doctor.intervalMs).toBe(30 * 60 * 1000)
-    expect(settings.doctor.autoFixSkill).toBe(true)
   })
 
   it('returns search adapter defaults', () => {

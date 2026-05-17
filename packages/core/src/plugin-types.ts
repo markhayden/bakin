@@ -301,6 +301,38 @@ export interface HealthCheckResult {
   autoFixable: boolean
 }
 
+export type HealthRepairSafety = 'safe' | 'manual' | 'destructive'
+
+export interface HealthRepairChange {
+  kind: 'file' | 'setting' | 'service' | 'runtime' | 'task' | 'other'
+  target: string
+  action: 'create' | 'update' | 'delete' | 'install' | 'invoke'
+  description: string
+}
+
+export interface HealthRepairPlanItem {
+  id: string
+  checkId: string
+  title: string
+  reason: string
+  safety: HealthRepairSafety
+  requiresConfirmation: boolean
+  changes: HealthRepairChange[]
+}
+
+export interface HealthRepairApplyResult {
+  id: string
+  checkId: string
+  status: 'applied' | 'skipped' | 'failed'
+  message: string
+  changes: HealthRepairChange[]
+}
+
+export interface HealthRepairHandler {
+  plan(rows: HealthCheckResult[]): Promise<HealthRepairPlanItem[]>
+  apply(items: HealthRepairPlanItem[]): Promise<HealthRepairApplyResult[]>
+}
+
 /**
  * Input shape plugins pass to `ctx.registerHealthCheck`. The plugin id is
  * auto-namespaced as `{pluginId}.{id}`. `run()` returns an array so one
@@ -317,12 +349,15 @@ export interface PluginHealthCheckInput {
    */
   run: () => Promise<HealthCheckResult[]>
   /**
-   * Advisory flag for admin UIs: `true` if `run()` may perform safe
-   * auto-fixes internally. Pure metadata in v1 — the orchestrator always
-   * invokes every registered check regardless of this value. Plugins that
-   * do internal auto-fixes gate on `getSettings().doctor.*` themselves.
+   * Legacy advisory flag for older admin surfaces. New code should derive
+   * repairability from `repair`.
    */
   autoFix?: boolean
+  /**
+   * Optional explicit repair contract. Diagnostics call only `run()`; repair
+   * flows call `plan()` first, then `apply()` after explicit confirmation.
+   */
+  repair?: HealthRepairHandler
 }
 
 export interface HealthCheckDef extends PluginHealthCheckInput {

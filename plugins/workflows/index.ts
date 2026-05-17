@@ -24,6 +24,7 @@ import {
   checkWorkflowDefinitions,
   checkStaleWorkflowInstances,
   checkWorkflowSkills,
+  staleWorkflowInstancesRepair,
 } from './lib/health-checks'
 import { isReadOnly, getDefinition as getRegistryDefinition } from './lib/source-registry'
 import {
@@ -1526,8 +1527,8 @@ const workflowsPlugin: BakinPlugin = definePlugin({
     ctx.registerHealthCheck({
       id: 'stale-instances',
       name: 'Stale workflow instances',
-      autoFix: true,
       run: () => checkStaleWorkflowInstances(getContentDir()),
+      repair: staleWorkflowInstancesRepair(getContentDir()),
     })
     ctx.registerHealthCheck({
       id: 'skills',

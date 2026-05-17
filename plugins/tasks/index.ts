@@ -31,6 +31,8 @@ import {
   checkTaskboard,
   checkTaskConsistency,
   checkTaskPositionIntegrity,
+  taskConsistencyRepair,
+  taskOrderRepair,
 } from './lib/health-checks'
 import type { Task, ColumnId } from './types'
 
@@ -895,14 +897,14 @@ const tasksPlugin: BakinPlugin = definePlugin({
     ctx.registerHealthCheck({
       id: 'task-consistency',
       name: 'Task consistency (orphans, overload, stale in-progress)',
-      autoFix: true,
       run: () => checkTaskConsistency(getContentDir(), ctx.runtime.agents),
+      repair: taskConsistencyRepair(),
     })
     ctx.registerHealthCheck({
       id: 'order-integrity',
       name: 'Task position / order integrity',
-      autoFix: true,
       run: () => Promise.resolve(checkTaskPositionIntegrity()),
+      repair: taskOrderRepair(),
     })
   },
 

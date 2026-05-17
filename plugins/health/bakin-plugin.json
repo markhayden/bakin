@@ -77,8 +77,8 @@
       },
       {
         "name": "doctor",
-        "usage": "bakin doctor [--full] [--notify-agent]",
-        "summary": "Run offline or full server-backed health checks."
+        "usage": "bakin doctor [--full] [--notify-agent] [--fix|--delegate] [--yes]",
+        "summary": "Run health checks, apply explicit safe fixes, or create a delegated repair task."
       }
     ],
     "docs": {

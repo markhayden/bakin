@@ -71,6 +71,7 @@ export function registerPluginHealthCheck(
     name: input.name,
     run: input.run,
     autoFix: input.autoFix,
+    repair: input.repair,
   })
   return namespacedId
 }

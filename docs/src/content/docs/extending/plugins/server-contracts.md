@@ -170,7 +170,6 @@ Doctor checks are plugin-registered. Each `ctx.registerHealthCheck()` call adds 
 ctx.registerHealthCheck({
   id: 'storage',
   name: 'Docs Basic storage',
-  autoFix: false,
   run: async () => [
     {
       check: 'docs-basic.storage',

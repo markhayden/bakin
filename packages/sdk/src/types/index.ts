@@ -806,11 +806,44 @@ export interface HealthCheckResult {
   autoFixable: boolean
 }
 
+export type HealthRepairSafety = 'safe' | 'manual' | 'destructive'
+
+export interface HealthRepairChange {
+  kind: 'file' | 'setting' | 'service' | 'runtime' | 'task' | 'other'
+  target: string
+  action: 'create' | 'update' | 'delete' | 'install' | 'invoke'
+  description: string
+}
+
+export interface HealthRepairPlanItem {
+  id: string
+  checkId: string
+  title: string
+  reason: string
+  safety: HealthRepairSafety
+  requiresConfirmation: boolean
+  changes: HealthRepairChange[]
+}
+
+export interface HealthRepairApplyResult {
+  id: string
+  checkId: string
+  status: 'applied' | 'skipped' | 'failed'
+  message: string
+  changes: HealthRepairChange[]
+}
+
+export interface HealthRepairHandler {
+  plan(rows: HealthCheckResult[]): Promise<HealthRepairPlanItem[]>
+  apply(items: HealthRepairPlanItem[]): Promise<HealthRepairApplyResult[]>
+}
+
 export interface PluginHealthCheckInput {
   id: string
   name: string
   run: () => Promise<HealthCheckResult[]>
   autoFix?: boolean
+  repair?: HealthRepairHandler
 }
 
 // ---------------------------------------------------------------------------

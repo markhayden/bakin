@@ -45,7 +45,7 @@ import {
   registerPluginHealthCheck,
   unregisterPluginHealthChecks,
 } from '../../src/core/health-check-registry'
-import { runPluginHealthChecks } from '../../src/core/doctor'
+import { runDetailedPluginHealthChecks, runPluginHealthChecks } from '../../src/core/doctor'
 
 beforeEach(() => {
   // Clean registry before each test
@@ -174,5 +174,52 @@ describe('runPluginHealthChecks', () => {
     expect(results[0].check).toBe('test-a.bad-shape')
     expect(results[0].status).toBe('error')
     expect(results[0].message).toMatch(/non-array/)
+  })
+})
+
+describe('runDetailedPluginHealthChecks', () => {
+  it('returns each check definition with its isolated result rows', async () => {
+    registerPluginHealthCheck('test-a', {
+      id: 'repairable',
+      name: 'Repairable check',
+      run: async () => [{
+        check: 'repairable-row',
+        status: 'warn',
+        message: 'Needs repair',
+        autoFixable: true,
+      }],
+      repair: {
+        plan: async () => [],
+        apply: async () => [],
+      },
+    })
+    registerPluginHealthCheck('test-b', {
+      id: 'thrower',
+      name: 'Thrower',
+      run: async () => {
+        throw new Error('Detailed failure')
+      },
+    })
+
+    const groups = await runDetailedPluginHealthChecks()
+
+    expect(groups).toHaveLength(2)
+    expect(groups[0].def.id).toBe('test-a.repairable')
+    expect(groups[0].def.repair).toBeDefined()
+    expect(groups[0].results).toEqual([{
+      check: 'repairable-row',
+      status: 'warn',
+      message: 'Needs repair',
+      autoFixable: true,
+    }])
+
+    expect(groups[1].def.id).toBe('test-b.thrower')
+    expect(groups[1].results).toHaveLength(1)
+    expect(groups[1].results[0]).toEqual(expect.objectContaining({
+      check: 'test-b.thrower',
+      status: 'error',
+      autoFixable: false,
+    }))
+    expect(groups[1].results[0].message).toMatch(/Detailed failure/)
   })
 })

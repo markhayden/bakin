@@ -203,6 +203,11 @@ Source: `packages/sdk/src/types/index.ts`
 | `export interface PluginNodeTypeInput<T = unknown> {` |
 | `export interface PluginNotificationChannelInput {` |
 | `export interface HealthCheckResult {` |
+| `export type HealthRepairSafety = 'safe' \| 'manual' \| 'destructive'` |
+| `export interface HealthRepairChange {` |
+| `export interface HealthRepairPlanItem {` |
+| `export interface HealthRepairApplyResult {` |
+| `export interface HealthRepairHandler {` |
 | `export interface PluginHealthCheckInput {` |
 | `export interface StringSettingsField extends BaseSettingsField {` |
 | `export interface NumberSettingsField extends BaseSettingsField {` |
@@ -261,5 +266,5 @@ Source: `packages/sdk/src/routing/index.ts`
 | `export type {` |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 15, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 16, 2026 · Bakin 0.0.0-dev</span>
 </aside>

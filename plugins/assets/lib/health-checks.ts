@@ -12,8 +12,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, unl
 import { join } from 'path'
 
 import { createLogger } from '../../../src/core/logger'
-import { getSettings } from '../../../src/core/settings'
-import type { HealthCheckResult } from '../../../packages/core/src/plugin-types'
+import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/core/src/plugin-types'
 
 import { createStub } from './sidecar'
 import { yearMonthFromFilename } from './path-for-filename'
@@ -51,7 +50,7 @@ const SIDECAR_FIELD_ALIASES: Record<string, string> = {
  * Verify directory structure, sidecar pairing, disk usage, and trash
  * retention for the assets tree under {contentDir}/assets/.
  *
- * Auto-fix paths (gated by settings.doctor.autoFixSkill):
+ * Explicit repair paths:
  *   - create missing assets/, store/, inbox/, and .trash/
  *   - write stub sidecars for canonical store assets missing .meta.json
  *   - merge misnamed sidecars into the correctly-named ones (normalizing
@@ -59,8 +58,11 @@ const SIDECAR_FIELD_ALIASES: Record<string, string> = {
  *   - purge .trash/ items older than 7 days
  */
 export function checkAssets(contentDir: string): HealthCheckResult[] {
+  return checkAssetsInternal(contentDir, false)
+}
+
+function checkAssetsInternal(contentDir: string, autoFix: boolean): HealthCheckResult[] {
   const results: HealthCheckResult[] = []
-  const autoFix = getSettings().doctor.autoFixSkill
   const assetsRoot = join(contentDir, 'assets')
 
   // Check assets/ directory exists with filename-as-identity roots.
@@ -278,6 +280,7 @@ export function checkAssets(contentDir: string): HealthCheckResult[] {
       const trashFiles = readdirSync(trashDir)
       const cutoff = Date.now() - (7 * 24 * 60 * 60 * 1000) // 7 days
       let purged = 0
+      let expired = 0
       for (const file of trashFiles) {
         try {
           const stat = statSync(join(trashDir, file))
@@ -285,12 +288,17 @@ export function checkAssets(contentDir: string): HealthCheckResult[] {
             if (autoFix) {
               rmSync(join(trashDir, file))
               purged++
+            } else {
+              expired++
             }
           }
         } catch { /* skip */ }
       }
       if (purged > 0) {
         results.push(fixed('assets', `Purged ${purged} expired item(s) from .trash/ (>7 days old)`))
+      }
+      if (expired > 0) {
+        results.push(warn('assets', `${expired} expired item(s) in .trash/ older than 7 days`, true))
       }
     }
   } catch { /* skip */ }
@@ -300,4 +308,46 @@ export function checkAssets(contentDir: string): HealthCheckResult[] {
   }
 
   return results
+}
+
+export function assetRepair(contentDir: string): HealthRepairHandler {
+  return {
+    async plan(rows) {
+      const matching = rows.filter(row => row.check === 'assets' && row.autoFixable)
+      if (matching.length === 0) return []
+      return [{
+        id: 'assets.repair-store',
+        checkId: 'assets',
+        title: 'Repair asset store structure and sidecars',
+        reason: matching.map(row => row.message).join('; '),
+        safety: 'safe',
+        requiresConfirmation: true,
+        changes: [{
+          kind: 'file',
+          target: join(contentDir, 'assets'),
+          action: 'update',
+          description: 'Create missing asset directories, create stub sidecars, merge misnamed sidecars, and purge expired trash.',
+        }],
+      }]
+    },
+    async apply(items) {
+      if (items.length === 0) return []
+      const rows = checkAssetsInternal(contentDir, true)
+      const failures = rows.filter(row => row.status === 'error')
+      return [{
+        id: 'assets.repair-store',
+        checkId: 'assets',
+        status: failures.length > 0 ? 'failed' : 'applied',
+        message: rows.map(row => row.message).join('; '),
+        changes: rows
+          .filter(row => row.status === 'fixed')
+          .map(row => ({
+            kind: 'file' as const,
+            target: join(contentDir, 'assets'),
+            action: 'update' as const,
+            description: row.message,
+          })),
+      }]
+    },
+  }
 }

@@ -40,12 +40,6 @@ mock.module('../../../packages/core/src/content-dir', () => ({
   isUsingBakinHome: () => true,
 }))
 
-let mockAutoFix = false
-mock.module('../../../src/core/settings', () => ({
-  getSettings: () => ({ doctor: { autoFixSkill: mockAutoFix } }),
-  resetSettingsCache: () => {},
-}))
-
 let mockKnownAgents: string[] = ['main', 'patch', 'pixel']
 mock.module('../../../packages/adapter-openclaw/src/main-agent', () => ({
   getMainAgentId: () => 'main',
@@ -163,6 +157,8 @@ import {
   checkTaskboard,
   checkTaskConsistency,
   checkTaskPositionIntegrity,
+  taskConsistencyRepair,
+  taskOrderRepair,
 } from '../../../plugins/tasks/lib/health-checks'
 
 afterAll(() => {
@@ -171,7 +167,6 @@ afterAll(() => {
 
 beforeEach(() => {
   storeBoard = emptyStoreBoard()
-  mockAutoFix = false
   mockKnownAgents = ['main', 'patch', 'pixel']
   clearedDependencies.length = 0
   clearDependencyShouldThrow = false
@@ -253,20 +248,24 @@ describe('checkTaskConsistency', () => {
     expect(results.some(r => r.status === 'warn' && r.message.includes('orphaned dependsOn') && r.autoFixable)).toBe(true)
   })
 
-  it('clears orphaned dependsOn in autoFix mode', async () => {
-    mockAutoFix = true
+  it('does not clear orphaned dependsOn during diagnostics', async () => {
     storeBoard.columns.done.push({ id: 'd2', title: 'Auto-clear', dependsOn: 'orphan' })
     const results = await checkTaskConsistency(testDir)
-    expect(results.some(r => r.status === 'fixed' && r.message.includes('Cleared orphaned dependsOn'))).toBe(true)
-    expect(clearedDependencies).toContain('d2')
+    expect(results.some(r => r.status === 'warn' && r.message.includes('orphaned dependsOn'))).toBe(true)
+    expect(clearedDependencies).toEqual([])
   })
 
-  it('falls back to a warn when clearDependency hook throws under autoFix', async () => {
-    mockAutoFix = true
-    clearDependencyShouldThrow = true
-    storeBoard.columns.done.push({ id: 'd3', title: 'Failed clear', dependsOn: 'orphan' })
+  it('plans and applies orphaned dependsOn repair explicitly', async () => {
+    storeBoard.columns.done.push({ id: 'd2', title: 'Repair clear', dependsOn: 'orphan' })
     const results = await checkTaskConsistency(testDir)
-    expect(results.some(r => r.status === 'warn' && r.message.includes('failed to clear'))).toBe(true)
+    const repair = taskConsistencyRepair()
+    const plan = await repair.plan(results)
+    expect(plan).toHaveLength(1)
+    expect(plan[0].id).toBe('tasks.clear-done-depends-on')
+
+    const applied = await repair.apply(plan)
+    expect(applied[0].status).toBe('applied')
+    expect(clearedDependencies).toContain('d2')
   })
 })
 
@@ -313,14 +312,28 @@ describe('checkTaskPositionIntegrity', () => {
     expect(results[0].message).toMatch(/duplicates/)
   })
 
-  it('auto-fixes by reassigning order zero-indexed by updatedAt desc', async () => {
-    mockAutoFix = true
+  it('does not reorder during diagnostics', async () => {
     const older: StoreTask = { id: 'older', title: 'Older', updatedAt: 100 }
     const newer: StoreTask = { id: 'newer', title: 'Newer', updatedAt: 200 }
     storeBoard.columns.todo.push(older, newer)
 
     const results = await checkTaskPositionIntegrity()
-    expect(results[0].status).toBe('fixed')
+    expect(results[0].status).toBe('warn')
+    expect(newer.order).toBeUndefined()
+    expect(older.order).toBeUndefined()
+  })
+
+  it('repair handler reassigns order zero-indexed by updatedAt desc', async () => {
+    const older: StoreTask = { id: 'older', title: 'Older', updatedAt: 100 }
+    const newer: StoreTask = { id: 'newer', title: 'Newer', updatedAt: 200 }
+    storeBoard.columns.todo.push(older, newer)
+
+    const results = await checkTaskPositionIntegrity()
+    const repair = taskOrderRepair()
+    const plan = await repair.plan(results)
+    expect(plan).toHaveLength(1)
+    const applied = await repair.apply(plan)
+    expect(applied[0].status).toBe('applied')
     expect(newer.order).toBe(0)
     expect(older.order).toBe(1)
   })
