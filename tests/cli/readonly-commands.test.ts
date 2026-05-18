@@ -271,4 +271,64 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).toContain('Write docs')
     expect(output()).not.toContain('id      title')
   })
+
+  it('renders docs and search read-only commands with shared TUI screens in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      routes: [
+        { method: 'GET', fullPath: '/api/plugins/tasks/', pluginId: 'tasks', description: 'List tasks' },
+        { method: 'POST', fullPath: '/api/plugins/tasks/', pluginId: 'tasks', description: 'Create task' },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'docs']
+    await main()
+    expect(output()).toContain('Docs')
+    expect(output()).toContain('ROUTES')
+    expect(output()).toContain('/api/plugins/tasks/')
+    expect(output()).not.toContain('GET /api/plugins/tasks/')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      results: [
+        {
+          id: 'task-1',
+          score: 0.9123,
+          table: 'bakin_tasks',
+          fields: { title: 'Blocked task' },
+        },
+      ],
+      aggregations: { status: [{ value: 'blocked', count: 1 }] },
+      meta: { query: 'blocked task', total: 1, took_ms: 4, source: 'tantivy' },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'search', 'blocked', 'task', '--table=tasks']
+    await main()
+    expect(output()).toContain('Search')
+    expect(output()).toContain('RESULTS')
+    expect(output()).toContain('Blocked task')
+    expect(output()).toContain('tasks')
+    expect(output()).toContain('task-1')
+    expect(output()).toContain('FACETS')
+    expect(output()).not.toContain('Search: "blocked task"')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      enabled: true,
+      tables: [
+        {
+          table: 'bakin_tasks',
+          pluginId: 'tasks',
+          stats: { num_docs: 12 },
+          healthy: true,
+          indexHealth: [],
+        },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'search:stats']
+    await main()
+    expect(output()).toContain('Search Stats')
+    expect(output()).toContain('TABLES')
+    expect(output()).toContain('bakin_tasks')
+    expect(output()).not.toContain('Search: enabled')
+  })
 })

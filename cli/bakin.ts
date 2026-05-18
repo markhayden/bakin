@@ -17,6 +17,11 @@ import {
   serializePluginExportManifest,
   type PluginImportInstallRequest,
 } from '../src/core/plugins/import-export'
+import type {
+  SearchAggregationsData,
+  SearchMetaData,
+  SearchResultData,
+} from '../src/core/cli/ui/readonly'
 
 const BASE_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 
@@ -156,6 +161,15 @@ async function printPluginsListTui(routes: Array<Record<string, unknown>>): Prom
   console.log(renderToString(createElement(PluginsListReport, { routes })))
 }
 
+async function printDocsTui(routes: Array<Record<string, unknown>>): Promise<void> {
+  const [{ DocsReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(DocsReport, { routes })))
+}
+
 async function printWorkflowsListTui(templates: Array<Record<string, unknown>>): Promise<void> {
   const [{ WorkflowsListReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
@@ -163,6 +177,36 @@ async function printWorkflowsListTui(templates: Array<Record<string, unknown>>):
     import('react'),
   ])
   console.log(renderToString(createElement(WorkflowsListReport, { templates })))
+}
+
+async function printSearchResultsTui(query: string, result: Record<string, unknown>): Promise<void> {
+  const [{ SearchResultsReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  const results = Array.isArray(result.results) ? result.results as SearchResultData[] : []
+  const aggregations = result.aggregations && typeof result.aggregations === 'object' && !Array.isArray(result.aggregations)
+    ? result.aggregations as SearchAggregationsData
+    : undefined
+  const meta = result.meta && typeof result.meta === 'object' && !Array.isArray(result.meta)
+    ? result.meta as SearchMetaData
+    : undefined
+  console.log(renderToString(createElement(SearchResultsReport, {
+    query,
+    results,
+    aggregations,
+    meta,
+  })))
+}
+
+async function printSearchStatsTui(enabled: boolean, tables: Array<Record<string, unknown>>): Promise<void> {
+  const [{ SearchStatsReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(SearchStatsReport, { enabled, tables })))
 }
 
 async function printTrashListTui(assets: Array<Record<string, unknown>>): Promise<void> {
@@ -778,6 +822,10 @@ function parseAgentsFlags(args: string[]): AgentsCmdFlags {
 
 async function cmdDocs(): Promise<void> {
   const docs = await apiGet('/api/docs') as { routes: Array<Record<string, unknown>> }
+  if (process.stdout.isTTY) {
+    await printDocsTui(docs.routes)
+    return
+  }
   for (const route of docs.routes) {
     const desc = route.description ? ` — ${route.description}` : ''
     console.log(`${route.method} ${route.fullPath}${desc}`)
@@ -793,6 +841,11 @@ async function cmdSearch(query: string, options: { table?: string; limit?: numbe
     results?: Array<{ key: string; score?: number; _table?: string; document?: Record<string, unknown> }>
     aggregations?: Record<string, Array<{ value: string; count: number }>>
     meta?: { query: string; total: number; took_ms: number; source: string }
+  }
+
+  if (process.stdout.isTTY) {
+    await printSearchResultsTui(query, result as Record<string, unknown>)
+    return
   }
 
   if (result.meta) {
@@ -827,6 +880,10 @@ async function cmdSearchStats(): Promise<void> {
       indexHealth?: Array<{ name: string; error?: string; walBacklog: number; rebuilding: boolean }>
       healthy?: boolean
     }>
+  }
+  if (process.stdout.isTTY) {
+    await printSearchStatsTui(result.enabled, result.tables as Array<Record<string, unknown>>)
+    return
   }
   console.log(`Search: ${result.enabled ? 'enabled' : 'disabled'}`)
   if (result.tables?.length) {

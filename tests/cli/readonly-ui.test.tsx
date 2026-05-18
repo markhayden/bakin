@@ -6,10 +6,13 @@ import {
   AgentPackagesListReport,
   AgentTasksReport,
   AgentsListReport,
+  DocsReport,
   PackagesListReport,
   PluginsListReport,
   ScheduleListReport,
   ScheduleRunsReport,
+  SearchResultsReport,
+  SearchStatsReport,
   StatusReport,
   TasksListReport,
   TrashListReport,
@@ -142,6 +145,64 @@ describe('read-only CLI TUI screens', () => {
     expect(output).toContain('STEPS')
     expect(output).toContain('release.yml')
     expect(output).toContain('Release')
+  })
+
+  it('renders docs and search screens with shared TUI tables', () => {
+    const docs = renderToString(
+      <DocsReport
+        routes={[
+          { method: 'GET', fullPath: '/api/plugins/tasks/', pluginId: 'tasks', description: 'List tasks' },
+          { method: 'POST', fullPath: '/api/plugins/tasks/', pluginId: 'tasks', description: 'Create task' },
+        ]}
+      />,
+    )
+    const search = renderToString(
+      <SearchResultsReport
+        query="blocked task"
+        results={[
+          {
+            id: 'task-1',
+            score: 0.9123,
+            table: 'bakin_tasks',
+            fields: { title: 'Blocked task' },
+          },
+        ]}
+        aggregations={{
+          status: [{ value: 'blocked', count: 1 }],
+        }}
+        meta={{ query: 'blocked task', total: 1, took_ms: 4, source: 'tantivy' }}
+      />,
+    )
+    const stats = renderToString(
+      <SearchStatsReport
+        enabled={true}
+        tables={[
+          {
+            table: 'bakin_tasks',
+            pluginId: 'tasks',
+            stats: { num_docs: 12 },
+            healthy: true,
+            indexHealth: [],
+          },
+        ]}
+      />,
+    )
+
+    expect(docs).toContain('Docs')
+    expect(docs).toContain('ROUTES')
+    expect(docs).toContain('METHOD')
+    expect(docs).toContain('/api/plugins/tasks/')
+    expect(search).toContain('Search')
+    expect(search).toContain('RESULTS')
+    expect(search).toContain('Blocked task')
+    expect(search).toContain('tasks')
+    expect(search).toContain('task-1')
+    expect(search).toContain('FACETS')
+    expect(search).toContain('blocked(1)')
+    expect(stats).toContain('Search Stats')
+    expect(stats).toContain('TABLES')
+    expect(stats).toContain('bakin_tasks')
+    expect(stats).toContain('12')
   })
 
   it('renders package-oriented lists as shared TUI tables', () => {
