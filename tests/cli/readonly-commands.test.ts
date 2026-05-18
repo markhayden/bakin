@@ -292,10 +292,10 @@ describe('read-only CLI TTY commands', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({
       results: [
         {
-          key: 'task-1',
+          id: 'task-1',
           score: 0.9123,
-          _table: 'bakin_tasks',
-          document: { title: 'Blocked task' },
+          table: 'bakin_tasks',
+          fields: { title: 'Blocked task' },
         },
       ],
       aggregations: { status: [{ value: 'blocked', count: 1 }] },
@@ -306,6 +306,8 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).toContain('Search')
     expect(output()).toContain('RESULTS')
     expect(output()).toContain('Blocked task')
+    expect(output()).toContain('tasks')
+    expect(output()).toContain('task-1')
     expect(output()).toContain('FACETS')
     expect(output()).not.toContain('Search: "blocked task"')
 

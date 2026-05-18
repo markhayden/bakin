@@ -61,9 +61,12 @@ export interface WorkflowTemplateData {
 }
 
 export interface SearchResultData {
+  id?: unknown
   key?: unknown
+  table?: unknown
   score?: unknown
   _table?: unknown
+  fields?: unknown
   document?: unknown
 }
 
@@ -443,16 +446,17 @@ function searchScoreText(value: unknown): string {
 }
 
 function searchResultTitle(result: SearchResultData): string {
-  const title = objectField(result.document, 'title') ?? objectField(result.document, 'name')
-  return valueText(title, valueText(result.key, '(untitled result)'))
+  const document = result.fields ?? result.document
+  const title = objectField(document, 'title') ?? objectField(document, 'name')
+  return valueText(title, valueText(result.id ?? result.key, '(untitled result)'))
 }
 
 function searchResultTableRows(results: SearchResultData[]): SearchResultTableRow[] {
   return results.map(result => ({
     title: searchResultTitle(result),
-    table: searchTableName(result._table),
+    table: searchTableName(result.table ?? result._table),
     score: searchScoreText(result.score),
-    key: valueText(result.key),
+    key: valueText(result.id ?? result.key),
   }))
 }
 

@@ -161,10 +161,10 @@ describe('read-only CLI TUI screens', () => {
         query="blocked task"
         results={[
           {
-            key: 'task-1',
+            id: 'task-1',
             score: 0.9123,
-            _table: 'bakin_tasks',
-            document: { title: 'Blocked task' },
+            table: 'bakin_tasks',
+            fields: { title: 'Blocked task' },
           },
         ]}
         aggregations={{
@@ -195,6 +195,8 @@ describe('read-only CLI TUI screens', () => {
     expect(search).toContain('Search')
     expect(search).toContain('RESULTS')
     expect(search).toContain('Blocked task')
+    expect(search).toContain('tasks')
+    expect(search).toContain('task-1')
     expect(search).toContain('FACETS')
     expect(search).toContain('blocked(1)')
     expect(stats).toContain('Search Stats')
