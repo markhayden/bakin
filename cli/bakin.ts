@@ -948,6 +948,42 @@ function printDoctorDelegateResult(report: CliDoctorDelegateReport): void {
   if (request.agentId) console.log(`Agent: ${request.agentId}`)
 }
 
+async function printDoctorRepairPlanTui(plan: CliDoctorRepairPlan): Promise<void> {
+  const [{ DoctorRepairPlan }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/doctor-repair'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(DoctorRepairPlan, { plan })))
+}
+
+async function printDoctorRepairApplyTui(report: CliDoctorRepairApply): Promise<void> {
+  const [{ DoctorRepairApplyReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/doctor-repair'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(DoctorRepairApplyReport, { report })))
+}
+
+async function printDoctorDelegatePreviewTui(unresolved: CliDoctorRepairPlan['diagnostics']): Promise<void> {
+  const [{ DoctorDelegatePreview }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/doctor-repair'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(DoctorDelegatePreview, { unresolved })))
+}
+
+async function printDoctorDelegateResultTui(report: CliDoctorDelegateReport): Promise<void> {
+  const [{ DoctorDelegateResult }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/doctor-repair'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(DoctorDelegateResult, { report })))
+}
+
 async function confirmDoctorRepair(plan: CliDoctorRepairPlan): Promise<boolean> {
   if (plan.summary.safeItems === 0) return false
   const readline = await import('node:readline/promises')
@@ -988,7 +1024,11 @@ async function cmdDoctorFix(options: { json: boolean; yes: boolean; isTTY: boole
       process.exit(1)
     }
 
-    printDoctorRepairPlan(plan)
+    if (options.isTTY) {
+      await printDoctorRepairPlanTui(plan)
+    } else {
+      printDoctorRepairPlan(plan)
+    }
     if (plan.summary.totalItems === 0) return
 
     if (!options.isTTY) {
@@ -1011,7 +1051,11 @@ async function cmdDoctorFix(options: { json: boolean; yes: boolean; isTTY: boole
     if (exitCode !== 0) process.exit(exitCode)
     return
   }
-  printDoctorRepairApply(report)
+  if (options.isTTY) {
+    await printDoctorRepairApplyTui(report)
+  } else {
+    printDoctorRepairApply(report)
+  }
   if (exitCode !== 0) process.exit(exitCode)
 }
 
@@ -1032,7 +1076,11 @@ async function cmdDoctorDelegate(options: { json: boolean; yes: boolean; isTTY: 
       process.exit(1)
     }
 
-    printDoctorDelegatePreview(plan, unresolved)
+    if (options.isTTY) {
+      await printDoctorDelegatePreviewTui(unresolved)
+    } else {
+      printDoctorDelegatePreview(plan, unresolved)
+    }
     if (unresolved.length === 0) return
     if (!options.isTTY) {
       console.log('\nRun `bakin doctor --delegate --yes` to create the delegated repair task.')
@@ -1050,7 +1098,11 @@ async function cmdDoctorDelegate(options: { json: boolean; yes: boolean; isTTY: 
     printDoctorRepairJson(report, 0)
     return
   }
-  printDoctorDelegateResult(report)
+  if (options.isTTY) {
+    await printDoctorDelegateResultTui(report)
+  } else {
+    printDoctorDelegateResult(report)
+  }
 }
 
 async function cmdDoctorRepair(args: string[], options: { json: boolean }): Promise<void> {
