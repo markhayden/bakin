@@ -12,6 +12,7 @@ import {
   PackagesListReport,
   PathsReport,
   PluginsListReport,
+  ReindexReport,
   ScheduleListReport,
   ScheduleRunsReport,
   SearchResultsReport,
@@ -173,6 +174,35 @@ describe('read-only CLI TUI screens', () => {
     expect(output).toContain('No runtime agents found')
     expect(output).toContain('Failed to read AGENTS.md')
     expect(output).not.toContain('[OK] managed-context')
+  })
+
+  it('renders reindex results with shared TUI tables', () => {
+    const output = renderToString(
+      <ReindexReport
+        target="tasks"
+        rebuild={true}
+        result={{
+          ok: false,
+          total: 12,
+          errors: 1,
+          enrichmentErrors: 1,
+          tables: [
+            { table: 'bakin_tasks', indexed: 12, enrichment: { healthy: true, indexes: [] } },
+            { table: 'agent_lessons', indexed: 0, error: 'schema missing' },
+            { table: 'assets', indexed: 4, enrichment: { healthy: false, indexes: [{ name: 'semantic', error: 'offline', walBacklog: 2 }] } },
+          ],
+        }}
+      />,
+    )
+
+    expect(output).toContain('Reindex')
+    expect(output).toContain('target: tasks')
+    expect(output).toContain('TABLES')
+    expect(output).toContain('bakin_tasks')
+    expect(output).toContain('agent_lessons')
+    expect(output).toContain('schema missing')
+    expect(output).toContain('semantic: offline')
+    expect(output).not.toContain('Reindexing tasks into search')
   })
 
   it('renders agents and plugins as shared TUI tables', () => {

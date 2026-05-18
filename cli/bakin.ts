@@ -19,6 +19,7 @@ import {
 } from '../src/core/plugins/import-export'
 import type {
   AgentRuleResultData,
+  ReindexResultData,
   SearchAggregationsData,
   SearchMetaData,
   SearchResultData,
@@ -256,6 +257,15 @@ async function printSearchStatsTui(enabled: boolean, tables: Array<Record<string
     import('react'),
   ])
   console.log(renderToString(createElement(SearchStatsReport, { enabled, tables })))
+}
+
+async function printReindexTui(result: ReindexResultData, options: { target: string; rebuild: boolean }): Promise<void> {
+  const [{ ReindexReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(ReindexReport, { result, ...options })))
 }
 
 async function printTrashListTui(assets: Array<Record<string, unknown>>): Promise<void> {
@@ -1820,8 +1830,11 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): 
   if (options.rebuild) params.push('rebuild=true')
   if (params.length) url += `?${params.join('&')}`
 
-  console.log(`Reindexing ${options.table || 'all content'} into search${options.rebuild ? ' (rebuild indexes)' : ''}...`)
-  const result = await apiPost(url) as {
+  const target = options.table || 'all content'
+  if (!process.stdout.isTTY) {
+    console.log(`Reindexing ${target} into search${options.rebuild ? ' (rebuild indexes)' : ''}...`)
+  }
+  const result = await apiPost(url) as ReindexResultData & {
     ok: boolean
     total: number
     errors: number
@@ -1832,6 +1845,10 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): 
       error?: string
       enrichment?: { healthy: boolean; indexes: Array<{ name: string; error?: string; walBacklog: number }> }
     }>
+  }
+  if (process.stdout.isTTY) {
+    await printReindexTui(result, { target, rebuild: options.rebuild === true })
+    return
   }
   if (result.tables?.length) {
     for (const t of result.tables) {

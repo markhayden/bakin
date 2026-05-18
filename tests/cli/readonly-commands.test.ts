@@ -422,4 +422,33 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).toContain('bakin_tasks')
     expect(output()).not.toContain('Search: enabled')
   })
+
+  it('renders reindex results with the shared TUI screen in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: false,
+      total: 12,
+      errors: 1,
+      enrichmentErrors: 1,
+      tables: [
+        { table: 'bakin_tasks', indexed: 12, enrichment: { healthy: true, indexes: [] } },
+        { table: 'agent_lessons', indexed: 0, error: 'schema missing' },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'reindex', '--table', 'tasks', '--rebuild']
+    await main()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3737/api/reindex?table=tasks&rebuild=true',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    expect(output()).toContain('Reindex')
+    expect(output()).toContain('target: tasks')
+    expect(output()).toContain('TABLES')
+    expect(output()).toContain('bakin_tasks')
+    expect(output()).toContain('agent_lessons')
+    expect(output()).toContain('schema missing')
+    expect(output()).not.toContain('Reindexing tasks into search')
+  })
 })

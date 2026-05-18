@@ -110,6 +110,21 @@ export interface SearchStatsTableData {
   healthy?: unknown
 }
 
+export interface ReindexTableData {
+  table?: unknown
+  indexed?: unknown
+  error?: unknown
+  enrichment?: unknown
+}
+
+export interface ReindexResultData {
+  ok?: unknown
+  total?: unknown
+  errors?: unknown
+  enrichmentErrors?: unknown
+  tables?: ReindexTableData[]
+}
+
 export type SettingsData = Record<string, unknown>
 
 export interface AgentRuleResultData {
@@ -229,6 +244,14 @@ interface SearchStatsTableRow {
   plugin: string
   docs: string
   health: string
+}
+
+interface ReindexTableRow {
+  status: TuiStatus
+  table: string
+  docs: string
+  enrichment: string
+  issue: string
 }
 
 interface AgentPackageTableRow {
@@ -629,6 +652,36 @@ function searchStatsTableRows(tables: SearchStatsTableData[], enabled: boolean):
     docs: searchStatsDocCount(table.stats),
     health: searchStatsHealth(table, enabled),
   }))
+}
+
+function reindexEnrichmentText(value: unknown): string {
+  if (!isPlainRecord(value)) return '-'
+  const indexes = Array.isArray(value.indexes) ? value.indexes : []
+  const issues = indexes.flatMap(index => {
+    if (!isPlainRecord(index)) return []
+    const name = valueText(index.name, 'index')
+    const error = valueText(index.error, '')
+    if (error) return [`${name}: ${error}`]
+    const walBacklog = numberValue(index.walBacklog)
+    if (walBacklog > 0) return [`${name}: ${walBacklog} wal`]
+    return []
+  })
+  if (issues.length > 0) return issues.join(', ')
+  return value.healthy === false ? 'unhealthy' : 'healthy'
+}
+
+function reindexTableRows(tables: ReindexTableData[]): ReindexTableRow[] {
+  return tables.map(table => {
+    const hasError = Boolean(table.error)
+    const enrichmentUnhealthy = isPlainRecord(table.enrichment) && table.enrichment.healthy === false
+    return {
+      status: hasError ? 'fail' : enrichmentUnhealthy ? 'warn' : 'ok',
+      table: valueText(table.table, '(unknown)'),
+      docs: valueText(table.indexed, '0'),
+      enrichment: reindexEnrichmentText(table.enrichment),
+      issue: valueText(table.error),
+    }
+  })
 }
 
 function packageStateStatus(state: string): TuiStatus {
@@ -1247,6 +1300,51 @@ export function SearchStatsReport({ enabled, tables, color = true }: {
           />
         ) : (
           <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No search tables are registered.' }]} color={color} />
+        )}
+      </Section>
+    </Box>
+  )
+}
+
+export function ReindexReport({ result, target = 'all content', rebuild = false, color = true }: {
+  result: ReindexResultData
+  target?: string
+  rebuild?: boolean
+  color?: boolean
+}) {
+  const rows = reindexTableRows(result.tables ?? [])
+  const total = numberValue(result.total)
+  const errors = numberValue(result.errors)
+  const enrichmentErrors = numberValue(result.enrichmentErrors)
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader
+        title="Reindex"
+        subtitle={rebuild ? 'Search content indexed with rebuilt indexes' : 'Search content indexed'}
+        meta={`target: ${target}`}
+        color={color}
+      />
+      <SummaryStrip items={[
+        { label: plural(total, 'document'), value: total, status: total > 0 ? 'ok' : 'skip' },
+        { label: plural(rows.length, 'table'), value: rows.length, status: rows.length > 0 ? 'ok' : 'skip' },
+        { label: 'errors', value: errors, status: errors > 0 ? 'fail' : 'ok' },
+        { label: 'enrichment', value: enrichmentErrors, status: enrichmentErrors > 0 ? 'warn' : 'ok' },
+      ]} color={color} />
+      <Section title="Tables" color={color}>
+        {rows.length > 0 ? (
+          <StatusTable
+            rows={rows}
+            columns={[
+              { key: 'table', header: 'TABLE', width: 16, render: row => row.table },
+              { key: 'docs', header: 'DOCS', width: 6, render: row => row.docs },
+              { key: 'enrichment', header: 'ENRICHMENT', width: 18, render: row => row.enrichment },
+              { key: 'issue', header: 'ISSUE', width: 24, grow: true, render: row => row.issue },
+            ]}
+            color={color}
+          />
+        ) : (
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No reindex table results returned.' }]} color={color} />
         )}
       </Section>
     </Box>
