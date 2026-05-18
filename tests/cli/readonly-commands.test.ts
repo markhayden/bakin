@@ -81,6 +81,8 @@ describe('read-only CLI TTY commands', () => {
     await main()
     expect(output()).toContain('Tasks')
     expect(output()).toContain('BOARD')
+    expect(output()).toContain('COLUMN')
+    expect(output()).toContain('AGENT')
     expect(output()).not.toContain('=== todo ===')
 
     log.mockClear()
@@ -93,6 +95,7 @@ describe('read-only CLI TTY commands', () => {
     process.argv = ['bun', 'cli/bakin.ts', 'agents', 'list']
     await main()
     expect(output()).toContain('Agents')
+    expect(output()).toContain('MODEL')
     expect(output()).toContain('Main Agent')
     expect(output()).not.toContain('○ main:')
 
@@ -108,6 +111,7 @@ describe('read-only CLI TTY commands', () => {
     process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'list']
     await main()
     expect(output()).toContain('Plugins')
+    expect(output()).toContain('ROUTES')
     expect(output()).toContain('tasks')
     expect(output()).not.toContain('Installed plugins:')
   })

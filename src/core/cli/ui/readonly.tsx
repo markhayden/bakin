@@ -1,10 +1,10 @@
-import { Box } from 'ink'
+import { Box, Text } from 'ink'
 import {
   FindingRows,
   ScreenHeader,
   Section,
+  StatusToken,
   SummaryStrip,
-  type FindingRow,
   type SummaryItem,
 } from './tui'
 import type { TuiStatus } from './style-tokens'
@@ -37,6 +37,37 @@ export interface AgentRowData {
 
 export interface PluginRouteData {
   pluginId?: unknown
+}
+
+interface StatusTableColumn<TRow> {
+  key: string
+  header: string
+  width: number
+  grow?: boolean
+  render: (row: TRow) => string
+}
+
+interface StatusTableRow {
+  status: TuiStatus
+}
+
+interface TaskTableRow extends StatusTableRow {
+  column: string
+  id: string
+  title: string
+  agent: string
+}
+
+interface AgentTableRow extends StatusTableRow {
+  id: string
+  name: string
+  state: string
+  model: string
+}
+
+interface PluginTableRow extends StatusTableRow {
+  plugin: string
+  routes: string
 }
 
 const TASK_COLUMN_ORDER = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived'] as const
@@ -83,21 +114,16 @@ function orderedTaskColumns(columns: Record<string, TaskRowData[]>): Array<[stri
   return [...known, ...unknown]
 }
 
-function taskRows(columns: Record<string, TaskRowData[]>): FindingRow[] {
-  const rows = orderedTaskColumns(columns).flatMap(([column, tasks]) => (
+function taskTableRows(columns: Record<string, TaskRowData[]>): TaskTableRow[] {
+  return orderedTaskColumns(columns).flatMap(([column, tasks]) => (
     tasks.map(task => ({
       status: taskColumnStatus(column),
-      label: valueText(task.id, '(no id)'),
-      message: valueText(task.title, '(untitled task)'),
-      detail: `Column: ${column}; Agent: ${valueText(task.agent)}`,
+      column,
+      id: valueText(task.id, '(no id)'),
+      title: valueText(task.title, '(untitled task)'),
+      agent: valueText(task.agent),
     }))
   ))
-
-  if (rows.length === 0) {
-    return [{ status: 'skip', label: 'empty', message: 'No tasks found.' }]
-  }
-
-  return rows
 }
 
 function taskSummary(columns: Record<string, TaskRowData[]>): SummaryItem[] {
@@ -130,6 +156,16 @@ function agentStatus(status: string): TuiStatus {
   }
 }
 
+function agentTableRows(agents: AgentRowData[]): AgentTableRow[] {
+  return agents.map(agent => ({
+    status: agentStatus(agent.status),
+    id: agent.id,
+    name: agent.name,
+    state: agent.status,
+    model: agent.model,
+  }))
+}
+
 function pluginRouteCounts(routes: PluginRouteData[]): Array<{ pluginId: string; routeCount: number }> {
   const counts = new Map<string, number>()
   for (const route of routes) {
@@ -141,6 +177,57 @@ function pluginRouteCounts(routes: PluginRouteData[]): Array<{ pluginId: string;
   return [...counts.entries()]
     .map(([pluginId, routeCount]) => ({ pluginId, routeCount }))
     .sort((a, b) => a.pluginId.localeCompare(b.pluginId))
+}
+
+function pluginTableRows(routes: PluginRouteData[]): PluginTableRow[] {
+  return pluginRouteCounts(routes).map(plugin => ({
+    status: 'ok',
+    plugin: plugin.pluginId,
+    routes: String(plugin.routeCount),
+  }))
+}
+
+function StatusTable<TRow extends StatusTableRow>({ rows, columns, color = true }: {
+  rows: TRow[]
+  columns: Array<StatusTableColumn<TRow>>
+  color?: boolean
+}) {
+  return (
+    <Box flexDirection="column">
+      <Box gap={1}>
+        <Box width={10} flexShrink={0}>
+          <Text bold>STATUS</Text>
+        </Box>
+        {columns.map(column => (
+          <Box
+            key={column.key}
+            width={column.width}
+            flexGrow={column.grow ? 1 : 0}
+            flexShrink={column.grow ? 1 : 0}
+          >
+            <Text bold wrap="truncate-end">{column.header}</Text>
+          </Box>
+        ))}
+      </Box>
+      {rows.map((row, rowIndex) => (
+        <Box key={rowIndex} gap={1}>
+          <Box width={10} flexShrink={0}>
+            <StatusToken status={row.status} color={color} />
+          </Box>
+          {columns.map(column => (
+            <Box
+              key={column.key}
+              width={column.width}
+              flexGrow={column.grow ? 1 : 0}
+              flexShrink={column.grow ? 1 : 0}
+            >
+              <Text wrap={column.grow ? 'wrap' : 'truncate-end'}>{column.render(row)}</Text>
+            </Box>
+          ))}
+        </Box>
+      ))}
+    </Box>
+  )
 }
 
 export function StatusReport({ dispatch, roster, color = true }: {
@@ -189,12 +276,27 @@ export function TasksListReport({ columns, column, color = true }: {
   column?: string
   color?: boolean
 }) {
+  const rows = taskTableRows(columns)
+
   return (
     <Box flexDirection="column">
       <ScreenHeader title="Tasks" subtitle="Board snapshot" meta={column ? `column: ${column}` : undefined} color={color} />
       <SummaryStrip items={taskSummary(columns)} color={color} />
       <Section title={column ? `Column ${column}` : 'Board'} color={color}>
-        <FindingRows rows={taskRows(columns)} color={color} />
+        {rows.length > 0 ? (
+          <StatusTable
+            rows={rows}
+            columns={[
+              { key: 'column', header: 'COLUMN', width: 12, render: row => row.column },
+              { key: 'id', header: 'ID', width: 16, render: row => row.id },
+              { key: 'title', header: 'TITLE', width: 40, grow: true, render: row => row.title },
+              { key: 'agent', header: 'AGENT', width: 16, render: row => row.agent },
+            ]}
+            color={color}
+          />
+        ) : (
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No tasks found.' }]} color={color} />
+        )}
       </Section>
     </Box>
   )
@@ -206,6 +308,7 @@ export function AgentsListReport({ agents, color = true }: {
 }) {
   const working = agents.filter(agent => agent.status === 'working').length
   const online = agents.filter(agent => agent.status === 'online').length
+  const rows = agentTableRows(agents)
 
   return (
     <Box flexDirection="column">
@@ -216,15 +319,20 @@ export function AgentsListReport({ agents, color = true }: {
         { label: 'online', value: online, status: online > 0 ? 'ok' : 'skip' },
       ]} color={color} />
       <Section title="Roster" color={color}>
-        <FindingRows rows={agents.length > 0
-          ? agents.map(agent => ({
-            status: agentStatus(agent.status),
-            label: agent.id,
-            message: `${agent.name} (${agent.status})`,
-            detail: `Model: ${agent.model}`,
-          }))
-          : [{ status: 'skip', label: 'empty', message: 'No agents reported by the runtime.' }]
-        } color={color} />
+        {rows.length > 0 ? (
+          <StatusTable
+            rows={rows}
+            columns={[
+              { key: 'id', header: 'ID', width: 18, render: row => row.id },
+              { key: 'name', header: 'NAME', width: 26, grow: true, render: row => row.name },
+              { key: 'state', header: 'STATE', width: 12, render: row => row.state },
+              { key: 'model', header: 'MODEL', width: 20, render: row => row.model },
+            ]}
+            color={color}
+          />
+        ) : (
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No agents reported by the runtime.' }]} color={color} />
+        )}
       </Section>
     </Box>
   )
@@ -236,6 +344,7 @@ export function PluginsListReport({ routes, color = true }: {
 }) {
   const plugins = pluginRouteCounts(routes)
   const routeTotal = plugins.reduce((sum, plugin) => sum + plugin.routeCount, 0)
+  const rows = pluginTableRows(routes)
 
   return (
     <Box flexDirection="column">
@@ -245,14 +354,18 @@ export function PluginsListReport({ routes, color = true }: {
         { label: plural(routeTotal, 'route'), value: routeTotal, status: routeTotal > 0 ? 'ok' : 'skip' },
       ]} color={color} />
       <Section title="Installed plugins" color={color}>
-        <FindingRows rows={plugins.length > 0
-          ? plugins.map(plugin => ({
-            status: 'ok',
-            label: plugin.pluginId,
-            message: `${plugin.routeCount} ${plural(plugin.routeCount, 'route')}`,
-          }))
-          : [{ status: 'skip', label: 'empty', message: 'No non-core plugins found.' }]
-        } color={color} />
+        {rows.length > 0 ? (
+          <StatusTable
+            rows={rows}
+            columns={[
+              { key: 'plugin', header: 'PLUGIN', width: 28, grow: true, render: row => row.plugin },
+              { key: 'routes', header: 'ROUTES', width: 8, render: row => row.routes },
+            ]}
+            color={color}
+          />
+        ) : (
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No non-core plugins found.' }]} color={color} />
+        )}
       </Section>
     </Box>
   )

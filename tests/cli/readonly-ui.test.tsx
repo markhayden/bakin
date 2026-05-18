@@ -30,7 +30,7 @@ describe('read-only CLI TUI screens', () => {
     expect(output).not.toContain('=== Bakin Status ===')
   })
 
-  it('renders task board rows with column status tokens', () => {
+  it('renders task board rows as a table with column status tokens', () => {
     const output = renderToString(
       <TasksListReport
         columns={{
@@ -46,11 +46,17 @@ describe('read-only CLI TUI screens', () => {
     expect(output).toContain('TODO')
     expect(output).toContain('BLOCKED')
     expect(output).toContain('DONE')
+    expect(output).toContain('COLUMN')
+    expect(output).toContain('ID')
+    expect(output).toContain('TITLE')
+    expect(output).toContain('AGENT')
     expect(output).toContain('task-1')
-    expect(output).toContain('Column: todo; Agent: patch')
+    expect(output).toContain('Write docs')
+    expect(output).toContain('patch')
+    expect(output).not.toContain('Column: todo; Agent: patch')
   })
 
-  it('renders agents and plugins as shared TUI reports', () => {
+  it('renders agents and plugins as shared TUI tables', () => {
     const agents = renderToString(
       <AgentsListReport
         agents={[
@@ -71,11 +77,19 @@ describe('read-only CLI TUI screens', () => {
     )
 
     expect(agents).toContain('Agents')
+    expect(agents).toContain('STATUS')
+    expect(agents).toContain('ID')
+    expect(agents).toContain('NAME')
+    expect(agents).toContain('STATE')
+    expect(agents).toContain('MODEL')
     expect(agents).toContain('Main Agent')
-    expect(agents).toContain('Model: gpt-5.5')
+    expect(agents).toContain('gpt-5.5')
+    expect(agents).not.toContain('Model: gpt-5.5')
     expect(plugins).toContain('Plugins')
+    expect(plugins).toContain('PLUGIN')
+    expect(plugins).toContain('ROUTES')
     expect(plugins).toContain('tasks')
-    expect(plugins).toContain('2 routes')
+    expect(plugins).toContain('2')
     expect(plugins).not.toContain('core')
   })
 })
