@@ -112,6 +112,13 @@ export interface SearchStatsTableData {
 
 export type SettingsData = Record<string, unknown>
 
+export interface AgentRuleResultData {
+  check?: unknown
+  status?: unknown
+  message?: unknown
+  autoFixable?: unknown
+}
+
 export interface AgentPackageData {
   agentId?: unknown
   state?: unknown
@@ -461,6 +468,52 @@ function pathRows(paths: unknown): DetailFieldRow[] {
     .map(([field, value]) => ({ field, value: valueText(value) }))
 }
 
+function agentRuleStatus(value: unknown): TuiStatus {
+  switch (value) {
+    case 'ok':
+      return 'ok'
+    case 'fixed':
+      return 'applied'
+    case 'warn':
+      return 'warn'
+    case 'error':
+      return 'fail'
+    default:
+      return 'skip'
+  }
+}
+
+function agentRuleSummaryItems(results: AgentRuleResultData[]): SummaryItem[] {
+  const ok = results.filter(result => result.status === 'ok').length
+  const fixed = results.filter(result => result.status === 'fixed').length
+  const warnings = results.filter(result => result.status === 'warn').length
+  const errors = results.filter(result => result.status === 'error').length
+
+  return [
+    { label: 'up to date', value: ok, status: 'ok' },
+    { label: 'fixed', value: fixed, status: fixed > 0 ? 'applied' : 'ok' },
+    { label: 'warnings', value: warnings, status: warnings > 0 ? 'warn' : 'ok' },
+    { label: 'errors', value: errors, status: errors > 0 ? 'fail' : 'ok' },
+  ]
+}
+
+function agentRuleRows(results: AgentRuleResultData[], mode: 'check' | 'apply') {
+  return results.map(result => {
+    const status = agentRuleStatus(result.status)
+    const autoFixable = Boolean(result.autoFixable)
+    const next = mode === 'check' && autoFixable && (status === 'warn' || status === 'fail')
+      ? 'Run `bakin agent-rules --apply` to write managed context.'
+      : undefined
+
+    return {
+      status,
+      label: valueText(result.check, 'check'),
+      message: valueText(result.message, 'No result message returned.'),
+      next,
+    }
+  })
+}
+
 function contentPreview(value: unknown): string {
   const text = valueText(value, '')
   if (!text) return 'missing'
@@ -804,6 +857,34 @@ export function PathsReport({ paths, isBakinHome, color = true }: {
           />
         ) : (
           <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No paths returned by the server.' }]} color={color} />
+        )}
+      </Section>
+    </Box>
+  )
+}
+
+export function AgentRulesReport({ results, mode, scope, color = true }: {
+  results: AgentRuleResultData[]
+  mode: 'check' | 'apply'
+  scope: 'orchestrator' | 'all'
+  color?: boolean
+}) {
+  const rows = agentRuleRows(results, mode)
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader
+        title="Agent Rules"
+        subtitle={mode === 'apply' ? 'Managed AGENTS.md context applied' : 'Managed AGENTS.md context checked'}
+        meta={`scope: ${scope}`}
+        color={color}
+      />
+      <SummaryStrip items={agentRuleSummaryItems(results)} color={color} />
+      <Section title="Checks" color={color}>
+        {rows.length > 0 ? (
+          <FindingRows rows={rows} color={color} />
+        ) : (
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No agent-rules results returned.' }]} color={color} />
         )}
       </Section>
     </Box>
