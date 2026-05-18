@@ -16,7 +16,7 @@ see across common command families:
 
 - diagnostics
 - repairs and delegated repairs
-- onboarding progress, async feedback, blockers, and completion
+- onboarding decisions, selections, progress, async feedback, blockers, and completion
 - plugin/package/task lists
 - setup blockers
 - command failures with remediation
@@ -37,6 +37,9 @@ Render one screen:
 ```bash
 bun run cli:tui-gallery doctor
 bun run cli:tui-gallery onboard
+bun run cli:tui-gallery onboard-antfly-confirm
+bun run cli:tui-gallery onboard-plugin-selection
+bun run cli:tui-gallery onboard-agent-selection
 bun run cli:tui-gallery doctor-fix
 bun run cli:tui-gallery plugins
 ```
@@ -83,6 +86,8 @@ The gallery should feel like a quiet operational tool:
 - section headers rendered as bold white text with a bold white divider line
 - no decorative boxes or nested cards
 - summaries near the top and final next actions near the bottom
+- interactive mocks show current focus with `>`, selected rows with `[x]`,
+  unselected rows with `[ ]`, and default confirm behavior in the prompt text
 
 Status vocabulary uses fixed-width color blocks with contrasting foreground
 text, not bracketed labels:
