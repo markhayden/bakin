@@ -156,6 +156,15 @@ async function printWorkflowsListTui(templates: Array<Record<string, unknown>>):
   console.log(renderToString(createElement(WorkflowsListReport, { templates })))
 }
 
+async function printTrashListTui(assets: Array<Record<string, unknown>>): Promise<void> {
+  const [{ TrashListReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(TrashListReport, { assets })))
+}
+
 async function printAgentPackagesListTui(agents: Array<Record<string, unknown>>): Promise<void> {
   const [{ AgentPackagesListReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
@@ -1868,6 +1877,10 @@ function daysUntil(dateStr: string): string {
 
 async function cmdTrashList(): Promise<void> {
   const data = await apiGet('/api/plugins/assets/trash') as { assets: Array<{ filename: string; originalFilename: string; type: string; size: number; deletedAt: string; expiresAt: string; metadata: { agent?: string } | null }>; count: number }
+  if (process.stdout.isTTY) {
+    await printTrashListTui(data.assets as Array<Record<string, unknown>>)
+    return
+  }
   if (data.count === 0) {
     console.log('Trash is empty.')
     return

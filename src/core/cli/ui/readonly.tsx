@@ -86,6 +86,16 @@ export interface ScheduleRunData {
   error?: unknown
 }
 
+export interface TrashAssetData {
+  filename?: unknown
+  originalFilename?: unknown
+  type?: unknown
+  size?: unknown
+  deletedAt?: unknown
+  expiresAt?: unknown
+  metadata?: unknown
+}
+
 interface TaskTableRow {
   status: TuiStatus
   column: string
@@ -155,6 +165,16 @@ interface ScheduleRunTableRow {
   error: string
 }
 
+interface TrashAssetTableRow {
+  status: TuiStatus
+  filename: string
+  type: string
+  size: string
+  deleted: string
+  expires: string
+  agent: string
+}
+
 const TASK_COLUMN_ORDER = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived'] as const
 
 function valueText(value: unknown, fallback = '-'): string {
@@ -180,6 +200,29 @@ function timestampText(value: unknown): string {
   const text = valueText(value)
   const date = new Date(text)
   return Number.isNaN(date.getTime()) ? text : date.toLocaleString()
+}
+
+function metadataAgent(value: unknown): string {
+  if (!value || typeof value !== 'object') return 'unknown'
+  const agent = (value as { agent?: unknown }).agent
+  return valueText(agent, 'unknown')
+}
+
+function bytesText(value: unknown): string {
+  const bytes = typeof value === 'number' && Number.isFinite(value) ? value : Number(value)
+  if (!Number.isFinite(bytes)) return valueText(value)
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function daysUntilText(value: unknown): string {
+  const text = valueText(value)
+  const diff = new Date(text).getTime() - Date.now()
+  if (Number.isNaN(diff)) return text
+  const days = Math.ceil(diff / (24 * 60 * 60 * 1000))
+  if (days <= 0) return 'expiring'
+  return `${days}d`
 }
 
 function taskColumnStatus(column: string): TuiStatus {
@@ -407,6 +450,18 @@ function scheduleRunTableRows(runs: ScheduleRunData[]): ScheduleRunTableRow[] {
       error: valueText(run.error, ''),
     }
   })
+}
+
+function trashAssetTableRows(assets: TrashAssetData[]): TrashAssetTableRow[] {
+  return assets.map(asset => ({
+    status: 'warn',
+    filename: valueText(asset.originalFilename, valueText(asset.filename)),
+    type: valueText(asset.type),
+    size: bytesText(asset.size),
+    deleted: timestampText(asset.deletedAt),
+    expires: daysUntilText(asset.expiresAt),
+    agent: metadataAgent(asset.metadata),
+  }))
 }
 
 export function StatusReport({ dispatch, roster, color = true }: {
@@ -759,6 +814,48 @@ export function ScheduleRunsReport({ jobId, runs, color = true }: {
         ) : (
           <FindingRows rows={[{ status: 'skip', label: 'empty', message: `No run history for ${jobId}.` }]} color={color} />
         )}
+      </Section>
+    </Box>
+  )
+}
+
+export function TrashListReport({ assets, color = true }: {
+  assets: TrashAssetData[]
+  color?: boolean
+}) {
+  const rows = trashAssetTableRows(assets)
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Trash" subtitle="Soft-deleted assets" color={color} />
+      <SummaryStrip items={[
+        { label: plural(rows.length, 'item'), value: rows.length, status: rows.length > 0 ? 'warn' : 'skip' },
+      ]} color={color} />
+      <Section title="Trashed assets" color={color}>
+        {rows.length > 0 ? (
+          <StatusTable
+            rows={rows}
+            columns={[
+              { key: 'filename', header: 'FILENAME', width: 18, render: row => row.filename },
+              { key: 'type', header: 'TYPE', width: 8, render: row => row.type },
+              { key: 'size', header: 'SIZE', width: 7, render: row => row.size },
+              { key: 'deleted', header: 'DELETED', width: 16, render: row => row.deleted },
+              { key: 'expires', header: 'EXPIRES', width: 7, render: row => row.expires },
+              { key: 'agent', header: 'AGENT', width: 8, render: row => row.agent },
+            ]}
+            color={color}
+          />
+        ) : (
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'Trash is empty.' }]} color={color} />
+        )}
+      </Section>
+      <Section title="Restore" color={color}>
+        <FindingRows rows={[{
+          status: 'ready',
+          label: 'command',
+          message: 'bakin trash restore <trashName>',
+          detail: 'Use the full trash filename with the __deleted- suffix.',
+        }]} color={color} />
       </Section>
     </Box>
   )

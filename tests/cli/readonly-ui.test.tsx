@@ -11,6 +11,7 @@ import {
   ScheduleRunsReport,
   StatusReport,
   TasksListReport,
+  TrashListReport,
   WorkflowsListReport,
 } from '../../src/core/cli/ui/readonly'
 
@@ -205,5 +206,31 @@ describe('read-only CLI TUI screens', () => {
     expect(runs).toContain('RUN HISTORY')
     expect(runs).toContain('task-1')
     expect(runs).toContain('timeout')
+  })
+
+  it('renders trashed assets as a shared TUI table', () => {
+    const output = renderToString(
+      <TrashListReport
+        assets={[
+          {
+            filename: 'doc.md__deleted-20260518',
+            originalFilename: 'doc.md',
+            type: 'markdown',
+            size: 2048,
+            deletedAt: '2026-05-18T09:00:00.000Z',
+            expiresAt: '2026-05-25T09:00:00.000Z',
+            metadata: { agent: 'patch' },
+          },
+        ]}
+      />,
+    )
+
+    expect(output).toContain('Trash')
+    expect(output).toContain('TRASHED ASSETS')
+    expect(output).toContain('FILENAME')
+    expect(output).toContain('doc.md')
+    expect(output).toContain('2.0 KB')
+    expect(output).toContain('patch')
+    expect(output).toContain('bakin trash restore <trashName>')
   })
 })
