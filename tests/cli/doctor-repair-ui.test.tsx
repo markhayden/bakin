@@ -6,6 +6,9 @@ import {
   DoctorDelegateResult,
   DoctorRepairApplyReport,
   DoctorRepairPlan,
+  DoctorRepairRequestReport,
+  DoctorRepairRequestsReport,
+  DoctorRepairVerifyReport,
 } from '../../src/core/cli/ui/doctor-repair'
 
 const repairPlan = {
@@ -54,8 +57,19 @@ const delegateReport = {
   status: 'sent' as const,
   request: {
     id: 'repair-1',
+    status: 'sent',
     taskId: 'task-repair-1',
     agentId: 'main',
+    createdAt: '2026-04-01T00:00:00.000Z',
+    updatedAt: '2026-04-01T00:01:00.000Z',
+    unresolved: [
+      { check: 'channels', status: 'warn', message: 'Approval channel requires manual configuration.', autoFixable: false },
+    ],
+    events: [{
+      ts: '2026-04-01T00:01:00.000Z',
+      type: 'task-created',
+      message: 'Created linked repair task task-repair-1.',
+    }],
   },
   unresolved: [
     { check: 'channels', status: 'warn', message: 'Approval channel requires manual configuration.', autoFixable: false },
@@ -111,5 +125,50 @@ describe('doctor repair CLI UI', () => {
     expect(result).toContain(' SENT     repair-1 request')
     expect(result).toContain(' TODO     task-repair-1 task')
     expect(result).toContain('Watch the board for task-repair-1')
+  })
+
+  it('renders delegated repair request lists with shared TUI primitives', () => {
+    const rendered = renderToString(<DoctorRepairRequestsReport requests={[delegateReport.request]} color={false} />)
+
+    expect(rendered).toContain('Doctor repair requests')
+    expect(rendered).toContain('REQUESTS')
+    expect(rendered).toContain('REQUEST')
+    expect(rendered).toContain('TASK')
+    expect(rendered).toContain('repair-1')
+    expect(rendered).toContain('task-repair-1')
+    expect(rendered).not.toContain('repair-1  sent  task=task-repair-1')
+  })
+
+  it('renders delegated repair request details with findings and events', () => {
+    const rendered = renderToString(<DoctorRepairRequestReport request={delegateReport.request} color={false} />)
+
+    expect(rendered).toContain('Doctor repair request')
+    expect(rendered).toContain('repair-1')
+    expect(rendered).toContain('REQUEST')
+    expect(rendered).toContain('UNRESOLVED FINDINGS')
+    expect(rendered).toContain('channels')
+    expect(rendered).toContain('EVENTS')
+    expect(rendered).toContain('Created linked repair task task-repair-1.')
+    expect(rendered).not.toContain('"request"')
+  })
+
+  it('renders delegated repair verification results', () => {
+    const rendered = renderToString(
+      <DoctorRepairVerifyReport
+        requestId="repair-1"
+        result={{
+          request: { ...delegateReport.request, status: 'verified' },
+          remaining: [],
+          verified: true,
+        }}
+        color={false}
+      />,
+    )
+
+    expect(rendered).toContain('Doctor repair verification')
+    expect(rendered).toContain('RESULT')
+    expect(rendered).toContain('repair-1')
+    expect(rendered).toContain('Original delegated findings are resolved.')
+    expect(rendered).not.toContain('"verified"')
   })
 })
