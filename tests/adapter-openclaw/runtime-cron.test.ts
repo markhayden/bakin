@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -215,5 +215,16 @@ describe('OpenClaw runtime cron adapter', () => {
       payload: { kind: 'systemEvent', text: 'Original native command' },
       metadata: { bakinSchedule: true },
     }))
+  })
+
+  it('runs cron jobs without passing unsupported force flags', async () => {
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+    const exec = mock(async () => '')
+    ;(runtime as unknown as { exec: typeof exec }).exec = exec
+
+    await runtime.cron.runNow('cron-tui-smoke-test')
+
+    expect(exec).toHaveBeenCalledWith(['cron', 'run', 'cron-tui-smoke-test'])
   })
 })

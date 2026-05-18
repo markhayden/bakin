@@ -185,6 +185,10 @@ async function parseJsonBody(req: Request, schema: z.ZodType<unknown>): Promise<
   if (ct && !ct.startsWith('application/json')) {
     return { ok: false, status: 415, error: 'expected application/json body' }
   }
+  if (await isEmptyBody(req)) {
+    const empty = schema.safeParse(undefined)
+    if (empty.success) return { ok: true, value: empty.data }
+  }
   let raw: unknown
   try {
     raw = await req.clone().json()
