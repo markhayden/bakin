@@ -138,6 +138,15 @@ async function printAgentsListTui(agents: Array<{ id: string; name: string; stat
   console.log(renderToString(createElement(AgentsListReport, { agents })))
 }
 
+async function printAgentTasksTui(agentId: string, tasks: Array<Record<string, unknown>>): Promise<void> {
+  const [{ AgentTasksReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(AgentTasksReport, { agentId, tasks })))
+}
+
 async function printPluginsListTui(routes: Array<Record<string, unknown>>): Promise<void> {
   const [{ PluginsListReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
@@ -303,6 +312,10 @@ async function cmdAgentsStatus(agentId: string): Promise<void> {
 
 async function cmdAgentsTasks(agentId: string): Promise<void> {
   const result = await apiGet(`/api/agents/${agentId}/tasks`) as { tasks: Array<Record<string, unknown>> }
+  if (process.stdout.isTTY) {
+    await printAgentTasksTui(agentId, result.tasks)
+    return
+  }
   printTable(result.tasks, ['id', 'title', 'column'])
 }
 

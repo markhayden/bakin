@@ -252,4 +252,23 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).toContain('bakin trash restore <trashName>')
     expect(output()).not.toContain('item in trash:')
   })
+
+  it('renders agent task lists with the shared TUI screen in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      tasks: [
+        { id: 'task-1', title: 'Write docs', column: 'todo' },
+        { id: 'task-2', title: 'Waiting on review', column: 'blocked' },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'agents', 'tasks', 'patch']
+    await main()
+
+    expect(output()).toContain('Agent Tasks')
+    expect(output()).toContain('agent: patch')
+    expect(output()).toContain('TASKS')
+    expect(output()).toContain('Write docs')
+    expect(output()).not.toContain('id      title')
+  })
 })
