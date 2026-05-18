@@ -1270,6 +1270,33 @@ async function printDoctorDelegateResultTui(report: CliDoctorDelegateReport, opt
   console.log(renderToString(createElement(DoctorDelegateResult, { report, showBrand: opts.showBrand })))
 }
 
+async function printDoctorRepairRequestsTui(requests: Array<Record<string, unknown>>): Promise<void> {
+  const [{ DoctorRepairRequestsReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/doctor-repair'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(DoctorRepairRequestsReport, { requests })))
+}
+
+async function printDoctorRepairRequestTui(request: Record<string, unknown>): Promise<void> {
+  const [{ DoctorRepairRequestReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/doctor-repair'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(DoctorRepairRequestReport, { request })))
+}
+
+async function printDoctorRepairVerifyTui(requestId: string, result: Record<string, unknown>): Promise<void> {
+  const [{ DoctorRepairVerifyReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/doctor-repair'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(DoctorRepairVerifyReport, { requestId, result })))
+}
+
 async function confirmDoctorRepair(plan: CliDoctorRepairPlan): Promise<boolean> {
   if (plan.summary.safeItems === 0) return false
   const readline = await import('node:readline/promises')
@@ -1397,7 +1424,24 @@ async function cmdDoctorDelegate(options: { json: boolean; yes: boolean; isTTY: 
   }
 }
 
-async function cmdDoctorRepair(args: string[], options: { json: boolean }): Promise<void> {
+function doctorRepairRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function doctorRepairRequestFromResponse(result: unknown): Record<string, unknown> {
+  const data = doctorRepairRecord(result) ?? {}
+  return doctorRepairRecord(data.request) ?? data
+}
+
+function doctorRepairRequestList(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value)
+    ? value.filter((item): item is Record<string, unknown> => doctorRepairRecord(item) !== null)
+    : []
+}
+
+async function cmdDoctorRepair(args: string[], options: { json: boolean; isTTY: boolean }): Promise<void> {
   const sub = args[1] ?? 'list'
   if (sub === 'list') {
     const result = await apiGet('/api/plugins/health/doctor/repair') as { requests?: Array<Record<string, unknown>> }
@@ -1405,7 +1449,11 @@ async function cmdDoctorRepair(args: string[], options: { json: boolean }): Prom
       printDoctorRepairJson(result, 0)
       return
     }
-    const requests = result.requests ?? []
+    const requests = doctorRepairRequestList(result.requests)
+    if (options.isTTY) {
+      await printDoctorRepairRequestsTui(requests)
+      return
+    }
     if (requests.length === 0) {
       console.log('No doctor repair requests.')
       return
@@ -1428,6 +1476,10 @@ async function cmdDoctorRepair(args: string[], options: { json: boolean }): Prom
       printDoctorRepairJson(result, 0)
       return
     }
+    if (options.isTTY) {
+      await printDoctorRepairRequestTui(doctorRepairRequestFromResponse(result))
+      return
+    }
     print(result)
     return
   }
@@ -1436,6 +1488,10 @@ async function cmdDoctorRepair(args: string[], options: { json: boolean }): Prom
     const result = await apiPost(`/api/plugins/health/doctor/repair/${encodeURIComponent(requestId)}/verify`)
     if (options.json) {
       printDoctorRepairJson(result, 0)
+      return
+    }
+    if (options.isTTY) {
+      await printDoctorRepairVerifyTui(requestId, doctorRepairRecord(result) ?? {})
       return
     }
     print(result)
@@ -1455,7 +1511,7 @@ async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> 
   const yes = args.includes('--yes')
   const isTTY = Boolean(process.stdout.isTTY)
   if (args[0] === 'repair') {
-    await cmdDoctorRepair(args, { json })
+    await cmdDoctorRepair(args, { json, isTTY })
     return
   }
   if (fix) {

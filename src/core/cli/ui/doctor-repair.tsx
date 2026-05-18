@@ -1,13 +1,15 @@
-import { Box } from 'ink'
+import { Box, Text } from 'ink'
 import type { TuiStatus } from './style-tokens'
 import {
   FindingRows,
   NextActions,
   ScreenHeader,
   Section,
+  StatusTable,
   SummaryStrip,
   type FindingRow,
   type SummaryItem,
+  type TableColumn,
 } from './tui'
 
 export interface DoctorRepairDiagnostic {
@@ -74,8 +76,60 @@ export interface DoctorDelegateReportData {
   unresolved: DoctorRepairDiagnostic[]
 }
 
+export interface DoctorRepairRequestEventData {
+  ts?: unknown
+  type?: unknown
+  message?: unknown
+  data?: unknown
+}
+
+export interface DoctorRepairRequestData {
+  id?: unknown
+  kind?: unknown
+  status?: unknown
+  createdAt?: unknown
+  updatedAt?: unknown
+  plan?: unknown
+  unresolved?: unknown
+  taskId?: unknown
+  agentId?: unknown
+  events?: unknown
+}
+
+export interface DoctorRepairVerificationData {
+  request?: unknown
+  remaining?: unknown
+  verified?: unknown
+}
+
 function plural(count: number, singular: string, pluralLabel = `${singular}s`): string {
   return count === 1 ? singular : pluralLabel
+}
+
+function valueText(value: unknown, fallback = '-'): string {
+  if (typeof value === 'string') return value.length > 0 ? value : fallback
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  return fallback
+}
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function diagnosticList(value: unknown): DoctorRepairDiagnostic[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((row) => {
+    const item = objectValue(row)
+    if (!item) return []
+    return [{
+      check: valueText(item.check, 'finding'),
+      status: valueText(item.status, 'warn'),
+      message: valueText(item.message, 'No message provided.'),
+      autoFixable: typeof item.autoFixable === 'boolean' ? item.autoFixable : undefined,
+    }]
+  })
 }
 
 function statusForDiagnostic(status: string): TuiStatus {
@@ -92,6 +146,36 @@ function statusForDiagnostic(status: string): TuiStatus {
       return 'fail'
     case 'skipped':
       return 'skip'
+    default:
+      return 'run'
+  }
+}
+
+function statusForRequest(status: unknown): TuiStatus {
+  switch (valueText(status, '').toLowerCase()) {
+    case 'verified':
+    case 'completed':
+      return 'done'
+    case 'sent':
+      return 'sent'
+    case 'planned':
+      return 'todo'
+    case 'failed':
+      return 'fail'
+    default:
+      return 'run'
+  }
+}
+
+function statusForEvent(type: unknown): TuiStatus {
+  switch (valueText(type, '').toLowerCase()) {
+    case 'verified':
+      return 'done'
+    case 'task-created':
+    case 'dispatch-kicked':
+      return 'sent'
+    case 'failed':
+      return 'fail'
     default:
       return 'run'
   }
@@ -175,9 +259,97 @@ function resultRows(results: DoctorRepairApplyData['applied'] | DoctorRepairAppl
   }))
 }
 
+function requestValue(request: Record<string, unknown>, key: string): string | undefined {
+  const value = request[key]
+  const text = valueText(value, '')
+  return text.length > 0 ? text : undefined
+}
+
 function requestField(report: DoctorDelegateReportData, key: string): string | undefined {
-  const value = report.request[key]
-  return typeof value === 'string' && value.length > 0 ? value : undefined
+  return requestValue(report.request, key)
+}
+
+type RequestTableRow = {
+  status: TuiStatus
+  request: string
+  state: string
+  task: string
+  agent: string
+}
+
+const requestColumns: Array<TableColumn<RequestTableRow>> = [
+  { key: 'request', header: 'REQUEST', width: 30, render: row => row.request },
+  { key: 'state', header: 'STATE', width: 10, render: row => row.state },
+  { key: 'task', header: 'TASK', width: 14, render: row => row.task },
+  { key: 'agent', header: 'AGENT', width: 10, render: row => row.agent },
+]
+
+function requestTableRows(requests: DoctorRepairRequestData[]): RequestTableRow[] {
+  return requests.map(request => ({
+    status: statusForRequest(request.status),
+    request: valueText(request.id, '(unknown)'),
+    state: valueText(request.status, 'unknown'),
+    task: valueText(request.taskId),
+    agent: valueText(request.agentId),
+  }))
+}
+
+function requestSummary(requests: DoctorRepairRequestData[]): SummaryItem[] {
+  const active = requests.filter(request => !['verified', 'completed', 'failed'].includes(valueText(request.status, '').toLowerCase())).length
+  const activeStatus = requests.some(request => valueText(request.status, '').toLowerCase() === 'sent') ? 'sent' : 'todo'
+  const verified = requests.filter(request => ['verified', 'completed'].includes(valueText(request.status, '').toLowerCase())).length
+  const failed = requests.filter(request => valueText(request.status, '').toLowerCase() === 'failed').length
+  return [
+    { label: plural(requests.length, 'request'), value: requests.length, status: requests.length > 0 ? 'ok' : 'skip' },
+    { label: 'active', value: active, status: active > 0 ? activeStatus : 'ok' },
+    { label: 'verified', value: verified, status: verified > 0 ? 'done' : 'ok' },
+    ...(failed > 0 ? [{ label: 'failed', value: failed, status: 'fail' as const }] : []),
+  ]
+}
+
+function requestDetailSummary(request: DoctorRepairRequestData): SummaryItem[] {
+  const taskId = valueText(request.taskId, '')
+  const agentId = valueText(request.agentId, '')
+  return [
+    { label: 'request', value: valueText(request.id, '(unknown)'), status: statusForRequest(request.status) },
+    ...(taskId ? [{ label: 'task', value: taskId, status: 'todo' as const }] : []),
+    ...(agentId ? [{ label: 'agent', value: agentId }] : []),
+  ]
+}
+
+function requestDetailRows(request: DoctorRepairRequestData): FindingRow[] {
+  return [
+    { status: statusForRequest(request.status), label: 'status', message: valueText(request.status, 'unknown') },
+    { status: 'todo', label: 'task', message: valueText(request.taskId) },
+    { status: 'sent', label: 'agent', message: valueText(request.agentId) },
+    { status: 'run', label: 'created', message: valueText(request.createdAt) },
+    { status: 'run', label: 'updated', message: valueText(request.updatedAt) },
+  ].filter(row => row.message !== '-') as FindingRow[]
+}
+
+function eventRows(events: unknown): FindingRow[] {
+  if (!Array.isArray(events)) return []
+  return events.flatMap((event) => {
+    const item = objectValue(event)
+    if (!item) return []
+    return [{
+      status: statusForEvent(item.type),
+      label: valueText(item.type, 'event'),
+      message: valueText(item.message, 'Event recorded.'),
+      detail: valueText(item.ts, ''),
+    }]
+  })
+}
+
+function requestFromResult(result: DoctorRepairVerificationData): DoctorRepairRequestData | null {
+  const request = objectValue(result.request)
+  return request ? request as DoctorRepairRequestData : null
+}
+
+function verificationMessage(result: DoctorRepairVerificationData, remaining: DoctorRepairDiagnostic[]): string {
+  if (result.verified === true) return 'Original delegated findings are resolved.'
+  if (remaining.length === 1) return '1 original delegated finding still reproduces.'
+  return `${remaining.length} original delegated findings still reproduce.`
 }
 
 export function DoctorRepairPlan({ plan, color = true }: {
@@ -241,6 +413,105 @@ export function DoctorRepairApplyReport({ report, color = true, showBrand }: {
       {report.errors.length > 0 ? (
         <Section title="Errors" color={color}>
           <FindingRows rows={errorRows(report.errors)} color={color} />
+        </Section>
+      ) : null}
+    </Box>
+  )
+}
+
+export function DoctorRepairRequestsReport({ requests, color = true }: {
+  requests: DoctorRepairRequestData[]
+  color?: boolean
+}) {
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Doctor repair requests" subtitle="Delegated doctor repair tasks" color={color} />
+      <SummaryStrip items={requestSummary(requests)} color={color} />
+      <Section title="Requests" color={color}>
+        {requests.length > 0 ? (
+          <StatusTable columns={requestColumns} rows={requestTableRows(requests)} color={color} />
+        ) : (
+          <Box flexDirection="column">
+            <FindingRows rows={[{ status: 'ok', label: 'requests', message: 'No doctor repair requests.' }]} color={color} />
+            <Text> </Text>
+          </Box>
+        )}
+      </Section>
+    </Box>
+  )
+}
+
+export function DoctorRepairRequestReport({ request, color = true }: {
+  request: DoctorRepairRequestData
+  color?: boolean
+}) {
+  const unresolved = diagnosticList(request.unresolved)
+  const events = eventRows(request.events)
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader
+        title="Doctor repair request"
+        subtitle="Delegated repair task state"
+        meta={valueText(request.id, '(unknown)')}
+        color={color}
+      />
+      <SummaryStrip items={requestDetailSummary(request)} color={color} />
+      <Section title="Request" color={color}>
+        <FindingRows rows={requestDetailRows(request)} color={color} />
+      </Section>
+      <Section title="Unresolved findings" color={color}>
+        <FindingRows
+          rows={unresolved.length > 0
+            ? diagnosticRows(unresolved)
+            : [{ status: 'ok', label: 'findings', message: 'No unresolved findings are stored on this request.' }]}
+          color={color}
+        />
+      </Section>
+      {events.length > 0 ? (
+        <Section title="Events" color={color}>
+          <FindingRows rows={events} color={color} />
+        </Section>
+      ) : null}
+    </Box>
+  )
+}
+
+export function DoctorRepairVerifyReport({ requestId, result, color = true }: {
+  requestId: string
+  result: DoctorRepairVerificationData
+  color?: boolean
+}) {
+  const request = requestFromResult(result)
+  const remaining = diagnosticList(result.remaining)
+  const resolved = result.verified === true
+  const id = valueText(request?.id, requestId)
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader
+        title="Doctor repair verification"
+        subtitle={resolved ? 'Delegated repair no longer reproduces original findings' : 'Delegated repair still needs attention'}
+        meta={id}
+        color={color}
+      />
+      <SummaryStrip items={[
+        { label: 'request', value: id, status: resolved ? 'done' : 'warn' },
+        { label: 'remaining', value: remaining.length, status: remaining.length > 0 ? 'warn' : 'ok' },
+      ]} color={color} />
+      <Section title="Result" color={color}>
+        <FindingRows
+          rows={[{
+            status: resolved ? 'done' : 'warn',
+            label: id,
+            message: verificationMessage(result, remaining),
+          }]}
+          color={color}
+        />
+      </Section>
+      {remaining.length > 0 ? (
+        <Section title="Remaining findings" color={color}>
+          <FindingRows rows={diagnosticRows(remaining)} color={color} />
         </Section>
       ) : null}
     </Box>

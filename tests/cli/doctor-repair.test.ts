@@ -301,6 +301,47 @@ describe('legacy CLI doctor repair', () => {
     expect(body.data.requests[0].id).toBe('repair-1')
   })
 
+  it('renders TTY delegated repair request lists with the shared doctor repair UI', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ requests: [mockDelegate.request] }),
+      text: () => Promise.resolve(''),
+    })
+    setStdoutIsTTY(true)
+    process.argv = ['bun', 'cli/bakin.ts', 'doctor', 'repair', 'list']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    const output = loggedOutput()
+    expect(output).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output).toContain('Doctor repair requests')
+    expect(output).toContain('REQUESTS')
+    expect(output).toContain('repair-1')
+    expect(output).toContain('task-repair-1')
+    expect(output).not.toContain('repair-1  sent  task=task-repair-1')
+  })
+
+  it('renders TTY delegated repair request details with the shared doctor repair UI', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ request: mockDelegate.request }),
+      text: () => Promise.resolve(''),
+    })
+    setStdoutIsTTY(true)
+    process.argv = ['bun', 'cli/bakin.ts', 'doctor', 'repair', 'show', 'repair-1']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    const output = loggedOutput()
+    expect(output).toContain('Doctor repair request')
+    expect(output).toContain('REQUEST')
+    expect(output).toContain('UNRESOLVED FINDINGS')
+    expect(output).toContain('task-repair-1')
+    expect(output).not.toContain('"request"')
+  })
+
   it('verifies delegated repair requests', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
@@ -316,5 +357,24 @@ describe('legacy CLI doctor repair', () => {
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST' })
     const body = JSON.parse(String(log.mock.calls[0][0]))
     expect(body.data.verified).toBe(true)
+  })
+
+  it('renders TTY delegated repair verification with the shared doctor repair UI', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ request: { ...mockDelegate.request, status: 'verified' }, remaining: [], verified: true }),
+      text: () => Promise.resolve(''),
+    })
+    setStdoutIsTTY(true)
+    process.argv = ['bun', 'cli/bakin.ts', 'doctor', 'repair', 'verify', 'repair-1']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    const output = loggedOutput()
+    expect(output).toContain('Doctor repair verification')
+    expect(output).toContain('RESULT')
+    expect(output).toContain('Original delegated findings are resolved.')
+    expect(output).not.toContain('"verified"')
   })
 })
