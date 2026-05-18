@@ -6,6 +6,7 @@ import {
   PluginsListReport,
   StatusReport,
   TasksListReport,
+  WorkflowsListReport,
 } from '../../src/core/cli/ui/readonly'
 
 describe('read-only CLI TUI screens', () => {
@@ -91,5 +92,29 @@ describe('read-only CLI TUI screens', () => {
     expect(plugins).toContain('tasks')
     expect(plugins).toContain('2')
     expect(plugins).not.toContain('core')
+  })
+
+  it('renders workflow definitions as a shared TUI table', () => {
+    const output = renderToString(
+      <WorkflowsListReport
+        templates={[
+          {
+            filename: 'release.yml',
+            name: 'Release',
+            description: 'Prepare release notes and verification',
+            stepCount: 4,
+          },
+        ]}
+      />,
+    )
+
+    expect(output).toContain('Workflows')
+    expect(output).toContain('DEFINITIONS')
+    expect(output).toContain('FILENAME')
+    expect(output).toContain('NAME')
+    expect(output).toContain('DESCRIPTION')
+    expect(output).toContain('STEPS')
+    expect(output).toContain('release.yml')
+    expect(output).toContain('Release')
   })
 })

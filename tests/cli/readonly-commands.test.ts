@@ -115,4 +115,29 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).toContain('tasks')
     expect(output()).not.toContain('Installed plugins:')
   })
+
+  it('renders workflows list with the shared TUI screen in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      templates: [
+        {
+          filename: 'release.yml',
+          name: 'Release',
+          description: 'Prepare release notes and verification',
+          stepCount: 4,
+        },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'workflows', 'list']
+    await main()
+
+    expect(output()).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output()).toContain('Workflows')
+    expect(output()).toContain('DEFINITIONS')
+    expect(output()).toContain('FILENAME')
+    expect(output()).toContain('STEPS')
+    expect(output()).toContain('release.yml')
+    expect(output()).not.toContain('-----------  -------')
+  })
 })

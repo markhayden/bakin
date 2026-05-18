@@ -1,9 +1,10 @@
-import { Box, Text } from 'ink'
+import { Box } from 'ink'
 import {
+  DataTable,
   FindingRows,
   ScreenHeader,
   Section,
-  StatusToken,
+  StatusTable,
   SummaryStrip,
   type SummaryItem,
 } from './tui'
@@ -39,35 +40,40 @@ export interface PluginRouteData {
   pluginId?: unknown
 }
 
-interface StatusTableColumn<TRow> {
-  key: string
-  header: string
-  width: number
-  grow?: boolean
-  render: (row: TRow) => string
+export interface WorkflowTemplateData {
+  filename?: unknown
+  name?: unknown
+  description?: unknown
+  stepCount?: unknown
 }
 
-interface StatusTableRow {
+interface TaskTableRow {
   status: TuiStatus
-}
-
-interface TaskTableRow extends StatusTableRow {
   column: string
   id: string
   title: string
   agent: string
 }
 
-interface AgentTableRow extends StatusTableRow {
+interface AgentTableRow {
+  status: TuiStatus
   id: string
   name: string
   state: string
   model: string
 }
 
-interface PluginTableRow extends StatusTableRow {
+interface PluginTableRow {
+  status: TuiStatus
   plugin: string
   routes: string
+}
+
+interface WorkflowTableRow {
+  filename: string
+  name: string
+  description: string
+  steps: string
 }
 
 const TASK_COLUMN_ORDER = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived'] as const
@@ -187,47 +193,13 @@ function pluginTableRows(routes: PluginRouteData[]): PluginTableRow[] {
   }))
 }
 
-function StatusTable<TRow extends StatusTableRow>({ rows, columns, color = true }: {
-  rows: TRow[]
-  columns: Array<StatusTableColumn<TRow>>
-  color?: boolean
-}) {
-  return (
-    <Box flexDirection="column">
-      <Box gap={1}>
-        <Box width={10} flexShrink={0}>
-          <Text bold>STATUS</Text>
-        </Box>
-        {columns.map(column => (
-          <Box
-            key={column.key}
-            width={column.width}
-            flexGrow={column.grow ? 1 : 0}
-            flexShrink={column.grow ? 1 : 0}
-          >
-            <Text bold wrap="truncate-end">{column.header}</Text>
-          </Box>
-        ))}
-      </Box>
-      {rows.map((row, rowIndex) => (
-        <Box key={rowIndex} gap={1}>
-          <Box width={10} flexShrink={0}>
-            <StatusToken status={row.status} color={color} />
-          </Box>
-          {columns.map(column => (
-            <Box
-              key={column.key}
-              width={column.width}
-              flexGrow={column.grow ? 1 : 0}
-              flexShrink={column.grow ? 1 : 0}
-            >
-              <Text wrap={column.grow ? 'wrap' : 'truncate-end'}>{column.render(row)}</Text>
-            </Box>
-          ))}
-        </Box>
-      ))}
-    </Box>
-  )
+function workflowTableRows(templates: WorkflowTemplateData[]): WorkflowTableRow[] {
+  return templates.map(template => ({
+    filename: valueText(template.filename),
+    name: valueText(template.name, '(unnamed)'),
+    description: valueText(template.description),
+    steps: valueText(template.stepCount),
+  }))
 }
 
 export function StatusReport({ dispatch, roster, color = true }: {
@@ -365,6 +337,37 @@ export function PluginsListReport({ routes, color = true }: {
           />
         ) : (
           <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No non-core plugins found.' }]} color={color} />
+        )}
+      </Section>
+    </Box>
+  )
+}
+
+export function WorkflowsListReport({ templates, color = true }: {
+  templates: WorkflowTemplateData[]
+  color?: boolean
+}) {
+  const rows = workflowTableRows(templates)
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Workflows" subtitle="Available workflow definitions" color={color} />
+      <SummaryStrip items={[
+        { label: plural(rows.length, 'workflow'), value: rows.length, status: rows.length > 0 ? 'ok' : 'skip' },
+      ]} color={color} />
+      <Section title="Definitions" color={color}>
+        {rows.length > 0 ? (
+          <DataTable
+            rows={rows}
+            columns={[
+              { key: 'filename', header: 'FILENAME', width: 18, render: row => row.filename },
+              { key: 'name', header: 'NAME', width: 22, render: row => row.name },
+              { key: 'description', header: 'DESCRIPTION', width: 46, grow: true, render: row => row.description },
+              { key: 'steps', header: 'STEPS', width: 7, render: row => row.steps },
+            ]}
+          />
+        ) : (
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No workflow definitions found.' }]} color={color} />
         )}
       </Section>
     </Box>

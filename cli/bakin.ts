@@ -147,6 +147,15 @@ async function printPluginsListTui(routes: Array<Record<string, unknown>>): Prom
   console.log(renderToString(createElement(PluginsListReport, { routes })))
 }
 
+async function printWorkflowsListTui(templates: Array<Record<string, unknown>>): Promise<void> {
+  const [{ WorkflowsListReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(WorkflowsListReport, { templates })))
+}
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
@@ -1764,6 +1773,10 @@ async function cmdTasksGet(id: string): Promise<void> {
 async function cmdWorkflowsList(): Promise<void> {
   const result = await apiGet('/api/plugins/workflows/definitions') as { templates?: Array<Record<string, unknown>> }
   const templates = result?.templates || []
+  if (process.stdout.isTTY) {
+    await printWorkflowsListTui(templates)
+    return
+  }
   if (templates.length === 0) {
     console.log('No workflow definitions found.')
     return
