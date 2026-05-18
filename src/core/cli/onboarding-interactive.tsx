@@ -1,5 +1,4 @@
-import { Badge, ConfirmInput } from "@inkjs/ui";
-import { render, renderToString, Box, Text } from "ink";
+import { render, renderToString, Box } from "ink";
 import { useState } from "react";
 import {
   MultiSelect,
@@ -7,6 +6,16 @@ import {
   type MultiSelectItem,
   type MultiSelectState,
 } from "./ui/multi-select";
+import {
+  FindingRows,
+  ScreenHeader,
+  Section,
+  SummaryStrip,
+} from "./ui/tui";
+import {
+  OnboardingDecisionPrompt,
+  OnboardingIntro,
+} from "./ui/onboarding";
 import { recommendedAgentsComponent } from "../onboarding/recommended-agents";
 import { recommendedPluginsComponent } from "../onboarding/recommended-plugins";
 import { runtimeComponent } from "../onboarding/runtime";
@@ -85,84 +94,42 @@ function MultiSelectPrompt({
   const [state, setState] = useState<MultiSelectState>(() =>
     createMultiSelectState(items),
   );
-  return (
-    <MultiSelect
-      title={title}
-      items={items}
-      state={state}
-      onChange={setState}
-      onSubmit={onSubmit}
-      marginTop={1}
-    />
-  );
-}
+  const isAgentSelection = title.toLowerCase().includes("agent");
+  const selectedCount = state.selectedIds.size;
+  const availableCount = items.filter((item) => !item.disabled).length;
+  const installedCount = items.filter((item) => item.disabled).length;
 
-function ConfirmStep({
-  title,
-  description,
-  defaultChoice,
-  onSubmit,
-}: {
-  title: string;
-  description: string;
-  defaultChoice: "confirm" | "cancel";
-  onSubmit: (approved: boolean) => void;
-}) {
-  return (
-    <Box flexDirection="column" marginTop={1}>
-      <Badge color="#ff2bd6">{title}</Badge>
-      <Text dimColor>{description}</Text>
-      <Box marginTop={1}>
-        <Text>Continue? </Text>
-        <ConfirmInput
-          defaultChoice={defaultChoice}
-          onConfirm={() => onSubmit(true)}
-          onCancel={() => onSubmit(false)}
-        />
-      </Box>
-    </Box>
-  );
-}
-
-function OnboardingIntro() {
   return (
     <Box flexDirection="column">
-      <Text dimColor> 
-      
-      </Text>
-      <Text color="#ff2bd6">
-              oooooooooo              oooo        o88               
-      </Text>
-      <Text color="#ff2bd6">
-               888    888   ooooooo    888  ooooo oooo  oo oooooo  
-      </Text>
-      <Text color="#ff2bd6">
-               888oooo88    ooooo888   888o888     888   888   888  
-      </Text>
-      <Text color="#ff2bd6">
-               888    888 888    888   8888 88o    888   888   888  
-      </Text>
-      <Text color="#ff2bd6">
-              o888ooo888   88ooo88 8o o888o o888o o888o o888o o888o 
-      </Text>
-      <Text dimColor> 
-         ________________________________________________________________________________
-      </Text>
-      <Text dimColor> 
-         |                                                                              | 
-      </Text>
-      <Text dimColor> 
-         |  v1.0.0                                                                      | 
-      </Text>
-      <Text dimColor>
-         |  Welcome to Bakin'! Let's walk through the initial setup.                    |
-      </Text>
-      <Text dimColor>
-         |  You can revisit the configuration at any time with `bakin onboard --force`  |
-      </Text>
-      <Text dimColor> 
-         |______________________________________________________________________________|
-      </Text>
+      <ScreenHeader
+        title="Onboard"
+        subtitle={isAgentSelection ? "Choose official agents to install or adopt" : "Choose official plugins to install"}
+        meta={isAgentSelection ? "agent selection" : "plugin selection"}
+      />
+      <SummaryStrip items={[
+        { label: "selected", value: selectedCount, status: "ready" },
+        { label: "available", value: availableCount },
+        { label: "installed", value: installedCount, status: installedCount > 0 ? "ok" : "skip" },
+      ]} />
+      <Section title={isAgentSelection ? "Agents" : "Plugins"}>
+        <MultiSelect
+          title={title}
+          items={items}
+          state={state}
+          onChange={setState}
+          onSubmit={onSubmit}
+          showTitle={false}
+        />
+      </Section>
+      {items.some((item) => item.disabled) ? (
+        <Section title={isAgentSelection ? "Runtime context" : "Install plan"}>
+          <FindingRows rows={items.filter((item) => item.disabled).map((item) => ({
+            status: "ok",
+            label: item.label,
+            message: item.note ? `${item.label} is already ${item.note}.` : `${item.label} is already installed.`,
+          }))} />
+        </Section>
+      ) : null}
     </Box>
   );
 }
@@ -196,7 +163,7 @@ async function promptConfirm(
   return await new Promise((resolve) => {
     let app: ReturnType<typeof render> | null = null;
     app = render(
-      <ConfirmStep
+      <OnboardingDecisionPrompt
         title={title}
         description={description}
         defaultChoice={defaultChoice}

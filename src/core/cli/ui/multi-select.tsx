@@ -1,7 +1,8 @@
-import { Badge, MultiSelect as InkMultiSelect, ThemeProvider, defaultTheme, extendTheme } from '@inkjs/ui'
+import { MultiSelect as InkMultiSelect, ThemeProvider, defaultTheme, extendTheme } from '@inkjs/ui'
 import { Box, Text } from 'ink'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { BAKIN_PINK } from './report'
+import { Section } from './tui'
+import { CLI_COLORS } from './style-tokens'
 
 export interface MultiSelectItem {
   id: string
@@ -76,10 +77,10 @@ const multiSelectTheme = extendTheme(defaultTheme, {
   components: {
     MultiSelect: {
       styles: {
-        focusIndicator: () => ({ color: BAKIN_PINK }),
-        selectedIndicator: () => ({ color: BAKIN_PINK }),
+        focusIndicator: () => ({ color: CLI_COLORS.info }),
+        selectedIndicator: () => ({ color: CLI_COLORS.info }),
         label: ({ isFocused }: { isFocused: boolean }) => ({
-          color: isFocused ? BAKIN_PINK : undefined,
+          color: isFocused ? CLI_COLORS.info : undefined,
         }),
       },
     },
@@ -130,9 +131,8 @@ export function MultiSelect({
     onChangeRef.current({ ...current, selectedIds: selectedIdsSet })
   }, [])
 
-  return (
-    <Box flexDirection="column" marginTop={marginTop}>
-      {showTitle ? <Badge color={BAKIN_PINK}>{title}</Badge> : null}
+  const body = (
+    <>
       <Text dimColor>Use up/down to move, space to select, enter to continue.</Text>
       <Box flexDirection="column">
         <ThemeProvider theme={multiSelectTheme}>
@@ -154,6 +154,12 @@ export function MultiSelect({
           </Box>
         ) : null}
       </Box>
+    </>
+  )
+
+  return (
+    <Box flexDirection="column" marginTop={marginTop}>
+      {showTitle ? <Section title={title} marginTop={0}>{body}</Section> : body}
     </Box>
   )
 }
