@@ -29,26 +29,27 @@ export interface TableColumn<TRow> {
   render: (row: TRow) => string
 }
 
-export function BakinHeader() {
+export function BakinHeader({ color = true }: { color?: boolean } = {}) {
   return (
     <Box flexDirection="column">
       <Text> </Text>
       {BAKIN_HEADER.map(line => (
-        <Text key={line} bold color="white">{line}</Text>
+        <Text key={line} bold color={color ? 'white' : undefined}>{line}</Text>
       ))}
       <Text> </Text>
     </Box>
   )
 }
 
-export function ScreenHeader({ title, subtitle, meta }: {
+export function ScreenHeader({ title, subtitle, meta, color = true }: {
   title: string
   subtitle?: string
   meta?: string
+  color?: boolean
 }) {
   return (
     <Box flexDirection="column">
-      <BakinHeader />
+      <BakinHeader color={color} />
       <Box>
         <Text bold>{title}</Text>
         {meta ? <Text dimColor>  {meta}</Text> : null}
@@ -58,17 +59,18 @@ export function ScreenHeader({ title, subtitle, meta }: {
   )
 }
 
-export function Section({ title, children, marginTop = 1 }: {
+export function Section({ title, children, marginTop = 1, color = true }: {
   title: string
   children: ReactNode
   marginTop?: number
+  color?: boolean
 }) {
   const divider = '-'.repeat(Math.max(12, title.length + 4))
 
   return (
     <Box flexDirection="column" marginTop={marginTop}>
-      <Text bold color="white">{title.toUpperCase()}</Text>
-      <Text bold color="white">{divider}</Text>
+      <Text bold color={color ? 'white' : undefined}>{title.toUpperCase()}</Text>
+      <Text bold color={color ? 'white' : undefined}>{divider}</Text>
       <Box flexDirection="column">
         {children}
       </Box>
@@ -93,12 +95,12 @@ export function StatusToken({ status, color = true }: {
   )
 }
 
-export function SummaryStrip({ items }: { items: SummaryItem[] }) {
+export function SummaryStrip({ items, color = true }: { items: SummaryItem[]; color?: boolean }) {
   return (
     <Box marginTop={1} gap={2} flexWrap="wrap">
       {items.map(item => (
         <Box key={item.label}>
-          {item.status ? <StatusToken status={item.status} /> : null}
+          {item.status ? <StatusToken status={item.status} color={color} /> : null}
           <Text bold>{item.status ? ' ' : ''}{item.value}</Text>
           <Text dimColor> {item.label}</Text>
         </Box>
@@ -107,14 +109,14 @@ export function SummaryStrip({ items }: { items: SummaryItem[] }) {
   )
 }
 
-export function FindingRows({ rows }: { rows: FindingRow[] }) {
+export function FindingRows({ rows, color = true }: { rows: FindingRow[]; color?: boolean }) {
   return (
     <Box flexDirection="column">
       {rows.map(row => (
         <Box key={`${row.label}-${row.message}`} flexDirection="column">
           <Box gap={1}>
             <Box width={10} flexShrink={0}>
-              <StatusToken status={row.status} />
+              <StatusToken status={row.status} color={color} />
             </Box>
             <Box width={22} flexShrink={0}>
               <Text wrap="truncate-end">{row.label}</Text>
@@ -130,7 +132,7 @@ export function FindingRows({ rows }: { rows: FindingRow[] }) {
           ) : null}
           {row.next ? (
             <Box marginLeft={33}>
-              <Text color={CLI_COLORS.info} wrap="wrap">Next: {row.next}</Text>
+              <Text color={color ? CLI_COLORS.info : undefined} wrap="wrap">Next: {row.next}</Text>
             </Box>
           ) : null}
         </Box>
