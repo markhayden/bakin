@@ -89,6 +89,8 @@ The gallery should feel like a quiet operational tool:
 - interactive selection mocks render the same `MultiSelect` primitive used by
   real onboarding, so focus and selected markers come from Ink UI instead of a
   hand-drawn fixture
+- embedded selection prompts omit the internal `MultiSelect` title when the
+  surrounding screen header and section already name the interaction
 - confirmation mocks show default behavior in the prompt text
 
 Status vocabulary uses fixed-width color blocks with contrasting foreground

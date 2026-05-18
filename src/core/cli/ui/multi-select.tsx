@@ -69,6 +69,7 @@ export interface MultiSelectProps {
   onChange: (state: MultiSelectState) => void
   onSubmit: (selectedIds: string[]) => void
   marginTop?: number
+  showTitle?: boolean
 }
 
 const multiSelectTheme = extendTheme(defaultTheme, {
@@ -98,7 +99,15 @@ function sameSelectedIds(a: ReadonlySet<string>, b: ReadonlySet<string>): boolea
   return true
 }
 
-export function MultiSelect({ title, items, state, onChange, onSubmit, marginTop = 0 }: MultiSelectProps) {
+export function MultiSelect({
+  title,
+  items,
+  state,
+  onChange,
+  onSubmit,
+  marginTop = 0,
+  showTitle = true,
+}: MultiSelectProps) {
   const stateRef = useRef(state)
   const onChangeRef = useRef(onChange)
   const enabledItems = useMemo(() => items.filter(item => !item.disabled), [items])
@@ -123,7 +132,7 @@ export function MultiSelect({ title, items, state, onChange, onSubmit, marginTop
 
   return (
     <Box flexDirection="column" marginTop={marginTop}>
-      <Badge color={BAKIN_PINK}>{title}</Badge>
+      {showTitle ? <Badge color={BAKIN_PINK}>{title}</Badge> : null}
       <Text dimColor>Use up/down to move, space to select, enter to continue.</Text>
       <Box flexDirection="column">
         <ThemeProvider theme={multiSelectTheme}>

@@ -580,6 +580,7 @@ function OnboardPluginSelectionScreen() {
           state={createMultiSelectState(items)}
           onChange={() => {}}
           onSubmit={() => {}}
+          showTitle={false}
         />
       </Section>
       <Section title="Install plan">
@@ -634,6 +635,7 @@ function OnboardAgentSelectionScreen() {
           state={createMultiSelectState(items)}
           onChange={() => {}}
           onSubmit={() => {}}
+          showTitle={false}
         />
       </Section>
       <Section title="Runtime context">

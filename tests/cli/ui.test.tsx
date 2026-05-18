@@ -91,4 +91,24 @@ describe('CLI UI primitives', () => {
     expect(output).toContain('Planning and approvals')
     expect(output).toContain('[Projects] (installed)')
   })
+
+  it('can embed multi-select without repeating the title', () => {
+    const items = [
+      { id: 'messaging', label: 'Messaging', description: 'Planning and approvals', selected: true },
+    ]
+    const output = renderToString(
+      <MultiSelect
+        title="Install official plugins"
+        items={items}
+        state={createMultiSelectState(items)}
+        onChange={() => {}}
+        onSubmit={() => {}}
+        showTitle={false}
+      />,
+    )
+
+    expect(output).not.toContain('INSTALL OFFICIAL PLUGINS')
+    expect(output).toContain('Use up/down to move, space to select, enter to continue.')
+    expect(output).toContain('\u276f [Messaging]')
+  })
 })
