@@ -1,4 +1,4 @@
-import { Box } from 'ink'
+import { Box, Text } from 'ink'
 import {
   DataTable,
   FindingRows,
@@ -189,6 +189,14 @@ export interface ScheduleRunData {
   status?: unknown
   taskId?: unknown
   error?: unknown
+}
+
+export interface ScheduleActionData {
+  action?: unknown
+  jobId?: unknown
+  name?: unknown
+  message?: unknown
+  detail?: unknown
 }
 
 export interface TrashAssetData {
@@ -862,6 +870,19 @@ function scheduleRunTableRows(runs: ScheduleRunData[]): ScheduleRunTableRow[] {
       error: valueText(run.error, ''),
     }
   })
+}
+
+function scheduleActionRows(action: ScheduleActionData) {
+  const jobId = valueText(action.jobId, 'schedule')
+  const name = valueText(action.name, '')
+  const detail = valueText(action.detail, '')
+
+  return [{
+    status: 'applied' as const,
+    label: jobId,
+    message: valueText(action.message, name ? `Updated schedule ${name}.` : `Updated ${jobId}.`),
+    detail: detail || undefined,
+  }]
 }
 
 function trashAssetTableRows(assets: TrashAssetData[]): TrashAssetTableRow[] {
@@ -1655,6 +1676,28 @@ export function ScheduleRunsReport({ jobId, runs, color = true }: {
         ) : (
           <FindingRows rows={[{ status: 'skip', label: 'empty', message: `No run history for ${jobId}.` }]} color={color} />
         )}
+      </Section>
+    </Box>
+  )
+}
+
+export function ScheduleActionReport({ action, color = true }: {
+  action: ScheduleActionData
+  color?: boolean
+}) {
+  const actionName = valueText(action.action, 'updated')
+  const jobId = valueText(action.jobId)
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Schedule action" subtitle="Scheduled job updated" meta={actionName} color={color} />
+      <SummaryStrip items={[
+        { label: 'action', value: actionName, status: 'applied' },
+        { label: 'job', value: jobId || '-', status: jobId ? 'ok' : 'skip' },
+      ]} color={color} />
+      <Section title="Result" color={color}>
+        <FindingRows rows={scheduleActionRows(action)} color={color} />
+        <Text> </Text>
       </Section>
     </Box>
   )
