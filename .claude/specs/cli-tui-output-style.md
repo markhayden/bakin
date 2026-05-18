@@ -74,7 +74,7 @@ tests/cli/tui-gallery.test.tsx          width and screen coverage
 
 The gallery should feel like a quiet operational tool:
 
-- every human-facing TTY screen starts with the existing Bakin ASCII wordmark
+- every human-facing TTY screen starts with the compact Bakin boxed header
 - compact enough for repeated use
 - clear status tokens at the left edge
 - labels that scan vertically
