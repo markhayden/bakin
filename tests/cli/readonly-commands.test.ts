@@ -451,4 +451,51 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).toContain('schema missing')
     expect(output()).not.toContain('Reindexing tasks into search')
   })
+
+  it('renders plugin restore snapshots and results with shared TUI screens in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      snapshots: [
+        {
+          timestamp: '2026-05-04T00-00-00-000Z',
+          createdAt: '2026-05-04T00:00:00.000Z',
+          filename: 'demo-plugin-2026.tar.gz',
+          sizeBytes: 4096,
+        },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'restore', 'demo-plugin', '--list']
+    await main()
+
+    expect(output()).toContain('Plugin Restore')
+    expect(output()).toContain('plugin: demo-plugin')
+    expect(output()).toContain('SNAPSHOTS')
+    expect(output()).toContain('demo-plugin-2026.tar.gz')
+    expect(output()).not.toContain('Uninstall snapshots for')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      message: 'Restored "demo-plugin".',
+      snapshotInfo: {
+        timestamp: '2026-05-04T00-00-00-000Z',
+        createdAt: '2026-05-04T00:00:00.000Z',
+        filename: 'demo-plugin-2026.tar.gz',
+        sizeBytes: 4096,
+      },
+      skills: { restored: 2 },
+      activated: false,
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'restore', 'demo-plugin', '--snapshot', 'demo-plugin-2026.tar.gz', '--force']
+    await main()
+
+    expect(output()).toContain('Plugin Restore')
+    expect(output()).toContain('RESULT')
+    expect(output()).toContain('Restored "demo-plugin".')
+    expect(output()).toContain('demo-plugin-2026.tar.gz')
+    expect(output()).toContain('Activation deferred until next server start.')
+    expect(output()).not.toContain('Restored plugin:')
+  })
 })

@@ -64,6 +64,24 @@ export interface PluginRouteData {
   pluginId?: unknown
 }
 
+export interface PluginRestoreSnapshotData {
+  timestamp?: unknown
+  createdAt?: unknown
+  filename?: unknown
+  sizeBytes?: unknown
+}
+
+export interface PluginRestoreResultData {
+  ok?: unknown
+  message?: unknown
+  snapshot?: unknown
+  snapshotInfo?: PluginRestoreSnapshotData
+  snapshots?: PluginRestoreSnapshotData[]
+  skills?: unknown
+  restored?: unknown
+  activated?: unknown
+}
+
 export interface ApiRouteData {
   method?: unknown
   fullPath?: unknown
@@ -215,6 +233,13 @@ interface PluginTableRow {
   status: TuiStatus
   plugin: string
   routes: string
+}
+
+interface PluginRestoreSnapshotRow {
+  timestamp: string
+  created: string
+  size: string
+  filename: string
 }
 
 interface ApiRouteTableRow {
@@ -566,6 +591,45 @@ function pluginTableRows(routes: PluginRouteData[]): PluginTableRow[] {
     plugin: plugin.pluginId,
     routes: String(plugin.routeCount),
   }))
+}
+
+function pluginRestoreSnapshotRows(snapshots: PluginRestoreSnapshotData[]): PluginRestoreSnapshotRow[] {
+  return snapshots.map(snapshot => ({
+    timestamp: valueText(snapshot.timestamp),
+    created: timestampText(snapshot.createdAt),
+    size: bytesText(snapshot.sizeBytes),
+    filename: valueText(snapshot.filename),
+  }))
+}
+
+function pluginRestoreSnapshotName(result: PluginRestoreResultData): string {
+  return valueText(result.snapshotInfo?.filename ?? result.snapshot)
+}
+
+function pluginRestoreSkillsRestored(result: PluginRestoreResultData): number {
+  return numberValue(objectField(result.skills, 'restored'))
+}
+
+function pluginRestoreResultRows(pluginId: string, result: PluginRestoreResultData) {
+  const skillsRestored = pluginRestoreSkillsRestored(result)
+  const rows = [
+    {
+      status: result.restored === false ? 'warn' as TuiStatus : 'ok' as TuiStatus,
+      label: pluginId,
+      message: valueText(result.message, `Restored plugin: ${pluginId}`),
+    },
+  ]
+
+  rows.push({
+    status: skillsRestored > 0 ? 'ok' : 'skip',
+    label: 'runtime skills',
+    message: `${skillsRestored} restored`,
+  })
+  rows.push(result.activated === false
+    ? { status: 'warn', label: 'activation', message: 'Activation deferred until next server start.' }
+    : { status: 'ok', label: 'activation', message: 'Plugin activated.' })
+
+  return rows
 }
 
 function apiRouteTableRows(routes: ApiRouteData[]): ApiRouteTableRow[] {
@@ -1155,6 +1219,68 @@ export function PluginsListReport({ routes, color = true }: {
           <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No non-core plugins found.' }]} color={color} />
         )}
       </Section>
+    </Box>
+  )
+}
+
+export function PluginRestoreSnapshotsReport({ pluginId, snapshots, color = true }: {
+  pluginId: string
+  snapshots: PluginRestoreSnapshotData[]
+  color?: boolean
+}) {
+  const rows = pluginRestoreSnapshotRows(snapshots)
+  const latest = rows[0]?.timestamp ?? '-'
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Plugin Restore" subtitle="Available uninstall snapshots" meta={`plugin: ${pluginId}`} color={color} />
+      <SummaryStrip items={[
+        { label: plural(rows.length, 'snapshot'), value: rows.length, status: rows.length > 0 ? 'ready' : 'skip' },
+        { label: 'latest', value: latest, status: rows.length > 0 ? 'ok' : 'skip' },
+      ]} color={color} />
+      <Section title="Snapshots" color={color}>
+        {rows.length > 0 ? (
+          <DataTable
+            rows={rows}
+            columns={[
+              { key: 'timestamp', header: 'TIMESTAMP', width: 25, render: row => row.timestamp },
+              { key: 'created', header: 'CREATED', width: 20, render: row => row.created },
+              { key: 'size', header: 'SIZE', width: 9, render: row => row.size },
+              { key: 'filename', header: 'FILENAME', width: 34, grow: true, render: row => row.filename },
+            ]}
+          />
+        ) : (
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: `No uninstall snapshots found for plugin "${pluginId}".` }]} color={color} />
+        )}
+      </Section>
+    </Box>
+  )
+}
+
+export function PluginRestoreResultReport({ pluginId, result, color = true }: {
+  pluginId: string
+  result: PluginRestoreResultData
+  color?: boolean
+}) {
+  const skillsRestored = pluginRestoreSkillsRestored(result)
+  const snapshot = pluginRestoreSnapshotName(result)
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Plugin Restore" subtitle="Plugin restored from uninstall snapshot" meta={`plugin: ${pluginId}`} color={color} />
+      <SummaryStrip items={[
+        { label: 'restored', value: pluginId, status: result.restored === false ? 'warn' : 'ok' },
+        { label: 'runtime skills', value: skillsRestored, status: skillsRestored > 0 ? 'ok' : 'skip' },
+        { label: result.activated === false ? 'deferred' : 'activated', value: result.activated === false ? 'restart' : 'now', status: result.activated === false ? 'warn' : 'ok' },
+      ]} color={color} />
+      <Section title="Result" color={color}>
+        <FindingRows rows={pluginRestoreResultRows(pluginId, result)} color={color} />
+      </Section>
+      {snapshot === '-' ? null : (
+        <Section title="Snapshot" color={color}>
+          <FindingRows rows={[{ status: 'ok', label: 'file', message: snapshot }]} color={color} />
+        </Section>
+      )}
     </Box>
   )
 }

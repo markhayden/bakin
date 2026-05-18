@@ -11,6 +11,8 @@ import {
   DocsReport,
   PackagesListReport,
   PathsReport,
+  PluginRestoreResultReport,
+  PluginRestoreSnapshotsReport,
   PluginsListReport,
   ReindexReport,
   ScheduleListReport,
@@ -203,6 +205,50 @@ describe('read-only CLI TUI screens', () => {
     expect(output).toContain('schema missing')
     expect(output).toContain('semantic: offline')
     expect(output).not.toContain('Reindexing tasks into search')
+  })
+
+  it('renders plugin restore snapshots and results with shared TUI primitives', () => {
+    const snapshots = renderToString(
+      <PluginRestoreSnapshotsReport
+        pluginId="demo-plugin"
+        snapshots={[
+          {
+            timestamp: '2026-05-04T00-00-00-000Z',
+            createdAt: '2026-05-04T00:00:00.000Z',
+            filename: 'demo-plugin-2026.tar.gz',
+            sizeBytes: 4096,
+          },
+        ]}
+      />,
+    )
+    const result = renderToString(
+      <PluginRestoreResultReport
+        pluginId="demo-plugin"
+        result={{
+          ok: true,
+          message: 'Restored "demo-plugin".',
+          snapshotInfo: {
+            timestamp: '2026-05-04T00-00-00-000Z',
+            createdAt: '2026-05-04T00:00:00.000Z',
+            filename: 'demo-plugin-2026.tar.gz',
+            sizeBytes: 4096,
+          },
+          skills: { restored: 2 },
+          activated: false,
+        }}
+      />,
+    )
+
+    expect(snapshots).toContain('Plugin Restore')
+    expect(snapshots).toContain('plugin: demo-plugin')
+    expect(snapshots).toContain('SNAPSHOTS')
+    expect(snapshots).toContain('demo-plugin-2026.tar.gz')
+    expect(snapshots).not.toContain('Uninstall snapshots for')
+    expect(result).toContain('Plugin Restore')
+    expect(result).toContain('RESULT')
+    expect(result).toContain('Restored "demo-plugin".')
+    expect(result).toContain('demo-plugin-2026.tar.gz')
+    expect(result).toContain('Activation deferred until next server start.')
   })
 
   it('renders agents and plugins as shared TUI tables', () => {
