@@ -134,6 +134,15 @@ async function printTasksListTui(columns: Record<string, Array<Record<string, un
   console.log(renderToString(createElement(TasksListReport, { columns, column })))
 }
 
+async function printTaskDetailTui(taskId: string, column: string, task: Record<string, unknown>): Promise<void> {
+  const [{ TaskDetailReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(TaskDetailReport, { taskId, column, task })))
+}
+
 async function printAgentsListTui(agents: Array<{ id: string; name: string; status: string; model: string }>): Promise<void> {
   const [{ AgentsListReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
@@ -141,6 +150,15 @@ async function printAgentsListTui(agents: Array<{ id: string; name: string; stat
     import('react'),
   ])
   console.log(renderToString(createElement(AgentsListReport, { agents })))
+}
+
+async function printAgentStatusTui(agentId: string, profile: Record<string, unknown>): Promise<void> {
+  const [{ AgentStatusReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(AgentStatusReport, { agentId, profile })))
 }
 
 async function printAgentTasksTui(agentId: string, tasks: Array<Record<string, unknown>>): Promise<void> {
@@ -350,7 +368,11 @@ async function cmdAgentsSend(agentId: string, message: string): Promise<void> {
 }
 
 async function cmdAgentsStatus(agentId: string): Promise<void> {
-  const result = await apiGet(`/api/plugins/team/${agentId}`)
+  const result = await apiGet(`/api/plugins/team/${agentId}`) as Record<string, unknown>
+  if (process.stdout.isTTY) {
+    await printAgentStatusTui(agentId, result)
+    return
+  }
   print(result)
 }
 
@@ -1883,6 +1905,10 @@ async function cmdTasksGet(id: string): Promise<void> {
   for (const [colName, tasks] of Object.entries(columns)) {
     const task = (tasks as Array<Record<string, unknown>>).find(t => t.id === id)
     if (task) {
+      if (process.stdout.isTTY) {
+        await printTaskDetailTui(id, colName, task)
+        return
+      }
       console.log(`Column: ${colName}`)
       print(task)
       return

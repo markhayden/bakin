@@ -4,6 +4,7 @@ import { renderToString } from 'ink'
 import {
   AgentLessonsListReport,
   AgentPackagesListReport,
+  AgentStatusReport,
   AgentTasksReport,
   AgentsListReport,
   DocsReport,
@@ -14,6 +15,7 @@ import {
   SearchResultsReport,
   SearchStatsReport,
   StatusReport,
+  TaskDetailReport,
   TasksListReport,
   TrashListReport,
   WorkflowsListReport,
@@ -65,6 +67,54 @@ describe('read-only CLI TUI screens', () => {
     expect(output).toContain('Write docs')
     expect(output).toContain('patch')
     expect(output).not.toContain('Column: todo; Agent: patch')
+  })
+
+  it('renders task and agent detail screens with shared TUI primitives', () => {
+    const task = renderToString(
+      <TaskDetailReport
+        taskId="task-1"
+        column="inProgress"
+        task={{
+          id: 'task-1',
+          title: 'Write docs',
+          agent: 'patch',
+          priority: 'high',
+        }}
+      />,
+    )
+    const agent = renderToString(
+      <AgentStatusReport
+        agentId="patch"
+        profile={{
+          id: 'patch',
+          name: 'Patch',
+          role: 'Engineer',
+          model: 'gpt-5.5',
+          workspacePath: '/tmp/patch',
+          soul: '# Patch Soul\n',
+          identity: '# Identity\n',
+          rules: '',
+          tools: null,
+          heartbeatMd: '# Heartbeat\nWorking on docs',
+          subagentPerms: ['docs'],
+        }}
+      />,
+    )
+
+    expect(task).toContain('Task Detail')
+    expect(task).toContain('id: task-1')
+    expect(task).toContain('TASK')
+    expect(task).toContain('Write docs')
+    expect(task).toContain('inProgress')
+    expect(task).toContain('FIELDS')
+    expect(task).toContain('priority')
+    expect(agent).toContain('Agent Status')
+    expect(agent).toContain('agent: patch')
+    expect(agent).toContain('PROFILE')
+    expect(agent).toContain('Patch')
+    expect(agent).toContain('gpt-5.5')
+    expect(agent).toContain('WORKSPACE')
+    expect(agent).toContain('heartbeat')
   })
 
   it('renders agents and plugins as shared TUI tables', () => {

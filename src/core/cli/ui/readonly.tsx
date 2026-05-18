@@ -29,6 +29,8 @@ export interface TaskRowData {
   agent?: unknown
 }
 
+export type TaskDetailData = Record<string, unknown>
+
 export interface AgentTaskData {
   id?: unknown
   title?: unknown
@@ -40,6 +42,22 @@ export interface AgentRowData {
   name: string
   status: string
   model: string
+}
+
+export interface AgentProfileData {
+  id?: unknown
+  name?: unknown
+  emoji?: unknown
+  role?: unknown
+  status?: unknown
+  model?: unknown
+  workspacePath?: unknown
+  soul?: unknown
+  identity?: unknown
+  rules?: unknown
+  tools?: unknown
+  heartbeatMd?: unknown
+  subagentPerms?: unknown
 }
 
 export interface PluginRouteData {
@@ -164,6 +182,11 @@ interface AgentTableRow {
   model: string
 }
 
+interface DetailFieldRow {
+  field: string
+  value: string
+}
+
 interface PluginTableRow {
   status: TuiStatus
   plugin: string
@@ -268,6 +291,19 @@ function listText(value: unknown, fallback = '-'): string {
   if (!Array.isArray(value)) return valueText(value, fallback)
   if (value.length === 0) return fallback
   return value.map(item => valueText(item)).join(', ')
+}
+
+function detailText(value: unknown, fallback = '-'): string {
+  if (value === null || value === undefined || value === '') return fallback
+  if (Array.isArray(value)) return listText(value, fallback)
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return String(value)
+    }
+  }
+  return String(value)
 }
 
 function timestampText(value: unknown): string {
@@ -395,6 +431,23 @@ function agentTableRows(agents: AgentRowData[]): AgentTableRow[] {
     state: agent.status,
     model: agent.model,
   }))
+}
+
+function taskDetailFields(task: TaskDetailData): DetailFieldRow[] {
+  const primary = new Set(['id', 'title', 'agent', 'column'])
+  return Object.entries(task)
+    .filter(([key]) => !primary.has(key))
+    .map(([field, value]) => ({ field, value: detailText(value) }))
+}
+
+function contentPreview(value: unknown): string {
+  const text = valueText(value, '')
+  if (!text) return 'missing'
+  return text.split('\n').map(line => line.trim()).find(Boolean) ?? 'present'
+}
+
+function contentStatus(value: unknown): TuiStatus {
+  return valueText(value, '') ? 'ok' : 'skip'
 }
 
 function pluginRouteCounts(routes: PluginRouteData[]): Array<{ pluginId: string; routeCount: number }> {
@@ -740,6 +793,46 @@ export function AgentTasksReport({ agentId, tasks, color = true }: {
   )
 }
 
+export function TaskDetailReport({ taskId, column, task, color = true }: {
+  taskId: string
+  column: string
+  task: TaskDetailData
+  color?: boolean
+}) {
+  const fields = taskDetailFields(task)
+  const columnStatus = taskColumnStatus(column)
+  const agent = valueText(task.agent, 'unassigned')
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Task Detail" subtitle="Board task snapshot" meta={`id: ${taskId}`} color={color} />
+      <SummaryStrip items={[
+        { label: 'column', value: column, status: columnStatus },
+        { label: 'agent', value: agent, status: agent === 'unassigned' ? 'skip' : 'ok' },
+      ]} color={color} />
+      <Section title="Task" color={color}>
+        <FindingRows rows={[
+          { status: columnStatus, label: 'title', message: valueText(task.title, '(untitled task)') },
+          { status: 'ready', label: 'id', message: valueText(task.id, taskId) },
+          { status: agent === 'unassigned' ? 'skip' : 'ok', label: 'agent', message: agent },
+          { status: columnStatus, label: 'column', message: column },
+        ]} color={color} />
+      </Section>
+      {fields.length > 0 ? (
+        <Section title="Fields" color={color}>
+          <DataTable
+            rows={fields}
+            columns={[
+              { key: 'field', header: 'FIELD', width: 18, render: row => row.field },
+              { key: 'value', header: 'VALUE', width: 58, grow: true, render: row => row.value },
+            ]}
+          />
+        </Section>
+      ) : null}
+    </Box>
+  )
+}
+
 export function AgentsListReport({ agents, color = true }: {
   agents: AgentRowData[]
   color?: boolean
@@ -771,6 +864,45 @@ export function AgentsListReport({ agents, color = true }: {
         ) : (
           <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No agents reported by the runtime.' }]} color={color} />
         )}
+      </Section>
+    </Box>
+  )
+}
+
+export function AgentStatusReport({ agentId, profile, color = true }: {
+  agentId: string
+  profile: AgentProfileData
+  color?: boolean
+}) {
+  const status = valueText(profile.status, 'profile')
+  const permissions = Array.isArray(profile.subagentPerms) ? profile.subagentPerms.length : 0
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Agent Status" subtitle="Runtime profile snapshot" meta={`agent: ${agentId}`} color={color} />
+      <SummaryStrip items={[
+        { label: 'status', value: status, status: profile.status ? agentStatus(status) : 'ok' },
+        { label: 'model', value: valueText(profile.model), status: profile.model ? 'ok' : 'skip' },
+        { label: 'permissions', value: permissions, status: permissions > 0 ? 'ready' : 'skip' },
+      ]} color={color} />
+      <Section title="Profile" color={color}>
+        <FindingRows rows={[
+          { status: 'ready', label: 'id', message: valueText(profile.id, agentId) },
+          { status: 'ok', label: 'name', message: `${valueText(profile.emoji, '').trim()} ${valueText(profile.name, '(unnamed agent)')}`.trim() },
+          { status: profile.role ? 'ok' : 'skip', label: 'role', message: valueText(profile.role, '-') },
+          { status: profile.model ? 'ok' : 'skip', label: 'model', message: valueText(profile.model, '-') },
+          { status: profile.workspacePath ? 'ok' : 'skip', label: 'workspace', message: valueText(profile.workspacePath, '-') },
+        ]} color={color} />
+      </Section>
+      <Section title="Workspace" color={color}>
+        <FindingRows rows={[
+          { status: contentStatus(profile.identity), label: 'identity', message: contentPreview(profile.identity) },
+          { status: contentStatus(profile.soul), label: 'soul', message: contentPreview(profile.soul) },
+          { status: contentStatus(profile.rules), label: 'rules', message: contentPreview(profile.rules) },
+          { status: contentStatus(profile.tools), label: 'tools', message: contentPreview(profile.tools) },
+          { status: contentStatus(profile.heartbeatMd), label: 'heartbeat', message: contentPreview(profile.heartbeatMd) },
+          { status: permissions > 0 ? 'ready' : 'skip', label: 'subagents', message: listText(profile.subagentPerms, 'none') },
+        ]} color={color} />
       </Section>
     </Box>
   )
