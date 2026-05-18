@@ -139,6 +139,13 @@ describe('doctor repair CLI UI', () => {
     expect(rendered).not.toContain('repair-1  sent  task=task-repair-1')
   })
 
+  it('keeps trailing breathing room for empty delegated repair request lists', () => {
+    const rendered = renderToString(<DoctorRepairRequestsReport requests={[]} color={false} />)
+
+    expect(rendered).toContain('No doctor repair requests.')
+    expect(rendered.endsWith('\n')).toBe(true)
+  })
+
   it('renders delegated repair request details with findings and events', () => {
     const rendered = renderToString(<DoctorRepairRequestReport request={delegateReport.request} color={false} />)
 

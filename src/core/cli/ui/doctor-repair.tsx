@@ -1,4 +1,4 @@
-import { Box } from 'ink'
+import { Box, Text } from 'ink'
 import type { TuiStatus } from './style-tokens'
 import {
   FindingRows,
@@ -433,7 +433,10 @@ export function DoctorRepairRequestsReport({ requests, color = true }: {
         {requests.length > 0 ? (
           <StatusTable columns={requestColumns} rows={requestTableRows(requests)} color={color} />
         ) : (
-          <FindingRows rows={[{ status: 'ok', label: 'requests', message: 'No doctor repair requests.' }]} color={color} />
+          <Box flexDirection="column">
+            <FindingRows rows={[{ status: 'ok', label: 'requests', message: 'No doctor repair requests.' }]} color={color} />
+            <Text> </Text>
+          </Box>
         )}
       </Section>
     </Box>
