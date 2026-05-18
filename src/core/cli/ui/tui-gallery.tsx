@@ -1,5 +1,6 @@
 import { Box, Text, renderToString } from 'ink'
 import type { ReactNode } from 'react'
+import { createMultiSelectState, MultiSelect, type MultiSelectItem } from './multi-select'
 import { CLI_COLORS, statusToken, type TuiStatus } from './style-tokens'
 
 const BAKIN_HEADER = [
@@ -38,17 +39,6 @@ interface SummaryItem {
   label: string
   value: string | number
   status?: TuiStatus
-}
-
-interface SelectionRow {
-  id: string
-  label: string
-  description: string
-  selected: boolean
-  focused?: boolean
-  disabled?: boolean
-  note?: string
-  detail?: string
 }
 
 interface TableColumn<TRow> {
@@ -212,44 +202,6 @@ function ProgressMeter({ label, current, total, percent }: {
         <Text dimColor>  {current}/{total} steps  {percent}%</Text>
       </Box>
       <Text color={CLI_COLORS.info}>{bar}</Text>
-    </Box>
-  )
-}
-
-function SelectionRows({ rows }: { rows: SelectionRow[] }) {
-  return (
-    <Box flexDirection="column">
-      {rows.map(row => {
-        const marker = row.focused ? '>' : ' '
-        const checkbox = row.disabled ? '[-]' : row.selected ? '[x]' : '[ ]'
-
-        return (
-          <Box key={row.id} flexDirection="column">
-            <Box gap={1}>
-              <Box width={1} flexShrink={0}>
-                <Text color={row.focused ? CLI_COLORS.info : undefined}>{marker}</Text>
-              </Box>
-              <Box width={3} flexShrink={0}>
-                <Text dimColor={row.disabled}>{checkbox}</Text>
-              </Box>
-              <Box width={18} flexShrink={0}>
-                <Text bold={!row.disabled} dimColor={row.disabled} wrap="truncate-end">{row.label}</Text>
-              </Box>
-              <Box width={13} flexShrink={0}>
-                <Text dimColor wrap="truncate-end">{row.note ?? ''}</Text>
-              </Box>
-              <Box flexGrow={1} flexShrink={1}>
-                <Text dimColor={row.disabled} wrap="wrap">{row.description}</Text>
-              </Box>
-            </Box>
-            {row.detail ? (
-              <Box marginLeft={39}>
-                <Text dimColor wrap="wrap">{row.detail}</Text>
-              </Box>
-            ) : null}
-          </Box>
-        )
-      })}
     </Box>
   )
 }
@@ -598,6 +550,21 @@ function OnboardAntflyConfirmScreen() {
 }
 
 function OnboardPluginSelectionScreen() {
+  const items: MultiSelectItem[] = [
+    {
+      id: 'messaging',
+      label: 'Messaging',
+      selected: true,
+      description: 'Content planning, calendar items, brainstorming sessions, approvals, and channel delivery.',
+    },
+    {
+      id: 'projects',
+      label: 'Projects',
+      selected: true,
+      description: 'Project specs, checklists, task links, assets, and project-context agent tools.',
+    },
+  ]
+
   return (
     <Box flexDirection="column">
       <Header title="Onboard" subtitle="Choose official plugins to install" meta="plugin selection" />
@@ -607,26 +574,13 @@ function OnboardPluginSelectionScreen() {
         { label: 'dependencies', value: 4, status: 'ok' },
       ]} />
       <Section title="Plugins">
-        <Text dimColor>Use up/down to move, space to select, enter to continue.</Text>
-        <SelectionRows rows={[
-          {
-            id: 'messaging',
-            label: 'Messaging',
-            note: 'official',
-            selected: true,
-            focused: true,
-            description: 'Content planning, calendar items, brainstorming sessions, approvals, and channel delivery.',
-            detail: 'depends on team and workflows',
-          },
-          {
-            id: 'projects',
-            label: 'Projects',
-            note: 'official',
-            selected: true,
-            description: 'Project specs, checklists, task links, assets, and project-context agent tools.',
-            detail: 'depends on tasks, assets, and team',
-          },
-        ]} />
+        <MultiSelect
+          title="Install official plugins"
+          items={items}
+          state={createMultiSelectState(items)}
+          onChange={() => {}}
+          onSubmit={() => {}}
+        />
       </Section>
       <Section title="Install plan">
         <FindingRows rows={[
@@ -640,6 +594,31 @@ function OnboardPluginSelectionScreen() {
 }
 
 function OnboardAgentSelectionScreen() {
+  const items: MultiSelectItem[] = [
+    {
+      id: 'patch',
+      label: 'Patch',
+      selected: true,
+      description: 'Developer agent for API integrations, automation, debugging, and tool extensions.',
+    },
+    {
+      id: 'jessica-fetcher',
+      label: 'Jessica Fetcher',
+      selected: true,
+      description: 'Research agent for multi-source discovery, evidence gathering, and synthesis support.',
+    },
+    {
+      id: 'pixel',
+      label: 'Pixel',
+      description: 'Image artist agent for prompt craft, output iteration, and visual quality.',
+    },
+    {
+      id: 'rolo',
+      label: 'Rolo',
+      description: 'Video producer agent for video, audio, and finished asset mixing.',
+    },
+  ]
+
   return (
     <Box flexDirection="column">
       <Header title="Onboard" subtitle="Choose official agents to install or adopt" meta="agent selection" />
@@ -649,38 +628,13 @@ function OnboardAgentSelectionScreen() {
         { label: 'runtime', value: 'ready', status: 'ok' },
       ]} />
       <Section title="Agents">
-        <Text dimColor>Use up/down to move, space to select, enter to continue.</Text>
-        <SelectionRows rows={[
-          {
-            id: 'patch',
-            label: 'Patch',
-            note: 'dev',
-            selected: true,
-            focused: true,
-            description: 'Developer agent for API integrations, automation, debugging, and tool extensions.',
-          },
-          {
-            id: 'jessica-fetcher',
-            label: 'Jessica Fetcher',
-            note: 'research',
-            selected: true,
-            description: 'Research agent for multi-source discovery, evidence gathering, and synthesis support.',
-          },
-          {
-            id: 'pixel',
-            label: 'Pixel',
-            note: 'creative',
-            selected: false,
-            description: 'Image artist agent for prompt craft, output iteration, and visual quality.',
-          },
-          {
-            id: 'rolo',
-            label: 'Rolo',
-            note: 'media',
-            selected: false,
-            description: 'Video producer agent for video, audio, and finished asset mixing.',
-          },
-        ]} />
+        <MultiSelect
+          title="Install official agents"
+          items={items}
+          state={createMultiSelectState(items)}
+          onChange={() => {}}
+          onSubmit={() => {}}
+        />
       </Section>
       <Section title="Runtime context">
         <FindingRows rows={[

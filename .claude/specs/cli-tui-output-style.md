@@ -86,8 +86,10 @@ The gallery should feel like a quiet operational tool:
 - section headers rendered as bold white text with a bold white divider line
 - no decorative boxes or nested cards
 - summaries near the top and final next actions near the bottom
-- interactive mocks show current focus with `>`, selected rows with `[x]`,
-  unselected rows with `[ ]`, and default confirm behavior in the prompt text
+- interactive selection mocks render the same `MultiSelect` primitive used by
+  real onboarding, so focus and selected markers come from Ink UI instead of a
+  hand-drawn fixture
+- confirmation mocks show default behavior in the prompt text
 
 Status vocabulary uses fixed-width color blocks with contrasting foreground
 text, not bracketed labels:
@@ -112,6 +114,8 @@ matter for later integration:
 - wide output keeps status tokens intact
 - narrow output wraps within the requested width
 - repair and delegated workflows include realistic next actions
+- selection behavior is covered by the `MultiSelect` state reducer tests, while
+  gallery tests assert that selection screens render the real Ink UI markers
 
 ## Boundaries
 
