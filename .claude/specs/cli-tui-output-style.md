@@ -68,6 +68,7 @@ bun run typecheck
 ```text
 scripts/cli-tui-gallery.tsx             executable gallery runner
 src/core/cli/ui/style-tokens.ts         prototype status/color/spacing tokens
+src/core/cli/ui/tui.tsx                 shared TUI primitives promoted from the gallery
 src/core/cli/ui/tui-gallery.tsx         gallery components and fixture screens
 tests/cli/tui-gallery.test.tsx          width and screen coverage
 .claude/specs/cli-tui-output-style.md   this spec
