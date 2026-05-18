@@ -42,21 +42,33 @@ describe('onboarding component CLI commands', () => {
 
   beforeEach(() => {
     mock.clearAllMocks()
-    runtimeCheck.mockImplementation(async () => ({
-      name: 'runtime',
-      status: 'ok',
-      message: 'Runtime adapter is available.',
-    }))
-    checkAll.mockImplementation(async () => [
-      { name: 'runtime', status: 'ok', message: 'Runtime adapter is available.' },
-      { name: 'search', status: 'ok', message: 'Search adapter is available.' },
-    ])
-    pluginAssetsInstall.mockImplementation(async () => ({
-      name: 'plugin-assets',
-      status: 'installed',
-      message: 'Installed plugin assets.',
-      durationMs: 12,
-    }))
+    runtimeCheck.mockImplementation(async () => {
+      const { createLogger } = await import('../../packages/core/src/logger')
+      createLogger('settings').info('Runtime check log')
+      return {
+        name: 'runtime',
+        status: 'ok',
+        message: 'Runtime adapter is available.',
+      }
+    })
+    checkAll.mockImplementation(async () => {
+      const { createLogger } = await import('../../packages/core/src/logger')
+      createLogger('settings').info('Settings loaded')
+      return [
+        { name: 'runtime', status: 'ok', message: 'Runtime adapter is available.' },
+        { name: 'search', status: 'ok', message: 'Search adapter is available.' },
+      ]
+    })
+    pluginAssetsInstall.mockImplementation(async () => {
+      const { createLogger } = await import('../../packages/core/src/logger')
+      createLogger('settings').info('Plugin install log')
+      return {
+        name: 'plugin-assets',
+        status: 'installed',
+        message: 'Installed plugin assets.',
+        durationMs: 12,
+      }
+    })
     process.argv = originalArgv
     log = spyOn(console, 'log').mockImplementation(() => {})
     process.exit = ((code?: number) => {
@@ -84,6 +96,7 @@ describe('onboarding component CLI commands', () => {
     expect(output()).toContain('Onboarding check')
     expect(output()).toContain('RESULT')
     expect(output()).toContain('Runtime adapter is available.')
+    expect(output()).not.toContain('Runtime check log')
     expect(output()).not.toContain('[OK]')
   })
 
@@ -97,7 +110,18 @@ describe('onboarding component CLI commands', () => {
     expect(output()).toContain('Onboarding checks')
     expect(output()).toContain('CHECKS')
     expect(output()).toContain('Search adapter is available.')
+    expect(output()).not.toContain('Settings loaded')
     expect(output()).not.toContain('[OK]')
+  })
+
+  it('keeps component check logs when --verbose is used', async () => {
+    process.argv = ['bun', 'cli/bakin.ts', 'check', 'all', '--verbose']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    expect(output()).toContain('Settings loaded')
+    expect(output()).toContain('Onboarding checks')
   })
 
   it('renders component installs with the shared TUI in a TTY', async () => {
@@ -109,6 +133,7 @@ describe('onboarding component CLI commands', () => {
     expect(output()).toContain('Onboarding install')
     expect(output()).toContain('RESULT')
     expect(output()).toContain('Installed plugin assets.')
+    expect(output()).not.toContain('Plugin install log')
     expect(output()).not.toContain('[INSTALLED]')
   })
 
