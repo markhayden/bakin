@@ -26,6 +26,7 @@ import type {
   SearchMetaData,
   SearchResultData,
 } from '../src/core/cli/ui/readonly'
+import type { CheckResult, InstallResult } from '../src/core/onboarding/types'
 
 const BASE_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 
@@ -326,6 +327,33 @@ async function printPackagesListTui(packages: Array<Record<string, unknown>>): P
     import('react'),
   ])
   console.log(renderToString(createElement(PackagesListReport, { packages })))
+}
+
+async function printOnboardingCheckTui(result: CheckResult): Promise<void> {
+  const [{ OnboardingCheckReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/onboarding'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(OnboardingCheckReport, { result })))
+}
+
+async function printOnboardingCheckAllTui(results: CheckResult[]): Promise<void> {
+  const [{ OnboardingCheckAllReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/onboarding'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(OnboardingCheckAllReport, { results })))
+}
+
+async function printOnboardingInstallTui(result: InstallResult): Promise<void> {
+  const [{ OnboardingInstallReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/onboarding'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(OnboardingInstallReport, { result })))
 }
 
 // ---------------------------------------------------------------------------
@@ -2374,8 +2402,12 @@ async function cmdOnboardingCheckSingle(target: 'runtime' | 'search' | 'search-m
   }
   const component = await componentMap[target]()
   const result = await component.check()
-  console.log(`${statusIcon(result.status)} ${result.message}`)
-  if (result.remediation) console.log(`  → ${result.remediation}`)
+  if (process.stdout.isTTY) {
+    await printOnboardingCheckTui(result)
+  } else {
+    console.log(`${statusIcon(result.status)} ${result.message}`)
+    if (result.remediation) console.log(`  → ${result.remediation}`)
+  }
   if (result.status === 'missing' || result.status === 'error' || result.status === 'broken') process.exit(1)
   if (result.status === 'warn') process.exit(2)
 }
@@ -2383,9 +2415,13 @@ async function cmdOnboardingCheckSingle(target: 'runtime' | 'search' | 'search-m
 async function cmdOnboardingCheckAll(): Promise<void> {
   const { checkAll } = await import('../src/core/onboarding/index')
   const results = await checkAll()
-  for (const r of results) {
-    console.log(`${statusIcon(r.status)} ${r.name.padEnd(10)} ${r.message}`)
-    if (r.remediation) console.log(`  → ${r.remediation}`)
+  if (process.stdout.isTTY) {
+    await printOnboardingCheckAllTui(results)
+  } else {
+    for (const r of results) {
+      console.log(`${statusIcon(r.status)} ${r.name.padEnd(10)} ${r.message}`)
+      if (r.remediation) console.log(`  → ${r.remediation}`)
+    }
   }
   const hasError = results.some(r => r.status === 'error' || r.status === 'missing' || r.status === 'broken')
   const hasWarn = results.some(r => r.status === 'warn')
@@ -2416,6 +2452,8 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
   const result = await component.install(opts)
   if (json) {
     console.log(JSON.stringify({ component: component.name, status: result.status, message: result.message, durationMs: result.durationMs }))
+  } else if (isTTY) {
+    await printOnboardingInstallTui(result)
   } else {
     console.log(`${statusIcon(result.status)} ${result.message}`)
   }
