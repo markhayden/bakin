@@ -157,6 +157,24 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).not.toContain('"workspacePath"')
   })
 
+  it('honors --json for task detail commands even in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      columns: {
+        inProgress: [{ id: 'task-1', title: 'Write docs', agent: 'patch' }],
+        todo: [],
+      },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'tasks', 'get', 'task-1', '--json']
+    await main()
+
+    expect(output()).toContain('"column": "inProgress"')
+    expect(output()).toContain('"title": "Write docs"')
+    expect(output()).not.toContain('Task Detail')
+    expect(output()).not.toContain('Column: inProgress')
+  })
+
   it('renders workflows list with the shared TUI screen in a TTY', async () => {
     const { main } = await import('../../cli/bakin')
 

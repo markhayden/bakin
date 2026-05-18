@@ -367,9 +367,9 @@ async function cmdAgentsSend(agentId: string, message: string): Promise<void> {
   print(result)
 }
 
-async function cmdAgentsStatus(agentId: string): Promise<void> {
+async function cmdAgentsStatus(agentId: string, opts: { json?: boolean } = {}): Promise<void> {
   const result = await apiGet(`/api/plugins/team/${agentId}`) as Record<string, unknown>
-  if (process.stdout.isTTY) {
+  if (!opts.json && process.stdout.isTTY) {
     await printAgentStatusTui(agentId, result)
     return
   }
@@ -1899,12 +1899,16 @@ async function cmdTasksComplete(id: string, summary: string): Promise<void> {
   print(result)
 }
 
-async function cmdTasksGet(id: string): Promise<void> {
+async function cmdTasksGet(id: string, opts: { json?: boolean } = {}): Promise<void> {
   const result = await apiGet('/api/plugins/tasks/') as { columns: Record<string, Array<Record<string, unknown>>> }
   const columns = result.columns || {}
   for (const [colName, tasks] of Object.entries(columns)) {
     const task = (tasks as Array<Record<string, unknown>>).find(t => t.id === id)
     if (task) {
+      if (opts.json) {
+        print({ column: colName, task })
+        return
+      }
       if (process.stdout.isTTY) {
         await printTaskDetailTui(id, colName, task)
         return
@@ -2420,7 +2424,7 @@ export async function main(): Promise<void> {
           await cmdTasksList(colFlag?.split('=')[1])
         } else if (sub === 'get') {
           if (!args[2]) { console.error('Usage: bakin tasks get <id>'); process.exit(1) }
-          await cmdTasksGet(args[2])
+          await cmdTasksGet(args[2], { json: args.includes('--json') })
         } else if (sub === 'create') {
           if (!args[2]) { console.error('Usage: bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow="<reason>"]'); process.exit(1) }
           // Parse flags from remaining args
@@ -2484,7 +2488,7 @@ export async function main(): Promise<void> {
           }
         } else if (sub === 'status') {
           if (!args[2]) { console.error('Usage: bakin agents status <id>'); process.exit(1) }
-          await cmdAgentsStatus(args[2])
+          await cmdAgentsStatus(args[2], { json: args.includes('--json') })
         } else if (sub === 'tasks') {
           if (!args[2]) { console.error('Usage: bakin agents tasks <id>'); process.exit(1) }
           await cmdAgentsTasks(args[2])
