@@ -116,6 +116,65 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).not.toContain('Installed plugins:')
   })
 
+  it('renders task and agent detail commands with shared TUI screens in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      columns: {
+        inProgress: [{ id: 'task-1', title: 'Write docs', agent: 'patch', priority: 'high' }],
+        todo: [],
+      },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'tasks', 'get', 'task-1']
+    await main()
+    expect(output()).toContain('Task Detail')
+    expect(output()).toContain('id: task-1')
+    expect(output()).toContain('Write docs')
+    expect(output()).toContain('FIELDS')
+    expect(output()).not.toContain('Column: inProgress')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      id: 'patch',
+      name: 'Patch',
+      role: 'Engineer',
+      model: 'gpt-5.5',
+      workspacePath: '/tmp/patch',
+      soul: '# Patch Soul\n',
+      identity: '# Identity\n',
+      rules: '',
+      tools: null,
+      heartbeatMd: '# Heartbeat\nWorking on docs',
+      subagentPerms: ['docs'],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'agents', 'status', 'patch']
+    await main()
+    expect(output()).toContain('Agent Status')
+    expect(output()).toContain('agent: patch')
+    expect(output()).toContain('PROFILE')
+    expect(output()).toContain('Patch')
+    expect(output()).toContain('WORKSPACE')
+    expect(output()).not.toContain('"workspacePath"')
+  })
+
+  it('honors --json for task detail commands even in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      columns: {
+        inProgress: [{ id: 'task-1', title: 'Write docs', agent: 'patch' }],
+        todo: [],
+      },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'tasks', 'get', 'task-1', '--json']
+    await main()
+
+    expect(output()).toContain('"column": "inProgress"')
+    expect(output()).toContain('"title": "Write docs"')
+    expect(output()).not.toContain('Task Detail')
+    expect(output()).not.toContain('Column: inProgress')
+  })
+
   it('renders workflows list with the shared TUI screen in a TTY', async () => {
     const { main } = await import('../../cli/bakin')
 

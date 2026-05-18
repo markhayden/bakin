@@ -134,6 +134,15 @@ async function printTasksListTui(columns: Record<string, Array<Record<string, un
   console.log(renderToString(createElement(TasksListReport, { columns, column })))
 }
 
+async function printTaskDetailTui(taskId: string, column: string, task: Record<string, unknown>): Promise<void> {
+  const [{ TaskDetailReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(TaskDetailReport, { taskId, column, task })))
+}
+
 async function printAgentsListTui(agents: Array<{ id: string; name: string; status: string; model: string }>): Promise<void> {
   const [{ AgentsListReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
@@ -141,6 +150,15 @@ async function printAgentsListTui(agents: Array<{ id: string; name: string; stat
     import('react'),
   ])
   console.log(renderToString(createElement(AgentsListReport, { agents })))
+}
+
+async function printAgentStatusTui(agentId: string, profile: Record<string, unknown>): Promise<void> {
+  const [{ AgentStatusReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(AgentStatusReport, { agentId, profile })))
 }
 
 async function printAgentTasksTui(agentId: string, tasks: Array<Record<string, unknown>>): Promise<void> {
@@ -349,8 +367,12 @@ async function cmdAgentsSend(agentId: string, message: string): Promise<void> {
   print(result)
 }
 
-async function cmdAgentsStatus(agentId: string): Promise<void> {
-  const result = await apiGet(`/api/plugins/team/${agentId}`)
+async function cmdAgentsStatus(agentId: string, opts: { json?: boolean } = {}): Promise<void> {
+  const result = await apiGet(`/api/plugins/team/${agentId}`) as Record<string, unknown>
+  if (!opts.json && process.stdout.isTTY) {
+    await printAgentStatusTui(agentId, result)
+    return
+  }
   print(result)
 }
 
@@ -1877,12 +1899,20 @@ async function cmdTasksComplete(id: string, summary: string): Promise<void> {
   print(result)
 }
 
-async function cmdTasksGet(id: string): Promise<void> {
+async function cmdTasksGet(id: string, opts: { json?: boolean } = {}): Promise<void> {
   const result = await apiGet('/api/plugins/tasks/') as { columns: Record<string, Array<Record<string, unknown>>> }
   const columns = result.columns || {}
   for (const [colName, tasks] of Object.entries(columns)) {
     const task = (tasks as Array<Record<string, unknown>>).find(t => t.id === id)
     if (task) {
+      if (opts.json) {
+        print({ column: colName, task })
+        return
+      }
+      if (process.stdout.isTTY) {
+        await printTaskDetailTui(id, colName, task)
+        return
+      }
       console.log(`Column: ${colName}`)
       print(task)
       return
@@ -2394,7 +2424,7 @@ export async function main(): Promise<void> {
           await cmdTasksList(colFlag?.split('=')[1])
         } else if (sub === 'get') {
           if (!args[2]) { console.error('Usage: bakin tasks get <id>'); process.exit(1) }
-          await cmdTasksGet(args[2])
+          await cmdTasksGet(args[2], { json: args.includes('--json') })
         } else if (sub === 'create') {
           if (!args[2]) { console.error('Usage: bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow="<reason>"]'); process.exit(1) }
           // Parse flags from remaining args
@@ -2458,7 +2488,7 @@ export async function main(): Promise<void> {
           }
         } else if (sub === 'status') {
           if (!args[2]) { console.error('Usage: bakin agents status <id>'); process.exit(1) }
-          await cmdAgentsStatus(args[2])
+          await cmdAgentsStatus(args[2], { json: args.includes('--json') })
         } else if (sub === 'tasks') {
           if (!args[2]) { console.error('Usage: bakin agents tasks <id>'); process.exit(1) }
           await cmdAgentsTasks(args[2])
