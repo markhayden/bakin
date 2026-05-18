@@ -127,17 +127,33 @@ export function FindingRows({ rows, color = true }: { rows: FindingRow[]; color?
             </Box>
           </Box>
           {row.detail ? (
-            <Box marginLeft={33}>
+            <FindingRowContinuation>
               <Text dimColor wrap="wrap">{row.detail}</Text>
-            </Box>
+            </FindingRowContinuation>
           ) : null}
           {row.next ? (
-            <Box marginLeft={33}>
+            <FindingRowContinuation>
               <Text color={color ? CLI_COLORS.info : undefined} wrap="wrap">Next: {row.next}</Text>
-            </Box>
+            </FindingRowContinuation>
           ) : null}
         </Box>
       ))}
+    </Box>
+  )
+}
+
+function FindingRowContinuation({ children }: { children: ReactNode }) {
+  return (
+    <Box gap={1}>
+      <Box width={10} flexShrink={0}>
+        <Text> </Text>
+      </Box>
+      <Box width={22} flexShrink={0}>
+        <Text> </Text>
+      </Box>
+      <Box flexGrow={1} flexShrink={1}>
+        {children}
+      </Box>
     </Box>
   )
 }

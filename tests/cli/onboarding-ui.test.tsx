@@ -71,8 +71,7 @@ describe('onboarding CLI UI', () => {
     expect(rendered).toContain('PREREQUISITES')
     expect(rendered).toContain('BLOCKED')
     expect(rendered).not.toContain('[BLOCKED')
-    expect(rendered).toContain('https://makinbakin.com/docs/start/first-ti')
-    expect(rendered).toContain('me-setup/')
+    expect(rendered.replace(/\s+/g, '')).toContain('https://makinbakin.com/docs/start/first-time-setup/')
   })
 
   it('compacts home paths in the human onboarding summary', () => {

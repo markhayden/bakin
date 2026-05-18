@@ -37,6 +37,7 @@ describe('CLI UI primitives', () => {
           status: 'warn',
           label: 'agent-assets',
           message: '1 agent-package projection needs repair.',
+          detail: 'Run `bakin install agent-assets` to repair drift.',
           next: 'bakin install agent-assets',
         }]} />
       </Section>,
@@ -47,6 +48,13 @@ describe('CLI UI primitives', () => {
     expect(output).toContain('1 agent-package projection needs repair.')
     expect(output).toContain('Next: bakin install agent-assets')
     expect(output).not.toContain('[WARN]')
+
+    const lines = output.split('\n')
+    const messageLine = lines.find(line => line.includes('1 agent-package projection needs repair.'))
+    const detailLine = lines.find(line => line.includes('Run `bakin install agent-assets`'))
+    const nextLine = lines.find(line => line.includes('Next: bakin install agent-assets'))
+    expect(detailLine?.indexOf('Run')).toBe(messageLine?.indexOf('1 agent-package'))
+    expect(nextLine?.indexOf('Next')).toBe(messageLine?.indexOf('1 agent-package'))
   })
 
   it('renders shared TUI summaries, progress, and next actions', () => {
