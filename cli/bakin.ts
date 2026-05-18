@@ -111,12 +111,62 @@ function printTable(rows: Record<string, unknown>[], columns?: string[]): void {
   }
 }
 
+async function printStatusTui(dispatch: Record<string, unknown>, roster: CliRoster): Promise<void> {
+  const [{ StatusReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(StatusReport, { dispatch, roster })))
+}
+
+async function printTasksListTui(columns: Record<string, Array<Record<string, unknown>>>, column?: string): Promise<void> {
+  const [{ TasksListReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(TasksListReport, { columns, column })))
+}
+
+async function printAgentsListTui(agents: Array<{ id: string; name: string; status: string; model: string }>): Promise<void> {
+  const [{ AgentsListReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(AgentsListReport, { agents })))
+}
+
+async function printPluginsListTui(routes: Array<Record<string, unknown>>): Promise<void> {
+  const [{ PluginsListReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(PluginsListReport, { routes })))
+}
+
+async function printWorkflowsListTui(templates: Array<Record<string, unknown>>): Promise<void> {
+  const [{ WorkflowsListReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(WorkflowsListReport, { templates })))
+}
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
 async function cmdStatus(): Promise<void> {
   const dispatch = await apiGet('/api/dispatch') as Record<string, unknown>
   const roster = await getCliRoster()
+
+  if (process.stdout.isTTY) {
+    await printStatusTui(dispatch, roster)
+    return
+  }
 
   console.log('=== Bakin Status ===')
   console.log(`Dispatch interval: ${dispatch.intervalMin}min`)
@@ -142,8 +192,16 @@ async function cmdTasksList(column?: string): Promise<void> {
       console.error(`Unknown column: ${column}. Available: ${Object.keys(columns).join(', ')}`)
       process.exit(1)
     }
+    if (process.stdout.isTTY) {
+      await printTasksListTui({ [column]: col as Array<Record<string, unknown>> }, column)
+      return
+    }
     printTable(col as Record<string, unknown>[], ['id', 'title', 'agent'])
   } else {
+    if (process.stdout.isTTY) {
+      await printTasksListTui(columns as Record<string, Array<Record<string, unknown>>>)
+      return
+    }
     for (const [name, tasks] of Object.entries(columns)) {
       if ((tasks as unknown[]).length === 0) continue
       console.log(`\n=== ${name} ===`)
@@ -182,6 +240,10 @@ async function cmdTasksMove(id: string, to: string): Promise<void> {
 async function cmdAgentsList(): Promise<void> {
   const result = await apiGet('/api/plugins/team/') as {
     agents: Array<{ id: string; name: string; status: string; model: string }>
+  }
+  if (process.stdout.isTTY) {
+    await printAgentsListTui(result.agents)
+    return
   }
   for (const agent of result.agents) {
     const statusIcon = agent.status === 'working' ? '●' : agent.status === 'online' ? '○' : '·'
@@ -244,6 +306,10 @@ async function cmdPluginsList(): Promise<void> {
   const plugins = new Set<string>()
   for (const route of docs.routes) {
     if (route.pluginId !== 'core') plugins.add(route.pluginId as string)
+  }
+  if (process.stdout.isTTY) {
+    await printPluginsListTui(docs.routes)
+    return
   }
   console.log('Installed plugins:')
   for (const p of plugins) {
@@ -1707,6 +1773,10 @@ async function cmdTasksGet(id: string): Promise<void> {
 async function cmdWorkflowsList(): Promise<void> {
   const result = await apiGet('/api/plugins/workflows/definitions') as { templates?: Array<Record<string, unknown>> }
   const templates = result?.templates || []
+  if (process.stdout.isTTY) {
+    await printWorkflowsListTui(templates)
+    return
+  }
   if (templates.length === 0) {
     console.log('No workflow definitions found.')
     return

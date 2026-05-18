@@ -26,6 +26,7 @@ export interface TableColumn<TRow> {
   key: string
   header: string
   width: number
+  grow?: boolean
   render: (row: TRow) => string
 }
 
@@ -166,7 +167,12 @@ export function DataTable<TRow>({ columns, rows }: {
     <Box flexDirection="column">
       <Box gap={1}>
         {columns.map(column => (
-          <Box key={column.key} width={column.width} flexShrink={0}>
+          <Box
+            key={column.key}
+            width={column.width}
+            flexGrow={column.grow ? 1 : 0}
+            flexShrink={column.grow ? 1 : 0}
+          >
             <Text bold wrap="truncate-end">{column.header}</Text>
           </Box>
         ))}
@@ -174,8 +180,56 @@ export function DataTable<TRow>({ columns, rows }: {
       {rows.map((row, rowIndex) => (
         <Box key={rowIndex} gap={1}>
           {columns.map(column => (
-            <Box key={column.key} width={column.width} flexShrink={0}>
-              <Text wrap="truncate-end">{column.render(row)}</Text>
+            <Box
+              key={column.key}
+              width={column.width}
+              flexGrow={column.grow ? 1 : 0}
+              flexShrink={column.grow ? 1 : 0}
+            >
+              <Text wrap={column.grow ? 'wrap' : 'truncate-end'}>{column.render(row)}</Text>
+            </Box>
+          ))}
+        </Box>
+      ))}
+    </Box>
+  )
+}
+
+export function StatusTable<TRow extends { status: TuiStatus }>({ columns, rows, color = true }: {
+  columns: Array<TableColumn<TRow>>
+  rows: TRow[]
+  color?: boolean
+}) {
+  return (
+    <Box flexDirection="column">
+      <Box gap={1}>
+        <Box width={10} flexShrink={0}>
+          <Text bold>STATUS</Text>
+        </Box>
+        {columns.map(column => (
+          <Box
+            key={column.key}
+            width={column.width}
+            flexGrow={column.grow ? 1 : 0}
+            flexShrink={column.grow ? 1 : 0}
+          >
+            <Text bold wrap="truncate-end">{column.header}</Text>
+          </Box>
+        ))}
+      </Box>
+      {rows.map((row, rowIndex) => (
+        <Box key={rowIndex} gap={1}>
+          <Box width={10} flexShrink={0}>
+            <StatusToken status={row.status} color={color} />
+          </Box>
+          {columns.map(column => (
+            <Box
+              key={column.key}
+              width={column.width}
+              flexGrow={column.grow ? 1 : 0}
+              flexShrink={column.grow ? 1 : 0}
+            >
+              <Text wrap={column.grow ? 'wrap' : 'truncate-end'}>{column.render(row)}</Text>
             </Box>
           ))}
         </Box>
