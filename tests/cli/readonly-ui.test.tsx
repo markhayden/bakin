@@ -7,6 +7,8 @@ import {
   AgentsListReport,
   PackagesListReport,
   PluginsListReport,
+  ScheduleListReport,
+  ScheduleRunsReport,
   StatusReport,
   TasksListReport,
   WorkflowsListReport,
@@ -158,5 +160,50 @@ describe('read-only CLI TUI screens', () => {
     expect(packages).toContain('Packages')
     expect(packages).toContain('DEPENDENTS')
     expect(packages).toContain('patch, docs')
+  })
+
+  it('renders schedule lists and run history as shared TUI tables', () => {
+    const schedule = renderToString(
+      <ScheduleListReport
+        jobs={[
+          {
+            id: 'job-1',
+            displayName: 'Daily Doctor',
+            agentId: 'main',
+            humanSchedule: 'Every day at 9:00 AM',
+            paused: false,
+            enabled: true,
+            isBakinJob: true,
+          },
+          {
+            id: 'job-2',
+            displayName: 'Paused Cleanup',
+            agentId: 'patch',
+            humanSchedule: 'Every Friday',
+            paused: true,
+            enabled: true,
+            isBakinJob: true,
+          },
+        ]}
+      />,
+    )
+    const runs = renderToString(
+      <ScheduleRunsReport
+        jobId="job-1"
+        runs={[
+          { runId: 'run-1', timestamp: '2026-05-18T09:00:00.000Z', status: 'ok', taskId: 'task-1' },
+          { runId: 'run-2', timestamp: '2026-05-17T09:00:00.000Z', status: 'error', error: 'timeout' },
+        ]}
+      />,
+    )
+
+    expect(schedule).toContain('Schedule')
+    expect(schedule).toContain('JOBS')
+    expect(schedule).toContain('Daily Doctor')
+    expect(schedule).toContain('Every day at 9:00 AM')
+    expect(runs).toContain('Schedule Runs')
+    expect(runs).toContain('RUN HISTORY')
+    expect(runs).toContain('task-1')
+    expect(runs).toContain('timeout')
   })
 })

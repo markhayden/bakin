@@ -188,4 +188,43 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).toContain('patch, docs')
     expect(output()).not.toContain('Installed packages:')
   })
+
+  it('renders schedule list and run history with shared TUI screens in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      jobs: [
+        {
+          id: 'job-1',
+          displayName: 'Daily Doctor',
+          agentId: 'main',
+          humanSchedule: 'Every day at 9:00 AM',
+          paused: false,
+          enabled: true,
+          isBakinJob: true,
+        },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'schedule', 'list']
+    await main()
+    expect(output()).toContain('Schedule')
+    expect(output()).toContain('JOBS')
+    expect(output()).toContain('Daily Doctor')
+    expect(output()).not.toContain('Name                      Agent')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      runs: [
+        { runId: 'run-1', timestamp: '2026-05-18T09:00:00.000Z', status: 'ok', taskId: 'task-1' },
+        { runId: 'run-2', timestamp: '2026-05-17T09:00:00.000Z', status: 'error', error: 'timeout' },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'schedule', 'runs', 'job-1']
+    await main()
+    expect(output()).toContain('Schedule Runs')
+    expect(output()).toContain('RUN HISTORY')
+    expect(output()).toContain('task-1')
+    expect(output()).toContain('timeout')
+    expect(output()).not.toContain('Time                   Status')
+  })
 })
