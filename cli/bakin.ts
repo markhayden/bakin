@@ -19,6 +19,8 @@ import {
 } from '../src/core/plugins/import-export'
 import type {
   AgentRuleResultData,
+  PluginRestoreResultData,
+  PluginRestoreSnapshotData,
   ReindexResultData,
   SearchAggregationsData,
   SearchMetaData,
@@ -209,6 +211,24 @@ async function printPluginsListTui(routes: Array<Record<string, unknown>>): Prom
     import('react'),
   ])
   console.log(renderToString(createElement(PluginsListReport, { routes })))
+}
+
+async function printPluginRestoreSnapshotsTui(pluginId: string, snapshots: PluginRestoreSnapshotData[]): Promise<void> {
+  const [{ PluginRestoreSnapshotsReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(PluginRestoreSnapshotsReport, { pluginId, snapshots })))
+}
+
+async function printPluginRestoreResultTui(pluginId: string, result: PluginRestoreResultData): Promise<void> {
+  const [{ PluginRestoreResultReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(PluginRestoreResultReport, { pluginId, result })))
 }
 
 async function printDocsTui(routes: Array<Record<string, unknown>>): Promise<void> {
@@ -668,12 +688,23 @@ async function cmdPluginsRestore(pluginId: string, opts: { snapshot?: string; fo
   const result = await res.json().catch(() => ({})) as PluginRestoreResult
   if (opts.list) {
     if (result.error) throw new Error(result.error)
+    if (process.stdout.isTTY) {
+      await printPluginRestoreSnapshotsTui(pluginId, result.snapshots ?? [])
+      return
+    }
     printPluginRestoreSnapshots(pluginId, result.snapshots)
     return
   }
   if (!res.ok || result.error) {
-    if (result.snapshots && result.snapshots.length > 0) printPluginRestoreSnapshots(pluginId, result.snapshots)
+    if (result.snapshots && result.snapshots.length > 0) {
+      if (process.stdout.isTTY) await printPluginRestoreSnapshotsTui(pluginId, result.snapshots)
+      else printPluginRestoreSnapshots(pluginId, result.snapshots)
+    }
     throw new Error(result.error ?? `HTTP ${res.status}`)
+  }
+  if (process.stdout.isTTY) {
+    await printPluginRestoreResultTui(pluginId, result)
+    return
   }
   console.log(result.message ?? `Restored plugin: ${pluginId}`)
   if (result.snapshotInfo) {
