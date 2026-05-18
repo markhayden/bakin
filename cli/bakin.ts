@@ -2375,30 +2375,44 @@ async function withTtyRuntimeLogsSilenced<T>(
 }
 
 async function cmdOnboardingMkdir(): Promise<void> {
-  const { mkdirComponent } = await import('../src/core/onboarding/mkdir')
+  const isTTY = Boolean(process.stdout.isTTY)
   const opts = {
-    interactive: Boolean(process.stdout.isTTY),
+    interactive: isTTY,
     autoApprove: true,
     json: false,
     checkOnly: false,
     force: false,
   }
-  const result = await mkdirComponent.install(opts)
-  console.log(`${statusIcon(result.status)} ${result.message}`)
+  const result = await withTtyRuntimeLogsSilenced({ isTTY }, async () => {
+    const { mkdirComponent } = await import('../src/core/onboarding/mkdir')
+    return await mkdirComponent.install(opts)
+  })
+  if (isTTY) {
+    await printOnboardingInstallTui(result)
+  } else {
+    console.log(`${statusIcon(result.status)} ${result.message}`)
+  }
   if (result.status === 'failed') process.exit(1)
 }
 
 async function cmdOnboardingSettingsInit(): Promise<void> {
-  const { settingsComponent } = await import('../src/core/onboarding/settings')
+  const isTTY = Boolean(process.stdout.isTTY)
   const opts = {
-    interactive: Boolean(process.stdout.isTTY),
+    interactive: isTTY,
     autoApprove: true,
     json: false,
     checkOnly: false,
     force: false,
   }
-  const result = await settingsComponent.install(opts)
-  console.log(`${statusIcon(result.status)} ${result.message}`)
+  const result = await withTtyRuntimeLogsSilenced({ isTTY }, async () => {
+    const { settingsComponent } = await import('../src/core/onboarding/settings')
+    return await settingsComponent.install(opts)
+  })
+  if (isTTY) {
+    await printOnboardingInstallTui(result)
+  } else {
+    console.log(`${statusIcon(result.status)} ${result.message}`)
+  }
   if (result.status === 'failed') process.exit(1)
 }
 
