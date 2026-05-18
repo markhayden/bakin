@@ -57,6 +57,15 @@ interface ListResult {
   }>
 }
 
+async function printScheduleListTui(jobs: ListResult['jobs']): Promise<void> {
+  const [{ ScheduleListReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(ScheduleListReport, { jobs })))
+}
+
 export async function cmdScheduleList(opts: {
   all?: boolean
   agent?: string
@@ -70,6 +79,11 @@ export async function cmdScheduleList(opts: {
 
   if (opts.json) {
     console.log(JSON.stringify(jobs, null, 2))
+    return
+  }
+
+  if (process.stdout.isTTY) {
+    await printScheduleListTui(jobs)
     return
   }
 
@@ -142,10 +156,24 @@ interface RunsResult {
   }>
 }
 
+async function printScheduleRunsTui(jobId: string, runs: RunsResult['runs']): Promise<void> {
+  const [{ ScheduleRunsReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(ScheduleRunsReport, { jobId, runs })))
+}
+
 export async function cmdScheduleRuns(jobId: string, opts: {
   limit?: number
 }): Promise<void> {
   const data = await apiGet<RunsResult>(`/${jobId}/runs?limit=${opts.limit ?? 20}`)
+
+  if (process.stdout.isTTY) {
+    await printScheduleRunsTui(jobId, data.runs)
+    return
+  }
 
   if (data.runs.length === 0) {
     console.log(`No run history for ${jobId}`)

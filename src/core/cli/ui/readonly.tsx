@@ -68,6 +68,24 @@ export interface PackageData {
   dependents?: unknown
 }
 
+export interface ScheduleJobData {
+  id?: unknown
+  displayName?: unknown
+  agentId?: unknown
+  humanSchedule?: unknown
+  paused?: unknown
+  enabled?: unknown
+  isBakinJob?: unknown
+}
+
+export interface ScheduleRunData {
+  runId?: unknown
+  timestamp?: unknown
+  status?: unknown
+  taskId?: unknown
+  error?: unknown
+}
+
 interface TaskTableRow {
   status: TuiStatus
   column: string
@@ -121,6 +139,22 @@ interface PackageTableRow {
   dependents: string
 }
 
+interface ScheduleJobTableRow {
+  status: TuiStatus
+  name: string
+  agent: string
+  schedule: string
+  state: string
+}
+
+interface ScheduleRunTableRow {
+  status: TuiStatus
+  time: string
+  state: string
+  task: string
+  error: string
+}
+
 const TASK_COLUMN_ORDER = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived'] as const
 
 function valueText(value: unknown, fallback = '-'): string {
@@ -140,6 +174,12 @@ function listText(value: unknown, fallback = '-'): string {
   if (!Array.isArray(value)) return valueText(value, fallback)
   if (value.length === 0) return fallback
   return value.map(item => valueText(item)).join(', ')
+}
+
+function timestampText(value: unknown): string {
+  const text = valueText(value)
+  const date = new Date(text)
+  return Number.isNaN(date.getTime()) ? text : date.toLocaleString()
 }
 
 function taskColumnStatus(column: string): TuiStatus {
@@ -302,6 +342,71 @@ function packageTableRows(packages: PackageData[]): PackageTableRow[] {
     refs: valueText(pkg.refCount, '0'),
     dependents: listText(pkg.dependents),
   }))
+}
+
+function scheduleJobState(job: ScheduleJobData): string {
+  if (job.paused === true) return 'paused'
+  return job.enabled === false ? 'disabled' : 'active'
+}
+
+function scheduleJobStatus(state: string): TuiStatus {
+  switch (state) {
+    case 'active':
+      return 'ok'
+    case 'paused':
+      return 'warn'
+    case 'disabled':
+      return 'skip'
+    default:
+      return 'skip'
+  }
+}
+
+function scheduleJobTableRows(jobs: ScheduleJobData[]): ScheduleJobTableRow[] {
+  return jobs.map(job => {
+    const state = scheduleJobState(job)
+    return {
+      status: scheduleJobStatus(state),
+      name: valueText(job.displayName, '(unnamed job)'),
+      agent: valueText(job.agentId),
+      schedule: valueText(job.humanSchedule),
+      state,
+    }
+  })
+}
+
+function scheduleRunStatus(status: string): TuiStatus {
+  switch (status) {
+    case 'ok':
+    case 'success':
+    case 'completed':
+      return 'ok'
+    case 'error':
+    case 'failed':
+    case 'fail':
+      return 'fail'
+    case 'running':
+      return 'run'
+    case 'skipped':
+    case 'cancelled':
+    case 'canceled':
+      return 'skip'
+    default:
+      return 'skip'
+  }
+}
+
+function scheduleRunTableRows(runs: ScheduleRunData[]): ScheduleRunTableRow[] {
+  return runs.map(run => {
+    const state = valueText(run.status)
+    return {
+      status: scheduleRunStatus(state),
+      time: timestampText(run.timestamp),
+      state,
+      task: valueText(run.taskId),
+      error: valueText(run.error, ''),
+    }
+  })
 }
 
 export function StatusReport({ dispatch, roster, color = true }: {
@@ -578,6 +683,81 @@ export function PackagesListReport({ packages, color = true }: {
           />
         ) : (
           <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No packages installed.' }]} color={color} />
+        )}
+      </Section>
+    </Box>
+  )
+}
+
+export function ScheduleListReport({ jobs, color = true }: {
+  jobs: ScheduleJobData[]
+  color?: boolean
+}) {
+  const rows = scheduleJobTableRows(jobs)
+  const active = rows.filter(row => row.state === 'active').length
+  const paused = rows.filter(row => row.state === 'paused').length
+  const disabled = rows.filter(row => row.state === 'disabled').length
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Schedule" subtitle="Scheduled Bakin jobs" color={color} />
+      <SummaryStrip items={[
+        { label: plural(rows.length, 'job'), value: rows.length, status: rows.length > 0 ? 'ok' : 'skip' },
+        { label: 'active', value: active, status: active > 0 ? 'ok' : 'skip' },
+        { label: 'paused', value: paused, status: paused > 0 ? 'warn' : 'ok' },
+        { label: 'disabled', value: disabled, status: disabled > 0 ? 'skip' : 'ok' },
+      ]} color={color} />
+      <Section title="Jobs" color={color}>
+        {rows.length > 0 ? (
+          <StatusTable
+            rows={rows}
+            columns={[
+              { key: 'name', header: 'NAME', width: 28, grow: true, render: row => row.name },
+              { key: 'agent', header: 'AGENT', width: 14, render: row => row.agent },
+              { key: 'schedule', header: 'SCHEDULE', width: 28, render: row => row.schedule },
+              { key: 'state', header: 'STATE', width: 10, render: row => row.state },
+            ]}
+            color={color}
+          />
+        ) : (
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No scheduled jobs found.' }]} color={color} />
+        )}
+      </Section>
+    </Box>
+  )
+}
+
+export function ScheduleRunsReport({ jobId, runs, color = true }: {
+  jobId: string
+  runs: ScheduleRunData[]
+  color?: boolean
+}) {
+  const rows = scheduleRunTableRows(runs)
+  const failed = rows.filter(row => row.status === 'fail').length
+  const withTasks = rows.filter(row => row.task !== '-').length
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Schedule Runs" subtitle="Run history" meta={`job: ${jobId}`} color={color} />
+      <SummaryStrip items={[
+        { label: plural(rows.length, 'run'), value: rows.length, status: rows.length > 0 ? 'ok' : 'skip' },
+        { label: 'failed', value: failed, status: failed > 0 ? 'fail' : 'ok' },
+        { label: 'tasks', value: withTasks, status: withTasks > 0 ? 'ok' : 'skip' },
+      ]} color={color} />
+      <Section title="Run history" color={color}>
+        {rows.length > 0 ? (
+          <StatusTable
+            rows={rows}
+            columns={[
+              { key: 'time', header: 'TIME', width: 24, render: row => row.time },
+              { key: 'state', header: 'STATE', width: 12, render: row => row.state },
+              { key: 'task', header: 'TASK', width: 16, render: row => row.task },
+              { key: 'error', header: 'ERROR', width: 40, grow: true, render: row => row.error },
+            ]}
+            color={color}
+          />
+        ) : (
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: `No run history for ${jobId}.` }]} color={color} />
         )}
       </Section>
     </Box>
