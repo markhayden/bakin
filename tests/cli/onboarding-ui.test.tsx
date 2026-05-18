@@ -2,7 +2,13 @@ import { describe, expect, it } from 'bun:test'
 import { renderToString } from 'ink'
 
 import { buildSelectionItems } from '../../src/core/cli/onboarding-interactive'
-import { OnboardingBusy, OnboardingProgress, OnboardingSummary } from '../../src/core/cli/ui/onboarding'
+import {
+  OnboardingBusy,
+  OnboardingDecisionPrompt,
+  OnboardingIntro,
+  OnboardingProgress,
+  OnboardingSummary,
+} from '../../src/core/cli/ui/onboarding'
 import type { ComponentOutcome } from '../../src/core/onboarding'
 
 describe('onboarding CLI UI', () => {
@@ -60,9 +66,12 @@ describe('onboarding CLI UI', () => {
     ]
 
     const rendered = renderToString(<OnboardingSummary outcomes={outcomes} exitCode={1} />)
-    expect(rendered).toContain('Bakin onboarding')
-    expect(rendered).toContain('[BLOCKED')
-    expect(rendered).toContain('https://makinbakin.com/docs/start/first-time-setup/')
+    expect(rendered).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(rendered).toContain('Onboarding')
+    expect(rendered).toContain('PREREQUISITES')
+    expect(rendered).toContain('BLOCKED')
+    expect(rendered).not.toContain('[BLOCKED')
+    expect(rendered.replace(/\s+/g, '')).toContain('https://makinbakin.com/docs/start/first-time-setup/')
   })
 
   it('compacts home paths in the human onboarding summary', () => {
@@ -84,8 +93,30 @@ describe('onboarding CLI UI', () => {
     expect(rendered).not.toContain(`${home}/.bakin/settings.json`)
   })
 
+  it('can render the onboarding summary as a continuation without the brand header', () => {
+    const rendered = renderToString(
+      <OnboardingSummary
+        outcomes={[{
+          name: 'settings',
+          finalStatus: 'ok',
+          check: { name: 'settings', status: 'ok', message: 'settings ready' },
+          message: 'settings ready',
+          durationMs: 1,
+        }]}
+        exitCode={0}
+        showBrand={false}
+      />,
+    )
+
+    expect(rendered).toContain('Onboarding')
+    expect(rendered).not.toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+  })
+
   it('renders an async onboarding busy state', () => {
-    const rendered = renderToString(<OnboardingBusy label="Running onboarding checks and installs" />)
+    const rendered = renderToString(<OnboardingBusy label="Running onboarding checks and installs" totalSteps={12} />)
+    expect(rendered).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(rendered).toContain('Onboard')
+    expect(rendered).toContain('CURRENT ACTIVITY')
     expect(rendered).toContain('Running onboarding checks and installs')
     expect(rendered).toContain('Checking prerequisites and runtime access')
   })
@@ -95,13 +126,40 @@ describe('onboarding CLI UI', () => {
       <OnboardingBusy
         label="Running onboarding checks and installs"
         detail="Installing search"
+        totalSteps={12}
         completed={[{ name: 'settings', status: 'complete', message: 'settings.json ready: ~/.bakin/settings.json' }]}
       />,
     )
 
-    expect(rendered).toContain('[OK] settings')
+    expect(rendered).toContain('OK')
+    expect(rendered).not.toContain('[OK]')
     expect(rendered).toContain('settings.json ready: ~/.bakin/settings.json')
     expect(rendered).toContain('Installing search')
+  })
+
+  it('renders the onboarding intro with the shared compact header', () => {
+    const rendered = renderToString(<OnboardingIntro />)
+    expect(rendered).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(rendered).toContain('Onboard')
+    expect(rendered).toContain('Initial setup wizard')
+    expect(rendered).not.toContain('oooooooooo')
+    expect(rendered).not.toContain('Welcome to Bakin')
+  })
+
+  it('renders confirmation prompts with shared sections instead of badges', () => {
+    const rendered = renderToString(
+      <OnboardingDecisionPrompt
+        title="Search adapter"
+        description="Antfly is not installed. Bakin will install Antfly via Homebrew if you continue."
+        defaultChoice="confirm"
+        onSubmit={() => {}}
+      />,
+    )
+    expect(rendered).toContain('Onboard')
+    expect(rendered).toContain('DECISION')
+    expect(rendered).toContain('Search adapter')
+    expect(rendered).toContain('Default: Yes')
+    expect(rendered).not.toContain('[Search adapter]')
   })
 
   it('renders bounded onboarding progress with Ink UI', () => {
