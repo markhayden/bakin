@@ -26,6 +26,7 @@ import type {
   SearchMetaData,
   SearchResultData,
 } from '../src/core/cli/ui/readonly'
+import type { CheckResult, InstallResult } from '../src/core/onboarding/types'
 
 const BASE_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 
@@ -326,6 +327,33 @@ async function printPackagesListTui(packages: Array<Record<string, unknown>>): P
     import('react'),
   ])
   console.log(renderToString(createElement(PackagesListReport, { packages })))
+}
+
+async function printOnboardingCheckTui(result: CheckResult): Promise<void> {
+  const [{ OnboardingCheckReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/onboarding'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(OnboardingCheckReport, { result })))
+}
+
+async function printOnboardingCheckAllTui(results: CheckResult[]): Promise<void> {
+  const [{ OnboardingCheckAllReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/onboarding'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(OnboardingCheckAllReport, { results })))
+}
+
+async function printOnboardingInstallTui(result: InstallResult): Promise<void> {
+  const [{ OnboardingInstallReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/onboarding'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(OnboardingInstallReport, { result })))
 }
 
 // ---------------------------------------------------------------------------
@@ -2332,6 +2360,20 @@ function statusIcon(status: string): string {
   }
 }
 
+async function withTtyRuntimeLogsSilenced<T>(
+  options: { isTTY: boolean; verbose?: boolean },
+  run: () => Promise<T>,
+): Promise<T> {
+  const previousConsoleFormat = process.env.BAKIN_CONSOLE_FORMAT
+  const shouldSilenceRuntimeLogs = options.isTTY && options.verbose !== true && previousConsoleFormat === undefined
+  try {
+    if (shouldSilenceRuntimeLogs) process.env.BAKIN_CONSOLE_FORMAT = 'silent'
+    return await run()
+  } finally {
+    if (shouldSilenceRuntimeLogs) delete process.env.BAKIN_CONSOLE_FORMAT
+  }
+}
+
 async function cmdOnboardingMkdir(): Promise<void> {
   const { mkdirComponent } = await import('../src/core/onboarding/mkdir')
   const opts = {
@@ -2360,7 +2402,10 @@ async function cmdOnboardingSettingsInit(): Promise<void> {
   if (result.status === 'failed') process.exit(1)
 }
 
-async function cmdOnboardingCheckSingle(target: 'runtime' | 'search' | 'search-models' | 'llm' | 'channels' | 'plugin-assets' | 'agent-assets' | 'recommended-plugins' | 'recommended-agents'): Promise<void> {
+async function cmdOnboardingCheckSingle(
+  target: 'runtime' | 'search' | 'search-models' | 'llm' | 'channels' | 'plugin-assets' | 'agent-assets' | 'recommended-plugins' | 'recommended-agents',
+  options: { verbose?: boolean } = {},
+): Promise<void> {
   const componentMap: Record<string, () => Promise<{ check(): Promise<import('../src/core/onboarding/types').CheckResult> }>> = {
     runtime: async () => (await import('../src/core/onboarding/runtime')).runtimeComponent,
     search: async () => (await import('../src/core/onboarding/search')).searchComponent,
@@ -2372,20 +2417,34 @@ async function cmdOnboardingCheckSingle(target: 'runtime' | 'search' | 'search-m
     'recommended-plugins': async () => (await import('../src/core/onboarding/recommended-plugins')).recommendedPluginsComponent,
     'recommended-agents': async () => (await import('../src/core/onboarding/recommended-agents')).recommendedAgentsComponent,
   }
-  const component = await componentMap[target]()
-  const result = await component.check()
-  console.log(`${statusIcon(result.status)} ${result.message}`)
-  if (result.remediation) console.log(`  → ${result.remediation}`)
+  const isTTY = Boolean(process.stdout.isTTY)
+  const result = await withTtyRuntimeLogsSilenced({ isTTY, verbose: options.verbose }, async () => {
+    const component = await componentMap[target]()
+    return await component.check()
+  })
+  if (isTTY) {
+    await printOnboardingCheckTui(result)
+  } else {
+    console.log(`${statusIcon(result.status)} ${result.message}`)
+    if (result.remediation) console.log(`  → ${result.remediation}`)
+  }
   if (result.status === 'missing' || result.status === 'error' || result.status === 'broken') process.exit(1)
   if (result.status === 'warn') process.exit(2)
 }
 
-async function cmdOnboardingCheckAll(): Promise<void> {
-  const { checkAll } = await import('../src/core/onboarding/index')
-  const results = await checkAll()
-  for (const r of results) {
-    console.log(`${statusIcon(r.status)} ${r.name.padEnd(10)} ${r.message}`)
-    if (r.remediation) console.log(`  → ${r.remediation}`)
+async function cmdOnboardingCheckAll(options: { verbose?: boolean } = {}): Promise<void> {
+  const isTTY = Boolean(process.stdout.isTTY)
+  const results = await withTtyRuntimeLogsSilenced({ isTTY, verbose: options.verbose }, async () => {
+    const { checkAll } = await import('../src/core/onboarding/index')
+    return await checkAll()
+  })
+  if (isTTY) {
+    await printOnboardingCheckAllTui(results)
+  } else {
+    for (const r of results) {
+      console.log(`${statusIcon(r.status)} ${r.name.padEnd(10)} ${r.message}`)
+      if (r.remediation) console.log(`  → ${r.remediation}`)
+    }
   }
   const hasError = results.some(r => r.status === 'error' || r.status === 'missing' || r.status === 'broken')
   const hasWarn = results.some(r => r.status === 'warn')
@@ -2402,10 +2461,10 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
     'recommended-plugins': async () => (await import('../src/core/onboarding/recommended-plugins')).recommendedPluginsComponent,
     'recommended-agents': async () => (await import('../src/core/onboarding/recommended-agents')).recommendedAgentsComponent,
   }
-  const component = await componentMap[target]()
   const isTTY = Boolean(process.stdout.isTTY)
   const autoApprove = args.includes('--yes')
   const json = args.includes('--json')
+  const verbose = args.includes('--verbose')
   const opts = {
     interactive: isTTY && !json,
     autoApprove: autoApprove || (!isTTY && !json),
@@ -2413,9 +2472,14 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
     checkOnly: false,
     force: false,
   }
-  const result = await component.install(opts)
+  const result = await withTtyRuntimeLogsSilenced({ isTTY, verbose }, async () => {
+    const component = await componentMap[target]()
+    return await component.install(opts)
+  })
   if (json) {
-    console.log(JSON.stringify({ component: component.name, status: result.status, message: result.message, durationMs: result.durationMs }))
+    console.log(JSON.stringify({ component: result.name, status: result.status, message: result.message, durationMs: result.durationMs }))
+  } else if (isTTY) {
+    await printOnboardingInstallTui(result)
   } else {
     console.log(`${statusIcon(result.status)} ${result.message}`)
   }
@@ -2821,9 +2885,9 @@ export async function main(): Promise<void> {
 
       case 'check':
         if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-assets' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
-          await cmdOnboardingCheckSingle(sub)
+          await cmdOnboardingCheckSingle(sub, { verbose: args.includes('--verbose') })
         } else if (sub === 'all') {
-          await cmdOnboardingCheckAll()
+          await cmdOnboardingCheckAll({ verbose: args.includes('--verbose') })
         } else {
           console.error(`Unknown check target: ${sub}`)
           console.error('Available: bakin check runtime | search | search-models | llm | channels | plugin-assets | agent-assets | recommended-plugins | recommended-agents | all')

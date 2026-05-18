@@ -1,6 +1,12 @@
 import { Box, Text } from 'ink'
 import { ConfirmInput } from '@inkjs/ui'
-import type { ComponentOutcome } from '../../onboarding'
+import type {
+  CheckResult,
+  CheckStatus,
+  ComponentOutcome,
+  InstallResult,
+  InstallStatus,
+} from '../../onboarding'
 import {
   FindingRows,
   NextActions,
@@ -38,6 +44,32 @@ export function onboardingStatus(status: ComponentOutcome['finalStatus']): TuiSt
   }
 }
 
+function checkStatus(status: CheckStatus): TuiStatus {
+  switch (status) {
+    case 'ok':
+      return 'ok'
+    case 'warn':
+      return 'warn'
+    case 'missing':
+    case 'broken':
+    case 'error':
+      return 'blocked'
+  }
+}
+
+function installStatus(status: InstallStatus): TuiStatus {
+  switch (status) {
+    case 'installed':
+      return 'applied'
+    case 'noop':
+      return 'ok'
+    case 'skipped':
+      return 'skip'
+    case 'failed':
+      return 'fail'
+  }
+}
+
 function busyStatus(status: OnboardingBusyStatus): TuiStatus {
   switch (status) {
     case 'complete':
@@ -49,6 +81,17 @@ function busyStatus(status: OnboardingBusyStatus): TuiStatus {
     case 'blocked':
       return 'blocked'
   }
+}
+
+function checkSummary(results: CheckResult[]): SummaryItem[] {
+  const ok = results.filter(result => result.status === 'ok').length
+  const warnings = results.filter(result => result.status === 'warn').length
+  const blocked = results.filter(result => result.status === 'missing' || result.status === 'broken' || result.status === 'error').length
+  return [
+    { label: 'ready', value: ok, status: 'ok' },
+    { label: 'attention', value: warnings, status: warnings > 0 ? 'warn' : 'ok' },
+    { label: 'blocked', value: blocked, status: blocked > 0 ? 'blocked' : 'ok' },
+  ]
 }
 
 function summarySubtitle(exitCode: 0 | 1 | 2): string {
@@ -71,6 +114,15 @@ function summaryItems(outcomes: ComponentOutcome[]): SummaryItem[] {
   ]
 }
 
+function checkRows(results: CheckResult[]): FindingRow[] {
+  return results.map(result => ({
+    status: checkStatus(result.status),
+    label: result.name,
+    message: formatOnboardingMessage(result.message),
+    detail: result.remediation ? formatOnboardingMessage(result.remediation) : undefined,
+  }))
+}
+
 function outcomeRows(outcomes: ComponentOutcome[]): FindingRow[] {
   return outcomes.map(outcome => ({
     status: onboardingStatus(outcome.finalStatus),
@@ -78,6 +130,64 @@ function outcomeRows(outcomes: ComponentOutcome[]): FindingRow[] {
     message: formatOnboardingMessage(outcome.message),
     detail: outcome.remediation ? formatOnboardingMessage(outcome.remediation) : undefined,
   }))
+}
+
+export function OnboardingCheckReport({ result, color = true }: {
+  result: CheckResult
+  color?: boolean
+}) {
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Onboarding check" subtitle="Component setup checked" meta={result.name} color={color} />
+      <SummaryStrip items={[
+        { label: 'component', value: result.name, status: checkStatus(result.status) },
+      ]} color={color} />
+      <Section title="Result" color={color}>
+        <FindingRows rows={checkRows([result])} color={color} />
+        <Text> </Text>
+      </Section>
+    </Box>
+  )
+}
+
+export function OnboardingCheckAllReport({ results, color = true }: {
+  results: CheckResult[]
+  color?: boolean
+}) {
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Onboarding checks" subtitle="Setup components checked" color={color} />
+      <SummaryStrip items={checkSummary(results)} color={color} />
+      <Section title="Checks" color={color}>
+        <FindingRows rows={checkRows(results)} color={color} />
+        <Text> </Text>
+      </Section>
+    </Box>
+  )
+}
+
+export function OnboardingInstallReport({ result, color = true }: {
+  result: InstallResult
+  color?: boolean
+}) {
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Onboarding install" subtitle="Component setup applied" meta={result.name} color={color} />
+      <SummaryStrip items={[
+        { label: 'component', value: result.name, status: installStatus(result.status) },
+        { label: 'elapsed', value: `${result.durationMs}ms` },
+      ]} color={color} />
+      <Section title="Result" color={color}>
+        <FindingRows rows={[{
+          status: installStatus(result.status),
+          label: result.name,
+          message: formatOnboardingMessage(result.message),
+          detail: result.error ? String(result.error) : undefined,
+        }]} color={color} />
+        <Text> </Text>
+      </Section>
+    </Box>
+  )
 }
 
 export function OnboardingSummary({ outcomes, exitCode, showBrand = true }: {

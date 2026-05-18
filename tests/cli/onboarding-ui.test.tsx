@@ -4,7 +4,10 @@ import { renderToString } from 'ink'
 import { buildSelectionItems } from '../../src/core/cli/onboarding-interactive'
 import {
   OnboardingBusy,
+  OnboardingCheckAllReport,
+  OnboardingCheckReport,
   OnboardingDecisionPrompt,
+  OnboardingInstallReport,
   OnboardingIntro,
   OnboardingProgress,
   OnboardingSummary,
@@ -165,5 +168,54 @@ describe('onboarding CLI UI', () => {
   it('renders bounded onboarding progress with Ink UI', () => {
     const rendered = renderToString(<OnboardingProgress label="Installing official agents" value={50} />)
     expect(rendered).toContain('Installing official agents')
+  })
+
+  it('renders single component checks with shared TUI primitives', () => {
+    const rendered = renderToString(
+      <OnboardingCheckReport result={{
+        name: 'runtime',
+        status: 'warn',
+        message: 'No runtime adapter is available.',
+        remediation: 'Run `bakin onboard` to configure runtime access.',
+      }} color={false} />,
+    )
+
+    expect(rendered).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(rendered).toContain('Onboarding check')
+    expect(rendered).toContain('RESULT')
+    expect(rendered).toContain('No runtime adapter is available.')
+    expect(rendered).not.toContain('[WARN]')
+  })
+
+  it('renders all component checks with shared TUI primitives', () => {
+    const rendered = renderToString(
+      <OnboardingCheckAllReport results={[
+        { name: 'runtime', status: 'ok', message: 'Runtime ready.' },
+        { name: 'llm', status: 'warn', message: 'No LLM provider configured.', remediation: 'Configure at least one provider.' },
+      ]} color={false} />,
+    )
+
+    expect(rendered).toContain('Onboarding checks')
+    expect(rendered).toContain('CHECKS')
+    expect(rendered).toContain('runtime')
+    expect(rendered).toContain('No LLM provider configured.')
+    expect(rendered).not.toContain('[OK]')
+  })
+
+  it('renders component install results with shared TUI primitives', () => {
+    const rendered = renderToString(
+      <OnboardingInstallReport result={{
+        name: 'plugin-assets',
+        status: 'installed',
+        message: 'Installed plugin assets.',
+        durationMs: 12,
+      }} color={false} />,
+    )
+
+    expect(rendered).toContain('Onboarding install')
+    expect(rendered).toContain('RESULT')
+    expect(rendered).toContain('Installed plugin assets.')
+    expect(rendered).toContain('12ms')
+    expect(rendered).not.toContain('[INSTALLED]')
   })
 })
