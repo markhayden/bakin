@@ -1054,6 +1054,7 @@ async function cmdDoctorFix(options: { json: boolean; yes: boolean; isTTY: boole
     return
   }
   if (options.isTTY) {
+    if (acceptedInteractively) console.log('')
     await printDoctorRepairApplyTui(report, { showBrand: !acceptedInteractively })
   } else {
     printDoctorRepairApply(report)
@@ -1103,6 +1104,7 @@ async function cmdDoctorDelegate(options: { json: boolean; yes: boolean; isTTY: 
     return
   }
   if (options.isTTY) {
+    if (acceptedInteractively) console.log('')
     await printDoctorDelegateResultTui(report, { showBrand: !acceptedInteractively })
   } else {
     printDoctorDelegateResult(report)

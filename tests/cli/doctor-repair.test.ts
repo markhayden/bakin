@@ -215,6 +215,9 @@ describe('legacy CLI doctor repair', () => {
     expect(output).toContain('Doctor repair plan')
     expect(output).toContain('Doctor repair results')
     expect(headerCount(output)).toBe(1)
+    const logLines: string[] = log.mock.calls.map((call: unknown[]) => String(call[0] ?? ''))
+    const resultIndex = logLines.findIndex(line => line.includes('Doctor repair results'))
+    expect(logLines[resultIndex - 1]).toBe('')
   })
 
   it('previews delegated repair without creating the task when --yes is omitted', async () => {
