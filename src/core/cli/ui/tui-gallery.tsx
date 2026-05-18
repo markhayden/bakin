@@ -2,6 +2,14 @@ import { Box, Text, renderToString } from 'ink'
 import type { ReactNode } from 'react'
 import { CLI_COLORS, statusToken, type TuiStatus } from './style-tokens'
 
+const BAKIN_WORDMARK = [
+  'oooooooooo              oooo        o88',
+  ' 888    888   ooooooo    888  ooooo oooo  oo oooooo',
+  ' 888oooo88    ooooo888   888o888     888   888   888',
+  ' 888    888 888    888   8888 88o    888   888   888',
+  'o888ooo888   88ooo88 8o o888o o888o o888o o888o o888o',
+] as const
+
 export const GALLERY_SCREENS = [
   'doctor',
   'doctor-full',
@@ -41,7 +49,11 @@ interface TableColumn<TRow> {
 function Header({ title, subtitle, meta }: { title: string; subtitle?: string; meta?: string }) {
   return (
     <Box flexDirection="column">
-      <Text bold color={CLI_COLORS.brand}>Bakin</Text>
+      <Box flexDirection="column">
+        {BAKIN_WORDMARK.map(line => (
+          <Text key={line} bold color={CLI_COLORS.brand}>{line}</Text>
+        ))}
+      </Box>
       <Box>
         <Text bold>{title}</Text>
         {meta ? <Text dimColor>  {meta}</Text> : null}

@@ -33,7 +33,7 @@ describe('CLI TUI style gallery', () => {
   it('renders the Bakin brand header on every prototype screen', () => {
     for (const screen of GALLERY_SCREENS) {
       const output = renderGalleryScreen(screen, { columns: 100 })
-      expect(output.split('\n')[0]).toBe('Bakin')
+      expect(output.split('\n')[0].trim()).toBe('oooooooooo              oooo        o88')
     }
   })
 
@@ -71,7 +71,8 @@ describe('CLI TUI style gallery', () => {
     const maxLineLength = Math.max(...visibleLineLengths(output))
 
     expect(maxLineLength).toBeLessThanOrEqual(100)
-    expect(output).toContain('Bakin\nOnboard')
+    expect(output).toContain('oooooooooo              oooo        o88')
+    expect(output).toContain('Onboard  step 7 of 11')
     expect(output).toContain('Setting up this machine')
     expect(output).toContain('CURRENT ACTIVITY')
     expect(output).toContain('Async job 2 of 4')
