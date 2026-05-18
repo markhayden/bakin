@@ -5,11 +5,13 @@ import { createMultiSelectState, MultiSelect, updateMultiSelectState } from '../
 import { Report } from '../../src/core/cli/ui/report'
 import { Table } from '../../src/core/cli/ui/table'
 import {
+  DataTable,
   FindingRows,
   NextActions,
   ProgressMeter,
   ScreenHeader,
   Section,
+  StatusTable,
   StatusToken,
   SummaryStrip,
 } from '../../src/core/cli/ui/tui'
@@ -122,6 +124,28 @@ describe('CLI UI primitives', () => {
     )
 
     expect(output).toBe('ID       NAME\na        Short\nlong-id  Longer Name')
+  })
+
+  it('renders shared TUI tables with trailing breathing room', () => {
+    const dataTable = renderToString(
+      <DataTable
+        columns={[
+          { key: 'id', header: 'ID', width: 8, render: (row: { id: string }) => row.id },
+        ]}
+        rows={[{ id: 'task-1' }]}
+      />,
+    )
+    const statusTable = renderToString(
+      <StatusTable
+        columns={[
+          { key: 'name', header: 'NAME', width: 12, render: (row: { status: 'ok'; name: string }) => row.name },
+        ]}
+        rows={[{ status: 'ok', name: 'patch' }]}
+      />,
+    )
+
+    expect(dataTable.endsWith('\n')).toBe(true)
+    expect(statusTable.endsWith('\n')).toBe(true)
   })
 
   it('moves focus and toggles enabled items in multi-select state', () => {

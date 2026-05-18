@@ -191,6 +191,7 @@ export function DataTable<TRow>({ columns, rows }: {
           ))}
         </Box>
       ))}
+      <Text> </Text>
     </Box>
   )
 }
@@ -234,6 +235,7 @@ export function StatusTable<TRow extends { status: TuiStatus }>({ columns, rows,
           ))}
         </Box>
       ))}
+      <Text> </Text>
     </Box>
   )
 }
