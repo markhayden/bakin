@@ -3,9 +3,9 @@ import type { ReactNode } from 'react'
 import { CLI_COLORS, statusToken, type TuiStatus } from './style-tokens'
 
 const BAKIN_HEADER = [
-  "┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓",
-  "┃  🐷 Bakin'      (v1.0.0) ┃",
-  "┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛",
+  "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓",
+  "┃  🐷 Bakin'                  (v1.0.0) ┃",
+  "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛",
 ] as const
 
 export const GALLERY_SCREENS = [
@@ -50,7 +50,7 @@ function Header({ title, subtitle, meta }: { title: string; subtitle?: string; m
       <Box flexDirection="column">
         <Text> </Text>
         {BAKIN_HEADER.map(line => (
-          <Text key={line} bold color={CLI_COLORS.brand}>{line}</Text>
+          <Text key={line} bold color="white">{line}</Text>
         ))}
         <Text> </Text>
       </Box>

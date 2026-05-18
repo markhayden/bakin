@@ -35,9 +35,9 @@ describe('CLI TUI style gallery', () => {
       const output = renderGalleryScreen(screen, { columns: 100 })
       const lines = output.split('\n')
       expect(lines[0]).toBe('')
-      expect(lines[1]).toBe('┏━━━━━━━━━━━━━━━━━━━━━━━━━━┓')
-      expect(lines[2]).toBe("┃  🐷 Bakin'      (v1.0.0) ┃")
-      expect(lines[3]).toBe('┗━━━━━━━━━━━━━━━━━━━━━━━━━━┛')
+      expect(lines[1]).toBe('┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓')
+      expect(lines[2]).toBe("┃  🐷 Bakin'                  (v1.0.0) ┃")
+      expect(lines[3]).toBe('┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛')
       expect(lines[4]).toBe('')
     }
   })
@@ -76,7 +76,7 @@ describe('CLI TUI style gallery', () => {
     const maxLineLength = Math.max(...visibleLineLengths(output))
 
     expect(maxLineLength).toBeLessThanOrEqual(100)
-    expect(output).toContain("┃  🐷 Bakin'      (v1.0.0) ┃")
+    expect(output).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
     expect(output).toContain('Onboard  step 7 of 11')
     expect(output).toContain('Setting up this machine')
     expect(output).toContain('CURRENT ACTIVITY')
