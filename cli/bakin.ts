@@ -156,6 +156,37 @@ async function printWorkflowsListTui(templates: Array<Record<string, unknown>>):
   console.log(renderToString(createElement(WorkflowsListReport, { templates })))
 }
 
+async function printAgentPackagesListTui(agents: Array<Record<string, unknown>>): Promise<void> {
+  const [{ AgentPackagesListReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(AgentPackagesListReport, { agents })))
+}
+
+async function printAgentLessonsListTui(
+  agentId: string,
+  packageId: string,
+  lessons: Array<Record<string, unknown>>,
+): Promise<void> {
+  const [{ AgentLessonsListReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(AgentLessonsListReport, { agentId, packageId, lessons })))
+}
+
+async function printPackagesListTui(packages: Array<Record<string, unknown>>): Promise<void> {
+  const [{ PackagesListReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(PackagesListReport, { packages })))
+}
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
@@ -567,6 +598,10 @@ async function cmdAgentPackagesList(flags: AgentsCmdFlags): Promise<void> {
     print(result)
     return
   }
+  if (process.stdout.isTTY) {
+    await printAgentPackagesListTui(result.agents)
+    return
+  }
   console.log('Agents (package state):')
   for (const a of result.agents) {
     const pkg = a.packageId ? `  [${a.packageId}]` : ''
@@ -615,6 +650,10 @@ async function cmdAgentPackagesLessonsList(agentId: string): Promise<void> {
     packageId: string
     lessons: Array<{ lessonId: string; title: string; tags: string[]; enabled: boolean }>
   }
+  if (process.stdout.isTTY) {
+    await printAgentLessonsListTui(agentId, result.packageId, result.lessons)
+    return
+  }
   console.log(`Lessons for ${agentId} (package: ${result.packageId})`)
   for (const l of result.lessons) {
     const mark = l.enabled ? '[x]' : '[ ]'
@@ -644,6 +683,10 @@ async function cmdPackagesList(flags: AgentsCmdFlags): Promise<void> {
   }
   if (flags.json) {
     print(result)
+    return
+  }
+  if (process.stdout.isTTY) {
+    await printPackagesListTui(result.packages)
     return
   }
   console.log('Installed packages:')

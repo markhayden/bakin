@@ -140,4 +140,52 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).toContain('release.yml')
     expect(output()).not.toContain('-----------  -------')
   })
+
+  it('renders package-oriented list commands with shared TUI screens in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      agents: [
+        { agentId: 'patch', state: 'managed', packageId: 'bakin.patch' },
+        { agentId: 'docs', state: 'adopted', packageId: 'bakin.docs' },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'agents', 'list', '--packages']
+    await main()
+    expect(output()).toContain('Agent Packages')
+    expect(output()).toContain('PACKAGE')
+    expect(output()).toContain('bakin.patch')
+    expect(output()).not.toContain('Agents (package state):')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      packageId: 'bakin.patch',
+      lessons: [
+        { lessonId: 'handoff', title: 'Handoff Notes', tags: ['workflow'], enabled: true },
+        { lessonId: 'release', title: 'Release Notes', tags: [], enabled: false },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'agents', 'lessons', 'list', 'patch']
+    await main()
+    expect(output()).toContain('Agent Lessons')
+    expect(output()).toContain('LESSON')
+    expect(output()).toContain('handoff')
+    expect(output()).not.toContain('Lessons for patch')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      packages: [
+        { id: 'bakin.patch', kind: 'agent', version: '1.0.0', refCount: 2, dependents: ['patch', 'docs'] },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'packages', 'list']
+    await main()
+    expect(output()).toContain('Packages')
+    expect(output()).toContain('DEPENDENTS')
+    expect(output()).toContain('patch, docs')
+    expect(output()).not.toContain('Installed packages:')
+  })
 })
