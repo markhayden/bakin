@@ -1,5 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 
+let nextQuestionAnswer = 'y'
+let prompts: string[] = []
+
+mock.module('node:readline/promises', () => ({
+  createInterface: () => ({
+    question: async (prompt: string) => {
+      prompts.push(prompt)
+      return nextQuestionAnswer
+    },
+    close: () => {},
+  }),
+}))
+
 const mockPlan = {
   diagnostics: [{ check: 'taskboard', status: 'warn', message: 'Missing columns', autoFixable: true }],
   items: [{
@@ -55,12 +68,27 @@ describe('legacy CLI doctor repair', () => {
   const originalArgv = process.argv
   const originalExit = process.exit
   const originalFetch = globalThis.fetch
+  const originalStdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
   let log: ReturnType<typeof spyOn>
   let error: ReturnType<typeof spyOn>
   const fetchMock = mock()
 
+  function setStdoutIsTTY(value: boolean): void {
+    Object.defineProperty(process.stdout, 'isTTY', { value, configurable: true })
+  }
+
+  function loggedOutput(): string {
+    return log.mock.calls.map((call: unknown[]) => String(call[0])).join('\n')
+  }
+
+  function headerCount(output: string): number {
+    return output.split("┃  🐷 Bakin'                  (v1.0.0) ┃").length - 1
+  }
+
   beforeEach(() => {
     mock.clearAllMocks()
+    prompts = []
+    nextQuestionAnswer = 'y'
     process.argv = originalArgv
     globalThis.fetch = fetchMock as unknown as typeof fetch
     log = spyOn(console, 'log').mockImplementation(() => {})
@@ -74,6 +102,8 @@ describe('legacy CLI doctor repair', () => {
     process.argv = originalArgv
     process.exit = originalExit
     globalThis.fetch = originalFetch
+    if (originalStdoutIsTTY) Object.defineProperty(process.stdout, 'isTTY', originalStdoutIsTTY)
+    else delete (process.stdout as { isTTY?: boolean }).isTTY
     log.mockRestore()
     error.mockRestore()
   })
@@ -118,6 +148,78 @@ describe('legacy CLI doctor repair', () => {
     expect(body.data.summary.applied).toBe(1)
   })
 
+  it('renders the TTY repair plan with the shared doctor repair UI', async () => {
+    const emptyPlan = {
+      ...mockPlan,
+      diagnostics: [],
+      items: [],
+      summary: { diagnostics: 0, repairableChecks: 0, totalItems: 0, safeItems: 0, blockedItems: 0, planErrors: 0 },
+    }
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(emptyPlan),
+      text: () => Promise.resolve(''),
+    })
+    setStdoutIsTTY(true)
+    process.argv = ['bun', 'cli/bakin.ts', 'doctor', '--fix']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    const output = loggedOutput()
+    expect(output).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output).toContain('Doctor repair plan')
+    expect(output).toContain('No deterministic repairs available.')
+    expect(output).not.toContain('[SAFE]')
+  })
+
+  it('renders TTY repair application results with the shared doctor repair UI', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(mockApply),
+      text: () => Promise.resolve(''),
+    })
+    setStdoutIsTTY(true)
+    process.argv = ['bun', 'cli/bakin.ts', 'doctor', '--fix', '--yes']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    const output = loggedOutput()
+    expect(output).toContain('Doctor repair results')
+    expect(output).toContain('APPLIED\n------------')
+    expect(output).toContain('Taskboard healthy')
+    expect(output).not.toContain('[APPLIED]')
+  })
+
+  it('continues interactive repair results without replaying the brand header', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockPlan),
+        text: () => Promise.resolve(''),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockApply),
+        text: () => Promise.resolve(''),
+      })
+    setStdoutIsTTY(true)
+    process.argv = ['bun', 'cli/bakin.ts', 'doctor', '--fix']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    const output = loggedOutput()
+    expect(prompts[0]).toStartWith('\nApply 1 safe repair item? [y/N]')
+    expect(output).toContain('Doctor repair plan')
+    expect(output).toContain('Doctor repair results')
+    expect(headerCount(output)).toBe(1)
+    const logLines: string[] = log.mock.calls.map((call: unknown[]) => String(call[0] ?? ''))
+    const resultIndex = logLines.findIndex(line => line.includes('Doctor repair results'))
+    expect(logLines[resultIndex - 1]).toBe('')
+  })
+
   it('previews delegated repair without creating the task when --yes is omitted', async () => {
     const delegatePlan = {
       ...mockPlan,
@@ -145,7 +247,7 @@ describe('legacy CLI doctor repair', () => {
   })
 
   it('creates a delegated repair task with --yes', async () => {
-    fetchMock.mockResolvedValueOnce({
+    fetchMock.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve(mockDelegate),
       text: () => Promise.resolve(''),
@@ -162,6 +264,25 @@ describe('legacy CLI doctor repair', () => {
     const body = JSON.parse(String(log.mock.calls[0][0]))
     expect(body.ok).toBe(true)
     expect(body.data.request.taskId).toBe('task-repair-1')
+  })
+
+  it('renders TTY delegated repair results with the shared doctor repair UI', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(mockDelegate),
+      text: () => Promise.resolve(''),
+    })
+    setStdoutIsTTY(true)
+    process.argv = ['bun', 'cli/bakin.ts', 'doctor', '--delegate', '--yes']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    const output = loggedOutput()
+    expect(output).toContain('Delegated doctor repair')
+    expect(output).toContain('task-repair-1')
+    expect(output).toContain('Watch the board for task-repair-1')
+    expect(output).not.toContain('Task: task-repair-1')
   })
 
   it('lists delegated repair requests', async () => {
