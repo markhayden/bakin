@@ -9,11 +9,13 @@ import {
   AgentsListReport,
   DocsReport,
   PackagesListReport,
+  PathsReport,
   PluginsListReport,
   ScheduleListReport,
   ScheduleRunsReport,
   SearchResultsReport,
   SearchStatsReport,
+  SettingsReport,
   StatusReport,
   TaskDetailReport,
   TasksListReport,
@@ -115,6 +117,37 @@ describe('read-only CLI TUI screens', () => {
     expect(agent).toContain('gpt-5.5')
     expect(agent).toContain('WORKSPACE')
     expect(agent).toContain('heartbeat')
+  })
+
+  it('renders setup configuration summaries with shared TUI tables', () => {
+    const settings = renderToString(
+      <SettingsReport
+        settings={{
+          dispatch: { intervalMs: 300000, maxRetries: 3 },
+          runtime: { adapter: 'openclaw' },
+          plugins: { requireSignatures: false },
+        }}
+      />,
+    )
+    const paths = renderToString(
+      <PathsReport
+        isBakinHome={true}
+        paths={{
+          home: '/Users/roscoe/.bakin',
+          tasks: '/Users/roscoe/.bakin/tasks',
+          audit: '/Users/roscoe/.bakin/audit.jsonl',
+        }}
+      />,
+    )
+
+    expect(settings).toContain('Settings')
+    expect(settings).toContain('CONFIGURATION')
+    expect(settings).toContain('dispatch.intervalMs')
+    expect(settings).toContain('openclaw')
+    expect(paths).toContain('Paths')
+    expect(paths).toContain('DIRECTORIES')
+    expect(paths).toContain('home')
+    expect(paths).toContain('/Users/roscoe/.bakin')
   })
 
   it('renders agents and plugins as shared TUI tables', () => {

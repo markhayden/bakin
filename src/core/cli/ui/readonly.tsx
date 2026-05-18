@@ -110,6 +110,8 @@ export interface SearchStatsTableData {
   healthy?: unknown
 }
 
+export type SettingsData = Record<string, unknown>
+
 export interface AgentPackageData {
   agentId?: unknown
   state?: unknown
@@ -323,6 +325,10 @@ function objectField(value: unknown, key: string): unknown {
   return (value as Record<string, unknown>)[key]
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
 function bytesText(value: unknown): string {
   const bytes = typeof value === 'number' && Number.isFinite(value) ? value : Number(value)
   if (!Number.isFinite(bytes)) return valueText(value)
@@ -438,6 +444,21 @@ function taskDetailFields(task: TaskDetailData): DetailFieldRow[] {
   return Object.entries(task)
     .filter(([key]) => !primary.has(key))
     .map(([field, value]) => ({ field, value: detailText(value) }))
+}
+
+function flattenDetailFields(record: Record<string, unknown>, prefix = ''): DetailFieldRow[] {
+  return Object.entries(record).flatMap(([key, value]) => {
+    const field = prefix ? `${prefix}.${key}` : key
+    if (isPlainRecord(value)) return flattenDetailFields(value, field)
+    return [{ field, value: detailText(value) }]
+  })
+}
+
+function pathRows(paths: unknown): DetailFieldRow[] {
+  if (!isPlainRecord(paths)) return []
+  return Object.entries(paths)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([field, value]) => ({ field, value: valueText(value) }))
 }
 
 function contentPreview(value: unknown): string {
@@ -721,6 +742,69 @@ export function StatusReport({ dispatch, roster, color = true }: {
           label: roster.mainAgentId ?? 'main',
           message: agentCount > 0 ? roster.agentIds.join(', ') : 'No agents reported by the runtime.',
         }]} color={color} />
+      </Section>
+    </Box>
+  )
+}
+
+export function SettingsReport({ settings, color = true }: {
+  settings: SettingsData
+  color?: boolean
+}) {
+  const rows = flattenDetailFields(settings)
+  const sections = Object.keys(settings).length
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Settings" subtitle="Runtime configuration snapshot" color={color} />
+      <SummaryStrip items={[
+        { label: plural(sections, 'section'), value: sections, status: sections > 0 ? 'ok' : 'skip' },
+        { label: plural(rows.length, 'value'), value: rows.length, status: rows.length > 0 ? 'ok' : 'skip' },
+      ]} color={color} />
+      <Section title="Configuration" color={color}>
+        {rows.length > 0 ? (
+          <DataTable
+            rows={rows}
+            columns={[
+              { key: 'field', header: 'FIELD', width: 34, render: row => row.field },
+              { key: 'value', header: 'VALUE', width: 52, grow: true, render: row => row.value },
+            ]}
+          />
+        ) : (
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No settings returned by the server.' }]} color={color} />
+        )}
+      </Section>
+    </Box>
+  )
+}
+
+export function PathsReport({ paths, isBakinHome, color = true }: {
+  paths: Record<string, unknown>
+  isBakinHome?: unknown
+  color?: boolean
+}) {
+  const rows = pathRows(paths)
+  const homeLabel = isBakinHome ? '~/.bakin' : './content'
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Paths" subtitle="Bakin content directories" meta={`home: ${homeLabel}`} color={color} />
+      <SummaryStrip items={[
+        { label: plural(rows.length, 'path'), value: rows.length, status: rows.length > 0 ? 'ok' : 'skip' },
+        { label: isBakinHome ? 'bakin home' : 'legacy content', value: homeLabel, status: isBakinHome ? 'ok' : 'warn' },
+      ]} color={color} />
+      <Section title="Directories" color={color}>
+        {rows.length > 0 ? (
+          <DataTable
+            rows={rows}
+            columns={[
+              { key: 'field', header: 'KEY', width: 18, render: row => row.field },
+              { key: 'value', header: 'PATH', width: 64, grow: true, render: row => row.value },
+            ]}
+          />
+        ) : (
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No paths returned by the server.' }]} color={color} />
+        )}
       </Section>
     </Box>
   )
