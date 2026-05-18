@@ -5,6 +5,8 @@ const runtimeCheck = mock()
 const checkAll = mock()
 
 const pluginAssetsInstall = mock()
+const mkdirInstall = mock()
+const settingsInstall = mock()
 
 mock.module('../../src/core/onboarding/runtime', () => ({
   runtimeComponent: {
@@ -23,6 +25,22 @@ mock.module('../../src/core/onboarding/plugin-assets', () => ({
     name: 'plugin-assets',
     check: mock(async () => ({ name: 'plugin-assets', status: 'ok', message: 'Plugin assets ready.' })),
     install: pluginAssetsInstall,
+  },
+}))
+
+mock.module('../../src/core/onboarding/mkdir', () => ({
+  mkdirComponent: {
+    name: 'mkdir',
+    check: mock(async () => ({ name: 'mkdir', status: 'ok', message: 'Bakin home ready.' })),
+    install: mkdirInstall,
+  },
+}))
+
+mock.module('../../src/core/onboarding/settings', () => ({
+  settingsComponent: {
+    name: 'settings',
+    check: mock(async () => ({ name: 'settings', status: 'ok', message: 'Settings ready.' })),
+    install: settingsInstall,
   },
 }))
 
@@ -67,6 +85,26 @@ describe('onboarding component CLI commands', () => {
         status: 'installed',
         message: 'Installed plugin assets.',
         durationMs: 12,
+      }
+    })
+    mkdirInstall.mockImplementation(async () => {
+      const { createLogger } = await import('../../packages/core/src/logger')
+      createLogger('settings').info('Mkdir install log')
+      return {
+        name: 'mkdir',
+        status: 'noop',
+        message: 'Already initialized at ~/.bakin',
+        durationMs: 3,
+      }
+    })
+    settingsInstall.mockImplementation(async () => {
+      const { createLogger } = await import('../../packages/core/src/logger')
+      createLogger('settings').info('Settings init log')
+      return {
+        name: 'settings',
+        status: 'installed',
+        message: 'Wrote ~/.bakin/settings.json',
+        durationMs: 5,
       }
     })
     process.argv = originalArgv
@@ -134,6 +172,46 @@ describe('onboarding component CLI commands', () => {
     expect(output()).toContain('RESULT')
     expect(output()).toContain('Installed plugin assets.')
     expect(output()).not.toContain('Plugin install log')
+    expect(output()).not.toContain('[INSTALLED]')
+  })
+
+  it('renders mkdir installs with the shared TUI in a TTY', async () => {
+    process.argv = ['bun', 'cli/bakin.ts', 'mkdir']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    expect(mkdirInstall).toHaveBeenCalledWith({
+      interactive: true,
+      autoApprove: true,
+      json: false,
+      checkOnly: false,
+      force: false,
+    })
+    expect(output()).toContain('Onboarding install')
+    expect(output()).toContain('RESULT')
+    expect(output()).toContain('Already initialized at ~/.bakin')
+    expect(output()).not.toContain('Mkdir install log')
+    expect(output()).not.toContain('[NOOP]')
+  })
+
+  it('renders settings init installs with the shared TUI in a TTY', async () => {
+    process.argv = ['bun', 'cli/bakin.ts', 'settings', 'init']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    expect(settingsInstall).toHaveBeenCalledWith({
+      interactive: true,
+      autoApprove: true,
+      json: false,
+      checkOnly: false,
+      force: false,
+    })
+    expect(output()).toContain('Onboarding install')
+    expect(output()).toContain('RESULT')
+    expect(output()).toContain('Wrote ~/.bakin/settings.json')
+    expect(output()).not.toContain('Settings init log')
     expect(output()).not.toContain('[INSTALLED]')
   })
 
