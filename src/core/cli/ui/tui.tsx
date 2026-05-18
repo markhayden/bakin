@@ -167,13 +167,17 @@ export function DataTable<TRow>({ columns, rows }: {
   )
 }
 
-export function NextActions({ actions }: { actions: string[] }) {
+export function NextActions({ actions, color = true }: { actions: string[]; color?: boolean }) {
   return (
-    <Section title="Next" marginTop={1}>
+    <Section title="Next" marginTop={1} color={color}>
       {actions.map(action => (
         <Box key={action}>
-          <Text color={CLI_COLORS.info}>- </Text>
-          <Text wrap="wrap">{action}</Text>
+          <Box width={2} flexShrink={0}>
+            <Text color={color ? CLI_COLORS.info : undefined}>-</Text>
+          </Box>
+          <Box flexGrow={1} flexShrink={1}>
+            <Text wrap="wrap">{action}</Text>
+          </Box>
         </Box>
       ))}
     </Section>
