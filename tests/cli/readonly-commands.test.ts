@@ -227,4 +227,29 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).toContain('timeout')
     expect(output()).not.toContain('Time                   Status')
   })
+
+  it('renders trash list with the shared TUI screen in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      count: 1,
+      assets: [{
+        filename: 'doc.md__deleted-20260518',
+        originalFilename: 'doc.md',
+        type: 'markdown',
+        size: 2048,
+        deletedAt: '2026-05-18T09:00:00.000Z',
+        expiresAt: '2026-05-25T09:00:00.000Z',
+        metadata: { agent: 'patch' },
+      }],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'trash', 'list']
+    await main()
+
+    expect(output()).toContain('Trash')
+    expect(output()).toContain('TRASHED ASSETS')
+    expect(output()).toContain('doc.md')
+    expect(output()).toContain('bakin trash restore <trashName>')
+    expect(output()).not.toContain('item in trash:')
+  })
 })
