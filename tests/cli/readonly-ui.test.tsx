@@ -4,6 +4,7 @@ import { renderToString } from 'ink'
 import {
   AgentLessonsListReport,
   AgentPackagesListReport,
+  AgentTasksReport,
   AgentsListReport,
   PackagesListReport,
   PluginsListReport,
@@ -98,6 +99,25 @@ describe('read-only CLI TUI screens', () => {
     expect(plugins).toContain('tasks')
     expect(plugins).toContain('2')
     expect(plugins).not.toContain('core')
+  })
+
+  it('renders tasks assigned to one agent as a shared TUI table', () => {
+    const output = renderToString(
+      <AgentTasksReport
+        agentId="patch"
+        tasks={[
+          { id: 'task-1', title: 'Write docs', column: 'todo' },
+          { id: 'task-2', title: 'Waiting on review', column: 'blocked' },
+        ]}
+      />,
+    )
+
+    expect(output).toContain('Agent Tasks')
+    expect(output).toContain('agent: patch')
+    expect(output).toContain('TASKS')
+    expect(output).toContain('COLUMN')
+    expect(output).toContain('Write docs')
+    expect(output).toContain('blocked')
   })
 
   it('renders workflow definitions as a shared TUI table', () => {

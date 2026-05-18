@@ -29,6 +29,12 @@ export interface TaskRowData {
   agent?: unknown
 }
 
+export interface AgentTaskData {
+  id?: unknown
+  title?: unknown
+  column?: unknown
+}
+
 export interface AgentRowData {
   id: string
   name: string
@@ -102,6 +108,13 @@ interface TaskTableRow {
   id: string
   title: string
   agent: string
+}
+
+interface AgentTaskTableRow {
+  status: TuiStatus
+  id: string
+  title: string
+  column: string
 }
 
 interface AgentTableRow {
@@ -264,6 +277,18 @@ function taskTableRows(columns: Record<string, TaskRowData[]>): TaskTableRow[] {
       agent: valueText(task.agent),
     }))
   ))
+}
+
+function agentTaskTableRows(tasks: AgentTaskData[]): AgentTaskTableRow[] {
+  return tasks.map(task => {
+    const column = valueText(task.column)
+    return {
+      status: taskColumnStatus(column),
+      id: valueText(task.id, '(no id)'),
+      title: valueText(task.title, '(untitled task)'),
+      column,
+    }
+  })
 }
 
 function taskSummary(columns: Record<string, TaskRowData[]>): SummaryItem[] {
@@ -530,6 +555,42 @@ export function TasksListReport({ columns, column, color = true }: {
           />
         ) : (
           <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No tasks found.' }]} color={color} />
+        )}
+      </Section>
+    </Box>
+  )
+}
+
+export function AgentTasksReport({ agentId, tasks, color = true }: {
+  agentId: string
+  tasks: AgentTaskData[]
+  color?: boolean
+}) {
+  const rows = agentTaskTableRows(tasks)
+  const blocked = rows.filter(row => row.column === 'blocked').length
+  const active = rows.filter(row => ['todo', 'inProgress', 'review'].includes(row.column)).length
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Agent Tasks" subtitle="Assigned task snapshot" meta={`agent: ${agentId}`} color={color} />
+      <SummaryStrip items={[
+        { label: plural(rows.length, 'task'), value: rows.length, status: rows.length > 0 ? 'todo' : 'skip' },
+        { label: 'active', value: active, status: active > 0 ? 'run' : 'ok' },
+        { label: 'blocked', value: blocked, status: blocked > 0 ? 'blocked' : 'ok' },
+      ]} color={color} />
+      <Section title="Tasks" color={color}>
+        {rows.length > 0 ? (
+          <StatusTable
+            rows={rows}
+            columns={[
+              { key: 'id', header: 'ID', width: 16, render: row => row.id },
+              { key: 'title', header: 'TITLE', width: 42, grow: true, render: row => row.title },
+              { key: 'column', header: 'COLUMN', width: 14, render: row => row.column },
+            ]}
+            color={color}
+          />
+        ) : (
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: `No tasks assigned to ${agentId}.` }]} color={color} />
         )}
       </Section>
     </Box>
