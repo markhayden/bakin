@@ -175,6 +175,38 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).not.toContain('Column: inProgress')
   })
 
+  it('renders setup configuration summaries with shared TUI screens in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      dispatch: { intervalMs: 300000, maxRetries: 3 },
+      runtime: { adapter: 'openclaw' },
+      plugins: { requireSignatures: false },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'settings', 'get']
+    await main()
+    expect(output()).toContain('Settings')
+    expect(output()).toContain('CONFIGURATION')
+    expect(output()).toContain('dispatch.intervalMs')
+    expect(output()).not.toContain('"dispatch"')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      isBakinHome: true,
+      paths: {
+        home: '/Users/roscoe/.bakin',
+        tasks: '/Users/roscoe/.bakin/tasks',
+        audit: '/Users/roscoe/.bakin/audit.jsonl',
+      },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'paths']
+    await main()
+    expect(output()).toContain('Paths')
+    expect(output()).toContain('DIRECTORIES')
+    expect(output()).toContain('/Users/roscoe/.bakin')
+    expect(output()).not.toContain('Content dir:')
+  })
+
   it('renders workflows list with the shared TUI screen in a TTY', async () => {
     const { main } = await import('../../cli/bakin')
 

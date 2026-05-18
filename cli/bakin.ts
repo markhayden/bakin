@@ -125,6 +125,24 @@ async function printStatusTui(dispatch: Record<string, unknown>, roster: CliRost
   console.log(renderToString(createElement(StatusReport, { dispatch, roster })))
 }
 
+async function printSettingsTui(settings: Record<string, unknown>): Promise<void> {
+  const [{ SettingsReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(SettingsReport, { settings })))
+}
+
+async function printPathsTui(paths: Record<string, unknown>, isBakinHome: unknown): Promise<void> {
+  const [{ PathsReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(PathsReport, { paths, isBakinHome })))
+}
+
 async function printTasksListTui(columns: Record<string, Array<Record<string, unknown>>>, column?: string): Promise<void> {
   const [{ TasksListReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
@@ -396,6 +414,10 @@ async function cmdSettingsGet(key?: string): Promise<void> {
     }
     print(val)
   } else {
+    if (process.stdout.isTTY) {
+      await printSettingsTui(settings)
+      return
+    }
     print(settings)
   }
 }
@@ -1482,7 +1504,11 @@ async function cmdPaths(key?: string): Promise<void> {
     // Single path — print just the value (useful for scripting: bakin paths assets)
     console.log(result.path)
   } else {
-    const paths = result.paths as Record<string, string>
+    const paths = result.paths as Record<string, unknown>
+    if (process.stdout.isTTY) {
+      await printPathsTui(paths, result.isBakinHome)
+      return
+    }
     const isHome = result.isBakinHome ? '~/.bakin' : './content (not migrated)'
     console.log(`Content dir: ${isHome}`)
     console.log('')
