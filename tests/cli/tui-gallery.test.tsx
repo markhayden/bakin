@@ -33,7 +33,10 @@ describe('CLI TUI style gallery', () => {
   it('renders the Bakin brand header on every prototype screen', () => {
     for (const screen of GALLERY_SCREENS) {
       const output = renderGalleryScreen(screen, { columns: 100 })
-      expect(output.split('\n')[0].trim()).toBe('oooooooooo              oooo        o88')
+      const lines = output.split('\n')
+      expect(lines[0]).toBe('')
+      expect(lines[1].trim()).toBe('oooooooooo              oooo        o88')
+      expect(lines[6]).toBe('')
     }
   })
 

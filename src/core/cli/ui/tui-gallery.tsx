@@ -50,9 +50,11 @@ function Header({ title, subtitle, meta }: { title: string; subtitle?: string; m
   return (
     <Box flexDirection="column">
       <Box flexDirection="column">
+        <Text> </Text>
         {BAKIN_WORDMARK.map(line => (
           <Text key={line} bold color={CLI_COLORS.brand}>{line}</Text>
         ))}
+        <Text> </Text>
       </Box>
       <Box>
         <Text bold>{title}</Text>
