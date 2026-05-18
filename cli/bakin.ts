@@ -18,6 +18,7 @@ import {
   type PluginImportInstallRequest,
 } from '../src/core/plugins/import-export'
 import type {
+  AgentRuleResultData,
   SearchAggregationsData,
   SearchMetaData,
   SearchResultData,
@@ -141,6 +142,18 @@ async function printPathsTui(paths: Record<string, unknown>, isBakinHome: unknow
     import('react'),
   ])
   console.log(renderToString(createElement(PathsReport, { paths, isBakinHome })))
+}
+
+async function printAgentRulesTui(
+  results: AgentRuleResultData[],
+  options: { mode: 'check' | 'apply'; scope: 'orchestrator' | 'all' },
+): Promise<void> {
+  const [{ AgentRulesReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(AgentRulesReport, { results, ...options })))
 }
 
 async function printTasksListTui(columns: Record<string, Array<Record<string, unknown>>>, column?: string): Promise<void> {
@@ -1479,21 +1492,39 @@ async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyA
     return
   }
 
-  const { applyManagedBlocks } = await import('../src/core/agent-rules/managed-blocks')
   const scope = options.apply || options.check ? 'orchestrator' : 'all'
   const autoFix = !!(options.apply || options.applyAll)
-  const results = await applyManagedBlocks(autoFix, { scope })
+
+  const previousConsoleFormat = process.env.BAKIN_CONSOLE_FORMAT
+  const shouldSilenceRuntimeLogs = process.stdout.isTTY && previousConsoleFormat === undefined
+  let results: Awaited<ReturnType<typeof import('../src/core/agent-rules/managed-blocks')['applyManagedBlocks']>>
+  try {
+    if (shouldSilenceRuntimeLogs) process.env.BAKIN_CONSOLE_FORMAT = 'silent'
+    const { applyManagedBlocks } = await import('../src/core/agent-rules/managed-blocks')
+    results = await applyManagedBlocks(autoFix, { scope })
+  } finally {
+    if (shouldSilenceRuntimeLogs) delete process.env.BAKIN_CONSOLE_FORMAT
+  }
+
   const errors = results.filter(r => r.status === 'error')
   const warnings = results.filter(r => r.status === 'warn')
   const fixes = results.filter(r => r.status === 'fixed')
   const oks = results.filter(r => r.status === 'ok')
 
-  for (const r of results) {
-    const icon = r.status === 'ok' ? '[OK]' : r.status === 'fixed' ? '[FIXED]' : r.status === 'warn' ? '[WARN]' : '[ERROR]'
-    console.log(`${icon} ${r.check}: ${r.message}`)
+  if (process.stdout.isTTY) {
+    await printAgentRulesTui(results, {
+      mode: autoFix ? 'apply' : 'check',
+      scope,
+    })
+  } else {
+    for (const r of results) {
+      const icon = r.status === 'ok' ? '[OK]' : r.status === 'fixed' ? '[FIXED]' : r.status === 'warn' ? '[WARN]' : '[ERROR]'
+      console.log(`${icon} ${r.check}: ${r.message}`)
+    }
+
+    console.log(`\n${oks.length} up to date, ${fixes.length} fixed, ${warnings.length} warnings, ${errors.length} errors`)
   }
 
-  console.log(`\n${oks.length} up to date, ${fixes.length} fixed, ${warnings.length} warnings, ${errors.length} errors`)
   if (errors.length > 0 || warnings.length > 0) process.exit(1)
 }
 
