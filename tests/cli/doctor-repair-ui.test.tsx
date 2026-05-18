@@ -72,7 +72,8 @@ describe('doctor repair CLI UI', () => {
     expect(rendered).toContain('SAFE DETERMINISTIC REPAIRS')
     expect(rendered).toContain('team.install-agent')
     expect(rendered).toContain('Repair agent-package projections')
-    expect(rendered).toContain('NEXT\n------------')
+    expect(rendered).not.toContain('NEXT\n------------')
+    expect(rendered).not.toContain('bakin doctor --fix --yes')
     expect(rendered).not.toContain('[SAFE]')
   })
 
@@ -95,6 +96,8 @@ describe('doctor repair CLI UI', () => {
     expect(preview).toContain('Doctor delegated repair preview')
     expect(preview).toContain('UNRESOLVED FINDINGS')
     expect(preview).toContain('channels')
+    expect(preview).not.toContain('NEXT\n------------')
+    expect(preview).not.toContain('bakin doctor --delegate --yes')
     expect(preview).not.toContain('[WARN]')
 
     expect(result).toContain('Delegated doctor repair')

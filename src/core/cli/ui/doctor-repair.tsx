@@ -210,15 +210,6 @@ export function DoctorRepairPlan({ plan, color = true }: {
           <FindingRows rows={errorRows(plan.errors)} color={color} />
         </Section>
       ) : null}
-      {plan.summary.safeItems > 0 ? (
-        <NextActions
-          color={color}
-          actions={[
-            'Run `bakin doctor --fix --yes` to apply the safe repairs.',
-            'Run `bakin doctor --delegate --yes` to create a board task for unresolved manual work.',
-          ]}
-        />
-      ) : null}
     </Box>
   )
 }
@@ -273,9 +264,6 @@ export function DoctorDelegatePreview({ unresolved, color = true }: {
             : [{ status: 'ok', label: 'delegate', message: 'No unresolved findings need delegated repair.' }]}
         />
       </Section>
-      {unresolved.length > 0 ? (
-        <NextActions color={color} actions={['Run `bakin doctor --delegate --yes` to create the delegated repair task.']} />
-      ) : null}
     </Box>
   )
 }
