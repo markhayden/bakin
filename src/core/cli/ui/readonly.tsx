@@ -46,11 +46,47 @@ export interface PluginRouteData {
   pluginId?: unknown
 }
 
+export interface ApiRouteData {
+  method?: unknown
+  fullPath?: unknown
+  pluginId?: unknown
+  description?: unknown
+}
+
 export interface WorkflowTemplateData {
   filename?: unknown
   name?: unknown
   description?: unknown
   stepCount?: unknown
+}
+
+export interface SearchResultData {
+  key?: unknown
+  score?: unknown
+  _table?: unknown
+  document?: unknown
+}
+
+export interface SearchAggregationBucketData {
+  value?: unknown
+  count?: unknown
+}
+
+export type SearchAggregationsData = Record<string, SearchAggregationBucketData[]>
+
+export interface SearchMetaData {
+  query?: unknown
+  total?: unknown
+  took_ms?: unknown
+  source?: unknown
+}
+
+export interface SearchStatsTableData {
+  table?: unknown
+  pluginId?: unknown
+  stats?: unknown
+  indexHealth?: unknown
+  healthy?: unknown
 }
 
 export interface AgentPackageData {
@@ -131,11 +167,33 @@ interface PluginTableRow {
   routes: string
 }
 
+interface ApiRouteTableRow {
+  method: string
+  path: string
+  plugin: string
+  description: string
+}
+
 interface WorkflowTableRow {
   filename: string
   name: string
   description: string
   steps: string
+}
+
+interface SearchResultTableRow {
+  title: string
+  table: string
+  score: string
+  key: string
+}
+
+interface SearchStatsTableRow {
+  status: TuiStatus
+  table: string
+  plugin: string
+  docs: string
+  health: string
 }
 
 interface AgentPackageTableRow {
@@ -219,6 +277,11 @@ function metadataAgent(value: unknown): string {
   if (!value || typeof value !== 'object') return 'unknown'
   const agent = (value as { agent?: unknown }).agent
   return valueText(agent, 'unknown')
+}
+
+function objectField(value: unknown, key: string): unknown {
+  if (!value || typeof value !== 'object') return undefined
+  return (value as Record<string, unknown>)[key]
 }
 
 function bytesText(value: unknown): string {
@@ -352,12 +415,88 @@ function pluginTableRows(routes: PluginRouteData[]): PluginTableRow[] {
   }))
 }
 
+function apiRouteTableRows(routes: ApiRouteData[]): ApiRouteTableRow[] {
+  return routes.map(route => ({
+    method: valueText(route.method),
+    path: valueText(route.fullPath),
+    plugin: valueText(route.pluginId),
+    description: valueText(route.description, ''),
+  }))
+}
+
 function workflowTableRows(templates: WorkflowTemplateData[]): WorkflowTableRow[] {
   return templates.map(template => ({
     filename: valueText(template.filename),
     name: valueText(template.name, '(unnamed)'),
     description: valueText(template.description),
     steps: valueText(template.stepCount),
+  }))
+}
+
+function searchTableName(value: unknown): string {
+  return valueText(value).replace(/^bakin_/, '')
+}
+
+function searchScoreText(value: unknown): string {
+  const score = typeof value === 'number' && Number.isFinite(value) ? value : Number(value)
+  return Number.isFinite(score) ? score.toFixed(3) : valueText(value, '?')
+}
+
+function searchResultTitle(result: SearchResultData): string {
+  const title = objectField(result.document, 'title') ?? objectField(result.document, 'name')
+  return valueText(title, valueText(result.key, '(untitled result)'))
+}
+
+function searchResultTableRows(results: SearchResultData[]): SearchResultTableRow[] {
+  return results.map(result => ({
+    title: searchResultTitle(result),
+    table: searchTableName(result._table),
+    score: searchScoreText(result.score),
+    key: valueText(result.key),
+  }))
+}
+
+function searchFacetRows(aggregations: SearchAggregationsData = {}): Array<{ status: TuiStatus; label: string; message: string }> {
+  return Object.entries(aggregations).map(([facet, values]) => ({
+    status: values.length > 0 ? 'ok' : 'skip',
+    label: facet,
+    message: values.length > 0
+      ? values.map(value => `${valueText(value.value)}(${valueText(value.count, '0')})`).join(', ')
+      : 'none',
+  }))
+}
+
+function searchIndexHealth(value: unknown): Array<{ name?: unknown; error?: unknown; walBacklog?: unknown; rebuilding?: unknown }> {
+  return Array.isArray(value) ? value : []
+}
+
+function searchStatsDocCount(stats: unknown): string {
+  return valueText(objectField(stats, 'num_docs'), '?')
+}
+
+function searchStatsStatus(table: SearchStatsTableData, enabled: boolean): TuiStatus {
+  if (!enabled) return 'skip'
+  const health = searchIndexHealth(table.indexHealth)
+  if (table.healthy === false || health.some(index => valueText(index.error, '') !== '')) return 'fail'
+  if (health.some(index => numberValue(index.walBacklog) > 0 || index.rebuilding === true)) return 'run'
+  return 'ok'
+}
+
+function searchStatsHealth(table: SearchStatsTableData, enabled: boolean): string {
+  if (!enabled) return 'disabled'
+  const health = searchIndexHealth(table.indexHealth)
+  if (table.healthy === false || health.some(index => valueText(index.error, '') !== '')) return 'unhealthy'
+  if (health.some(index => numberValue(index.walBacklog) > 0 || index.rebuilding === true)) return 'enriching'
+  return 'healthy'
+}
+
+function searchStatsTableRows(tables: SearchStatsTableData[], enabled: boolean): SearchStatsTableRow[] {
+  return tables.map(table => ({
+    status: searchStatsStatus(table, enabled),
+    table: valueText(table.table),
+    plugin: valueText(table.pluginId),
+    docs: searchStatsDocCount(table.stats),
+    health: searchStatsHealth(table, enabled),
   }))
 }
 
@@ -666,6 +805,39 @@ export function PluginsListReport({ routes, color = true }: {
   )
 }
 
+export function DocsReport({ routes, color = true }: {
+  routes: ApiRouteData[]
+  color?: boolean
+}) {
+  const rows = apiRouteTableRows(routes)
+  const pluginCount = new Set(rows.map(row => row.plugin).filter(plugin => plugin !== '-' && plugin !== 'core')).size
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Docs" subtitle="API routes from the running server" color={color} />
+      <SummaryStrip items={[
+        { label: plural(rows.length, 'route'), value: rows.length, status: rows.length > 0 ? 'ok' : 'skip' },
+        { label: plural(pluginCount, 'plugin'), value: pluginCount, status: pluginCount > 0 ? 'ok' : 'skip' },
+      ]} color={color} />
+      <Section title="Routes" color={color}>
+        {rows.length > 0 ? (
+          <DataTable
+            rows={rows}
+            columns={[
+              { key: 'method', header: 'METHOD', width: 8, render: row => row.method },
+              { key: 'path', header: 'PATH', width: 42, grow: true, render: row => row.path },
+              { key: 'plugin', header: 'PLUGIN', width: 16, render: row => row.plugin },
+              { key: 'description', header: 'DESCRIPTION', width: 42, grow: true, render: row => row.description },
+            ]}
+          />
+        ) : (
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No API routes returned by the server.' }]} color={color} />
+        )}
+      </Section>
+    </Box>
+  )
+}
+
 export function WorkflowsListReport({ templates, color = true }: {
   templates: WorkflowTemplateData[]
   color?: boolean
@@ -691,6 +863,89 @@ export function WorkflowsListReport({ templates, color = true }: {
           />
         ) : (
           <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No workflow definitions found.' }]} color={color} />
+        )}
+      </Section>
+    </Box>
+  )
+}
+
+export function SearchResultsReport({ query, results, aggregations = {}, meta, color = true }: {
+  query: string
+  results: SearchResultData[]
+  aggregations?: SearchAggregationsData
+  meta?: SearchMetaData
+  color?: boolean
+}) {
+  const rows = searchResultTableRows(results)
+  const facets = searchFacetRows(aggregations)
+  const total = numberValue(meta?.total ?? rows.length)
+  const took = meta?.took_ms === undefined ? undefined : `${numberValue(meta.took_ms)}ms`
+  const source = valueText(meta?.source, 'unknown')
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Search" subtitle={valueText(meta?.query, query)} meta={`source: ${source}`} color={color} />
+      <SummaryStrip items={[
+        { label: 'total', value: total, status: total > 0 ? 'ok' : 'skip' },
+        { label: 'returned', value: rows.length, status: rows.length > 0 ? 'ready' : 'skip' },
+        ...(took ? [{ label: 'elapsed', value: took }] : []),
+      ]} color={color} />
+      <Section title="Results" color={color}>
+        {rows.length > 0 ? (
+          <DataTable
+            rows={rows}
+            columns={[
+              { key: 'title', header: 'TITLE', width: 42, grow: true, render: row => row.title },
+              { key: 'table', header: 'TABLE', width: 16, render: row => row.table },
+              { key: 'score', header: 'SCORE', width: 8, render: row => row.score },
+              { key: 'key', header: 'KEY', width: 24, render: row => row.key },
+            ]}
+          />
+        ) : (
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No results found.' }]} color={color} />
+        )}
+      </Section>
+      {facets.length > 0 ? (
+        <Section title="Facets" color={color}>
+          <FindingRows rows={facets} color={color} />
+        </Section>
+      ) : null}
+    </Box>
+  )
+}
+
+export function SearchStatsReport({ enabled, tables, color = true }: {
+  enabled: boolean
+  tables: SearchStatsTableData[]
+  color?: boolean
+}) {
+  const rows = searchStatsTableRows(tables, enabled)
+  const unhealthy = rows.filter(row => row.status === 'fail').length
+  const enriching = rows.filter(row => row.status === 'run').length
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Search Stats" subtitle="Search index health and document counts" color={color} />
+      <SummaryStrip items={[
+        { label: enabled ? 'enabled' : 'disabled', value: 'search', status: enabled ? 'ok' : 'skip' },
+        { label: plural(rows.length, 'table'), value: rows.length, status: rows.length > 0 ? 'ok' : 'skip' },
+        { label: 'unhealthy', value: unhealthy, status: unhealthy > 0 ? 'fail' : 'ok' },
+        { label: 'enriching', value: enriching, status: enriching > 0 ? 'run' : 'ok' },
+      ]} color={color} />
+      <Section title="Tables" color={color}>
+        {rows.length > 0 ? (
+          <StatusTable
+            rows={rows}
+            columns={[
+              { key: 'table', header: 'TABLE', width: 24, grow: true, render: row => row.table },
+              { key: 'plugin', header: 'PLUGIN', width: 16, render: row => row.plugin },
+              { key: 'docs', header: 'DOCS', width: 8, render: row => row.docs },
+              { key: 'health', header: 'HEALTH', width: 12, render: row => row.health },
+            ]}
+            color={color}
+          />
+        ) : (
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No search tables are registered.' }]} color={color} />
         )}
       </Section>
     </Box>
