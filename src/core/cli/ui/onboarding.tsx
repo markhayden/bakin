@@ -80,16 +80,17 @@ function outcomeRows(outcomes: ComponentOutcome[]): FindingRow[] {
   }))
 }
 
-export function OnboardingSummary({ outcomes, exitCode }: {
+export function OnboardingSummary({ outcomes, exitCode, showBrand = true }: {
   outcomes: ComponentOutcome[]
   exitCode: 0 | 1 | 2
+  showBrand?: boolean
 }) {
   const prerequisites = outcomes.filter(outcome => PREREQUISITE_COMPONENTS.has(outcome.name))
   const setup = outcomes.filter(outcome => !PREREQUISITE_COMPONENTS.has(outcome.name))
 
   return (
     <Box flexDirection="column">
-      <ScreenHeader title="Onboarding" subtitle={summarySubtitle(exitCode)} />
+      <ScreenHeader title="Onboarding" subtitle={summarySubtitle(exitCode)} showBrand={showBrand} />
       <SummaryStrip items={summaryItems(outcomes)} />
       <Section title="Prerequisites">
         <FindingRows rows={outcomeRows(prerequisites)} />

@@ -93,6 +93,25 @@ describe('onboarding CLI UI', () => {
     expect(rendered).not.toContain(`${home}/.bakin/settings.json`)
   })
 
+  it('can render the onboarding summary as a continuation without the brand header', () => {
+    const rendered = renderToString(
+      <OnboardingSummary
+        outcomes={[{
+          name: 'settings',
+          finalStatus: 'ok',
+          check: { name: 'settings', status: 'ok', message: 'settings ready' },
+          message: 'settings ready',
+          durationMs: 1,
+        }]}
+        exitCode={0}
+        showBrand={false}
+      />,
+    )
+
+    expect(rendered).toContain('Onboarding')
+    expect(rendered).not.toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+  })
+
   it('renders an async onboarding busy state', () => {
     const rendered = renderToString(<OnboardingBusy label="Running onboarding checks and installs" totalSteps={12} />)
     expect(rendered).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")

@@ -72,14 +72,16 @@ describe('CLI onboard command', () => {
     stdoutWrite.mockRestore()
   })
 
-  it('renders the shared onboarding summary for TTY completion', async () => {
+  it('continues the shared onboarding summary without replaying the brand header', async () => {
     process.argv = ['bun', 'cli/bakin.ts', 'onboard', '--force']
 
     const { main } = await import('../../cli/bakin')
     await main()
 
     const output = log.mock.calls.map((call: unknown[]) => String(call[0])).join('\n')
-    expect(output).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    const liveOutput = stdoutWrite.mock.calls.map((call: unknown[]) => String(call[0])).join('')
+    expect(liveOutput).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output).not.toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
     expect(output).toContain('Onboarding')
     expect(output).toContain('Machine setup complete')
     expect(output).toContain('PREREQUISITES')

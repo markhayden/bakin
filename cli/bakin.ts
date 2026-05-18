@@ -2138,7 +2138,11 @@ async function cmdOnboard(args: string[]): Promise<void> {
     if (!json) {
       if (isTTY) {
         console.log('')
-        console.log(renderToString(createElement(OnboardingSummary, { outcomes: result.outcomes, exitCode: result.exitCode })))
+        console.log(renderToString(createElement(OnboardingSummary, {
+          outcomes: result.outcomes,
+          exitCode: result.exitCode,
+          showBrand: !busy,
+        })))
       } else {
         console.log('')
         for (const o of result.outcomes) {
