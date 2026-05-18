@@ -1,5 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 
+let nextQuestionAnswer = 'y'
+let prompts: string[] = []
+
+mock.module('node:readline/promises', () => ({
+  createInterface: () => ({
+    question: async (prompt: string) => {
+      prompts.push(prompt)
+      return nextQuestionAnswer
+    },
+    close: () => {},
+  }),
+}))
+
 const mockPlan = {
   diagnostics: [{ check: 'taskboard', status: 'warn', message: 'Missing columns', autoFixable: true }],
   items: [{
@@ -68,8 +81,14 @@ describe('legacy CLI doctor repair', () => {
     return log.mock.calls.map((call: unknown[]) => String(call[0])).join('\n')
   }
 
+  function headerCount(output: string): number {
+    return output.split("┃  🐷 Bakin'                  (v1.0.0) ┃").length - 1
+  }
+
   beforeEach(() => {
     mock.clearAllMocks()
+    prompts = []
+    nextQuestionAnswer = 'y'
     process.argv = originalArgv
     globalThis.fetch = fetchMock as unknown as typeof fetch
     log = spyOn(console, 'log').mockImplementation(() => {})
@@ -171,6 +190,31 @@ describe('legacy CLI doctor repair', () => {
     expect(output).toContain('APPLIED\n------------')
     expect(output).toContain('Taskboard healthy')
     expect(output).not.toContain('[APPLIED]')
+  })
+
+  it('continues interactive repair results without replaying the brand header', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockPlan),
+        text: () => Promise.resolve(''),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockApply),
+        text: () => Promise.resolve(''),
+      })
+    setStdoutIsTTY(true)
+    process.argv = ['bun', 'cli/bakin.ts', 'doctor', '--fix']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    const output = loggedOutput()
+    expect(prompts[0]).toStartWith('\nApply 1 safe repair item? [y/N]')
+    expect(output).toContain('Doctor repair plan')
+    expect(output).toContain('Doctor repair results')
+    expect(headerCount(output)).toBe(1)
   })
 
   it('previews delegated repair without creating the task when --yes is omitted', async () => {

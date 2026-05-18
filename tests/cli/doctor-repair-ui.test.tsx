@@ -89,6 +89,13 @@ describe('doctor repair CLI UI', () => {
     expect(rendered).not.toContain('[APPLIED]')
   })
 
+  it('can render repair results as a continuation without the brand header', () => {
+    const rendered = renderToString(<DoctorRepairApplyReport report={repairApply} color={false} showBrand={false} />)
+
+    expect(rendered).toContain('Doctor repair results')
+    expect(rendered).not.toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+  })
+
   it('renders delegated repair preview and sent result', () => {
     const preview = renderToString(<DoctorDelegatePreview unresolved={delegateReport.unresolved} color={false} />)
     const result = renderToString(<DoctorDelegateResult report={delegateReport} color={false} />)

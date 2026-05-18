@@ -41,15 +41,16 @@ export function BakinHeader({ color = true }: { color?: boolean } = {}) {
   )
 }
 
-export function ScreenHeader({ title, subtitle, meta, color = true }: {
+export function ScreenHeader({ title, subtitle, meta, color = true, showBrand = true }: {
   title: string
   subtitle?: string
   meta?: string
   color?: boolean
+  showBrand?: boolean
 }) {
   return (
     <Box flexDirection="column">
-      <BakinHeader color={color} />
+      {showBrand ? <BakinHeader color={color} /> : null}
       <Box>
         <Text bold>{title}</Text>
         {meta ? <Text dimColor>  {meta}</Text> : null}

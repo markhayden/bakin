@@ -214,13 +214,14 @@ export function DoctorRepairPlan({ plan, color = true }: {
   )
 }
 
-export function DoctorRepairApplyReport({ report, color = true }: {
+export function DoctorRepairApplyReport({ report, color = true, showBrand }: {
   report: DoctorRepairApplyData
   color?: boolean
+  showBrand?: boolean
 }) {
   return (
     <Box flexDirection="column">
-      <ScreenHeader title="Doctor repair results" subtitle="Safe deterministic repairs applied" color={color} />
+      <ScreenHeader title="Doctor repair results" subtitle="Safe deterministic repairs applied" color={color} showBrand={showBrand} />
       <SummaryStrip items={applySummary(report)} color={color} />
       {report.applied.length > 0 ? (
         <Section title="Applied" color={color}>
@@ -268,9 +269,10 @@ export function DoctorDelegatePreview({ unresolved, color = true }: {
   )
 }
 
-export function DoctorDelegateResult({ report, color = true }: {
+export function DoctorDelegateResult({ report, color = true, showBrand }: {
   report: DoctorDelegateReportData
   color?: boolean
+  showBrand?: boolean
 }) {
   if (report.status === 'no_unresolved') {
     return <DoctorDelegatePreview unresolved={[]} color={color} />
@@ -282,7 +284,7 @@ export function DoctorDelegateResult({ report, color = true }: {
 
   return (
     <Box flexDirection="column">
-      <ScreenHeader title="Delegated doctor repair" subtitle="A board task was created for unresolved work" color={color} />
+      <ScreenHeader title="Delegated doctor repair" subtitle="A board task was created for unresolved work" color={color} showBrand={showBrand} />
       <SummaryStrip items={[
         { label: 'request', value: requestId, status: 'sent' },
         ...(taskId ? [{ label: 'task', value: taskId, status: 'todo' as const }] : []),
