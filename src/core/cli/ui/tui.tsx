@@ -180,6 +180,7 @@ export function NextActions({ actions, color = true }: { actions: string[]; colo
           </Box>
         </Box>
       ))}
+      <Text> </Text>
     </Section>
   )
 }

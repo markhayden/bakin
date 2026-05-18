@@ -67,6 +67,7 @@ describe('CLI UI primitives', () => {
     expect(output).toContain('###################-----------')
     expect(output).toContain('NEXT\n------------')
     expect(output).toContain('- Run `bakin doctor --full` after `bakin start`.')
+    expect(output.endsWith('\n')).toBe(true)
   })
 
   it('renders shared TUI status tokens without color when requested', () => {
