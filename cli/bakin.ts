@@ -1146,6 +1146,7 @@ async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> 
     console.log(renderToString(createElement(DoctorReport, {
       results: result.results,
       summary: result.summary,
+      mode: result.mode,
     })))
     if (result.summary.errors > 0) process.exit(1)
     if (result.summary.warnings > 0) process.exit(2)
