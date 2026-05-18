@@ -2,7 +2,10 @@ import { describe, expect, it } from 'bun:test'
 import { renderToString } from 'ink'
 
 import {
+  AgentLessonsListReport,
+  AgentPackagesListReport,
   AgentsListReport,
+  PackagesListReport,
   PluginsListReport,
   StatusReport,
   TasksListReport,
@@ -116,5 +119,44 @@ describe('read-only CLI TUI screens', () => {
     expect(output).toContain('STEPS')
     expect(output).toContain('release.yml')
     expect(output).toContain('Release')
+  })
+
+  it('renders package-oriented lists as shared TUI tables', () => {
+    const agentPackages = renderToString(
+      <AgentPackagesListReport
+        agents={[
+          { agentId: 'patch', state: 'managed', packageId: 'bakin.patch' },
+          { agentId: 'docs', state: 'adopted', packageId: 'bakin.docs' },
+        ]}
+      />,
+    )
+    const lessons = renderToString(
+      <AgentLessonsListReport
+        agentId="patch"
+        packageId="bakin.patch"
+        lessons={[
+          { lessonId: 'handoff', title: 'Handoff Notes', tags: ['workflow'], enabled: true },
+          { lessonId: 'release', title: 'Release Notes', tags: [], enabled: false },
+        ]}
+      />,
+    )
+    const packages = renderToString(
+      <PackagesListReport
+        packages={[
+          { id: 'bakin.patch', kind: 'agent', version: '1.0.0', refCount: 2, dependents: ['patch', 'docs'] },
+        ]}
+      />,
+    )
+
+    expect(agentPackages).toContain('Agent Packages')
+    expect(agentPackages).toContain('PACKAGE')
+    expect(agentPackages).toContain('bakin.patch')
+    expect(lessons).toContain('Agent Lessons')
+    expect(lessons).toContain('LESSON')
+    expect(lessons).toContain('ENABLED')
+    expect(lessons).toContain('handoff')
+    expect(packages).toContain('Packages')
+    expect(packages).toContain('DEPENDENTS')
+    expect(packages).toContain('patch, docs')
   })
 })

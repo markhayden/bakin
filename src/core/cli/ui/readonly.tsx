@@ -47,6 +47,27 @@ export interface WorkflowTemplateData {
   stepCount?: unknown
 }
 
+export interface AgentPackageData {
+  agentId?: unknown
+  state?: unknown
+  packageId?: unknown
+}
+
+export interface AgentLessonData {
+  lessonId?: unknown
+  title?: unknown
+  tags?: unknown
+  enabled?: unknown
+}
+
+export interface PackageData {
+  id?: unknown
+  kind?: unknown
+  version?: unknown
+  refCount?: unknown
+  dependents?: unknown
+}
+
 interface TaskTableRow {
   status: TuiStatus
   column: string
@@ -76,6 +97,30 @@ interface WorkflowTableRow {
   steps: string
 }
 
+interface AgentPackageTableRow {
+  status: TuiStatus
+  agent: string
+  state: string
+  package: string
+}
+
+interface AgentLessonTableRow {
+  status: TuiStatus
+  enabled: string
+  lesson: string
+  title: string
+  tags: string
+}
+
+interface PackageTableRow {
+  status: TuiStatus
+  package: string
+  kind: string
+  version: string
+  refs: string
+  dependents: string
+}
+
 const TASK_COLUMN_ORDER = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived'] as const
 
 function valueText(value: unknown, fallback = '-'): string {
@@ -89,6 +134,12 @@ function numberValue(value: unknown): number {
 
 function plural(count: number, singular: string, pluralLabel = `${singular}s`): string {
   return count === 1 ? singular : pluralLabel
+}
+
+function listText(value: unknown, fallback = '-'): string {
+  if (!Array.isArray(value)) return valueText(value, fallback)
+  if (value.length === 0) return fallback
+  return value.map(item => valueText(item)).join(', ')
 }
 
 function taskColumnStatus(column: string): TuiStatus {
@@ -199,6 +250,57 @@ function workflowTableRows(templates: WorkflowTemplateData[]): WorkflowTableRow[
     name: valueText(template.name, '(unnamed)'),
     description: valueText(template.description),
     steps: valueText(template.stepCount),
+  }))
+}
+
+function packageStateStatus(state: string): TuiStatus {
+  switch (state) {
+    case 'managed':
+    case 'adopted':
+      return 'ok'
+    case 'missing':
+    case 'drifted':
+      return 'warn'
+    case 'blocked':
+      return 'blocked'
+    default:
+      return 'skip'
+  }
+}
+
+function agentPackageTableRows(agents: AgentPackageData[]): AgentPackageTableRow[] {
+  return agents.map(agent => {
+    const state = valueText(agent.state)
+    return {
+      status: packageStateStatus(state),
+      agent: valueText(agent.agentId),
+      state,
+      package: valueText(agent.packageId),
+    }
+  })
+}
+
+function agentLessonTableRows(lessons: AgentLessonData[]): AgentLessonTableRow[] {
+  return lessons.map(lesson => {
+    const enabled = lesson.enabled === true
+    return {
+      status: enabled ? 'ok' : 'skip',
+      enabled: enabled ? 'yes' : 'no',
+      lesson: valueText(lesson.lessonId),
+      title: valueText(lesson.title, '(untitled lesson)'),
+      tags: listText(lesson.tags),
+    }
+  })
+}
+
+function packageTableRows(packages: PackageData[]): PackageTableRow[] {
+  return packages.map(pkg => ({
+    status: 'ok',
+    package: valueText(pkg.id),
+    kind: valueText(pkg.kind),
+    version: valueText(pkg.version),
+    refs: valueText(pkg.refCount, '0'),
+    dependents: listText(pkg.dependents),
   }))
 }
 
@@ -368,6 +470,114 @@ export function WorkflowsListReport({ templates, color = true }: {
           />
         ) : (
           <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No workflow definitions found.' }]} color={color} />
+        )}
+      </Section>
+    </Box>
+  )
+}
+
+export function AgentPackagesListReport({ agents, color = true }: {
+  agents: AgentPackageData[]
+  color?: boolean
+}) {
+  const rows = agentPackageTableRows(agents)
+  const managed = rows.filter(row => row.state === 'managed').length
+  const adopted = rows.filter(row => row.state === 'adopted').length
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Agent Packages" subtitle="Installed agent package state" color={color} />
+      <SummaryStrip items={[
+        { label: plural(rows.length, 'agent'), value: rows.length, status: rows.length > 0 ? 'ok' : 'skip' },
+        { label: 'managed', value: managed, status: managed > 0 ? 'ok' : 'skip' },
+        { label: 'adopted', value: adopted, status: adopted > 0 ? 'ready' : 'skip' },
+      ]} color={color} />
+      <Section title="Package state" color={color}>
+        {rows.length > 0 ? (
+          <StatusTable
+            rows={rows}
+            columns={[
+              { key: 'agent', header: 'AGENT', width: 18, render: row => row.agent },
+              { key: 'state', header: 'STATE', width: 12, render: row => row.state },
+              { key: 'package', header: 'PACKAGE', width: 34, grow: true, render: row => row.package },
+            ]}
+            color={color}
+          />
+        ) : (
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No agent package state found.' }]} color={color} />
+        )}
+      </Section>
+    </Box>
+  )
+}
+
+export function AgentLessonsListReport({ agentId, packageId, lessons, color = true }: {
+  agentId: string
+  packageId: string
+  lessons: AgentLessonData[]
+  color?: boolean
+}) {
+  const rows = agentLessonTableRows(lessons)
+  const enabled = rows.filter(row => row.enabled === 'yes').length
+  const disabled = rows.length - enabled
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Agent Lessons" subtitle={`Lesson toggles for ${agentId}`} meta={`package: ${packageId}`} color={color} />
+      <SummaryStrip items={[
+        { label: plural(rows.length, 'lesson'), value: rows.length, status: rows.length > 0 ? 'ok' : 'skip' },
+        { label: 'enabled', value: enabled, status: enabled > 0 ? 'ok' : 'skip' },
+        { label: 'disabled', value: disabled, status: disabled > 0 ? 'skip' : 'ok' },
+      ]} color={color} />
+      <Section title="Lessons" color={color}>
+        {rows.length > 0 ? (
+          <StatusTable
+            rows={rows}
+            columns={[
+              { key: 'enabled', header: 'ENABLED', width: 8, render: row => row.enabled },
+              { key: 'lesson', header: 'LESSON', width: 24, render: row => row.lesson },
+              { key: 'title', header: 'TITLE', width: 34, grow: true, render: row => row.title },
+              { key: 'tags', header: 'TAGS', width: 22, render: row => row.tags },
+            ]}
+            color={color}
+          />
+        ) : (
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No lessons found for this agent package.' }]} color={color} />
+        )}
+      </Section>
+    </Box>
+  )
+}
+
+export function PackagesListReport({ packages, color = true }: {
+  packages: PackageData[]
+  color?: boolean
+}) {
+  const rows = packageTableRows(packages)
+  const referenced = rows.filter(row => row.refs !== '0').length
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Packages" subtitle="Installed standalone packages" color={color} />
+      <SummaryStrip items={[
+        { label: plural(rows.length, 'package'), value: rows.length, status: rows.length > 0 ? 'ok' : 'skip' },
+        { label: 'referenced', value: referenced, status: referenced > 0 ? 'ok' : 'skip' },
+      ]} color={color} />
+      <Section title="Installed packages" color={color}>
+        {rows.length > 0 ? (
+          <StatusTable
+            rows={rows}
+            columns={[
+              { key: 'package', header: 'PACKAGE', width: 30, grow: true, render: row => row.package },
+              { key: 'kind', header: 'KIND', width: 12, render: row => row.kind },
+              { key: 'version', header: 'VERSION', width: 12, render: row => row.version },
+              { key: 'refs', header: 'REFS', width: 6, render: row => row.refs },
+              { key: 'dependents', header: 'DEPENDENTS', width: 24, render: row => row.dependents },
+            ]}
+            color={color}
+          />
+        ) : (
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No packages installed.' }]} color={color} />
         )}
       </Section>
     </Box>
