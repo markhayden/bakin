@@ -275,15 +275,13 @@ type RequestTableRow = {
   state: string
   task: string
   agent: string
-  updated: string
 }
 
 const requestColumns: Array<TableColumn<RequestTableRow>> = [
-  { key: 'request', header: 'REQUEST', width: 26, render: row => row.request },
-  { key: 'state', header: 'STATE', width: 12, render: row => row.state },
-  { key: 'task', header: 'TASK', width: 22, render: row => row.task },
-  { key: 'agent', header: 'AGENT', width: 14, render: row => row.agent },
-  { key: 'updated', header: 'UPDATED', width: 24, grow: true, render: row => row.updated },
+  { key: 'request', header: 'REQUEST', width: 30, render: row => row.request },
+  { key: 'state', header: 'STATE', width: 10, render: row => row.state },
+  { key: 'task', header: 'TASK', width: 14, render: row => row.task },
+  { key: 'agent', header: 'AGENT', width: 10, render: row => row.agent },
 ]
 
 function requestTableRows(requests: DoctorRepairRequestData[]): RequestTableRow[] {
@@ -293,17 +291,17 @@ function requestTableRows(requests: DoctorRepairRequestData[]): RequestTableRow[
     state: valueText(request.status, 'unknown'),
     task: valueText(request.taskId),
     agent: valueText(request.agentId),
-    updated: valueText(request.updatedAt, valueText(request.createdAt)),
   }))
 }
 
 function requestSummary(requests: DoctorRepairRequestData[]): SummaryItem[] {
   const active = requests.filter(request => !['verified', 'completed', 'failed'].includes(valueText(request.status, '').toLowerCase())).length
+  const activeStatus = requests.some(request => valueText(request.status, '').toLowerCase() === 'sent') ? 'sent' : 'todo'
   const verified = requests.filter(request => ['verified', 'completed'].includes(valueText(request.status, '').toLowerCase())).length
   const failed = requests.filter(request => valueText(request.status, '').toLowerCase() === 'failed').length
   return [
     { label: plural(requests.length, 'request'), value: requests.length, status: requests.length > 0 ? 'ok' : 'skip' },
-    { label: 'active', value: active, status: active > 0 ? 'sent' : 'ok' },
+    { label: 'active', value: active, status: active > 0 ? activeStatus : 'ok' },
     { label: 'verified', value: verified, status: verified > 0 ? 'done' : 'ok' },
     ...(failed > 0 ? [{ label: 'failed', value: failed, status: 'fail' as const }] : []),
   ]

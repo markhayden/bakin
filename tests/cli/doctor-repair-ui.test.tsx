@@ -139,6 +139,26 @@ describe('doctor repair CLI UI', () => {
     expect(rendered).not.toContain('repair-1  sent  task=task-repair-1')
   })
 
+  it('keeps delegated repair request tables compact at 80 columns', () => {
+    const rendered = renderToString(
+      <DoctorRepairRequestsReport
+        requests={[{
+          ...delegateReport.request,
+          id: 'repair-1a263583-f4d4-4927-8051-8f39c813z',
+          taskId: 'task-1a263583-f4d4-4927',
+        }]}
+        color={false}
+      />,
+      { columns: 80 },
+    )
+
+    expect(rendered).toContain('REQUEST')
+    expect(rendered).toContain('TASK')
+    expect(rendered).toContain('AGENT')
+    expect(rendered).not.toContain('UPDATED')
+    expect(rendered.split('\n').some(line => line.trim().length === 1)).toBe(false)
+  })
+
   it('keeps trailing breathing room for empty delegated repair request lists', () => {
     const rendered = renderToString(<DoctorRepairRequestsReport requests={[]} color={false} />)
 
