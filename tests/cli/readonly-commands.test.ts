@@ -166,6 +166,25 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).not.toContain('"workspacePath"')
   })
 
+  it('renders task action confirmations with the shared TUI screen in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      id: 'task-1',
+      workflowId: 'release',
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'tasks', 'create', 'Write docs', 'patch', '--workflow=release']
+    await main()
+
+    expect(output()).toContain('Task action')
+    expect(output()).toContain('RESULT')
+    expect(output()).toContain('task-1')
+    expect(output()).toContain('Created task Write docs.')
+    expect(output()).toContain('workflow')
+    expect(output()).not.toContain('"ok": true')
+  })
+
   it('honors --json for task detail commands even in a TTY', async () => {
     const { main } = await import('../../cli/bakin')
 

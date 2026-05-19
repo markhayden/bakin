@@ -26,6 +26,7 @@ import type {
   SearchAggregationsData,
   SearchMetaData,
   SearchResultData,
+  TaskActionData,
   TrashActionData,
 } from '../src/core/cli/ui/readonly'
 import type { CheckResult, InstallResult } from '../src/core/onboarding/types'
@@ -169,6 +170,15 @@ async function printTasksListTui(columns: Record<string, Array<Record<string, un
     import('react'),
   ])
   console.log(renderToString(createElement(TasksListReport, { columns, column })))
+}
+
+async function printTaskActionTui(action: TaskActionData): Promise<void> {
+  const [{ TaskActionReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(TaskActionReport, { action })))
 }
 
 async function printTaskDetailTui(taskId: string, column: string, task: Record<string, unknown>): Promise<void> {
@@ -433,8 +443,24 @@ async function cmdTasksCreate(title: string, assignee?: string, workflowId?: str
     process.exit(1)
   }
 
+  const suggestedWorkflow = result.suggestedWorkflow && !workflowId && !skipWorkflowReason
+    ? result.suggestedWorkflow
+    : undefined
+
+  if (process.stdout.isTTY) {
+    await printTaskActionTui({
+      action: 'created',
+      taskId: result.id,
+      title,
+      agent: assignee,
+      workflowId: result.workflowId ?? workflowId,
+      suggestedWorkflow,
+    })
+    return
+  }
+
   // Warn if a workflow was suggested but not used and no reason given
-  if (result.suggestedWorkflow && !workflowId && !skipWorkflowReason) {
+  if (suggestedWorkflow) {
     console.warn(`\n⚠  Workflow "${result.suggestedWorkflow}" matches this task but was not started.`)
     console.warn(`   Re-run with --workflow=${result.suggestedWorkflow} to use it,`)
     console.warn(`   or --no-workflow="<reason>" to skip with an audit trail.\n`)
@@ -445,6 +471,14 @@ async function cmdTasksCreate(title: string, assignee?: string, workflowId?: str
 
 async function cmdTasksMove(id: string, to: string): Promise<void> {
   const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to, agent: await getCliAgent() })
+  if (process.stdout.isTTY) {
+    await printTaskActionTui({
+      action: 'moved',
+      taskId: id,
+      column: to,
+    })
+    return
+  }
   print(result)
 }
 
@@ -2078,16 +2112,40 @@ async function cmdStop(): Promise<void> {
 
 async function cmdTasksLog(id: string, message: string): Promise<void> {
   const result = await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: await getCliAgent(), message })
+  if (process.stdout.isTTY) {
+    await printTaskActionTui({
+      action: 'logged',
+      taskId: id,
+      detail: message,
+    })
+    return
+  }
   print(result)
 }
 
 async function cmdTasksBlock(id: string, reason: string): Promise<void> {
   const result = await apiPost(`/api/plugins/tasks/${id}/block`, { id, reason, agent: await getCliAgent() })
+  if (process.stdout.isTTY) {
+    await printTaskActionTui({
+      action: 'blocked',
+      taskId: id,
+      detail: reason,
+    })
+    return
+  }
   print(result)
 }
 
 async function cmdTasksDepend(id: string, dependsOn: string): Promise<void> {
   const result = await apiPost(`/api/plugins/tasks/${id}/dependency`, { id, dependsOn })
+  if (process.stdout.isTTY) {
+    await printTaskActionTui({
+      action: 'dependency',
+      taskId: id,
+      detail: `depends on ${dependsOn}`,
+    })
+    return
+  }
   print(result)
 }
 
@@ -2096,6 +2154,15 @@ async function cmdTasksComplete(id: string, summary: string): Promise<void> {
   // Log the summary, then move to done
   await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: agent, message: `Task complete: ${summary}` })
   const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to: 'done', agent })
+  if (process.stdout.isTTY) {
+    await printTaskActionTui({
+      action: 'completed',
+      taskId: id,
+      column: 'done',
+      detail: summary,
+    })
+    return
+  }
   print(result)
 }
 
