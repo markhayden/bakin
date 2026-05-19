@@ -826,20 +826,16 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
       case '-v':
         return { startServer: false, exitCode: await cmdVersion() }
 
-      case 'status':
-        return { startServer: false, exitCode: await cmdStatus() }
-
-      case 'stop':
-        return { startServer: false, exitCode: await cmdStop() }
-
       case 'update':
         return { startServer: false, exitCode: await cmdUpdate() }
 
       case 'dev':
         return { startServer: false, exitCode: await cmdDev(args.slice(1)) }
 
-      // `restart` and `plugins` delegate to the source CLI so the compiled
+      // Runtime/status commands delegate to the source CLI so the compiled
       // binary uses the same TUI/JSON implementation as the npm-linked entry.
+      case 'status':
+      case 'stop':
       case 'plugins':
         return await delegateToSourceCli(argv)
 
