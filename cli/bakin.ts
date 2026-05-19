@@ -314,6 +314,35 @@ async function exitUnknownSubcommand(scope: string, sub: string | undefined, ava
   })
 }
 
+async function exitCommandFailure(
+  message: string,
+  options: {
+    command?: string
+    detail?: string
+    code?: string
+    next?: string
+    plainLines?: string[]
+  } = {},
+): Promise<never> {
+  if (process.stdout.isTTY) {
+    await printCommandFailureTui({
+      command: options.command ?? 'bakin',
+      message,
+      detail: options.detail,
+      code: options.code ?? 'COMMAND_FAILED',
+      next: options.next,
+    })
+  } else if (options.plainLines) {
+    for (const line of options.plainLines) console.error(line)
+  } else {
+    console.error(`Error: ${message}`)
+    if (options.detail) console.error(`  ${options.detail}`)
+    if (options.next) console.error(`  ${options.next}`)
+  }
+  process.exit(1)
+  throw new Error('unreachable')
+}
+
 async function printSettingsTui(settings: Record<string, unknown>): Promise<void> {
   const [{ SettingsReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
@@ -679,8 +708,10 @@ async function cmdTasksCreate(title: string, assignee?: string, workflowId?: str
   const result = await apiPost('/api/plugins/tasks/', body) as { ok?: boolean; id?: string; workflowId?: string; suggestedWorkflow?: string; error?: string }
 
   if (result.error) {
-    console.error(`Error: ${result.error}`)
-    process.exit(1)
+    await exitCommandFailure(result.error, {
+      command: 'bakin tasks create',
+      code: 'TASK_CREATE_FAILED',
+    })
   }
 
   const suggestedWorkflow = result.suggestedWorkflow && !workflowId && !skipWorkflowReason
@@ -2742,42 +2773,200 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): 
   }
 }
 
-async function cmdLogs(filter?: string): Promise<void> {
-  const { spawn, execSync } = await import('child_process')
-  const { existsSync } = await import('fs')
+interface LogsOptions {
+  filter?: string
+  json?: boolean
+  lines?: number
+  follow?: boolean
+}
+
+function parseLogsArgs(args: string[]): LogsOptions | { error: string } {
+  const options: LogsOptions = { lines: 20, follow: true }
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (arg === '--json') {
+      options.json = true
+      continue
+    }
+    if (arg === '--no-follow') {
+      options.follow = false
+      continue
+    }
+    if (arg === '--follow') {
+      options.follow = true
+      continue
+    }
+    if (arg.startsWith('--lines=')) {
+      const value = Number(arg.split('=')[1])
+      if (!Number.isInteger(value) || value < 0) return { error: '--lines must be a non-negative integer' }
+      options.lines = value
+      continue
+    }
+    if (arg === '--lines') {
+      const value = Number(args[i + 1])
+      if (!Number.isInteger(value) || value < 0) return { error: '--lines must be a non-negative integer' }
+      options.lines = value
+      i++
+      continue
+    }
+    if (arg.startsWith('--')) return { error: `Unknown logs argument: ${arg}` }
+    if (options.filter) return { error: `Unexpected logs argument: ${arg}` }
+    options.filter = arg
+  }
+  return options
+}
+
+function parseAuditLogLine(line: string): Record<string, unknown> | null {
+  if (!line.trim()) return null
+  try {
+    const parsed = JSON.parse(line) as unknown
+    return jsonObject(parsed)
+  } catch {
+    return null
+  }
+}
+
+function auditLogMatches(entry: Record<string, unknown>, filter?: string): boolean {
+  if (!filter) return true
+  if (filter === 'mcp' || filter === 'rest') return entry.channel === filter
+  return entry.agent === filter || entry.channel === filter
+}
+
+function summarizeAuditData(data: unknown): string {
+  const record = jsonObject(data)
+  if (!record) return ''
+  return Object.entries(record)
+    .slice(0, 4)
+    .map(([key, value]) => {
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return `${key}=${value}`
+      if (Array.isArray(value)) return `${key}=[${value.length}]`
+      if (value && typeof value === 'object') return `${key}={...}`
+      return `${key}=null`
+    })
+    .join(' ')
+}
+
+function formatAuditLogRow(entry: Record<string, unknown>): string {
+  const ts = typeof entry.ts === 'string' ? entry.ts : ''
+  const time = ts.includes('T') ? ts.split('T')[1]?.replace('Z', '').slice(0, 12) ?? ts : ts || '-'
+  const event = String(entry.event ?? '-')
+  const agent = String(entry.agent ?? '-')
+  const channel = entry.channel == null ? '-' : String(entry.channel)
+  const summary = summarizeAuditData(entry.data)
+  return [
+    time.padEnd(14),
+    event.padEnd(28),
+    agent.padEnd(14),
+    channel.padEnd(10),
+    summary,
+  ].join(' ').trimEnd()
+}
+
+async function printLogsHeaderTui(options: {
+  auditPath: string
+  filter?: string
+  lines: number
+  follow: boolean
+}): Promise<void> {
+  const [{ ScreenHeader, SummaryStrip, Section, FindingRows }, { renderToString }, { createElement, Fragment }] = await Promise.all([
+    import('../src/core/cli/ui/tui'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(Fragment, {}, [
+    createElement(ScreenHeader, {
+      key: 'header',
+      title: 'Logs',
+      subtitle: 'Audit event stream',
+      meta: `filter: ${options.filter ?? 'all'}`,
+    }),
+    createElement(SummaryStrip, {
+      key: 'summary',
+      items: [
+        { label: 'recent', value: options.lines, status: 'ok' },
+        { label: 'mode', value: options.follow ? 'follow' : 'snapshot', status: options.follow ? 'ready' : 'skip' },
+      ],
+    }),
+    createElement(Section, {
+      key: 'source',
+      title: 'Source',
+      children: createElement(FindingRows, {
+        rows: [{
+          status: 'ok',
+          label: 'audit',
+          message: options.auditPath,
+          detail: options.follow ? 'Streaming new events. Press Ctrl-C to stop.' : 'Snapshot mode.',
+        }],
+      }),
+    }),
+  ])))
+}
+
+function printAuditEntry(entry: Record<string, unknown>, options: { json?: boolean }): void {
+  if (options.json) {
+    console.log(JSON.stringify(entry))
+    return
+  }
+  console.log(formatAuditLogRow(entry))
+}
+
+async function cmdLogs(options: LogsOptions = {}): Promise<void> {
+  const { spawn } = await import('child_process')
+  const { existsSync, readFileSync } = await import('fs')
   const { getBakinPaths } = await import('../packages/core/src/content-dir')
   const auditPath = getBakinPaths().audit
+  const lines = options.lines ?? 20
+  const follow = options.follow !== false
+  const jsonOutput = options.json === true || !process.stdout.isTTY
 
   if (!existsSync(auditPath)) {
-    console.error(`Audit log not found: ${auditPath}`)
-    console.error('Is Bakin initialized? Run: bakin mkdir')
-    process.exit(1)
+    await exitCommandFailure(`Audit log not found: ${auditPath}`, {
+      command: options.filter ? `bakin logs ${options.filter}` : 'bakin logs',
+      code: 'AUDIT_LOG_NOT_FOUND',
+      next: 'Run `bakin mkdir` to initialize Bakin home.',
+      plainLines: [
+        `Audit log not found: ${auditPath}`,
+        'Is Bakin initialized? Run: bakin mkdir',
+      ],
+    })
   }
 
-  // Build jq filter
-  let jqFilter = '{ts,event,agent,channel,data}'
-  if (filter === 'mcp') jqFilter = 'select(.channel=="mcp") | {ts,event,agent,data}'
-  else if (filter === 'rest') jqFilter = 'select(.channel=="rest") | {ts,event,agent,data}'
-  else if (filter) jqFilter = `select(.agent=="${filter}" or .channel=="${filter}") | {ts,event,agent,channel,data}`
+  const emitLine = (line: string) => {
+    const entry = parseAuditLogLine(line)
+    if (!entry || !auditLogMatches(entry, options.filter)) return
+    printAuditEntry(entry, { json: jsonOutput })
+  }
 
-  // Show last 20 entries first so there's immediate output
-  console.log(`Tailing ${auditPath} (filter: ${filter || 'all'})`)
-  console.log('--- recent entries ---')
-  try {
-    execSync(`tail -20 "${auditPath}" | jq '${jqFilter}'`, { stdio: ['ignore', 'inherit', 'ignore'] })
-  } catch { /* filter may exclude all 20 lines — that's fine */ }
-  console.log('--- live tail (Ctrl-C to stop) ---\n')
+  if (!jsonOutput && process.stdout.isTTY) {
+    await printLogsHeaderTui({ auditPath, filter: options.filter, lines, follow })
+    console.log('RECENT EVENTS')
+    console.log('------------')
+    console.log(['TIME'.padEnd(14), 'EVENT'.padEnd(28), 'AGENT'.padEnd(14), 'CHANNEL'.padEnd(10), 'SUMMARY'].join(' '))
+  }
 
-  // Now tail -f for new entries (start from end, 0 lines of history to avoid dupes)
+  const history = lines > 0 ? readFileSync(auditPath, 'utf-8').trimEnd().split('\n').slice(-lines) : []
+  for (const line of history) emitLine(line)
+
+  if (!follow) return
+
+  if (!jsonOutput && process.stdout.isTTY) {
+    console.log('')
+    console.log('LIVE TAIL')
+    console.log('---------')
+  }
+
   const child = spawn('tail', ['-f', '-n', '0', auditPath], { stdio: ['ignore', 'pipe', 'inherit'] })
-  const jq = spawn('jq', ['--unbuffered', jqFilter], { stdio: ['pipe', 'inherit', 'inherit'] })
-
-  child.stdout.pipe(jq.stdin)
+  let buffer = ''
+  child.stdout.on('data', (chunk: Buffer) => {
+    buffer += chunk.toString('utf-8')
+    const parts = buffer.split(/\r?\n/)
+    buffer = parts.pop() ?? ''
+    for (const line of parts) emitLine(line)
+  })
 
   // Clean up on exit
   process.on('SIGINT', () => {
     child.kill()
-    jq.kill()
     process.exit(0)
   })
 
@@ -2940,8 +3129,12 @@ async function cmdTasksGet(id: string, opts: { json?: boolean } = {}): Promise<v
       return
     }
   }
-  console.error(`Task ${id} not found`)
-  process.exit(1)
+  await exitCommandFailure(`Task ${id} not found`, {
+    command: 'bakin tasks get',
+    code: 'TASK_NOT_FOUND',
+    next: 'Run `bakin tasks list` to inspect current task IDs.',
+    plainLines: [`Task ${id} not found`],
+  })
 }
 
 async function cmdWorkflowsList(): Promise<void> {
@@ -3801,7 +3994,17 @@ export async function main(): Promise<void> {
         break
 
       case 'logs':
-        await cmdLogs(args[1])
+        {
+          const logsOptions = parseLogsArgs(args.slice(1))
+          if ('error' in logsOptions) {
+            await exitCommandIssue(logsOptions.error, {
+              command: 'bakin logs',
+              usage: 'bakin logs [filter] [--json] [--lines <n>] [--no-follow]',
+            })
+          } else {
+            await cmdLogs(logsOptions)
+          }
+        }
         break
 
       case 'setup':
