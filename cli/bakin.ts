@@ -23,6 +23,7 @@ import type {
   PluginRestoreResultData,
   PluginRestoreSnapshotData,
   ReindexResultData,
+  RuntimeActionData,
   SearchAggregationsData,
   SearchMetaData,
   SearchResultData,
@@ -132,6 +133,15 @@ async function printStatusTui(dispatch: Record<string, unknown>, roster: CliRost
     import('react'),
   ])
   console.log(renderToString(createElement(StatusReport, { dispatch, roster })))
+}
+
+async function printRuntimeActionTui(action: RuntimeActionData): Promise<void> {
+  const [{ RuntimeActionReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(RuntimeActionReport, { action })))
 }
 
 async function printSettingsTui(settings: Record<string, unknown>): Promise<void> {
@@ -409,6 +419,14 @@ async function cmdStatus(): Promise<void> {
 
 async function cmdDispatch(): Promise<void> {
   const result = await apiPost('/api/dispatch')
+  if (process.stdout.isTTY) {
+    await printRuntimeActionTui({
+      action: 'dispatch',
+      target: 'task dispatcher',
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -508,6 +526,15 @@ async function cmdAgentsList(): Promise<void> {
 
 async function cmdAgentsSend(agentId: string, message: string): Promise<void> {
   const result = await apiPost(`/api/agents/${agentId}/message`, { message })
+  if (process.stdout.isTTY) {
+    await printRuntimeActionTui({
+      action: 'message',
+      target: agentId,
+      detail: message,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
