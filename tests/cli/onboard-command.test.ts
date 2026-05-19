@@ -17,6 +17,14 @@ const outcomes = [
   },
 ]
 
+let onboarded = false
+let onboardingState: {
+  version: number
+  completedAt: string
+  bakinVersion: string
+  components: Record<string, 'ok' | 'warn' | 'skipped' | 'error'>
+} | null = null
+
 const runOnboard = mock(async (opts: {
   onProgress?: (message: string) => void
   onOutcome?: (outcome: { name: string; finalStatus: 'ok'; message: string }) => void
@@ -28,8 +36,8 @@ const runOnboard = mock(async (opts: {
 
 mock.module('../../src/core/onboarding/index', () => ({
   runOnboard,
-  isOnboarded: () => false,
-  loadState: () => null,
+  isOnboarded: () => onboarded,
+  loadState: () => onboardingState,
   COMPONENT_ORDER: outcomes.map(outcome => ({ name: outcome.name })),
 }))
 
@@ -51,6 +59,8 @@ describe('CLI onboard command', () => {
 
   beforeEach(() => {
     mock.clearAllMocks()
+    onboarded = false
+    onboardingState = null
     process.argv = originalArgv
     log = spyOn(console, 'log').mockImplementation(() => {})
     stdoutWrite = spyOn(process.stdout, 'write').mockImplementation(() => true)
@@ -86,5 +96,27 @@ describe('CLI onboard command', () => {
     expect(output).toContain('Machine setup complete')
     expect(output).toContain('PREREQUISITES')
     expect(output).toContain('Run `bakin start` to launch Bakin.')
+  })
+
+  it('renders already-onboarded state with shared onboarding UI in a TTY', async () => {
+    onboarded = true
+    onboardingState = {
+      version: 3,
+      completedAt: '2026-05-19T12:00:00.000Z',
+      bakinVersion: '1.0.0',
+      components: { mkdir: 'ok', settings: 'ok' },
+    }
+    process.argv = ['bun', 'cli/bakin.ts', 'onboard']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    const output = log.mock.calls.map((call: unknown[]) => String(call[0])).join('\n')
+    expect(output).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output).toContain('Machine setup already complete')
+    expect(output).toContain('Already onboarded on 2026-05-19.')
+    expect(output).toContain('Run `bakin onboard --force`')
+    expect(output).not.toContain('[OK] Already onboarded')
+    expect(runOnboard).not.toHaveBeenCalled()
   })
 })
