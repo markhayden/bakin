@@ -763,6 +763,37 @@ export interface CliResult {
   exitCode: number
 }
 
+class DelegatedCliExit extends Error {
+  constructor(readonly code: number) {
+    super(`delegated cli exit ${code}`)
+    this.name = 'BakinDelegatedCliExit'
+  }
+}
+
+async function delegateToSourceCli(argv: string[]): Promise<CliResult> {
+  const previousArgv = process.argv
+  const previousExit = process.exit
+  process.argv = argv
+  process.exit = ((code?: string | number | null | undefined) => {
+    const numericCode = typeof code === 'number' ? code : Number(code ?? 0)
+    throw new DelegatedCliExit(Number.isFinite(numericCode) ? numericCode : 1)
+  }) as never
+
+  try {
+    const { main: runSourceCli } = await import(/* @vite-ignore */ '../../cli/bakin' as string) as { main: () => Promise<void> }
+    await runSourceCli()
+    return { startServer: false, exitCode: 0 }
+  } catch (err) {
+    if (err instanceof DelegatedCliExit) {
+      return { startServer: false, exitCode: err.code }
+    }
+    throw err
+  } finally {
+    process.argv = previousArgv
+    process.exit = previousExit
+  }
+}
+
 /**
  * Parse argv and dispatch. Returns `{ startServer: true }` only when the
  * user asked for `start` (explicit or default). Otherwise the command
@@ -807,152 +838,16 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
       case 'dev':
         return { startServer: false, exitCode: await cmdDev(args.slice(1)) }
 
-      // `restart` falls through to the legacy delegation below so there's
-      // a single implementation (cmdReboot in cli/bakin.ts).
-
-      case 'plugins': {
-        if (!sub) {
-          console.error('Usage: bakin plugins <list|install|export|import|upgrade|remove|restore|scaffold|link|unlink>')
-          return { startServer: false, exitCode: 1 }
-        }
-        if (sub === 'list') {
-          const check = args.slice(2).includes('--check')
-          return { startServer: false, exitCode: await cmdPluginsList({ check }) }
-        }
-        if (sub === 'install') {
-          const installArgs = args.slice(2)
-          const parsed = parsePluginInstallArgs(installArgs)
-          if (parsed.error || !parsed.source) {
-            console.error(parsed.error ? `${parsed.error}\n${PLUGIN_INSTALL_USAGE}` : PLUGIN_INSTALL_USAGE)
-            return { startServer: false, exitCode: 1 }
-          }
-          return {
-            startServer: false,
-            exitCode: await cmdPluginsInstall(parsed.source, {
-              yes: parsed.yes,
-              dev: parsed.dev,
-              force: parsed.force,
-              ref: parsed.ref,
-            }),
-          }
-        }
-        if (sub === 'export') {
-          if (args[2]?.startsWith('--')) {
-            console.error('Usage: bakin plugins export [file]')
-            return { startServer: false, exitCode: 1 }
-          }
-          return { startServer: false, exitCode: await cmdPluginsExport(args[2]) }
-        }
-        if (sub === 'import') {
-          if (!args[2]) {
-            console.error('Usage: bakin plugins import <file> [--yes] [--force]')
-            return { startServer: false, exitCode: 1 }
-          }
-          const flags = args.slice(3)
-          const extraArg = flags.find(arg => !arg.startsWith('--'))
-          if (extraArg) {
-            console.error(`Unexpected plugins import argument: ${extraArg}`)
-            console.error('Usage: bakin plugins import <file> [--yes] [--force]')
-            return { startServer: false, exitCode: 1 }
-          }
-          const unknown = flags.find(arg => arg.startsWith('--') && arg !== '--yes' && arg !== '--force')
-          if (unknown) {
-            console.error(`Unknown plugins import flag: ${unknown}`)
-            console.error('Usage: bakin plugins import <file> [--yes] [--force]')
-            return { startServer: false, exitCode: 1 }
-          }
-          return {
-            startServer: false,
-            exitCode: await cmdPluginsImport(args[2], {
-              yes: flags.includes('--yes'),
-              force: flags.includes('--force'),
-            }),
-          }
-        }
-        if (sub === 'upgrade') {
-          if (!args[2]) {
-            console.error('Usage: bakin plugins upgrade <id> [--yes] [--json]')
-            return { startServer: false, exitCode: 1 }
-          }
-          const flags = args.slice(3)
-          const unknown = flags.find(arg => arg !== '--yes' && arg !== '--json')
-          if (unknown) {
-            console.error(`Unknown plugins upgrade flag: ${unknown}`)
-            console.error('Usage: bakin plugins upgrade <id> [--yes] [--json]')
-            return { startServer: false, exitCode: 1 }
-          }
-          return {
-            startServer: false,
-            exitCode: await cmdPluginsUpgrade(args[2], {
-              yes: flags.includes('--yes'),
-              json: flags.includes('--json'),
-            }),
-          }
-        }
-        if (sub === 'remove') {
-          if (!args[2]) {
-            console.error('Usage: bakin plugins remove <id>')
-            return { startServer: false, exitCode: 1 }
-          }
-          return { startServer: false, exitCode: await cmdPluginsRemove(args[2]) }
-        }
-        if (sub === 'restore') {
-          const parsed = parsePluginRestoreArgs(args.slice(2))
-          if (parsed.error || !parsed.pluginId) {
-            console.error(parsed.error ?? PLUGIN_RESTORE_USAGE)
-            return { startServer: false, exitCode: 1 }
-          }
-          return {
-            startServer: false,
-            exitCode: await cmdPluginsRestore(parsed.pluginId, {
-              snapshot: parsed.snapshot,
-              force: parsed.force,
-              list: parsed.list,
-            }),
-          }
-        }
-        if (sub === 'scaffold') {
-          if (!args[2]) {
-            console.error('Usage: bakin plugins scaffold <name> [--json]')
-            return { startServer: false, exitCode: 1 }
-          }
-          const flags = args.slice(3)
-          const unknown = flags.find(arg => arg !== '--json')
-          if (unknown) {
-            console.error(`Unknown plugins scaffold flag: ${unknown}`)
-            console.error('Usage: bakin plugins scaffold <name> [--json]')
-            return { startServer: false, exitCode: 1 }
-          }
-          return { startServer: false, exitCode: await cmdPluginsScaffold(args[2], { json: flags.includes('--json') }) }
-        }
-        if (sub === 'link') {
-          if (!args[2]) {
-            console.error('Usage: bakin plugins link <localPath> [--force]')
-            return { startServer: false, exitCode: 1 }
-          }
-          const force = args.slice(3).includes('--force')
-          return { startServer: false, exitCode: await cmdPluginsLink(args[2], { force }) }
-        }
-        if (sub === 'unlink') {
-          if (!args[2]) {
-            console.error('Usage: bakin plugins unlink <id>')
-            return { startServer: false, exitCode: 1 }
-          }
-          return { startServer: false, exitCode: await cmdPluginsUnlink(args[2]) }
-        }
-        console.error(`Unknown plugins subcommand: ${sub}`)
-        return { startServer: false, exitCode: 1 }
-      }
+      // `restart` and `plugins` delegate to the source CLI so the compiled
+      // binary uses the same TUI/JSON implementation as the npm-linked entry.
+      case 'plugins':
+        return await delegateToSourceCli(argv)
 
       default: {
         // Delegate to the legacy CLI (doctor, tasks, workflows, agents,
-        // schedule, search, settings, trash, paths, reindex,
-        // onboard, setup, logs, agent-rules, etc.). The legacy
-        // handler calls process.exit internally on success/failure, so
-        // we don't return here.
-        const { main: runLegacyCli } = await import(/* @vite-ignore */ '../../cli/bakin' as string) as { main: () => Promise<void> }
-        await runLegacyCli()
-        return { startServer: false, exitCode: 0 }
+        // schedule, search, settings, trash, paths, reindex, restart,
+        // onboard, setup, logs, agent-rules, etc.).
+        return await delegateToSourceCli(argv)
       }
     }
   } catch (err) {

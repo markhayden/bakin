@@ -3615,6 +3615,9 @@ export async function main(): Promise<void> {
         process.exit(1)
     }
   } catch (err) {
+    if (err instanceof Error && err.name === 'BakinDelegatedCliExit') {
+      throw err
+    }
     if (
       err instanceof Error &&
       (err.message.includes('ECONNREFUSED') ||
