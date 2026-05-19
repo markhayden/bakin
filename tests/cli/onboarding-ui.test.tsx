@@ -6,6 +6,7 @@ import {
   OnboardingBusy,
   OnboardingCheckAllReport,
   OnboardingCheckReport,
+  OnboardingAlreadyCompleteReport,
   OnboardingDecisionPrompt,
   OnboardingInstallReport,
   OnboardingIntro,
@@ -158,6 +159,21 @@ describe('onboarding CLI UI', () => {
     expect(rendered).toContain('REQUIRED SETUP')
     expect(rendered).toContain('Bakin has not been onboarded on this machine.')
     expect(rendered).toContain('Run `bakin onboard` to complete first-run setup.')
+    expect(rendered).not.toContain('[OK]')
+  })
+
+  it('renders already-onboarded state with shared onboarding UI', () => {
+    const rendered = renderToString(<OnboardingAlreadyCompleteReport state={{
+      version: 3,
+      completedAt: '2026-05-19T12:00:00.000Z',
+      bakinVersion: '1.0.0',
+      components: { mkdir: 'ok', settings: 'ok' },
+    }} />)
+    expect(rendered).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(rendered).toContain('Onboarding')
+    expect(rendered).toContain('Machine setup already complete')
+    expect(rendered).toContain('Already onboarded on 2026-05-19.')
+    expect(rendered).toContain('Run `bakin onboard --force`')
     expect(rendered).not.toContain('[OK]')
   })
 

@@ -7,6 +7,7 @@ import type {
   InstallResult,
   InstallStatus,
 } from '../../onboarding'
+import type { OnboardingState } from '../../onboarding/state'
 import {
   FindingRows,
   NextActions,
@@ -339,6 +340,43 @@ export function OnboardingRequiredReport({ color = true }: { color?: boolean }) 
       <NextActions actions={[
         'Run `bakin onboard` to complete first-run setup.',
         'Run `bakin onboard --check` to inspect readiness without changing anything.',
+      ]} color={color} />
+    </Box>
+  )
+}
+
+export function OnboardingAlreadyCompleteReport({ state, color = true }: {
+  state: OnboardingState | null
+  color?: boolean
+}) {
+  const completedAt = state?.completedAt?.slice(0, 10) ?? 'unknown date'
+  const componentCount = Object.keys(state?.components ?? {}).length
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Onboarding" subtitle="Machine setup already complete" meta={`completed: ${completedAt}`} color={color} />
+      <SummaryStrip items={[
+        { label: 'status', value: 'ready', status: 'ok' },
+        { label: 'components', value: componentCount, status: componentCount > 0 ? 'ok' : 'skip' },
+      ]} color={color} />
+      <Section title="Result" color={color}>
+        <FindingRows rows={[
+          {
+            status: 'ok',
+            label: 'onboarded',
+            message: `Already onboarded on ${completedAt}.`,
+            detail: state?.bakinVersion ? `Bakin version: ${state.bakinVersion}` : undefined,
+          },
+          {
+            status: 'ready',
+            label: 'replay',
+            message: 'Re-run with `--force` to replay the full onboarding flow.',
+          },
+        ]} color={color} />
+      </Section>
+      <NextActions actions={[
+        'Run `bakin start` to launch Bakin.',
+        'Run `bakin onboard --force` to replay first-run setup.',
       ]} color={color} />
     </Box>
   )

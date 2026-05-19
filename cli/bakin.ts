@@ -3233,7 +3233,7 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
 async function cmdOnboard(args: string[]): Promise<void> {
   const { runOnboard, isOnboarded, loadState, COMPONENT_ORDER } = await import('../src/core/onboarding/index')
   const { collectOnboardingSelections } = await import('../src/core/cli/onboarding-interactive')
-  const { OnboardingBusy, OnboardingSummary } = await import('../src/core/cli/ui/onboarding')
+  const { OnboardingAlreadyCompleteReport, OnboardingBusy, OnboardingSummary } = await import('../src/core/cli/ui/onboarding')
   const { render, renderToString } = await import('ink')
   const { createElement } = await import('react')
   const checkOnly = args.includes('--check')
@@ -3243,21 +3243,24 @@ async function cmdOnboard(args: string[]): Promise<void> {
   const verbose = args.includes('--verbose')
   const isTTY = Boolean(process.stdout.isTTY)
 
-  const previousConsoleFormat = process.env.BAKIN_CONSOLE_FORMAT
-  if (!verbose && previousConsoleFormat === undefined) {
-    process.env.BAKIN_CONSOLE_FORMAT = 'silent'
-  }
-
   // Early exit for already-onboarded machines unless --force or --check
   if (!force && !checkOnly && isOnboarded()) {
     const state = loadState()
-    if (!json) {
+    if (!json && isTTY) {
+      console.log(renderToString(createElement(OnboardingAlreadyCompleteReport, { state })))
+    } else if (!json) {
       console.log(`[OK] Already onboarded on ${state?.completedAt?.slice(0, 10) ?? 'unknown date'}.`)
       console.log('     Re-run with --force to replay the full flow.')
     } else {
       console.log(JSON.stringify({ status: 'already_onboarded', completedAt: state?.completedAt }))
     }
     process.exit(0)
+    return
+  }
+
+  const previousConsoleFormat = process.env.BAKIN_CONSOLE_FORMAT
+  if (!verbose && previousConsoleFormat === undefined) {
+    process.env.BAKIN_CONSOLE_FORMAT = 'silent'
   }
 
   const baseOpts = {
