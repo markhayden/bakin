@@ -260,6 +260,47 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).not.toContain('-----------  -------')
   })
 
+  it('renders workflow actions with the shared TUI screen in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      instance: { taskId: 'task-1', workflowId: 'release', status: 'in_progress', currentStepId: 'draft' },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'workflows', 'start', 'task-1', 'release']
+    await main()
+    expect(output()).toContain('Workflow action')
+    expect(output()).toContain('Started workflow release')
+    expect(output()).toContain('RESULT')
+    expect(output()).not.toContain('"instance"')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      stepId: 'draft',
+      label: 'Draft release notes',
+      type: 'agent',
+      agent: 'patch',
+      status: 'in_progress',
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'workflows', 'step', 'task-1']
+    await main()
+    expect(output()).toContain('Current workflow step draft')
+    expect(output()).toContain('Draft release')
+
+    log.mockClear()
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ agents: [{ id: 'patch' }], mainAgentId: 'patch' }))
+      .mockResolvedValueOnce(jsonResponse({
+        success: true,
+        workflowComplete: false,
+        nextStep: { stepId: 'review', label: 'Review release notes', status: 'pending' },
+      }))
+    process.argv = ['bun', 'cli/bakin.ts', 'workflows', 'submit', 'task-1', 'draft', '{"summary":"done"}']
+    await main()
+    expect(output()).toContain('Completed workflow step draft.')
+    expect(output()).toContain('Next step review')
+    expect(output()).not.toContain('"success": true')
+  })
+
   it('renders package-oriented list commands with shared TUI screens in a TTY', async () => {
     const { main } = await import('../../cli/bakin')
 

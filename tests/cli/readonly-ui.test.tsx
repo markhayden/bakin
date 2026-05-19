@@ -26,6 +26,7 @@ import {
   TasksListReport,
   TrashActionReport,
   TrashListReport,
+  WorkflowActionReport,
   WorkflowsListReport,
 } from '../../src/core/cli/ui/readonly'
 
@@ -363,6 +364,36 @@ describe('read-only CLI TUI screens', () => {
     expect(output).toContain('STEPS')
     expect(output).toContain('release.yml')
     expect(output).toContain('Release')
+  })
+
+  it('renders workflow action confirmations with shared TUI primitives', () => {
+    const started = renderToString(
+      <WorkflowActionReport
+        action={{
+          action: 'started',
+          taskId: 'task-1',
+          workflowId: 'release',
+          result: { instance: { status: 'in_progress', currentStepId: 'draft' } },
+        }}
+      />,
+    )
+    const submitted = renderToString(
+      <WorkflowActionReport
+        action={{
+          action: 'submitted',
+          taskId: 'task-1',
+          stepId: 'draft',
+          result: { success: true, workflowComplete: false, nextStep: { stepId: 'review', label: 'Review draft', status: 'pending' } },
+        }}
+      />,
+    )
+
+    expect(started).toContain('Workflow action')
+    expect(started).toContain('RESULT')
+    expect(started).toContain('Started workflow release')
+    expect(started).toContain('current step: draft')
+    expect(submitted).toContain('Completed workflow step draft.')
+    expect(submitted).toContain('Next step review: Review draft')
   })
 
   it('renders docs and search screens with shared TUI tables', () => {
