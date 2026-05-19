@@ -162,12 +162,26 @@ function shouldSkipOnboardingCheck(args: string[]): boolean {
     || args.includes('--skip-onboarding-check')
 }
 
-function checkOnboardedBeforeStart(args: string[]): number | null {
-  if (shouldSkipOnboardingCheck(args)) return null
-  if (isOnboarded()) return null
+async function printStartOnboardingGate(): Promise<void> {
+  if (process.stdout.isTTY) {
+    const [{ OnboardingRequiredReport }, { renderToString }, { createElement }] = await Promise.all([
+      import('./cli/ui/onboarding'),
+      import('ink'),
+      import('react'),
+    ])
+    console.log(renderToString(createElement(OnboardingRequiredReport)))
+    return
+  }
+
   console.error('Bakin has not been onboarded on this machine.')
   console.error('Run: bakin onboard')
   console.error('To inspect readiness without changing anything, run: bakin onboard --check')
+}
+
+async function checkOnboardedBeforeStart(args: string[]): Promise<number | null> {
+  if (shouldSkipOnboardingCheck(args)) return null
+  if (isOnboarded()) return null
+  await printStartOnboardingGate()
   return 1
 }
 
@@ -810,7 +824,7 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
   }
 
   if (cmd === 'start') {
-    const gateExitCode = checkOnboardedBeforeStart(args)
+    const gateExitCode = await checkOnboardedBeforeStart(args)
     if (gateExitCode !== null) return { startServer: false, exitCode: gateExitCode }
     return { startServer: true, exitCode: 0 }
   }

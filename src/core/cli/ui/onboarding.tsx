@@ -313,6 +313,37 @@ export function OnboardingIntro() {
   )
 }
 
+export function OnboardingRequiredReport({ color = true }: { color?: boolean }) {
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Onboard" subtitle="Initial setup required" color={color} />
+      <SummaryStrip items={[
+        { label: 'start', value: 'blocked', status: 'blocked' },
+        { label: 'setup', value: 'required', status: 'ready' },
+      ]} color={color} />
+      <Section title="Required setup" color={color}>
+        <FindingRows rows={[
+          {
+            status: 'blocked',
+            label: 'onboarding',
+            message: 'Bakin has not been onboarded on this machine.',
+            detail: 'Run `bakin onboard` to complete setup before starting the server.',
+          },
+          {
+            status: 'ready',
+            label: 'readiness',
+            message: 'Run `bakin onboard --check` to inspect readiness without changing anything.',
+          },
+        ]} color={color} />
+      </Section>
+      <NextActions actions={[
+        'Run `bakin onboard` to complete first-run setup.',
+        'Run `bakin onboard --check` to inspect readiness without changing anything.',
+      ]} color={color} />
+    </Box>
+  )
+}
+
 export function OnboardingDecisionPrompt({ title, description, defaultChoice, onSubmit }: {
   title: string
   description: string
