@@ -131,18 +131,28 @@ describe('read-only CLI TTY commands', () => {
 
     log.mockClear()
     fetchMock.mockResolvedValueOnce(jsonResponse({
-      routes: [
-        { pluginId: 'tasks' },
-        { pluginId: 'tasks' },
-        { pluginId: 'team' },
-        { pluginId: 'core' },
+      plugins: [
+        { id: 'team', name: 'Team', version: '1.0.0', source: 'core', status: 'active' },
+        { id: 'tasks', name: 'Tasks', version: '2.1.0', source: 'core', status: 'active' },
+        { id: 'schedule', name: 'Schedule', version: '2.0.0', source: 'core', status: 'active' },
+        { id: 'assets', name: 'Assets', version: '2.0.0', source: 'core', status: 'active' },
+        { id: 'health', name: 'Health', version: '1.0.0', source: 'core', status: 'active' },
+        { id: 'models', name: 'Models', version: '2.1.0', source: 'core', status: 'active' },
+        { id: 'messaging', name: 'Messaging', version: '2.0.0', source: 'github', status: 'active' },
+        { id: 'projects', name: 'Projects', version: '2.0.0', source: 'github', status: 'active' },
       ],
     }))
     process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'list']
     await main()
     expect(output()).toContain('Plugins')
-    expect(output()).toContain('ROUTES')
+    expect(output()).toContain('SOURCE')
     expect(output()).toContain('tasks')
+    expect(output()).toContain('schedule')
+    expect(output()).toContain('assets')
+    expect(output()).toContain('health')
+    expect(output()).toContain('models')
+    expect(output()).toContain('messaging')
+    expect(output()).toContain('projects')
     expect(output()).not.toContain('Installed plugins:')
   })
 
@@ -222,6 +232,48 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).toContain('"title": "Write docs"')
     expect(output()).not.toContain('Task Detail')
     expect(output()).not.toContain('Column: inProgress')
+  })
+
+  it('honors --json for taxonomy list commands even in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      agents: [
+        { id: 'pixel', name: 'Pixel', status: 'online', model: 'openai-codex/gpt-5.5' },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'agents', 'list', '--json']
+    await main()
+    expect(output()).toContain('"agents": [')
+    expect(output()).toContain('"id": "pixel"')
+    expect(output()).not.toContain('ROSTER')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      plugins: [
+        { id: 'tasks', name: 'Tasks', version: '2.1.0', source: 'core', status: 'active' },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'list', '--check', '--json']
+    await main()
+    expect(String(fetchMock.mock.calls[1][0])).toContain('/api/plugins/manifest?check=1')
+    expect(output()).toContain('"plugins": [')
+    expect(output()).toContain('"id": "tasks"')
+    expect(output()).not.toContain('Installed plugins')
+    expect(output()).not.toContain('SOURCE')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      packages: [
+        { id: 'shared-skills', kind: 'skill-pack', version: '1.0.0', refCount: 0, dependents: [] },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'packages', 'list', '--json']
+    await main()
+    expect(output()).toContain('"packages": [')
+    expect(output()).toContain('"id": "shared-skills"')
+    expect(output()).not.toContain('INSTALLED PACKAGES')
   })
 
   it('renders setup configuration summaries with shared TUI screens in a TTY', async () => {
@@ -360,14 +412,86 @@ describe('read-only CLI TTY commands', () => {
       ok: true,
       packages: [
         { id: 'bakin.patch', kind: 'agent', version: '1.0.0', refCount: 2, dependents: ['patch', 'docs'] },
+        { id: 'lessons', kind: 'lesson-pack', version: '1.0.0', refCount: 0, dependents: [] },
       ],
     }))
     process.argv = ['bun', 'cli/bakin.ts', 'packages', 'list']
     await main()
     expect(output()).toContain('Packages')
     expect(output()).toContain('DEPENDENTS')
-    expect(output()).toContain('patch, docs')
+    expect(output()).toContain('lessons')
+    expect(output()).not.toContain('bakin.patch')
     expect(output()).not.toContain('Installed packages:')
+  })
+
+  it('renders package action confirmations with the shared TUI screen in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      result: {
+        packageId: 'bakin.patch',
+        kind: 'agent',
+        createdAgent: true,
+        adopted: false,
+        dependencies: [],
+        skipped: [],
+      },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'agents', 'install', 'github:markhayden/bakin-patch']
+    await main()
+    expect(output()).toContain('Package action')
+    expect(output()).toContain('Installed agent package bakin.patch.')
+    expect(output()).toContain('Created runtime agent.')
+    expect(output()).not.toContain('"packageId"')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      result: {
+        packageId: 'bakin.patch',
+        lessonId: 'style',
+        enabled: false,
+        changed: true,
+      },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'agents', 'lessons', 'disable', 'patch', 'style']
+    await main()
+    expect(output()).toContain('Package action')
+    expect(output()).toContain('Disabled lesson style for patch.')
+    expect(output()).not.toContain('"enabled": false')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      result: {
+        packageId: 'bakin.patch',
+        lessonId: 'style',
+        enabled: true,
+        changed: true,
+      },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'agents', 'lessons', 'enable', 'patch', 'style', '--json']
+    await main()
+    expect(output()).toContain('"enabled": true')
+    expect(output()).not.toContain('Package action')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      result: {
+        packageId: 'bakin.workflow',
+        changed: true,
+        fromVersion: '1.0.0',
+        toVersion: '1.1.0',
+      },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'packages', 'update', 'bakin.workflow']
+    await main()
+    expect(output()).toContain('Package action')
+    expect(output()).toContain('Updated package bakin.workflow.')
+    expect(output()).toContain('1.0.0 -> 1.1.0')
+    expect(output()).not.toContain('"fromVersion"')
   })
 
   it('renders schedule list and run history with shared TUI screens in a TTY', async () => {

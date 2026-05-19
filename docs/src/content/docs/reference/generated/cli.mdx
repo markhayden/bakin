@@ -111,10 +111,16 @@ bakin packages install <path|github:user/repo[@ref][#subpath]> [--install-as <id
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="packages-list" name="packages list" summary="List packages." description="Lists installed packages.">
+<CliCommandCard id="packages-list" name="packages list" summary="List packages." description="Lists installed packages. Pass --json for raw API output.">
 ```sh frame="terminal"
-bakin packages list
+bakin packages list [--json]
 ```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+    </tbody>
+  </table>
 </CliCommandCard>
 <CliCommandCard id="packages-remove" name="packages remove" summary="Remove a package." description="Removes an installed package.">
 ```sh frame="terminal"
@@ -148,14 +154,15 @@ bakin packages update <package-id> [--refresh-template]
 <p class="cli-section-description">Use these commands to inspect registered agents, review their status and assignments, and send direct messages without opening the dashboard.</p>
 
 <div class="cli-command-list">
-<CliCommandCard id="agents-list" name="agents list" summary="List agents." description="Lists runtime agents, or package state when `--packages` is set.">
+<CliCommandCard id="agents-list" name="agents list" summary="List agents." description="Lists runtime agents, or package state when `--packages` is set. Pass --json for raw API output.">
 ```sh frame="terminal"
-bakin agents list [--packages]
+bakin agents list [--packages] [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>[--packages]</code></td><td>option</td><td>no</td><td>Show package state instead of the runtime roster.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
@@ -393,14 +400,15 @@ bakin setup service [--uninstall]
 <p class="cli-section-description">Plugin commands manage Bakin extensions from the command line, including installing official packages, linking local development plugins, and scaffolding new plugin projects.</p>
 
 <div class="cli-command-list">
-<CliCommandCard id="plugins-list" name="plugins list" summary="List installed plugins." description="Lists installed plugins and versions. Pass --check to probe remote/source for available upgrades.">
+<CliCommandCard id="plugins-list" name="plugins list" summary="List installed plugins." description="Lists installed plugins and versions. Pass --check to probe remote/source for available upgrades, or --json for raw API output.">
 ```sh frame="terminal"
-bakin plugins list [--check]
+bakin plugins list [--check] [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>[--check]</code></td><td>option</td><td>no</td><td>Dry-run; report what would change.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
