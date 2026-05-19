@@ -17,6 +17,7 @@ import {
   serializePluginExportManifest,
   type PluginImportInstallRequest,
 } from '../src/core/plugins/import-export'
+import { formatApiError } from '../src/core/cli/api-error'
 import type {
   AgentRuleResultData,
   PluginRestoreResultData,
@@ -61,7 +62,7 @@ async function api(path: string, options?: RequestInit): Promise<unknown> {
   })
   if (!res.ok) {
     const body = await res.text()
-    throw new Error(`HTTP ${res.status}: ${body}`)
+    throw new Error(formatApiError(res.status, body))
   }
   return res.json()
 }

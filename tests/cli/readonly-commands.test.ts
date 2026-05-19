@@ -8,6 +8,7 @@ describe('read-only CLI TTY commands', () => {
   const originalFetch = globalThis.fetch
   const originalStdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
   let log: ReturnType<typeof spyOn>
+  let error: ReturnType<typeof spyOn>
 
   function setStdoutIsTTY(value: boolean): void {
     Object.defineProperty(process.stdout, 'isTTY', { value, configurable: true })
@@ -25,12 +26,19 @@ describe('read-only CLI TTY commands', () => {
     return log.mock.calls.map((call: unknown[]) => String(call[0])).join('\n')
   }
 
+  function errorOutput(): string {
+    return error.mock.calls
+      .map((call: unknown[]) => call.map(part => String(part)).join(' '))
+      .join('\n')
+  }
+
   beforeEach(() => {
     mock.clearAllMocks()
     process.argv = originalArgv
     globalThis.fetch = fetchMock as unknown as typeof fetch
     fetchMock.mockResolvedValue(jsonResponse({ ok: true }))
     log = spyOn(console, 'log').mockImplementation(() => {})
+    error = spyOn(console, 'error').mockImplementation(() => {})
     process.exit = ((code?: number) => {
       if (code === 0) return undefined as never
       throw new Error(`exit:${code}`)
@@ -45,6 +53,7 @@ describe('read-only CLI TTY commands', () => {
     if (originalStdoutIsTTY) Object.defineProperty(process.stdout, 'isTTY', originalStdoutIsTTY)
     else delete (process.stdout as { isTTY?: boolean }).isTTY
     log.mockRestore()
+    error.mockRestore()
   })
 
   it('renders status with the shared TUI when stdout is a TTY', async () => {
@@ -367,6 +376,22 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).toContain('Trash action')
     expect(output()).toContain('Permanently deleted 2 items.')
     expect(output()).toContain('RESULT')
+  })
+
+  it('prints parsed API JSON errors without raw response bodies', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({ error: 'Failed to restore asset' }),
+      text: () => Promise.resolve('{"error":"Failed to restore asset"}'),
+    } as Response)
+    process.argv = ['bun', 'cli/bakin.ts', 'trash', 'restore', 'test']
+
+    await expect(main()).rejects.toThrow('exit:1')
+    expect(errorOutput()).toContain('Error: HTTP 500: Failed to restore asset')
+    expect(errorOutput()).not.toContain('{"error"')
   })
 
   it('renders agent task lists with the shared TUI screen in a TTY', async () => {
