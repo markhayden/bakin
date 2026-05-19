@@ -308,6 +308,14 @@ export interface CommandIssueData {
   availableLabel?: unknown
 }
 
+export interface CommandFailureData {
+  command?: unknown
+  message?: unknown
+  detail?: unknown
+  code?: unknown
+  next?: unknown
+}
+
 interface TaskTableRow {
   status: TuiStatus
   column: string
@@ -1708,6 +1716,47 @@ export function CommandIssueReport({ issue, color = true }: {
             status: 'ok',
             label: availableLabel,
             message: available.join(' | '),
+          }]} color={color} />
+          <Text> </Text>
+        </Section>
+      ) : null}
+    </Box>
+  )
+}
+
+export function CommandFailureReport({ failure, color = true }: {
+  failure: CommandFailureData
+  color?: boolean
+}) {
+  const command = valueText(failure.command, 'command')
+  const message = valueText(failure.message, 'Command failed.')
+  const detail = valueText(failure.detail, '')
+  const code = valueText(failure.code, 'COMMAND_FAILED')
+  const next = valueText(failure.next, '')
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Command failed" subtitle={message} meta={command} color={color} />
+      <SummaryStrip items={[
+        { label: 'failure', value: 1, status: 'fail' },
+        { label: 'code', value: code, status: 'fail' },
+        { label: 'next', value: next ? 1 : 0, status: next ? 'ready' : 'skip' },
+      ]} color={color} />
+      <Section title="Problem" color={color}>
+        <FindingRows rows={[{
+          status: 'fail',
+          label: command,
+          message,
+          detail: detail || `Code: ${code}`,
+        }]} color={color} />
+        <Text> </Text>
+      </Section>
+      {next ? (
+        <Section title="Next" color={color}>
+          <FindingRows rows={[{
+            status: 'ready',
+            label: 'next',
+            message: next,
           }]} color={color} />
           <Text> </Text>
         </Section>
