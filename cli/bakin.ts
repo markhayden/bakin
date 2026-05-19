@@ -2314,6 +2314,24 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
 async function cmdReboot(): Promise<void> {
   const { execFileSync } = await import('child_process')
   const { join, resolve, dirname } = await import('path')
+  const isTTY = process.stdout.isTTY
+  const details: string[] = []
+
+  const printRestartResult = async (result: Record<string, unknown>): Promise<void> => {
+    const message = typeof result.message === 'string' ? result.message : 'Bakin restart request completed.'
+    if (isTTY) {
+      await printRuntimeActionTui({
+        action: 'restart',
+        target: 'Bakin server',
+        result,
+        message,
+        detail: details.join('\n'),
+      })
+      return
+    }
+    if (result.status === 'warn') console.log(`[WARN] ${message}`)
+    else console.log(message)
+  }
 
   // --- launchctl restart path commented out — manual process management only ---
   // const { existsSync } = await import('fs')
@@ -2342,28 +2360,32 @@ async function cmdReboot(): Promise<void> {
   // } else {
 
   // Kill any running Bakin server processes
-  console.log('[..] Stopping Bakin server...')
+  if (!isTTY) console.log('[..] Stopping Bakin server...')
   try {
     const pids = execFileSync('pgrep', ['-f', serverProcessPattern()], { encoding: 'utf-8' }).trim()
     if (pids) {
+      let signaled = 0
       for (const pid of pids.split('\n')) {
         if (pid && pid !== String(process.pid)) {
           process.kill(Number(pid), 'SIGTERM')
+          signaled++
         }
       }
-      console.log('[OK] Sent SIGTERM to Bakin server')
-      console.log('[..] Waiting for shutdown...')
+      details.push(`Sent SIGTERM to ${signaled} process(es).`)
+      if (!isTTY) console.log('[OK] Sent SIGTERM to Bakin server')
+      if (!isTTY) console.log('[..] Waiting for shutdown...')
       await new Promise(r => setTimeout(r, 2000))
     }
   } catch {
-    console.log('[..] No running Bakin process found')
+    details.push('No running Bakin process found before restart.')
+    if (!isTTY) console.log('[..] No running Bakin process found')
   }
 
   // Start the server in background
   const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
   const logPath = join(projectDir, 'mc-server.log')
 
-  console.log('[..] Starting Bakin server...')
+  if (!isTTY) console.log('[..] Starting Bakin server...')
   const { spawn } = await import('child_process')
   const programArgs = await serviceProgramArgs()
   const child = spawn(programArgs[0], programArgs.slice(1), {
@@ -2373,25 +2395,47 @@ async function cmdReboot(): Promise<void> {
     env: { ...process.env },
   })
   child.unref()
-  console.log(`[OK] Bakin starting (pid ${child.pid})`)
-  console.log(`  Logs: tail -f ${logPath}`)
+  if (child.pid) details.push(`Started process ${child.pid}.`)
+  details.push(`Logs: tail -f ${logPath}`)
+  if (!isTTY) console.log(`[OK] Bakin starting (pid ${child.pid})`)
+  if (!isTTY) console.log(`  Logs: tail -f ${logPath}`)
 
   // } // end of else branch for non-service path
 
   // Wait and verify
-  console.log('[..] Waiting for server to come up...')
+  if (!isTTY) console.log('[..] Waiting for server to come up...')
   for (let i = 0; i < 15; i++) {
     await new Promise(r => setTimeout(r, 1000))
     try {
       const res = await fetch(`${BASE_URL}/api/version`, { signal: AbortSignal.timeout(2000) })
       if (res.ok) {
         const data = await res.json() as { version: string }
-        console.log(`[OK] Bakin is up (${data.version})`)
+        if (!isTTY) {
+          console.log(`[OK] Bakin is up (${data.version})`)
+          return
+        }
+        details.push(`Version: ${data.version}`)
+        await printRestartResult({
+          ok: true,
+          status: 'ok',
+          message: 'Bakin restarted.',
+          pid: child.pid,
+          version: data.version,
+        })
         return
       }
     } catch { /* not ready yet */ }
   }
-  console.log('[WARN] Server not responding after 15s — check logs')
+  if (!isTTY) {
+    console.log('[WARN] Server not responding after 15s — check logs')
+    return
+  }
+  await printRestartResult({
+    ok: true,
+    status: 'warn',
+    message: 'Server not responding after 15s - check logs.',
+    pid: child.pid,
+  })
 }
 
 async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): Promise<void> {
