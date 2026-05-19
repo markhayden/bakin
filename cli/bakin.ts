@@ -20,6 +20,7 @@ import {
 import { formatApiError } from '../src/core/cli/api-error'
 import type {
   AgentRuleResultData,
+  PackageActionData,
   PluginRestoreResultData,
   PluginRestoreSnapshotData,
   ReindexResultData,
@@ -368,6 +369,17 @@ async function printPackagesListTui(packages: Array<Record<string, unknown>>): P
     import('react'),
   ])
   console.log(renderToString(createElement(PackagesListReport, { packages })))
+}
+
+async function printPackageActionTui(actions: PackageActionData | PackageActionData[]): Promise<void> {
+  const [{ PackageActionReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(PackageActionReport, {
+    actions: Array.isArray(actions) ? actions : [actions],
+  })))
 }
 
 async function printOnboardingCheckTui(result: CheckResult): Promise<void> {
@@ -860,6 +872,15 @@ async function cmdAgentPackagesInstall(source: string, flags: AgentsCmdFlags): P
   if (flags.installAs) body.installAs = flags.installAs
   if (flags.replace) body.replace = true
   const result = await apiPost('/api/agent-packages/install', body)
+  if (!flags.json && process.stdout.isTTY) {
+    await printPackageActionTui({
+      action: 'installed',
+      scope: 'agent package',
+      target: flags.installAs ?? source,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -889,6 +910,15 @@ async function cmdAgentPackagesRemove(agentId: string, flags: AgentsCmdFlags): P
   if (flags.deleteAgent) body.deleteAgent = true
   if (flags.force) body.force = true
   const result = await apiDelete(`/api/agent-packages/${encodeURIComponent(agentId)}`, body)
+  if (!flags.json && process.stdout.isTTY) {
+    await printPackageActionTui({
+      action: 'removed',
+      scope: 'agent package',
+      target: agentId,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -898,6 +928,15 @@ async function cmdAgentPackagesUpdate(agentId: string | undefined, flags: Agents
 
   if (agentId) {
     const result = await apiPost(`/api/agent-packages/${encodeURIComponent(agentId)}/update`, body)
+    if (!flags.json && process.stdout.isTTY) {
+      await printPackageActionTui({
+        action: 'updated',
+        scope: 'agent package',
+        target: agentId,
+        result,
+      })
+      return
+    }
     print(result)
     return
   }
@@ -906,15 +945,37 @@ async function cmdAgentPackagesUpdate(agentId: string | undefined, flags: Agents
   const list = await apiGet('/api/agent-packages') as {
     agents: Array<{ agentId: string; state: string }>
   }
+  const actions: PackageActionData[] = []
   for (const a of list.agents) {
     if (a.state !== 'managed' && a.state !== 'adopted') continue
     try {
       const result = await apiPost(`/api/agent-packages/${encodeURIComponent(a.agentId)}/update`, body)
+      if (!flags.json && process.stdout.isTTY) {
+        actions.push({
+          action: 'updated',
+          scope: 'agent package',
+          target: a.agentId,
+          result,
+        })
+        continue
+      }
       console.log(`${a.agentId}:`)
       print(result)
     } catch (err) {
+      if (!flags.json && process.stdout.isTTY) {
+        actions.push({
+          action: 'updated',
+          scope: 'agent package',
+          target: a.agentId,
+          result: { ok: false, error: err instanceof Error ? err.message : String(err) },
+        })
+        continue
+      }
       console.error(`${a.agentId}: ${err instanceof Error ? err.message : String(err)}`)
     }
+  }
+  if (!flags.json && process.stdout.isTTY) {
+    await printPackageActionTui(actions)
   }
 }
 
@@ -936,11 +997,26 @@ async function cmdAgentPackagesLessonsList(agentId: string): Promise<void> {
   }
 }
 
-async function cmdAgentPackagesLessonsToggle(agentId: string, lessonId: string, enabled: boolean): Promise<void> {
+async function cmdAgentPackagesLessonsToggle(
+  agentId: string,
+  lessonId: string,
+  enabled: boolean,
+  opts: { json?: boolean } = {},
+): Promise<void> {
   const result = await apiPost(
     `/api/agent-packages/${encodeURIComponent(agentId)}/lessons/${encodeURIComponent(lessonId)}`,
     { enabled },
   )
+  if (!opts.json && process.stdout.isTTY) {
+    await printPackageActionTui({
+      action: enabled ? 'enabled' : 'disabled',
+      scope: 'lesson',
+      target: lessonId,
+      context: agentId,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -975,6 +1051,15 @@ async function cmdPackagesInstall(source: string, flags: AgentsCmdFlags): Promis
   if (flags.installAs) body.installAs = flags.installAs
   if (flags.replace) body.replace = true
   const result = await apiPost('/api/packages/install', body)
+  if (!flags.json && process.stdout.isTTY) {
+    await printPackageActionTui({
+      action: 'installed',
+      scope: 'package',
+      target: flags.installAs ?? source,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -983,6 +1068,15 @@ async function cmdPackagesRemove(packageId: string, flags: AgentsCmdFlags): Prom
   if (flags.keepBlocks) body.keepBlocks = true
   if (flags.force) body.force = true
   const result = await apiDelete(`/api/packages/${encodeURIComponent(packageId)}`, body)
+  if (!flags.json && process.stdout.isTTY) {
+    await printPackageActionTui({
+      action: 'removed',
+      scope: 'package',
+      target: packageId,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -990,6 +1084,15 @@ async function cmdPackagesUpdate(packageId: string, flags: AgentsCmdFlags): Prom
   const body: Record<string, unknown> = {}
   if (flags.refreshTemplate) body.refreshTemplate = true
   const result = await apiPost(`/api/packages/${encodeURIComponent(packageId)}/update`, body)
+  if (!flags.json && process.stdout.isTTY) {
+    await printPackageActionTui({
+      action: 'updated',
+      scope: 'package',
+      target: packageId,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -2919,7 +3022,7 @@ export async function main(): Promise<void> {
             await cmdAgentPackagesLessonsList(args[3])
           } else if (lessonSub === 'enable' || lessonSub === 'disable') {
             if (!args[3] || !args[4]) { console.error(`Usage: bakin agents lessons ${lessonSub} <agent-id> <lesson-id>`); process.exit(1) }
-            await cmdAgentPackagesLessonsToggle(args[3], args[4], lessonSub === 'enable')
+            await cmdAgentPackagesLessonsToggle(args[3], args[4], lessonSub === 'enable', { json: args.includes('--json') })
           } else {
             console.error(`Unknown agents lessons subcommand: ${lessonSub ?? '(none)'}`)
             console.error('Available: list | enable | disable')

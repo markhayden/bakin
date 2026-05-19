@@ -204,6 +204,16 @@ export interface PackageData {
   dependents?: unknown
 }
 
+export interface PackageActionData {
+  action?: unknown
+  scope?: unknown
+  target?: unknown
+  context?: unknown
+  result?: unknown
+  message?: unknown
+  detail?: unknown
+}
+
 export interface ScheduleJobData {
   id?: unknown
   displayName?: unknown
@@ -502,6 +512,114 @@ function runtimeActionRows(action: RuntimeActionData): FindingRow[] {
     message: valueText(action.message, runtimeActionMessage(action)),
     detail: runtimeActionDetail(action) || undefined,
   }]
+}
+
+function packageActionEnvelope(action: PackageActionData): Record<string, unknown> {
+  return isPlainRecord(action.result) ? action.result : {}
+}
+
+function packageActionPayload(action: PackageActionData): Record<string, unknown> {
+  const envelope = packageActionEnvelope(action)
+  const result = objectField(envelope, 'result')
+  return isPlainRecord(result) ? result : envelope
+}
+
+function packageActionStatus(action: PackageActionData): TuiStatus {
+  const envelope = packageActionEnvelope(action)
+  const payload = packageActionPayload(action)
+  if (objectField(envelope, 'ok') === false) return 'fail'
+  if (objectField(payload, 'changed') === false) return 'ok'
+  return 'applied'
+}
+
+function packageActionTarget(action: PackageActionData): string {
+  const payload = packageActionPayload(action)
+  return valueText(
+    objectField(payload, 'packageId'),
+    valueText(objectField(payload, 'lessonId'), valueText(action.target, valueText(action.scope, 'package'))),
+  )
+}
+
+function packageActionMessage(action: PackageActionData): string {
+  const payload = packageActionPayload(action)
+  const envelope = packageActionEnvelope(action)
+  const error = valueText(objectField(envelope, 'error'), valueText(objectField(payload, 'error'), ''))
+  const explicit = valueText(action.message, '')
+  const name = valueText(action.action, 'updated')
+  const scope = valueText(action.scope, 'package')
+  const target = packageActionTarget(action)
+  const context = valueText(action.context, '')
+
+  if (error) return error
+  if (explicit) return explicit
+
+  if (scope === 'lesson') {
+    const lesson = valueText(objectField(payload, 'lessonId'), target)
+    const nextState = objectField(payload, 'enabled') === false ? 'Disabled' : 'Enabled'
+    const agent = context ? ` for ${context}` : ''
+    return `${nextState} lesson ${lesson}${agent}.`
+  }
+
+  if (name === 'installed') return `Installed ${scope} ${target}.`
+  if (name === 'removed') return `Removed ${scope} ${target}.`
+  if (name === 'updated' && objectField(payload, 'changed') === false) return `Checked ${scope} ${target}; no changes.`
+  if (name === 'updated') return `Updated ${scope} ${target}.`
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)} ${scope} ${target}.`
+}
+
+function packageDependencyDetails(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length === 0) return []
+  return [`Dependencies: ${value.map((item) => {
+    if (!isPlainRecord(item)) return valueText(item)
+    const id = valueText(objectField(item, 'packageId'), '')
+    const version = valueText(objectField(item, 'version'), '')
+    return version ? `${id}@${version}` : id
+  }).filter(Boolean).join(', ')}`]
+}
+
+function packageActionDetail(action: PackageActionData): string {
+  const payload = packageActionPayload(action)
+  const details = [valueText(action.detail, '')].filter(Boolean)
+  const dependencies = packageDependencyDetails(objectField(payload, 'dependencies'))
+  const removed = listText(objectField(payload, 'removed'), '')
+  const kept = listText(objectField(payload, 'kept'), '')
+  const skipped = Array.isArray(objectField(payload, 'skipped'))
+    ? (objectField(payload, 'skipped') as unknown[]).length
+    : 0
+  const fromVersion = valueText(objectField(payload, 'fromVersion'), '')
+  const toVersion = valueText(objectField(payload, 'toVersion'), '')
+  const fromCommit = valueText(objectField(payload, 'fromCommitSha'), '')
+  const toCommit = valueText(objectField(payload, 'toCommitSha'), '')
+  const isLesson = valueText(action.scope, '') === 'lesson'
+
+  if (objectField(payload, 'createdAgent') === true) details.push('Created runtime agent.')
+  if (objectField(payload, 'adopted') === true) details.push('Adopted existing runtime agent.')
+  details.push(...dependencies)
+  if (skipped > 0) details.push(`${skipped} user-edited projection skipped.`)
+  if (removed) details.push(`Removed: ${removed}`)
+  if (kept) details.push(`Kept: ${kept}`)
+  if (objectField(payload, 'deletedAgent') === true) details.push('Deleted runtime agent.')
+  if (fromVersion || toVersion) details.push(`Version: ${fromVersion || '-'} -> ${toVersion || '-'}`)
+  if (fromCommit || toCommit) details.push(`Commit: ${fromCommit.slice(0, 12) || '-'} -> ${toCommit.slice(0, 12) || '-'}`)
+  if (objectField(payload, 'changed') === false && isLesson) {
+    details.push('Lesson already matched the requested state.')
+  } else if (objectField(payload, 'changed') === false) {
+    details.push('No package changes were applied.')
+  }
+
+  return details.filter(Boolean).join('\n')
+}
+
+function packageActionRows(actions: PackageActionData[]): FindingRow[] {
+  if (actions.length === 0) {
+    return [{ status: 'skip', label: 'package', message: 'No package actions were applied.' }]
+  }
+  return actions.map(action => ({
+    status: packageActionStatus(action),
+    label: packageActionTarget(action),
+    message: packageActionMessage(action),
+    detail: packageActionDetail(action) || undefined,
+  }))
 }
 
 function orderedTaskColumns(columns: Record<string, TaskRowData[]>): Array<[string, TaskRowData[]]> {
@@ -1950,6 +2068,32 @@ export function PackagesListReport({ packages, color = true }: {
         ) : (
           <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No packages installed.' }]} color={color} />
         )}
+      </Section>
+    </Box>
+  )
+}
+
+export function PackageActionReport({ actions, color = true }: {
+  actions: PackageActionData[]
+  color?: boolean
+}) {
+  const applied = actions.filter(action => packageActionStatus(action) === 'applied').length
+  const failed = actions.filter(action => packageActionStatus(action) === 'fail').length
+  const skipped = actions.filter(action => packageActionStatus(action) === 'ok').length
+  const meta = actions.length === 1 ? valueText(actions[0]?.action, 'updated') : `${actions.length} actions`
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Package action" subtitle="Package state updated" meta={meta} color={color} />
+      <SummaryStrip items={[
+        { label: plural(actions.length, 'action'), value: actions.length, status: actions.length > 0 ? 'applied' : 'skip' },
+        { label: 'applied', value: applied, status: applied > 0 ? 'applied' : 'skip' },
+        { label: 'unchanged', value: skipped, status: skipped > 0 ? 'ok' : 'skip' },
+        { label: 'failed', value: failed, status: failed > 0 ? 'fail' : 'ok' },
+      ]} color={color} />
+      <Section title="Result" color={color}>
+        <FindingRows rows={packageActionRows(actions)} color={color} />
+        <Text> </Text>
       </Section>
     </Box>
   )

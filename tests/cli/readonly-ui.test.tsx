@@ -9,6 +9,7 @@ import {
   AgentTasksReport,
   AgentsListReport,
   DocsReport,
+  PackageActionReport,
   PackagesListReport,
   PathsReport,
   PluginRestoreResultReport,
@@ -521,6 +522,54 @@ describe('read-only CLI TUI screens', () => {
     expect(packages).toContain('Packages')
     expect(packages).toContain('DEPENDENTS')
     expect(packages).toContain('patch, docs')
+  })
+
+  it('renders package action confirmations with shared TUI primitives', () => {
+    const output = renderToString(
+      <PackageActionReport
+        actions={[
+          {
+            action: 'installed',
+            scope: 'agent package',
+            target: 'patch',
+            result: {
+              ok: true,
+              result: {
+                packageId: 'bakin.patch',
+                kind: 'agent',
+                createdAgent: true,
+                adopted: false,
+                dependencies: [{ packageId: 'bakin.shared', kind: 'lesson-pack', version: '1.0.0' }],
+                skipped: [],
+              },
+            },
+          },
+          {
+            action: 'disabled',
+            scope: 'lesson',
+            target: 'style',
+            context: 'patch',
+            result: {
+              ok: true,
+              result: {
+                packageId: 'bakin.patch',
+                lessonId: 'style',
+                enabled: false,
+                changed: true,
+              },
+            },
+          },
+        ]}
+      />,
+    )
+
+    expect(output).toContain('Package action')
+    expect(output).toContain('RESULT')
+    expect(output).toContain('Installed agent package bakin.patch.')
+    expect(output).toContain('Created runtime agent.')
+    expect(output).toContain('bakin.shared')
+    expect(output).toContain('Disabled lesson style for patch.')
+    expect(output).not.toContain('"result"')
   })
 
   it('renders schedule lists and run history as shared TUI tables', () => {

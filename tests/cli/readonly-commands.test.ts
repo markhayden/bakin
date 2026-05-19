@@ -370,6 +370,76 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).not.toContain('Installed packages:')
   })
 
+  it('renders package action confirmations with the shared TUI screen in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      result: {
+        packageId: 'bakin.patch',
+        kind: 'agent',
+        createdAgent: true,
+        adopted: false,
+        dependencies: [],
+        skipped: [],
+      },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'agents', 'install', 'github:markhayden/bakin-patch']
+    await main()
+    expect(output()).toContain('Package action')
+    expect(output()).toContain('Installed agent package bakin.patch.')
+    expect(output()).toContain('Created runtime agent.')
+    expect(output()).not.toContain('"packageId"')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      result: {
+        packageId: 'bakin.patch',
+        lessonId: 'style',
+        enabled: false,
+        changed: true,
+      },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'agents', 'lessons', 'disable', 'patch', 'style']
+    await main()
+    expect(output()).toContain('Package action')
+    expect(output()).toContain('Disabled lesson style for patch.')
+    expect(output()).not.toContain('"enabled": false')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      result: {
+        packageId: 'bakin.patch',
+        lessonId: 'style',
+        enabled: true,
+        changed: true,
+      },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'agents', 'lessons', 'enable', 'patch', 'style', '--json']
+    await main()
+    expect(output()).toContain('"enabled": true')
+    expect(output()).not.toContain('Package action')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      result: {
+        packageId: 'bakin.workflow',
+        changed: true,
+        fromVersion: '1.0.0',
+        toVersion: '1.1.0',
+      },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'packages', 'update', 'bakin.workflow']
+    await main()
+    expect(output()).toContain('Package action')
+    expect(output()).toContain('Updated package bakin.workflow.')
+    expect(output()).toContain('1.0.0 -> 1.1.0')
+    expect(output()).not.toContain('"fromVersion"')
+  })
+
   it('renders schedule list and run history with shared TUI screens in a TTY', async () => {
     const { main } = await import('../../cli/bakin')
 
