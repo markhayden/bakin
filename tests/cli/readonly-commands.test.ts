@@ -115,7 +115,7 @@ describe('read-only CLI TTY commands', () => {
     const { main } = await import('../../cli/bakin')
     await expect(main()).rejects.toThrow('exit:1')
 
-    expect(errorOutput()).toContain('Unknown command: wat')
+    expect(errorOutput()).toBe('')
     expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
     expect(output()).toContain('Help  unknown command')
     expect(output()).toContain('ISSUE')
@@ -133,8 +133,7 @@ describe('read-only CLI TTY commands', () => {
     const { main } = await import('../../cli/bakin')
     await expect(main()).rejects.toThrow('exit:1')
 
-    expect(errorOutput()).toContain('Unknown command: wat')
-    expect(errorOutput()).toContain('Plugin command lookup skipped')
+    expect(errorOutput()).toBe('')
     expect(output()).toContain('Help  unknown command')
     expect(output()).toContain('Plugin command lookup skipped')
     expect(output()).not.toContain('Error: Cannot connect to Bakin')

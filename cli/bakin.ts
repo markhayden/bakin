@@ -4186,10 +4186,13 @@ export async function main(): Promise<void> {
             pluginLookupError = `Plugin command lookup skipped because Bakin is not reachable at ${BASE_URL}.`
           }
         }
-        console.error(`Unknown command: ${cmd}`)
-        if (pluginLookupError) console.error(pluginLookupError)
-        if (process.stdout.isTTY) await printHelpTui(`Unknown command: ${cmd}`, pluginLookupError)
-        else console.log(USAGE.trim())
+        if (process.stdout.isTTY) {
+          await printHelpTui(`Unknown command: ${cmd}`, pluginLookupError)
+        } else {
+          console.error(`Unknown command: ${cmd}`)
+          if (pluginLookupError) console.error(pluginLookupError)
+          console.log(USAGE.trim())
+        }
         process.exit(1)
       }
     }
