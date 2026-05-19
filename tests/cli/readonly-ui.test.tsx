@@ -8,6 +8,7 @@ import {
   AgentStatusReport,
   AgentTasksReport,
   AgentsListReport,
+  CommandIssueReport,
   DocsReport,
   HelpReport,
   PackageActionReport,
@@ -92,6 +93,28 @@ describe('read-only CLI TUI screens', () => {
     expect(output).toContain('Tasks and workflows'.toUpperCase())
     expect(output).toContain('ENVIRONMENT')
     expect(output).not.toContain('Usage: bakin <command> [options]')
+  })
+
+  it('renders command invocation issues with shared TUI primitives', () => {
+    const output = renderToString(
+      <CommandIssueReport
+        issue={{
+          command: 'bakin tasks get',
+          message: 'Missing required arguments.',
+          usage: 'bakin tasks get <id>',
+          available: ['list', 'get', 'create'],
+        }}
+      />,
+    )
+
+    expect(output).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output).toContain('Command issue  bakin tasks get')
+    expect(output).toContain('ISSUE')
+    expect(output).toContain('Missing required arguments.')
+    expect(output).toContain('USAGE')
+    expect(output).toContain('bakin tasks get <id>')
+    expect(output).toContain('AVAILABLE')
+    expect(output).toContain('list | get | create')
   })
 
   it('renders runtime action confirmations with shared TUI primitives', () => {
