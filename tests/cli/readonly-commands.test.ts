@@ -360,13 +360,15 @@ describe('read-only CLI TTY commands', () => {
       ok: true,
       packages: [
         { id: 'bakin.patch', kind: 'agent', version: '1.0.0', refCount: 2, dependents: ['patch', 'docs'] },
+        { id: 'lessons', kind: 'lesson-pack', version: '1.0.0', refCount: 0, dependents: [] },
       ],
     }))
     process.argv = ['bun', 'cli/bakin.ts', 'packages', 'list']
     await main()
     expect(output()).toContain('Packages')
     expect(output()).toContain('DEPENDENTS')
-    expect(output()).toContain('patch, docs')
+    expect(output()).toContain('lessons')
+    expect(output()).not.toContain('bakin.patch')
     expect(output()).not.toContain('Installed packages:')
   })
 

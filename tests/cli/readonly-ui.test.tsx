@@ -508,6 +508,7 @@ describe('read-only CLI TUI screens', () => {
       <PackagesListReport
         packages={[
           { id: 'bakin.patch', kind: 'agent', version: '1.0.0', refCount: 2, dependents: ['patch', 'docs'] },
+          { id: 'lessons', kind: 'lesson-pack', version: '1.0.0', refCount: 0, dependents: [] },
         ]}
       />,
     )
@@ -521,7 +522,8 @@ describe('read-only CLI TUI screens', () => {
     expect(lessons).toContain('handoff')
     expect(packages).toContain('Packages')
     expect(packages).toContain('DEPENDENTS')
-    expect(packages).toContain('patch, docs')
+    expect(packages).toContain('lessons')
+    expect(packages).not.toContain('bakin.patch')
   })
 
   it('renders package action confirmations with shared TUI primitives', () => {

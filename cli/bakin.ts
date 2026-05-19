@@ -1031,16 +1031,17 @@ async function cmdPackagesList(flags: AgentsCmdFlags): Promise<void> {
       id: string; kind: string; version: string; refCount: number; dependents: string[]
     }>
   }
+  const packages = result.packages.filter(p => p.kind !== 'agent')
   if (flags.json) {
-    print(result)
+    print({ ...result, packages })
     return
   }
   if (process.stdout.isTTY) {
-    await printPackagesListTui(result.packages)
+    await printPackagesListTui(packages)
     return
   }
   console.log('Installed packages:')
-  for (const p of result.packages) {
+  for (const p of packages) {
     const refs = p.refCount > 0 ? `  (refCount=${p.refCount}: ${p.dependents.join(', ')})` : ''
     console.log(`  ${p.id.padEnd(40)} ${p.kind.padEnd(15)} ${p.version}${refs}`)
   }

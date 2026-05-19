@@ -1159,14 +1159,16 @@ function agentLessonTableRows(lessons: AgentLessonData[]): AgentLessonTableRow[]
 }
 
 function packageTableRows(packages: PackageData[]): PackageTableRow[] {
-  return packages.map(pkg => ({
-    status: 'ok',
-    package: valueText(pkg.id),
-    kind: valueText(pkg.kind),
-    version: valueText(pkg.version),
-    refs: valueText(pkg.refCount, '0'),
-    dependents: listText(pkg.dependents),
-  }))
+  return packages
+    .filter(pkg => valueText(pkg.kind) !== 'agent')
+    .map(pkg => ({
+      status: 'ok',
+      package: valueText(pkg.id),
+      kind: valueText(pkg.kind),
+      version: valueText(pkg.version),
+      refs: valueText(pkg.refCount, '0'),
+      dependents: listText(pkg.dependents),
+    }))
 }
 
 function scheduleJobState(job: ScheduleJobData): string {
