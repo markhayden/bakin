@@ -92,6 +92,16 @@ export interface PluginData {
   errorMessage?: unknown
 }
 
+export interface PluginActionData {
+  action?: unknown
+  pluginId?: unknown
+  source?: unknown
+  file?: unknown
+  result?: unknown
+  message?: unknown
+  detail?: unknown
+}
+
 export interface PluginRestoreSnapshotData {
   timestamp?: unknown
   createdAt?: unknown
@@ -629,6 +639,124 @@ function packageActionRows(actions: PackageActionData[]): FindingRow[] {
     message: packageActionMessage(action),
     detail: packageActionDetail(action) || undefined,
   }))
+}
+
+function pluginActionPayload(action: PluginActionData): Record<string, unknown> {
+  return isPlainRecord(action.result) ? action.result : {}
+}
+
+function pluginActionStatus(action: PluginActionData): TuiStatus {
+  const payload = pluginActionPayload(action)
+  const failed = objectField(payload, 'ok') === false || Boolean(objectField(payload, 'error'))
+  if (failed) return objectField(payload, 'awaitingConsent') === true ? 'ready' : 'fail'
+  if (objectField(payload, 'awaitingConsent') === true) return 'ready'
+  if (valueText(action.action, '') === 'exported') return 'ok'
+  if (valueText(action.action, '') === 'imported' && Array.isArray(objectField(payload, 'failed')) && (objectField(payload, 'failed') as unknown[]).length > 0) return 'fail'
+  if (valueText(action.action, '') === 'removed' && !objectField(payload, 'snapshot')) return 'warn'
+  return 'applied'
+}
+
+function pluginActionTarget(action: PluginActionData): string {
+  const payload = pluginActionPayload(action)
+  return valueText(
+    objectField(payload, 'id'),
+    valueText(action.pluginId, valueText(action.file, valueText(action.source, valueText(action.action, 'plugin')))),
+  )
+}
+
+function pluginActionMessage(action: PluginActionData): string {
+  const payload = pluginActionPayload(action)
+  const actionName = valueText(action.action, 'updated')
+  const target = pluginActionTarget(action)
+  const explicit = valueText(action.message, '')
+  const error = valueText(objectField(payload, 'error'), '')
+  const message = valueText(objectField(payload, 'message'), '')
+  const installed = Array.isArray(objectField(payload, 'installed')) ? (objectField(payload, 'installed') as unknown[]) : []
+  const failed = Array.isArray(objectField(payload, 'failed')) ? (objectField(payload, 'failed') as unknown[]) : []
+  const count = numberValue(objectField(payload, 'count'))
+
+  if (error) return error
+  if (explicit) return explicit
+  if (message) return message
+  if (objectField(payload, 'awaitingConsent') === true) return `Plugin ${target} requires permission consent before install.`
+  if (actionName === 'imported') {
+    return failed.length > 0
+      ? `Import failed after installing ${installed.length} plugin${installed.length === 1 ? '' : 's'}.`
+      : `Imported ${installed.length} plugin${installed.length === 1 ? '' : 's'}.`
+  }
+  if (actionName === 'exported') return `Exported ${count} plugin${count === 1 ? '' : 's'} to ${target}.`
+  if (actionName === 'installed') return `Installed plugin ${target}.`
+  if (actionName === 'removed') return `Removed plugin ${target}.`
+  if (actionName === 'linked') return `Linked plugin ${target}.`
+  if (actionName === 'unlinked') return `Unlinked plugin ${target}.`
+  return `Updated plugin ${target}.`
+}
+
+function pluginPermissionsDetail(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length === 0) return []
+  return [`Permissions: ${value.length} requested`]
+}
+
+function pluginActionDetail(action: PluginActionData): string {
+  const payload = pluginActionPayload(action)
+  const actionName = valueText(action.action, '')
+  const details = [valueText(action.detail, '')].filter(Boolean)
+  const source = valueText(action.source, '')
+  const file = valueText(action.file, '')
+  const version = valueText(objectField(payload, 'version'), '')
+  const runtimeVersion = valueText(objectField(payload, 'runtimeVersion'), '')
+  const pluginDir = valueText(objectField(payload, 'pluginDir'), '')
+  const linkedSource = valueText(objectField(payload, 'linkedSource'), '')
+  const snapshot = valueText(objectField(payload, 'snapshot'), '')
+  const skills = objectField(payload, 'skills')
+  const installed = Array.isArray(objectField(payload, 'installed')) ? (objectField(payload, 'installed') as unknown[]) : []
+  const failed = Array.isArray(objectField(payload, 'failed')) ? (objectField(payload, 'failed') as unknown[]) : []
+  const missing = listText(objectField(payload, 'skillsMissing'), '')
+
+  if (source) details.push(`Source: ${source}`)
+  if (file && actionName !== 'exported') details.push(`File: ${file}`)
+  if (version) details.push(`Version: ${version}`)
+  if (runtimeVersion) details.push(`Runtime version: ${runtimeVersion}`)
+  if (objectField(payload, 'activated') === false) details.push('Activation deferred until next Bakin start.')
+  if (objectField(payload, 'watching') === true) details.push('Dev hot reload is watching the linked source.')
+  if (linkedSource) details.push(`Linked source: ${linkedSource}`)
+  if (pluginDir) details.push(`Plugin dir: ${pluginDir}`)
+  if (snapshot) details.push(`Snapshot: ${snapshot}`)
+  if (!snapshot && actionName === 'removed') details.push('Pre-removal snapshot was not created.')
+  if (isPlainRecord(skills)) {
+    const removed = valueText(objectField(skills, 'removed'), '')
+    const kept = valueText(objectField(skills, 'kept'), '')
+    if (removed || kept) details.push(`Runtime skills: ${removed || '0'} removed, ${kept || '0'} kept`)
+  }
+  if (missing) details.push(`Missing skills: ${missing}`)
+  if (installed.length > 0) details.push(`Installed: ${installed.map(item => valueText(item)).join(', ')}`)
+  if (failed.length > 0) {
+    details.push(`Failed: ${failed.map(item => {
+      if (!isPlainRecord(item)) return valueText(item)
+      return `${valueText(objectField(item, 'id'))}: ${valueText(objectField(item, 'error'))}`
+    }).join(', ')}`)
+  }
+  details.push(...pluginPermissionsDetail(objectField(payload, 'permissions')))
+
+  return details.filter(Boolean).join('\n')
+}
+
+function pluginActionRows(actions: PluginActionData[]): FindingRow[] {
+  if (actions.length === 0) {
+    return [{ status: 'skip', label: 'plugin', message: 'No plugin actions were applied.' }]
+  }
+  return actions.map(action => {
+    const next = objectField(pluginActionPayload(action), 'awaitingConsent') === true
+      ? 'Re-run with --yes to accept permissions and install.'
+      : undefined
+    return {
+      status: pluginActionStatus(action),
+      label: pluginActionTarget(action),
+      message: pluginActionMessage(action),
+      detail: pluginActionDetail(action) || undefined,
+      next,
+    }
+  })
 }
 
 function orderedTaskColumns(columns: Record<string, TaskRowData[]>): Array<[string, TaskRowData[]]> {
@@ -1702,6 +1830,33 @@ export function PluginsListReport({ plugins, color = true }: {
         ) : (
           <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No plugins found.' }]} color={color} />
         )}
+      </Section>
+    </Box>
+  )
+}
+
+export function PluginActionReport({ actions, color = true }: {
+  actions: PluginActionData[]
+  color?: boolean
+}) {
+  const applied = actions.filter(action => ['applied', 'ok'].includes(pluginActionStatus(action))).length
+  const attention = actions.filter(action => ['ready', 'warn'].includes(pluginActionStatus(action))).length
+  const failed = actions.filter(action => pluginActionStatus(action) === 'fail').length
+  const meta = actions.length === 1 ? valueText(actions[0]?.action, 'updated') : `${actions.length} actions`
+  const overallStatus: TuiStatus = failed > 0 ? 'fail' : attention > 0 ? 'ready' : actions.length > 0 ? 'applied' : 'skip'
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Plugin action" subtitle="Plugin state updated" meta={meta} color={color} />
+      <SummaryStrip items={[
+        { label: plural(actions.length, 'action'), value: actions.length, status: overallStatus },
+        { label: 'applied', value: applied, status: applied > 0 ? 'applied' : 'skip' },
+        { label: 'attention', value: attention, status: attention > 0 ? 'ready' : 'ok' },
+        { label: 'failed', value: failed, status: failed > 0 ? 'fail' : 'ok' },
+      ]} color={color} />
+      <Section title="Result" color={color}>
+        <FindingRows rows={pluginActionRows(actions)} color={color} />
+        <Text> </Text>
       </Section>
     </Box>
   )
