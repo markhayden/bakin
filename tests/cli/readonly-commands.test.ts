@@ -165,6 +165,62 @@ describe('read-only CLI TTY commands', () => {
     expect(errorOutput()).toBe('Usage: bakin tasks get <id>')
   })
 
+  it('renders invalid task list columns with the shared TUI when stdout is a TTY', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ columns: { todo: [], done: [] } }))
+    process.argv = ['bun', 'cli/bakin.ts', 'tasks', 'list', '--column=blocked']
+
+    const { main } = await import('../../cli/bakin')
+    await expect(main()).rejects.toThrow('exit:1')
+
+    expect(output()).toContain('Command issue  bakin tasks list')
+    expect(output()).toContain('Unknown tasks column: blocked')
+    expect(output()).toContain('USAGE')
+    expect(output()).toContain('bakin tasks list [--column=<column>]')
+    expect(output()).toContain('AVAILABLE')
+    expect(output()).toContain('columns')
+    expect(output()).toContain('todo | done')
+    expect(errorOutput()).toBe('')
+  })
+
+  it('renders invalid workflow submit JSON with the shared TUI when stdout is a TTY', async () => {
+    process.argv = ['bun', 'cli/bakin.ts', 'workflows', 'submit', 'task-1', 'step-1', '{bad']
+
+    const { main } = await import('../../cli/bakin')
+    await expect(main()).rejects.toThrow('exit:1')
+
+    expect(output()).toContain('Command issue  bakin workflows submit')
+    expect(output()).toContain('Invalid JSON for output.')
+    expect(output()).toContain('Output must parse as a JSON object.')
+    expect(output()).toContain('bakin workflows submit <taskId> <stepId>')
+    expect(errorOutput()).toBe('')
+  })
+
+  it('renders doctor repair command issues with the shared TUI when stdout is a TTY', async () => {
+    process.argv = ['bun', 'cli/bakin.ts', 'doctor', 'repair', 'wat']
+
+    const { main } = await import('../../cli/bakin')
+    await expect(main()).rejects.toThrow('exit:1')
+
+    expect(output()).toContain('Command issue  bakin doctor repair')
+    expect(output()).toContain('Unknown doctor repair subcommand: wat')
+    expect(output()).toContain('list | show | verify')
+    expect(errorOutput()).toBe('')
+  })
+
+  it('renders agent-rules command help with the shared TUI when stdout is a TTY', async () => {
+    process.argv = ['bun', 'cli/bakin.ts', 'agent-rules']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    expect(output()).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output()).toContain('Help')
+    expect(output()).toContain('AGENT RULES')
+    expect(output()).toContain('bakin agent-rules --apply')
+    expect(output()).not.toContain('Usage: bakin agent-rules --apply')
+    expect(errorOutput()).toBe('')
+  })
+
   it('renders status with the shared TUI when stdout is a TTY', async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse({

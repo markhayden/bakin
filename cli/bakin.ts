@@ -22,6 +22,7 @@ import { extractApiErrorMessage, formatApiError } from '../src/core/cli/api-erro
 import type {
   AgentRuleResultData,
   CommandIssueData,
+  HelpGroupData,
   PackageActionData,
   PluginActionData,
   PluginRestoreResultData,
@@ -195,18 +196,22 @@ async function printRuntimeActionTui(action: RuntimeActionData): Promise<void> {
   console.log(renderToString(createElement(RuntimeActionReport, { action })))
 }
 
-async function printHelpTui(error?: string, errorDetail?: string): Promise<void> {
+async function printHelpReportTui(groups: HelpGroupData[], error?: string, errorDetail?: string): Promise<void> {
   const [{ HelpReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
     import('ink'),
     import('react'),
   ])
   console.log(renderToString(createElement(HelpReport, {
-    groups: getCliUsageGroups({ excludeNames: BINARY_ONLY_COMMANDS }),
+    groups,
     env: { bakinUrl: BASE_URL },
     error,
     errorDetail,
   })))
+}
+
+async function printHelpTui(error?: string, errorDetail?: string): Promise<void> {
+  await printHelpReportTui(getCliUsageGroups({ excludeNames: BINARY_ONLY_COMMANDS }), error, errorDetail)
 }
 
 async function printCommandIssueTui(issue: CommandIssueData): Promise<void> {
@@ -233,6 +238,7 @@ async function exitCommandIssue(
     detail?: string
     usage?: string
     available?: string[]
+    availableLabel?: string
     plainMessage?: boolean
   } = {},
 ): Promise<never> {
@@ -243,6 +249,7 @@ async function exitCommandIssue(
       detail: options.detail,
       usage: options.usage ? normalizeUsage(options.usage) : undefined,
       available: options.available,
+      availableLabel: options.availableLabel,
     })
   } else {
     if (options.plainMessage !== false) console.error(message)
@@ -594,6 +601,17 @@ async function cmdTasksList(column?: string): Promise<void> {
   if (column) {
     const col = columns[column]
     if (!col) {
+      if (process.stdout.isTTY) {
+        await exitCommandIssue(`Unknown tasks column: ${column}`, {
+          command: 'bakin tasks list',
+          detail: Object.keys(columns).length > 0
+            ? `Available columns: ${Object.keys(columns).join(', ')}`
+            : 'No task columns were returned by the server.',
+          usage: 'bakin tasks list [--column=<column>]',
+          available: Object.keys(columns),
+          availableLabel: 'columns',
+        })
+      }
       console.error(`Unknown column: ${column}. Available: ${Object.keys(columns).join(', ')}`)
       process.exit(1)
     }
@@ -2021,9 +2039,21 @@ async function cmdDoctorRepair(args: string[], options: { json: boolean; isTTY: 
     return
   }
 
+  if (sub !== 'show' && sub !== 'verify') {
+    if (options.isTTY) {
+      await exitUnknownSubcommand('doctor repair', sub, ['list', 'show', 'verify'])
+    }
+    console.error(`Unknown doctor repair subcommand: ${sub}`)
+    process.exit(1)
+  }
+
   const requestId = args[2]
   if (!requestId) {
-    console.error(`Usage: bakin doctor repair ${sub} <request-id>`)
+    const usage = `bakin doctor repair ${sub} <request-id>`
+    if (options.isTTY) {
+      await exitUsage(usage)
+    }
+    console.error(`Usage: ${usage}`)
     process.exit(1)
   }
 
@@ -2054,9 +2084,6 @@ async function cmdDoctorRepair(args: string[], options: { json: boolean; isTTY: 
     print(result)
     return
   }
-
-  console.error(`Unknown doctor repair subcommand: ${sub}`)
-  process.exit(1)
 }
 
 async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> {
@@ -2137,8 +2164,22 @@ async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> 
 // Agent-rules context management is owned by src/core/agent-rules/managed-blocks.ts.
 // Imported lazily inside cmdAgentRules so the CLI stays a pure entry point.
 
+const AGENT_RULES_HELP_GROUPS: HelpGroupData[] = [{
+  group: 'Agent Rules',
+  commands: [
+    { usage: 'bakin agent-rules --apply', summary: 'Write main-agent managed context to AGENTS.md' },
+    { usage: 'bakin agent-rules --check', summary: 'Check if main-agent managed context is current' },
+    { usage: 'bakin agent-rules --apply-all', summary: 'Apply managed context to all agent AGENTS.md files' },
+    { usage: 'bakin agent-rules --check-all', summary: 'Check managed context across all agents' },
+  ],
+}]
+
 async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyAll?: boolean; checkAll?: boolean } = {}): Promise<void> {
   if (!options.apply && !options.check && !options.applyAll && !options.checkAll) {
+    if (process.stdout.isTTY) {
+      await printHelpReportTui(AGENT_RULES_HELP_GROUPS)
+      return
+    }
     console.log('Usage: bakin agent-rules --apply       # Write main-agent managed context to AGENTS.md')
     console.log('       bakin agent-rules --check       # Check if main-agent managed context is current')
     console.log('       bakin agent-rules --apply-all   # Apply managed context to all agent AGENTS.md files')
@@ -2911,7 +2952,15 @@ async function cmdWorkflowsSubmit(taskId: string, stepId: string, outputJson: st
   try {
     output = JSON.parse(outputJson)
   } catch {
-    console.error('Invalid JSON for output. Usage: bakin workflows submit <taskId> <stepId> \'{"key":"value"}\'')
+    const usage = 'bakin workflows submit <taskId> <stepId> \'{"key":"value"}\''
+    if (process.stdout.isTTY) {
+      await exitCommandIssue('Invalid JSON for output.', {
+        command: 'bakin workflows submit',
+        detail: 'Output must parse as a JSON object.',
+        usage,
+      })
+    }
+    console.error(`Invalid JSON for output. Usage: ${usage}`)
     process.exit(1)
   }
   const result = await apiPost(`/api/plugins/workflows/steps/${encodeURIComponent(taskId)}/complete`, { stepId, agentId: await getCliAgent(), output })

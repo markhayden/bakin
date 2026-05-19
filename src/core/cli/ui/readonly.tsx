@@ -305,6 +305,7 @@ export interface CommandIssueData {
   detail?: unknown
   usage?: unknown
   available?: unknown
+  availableLabel?: unknown
 }
 
 interface TaskTableRow {
@@ -1672,6 +1673,7 @@ export function CommandIssueReport({ issue, color = true }: {
   const available = Array.isArray(issue.available)
     ? issue.available.map(item => valueText(item)).filter(Boolean)
     : []
+  const availableLabel = valueText(issue.availableLabel, 'commands')
 
   return (
     <Box flexDirection="column">
@@ -1704,7 +1706,7 @@ export function CommandIssueReport({ issue, color = true }: {
         <Section title="Available" color={color}>
           <FindingRows rows={[{
             status: 'ok',
-            label: 'commands',
+            label: availableLabel,
             message: available.join(' | '),
           }]} color={color} />
           <Text> </Text>
