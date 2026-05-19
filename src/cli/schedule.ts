@@ -63,7 +63,7 @@ interface ListResult {
 async function printScheduleListTui(jobs: ListResult['jobs']): Promise<void> {
   const [{ ScheduleListReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../core/cli/ui/readonly'),
-    import('ink'),
+    import('../core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(ScheduleListReport, { jobs })))
@@ -72,7 +72,7 @@ async function printScheduleListTui(jobs: ListResult['jobs']): Promise<void> {
 async function printScheduleActionTui(action: ScheduleActionData): Promise<void> {
   const [{ ScheduleActionReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../core/cli/ui/readonly'),
-    import('ink'),
+    import('../core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(ScheduleActionReport, { action })))
@@ -205,7 +205,7 @@ interface RunsResult {
 async function printScheduleRunsTui(jobId: string, runs: RunsResult['runs']): Promise<void> {
   const [{ ScheduleRunsReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../core/cli/ui/readonly'),
-    import('ink'),
+    import('../core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(ScheduleRunsReport, { jobId, runs })))
