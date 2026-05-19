@@ -700,9 +700,10 @@ function pluginActionPayload(action: PluginActionData): Record<string, unknown> 
 
 function pluginActionStatus(action: PluginActionData): TuiStatus {
   const payload = pluginActionPayload(action)
-  const failed = objectField(payload, 'ok') === false || Boolean(objectField(payload, 'error'))
+  const failed = objectField(payload, 'ok') === false || objectField(payload, 'core') === true || Boolean(objectField(payload, 'error'))
   if (failed) return objectField(payload, 'awaitingConsent') === true ? 'ready' : 'fail'
   if (objectField(payload, 'awaitingConsent') === true) return 'ready'
+  if (objectField(payload, 'noop') === true) return 'ok'
   if (valueText(action.action, '') === 'exported') return 'ok'
   if (valueText(action.action, '') === 'imported' && Array.isArray(objectField(payload, 'failed')) && (objectField(payload, 'failed') as unknown[]).length > 0) return 'fail'
   if (valueText(action.action, '') === 'removed' && !objectField(payload, 'snapshot')) return 'warn'
@@ -727,17 +728,34 @@ function pluginActionMessage(action: PluginActionData): string {
   const installed = Array.isArray(objectField(payload, 'installed')) ? (objectField(payload, 'installed') as unknown[]) : []
   const failed = Array.isArray(objectField(payload, 'failed')) ? (objectField(payload, 'failed') as unknown[]) : []
   const count = numberValue(objectField(payload, 'count'))
+  const before = objectField(payload, 'before')
+  const after = objectField(payload, 'after')
+  const fromVersion = isPlainRecord(before) ? valueText(objectField(before, 'version'), '') : ''
+  const toVersion = isPlainRecord(after) ? valueText(objectField(after, 'version'), '') : ''
 
+  if (objectField(payload, 'core') === true) {
+    const verb = actionName === 'upgraded' ? 'upgrade' : actionName === 'removed' ? 'remove' : actionName
+    return `Refusing to ${verb} core plugin ${target}.`
+  }
   if (error) return error
   if (explicit) return explicit
   if (message) return message
-  if (objectField(payload, 'awaitingConsent') === true) return `Plugin ${target} requires permission consent before install.`
+  if (objectField(payload, 'awaitingConsent') === true) {
+    const nextAction = actionName === 'upgraded' ? 'upgrade' : 'install'
+    return `Plugin ${target} requires permission consent before ${nextAction}.`
+  }
+  if (objectField(payload, 'noop') === true) return `Plugin ${target} is already up to date.`
   if (actionName === 'imported') {
     return failed.length > 0
       ? `Import failed after installing ${installed.length} plugin${installed.length === 1 ? '' : 's'}.`
       : `Imported ${installed.length} plugin${installed.length === 1 ? '' : 's'}.`
   }
   if (actionName === 'exported') return `Exported ${count} plugin${count === 1 ? '' : 's'} to ${target}.`
+  if (actionName === 'upgraded') {
+    const version = fromVersion || toVersion ? ` ${fromVersion || '?'} -> ${toVersion || '?'}` : ''
+    return `Upgraded plugin ${target}${version}.`
+  }
+  if (actionName === 'scaffolded') return `Scaffolded plugin ${target}.`
   if (actionName === 'installed') return `Installed plugin ${target}.`
   if (actionName === 'removed') return `Removed plugin ${target}.`
   if (actionName === 'linked') return `Linked plugin ${target}.`
@@ -761,19 +779,33 @@ function pluginActionDetail(action: PluginActionData): string {
   const pluginDir = valueText(objectField(payload, 'pluginDir'), '')
   const linkedSource = valueText(objectField(payload, 'linkedSource'), '')
   const snapshot = valueText(objectField(payload, 'snapshot'), '')
+  const root = valueText(objectField(payload, 'root'), '')
   const skills = objectField(payload, 'skills')
+  const pluginAssets = objectField(payload, 'pluginAssets')
   const installed = Array.isArray(objectField(payload, 'installed')) ? (objectField(payload, 'installed') as unknown[]) : []
   const failed = Array.isArray(objectField(payload, 'failed')) ? (objectField(payload, 'failed') as unknown[]) : []
   const missing = listText(objectField(payload, 'skillsMissing'), '')
+  const before = objectField(payload, 'before')
+  const after = objectField(payload, 'after')
+  const next = Array.isArray(objectField(payload, 'next')) ? (objectField(payload, 'next') as unknown[]) : []
 
   if (source) details.push(`Source: ${source}`)
   if (file && actionName !== 'exported') details.push(`File: ${file}`)
   if (version) details.push(`Version: ${version}`)
   if (runtimeVersion) details.push(`Runtime version: ${runtimeVersion}`)
+  if (isPlainRecord(before) || isPlainRecord(after)) {
+    const fromVersion = isPlainRecord(before) ? valueText(objectField(before, 'version'), '') : ''
+    const toVersion = isPlainRecord(after) ? valueText(objectField(after, 'version'), '') : ''
+    const fromCommit = isPlainRecord(before) ? valueText(objectField(before, 'commitSha'), '').slice(0, 12) : ''
+    const toCommit = isPlainRecord(after) ? valueText(objectField(after, 'commitSha'), '').slice(0, 12) : ''
+    if (fromVersion || toVersion) details.push(`Version: ${fromVersion || '-'} -> ${toVersion || '-'}`)
+    if (fromCommit || toCommit) details.push(`Commit: ${fromCommit || '-'} -> ${toCommit || '-'}`)
+  }
   if (objectField(payload, 'activated') === false) details.push('Activation deferred until next Bakin start.')
   if (objectField(payload, 'watching') === true) details.push('Dev hot reload is watching the linked source.')
   if (linkedSource) details.push(`Linked source: ${linkedSource}`)
   if (pluginDir) details.push(`Plugin dir: ${pluginDir}`)
+  if (root) details.push(`Directory: ${root}`)
   if (snapshot) details.push(`Snapshot: ${snapshot}`)
   if (!snapshot && actionName === 'removed') details.push('Pre-removal snapshot was not created.')
   if (isPlainRecord(skills)) {
@@ -783,6 +815,11 @@ function pluginActionDetail(action: PluginActionData): string {
   }
   if (missing) details.push(`Missing skills: ${missing}`)
   if (installed.length > 0) details.push(`Installed: ${installed.map(item => valueText(item)).join(', ')}`)
+  if (isPlainRecord(pluginAssets)) {
+    const applied = Array.isArray(objectField(pluginAssets, 'installed')) ? (objectField(pluginAssets, 'installed') as unknown[]).length : 0
+    const skipped = Array.isArray(objectField(pluginAssets, 'skipped')) ? (objectField(pluginAssets, 'skipped') as unknown[]).length : 0
+    if (applied > 0 || skipped > 0) details.push(`Runtime skills: ${applied} applied, ${skipped} skipped`)
+  }
   if (failed.length > 0) {
     details.push(`Failed: ${failed.map(item => {
       if (!isPlainRecord(item)) return valueText(item)
@@ -790,6 +827,7 @@ function pluginActionDetail(action: PluginActionData): string {
     }).join(', ')}`)
   }
   details.push(...pluginPermissionsDetail(objectField(payload, 'permissions')))
+  if (next.length > 0) details.push(`Next: ${next.map(item => valueText(item)).join(' && ')}`)
 
   return details.filter(Boolean).join('\n')
 }
@@ -799,8 +837,9 @@ function pluginActionRows(actions: PluginActionData[]): FindingRow[] {
     return [{ status: 'skip', label: 'plugin', message: 'No plugin actions were applied.' }]
   }
   return actions.map(action => {
+    const actionName = valueText(action.action, 'updated')
     const next = objectField(pluginActionPayload(action), 'awaitingConsent') === true
-      ? 'Re-run with --yes to accept permissions and install.'
+      ? `Re-run with --yes to accept permissions and ${actionName === 'upgraded' ? 'upgrade' : 'install'}.`
       : undefined
     return {
       status: pluginActionStatus(action),

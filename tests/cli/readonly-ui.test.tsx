@@ -376,6 +376,27 @@ describe('read-only CLI TUI screens', () => {
               permissions: [{ resource: 'runtime', action: 'read' }],
             },
           },
+          {
+            action: 'upgraded',
+            pluginId: 'messaging',
+            result: {
+              ok: true,
+              id: 'messaging',
+              before: { version: '1.0.0', commitSha: '1111111111111111111111111111111111111111' },
+              after: { version: '2.0.0', commitSha: '2222222222222222222222222222222222222222' },
+              pluginAssets: { installed: [{ name: 'compose' }], skipped: [] },
+            },
+          },
+          {
+            action: 'scaffolded',
+            pluginId: 'smoke-plugin',
+            result: {
+              ok: true,
+              id: 'smoke-plugin',
+              root: '/tmp/smoke-plugin',
+              next: ['cd smoke-plugin && bun install && bakin plugins install .'],
+            },
+          },
         ]}
       />,
     )
@@ -389,6 +410,10 @@ describe('read-only CLI TUI screens', () => {
     expect(output).toContain('Plugin needs-consent requires permission')
     expect(output).toContain('consent before install.')
     expect(output).toContain('Next: Re-run with --yes')
+    expect(output).toContain('Upgraded plugin messaging 1.0.0 -> 2.0.0.')
+    expect(output).toContain('Runtime skills: 1 applied, 0 skipped')
+    expect(output).toContain('Scaffolded plugin smoke-plugin.')
+    expect(output).toContain('Directory: /tmp/smoke-plugin')
     expect(output).not.toContain('"ok"')
   })
 

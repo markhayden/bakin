@@ -461,15 +461,16 @@ bakin plugins import <file> [--yes] [--force] [--json]
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="plugins-upgrade" name="plugins upgrade" summary="Upgrade a user plugin." description="Re-pulls a user plugin from its source and rebuilds. --yes skips the consent prompt.">
+<CliCommandCard id="plugins-upgrade" name="plugins upgrade" summary="Upgrade a user plugin." description="Re-pulls a user plugin from its source and rebuilds. --yes skips the consent prompt. Pass --json for raw API output.">
 ```sh frame="terminal"
-bakin plugins upgrade <id> [--yes]
+bakin plugins upgrade <id> [--yes] [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
       <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
@@ -499,14 +500,15 @@ bakin plugins restore <id> [--snapshot <snapshot>] [--force] [--list]
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="plugins-scaffold" name="plugins scaffold" summary="Create a plugin scaffold." description="Creates a starter plugin source tree.">
+<CliCommandCard id="plugins-scaffold" name="plugins scaffold" summary="Create a plugin scaffold." description="Creates a starter plugin source tree. Pass --json for machine-readable output.">
 ```sh frame="terminal"
-bakin plugins scaffold <name>
+bakin plugins scaffold <name> [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>&lt;name&gt;</code></td><td>argument</td><td>yes</td><td>Name to create.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>

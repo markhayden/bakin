@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
-import { mkdtempSync, writeFileSync } from 'fs'
+import { existsSync, mkdtempSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -9,6 +9,7 @@ describe('read-only CLI TTY commands', () => {
   const originalArgv = process.argv
   const originalExit = process.exit
   const originalFetch = globalThis.fetch
+  const originalCwd = process.cwd()
   const originalStdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
   let log: ReturnType<typeof spyOn>
   let error: ReturnType<typeof spyOn>
@@ -53,6 +54,7 @@ describe('read-only CLI TTY commands', () => {
     process.argv = originalArgv
     process.exit = originalExit
     globalThis.fetch = originalFetch
+    process.chdir(originalCwd)
     if (originalStdoutIsTTY) Object.defineProperty(process.stdout, 'isTTY', originalStdoutIsTTY)
     else delete (process.stdout as { isTTY?: boolean }).isTTY
     log.mockRestore()
@@ -816,6 +818,55 @@ describe('read-only CLI TTY commands', () => {
     process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'unlink', 'local-tools']
     await main()
     expect(output()).toContain('Unlinked "local-tools" and deactivated it.')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      id: 'messaging',
+      before: { version: '1.0.0', commitSha: '1111111111111111111111111111111111111111' },
+      after: { version: '2.0.0', commitSha: '2222222222222222222222222222222222222222' },
+      pluginAssets: { installed: [{ name: 'compose' }], skipped: [] },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'upgrade', 'messaging', '--yes']
+    await main()
+    expect(output()).toContain('Plugin action')
+    expect(output()).toContain('Upgraded plugin messaging 1.0.0 -> 2.0.0.')
+    expect(output()).toContain('Runtime skills: 1 applied, 0 skipped')
+    expect(output()).not.toContain('"before"')
+
+    log.mockClear()
+    error.mockClear()
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: () => Promise.resolve({ error: 'cannot upgrade core plugin: tasks' }),
+      text: () => Promise.resolve('{"error":"cannot upgrade core plugin: tasks"}'),
+    } as Response)
+    process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'upgrade', 'tasks', '--yes', '--json']
+    await expect(main()).rejects.toThrow('exit:1')
+    expect(output()).toContain('"ok": false')
+    expect(output()).toContain('"status": 400')
+    expect(output()).toContain('"error": "cannot upgrade core plugin: tasks"')
+    expect(errorOutput()).not.toContain('cannot upgrade core plugin')
+
+    log.mockClear()
+    const scaffoldDir = mkdtempSync(join(tmpdir(), 'bakin-plugin-scaffold-'))
+    process.chdir(scaffoldDir)
+    process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'scaffold', 'smoke-plugin']
+    await main()
+    expect(output()).toContain('Plugin action')
+    expect(output()).toContain('Scaffolded plugin smoke-plugin.')
+    expect(output()).toContain('Next: cd smoke-plugin && bun install && bakin')
+    expect(output()).toContain('plugins install .')
+    expect(existsSync(join(scaffoldDir, 'smoke-plugin', 'bakin-plugin.json'))).toBe(true)
+
+    log.mockClear()
+    process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'scaffold', 'json-smoke-plugin', '--json']
+    await main()
+    expect(output()).toContain('"ok": true')
+    expect(output()).toContain('"id": "json-smoke-plugin"')
+    expect(output()).not.toContain('Plugin action')
+    expect(existsSync(join(scaffoldDir, 'json-smoke-plugin', 'bakin-plugin.json'))).toBe(true)
 
     log.mockClear()
     fetchMock.mockResolvedValueOnce(jsonResponse({
