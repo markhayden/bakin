@@ -82,7 +82,7 @@ describe('legacy CLI doctor repair', () => {
   }
 
   function headerCount(output: string): number {
-    return output.split("┃  🐷 Bakin'                  (v1.0.0) ┃").length - 1
+    return output.split("┃ 🐷 Bakin'               (v0.0.0-dev) ┃").length - 1
   }
 
   beforeEach(() => {
@@ -167,7 +167,7 @@ describe('legacy CLI doctor repair', () => {
     await main()
 
     const output = loggedOutput()
-    expect(output).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
     expect(output).toContain('Doctor repair plan')
     expect(output).toContain('No deterministic repairs available.')
     expect(output).not.toContain('[SAFE]')
@@ -314,7 +314,7 @@ describe('legacy CLI doctor repair', () => {
     await main()
 
     const output = loggedOutput()
-    expect(output).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
     expect(output).toContain('Doctor repair requests')
     expect(output).toContain('REQUESTS')
     expect(output).toContain('repair-1')

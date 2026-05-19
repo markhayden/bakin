@@ -88,7 +88,16 @@ async function apiPostJson(path: string, body?: unknown): Promise<{ ok: true; da
 }
 
 async function cmdVersion(): Promise<number> {
-  console.log(APP_VERSION)
+  if (process.stdout.isTTY) {
+    const [{ VersionReport }, { renderToString }, { createElement }] = await Promise.all([
+      import('./cli/ui/readonly'),
+      import('ink'),
+      import('react'),
+    ])
+    console.log(renderToString(createElement(VersionReport, { data: { version: APP_VERSION } })))
+  } else {
+    console.log(APP_VERSION)
+  }
   return 0
 }
 

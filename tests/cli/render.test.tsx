@@ -26,7 +26,7 @@ describe('CLI renderers', () => {
   it('renders a generic Ink result view to string', () => {
     const output = renderInkEnvelope(toEnvelope(okResult('version', { version: '1.2.3' })), { color: false })
 
-    expect(output).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
     expect(output).toContain('version')
     expect(output).toContain(' OK       0 exit code')
     expect(output).toContain('DATA\n------------')

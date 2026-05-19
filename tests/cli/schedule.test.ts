@@ -209,7 +209,7 @@ describe('CLI schedule commands', () => {
       mockJsonResponse({ ok: true })
       await cmdScheduleRemove('new-1')
 
-      expect(output()).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+      expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
       expect(output()).toContain('Schedule action')
       expect(output()).toContain('RESULT')
       expect(output()).toContain('Created schedule Daily Check')
