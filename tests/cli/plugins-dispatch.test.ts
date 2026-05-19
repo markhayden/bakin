@@ -10,6 +10,7 @@ const mockFetch = mock()
 describe('bakin plugins binary dispatch', () => {
   const originalFetch = globalThis.fetch
   const originalCwd = process.cwd()
+  const originalStdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
   let log: ReturnType<typeof spyOn>
   let error: ReturnType<typeof spyOn>
 
@@ -26,6 +27,11 @@ describe('bakin plugins binary dispatch', () => {
   beforeEach(() => {
     mock.clearAllMocks()
     globalThis.fetch = mockFetch as unknown as typeof fetch
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ ok: true }),
+      text: () => Promise.resolve(''),
+    } as Response)
     log = spyOn(console, 'log').mockImplementation(() => {})
     error = spyOn(console, 'error').mockImplementation(() => {})
   })
@@ -33,8 +39,32 @@ describe('bakin plugins binary dispatch', () => {
   afterEach(() => {
     globalThis.fetch = originalFetch
     process.chdir(originalCwd)
+    if (originalStdoutIsTTY) Object.defineProperty(process.stdout, 'isTTY', originalStdoutIsTTY)
+    else delete (process.stdout as { isTTY?: boolean }).isTTY
     log.mockRestore()
     error.mockRestore()
+  })
+
+  it('delegates plugin list to the shared source CLI TUI', async () => {
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({
+        plugins: [
+          { id: 'tasks', name: 'Tasks', version: '2.1.0', source: 'core', status: 'active', routes: 12 },
+        ],
+      }),
+      text: () => Promise.resolve(''),
+    } as Response)
+
+    const result = await dispatchCli(['bun', 'bakin', 'plugins', 'list'])
+
+    expect(result).toEqual({ startServer: false, exitCode: 0 })
+    expect(output()).toContain('Plugins')
+    expect(output()).toContain('INSTALLED PLUGINS')
+    expect(output()).toContain('tasks')
+    expect(output()).not.toContain('ID              NAME')
+    expect(errorOutput()).toBe('')
   })
 
   it('prints structured JSON for plugin upgrade API errors with --json', async () => {
