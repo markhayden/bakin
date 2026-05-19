@@ -28,6 +28,7 @@ import type {
   SearchResultData,
   TaskActionData,
   TrashActionData,
+  WorkflowActionData,
 } from '../src/core/cli/ui/readonly'
 import type { CheckResult, InstallResult } from '../src/core/onboarding/types'
 
@@ -260,6 +261,15 @@ async function printWorkflowsListTui(templates: Array<Record<string, unknown>>):
     import('react'),
   ])
   console.log(renderToString(createElement(WorkflowsListReport, { templates })))
+}
+
+async function printWorkflowActionTui(action: WorkflowActionData): Promise<void> {
+  const [{ WorkflowActionReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(WorkflowActionReport, { action })))
 }
 
 async function printSearchResultsTui(query: string, result: Record<string, unknown>): Promise<void> {
@@ -2205,11 +2215,28 @@ async function cmdWorkflowsList(): Promise<void> {
 
 async function cmdWorkflowsStart(taskId: string, workflowId: string): Promise<void> {
   const result = await apiPost('/api/plugins/workflows/instances/start', { taskId, workflowId })
+  if (process.stdout.isTTY) {
+    await printWorkflowActionTui({
+      action: 'started',
+      taskId,
+      workflowId,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
 async function cmdWorkflowsStep(taskId: string): Promise<void> {
   const result = await apiGet(`/api/plugins/workflows/steps/${encodeURIComponent(taskId)}`)
+  if (process.stdout.isTTY) {
+    await printWorkflowActionTui({
+      action: 'step',
+      taskId,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -2222,6 +2249,15 @@ async function cmdWorkflowsSubmit(taskId: string, stepId: string, outputJson: st
     process.exit(1)
   }
   const result = await apiPost(`/api/plugins/workflows/steps/${encodeURIComponent(taskId)}/complete`, { stepId, agentId: await getCliAgent(), output })
+  if (process.stdout.isTTY) {
+    await printWorkflowActionTui({
+      action: 'submitted',
+      taskId,
+      stepId,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
