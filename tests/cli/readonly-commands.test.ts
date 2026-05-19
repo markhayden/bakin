@@ -140,6 +140,105 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).not.toContain('Error: Cannot connect to Bakin')
   })
 
+  it('renders plugin-contributed command results with the shared TUI in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({
+        plugins: [{
+          id: 'demo',
+          contributes: {
+            cliCommands: [{
+              name: 'demo:run',
+              usage: 'bakin demo run <target>',
+              summary: 'Run demo command.',
+              dispatch: { type: 'apiRoute', method: 'POST', path: '/run' },
+            }],
+          },
+        }],
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        accepted: true,
+        target: 'smoke',
+      }))
+    process.argv = ['bun', 'cli/bakin.ts', 'demo', 'run', 'smoke', '--loud=true']
+
+    await main()
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:3737/api/plugins/demo/run',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ loud: true, target: 'smoke' }),
+      }),
+    )
+    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(output()).toContain('bakin demo run smoke --loud=true')
+    expect(output()).toContain('DATA')
+    expect(output()).toContain('"target": "smoke"')
+    expect(errorOutput()).toBe('')
+  })
+
+  it('honors --json for plugin-contributed commands even in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({
+        plugins: [{
+          id: 'demo',
+          contributes: {
+            cliCommands: [{
+              name: 'demo:json',
+              usage: 'bakin demo json <target> [--json]',
+              summary: 'Show JSON command.',
+              dispatch: { type: 'apiRoute', method: 'GET', path: '/json' },
+            }],
+          },
+        }],
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        target: 'machine',
+      }))
+    process.argv = ['bun', 'cli/bakin.ts', 'demo', 'json', 'machine', '--json']
+
+    await main()
+
+    expect(output()).toBe('{\n  "target": "machine"\n}')
+    expect(output()).not.toContain("Bakin'")
+    expect(errorOutput()).toBe('')
+  })
+
+  it('keeps plugin-contributed command results raw outside TTY', async () => {
+    setStdoutIsTTY(false)
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({
+        plugins: [{
+          id: 'demo',
+          contributes: {
+            cliCommands: [{
+              name: 'demo:show',
+              usage: 'bakin demo show <target>',
+              summary: 'Show demo command.',
+              dispatch: { type: 'apiRoute', method: 'GET', path: '/show' },
+            }],
+          },
+        }],
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        target: 'plain',
+      }))
+    process.argv = ['bun', 'cli/bakin.ts', 'demo', 'show', 'plain']
+
+    await main()
+
+    expect(output()).toBe('{\n  "target": "plain"\n}')
+    expect(output()).not.toContain("Bakin'")
+    expect(errorOutput()).toBe('')
+  })
+
   it('renders missing-argument usage with the shared TUI when stdout is a TTY', async () => {
     process.argv = ['bun', 'cli/bakin.ts', 'tasks', 'get']
 
