@@ -17,6 +17,7 @@ import {
   serializePluginExportManifest,
   type PluginImportInstallRequest,
 } from '../src/core/plugins/import-export'
+import { formatApiError } from '../src/core/cli/api-error'
 import type {
   AgentRuleResultData,
   PluginRestoreResultData,
@@ -25,6 +26,7 @@ import type {
   SearchAggregationsData,
   SearchMetaData,
   SearchResultData,
+  TrashActionData,
 } from '../src/core/cli/ui/readonly'
 import type { CheckResult, InstallResult } from '../src/core/onboarding/types'
 
@@ -60,7 +62,7 @@ async function api(path: string, options?: RequestInit): Promise<unknown> {
   })
   if (!res.ok) {
     const body = await res.text()
-    throw new Error(`HTTP ${res.status}: ${body}`)
+    throw new Error(formatApiError(res.status, body))
   }
   return res.json()
 }
@@ -296,6 +298,15 @@ async function printTrashListTui(assets: Array<Record<string, unknown>>): Promis
     import('react'),
   ])
   console.log(renderToString(createElement(TrashListReport, { assets })))
+}
+
+async function printTrashActionTui(action: TrashActionData): Promise<void> {
+  const [{ TrashActionReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(TrashActionReport, { action })))
 }
 
 async function printAgentPackagesListTui(agents: Array<Record<string, unknown>>): Promise<void> {
@@ -2191,16 +2202,42 @@ async function cmdTrashList(): Promise<void> {
 
 async function cmdTrashRestore(filename: string): Promise<void> {
   const data = await apiPost(`/api/plugins/assets/trash/${encodeURIComponent(filename)}/restore`) as { ok: boolean; restoredPath: string }
+  if (process.stdout.isTTY) {
+    await printTrashActionTui({
+      action: 'restored',
+      target: filename,
+      count: 1,
+      message: `Restored ${filename}.`,
+      detail: data.restoredPath,
+    })
+    return
+  }
   console.log(`Restored → ${data.restoredPath}`)
 }
 
 async function cmdTrashEmpty(): Promise<void> {
   const check = await apiGet('/api/plugins/assets/trash') as { count: number }
   if (check.count === 0) {
+    if (process.stdout.isTTY) {
+      await printTrashActionTui({
+        action: 'empty',
+        count: 0,
+        message: 'Trash is already empty.',
+      })
+      return
+    }
     console.log('Trash is already empty.')
     return
   }
   const data = await apiDelete('/api/plugins/assets/trash') as { ok: boolean; deleted: number }
+  if (process.stdout.isTTY) {
+    await printTrashActionTui({
+      action: 'emptied',
+      count: data.deleted,
+      message: `Permanently deleted ${data.deleted} item${data.deleted !== 1 ? 's' : ''}.`,
+    })
+    return
+  }
   console.log(`Permanently deleted ${data.deleted} item${data.deleted !== 1 ? 's' : ''}.`)
 }
 

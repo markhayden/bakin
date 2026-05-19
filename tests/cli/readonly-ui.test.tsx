@@ -23,6 +23,7 @@ import {
   StatusReport,
   TaskDetailReport,
   TasksListReport,
+  TrashActionReport,
   TrashListReport,
   WorkflowsListReport,
 } from '../../src/core/cli/ui/readonly'
@@ -497,5 +498,33 @@ describe('read-only CLI TUI screens', () => {
     expect(output).toContain('2.0 KB')
     expect(output).toContain('patch')
     expect(output).toContain('bakin trash restore <trashName>')
+  })
+
+  it('renders trash action confirmations with shared TUI primitives', () => {
+    const restored = renderToString(
+      <TrashActionReport
+        action={{
+          action: 'restored',
+          target: 'doc.md__deleted-20260518',
+          message: 'Restored doc.md.',
+          detail: '/Users/roscoe/.bakin/assets/doc.md',
+        }}
+      />,
+    )
+    const emptied = renderToString(
+      <TrashActionReport
+        action={{
+          action: 'emptied',
+          count: 2,
+          message: 'Permanently deleted 2 items.',
+        }}
+      />,
+    )
+
+    expect(restored).toContain('Trash action')
+    expect(restored).toContain('RESULT')
+    expect(restored).toContain('doc.md__deleted')
+    expect(restored).toContain('Restored doc.md.')
+    expect(emptied).toContain('Permanently deleted 2 items.')
   })
 })

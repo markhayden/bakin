@@ -27,6 +27,7 @@ import {
   serializePluginExportManifest,
   type PluginImportInstallRequest,
 } from './plugins/import-export'
+import { formatApiError } from './cli/api-error'
 
 const BAKIN_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 
@@ -40,7 +41,7 @@ async function api<T = unknown>(path: string, init?: RequestInit): Promise<T> {
   })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    throw new Error(`HTTP ${res.status}: ${body}`)
+    throw new Error(formatApiError(res.status, body))
   }
   return (await res.json()) as T
 }
