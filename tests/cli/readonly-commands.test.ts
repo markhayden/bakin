@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { mkdtempSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 
 const fetchMock = mock()
 
@@ -705,6 +708,98 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).toContain('agent_lessons')
     expect(output()).toContain('schema missing')
     expect(output()).not.toContain('Reindexing tasks into search')
+  })
+
+  it('renders plugin lifecycle actions with shared TUI screens in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      id: 'messaging',
+      version: '2.0.0',
+      activated: true,
+      runtimeVersion: 4,
+      message: 'Installed "messaging" and activated it.',
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'install', 'github:markhayden/bakin-bits-official#plugins/messaging']
+    await main()
+    expect(output()).toContain('Plugin action')
+    expect(output()).toContain('Installed "messaging" and activated it.')
+    expect(output()).toContain('Runtime version: 4')
+    expect(output()).not.toContain('"id": "messaging"')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      id: 'messaging',
+      snapshot: '/Users/roscoe/.bakin/.uninstalled/messaging.tar.gz',
+      skills: { removed: 2, kept: 0 },
+      message: 'Removed "messaging" and deactivated it.',
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'remove', 'messaging']
+    await main()
+    expect(output()).toContain('Plugin action')
+    expect(output()).toContain('Removed "messaging" and deactivated it.')
+    expect(output()).toContain('Runtime skills: 2 removed, 0 kept')
+    expect(output()).not.toContain('"snapshot"')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      id: 'local-tools',
+      linkedSource: '/Users/roscoe/dev/local-tools',
+      pluginDir: '/Users/roscoe/.bakin/plugins/local-tools',
+      watching: true,
+      message: 'Linked "local-tools" and activated it with dev hot reload.',
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'link', './local-tools', '--force']
+    await main()
+    expect(output()).toContain('Linked "local-tools" and activated it with dev')
+    expect(output()).toContain('hot reload.')
+    expect(output()).toContain('Dev hot reload is watching the linked source.')
+    expect(output()).not.toContain('"linkedSource"')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      id: 'local-tools',
+      message: 'Unlinked "local-tools" and deactivated it.',
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'unlink', 'local-tools']
+    await main()
+    expect(output()).toContain('Unlinked "local-tools" and deactivated it.')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      id: 'json-plugin',
+      message: 'Installed "json-plugin" and activated it.',
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'install', './json-plugin', '--json']
+    await main()
+    expect(output()).toContain('"id": "json-plugin"')
+    expect(output()).not.toContain('Plugin action')
+
+    log.mockClear()
+    const dir = mkdtempSync(join(tmpdir(), 'bakin-plugin-import-'))
+    const manifest = join(dir, 'plugins.json')
+    writeFileSync(manifest, JSON.stringify({
+      version: 1,
+      plugins: [
+        { id: 'projects', source: 'github:markhayden/bakin-bits-official#plugins/projects', type: 'github', ref: '', commitSha: '' },
+      ],
+    }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      id: 'projects',
+      message: 'Installed "projects" and activated it.',
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'import', manifest, '--yes']
+    await main()
+    expect(output()).toContain('Plugin action')
+    expect(output()).toContain('Imported 1 plugin.')
+    expect(output()).toContain('Installed: projects')
+    expect(output()).not.toContain('Installing projects from')
   })
 
   it('renders plugin restore snapshots and results with shared TUI screens in a TTY', async () => {

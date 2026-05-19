@@ -10,16 +10,18 @@ describe('parsePluginInstallArgs', () => {
       yes: true,
       dev: false,
       force: false,
+      json: false,
     })
   })
 
-  it('parses --ref=<ref>', () => {
-    expect(parsePluginInstallArgs(['github:owner/repo', '--ref=release/2026'])).toEqual({
+  it('parses --ref=<ref> and --json', () => {
+    expect(parsePluginInstallArgs(['github:owner/repo', '--ref=release/2026', '--json'])).toEqual({
       source: 'github:owner/repo',
       ref: 'release/2026',
       yes: false,
       dev: false,
       force: false,
+      json: true,
     })
   })
 

@@ -12,6 +12,7 @@ import {
   PackageActionReport,
   PackagesListReport,
   PathsReport,
+  PluginActionReport,
   PluginRestoreResultReport,
   PluginRestoreSnapshotsReport,
   PluginsListReport,
@@ -315,6 +316,60 @@ describe('read-only CLI TUI screens', () => {
     expect(result).toContain('Restored "demo-plugin".')
     expect(result).toContain('demo-plugin-2026.tar.gz')
     expect(result).toContain('Activation deferred until next server start.')
+  })
+
+  it('renders plugin lifecycle actions with shared TUI primitives', () => {
+    const output = renderToString(
+      <PluginActionReport
+        actions={[
+          {
+            action: 'installed',
+            source: 'github:markhayden/bakin-bits-official#plugins/messaging',
+            result: {
+              ok: true,
+              id: 'messaging',
+              version: '2.0.0',
+              activated: true,
+              runtimeVersion: 7,
+              message: 'Installed "messaging" and activated it.',
+            },
+          },
+          {
+            action: 'removed',
+            pluginId: 'old-plugin',
+            result: {
+              ok: true,
+              id: 'old-plugin',
+              skills: { removed: 1, kept: 1 },
+              snapshot: '/Users/roscoe/.bakin/.uninstalled/old-plugin.tar.gz',
+              message: 'Removed "old-plugin" and deactivated it.',
+            },
+          },
+          {
+            action: 'installed',
+            source: './needs-consent',
+            result: {
+              ok: false,
+              awaitingConsent: true,
+              id: 'needs-consent',
+              version: '1.0.0',
+              permissions: [{ resource: 'runtime', action: 'read' }],
+            },
+          },
+        ]}
+      />,
+    )
+
+    expect(output).toContain('Plugin action')
+    expect(output).toContain('RESULT')
+    expect(output).toContain('Installed "messaging" and activated it.')
+    expect(output).toContain('Runtime version: 7')
+    expect(output).toContain('Removed "old-plugin" and deactivated it.')
+    expect(output).toContain('Runtime skills: 1 removed, 1 kept')
+    expect(output).toContain('Plugin needs-consent requires permission')
+    expect(output).toContain('consent before install.')
+    expect(output).toContain('Next: Re-run with --yes')
+    expect(output).not.toContain('"ok"')
   })
 
   it('renders agents and plugins as shared TUI tables', () => {

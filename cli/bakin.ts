@@ -21,6 +21,7 @@ import { formatApiError } from '../src/core/cli/api-error'
 import type {
   AgentRuleResultData,
   PackageActionData,
+  PluginActionData,
   PluginRestoreResultData,
   PluginRestoreSnapshotData,
   ReindexResultData,
@@ -236,6 +237,17 @@ async function printPluginsListTui(plugins: Array<Record<string, unknown>>): Pro
     import('react'),
   ])
   console.log(renderToString(createElement(PluginsListReport, { plugins })))
+}
+
+async function printPluginActionTui(actions: PluginActionData | PluginActionData[]): Promise<void> {
+  const [{ PluginActionReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(PluginActionReport, {
+    actions: Array.isArray(actions) ? actions : [actions],
+  })))
 }
 
 async function printPluginRestoreSnapshotsTui(pluginId: string, snapshots: PluginRestoreSnapshotData[]): Promise<void> {
@@ -629,7 +641,7 @@ async function cmdPluginsList(opts: { json?: boolean; check?: boolean } = {}): P
   }
 }
 
-async function cmdPluginsInstall(source: string, opts: { yes?: boolean; dev?: boolean; force?: boolean; ref?: string } = {}): Promise<void> {
+async function cmdPluginsInstall(source: string, opts: { yes?: boolean; dev?: boolean; force?: boolean; ref?: string; json?: boolean } = {}): Promise<void> {
   const type = !opts.dev && (source.startsWith('github:') || source.includes('/') && !source.startsWith('.') && !source.startsWith('/'))
     ? 'github'
     : 'local'
@@ -654,17 +666,45 @@ async function cmdPluginsInstall(source: string, opts: { yes?: boolean; dev?: bo
       dev: opts.dev === true,
       force: opts.force === true,
     })
+    if (!opts.json && process.stdout.isTTY) {
+      await printPluginActionTui({
+        action: 'installed',
+        source,
+        result: accepted,
+      })
+      return
+    }
     print(accepted)
   } else {
+    if (!opts.json && process.stdout.isTTY) {
+      await printPluginActionTui({
+        action: 'installed',
+        source,
+        result,
+      })
+      return
+    }
     print(result)
   }
 }
 
-async function cmdPluginsExport(file?: string): Promise<void> {
+async function cmdPluginsExport(file?: string, opts: { json?: boolean } = {}): Promise<void> {
   const manifest = createPluginExportManifest()
   const content = serializePluginExportManifest(manifest)
   if (file) {
     writeFileSync(file, content, 'utf-8')
+    if (opts.json) {
+      print({ ok: true, file, count: manifest.plugins.length, manifest })
+      return
+    }
+    if (process.stdout.isTTY) {
+      await printPluginActionTui({
+        action: 'exported',
+        file,
+        result: { ok: true, count: manifest.plugins.length },
+      })
+      return
+    }
     console.log(`Exported ${manifest.plugins.length} plugin(s) to ${file}`)
   } else {
     process.stdout.write(content)
@@ -673,9 +713,9 @@ async function cmdPluginsExport(file?: string): Promise<void> {
 
 async function installImportedPluginLegacy(
   request: PluginImportInstallRequest,
-  opts: { yes: boolean; force: boolean },
+  opts: { yes: boolean; force: boolean; quiet?: boolean },
 ): Promise<void> {
-  console.log(`Installing ${request.id} from ${request.source}${request.ref ? ` @ ${request.ref.slice(0, 12)}` : ''}`)
+  if (!opts.quiet) console.log(`Installing ${request.id} from ${request.source}${request.ref ? ` @ ${request.ref.slice(0, 12)}` : ''}`)
   let result = await apiPost('/api/plugins/install', {
     source: request.source,
     type: request.type,
@@ -711,15 +751,30 @@ async function installImportedPluginLegacy(
   if (result.awaitingConsent) {
     throw new Error(`plugin "${request.id}" manifest kept changing between preflight and commit`)
   }
-  console.log(result.message ?? `Installed "${result.id ?? request.id}".`)
+  if (!opts.quiet) console.log(result.message ?? `Installed "${result.id ?? request.id}".`)
 }
 
-async function cmdPluginsImport(file: string, opts: { yes: boolean; force: boolean }): Promise<void> {
+async function cmdPluginsImport(file: string, opts: { yes: boolean; force: boolean; json?: boolean }): Promise<void> {
   const manifest = parsePluginExportManifest(readFileSync(file, 'utf-8'))
+  const quiet = process.stdout.isTTY || opts.json === true
   const result = await installPluginExportManifest(
     manifest,
-    request => installImportedPluginLegacy(request, opts),
+    request => installImportedPluginLegacy(request, { ...opts, quiet }),
   )
+  if (opts.json) {
+    print(result)
+    if (!result.ok) process.exit(1)
+    return
+  }
+  if (process.stdout.isTTY) {
+    await printPluginActionTui({
+      action: 'imported',
+      file,
+      result,
+    })
+    if (!result.ok) process.exit(1)
+    return
+  }
   if (result.ok) {
     console.log(`Imported ${result.installed.length} plugin(s).`)
     return
@@ -731,8 +786,16 @@ async function cmdPluginsImport(file: string, opts: { yes: boolean; force: boole
   process.exit(1)
 }
 
-async function cmdPluginsRemove(pluginId: string): Promise<void> {
+async function cmdPluginsRemove(pluginId: string, opts: { json?: boolean } = {}): Promise<void> {
   const result = await apiPost('/api/plugins/remove', { pluginId })
+  if (!opts.json && process.stdout.isTTY) {
+    await printPluginActionTui({
+      action: 'removed',
+      pluginId,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -843,16 +906,32 @@ async function cmdPluginsRestore(pluginId: string, opts: { snapshot?: string; fo
   if (result.activated === false) console.log('  Activation deferred until next server start.')
 }
 
-async function cmdPluginsLink(localPath: string, opts: { force?: boolean } = {}): Promise<void> {
+async function cmdPluginsLink(localPath: string, opts: { force?: boolean; json?: boolean } = {}): Promise<void> {
   const result = await apiPost('/api/plugins/link', {
     localPath,
     force: opts.force === true,
   })
+  if (!opts.json && process.stdout.isTTY) {
+    await printPluginActionTui({
+      action: 'linked',
+      source: localPath,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
-async function cmdPluginsUnlink(pluginId: string): Promise<void> {
+async function cmdPluginsUnlink(pluginId: string, opts: { json?: boolean } = {}): Promise<void> {
   const result = await apiPost('/api/plugins/unlink', { pluginId })
+  if (!opts.json && process.stdout.isTTY) {
+    await printPluginActionTui({
+      action: 'unlinked',
+      pluginId,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -3070,29 +3149,43 @@ export async function main(): Promise<void> {
             dev: parsed.dev,
             force: parsed.force,
             ref: parsed.ref,
+            json: parsed.json,
           })
         } else if (sub === 'export') {
-          if (args[2]?.startsWith('--')) { console.error('Usage: bakin plugins export [file]'); process.exit(1) }
-          await cmdPluginsExport(args[2])
+          const flags = args.slice(2)
+          const file = flags.find(arg => !arg.startsWith('--'))
+          const extraArg = flags.filter(arg => !arg.startsWith('--')).slice(1)[0]
+          if (extraArg) {
+            console.error(`Unexpected plugins export argument: ${extraArg}`)
+            console.error('Usage: bakin plugins export [file] [--json]')
+            process.exit(1)
+          }
+          const unknown = flags.find(arg => arg.startsWith('--') && arg !== '--json')
+          if (unknown) {
+            console.error(`Unknown plugins export flag: ${unknown}`)
+            console.error('Usage: bakin plugins export [file] [--json]')
+            process.exit(1)
+          }
+          await cmdPluginsExport(file, { json: flags.includes('--json') })
         } else if (sub === 'import') {
-          if (!args[2]) { console.error('Usage: bakin plugins import <file> [--yes] [--force]'); process.exit(1) }
+          if (!args[2]) { console.error('Usage: bakin plugins import <file> [--yes] [--force] [--json]'); process.exit(1) }
           const flags = args.slice(3)
           const extraArg = flags.find(arg => !arg.startsWith('--'))
           if (extraArg) {
             console.error(`Unexpected plugins import argument: ${extraArg}`)
-            console.error('Usage: bakin plugins import <file> [--yes] [--force]')
+            console.error('Usage: bakin plugins import <file> [--yes] [--force] [--json]')
             process.exit(1)
           }
-          const unknown = flags.find(arg => arg.startsWith('--') && arg !== '--yes' && arg !== '--force')
+          const unknown = flags.find(arg => arg.startsWith('--') && arg !== '--yes' && arg !== '--force' && arg !== '--json')
           if (unknown) {
             console.error(`Unknown plugins import flag: ${unknown}`)
-            console.error('Usage: bakin plugins import <file> [--yes] [--force]')
+            console.error('Usage: bakin plugins import <file> [--yes] [--force] [--json]')
             process.exit(1)
           }
-          await cmdPluginsImport(args[2], { yes: flags.includes('--yes'), force: flags.includes('--force') })
+          await cmdPluginsImport(args[2], { yes: flags.includes('--yes'), force: flags.includes('--force'), json: flags.includes('--json') })
         } else if (sub === 'remove') {
-          if (!args[2]) { console.error('Usage: bakin plugins remove <id>'); process.exit(1) }
-          await cmdPluginsRemove(args[2])
+          if (!args[2]) { console.error('Usage: bakin plugins remove <id> [--json]'); process.exit(1) }
+          await cmdPluginsRemove(args[2], { json: args.slice(3).includes('--json') })
         } else if (sub === 'restore') {
           if (!args[2]) { console.error(PLUGIN_RESTORE_USAGE); process.exit(1) }
           const parsed = parsePluginRestoreFlags(args.slice(3))
@@ -3107,11 +3200,11 @@ export async function main(): Promise<void> {
             list: parsed.list,
           })
         } else if (sub === 'link') {
-          if (!args[2]) { console.error('Usage: bakin plugins link <localPath> [--force]'); process.exit(1) }
-          await cmdPluginsLink(args[2], { force: args.slice(3).includes('--force') })
+          if (!args[2]) { console.error('Usage: bakin plugins link <localPath> [--force] [--json]'); process.exit(1) }
+          await cmdPluginsLink(args[2], { force: args.slice(3).includes('--force'), json: args.slice(3).includes('--json') })
         } else if (sub === 'unlink') {
-          if (!args[2]) { console.error('Usage: bakin plugins unlink <id>'); process.exit(1) }
-          await cmdPluginsUnlink(args[2])
+          if (!args[2]) { console.error('Usage: bakin plugins unlink <id> [--json]'); process.exit(1) }
+          await cmdPluginsUnlink(args[2], { json: args.slice(3).includes('--json') })
         } else {
           console.error(`Unknown plugins subcommand: ${sub}`)
           process.exit(1)
