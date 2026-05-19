@@ -117,7 +117,7 @@ export function MultiSelect({
     value: item.id,
     label: optionLabel(item),
   })), [enabledItems])
-  const defaultValue = useMemo(() => [...state.selectedIds], [])
+  const defaultValue = useMemo(() => [...state.selectedIds], [state.selectedIds])
 
   useEffect(() => {
     stateRef.current = state
