@@ -24,6 +24,14 @@ export interface StatusRosterData {
   mainAgentId?: string | null
 }
 
+export interface RuntimeActionData {
+  action?: unknown
+  target?: unknown
+  result?: unknown
+  message?: unknown
+  detail?: unknown
+}
+
 export interface TaskRowData {
   id?: unknown
   title?: unknown
@@ -454,6 +462,46 @@ function taskColumnStatus(column: string): TuiStatus {
     default:
       return 'todo'
   }
+}
+
+function runtimeActionResult(action: RuntimeActionData): Record<string, unknown> {
+  return isPlainRecord(action.result) ? action.result : {}
+}
+
+function runtimeActionStatus(action: RuntimeActionData): TuiStatus {
+  const result = runtimeActionResult(action)
+  if (objectField(result, 'ok') === false) return 'fail'
+  return 'sent'
+}
+
+function runtimeActionMessage(action: RuntimeActionData): string {
+  const name = valueText(action.action, 'updated')
+  const target = valueText(action.target, 'runtime')
+  const result = runtimeActionResult(action)
+  const error = valueText(objectField(result, 'error'), '')
+
+  if (error) return error
+  if (name === 'dispatch') return 'Triggered immediate task dispatch.'
+  if (name === 'message') return `Sent message to ${target}.`
+  return `Updated ${target}.`
+}
+
+function runtimeActionDetail(action: RuntimeActionData): string {
+  const detail = valueText(action.detail, '')
+  const result = runtimeActionResult(action)
+  const reply = valueText(objectField(result, 'reply'), '')
+  const ts = valueText(objectField(result, 'ts'), '')
+
+  return [detail, reply, ts].filter(Boolean).join('\n')
+}
+
+function runtimeActionRows(action: RuntimeActionData): FindingRow[] {
+  return [{
+    status: runtimeActionStatus(action),
+    label: valueText(action.target, valueText(action.action, 'runtime')),
+    message: valueText(action.message, runtimeActionMessage(action)),
+    detail: runtimeActionDetail(action) || undefined,
+  }]
 }
 
 function orderedTaskColumns(columns: Record<string, TaskRowData[]>): Array<[string, TaskRowData[]]> {
@@ -1155,6 +1203,28 @@ export function StatusReport({ dispatch, roster, color = true }: {
           label: roster.mainAgentId ?? 'main',
           message: agentCount > 0 ? roster.agentIds.join(', ') : 'No agents reported by the runtime.',
         }]} color={color} />
+      </Section>
+    </Box>
+  )
+}
+
+export function RuntimeActionReport({ action, color = true }: {
+  action: RuntimeActionData
+  color?: boolean
+}) {
+  const actionName = valueText(action.action, 'updated')
+  const target = valueText(action.target, 'runtime')
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Runtime action" subtitle="Runtime request accepted" meta={actionName} color={color} />
+      <SummaryStrip items={[
+        { label: 'action', value: actionName, status: runtimeActionStatus(action) },
+        { label: 'target', value: target, status: 'ok' },
+      ]} color={color} />
+      <Section title="Result" color={color}>
+        <FindingRows rows={runtimeActionRows(action)} color={color} />
+        <Text> </Text>
       </Section>
     </Box>
   )

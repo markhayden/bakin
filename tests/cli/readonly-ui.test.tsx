@@ -15,6 +15,7 @@ import {
   PluginRestoreSnapshotsReport,
   PluginsListReport,
   ReindexReport,
+  RuntimeActionReport,
   ScheduleListReport,
   ScheduleRunsReport,
   SearchResultsReport,
@@ -50,6 +51,35 @@ describe('read-only CLI TUI screens', () => {
     expect(output).toContain('DISPATCH')
     expect(output).toContain('main, patch')
     expect(output).not.toContain('=== Bakin Status ===')
+  })
+
+  it('renders runtime action confirmations with shared TUI primitives', () => {
+    const dispatch = renderToString(
+      <RuntimeActionReport
+        action={{
+          action: 'dispatch',
+          target: 'task dispatcher',
+          result: { ok: true, ts: '2026-05-18T09:00:00.000Z' },
+        }}
+      />,
+    )
+    const message = renderToString(
+      <RuntimeActionReport
+        action={{
+          action: 'message',
+          target: 'patch',
+          detail: 'Check the build',
+          result: { ok: true, reply: 'Message accepted' },
+        }}
+      />,
+    )
+
+    expect(dispatch).toContain('Runtime action')
+    expect(dispatch).toContain('RESULT')
+    expect(dispatch).toContain('Triggered immediate task dispatch.')
+    expect(dispatch).toContain('2026-05-18T09:00:00.000Z')
+    expect(message).toContain('Sent message to patch.')
+    expect(message).toContain('Message accepted')
   })
 
   it('renders task board rows as a table with column status tokens', () => {

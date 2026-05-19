@@ -77,6 +77,27 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).not.toContain('=== Bakin Status ===')
   })
 
+  it('renders runtime action confirmations with the shared TUI screen in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true, ts: '2026-05-18T09:00:00.000Z' }))
+    process.argv = ['bun', 'cli/bakin.ts', 'dispatch']
+    await main()
+    expect(output()).toContain('Runtime action')
+    expect(output()).toContain('Triggered immediate task dispatch.')
+    expect(output()).toContain('RESULT')
+    expect(output()).not.toContain('"ok": true')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true, reply: 'Message accepted' }))
+    process.argv = ['bun', 'cli/bakin.ts', 'agents', 'send', 'patch', 'Check the build']
+    await main()
+    expect(output()).toContain('Runtime action')
+    expect(output()).toContain('Sent message to patch.')
+    expect(output()).toContain('Message accepted')
+    expect(output()).not.toContain('"reply"')
+  })
+
   it('renders tasks, agents, and plugins with shared TUI screens', async () => {
     const { main } = await import('../../cli/bakin')
 
