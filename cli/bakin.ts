@@ -164,6 +164,19 @@ function print(data: unknown): void {
   }
 }
 
+async function printGenericCommandResultTui(command: string, data: unknown): Promise<void> {
+  const [{ renderCliResult }, { okResult }] = await Promise.all([
+    import('../src/core/cli/render'),
+    import('../src/core/cli/result'),
+  ])
+  console.log(renderCliResult(okResult(command, data), { mode: 'ink' }).trimEnd())
+}
+
+async function printPluginCliCommandResult(command: string, args: string[], data: unknown): Promise<void> {
+  if (process.stdout.isTTY && !args.includes('--json')) await printGenericCommandResultTui(command, data)
+  else print(data)
+}
+
 function printTable(rows: Record<string, unknown>[], columns?: string[]): void {
   if (rows.length === 0) {
     console.log('(none)')
@@ -3201,13 +3214,14 @@ async function dispatchPluginCliCommand(cmd: string, args: string[]): Promise<bo
     if (!command.dispatch) continue
     const params = matchPluginCliCommand(command, cmd, args)
     if (!params) continue
+    const invocation = invocationCommand([cmd, ...args])
 
     if (command.dispatch.type === 'execTool') {
       const result = await apiPost(`/api/exec-tools/${encodeURIComponent(command.dispatch.name)}`, {
         params,
         agent: 'cli',
       })
-      print(result)
+      await printPluginCliCommandResult(invocation, args, result)
       return true
     }
 
@@ -3215,7 +3229,7 @@ async function dispatchPluginCliCommand(cmd: string, args: string[]): Promise<bo
       method: command.dispatch.method,
       body: command.dispatch.method === 'GET' ? undefined : JSON.stringify(params),
     })
-    print(result)
+    await printPluginCliCommandResult(invocation, args, result)
     return true
   }
   return false
@@ -3957,7 +3971,7 @@ export async function main(): Promise<void> {
         }
         break
 
-      default:
+      default: {
         let pluginLookupError: string | undefined
         if (!BINARY_ONLY_COMMANDS.has(cmd)) {
           try {
@@ -3974,6 +3988,7 @@ export async function main(): Promise<void> {
         if (process.stdout.isTTY) await printHelpTui(`Unknown command: ${cmd}`, pluginLookupError)
         else console.log(USAGE.trim())
         process.exit(1)
+      }
     }
   } catch (err) {
     if (err instanceof Error && err.name === 'BakinDelegatedCliExit') {
