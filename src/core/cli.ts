@@ -101,61 +101,6 @@ async function cmdVersion(): Promise<number> {
   return 0
 }
 
-async function cmdStatus(): Promise<number> {
-  try {
-    const info = await api<Record<string, unknown>>('/api/dispatch')
-    console.log('=== Bakin Status ===')
-    console.log(`Version: ${APP_VERSION}`)
-    console.log(`Dispatch interval: ${info.intervalMin}min`)
-    console.log(`Last run: ${info.lastRun || 'never'}`)
-    console.log(`Next run: ${info.nextRun} (${info.secondsUntilNext}s)`)
-    return 0
-  } catch (err) {
-    console.error('Error: Cannot reach a running Bakin server.')
-    console.error(`  Tried: ${BAKIN_URL}/api/dispatch`)
-    console.error(`  Detail: ${err instanceof Error ? err.message : String(err)}`)
-    return 1
-  }
-}
-
-async function cmdStop(): Promise<number> {
-  // Find the Bakin server PID and send SIGTERM. On macOS + Linux we ask the
-  // server for its own pid first (returned via /api/version headers) — if
-  // the server is unreachable, fall back to pgrep-style discovery.
-  try {
-    const res = await fetch(`${BAKIN_URL}/api/version`, { signal: AbortSignal.timeout(2000) })
-    if (!res.ok) throw new Error(`status ${res.status}`)
-  } catch {
-    console.log('No running Bakin server at ' + BAKIN_URL)
-    return 0
-  }
-  // No /api/shutdown endpoint; rely on SIGTERM via pgrep. The binary
-  // names itself `bakin` so pgrep -x bakin finds it.
-  const { spawnSync } = await import('node:child_process')
-  const result = spawnSync('pgrep', ['-f', 'bakin'], { encoding: 'utf-8' })
-  const pids = result.stdout
-    .split('\n')
-    .map(s => s.trim())
-    .filter(Boolean)
-    .map(Number)
-    .filter(pid => pid && pid !== process.pid)
-  if (pids.length === 0) {
-    console.log('No running Bakin process found')
-    return 0
-  }
-  let stopped = 0
-  for (const pid of pids) {
-    try {
-      process.kill(pid, 'SIGTERM')
-      stopped++
-    } catch {
-      // Might not be ours — skip.
-    }
-  }
-  console.log(`Sent SIGTERM to ${stopped} process(es)`)
-  return 0
-}
-
 interface ListPluginRow {
   id: string
   name: string
