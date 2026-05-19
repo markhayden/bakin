@@ -344,6 +344,31 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).not.toContain('item in trash:')
   })
 
+  it('renders trash action confirmations with the shared TUI screen in a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      restoredPath: '/Users/roscoe/.bakin/assets/doc.md',
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'trash', 'restore', 'doc.md__deleted-20260518']
+    await main()
+    expect(output()).toContain('Trash action')
+    expect(output()).toContain('RESULT')
+    expect(output()).toContain('Restored doc.md__deleted-20260518.')
+    expect(output()).not.toContain('Restored →')
+
+    log.mockClear()
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ count: 2 }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, deleted: 2 }))
+    process.argv = ['bun', 'cli/bakin.ts', 'trash', 'empty']
+    await main()
+    expect(output()).toContain('Trash action')
+    expect(output()).toContain('Permanently deleted 2 items.')
+    expect(output()).toContain('RESULT')
+  })
+
   it('renders agent task lists with the shared TUI screen in a TTY', async () => {
     const { main } = await import('../../cli/bakin')
 

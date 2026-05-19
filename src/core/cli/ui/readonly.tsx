@@ -209,6 +209,14 @@ export interface TrashAssetData {
   metadata?: unknown
 }
 
+export interface TrashActionData {
+  action?: unknown
+  target?: unknown
+  count?: unknown
+  message?: unknown
+  detail?: unknown
+}
+
 interface TaskTableRow {
   status: TuiStatus
   column: string
@@ -895,6 +903,32 @@ function trashAssetTableRows(assets: TrashAssetData[]): TrashAssetTableRow[] {
     expires: daysUntilText(asset.expiresAt),
     agent: metadataAgent(asset.metadata),
   }))
+}
+
+function trashActionStatus(action: TrashActionData): TuiStatus {
+  const name = valueText(action.action)
+  if (name === 'empty') return 'skip'
+  return name === 'restored' || name === 'emptied' ? 'applied' : 'ok'
+}
+
+function trashActionRows(action: TrashActionData) {
+  const status = trashActionStatus(action)
+  const actionName = valueText(action.action, 'updated')
+  const label = valueText(action.target, actionName)
+  const count = valueText(action.count, '')
+  const fallback = actionName === 'emptied'
+    ? `Permanently deleted ${count || '0'} item${count === '1' ? '' : 's'}.`
+    : actionName === 'empty'
+      ? 'Trash is already empty.'
+      : `Updated ${label}.`
+  const detail = valueText(action.detail, '')
+
+  return [{
+    status,
+    label,
+    message: valueText(action.message, fallback),
+    detail: detail || undefined,
+  }]
 }
 
 export function StatusReport({ dispatch, roster, color = true }: {
@@ -1740,6 +1774,28 @@ export function TrashListReport({ assets, color = true }: {
           message: 'bakin trash restore <trashName>',
           detail: 'Use the full trash filename with the __deleted- suffix.',
         }]} color={color} />
+      </Section>
+    </Box>
+  )
+}
+
+export function TrashActionReport({ action, color = true }: {
+  action: TrashActionData
+  color?: boolean
+}) {
+  const actionName = valueText(action.action, 'updated')
+  const count = valueText(action.count, '')
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Trash action" subtitle="Soft-deleted assets updated" meta={actionName} color={color} />
+      <SummaryStrip items={[
+        { label: 'action', value: actionName, status: trashActionStatus(action) },
+        { label: 'items', value: count || '-', status: count ? 'ok' : 'skip' },
+      ]} color={color} />
+      <Section title="Result" color={color}>
+        <FindingRows rows={trashActionRows(action)} color={color} />
+        <Text> </Text>
       </Section>
     </Box>
   )
