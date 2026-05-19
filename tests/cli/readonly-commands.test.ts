@@ -309,6 +309,54 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).toContain('DIRECTORIES')
     expect(output()).toContain('/Users/roscoe/.bakin')
     expect(output()).not.toContain('Content dir:')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      dispatch: { intervalMs: 300000, maxRetries: 3 },
+      runtime: { adapter: 'openclaw' },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'settings', 'get', 'dispatch.intervalMs']
+    await main()
+    expect(output()).toContain('Settings')
+    expect(output()).toContain('dispatch.intervalMs')
+    expect(output()).toContain('300000')
+    expect(output()).toContain('CONFIGURATION')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }))
+    process.argv = ['bun', 'cli/bakin.ts', 'settings', 'set', 'dispatch.intervalMs', '300000']
+    await main()
+    expect(output()).toContain('Settings action')
+    expect(output()).toContain('Updated setting dispatch.intervalMs.')
+    expect(output()).toContain('Value: 300000')
+    expect(output()).not.toContain('"ok": true')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      dispatch: { intervalMs: 300000, maxRetries: 3 },
+      runtime: { adapter: 'openclaw' },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'settings', 'get', 'dispatch.intervalMin', '--json']
+    await main()
+    expect(output()).toBe('null')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      path: '/Users/roscoe/.bakin/assets',
+      isBakinHome: true,
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'paths', 'assets']
+    await main()
+    expect(output()).toContain('Paths')
+    expect(output()).toContain('assets')
+    expect(output()).toContain('/Users/roscoe/.bakin/assets')
+
+    log.mockClear()
+    fetchMock.mockResolvedValueOnce(jsonResponse({ path: '/Users/roscoe/.bakin/assets' }))
+    process.argv = ['bun', 'cli/bakin.ts', 'paths', 'assets', '--json']
+    await main()
+    expect(output()).toContain('"path": "/Users/roscoe/.bakin/assets"')
+    expect(output()).not.toContain('Paths')
   })
 
   it('renders workflows list with the shared TUI screen in a TTY', async () => {

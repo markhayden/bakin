@@ -22,6 +22,7 @@ import {
   ScheduleRunsReport,
   SearchResultsReport,
   SearchStatsReport,
+  SettingsActionReport,
   SettingsReport,
   StatusReport,
   TaskActionReport,
@@ -219,6 +220,25 @@ describe('read-only CLI TUI screens', () => {
     expect(paths).toContain('DIRECTORIES')
     expect(paths).toContain('home')
     expect(paths).toContain('/Users/roscoe/.bakin')
+  })
+
+  it('renders settings updates with shared TUI primitives', () => {
+    const output = renderToString(
+      <SettingsActionReport
+        action={{
+          action: 'updated',
+          key: 'dispatch.intervalMs',
+          value: 300000,
+          result: { ok: true },
+        }}
+      />,
+    )
+
+    expect(output).toContain('Settings action')
+    expect(output).toContain('RESULT')
+    expect(output).toContain('Updated setting dispatch.intervalMs.')
+    expect(output).toContain('Value: 300000')
+    expect(output).not.toContain('"ok"')
   })
 
   it('renders agent-rules check results with shared TUI primitives', () => {
