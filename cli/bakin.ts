@@ -21,6 +21,7 @@ import type { Permission } from '@bakin/core/plugins/permissions'
 import { extractApiErrorMessage, formatApiError } from '../src/core/cli/api-error'
 import type {
   AgentRuleResultData,
+  CommandFailureData,
   CommandIssueData,
   HelpGroupData,
   PackageActionData,
@@ -221,6 +222,19 @@ async function printCommandIssueTui(issue: CommandIssueData): Promise<void> {
     import('react'),
   ])
   console.log(renderToString(createElement(CommandIssueReport, { issue })))
+}
+
+async function printCommandFailureTui(failure: CommandFailureData): Promise<void> {
+  const [{ CommandFailureReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(CommandFailureReport, { failure })))
+}
+
+function invocationCommand(args: string[]): string {
+  return args.length > 0 ? `bakin ${args.join(' ')}` : 'bakin'
 }
 
 function normalizeUsage(usage: string): string {
@@ -3952,11 +3966,30 @@ export async function main(): Promise<void> {
     if (
       isServerConnectionError(err)
     ) {
-      console.error('Error: Cannot connect to Bakin. Is the server running?')
-      console.error(`  Tried: ${BASE_URL}`)
-      console.error(`  Run \`bakin start\` to launch the server.`)
+      if (process.stdout.isTTY) {
+        await printCommandFailureTui({
+          command: invocationCommand(args),
+          message: 'Cannot connect to Bakin. Is the server running?',
+          detail: `Tried: ${BASE_URL}`,
+          code: 'SERVER_UNREACHABLE',
+          next: 'Run `bakin start` to launch the server.',
+        })
+      } else {
+        console.error('Error: Cannot connect to Bakin. Is the server running?')
+        console.error(`  Tried: ${BASE_URL}`)
+        console.error(`  Run \`bakin start\` to launch the server.`)
+      }
     } else {
-      console.error('Error:', err instanceof Error ? err.message : String(err))
+      const message = err instanceof Error ? err.message : String(err)
+      if (process.stdout.isTTY) {
+        await printCommandFailureTui({
+          command: invocationCommand(args),
+          message,
+          code: 'COMMAND_FAILED',
+        })
+      } else {
+        console.error('Error:', message)
+      }
     }
     process.exit(1)
   }

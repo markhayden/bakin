@@ -796,7 +796,7 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).toContain('RESULT')
   })
 
-  it('prints parsed API JSON errors without raw response bodies', async () => {
+  it('renders parsed API JSON errors without raw response bodies', async () => {
     const { main } = await import('../../cli/bakin')
 
     fetchMock.mockResolvedValueOnce({
@@ -808,8 +808,37 @@ describe('read-only CLI TTY commands', () => {
     process.argv = ['bun', 'cli/bakin.ts', 'trash', 'restore', 'test']
 
     await expect(main()).rejects.toThrow('exit:1')
-    expect(errorOutput()).toContain('Error: HTTP 500: Failed to restore asset')
-    expect(errorOutput()).not.toContain('{"error"')
+    expect(output()).toContain('Command failed  bakin trash restore test')
+    expect(output()).toContain('HTTP 500: Failed to restore asset')
+    expect(output()).not.toContain('{"error"')
+    expect(errorOutput()).toBe('')
+  })
+
+  it('renders server connection failures with the shared TUI when stdout is a TTY', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'))
+    process.argv = ['bun', 'cli/bakin.ts', 'tasks', 'list']
+
+    await expect(main()).rejects.toThrow('exit:1')
+    expect(output()).toContain('Command failed  bakin tasks list')
+    expect(output()).toContain('Cannot connect to Bakin. Is the server running?')
+    expect(output()).toContain('SERVER_UNREACHABLE')
+    expect(output()).toContain('Run `bakin start`')
+    expect(errorOutput()).toBe('')
+  })
+
+  it('keeps server connection failures plain outside TTY', async () => {
+    setStdoutIsTTY(false)
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'))
+    process.argv = ['bun', 'cli/bakin.ts', 'tasks', 'list']
+
+    await expect(main()).rejects.toThrow('exit:1')
+    expect(output()).toBe('')
+    expect(errorOutput()).toContain('Error: Cannot connect to Bakin. Is the server running?')
+    expect(errorOutput()).toContain('Run `bakin start` to launch the server.')
   })
 
   it('renders agent task lists with the shared TUI screen in a TTY', async () => {

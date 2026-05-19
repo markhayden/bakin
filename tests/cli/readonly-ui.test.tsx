@@ -8,6 +8,7 @@ import {
   AgentStatusReport,
   AgentTasksReport,
   AgentsListReport,
+  CommandFailureReport,
   CommandIssueReport,
   DocsReport,
   HelpReport,
@@ -115,6 +116,28 @@ describe('read-only CLI TUI screens', () => {
     expect(output).toContain('bakin tasks get <id>')
     expect(output).toContain('AVAILABLE')
     expect(output).toContain('list | get | create')
+  })
+
+  it('renders command runtime failures with shared TUI primitives', () => {
+    const output = renderToString(
+      <CommandFailureReport
+        failure={{
+          command: 'bakin tasks list',
+          message: 'Cannot connect to Bakin. Is the server running?',
+          detail: 'Tried: http://localhost:3737',
+          code: 'SERVER_UNREACHABLE',
+          next: 'Run `bakin start` to launch the server.',
+        }}
+      />,
+    )
+
+    expect(output).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output).toContain('Command failed  bakin tasks list')
+    expect(output).toContain('Cannot connect to Bakin')
+    expect(output).toContain('SERVER_UNREACHABLE')
+    expect(output).toContain('PROBLEM')
+    expect(output).toContain('NEXT')
+    expect(output).toContain('Run `bakin start`')
   })
 
   it('renders runtime action confirmations with shared TUI primitives', () => {
