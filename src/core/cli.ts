@@ -27,7 +27,7 @@ import {
   serializePluginExportManifest,
   type PluginImportInstallRequest,
 } from './plugins/import-export'
-import { formatApiError } from './cli/api-error'
+import { extractApiErrorMessage, formatApiError } from './cli/api-error'
 
 const BAKIN_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 
@@ -44,6 +44,47 @@ async function api<T = unknown>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(formatApiError(res.status, body))
   }
   return (await res.json()) as T
+}
+
+function jsonObject(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function parseJsonText(text: string): unknown {
+  if (!text.trim()) return null
+  try {
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
+}
+
+function printJson(value: unknown): void {
+  console.log(JSON.stringify(value, null, 2))
+}
+
+function apiErrorPayload(status: number, body: string): Record<string, unknown> {
+  const parsed = jsonObject(parseJsonText(body))
+  const message = extractApiErrorMessage(body) || `HTTP ${status}`
+  return {
+    ...(parsed ?? {}),
+    ok: false,
+    status,
+    error: typeof parsed?.error === 'string' && parsed.error.trim() ? parsed.error : message,
+  }
+}
+
+async function apiPostJson(path: string, body?: unknown): Promise<{ ok: true; data: unknown } | { ok: false; data: Record<string, unknown> }> {
+  const res = await fetch(`${BAKIN_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  const text = await res.text()
+  if (!res.ok) return { ok: false, data: apiErrorPayload(res.status, text) }
+  return { ok: true, data: parseJsonText(text) }
 }
 
 async function cmdVersion(): Promise<number> {
@@ -324,8 +365,18 @@ async function cmdPluginsImport(file: string, opts: { yes: boolean; force: boole
   }
 }
 
-async function cmdPluginsUpgrade(pluginId: string, opts: { yes: boolean }): Promise<number> {
+async function cmdPluginsUpgrade(pluginId: string, opts: { yes: boolean; json?: boolean }): Promise<number> {
   try {
+    if (opts.json) {
+      const response = await apiPostJson('/api/plugins/upgrade', { pluginId, yes: opts.yes })
+      printJson(response.data)
+      if (!response.ok) return 1
+      const result = jsonObject(response.data) ?? {}
+      if (result.core === true) return 2
+      if (result.error || result.awaitingConsent === true) return 1
+      return 0
+    }
+
     const res = await api<{
       ok?: boolean
       error?: string
@@ -372,7 +423,7 @@ async function cmdPluginsUpgrade(pluginId: string, opts: { yes: boolean }): Prom
         return 1
       }
       // Re-run with yes:true so the server completes the upgrade.
-      return cmdPluginsUpgrade(pluginId, { yes: true })
+      return cmdPluginsUpgrade(pluginId, { yes: true, json: opts.json })
     }
     const fromV = res.before?.version ?? '?'
     const toV = res.after?.version ?? '?'
@@ -388,7 +439,9 @@ async function cmdPluginsUpgrade(pluginId: string, opts: { yes: boolean }): Prom
     }
     return 0
   } catch (err) {
-    console.error(`Upgrade failed: ${err instanceof Error ? err.message : String(err)}`)
+    const message = `Upgrade failed: ${err instanceof Error ? err.message : String(err)}`
+    if (opts.json) printJson({ ok: false, error: message })
+    else console.error(message)
     return 1
   }
 }
@@ -624,15 +677,25 @@ async function cmdPluginsRestore(
   }
 }
 
-async function cmdPluginsScaffold(name: string): Promise<number> {
+async function cmdPluginsScaffold(name: string, opts: { json?: boolean } = {}): Promise<number> {
   // Implementation lands in TH4 (src/core/plugin-scaffold.ts). Use a
   // variable specifier so TypeScript doesn't complain before that file
   // exists — the runtime import returns Cannot-find-module until then.
   try {
-    const mod = await import(/* @vite-ignore */ './plugin-scaffold' as string) as { scaffoldPlugin: (name: string) => number }
+    const mod = await import(/* @vite-ignore */ './plugin-scaffold' as string) as {
+      scaffoldPlugin: (name: string) => number
+      createPluginScaffold: (name: string) => { ok: boolean }
+    }
+    if (opts.json) {
+      const result = mod.createPluginScaffold(name)
+      printJson(result)
+      return result.ok ? 0 : 1
+    }
     return mod.scaffoldPlugin(name)
   } catch (err) {
-    console.error(`plugins scaffold is not available: ${err instanceof Error ? err.message : String(err)}`)
+    const message = `plugins scaffold is not available: ${err instanceof Error ? err.message : String(err)}`
+    if (opts.json) printJson({ ok: false, error: message })
+    else console.error(message)
     return 1
   }
 }
@@ -808,11 +871,23 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
         }
         if (sub === 'upgrade') {
           if (!args[2]) {
-            console.error('Usage: bakin plugins upgrade <id> [--yes]')
+            console.error('Usage: bakin plugins upgrade <id> [--yes] [--json]')
             return { startServer: false, exitCode: 1 }
           }
-          const yes = args.slice(3).includes('--yes')
-          return { startServer: false, exitCode: await cmdPluginsUpgrade(args[2], { yes }) }
+          const flags = args.slice(3)
+          const unknown = flags.find(arg => arg !== '--yes' && arg !== '--json')
+          if (unknown) {
+            console.error(`Unknown plugins upgrade flag: ${unknown}`)
+            console.error('Usage: bakin plugins upgrade <id> [--yes] [--json]')
+            return { startServer: false, exitCode: 1 }
+          }
+          return {
+            startServer: false,
+            exitCode: await cmdPluginsUpgrade(args[2], {
+              yes: flags.includes('--yes'),
+              json: flags.includes('--json'),
+            }),
+          }
         }
         if (sub === 'remove') {
           if (!args[2]) {
@@ -838,10 +913,17 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
         }
         if (sub === 'scaffold') {
           if (!args[2]) {
-            console.error('Usage: bakin plugins scaffold <name>')
+            console.error('Usage: bakin plugins scaffold <name> [--json]')
             return { startServer: false, exitCode: 1 }
           }
-          return { startServer: false, exitCode: await cmdPluginsScaffold(args[2]) }
+          const flags = args.slice(3)
+          const unknown = flags.find(arg => arg !== '--json')
+          if (unknown) {
+            console.error(`Unknown plugins scaffold flag: ${unknown}`)
+            console.error('Usage: bakin plugins scaffold <name> [--json]')
+            return { startServer: false, exitCode: 1 }
+          }
+          return { startServer: false, exitCode: await cmdPluginsScaffold(args[2], { json: flags.includes('--json') }) }
         }
         if (sub === 'link') {
           if (!args[2]) {

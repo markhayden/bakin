@@ -18,7 +18,7 @@ import {
   type PluginImportInstallRequest,
 } from '../src/core/plugins/import-export'
 import type { Permission } from '@bakin/core/plugins/permissions'
-import { formatApiError } from '../src/core/cli/api-error'
+import { extractApiErrorMessage, formatApiError } from '../src/core/cli/api-error'
 import type {
   AgentRuleResultData,
   PackageActionData,
@@ -96,6 +96,45 @@ async function apiPost(path: string, body?: unknown): Promise<unknown> {
     method: 'POST',
     body: body ? JSON.stringify(body) : undefined,
   })
+}
+
+function jsonObject(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function parseJsonText(text: string): unknown {
+  if (!text.trim()) return null
+  try {
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
+}
+
+function apiErrorPayload(status: number, body: string): Record<string, unknown> {
+  const parsed = jsonObject(parseJsonText(body))
+  const message = extractApiErrorMessage(body) || `HTTP ${status}`
+  return {
+    ...(parsed ?? {}),
+    ok: false,
+    status,
+    error: typeof parsed?.error === 'string' && parsed.error.trim() ? parsed.error : message,
+  }
+}
+
+async function apiPostJson(path: string, body?: unknown): Promise<{ ok: true; data: unknown } | { ok: false; data: Record<string, unknown> }> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  const text = await res.text()
+  if (!res.ok) {
+    return { ok: false, data: apiErrorPayload(res.status, text) }
+  }
+  return { ok: true, data: parseJsonText(text) }
 }
 
 async function apiDelete(path: string, body?: unknown): Promise<unknown> {
@@ -841,7 +880,37 @@ async function cmdPluginsRemove(pluginId: string, opts: { json?: boolean } = {})
 }
 
 async function cmdPluginsUpgrade(pluginId: string, opts: { yes?: boolean; json?: boolean } = {}): Promise<void> {
-  let result = await apiPost('/api/plugins/upgrade', { pluginId, yes: opts.yes === true }) as Record<string, unknown>
+  if (opts.json) {
+    let response: Awaited<ReturnType<typeof apiPostJson>>
+    try {
+      response = await apiPostJson('/api/plugins/upgrade', { pluginId, yes: opts.yes === true })
+    } catch (err) {
+      print({ ok: false, error: err instanceof Error ? err.message : String(err) })
+      process.exit(1)
+    }
+    print(response.data)
+    if (!response.ok) process.exit(1)
+    const result = jsonObject(response.data) ?? {}
+    if (result.awaitingConsent === true) process.exit(1)
+    if (result.core === true) process.exit(2)
+    if (result.error) process.exit(1)
+    return
+  }
+
+  let result: Record<string, unknown>
+  try {
+    result = await apiPost('/api/plugins/upgrade', { pluginId, yes: opts.yes === true }) as Record<string, unknown>
+  } catch (err) {
+    if (process.stdout.isTTY) {
+      await printPluginActionTui({
+        action: 'upgraded',
+        pluginId,
+        result: { ok: false, error: err instanceof Error ? err.message : String(err) },
+      })
+      process.exit(1)
+    }
+    throw err
+  }
   const failed = result.core === true || Boolean(result.error)
   if (!opts.json && result.awaitingConsent === true) {
     const { promptUpgradeConsent } = await import('../src/core/cli/consent-prompt')
@@ -865,7 +934,7 @@ async function cmdPluginsUpgrade(pluginId: string, opts: { yes?: boolean; json?:
     result = await apiPost('/api/plugins/upgrade', { pluginId, yes: true }) as Record<string, unknown>
   }
 
-  if (!opts.json && process.stdout.isTTY) {
+  if (process.stdout.isTTY) {
     await printPluginActionTui({
       action: 'upgraded',
       pluginId,
@@ -877,7 +946,6 @@ async function cmdPluginsUpgrade(pluginId: string, opts: { yes?: boolean; json?:
   }
 
   print(result)
-  if (opts.json && result.awaitingConsent === true) process.exit(1)
   if (failed) process.exit(result.core === true ? 2 : 1)
 }
 

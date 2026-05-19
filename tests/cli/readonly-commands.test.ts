@@ -835,6 +835,21 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).not.toContain('"before"')
 
     log.mockClear()
+    error.mockClear()
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: () => Promise.resolve({ error: 'cannot upgrade core plugin: tasks' }),
+      text: () => Promise.resolve('{"error":"cannot upgrade core plugin: tasks"}'),
+    } as Response)
+    process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'upgrade', 'tasks', '--yes', '--json']
+    await expect(main()).rejects.toThrow('exit:1')
+    expect(output()).toContain('"ok": false')
+    expect(output()).toContain('"status": 400')
+    expect(output()).toContain('"error": "cannot upgrade core plugin: tasks"')
+    expect(errorOutput()).not.toContain('cannot upgrade core plugin')
+
+    log.mockClear()
     const scaffoldDir = mkdtempSync(join(tmpdir(), 'bakin-plugin-scaffold-'))
     process.chdir(scaffoldDir)
     process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'scaffold', 'smoke-plugin']
@@ -844,6 +859,14 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).toContain('Next: cd smoke-plugin && bun install && bakin')
     expect(output()).toContain('plugins install .')
     expect(existsSync(join(scaffoldDir, 'smoke-plugin', 'bakin-plugin.json'))).toBe(true)
+
+    log.mockClear()
+    process.argv = ['bun', 'cli/bakin.ts', 'plugins', 'scaffold', 'json-smoke-plugin', '--json']
+    await main()
+    expect(output()).toContain('"ok": true')
+    expect(output()).toContain('"id": "json-smoke-plugin"')
+    expect(output()).not.toContain('Plugin action')
+    expect(existsSync(join(scaffoldDir, 'json-smoke-plugin', 'bakin-plugin.json'))).toBe(true)
 
     log.mockClear()
     fetchMock.mockResolvedValueOnce(jsonResponse({
