@@ -16,9 +16,40 @@
  */
 import { APP_VERSION } from '../../packages/core/src/constants'
 import { getCliUsageGroups, renderCliUsage } from './cli/registry'
+import type { CommandFailureData, RuntimeActionData } from './cli/ui/readonly'
 import { isOnboarded } from './onboarding/state'
 
 const BAKIN_URL = process.env.BAKIN_URL || 'http://localhost:3737'
+
+function invocationCommand(args: string[]): string {
+  return args.length > 0 ? `bakin ${args.join(' ')}` : 'bakin'
+}
+
+async function printCommandFailure(
+  failure: CommandFailureData,
+  plainLines: string[] = [`Error: ${String(failure.message ?? 'Command failed')}`],
+): Promise<void> {
+  if (process.stdout.isTTY) {
+    const [{ CommandFailureReport }, { renderToString }, { createElement }] = await Promise.all([
+      import('./cli/ui/readonly'),
+      import('./cli/ui/render-to-string'),
+      import('react'),
+    ])
+    console.log(renderToString(createElement(CommandFailureReport, { failure })))
+    return
+  }
+
+  for (const line of plainLines) console.error(line)
+}
+
+async function printRuntimeAction(action: RuntimeActionData): Promise<void> {
+  const [{ RuntimeActionReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('./cli/ui/readonly'),
+    import('./cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(RuntimeActionReport, { action })))
+}
 
 async function cmdVersion(): Promise<number> {
   if (process.stdout.isTTY) {
@@ -65,11 +96,59 @@ async function checkOnboardedBeforeStart(args: string[]): Promise<number | null>
 async function cmdUpdate(): Promise<number> {
   // Use a variable specifier so TypeScript doesn't require this optional
   // implementation at build time.
+  let mod: { selfUpdate: (reporter?: {
+    log: (message: string) => void
+    error: (message: string) => void
+  }) => Promise<number> }
   try {
-    const mod = await import(/* @vite-ignore */ './self-update' as string) as { selfUpdate: () => Promise<number> }
-    return mod.selfUpdate()
+    mod = await import(/* @vite-ignore */ './self-update' as string) as typeof mod
   } catch (err) {
-    console.error(`update is not available: ${err instanceof Error ? err.message : String(err)}`)
+    const detail = err instanceof Error ? err.message : String(err)
+    await printCommandFailure({
+      command: 'bakin update',
+      message: 'update is not available.',
+      detail,
+      code: 'UPDATE_UNAVAILABLE',
+    }, [`update is not available: ${detail}`])
+    return 1
+  }
+
+  if (!process.stdout.isTTY) return await mod.selfUpdate()
+
+  const events: Array<{ level: 'info' | 'error'; message: string }> = []
+  const reporter = {
+    log: (message: string) => events.push({ level: 'info' as const, message }),
+    error: (message: string) => events.push({ level: 'error' as const, message }),
+  }
+
+  try {
+    const exitCode = await mod.selfUpdate(reporter)
+    const detail = events.map(event => event.message).join('\n')
+    if (exitCode === 0) {
+      await printRuntimeAction({
+        action: 'updated',
+        target: 'Bakin binary',
+        result: { ok: true, status: 'ok' },
+        message: events.at(-1)?.message ?? 'Bakin update completed.',
+        detail,
+      })
+    } else {
+      await printCommandFailure({
+        command: 'bakin update',
+        message: events.findLast(event => event.level === 'error')?.message ?? 'Bakin update failed.',
+        detail,
+        code: 'UPDATE_FAILED',
+      })
+    }
+    return exitCode
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err)
+    await printCommandFailure({
+      command: 'bakin update',
+      message: 'Bakin update failed.',
+      detail: [...events.map(event => event.message), detail].join('\n'),
+      code: 'UPDATE_FAILED',
+    })
     return 1
   }
 }
@@ -113,8 +192,15 @@ export async function cmdDev(devArgs: string[] = process.argv.slice(3)): Promise
   const repoRoot = here ? resolve(dirname(here), '..', '..') : process.cwd()
   const devScript = join(repoRoot, 'scripts', 'dev.ts')
   if (!existsSync(devScript)) {
-    console.error('`bakin dev` only runs from a bakin source tree.')
-    console.error('Clone https://github.com/markhayden/bakin and run `bakin dev` from the repo root.')
+    await printCommandFailure({
+      command: 'bakin dev',
+      message: '`bakin dev` only runs from a bakin source tree.',
+      detail: 'Clone https://github.com/markhayden/bakin and run `bakin dev` from the repo root.',
+      code: 'SOURCE_TREE_REQUIRED',
+    }, [
+      '`bakin dev` only runs from a bakin source tree.',
+      'Clone https://github.com/markhayden/bakin and run `bakin dev` from the repo root.',
+    ])
     return 1
   }
 
@@ -122,8 +208,14 @@ export async function cmdDev(devArgs: string[] = process.argv.slice(3)): Promise
   const proc = spawn('bun', ['run', devScript, ...devArgs], { stdio: 'inherit', cwd: repoRoot })
   return await new Promise<number>((resolvePromise) => {
     proc.once('close', (code: number | null) => resolvePromise(code ?? 0))
-    proc.once('error', (err) => {
-      console.error('Failed to spawn dev:', err instanceof Error ? err.message : String(err))
+    proc.once('error', async (err) => {
+      const detail = err instanceof Error ? err.message : String(err)
+      await printCommandFailure({
+        command: 'bakin dev',
+        message: 'Failed to spawn dev.',
+        detail,
+        code: 'DEV_SPAWN_FAILED',
+      }, [`Failed to spawn dev: ${detail}`])
       resolvePromise(1)
     })
   })
@@ -220,7 +312,12 @@ export async function dispatchCli(argv: string[]): Promise<CliResult> {
       }
     }
   } catch (err) {
-    console.error(`Error: ${err instanceof Error ? err.message : String(err)}`)
+    const message = err instanceof Error ? err.message : String(err)
+    await printCommandFailure({
+      command: invocationCommand(args),
+      message,
+      code: 'COMMAND_FAILED',
+    }, [`Error: ${message}`])
     return { startServer: false, exitCode: 1 }
   }
 }
