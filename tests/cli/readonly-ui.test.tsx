@@ -21,6 +21,7 @@ import {
   SearchStatsReport,
   SettingsReport,
   StatusReport,
+  TaskActionReport,
   TaskDetailReport,
   TasksListReport,
   TrashActionReport,
@@ -74,6 +75,38 @@ describe('read-only CLI TUI screens', () => {
     expect(output).toContain('Write docs')
     expect(output).toContain('patch')
     expect(output).not.toContain('Column: todo; Agent: patch')
+  })
+
+  it('renders task action confirmations with shared TUI primitives', () => {
+    const created = renderToString(
+      <TaskActionReport
+        action={{
+          action: 'created',
+          taskId: 'task-1',
+          title: 'Write docs',
+          agent: 'patch',
+          workflowId: 'release',
+        }}
+      />,
+    )
+    const blocked = renderToString(
+      <TaskActionReport
+        action={{
+          action: 'blocked',
+          taskId: 'task-2',
+          message: 'Blocked task task-2.',
+          detail: 'Waiting on API credentials',
+        }}
+      />,
+    )
+
+    expect(created).toContain('Task action')
+    expect(created).toContain('RESULT')
+    expect(created).toContain('task-1')
+    expect(created).toContain('Created task Write docs.')
+    expect(created).toContain('workflow')
+    expect(blocked).toContain('Blocked task task-2.')
+    expect(blocked).toContain('Waiting on API credentials')
   })
 
   it('renders task and agent detail screens with shared TUI primitives', () => {

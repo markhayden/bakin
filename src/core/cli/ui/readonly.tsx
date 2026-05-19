@@ -6,6 +6,7 @@ import {
   Section,
   StatusTable,
   SummaryStrip,
+  type FindingRow,
   type SummaryItem,
 } from './tui'
 import type { TuiStatus } from './style-tokens'
@@ -30,6 +31,18 @@ export interface TaskRowData {
 }
 
 export type TaskDetailData = Record<string, unknown>
+
+export interface TaskActionData {
+  action?: unknown
+  taskId?: unknown
+  title?: unknown
+  agent?: unknown
+  column?: unknown
+  workflowId?: unknown
+  message?: unknown
+  detail?: unknown
+  suggestedWorkflow?: unknown
+}
 
 export interface AgentTaskData {
   id?: unknown
@@ -485,6 +498,74 @@ function taskSummary(columns: Record<string, TaskRowData[]>): SummaryItem[] {
     { label: 'blocked', value: blocked, status: blocked > 0 ? 'blocked' : 'ok' },
     { label: 'done', value: done, status: done > 0 ? 'done' : 'ok' },
   ]
+}
+
+function taskActionStatus(action: TaskActionData): TuiStatus {
+  const name = valueText(action.action)
+  if (name === 'blocked') return 'blocked'
+  if (name === 'completed') return 'done'
+  if (name === 'moved') return taskColumnStatus(valueText(action.column))
+  return 'applied'
+}
+
+function taskActionMessage(action: TaskActionData): string {
+  const name = valueText(action.action, 'updated')
+  const taskId = valueText(action.taskId, 'task')
+  const title = valueText(action.title, taskId)
+  const column = valueText(action.column, '')
+  const detail = valueText(action.detail, '')
+
+  switch (name) {
+    case 'created':
+      return `Created task ${title}.`
+    case 'moved':
+      return `Moved task ${taskId}${column ? ` to ${column}` : ''}.`
+    case 'logged':
+      return `Logged progress on task ${taskId}.`
+    case 'blocked':
+      return `Blocked task ${taskId}.`
+    case 'dependency':
+      return `Added dependency for task ${taskId}.`
+    case 'completed':
+      return `Completed task ${taskId}.`
+    default:
+      return detail ? `Updated task ${taskId}.` : `Updated task ${title}.`
+  }
+}
+
+function taskActionRows(action: TaskActionData) {
+  const status = taskActionStatus(action)
+  const taskId = valueText(action.taskId, '')
+  const title = valueText(action.title, taskId || 'task')
+  const detail = valueText(action.detail, '')
+  const workflowId = valueText(action.workflowId, '')
+  const suggestedWorkflow = valueText(action.suggestedWorkflow, '')
+  const rows: FindingRow[] = [{
+    status,
+    label: taskId || title,
+    message: valueText(action.message, taskActionMessage(action)),
+    detail: detail || undefined,
+  }]
+
+  if (workflowId) {
+    rows.push({
+      status: 'ok',
+      label: 'workflow',
+      message: `Workflow ${workflowId} associated with this task.`,
+      detail: undefined,
+    })
+  }
+  if (suggestedWorkflow) {
+    rows.push({
+      status: 'warn',
+      label: 'workflow',
+      message: `Workflow ${suggestedWorkflow} matches this task but was not started.`,
+      detail: undefined,
+      next: `Re-run with --workflow=${suggestedWorkflow} or --no-workflow="<reason>".`,
+    })
+  }
+
+  return rows
 }
 
 function agentStatus(status: string): TuiStatus {
@@ -1089,6 +1170,36 @@ export function TasksListReport({ columns, column, color = true }: {
         ) : (
           <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No tasks found.' }]} color={color} />
         )}
+      </Section>
+    </Box>
+  )
+}
+
+export function TaskActionReport({ action, color = true }: {
+  action: TaskActionData
+  color?: boolean
+}) {
+  const actionName = valueText(action.action, 'updated')
+  const taskId = valueText(action.taskId, '')
+  const agent = valueText(action.agent, '')
+  const column = valueText(action.column, '')
+  const context = agent
+    ? { label: 'agent', value: agent, status: 'ok' as TuiStatus }
+    : column
+      ? { label: 'column', value: column, status: taskColumnStatus(column) }
+      : { label: 'target', value: taskId || valueText(action.title, '-'), status: taskId ? 'ok' as TuiStatus : 'skip' as TuiStatus }
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Task action" subtitle="Board task updated" meta={actionName} color={color} />
+      <SummaryStrip items={[
+        { label: 'action', value: actionName, status: taskActionStatus(action) },
+        { label: 'task', value: taskId || '-', status: taskId ? 'ok' : 'skip' },
+        context,
+      ]} color={color} />
+      <Section title="Result" color={color}>
+        <FindingRows rows={taskActionRows(action)} color={color} />
+        <Text> </Text>
       </Section>
     </Box>
   )
