@@ -2226,6 +2226,35 @@ function serverProcessPattern(): string {
   return 'tsx.*server\\.ts|bakin.*serve'
 }
 
+async function cmdStartServer(command: 'start' | 'serve', args: string[] = []): Promise<void> {
+  if (command === 'start') {
+    const { dispatchCli } = await import('../src/core/cli')
+    const result = await dispatchCli(['bun', 'bakin', 'start', ...args])
+    if (!result.startServer) {
+      process.exitCode = result.exitCode
+      return
+    }
+  }
+
+  const { spawn } = await import('child_process')
+  const { dirname, resolve } = await import('path')
+  const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
+  const programArgs = await serviceProgramArgs()
+  const child = spawn(programArgs[0], programArgs.slice(1), {
+    cwd: projectDir,
+    stdio: 'inherit',
+    env: { ...process.env },
+  })
+  const exitCode = await new Promise<number>((resolvePromise) => {
+    child.once('close', (code: number | null) => resolvePromise(code ?? 0))
+    child.once('error', (err: Error) => {
+      console.error('Failed to start Bakin:', err instanceof Error ? err.message : String(err))
+      resolvePromise(1)
+    })
+  })
+  process.exitCode = exitCode
+}
+
 async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<void> {
   const { execFileSync } = await import('child_process')
   const { existsSync, mkdirSync, unlinkSync, writeFileSync } = await import('fs')
@@ -3036,7 +3065,7 @@ async function dispatchPluginCliCommand(cmd: string, args: string[]): Promise<bo
   return false
 }
 
-const BINARY_ONLY_COMMANDS = new Set(['start'])
+const BINARY_ONLY_COMMANDS = new Set<string>()
 const USAGE = renderCliUsage({ bakinUrl: BASE_URL }, { excludeNames: BINARY_ONLY_COMMANDS })
 
 // ---------------------------------------------------------------------------
@@ -3663,6 +3692,14 @@ export async function main(): Promise<void> {
         process.exit(await cmdDev(args.slice(1)))
         break  // unreachable, but eslint's no-fallthrough doesn't know that
       }
+
+      case 'start':
+        await cmdStartServer('start', args.slice(1))
+        break
+
+      case 'serve':
+        await cmdStartServer('serve', args.slice(1))
+        break
 
       case 'reboot':
       case 'restart':

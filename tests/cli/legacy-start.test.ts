@@ -1,41 +1,82 @@
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 
-let spawnCalled = false
+let spawnCalls: unknown[][] = []
+let onboarded = false
+
+function fakeChildProcess() {
+  return {
+    once(event: string, handler: (value?: unknown) => void) {
+      if (event === 'close') handler(0)
+      return this
+    },
+  }
+}
 
 mock.module('child_process', () => ({
-  spawn: () => {
-    spawnCalled = true
-    throw new Error('legacy start must not spawn')
+  spawn: (...args: unknown[]) => {
+    spawnCalls.push(args)
+    return fakeChildProcess()
   },
   execSync: () => '',
+}))
+
+mock.module('../../src/core/onboarding/state', () => ({
+  isOnboarded: () => onboarded,
 }))
 
 describe('legacy CLI start command', () => {
   const originalArgv = process.argv
   const originalExit = process.exit
+  const originalExitCode = process.exitCode
+  const originalStdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
 
   afterEach(() => {
     process.argv = originalArgv
     process.exit = originalExit
-    spawnCalled = false
+    process.exitCode = originalExitCode
+    if (originalStdoutIsTTY) Object.defineProperty(process.stdout, 'isTTY', originalStdoutIsTTY)
+    else delete (process.stdout as { isTTY?: boolean }).isTTY
+    spawnCalls = []
+    onboarded = false
   })
 
-  it('does not exist, preventing the old detached npx tsx server path from running', async () => {
+  it('renders the shared onboarding gate instead of the old unknown command path', async () => {
     const err = spyOn(console, 'error').mockImplementation(() => {})
     const log = spyOn(console, 'log').mockImplementation(() => {})
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
     process.argv = ['bun', 'cli/bakin.ts', 'start']
-    process.exit = ((code?: number) => {
-      throw new Error(`exit:${code}`)
-    }) as never
 
     const { main } = await import('../../cli/bakin')
-    await expect(main()).rejects.toThrow('exit:1')
+    await main()
 
-    expect(spawnCalled).toBe(false)
-    const output = err.mock.calls.map(call => String(call[0])).join('\n')
-    expect(output).toContain('Unknown command: start')
-    const usage = log.mock.calls.map(call => String(call[0])).join('\n')
-    expect(usage).not.toContain('bakin start')
+    expect(process.exitCode).toBe(1)
+    expect(spawnCalls).toHaveLength(0)
+    expect(err.mock.calls).toHaveLength(0)
+    const output = log.mock.calls.map(call => String(call[0])).join('\n')
+    expect(output).toContain('Onboard')
+    expect(output).toContain('Initial setup required')
+    expect(output).toContain('Run `bakin onboard`')
+    log.mockRestore()
+    err.mockRestore()
+  })
+
+  it('starts the source server in the foreground after onboarding is complete', async () => {
+    onboarded = true
+    const err = spyOn(console, 'error').mockImplementation(() => {})
+    const log = spyOn(console, 'log').mockImplementation(() => {})
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
+    process.argv = ['bun', 'cli/bakin.ts', 'start']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    expect(process.exitCode).toBe(0)
+    expect(spawnCalls).toHaveLength(1)
+    expect(spawnCalls[0][1]).toEqual(expect.arrayContaining(['serve']))
+    expect(String((spawnCalls[0][1] as string[])[0])).toContain('server.ts')
+    expect(spawnCalls[0][2]).toEqual(expect.objectContaining({ stdio: 'inherit' }))
+    expect(err.mock.calls).toHaveLength(0)
+    expect(log.mock.calls).toHaveLength(0)
     log.mockRestore()
     err.mockRestore()
   })
