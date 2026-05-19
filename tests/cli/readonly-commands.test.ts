@@ -61,6 +61,72 @@ describe('read-only CLI TTY commands', () => {
     error.mockRestore()
   })
 
+  it('renders top-level help with the shared TUI when stdout is a TTY', async () => {
+    process.exit = ((code?: number) => {
+      throw new Error(`exit:${code ?? 0}`)
+    }) as never
+    process.argv = ['bun', 'cli/bakin.ts', '--help']
+
+    const { main } = await import('../../cli/bakin')
+    await expect(main()).rejects.toThrow('exit:0')
+
+    expect(output()).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output()).toContain('Help')
+    expect(output()).toContain('LIFECYCLE')
+    expect(output()).toContain('TASKS AND WORKFLOWS')
+    expect(output()).not.toContain('Usage: bakin <command> [options]')
+    expect(errorOutput()).toBe('')
+  })
+
+  it('accepts help as a source CLI alias for the shared TUI help', async () => {
+    process.exit = ((code?: number) => {
+      throw new Error(`exit:${code ?? 0}`)
+    }) as never
+    process.argv = ['bun', 'cli/bakin.ts', 'help']
+
+    const { main } = await import('../../cli/bakin')
+    await expect(main()).rejects.toThrow('exit:0')
+
+    expect(output()).toContain('Help')
+    expect(output()).toContain('LIFECYCLE')
+    expect(errorOutput()).toBe('')
+  })
+
+  it('renders unknown top-level commands with help in the shared TUI', async () => {
+    process.exit = ((code?: number) => {
+      throw new Error(`exit:${code ?? 0}`)
+    }) as never
+    fetchMock.mockResolvedValueOnce(jsonResponse({ plugins: [] }))
+    process.argv = ['bun', 'cli/bakin.ts', 'wat']
+
+    const { main } = await import('../../cli/bakin')
+    await expect(main()).rejects.toThrow('exit:1')
+
+    expect(errorOutput()).toContain('Unknown command: wat')
+    expect(output()).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output()).toContain('Help  unknown command')
+    expect(output()).toContain('ISSUE')
+    expect(output()).toContain('Unknown command: wat')
+    expect(output()).not.toContain('Usage: bakin <command> [options]')
+  })
+
+  it('still renders unknown-command help when plugin command lookup cannot reach the server', async () => {
+    process.exit = ((code?: number) => {
+      throw new Error(`exit:${code ?? 0}`)
+    }) as never
+    fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'))
+    process.argv = ['bun', 'cli/bakin.ts', 'wat']
+
+    const { main } = await import('../../cli/bakin')
+    await expect(main()).rejects.toThrow('exit:1')
+
+    expect(errorOutput()).toContain('Unknown command: wat')
+    expect(errorOutput()).toContain('Plugin command lookup skipped')
+    expect(output()).toContain('Help  unknown command')
+    expect(output()).toContain('Plugin command lookup skipped')
+    expect(output()).not.toContain('Error: Cannot connect to Bakin')
+  })
+
   it('renders status with the shared TUI when stdout is a TTY', async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse({

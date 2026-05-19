@@ -284,6 +284,21 @@ export interface TrashActionData {
   detail?: unknown
 }
 
+export interface HelpCommandData {
+  name?: unknown
+  usage?: unknown
+  summary?: unknown
+}
+
+export interface HelpGroupData {
+  group: string
+  commands: HelpCommandData[]
+}
+
+export interface HelpEnvData {
+  bakinUrl?: unknown
+}
+
 interface TaskTableRow {
   status: TuiStatus
   column: string
@@ -412,6 +427,11 @@ interface TrashAssetTableRow {
   deleted: string
   expires: string
   agent: string
+}
+
+interface HelpCommandRow {
+  command: string
+  summary: string
 }
 
 const TASK_COLUMN_ORDER = ['backlog', 'todo', 'blocked', 'inProgress', 'review', 'done', 'archived'] as const
@@ -1542,6 +1562,95 @@ function trashActionRows(action: TrashActionData) {
     message: valueText(action.message, fallback),
     detail: detail || undefined,
   }]
+}
+
+function helpCommandRows(commands: HelpCommandData[]): HelpCommandRow[] {
+  return commands.map(command => ({
+    command: valueText(command.usage, valueText(command.name, 'bakin')),
+    summary: valueText(command.summary),
+  }))
+}
+
+function helpCommandCount(groups: HelpGroupData[]): number {
+  return groups.reduce((total, group) => total + group.commands.length, 0)
+}
+
+function HelpCommandTable({ rows }: { rows: HelpCommandRow[] }) {
+  return (
+    <Box flexDirection="column">
+      <Box gap={2}>
+        <Box width={58} flexShrink={0}>
+          <Text bold>COMMAND</Text>
+        </Box>
+        <Box flexGrow={1} flexShrink={1}>
+          <Text bold>SUMMARY</Text>
+        </Box>
+      </Box>
+      {rows.map(row => (
+        <Box key={row.command} gap={2}>
+          <Box width={58} flexShrink={0}>
+            <Text wrap="wrap">{row.command}</Text>
+          </Box>
+          <Box flexGrow={1} flexShrink={1}>
+            <Text wrap="wrap">{row.summary}</Text>
+          </Box>
+        </Box>
+      ))}
+      <Text> </Text>
+    </Box>
+  )
+}
+
+export function HelpReport({ groups, env = {}, error, errorDetail, color = true }: {
+  groups: HelpGroupData[]
+  env?: HelpEnvData
+  error?: string
+  errorDetail?: string
+  color?: boolean
+}) {
+  const commandCount = helpCommandCount(groups)
+  const groupCount = groups.length
+  const envRows: DetailFieldRow[] = [
+    { field: 'BAKIN_URL', value: `Base URL for the running server (default: ${valueText(env.bakinUrl, 'http://localhost:3737')})` },
+    { field: 'BAKIN_HOME', value: 'Override for ~/.bakin' },
+    { field: 'PORT', value: 'Port to bind when `start` launches (default: 3737)' },
+  ]
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Help" subtitle="Command reference" meta={error ? 'unknown command' : undefined} color={color} />
+      <SummaryStrip items={[
+        { label: plural(commandCount, 'command'), value: commandCount, status: commandCount > 0 ? 'ok' : 'skip' },
+        { label: plural(groupCount, 'group'), value: groupCount, status: groupCount > 0 ? 'ok' : 'skip' },
+      ]} color={color} />
+      {error ? (
+        <Section title="Issue" color={color}>
+          <FindingRows rows={[{
+            status: 'fail',
+            label: 'command',
+            message: error,
+            detail: errorDetail,
+            next: 'Run `bakin --help` to see available commands.',
+          }]} color={color} />
+          <Text> </Text>
+        </Section>
+      ) : null}
+      {groups.map(group => (
+        <Section key={group.group} title={group.group} color={color}>
+          <HelpCommandTable rows={helpCommandRows(group.commands)} />
+        </Section>
+      ))}
+      <Section title="Environment" color={color}>
+        <DataTable
+          columns={[
+            { key: 'field', header: 'NAME', width: 14, render: row => row.field },
+            { key: 'value', header: 'VALUE', width: 52, grow: true, render: row => row.value },
+          ]}
+          rows={envRows}
+        />
+      </Section>
+    </Box>
+  )
 }
 
 export function StatusReport({ dispatch, roster, color = true }: {

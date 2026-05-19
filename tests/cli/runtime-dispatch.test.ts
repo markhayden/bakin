@@ -49,6 +49,19 @@ describe('bakin runtime binary dispatch', () => {
     error.mockRestore()
   })
 
+  it('renders binary help with the shared TUI when stdout is a TTY', async () => {
+    const { dispatchCli } = await import('../../src/core/cli')
+
+    const result = await dispatchCli(['bun', 'bakin', '--help'])
+
+    expect(result).toEqual({ startServer: false, exitCode: 0 })
+    expect(output()).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output()).toContain('Help')
+    expect(output()).toContain('LIFECYCLE')
+    expect(output()).not.toContain('Usage: bakin <command> [options]')
+    expect(errorOutput()).toBe('')
+  })
+
   it('delegates status to the shared source CLI TUI', async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse({

@@ -8,7 +8,7 @@ import {
   cmdScheduleList, cmdScheduleAdd, cmdSchedulePause,
   cmdScheduleResume, cmdScheduleRemove, cmdScheduleRun, cmdScheduleRuns,
 } from '../src/cli/schedule'
-import { renderCliUsage } from '../src/core/cli/registry'
+import { getCliUsageGroups, renderCliUsage } from '../src/core/cli/registry'
 import { parsePluginInstallArgs, PLUGIN_INSTALL_USAGE } from '../src/core/cli/plugin-install-args'
 import {
   createPluginExportManifest,
@@ -124,6 +124,13 @@ function apiErrorPayload(status: number, body: string): Record<string, unknown> 
   }
 }
 
+function isServerConnectionError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err)
+  return message.includes('ECONNREFUSED') ||
+    message.includes('Unable to connect') ||
+    message.includes('fetch failed')
+}
+
 async function apiPostJson(path: string, body?: unknown): Promise<{ ok: true; data: unknown } | { ok: false; data: Record<string, unknown> }> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
@@ -185,6 +192,20 @@ async function printRuntimeActionTui(action: RuntimeActionData): Promise<void> {
     import('react'),
   ])
   console.log(renderToString(createElement(RuntimeActionReport, { action })))
+}
+
+async function printHelpTui(error?: string, errorDetail?: string): Promise<void> {
+  const [{ HelpReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(HelpReport, {
+    groups: getCliUsageGroups({ excludeNames: BINARY_ONLY_COMMANDS }),
+    env: { bakinUrl: BASE_URL },
+    error,
+    errorDetail,
+  })))
 }
 
 async function printSettingsTui(settings: Record<string, unknown>): Promise<void> {
@@ -3372,8 +3393,9 @@ async function cmdOnboard(args: string[]): Promise<void> {
 export async function main(): Promise<void> {
   const args = process.argv.slice(2)
 
-  if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
-    console.log(USAGE.trim())
+  if (args.length === 0 || args[0] === '--help' || args[0] === '-h' || args[0] === 'help') {
+    if (process.stdout.isTTY) await printHelpTui()
+    else console.log(USAGE.trim())
     process.exit(0)
   }
 
@@ -3801,11 +3823,21 @@ export async function main(): Promise<void> {
         break
 
       default:
-        if (!BINARY_ONLY_COMMANDS.has(cmd) && await dispatchPluginCliCommand(cmd, args.slice(1))) {
-          break
+        let pluginLookupError: string | undefined
+        if (!BINARY_ONLY_COMMANDS.has(cmd)) {
+          try {
+            if (await dispatchPluginCliCommand(cmd, args.slice(1))) {
+              break
+            }
+          } catch (err) {
+            if (!isServerConnectionError(err)) throw err
+            pluginLookupError = `Plugin command lookup skipped because Bakin is not reachable at ${BASE_URL}.`
+          }
         }
         console.error(`Unknown command: ${cmd}`)
-        console.log(USAGE.trim())
+        if (pluginLookupError) console.error(pluginLookupError)
+        if (process.stdout.isTTY) await printHelpTui(`Unknown command: ${cmd}`, pluginLookupError)
+        else console.log(USAGE.trim())
         process.exit(1)
     }
   } catch (err) {
@@ -3813,10 +3845,7 @@ export async function main(): Promise<void> {
       throw err
     }
     if (
-      err instanceof Error &&
-      (err.message.includes('ECONNREFUSED') ||
-        err.message.includes('Unable to connect') ||
-        err.message.includes('fetch failed'))
+      isServerConnectionError(err)
     ) {
       console.error('Error: Cannot connect to Bakin. Is the server running?')
       console.error(`  Tried: ${BASE_URL}`)
