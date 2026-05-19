@@ -29,6 +29,7 @@ import type {
   SearchAggregationsData,
   SearchMetaData,
   SearchResultData,
+  SettingsActionData,
   TaskActionData,
   TrashActionData,
   WorkflowActionData,
@@ -153,6 +154,15 @@ async function printSettingsTui(settings: Record<string, unknown>): Promise<void
     import('react'),
   ])
   console.log(renderToString(createElement(SettingsReport, { settings })))
+}
+
+async function printSettingsActionTui(action: SettingsActionData): Promise<void> {
+  const [{ SettingsActionReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(SettingsActionReport, { action })))
 }
 
 async function printPathsTui(paths: Record<string, unknown>, isBakinHome: unknown): Promise<void> {
@@ -584,17 +594,35 @@ async function cmdAgentsTasks(agentId: string): Promise<void> {
   printTable(result.tasks, ['id', 'title', 'column'])
 }
 
-async function cmdSettingsGet(key?: string): Promise<void> {
+async function cmdSettingsGet(key?: string, opts: { json?: boolean } = {}): Promise<void> {
   const settings = await apiGet('/api/settings') as Record<string, unknown>
   if (key) {
     const parts = key.split('.')
     let val: unknown = settings
+    let found = true
     for (const part of parts) {
-      if (val && typeof val === 'object') val = (val as Record<string, unknown>)[part]
-      else val = undefined
+      if (val && typeof val === 'object' && Object.prototype.hasOwnProperty.call(val, part)) {
+        val = (val as Record<string, unknown>)[part]
+      } else {
+        val = undefined
+        found = false
+        break
+      }
+    }
+    if (opts.json) {
+      print(found ? val : null)
+      return
+    }
+    if (!opts.json && process.stdout.isTTY) {
+      await printSettingsTui({ [key]: val })
+      return
     }
     print(val)
   } else {
+    if (opts.json) {
+      print(settings)
+      return
+    }
     if (process.stdout.isTTY) {
       await printSettingsTui(settings)
       return
@@ -603,7 +631,7 @@ async function cmdSettingsGet(key?: string): Promise<void> {
   }
 }
 
-async function cmdSettingsSet(key: string, value: string): Promise<void> {
+async function cmdSettingsSet(key: string, value: string, opts: { json?: boolean } = {}): Promise<void> {
   const parts = key.split('.')
   const obj: Record<string, unknown> = {}
   let current = obj
@@ -613,13 +641,25 @@ async function cmdSettingsSet(key: string, value: string): Promise<void> {
   }
 
   // Try to parse as JSON, fall back to string
+  let parsedValue: unknown
   try {
-    current[parts[parts.length - 1]] = JSON.parse(value)
+    parsedValue = JSON.parse(value)
   } catch {
-    current[parts[parts.length - 1]] = value
+    parsedValue = value
   }
+  current[parts[parts.length - 1]] = parsedValue
 
   const result = await apiPost('/api/settings', obj)
+  if (!opts.json && process.stdout.isTTY) {
+    await printSettingsActionTui({
+      action: 'updated',
+      key,
+      value: parsedValue,
+      result,
+    })
+    return
+  }
+
   print(result)
 }
 
@@ -1923,11 +1963,20 @@ async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyA
   if (errors.length > 0 || warnings.length > 0) process.exit(1)
 }
 
-async function cmdPaths(key?: string): Promise<void> {
+async function cmdPaths(key?: string, opts: { json?: boolean } = {}): Promise<void> {
   const result = await apiGet(`/api/paths${key ? `?key=${encodeURIComponent(key)}` : ''}`) as Record<string, unknown>
 
+  if (opts.json) {
+    print(result)
+    return
+  }
+
   if (key) {
-    // Single path — print just the value (useful for scripting: bakin paths assets)
+    if (process.stdout.isTTY) {
+      await printPathsTui({ [key]: result.path }, result.isBakinHome)
+      return
+    }
+    // Single path in non-TTY mode prints just the value for scripting.
     console.log(result.path)
   } else {
     const paths = result.paths as Record<string, unknown>
@@ -2729,12 +2778,13 @@ async function withTtyRuntimeLogsSilenced<T>(
   }
 }
 
-async function cmdOnboardingMkdir(): Promise<void> {
+async function cmdOnboardingMkdir(options: { json?: boolean } = {}): Promise<void> {
   const isTTY = Boolean(process.stdout.isTTY)
+  const json = options.json === true
   const opts = {
-    interactive: isTTY,
+    interactive: isTTY && !json,
     autoApprove: true,
-    json: false,
+    json,
     checkOnly: false,
     force: false,
   }
@@ -2742,7 +2792,9 @@ async function cmdOnboardingMkdir(): Promise<void> {
     const { mkdirComponent } = await import('../src/core/onboarding/mkdir')
     return await mkdirComponent.install(opts)
   })
-  if (isTTY) {
+  if (json) {
+    console.log(JSON.stringify({ component: result.name, status: result.status, message: result.message, durationMs: result.durationMs }))
+  } else if (isTTY) {
     await printOnboardingInstallTui(result)
   } else {
     console.log(`${statusIcon(result.status)} ${result.message}`)
@@ -2750,12 +2802,13 @@ async function cmdOnboardingMkdir(): Promise<void> {
   if (result.status === 'failed') process.exit(1)
 }
 
-async function cmdOnboardingSettingsInit(): Promise<void> {
+async function cmdOnboardingSettingsInit(options: { json?: boolean } = {}): Promise<void> {
   const isTTY = Boolean(process.stdout.isTTY)
+  const json = options.json === true
   const opts = {
-    interactive: isTTY,
+    interactive: isTTY && !json,
     autoApprove: true,
-    json: false,
+    json,
     checkOnly: false,
     force: false,
   }
@@ -2763,7 +2816,9 @@ async function cmdOnboardingSettingsInit(): Promise<void> {
     const { settingsComponent } = await import('../src/core/onboarding/settings')
     return await settingsComponent.install(opts)
   })
-  if (isTTY) {
+  if (json) {
+    console.log(JSON.stringify({ component: result.name, status: result.status, message: result.message, durationMs: result.durationMs }))
+  } else if (isTTY) {
     await printOnboardingInstallTui(result)
   } else {
     console.log(`${statusIcon(result.status)} ${result.message}`)
@@ -3122,12 +3177,14 @@ export async function main(): Promise<void> {
 
       case 'settings':
         if (sub === 'get') {
-          await cmdSettingsGet(args[2])
+          const flags = args.slice(2)
+          const key = flags.find(arg => !arg.startsWith('--'))
+          await cmdSettingsGet(key, { json: flags.includes('--json') })
         } else if (sub === 'set') {
           if (!args[2] || !args[3]) { console.error('Usage: bakin settings set <key> <value>'); process.exit(1) }
-          await cmdSettingsSet(args[2], args[3])
+          await cmdSettingsSet(args[2], args[3], { json: args.slice(4).includes('--json') })
         } else if (sub === 'init') {
-          await cmdOnboardingSettingsInit()
+          await cmdOnboardingSettingsInit({ json: args.slice(2).includes('--json') })
         } else {
           console.error(`Unknown settings subcommand: ${sub}`)
           process.exit(1)
@@ -3250,7 +3307,11 @@ export async function main(): Promise<void> {
         break
 
       case 'paths':
-        await cmdPaths(args[1])
+        {
+          const flags = args.slice(1)
+          const key = flags.find(arg => !arg.startsWith('--'))
+          await cmdPaths(key, { json: flags.includes('--json') })
+        }
         break
 
       case 'agent-rules': {
@@ -3263,7 +3324,7 @@ export async function main(): Promise<void> {
       }
 
       case 'mkdir':
-        await cmdOnboardingMkdir()
+        await cmdOnboardingMkdir({ json: args.includes('--json') })
         break
 
       case 'check':

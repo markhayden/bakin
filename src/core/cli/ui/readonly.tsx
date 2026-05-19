@@ -193,6 +193,15 @@ export interface ReindexResultData {
 
 export type SettingsData = Record<string, unknown>
 
+export interface SettingsActionData {
+  action?: unknown
+  key?: unknown
+  value?: unknown
+  result?: unknown
+  message?: unknown
+  detail?: unknown
+}
+
 export interface AgentRuleResultData {
   check?: unknown
   status?: unknown
@@ -530,6 +539,50 @@ function runtimeActionRows(action: RuntimeActionData): FindingRow[] {
     label: valueText(action.target, valueText(action.action, 'runtime')),
     message: valueText(action.message, runtimeActionMessage(action)),
     detail: runtimeActionDetail(action) || undefined,
+  }]
+}
+
+function settingsActionPayload(action: SettingsActionData): Record<string, unknown> {
+  return isPlainRecord(action.result) ? action.result : {}
+}
+
+function settingsActionStatus(action: SettingsActionData): TuiStatus {
+  const result = settingsActionPayload(action)
+  if (objectField(result, 'ok') === false || objectField(result, 'error')) return 'fail'
+  return 'applied'
+}
+
+function settingsActionTarget(action: SettingsActionData): string {
+  return valueText(action.key, 'settings')
+}
+
+function settingsActionMessage(action: SettingsActionData): string {
+  const result = settingsActionPayload(action)
+  const error = valueText(objectField(result, 'error'), '')
+  const message = valueText(objectField(result, 'message'), '')
+  const explicit = valueText(action.message, '')
+  const actionName = valueText(action.action, 'updated')
+  const target = settingsActionTarget(action)
+
+  if (error) return error
+  if (explicit) return explicit
+  if (message) return message
+  if (actionName === 'updated') return `Updated setting ${target}.`
+  return `Updated ${target}.`
+}
+
+function settingsActionDetail(action: SettingsActionData): string {
+  const detail = valueText(action.detail, '')
+  const value = detailText(action.value, '')
+  return [value ? `Value: ${value}` : '', detail].filter(Boolean).join('\n')
+}
+
+function settingsActionRows(action: SettingsActionData): FindingRow[] {
+  return [{
+    status: settingsActionStatus(action),
+    label: settingsActionTarget(action),
+    message: settingsActionMessage(action),
+    detail: settingsActionDetail(action) || undefined,
   }]
 }
 
@@ -1520,6 +1573,28 @@ export function SettingsReport({ settings, color = true }: {
         ) : (
           <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No settings returned by the server.' }]} color={color} />
         )}
+      </Section>
+    </Box>
+  )
+}
+
+export function SettingsActionReport({ action, color = true }: {
+  action: SettingsActionData
+  color?: boolean
+}) {
+  const actionName = valueText(action.action, 'updated')
+  const target = settingsActionTarget(action)
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Settings action" subtitle="Configuration updated" meta={actionName} color={color} />
+      <SummaryStrip items={[
+        { label: 'action', value: actionName, status: settingsActionStatus(action) },
+        { label: 'setting', value: target, status: 'ok' },
+      ]} color={color} />
+      <Section title="Result" color={color}>
+        <FindingRows rows={settingsActionRows(action)} color={color} />
+        <Text> </Text>
       </Section>
     </Box>
   )

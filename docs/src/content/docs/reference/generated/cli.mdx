@@ -241,14 +241,15 @@ bakin doctor [--json] [--full] [--notify-agent] [--fix|--delegate] [--yes]
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="paths" name="paths" summary="Show content directory paths." description="Prints Bakin runtime paths, optionally for one key.">
+<CliCommandCard id="paths" name="paths" summary="Show content directory paths." description="Prints Bakin runtime paths, optionally for one key. Pass --json for raw API output.">
 ```sh frame="terminal"
-bakin paths [key]
+bakin paths [key] [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>[key]</code></td><td>argument</td><td>no</td><td>Dot-notation settings key.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
@@ -289,10 +290,16 @@ bakin docs
 <p class="cli-section-description">These commands create the local directories and baseline settings Bakin needs before normal operation. They are most useful on a fresh machine or when repairing a partially configured install.</p>
 
 <div class="cli-command-list">
-<CliCommandCard id="mkdir" name="mkdir" summary="Create the Bakin home directory tree." description="Creates or verifies the `~/.bakin` directory tree.">
+<CliCommandCard id="mkdir" name="mkdir" summary="Create the Bakin home directory tree." description="Creates or verifies the `~/.bakin` directory tree. Pass --json for machine-readable output.">
 ```sh frame="terminal"
-bakin mkdir
+bakin mkdir [--json]
 ```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+    </tbody>
+  </table>
 </CliCommandCard>
 <CliCommandCard id="check" name="check" summary="Run onboarding checks." description="Runs one or all first-run readiness checks.">
 ```sh frame="terminal"
@@ -592,33 +599,41 @@ bakin search:stats
 <p class="cli-section-description">Settings commands are the scriptable path for reading, changing, and seeding local configuration values.</p>
 
 <div class="cli-command-list">
-<CliCommandCard id="settings-get" name="settings get" summary="Read settings." description="Reads all settings or one dot-notation key.">
+<CliCommandCard id="settings-get" name="settings get" summary="Read settings." description="Reads all settings or one dot-notation key. Pass --json for raw setting output.">
 ```sh frame="terminal"
-bakin settings get [key]
+bakin settings get [key] [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>[key]</code></td><td>argument</td><td>no</td><td>Dot-notation settings key.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="settings-set" name="settings set" summary="Update a setting." description="Updates one setting using dot notation.">
+<CliCommandCard id="settings-set" name="settings set" summary="Update a setting." description="Updates one setting using dot notation. Pass --json for raw API output.">
 ```sh frame="terminal"
-bakin settings set <key> <value>
+bakin settings set <key> <value> [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>&lt;key&gt;</code></td><td>argument</td><td>yes</td><td>Dot-notation settings key.</td></tr>
       <tr><td><code>&lt;value&gt;</code></td><td>argument</td><td>yes</td><td>Value to write.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="settings-init" name="settings init" summary="Seed default settings." description="Creates default settings if missing.">
+<CliCommandCard id="settings-init" name="settings init" summary="Seed default settings." description="Creates default settings if missing. Pass --json for machine-readable output.">
 ```sh frame="terminal"
-bakin settings init
+bakin settings init [--json]
 ```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+    </tbody>
+  </table>
 </CliCommandCard>
 </div>
 

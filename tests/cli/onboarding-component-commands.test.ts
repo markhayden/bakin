@@ -226,4 +226,37 @@ describe('onboarding component CLI commands', () => {
     expect(body.status).toBe('installed')
     expect(output()).not.toContain('Onboarding install')
   })
+
+  it('preserves JSON output for mkdir and settings init aliases', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    process.argv = ['bun', 'cli/bakin.ts', 'mkdir', '--json']
+    await main()
+    let body = JSON.parse(output())
+    expect(body.component).toBe('mkdir')
+    expect(body.status).toBe('noop')
+    expect(mkdirInstall).toHaveBeenCalledWith({
+      interactive: false,
+      autoApprove: true,
+      json: true,
+      checkOnly: false,
+      force: false,
+    })
+    expect(output()).not.toContain('Onboarding install')
+
+    log.mockClear()
+    process.argv = ['bun', 'cli/bakin.ts', 'settings', 'init', '--json']
+    await main()
+    body = JSON.parse(output())
+    expect(body.component).toBe('settings')
+    expect(body.status).toBe('installed')
+    expect(settingsInstall).toHaveBeenCalledWith({
+      interactive: false,
+      autoApprove: true,
+      json: true,
+      checkOnly: false,
+      force: false,
+    })
+    expect(output()).not.toContain('Onboarding install')
+  })
 })
