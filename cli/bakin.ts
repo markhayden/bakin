@@ -229,13 +229,13 @@ async function printAgentTasksTui(agentId: string, tasks: Array<Record<string, u
   console.log(renderToString(createElement(AgentTasksReport, { agentId, tasks })))
 }
 
-async function printPluginsListTui(routes: Array<Record<string, unknown>>): Promise<void> {
+async function printPluginsListTui(plugins: Array<Record<string, unknown>>): Promise<void> {
   const [{ PluginsListReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
     import('ink'),
     import('react'),
   ])
-  console.log(renderToString(createElement(PluginsListReport, { routes })))
+  console.log(renderToString(createElement(PluginsListReport, { plugins })))
 }
 
 async function printPluginRestoreSnapshotsTui(pluginId: string, snapshots: PluginRestoreSnapshotData[]): Promise<void> {
@@ -522,9 +522,13 @@ async function cmdTasksMove(id: string, to: string): Promise<void> {
   print(result)
 }
 
-async function cmdAgentsList(): Promise<void> {
+async function cmdAgentsList(opts: { json?: boolean } = {}): Promise<void> {
   const result = await apiGet('/api/plugins/team/') as {
     agents: Array<{ id: string; name: string; status: string; model: string }>
+  }
+  if (opts.json) {
+    print(result)
+    return
   }
   if (process.stdout.isTTY) {
     await printAgentsListTui(result.agents)
@@ -607,20 +611,21 @@ async function cmdSettingsSet(key: string, value: string): Promise<void> {
   print(result)
 }
 
-async function cmdPluginsList(): Promise<void> {
-  const docs = await apiGet('/api/docs') as { routes: Array<Record<string, unknown>> }
-  const plugins = new Set<string>()
-  for (const route of docs.routes) {
-    if (route.pluginId !== 'core') plugins.add(route.pluginId as string)
+async function cmdPluginsList(opts: { json?: boolean; check?: boolean } = {}): Promise<void> {
+  const path = opts.check ? '/api/plugins/manifest?check=1' : '/api/plugins/manifest'
+  const manifest = await apiGet(path) as { plugins: Array<Record<string, unknown>> }
+  if (opts.json) {
+    print(manifest)
+    return
   }
   if (process.stdout.isTTY) {
-    await printPluginsListTui(docs.routes)
+    await printPluginsListTui(manifest.plugins)
     return
   }
   console.log('Installed plugins:')
-  for (const p of plugins) {
-    const routeCount = docs.routes.filter(r => r.pluginId === p).length
-    console.log(`  ${p} (${routeCount} routes)`)
+  for (const plugin of manifest.plugins) {
+    const status = plugin.upgradeAvailable === true ? 'update available' : String(plugin.status ?? 'unknown')
+    console.log(`  ${String(plugin.id ?? '').padEnd(20)} ${String(plugin.source ?? '-').padEnd(8)} ${String(plugin.version ?? '-').padEnd(8)} ${status}`)
   }
 }
 
@@ -2994,7 +2999,7 @@ export async function main(): Promise<void> {
           if (args.includes('--packages')) {
             await cmdAgentPackagesList(parseAgentsFlags(args.slice(2)))
           } else {
-            await cmdAgentsList()
+            await cmdAgentsList({ json: args.includes('--json') })
           }
         } else if (sub === 'status') {
           if (!args[2]) { console.error('Usage: bakin agents status <id>'); process.exit(1) }
@@ -3052,7 +3057,7 @@ export async function main(): Promise<void> {
 
       case 'plugins':
         if (sub === 'list') {
-          await cmdPluginsList()
+          await cmdPluginsList({ json: args.includes('--json'), check: args.includes('--check') })
         } else if (sub === 'install') {
           const installArgs = args.slice(2)
           const parsed = parsePluginInstallArgs(installArgs)

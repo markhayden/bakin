@@ -328,11 +328,15 @@ describe('read-only CLI TUI screens', () => {
     )
     const plugins = renderToString(
       <PluginsListReport
-        routes={[
-          { pluginId: 'tasks' },
-          { pluginId: 'tasks' },
-          { pluginId: 'team' },
-          { pluginId: 'core' },
+        plugins={[
+          { id: 'team', name: 'Team', version: '1.0.0', source: 'core', status: 'active' },
+          { id: 'tasks', name: 'Tasks', version: '2.1.0', source: 'core', status: 'active' },
+          { id: 'schedule', name: 'Schedule', version: '2.0.0', source: 'core', status: 'active' },
+          { id: 'assets', name: 'Assets', version: '2.0.0', source: 'core', status: 'active' },
+          { id: 'health', name: 'Health', version: '1.0.0', source: 'core', status: 'active' },
+          { id: 'models', name: 'Models', version: '2.1.0', source: 'core', status: 'active' },
+          { id: 'messaging', name: 'Messaging', version: '2.0.0', source: 'github', status: 'active' },
+          { id: 'projects', name: 'Projects', version: '2.0.0', source: 'github', status: 'active' },
         ]}
       />,
     )
@@ -348,10 +352,14 @@ describe('read-only CLI TUI screens', () => {
     expect(agents).not.toContain('Model: gpt-5.5')
     expect(plugins).toContain('Plugins')
     expect(plugins).toContain('PLUGIN')
-    expect(plugins).toContain('ROUTES')
+    expect(plugins).toContain('SOURCE')
     expect(plugins).toContain('tasks')
-    expect(plugins).toContain('2')
-    expect(plugins).not.toContain('core')
+    expect(plugins).toContain('schedule')
+    expect(plugins).toContain('assets')
+    expect(plugins).toContain('health')
+    expect(plugins).toContain('models')
+    expect(plugins).toContain('messaging')
+    expect(plugins).toContain('projects')
   })
 
   it('renders tasks assigned to one agent as a shared TUI table', () => {

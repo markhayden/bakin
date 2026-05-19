@@ -81,8 +81,15 @@ export interface AgentProfileData {
   subagentPerms?: unknown
 }
 
-export interface PluginRouteData {
-  pluginId?: unknown
+export interface PluginData {
+  id?: unknown
+  name?: unknown
+  version?: unknown
+  source?: unknown
+  status?: unknown
+  upgradeAvailable?: unknown
+  staleHintDays?: unknown
+  errorMessage?: unknown
 }
 
 export interface PluginRestoreSnapshotData {
@@ -289,7 +296,9 @@ interface DetailFieldRow {
 interface PluginTableRow {
   status: TuiStatus
   plugin: string
-  routes: string
+  source: string
+  version: string
+  state: string
 }
 
 interface PluginRestoreSnapshotRow {
@@ -845,25 +854,32 @@ function contentStatus(value: unknown): TuiStatus {
   return valueText(value, '') ? 'ok' : 'skip'
 }
 
-function pluginRouteCounts(routes: PluginRouteData[]): Array<{ pluginId: string; routeCount: number }> {
-  const counts = new Map<string, number>()
-  for (const route of routes) {
-    const pluginId = typeof route.pluginId === 'string' ? route.pluginId : ''
-    if (!pluginId || pluginId === 'core') continue
-    counts.set(pluginId, (counts.get(pluginId) ?? 0) + 1)
-  }
-
-  return [...counts.entries()]
-    .map(([pluginId, routeCount]) => ({ pluginId, routeCount }))
-    .sort((a, b) => a.pluginId.localeCompare(b.pluginId))
+function pluginStatus(plugin: PluginData): TuiStatus {
+  if (plugin.status === 'failed') return 'fail'
+  if (plugin.upgradeAvailable === true) return 'warn'
+  return 'ok'
 }
 
-function pluginTableRows(routes: PluginRouteData[]): PluginTableRow[] {
-  return pluginRouteCounts(routes).map(plugin => ({
-    status: 'ok',
-    plugin: plugin.pluginId,
-    routes: String(plugin.routeCount),
-  }))
+function pluginState(plugin: PluginData): string {
+  if (plugin.upgradeAvailable === true) return 'update available'
+  const staleDays = numberValue(plugin.staleHintDays)
+  if (staleDays > 0) return `stale ${staleDays}d`
+  return valueText(plugin.status, 'active')
+}
+
+function pluginTableRows(plugins: PluginData[]): PluginTableRow[] {
+  return plugins
+    .map(plugin => ({
+      status: pluginStatus(plugin),
+      plugin: valueText(plugin.id),
+      source: valueText(plugin.source),
+      version: valueText(plugin.version),
+      state: pluginState(plugin),
+    }))
+    .sort((a, b) => {
+      const sourceCompare = a.source.localeCompare(b.source)
+      return sourceCompare === 0 ? a.plugin.localeCompare(b.plugin) : sourceCompare
+    })
 }
 
 function pluginRestoreSnapshotRows(snapshots: PluginRestoreSnapshotData[]): PluginRestoreSnapshotRow[] {
@@ -1653,33 +1669,38 @@ export function AgentStatusReport({ agentId, profile, color = true }: {
   )
 }
 
-export function PluginsListReport({ routes, color = true }: {
-  routes: PluginRouteData[]
+export function PluginsListReport({ plugins, color = true }: {
+  plugins: PluginData[]
   color?: boolean
 }) {
-  const plugins = pluginRouteCounts(routes)
-  const routeTotal = plugins.reduce((sum, plugin) => sum + plugin.routeCount, 0)
-  const rows = pluginTableRows(routes)
+  const rows = pluginTableRows(plugins)
+  const core = rows.filter(row => row.source === 'core').length
+  const external = rows.filter(row => row.source !== 'core').length
+  const failed = rows.filter(row => row.status === 'fail').length
 
   return (
     <Box flexDirection="column">
-      <ScreenHeader title="Plugins" subtitle="Installed plugin routes" color={color} />
+      <ScreenHeader title="Plugins" subtitle="Installed plugin packages" color={color} />
       <SummaryStrip items={[
-        { label: plural(plugins.length, 'plugin'), value: plugins.length, status: plugins.length > 0 ? 'ok' : 'skip' },
-        { label: plural(routeTotal, 'route'), value: routeTotal, status: routeTotal > 0 ? 'ok' : 'skip' },
+        { label: plural(rows.length, 'plugin'), value: rows.length, status: rows.length > 0 ? 'ok' : 'skip' },
+        { label: 'core', value: core, status: core > 0 ? 'ok' : 'skip' },
+        { label: 'external', value: external, status: external > 0 ? 'ready' : 'skip' },
+        { label: 'failed', value: failed, status: failed > 0 ? 'fail' : 'ok' },
       ]} color={color} />
       <Section title="Installed plugins" color={color}>
         {rows.length > 0 ? (
           <StatusTable
             rows={rows}
             columns={[
-              { key: 'plugin', header: 'PLUGIN', width: 28, grow: true, render: row => row.plugin },
-              { key: 'routes', header: 'ROUTES', width: 8, render: row => row.routes },
+              { key: 'plugin', header: 'PLUGIN', width: 20, grow: true, render: row => row.plugin },
+              { key: 'source', header: 'SOURCE', width: 10, render: row => row.source },
+              { key: 'version', header: 'VERSION', width: 10, render: row => row.version },
+              { key: 'state', header: 'STATE', width: 18, render: row => row.state },
             ]}
             color={color}
           />
         ) : (
-          <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No non-core plugins found.' }]} color={color} />
+          <FindingRows rows={[{ status: 'skip', label: 'empty', message: 'No plugins found.' }]} color={color} />
         )}
       </Section>
     </Box>
