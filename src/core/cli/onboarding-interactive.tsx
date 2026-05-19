@@ -1,4 +1,4 @@
-import { render, renderToString, Box } from "ink";
+import { render, Box } from "ink";
 import { useState } from "react";
 import {
   MultiSelect,
@@ -16,6 +16,7 @@ import {
   OnboardingDecisionPrompt,
   OnboardingIntro,
 } from "./ui/onboarding";
+import { renderToString } from "./ui/render-to-string";
 import { recommendedAgentsComponent } from "../onboarding/recommended-agents";
 import { recommendedPluginsComponent } from "../onboarding/recommended-plugins";
 import { runtimeComponent } from "../onboarding/runtime";

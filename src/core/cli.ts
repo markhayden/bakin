@@ -91,7 +91,7 @@ async function cmdVersion(): Promise<number> {
   if (process.stdout.isTTY) {
     const [{ VersionReport }, { renderToString }, { createElement }] = await Promise.all([
       import('./cli/ui/readonly'),
-      import('ink'),
+      import('./cli/ui/render-to-string'),
       import('react'),
     ])
     console.log(renderToString(createElement(VersionReport, { data: { version: APP_VERSION } })))
@@ -175,7 +175,7 @@ async function printStartOnboardingGate(): Promise<void> {
   if (process.stdout.isTTY) {
     const [{ OnboardingRequiredReport }, { renderToString }, { createElement }] = await Promise.all([
       import('./cli/ui/onboarding'),
-      import('ink'),
+      import('./cli/ui/render-to-string'),
       import('react'),
     ])
     console.log(renderToString(createElement(OnboardingRequiredReport)))
@@ -739,7 +739,7 @@ async function cmdHelp(): Promise<number> {
   if (process.stdout.isTTY) {
     const [{ HelpReport }, { renderToString }, { createElement }] = await Promise.all([
       import('./cli/ui/readonly'),
-      import('ink'),
+      import('./cli/ui/render-to-string'),
       import('react'),
     ])
     console.log(renderToString(createElement(HelpReport, {

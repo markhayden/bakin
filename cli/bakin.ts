@@ -184,7 +184,7 @@ function printTable(rows: Record<string, unknown>[], columns?: string[]): void {
 async function printStatusTui(dispatch: Record<string, unknown>, roster: CliRoster): Promise<void> {
   const [{ StatusReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(StatusReport, { dispatch, roster })))
@@ -193,7 +193,7 @@ async function printStatusTui(dispatch: Record<string, unknown>, roster: CliRost
 async function printRuntimeActionTui(action: RuntimeActionData): Promise<void> {
   const [{ RuntimeActionReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(RuntimeActionReport, { action })))
@@ -202,7 +202,7 @@ async function printRuntimeActionTui(action: RuntimeActionData): Promise<void> {
 async function printHelpReportTui(groups: HelpGroupData[], error?: string, errorDetail?: string): Promise<void> {
   const [{ HelpReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(HelpReport, {
@@ -220,7 +220,7 @@ async function printHelpTui(error?: string, errorDetail?: string): Promise<void>
 async function printCommandIssueTui(issue: CommandIssueData): Promise<void> {
   const [{ CommandIssueReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(CommandIssueReport, { issue })))
@@ -229,7 +229,7 @@ async function printCommandIssueTui(issue: CommandIssueData): Promise<void> {
 async function printCommandFailureTui(failure: CommandFailureData): Promise<void> {
   const [{ CommandFailureReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(CommandFailureReport, { failure })))
@@ -238,7 +238,7 @@ async function printCommandFailureTui(failure: CommandFailureData): Promise<void
 async function printVersionTui(data: VersionData): Promise<void> {
   const [{ VersionReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(VersionReport, { data })))
@@ -304,7 +304,7 @@ async function exitUnknownSubcommand(scope: string, sub: string | undefined, ava
 async function printSettingsTui(settings: Record<string, unknown>): Promise<void> {
   const [{ SettingsReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(SettingsReport, { settings })))
@@ -313,7 +313,7 @@ async function printSettingsTui(settings: Record<string, unknown>): Promise<void
 async function printSettingsActionTui(action: SettingsActionData): Promise<void> {
   const [{ SettingsActionReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(SettingsActionReport, { action })))
@@ -322,7 +322,7 @@ async function printSettingsActionTui(action: SettingsActionData): Promise<void>
 async function printPathsTui(paths: Record<string, unknown>, isBakinHome: unknown): Promise<void> {
   const [{ PathsReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(PathsReport, { paths, isBakinHome })))
@@ -334,7 +334,7 @@ async function printAgentRulesTui(
 ): Promise<void> {
   const [{ AgentRulesReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(AgentRulesReport, { results, ...options })))
@@ -343,7 +343,7 @@ async function printAgentRulesTui(
 async function printTasksListTui(columns: Record<string, Array<Record<string, unknown>>>, column?: string): Promise<void> {
   const [{ TasksListReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(TasksListReport, { columns, column })))
@@ -352,7 +352,7 @@ async function printTasksListTui(columns: Record<string, Array<Record<string, un
 async function printTaskActionTui(action: TaskActionData): Promise<void> {
   const [{ TaskActionReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(TaskActionReport, { action })))
@@ -361,7 +361,7 @@ async function printTaskActionTui(action: TaskActionData): Promise<void> {
 async function printTaskDetailTui(taskId: string, column: string, task: Record<string, unknown>): Promise<void> {
   const [{ TaskDetailReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(TaskDetailReport, { taskId, column, task })))
@@ -370,7 +370,7 @@ async function printTaskDetailTui(taskId: string, column: string, task: Record<s
 async function printAgentsListTui(agents: Array<{ id: string; name: string; status: string; model: string }>): Promise<void> {
   const [{ AgentsListReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(AgentsListReport, { agents })))
@@ -379,7 +379,7 @@ async function printAgentsListTui(agents: Array<{ id: string; name: string; stat
 async function printAgentStatusTui(agentId: string, profile: Record<string, unknown>): Promise<void> {
   const [{ AgentStatusReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(AgentStatusReport, { agentId, profile })))
@@ -388,7 +388,7 @@ async function printAgentStatusTui(agentId: string, profile: Record<string, unkn
 async function printAgentTasksTui(agentId: string, tasks: Array<Record<string, unknown>>): Promise<void> {
   const [{ AgentTasksReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(AgentTasksReport, { agentId, tasks })))
@@ -397,7 +397,7 @@ async function printAgentTasksTui(agentId: string, tasks: Array<Record<string, u
 async function printPluginsListTui(plugins: Array<Record<string, unknown>>): Promise<void> {
   const [{ PluginsListReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(PluginsListReport, { plugins })))
@@ -406,7 +406,7 @@ async function printPluginsListTui(plugins: Array<Record<string, unknown>>): Pro
 async function printPluginActionTui(actions: PluginActionData | PluginActionData[]): Promise<void> {
   const [{ PluginActionReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(PluginActionReport, {
@@ -417,7 +417,7 @@ async function printPluginActionTui(actions: PluginActionData | PluginActionData
 async function printPluginRestoreSnapshotsTui(pluginId: string, snapshots: PluginRestoreSnapshotData[]): Promise<void> {
   const [{ PluginRestoreSnapshotsReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(PluginRestoreSnapshotsReport, { pluginId, snapshots })))
@@ -426,7 +426,7 @@ async function printPluginRestoreSnapshotsTui(pluginId: string, snapshots: Plugi
 async function printPluginRestoreResultTui(pluginId: string, result: PluginRestoreResultData): Promise<void> {
   const [{ PluginRestoreResultReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(PluginRestoreResultReport, { pluginId, result })))
@@ -435,7 +435,7 @@ async function printPluginRestoreResultTui(pluginId: string, result: PluginResto
 async function printDocsTui(routes: Array<Record<string, unknown>>): Promise<void> {
   const [{ DocsReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(DocsReport, { routes })))
@@ -444,7 +444,7 @@ async function printDocsTui(routes: Array<Record<string, unknown>>): Promise<voi
 async function printWorkflowsListTui(templates: Array<Record<string, unknown>>): Promise<void> {
   const [{ WorkflowsListReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(WorkflowsListReport, { templates })))
@@ -453,7 +453,7 @@ async function printWorkflowsListTui(templates: Array<Record<string, unknown>>):
 async function printWorkflowActionTui(action: WorkflowActionData): Promise<void> {
   const [{ WorkflowActionReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(WorkflowActionReport, { action })))
@@ -462,7 +462,7 @@ async function printWorkflowActionTui(action: WorkflowActionData): Promise<void>
 async function printSearchResultsTui(query: string, result: Record<string, unknown>): Promise<void> {
   const [{ SearchResultsReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   const results = Array.isArray(result.results) ? result.results as SearchResultData[] : []
@@ -483,7 +483,7 @@ async function printSearchResultsTui(query: string, result: Record<string, unkno
 async function printSearchStatsTui(enabled: boolean, tables: Array<Record<string, unknown>>): Promise<void> {
   const [{ SearchStatsReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(SearchStatsReport, { enabled, tables })))
@@ -492,7 +492,7 @@ async function printSearchStatsTui(enabled: boolean, tables: Array<Record<string
 async function printReindexTui(result: ReindexResultData, options: { target: string; rebuild: boolean }): Promise<void> {
   const [{ ReindexReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(ReindexReport, { result, ...options })))
@@ -501,7 +501,7 @@ async function printReindexTui(result: ReindexResultData, options: { target: str
 async function printTrashListTui(assets: Array<Record<string, unknown>>): Promise<void> {
   const [{ TrashListReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(TrashListReport, { assets })))
@@ -510,7 +510,7 @@ async function printTrashListTui(assets: Array<Record<string, unknown>>): Promis
 async function printTrashActionTui(action: TrashActionData): Promise<void> {
   const [{ TrashActionReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(TrashActionReport, { action })))
@@ -519,7 +519,7 @@ async function printTrashActionTui(action: TrashActionData): Promise<void> {
 async function printAgentPackagesListTui(agents: Array<Record<string, unknown>>): Promise<void> {
   const [{ AgentPackagesListReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(AgentPackagesListReport, { agents })))
@@ -532,7 +532,7 @@ async function printAgentLessonsListTui(
 ): Promise<void> {
   const [{ AgentLessonsListReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(AgentLessonsListReport, { agentId, packageId, lessons })))
@@ -541,7 +541,7 @@ async function printAgentLessonsListTui(
 async function printPackagesListTui(packages: Array<Record<string, unknown>>): Promise<void> {
   const [{ PackagesListReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(PackagesListReport, { packages })))
@@ -550,7 +550,7 @@ async function printPackagesListTui(packages: Array<Record<string, unknown>>): P
 async function printPackageActionTui(actions: PackageActionData | PackageActionData[]): Promise<void> {
   const [{ PackageActionReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(PackageActionReport, {
@@ -561,7 +561,7 @@ async function printPackageActionTui(actions: PackageActionData | PackageActionD
 async function printOnboardingCheckTui(result: CheckResult): Promise<void> {
   const [{ OnboardingCheckReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/onboarding'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(OnboardingCheckReport, { result })))
@@ -570,7 +570,7 @@ async function printOnboardingCheckTui(result: CheckResult): Promise<void> {
 async function printOnboardingCheckAllTui(results: CheckResult[]): Promise<void> {
   const [{ OnboardingCheckAllReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/onboarding'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(OnboardingCheckAllReport, { results })))
@@ -579,7 +579,7 @@ async function printOnboardingCheckAllTui(results: CheckResult[]): Promise<void>
 async function printOnboardingInstallTui(result: InstallResult): Promise<void> {
   const [{ OnboardingInstallReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/onboarding'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(OnboardingInstallReport, { result })))
@@ -1837,7 +1837,7 @@ function printDoctorDelegateResult(report: CliDoctorDelegateReport): void {
 async function printDoctorRepairPlanTui(plan: CliDoctorRepairPlan): Promise<void> {
   const [{ DoctorRepairPlan }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/doctor-repair'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(DoctorRepairPlan, { plan })))
@@ -1846,7 +1846,7 @@ async function printDoctorRepairPlanTui(plan: CliDoctorRepairPlan): Promise<void
 async function printDoctorRepairApplyTui(report: CliDoctorRepairApply, opts: { showBrand?: boolean } = {}): Promise<void> {
   const [{ DoctorRepairApplyReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/doctor-repair'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(DoctorRepairApplyReport, { report, showBrand: opts.showBrand })))
@@ -1855,7 +1855,7 @@ async function printDoctorRepairApplyTui(report: CliDoctorRepairApply, opts: { s
 async function printDoctorDelegatePreviewTui(unresolved: CliDoctorRepairPlan['diagnostics']): Promise<void> {
   const [{ DoctorDelegatePreview }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/doctor-repair'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(DoctorDelegatePreview, { unresolved })))
@@ -1864,7 +1864,7 @@ async function printDoctorDelegatePreviewTui(unresolved: CliDoctorRepairPlan['di
 async function printDoctorDelegateResultTui(report: CliDoctorDelegateReport, opts: { showBrand?: boolean } = {}): Promise<void> {
   const [{ DoctorDelegateResult }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/doctor-repair'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(DoctorDelegateResult, { report, showBrand: opts.showBrand })))
@@ -1873,7 +1873,7 @@ async function printDoctorDelegateResultTui(report: CliDoctorDelegateReport, opt
 async function printDoctorRepairRequestsTui(requests: Array<Record<string, unknown>>): Promise<void> {
   const [{ DoctorRepairRequestsReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/doctor-repair'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(DoctorRepairRequestsReport, { requests })))
@@ -1882,7 +1882,7 @@ async function printDoctorRepairRequestsTui(requests: Array<Record<string, unkno
 async function printDoctorRepairRequestTui(request: Record<string, unknown>): Promise<void> {
   const [{ DoctorRepairRequestReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/doctor-repair'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(DoctorRepairRequestReport, { request })))
@@ -1891,7 +1891,7 @@ async function printDoctorRepairRequestTui(request: Record<string, unknown>): Pr
 async function printDoctorRepairVerifyTui(requestId: string, result: Record<string, unknown>): Promise<void> {
   const [{ DoctorRepairVerifyReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/doctor-repair'),
-    import('ink'),
+    import('../src/core/cli/ui/render-to-string'),
     import('react'),
   ])
   console.log(renderToString(createElement(DoctorRepairVerifyReport, { requestId, result })))
@@ -2150,7 +2150,7 @@ async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> 
 
   if (isTTY) {
     const { DoctorReport } = await import('../src/core/cli/ui/doctor')
-    const { renderToString } = await import('ink')
+    const { renderToString } = await import('../src/core/cli/ui/render-to-string')
     const { createElement } = await import('react')
     console.log(renderToString(createElement(DoctorReport, {
       results: result.results,
@@ -3390,7 +3390,8 @@ async function cmdOnboard(args: string[]): Promise<void> {
   const { runOnboard, isOnboarded, loadState, COMPONENT_ORDER } = await import('../src/core/onboarding/index')
   const { collectOnboardingSelections } = await import('../src/core/cli/onboarding-interactive')
   const { OnboardingAlreadyCompleteReport, OnboardingBusy, OnboardingSummary } = await import('../src/core/cli/ui/onboarding')
-  const { render, renderToString } = await import('ink')
+  const { render } = await import('ink')
+  const { renderToString } = await import('../src/core/cli/ui/render-to-string')
   const { createElement } = await import('react')
   const checkOnly = args.includes('--check')
   const yes = args.includes('--yes')
