@@ -506,9 +506,30 @@ function runtimeActionResult(action: RuntimeActionData): Record<string, unknown>
   return isPlainRecord(action.result) ? action.result : {}
 }
 
+function tuiStatusValue(value: unknown): TuiStatus | undefined {
+  switch (value) {
+    case 'ok':
+    case 'warn':
+    case 'fail':
+    case 'skip':
+    case 'ready':
+    case 'run':
+    case 'blocked':
+    case 'applied':
+    case 'sent':
+    case 'todo':
+    case 'done':
+      return value
+    default:
+      return undefined
+  }
+}
+
 function runtimeActionStatus(action: RuntimeActionData): TuiStatus {
   const result = runtimeActionResult(action)
   if (objectField(result, 'ok') === false) return 'fail'
+  const explicit = tuiStatusValue(objectField(result, 'status'))
+  if (explicit) return explicit
   return 'sent'
 }
 

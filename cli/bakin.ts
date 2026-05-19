@@ -2484,16 +2484,37 @@ async function cmdLogs(filter?: string): Promise<void> {
 async function cmdStop(): Promise<void> {
   const { execFileSync } = await import('child_process')
 
-  console.log('[..] Stopping Bakin server...')
+  const printStopResult = async (result: Record<string, unknown>, detail?: string): Promise<void> => {
+    const message = typeof result.message === 'string' ? result.message : 'Bakin stop request completed.'
+    if (process.stdout.isTTY) {
+      await printRuntimeActionTui({
+        action: 'stop',
+        target: 'Bakin server',
+        result,
+        message,
+        detail,
+      })
+      return
+    }
+    if (message === 'Bakin stopped.') console.log('[OK] Bakin stopped')
+    else if (message === 'No running Bakin process found.') console.log('[OK] No running Bakin process found')
+    else if (result.status === 'warn') console.log(`[WARN] ${message}`)
+    else console.log(message)
+    if (detail) console.log(`  ${detail}`)
+  }
+
+  if (!process.stdout.isTTY) console.log('[..] Stopping Bakin server...')
   try {
     const pids = execFileSync('pgrep', ['-f', serverProcessPattern()], { encoding: 'utf-8' }).trim()
     if (pids) {
+      const signaled: string[] = []
       for (const pid of pids.split('\n')) {
         if (pid && pid !== String(process.pid)) {
           process.kill(Number(pid), 'SIGTERM')
+          signaled.push(pid)
         }
       }
-      console.log('[OK] Sent SIGTERM to Bakin server')
+      if (!process.stdout.isTTY) console.log('[OK] Sent SIGTERM to Bakin server')
 
       // Wait and verify it's actually down
       for (let i = 0; i < 10; i++) {
@@ -2501,16 +2522,36 @@ async function cmdStop(): Promise<void> {
         try {
           await fetch(`${BASE_URL}/api/version`, { signal: AbortSignal.timeout(1000) })
         } catch {
-          console.log('[OK] Bakin stopped')
+          await printStopResult({
+            ok: true,
+            status: 'ok',
+            message: 'Bakin stopped.',
+            signaled: signaled.length,
+          }, signaled.length > 0 ? `Sent SIGTERM to ${signaled.length} process(es).` : undefined)
           return
         }
       }
-      console.log('[WARN] Server may still be shutting down')
+      await printStopResult({
+        ok: true,
+        status: 'warn',
+        message: 'Server may still be shutting down.',
+        signaled: signaled.length,
+      }, signaled.length > 0 ? `Sent SIGTERM to ${signaled.length} process(es).` : undefined)
     } else {
-      console.log('[OK] No running Bakin process found')
+      await printStopResult({
+        ok: true,
+        status: 'ok',
+        message: 'No running Bakin process found.',
+        signaled: 0,
+      })
     }
   } catch {
-    console.log('[OK] No running Bakin process found')
+    await printStopResult({
+      ok: true,
+      status: 'ok',
+      message: 'No running Bakin process found.',
+      signaled: 0,
+    })
   }
 }
 
