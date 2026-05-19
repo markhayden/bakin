@@ -10,6 +10,7 @@ import {
   OnboardingInstallReport,
   OnboardingIntro,
   OnboardingProgress,
+  OnboardingRequiredReport,
   OnboardingSummary,
 } from '../../src/core/cli/ui/onboarding'
 import type { ComponentOutcome } from '../../src/core/onboarding'
@@ -147,6 +148,17 @@ describe('onboarding CLI UI', () => {
     expect(rendered).toContain('Initial setup wizard')
     expect(rendered).not.toContain('oooooooooo')
     expect(rendered).not.toContain('Welcome to Bakin')
+  })
+
+  it('renders the start gate with shared onboarding UI', () => {
+    const rendered = renderToString(<OnboardingRequiredReport />)
+    expect(rendered).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(rendered).toContain('Onboard')
+    expect(rendered).toContain('Initial setup required')
+    expect(rendered).toContain('REQUIRED SETUP')
+    expect(rendered).toContain('Bakin has not been onboarded on this machine.')
+    expect(rendered).toContain('Run `bakin onboard` to complete first-run setup.')
+    expect(rendered).not.toContain('[OK]')
   })
 
   it('renders confirmation prompts with shared sections instead of badges', () => {
