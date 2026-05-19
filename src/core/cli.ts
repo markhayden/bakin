@@ -17,7 +17,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { APP_VERSION } from '../../packages/core/src/constants'
-import { renderCliUsage } from './cli/registry'
+import { getCliUsageGroups, renderCliUsage } from './cli/registry'
 import { parsePluginInstallArgs, PLUGIN_INSTALL_USAGE } from './cli/plugin-install-args'
 import { isOnboarded } from './onboarding/state'
 import {
@@ -727,7 +727,19 @@ async function cmdUpdate(): Promise<number> {
 }
 
 async function cmdHelp(): Promise<number> {
-  console.log(renderCliUsage({ bakinUrl: BAKIN_URL }))
+  if (process.stdout.isTTY) {
+    const [{ HelpReport }, { renderToString }, { createElement }] = await Promise.all([
+      import('./cli/ui/readonly'),
+      import('ink'),
+      import('react'),
+    ])
+    console.log(renderToString(createElement(HelpReport, {
+      groups: getCliUsageGroups(),
+      env: { bakinUrl: BAKIN_URL },
+    })))
+  } else {
+    console.log(renderCliUsage({ bakinUrl: BAKIN_URL }))
+  }
   return 0
 }
 

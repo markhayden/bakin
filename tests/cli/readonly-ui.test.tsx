@@ -9,6 +9,7 @@ import {
   AgentTasksReport,
   AgentsListReport,
   DocsReport,
+  HelpReport,
   PackageActionReport,
   PackagesListReport,
   PathsReport,
@@ -54,6 +55,43 @@ describe('read-only CLI TUI screens', () => {
     expect(output).toContain('DISPATCH')
     expect(output).toContain('main, patch')
     expect(output).not.toContain('=== Bakin Status ===')
+  })
+
+  it('renders command help with shared TUI primitives', () => {
+    const output = renderToString(
+      <HelpReport
+        groups={[
+          {
+            group: 'Lifecycle',
+            commands: [
+              { name: 'start', usage: 'bakin start', summary: 'Start the Bakin server.' },
+              { name: 'doctor', usage: 'bakin doctor [--json] [--full]', summary: 'Run health checks.' },
+            ],
+          },
+          {
+            group: 'Tasks and workflows',
+            commands: [
+              { name: 'tasks list', usage: 'bakin tasks list [--column=<column>]', summary: 'List tasks.' },
+            ],
+          },
+        ]}
+        env={{ bakinUrl: 'http://localhost:3737' }}
+        error="Unknown command: wat"
+        errorDetail="Plugin command lookup skipped because Bakin is not reachable."
+      />,
+    )
+
+    expect(output).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output).toContain('Help  unknown command')
+    expect(output).toContain('ISSUE\n------------')
+    expect(output).toContain('Unknown command: wat')
+    expect(output).toContain('Plugin command lookup skipped')
+    expect(output).toContain('LIFECYCLE')
+    expect(output).toContain('COMMAND')
+    expect(output).toContain('bakin start')
+    expect(output).toContain('Tasks and workflows'.toUpperCase())
+    expect(output).toContain('ENVIRONMENT')
+    expect(output).not.toContain('Usage: bakin <command> [options]')
   })
 
   it('renders runtime action confirmations with shared TUI primitives', () => {

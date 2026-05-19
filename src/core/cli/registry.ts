@@ -159,7 +159,12 @@ export const CLI_COMMANDS = [
   cli({ name: 'trash', usage: 'bakin trash [list|restore|empty] ...', group: 'Assets and search', summary: 'Manage trashed assets.', description: 'Lists, restores, or permanently empties soft-deleted assets.', examples: [{ title: 'List trash', code: 'bakin trash list', test: 'illustrative', reason: 'Depends on local asset state.' }] }),
 ] as const satisfies readonly CliDef[]
 
-export function renderCliUsage(env: { bakinUrl?: string } = {}, opts: { excludeNames?: ReadonlySet<string> } = {}): string {
+export interface CliUsageGroup {
+  group: string
+  commands: CliDef[]
+}
+
+export function getCliUsageGroups(opts: { excludeNames?: ReadonlySet<string> } = {}): CliUsageGroup[] {
   const grouped = new Map<string, CliDef[]>()
   for (const command of CLI_COMMANDS) {
     if (opts.excludeNames?.has(command.name)) continue
@@ -167,10 +172,14 @@ export function renderCliUsage(env: { bakinUrl?: string } = {}, opts: { excludeN
     if (!grouped.has(group)) grouped.set(group, [])
     grouped.get(group)!.push(command)
   }
+  return Array.from(grouped, ([group, commands]) => ({ group, commands }))
+}
 
+export function renderCliUsage(env: { bakinUrl?: string } = {}, opts: { excludeNames?: ReadonlySet<string> } = {}): string {
   const lines = ['Usage: bakin <command> [options]', '']
-  for (const [group, commands] of grouped) {
-    lines.push(`${group}:`)
+  for (const usageGroup of getCliUsageGroups(opts)) {
+    lines.push(`${usageGroup.group}:`)
+    const { commands } = usageGroup
     for (const command of commands) {
       lines.push(`  ${command.usage.padEnd(58)} ${command.summary}`)
     }
