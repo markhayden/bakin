@@ -21,6 +21,7 @@ import type { Permission } from '@bakin/core/plugins/permissions'
 import { extractApiErrorMessage, formatApiError } from '../src/core/cli/api-error'
 import type {
   AgentRuleResultData,
+  CommandIssueData,
   PackageActionData,
   PluginActionData,
   PluginRestoreResultData,
@@ -206,6 +207,66 @@ async function printHelpTui(error?: string, errorDetail?: string): Promise<void>
     error,
     errorDetail,
   })))
+}
+
+async function printCommandIssueTui(issue: CommandIssueData): Promise<void> {
+  const [{ CommandIssueReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(CommandIssueReport, { issue })))
+}
+
+function normalizeUsage(usage: string): string {
+  return usage.replace(/^Usage:\s*/, '')
+}
+
+function usageLine(usage: string): string {
+  return usage.startsWith('Usage:') ? usage : `Usage: ${usage}`
+}
+
+async function exitCommandIssue(
+  message: string,
+  options: {
+    command?: string
+    detail?: string
+    usage?: string
+    available?: string[]
+    plainMessage?: boolean
+  } = {},
+): Promise<never> {
+  if (process.stdout.isTTY) {
+    await printCommandIssueTui({
+      command: options.command ?? (options.usage ? normalizeUsage(options.usage) : 'command'),
+      message,
+      detail: options.detail,
+      usage: options.usage ? normalizeUsage(options.usage) : undefined,
+      available: options.available,
+    })
+  } else {
+    if (options.plainMessage !== false) console.error(message)
+    if (options.usage) console.error(usageLine(options.usage))
+    if (options.available?.length) console.error(`Available: ${options.available.join(' | ')}`)
+  }
+  process.exit(1)
+  throw new Error('unreachable')
+}
+
+async function exitUsage(usage: string, detail?: string): Promise<never> {
+  return exitCommandIssue('Missing required arguments.', {
+    command: normalizeUsage(usage),
+    detail,
+    usage,
+    plainMessage: false,
+  })
+}
+
+async function exitUnknownSubcommand(scope: string, sub: string | undefined, available: string[]): Promise<never> {
+  return exitCommandIssue(`Unknown ${scope} subcommand: ${sub ?? '(none)'}`, {
+    command: `bakin ${scope}`,
+    available,
+  })
 }
 
 async function printSettingsTui(settings: Record<string, unknown>): Promise<void> {
@@ -3417,10 +3478,10 @@ export async function main(): Promise<void> {
           const colFlag = args.find(a => a.startsWith('--column='))
           await cmdTasksList(colFlag?.split('=')[1])
         } else if (sub === 'get') {
-          if (!args[2]) { console.error('Usage: bakin tasks get <id>'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin tasks get <id>')
           await cmdTasksGet(args[2], { json: args.includes('--json') })
         } else if (sub === 'create') {
-          if (!args[2]) { console.error('Usage: bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow="<reason>"]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow="<reason>"]')
           // Parse flags from remaining args
           const createArgs = args.slice(2)
           const wfFlag = createArgs.find(a => a.startsWith('--workflow='))
@@ -3430,26 +3491,25 @@ export async function main(): Promise<void> {
           const createAssignee = positional[1]
           const createWorkflowId = wfFlag?.split('=').slice(1).join('=')
           const createSkipReason = noWfFlag?.split('=').slice(1).join('=')
-          if (!createTitle) { console.error('Usage: bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow="<reason>"]'); process.exit(1) }
+          if (!createTitle) await exitUsage('bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow="<reason>"]')
           await cmdTasksCreate(createTitle, createAssignee, createWorkflowId, createSkipReason)
         } else if (sub === 'move') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin tasks move <id> <column>'); process.exit(1) }
+          if (!args[2] || !args[3]) await exitUsage('bakin tasks move <id> <column>')
           await cmdTasksMove(args[2], args[3])
         } else if (sub === 'log') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin tasks log <id> <message>'); process.exit(1) }
+          if (!args[2] || !args[3]) await exitUsage('bakin tasks log <id> <message>')
           await cmdTasksLog(args[2], args.slice(3).join(' '))
         } else if (sub === 'block') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin tasks block <id> <reason>'); process.exit(1) }
+          if (!args[2] || !args[3]) await exitUsage('bakin tasks block <id> <reason>')
           await cmdTasksBlock(args[2], args.slice(3).join(' '))
         } else if (sub === 'depend') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin tasks depend <id> <dependsOn>'); process.exit(1) }
+          if (!args[2] || !args[3]) await exitUsage('bakin tasks depend <id> <dependsOn>')
           await cmdTasksDepend(args[2], args[3])
         } else if (sub === 'complete') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin tasks complete <id> <summary>'); process.exit(1) }
+          if (!args[2] || !args[3]) await exitUsage('bakin tasks complete <id> <summary>')
           await cmdTasksComplete(args[2], args.slice(3).join(' '))
         } else {
-          console.error(`Unknown tasks subcommand: ${sub}`)
-          process.exit(1)
+          await exitUnknownSubcommand('tasks', sub, ['list', 'get', 'create', 'move', 'log', 'block', 'depend', 'complete'])
         }
         break
 
@@ -3457,17 +3517,16 @@ export async function main(): Promise<void> {
         if (sub === 'list') {
           await cmdWorkflowsList()
         } else if (sub === 'start') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin workflows start <taskId> <workflowId>'); process.exit(1) }
+          if (!args[2] || !args[3]) await exitUsage('bakin workflows start <taskId> <workflowId>')
           await cmdWorkflowsStart(args[2], args[3])
         } else if (sub === 'step') {
-          if (!args[2]) { console.error('Usage: bakin workflows step <taskId>'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin workflows step <taskId>')
           await cmdWorkflowsStep(args[2])
         } else if (sub === 'submit') {
-          if (!args[2] || !args[3] || !args[4]) { console.error('Usage: bakin workflows submit <taskId> <stepId> \'<json>\''); process.exit(1) }
+          if (!args[2] || !args[3] || !args[4]) await exitUsage('bakin workflows submit <taskId> <stepId> \'<json>\'')
           await cmdWorkflowsSubmit(args[2], args[3], args[4])
         } else {
-          console.error(`Unknown workflows subcommand: ${sub}`)
-          process.exit(1)
+          await exitUnknownSubcommand('workflows', sub, ['list', 'start', 'step', 'submit'])
         }
         break
 
@@ -3481,19 +3540,19 @@ export async function main(): Promise<void> {
             await cmdAgentsList({ json: args.includes('--json') })
           }
         } else if (sub === 'status') {
-          if (!args[2]) { console.error('Usage: bakin agents status <id>'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin agents status <id>')
           await cmdAgentsStatus(args[2], { json: args.includes('--json') })
         } else if (sub === 'tasks') {
-          if (!args[2]) { console.error('Usage: bakin agents tasks <id>'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin agents tasks <id>')
           await cmdAgentsTasks(args[2])
         } else if (sub === 'send') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin agents send <id> <message>'); process.exit(1) }
+          if (!args[2] || !args[3]) await exitUsage('bakin agents send <id> <message>')
           await cmdAgentsSend(args[2], args.slice(3).join(' '))
         } else if (sub === 'install') {
-          if (!args[2]) { console.error('Usage: bakin agents install <path|github:user/repo[@ref][#subpath]> [--adopt] [--install-as <id>] [--replace]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin agents install <path|github:user/repo[@ref][#subpath]> [--adopt] [--install-as <id>] [--replace]')
           await cmdAgentPackagesInstall(args[2], parseAgentsFlags(args.slice(3)))
         } else if (sub === 'remove') {
-          if (!args[2]) { console.error('Usage: bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--force]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--force]')
           await cmdAgentPackagesRemove(args[2], parseAgentsFlags(args.slice(3)))
         } else if (sub === 'update') {
           // `bakin agents update` (no id) updates everything; `bakin agents update <id>` is targeted
@@ -3503,20 +3562,16 @@ export async function main(): Promise<void> {
         } else if (sub === 'lessons') {
           const lessonSub = args[2]
           if (lessonSub === 'list') {
-            if (!args[3]) { console.error('Usage: bakin agents lessons list <agent-id>'); process.exit(1) }
+            if (!args[3]) await exitUsage('bakin agents lessons list <agent-id>')
             await cmdAgentPackagesLessonsList(args[3])
           } else if (lessonSub === 'enable' || lessonSub === 'disable') {
-            if (!args[3] || !args[4]) { console.error(`Usage: bakin agents lessons ${lessonSub} <agent-id> <lesson-id>`); process.exit(1) }
+            if (!args[3] || !args[4]) await exitUsage(`bakin agents lessons ${lessonSub} <agent-id> <lesson-id>`)
             await cmdAgentPackagesLessonsToggle(args[3], args[4], lessonSub === 'enable', { json: args.includes('--json') })
           } else {
-            console.error(`Unknown agents lessons subcommand: ${lessonSub ?? '(none)'}`)
-            console.error('Available: list | enable | disable')
-            process.exit(1)
+            await exitUnknownSubcommand('agents lessons', lessonSub, ['list', 'enable', 'disable'])
           }
         } else {
-          console.error(`Unknown agents subcommand: ${sub}`)
-          console.error('Available: list | status | tasks | send | install | remove | update | lessons {list,enable,disable}')
-          process.exit(1)
+          await exitUnknownSubcommand('agents', sub, ['list', 'status', 'tasks', 'send', 'install', 'remove', 'update', 'lessons'])
         }
         break
 
@@ -3526,13 +3581,12 @@ export async function main(): Promise<void> {
           const key = flags.find(arg => !arg.startsWith('--'))
           await cmdSettingsGet(key, { json: flags.includes('--json') })
         } else if (sub === 'set') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin settings set <key> <value>'); process.exit(1) }
+          if (!args[2] || !args[3]) await exitUsage('bakin settings set <key> <value>')
           await cmdSettingsSet(args[2], args[3], { json: args.slice(4).includes('--json') })
         } else if (sub === 'init') {
           await cmdOnboardingSettingsInit({ json: args.slice(2).includes('--json') })
         } else {
-          console.error(`Unknown settings subcommand: ${sub}`)
-          process.exit(1)
+          await exitUnknownSubcommand('settings', sub, ['get', 'set', 'init'])
         }
         break
 
@@ -3542,11 +3596,16 @@ export async function main(): Promise<void> {
         } else if (sub === 'install') {
           const installArgs = args.slice(2)
           const parsed = parsePluginInstallArgs(installArgs)
-          if (parsed.error || !parsed.source) {
-            console.error(parsed.error ? `${parsed.error}\n${PLUGIN_INSTALL_USAGE}` : PLUGIN_INSTALL_USAGE)
-            process.exit(1)
+          const source = parsed.source
+          if (parsed.error || !source) {
+            await exitCommandIssue(parsed.error ?? 'Missing required arguments.', {
+              command: 'bakin plugins install',
+              usage: PLUGIN_INSTALL_USAGE,
+              plainMessage: Boolean(parsed.error),
+            })
+            return
           }
-          await cmdPluginsInstall(parsed.source, {
+          await cmdPluginsInstall(source, {
             yes: parsed.yes,
             dev: parsed.dev,
             force: parsed.force,
@@ -3558,47 +3617,52 @@ export async function main(): Promise<void> {
           const file = flags.find(arg => !arg.startsWith('--'))
           const extraArg = flags.filter(arg => !arg.startsWith('--')).slice(1)[0]
           if (extraArg) {
-            console.error(`Unexpected plugins export argument: ${extraArg}`)
-            console.error('Usage: bakin plugins export [file] [--json]')
-            process.exit(1)
+            await exitCommandIssue(`Unexpected plugins export argument: ${extraArg}`, {
+              command: 'bakin plugins export',
+              usage: 'bakin plugins export [file] [--json]',
+            })
           }
           const unknown = flags.find(arg => arg.startsWith('--') && arg !== '--json')
           if (unknown) {
-            console.error(`Unknown plugins export flag: ${unknown}`)
-            console.error('Usage: bakin plugins export [file] [--json]')
-            process.exit(1)
+            await exitCommandIssue(`Unknown plugins export flag: ${unknown}`, {
+              command: 'bakin plugins export',
+              usage: 'bakin plugins export [file] [--json]',
+            })
           }
           await cmdPluginsExport(file, { json: flags.includes('--json') })
         } else if (sub === 'import') {
-          if (!args[2]) { console.error('Usage: bakin plugins import <file> [--yes] [--force] [--json]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin plugins import <file> [--yes] [--force] [--json]')
           const flags = args.slice(3)
           const extraArg = flags.find(arg => !arg.startsWith('--'))
           if (extraArg) {
-            console.error(`Unexpected plugins import argument: ${extraArg}`)
-            console.error('Usage: bakin plugins import <file> [--yes] [--force] [--json]')
-            process.exit(1)
+            await exitCommandIssue(`Unexpected plugins import argument: ${extraArg}`, {
+              command: 'bakin plugins import',
+              usage: 'bakin plugins import <file> [--yes] [--force] [--json]',
+            })
           }
           const unknown = flags.find(arg => arg.startsWith('--') && arg !== '--yes' && arg !== '--force' && arg !== '--json')
           if (unknown) {
-            console.error(`Unknown plugins import flag: ${unknown}`)
-            console.error('Usage: bakin plugins import <file> [--yes] [--force] [--json]')
-            process.exit(1)
+            await exitCommandIssue(`Unknown plugins import flag: ${unknown}`, {
+              command: 'bakin plugins import',
+              usage: 'bakin plugins import <file> [--yes] [--force] [--json]',
+            })
           }
           await cmdPluginsImport(args[2], { yes: flags.includes('--yes'), force: flags.includes('--force'), json: flags.includes('--json') })
         } else if (sub === 'remove') {
-          if (!args[2]) { console.error('Usage: bakin plugins remove <id> [--json]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin plugins remove <id> [--json]')
           await cmdPluginsRemove(args[2], { json: args.slice(3).includes('--json') })
         } else if (sub === 'upgrade') {
-          if (!args[2]) { console.error('Usage: bakin plugins upgrade <id> [--yes] [--json]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin plugins upgrade <id> [--yes] [--json]')
           const flags = args.slice(3)
           await cmdPluginsUpgrade(args[2], { yes: flags.includes('--yes'), json: flags.includes('--json') })
         } else if (sub === 'restore') {
-          if (!args[2]) { console.error(PLUGIN_RESTORE_USAGE); process.exit(1) }
+          if (!args[2]) await exitUsage(PLUGIN_RESTORE_USAGE)
           const parsed = parsePluginRestoreFlags(args.slice(3))
           if (parsed.error) {
-            console.error(parsed.error)
-            console.error(PLUGIN_RESTORE_USAGE)
-            process.exit(1)
+            await exitCommandIssue(parsed.error, {
+              command: 'bakin plugins restore',
+              usage: PLUGIN_RESTORE_USAGE,
+            })
           }
           await cmdPluginsRestore(args[2], {
             snapshot: parsed.snapshot,
@@ -3606,36 +3670,33 @@ export async function main(): Promise<void> {
             list: parsed.list,
           })
         } else if (sub === 'link') {
-          if (!args[2]) { console.error('Usage: bakin plugins link <localPath> [--force] [--json]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin plugins link <localPath> [--force] [--json]')
           await cmdPluginsLink(args[2], { force: args.slice(3).includes('--force'), json: args.slice(3).includes('--json') })
         } else if (sub === 'unlink') {
-          if (!args[2]) { console.error('Usage: bakin plugins unlink <id> [--json]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin plugins unlink <id> [--json]')
           await cmdPluginsUnlink(args[2], { json: args.slice(3).includes('--json') })
         } else if (sub === 'scaffold') {
-          if (!args[2]) { console.error('Usage: bakin plugins scaffold <name> [--json]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin plugins scaffold <name> [--json]')
           await cmdPluginsScaffold(args[2], { json: args.slice(3).includes('--json') })
         } else {
-          console.error(`Unknown plugins subcommand: ${sub}`)
-          process.exit(1)
+          await exitUnknownSubcommand('plugins', sub, ['list', 'install', 'export', 'import', 'remove', 'upgrade', 'restore', 'link', 'unlink', 'scaffold'])
         }
         break
 
       case 'packages':
         if (sub === 'install') {
-          if (!args[2]) { console.error('Usage: bakin packages install <path|github:user/repo[@ref][#subpath]> [--install-as <id>] [--replace]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin packages install <path|github:user/repo[@ref][#subpath]> [--install-as <id>] [--replace]')
           await cmdPackagesInstall(args[2], parseAgentsFlags(args.slice(3)))
         } else if (sub === 'list') {
           await cmdPackagesList(parseAgentsFlags(args.slice(2)))
         } else if (sub === 'remove') {
-          if (!args[2]) { console.error('Usage: bakin packages remove <package-id> [--force] [--keep-blocks]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin packages remove <package-id> [--force] [--keep-blocks]')
           await cmdPackagesRemove(args[2], parseAgentsFlags(args.slice(3)))
         } else if (sub === 'update') {
-          if (!args[2]) { console.error('Usage: bakin packages update <package-id> [--refresh-template]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin packages update <package-id> [--refresh-template]')
           await cmdPackagesUpdate(args[2], parseAgentsFlags(args.slice(3)))
         } else {
-          console.error(`Unknown packages subcommand: ${sub ?? '(none)'}`)
-          console.error('Available: install | list | remove | update')
-          process.exit(1)
+          await exitUnknownSubcommand('packages', sub, ['install', 'list', 'remove', 'update'])
         }
         break
 
@@ -3652,9 +3713,7 @@ export async function main(): Promise<void> {
           const uninstall = args.includes('--uninstall')
           await cmdSetupService({ uninstall })
         } else {
-          console.error(`Unknown setup target: ${sub}`)
-          console.error('Available: bakin setup service')
-          process.exit(1)
+          await exitUnknownSubcommand('setup', sub, ['service'])
         }
         break
 
@@ -3685,9 +3744,7 @@ export async function main(): Promise<void> {
         } else if (sub === 'all') {
           await cmdOnboardingCheckAll({ verbose: args.includes('--verbose') })
         } else {
-          console.error(`Unknown check target: ${sub}`)
-          console.error('Available: bakin check runtime | search | search-models | llm | channels | plugin-assets | agent-assets | recommended-plugins | recommended-agents | all')
-          process.exit(1)
+          await exitUnknownSubcommand('check', sub, ['runtime', 'search', 'search-models', 'llm', 'channels', 'plugin-assets', 'agent-assets', 'recommended-plugins', 'recommended-agents', 'all'])
         }
         break
 
@@ -3695,9 +3752,7 @@ export async function main(): Promise<void> {
         if (sub === 'search' || sub === 'search-models' || sub === 'mcporter' || sub === 'plugin-assets' || sub === 'agent-assets' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
           await cmdOnboardingInstallSingle(sub, args)
         } else {
-          console.error(`Unknown install target: ${sub}`)
-          console.error('Available: bakin install search | search-models | mcporter | plugin-assets | agent-assets | recommended-plugins | recommended-agents')
-          process.exit(1)
+          await exitUnknownSubcommand('install', sub, ['search', 'search-models', 'mcporter', 'plugin-assets', 'agent-assets', 'recommended-plugins', 'recommended-agents'])
         }
         break
 
@@ -3760,7 +3815,7 @@ export async function main(): Promise<void> {
           else if (args[i] === '--facets' && args[i + 1]) searchOpts.facets = args[++i]
           else queryParts.push(args[i])
         }
-        if (!queryParts.length) { console.error('Usage: bakin search <query> [--table=tasks] [--limit=10] [--facets=status,agent]'); process.exit(1) }
+        if (!queryParts.length) await exitUsage('bakin search <query> [--table=tasks] [--limit=10] [--facets=status,agent]')
         await cmdSearch(queryParts.join(' '), searchOpts)
         break
       }
@@ -3773,13 +3828,12 @@ export async function main(): Promise<void> {
         if (!sub || sub === 'list') {
           await cmdTrashList()
         } else if (sub === 'restore') {
-          if (!args[2]) { console.error('Usage: bakin trash restore <filename>'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin trash restore <filename>')
           await cmdTrashRestore(args[2])
         } else if (sub === 'empty') {
           await cmdTrashEmpty()
         } else {
-          console.error(`Unknown trash subcommand: ${sub}`)
-          process.exit(1)
+          await exitUnknownSubcommand('trash', sub, ['list', 'restore', 'empty'])
         }
         break
 
@@ -3787,7 +3841,7 @@ export async function main(): Promise<void> {
         if (!sub || sub === 'list') {
           await cmdScheduleList({ agent: args.includes('--agent') ? args[args.indexOf('--agent') + 1] : undefined })
         } else if (sub === 'add') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin schedule add <name> <schedule> [--agent <id>] [--prompt <text>]'); process.exit(1) }
+          if (!args[2] || !args[3]) await exitUsage('bakin schedule add <name> <schedule> [--agent <id>] [--prompt <text>]')
           const agentIdx = args.indexOf('--agent')
           const promptIdx = args.indexOf('--prompt')
           await cmdScheduleAdd({
@@ -3797,7 +3851,7 @@ export async function main(): Promise<void> {
             prompt: promptIdx > -1 ? args.slice(promptIdx + 1).join(' ') : undefined,
           })
         } else if (sub === 'pause') {
-          if (!args[2]) { console.error('Usage: bakin schedule pause <jobId> [--until <date>] [--skip <n>]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin schedule pause <jobId> [--until <date>] [--skip <n>]')
           const untilIdx = args.indexOf('--until')
           const skipIdx = args.indexOf('--skip')
           await cmdSchedulePause(args[2], {
@@ -3805,20 +3859,19 @@ export async function main(): Promise<void> {
             skip: skipIdx > -1 ? Number(args[skipIdx + 1]) : undefined,
           })
         } else if (sub === 'resume') {
-          if (!args[2]) { console.error('Usage: bakin schedule resume <jobId>'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin schedule resume <jobId>')
           await cmdScheduleResume(args[2])
         } else if (sub === 'remove') {
-          if (!args[2]) { console.error('Usage: bakin schedule remove <jobId>'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin schedule remove <jobId>')
           await cmdScheduleRemove(args[2])
         } else if (sub === 'run') {
-          if (!args[2]) { console.error('Usage: bakin schedule run <jobId>'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin schedule run <jobId>')
           await cmdScheduleRun(args[2])
         } else if (sub === 'runs') {
-          if (!args[2]) { console.error('Usage: bakin schedule runs <jobId>'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin schedule runs <jobId>')
           await cmdScheduleRuns(args[2], { limit: 20 })
         } else {
-          console.error(`Unknown schedule subcommand: ${sub}`)
-          process.exit(1)
+          await exitUnknownSubcommand('schedule', sub, ['list', 'add', 'pause', 'resume', 'remove', 'run', 'runs'])
         }
         break
 
@@ -3842,6 +3895,9 @@ export async function main(): Promise<void> {
     }
   } catch (err) {
     if (err instanceof Error && err.name === 'BakinDelegatedCliExit') {
+      throw err
+    }
+    if (err instanceof Error && /^exit:\d+$/.test(err.message)) {
       throw err
     }
     if (

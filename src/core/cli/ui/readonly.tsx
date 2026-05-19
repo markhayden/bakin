@@ -299,6 +299,14 @@ export interface HelpEnvData {
   bakinUrl?: unknown
 }
 
+export interface CommandIssueData {
+  command?: unknown
+  message?: unknown
+  detail?: unknown
+  usage?: unknown
+  available?: unknown
+}
+
 interface TaskTableRow {
   status: TuiStatus
   column: string
@@ -1649,6 +1657,59 @@ export function HelpReport({ groups, env = {}, error, errorDetail, color = true 
           rows={envRows}
         />
       </Section>
+    </Box>
+  )
+}
+
+export function CommandIssueReport({ issue, color = true }: {
+  issue: CommandIssueData
+  color?: boolean
+}) {
+  const command = valueText(issue.command, 'command')
+  const message = valueText(issue.message, 'Invalid command invocation.')
+  const detail = valueText(issue.detail, '')
+  const usage = valueText(issue.usage, '')
+  const available = Array.isArray(issue.available)
+    ? issue.available.map(item => valueText(item)).filter(Boolean)
+    : []
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Command issue" subtitle="Invalid command invocation" meta={command} color={color} />
+      <SummaryStrip items={[
+        { label: 'issue', value: 1, status: 'fail' },
+        { label: 'usage', value: usage ? 1 : 0, status: usage ? 'ready' : 'skip' },
+        { label: 'available', value: available.length, status: available.length > 0 ? 'ok' : 'skip' },
+      ]} color={color} />
+      <Section title="Issue" color={color}>
+        <FindingRows rows={[{
+          status: 'fail',
+          label: command,
+          message,
+          detail: detail || undefined,
+        }]} color={color} />
+        <Text> </Text>
+      </Section>
+      {usage ? (
+        <Section title="Usage" color={color}>
+          <FindingRows rows={[{
+            status: 'ready',
+            label: 'usage',
+            message: usage,
+          }]} color={color} />
+          <Text> </Text>
+        </Section>
+      ) : null}
+      {available.length > 0 ? (
+        <Section title="Available" color={color}>
+          <FindingRows rows={[{
+            status: 'ok',
+            label: 'commands',
+            message: available.join(' | '),
+          }]} color={color} />
+          <Text> </Text>
+        </Section>
+      ) : null}
     </Box>
   )
 }

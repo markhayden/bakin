@@ -127,6 +127,44 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).not.toContain('Error: Cannot connect to Bakin')
   })
 
+  it('renders missing-argument usage with the shared TUI when stdout is a TTY', async () => {
+    process.argv = ['bun', 'cli/bakin.ts', 'tasks', 'get']
+
+    const { main } = await import('../../cli/bakin')
+    await expect(main()).rejects.toThrow('exit:1')
+
+    expect(output()).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output()).toContain('Command issue  bakin tasks get <id>')
+    expect(output()).toContain('Missing required arguments.')
+    expect(output()).toContain('USAGE')
+    expect(output()).toContain('bakin tasks get <id>')
+    expect(errorOutput()).toBe('')
+  })
+
+  it('renders unknown subcommands with the shared TUI when stdout is a TTY', async () => {
+    process.argv = ['bun', 'cli/bakin.ts', 'tasks', 'wat']
+
+    const { main } = await import('../../cli/bakin')
+    await expect(main()).rejects.toThrow('exit:1')
+
+    expect(output()).toContain('Command issue  bakin tasks')
+    expect(output()).toContain('Unknown tasks subcommand: wat')
+    expect(output()).toContain('AVAILABLE')
+    expect(output()).toContain('list | get | create')
+    expect(errorOutput()).toBe('')
+  })
+
+  it('keeps missing-argument usage plain outside TTY', async () => {
+    setStdoutIsTTY(false)
+    process.argv = ['bun', 'cli/bakin.ts', 'tasks', 'get']
+
+    const { main } = await import('../../cli/bakin')
+    await expect(main()).rejects.toThrow('exit:1')
+
+    expect(output()).toBe('')
+    expect(errorOutput()).toBe('Usage: bakin tasks get <id>')
+  })
+
   it('renders status with the shared TUI when stdout is a TTY', async () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse({
