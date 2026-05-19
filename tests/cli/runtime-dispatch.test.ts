@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { APP_VERSION } from '../../packages/core/src/constants'
 
 const execFileSync = mock((..._args: unknown[]) => '')
 const fetchMock = mock()
@@ -55,10 +56,33 @@ describe('bakin runtime binary dispatch', () => {
     const result = await dispatchCli(['bun', 'bakin', '--help'])
 
     expect(result).toEqual({ startServer: false, exitCode: 0 })
-    expect(output()).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
     expect(output()).toContain('Help')
     expect(output()).toContain('LIFECYCLE')
     expect(output()).not.toContain('Usage: bakin <command> [options]')
+    expect(errorOutput()).toBe('')
+  })
+
+  it('renders binary version with the shared TUI when stdout is a TTY', async () => {
+    const { dispatchCli } = await import('../../src/core/cli')
+
+    const result = await dispatchCli(['bun', 'bakin', 'version'])
+
+    expect(result).toEqual({ startServer: false, exitCode: 0 })
+    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(output()).toContain(`Version  v${APP_VERSION}`)
+    expect(output()).toContain(APP_VERSION)
+    expect(errorOutput()).toBe('')
+  })
+
+  it('keeps binary version plain outside TTY', async () => {
+    Object.defineProperty(process.stdout, 'isTTY', { value: false, configurable: true })
+    const { dispatchCli } = await import('../../src/core/cli')
+
+    const result = await dispatchCli(['bun', 'bakin', '--version'])
+
+    expect(result).toEqual({ startServer: false, exitCode: 0 })
+    expect(output()).toBe(APP_VERSION)
     expect(errorOutput()).toBe('')
   })
 

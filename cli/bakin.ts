@@ -4,6 +4,7 @@
  * All commands are thin wrappers around the Bakin HTTP API.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
+import { APP_VERSION } from '../packages/core/src/constants'
 import {
   cmdScheduleList, cmdScheduleAdd, cmdSchedulePause,
   cmdScheduleResume, cmdScheduleRemove, cmdScheduleRun, cmdScheduleRuns,
@@ -36,6 +37,7 @@ import type {
   SettingsActionData,
   TaskActionData,
   TrashActionData,
+  VersionData,
   WorkflowActionData,
 } from '../src/core/cli/ui/readonly'
 import type { CheckResult, InstallResult } from '../src/core/onboarding/types'
@@ -231,6 +233,15 @@ async function printCommandFailureTui(failure: CommandFailureData): Promise<void
     import('react'),
   ])
   console.log(renderToString(createElement(CommandFailureReport, { failure })))
+}
+
+async function printVersionTui(data: VersionData): Promise<void> {
+  const [{ VersionReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('ink'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(VersionReport, { data })))
 }
 
 function invocationCommand(args: string[]): string {
@@ -3528,6 +3539,13 @@ export async function main(): Promise<void> {
 
   try {
     switch (cmd) {
+      case 'version':
+      case '--version':
+      case '-v':
+        if (process.stdout.isTTY) await printVersionTui({ version: APP_VERSION })
+        else console.log(APP_VERSION)
+        break
+
       case 'status':
         await cmdStatus()
         break

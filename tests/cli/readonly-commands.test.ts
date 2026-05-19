@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:te
 import { existsSync, mkdtempSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { APP_VERSION } from '../../packages/core/src/constants'
 
 const fetchMock = mock()
 
@@ -70,7 +71,7 @@ describe('read-only CLI TTY commands', () => {
     const { main } = await import('../../cli/bakin')
     await expect(main()).rejects.toThrow('exit:0')
 
-    expect(output()).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
     expect(output()).toContain('Help')
     expect(output()).toContain('LIFECYCLE')
     expect(output()).toContain('TASKS AND WORKFLOWS')
@@ -92,6 +93,18 @@ describe('read-only CLI TTY commands', () => {
     expect(errorOutput()).toBe('')
   })
 
+  it('renders source CLI version with the shared TUI when stdout is a TTY', async () => {
+    process.argv = ['bun', 'cli/bakin.ts', 'version']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(output()).toContain(`Version  v${APP_VERSION}`)
+    expect(output()).toContain(APP_VERSION)
+    expect(errorOutput()).toBe('')
+  })
+
   it('renders unknown top-level commands with help in the shared TUI', async () => {
     process.exit = ((code?: number) => {
       throw new Error(`exit:${code ?? 0}`)
@@ -103,7 +116,7 @@ describe('read-only CLI TTY commands', () => {
     await expect(main()).rejects.toThrow('exit:1')
 
     expect(errorOutput()).toContain('Unknown command: wat')
-    expect(output()).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
     expect(output()).toContain('Help  unknown command')
     expect(output()).toContain('ISSUE')
     expect(output()).toContain('Unknown command: wat')
@@ -133,7 +146,7 @@ describe('read-only CLI TTY commands', () => {
     const { main } = await import('../../cli/bakin')
     await expect(main()).rejects.toThrow('exit:1')
 
-    expect(output()).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
     expect(output()).toContain('Command issue  bakin tasks get <id>')
     expect(output()).toContain('Missing required arguments.')
     expect(output()).toContain('USAGE')
@@ -213,7 +226,7 @@ describe('read-only CLI TTY commands', () => {
     const { main } = await import('../../cli/bakin')
     await main()
 
-    expect(output()).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
     expect(output()).toContain('Help')
     expect(output()).toContain('AGENT RULES')
     expect(output()).toContain('bakin agent-rules --apply')
@@ -236,7 +249,7 @@ describe('read-only CLI TTY commands', () => {
     const { main } = await import('../../cli/bakin')
     await main()
 
-    expect(output()).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
     expect(output()).toContain('Status')
     expect(output()).toContain('DISPATCH')
     expect(output()).not.toContain('=== Bakin Status ===')
@@ -537,7 +550,7 @@ describe('read-only CLI TTY commands', () => {
     process.argv = ['bun', 'cli/bakin.ts', 'workflows', 'list']
     await main()
 
-    expect(output()).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
     expect(output()).toContain('Workflows')
     expect(output()).toContain('DEFINITIONS')
     expect(output()).toContain('FILENAME')

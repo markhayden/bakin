@@ -316,6 +316,10 @@ export interface CommandFailureData {
   next?: unknown
 }
 
+export interface VersionData {
+  version?: unknown
+}
+
 interface TaskTableRow {
   status: TuiStatus
   column: string
@@ -1761,6 +1765,30 @@ export function CommandFailureReport({ failure, color = true }: {
           <Text> </Text>
         </Section>
       ) : null}
+    </Box>
+  )
+}
+
+export function VersionReport({ data, color = true }: {
+  data: VersionData
+  color?: boolean
+}) {
+  const version = valueText(data.version, 'unknown')
+
+  return (
+    <Box flexDirection="column">
+      <ScreenHeader title="Version" subtitle="Installed Bakin CLI" meta={`v${version}`} color={color} />
+      <SummaryStrip items={[
+        { label: 'version', value: 1, status: 'ok' },
+      ]} color={color} />
+      <Section title="Details" color={color}>
+        <FindingRows rows={[{
+          status: 'ok',
+          label: 'bakin',
+          message: version,
+        }]} color={color} />
+        <Text> </Text>
+      </Section>
     </Box>
   )
 }

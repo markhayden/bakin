@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'bun:test'
 import { renderToString } from 'ink'
+import { APP_VERSION } from '../../packages/core/src/constants'
 
 import { createMultiSelectState, MultiSelect, updateMultiSelectState } from '../../src/core/cli/ui/multi-select'
 import { Report } from '../../src/core/cli/ui/report'
 import { Table } from '../../src/core/cli/ui/table'
 import {
+  BAKIN_HEADER,
   DataTable,
   FindingRows,
   NextActions,
@@ -24,9 +26,11 @@ describe('CLI UI primitives', () => {
     const lines = output.split('\n')
 
     expect(lines[0]).toBe('')
-    expect(lines[1]).toBe('┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓')
-    expect(lines[2]).toBe("┃  🐷 Bakin'                  (v1.0.0) ┃")
-    expect(lines[3]).toBe('┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛')
+    expect(lines[1]).toBe(BAKIN_HEADER[0])
+    expect(lines[2]).toBe(BAKIN_HEADER[1])
+    expect(lines[2]).toContain(`(v${APP_VERSION})`)
+    expect(lines[2]).toContain("┃ 🐷 Bakin'")
+    expect(lines[3]).toBe(BAKIN_HEADER[2])
     expect(lines[4]).toBe('')
     expect(output).toContain('Doctor  mode: offline')
     expect(output).toContain('Offline diagnostics from this machine')

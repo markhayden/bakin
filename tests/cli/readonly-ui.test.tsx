@@ -33,6 +33,7 @@ import {
   TasksListReport,
   TrashActionReport,
   TrashListReport,
+  VersionReport,
   WorkflowActionReport,
   WorkflowsListReport,
 } from '../../src/core/cli/ui/readonly'
@@ -52,7 +53,7 @@ describe('read-only CLI TUI screens', () => {
       />,
     )
 
-    expect(output).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
     expect(output).toContain('Status')
     expect(output).toContain('DISPATCH')
     expect(output).toContain('main, patch')
@@ -83,7 +84,7 @@ describe('read-only CLI TUI screens', () => {
       />,
     )
 
-    expect(output).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
     expect(output).toContain('Help  unknown command')
     expect(output).toContain('ISSUE\n------------')
     expect(output).toContain('Unknown command: wat')
@@ -108,7 +109,7 @@ describe('read-only CLI TUI screens', () => {
       />,
     )
 
-    expect(output).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
     expect(output).toContain('Command issue  bakin tasks get')
     expect(output).toContain('ISSUE')
     expect(output).toContain('Missing required arguments.')
@@ -131,13 +132,22 @@ describe('read-only CLI TUI screens', () => {
       />,
     )
 
-    expect(output).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
     expect(output).toContain('Command failed  bakin tasks list')
     expect(output).toContain('Cannot connect to Bakin')
     expect(output).toContain('SERVER_UNREACHABLE')
     expect(output).toContain('PROBLEM')
     expect(output).toContain('NEXT')
     expect(output).toContain('Run `bakin start`')
+  })
+
+  it('renders version with shared TUI primitives', () => {
+    const output = renderToString(<VersionReport data={{ version: '1.2.3' }} />)
+
+    expect(output).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(output).toContain('Version  v1.2.3')
+    expect(output).toContain('DETAILS')
+    expect(output).toContain('1.2.3')
   })
 
   it('renders runtime action confirmations with shared TUI primitives', () => {

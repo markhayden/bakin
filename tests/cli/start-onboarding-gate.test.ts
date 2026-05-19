@@ -33,7 +33,7 @@ describe('CLI start onboarding gate', () => {
 
     expect(result).toEqual({ startServer: false, exitCode: 1 })
     const output = logSpy.mock.calls.map(call => String(call[0])).join('\n')
-    expect(output).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(output).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
     expect(output).toContain('Onboard')
     expect(output).toContain('Initial setup required')
     expect(output).toContain('Run `bakin onboard`')

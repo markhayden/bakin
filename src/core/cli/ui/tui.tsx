@@ -1,11 +1,19 @@
 import { Box, Text } from 'ink'
 import type { ReactNode } from 'react'
+import { APP_VERSION } from '../../../../packages/core/src/constants'
 import { CLI_COLORS, statusToken, type TuiStatus } from './style-tokens'
 
+const BAKIN_HEADER_TITLE = "🐷 Bakin'"
+const BAKIN_HEADER_VERSION = `(v${APP_VERSION})`
+const BAKIN_HEADER_WIDTH = Math.max(
+  38,
+  BAKIN_HEADER_TITLE.length + BAKIN_HEADER_VERSION.length + 6,
+)
+
 export const BAKIN_HEADER = [
-  "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓",
-  "┃  🐷 Bakin'                  (v1.0.0) ┃",
-  "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛",
+  `┏${'━'.repeat(BAKIN_HEADER_WIDTH)}┓`,
+  `┃${` ${BAKIN_HEADER_TITLE}`.padEnd(BAKIN_HEADER_WIDTH - BAKIN_HEADER_VERSION.length - 1)}${BAKIN_HEADER_VERSION} ┃`,
+  `┗${'━'.repeat(BAKIN_HEADER_WIDTH)}┛`,
 ] as const
 
 export interface FindingRow {

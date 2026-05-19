@@ -18,7 +18,7 @@ describe('doctor CLI UI', () => {
       />,
     )
 
-    expect(rendered).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(rendered).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
     expect(rendered).toContain('Doctor  mode: offline')
     expect(rendered).toContain(' OK       0 errors')
     expect(rendered).toContain(' WARN     1 warning')

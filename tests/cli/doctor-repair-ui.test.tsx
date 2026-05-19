@@ -80,7 +80,7 @@ describe('doctor repair CLI UI', () => {
   it('renders a repair plan with shared TUI primitives', () => {
     const rendered = renderToString(<DoctorRepairPlan plan={repairPlan} color={false} />)
 
-    expect(rendered).toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(rendered).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
     expect(rendered).toContain('Doctor repair plan')
     expect(rendered).toContain(' READY    1 safe')
     expect(rendered).toContain('SAFE DETERMINISTIC REPAIRS')
@@ -107,7 +107,7 @@ describe('doctor repair CLI UI', () => {
     const rendered = renderToString(<DoctorRepairApplyReport report={repairApply} color={false} showBrand={false} />)
 
     expect(rendered).toContain('Doctor repair results')
-    expect(rendered).not.toContain("┃  🐷 Bakin'                  (v1.0.0) ┃")
+    expect(rendered).not.toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
   })
 
   it('renders delegated repair preview and sent result', () => {
