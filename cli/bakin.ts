@@ -2232,6 +2232,22 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
   const { join, dirname, resolve } = await import('path')
   const { homedir } = await import('os')
   const { getBakinPaths } = await import('../packages/core/src/content-dir')
+  const isTTY = process.stdout.isTTY
+
+  const printServiceResult = async (
+    result: Record<string, unknown>,
+    detail?: string,
+  ): Promise<void> => {
+    const action = options.uninstall ? 'disable autostart' : 'enable autostart'
+    const message = typeof result.message === 'string' ? result.message : 'Bakin service configuration updated.'
+    await printRuntimeActionTui({
+      action,
+      target: 'Bakin service',
+      result,
+      message,
+      detail,
+    })
+  }
 
   const programArgs = await serviceProgramArgs()
   const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
@@ -2250,12 +2266,22 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
     }
 
     if (options.uninstall) {
-      console.log('[..] Removing Bakin LaunchAgent...')
+      if (!isTTY) console.log('[..] Removing Bakin LaunchAgent...')
       removePlist(plistPath)
       for (const label of LEGACY_SERVICE_LABELS) {
         removePlist(join(launchAgentsDir, `${label}.plist`))
       }
-      console.log('[OK] Bakin autostart disabled')
+      if (isTTY) {
+        await printServiceResult({
+          ok: true,
+          status: 'ok',
+          message: 'Bakin autostart disabled.',
+          service: SERVICE_LABEL,
+          platform: 'darwin',
+        }, `Service: ${SERVICE_LABEL}`)
+      } else {
+        console.log('[OK] Bakin autostart disabled')
+      }
       return
     }
 
@@ -2272,10 +2298,24 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
     }), 'utf-8')
     execFileSync('launchctl', ['bootstrap', `gui/${uid}`, plistPath], { stdio: 'pipe' })
     execFileSync('launchctl', ['kickstart', '-k', `gui/${uid}/${SERVICE_LABEL}`], { stdio: 'pipe' })
-    console.log('[OK] Bakin autostart enabled')
-    console.log(`  Service: ${SERVICE_LABEL}`)
-    console.log(`  Logs:    ${stdoutPath}`)
-    console.log('  Disable: bakin setup service --uninstall')
+    if (isTTY) {
+      await printServiceResult({
+        ok: true,
+        status: 'ok',
+        message: 'Bakin autostart enabled.',
+        service: SERVICE_LABEL,
+        platform: 'darwin',
+      }, [
+        `Service: ${SERVICE_LABEL}`,
+        `Logs: ${stdoutPath}`,
+        'Disable: bakin setup service --uninstall',
+      ].join('\n'))
+    } else {
+      console.log('[OK] Bakin autostart enabled')
+      console.log(`  Service: ${SERVICE_LABEL}`)
+      console.log(`  Logs:    ${stdoutPath}`)
+      console.log('  Disable: bakin setup service --uninstall')
+    }
     return
   }
 
@@ -2283,11 +2323,21 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
     const systemdDir = join(homedir(), '.config', 'systemd', 'user')
     const unitPath = join(systemdDir, `${SERVICE_LABEL}.service`)
     if (options.uninstall) {
-      console.log('[..] Removing Bakin user service...')
+      if (!isTTY) console.log('[..] Removing Bakin user service...')
       try { execFileSync('systemctl', ['--user', 'disable', '--now', `${SERVICE_LABEL}.service`], { stdio: 'pipe' }) } catch { /* not enabled */ }
       if (existsSync(unitPath)) unlinkSync(unitPath)
       try { execFileSync('systemctl', ['--user', 'daemon-reload'], { stdio: 'pipe' }) } catch { /* systemd unavailable */ }
-      console.log('[OK] Bakin autostart disabled')
+      if (isTTY) {
+        await printServiceResult({
+          ok: true,
+          status: 'ok',
+          message: 'Bakin autostart disabled.',
+          service: `${SERVICE_LABEL}.service`,
+          platform: 'linux',
+        }, `Service: ${SERVICE_LABEL}.service`)
+      } else {
+        console.log('[OK] Bakin autostart disabled')
+      }
       return
     }
 
@@ -2300,14 +2350,33 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
     }), 'utf-8')
     execFileSync('systemctl', ['--user', 'daemon-reload'], { stdio: 'pipe' })
     execFileSync('systemctl', ['--user', 'enable', '--now', `${SERVICE_LABEL}.service`], { stdio: 'pipe' })
-    console.log('[OK] Bakin autostart enabled')
-    console.log(`  Service: ${SERVICE_LABEL}.service`)
-    console.log(`  Logs:    ${stdoutPath}`)
-    console.log('  Disable: bakin setup service --uninstall')
+    if (isTTY) {
+      await printServiceResult({
+        ok: true,
+        status: 'ok',
+        message: 'Bakin autostart enabled.',
+        service: `${SERVICE_LABEL}.service`,
+        platform: 'linux',
+      }, [
+        `Service: ${SERVICE_LABEL}.service`,
+        `Logs: ${stdoutPath}`,
+        'Disable: bakin setup service --uninstall',
+      ].join('\n'))
+    } else {
+      console.log('[OK] Bakin autostart enabled')
+      console.log(`  Service: ${SERVICE_LABEL}.service`)
+      console.log(`  Logs:    ${stdoutPath}`)
+      console.log('  Disable: bakin setup service --uninstall')
+    }
     return
   }
 
-  console.error(`Service management is not supported on ${process.platform}.`)
+  const error = `Service management is not supported on ${process.platform}.`
+  if (isTTY) {
+    await printServiceResult({ ok: false, status: 'fail', error })
+  } else {
+    console.error(error)
+  }
   process.exit(1)
 }
 
