@@ -725,6 +725,20 @@ describe('schedule routes', () => {
       expect(getJob('job-del')).toBeNull()
     })
 
+    it('deletes a job when clients send no DELETE body', async () => {
+      upsertJob(makeMeta({ jobId: 'job-del-empty-body' }))
+
+      const route = findRoute(plugin.routes, 'DELETE', '/:jobId')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'job-del-empty-body' },
+      })
+
+      expect(status).toBe(200)
+      expect(body.ok).toBe(true)
+      expect(mockCronRemove).toHaveBeenCalledWith('job-del-empty-body')
+      expect(getJob('job-del-empty-body')).toBeNull()
+    })
+
     it.skip('returns 400 when jobId is not provided — legacy: routing requires :jobId in path', () => {})
 
     it.skip('reads jobId from body when not in searchParams — legacy fallback; routing requires :jobId in path', () => {})

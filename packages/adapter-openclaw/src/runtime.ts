@@ -922,7 +922,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       writeCronStore({ ...store, jobs: (store.jobs ?? []).filter((job) => job.id !== id) })
     },
     runNow: async (jobId: string): Promise<CronRun> => {
-      await this.exec(['cron', 'run', jobId, '--force'])
+      await this.exec(['cron', 'run', jobId])
       return readCronRuns(jobId, 1)[0] ?? {
         id: `run-${Date.now()}`,
         jobId,
