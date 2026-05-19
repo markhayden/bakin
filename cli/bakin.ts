@@ -17,6 +17,7 @@ import {
   serializePluginExportManifest,
   type PluginImportInstallRequest,
 } from '../src/core/plugins/import-export'
+import type { Permission } from '@bakin/core/plugins/permissions'
 import { formatApiError } from '../src/core/cli/api-error'
 import type {
   AgentRuleResultData,
@@ -837,6 +838,74 @@ async function cmdPluginsRemove(pluginId: string, opts: { json?: boolean } = {})
     return
   }
   print(result)
+}
+
+async function cmdPluginsUpgrade(pluginId: string, opts: { yes?: boolean; json?: boolean } = {}): Promise<void> {
+  let result = await apiPost('/api/plugins/upgrade', { pluginId, yes: opts.yes === true }) as Record<string, unknown>
+  const failed = result.core === true || Boolean(result.error)
+  if (!opts.json && result.awaitingConsent === true) {
+    const { promptUpgradeConsent } = await import('../src/core/cli/consent-prompt')
+    const before = result.before && typeof result.before === 'object' ? result.before as Record<string, unknown> : {}
+    const after = result.after && typeof result.after === 'object' ? result.after as Record<string, unknown> : {}
+    const accepted = await promptUpgradeConsent({
+      pluginId,
+      fromVersion: String(before.version ?? '?'),
+      toVersion: String(after.version ?? '?'),
+      newPermissions: Array.isArray(result.newPermissions) ? result.newPermissions as Permission[] : [],
+      yes: opts.yes === true,
+    })
+    if (!accepted) {
+      await printPluginActionTui({
+        action: 'upgraded',
+        pluginId,
+        result: { ok: false, error: 'Upgrade cancelled.' },
+      })
+      process.exit(1)
+    }
+    result = await apiPost('/api/plugins/upgrade', { pluginId, yes: true }) as Record<string, unknown>
+  }
+
+  if (!opts.json && process.stdout.isTTY) {
+    await printPluginActionTui({
+      action: 'upgraded',
+      pluginId,
+      result,
+    })
+    if (result.core === true) process.exit(2)
+    if (result.error) process.exit(1)
+    return
+  }
+
+  print(result)
+  if (opts.json && result.awaitingConsent === true) process.exit(1)
+  if (failed) process.exit(result.core === true ? 2 : 1)
+}
+
+async function cmdPluginsScaffold(name: string, opts: { json?: boolean } = {}): Promise<void> {
+  const { createPluginScaffold } = await import('../src/core/plugin-scaffold')
+  const result = createPluginScaffold(name)
+
+  if (!opts.json && process.stdout.isTTY) {
+    await printPluginActionTui({
+      action: 'scaffolded',
+      pluginId: name,
+      result,
+    })
+    if (!result.ok) process.exit(1)
+    return
+  }
+
+  if (opts.json) {
+    print(result)
+  } else if (result.ok) {
+    console.log(`Scaffolded plugin at ${result.root}`)
+    console.log('')
+    console.log('Next steps:')
+    for (const next of result.next ?? []) console.log(`  ${next}`)
+  } else {
+    console.error(result.error)
+  }
+  if (!result.ok) process.exit(1)
 }
 
 interface PluginRestoreSnapshot {
@@ -3243,6 +3312,10 @@ export async function main(): Promise<void> {
         } else if (sub === 'remove') {
           if (!args[2]) { console.error('Usage: bakin plugins remove <id> [--json]'); process.exit(1) }
           await cmdPluginsRemove(args[2], { json: args.slice(3).includes('--json') })
+        } else if (sub === 'upgrade') {
+          if (!args[2]) { console.error('Usage: bakin plugins upgrade <id> [--yes] [--json]'); process.exit(1) }
+          const flags = args.slice(3)
+          await cmdPluginsUpgrade(args[2], { yes: flags.includes('--yes'), json: flags.includes('--json') })
         } else if (sub === 'restore') {
           if (!args[2]) { console.error(PLUGIN_RESTORE_USAGE); process.exit(1) }
           const parsed = parsePluginRestoreFlags(args.slice(3))
@@ -3262,6 +3335,9 @@ export async function main(): Promise<void> {
         } else if (sub === 'unlink') {
           if (!args[2]) { console.error('Usage: bakin plugins unlink <id> [--json]'); process.exit(1) }
           await cmdPluginsUnlink(args[2], { json: args.slice(3).includes('--json') })
+        } else if (sub === 'scaffold') {
+          if (!args[2]) { console.error('Usage: bakin plugins scaffold <name> [--json]'); process.exit(1) }
+          await cmdPluginsScaffold(args[2], { json: args.slice(3).includes('--json') })
         } else {
           console.error(`Unknown plugins subcommand: ${sub}`)
           process.exit(1)
