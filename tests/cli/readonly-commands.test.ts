@@ -307,6 +307,61 @@ describe('read-only CLI TTY commands', () => {
     expect(errorOutput()).toBe('')
   })
 
+  it('renders task creation result errors with the shared TUI when stdout is a TTY', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ error: 'Task title is invalid.' }))
+    process.argv = ['bun', 'cli/bakin.ts', 'tasks', 'create', 'Bad task']
+
+    const { main } = await import('../../cli/bakin')
+    await expect(main()).rejects.toThrow('exit:1')
+
+    expect(output()).toContain('Command failed  bakin tasks create')
+    expect(output()).toContain('Task title is invalid.')
+    expect(output()).toContain('TASK_CREATE_FAILED')
+    expect(errorOutput()).toBe('')
+  })
+
+  it('renders missing task lookups with the shared TUI when stdout is a TTY', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      columns: {
+        todo: [],
+        done: [],
+      },
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'tasks', 'get', 'missing-task']
+
+    const { main } = await import('../../cli/bakin')
+    await expect(main()).rejects.toThrow('exit:1')
+
+    expect(output()).toContain('Command failed  bakin tasks get')
+    expect(output()).toContain('Task missing-task not found')
+    expect(output()).toContain('TASK_NOT_FOUND')
+    expect(output()).toContain('Run `bakin tasks list`')
+    expect(errorOutput()).toBe('')
+  })
+
+  it('renders missing audit log failures with the shared TUI when stdout is a TTY', async () => {
+    const originalBakinHome = process.env.BAKIN_HOME
+    const tempHome = mkdtempSync(join(tmpdir(), 'bakin-cli-missing-audit-'))
+    const { resetContentDir } = await import('../../packages/core/src/content-dir')
+    process.env.BAKIN_HOME = tempHome
+    resetContentDir()
+    process.argv = ['bun', 'cli/bakin.ts', 'logs']
+
+    try {
+      const { main } = await import('../../cli/bakin')
+      await expect(main()).rejects.toThrow('exit:1')
+    } finally {
+      if (originalBakinHome === undefined) delete process.env.BAKIN_HOME
+      else process.env.BAKIN_HOME = originalBakinHome
+      resetContentDir()
+    }
+
+    expect(output()).toContain('Command failed  bakin logs')
+    expect(output()).toContain('AUDIT_LOG_NOT_FOUND')
+    expect(output()).toContain('Run `bakin mkdir`')
+    expect(errorOutput()).toBe('')
+  })
+
   it('renders doctor repair command issues with the shared TUI when stdout is a TTY', async () => {
     process.argv = ['bun', 'cli/bakin.ts', 'doctor', 'repair', 'wat']
 

@@ -314,6 +314,35 @@ async function exitUnknownSubcommand(scope: string, sub: string | undefined, ava
   })
 }
 
+async function exitCommandFailure(
+  message: string,
+  options: {
+    command?: string
+    detail?: string
+    code?: string
+    next?: string
+    plainLines?: string[]
+  } = {},
+): Promise<never> {
+  if (process.stdout.isTTY) {
+    await printCommandFailureTui({
+      command: options.command ?? 'bakin',
+      message,
+      detail: options.detail,
+      code: options.code ?? 'COMMAND_FAILED',
+      next: options.next,
+    })
+  } else if (options.plainLines) {
+    for (const line of options.plainLines) console.error(line)
+  } else {
+    console.error(`Error: ${message}`)
+    if (options.detail) console.error(`  ${options.detail}`)
+    if (options.next) console.error(`  ${options.next}`)
+  }
+  process.exit(1)
+  throw new Error('unreachable')
+}
+
 async function printSettingsTui(settings: Record<string, unknown>): Promise<void> {
   const [{ SettingsReport }, { renderToString }, { createElement }] = await Promise.all([
     import('../src/core/cli/ui/readonly'),
@@ -679,8 +708,10 @@ async function cmdTasksCreate(title: string, assignee?: string, workflowId?: str
   const result = await apiPost('/api/plugins/tasks/', body) as { ok?: boolean; id?: string; workflowId?: string; suggestedWorkflow?: string; error?: string }
 
   if (result.error) {
-    console.error(`Error: ${result.error}`)
-    process.exit(1)
+    await exitCommandFailure(result.error, {
+      command: 'bakin tasks create',
+      code: 'TASK_CREATE_FAILED',
+    })
   }
 
   const suggestedWorkflow = result.suggestedWorkflow && !workflowId && !skipWorkflowReason
@@ -2749,9 +2780,15 @@ async function cmdLogs(filter?: string): Promise<void> {
   const auditPath = getBakinPaths().audit
 
   if (!existsSync(auditPath)) {
-    console.error(`Audit log not found: ${auditPath}`)
-    console.error('Is Bakin initialized? Run: bakin mkdir')
-    process.exit(1)
+    await exitCommandFailure(`Audit log not found: ${auditPath}`, {
+      command: filter ? `bakin logs ${filter}` : 'bakin logs',
+      code: 'AUDIT_LOG_NOT_FOUND',
+      next: 'Run `bakin mkdir` to initialize Bakin home.',
+      plainLines: [
+        `Audit log not found: ${auditPath}`,
+        'Is Bakin initialized? Run: bakin mkdir',
+      ],
+    })
   }
 
   // Build jq filter
@@ -2940,8 +2977,12 @@ async function cmdTasksGet(id: string, opts: { json?: boolean } = {}): Promise<v
       return
     }
   }
-  console.error(`Task ${id} not found`)
-  process.exit(1)
+  await exitCommandFailure(`Task ${id} not found`, {
+    command: 'bakin tasks get',
+    code: 'TASK_NOT_FOUND',
+    next: 'Run `bakin tasks list` to inspect current task IDs.',
+    plainLines: [`Task ${id} not found`],
+  })
 }
 
 async function cmdWorkflowsList(): Promise<void> {
