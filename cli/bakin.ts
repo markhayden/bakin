@@ -2439,8 +2439,18 @@ async function cmdStartServer(command: 'start' | 'serve', args: string[] = []): 
   })
   const exitCode = await new Promise<number>((resolvePromise) => {
     child.once('close', (code: number | null) => resolvePromise(code ?? 0))
-    child.once('error', (err: Error) => {
-      console.error('Failed to start Bakin:', err instanceof Error ? err.message : String(err))
+    child.once('error', async (err: Error) => {
+      const detail = err instanceof Error ? err.message : String(err)
+      if (process.stdout.isTTY) {
+        await printCommandFailureTui({
+          command: `bakin ${command}`,
+          message: 'Failed to start Bakin.',
+          detail,
+          code: 'START_FAILED',
+        })
+      } else {
+        console.error('Failed to start Bakin:', detail)
+      }
       resolvePromise(1)
     })
   })
