@@ -2,6 +2,7 @@ import curatedCatalog from '../../../packages/host/src/data/curated-agents.json'
 import { readLockfile } from '../../../packages/core/src/agent-packages/lockfile'
 import { getAgentState, type AgentState } from '../agent-packages/agent-state'
 import { installPackage } from '../agent-packages/installer'
+import { loadCuratedCatalog } from './curated-catalog'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 
 export interface RecommendedAgent {
@@ -31,8 +32,7 @@ interface AgentInstallCandidate {
   state: AgentState
 }
 
-function catalogAgents(): RecommendedAgent[] {
-  const rows = (curatedCatalog as { agents?: CuratedAgentRow[] }).agents ?? []
+function normalizeCatalog(rows: readonly CuratedAgentRow[]): RecommendedAgent[] {
   return rows
     .filter(agent => agent.trust === undefined || agent.trust === 'official')
     .map(agent => ({
@@ -45,6 +45,20 @@ function catalogAgents(): RecommendedAgent[] {
       trust: agent.trust ?? 'official',
       defaultSelected: agent.defaultSelected === true,
     }))
+}
+
+function staticCatalogAgents(): RecommendedAgent[] {
+  const rows = (curatedCatalog as { agents?: CuratedAgentRow[] }).agents ?? []
+  return normalizeCatalog(rows)
+}
+
+async function catalogAgents(): Promise<RecommendedAgent[]> {
+  const catalog = await loadCuratedCatalog<{ agents?: CuratedAgentRow[] }>(
+    curatedCatalog,
+    '/data/curated-agents.json',
+    'agents',
+  )
+  return normalizeCatalog(catalog.agents ?? [])
 }
 
 function sourceWithRef(source: string, ref: string | null): string {
@@ -69,7 +83,7 @@ async function agentCandidates(): Promise<AgentInstallCandidate[]> {
   const installed = installedAgentIds()
   const candidates: AgentInstallCandidate[] = []
 
-  for (const agent of catalogAgents()) {
+  for (const agent of await catalogAgents()) {
     if (installed.has(agent.id)) continue
     const stateInfo = await getAgentState(agent.id)
     if (stateInfo.state === 'managed' || stateInfo.state === 'adopted') continue
@@ -92,14 +106,16 @@ async function check(): Promise<CheckResult> {
   }
 
   if (candidates.length === 0) {
+    const agents = await catalogAgents()
     return {
       name: 'recommended-agents',
       status: 'ok',
       message: 'Official agent packages are installed',
-      details: { available: catalogAgents().map(agent => agent.id), missing: [] },
+      details: { available: agents.map(agent => agent.id), missing: [] },
     }
   }
 
+  const agents = await catalogAgents()
   const byId = new Map(candidates.map(candidate => [candidate.agent.id, candidate.state]))
   return {
     name: 'recommended-agents',
@@ -107,7 +123,7 @@ async function check(): Promise<CheckResult> {
     message: `${candidates.length} official agent package${candidates.length === 1 ? '' : 's'} not installed or adopted`,
     remediation: 'Select official agents during onboarding or later with `bakin agents install github:markhayden/bakin-bits-official#agents/<id> --adopt` for existing runtime agents.',
     details: {
-      available: catalogAgents().map(agent => ({
+      available: agents.map(agent => ({
         id: agent.id,
         name: agent.name,
         description: agent.description,
@@ -213,4 +229,4 @@ export const recommendedAgentsComponent: OnboardingComponent = {
   install,
 }
 
-export const RECOMMENDED_AGENTS = catalogAgents()
+export const RECOMMENDED_AGENTS = staticCatalogAgents()

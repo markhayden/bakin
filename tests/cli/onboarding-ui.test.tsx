@@ -193,6 +193,21 @@ describe('onboarding CLI UI', () => {
     expect(rendered).not.toContain('[Search adapter]')
   })
 
+  it('can render confirmation prompts as onboarding continuations without repeating the brand', () => {
+    const rendered = renderToString(
+      <OnboardingDecisionPrompt
+        title="Search adapter"
+        description="Antfly is not installed."
+        defaultChoice="confirm"
+        showBrand={false}
+        onSubmit={() => {}}
+      />,
+    )
+
+    expect(rendered).toContain('Onboard')
+    expect(rendered).not.toContain("┃ 🐷 Bakin'")
+  })
+
   it('renders bounded onboarding progress with Ink UI', () => {
     const rendered = renderToString(<OnboardingProgress label="Installing official agents" value={50} />)
     expect(rendered).toContain('Installing official agents')

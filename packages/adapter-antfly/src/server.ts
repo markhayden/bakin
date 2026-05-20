@@ -286,7 +286,7 @@ export async function startAntflyServer(
 
   const binary = findAntflyBinary()
   if (!binary) {
-    logger.warn('Antfly binary not found - install with: brew install --cask antflydb/antfly/antfly')
+    logger.warn('Antfly binary not found - install with: brew install antflydb/antfly/antfly')
     return false
   }
 

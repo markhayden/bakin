@@ -163,7 +163,7 @@ describe('Antfly search setup component', () => {
       expect(lastSpawnArgs).toBeNull()
     })
 
-    it('runs brew install --cask with the correct argument shape', async () => {
+    it('runs brew install with the correct argument shape', async () => {
       // First findBinary call (pre-spawn) returns null → missing.
       // Second (post-spawn verification) returns the installed path.
       findBinaryQueue = [null, '/opt/homebrew/bin/antfly']
@@ -172,7 +172,7 @@ describe('Antfly search setup component', () => {
 
       expect(lastSpawnArgs).not.toBeNull()
       expect(lastSpawnArgs!.cmd).toBe('/opt/homebrew/bin/brew')
-      expect(lastSpawnArgs!.args).toEqual(['install', '--cask', 'antflydb/antfly/antfly'])
+      expect(lastSpawnArgs!.args).toEqual(['install', 'antflydb/antfly/antfly'])
       // Never uses shell: true — that's a hard rule in the spec
       expect(lastSpawnArgs!.opts).not.toHaveProperty('shell', true)
       expect(result.status).toBe('installed')

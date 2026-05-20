@@ -86,10 +86,12 @@ export function buildSelectionItems(check: CheckResult): MultiSelectItem[] {
 function MultiSelectPrompt({
   title,
   items,
+  showBrand = true,
   onSubmit,
 }: {
   title: string;
   items: MultiSelectItem[];
+  showBrand?: boolean;
   onSubmit: (ids: string[]) => void;
 }) {
   const [state, setState] = useState<MultiSelectState>(() =>
@@ -106,6 +108,7 @@ function MultiSelectPrompt({
         title="Onboard"
         subtitle={isAgentSelection ? "Choose official agents to install or adopt" : "Choose official plugins to install"}
         meta={isAgentSelection ? "agent selection" : "plugin selection"}
+        showBrand={showBrand}
       />
       <SummaryStrip items={[
         { label: "selected", value: selectedCount, status: "ready" },
@@ -138,6 +141,7 @@ function MultiSelectPrompt({
 export async function promptMultiSelect(
   title: string,
   items: MultiSelectItem[],
+  opts: { showBrand?: boolean } = {},
 ): Promise<string[]> {
   if (items.filter((item) => !item.disabled).length === 0) return [];
 
@@ -147,6 +151,7 @@ export async function promptMultiSelect(
       <MultiSelectPrompt
         title={title}
         items={items}
+        showBrand={opts.showBrand}
         onSubmit={(ids) => {
           app?.unmount();
           resolve(ids);
@@ -160,6 +165,7 @@ async function promptConfirm(
   title: string,
   description: string,
   defaultChoice: "confirm" | "cancel" = "confirm",
+  opts: { showBrand?: boolean } = {},
 ): Promise<boolean> {
   return await new Promise((resolve) => {
     let app: ReturnType<typeof render> | null = null;
@@ -168,6 +174,7 @@ async function promptConfirm(
         title={title}
         description={description}
         defaultChoice={defaultChoice}
+        showBrand={opts.showBrand}
         onSubmit={(approved) => {
           app?.unmount();
           resolve(approved);
@@ -206,21 +213,6 @@ export async function collectOnboardingSelections(
   }
 
   const approvedComponents: string[] = [];
-  const selectedRecommendedPluginIds =
-    pluginCheck.status === "missing"
-      ? await promptMultiSelect(
-          "Install official plugins",
-          buildSelectionItems(pluginCheck),
-        )
-      : undefined;
-  const selectedRecommendedAgentIds =
-    agentCheck.status === "missing"
-      ? await promptMultiSelect(
-          "Install official agents",
-          buildSelectionItems(agentCheck),
-        )
-      : undefined;
-
   const searchNeedsInstall =
     searchCheck.status === "missing" || searchCheck.status === "broken";
   const searchApproved = searchNeedsInstall
@@ -228,6 +220,7 @@ export async function collectOnboardingSelections(
         "Search adapter",
         `${searchCheck.message}. Bakin will install Antfly via Homebrew if you continue.`,
         "confirm",
+        { showBrand: false },
       )
     : true;
   if (searchNeedsInstall && searchApproved) approvedComponents.push("search");
@@ -241,6 +234,7 @@ export async function collectOnboardingSelections(
       "Search models",
       `${searchModelsCheck.message}. Bakin will download the required Termite models if you continue.`,
       "confirm",
+      { showBrand: false },
     );
     if (approved) approvedComponents.push("search-models");
   }
@@ -250,9 +244,27 @@ export async function collectOnboardingSelections(
       "MCP porter",
       `${mcporterCheck.message}. Bakin will install and configure mcporter if you continue.`,
       "confirm",
+      { showBrand: false },
     );
     if (approved) approvedComponents.push("mcporter");
   }
+
+  const selectedRecommendedPluginIds =
+    pluginCheck.status === "missing"
+      ? await promptMultiSelect(
+          "Install official plugins",
+          buildSelectionItems(pluginCheck),
+          { showBrand: false },
+        )
+      : undefined;
+  const selectedRecommendedAgentIds =
+    agentCheck.status === "missing"
+      ? await promptMultiSelect(
+          "Install official agents",
+          buildSelectionItems(agentCheck),
+          { showBrand: false },
+        )
+      : undefined;
 
   return {
     selectedRecommendedPluginIds,
