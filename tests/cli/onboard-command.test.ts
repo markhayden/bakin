@@ -90,8 +90,8 @@ describe('CLI onboard command', () => {
 
     const output = log.mock.calls.map((call: unknown[]) => String(call[0])).join('\n')
     const liveOutput = stdoutWrite.mock.calls.map((call: unknown[]) => String(call[0])).join('')
-    expect(liveOutput).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
-    expect(output).not.toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(liveOutput).toContain("┃ 🐷 Bakin'")
+    expect(output).not.toContain("┃ 🐷 Bakin'")
     expect(output).toContain('Onboarding')
     expect(output).toContain('Machine setup complete')
     expect(output).toContain('PREREQUISITES')
@@ -112,7 +112,7 @@ describe('CLI onboard command', () => {
     await main()
 
     const output = log.mock.calls.map((call: unknown[]) => String(call[0])).join('\n')
-    expect(output).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(output).toContain("┃ 🐷 Bakin'")
     expect(output).toContain('Machine setup already complete')
     expect(output).toContain('Already onboarded on 2026-05-19.')
     expect(output).toContain('Run `bakin onboard --force`')

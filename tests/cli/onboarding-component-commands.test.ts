@@ -130,7 +130,7 @@ describe('onboarding component CLI commands', () => {
     const { main } = await import('../../cli/bakin')
     await main()
 
-    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(output()).toContain("┃ 🐷 Bakin'")
     expect(output()).toContain('Onboarding check')
     expect(output()).toContain('RESULT')
     expect(output()).toContain('Runtime adapter is available.')

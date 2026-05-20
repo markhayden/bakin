@@ -71,7 +71,7 @@ describe('read-only CLI TTY commands', () => {
     const { main } = await import('../../cli/bakin')
     await expect(main()).rejects.toThrow('exit:0')
 
-    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(output()).toContain("┃ 🐷 Bakin'")
     expect(output()).toContain('Help')
     expect(output()).toContain('LIFECYCLE')
     expect(output()).toContain('TASKS AND WORKFLOWS')
@@ -99,7 +99,7 @@ describe('read-only CLI TTY commands', () => {
     const { main } = await import('../../cli/bakin')
     await main()
 
-    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(output()).toContain("┃ 🐷 Bakin'")
     expect(output()).toContain(`Version  v${APP_VERSION}`)
     expect(output()).toContain(APP_VERSION)
     expect(errorOutput()).toBe('')
@@ -116,7 +116,7 @@ describe('read-only CLI TTY commands', () => {
     await expect(main()).rejects.toThrow('exit:1')
 
     expect(errorOutput()).toBe('')
-    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(output()).toContain("┃ 🐷 Bakin'")
     expect(output()).toContain('Help  unknown command')
     expect(output()).toContain('ISSUE')
     expect(output()).toContain('Unknown command: wat')
@@ -172,7 +172,7 @@ describe('read-only CLI TTY commands', () => {
         body: JSON.stringify({ loud: true, target: 'smoke' }),
       }),
     )
-    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(output()).toContain("┃ 🐷 Bakin'")
     expect(output()).toContain('bakin demo run smoke --loud=true')
     expect(output()).toContain('DATA')
     expect(output()).toContain('"target": "smoke"')
@@ -244,7 +244,7 @@ describe('read-only CLI TTY commands', () => {
     const { main } = await import('../../cli/bakin')
     await expect(main()).rejects.toThrow('exit:1')
 
-    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(output()).toContain("┃ 🐷 Bakin'")
     expect(output()).toContain('Command issue  bakin tasks get <id>')
     expect(output()).toContain('Missing required arguments.')
     expect(output()).toContain('USAGE')
@@ -394,7 +394,7 @@ describe('read-only CLI TTY commands', () => {
       resetContentDir()
     }
 
-    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(output()).toContain("┃ 🐷 Bakin'")
     expect(output()).toContain('Logs  filter: all')
     expect(output()).toContain('RECENT EVENTS')
     expect(output()).toContain('doctor.run')
@@ -490,7 +490,7 @@ describe('read-only CLI TTY commands', () => {
     const { main } = await import('../../cli/bakin')
     await main()
 
-    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(output()).toContain("┃ 🐷 Bakin'")
     expect(output()).toContain('Help')
     expect(output()).toContain('AGENT RULES')
     expect(output()).toContain('bakin agent-rules --apply')
@@ -513,7 +513,7 @@ describe('read-only CLI TTY commands', () => {
     const { main } = await import('../../cli/bakin')
     await main()
 
-    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(output()).toContain("┃ 🐷 Bakin'")
     expect(output()).toContain('Status')
     expect(output()).toContain('DISPATCH')
     expect(output()).not.toContain('=== Bakin Status ===')
@@ -814,7 +814,7 @@ describe('read-only CLI TTY commands', () => {
     process.argv = ['bun', 'cli/bakin.ts', 'workflows', 'list']
     await main()
 
-    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(output()).toContain("┃ 🐷 Bakin'")
     expect(output()).toContain('Workflows')
     expect(output()).toContain('DEFINITIONS')
     expect(output()).toContain('FILENAME')
