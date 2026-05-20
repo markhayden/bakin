@@ -23,6 +23,16 @@ import { join, resolve, relative, dirname } from 'node:path'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
 const OUT_FILE = join(REPO_ROOT, 'packages/host/src/api/_embedded-assets-static.ts')
+const REQUIRED_ASSETS: Array<{ path: string; build: string }> = [
+  {
+    path: join(REPO_ROOT, 'packages/host/public/globals.css'),
+    build: 'bun run build:css',
+  },
+  {
+    path: join(REPO_ROOT, 'packages/host/dist/main.js'),
+    build: 'bun run build:host-shell',
+  },
+]
 
 interface AssetSource {
   /** Absolute path on disk. */
@@ -127,6 +137,18 @@ function collectAssets(): AssetSource[] {
   return assets
 }
 
+function assertRequiredAssetsExist(): void {
+  const missing = REQUIRED_ASSETS.filter(asset => !existsSync(asset.path))
+  if (missing.length === 0) return
+
+  const lines = missing.map(asset => (
+    `  - ${relative(REPO_ROOT, asset.path)} missing; run \`${asset.build}\` first`
+  ))
+  throw new Error(
+    `Cannot generate embedded assets because required host assets are missing:\n${lines.join('\n')}`,
+  )
+}
+
 function emitManifest(assets: AssetSource[]): string {
   const header = `// @ts-nocheck — every import below uses \`with { type: 'file' }\`;
 // Bun resolves these at build time (for --compile) or dev time (as on-disk
@@ -175,6 +197,7 @@ export const EMBEDDED_ASSET_COUNT = ${assets.length}
 }
 
 function main(): void {
+  assertRequiredAssetsExist()
   const assets = collectAssets()
   if (assets.length === 0) {
     throw new Error(

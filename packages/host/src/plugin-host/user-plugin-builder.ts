@@ -24,6 +24,7 @@ import type { Dirent } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { join, resolve } from 'node:path'
 import { builtinModules } from 'node:module'
+import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
 
 const CLIENT_EXTERNAL = [
   'react', 'react-dom', 'react-dom/client',
@@ -387,6 +388,12 @@ export async function buildAllUserPlugins(
   log: BuildLogger,
 ): Promise<void> {
   if (!existsSync(userPluginsDir)) return
+  let lockedPlugins: Record<string, PluginLockEntry> = {}
+  try {
+    lockedPlugins = readPluginLockfile().plugins
+  } catch (err) {
+    log.error('Failed to read plugin lockfile before building user plugins', err)
+  }
   let entries: Dirent[]
   try {
     entries = readdirSync(userPluginsDir, { withFileTypes: true }) as Dirent[]
@@ -400,7 +407,8 @@ export async function buildAllUserPlugins(
     const pluginDir = join(userPluginsDir, name)
     if (!existsSync(join(pluginDir, 'bakin-plugin.json'))) continue
     try {
-      await buildUserPlugin(pluginDir)
+      const trustExistingDist = lockedPlugins[name]?.type === 'github' && lockedPlugins[name]?.linked !== true
+      await buildUserPlugin(pluginDir, trustExistingDist ? { trustExistingDist: true } : undefined)
       log.info(`Built user plugin "${name}"`)
     } catch (err) {
       log.error(
