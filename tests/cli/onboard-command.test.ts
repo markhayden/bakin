@@ -18,6 +18,7 @@ const outcomes = [
 ]
 
 let onboarded = false
+let onboardingSelections: Record<string, unknown> = {}
 let onboardingState: {
   version: number
   completedAt: string
@@ -42,7 +43,7 @@ mock.module('../../src/core/onboarding/index', () => ({
 }))
 
 mock.module('../../src/core/cli/onboarding-interactive', () => ({
-  collectOnboardingSelections: async () => ({}),
+  collectOnboardingSelections: async () => onboardingSelections,
 }))
 
 describe('CLI onboard command', () => {
@@ -60,6 +61,7 @@ describe('CLI onboard command', () => {
   beforeEach(() => {
     mock.clearAllMocks()
     onboarded = false
+    onboardingSelections = {}
     onboardingState = null
     process.argv = originalArgv
     log = spyOn(console, 'log').mockImplementation(() => {})
@@ -96,6 +98,18 @@ describe('CLI onboard command', () => {
     expect(output).toContain('Machine setup complete')
     expect(output).toContain('PREREQUISITES')
     expect(output).toContain('Run `bakin start` to launch Bakin.')
+  })
+
+  it('continues onboarding progress without replaying the brand after wizard screens', async () => {
+    onboardingSelections = { renderedWizardScreens: true }
+    process.argv = ['bun', 'cli/bakin.ts', 'onboard', '--force']
+
+    const { main } = await import('../../cli/bakin')
+    await main()
+
+    const liveOutput = stdoutWrite.mock.calls.map((call: unknown[]) => String(call[0])).join('')
+    expect(liveOutput).toContain('Onboard')
+    expect(liveOutput).not.toContain("┃ 🐷 Bakin'")
   })
 
   it('renders already-onboarded state with shared onboarding UI in a TTY', async () => {

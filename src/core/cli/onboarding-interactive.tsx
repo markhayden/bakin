@@ -37,6 +37,7 @@ export interface OnboardingSelections {
   selectedRecommendedPluginIds?: readonly string[];
   selectedRecommendedAgentIds?: readonly string[];
   approvedComponents?: readonly string[];
+  renderedWizardScreens?: boolean;
 }
 
 function choicesFromCheck(check: CheckResult): CatalogChoice[] {
@@ -270,5 +271,6 @@ export async function collectOnboardingSelections(
     selectedRecommendedPluginIds,
     selectedRecommendedAgentIds,
     approvedComponents,
+    renderedWizardScreens: hasWizardSteps,
   };
 }

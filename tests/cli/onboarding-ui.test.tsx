@@ -126,6 +126,18 @@ describe('onboarding CLI UI', () => {
     expect(rendered).toContain('Checking prerequisites and runtime access')
   })
 
+  it('can render the async onboarding busy state as a continuation without the brand', () => {
+    const rendered = renderToString(
+      <OnboardingBusy
+        label="Running onboarding checks and installs"
+        totalSteps={12}
+        showBrand={false}
+      />,
+    )
+    expect(rendered).toContain('Onboard')
+    expect(rendered).not.toContain("┃ 🐷 Bakin'")
+  })
+
   it('renders completed onboarding rows above the busy state', () => {
     const rendered = renderToString(
       <OnboardingBusy
