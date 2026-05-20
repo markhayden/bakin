@@ -728,7 +728,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       // install request — shipping an installed-but-unbuilt plugin would
       // crash startup instead of surfacing the error to the user now.
       try {
-        await buildUserPlugin(targetDir)
+        await buildUserPlugin(targetDir, { trustExistingDist: body.type === 'github' })
       } catch (buildErr) {
         // Build failed — clean up the installed files so the install
         // appears atomic from the user's perspective.

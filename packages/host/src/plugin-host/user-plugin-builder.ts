@@ -80,6 +80,16 @@ interface RunResult {
   stderr: string
 }
 
+export interface BuildUserPluginOptions {
+  /**
+   * GitHub-installed plugins may ship prebuilt dist artifacts. Release
+   * binaries should use those artifacts when complete instead of trying to
+   * rebuild against repo-local SDK source paths that do not exist on a
+   * normal user's machine.
+   */
+  trustExistingDist?: boolean
+}
+
 /**
  * Portable subprocess runner. Passing the binary through `spawn` with an
  * argv array avoids shell interpolation and path-traversal tricks.
@@ -268,12 +278,18 @@ function validatePluginImports(pluginDir: string, pkg: PluginPackageJson): void 
  *   the plugin directory first. Peer deps stay external via the bundler
  *   externals list, so this is mostly for dev deps / rare plugin-owned
  *   npm packages.
+ * - When `trustExistingDist` is set and every expected dist output is
+ *   present, skips the rebuild. This is used for GitHub-installed plugins
+ *   that ship their own build artifacts.
  * - Runs `bun build` on `index.ts` (server) and `client.tsx` (browser, if
  *   present). Both land in `dist/` with `index.js` / `client.js`. The server
  *   bundle is self-contained except for shared runtime singletons.
  * - Skips the build when the dist outputs are newer than every source file.
  */
-export async function buildUserPlugin(pluginDir: string): Promise<void> {
+export async function buildUserPlugin(
+  pluginDir: string,
+  options: BuildUserPluginOptions = {},
+): Promise<void> {
   const serverEntry = join(pluginDir, 'index.ts')
   if (!existsSync(serverEntry)) {
     throw new Error(`buildUserPlugin: ${serverEntry} not found`)
@@ -293,6 +309,8 @@ export async function buildUserPlugin(pluginDir: string): Promise<void> {
   const expectedDist = [distServer, ...(hasClient ? [distClient] : [])]
   const allDistPresent = expectedDist.every(p => existsSync(p))
   if (allDistPresent) {
+    if (options.trustExistingDist) return
+
     const newestSource = newestMtimeMs(pluginDir, new Set(['dist', 'node_modules']))
     const oldestDist = oldestMtimeMs(expectedDist)
     if (oldestDist > 0 && newestSource > 0 && oldestDist >= newestSource) {
