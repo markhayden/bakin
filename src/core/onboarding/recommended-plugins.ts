@@ -5,6 +5,7 @@ import { getContentDir } from '../content-dir'
 import { readPluginLockfile } from '@bakin/core/plugins/lockfile'
 import { getInstalledPluginIds, planPluginDependencyOrder } from '../plugins/dependencies'
 import { askYesNo } from './prompts'
+import { loadCuratedCatalog } from './curated-catalog'
 import type { CheckResult, InstallResult, OnboardingComponent, OnboardingOptions } from './types'
 
 export interface RecommendedPlugin {
@@ -27,8 +28,7 @@ interface CuratedPluginRow {
   defaultSelected?: boolean
 }
 
-function catalogPlugins(): RecommendedPlugin[] {
-  const rows = (curatedCatalog as { plugins?: CuratedPluginRow[] }).plugins ?? []
+function normalizeCatalog(rows: readonly CuratedPluginRow[]): RecommendedPlugin[] {
   return rows
     .filter(plugin => plugin.trust === undefined || plugin.trust === 'official')
     .map(plugin => ({
@@ -42,6 +42,20 @@ function catalogPlugins(): RecommendedPlugin[] {
     }))
 }
 
+function staticCatalogPlugins(): RecommendedPlugin[] {
+  const rows = (curatedCatalog as { plugins?: CuratedPluginRow[] }).plugins ?? []
+  return normalizeCatalog(rows)
+}
+
+async function catalogPlugins(): Promise<RecommendedPlugin[]> {
+  const catalog = await loadCuratedCatalog<{ plugins?: CuratedPluginRow[] }>(
+    curatedCatalog,
+    '/data/curated-plugins.json',
+    'plugins',
+  )
+  return normalizeCatalog(catalog.plugins ?? [])
+}
+
 function isInstalled(id: string): boolean {
   if (existsSync(join(getContentDir(), 'plugins', id, 'bakin-plugin.json'))) return true
   try {
@@ -51,8 +65,8 @@ function isInstalled(id: string): boolean {
   }
 }
 
-function missingPlugins(): RecommendedPlugin[] {
-  return catalogPlugins().filter(plugin => !isInstalled(plugin.id))
+async function missingPlugins(): Promise<RecommendedPlugin[]> {
+  return (await catalogPlugins()).filter(plugin => !isInstalled(plugin.id))
 }
 
 async function installSource(source: string): Promise<{ ok: true; id?: string } | { ok: false; error: string }> {
@@ -94,13 +108,14 @@ async function installSource(source: string): Promise<{ ok: true; id?: string } 
 }
 
 async function check(): Promise<CheckResult> {
-  const missing = missingPlugins()
+  const plugins = await catalogPlugins()
+  const missing = plugins.filter(plugin => !isInstalled(plugin.id))
   if (missing.length === 0) {
     return {
       name: 'recommended-plugins',
       status: 'ok',
       message: 'Recommended official plugins are installed',
-      details: { available: catalogPlugins().map(plugin => plugin.id), missing: [] },
+      details: { available: plugins.map(plugin => plugin.id), missing: [] },
     }
   }
   return {
@@ -109,7 +124,7 @@ async function check(): Promise<CheckResult> {
     message: `${missing.length} recommended official plugin${missing.length === 1 ? '' : 's'} not installed`,
     remediation: 'Install during onboarding or later with `bakin plugins install github:markhayden/bakin-bits-official#plugins/<id> --yes`.',
     details: {
-      available: catalogPlugins().map(plugin => ({
+      available: plugins.map(plugin => ({
         id: plugin.id,
         name: plugin.name,
         description: plugin.description,
@@ -125,7 +140,7 @@ async function check(): Promise<CheckResult> {
 
 async function install(opts: OnboardingOptions): Promise<InstallResult> {
   const start = Date.now()
-  const missing = missingPlugins()
+  const missing = await missingPlugins()
   if (missing.length === 0) {
     return {
       name: 'recommended-plugins',
@@ -206,4 +221,4 @@ export const recommendedPluginsComponent: OnboardingComponent = {
   install,
 }
 
-export const RECOMMENDED_PLUGINS = catalogPlugins()
+export const RECOMMENDED_PLUGINS = staticCatalogPlugins()

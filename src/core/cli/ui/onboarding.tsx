@@ -382,10 +382,11 @@ export function OnboardingAlreadyCompleteReport({ state, color = true }: {
   )
 }
 
-export function OnboardingDecisionPrompt({ title, description, defaultChoice, onSubmit }: {
+export function OnboardingDecisionPrompt({ title, description, defaultChoice, showBrand = true, onSubmit }: {
   title: string
   description: string
   defaultChoice: 'confirm' | 'cancel'
+  showBrand?: boolean
   onSubmit: (approved: boolean) => void
 }) {
   const defaultLabel = defaultChoice === 'confirm' ? 'Yes' : 'No'
@@ -395,7 +396,7 @@ export function OnboardingDecisionPrompt({ title, description, defaultChoice, on
 
   return (
     <Box flexDirection="column">
-      <ScreenHeader title="Onboard" subtitle="Interactive setup decision" meta={title.toLowerCase()} />
+      <ScreenHeader title="Onboard" subtitle="Interactive setup decision" meta={title.toLowerCase()} showBrand={showBrand} />
       <SummaryStrip items={[
         { label: 'decision', value: 1, status: 'warn' },
         { label: 'default', value: defaultLabel, status: defaultChoice === 'confirm' ? 'ready' : 'skip' },

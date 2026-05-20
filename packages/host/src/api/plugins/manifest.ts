@@ -19,6 +19,7 @@ import { createLogger } from '@/core/logger'
 import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { runChecks } from '@/core/plugins/upgrade'
 import { EMBEDDED_ASSETS } from '../_embedded-assets'
+import { APP_VERSION } from '@bakin/core/constants'
 import type { PluginContributions } from '@makinbakin/sdk/types'
 
 const log = createLogger('plugin-manifest')
@@ -69,29 +70,43 @@ function pluginAssetPath(pluginId: string, relPath: string): string | null {
   const userPath = join(getContentDir(), 'plugins', pluginId, 'dist', relPath)
   if (existsSync(userPath)) return userPath
 
-  const embeddedPath = EMBEDDED_ASSETS.get(`/api/plugins/${pluginId}/assets/${relPath}`)
-  if (embeddedPath && existsSync(embeddedPath)) return embeddedPath
-
   const repoPath = join(process.cwd(), 'plugins', pluginId, 'dist', relPath)
   if (existsSync(repoPath)) return repoPath
 
   return null
 }
 
-function pluginAssetVersion(pluginId: string, relPath: string): string | null {
-  const path = pluginAssetPath(pluginId, relPath)
-  if (!path) return null
+async function hasEmbeddedPluginAsset(pluginId: string, relPath: string): Promise<boolean> {
+  const embeddedPath = EMBEDDED_ASSETS.get(`/api/plugins/${pluginId}/assets/${relPath}`)
+  if (!embeddedPath) return false
   try {
-    const stat = statSync(path)
-    if (!stat.isFile()) return null
-    return String(Math.trunc(stat.mtimeMs))
+    return await Bun.file(embeddedPath).exists()
   } catch {
-    return null
+    return false
   }
 }
 
-function hasClientCss(pluginId: string): boolean {
-  return pluginAssetVersion(pluginId, 'client.css') !== null
+async function pluginAssetVersion(pluginId: string, relPath: string): Promise<string | null> {
+  const path = pluginAssetPath(pluginId, relPath)
+  if (path) {
+    try {
+      const stat = statSync(path)
+      if (!stat.isFile()) return null
+      return String(Math.trunc(stat.mtimeMs))
+    } catch {
+      return null
+    }
+  }
+
+  if (await hasEmbeddedPluginAsset(pluginId, relPath)) {
+    return `embedded-${APP_VERSION}`
+  }
+
+  return null
+}
+
+async function hasClientCss(pluginId: string): Promise<boolean> {
+  return (await pluginAssetVersion(pluginId, 'client.css')) !== null
 }
 
 export async function get(req: Request): Promise<Response> {
@@ -160,7 +175,7 @@ export async function get(req: Request): Promise<Response> {
       contributes: entry.contributes,
     }
     const clientVersion = entry.status === 'active'
-      ? pluginAssetVersion(entry.id, 'client.js')
+      ? await pluginAssetVersion(entry.id, 'client.js')
       : null
     if (entry.status === 'active' && clientVersion) {
       plugin.clientEntry = `/api/plugins/${entry.id}/assets/client.js`
@@ -170,7 +185,7 @@ export async function get(req: Request): Promise<Response> {
       plugin.errorMessage = entry.errorMessage
       plugin.missingDependencies = entry.missingDependencies
     }
-    if (entry.status === 'active' && hasClientCss(entry.id)) {
+    if (entry.status === 'active' && (await hasClientCss(entry.id))) {
       plugin.clientCss = `/api/plugins/${entry.id}/assets/client.css`
     }
     plugins.push(plugin)

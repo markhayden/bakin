@@ -14,7 +14,7 @@ const noopLogger: AdapterLogger = {
 }
 
 const BREW_CANDIDATES = ['/opt/homebrew/bin/brew', '/usr/local/bin/brew']
-const BREW_CASK = 'antflydb/antfly/antfly'
+const BREW_PACKAGE = 'antflydb/antfly/antfly'
 const BREW_INSTALL_DOCS = 'https://brew.sh/'
 
 export interface TermiteModel {
@@ -145,7 +145,7 @@ async function checkAntflyDependency() {
     name: 'antfly',
     status: 'missing' as const,
     message: 'Antfly binary not found on any known install path',
-    remediation: `Run \`bakin install search\` to install the configured search adapter via Homebrew (${BREW_CASK}).`,
+    remediation: `Run \`bakin install search\` to install the configured search adapter via Homebrew (${BREW_PACKAGE}).`,
   }
 }
 
@@ -173,7 +173,7 @@ async function installAntflyDependency(opts: SearchAdapterSetupOptions, logger: 
 
   if (opts.interactive && !opts.autoApprove) {
     const proceed = await opts.askYesNo?.(
-      `Install Antfly via Homebrew? This will download ~25MB and run \`brew install --cask ${BREW_CASK}\`.`,
+      `Install Antfly via Homebrew? This will download ~25MB and run \`brew install ${BREW_PACKAGE}\`.`,
       true
     )
     if (!proceed) {
@@ -193,11 +193,11 @@ async function installAntflyDependency(opts: SearchAdapterSetupOptions, logger: 
     }
   }
 
-  logger.info('Installing Antfly via brew', { brew, cask: BREW_CASK })
+  logger.info('Installing Antfly via brew', { brew, package: BREW_PACKAGE })
   try {
     const { code, stderr } = await runSpawn(
       brew,
-      ['install', '--cask', BREW_CASK],
+      ['install', BREW_PACKAGE],
       { interactive: opts.interactive && !opts.json }
     )
     const durationMs = Date.now() - start
@@ -467,7 +467,7 @@ export function createAntflySearchSetup(logger: AdapterLogger = noopLogger): Sea
 export const _setupInternals = {
   findBrew,
   runSpawn,
-  BREW_CASK,
+  BREW_PACKAGE,
   BREW_CANDIDATES,
   missingModels,
   missingModelEntries,
