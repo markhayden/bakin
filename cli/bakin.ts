@@ -3647,6 +3647,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
   try {
     const selections = await collectOnboardingSelections(baseOpts)
     const opts = { ...baseOpts, ...selections, interactive: false }
+    const busyShowsBrand = !selections.renderedWizardScreens
 
     let busyFrame = 0
     let busyDetail: string | undefined
@@ -3668,6 +3669,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
       frame: busyFrame,
       completed: completedOutcomes,
       totalSteps: COMPONENT_ORDER.length,
+      showBrand: busyShowsBrand,
     })
     const busy = isTTY && !json
       ? render(renderBusy())

@@ -230,7 +230,7 @@ export function OnboardingFinalStatus({ outcomes, exitCode }: {
   return <NextActions actions={actions} />
 }
 
-export function OnboardingBusy({ label = 'Running onboarding', detail, frame = 0, details = ONBOARDING_BUSY_DETAILS, completed, totalSteps = 1 }: {
+export function OnboardingBusy({ label = 'Running onboarding', detail, frame = 0, details = ONBOARDING_BUSY_DETAILS, completed, totalSteps = 1, showBrand = true }: {
   label?: string
   detail?: string
   frame?: number
@@ -241,6 +241,7 @@ export function OnboardingBusy({ label = 'Running onboarding', detail, frame = 0
     message: string
   }>
   totalSteps?: number
+  showBrand?: boolean
 }) {
   const safeDetails = details.length > 0 ? details : ONBOARDING_BUSY_DETAILS
   const spinnerFrame = ONBOARDING_SPINNER_FRAMES[frame % ONBOARDING_SPINNER_FRAMES.length]
@@ -262,7 +263,7 @@ export function OnboardingBusy({ label = 'Running onboarding', detail, frame = 0
 
   return (
     <Box flexDirection="column">
-      <ScreenHeader title="Onboard" subtitle="Interactive setup in progress" meta={`step ${currentStep} of ${boundedTotalSteps}`} />
+      <ScreenHeader title="Onboard" subtitle="Interactive setup in progress" meta={`step ${currentStep} of ${boundedTotalSteps}`} showBrand={showBrand} />
       <SummaryStrip items={[
         { label: 'complete', value: completed?.filter(item => item.status === 'complete').length ?? 0, status: 'ok' },
         { label: 'running', value: 1, status: 'run' },
