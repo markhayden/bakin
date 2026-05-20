@@ -86,7 +86,8 @@ function tagFor(major: number, minor: number, patch: number, rc: number | null):
 function bumpedBase(latestStable: ParsedReleaseTag | null, verb: BumpVerb): { major: number; minor: number; patch: number } {
   if (!latestStable) {
     if (verb === 'major') return { major: 1, minor: 0, patch: 0 }
-    return { major: 0, minor: 1, patch: 0 }
+    if (verb === 'minor') return { major: 0, minor: 1, patch: 0 }
+    return { major: 0, minor: 0, patch: 1 }
   }
   if (verb === 'patch') return { major: latestStable.major, minor: latestStable.minor, patch: latestStable.patch + 1 }
   if (verb === 'minor') return { major: latestStable.major, minor: latestStable.minor + 1, patch: 0 }

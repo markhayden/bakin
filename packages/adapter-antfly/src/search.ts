@@ -102,8 +102,8 @@ function sleep(ms: number): Promise<void> {
 
 export class AntflySearchAdapter implements SearchAdapter {
   readonly name = 'antfly'
-  readonly version = '0.1.0'
-  readonly requiredCoreVersion = '^1.0.0'
+  readonly version = '0.0.1-rc.1'
+  readonly requiredCoreVersion = '>=0.0.1-rc.1'
 
   private client: AntflyClient | null = null
   private settings: AntflySettings

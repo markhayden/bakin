@@ -37,6 +37,11 @@ describe('targetTagForPrep', () => {
     expect(targetTagForPrep(opts, [])).toBe('v0.1.0')
   })
 
+  it('starts an unpublished patch release at v0.0.1', () => {
+    const opts = parsePrepArgs(['patch', '--rc'], '2026-05-11')
+    expect(targetTagForPrep(opts, [])).toBe('v0.0.1-rc.1')
+  })
+
   it('uses remote tags to compute the next version', () => {
     const opts = parsePrepArgs(['patch'], '2026-05-11')
     expect(targetTagForPrep(opts, ['v0.1.0'])).toBe('v0.1.1')

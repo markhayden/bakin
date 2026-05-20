@@ -232,8 +232,8 @@ interface OpenClawSessionActivityCursor {
 
 export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   readonly name = 'openclaw'
-  readonly version = '0.1.0'
-  readonly requiredCoreVersion = '^1.0.0'
+  readonly version = '0.0.1-rc.1'
+  readonly requiredCoreVersion = '>=0.0.1-rc.1'
 
   private settings: OpenClawSettings
   private logger: AdapterLogger = noopLogger
