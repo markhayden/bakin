@@ -16,9 +16,12 @@
  *     the user actually wants a pinned commit, they should pass
  *     `github:user/repo@<sha>`.
  *
- *   - **github** — `github:user/repo[@ref][#subpath]` form. Cloned with
- *     `--depth 1 --branch <ref>` first; if that fails (commit SHAs aren't
- *     accepted by --branch), falls back to a deeper clone + checkout.
+ *   - **github** — `github:user/repo[@ref][#subpath]` form. The sync path
+ *     clones with `--depth 1 --branch <ref>` first; if that fails (commit
+ *     SHAs aren't accepted by --branch), it falls back to a deeper clone +
+ *     checkout. The async install path uses a shared cached checkout so
+ *     onboarding can install multiple subpaths from the same repo without
+ *     redownloading it.
  *     Commit SHA is read via `git rev-parse HEAD` after checkout.
  *     When `#subpath` is present, only that directory is staged as the
  *     package source.
@@ -38,6 +41,10 @@ import { isAbsolute, join, resolve } from 'path'
 import { randomUUID } from 'crypto'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
+import {
+  materializeCachedGithubSource,
+  type AsyncGitRunner,
+} from '../github-source-cache'
 import { getStagingDir, getPackagesRoot } from '../../../packages/core/src/agent-packages/package-paths'
 
 const log = createLogger('agent-pkg:fetch')
@@ -263,11 +270,6 @@ interface GitRunner {
   (args: string[]): string
 }
 
-interface AsyncGitRunner {
-  /** Run `git <args>` and return stdout; throw on non-zero exit. */
-  (args: string[]): Promise<string>
-}
-
 const realGit: GitRunner = (args) =>
   execFileSync('git', args, { stdio: ['ignore', 'pipe', 'pipe'] }).toString('utf-8')
 
@@ -349,40 +351,22 @@ export async function fetchGithubWithRunnerAsync(
 ): Promise<FetchedSource> {
   const spec = parseGithubSpec(source)
   const url = `https://github.com/${spec.owner}/${spec.repo}.git`
-  const cloneTarget = spec.subpath ? `${staging}.clone` : staging
 
   cleanupStaging(staging)
-  if (spec.subpath) cleanupStaging(cloneTarget)
   mkdirSync(staging, { recursive: true })
 
   try {
-    if (spec.ref) {
-      try {
-        await git(['clone', '--depth', '1', '--branch', spec.ref, url, cloneTarget])
-      } catch {
-        cleanupStaging(cloneTarget)
-        if (!spec.subpath) mkdirSync(cloneTarget, { recursive: true })
-        await git(['clone', '--depth', '50', url, cloneTarget])
-        await git(['-C', cloneTarget, 'checkout', spec.ref])
-      }
-    } else {
-      await git(['clone', '--depth', '1', url, cloneTarget])
-    }
-
-    if (spec.subpath) {
-      const packageDir = ensureGithubSubpathPackagePresent(cloneTarget, spec.subpath)
-      cpSync(packageDir, staging, { recursive: true, dereference: false })
-      ensureManifestPresent(staging)
-    } else {
-      ensureManifestPresent(staging)
-    }
-
-    const commitSha = (await git(['-C', cloneTarget, 'rev-parse', 'HEAD'])).trim()
-    if (spec.subpath) cleanupStaging(cloneTarget)
-    return { stagingDir: staging, commitSha, kind: 'github', ref: spec.ref ?? '' }
+    const checkout = await materializeCachedGithubSource({
+      cloneUrl: url,
+      ref: spec.ref ?? undefined,
+      stagingDir: staging,
+      subpath: spec.subpath || undefined,
+      git,
+    })
+    ensureManifestPresent(staging)
+    return { stagingDir: staging, commitSha: checkout.commitSha, kind: 'github', ref: spec.ref ?? '' }
   } catch (err) {
     cleanupStaging(staging)
-    if (spec.subpath) cleanupStaging(cloneTarget)
     throw err
   }
 }

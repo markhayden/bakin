@@ -45,15 +45,19 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 
 import {
   fetchGithubWithRunner,
+  fetchGithubWithRunnerAsync,
   fetchSource,
   parseGithubSpec,
 } from '../../src/core/agent-packages/source-fetcher'
+import { resetGithubSourceCacheForTests } from '../../src/core/github-source-cache'
 
 afterAll(() => {
+  resetGithubSourceCacheForTests()
   rmSync(testDir, { recursive: true, force: true })
 })
 
 beforeEach(() => {
+  resetGithubSourceCacheForTests()
   rmSync(testDir, { recursive: true, force: true })
   mkdirSync(testDir, { recursive: true })
 })
@@ -357,6 +361,55 @@ describe('fetchSource — github (mock runner)', () => {
     expect(existsSync(join(result.stagingDir, 'bakin-package.json'))).toBe(true)
     expect(existsSync(join(result.stagingDir, 'README.md'))).toBe(true)
     expect(existsSync(join(result.stagingDir, 'agents'))).toBe(false)
+  })
+
+  it('reuses one cached checkout for repeated async subpath fetches from the same repo', async () => {
+    const calls: string[][] = []
+    const mockGit = async (args: string[]): Promise<string> => {
+      calls.push(args)
+      if (isCloneCall(args)) {
+        const target = args[args.length - 1]
+        mkdirSync(join(target, 'agents', 'pixel'), { recursive: true })
+        mkdirSync(join(target, 'agents', 'patch'), { recursive: true })
+        writeFileSync(join(target, 'README.md'), 'repo root')
+        writeFileSync(join(target, 'agents', 'pixel', 'README.md'), 'pixel package')
+        writeFileSync(join(target, 'agents', 'patch', 'README.md'), 'patch package')
+        writeFileSync(
+          join(target, 'agents', 'pixel', 'bakin-package.json'),
+          VALID_AGENT_MANIFEST,
+          'utf-8',
+        )
+        writeFileSync(
+          join(target, 'agents', 'patch', 'bakin-package.json'),
+          VALID_AGENT_MANIFEST,
+          'utf-8',
+        )
+        return ''
+      }
+      if (isRevParseCall(args)) return 'feedface\n'
+      return ''
+    }
+
+    const pixelStaging = join(testDir, 'packages', '.staging-cache-pixel')
+    const patchStaging = join(testDir, 'packages', '.staging-cache-patch')
+    const pixel = await fetchGithubWithRunnerAsync(
+      'github:markhayden/bakin-bits-official#agents/pixel',
+      mockGit,
+      pixelStaging,
+    )
+    const patch = await fetchGithubWithRunnerAsync(
+      'github:markhayden/bakin-bits-official#agents/patch',
+      mockGit,
+      patchStaging,
+    )
+
+    expect(calls.filter(isCloneCall)).toHaveLength(1)
+    expect(pixel.commitSha).toBe('feedface')
+    expect(patch.commitSha).toBe('feedface')
+    expect(existsSync(join(pixel.stagingDir, 'bakin-package.json'))).toBe(true)
+    expect(existsSync(join(patch.stagingDir, 'bakin-package.json'))).toBe(true)
+    expect(existsSync(join(pixel.stagingDir, 'agents'))).toBe(false)
+    expect(existsSync(join(patch.stagingDir, 'agents'))).toBe(false)
   })
 
   it('throws when requested package subpath is missing after clone', () => {

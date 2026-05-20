@@ -23,9 +23,10 @@
 import { existsSync, readFileSync, mkdirSync, cpSync, rmSync, statSync, realpathSync } from 'fs'
 import { homedir } from 'os'
 import { join, basename, resolve, isAbsolute, sep } from 'path'
-import { execFileSync, spawn } from 'child_process'
+import { execFileSync } from 'child_process'
 import { createHash } from 'crypto'
 import { getContentDir } from '@/core/content-dir'
+import { materializeCachedGithubSource } from '@/core/github-source-cache'
 import { createLogger } from '@/core/logger'
 import { isCorePlugin } from '@/lib/plugin-registry'
 import { buildUserPlugin } from '../../plugin-host/user-plugin-builder'
@@ -271,66 +272,6 @@ function consentSourceIdentity(source: string, ref: string): string {
   return ref ? JSON.stringify({ source, ref }) : source
 }
 
-function formatGitError(err: unknown): string {
-  const maybe = err as { stderr?: Buffer | string; stdout?: Buffer | string; message?: string }
-  const stderr = Buffer.isBuffer(maybe.stderr) ? maybe.stderr.toString('utf-8') : maybe.stderr
-  const stdout = Buffer.isBuffer(maybe.stdout) ? maybe.stdout.toString('utf-8') : maybe.stdout
-  return (stderr || stdout || maybe.message || String(err)).trim()
-}
-
-async function execFileAsync(cmd: string, args: string[], opts: { cwd?: string } = {}): Promise<void> {
-  return await new Promise((resolvePromise, reject) => {
-    const child = spawn(cmd, args, {
-      cwd: opts.cwd,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    const stdout: Buffer[] = []
-    const stderr: Buffer[] = []
-
-    child.stdout?.on('data', (chunk: Buffer) => stdout.push(chunk))
-    child.stderr?.on('data', (chunk: Buffer) => stderr.push(chunk))
-    child.on('error', reject)
-    child.on('exit', (code) => {
-      if (code === 0) {
-        resolvePromise()
-        return
-      }
-      const error = new Error(`${cmd} ${args.join(' ')} exited with code ${code}`) as Error & {
-        stdout?: Buffer
-        stderr?: Buffer
-      }
-      error.stdout = Buffer.concat(stdout)
-      error.stderr = Buffer.concat(stderr)
-      reject(error)
-    })
-  })
-}
-
-async function cloneGithubSource(cloneUrl: string, stagingDir: string, ref: string): Promise<void> {
-  try {
-    if (ref) {
-      await execFileAsync('git', ['clone', '--depth', '1', '--branch', ref, '--', cloneUrl, stagingDir])
-    } else {
-      await execFileAsync('git', ['clone', '--depth', '1', '--', cloneUrl, stagingDir])
-    }
-    return
-  } catch (firstErr) {
-    if (!ref) throw firstErr
-    // `git clone --branch <sha>` only works for branch/tag names. Fall
-    // back to a full no-checkout clone so exact commit pins are supported.
-    rmSync(stagingDir, { recursive: true, force: true })
-    mkdirSync(stagingDir, { recursive: true })
-    try {
-      await execFileAsync('git', ['clone', '--no-checkout', '--', cloneUrl, stagingDir])
-      await execFileAsync('git', ['checkout', '--detach', ref], { cwd: stagingDir })
-      return
-    } catch (fallbackErr) {
-      const detail = formatGitError(fallbackErr) || formatGitError(firstErr)
-      throw new Error(`failed to clone ${cloneUrl} at ref "${ref}": ${detail}`)
-    }
-  }
-}
-
 export async function post(req: Request, _url: URL): Promise<Response> {
   let body: InstallBody
   try {
@@ -468,7 +409,11 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         requestedRef = body.ref ?? parsedUrl.ref
 
         try {
-          await cloneGithubSource(parsedUrl.url, stagingDir, requestedRef)
+          await materializeCachedGithubSource({
+            cloneUrl: parsedUrl.url,
+            ref: requestedRef || undefined,
+            stagingDir,
+          })
           gitProvenance = resolveGitProvenance(stagingDir, body.type, requestedRef)
         } catch (err) {
           rmSync(stagingDir, { recursive: true, force: true })
