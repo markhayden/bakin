@@ -16,6 +16,7 @@ const noopLogger: AdapterLogger = {
 const BREW_CANDIDATES = ['/opt/homebrew/bin/brew', '/usr/local/bin/brew']
 const BREW_PACKAGE = 'antflydb/antfly/antfly'
 const BREW_INSTALL_DOCS = 'https://brew.sh/'
+const BREW_MANUAL_INSTALL = `brew install ${BREW_PACKAGE}`
 
 export interface TermiteModel {
   label: string
@@ -47,6 +48,11 @@ function runSpawn(
       // Keep stdin attached so Homebrew can still ask Y/n questions, but
       // capture stdout/stderr so onboarding stays readable.
       stdio: opts.interactive ? ['inherit', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        HOMEBREW_NO_AUTO_UPDATE: '1',
+        HOMEBREW_NO_ENV_HINTS: '1',
+      },
     })
     let stdout = ''
     let stderr = ''
@@ -72,6 +78,30 @@ function runSpawn(
 
 function stripAnsi(text: string): string {
   return text.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
+}
+
+function compactBrewOutput(stdout: string, stderr: string): string {
+  const cleaned = stripAnsi(`${stdout}\n${stderr}`).replace(/\r/g, '\n')
+  const lines = cleaned
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+  if (lines.length === 0) return ''
+
+  const important = lines.filter(line =>
+    /^error:/i.test(line) ||
+    /^warning:/i.test(line) ||
+    /xcode|command line tools|failed|permission denied|already installed|linkage/i.test(line)
+  )
+  return (important.length > 0 ? important : lines.slice(-8)).slice(-12).join('\n')
+}
+
+function brewFailureMessage(code: number | null, output: string): string {
+  const suffix = code === null ? 'without an exit code' : `with exit code ${code}`
+  if (/xcode|command line tools/i.test(output)) {
+    return `Homebrew could not install Antfly ${suffix}; update Xcode or Command Line Tools, then rerun \`bakin onboard\`.`
+  }
+  return `Homebrew could not install Antfly ${suffix}; run \`${BREW_MANUAL_INSTALL}\` manually, resolve any Homebrew errors, then rerun \`bakin onboard\`.`
 }
 
 function summarizeProcessText(text: string): { status?: string; prompt?: string } {
@@ -145,7 +175,7 @@ async function checkAntflyDependency() {
     name: 'antfly',
     status: 'missing' as const,
     message: 'Antfly binary not found on any known install path',
-    remediation: `Run \`bakin install search\` to install the configured search adapter via Homebrew (${BREW_PACKAGE}).`,
+    remediation: `Run \`bakin install search\`, or install manually with \`${BREW_MANUAL_INSTALL}\`, then rerun onboarding.`,
   }
 }
 
@@ -195,17 +225,30 @@ async function installAntflyDependency(opts: SearchAdapterSetupOptions, logger: 
 
   logger.info('Installing Antfly via brew', { brew, package: BREW_PACKAGE })
   try {
-    const { code, stderr } = await runSpawn(
+    const { code, stdout, stderr } = await runSpawn(
       brew,
       ['install', BREW_PACKAGE],
       { interactive: opts.interactive && !opts.json }
     )
     const durationMs = Date.now() - start
     if (code !== 0) {
+      const output = compactBrewOutput(stdout, stderr)
+      const installedAfterFailure = findAntflyBinary()
+      if (installedAfterFailure) {
+        logger.warn('brew install returned non-zero after Antfly became discoverable', { code, binary: installedAfterFailure })
+        return {
+          name: 'antfly',
+          status: 'installed' as const,
+          message: `Installed Antfly to ${installedAfterFailure}; Homebrew returned code ${code} after installation.`,
+          error: output,
+          durationMs,
+        }
+      }
       return {
         name: 'antfly',
         status: 'failed' as const,
-        message: `brew install exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`,
+        message: brewFailureMessage(code, output),
+        error: output,
         durationMs,
       }
     }

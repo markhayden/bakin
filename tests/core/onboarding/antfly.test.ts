@@ -24,6 +24,8 @@ let findBinaryQueue: Array<string | null>
 let brewExists: boolean
 let spawnExitCode: number | null
 let spawnError: Error | null
+let spawnStdout: string
+let spawnStderr: string
 let lastSpawnArgs: { cmd: string; args: string[]; opts: Record<string, unknown> } | null
 let askYesNoReturn: boolean
 
@@ -79,7 +81,8 @@ mock.module('child_process', () => ({
         child.emit('error', spawnError)
         return
       }
-      child.stderr?.emit('data', Buffer.from(''))
+      if (spawnStdout) child.stdout?.emit('data', Buffer.from(spawnStdout))
+      child.stderr?.emit('data', Buffer.from(spawnStderr))
       child.emit('close', spawnExitCode)
     })
     return child
@@ -94,6 +97,8 @@ describe('Antfly search setup component', () => {
     brewExists = true
     spawnExitCode = 0
     spawnError = null
+    spawnStdout = ''
+    spawnStderr = ''
     lastSpawnArgs = null
     askYesNoReturn = true
     vi.resetModules()
@@ -175,6 +180,10 @@ describe('Antfly search setup component', () => {
       expect(lastSpawnArgs!.args).toEqual(['install', 'antflydb/antfly/antfly'])
       // Never uses shell: true — that's a hard rule in the spec
       expect(lastSpawnArgs!.opts).not.toHaveProperty('shell', true)
+      expect(lastSpawnArgs!.opts.env).toEqual(expect.objectContaining({
+        HOMEBREW_NO_AUTO_UPDATE: '1',
+        HOMEBREW_NO_ENV_HINTS: '1',
+      }))
       expect(result.status).toBe('installed')
       expect(result.message).toContain('/opt/homebrew/bin/antfly')
     })
@@ -195,9 +204,22 @@ describe('Antfly search setup component', () => {
     it('reports failed when brew exits non-zero', async () => {
       findBinaryQueue = [null]
       spawnExitCode = 1
+      spawnStderr = 'Error: Xcode is outdated.\nPlease update Xcode or Command Line Tools.\n'
       const result = await dependencyComponent.install(optsAutoYes)
       expect(result.status).toBe('failed')
-      expect(result.message).toContain('exited with code 1')
+      expect(result.message).toContain('Homebrew could not install Antfly with exit code 1')
+      expect(result.message).toContain('update Xcode or Command Line Tools')
+      expect(String(result.error)).toContain('Xcode is outdated')
+    })
+
+    it('accepts a non-zero brew exit when the antfly binary is discoverable afterward', async () => {
+      findBinaryQueue = [null, '/opt/homebrew/bin/antfly']
+      spawnExitCode = 1
+      spawnStderr = 'Warning: Your Xcode is outdated.\n'
+      const result = await dependencyComponent.install(optsAutoYes)
+      expect(result.status).toBe('installed')
+      expect(result.message).toContain('/opt/homebrew/bin/antfly')
+      expect(result.message).toContain('Homebrew returned code 1')
     })
 
     it('reports failed when brew succeeds but binary is still missing', async () => {
