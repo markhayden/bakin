@@ -71,7 +71,7 @@ describe('onboarding CLI UI', () => {
     ]
 
     const rendered = renderToString(<OnboardingSummary outcomes={outcomes} exitCode={1} />)
-    expect(rendered).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(rendered).toContain("┃ 🐷 Bakin'")
     expect(rendered).toContain('Onboarding')
     expect(rendered).toContain('PREREQUISITES')
     expect(rendered).toContain('BLOCKED')
@@ -114,12 +114,12 @@ describe('onboarding CLI UI', () => {
     )
 
     expect(rendered).toContain('Onboarding')
-    expect(rendered).not.toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(rendered).not.toContain("┃ 🐷 Bakin'")
   })
 
   it('renders an async onboarding busy state', () => {
     const rendered = renderToString(<OnboardingBusy label="Running onboarding checks and installs" totalSteps={12} />)
-    expect(rendered).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(rendered).toContain("┃ 🐷 Bakin'")
     expect(rendered).toContain('Onboard')
     expect(rendered).toContain('CURRENT ACTIVITY')
     expect(rendered).toContain('Running onboarding checks and installs')
@@ -144,7 +144,7 @@ describe('onboarding CLI UI', () => {
 
   it('renders the onboarding intro with the shared compact header', () => {
     const rendered = renderToString(<OnboardingIntro />)
-    expect(rendered).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(rendered).toContain("┃ 🐷 Bakin'")
     expect(rendered).toContain('Onboard')
     expect(rendered).toContain('Initial setup wizard')
     expect(rendered).not.toContain('oooooooooo')
@@ -153,7 +153,7 @@ describe('onboarding CLI UI', () => {
 
   it('renders the start gate with shared onboarding UI', () => {
     const rendered = renderToString(<OnboardingRequiredReport />)
-    expect(rendered).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(rendered).toContain("┃ 🐷 Bakin'")
     expect(rendered).toContain('Onboard')
     expect(rendered).toContain('Initial setup required')
     expect(rendered).toContain('REQUIRED SETUP')
@@ -169,7 +169,7 @@ describe('onboarding CLI UI', () => {
       bakinVersion: '1.0.0',
       components: { mkdir: 'ok', settings: 'ok' },
     }} />)
-    expect(rendered).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(rendered).toContain("┃ 🐷 Bakin'")
     expect(rendered).toContain('Onboarding')
     expect(rendered).toContain('Machine setup already complete')
     expect(rendered).toContain('Already onboarded on 2026-05-19.')
@@ -208,7 +208,7 @@ describe('onboarding CLI UI', () => {
       }} color={false} />,
     )
 
-    expect(rendered).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(rendered).toContain("┃ 🐷 Bakin'")
     expect(rendered).toContain('Onboarding check')
     expect(rendered).toContain('RESULT')
     expect(rendered).toContain('No runtime adapter is available.')

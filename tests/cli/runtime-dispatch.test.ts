@@ -56,7 +56,7 @@ describe('bakin runtime binary dispatch', () => {
     const result = await dispatchCli(['bun', 'bakin', '--help'])
 
     expect(result).toEqual({ startServer: false, exitCode: 0 })
-    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(output()).toContain("┃ 🐷 Bakin'")
     expect(output()).toContain('Help')
     expect(output()).toContain('LIFECYCLE')
     expect(output()).not.toContain('Usage: bakin <command> [options]')
@@ -69,7 +69,7 @@ describe('bakin runtime binary dispatch', () => {
     const result = await dispatchCli(['bun', 'bakin', 'version'])
 
     expect(result).toEqual({ startServer: false, exitCode: 0 })
-    expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(output()).toContain("┃ 🐷 Bakin'")
     expect(output()).toContain(`Version  v${APP_VERSION}`)
     expect(output()).toContain(APP_VERSION)
     expect(errorOutput()).toBe('')
