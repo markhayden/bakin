@@ -30,9 +30,9 @@ describe('parseReleaseTag', () => {
 })
 
 describe('resolveReleaseTarget', () => {
-  it('starts pre-1.0 releases at v0.1.0', () => {
+  it('starts unpublished release lines from the requested bump', () => {
     expect(resolveReleaseTarget([], { verb: 'minor', prerelease: false })).toBe('v0.1.0')
-    expect(resolveReleaseTarget([], { verb: 'patch', prerelease: true })).toBe('v0.1.0-rc.1')
+    expect(resolveReleaseTarget([], { verb: 'patch', prerelease: true })).toBe('v0.0.1-rc.1')
   })
 
   it('bumps stable versions', () => {
