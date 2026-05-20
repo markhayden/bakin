@@ -34,6 +34,16 @@ interface GithubRelease {
   assets: GithubAsset[]
 }
 
+export interface SelfUpdateReporter {
+  log: (message: string) => void
+  error: (message: string) => void
+}
+
+const consoleReporter: SelfUpdateReporter = {
+  log: message => console.log(message),
+  error: message => console.error(message),
+}
+
 function currentTriple(): string | null {
   const plat = process.platform
   const arch = process.arch
@@ -75,14 +85,14 @@ function parseChecksums(text: string): Map<string, string> {
   return map
 }
 
-export async function selfUpdate(): Promise<number> {
+export async function selfUpdate(reporter: SelfUpdateReporter = consoleReporter): Promise<number> {
   const triple = currentTriple()
   if (!triple) {
-    console.error(`No prebuilt binary for ${process.platform}/${process.arch}`)
+    reporter.error(`No prebuilt binary for ${process.platform}/${process.arch}`)
     return 1
   }
 
-  console.log(`Fetching latest release from ${RELEASE_API}`)
+  reporter.log(`Fetching latest release from ${RELEASE_API}`)
   let release: GithubRelease
   try {
     const res = await fetch(RELEASE_API, {
@@ -91,7 +101,7 @@ export async function selfUpdate(): Promise<number> {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     release = (await res.json()) as GithubRelease
   } catch (err) {
-    console.error(`Could not fetch release info: ${err instanceof Error ? err.message : String(err)}`)
+    reporter.error(`Could not fetch release info: ${err instanceof Error ? err.message : String(err)}`)
     return 1
   }
 
@@ -99,11 +109,11 @@ export async function selfUpdate(): Promise<number> {
   const binAsset = release.assets.find(a => a.name === binName)
   const sumAsset = release.assets.find(a => a.name === 'checksums.txt')
   if (!binAsset) {
-    console.error(`Release ${release.tag_name} is missing asset ${binName}`)
+    reporter.error(`Release ${release.tag_name} is missing asset ${binName}`)
     return 1
   }
   if (!sumAsset) {
-    console.error(`Release ${release.tag_name} is missing checksums.txt`)
+    reporter.error(`Release ${release.tag_name} is missing checksums.txt`)
     return 1
   }
 
@@ -112,12 +122,12 @@ export async function selfUpdate(): Promise<number> {
   const sumsPath = `${currentPath}.checksums.txt`
 
   try {
-    console.log(`Downloading ${binAsset.name} (${release.tag_name})...`)
+    reporter.log(`Downloading ${binAsset.name} (${release.tag_name})...`)
     await downloadTo(binAsset.browser_download_url, newPath)
     await downloadTo(sumAsset.browser_download_url, sumsPath)
   } catch (err) {
     for (const p of [newPath, sumsPath]) if (existsSync(p)) unlinkSync(p)
-    console.error(`Download failed: ${err instanceof Error ? err.message : String(err)}`)
+    reporter.error(`Download failed: ${err instanceof Error ? err.message : String(err)}`)
     return 1
   }
 
@@ -126,14 +136,14 @@ export async function selfUpdate(): Promise<number> {
     sums = parseChecksums(readFileSync(sumsPath, 'utf-8'))
   } catch (err) {
     for (const p of [newPath, sumsPath]) if (existsSync(p)) unlinkSync(p)
-    console.error(`Could not parse checksums.txt: ${err instanceof Error ? err.message : String(err)}`)
+    reporter.error(`Could not parse checksums.txt: ${err instanceof Error ? err.message : String(err)}`)
     return 1
   }
 
   const expected = sums.get(binName)
   if (!expected) {
     for (const p of [newPath, sumsPath]) if (existsSync(p)) unlinkSync(p)
-    console.error(`checksums.txt has no entry for ${binName}`)
+    reporter.error(`checksums.txt has no entry for ${binName}`)
     return 1
   }
 
@@ -142,15 +152,15 @@ export async function selfUpdate(): Promise<number> {
     actual = await sha256File(newPath)
   } catch (err) {
     for (const p of [newPath, sumsPath]) if (existsSync(p)) unlinkSync(p)
-    console.error(`Could not hash downloaded file: ${err instanceof Error ? err.message : String(err)}`)
+    reporter.error(`Could not hash downloaded file: ${err instanceof Error ? err.message : String(err)}`)
     return 1
   }
 
   if (actual.toLowerCase() !== expected.toLowerCase()) {
     for (const p of [newPath, sumsPath]) if (existsSync(p)) unlinkSync(p)
-    console.error(`Checksum mismatch for ${binName}`)
-    console.error(`  expected: ${expected}`)
-    console.error(`  actual:   ${actual}`)
+    reporter.error(`Checksum mismatch for ${binName}`)
+    reporter.error(`  expected: ${expected}`)
+    reporter.error(`  actual:   ${actual}`)
     return 1
   }
 
@@ -161,10 +171,10 @@ export async function selfUpdate(): Promise<number> {
   } catch (err) {
     if (existsSync(newPath)) unlinkSync(newPath)
     if (existsSync(sumsPath)) unlinkSync(sumsPath)
-    console.error(`Could not replace binary: ${err instanceof Error ? err.message : String(err)}`)
+    reporter.error(`Could not replace binary: ${err instanceof Error ? err.message : String(err)}`)
     return 1
   }
 
-  console.log(`Updated to ${release.tag_name}. Restart to run the new version.`)
+  reporter.log(`Updated to ${release.tag_name}. Restart to run the new version.`)
   return 0
 }
