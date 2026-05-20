@@ -8,7 +8,7 @@
  * + plugins/<id>/dist trees.
  *
  * Prerequisites (chained by the "build" script in package.json):
- *   bun run build:vendors && bun run build:plugins && bun run build:host-shell
+ *   bun run build:css && bun run build:vendors && bun run build:plugins && bun run build:host-shell
  *
  * Acceptance (from spec):
  *   - Produces 3 files under dist/ each well under 120 MB.

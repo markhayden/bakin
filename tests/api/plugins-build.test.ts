@@ -59,7 +59,8 @@ mock.module('../../src/core/logger', () => ({
   }),
 }))
 
-import { buildUserPlugin } from '../../packages/host/src/plugin-host/user-plugin-builder'
+import { addPlugin, readPluginLockfile, writePluginLockfile } from '../../packages/core/src/plugins/lockfile'
+import { buildAllUserPlugins, buildUserPlugin } from '../../packages/host/src/plugin-host/user-plugin-builder'
 
 const FIXTURE_DIR = join(__dirname, '..', 'fixtures', 'sample-user-plugin')
 const targetDir = join(testDir, 'plugins', 'sample')
@@ -190,5 +191,39 @@ describe('buildUserPlugin', () => {
 
     await expect(buildUserPlugin(dir)).resolves.toBeUndefined()
     expect(existsSync(join(dir, 'dist', 'index.js'))).toBe(true)
+  }, 60_000)
+})
+
+describe('buildAllUserPlugins', () => {
+  it('trusts complete shipped dist artifacts for github-locked plugins', async () => {
+    const pluginsDir = join(testDir, 'startup-plugins')
+    const dir = join(pluginsDir, 'github-prebuilt')
+    writeMinimalPlugin(dir, `export default { id: 'github-prebuilt', name: 'x', version: '0.1.0', activate() { return 'source build' } }`)
+    mkdirSync(join(dir, 'dist'), { recursive: true })
+    const distServer = join(dir, 'dist', 'index.js')
+    const prebuilt = `export default { id: 'github-prebuilt', activate() { return 'prebuilt dist' } }\n`
+    writeFileSync(distServer, prebuilt)
+
+    const older = new Date(Date.now() - 10_000)
+    const newer = new Date()
+    utimesSync(distServer, older, older)
+    utimesSync(join(dir, 'index.ts'), newer, newer)
+
+    writePluginLockfile(addPlugin(readPluginLockfile(), 'github-prebuilt', {
+      source: 'github:markhayden/bakin-bits-official#plugins/projects',
+      type: 'github',
+      ref: 'main',
+      commitSha: 'a'.repeat(40),
+      installedAt: new Date().toISOString(),
+      version: '0.1.0',
+      permissions: [],
+      manifestSha: 'test-manifest-sha',
+    }))
+
+    const log = { info: mock(), error: mock() }
+    await buildAllUserPlugins(pluginsDir, log)
+
+    expect(readFileSync(distServer, 'utf-8')).toBe(prebuilt)
+    expect(log.error).not.toHaveBeenCalled()
   }, 60_000)
 })

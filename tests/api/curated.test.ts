@@ -121,3 +121,16 @@ describe('embedded-assets builder excludes agents/', () => {
     expect(script).toContain('walk(distDir')
   })
 })
+
+describe('embedded-assets builder required host assets', () => {
+  it('guards against release binaries missing generated CSS', () => {
+    const script = readFileSync(
+      join(import.meta.dir, '..', '..', 'scripts/generate-embedded-assets.ts'),
+      'utf-8',
+    )
+
+    expect(script).toContain('packages/host/public/globals.css')
+    expect(script).toContain('bun run build:css')
+    expect(script).toContain('Cannot generate embedded assets because required host assets are missing')
+  })
+})

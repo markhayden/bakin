@@ -146,6 +146,9 @@ jobs:
       - name: Test
         run: bun test --isolate
 
+      - name: Build CSS
+        run: bun run build:css
+
       - name: Build vendor bundles
         run: bun run build:vendors
 
