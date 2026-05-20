@@ -20,6 +20,7 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from 'fs'
 import { join } from 'path'
@@ -91,6 +92,23 @@ describe('buildUserPlugin', () => {
     await buildUserPlugin(targetDir)
     expect(existsSync(join(targetDir, 'dist', 'index.js'))).toBe(true)
     expect(existsSync(join(targetDir, 'dist', 'client.js'))).toBe(true)
+  }, 60_000)
+
+  it('trusts complete shipped dist artifacts when requested', async () => {
+    const dir = join(testDir, 'plugins', 'prebuilt-dist')
+    writeMinimalPlugin(dir, `export default { id: 'minimal', name: 'x', version: '0.1.0', activate() { return 'source build' } }`)
+    mkdirSync(join(dir, 'dist'), { recursive: true })
+    const distServer = join(dir, 'dist', 'index.js')
+    const prebuilt = `export default { id: 'minimal', activate() { return 'prebuilt dist' } }\n`
+    writeFileSync(distServer, prebuilt)
+
+    const older = new Date(Date.now() - 10_000)
+    const newer = new Date()
+    utimesSync(distServer, older, older)
+    utimesSync(join(dir, 'index.ts'), newer, newer)
+
+    await expect(buildUserPlugin(dir, { trustExistingDist: true })).resolves.toBeUndefined()
+    expect(readFileSync(distServer, 'utf-8')).toBe(prebuilt)
   }, 60_000)
 
   it('preserves externals for @makinbakin/sdk/* in client.js', () => {

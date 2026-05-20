@@ -534,7 +534,7 @@ async function upgradeGithub(
     run('git', ['merge', '--ff-only', `origin/${entry.ref}`], pluginDir)
   }
 
-  await buildUserPlugin(pluginDir)
+  await buildUserPlugin(pluginDir, { trustExistingDist: true })
 
   const assets = await installUpgradedPluginAssets(id, pluginDir)
 
@@ -650,7 +650,7 @@ async function upgradeGithubSubpath(
     rmSync(pluginDir, { recursive: true, force: true })
     cpSync(subpathDir, pluginDir, { recursive: true, dereference: false })
 
-    await buildUserPlugin(pluginDir)
+    await buildUserPlugin(pluginDir, { trustExistingDist: true })
 
     const assets = await installUpgradedPluginAssets(id, pluginDir)
 
