@@ -111,10 +111,16 @@ bakin packages install <path|github:user/repo[@ref][#subpath]> [--install-as <id
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="packages-list" name="packages list" summary="List packages." description="Lists installed packages.">
+<CliCommandCard id="packages-list" name="packages list" summary="List packages." description="Lists installed packages. Pass --json for raw API output.">
 ```sh frame="terminal"
-bakin packages list
+bakin packages list [--json]
 ```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+    </tbody>
+  </table>
 </CliCommandCard>
 <CliCommandCard id="packages-remove" name="packages remove" summary="Remove a package." description="Removes an installed package.">
 ```sh frame="terminal"
@@ -148,14 +154,15 @@ bakin packages update <package-id> [--refresh-template]
 <p class="cli-section-description">Use these commands to inspect registered agents, review their status and assignments, and send direct messages without opening the dashboard.</p>
 
 <div class="cli-command-list">
-<CliCommandCard id="agents-list" name="agents list" summary="List agents." description="Lists runtime agents, or package state when `--packages` is set.">
+<CliCommandCard id="agents-list" name="agents list" summary="List agents." description="Lists runtime agents, or package state when `--packages` is set. Pass --json for raw API output.">
 ```sh frame="terminal"
-bakin agents list [--packages]
+bakin agents list [--packages] [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>[--packages]</code></td><td>option</td><td>no</td><td>Show package state instead of the runtime roster.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
@@ -234,14 +241,15 @@ bakin doctor [--json] [--full] [--notify-agent] [--fix|--delegate] [--yes]
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="paths" name="paths" summary="Show content directory paths." description="Prints Bakin runtime paths, optionally for one key.">
+<CliCommandCard id="paths" name="paths" summary="Show content directory paths." description="Prints Bakin runtime paths, optionally for one key. Pass --json for raw API output.">
 ```sh frame="terminal"
-bakin paths [key]
+bakin paths [key] [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>[key]</code></td><td>argument</td><td>no</td><td>Dot-notation settings key.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
@@ -282,10 +290,16 @@ bakin docs
 <p class="cli-section-description">These commands create the local directories and baseline settings Bakin needs before normal operation. They are most useful on a fresh machine or when repairing a partially configured install.</p>
 
 <div class="cli-command-list">
-<CliCommandCard id="mkdir" name="mkdir" summary="Create the Bakin home directory tree." description="Creates or verifies the `~/.bakin` directory tree.">
+<CliCommandCard id="mkdir" name="mkdir" summary="Create the Bakin home directory tree." description="Creates or verifies the `~/.bakin` directory tree. Pass --json for machine-readable output.">
 ```sh frame="terminal"
-bakin mkdir
+bakin mkdir [--json]
 ```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+    </tbody>
+  </table>
 </CliCommandCard>
 <CliCommandCard id="check" name="check" summary="Run onboarding checks." description="Runs one or all first-run readiness checks.">
 ```sh frame="terminal"
@@ -393,20 +407,21 @@ bakin setup service [--uninstall]
 <p class="cli-section-description">Plugin commands manage Bakin extensions from the command line, including installing official packages, linking local development plugins, and scaffolding new plugin projects.</p>
 
 <div class="cli-command-list">
-<CliCommandCard id="plugins-list" name="plugins list" summary="List installed plugins." description="Lists installed plugins and versions. Pass --check to probe remote/source for available upgrades.">
+<CliCommandCard id="plugins-list" name="plugins list" summary="List installed plugins." description="Lists installed plugins and versions. Pass --check to probe remote/source for available upgrades, or --json for raw API output.">
 ```sh frame="terminal"
-bakin plugins list [--check]
+bakin plugins list [--check] [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>[--check]</code></td><td>option</td><td>no</td><td>Dry-run; report what would change.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="plugins-install" name="plugins install" summary="Install a plugin." description="Installs a plugin from a local path or GitHub source. Append #subpath to install from a monorepo directory, or pin a GitHub install with @ref / --ref. --dev symlinks a local source tree for live development. --yes skips the consent prompt. --force replaces an existing install when used with --dev.">
+<CliCommandCard id="plugins-install" name="plugins install" summary="Install a plugin." description="Installs a plugin from a local path or GitHub source. Append #subpath to install from a monorepo directory, or pin a GitHub install with @ref / --ref. --dev symlinks a local source tree for live development. --yes skips the consent prompt. --force replaces an existing install when used with --dev. Pass --json for raw API output.">
 ```sh frame="terminal"
-bakin plugins install [--dev] <path|github:user/repo[@ref][#subpath]> [--ref <ref>] [--yes] [--force]
+bakin plugins install [--dev] <path|github:user/repo[@ref][#subpath]> [--ref <ref>] [--yes] [--force] [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
@@ -416,23 +431,25 @@ bakin plugins install [--dev] <path|github:user/repo[@ref][#subpath]> [--ref <re
       <tr><td><code>[--ref &lt;ref&gt;]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
       <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
       <tr><td><code>[--force]</code></td><td>option</td><td>no</td><td>Bypass the normal safety guard.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="plugins-export" name="plugins export" summary="Export installed user plugins." description="Writes a portable manifest for installed user plugins from ~/.bakin/plugins/lock.json. Without a file, prints JSON to stdout.">
+<CliCommandCard id="plugins-export" name="plugins export" summary="Export installed user plugins." description="Writes a portable manifest for installed user plugins from ~/.bakin/plugins/lock.json. Without a file, prints JSON to stdout. Pass --json with a file for a machine-readable operation result.">
 ```sh frame="terminal"
-bakin plugins export [file]
+bakin plugins export [file] [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>[file]</code></td><td>argument</td><td>no</td><td>Optional value.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="plugins-import" name="plugins import" summary="Import an exported plugin set." description="Installs every plugin in an exported manifest. GitHub plugins are pinned to the recorded commit SHA when present; linked dev plugins are restored as dev installs when their local source path exists.">
+<CliCommandCard id="plugins-import" name="plugins import" summary="Import an exported plugin set." description="Installs every plugin in an exported manifest. GitHub plugins are pinned to the recorded commit SHA when present; linked dev plugins are restored as dev installs when their local source path exists. Pass --json for raw import results.">
 ```sh frame="terminal"
-bakin plugins import <file> [--yes] [--force]
+bakin plugins import <file> [--yes] [--force] [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
@@ -440,29 +457,32 @@ bakin plugins import <file> [--yes] [--force]
       <tr><td><code>&lt;file&gt;</code></td><td>argument</td><td>yes</td><td>Required value.</td></tr>
       <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
       <tr><td><code>[--force]</code></td><td>option</td><td>no</td><td>Bypass the normal safety guard.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="plugins-upgrade" name="plugins upgrade" summary="Upgrade a user plugin." description="Re-pulls a user plugin from its source and rebuilds. --yes skips the consent prompt.">
+<CliCommandCard id="plugins-upgrade" name="plugins upgrade" summary="Upgrade a user plugin." description="Re-pulls a user plugin from its source and rebuilds. --yes skips the consent prompt. Pass --json for raw API output.">
 ```sh frame="terminal"
-bakin plugins upgrade <id> [--yes]
+bakin plugins upgrade <id> [--yes] [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
       <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="plugins-remove" name="plugins remove" summary="Remove a plugin." description="Removes an installed non-core plugin.">
+<CliCommandCard id="plugins-remove" name="plugins remove" summary="Remove a plugin." description="Removes an installed non-core plugin. Pass --json for raw API output.">
 ```sh frame="terminal"
-bakin plugins remove <id>
+bakin plugins remove <id> [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
@@ -480,37 +500,40 @@ bakin plugins restore <id> [--snapshot <snapshot>] [--force] [--list]
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="plugins-scaffold" name="plugins scaffold" summary="Create a plugin scaffold." description="Creates a starter plugin source tree.">
+<CliCommandCard id="plugins-scaffold" name="plugins scaffold" summary="Create a plugin scaffold." description="Creates a starter plugin source tree. Pass --json for machine-readable output.">
 ```sh frame="terminal"
-bakin plugins scaffold <name>
+bakin plugins scaffold <name> [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>&lt;name&gt;</code></td><td>argument</td><td>yes</td><td>Name to create.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="plugins-link" name="plugins link" summary="Symlink a local plugin source tree for dev mode." description="Registers a local source tree as a developer-mode plugin via a symlink at ~/.bakin/plugins/&lt;id&gt;/. Used with the hot-reload coordinator. --force overrides id collisions with copied installs or core plugins, but already-linked plugins must be unlinked first.">
+<CliCommandCard id="plugins-link" name="plugins link" summary="Symlink a local plugin source tree for dev mode." description="Registers a local source tree as a developer-mode plugin via a symlink at ~/.bakin/plugins/&lt;id&gt;/. Used with the hot-reload coordinator. --force overrides id collisions with copied installs or core plugins, but already-linked plugins must be unlinked first. Pass --json for raw API output.">
 ```sh frame="terminal"
-bakin plugins link <localPath> [--force]
+bakin plugins link <localPath> [--force] [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>&lt;localPath&gt;</code></td><td>argument</td><td>yes</td><td>Local filesystem path.</td></tr>
       <tr><td><code>[--force]</code></td><td>option</td><td>no</td><td>Bypass the normal safety guard.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="plugins-unlink" name="plugins unlink" summary="Remove a linked plugin symlink." description="Removes the dev-mode symlink and lockfile entry. Refuses installed (non-linked) plugins — use `bakin plugins remove` for those.">
+<CliCommandCard id="plugins-unlink" name="plugins unlink" summary="Remove a linked plugin symlink." description="Removes the dev-mode symlink and lockfile entry. Refuses installed (non-linked) plugins — use `bakin plugins remove` for those. Pass --json for raw API output.">
 ```sh frame="terminal"
-bakin plugins unlink <id>
+bakin plugins unlink <id> [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
@@ -578,33 +601,41 @@ bakin search:stats
 <p class="cli-section-description">Settings commands are the scriptable path for reading, changing, and seeding local configuration values.</p>
 
 <div class="cli-command-list">
-<CliCommandCard id="settings-get" name="settings get" summary="Read settings." description="Reads all settings or one dot-notation key.">
+<CliCommandCard id="settings-get" name="settings get" summary="Read settings." description="Reads all settings or one dot-notation key. Pass --json for raw setting output.">
 ```sh frame="terminal"
-bakin settings get [key]
+bakin settings get [key] [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>[key]</code></td><td>argument</td><td>no</td><td>Dot-notation settings key.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="settings-set" name="settings set" summary="Update a setting." description="Updates one setting using dot notation.">
+<CliCommandCard id="settings-set" name="settings set" summary="Update a setting." description="Updates one setting using dot notation. Pass --json for raw API output.">
 ```sh frame="terminal"
-bakin settings set <key> <value>
+bakin settings set <key> <value> [--json]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>&lt;key&gt;</code></td><td>argument</td><td>yes</td><td>Dot-notation settings key.</td></tr>
       <tr><td><code>&lt;value&gt;</code></td><td>argument</td><td>yes</td><td>Value to write.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="settings-init" name="settings init" summary="Seed default settings." description="Creates default settings if missing.">
+<CliCommandCard id="settings-init" name="settings init" summary="Seed default settings." description="Creates default settings if missing. Pass --json for machine-readable output.">
 ```sh frame="terminal"
-bakin settings init
+bakin settings init [--json]
 ```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+    </tbody>
+  </table>
 </CliCommandCard>
 </div>
 

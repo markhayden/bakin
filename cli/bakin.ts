@@ -4,11 +4,12 @@
  * All commands are thin wrappers around the Bakin HTTP API.
  */
 import { readFileSync, writeFileSync } from 'node:fs'
+import { APP_VERSION } from '../packages/core/src/constants'
 import {
   cmdScheduleList, cmdScheduleAdd, cmdSchedulePause,
   cmdScheduleResume, cmdScheduleRemove, cmdScheduleRun, cmdScheduleRuns,
 } from '../src/cli/schedule'
-import { renderCliUsage } from '../src/core/cli/registry'
+import { getCliUsageGroups, renderCliUsage } from '../src/core/cli/registry'
 import { parsePluginInstallArgs, PLUGIN_INSTALL_USAGE } from '../src/core/cli/plugin-install-args'
 import {
   createPluginExportManifest,
@@ -17,6 +18,29 @@ import {
   serializePluginExportManifest,
   type PluginImportInstallRequest,
 } from '../src/core/plugins/import-export'
+import type { Permission } from '@bakin/core/plugins/permissions'
+import { extractApiErrorMessage, formatApiError } from '../src/core/cli/api-error'
+import type {
+  AgentRuleResultData,
+  CommandFailureData,
+  CommandIssueData,
+  HelpGroupData,
+  PackageActionData,
+  PluginActionData,
+  PluginRestoreResultData,
+  PluginRestoreSnapshotData,
+  ReindexResultData,
+  RuntimeActionData,
+  SearchAggregationsData,
+  SearchMetaData,
+  SearchResultData,
+  SettingsActionData,
+  TaskActionData,
+  TrashActionData,
+  VersionData,
+  WorkflowActionData,
+} from '../src/core/cli/ui/readonly'
+import type { CheckResult, InstallResult } from '../src/core/onboarding/types'
 
 const BASE_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 
@@ -50,7 +74,7 @@ async function api(path: string, options?: RequestInit): Promise<unknown> {
   })
   if (!res.ok) {
     const body = await res.text()
-    throw new Error(`HTTP ${res.status}: ${body}`)
+    throw new Error(formatApiError(res.status, body))
   }
   return res.json()
 }
@@ -79,6 +103,52 @@ async function apiPost(path: string, body?: unknown): Promise<unknown> {
   })
 }
 
+function jsonObject(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function parseJsonText(text: string): unknown {
+  if (!text.trim()) return null
+  try {
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
+}
+
+function apiErrorPayload(status: number, body: string): Record<string, unknown> {
+  const parsed = jsonObject(parseJsonText(body))
+  const message = extractApiErrorMessage(body) || `HTTP ${status}`
+  return {
+    ...(parsed ?? {}),
+    ok: false,
+    status,
+    error: typeof parsed?.error === 'string' && parsed.error.trim() ? parsed.error : message,
+  }
+}
+
+function isServerConnectionError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err)
+  return message.includes('ECONNREFUSED') ||
+    message.includes('Unable to connect') ||
+    message.includes('fetch failed')
+}
+
+async function apiPostJson(path: string, body?: unknown): Promise<{ ok: true; data: unknown } | { ok: false; data: Record<string, unknown> }> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  const text = await res.text()
+  if (!res.ok) {
+    return { ok: false, data: apiErrorPayload(res.status, text) }
+  }
+  return { ok: true, data: parseJsonText(text) }
+}
+
 async function apiDelete(path: string, body?: unknown): Promise<unknown> {
   return api(path, {
     method: 'DELETE',
@@ -92,6 +162,19 @@ function print(data: unknown): void {
   } else {
     console.log(JSON.stringify(data, null, 2))
   }
+}
+
+async function printGenericCommandResultTui(command: string, data: unknown): Promise<void> {
+  const [{ renderCliResult }, { okResult }] = await Promise.all([
+    import('../src/core/cli/render'),
+    import('../src/core/cli/result'),
+  ])
+  console.log(renderCliResult(okResult(command, data), { mode: 'ink' }).trimEnd())
+}
+
+async function printPluginCliCommandResult(command: string, args: string[], data: unknown): Promise<void> {
+  if (process.stdout.isTTY && !args.includes('--json')) await printGenericCommandResultTui(command, data)
+  else print(data)
 }
 
 function printTable(rows: Record<string, unknown>[], columns?: string[]): void {
@@ -111,12 +194,450 @@ function printTable(rows: Record<string, unknown>[], columns?: string[]): void {
   }
 }
 
+async function printStatusTui(dispatch: Record<string, unknown>, roster: CliRoster): Promise<void> {
+  const [{ StatusReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(StatusReport, { dispatch, roster })))
+}
+
+async function printRuntimeActionTui(action: RuntimeActionData): Promise<void> {
+  const [{ RuntimeActionReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(RuntimeActionReport, { action })))
+}
+
+async function printHelpReportTui(groups: HelpGroupData[], error?: string, errorDetail?: string): Promise<void> {
+  const [{ HelpReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(HelpReport, {
+    groups,
+    env: { bakinUrl: BASE_URL },
+    error,
+    errorDetail,
+  })))
+}
+
+async function printHelpTui(error?: string, errorDetail?: string): Promise<void> {
+  await printHelpReportTui(getCliUsageGroups({ excludeNames: BINARY_ONLY_COMMANDS }), error, errorDetail)
+}
+
+async function printCommandIssueTui(issue: CommandIssueData): Promise<void> {
+  const [{ CommandIssueReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(CommandIssueReport, { issue })))
+}
+
+async function printCommandFailureTui(failure: CommandFailureData): Promise<void> {
+  const [{ CommandFailureReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(CommandFailureReport, { failure })))
+}
+
+async function printVersionTui(data: VersionData): Promise<void> {
+  const [{ VersionReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(VersionReport, { data })))
+}
+
+function invocationCommand(args: string[]): string {
+  return args.length > 0 ? `bakin ${args.join(' ')}` : 'bakin'
+}
+
+function normalizeUsage(usage: string): string {
+  return usage.replace(/^Usage:\s*/, '')
+}
+
+function usageLine(usage: string): string {
+  return usage.startsWith('Usage:') ? usage : `Usage: ${usage}`
+}
+
+async function exitCommandIssue(
+  message: string,
+  options: {
+    command?: string
+    detail?: string
+    usage?: string
+    available?: string[]
+    availableLabel?: string
+    plainMessage?: boolean
+  } = {},
+): Promise<never> {
+  if (process.stdout.isTTY) {
+    await printCommandIssueTui({
+      command: options.command ?? (options.usage ? normalizeUsage(options.usage) : 'command'),
+      message,
+      detail: options.detail,
+      usage: options.usage ? normalizeUsage(options.usage) : undefined,
+      available: options.available,
+      availableLabel: options.availableLabel,
+    })
+  } else {
+    if (options.plainMessage !== false) console.error(message)
+    if (options.usage) console.error(usageLine(options.usage))
+    if (options.available?.length) console.error(`Available: ${options.available.join(' | ')}`)
+  }
+  process.exit(1)
+  throw new Error('unreachable')
+}
+
+async function exitUsage(usage: string, detail?: string): Promise<never> {
+  return exitCommandIssue('Missing required arguments.', {
+    command: normalizeUsage(usage),
+    detail,
+    usage,
+    plainMessage: false,
+  })
+}
+
+async function exitUnknownSubcommand(scope: string, sub: string | undefined, available: string[]): Promise<never> {
+  return exitCommandIssue(`Unknown ${scope} subcommand: ${sub ?? '(none)'}`, {
+    command: `bakin ${scope}`,
+    available,
+  })
+}
+
+async function exitCommandFailure(
+  message: string,
+  options: {
+    command?: string
+    detail?: string
+    code?: string
+    next?: string
+    plainLines?: string[]
+  } = {},
+): Promise<never> {
+  if (process.stdout.isTTY) {
+    await printCommandFailureTui({
+      command: options.command ?? 'bakin',
+      message,
+      detail: options.detail,
+      code: options.code ?? 'COMMAND_FAILED',
+      next: options.next,
+    })
+  } else if (options.plainLines) {
+    for (const line of options.plainLines) console.error(line)
+  } else {
+    console.error(`Error: ${message}`)
+    if (options.detail) console.error(`  ${options.detail}`)
+    if (options.next) console.error(`  ${options.next}`)
+  }
+  process.exit(1)
+  throw new Error('unreachable')
+}
+
+async function printSettingsTui(settings: Record<string, unknown>): Promise<void> {
+  const [{ SettingsReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(SettingsReport, { settings })))
+}
+
+async function printSettingsActionTui(action: SettingsActionData): Promise<void> {
+  const [{ SettingsActionReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(SettingsActionReport, { action })))
+}
+
+async function printPathsTui(paths: Record<string, unknown>, isBakinHome: unknown): Promise<void> {
+  const [{ PathsReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(PathsReport, { paths, isBakinHome })))
+}
+
+async function printAgentRulesTui(
+  results: AgentRuleResultData[],
+  options: { mode: 'check' | 'apply'; scope: 'orchestrator' | 'all' },
+): Promise<void> {
+  const [{ AgentRulesReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(AgentRulesReport, { results, ...options })))
+}
+
+async function printTasksListTui(columns: Record<string, Array<Record<string, unknown>>>, column?: string): Promise<void> {
+  const [{ TasksListReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(TasksListReport, { columns, column })))
+}
+
+async function printTaskActionTui(action: TaskActionData): Promise<void> {
+  const [{ TaskActionReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(TaskActionReport, { action })))
+}
+
+async function printTaskDetailTui(taskId: string, column: string, task: Record<string, unknown>): Promise<void> {
+  const [{ TaskDetailReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(TaskDetailReport, { taskId, column, task })))
+}
+
+async function printAgentsListTui(agents: Array<{ id: string; name: string; status: string; model: string }>): Promise<void> {
+  const [{ AgentsListReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(AgentsListReport, { agents })))
+}
+
+async function printAgentStatusTui(agentId: string, profile: Record<string, unknown>): Promise<void> {
+  const [{ AgentStatusReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(AgentStatusReport, { agentId, profile })))
+}
+
+async function printAgentTasksTui(agentId: string, tasks: Array<Record<string, unknown>>): Promise<void> {
+  const [{ AgentTasksReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(AgentTasksReport, { agentId, tasks })))
+}
+
+async function printPluginsListTui(plugins: Array<Record<string, unknown>>): Promise<void> {
+  const [{ PluginsListReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(PluginsListReport, { plugins })))
+}
+
+async function printPluginActionTui(actions: PluginActionData | PluginActionData[]): Promise<void> {
+  const [{ PluginActionReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(PluginActionReport, {
+    actions: Array.isArray(actions) ? actions : [actions],
+  })))
+}
+
+async function printPluginRestoreSnapshotsTui(pluginId: string, snapshots: PluginRestoreSnapshotData[]): Promise<void> {
+  const [{ PluginRestoreSnapshotsReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(PluginRestoreSnapshotsReport, { pluginId, snapshots })))
+}
+
+async function printPluginRestoreResultTui(pluginId: string, result: PluginRestoreResultData): Promise<void> {
+  const [{ PluginRestoreResultReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(PluginRestoreResultReport, { pluginId, result })))
+}
+
+async function printDocsTui(routes: Array<Record<string, unknown>>): Promise<void> {
+  const [{ DocsReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(DocsReport, { routes })))
+}
+
+async function printWorkflowsListTui(templates: Array<Record<string, unknown>>): Promise<void> {
+  const [{ WorkflowsListReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(WorkflowsListReport, { templates })))
+}
+
+async function printWorkflowActionTui(action: WorkflowActionData): Promise<void> {
+  const [{ WorkflowActionReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(WorkflowActionReport, { action })))
+}
+
+async function printSearchResultsTui(query: string, result: Record<string, unknown>): Promise<void> {
+  const [{ SearchResultsReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  const results = Array.isArray(result.results) ? result.results as SearchResultData[] : []
+  const aggregations = result.aggregations && typeof result.aggregations === 'object' && !Array.isArray(result.aggregations)
+    ? result.aggregations as SearchAggregationsData
+    : undefined
+  const meta = result.meta && typeof result.meta === 'object' && !Array.isArray(result.meta)
+    ? result.meta as SearchMetaData
+    : undefined
+  console.log(renderToString(createElement(SearchResultsReport, {
+    query,
+    results,
+    aggregations,
+    meta,
+  })))
+}
+
+async function printSearchStatsTui(enabled: boolean, tables: Array<Record<string, unknown>>): Promise<void> {
+  const [{ SearchStatsReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(SearchStatsReport, { enabled, tables })))
+}
+
+async function printReindexTui(result: ReindexResultData, options: { target: string; rebuild: boolean }): Promise<void> {
+  const [{ ReindexReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(ReindexReport, { result, ...options })))
+}
+
+async function printTrashListTui(assets: Array<Record<string, unknown>>): Promise<void> {
+  const [{ TrashListReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(TrashListReport, { assets })))
+}
+
+async function printTrashActionTui(action: TrashActionData): Promise<void> {
+  const [{ TrashActionReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(TrashActionReport, { action })))
+}
+
+async function printAgentPackagesListTui(agents: Array<Record<string, unknown>>): Promise<void> {
+  const [{ AgentPackagesListReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(AgentPackagesListReport, { agents })))
+}
+
+async function printAgentLessonsListTui(
+  agentId: string,
+  packageId: string,
+  lessons: Array<Record<string, unknown>>,
+): Promise<void> {
+  const [{ AgentLessonsListReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(AgentLessonsListReport, { agentId, packageId, lessons })))
+}
+
+async function printPackagesListTui(packages: Array<Record<string, unknown>>): Promise<void> {
+  const [{ PackagesListReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(PackagesListReport, { packages })))
+}
+
+async function printPackageActionTui(actions: PackageActionData | PackageActionData[]): Promise<void> {
+  const [{ PackageActionReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/readonly'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(PackageActionReport, {
+    actions: Array.isArray(actions) ? actions : [actions],
+  })))
+}
+
+async function printOnboardingCheckTui(result: CheckResult): Promise<void> {
+  const [{ OnboardingCheckReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/onboarding'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(OnboardingCheckReport, { result })))
+}
+
+async function printOnboardingCheckAllTui(results: CheckResult[]): Promise<void> {
+  const [{ OnboardingCheckAllReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/onboarding'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(OnboardingCheckAllReport, { results })))
+}
+
+async function printOnboardingInstallTui(result: InstallResult): Promise<void> {
+  const [{ OnboardingInstallReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/onboarding'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(OnboardingInstallReport, { result })))
+}
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
 async function cmdStatus(): Promise<void> {
   const dispatch = await apiGet('/api/dispatch') as Record<string, unknown>
   const roster = await getCliRoster()
+
+  if (process.stdout.isTTY) {
+    await printStatusTui(dispatch, roster)
+    return
+  }
 
   console.log('=== Bakin Status ===')
   console.log(`Dispatch interval: ${dispatch.intervalMin}min`)
@@ -128,6 +649,14 @@ async function cmdStatus(): Promise<void> {
 
 async function cmdDispatch(): Promise<void> {
   const result = await apiPost('/api/dispatch')
+  if (process.stdout.isTTY) {
+    await printRuntimeActionTui({
+      action: 'dispatch',
+      target: 'task dispatcher',
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -139,11 +668,30 @@ async function cmdTasksList(column?: string): Promise<void> {
   if (column) {
     const col = columns[column]
     if (!col) {
+      if (process.stdout.isTTY) {
+        await exitCommandIssue(`Unknown tasks column: ${column}`, {
+          command: 'bakin tasks list',
+          detail: Object.keys(columns).length > 0
+            ? `Available columns: ${Object.keys(columns).join(', ')}`
+            : 'No task columns were returned by the server.',
+          usage: 'bakin tasks list [--column=<column>]',
+          available: Object.keys(columns),
+          availableLabel: 'columns',
+        })
+      }
       console.error(`Unknown column: ${column}. Available: ${Object.keys(columns).join(', ')}`)
       process.exit(1)
     }
+    if (process.stdout.isTTY) {
+      await printTasksListTui({ [column]: col as Array<Record<string, unknown>> }, column)
+      return
+    }
     printTable(col as Record<string, unknown>[], ['id', 'title', 'agent'])
   } else {
+    if (process.stdout.isTTY) {
+      await printTasksListTui(columns as Record<string, Array<Record<string, unknown>>>)
+      return
+    }
     for (const [name, tasks] of Object.entries(columns)) {
       if ((tasks as unknown[]).length === 0) continue
       console.log(`\n=== ${name} ===`)
@@ -160,12 +708,30 @@ async function cmdTasksCreate(title: string, assignee?: string, workflowId?: str
   const result = await apiPost('/api/plugins/tasks/', body) as { ok?: boolean; id?: string; workflowId?: string; suggestedWorkflow?: string; error?: string }
 
   if (result.error) {
-    console.error(`Error: ${result.error}`)
-    process.exit(1)
+    await exitCommandFailure(result.error, {
+      command: 'bakin tasks create',
+      code: 'TASK_CREATE_FAILED',
+    })
+  }
+
+  const suggestedWorkflow = result.suggestedWorkflow && !workflowId && !skipWorkflowReason
+    ? result.suggestedWorkflow
+    : undefined
+
+  if (process.stdout.isTTY) {
+    await printTaskActionTui({
+      action: 'created',
+      taskId: result.id,
+      title,
+      agent: assignee,
+      workflowId: result.workflowId ?? workflowId,
+      suggestedWorkflow,
+    })
+    return
   }
 
   // Warn if a workflow was suggested but not used and no reason given
-  if (result.suggestedWorkflow && !workflowId && !skipWorkflowReason) {
+  if (suggestedWorkflow) {
     console.warn(`\n⚠  Workflow "${result.suggestedWorkflow}" matches this task but was not started.`)
     console.warn(`   Re-run with --workflow=${result.suggestedWorkflow} to use it,`)
     console.warn(`   or --no-workflow="<reason>" to skip with an audit trail.\n`)
@@ -176,12 +742,28 @@ async function cmdTasksCreate(title: string, assignee?: string, workflowId?: str
 
 async function cmdTasksMove(id: string, to: string): Promise<void> {
   const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to, agent: await getCliAgent() })
+  if (process.stdout.isTTY) {
+    await printTaskActionTui({
+      action: 'moved',
+      taskId: id,
+      column: to,
+    })
+    return
+  }
   print(result)
 }
 
-async function cmdAgentsList(): Promise<void> {
+async function cmdAgentsList(opts: { json?: boolean } = {}): Promise<void> {
   const result = await apiGet('/api/plugins/team/') as {
     agents: Array<{ id: string; name: string; status: string; model: string }>
+  }
+  if (opts.json) {
+    print(result)
+    return
+  }
+  if (process.stdout.isTTY) {
+    await printAgentsListTui(result.agents)
+    return
   }
   for (const agent of result.agents) {
     const statusIcon = agent.status === 'working' ? '●' : agent.status === 'online' ? '○' : '·'
@@ -191,35 +773,74 @@ async function cmdAgentsList(): Promise<void> {
 
 async function cmdAgentsSend(agentId: string, message: string): Promise<void> {
   const result = await apiPost(`/api/agents/${agentId}/message`, { message })
+  if (process.stdout.isTTY) {
+    await printRuntimeActionTui({
+      action: 'message',
+      target: agentId,
+      detail: message,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
-async function cmdAgentsStatus(agentId: string): Promise<void> {
-  const result = await apiGet(`/api/plugins/team/${agentId}`)
+async function cmdAgentsStatus(agentId: string, opts: { json?: boolean } = {}): Promise<void> {
+  const result = await apiGet(`/api/plugins/team/${agentId}`) as Record<string, unknown>
+  if (!opts.json && process.stdout.isTTY) {
+    await printAgentStatusTui(agentId, result)
+    return
+  }
   print(result)
 }
 
 async function cmdAgentsTasks(agentId: string): Promise<void> {
   const result = await apiGet(`/api/agents/${agentId}/tasks`) as { tasks: Array<Record<string, unknown>> }
+  if (process.stdout.isTTY) {
+    await printAgentTasksTui(agentId, result.tasks)
+    return
+  }
   printTable(result.tasks, ['id', 'title', 'column'])
 }
 
-async function cmdSettingsGet(key?: string): Promise<void> {
+async function cmdSettingsGet(key?: string, opts: { json?: boolean } = {}): Promise<void> {
   const settings = await apiGet('/api/settings') as Record<string, unknown>
   if (key) {
     const parts = key.split('.')
     let val: unknown = settings
+    let found = true
     for (const part of parts) {
-      if (val && typeof val === 'object') val = (val as Record<string, unknown>)[part]
-      else val = undefined
+      if (val && typeof val === 'object' && Object.prototype.hasOwnProperty.call(val, part)) {
+        val = (val as Record<string, unknown>)[part]
+      } else {
+        val = undefined
+        found = false
+        break
+      }
+    }
+    if (opts.json) {
+      print(found ? val : null)
+      return
+    }
+    if (!opts.json && process.stdout.isTTY) {
+      await printSettingsTui({ [key]: val })
+      return
     }
     print(val)
   } else {
+    if (opts.json) {
+      print(settings)
+      return
+    }
+    if (process.stdout.isTTY) {
+      await printSettingsTui(settings)
+      return
+    }
     print(settings)
   }
 }
 
-async function cmdSettingsSet(key: string, value: string): Promise<void> {
+async function cmdSettingsSet(key: string, value: string, opts: { json?: boolean } = {}): Promise<void> {
   const parts = key.split('.')
   const obj: Record<string, unknown> = {}
   let current = obj
@@ -229,30 +850,47 @@ async function cmdSettingsSet(key: string, value: string): Promise<void> {
   }
 
   // Try to parse as JSON, fall back to string
+  let parsedValue: unknown
   try {
-    current[parts[parts.length - 1]] = JSON.parse(value)
+    parsedValue = JSON.parse(value)
   } catch {
-    current[parts[parts.length - 1]] = value
+    parsedValue = value
   }
+  current[parts[parts.length - 1]] = parsedValue
 
   const result = await apiPost('/api/settings', obj)
+  if (!opts.json && process.stdout.isTTY) {
+    await printSettingsActionTui({
+      action: 'updated',
+      key,
+      value: parsedValue,
+      result,
+    })
+    return
+  }
+
   print(result)
 }
 
-async function cmdPluginsList(): Promise<void> {
-  const docs = await apiGet('/api/docs') as { routes: Array<Record<string, unknown>> }
-  const plugins = new Set<string>()
-  for (const route of docs.routes) {
-    if (route.pluginId !== 'core') plugins.add(route.pluginId as string)
+async function cmdPluginsList(opts: { json?: boolean; check?: boolean } = {}): Promise<void> {
+  const path = opts.check ? '/api/plugins/manifest?check=1' : '/api/plugins/manifest'
+  const manifest = await apiGet(path) as { plugins: Array<Record<string, unknown>> }
+  if (opts.json) {
+    print(manifest)
+    return
+  }
+  if (process.stdout.isTTY) {
+    await printPluginsListTui(manifest.plugins)
+    return
   }
   console.log('Installed plugins:')
-  for (const p of plugins) {
-    const routeCount = docs.routes.filter(r => r.pluginId === p).length
-    console.log(`  ${p} (${routeCount} routes)`)
+  for (const plugin of manifest.plugins) {
+    const status = plugin.upgradeAvailable === true ? 'update available' : String(plugin.status ?? 'unknown')
+    console.log(`  ${String(plugin.id ?? '').padEnd(20)} ${String(plugin.source ?? '-').padEnd(8)} ${String(plugin.version ?? '-').padEnd(8)} ${status}`)
   }
 }
 
-async function cmdPluginsInstall(source: string, opts: { yes?: boolean; dev?: boolean; force?: boolean; ref?: string } = {}): Promise<void> {
+async function cmdPluginsInstall(source: string, opts: { yes?: boolean; dev?: boolean; force?: boolean; ref?: string; json?: boolean } = {}): Promise<void> {
   const type = !opts.dev && (source.startsWith('github:') || source.includes('/') && !source.startsWith('.') && !source.startsWith('/'))
     ? 'github'
     : 'local'
@@ -277,17 +915,45 @@ async function cmdPluginsInstall(source: string, opts: { yes?: boolean; dev?: bo
       dev: opts.dev === true,
       force: opts.force === true,
     })
+    if (!opts.json && process.stdout.isTTY) {
+      await printPluginActionTui({
+        action: 'installed',
+        source,
+        result: accepted,
+      })
+      return
+    }
     print(accepted)
   } else {
+    if (!opts.json && process.stdout.isTTY) {
+      await printPluginActionTui({
+        action: 'installed',
+        source,
+        result,
+      })
+      return
+    }
     print(result)
   }
 }
 
-async function cmdPluginsExport(file?: string): Promise<void> {
+async function cmdPluginsExport(file?: string, opts: { json?: boolean } = {}): Promise<void> {
   const manifest = createPluginExportManifest()
   const content = serializePluginExportManifest(manifest)
   if (file) {
     writeFileSync(file, content, 'utf-8')
+    if (opts.json) {
+      print({ ok: true, file, count: manifest.plugins.length, manifest })
+      return
+    }
+    if (process.stdout.isTTY) {
+      await printPluginActionTui({
+        action: 'exported',
+        file,
+        result: { ok: true, count: manifest.plugins.length },
+      })
+      return
+    }
     console.log(`Exported ${manifest.plugins.length} plugin(s) to ${file}`)
   } else {
     process.stdout.write(content)
@@ -296,9 +962,9 @@ async function cmdPluginsExport(file?: string): Promise<void> {
 
 async function installImportedPluginLegacy(
   request: PluginImportInstallRequest,
-  opts: { yes: boolean; force: boolean },
+  opts: { yes: boolean; force: boolean; quiet?: boolean },
 ): Promise<void> {
-  console.log(`Installing ${request.id} from ${request.source}${request.ref ? ` @ ${request.ref.slice(0, 12)}` : ''}`)
+  if (!opts.quiet) console.log(`Installing ${request.id} from ${request.source}${request.ref ? ` @ ${request.ref.slice(0, 12)}` : ''}`)
   let result = await apiPost('/api/plugins/install', {
     source: request.source,
     type: request.type,
@@ -334,15 +1000,30 @@ async function installImportedPluginLegacy(
   if (result.awaitingConsent) {
     throw new Error(`plugin "${request.id}" manifest kept changing between preflight and commit`)
   }
-  console.log(result.message ?? `Installed "${result.id ?? request.id}".`)
+  if (!opts.quiet) console.log(result.message ?? `Installed "${result.id ?? request.id}".`)
 }
 
-async function cmdPluginsImport(file: string, opts: { yes: boolean; force: boolean }): Promise<void> {
+async function cmdPluginsImport(file: string, opts: { yes: boolean; force: boolean; json?: boolean }): Promise<void> {
   const manifest = parsePluginExportManifest(readFileSync(file, 'utf-8'))
+  const quiet = process.stdout.isTTY || opts.json === true
   const result = await installPluginExportManifest(
     manifest,
-    request => installImportedPluginLegacy(request, opts),
+    request => installImportedPluginLegacy(request, { ...opts, quiet }),
   )
+  if (opts.json) {
+    print(result)
+    if (!result.ok) process.exit(1)
+    return
+  }
+  if (process.stdout.isTTY) {
+    await printPluginActionTui({
+      action: 'imported',
+      file,
+      result,
+    })
+    if (!result.ok) process.exit(1)
+    return
+  }
   if (result.ok) {
     console.log(`Imported ${result.installed.length} plugin(s).`)
     return
@@ -354,9 +1035,114 @@ async function cmdPluginsImport(file: string, opts: { yes: boolean; force: boole
   process.exit(1)
 }
 
-async function cmdPluginsRemove(pluginId: string): Promise<void> {
+async function cmdPluginsRemove(pluginId: string, opts: { json?: boolean } = {}): Promise<void> {
   const result = await apiPost('/api/plugins/remove', { pluginId })
+  if (!opts.json && process.stdout.isTTY) {
+    await printPluginActionTui({
+      action: 'removed',
+      pluginId,
+      result,
+    })
+    return
+  }
   print(result)
+}
+
+async function cmdPluginsUpgrade(pluginId: string, opts: { yes?: boolean; json?: boolean } = {}): Promise<void> {
+  if (opts.json) {
+    let response: Awaited<ReturnType<typeof apiPostJson>>
+    try {
+      response = await apiPostJson('/api/plugins/upgrade', { pluginId, yes: opts.yes === true })
+    } catch (err) {
+      print({ ok: false, error: err instanceof Error ? err.message : String(err) })
+      process.exit(1)
+    }
+    print(response.data)
+    if (!response.ok) process.exit(1)
+    const result = jsonObject(response.data) ?? {}
+    if (result.awaitingConsent === true) process.exit(1)
+    if (result.core === true) process.exit(2)
+    if (result.error) process.exit(1)
+    return
+  }
+
+  let result: Record<string, unknown>
+  try {
+    result = await apiPost('/api/plugins/upgrade', { pluginId, yes: opts.yes === true }) as Record<string, unknown>
+  } catch (err) {
+    if (process.stdout.isTTY) {
+      await printPluginActionTui({
+        action: 'upgraded',
+        pluginId,
+        result: { ok: false, error: err instanceof Error ? err.message : String(err) },
+      })
+      process.exit(1)
+    }
+    throw err
+  }
+  const failed = result.core === true || Boolean(result.error)
+  if (!opts.json && result.awaitingConsent === true) {
+    const { promptUpgradeConsent } = await import('../src/core/cli/consent-prompt')
+    const before = result.before && typeof result.before === 'object' ? result.before as Record<string, unknown> : {}
+    const after = result.after && typeof result.after === 'object' ? result.after as Record<string, unknown> : {}
+    const accepted = await promptUpgradeConsent({
+      pluginId,
+      fromVersion: String(before.version ?? '?'),
+      toVersion: String(after.version ?? '?'),
+      newPermissions: Array.isArray(result.newPermissions) ? result.newPermissions as Permission[] : [],
+      yes: opts.yes === true,
+    })
+    if (!accepted) {
+      await printPluginActionTui({
+        action: 'upgraded',
+        pluginId,
+        result: { ok: false, error: 'Upgrade cancelled.' },
+      })
+      process.exit(1)
+    }
+    result = await apiPost('/api/plugins/upgrade', { pluginId, yes: true }) as Record<string, unknown>
+  }
+
+  if (process.stdout.isTTY) {
+    await printPluginActionTui({
+      action: 'upgraded',
+      pluginId,
+      result,
+    })
+    if (result.core === true) process.exit(2)
+    if (result.error) process.exit(1)
+    return
+  }
+
+  print(result)
+  if (failed) process.exit(result.core === true ? 2 : 1)
+}
+
+async function cmdPluginsScaffold(name: string, opts: { json?: boolean } = {}): Promise<void> {
+  const { createPluginScaffold } = await import('../src/core/plugin-scaffold')
+  const result = createPluginScaffold(name)
+
+  if (!opts.json && process.stdout.isTTY) {
+    await printPluginActionTui({
+      action: 'scaffolded',
+      pluginId: name,
+      result,
+    })
+    if (!result.ok) process.exit(1)
+    return
+  }
+
+  if (opts.json) {
+    print(result)
+  } else if (result.ok) {
+    console.log(`Scaffolded plugin at ${result.root}`)
+    console.log('')
+    console.log('Next steps:')
+    for (const next of result.next ?? []) console.log(`  ${next}`)
+  } else {
+    console.error(result.error)
+  }
+  if (!result.ok) process.exit(1)
 }
 
 interface PluginRestoreSnapshot {
@@ -438,12 +1224,23 @@ async function cmdPluginsRestore(pluginId: string, opts: { snapshot?: string; fo
   const result = await res.json().catch(() => ({})) as PluginRestoreResult
   if (opts.list) {
     if (result.error) throw new Error(result.error)
+    if (process.stdout.isTTY) {
+      await printPluginRestoreSnapshotsTui(pluginId, result.snapshots ?? [])
+      return
+    }
     printPluginRestoreSnapshots(pluginId, result.snapshots)
     return
   }
   if (!res.ok || result.error) {
-    if (result.snapshots && result.snapshots.length > 0) printPluginRestoreSnapshots(pluginId, result.snapshots)
+    if (result.snapshots && result.snapshots.length > 0) {
+      if (process.stdout.isTTY) await printPluginRestoreSnapshotsTui(pluginId, result.snapshots)
+      else printPluginRestoreSnapshots(pluginId, result.snapshots)
+    }
     throw new Error(result.error ?? `HTTP ${res.status}`)
+  }
+  if (process.stdout.isTTY) {
+    await printPluginRestoreResultTui(pluginId, result)
+    return
   }
   console.log(result.message ?? `Restored plugin: ${pluginId}`)
   if (result.snapshotInfo) {
@@ -455,16 +1252,32 @@ async function cmdPluginsRestore(pluginId: string, opts: { snapshot?: string; fo
   if (result.activated === false) console.log('  Activation deferred until next server start.')
 }
 
-async function cmdPluginsLink(localPath: string, opts: { force?: boolean } = {}): Promise<void> {
+async function cmdPluginsLink(localPath: string, opts: { force?: boolean; json?: boolean } = {}): Promise<void> {
   const result = await apiPost('/api/plugins/link', {
     localPath,
     force: opts.force === true,
   })
+  if (!opts.json && process.stdout.isTTY) {
+    await printPluginActionTui({
+      action: 'linked',
+      source: localPath,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
-async function cmdPluginsUnlink(pluginId: string): Promise<void> {
+async function cmdPluginsUnlink(pluginId: string, opts: { json?: boolean } = {}): Promise<void> {
   const result = await apiPost('/api/plugins/unlink', { pluginId })
+  if (!opts.json && process.stdout.isTTY) {
+    await printPluginActionTui({
+      action: 'unlinked',
+      pluginId,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -489,6 +1302,15 @@ async function cmdAgentPackagesInstall(source: string, flags: AgentsCmdFlags): P
   if (flags.installAs) body.installAs = flags.installAs
   if (flags.replace) body.replace = true
   const result = await apiPost('/api/agent-packages/install', body)
+  if (!flags.json && process.stdout.isTTY) {
+    await printPackageActionTui({
+      action: 'installed',
+      scope: 'agent package',
+      target: flags.installAs ?? source,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -499,6 +1321,10 @@ async function cmdAgentPackagesList(flags: AgentsCmdFlags): Promise<void> {
   }
   if (flags.json) {
     print(result)
+    return
+  }
+  if (process.stdout.isTTY) {
+    await printAgentPackagesListTui(result.agents)
     return
   }
   console.log('Agents (package state):')
@@ -514,6 +1340,15 @@ async function cmdAgentPackagesRemove(agentId: string, flags: AgentsCmdFlags): P
   if (flags.deleteAgent) body.deleteAgent = true
   if (flags.force) body.force = true
   const result = await apiDelete(`/api/agent-packages/${encodeURIComponent(agentId)}`, body)
+  if (!flags.json && process.stdout.isTTY) {
+    await printPackageActionTui({
+      action: 'removed',
+      scope: 'agent package',
+      target: agentId,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -523,6 +1358,15 @@ async function cmdAgentPackagesUpdate(agentId: string | undefined, flags: Agents
 
   if (agentId) {
     const result = await apiPost(`/api/agent-packages/${encodeURIComponent(agentId)}/update`, body)
+    if (!flags.json && process.stdout.isTTY) {
+      await printPackageActionTui({
+        action: 'updated',
+        scope: 'agent package',
+        target: agentId,
+        result,
+      })
+      return
+    }
     print(result)
     return
   }
@@ -531,15 +1375,37 @@ async function cmdAgentPackagesUpdate(agentId: string | undefined, flags: Agents
   const list = await apiGet('/api/agent-packages') as {
     agents: Array<{ agentId: string; state: string }>
   }
+  const actions: PackageActionData[] = []
   for (const a of list.agents) {
     if (a.state !== 'managed' && a.state !== 'adopted') continue
     try {
       const result = await apiPost(`/api/agent-packages/${encodeURIComponent(a.agentId)}/update`, body)
+      if (!flags.json && process.stdout.isTTY) {
+        actions.push({
+          action: 'updated',
+          scope: 'agent package',
+          target: a.agentId,
+          result,
+        })
+        continue
+      }
       console.log(`${a.agentId}:`)
       print(result)
     } catch (err) {
+      if (!flags.json && process.stdout.isTTY) {
+        actions.push({
+          action: 'updated',
+          scope: 'agent package',
+          target: a.agentId,
+          result: { ok: false, error: err instanceof Error ? err.message : String(err) },
+        })
+        continue
+      }
       console.error(`${a.agentId}: ${err instanceof Error ? err.message : String(err)}`)
     }
+  }
+  if (!flags.json && process.stdout.isTTY) {
+    await printPackageActionTui(actions)
   }
 }
 
@@ -549,6 +1415,10 @@ async function cmdAgentPackagesLessonsList(agentId: string): Promise<void> {
     packageId: string
     lessons: Array<{ lessonId: string; title: string; tags: string[]; enabled: boolean }>
   }
+  if (process.stdout.isTTY) {
+    await printAgentLessonsListTui(agentId, result.packageId, result.lessons)
+    return
+  }
   console.log(`Lessons for ${agentId} (package: ${result.packageId})`)
   for (const l of result.lessons) {
     const mark = l.enabled ? '[x]' : '[ ]'
@@ -557,11 +1427,26 @@ async function cmdAgentPackagesLessonsList(agentId: string): Promise<void> {
   }
 }
 
-async function cmdAgentPackagesLessonsToggle(agentId: string, lessonId: string, enabled: boolean): Promise<void> {
+async function cmdAgentPackagesLessonsToggle(
+  agentId: string,
+  lessonId: string,
+  enabled: boolean,
+  opts: { json?: boolean } = {},
+): Promise<void> {
   const result = await apiPost(
     `/api/agent-packages/${encodeURIComponent(agentId)}/lessons/${encodeURIComponent(lessonId)}`,
     { enabled },
   )
+  if (!opts.json && process.stdout.isTTY) {
+    await printPackageActionTui({
+      action: enabled ? 'enabled' : 'disabled',
+      scope: 'lesson',
+      target: lessonId,
+      context: agentId,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -576,12 +1461,17 @@ async function cmdPackagesList(flags: AgentsCmdFlags): Promise<void> {
       id: string; kind: string; version: string; refCount: number; dependents: string[]
     }>
   }
+  const packages = result.packages.filter(p => p.kind !== 'agent')
   if (flags.json) {
-    print(result)
+    print({ ...result, packages })
+    return
+  }
+  if (process.stdout.isTTY) {
+    await printPackagesListTui(packages)
     return
   }
   console.log('Installed packages:')
-  for (const p of result.packages) {
+  for (const p of packages) {
     const refs = p.refCount > 0 ? `  (refCount=${p.refCount}: ${p.dependents.join(', ')})` : ''
     console.log(`  ${p.id.padEnd(40)} ${p.kind.padEnd(15)} ${p.version}${refs}`)
   }
@@ -592,6 +1482,15 @@ async function cmdPackagesInstall(source: string, flags: AgentsCmdFlags): Promis
   if (flags.installAs) body.installAs = flags.installAs
   if (flags.replace) body.replace = true
   const result = await apiPost('/api/packages/install', body)
+  if (!flags.json && process.stdout.isTTY) {
+    await printPackageActionTui({
+      action: 'installed',
+      scope: 'package',
+      target: flags.installAs ?? source,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -600,6 +1499,15 @@ async function cmdPackagesRemove(packageId: string, flags: AgentsCmdFlags): Prom
   if (flags.keepBlocks) body.keepBlocks = true
   if (flags.force) body.force = true
   const result = await apiDelete(`/api/packages/${encodeURIComponent(packageId)}`, body)
+  if (!flags.json && process.stdout.isTTY) {
+    await printPackageActionTui({
+      action: 'removed',
+      scope: 'package',
+      target: packageId,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -607,6 +1515,15 @@ async function cmdPackagesUpdate(packageId: string, flags: AgentsCmdFlags): Prom
   const body: Record<string, unknown> = {}
   if (flags.refreshTemplate) body.refreshTemplate = true
   const result = await apiPost(`/api/packages/${encodeURIComponent(packageId)}/update`, body)
+  if (!flags.json && process.stdout.isTTY) {
+    await printPackageActionTui({
+      action: 'updated',
+      scope: 'package',
+      target: packageId,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -647,6 +1564,10 @@ function parseAgentsFlags(args: string[]): AgentsCmdFlags {
 
 async function cmdDocs(): Promise<void> {
   const docs = await apiGet('/api/docs') as { routes: Array<Record<string, unknown>> }
+  if (process.stdout.isTTY) {
+    await printDocsTui(docs.routes)
+    return
+  }
   for (const route of docs.routes) {
     const desc = route.description ? ` — ${route.description}` : ''
     console.log(`${route.method} ${route.fullPath}${desc}`)
@@ -662,6 +1583,11 @@ async function cmdSearch(query: string, options: { table?: string; limit?: numbe
     results?: Array<{ key: string; score?: number; _table?: string; document?: Record<string, unknown> }>
     aggregations?: Record<string, Array<{ value: string; count: number }>>
     meta?: { query: string; total: number; took_ms: number; source: string }
+  }
+
+  if (process.stdout.isTTY) {
+    await printSearchResultsTui(query, result as Record<string, unknown>)
+    return
   }
 
   if (result.meta) {
@@ -696,6 +1622,10 @@ async function cmdSearchStats(): Promise<void> {
       indexHealth?: Array<{ name: string; error?: string; walBacklog: number; rebuilding: boolean }>
       healthy?: boolean
     }>
+  }
+  if (process.stdout.isTTY) {
+    await printSearchStatsTui(result.enabled, result.tables as Array<Record<string, unknown>>)
+    return
   }
   console.log(`Search: ${result.enabled ? 'enabled' : 'disabled'}`)
   if (result.tables?.length) {
@@ -948,12 +1878,75 @@ function printDoctorDelegateResult(report: CliDoctorDelegateReport): void {
   if (request.agentId) console.log(`Agent: ${request.agentId}`)
 }
 
+async function printDoctorRepairPlanTui(plan: CliDoctorRepairPlan): Promise<void> {
+  const [{ DoctorRepairPlan }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/doctor-repair'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(DoctorRepairPlan, { plan })))
+}
+
+async function printDoctorRepairApplyTui(report: CliDoctorRepairApply, opts: { showBrand?: boolean } = {}): Promise<void> {
+  const [{ DoctorRepairApplyReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/doctor-repair'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(DoctorRepairApplyReport, { report, showBrand: opts.showBrand })))
+}
+
+async function printDoctorDelegatePreviewTui(unresolved: CliDoctorRepairPlan['diagnostics']): Promise<void> {
+  const [{ DoctorDelegatePreview }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/doctor-repair'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(DoctorDelegatePreview, { unresolved })))
+}
+
+async function printDoctorDelegateResultTui(report: CliDoctorDelegateReport, opts: { showBrand?: boolean } = {}): Promise<void> {
+  const [{ DoctorDelegateResult }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/doctor-repair'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(DoctorDelegateResult, { report, showBrand: opts.showBrand })))
+}
+
+async function printDoctorRepairRequestsTui(requests: Array<Record<string, unknown>>): Promise<void> {
+  const [{ DoctorRepairRequestsReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/doctor-repair'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(DoctorRepairRequestsReport, { requests })))
+}
+
+async function printDoctorRepairRequestTui(request: Record<string, unknown>): Promise<void> {
+  const [{ DoctorRepairRequestReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/doctor-repair'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(DoctorRepairRequestReport, { request })))
+}
+
+async function printDoctorRepairVerifyTui(requestId: string, result: Record<string, unknown>): Promise<void> {
+  const [{ DoctorRepairVerifyReport }, { renderToString }, { createElement }] = await Promise.all([
+    import('../src/core/cli/ui/doctor-repair'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(DoctorRepairVerifyReport, { requestId, result })))
+}
+
 async function confirmDoctorRepair(plan: CliDoctorRepairPlan): Promise<boolean> {
   if (plan.summary.safeItems === 0) return false
   const readline = await import('node:readline/promises')
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
   try {
-    const answer = await rl.question(`Apply ${plan.summary.safeItems} safe repair item${plan.summary.safeItems === 1 ? '' : 's'}? [y/N] `)
+    const answer = await rl.question(`\nApply ${plan.summary.safeItems} safe repair item${plan.summary.safeItems === 1 ? '' : 's'}? [y/N] `)
     return /^(y|yes)$/i.test(answer.trim())
   } finally {
     rl.close()
@@ -965,7 +1958,7 @@ async function confirmDoctorDelegate(unresolved: CliDoctorRepairPlan['diagnostic
   const readline = await import('node:readline/promises')
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
   try {
-    const answer = await rl.question(`Create a delegated repair task for ${unresolved.length} finding${unresolved.length === 1 ? '' : 's'}? [y/N] `)
+    const answer = await rl.question(`\nCreate a delegated repair task for ${unresolved.length} finding${unresolved.length === 1 ? '' : 's'}? [y/N] `)
     return /^(y|yes)$/i.test(answer.trim())
   } finally {
     rl.close()
@@ -973,6 +1966,7 @@ async function confirmDoctorDelegate(unresolved: CliDoctorRepairPlan['diagnostic
 }
 
 async function cmdDoctorFix(options: { json: boolean; yes: boolean; isTTY: boolean }): Promise<void> {
+  let acceptedInteractively = false
   if (!options.yes) {
     const plan = await runDoctorRepairPlan()
     if (options.json) {
@@ -988,7 +1982,11 @@ async function cmdDoctorFix(options: { json: boolean; yes: boolean; isTTY: boole
       process.exit(1)
     }
 
-    printDoctorRepairPlan(plan)
+    if (options.isTTY) {
+      await printDoctorRepairPlanTui(plan)
+    } else {
+      printDoctorRepairPlan(plan)
+    }
     if (plan.summary.totalItems === 0) return
 
     if (!options.isTTY) {
@@ -1000,6 +1998,7 @@ async function cmdDoctorFix(options: { json: boolean; yes: boolean; isTTY: boole
       console.log('Repair cancelled.')
       process.exit(1)
     }
+    acceptedInteractively = true
   }
 
   const report = await runDoctorRepairApply()
@@ -1011,11 +2010,17 @@ async function cmdDoctorFix(options: { json: boolean; yes: boolean; isTTY: boole
     if (exitCode !== 0) process.exit(exitCode)
     return
   }
-  printDoctorRepairApply(report)
+  if (options.isTTY) {
+    if (acceptedInteractively) console.log('')
+    await printDoctorRepairApplyTui(report, { showBrand: !acceptedInteractively })
+  } else {
+    printDoctorRepairApply(report)
+  }
   if (exitCode !== 0) process.exit(exitCode)
 }
 
 async function cmdDoctorDelegate(options: { json: boolean; yes: boolean; isTTY: boolean }): Promise<void> {
+  let acceptedInteractively = false
   if (!options.yes) {
     const plan = await runDoctorRepairPlan()
     const unresolved = unresolvedDelegateRows(plan)
@@ -1032,7 +2037,11 @@ async function cmdDoctorDelegate(options: { json: boolean; yes: boolean; isTTY: 
       process.exit(1)
     }
 
-    printDoctorDelegatePreview(plan, unresolved)
+    if (options.isTTY) {
+      await printDoctorDelegatePreviewTui(unresolved)
+    } else {
+      printDoctorDelegatePreview(plan, unresolved)
+    }
     if (unresolved.length === 0) return
     if (!options.isTTY) {
       console.log('\nRun `bakin doctor --delegate --yes` to create the delegated repair task.')
@@ -1043,6 +2052,7 @@ async function cmdDoctorDelegate(options: { json: boolean; yes: boolean; isTTY: 
       console.log('Delegated repair cancelled.')
       process.exit(1)
     }
+    acceptedInteractively = true
   }
 
   const report = await runDoctorDelegateApply()
@@ -1050,10 +2060,32 @@ async function cmdDoctorDelegate(options: { json: boolean; yes: boolean; isTTY: 
     printDoctorRepairJson(report, 0)
     return
   }
-  printDoctorDelegateResult(report)
+  if (options.isTTY) {
+    if (acceptedInteractively) console.log('')
+    await printDoctorDelegateResultTui(report, { showBrand: !acceptedInteractively })
+  } else {
+    printDoctorDelegateResult(report)
+  }
 }
 
-async function cmdDoctorRepair(args: string[], options: { json: boolean }): Promise<void> {
+function doctorRepairRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+function doctorRepairRequestFromResponse(result: unknown): Record<string, unknown> {
+  const data = doctorRepairRecord(result) ?? {}
+  return doctorRepairRecord(data.request) ?? data
+}
+
+function doctorRepairRequestList(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value)
+    ? value.filter((item): item is Record<string, unknown> => doctorRepairRecord(item) !== null)
+    : []
+}
+
+async function cmdDoctorRepair(args: string[], options: { json: boolean; isTTY: boolean }): Promise<void> {
   const sub = args[1] ?? 'list'
   if (sub === 'list') {
     const result = await apiGet('/api/plugins/health/doctor/repair') as { requests?: Array<Record<string, unknown>> }
@@ -1061,7 +2093,11 @@ async function cmdDoctorRepair(args: string[], options: { json: boolean }): Prom
       printDoctorRepairJson(result, 0)
       return
     }
-    const requests = result.requests ?? []
+    const requests = doctorRepairRequestList(result.requests)
+    if (options.isTTY) {
+      await printDoctorRepairRequestsTui(requests)
+      return
+    }
     if (requests.length === 0) {
       console.log('No doctor repair requests.')
       return
@@ -1072,9 +2108,21 @@ async function cmdDoctorRepair(args: string[], options: { json: boolean }): Prom
     return
   }
 
+  if (sub !== 'show' && sub !== 'verify') {
+    if (options.isTTY) {
+      await exitUnknownSubcommand('doctor repair', sub, ['list', 'show', 'verify'])
+    }
+    console.error(`Unknown doctor repair subcommand: ${sub}`)
+    process.exit(1)
+  }
+
   const requestId = args[2]
   if (!requestId) {
-    console.error(`Usage: bakin doctor repair ${sub} <request-id>`)
+    const usage = `bakin doctor repair ${sub} <request-id>`
+    if (options.isTTY) {
+      await exitUsage(usage)
+    }
+    console.error(`Usage: ${usage}`)
     process.exit(1)
   }
 
@@ -1082,6 +2130,10 @@ async function cmdDoctorRepair(args: string[], options: { json: boolean }): Prom
     const result = await apiGet(`/api/plugins/health/doctor/repair/${encodeURIComponent(requestId)}`)
     if (options.json) {
       printDoctorRepairJson(result, 0)
+      return
+    }
+    if (options.isTTY) {
+      await printDoctorRepairRequestTui(doctorRepairRequestFromResponse(result))
       return
     }
     print(result)
@@ -1094,12 +2146,13 @@ async function cmdDoctorRepair(args: string[], options: { json: boolean }): Prom
       printDoctorRepairJson(result, 0)
       return
     }
+    if (options.isTTY) {
+      await printDoctorRepairVerifyTui(requestId, doctorRepairRecord(result) ?? {})
+      return
+    }
     print(result)
     return
   }
-
-  console.error(`Unknown doctor repair subcommand: ${sub}`)
-  process.exit(1)
 }
 
 async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> {
@@ -1111,7 +2164,7 @@ async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> 
   const yes = args.includes('--yes')
   const isTTY = Boolean(process.stdout.isTTY)
   if (args[0] === 'repair') {
-    await cmdDoctorRepair(args, { json })
+    await cmdDoctorRepair(args, { json, isTTY })
     return
   }
   if (fix) {
@@ -1141,11 +2194,12 @@ async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> 
 
   if (isTTY) {
     const { DoctorReport } = await import('../src/core/cli/ui/doctor')
-    const { renderToString } = await import('ink')
+    const { renderToString } = await import('../src/core/cli/ui/render-to-string')
     const { createElement } = await import('react')
     console.log(renderToString(createElement(DoctorReport, {
       results: result.results,
       summary: result.summary,
+      mode: result.mode,
     })))
     if (result.summary.errors > 0) process.exit(1)
     if (result.summary.warnings > 0) process.exit(2)
@@ -1179,8 +2233,22 @@ async function cmdDoctor(args: string[] = process.argv.slice(2)): Promise<void> 
 // Agent-rules context management is owned by src/core/agent-rules/managed-blocks.ts.
 // Imported lazily inside cmdAgentRules so the CLI stays a pure entry point.
 
+const AGENT_RULES_HELP_GROUPS: HelpGroupData[] = [{
+  group: 'Agent Rules',
+  commands: [
+    { usage: 'bakin agent-rules --apply', summary: 'Write main-agent managed context to AGENTS.md' },
+    { usage: 'bakin agent-rules --check', summary: 'Check if main-agent managed context is current' },
+    { usage: 'bakin agent-rules --apply-all', summary: 'Apply managed context to all agent AGENTS.md files' },
+    { usage: 'bakin agent-rules --check-all', summary: 'Check managed context across all agents' },
+  ],
+}]
+
 async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyAll?: boolean; checkAll?: boolean } = {}): Promise<void> {
   if (!options.apply && !options.check && !options.applyAll && !options.checkAll) {
+    if (process.stdout.isTTY) {
+      await printHelpReportTui(AGENT_RULES_HELP_GROUPS)
+      return
+    }
     console.log('Usage: bakin agent-rules --apply       # Write main-agent managed context to AGENTS.md')
     console.log('       bakin agent-rules --check       # Check if main-agent managed context is current')
     console.log('       bakin agent-rules --apply-all   # Apply managed context to all agent AGENTS.md files')
@@ -1188,32 +2256,63 @@ async function cmdAgentRules(options: { apply?: boolean; check?: boolean; applyA
     return
   }
 
-  const { applyManagedBlocks } = await import('../src/core/agent-rules/managed-blocks')
   const scope = options.apply || options.check ? 'orchestrator' : 'all'
   const autoFix = !!(options.apply || options.applyAll)
-  const results = await applyManagedBlocks(autoFix, { scope })
+
+  const previousConsoleFormat = process.env.BAKIN_CONSOLE_FORMAT
+  const shouldSilenceRuntimeLogs = process.stdout.isTTY && previousConsoleFormat === undefined
+  let results: Awaited<ReturnType<typeof import('../src/core/agent-rules/managed-blocks')['applyManagedBlocks']>>
+  try {
+    if (shouldSilenceRuntimeLogs) process.env.BAKIN_CONSOLE_FORMAT = 'silent'
+    const { applyManagedBlocks } = await import('../src/core/agent-rules/managed-blocks')
+    results = await applyManagedBlocks(autoFix, { scope })
+  } finally {
+    if (shouldSilenceRuntimeLogs) delete process.env.BAKIN_CONSOLE_FORMAT
+  }
+
   const errors = results.filter(r => r.status === 'error')
   const warnings = results.filter(r => r.status === 'warn')
   const fixes = results.filter(r => r.status === 'fixed')
   const oks = results.filter(r => r.status === 'ok')
 
-  for (const r of results) {
-    const icon = r.status === 'ok' ? '[OK]' : r.status === 'fixed' ? '[FIXED]' : r.status === 'warn' ? '[WARN]' : '[ERROR]'
-    console.log(`${icon} ${r.check}: ${r.message}`)
+  if (process.stdout.isTTY) {
+    await printAgentRulesTui(results, {
+      mode: autoFix ? 'apply' : 'check',
+      scope,
+    })
+  } else {
+    for (const r of results) {
+      const icon = r.status === 'ok' ? '[OK]' : r.status === 'fixed' ? '[FIXED]' : r.status === 'warn' ? '[WARN]' : '[ERROR]'
+      console.log(`${icon} ${r.check}: ${r.message}`)
+    }
+
+    console.log(`\n${oks.length} up to date, ${fixes.length} fixed, ${warnings.length} warnings, ${errors.length} errors`)
   }
 
-  console.log(`\n${oks.length} up to date, ${fixes.length} fixed, ${warnings.length} warnings, ${errors.length} errors`)
   if (errors.length > 0 || warnings.length > 0) process.exit(1)
 }
 
-async function cmdPaths(key?: string): Promise<void> {
+async function cmdPaths(key?: string, opts: { json?: boolean } = {}): Promise<void> {
   const result = await apiGet(`/api/paths${key ? `?key=${encodeURIComponent(key)}` : ''}`) as Record<string, unknown>
 
+  if (opts.json) {
+    print(result)
+    return
+  }
+
   if (key) {
-    // Single path — print just the value (useful for scripting: bakin paths assets)
+    if (process.stdout.isTTY) {
+      await printPathsTui({ [key]: result.path }, result.isBakinHome)
+      return
+    }
+    // Single path in non-TTY mode prints just the value for scripting.
     console.log(result.path)
   } else {
-    const paths = result.paths as Record<string, string>
+    const paths = result.paths as Record<string, unknown>
+    if (process.stdout.isTTY) {
+      await printPathsTui(paths, result.isBakinHome)
+      return
+    }
     const isHome = result.isBakinHome ? '~/.bakin' : './content (not migrated)'
     console.log(`Content dir: ${isHome}`)
     console.log('')
@@ -1319,12 +2418,67 @@ function serverProcessPattern(): string {
   return 'tsx.*server\\.ts|bakin.*serve'
 }
 
+async function cmdStartServer(command: 'start' | 'serve', args: string[] = []): Promise<void> {
+  if (command === 'start') {
+    const { dispatchCli } = await import('../src/core/cli')
+    const result = await dispatchCli(['bun', 'bakin', 'start', ...args])
+    if (!result.startServer) {
+      process.exitCode = result.exitCode
+      return
+    }
+  }
+
+  const { spawn } = await import('child_process')
+  const { dirname, resolve } = await import('path')
+  const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
+  const programArgs = await serviceProgramArgs()
+  const child = spawn(programArgs[0], programArgs.slice(1), {
+    cwd: projectDir,
+    stdio: 'inherit',
+    env: { ...process.env },
+  })
+  const exitCode = await new Promise<number>((resolvePromise) => {
+    child.once('close', (code: number | null) => resolvePromise(code ?? 0))
+    child.once('error', async (err: Error) => {
+      const detail = err instanceof Error ? err.message : String(err)
+      if (process.stdout.isTTY) {
+        await printCommandFailureTui({
+          command: `bakin ${command}`,
+          message: 'Failed to start Bakin.',
+          detail,
+          code: 'START_FAILED',
+        })
+      } else {
+        console.error('Failed to start Bakin:', detail)
+      }
+      resolvePromise(1)
+    })
+  })
+  process.exitCode = exitCode
+}
+
 async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<void> {
   const { execFileSync } = await import('child_process')
   const { existsSync, mkdirSync, unlinkSync, writeFileSync } = await import('fs')
   const { join, dirname, resolve } = await import('path')
   const { homedir } = await import('os')
   const { getBakinPaths } = await import('../packages/core/src/content-dir')
+  const isTTY = process.stdout.isTTY
+
+  const printServiceResult = async (
+    result: Record<string, unknown>,
+    detail?: string,
+  ): Promise<void> => {
+    const action = options.uninstall ? 'disable autostart' : 'enable autostart'
+    const message = typeof result.message === 'string' ? result.message : 'Bakin service configuration updated.'
+    await printRuntimeActionTui({
+      action,
+      target: 'Bakin service',
+      result,
+      message,
+      detail,
+    })
+  }
 
   const programArgs = await serviceProgramArgs()
   const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
@@ -1343,12 +2497,22 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
     }
 
     if (options.uninstall) {
-      console.log('[..] Removing Bakin LaunchAgent...')
+      if (!isTTY) console.log('[..] Removing Bakin LaunchAgent...')
       removePlist(plistPath)
       for (const label of LEGACY_SERVICE_LABELS) {
         removePlist(join(launchAgentsDir, `${label}.plist`))
       }
-      console.log('[OK] Bakin autostart disabled')
+      if (isTTY) {
+        await printServiceResult({
+          ok: true,
+          status: 'ok',
+          message: 'Bakin autostart disabled.',
+          service: SERVICE_LABEL,
+          platform: 'darwin',
+        }, `Service: ${SERVICE_LABEL}`)
+      } else {
+        console.log('[OK] Bakin autostart disabled')
+      }
       return
     }
 
@@ -1365,10 +2529,24 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
     }), 'utf-8')
     execFileSync('launchctl', ['bootstrap', `gui/${uid}`, plistPath], { stdio: 'pipe' })
     execFileSync('launchctl', ['kickstart', '-k', `gui/${uid}/${SERVICE_LABEL}`], { stdio: 'pipe' })
-    console.log('[OK] Bakin autostart enabled')
-    console.log(`  Service: ${SERVICE_LABEL}`)
-    console.log(`  Logs:    ${stdoutPath}`)
-    console.log('  Disable: bakin setup service --uninstall')
+    if (isTTY) {
+      await printServiceResult({
+        ok: true,
+        status: 'ok',
+        message: 'Bakin autostart enabled.',
+        service: SERVICE_LABEL,
+        platform: 'darwin',
+      }, [
+        `Service: ${SERVICE_LABEL}`,
+        `Logs: ${stdoutPath}`,
+        'Disable: bakin setup service --uninstall',
+      ].join('\n'))
+    } else {
+      console.log('[OK] Bakin autostart enabled')
+      console.log(`  Service: ${SERVICE_LABEL}`)
+      console.log(`  Logs:    ${stdoutPath}`)
+      console.log('  Disable: bakin setup service --uninstall')
+    }
     return
   }
 
@@ -1376,11 +2554,21 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
     const systemdDir = join(homedir(), '.config', 'systemd', 'user')
     const unitPath = join(systemdDir, `${SERVICE_LABEL}.service`)
     if (options.uninstall) {
-      console.log('[..] Removing Bakin user service...')
+      if (!isTTY) console.log('[..] Removing Bakin user service...')
       try { execFileSync('systemctl', ['--user', 'disable', '--now', `${SERVICE_LABEL}.service`], { stdio: 'pipe' }) } catch { /* not enabled */ }
       if (existsSync(unitPath)) unlinkSync(unitPath)
       try { execFileSync('systemctl', ['--user', 'daemon-reload'], { stdio: 'pipe' }) } catch { /* systemd unavailable */ }
-      console.log('[OK] Bakin autostart disabled')
+      if (isTTY) {
+        await printServiceResult({
+          ok: true,
+          status: 'ok',
+          message: 'Bakin autostart disabled.',
+          service: `${SERVICE_LABEL}.service`,
+          platform: 'linux',
+        }, `Service: ${SERVICE_LABEL}.service`)
+      } else {
+        console.log('[OK] Bakin autostart disabled')
+      }
       return
     }
 
@@ -1393,20 +2581,57 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
     }), 'utf-8')
     execFileSync('systemctl', ['--user', 'daemon-reload'], { stdio: 'pipe' })
     execFileSync('systemctl', ['--user', 'enable', '--now', `${SERVICE_LABEL}.service`], { stdio: 'pipe' })
-    console.log('[OK] Bakin autostart enabled')
-    console.log(`  Service: ${SERVICE_LABEL}.service`)
-    console.log(`  Logs:    ${stdoutPath}`)
-    console.log('  Disable: bakin setup service --uninstall')
+    if (isTTY) {
+      await printServiceResult({
+        ok: true,
+        status: 'ok',
+        message: 'Bakin autostart enabled.',
+        service: `${SERVICE_LABEL}.service`,
+        platform: 'linux',
+      }, [
+        `Service: ${SERVICE_LABEL}.service`,
+        `Logs: ${stdoutPath}`,
+        'Disable: bakin setup service --uninstall',
+      ].join('\n'))
+    } else {
+      console.log('[OK] Bakin autostart enabled')
+      console.log(`  Service: ${SERVICE_LABEL}.service`)
+      console.log(`  Logs:    ${stdoutPath}`)
+      console.log('  Disable: bakin setup service --uninstall')
+    }
     return
   }
 
-  console.error(`Service management is not supported on ${process.platform}.`)
+  const error = `Service management is not supported on ${process.platform}.`
+  if (isTTY) {
+    await printServiceResult({ ok: false, status: 'fail', error })
+  } else {
+    console.error(error)
+  }
   process.exit(1)
 }
 
 async function cmdReboot(): Promise<void> {
   const { execFileSync } = await import('child_process')
   const { join, resolve, dirname } = await import('path')
+  const isTTY = process.stdout.isTTY
+  const details: string[] = []
+
+  const printRestartResult = async (result: Record<string, unknown>): Promise<void> => {
+    const message = typeof result.message === 'string' ? result.message : 'Bakin restart request completed.'
+    if (isTTY) {
+      await printRuntimeActionTui({
+        action: 'restart',
+        target: 'Bakin server',
+        result,
+        message,
+        detail: details.join('\n'),
+      })
+      return
+    }
+    if (result.status === 'warn') console.log(`[WARN] ${message}`)
+    else console.log(message)
+  }
 
   // --- launchctl restart path commented out — manual process management only ---
   // const { existsSync } = await import('fs')
@@ -1435,28 +2660,32 @@ async function cmdReboot(): Promise<void> {
   // } else {
 
   // Kill any running Bakin server processes
-  console.log('[..] Stopping Bakin server...')
+  if (!isTTY) console.log('[..] Stopping Bakin server...')
   try {
     const pids = execFileSync('pgrep', ['-f', serverProcessPattern()], { encoding: 'utf-8' }).trim()
     if (pids) {
+      let signaled = 0
       for (const pid of pids.split('\n')) {
         if (pid && pid !== String(process.pid)) {
           process.kill(Number(pid), 'SIGTERM')
+          signaled++
         }
       }
-      console.log('[OK] Sent SIGTERM to Bakin server')
-      console.log('[..] Waiting for shutdown...')
+      details.push(`Sent SIGTERM to ${signaled} process(es).`)
+      if (!isTTY) console.log('[OK] Sent SIGTERM to Bakin server')
+      if (!isTTY) console.log('[..] Waiting for shutdown...')
       await new Promise(r => setTimeout(r, 2000))
     }
   } catch {
-    console.log('[..] No running Bakin process found')
+    details.push('No running Bakin process found before restart.')
+    if (!isTTY) console.log('[..] No running Bakin process found')
   }
 
   // Start the server in background
   const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
   const logPath = join(projectDir, 'mc-server.log')
 
-  console.log('[..] Starting Bakin server...')
+  if (!isTTY) console.log('[..] Starting Bakin server...')
   const { spawn } = await import('child_process')
   const programArgs = await serviceProgramArgs()
   const child = spawn(programArgs[0], programArgs.slice(1), {
@@ -1466,25 +2695,47 @@ async function cmdReboot(): Promise<void> {
     env: { ...process.env },
   })
   child.unref()
-  console.log(`[OK] Bakin starting (pid ${child.pid})`)
-  console.log(`  Logs: tail -f ${logPath}`)
+  if (child.pid) details.push(`Started process ${child.pid}.`)
+  details.push(`Logs: tail -f ${logPath}`)
+  if (!isTTY) console.log(`[OK] Bakin starting (pid ${child.pid})`)
+  if (!isTTY) console.log(`  Logs: tail -f ${logPath}`)
 
   // } // end of else branch for non-service path
 
   // Wait and verify
-  console.log('[..] Waiting for server to come up...')
+  if (!isTTY) console.log('[..] Waiting for server to come up...')
   for (let i = 0; i < 15; i++) {
     await new Promise(r => setTimeout(r, 1000))
     try {
       const res = await fetch(`${BASE_URL}/api/version`, { signal: AbortSignal.timeout(2000) })
       if (res.ok) {
         const data = await res.json() as { version: string }
-        console.log(`[OK] Bakin is up (${data.version})`)
+        if (!isTTY) {
+          console.log(`[OK] Bakin is up (${data.version})`)
+          return
+        }
+        details.push(`Version: ${data.version}`)
+        await printRestartResult({
+          ok: true,
+          status: 'ok',
+          message: 'Bakin restarted.',
+          pid: child.pid,
+          version: data.version,
+        })
         return
       }
     } catch { /* not ready yet */ }
   }
-  console.log('[WARN] Server not responding after 15s — check logs')
+  if (!isTTY) {
+    console.log('[WARN] Server not responding after 15s — check logs')
+    return
+  }
+  await printRestartResult({
+    ok: true,
+    status: 'warn',
+    message: 'Server not responding after 15s - check logs.',
+    pid: child.pid,
+  })
 }
 
 async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): Promise<void> {
@@ -1494,8 +2745,11 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): 
   if (options.rebuild) params.push('rebuild=true')
   if (params.length) url += `?${params.join('&')}`
 
-  console.log(`Reindexing ${options.table || 'all content'} into search${options.rebuild ? ' (rebuild indexes)' : ''}...`)
-  const result = await apiPost(url) as {
+  const target = options.table || 'all content'
+  if (!process.stdout.isTTY) {
+    console.log(`Reindexing ${target} into search${options.rebuild ? ' (rebuild indexes)' : ''}...`)
+  }
+  const result = await apiPost(url) as ReindexResultData & {
     ok: boolean
     total: number
     errors: number
@@ -1506,6 +2760,10 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): 
       error?: string
       enrichment?: { healthy: boolean; indexes: Array<{ name: string; error?: string; walBacklog: number }> }
     }>
+  }
+  if (process.stdout.isTTY) {
+    await printReindexTui(result, { target, rebuild: options.rebuild === true })
+    return
   }
   if (result.tables?.length) {
     for (const t of result.tables) {
@@ -1525,42 +2783,200 @@ async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): 
   }
 }
 
-async function cmdLogs(filter?: string): Promise<void> {
-  const { spawn, execSync } = await import('child_process')
-  const { existsSync } = await import('fs')
+interface LogsOptions {
+  filter?: string
+  json?: boolean
+  lines?: number
+  follow?: boolean
+}
+
+function parseLogsArgs(args: string[]): LogsOptions | { error: string } {
+  const options: LogsOptions = { lines: 20, follow: true }
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (arg === '--json') {
+      options.json = true
+      continue
+    }
+    if (arg === '--no-follow') {
+      options.follow = false
+      continue
+    }
+    if (arg === '--follow') {
+      options.follow = true
+      continue
+    }
+    if (arg.startsWith('--lines=')) {
+      const value = Number(arg.split('=')[1])
+      if (!Number.isInteger(value) || value < 0) return { error: '--lines must be a non-negative integer' }
+      options.lines = value
+      continue
+    }
+    if (arg === '--lines') {
+      const value = Number(args[i + 1])
+      if (!Number.isInteger(value) || value < 0) return { error: '--lines must be a non-negative integer' }
+      options.lines = value
+      i++
+      continue
+    }
+    if (arg.startsWith('--')) return { error: `Unknown logs argument: ${arg}` }
+    if (options.filter) return { error: `Unexpected logs argument: ${arg}` }
+    options.filter = arg
+  }
+  return options
+}
+
+function parseAuditLogLine(line: string): Record<string, unknown> | null {
+  if (!line.trim()) return null
+  try {
+    const parsed = JSON.parse(line) as unknown
+    return jsonObject(parsed)
+  } catch {
+    return null
+  }
+}
+
+function auditLogMatches(entry: Record<string, unknown>, filter?: string): boolean {
+  if (!filter) return true
+  if (filter === 'mcp' || filter === 'rest') return entry.channel === filter
+  return entry.agent === filter || entry.channel === filter
+}
+
+function summarizeAuditData(data: unknown): string {
+  const record = jsonObject(data)
+  if (!record) return ''
+  return Object.entries(record)
+    .slice(0, 4)
+    .map(([key, value]) => {
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return `${key}=${value}`
+      if (Array.isArray(value)) return `${key}=[${value.length}]`
+      if (value && typeof value === 'object') return `${key}={...}`
+      return `${key}=null`
+    })
+    .join(' ')
+}
+
+function formatAuditLogRow(entry: Record<string, unknown>): string {
+  const ts = typeof entry.ts === 'string' ? entry.ts : ''
+  const time = ts.includes('T') ? ts.split('T')[1]?.replace('Z', '').slice(0, 12) ?? ts : ts || '-'
+  const event = String(entry.event ?? '-')
+  const agent = String(entry.agent ?? '-')
+  const channel = entry.channel == null ? '-' : String(entry.channel)
+  const summary = summarizeAuditData(entry.data)
+  return [
+    time.padEnd(14),
+    event.padEnd(28),
+    agent.padEnd(14),
+    channel.padEnd(10),
+    summary,
+  ].join(' ').trimEnd()
+}
+
+async function printLogsHeaderTui(options: {
+  auditPath: string
+  filter?: string
+  lines: number
+  follow: boolean
+}): Promise<void> {
+  const [{ ScreenHeader, SummaryStrip, Section, FindingRows }, { renderToString }, { createElement, Fragment }] = await Promise.all([
+    import('../src/core/cli/ui/tui'),
+    import('../src/core/cli/ui/render-to-string'),
+    import('react'),
+  ])
+  console.log(renderToString(createElement(Fragment, {}, [
+    createElement(ScreenHeader, {
+      key: 'header',
+      title: 'Logs',
+      subtitle: 'Audit event stream',
+      meta: `filter: ${options.filter ?? 'all'}`,
+    }),
+    createElement(SummaryStrip, {
+      key: 'summary',
+      items: [
+        { label: 'recent', value: options.lines, status: 'ok' },
+        { label: 'mode', value: options.follow ? 'follow' : 'snapshot', status: options.follow ? 'ready' : 'skip' },
+      ],
+    }),
+    createElement(Section, {
+      key: 'source',
+      title: 'Source',
+      children: createElement(FindingRows, {
+        rows: [{
+          status: 'ok',
+          label: 'audit',
+          message: options.auditPath,
+          detail: options.follow ? 'Streaming new events. Press Ctrl-C to stop.' : 'Snapshot mode.',
+        }],
+      }),
+    }),
+  ])))
+}
+
+function printAuditEntry(entry: Record<string, unknown>, options: { json?: boolean }): void {
+  if (options.json) {
+    console.log(JSON.stringify(entry))
+    return
+  }
+  console.log(formatAuditLogRow(entry))
+}
+
+async function cmdLogs(options: LogsOptions = {}): Promise<void> {
+  const { spawn } = await import('child_process')
+  const { existsSync, readFileSync } = await import('fs')
   const { getBakinPaths } = await import('../packages/core/src/content-dir')
   const auditPath = getBakinPaths().audit
+  const lines = options.lines ?? 20
+  const follow = options.follow !== false
+  const jsonOutput = options.json === true || !process.stdout.isTTY
 
   if (!existsSync(auditPath)) {
-    console.error(`Audit log not found: ${auditPath}`)
-    console.error('Is Bakin initialized? Run: bakin mkdir')
-    process.exit(1)
+    await exitCommandFailure(`Audit log not found: ${auditPath}`, {
+      command: options.filter ? `bakin logs ${options.filter}` : 'bakin logs',
+      code: 'AUDIT_LOG_NOT_FOUND',
+      next: 'Run `bakin mkdir` to initialize Bakin home.',
+      plainLines: [
+        `Audit log not found: ${auditPath}`,
+        'Is Bakin initialized? Run: bakin mkdir',
+      ],
+    })
   }
 
-  // Build jq filter
-  let jqFilter = '{ts,event,agent,channel,data}'
-  if (filter === 'mcp') jqFilter = 'select(.channel=="mcp") | {ts,event,agent,data}'
-  else if (filter === 'rest') jqFilter = 'select(.channel=="rest") | {ts,event,agent,data}'
-  else if (filter) jqFilter = `select(.agent=="${filter}" or .channel=="${filter}") | {ts,event,agent,channel,data}`
+  const emitLine = (line: string) => {
+    const entry = parseAuditLogLine(line)
+    if (!entry || !auditLogMatches(entry, options.filter)) return
+    printAuditEntry(entry, { json: jsonOutput })
+  }
 
-  // Show last 20 entries first so there's immediate output
-  console.log(`Tailing ${auditPath} (filter: ${filter || 'all'})`)
-  console.log('--- recent entries ---')
-  try {
-    execSync(`tail -20 "${auditPath}" | jq '${jqFilter}'`, { stdio: ['ignore', 'inherit', 'ignore'] })
-  } catch { /* filter may exclude all 20 lines — that's fine */ }
-  console.log('--- live tail (Ctrl-C to stop) ---\n')
+  if (!jsonOutput && process.stdout.isTTY) {
+    await printLogsHeaderTui({ auditPath, filter: options.filter, lines, follow })
+    console.log('RECENT EVENTS')
+    console.log('------------')
+    console.log(['TIME'.padEnd(14), 'EVENT'.padEnd(28), 'AGENT'.padEnd(14), 'CHANNEL'.padEnd(10), 'SUMMARY'].join(' '))
+  }
 
-  // Now tail -f for new entries (start from end, 0 lines of history to avoid dupes)
+  const history = lines > 0 ? readFileSync(auditPath, 'utf-8').trimEnd().split('\n').slice(-lines) : []
+  for (const line of history) emitLine(line)
+
+  if (!follow) return
+
+  if (!jsonOutput && process.stdout.isTTY) {
+    console.log('')
+    console.log('LIVE TAIL')
+    console.log('---------')
+  }
+
   const child = spawn('tail', ['-f', '-n', '0', auditPath], { stdio: ['ignore', 'pipe', 'inherit'] })
-  const jq = spawn('jq', ['--unbuffered', jqFilter], { stdio: ['pipe', 'inherit', 'inherit'] })
-
-  child.stdout.pipe(jq.stdin)
+  let buffer = ''
+  child.stdout.on('data', (chunk: Buffer) => {
+    buffer += chunk.toString('utf-8')
+    const parts = buffer.split(/\r?\n/)
+    buffer = parts.pop() ?? ''
+    for (const line of parts) emitLine(line)
+  })
 
   // Clean up on exit
   process.on('SIGINT', () => {
     child.kill()
-    jq.kill()
     process.exit(0)
   })
 
@@ -1570,16 +2986,37 @@ async function cmdLogs(filter?: string): Promise<void> {
 async function cmdStop(): Promise<void> {
   const { execFileSync } = await import('child_process')
 
-  console.log('[..] Stopping Bakin server...')
+  const printStopResult = async (result: Record<string, unknown>, detail?: string): Promise<void> => {
+    const message = typeof result.message === 'string' ? result.message : 'Bakin stop request completed.'
+    if (process.stdout.isTTY) {
+      await printRuntimeActionTui({
+        action: 'stop',
+        target: 'Bakin server',
+        result,
+        message,
+        detail,
+      })
+      return
+    }
+    if (message === 'Bakin stopped.') console.log('[OK] Bakin stopped')
+    else if (message === 'No running Bakin process found.') console.log('[OK] No running Bakin process found')
+    else if (result.status === 'warn') console.log(`[WARN] ${message}`)
+    else console.log(message)
+    if (detail) console.log(`  ${detail}`)
+  }
+
+  if (!process.stdout.isTTY) console.log('[..] Stopping Bakin server...')
   try {
     const pids = execFileSync('pgrep', ['-f', serverProcessPattern()], { encoding: 'utf-8' }).trim()
     if (pids) {
+      const signaled: string[] = []
       for (const pid of pids.split('\n')) {
         if (pid && pid !== String(process.pid)) {
           process.kill(Number(pid), 'SIGTERM')
+          signaled.push(pid)
         }
       }
-      console.log('[OK] Sent SIGTERM to Bakin server')
+      if (!process.stdout.isTTY) console.log('[OK] Sent SIGTERM to Bakin server')
 
       // Wait and verify it's actually down
       for (let i = 0; i < 10; i++) {
@@ -1587,16 +3024,36 @@ async function cmdStop(): Promise<void> {
         try {
           await fetch(`${BASE_URL}/api/version`, { signal: AbortSignal.timeout(1000) })
         } catch {
-          console.log('[OK] Bakin stopped')
+          await printStopResult({
+            ok: true,
+            status: 'ok',
+            message: 'Bakin stopped.',
+            signaled: signaled.length,
+          }, signaled.length > 0 ? `Sent SIGTERM to ${signaled.length} process(es).` : undefined)
           return
         }
       }
-      console.log('[WARN] Server may still be shutting down')
+      await printStopResult({
+        ok: true,
+        status: 'warn',
+        message: 'Server may still be shutting down.',
+        signaled: signaled.length,
+      }, signaled.length > 0 ? `Sent SIGTERM to ${signaled.length} process(es).` : undefined)
     } else {
-      console.log('[OK] No running Bakin process found')
+      await printStopResult({
+        ok: true,
+        status: 'ok',
+        message: 'No running Bakin process found.',
+        signaled: 0,
+      })
     }
   } catch {
-    console.log('[OK] No running Bakin process found')
+    await printStopResult({
+      ok: true,
+      status: 'ok',
+      message: 'No running Bakin process found.',
+      signaled: 0,
+    })
   }
 }
 
@@ -1609,16 +3066,40 @@ async function cmdStop(): Promise<void> {
 
 async function cmdTasksLog(id: string, message: string): Promise<void> {
   const result = await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: await getCliAgent(), message })
+  if (process.stdout.isTTY) {
+    await printTaskActionTui({
+      action: 'logged',
+      taskId: id,
+      detail: message,
+    })
+    return
+  }
   print(result)
 }
 
 async function cmdTasksBlock(id: string, reason: string): Promise<void> {
   const result = await apiPost(`/api/plugins/tasks/${id}/block`, { id, reason, agent: await getCliAgent() })
+  if (process.stdout.isTTY) {
+    await printTaskActionTui({
+      action: 'blocked',
+      taskId: id,
+      detail: reason,
+    })
+    return
+  }
   print(result)
 }
 
 async function cmdTasksDepend(id: string, dependsOn: string): Promise<void> {
   const result = await apiPost(`/api/plugins/tasks/${id}/dependency`, { id, dependsOn })
+  if (process.stdout.isTTY) {
+    await printTaskActionTui({
+      action: 'dependency',
+      taskId: id,
+      detail: `depends on ${dependsOn}`,
+    })
+    return
+  }
   print(result)
 }
 
@@ -1627,27 +3108,52 @@ async function cmdTasksComplete(id: string, summary: string): Promise<void> {
   // Log the summary, then move to done
   await apiPost(`/api/plugins/tasks/${id}/log`, { id, author: agent, message: `Task complete: ${summary}` })
   const result = await apiPost(`/api/plugins/tasks/${id}/move`, { id, to: 'done', agent })
+  if (process.stdout.isTTY) {
+    await printTaskActionTui({
+      action: 'completed',
+      taskId: id,
+      column: 'done',
+      detail: summary,
+    })
+    return
+  }
   print(result)
 }
 
-async function cmdTasksGet(id: string): Promise<void> {
+async function cmdTasksGet(id: string, opts: { json?: boolean } = {}): Promise<void> {
   const result = await apiGet('/api/plugins/tasks/') as { columns: Record<string, Array<Record<string, unknown>>> }
   const columns = result.columns || {}
   for (const [colName, tasks] of Object.entries(columns)) {
     const task = (tasks as Array<Record<string, unknown>>).find(t => t.id === id)
     if (task) {
+      if (opts.json) {
+        print({ column: colName, task })
+        return
+      }
+      if (process.stdout.isTTY) {
+        await printTaskDetailTui(id, colName, task)
+        return
+      }
       console.log(`Column: ${colName}`)
       print(task)
       return
     }
   }
-  console.error(`Task ${id} not found`)
-  process.exit(1)
+  await exitCommandFailure(`Task ${id} not found`, {
+    command: 'bakin tasks get',
+    code: 'TASK_NOT_FOUND',
+    next: 'Run `bakin tasks list` to inspect current task IDs.',
+    plainLines: [`Task ${id} not found`],
+  })
 }
 
 async function cmdWorkflowsList(): Promise<void> {
   const result = await apiGet('/api/plugins/workflows/definitions') as { templates?: Array<Record<string, unknown>> }
   const templates = result?.templates || []
+  if (process.stdout.isTTY) {
+    await printWorkflowsListTui(templates)
+    return
+  }
   if (templates.length === 0) {
     console.log('No workflow definitions found.')
     return
@@ -1657,11 +3163,28 @@ async function cmdWorkflowsList(): Promise<void> {
 
 async function cmdWorkflowsStart(taskId: string, workflowId: string): Promise<void> {
   const result = await apiPost('/api/plugins/workflows/instances/start', { taskId, workflowId })
+  if (process.stdout.isTTY) {
+    await printWorkflowActionTui({
+      action: 'started',
+      taskId,
+      workflowId,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
 async function cmdWorkflowsStep(taskId: string): Promise<void> {
   const result = await apiGet(`/api/plugins/workflows/steps/${encodeURIComponent(taskId)}`)
+  if (process.stdout.isTTY) {
+    await printWorkflowActionTui({
+      action: 'step',
+      taskId,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -1670,10 +3193,27 @@ async function cmdWorkflowsSubmit(taskId: string, stepId: string, outputJson: st
   try {
     output = JSON.parse(outputJson)
   } catch {
-    console.error('Invalid JSON for output. Usage: bakin workflows submit <taskId> <stepId> \'{"key":"value"}\'')
+    const usage = 'bakin workflows submit <taskId> <stepId> \'{"key":"value"}\''
+    if (process.stdout.isTTY) {
+      await exitCommandIssue('Invalid JSON for output.', {
+        command: 'bakin workflows submit',
+        detail: 'Output must parse as a JSON object.',
+        usage,
+      })
+    }
+    console.error(`Invalid JSON for output. Usage: ${usage}`)
     process.exit(1)
   }
   const result = await apiPost(`/api/plugins/workflows/steps/${encodeURIComponent(taskId)}/complete`, { stepId, agentId: await getCliAgent(), output })
+  if (process.stdout.isTTY) {
+    await printWorkflowActionTui({
+      action: 'submitted',
+      taskId,
+      stepId,
+      result,
+    })
+    return
+  }
   print(result)
 }
 
@@ -1696,6 +3236,10 @@ function daysUntil(dateStr: string): string {
 
 async function cmdTrashList(): Promise<void> {
   const data = await apiGet('/api/plugins/assets/trash') as { assets: Array<{ filename: string; originalFilename: string; type: string; size: number; deletedAt: string; expiresAt: string; metadata: { agent?: string } | null }>; count: number }
+  if (process.stdout.isTTY) {
+    await printTrashListTui(data.assets as Array<Record<string, unknown>>)
+    return
+  }
   if (data.count === 0) {
     console.log('Trash is empty.')
     return
@@ -1717,16 +3261,42 @@ async function cmdTrashList(): Promise<void> {
 
 async function cmdTrashRestore(filename: string): Promise<void> {
   const data = await apiPost(`/api/plugins/assets/trash/${encodeURIComponent(filename)}/restore`) as { ok: boolean; restoredPath: string }
+  if (process.stdout.isTTY) {
+    await printTrashActionTui({
+      action: 'restored',
+      target: filename,
+      count: 1,
+      message: `Restored ${filename}.`,
+      detail: data.restoredPath,
+    })
+    return
+  }
   console.log(`Restored → ${data.restoredPath}`)
 }
 
 async function cmdTrashEmpty(): Promise<void> {
   const check = await apiGet('/api/plugins/assets/trash') as { count: number }
   if (check.count === 0) {
+    if (process.stdout.isTTY) {
+      await printTrashActionTui({
+        action: 'empty',
+        count: 0,
+        message: 'Trash is already empty.',
+      })
+      return
+    }
     console.log('Trash is already empty.')
     return
   }
   const data = await apiDelete('/api/plugins/assets/trash') as { ok: boolean; deleted: number }
+  if (process.stdout.isTTY) {
+    await printTrashActionTui({
+      action: 'emptied',
+      count: data.deleted,
+      message: `Permanently deleted ${data.deleted} item${data.deleted !== 1 ? 's' : ''}.`,
+    })
+    return
+  }
   console.log(`Permanently deleted ${data.deleted} item${data.deleted !== 1 ? 's' : ''}.`)
 }
 
@@ -1847,13 +3417,14 @@ async function dispatchPluginCliCommand(cmd: string, args: string[]): Promise<bo
     if (!command.dispatch) continue
     const params = matchPluginCliCommand(command, cmd, args)
     if (!params) continue
+    const invocation = invocationCommand([cmd, ...args])
 
     if (command.dispatch.type === 'execTool') {
       const result = await apiPost(`/api/exec-tools/${encodeURIComponent(command.dispatch.name)}`, {
         params,
         agent: 'cli',
       })
-      print(result)
+      await printPluginCliCommandResult(invocation, args, result)
       return true
     }
 
@@ -1861,13 +3432,13 @@ async function dispatchPluginCliCommand(cmd: string, args: string[]): Promise<bo
       method: command.dispatch.method,
       body: command.dispatch.method === 'GET' ? undefined : JSON.stringify(params),
     })
-    print(result)
+    await printPluginCliCommandResult(invocation, args, result)
     return true
   }
   return false
 }
 
-const BINARY_ONLY_COMMANDS = new Set(['start'])
+const BINARY_ONLY_COMMANDS = new Set<string>()
 const USAGE = renderCliUsage({ bakinUrl: BASE_URL }, { excludeNames: BINARY_ONLY_COMMANDS })
 
 // ---------------------------------------------------------------------------
@@ -1886,35 +3457,72 @@ function statusIcon(status: string): string {
   }
 }
 
-async function cmdOnboardingMkdir(): Promise<void> {
-  const { mkdirComponent } = await import('../src/core/onboarding/mkdir')
+async function withTtyRuntimeLogsSilenced<T>(
+  options: { isTTY: boolean; verbose?: boolean },
+  run: () => Promise<T>,
+): Promise<T> {
+  const previousConsoleFormat = process.env.BAKIN_CONSOLE_FORMAT
+  const shouldSilenceRuntimeLogs = options.isTTY && options.verbose !== true && previousConsoleFormat === undefined
+  try {
+    if (shouldSilenceRuntimeLogs) process.env.BAKIN_CONSOLE_FORMAT = 'silent'
+    return await run()
+  } finally {
+    if (shouldSilenceRuntimeLogs) delete process.env.BAKIN_CONSOLE_FORMAT
+  }
+}
+
+async function cmdOnboardingMkdir(options: { json?: boolean } = {}): Promise<void> {
+  const isTTY = Boolean(process.stdout.isTTY)
+  const json = options.json === true
   const opts = {
-    interactive: Boolean(process.stdout.isTTY),
+    interactive: isTTY && !json,
     autoApprove: true,
-    json: false,
+    json,
     checkOnly: false,
     force: false,
   }
-  const result = await mkdirComponent.install(opts)
-  console.log(`${statusIcon(result.status)} ${result.message}`)
+  const result = await withTtyRuntimeLogsSilenced({ isTTY }, async () => {
+    const { mkdirComponent } = await import('../src/core/onboarding/mkdir')
+    return await mkdirComponent.install(opts)
+  })
+  if (json) {
+    console.log(JSON.stringify({ component: result.name, status: result.status, message: result.message, durationMs: result.durationMs }))
+  } else if (isTTY) {
+    await printOnboardingInstallTui(result)
+  } else {
+    console.log(`${statusIcon(result.status)} ${result.message}`)
+  }
   if (result.status === 'failed') process.exit(1)
 }
 
-async function cmdOnboardingSettingsInit(): Promise<void> {
-  const { settingsComponent } = await import('../src/core/onboarding/settings')
+async function cmdOnboardingSettingsInit(options: { json?: boolean } = {}): Promise<void> {
+  const isTTY = Boolean(process.stdout.isTTY)
+  const json = options.json === true
   const opts = {
-    interactive: Boolean(process.stdout.isTTY),
+    interactive: isTTY && !json,
     autoApprove: true,
-    json: false,
+    json,
     checkOnly: false,
     force: false,
   }
-  const result = await settingsComponent.install(opts)
-  console.log(`${statusIcon(result.status)} ${result.message}`)
+  const result = await withTtyRuntimeLogsSilenced({ isTTY }, async () => {
+    const { settingsComponent } = await import('../src/core/onboarding/settings')
+    return await settingsComponent.install(opts)
+  })
+  if (json) {
+    console.log(JSON.stringify({ component: result.name, status: result.status, message: result.message, durationMs: result.durationMs }))
+  } else if (isTTY) {
+    await printOnboardingInstallTui(result)
+  } else {
+    console.log(`${statusIcon(result.status)} ${result.message}`)
+  }
   if (result.status === 'failed') process.exit(1)
 }
 
-async function cmdOnboardingCheckSingle(target: 'runtime' | 'search' | 'search-models' | 'llm' | 'channels' | 'plugin-assets' | 'agent-assets' | 'recommended-plugins' | 'recommended-agents'): Promise<void> {
+async function cmdOnboardingCheckSingle(
+  target: 'runtime' | 'search' | 'search-models' | 'llm' | 'channels' | 'plugin-assets' | 'agent-assets' | 'recommended-plugins' | 'recommended-agents',
+  options: { verbose?: boolean } = {},
+): Promise<void> {
   const componentMap: Record<string, () => Promise<{ check(): Promise<import('../src/core/onboarding/types').CheckResult> }>> = {
     runtime: async () => (await import('../src/core/onboarding/runtime')).runtimeComponent,
     search: async () => (await import('../src/core/onboarding/search')).searchComponent,
@@ -1926,20 +3534,34 @@ async function cmdOnboardingCheckSingle(target: 'runtime' | 'search' | 'search-m
     'recommended-plugins': async () => (await import('../src/core/onboarding/recommended-plugins')).recommendedPluginsComponent,
     'recommended-agents': async () => (await import('../src/core/onboarding/recommended-agents')).recommendedAgentsComponent,
   }
-  const component = await componentMap[target]()
-  const result = await component.check()
-  console.log(`${statusIcon(result.status)} ${result.message}`)
-  if (result.remediation) console.log(`  → ${result.remediation}`)
+  const isTTY = Boolean(process.stdout.isTTY)
+  const result = await withTtyRuntimeLogsSilenced({ isTTY, verbose: options.verbose }, async () => {
+    const component = await componentMap[target]()
+    return await component.check()
+  })
+  if (isTTY) {
+    await printOnboardingCheckTui(result)
+  } else {
+    console.log(`${statusIcon(result.status)} ${result.message}`)
+    if (result.remediation) console.log(`  → ${result.remediation}`)
+  }
   if (result.status === 'missing' || result.status === 'error' || result.status === 'broken') process.exit(1)
   if (result.status === 'warn') process.exit(2)
 }
 
-async function cmdOnboardingCheckAll(): Promise<void> {
-  const { checkAll } = await import('../src/core/onboarding/index')
-  const results = await checkAll()
-  for (const r of results) {
-    console.log(`${statusIcon(r.status)} ${r.name.padEnd(10)} ${r.message}`)
-    if (r.remediation) console.log(`  → ${r.remediation}`)
+async function cmdOnboardingCheckAll(options: { verbose?: boolean } = {}): Promise<void> {
+  const isTTY = Boolean(process.stdout.isTTY)
+  const results = await withTtyRuntimeLogsSilenced({ isTTY, verbose: options.verbose }, async () => {
+    const { checkAll } = await import('../src/core/onboarding/index')
+    return await checkAll()
+  })
+  if (isTTY) {
+    await printOnboardingCheckAllTui(results)
+  } else {
+    for (const r of results) {
+      console.log(`${statusIcon(r.status)} ${r.name.padEnd(10)} ${r.message}`)
+      if (r.remediation) console.log(`  → ${r.remediation}`)
+    }
   }
   const hasError = results.some(r => r.status === 'error' || r.status === 'missing' || r.status === 'broken')
   const hasWarn = results.some(r => r.status === 'warn')
@@ -1956,10 +3578,10 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
     'recommended-plugins': async () => (await import('../src/core/onboarding/recommended-plugins')).recommendedPluginsComponent,
     'recommended-agents': async () => (await import('../src/core/onboarding/recommended-agents')).recommendedAgentsComponent,
   }
-  const component = await componentMap[target]()
   const isTTY = Boolean(process.stdout.isTTY)
   const autoApprove = args.includes('--yes')
   const json = args.includes('--json')
+  const verbose = args.includes('--verbose')
   const opts = {
     interactive: isTTY && !json,
     autoApprove: autoApprove || (!isTTY && !json),
@@ -1967,9 +3589,14 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
     checkOnly: false,
     force: false,
   }
-  const result = await component.install(opts)
+  const result = await withTtyRuntimeLogsSilenced({ isTTY, verbose }, async () => {
+    const component = await componentMap[target]()
+    return await component.install(opts)
+  })
   if (json) {
-    console.log(JSON.stringify({ component: component.name, status: result.status, message: result.message, durationMs: result.durationMs }))
+    console.log(JSON.stringify({ component: result.name, status: result.status, message: result.message, durationMs: result.durationMs }))
+  } else if (isTTY) {
+    await printOnboardingInstallTui(result)
   } else {
     console.log(`${statusIcon(result.status)} ${result.message}`)
   }
@@ -1977,10 +3604,11 @@ async function cmdOnboardingInstallSingle(target: string, args: string[]): Promi
 }
 
 async function cmdOnboard(args: string[]): Promise<void> {
-  const { runOnboard, isOnboarded, loadState } = await import('../src/core/onboarding/index')
+  const { runOnboard, isOnboarded, loadState, COMPONENT_ORDER } = await import('../src/core/onboarding/index')
   const { collectOnboardingSelections } = await import('../src/core/cli/onboarding-interactive')
-  const { OnboardingBusy, OnboardingFinalStatus } = await import('../src/core/cli/ui/onboarding')
-  const { render, renderToString } = await import('ink')
+  const { OnboardingAlreadyCompleteReport, OnboardingBusy, OnboardingSummary } = await import('../src/core/cli/ui/onboarding')
+  const { render } = await import('ink')
+  const { renderToString } = await import('../src/core/cli/ui/render-to-string')
   const { createElement } = await import('react')
   const checkOnly = args.includes('--check')
   const yes = args.includes('--yes')
@@ -1989,21 +3617,24 @@ async function cmdOnboard(args: string[]): Promise<void> {
   const verbose = args.includes('--verbose')
   const isTTY = Boolean(process.stdout.isTTY)
 
-  const previousConsoleFormat = process.env.BAKIN_CONSOLE_FORMAT
-  if (!verbose && previousConsoleFormat === undefined) {
-    process.env.BAKIN_CONSOLE_FORMAT = 'silent'
-  }
-
   // Early exit for already-onboarded machines unless --force or --check
   if (!force && !checkOnly && isOnboarded()) {
     const state = loadState()
-    if (!json) {
+    if (!json && isTTY) {
+      console.log(renderToString(createElement(OnboardingAlreadyCompleteReport, { state })))
+    } else if (!json) {
       console.log(`[OK] Already onboarded on ${state?.completedAt?.slice(0, 10) ?? 'unknown date'}.`)
       console.log('     Re-run with --force to replay the full flow.')
     } else {
       console.log(JSON.stringify({ status: 'already_onboarded', completedAt: state?.completedAt }))
     }
     process.exit(0)
+    return
+  }
+
+  const previousConsoleFormat = process.env.BAKIN_CONSOLE_FORMAT
+  if (!verbose && previousConsoleFormat === undefined) {
+    process.env.BAKIN_CONSOLE_FORMAT = 'silent'
   }
 
   const baseOpts = {
@@ -2036,6 +3667,7 @@ async function cmdOnboard(args: string[]): Promise<void> {
       detail: busyDetail,
       frame: busyFrame,
       completed: completedOutcomes,
+      totalSteps: COMPONENT_ORDER.length,
     })
     const busy = isTTY && !json
       ? render(renderBusy())
@@ -2078,7 +3710,11 @@ async function cmdOnboard(args: string[]): Promise<void> {
     if (!json) {
       if (isTTY) {
         console.log('')
-        console.log(renderToString(createElement(OnboardingFinalStatus, { outcomes: result.outcomes, exitCode: result.exitCode })))
+        console.log(renderToString(createElement(OnboardingSummary, {
+          outcomes: result.outcomes,
+          exitCode: result.exitCode,
+          showBrand: !busy,
+        })))
       } else {
         console.log('')
         for (const o of result.outcomes) {
@@ -2110,8 +3746,9 @@ async function cmdOnboard(args: string[]): Promise<void> {
 export async function main(): Promise<void> {
   const args = process.argv.slice(2)
 
-  if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
-    console.log(USAGE.trim())
+  if (args.length === 0 || args[0] === '--help' || args[0] === '-h' || args[0] === 'help') {
+    if (process.stdout.isTTY) await printHelpTui()
+    else console.log(USAGE.trim())
     process.exit(0)
   }
 
@@ -2120,6 +3757,13 @@ export async function main(): Promise<void> {
 
   try {
     switch (cmd) {
+      case 'version':
+      case '--version':
+      case '-v':
+        if (process.stdout.isTTY) await printVersionTui({ version: APP_VERSION })
+        else console.log(APP_VERSION)
+        break
+
       case 'status':
         await cmdStatus()
         break
@@ -2133,10 +3777,10 @@ export async function main(): Promise<void> {
           const colFlag = args.find(a => a.startsWith('--column='))
           await cmdTasksList(colFlag?.split('=')[1])
         } else if (sub === 'get') {
-          if (!args[2]) { console.error('Usage: bakin tasks get <id>'); process.exit(1) }
-          await cmdTasksGet(args[2])
+          if (!args[2]) await exitUsage('bakin tasks get <id>')
+          await cmdTasksGet(args[2], { json: args.includes('--json') })
         } else if (sub === 'create') {
-          if (!args[2]) { console.error('Usage: bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow="<reason>"]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow="<reason>"]')
           // Parse flags from remaining args
           const createArgs = args.slice(2)
           const wfFlag = createArgs.find(a => a.startsWith('--workflow='))
@@ -2146,26 +3790,25 @@ export async function main(): Promise<void> {
           const createAssignee = positional[1]
           const createWorkflowId = wfFlag?.split('=').slice(1).join('=')
           const createSkipReason = noWfFlag?.split('=').slice(1).join('=')
-          if (!createTitle) { console.error('Usage: bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow="<reason>"]'); process.exit(1) }
+          if (!createTitle) await exitUsage('bakin tasks create <title> [agent] [--workflow=<id>] [--no-workflow="<reason>"]')
           await cmdTasksCreate(createTitle, createAssignee, createWorkflowId, createSkipReason)
         } else if (sub === 'move') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin tasks move <id> <column>'); process.exit(1) }
+          if (!args[2] || !args[3]) await exitUsage('bakin tasks move <id> <column>')
           await cmdTasksMove(args[2], args[3])
         } else if (sub === 'log') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin tasks log <id> <message>'); process.exit(1) }
+          if (!args[2] || !args[3]) await exitUsage('bakin tasks log <id> <message>')
           await cmdTasksLog(args[2], args.slice(3).join(' '))
         } else if (sub === 'block') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin tasks block <id> <reason>'); process.exit(1) }
+          if (!args[2] || !args[3]) await exitUsage('bakin tasks block <id> <reason>')
           await cmdTasksBlock(args[2], args.slice(3).join(' '))
         } else if (sub === 'depend') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin tasks depend <id> <dependsOn>'); process.exit(1) }
+          if (!args[2] || !args[3]) await exitUsage('bakin tasks depend <id> <dependsOn>')
           await cmdTasksDepend(args[2], args[3])
         } else if (sub === 'complete') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin tasks complete <id> <summary>'); process.exit(1) }
+          if (!args[2] || !args[3]) await exitUsage('bakin tasks complete <id> <summary>')
           await cmdTasksComplete(args[2], args.slice(3).join(' '))
         } else {
-          console.error(`Unknown tasks subcommand: ${sub}`)
-          process.exit(1)
+          await exitUnknownSubcommand('tasks', sub, ['list', 'get', 'create', 'move', 'log', 'block', 'depend', 'complete'])
         }
         break
 
@@ -2173,17 +3816,16 @@ export async function main(): Promise<void> {
         if (sub === 'list') {
           await cmdWorkflowsList()
         } else if (sub === 'start') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin workflows start <taskId> <workflowId>'); process.exit(1) }
+          if (!args[2] || !args[3]) await exitUsage('bakin workflows start <taskId> <workflowId>')
           await cmdWorkflowsStart(args[2], args[3])
         } else if (sub === 'step') {
-          if (!args[2]) { console.error('Usage: bakin workflows step <taskId>'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin workflows step <taskId>')
           await cmdWorkflowsStep(args[2])
         } else if (sub === 'submit') {
-          if (!args[2] || !args[3] || !args[4]) { console.error('Usage: bakin workflows submit <taskId> <stepId> \'<json>\''); process.exit(1) }
+          if (!args[2] || !args[3] || !args[4]) await exitUsage('bakin workflows submit <taskId> <stepId> \'<json>\'')
           await cmdWorkflowsSubmit(args[2], args[3], args[4])
         } else {
-          console.error(`Unknown workflows subcommand: ${sub}`)
-          process.exit(1)
+          await exitUnknownSubcommand('workflows', sub, ['list', 'start', 'step', 'submit'])
         }
         break
 
@@ -2194,22 +3836,22 @@ export async function main(): Promise<void> {
           if (args.includes('--packages')) {
             await cmdAgentPackagesList(parseAgentsFlags(args.slice(2)))
           } else {
-            await cmdAgentsList()
+            await cmdAgentsList({ json: args.includes('--json') })
           }
         } else if (sub === 'status') {
-          if (!args[2]) { console.error('Usage: bakin agents status <id>'); process.exit(1) }
-          await cmdAgentsStatus(args[2])
+          if (!args[2]) await exitUsage('bakin agents status <id>')
+          await cmdAgentsStatus(args[2], { json: args.includes('--json') })
         } else if (sub === 'tasks') {
-          if (!args[2]) { console.error('Usage: bakin agents tasks <id>'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin agents tasks <id>')
           await cmdAgentsTasks(args[2])
         } else if (sub === 'send') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin agents send <id> <message>'); process.exit(1) }
+          if (!args[2] || !args[3]) await exitUsage('bakin agents send <id> <message>')
           await cmdAgentsSend(args[2], args.slice(3).join(' '))
         } else if (sub === 'install') {
-          if (!args[2]) { console.error('Usage: bakin agents install <path|github:user/repo[@ref][#subpath]> [--adopt] [--install-as <id>] [--replace]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin agents install <path|github:user/repo[@ref][#subpath]> [--adopt] [--install-as <id>] [--replace]')
           await cmdAgentPackagesInstall(args[2], parseAgentsFlags(args.slice(3)))
         } else if (sub === 'remove') {
-          if (!args[2]) { console.error('Usage: bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--force]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--force]')
           await cmdAgentPackagesRemove(args[2], parseAgentsFlags(args.slice(3)))
         } else if (sub === 'update') {
           // `bakin agents update` (no id) updates everything; `bakin agents update <id>` is targeted
@@ -2219,82 +3861,107 @@ export async function main(): Promise<void> {
         } else if (sub === 'lessons') {
           const lessonSub = args[2]
           if (lessonSub === 'list') {
-            if (!args[3]) { console.error('Usage: bakin agents lessons list <agent-id>'); process.exit(1) }
+            if (!args[3]) await exitUsage('bakin agents lessons list <agent-id>')
             await cmdAgentPackagesLessonsList(args[3])
           } else if (lessonSub === 'enable' || lessonSub === 'disable') {
-            if (!args[3] || !args[4]) { console.error(`Usage: bakin agents lessons ${lessonSub} <agent-id> <lesson-id>`); process.exit(1) }
-            await cmdAgentPackagesLessonsToggle(args[3], args[4], lessonSub === 'enable')
+            if (!args[3] || !args[4]) await exitUsage(`bakin agents lessons ${lessonSub} <agent-id> <lesson-id>`)
+            await cmdAgentPackagesLessonsToggle(args[3], args[4], lessonSub === 'enable', { json: args.includes('--json') })
           } else {
-            console.error(`Unknown agents lessons subcommand: ${lessonSub ?? '(none)'}`)
-            console.error('Available: list | enable | disable')
-            process.exit(1)
+            await exitUnknownSubcommand('agents lessons', lessonSub, ['list', 'enable', 'disable'])
           }
         } else {
-          console.error(`Unknown agents subcommand: ${sub}`)
-          console.error('Available: list | status | tasks | send | install | remove | update | lessons {list,enable,disable}')
-          process.exit(1)
+          await exitUnknownSubcommand('agents', sub, ['list', 'status', 'tasks', 'send', 'install', 'remove', 'update', 'lessons'])
         }
         break
 
       case 'settings':
         if (sub === 'get') {
-          await cmdSettingsGet(args[2])
+          const flags = args.slice(2)
+          const key = flags.find(arg => !arg.startsWith('--'))
+          await cmdSettingsGet(key, { json: flags.includes('--json') })
         } else if (sub === 'set') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin settings set <key> <value>'); process.exit(1) }
-          await cmdSettingsSet(args[2], args[3])
+          if (!args[2] || !args[3]) await exitUsage('bakin settings set <key> <value>')
+          await cmdSettingsSet(args[2], args[3], { json: args.slice(4).includes('--json') })
         } else if (sub === 'init') {
-          await cmdOnboardingSettingsInit()
+          await cmdOnboardingSettingsInit({ json: args.slice(2).includes('--json') })
         } else {
-          console.error(`Unknown settings subcommand: ${sub}`)
-          process.exit(1)
+          await exitUnknownSubcommand('settings', sub, ['get', 'set', 'init'])
         }
         break
 
       case 'plugins':
         if (sub === 'list') {
-          await cmdPluginsList()
+          await cmdPluginsList({ json: args.includes('--json'), check: args.includes('--check') })
         } else if (sub === 'install') {
           const installArgs = args.slice(2)
           const parsed = parsePluginInstallArgs(installArgs)
-          if (parsed.error || !parsed.source) {
-            console.error(parsed.error ? `${parsed.error}\n${PLUGIN_INSTALL_USAGE}` : PLUGIN_INSTALL_USAGE)
-            process.exit(1)
+          const source = parsed.source
+          if (parsed.error || !source) {
+            await exitCommandIssue(parsed.error ?? 'Missing required arguments.', {
+              command: 'bakin plugins install',
+              usage: PLUGIN_INSTALL_USAGE,
+              plainMessage: Boolean(parsed.error),
+            })
+            return
           }
-          await cmdPluginsInstall(parsed.source, {
+          await cmdPluginsInstall(source, {
             yes: parsed.yes,
             dev: parsed.dev,
             force: parsed.force,
             ref: parsed.ref,
+            json: parsed.json,
           })
         } else if (sub === 'export') {
-          if (args[2]?.startsWith('--')) { console.error('Usage: bakin plugins export [file]'); process.exit(1) }
-          await cmdPluginsExport(args[2])
+          const flags = args.slice(2)
+          const file = flags.find(arg => !arg.startsWith('--'))
+          const extraArg = flags.filter(arg => !arg.startsWith('--')).slice(1)[0]
+          if (extraArg) {
+            await exitCommandIssue(`Unexpected plugins export argument: ${extraArg}`, {
+              command: 'bakin plugins export',
+              usage: 'bakin plugins export [file] [--json]',
+            })
+          }
+          const unknown = flags.find(arg => arg.startsWith('--') && arg !== '--json')
+          if (unknown) {
+            await exitCommandIssue(`Unknown plugins export flag: ${unknown}`, {
+              command: 'bakin plugins export',
+              usage: 'bakin plugins export [file] [--json]',
+            })
+          }
+          await cmdPluginsExport(file, { json: flags.includes('--json') })
         } else if (sub === 'import') {
-          if (!args[2]) { console.error('Usage: bakin plugins import <file> [--yes] [--force]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin plugins import <file> [--yes] [--force] [--json]')
           const flags = args.slice(3)
           const extraArg = flags.find(arg => !arg.startsWith('--'))
           if (extraArg) {
-            console.error(`Unexpected plugins import argument: ${extraArg}`)
-            console.error('Usage: bakin plugins import <file> [--yes] [--force]')
-            process.exit(1)
+            await exitCommandIssue(`Unexpected plugins import argument: ${extraArg}`, {
+              command: 'bakin plugins import',
+              usage: 'bakin plugins import <file> [--yes] [--force] [--json]',
+            })
           }
-          const unknown = flags.find(arg => arg.startsWith('--') && arg !== '--yes' && arg !== '--force')
+          const unknown = flags.find(arg => arg.startsWith('--') && arg !== '--yes' && arg !== '--force' && arg !== '--json')
           if (unknown) {
-            console.error(`Unknown plugins import flag: ${unknown}`)
-            console.error('Usage: bakin plugins import <file> [--yes] [--force]')
-            process.exit(1)
+            await exitCommandIssue(`Unknown plugins import flag: ${unknown}`, {
+              command: 'bakin plugins import',
+              usage: 'bakin plugins import <file> [--yes] [--force] [--json]',
+            })
           }
-          await cmdPluginsImport(args[2], { yes: flags.includes('--yes'), force: flags.includes('--force') })
+          await cmdPluginsImport(args[2], { yes: flags.includes('--yes'), force: flags.includes('--force'), json: flags.includes('--json') })
         } else if (sub === 'remove') {
-          if (!args[2]) { console.error('Usage: bakin plugins remove <id>'); process.exit(1) }
-          await cmdPluginsRemove(args[2])
+          if (!args[2]) await exitUsage('bakin plugins remove <id> [--json]')
+          await cmdPluginsRemove(args[2], { json: args.slice(3).includes('--json') })
+        } else if (sub === 'upgrade') {
+          if (!args[2]) await exitUsage('bakin plugins upgrade <id> [--yes] [--json]')
+          const flags = args.slice(3)
+          await cmdPluginsUpgrade(args[2], { yes: flags.includes('--yes'), json: flags.includes('--json') })
         } else if (sub === 'restore') {
-          if (!args[2]) { console.error(PLUGIN_RESTORE_USAGE); process.exit(1) }
+          if (!args[2]) await exitUsage(PLUGIN_RESTORE_USAGE)
           const parsed = parsePluginRestoreFlags(args.slice(3))
           if (parsed.error) {
-            console.error(parsed.error)
-            console.error(PLUGIN_RESTORE_USAGE)
-            process.exit(1)
+            await exitCommandIssue(parsed.error, {
+              command: 'bakin plugins restore',
+              usage: PLUGIN_RESTORE_USAGE,
+            })
           }
           await cmdPluginsRestore(args[2], {
             snapshot: parsed.snapshot,
@@ -2302,33 +3969,33 @@ export async function main(): Promise<void> {
             list: parsed.list,
           })
         } else if (sub === 'link') {
-          if (!args[2]) { console.error('Usage: bakin plugins link <localPath> [--force]'); process.exit(1) }
-          await cmdPluginsLink(args[2], { force: args.slice(3).includes('--force') })
+          if (!args[2]) await exitUsage('bakin plugins link <localPath> [--force] [--json]')
+          await cmdPluginsLink(args[2], { force: args.slice(3).includes('--force'), json: args.slice(3).includes('--json') })
         } else if (sub === 'unlink') {
-          if (!args[2]) { console.error('Usage: bakin plugins unlink <id>'); process.exit(1) }
-          await cmdPluginsUnlink(args[2])
+          if (!args[2]) await exitUsage('bakin plugins unlink <id> [--json]')
+          await cmdPluginsUnlink(args[2], { json: args.slice(3).includes('--json') })
+        } else if (sub === 'scaffold') {
+          if (!args[2]) await exitUsage('bakin plugins scaffold <name> [--json]')
+          await cmdPluginsScaffold(args[2], { json: args.slice(3).includes('--json') })
         } else {
-          console.error(`Unknown plugins subcommand: ${sub}`)
-          process.exit(1)
+          await exitUnknownSubcommand('plugins', sub, ['list', 'install', 'export', 'import', 'remove', 'upgrade', 'restore', 'link', 'unlink', 'scaffold'])
         }
         break
 
       case 'packages':
         if (sub === 'install') {
-          if (!args[2]) { console.error('Usage: bakin packages install <path|github:user/repo[@ref][#subpath]> [--install-as <id>] [--replace]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin packages install <path|github:user/repo[@ref][#subpath]> [--install-as <id>] [--replace]')
           await cmdPackagesInstall(args[2], parseAgentsFlags(args.slice(3)))
         } else if (sub === 'list') {
           await cmdPackagesList(parseAgentsFlags(args.slice(2)))
         } else if (sub === 'remove') {
-          if (!args[2]) { console.error('Usage: bakin packages remove <package-id> [--force] [--keep-blocks]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin packages remove <package-id> [--force] [--keep-blocks]')
           await cmdPackagesRemove(args[2], parseAgentsFlags(args.slice(3)))
         } else if (sub === 'update') {
-          if (!args[2]) { console.error('Usage: bakin packages update <package-id> [--refresh-template]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin packages update <package-id> [--refresh-template]')
           await cmdPackagesUpdate(args[2], parseAgentsFlags(args.slice(3)))
         } else {
-          console.error(`Unknown packages subcommand: ${sub ?? '(none)'}`)
-          console.error('Available: install | list | remove | update')
-          process.exit(1)
+          await exitUnknownSubcommand('packages', sub, ['install', 'list', 'remove', 'update'])
         }
         break
 
@@ -2337,7 +4004,17 @@ export async function main(): Promise<void> {
         break
 
       case 'logs':
-        await cmdLogs(args[1])
+        {
+          const logsOptions = parseLogsArgs(args.slice(1))
+          if ('error' in logsOptions) {
+            await exitCommandIssue(logsOptions.error, {
+              command: 'bakin logs',
+              usage: 'bakin logs [filter] [--json] [--lines <n>] [--no-follow]',
+            })
+          } else {
+            await cmdLogs(logsOptions)
+          }
+        }
         break
 
       case 'setup':
@@ -2345,14 +4022,16 @@ export async function main(): Promise<void> {
           const uninstall = args.includes('--uninstall')
           await cmdSetupService({ uninstall })
         } else {
-          console.error(`Unknown setup target: ${sub}`)
-          console.error('Available: bakin setup service')
-          process.exit(1)
+          await exitUnknownSubcommand('setup', sub, ['service'])
         }
         break
 
       case 'paths':
-        await cmdPaths(args[1])
+        {
+          const flags = args.slice(1)
+          const key = flags.find(arg => !arg.startsWith('--'))
+          await cmdPaths(key, { json: flags.includes('--json') })
+        }
         break
 
       case 'agent-rules': {
@@ -2365,18 +4044,16 @@ export async function main(): Promise<void> {
       }
 
       case 'mkdir':
-        await cmdOnboardingMkdir()
+        await cmdOnboardingMkdir({ json: args.includes('--json') })
         break
 
       case 'check':
         if (sub === 'runtime' || sub === 'search' || sub === 'search-models' || sub === 'llm' || sub === 'channels' || sub === 'plugin-assets' || sub === 'agent-assets' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
-          await cmdOnboardingCheckSingle(sub)
+          await cmdOnboardingCheckSingle(sub, { verbose: args.includes('--verbose') })
         } else if (sub === 'all') {
-          await cmdOnboardingCheckAll()
+          await cmdOnboardingCheckAll({ verbose: args.includes('--verbose') })
         } else {
-          console.error(`Unknown check target: ${sub}`)
-          console.error('Available: bakin check runtime | search | search-models | llm | channels | plugin-assets | agent-assets | recommended-plugins | recommended-agents | all')
-          process.exit(1)
+          await exitUnknownSubcommand('check', sub, ['runtime', 'search', 'search-models', 'llm', 'channels', 'plugin-assets', 'agent-assets', 'recommended-plugins', 'recommended-agents', 'all'])
         }
         break
 
@@ -2384,9 +4061,7 @@ export async function main(): Promise<void> {
         if (sub === 'search' || sub === 'search-models' || sub === 'mcporter' || sub === 'plugin-assets' || sub === 'agent-assets' || sub === 'recommended-plugins' || sub === 'recommended-agents') {
           await cmdOnboardingInstallSingle(sub, args)
         } else {
-          console.error(`Unknown install target: ${sub}`)
-          console.error('Available: bakin install search | search-models | mcporter | plugin-assets | agent-assets | recommended-plugins | recommended-agents')
-          process.exit(1)
+          await exitUnknownSubcommand('install', sub, ['search', 'search-models', 'mcporter', 'plugin-assets', 'agent-assets', 'recommended-plugins', 'recommended-agents'])
         }
         break
 
@@ -2406,6 +4081,14 @@ export async function main(): Promise<void> {
         process.exit(await cmdDev(args.slice(1)))
         break  // unreachable, but eslint's no-fallthrough doesn't know that
       }
+
+      case 'start':
+        await cmdStartServer('start', args.slice(1))
+        break
+
+      case 'serve':
+        await cmdStartServer('serve', args.slice(1))
+        break
 
       case 'reboot':
       case 'restart':
@@ -2441,7 +4124,7 @@ export async function main(): Promise<void> {
           else if (args[i] === '--facets' && args[i + 1]) searchOpts.facets = args[++i]
           else queryParts.push(args[i])
         }
-        if (!queryParts.length) { console.error('Usage: bakin search <query> [--table=tasks] [--limit=10] [--facets=status,agent]'); process.exit(1) }
+        if (!queryParts.length) await exitUsage('bakin search <query> [--table=tasks] [--limit=10] [--facets=status,agent]')
         await cmdSearch(queryParts.join(' '), searchOpts)
         break
       }
@@ -2454,13 +4137,12 @@ export async function main(): Promise<void> {
         if (!sub || sub === 'list') {
           await cmdTrashList()
         } else if (sub === 'restore') {
-          if (!args[2]) { console.error('Usage: bakin trash restore <filename>'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin trash restore <filename>')
           await cmdTrashRestore(args[2])
         } else if (sub === 'empty') {
           await cmdTrashEmpty()
         } else {
-          console.error(`Unknown trash subcommand: ${sub}`)
-          process.exit(1)
+          await exitUnknownSubcommand('trash', sub, ['list', 'restore', 'empty'])
         }
         break
 
@@ -2468,7 +4150,7 @@ export async function main(): Promise<void> {
         if (!sub || sub === 'list') {
           await cmdScheduleList({ agent: args.includes('--agent') ? args[args.indexOf('--agent') + 1] : undefined })
         } else if (sub === 'add') {
-          if (!args[2] || !args[3]) { console.error('Usage: bakin schedule add <name> <schedule> [--agent <id>] [--prompt <text>]'); process.exit(1) }
+          if (!args[2] || !args[3]) await exitUsage('bakin schedule add <name> <schedule> [--agent <id>] [--prompt <text>]')
           const agentIdx = args.indexOf('--agent')
           const promptIdx = args.indexOf('--prompt')
           await cmdScheduleAdd({
@@ -2478,7 +4160,7 @@ export async function main(): Promise<void> {
             prompt: promptIdx > -1 ? args.slice(promptIdx + 1).join(' ') : undefined,
           })
         } else if (sub === 'pause') {
-          if (!args[2]) { console.error('Usage: bakin schedule pause <jobId> [--until <date>] [--skip <n>]'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin schedule pause <jobId> [--until <date>] [--skip <n>]')
           const untilIdx = args.indexOf('--until')
           const skipIdx = args.indexOf('--skip')
           await cmdSchedulePause(args[2], {
@@ -2486,43 +4168,78 @@ export async function main(): Promise<void> {
             skip: skipIdx > -1 ? Number(args[skipIdx + 1]) : undefined,
           })
         } else if (sub === 'resume') {
-          if (!args[2]) { console.error('Usage: bakin schedule resume <jobId>'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin schedule resume <jobId>')
           await cmdScheduleResume(args[2])
         } else if (sub === 'remove') {
-          if (!args[2]) { console.error('Usage: bakin schedule remove <jobId>'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin schedule remove <jobId>')
           await cmdScheduleRemove(args[2])
         } else if (sub === 'run') {
-          if (!args[2]) { console.error('Usage: bakin schedule run <jobId>'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin schedule run <jobId>')
           await cmdScheduleRun(args[2])
         } else if (sub === 'runs') {
-          if (!args[2]) { console.error('Usage: bakin schedule runs <jobId>'); process.exit(1) }
+          if (!args[2]) await exitUsage('bakin schedule runs <jobId>')
           await cmdScheduleRuns(args[2], { limit: 20 })
         } else {
-          console.error(`Unknown schedule subcommand: ${sub}`)
-          process.exit(1)
+          await exitUnknownSubcommand('schedule', sub, ['list', 'add', 'pause', 'resume', 'remove', 'run', 'runs'])
         }
         break
 
-      default:
-        if (!BINARY_ONLY_COMMANDS.has(cmd) && await dispatchPluginCliCommand(cmd, args.slice(1))) {
-          break
+      default: {
+        let pluginLookupError: string | undefined
+        if (!BINARY_ONLY_COMMANDS.has(cmd)) {
+          try {
+            if (await dispatchPluginCliCommand(cmd, args.slice(1))) {
+              break
+            }
+          } catch (err) {
+            if (!isServerConnectionError(err)) throw err
+            pluginLookupError = `Plugin command lookup skipped because Bakin is not reachable at ${BASE_URL}.`
+          }
         }
-        console.error(`Unknown command: ${cmd}`)
-        console.log(USAGE.trim())
+        if (process.stdout.isTTY) {
+          await printHelpTui(`Unknown command: ${cmd}`, pluginLookupError)
+        } else {
+          console.error(`Unknown command: ${cmd}`)
+          if (pluginLookupError) console.error(pluginLookupError)
+          console.log(USAGE.trim())
+        }
         process.exit(1)
+      }
     }
   } catch (err) {
+    if (err instanceof Error && err.name === 'BakinDelegatedCliExit') {
+      throw err
+    }
+    if (err instanceof Error && /^exit:\d+$/.test(err.message)) {
+      throw err
+    }
     if (
-      err instanceof Error &&
-      (err.message.includes('ECONNREFUSED') ||
-        err.message.includes('Unable to connect') ||
-        err.message.includes('fetch failed'))
+      isServerConnectionError(err)
     ) {
-      console.error('Error: Cannot connect to Bakin. Is the server running?')
-      console.error(`  Tried: ${BASE_URL}`)
-      console.error(`  Run \`bakin start\` to launch the server.`)
+      if (process.stdout.isTTY) {
+        await printCommandFailureTui({
+          command: invocationCommand(args),
+          message: 'Cannot connect to Bakin. Is the server running?',
+          detail: `Tried: ${BASE_URL}`,
+          code: 'SERVER_UNREACHABLE',
+          next: 'Run `bakin start` to launch the server.',
+        })
+      } else {
+        console.error('Error: Cannot connect to Bakin. Is the server running?')
+        console.error(`  Tried: ${BASE_URL}`)
+        console.error(`  Run \`bakin start\` to launch the server.`)
+      }
     } else {
-      console.error('Error:', err instanceof Error ? err.message : String(err))
+      const message = err instanceof Error ? err.message : String(err)
+      if (process.stdout.isTTY) {
+        await printCommandFailureTui({
+          command: invocationCommand(args),
+          message,
+          code: 'COMMAND_FAILED',
+        })
+      } else {
+        console.error('Error:', message)
+      }
     }
     process.exit(1)
   }

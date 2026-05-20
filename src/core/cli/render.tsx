@@ -1,5 +1,5 @@
-import { renderToString } from 'ink'
 import { GenericResultView } from './ui/generic'
+import { renderToString } from './ui/render-to-string'
 import { toEnvelope, type CliCommandResult, type CliEnvelope } from './result'
 
 export type CliRenderMode = 'json' | 'plain' | 'ink'

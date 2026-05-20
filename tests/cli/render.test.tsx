@@ -24,9 +24,26 @@ describe('CLI renderers', () => {
   })
 
   it('renders a generic Ink result view to string', () => {
-    expect(renderInkEnvelope(toEnvelope(okResult('version', { version: '1.2.3' })), { color: false })).toBe(
-      '[OK] version\n\n{\n  "version": "1.2.3"\n}\n',
-    )
+    const output = renderInkEnvelope(toEnvelope(okResult('version', { version: '1.2.3' })), { color: false })
+
+    expect(output).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(output).toContain('version')
+    expect(output).toContain(' OK       0 exit code')
+    expect(output).toContain('DATA\n------------')
+    expect(output).toContain('"version": "1.2.3"')
+    expect(output).not.toContain('[OK]')
+  })
+
+  it('renders generic Ink errors with sectioned details', () => {
+    const output = renderInkEnvelope(toEnvelope(errorResult('doctor', 'SERVER_UNREACHABLE', 'Cannot reach Bakin')), { color: false })
+
+    expect(output).toContain('Command failed  doctor')
+    expect(output).toContain('Cannot reach Bakin')
+    expect(output).toContain(' FAIL     1 exit code')
+    expect(output).toContain('SERVER_UNREACHABLE code')
+    expect(output).toContain('PROBLEM\n------------')
+    expect(output).toContain(' FAIL      doctor')
+    expect(output).not.toContain('[FAIL]')
   })
 
   it('selects JSON explicitly and Ink only for TTY output', () => {

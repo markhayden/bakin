@@ -208,6 +208,28 @@ describe('dispatchRoute — input validation', () => {
     const res = await dispatchRoute({ req, ctx: stubCtx, route, params: {} })
     expect(res.status).toBe(415)
   })
+
+  it('accepts an optional JSON body schema when the request has no body', async () => {
+    const route = defineRoute({
+      path: '/:jobId',
+      method: 'DELETE',
+      summary: 'Delete',
+      params: z.object({ jobId: z.string() }),
+      body: z.object({ reason: z.string().optional() }).optional(),
+      responses: { 200: z.object({ ok: z.literal(true), jobId: z.string(), hadBody: z.boolean() }) },
+      handler: async (_req, _ctx, parsed) => Response.json({
+        ok: true as const,
+        jobId: parsed.params.jobId,
+        hadBody: parsed.body !== undefined,
+      }),
+    })
+    const req = new Request('http://x/api/plugins/schedule/job-1', { method: 'DELETE' })
+
+    const res = await dispatchRoute({ req, ctx: stubCtx, route, params: { jobId: 'job-1' } })
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true, jobId: 'job-1', hadBody: false })
+  })
 })
 
 describe('dispatchRoute — multipart and raw bodies', () => {

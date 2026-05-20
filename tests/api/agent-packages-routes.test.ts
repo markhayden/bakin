@@ -82,6 +82,7 @@ import * as installRoute from '../../packages/host/src/api/agent-packages/instal
 import * as listRoute from '../../packages/host/src/api/agent-packages/list'
 import * as dynamicRoute from '../../packages/host/src/api/agent-packages/dynamic'
 import * as packagesListRoute from '../../packages/host/src/api/packages/list'
+import { writeLockfile } from '../../packages/core/src/agent-packages/lockfile'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -196,10 +197,38 @@ describe('GET /api/agent-packages', () => {
 })
 
 describe('GET /api/packages', () => {
-  it('returns the lockfile snapshot in API shape', async () => {
-    const src = seedAgentPackage()
-    const { req: instReq, url: instUrl } = makeRequest('POST', '/api/agent-packages/install', { source: src })
-    await installRoute.post(instReq, instUrl)
+  it('returns standalone package entries and excludes agent packages', async () => {
+    writeLockfile({
+      version: 1,
+      packages: {
+        pixel: {
+          kind: 'agent',
+          version: '0.1.0',
+          source: '/tmp/pixel',
+          ref: '',
+          commitSha: '',
+          installedAt: '2026-05-18T00:00:00.000Z',
+          state: 'managed',
+          agentId: 'pixel',
+          projections: [],
+          refCount: 0,
+          dependents: [],
+          dependencies: [],
+        },
+        'shared-skills': {
+          kind: 'skill-pack',
+          version: '1.0.0',
+          source: '/tmp/shared-skills',
+          ref: '',
+          commitSha: '',
+          installedAt: '2026-05-18T00:00:00.000Z',
+          projections: [],
+          refCount: 0,
+          dependents: [],
+          dependencies: [],
+        },
+      },
+    })
 
     const { req, url } = makeRequest('GET', '/api/packages')
     const res = await packagesListRoute.get(req, url)
@@ -207,10 +236,8 @@ describe('GET /api/packages', () => {
     const body = await res.json()
     expect(body.ok).toBe(true)
     expect(body.version).toBe(1)
-    expect(body.packages.length).toBeGreaterThan(0)
-    const pixel = body.packages.find((p: { id: string }) => p.id === 'pixel')
-    expect(pixel?.kind).toBe('agent')
-    expect(pixel?.state).toBe('managed')
+    expect(body.packages.map((p: { id: string }) => p.id)).toEqual(['shared-skills'])
+    expect(body.packages[0].kind).toBe('skill-pack')
   })
 })
 

@@ -1,5 +1,5 @@
 export const PLUGIN_INSTALL_USAGE =
-  'Usage: bakin plugins install [--dev] <path|github:user/repo[@ref][#subpath]> [--ref <ref>] [--yes] [--force]'
+  'Usage: bakin plugins install [--dev] <path|github:user/repo[@ref][#subpath]> [--ref <ref>] [--yes] [--force] [--json]'
 
 export interface ParsedPluginInstallArgs {
   source?: string
@@ -7,6 +7,7 @@ export interface ParsedPluginInstallArgs {
   yes: boolean
   dev: boolean
   force: boolean
+  json: boolean
   error?: string
 }
 
@@ -15,6 +16,7 @@ export function parsePluginInstallArgs(args: string[]): ParsedPluginInstallArgs 
     yes: false,
     dev: false,
     force: false,
+    json: false,
   }
 
   for (let i = 0; i < args.length; i++) {
@@ -29,6 +31,10 @@ export function parsePluginInstallArgs(args: string[]): ParsedPluginInstallArgs 
     }
     if (arg === '--force') {
       parsed.force = true
+      continue
+    }
+    if (arg === '--json') {
+      parsed.json = true
       continue
     }
     if (arg === '--ref') {

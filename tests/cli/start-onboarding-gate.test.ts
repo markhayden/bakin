@@ -8,26 +8,54 @@ mock.module('../../src/core/onboarding/state', () => ({
 
 describe('CLI start onboarding gate', () => {
   let originalSkip: string | undefined
+  const originalStdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
 
   beforeEach(() => {
     onboarded = false
     originalSkip = process.env.BAKIN_SKIP_ONBOARDING_CHECK
     delete process.env.BAKIN_SKIP_ONBOARDING_CHECK
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true })
   })
 
   afterEach(() => {
     if (originalSkip === undefined) delete process.env.BAKIN_SKIP_ONBOARDING_CHECK
     else process.env.BAKIN_SKIP_ONBOARDING_CHECK = originalSkip
+    if (originalStdoutIsTTY) Object.defineProperty(process.stdout, 'isTTY', originalStdoutIsTTY)
+    else delete (process.stdout as { isTTY?: boolean }).isTTY
   })
 
-  it('blocks start when onboarding has not completed', async () => {
+  it('blocks start with the shared onboarding TUI when onboarding has not completed', async () => {
+    const logSpy = spyOn(console, 'log').mockImplementation(() => {})
     const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
     const { dispatchCli } = await import('../../src/core/cli')
 
     const result = await dispatchCli(['node', 'bakin', 'start'])
 
     expect(result).toEqual({ startServer: false, exitCode: 1 })
-    expect(errorSpy.mock.calls.map(call => String(call[0])).join('\n')).toContain('bakin onboard')
+    const output = logSpy.mock.calls.map(call => String(call[0])).join('\n')
+    expect(output).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+    expect(output).toContain('Onboard')
+    expect(output).toContain('Initial setup required')
+    expect(output).toContain('Run `bakin onboard`')
+    expect(errorSpy.mock.calls).toHaveLength(0)
+    logSpy.mockRestore()
+    errorSpy.mockRestore()
+  })
+
+  it('keeps plain start gate errors for non-TTY output', async () => {
+    Object.defineProperty(process.stdout, 'isTTY', { value: false, configurable: true })
+    const logSpy = spyOn(console, 'log').mockImplementation(() => {})
+    const errorSpy = spyOn(console, 'error').mockImplementation(() => {})
+    const { dispatchCli } = await import('../../src/core/cli')
+
+    const result = await dispatchCli(['node', 'bakin', 'start'])
+
+    expect(result).toEqual({ startServer: false, exitCode: 1 })
+    const output = errorSpy.mock.calls.map(call => String(call[0])).join('\n')
+    expect(output).toContain('Bakin has not been onboarded on this machine.')
+    expect(output).toContain('bakin onboard')
+    expect(logSpy.mock.calls).toHaveLength(0)
+    logSpy.mockRestore()
     errorSpy.mockRestore()
   })
 

@@ -1,7 +1,8 @@
-import { Badge, MultiSelect as InkMultiSelect, ThemeProvider, defaultTheme, extendTheme } from '@inkjs/ui'
+import { MultiSelect as InkMultiSelect, ThemeProvider, defaultTheme, extendTheme } from '@inkjs/ui'
 import { Box, Text } from 'ink'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { BAKIN_PINK } from './report'
+import { Section } from './tui'
+import { CLI_COLORS } from './style-tokens'
 
 export interface MultiSelectItem {
   id: string
@@ -69,16 +70,17 @@ export interface MultiSelectProps {
   onChange: (state: MultiSelectState) => void
   onSubmit: (selectedIds: string[]) => void
   marginTop?: number
+  showTitle?: boolean
 }
 
 const multiSelectTheme = extendTheme(defaultTheme, {
   components: {
     MultiSelect: {
       styles: {
-        focusIndicator: () => ({ color: BAKIN_PINK }),
-        selectedIndicator: () => ({ color: BAKIN_PINK }),
+        focusIndicator: () => ({ color: CLI_COLORS.info }),
+        selectedIndicator: () => ({ color: CLI_COLORS.info }),
         label: ({ isFocused }: { isFocused: boolean }) => ({
-          color: isFocused ? BAKIN_PINK : undefined,
+          color: isFocused ? CLI_COLORS.info : undefined,
         }),
       },
     },
@@ -98,7 +100,15 @@ function sameSelectedIds(a: ReadonlySet<string>, b: ReadonlySet<string>): boolea
   return true
 }
 
-export function MultiSelect({ title, items, state, onChange, onSubmit, marginTop = 0 }: MultiSelectProps) {
+export function MultiSelect({
+  title,
+  items,
+  state,
+  onChange,
+  onSubmit,
+  marginTop = 0,
+  showTitle = true,
+}: MultiSelectProps) {
   const stateRef = useRef(state)
   const onChangeRef = useRef(onChange)
   const enabledItems = useMemo(() => items.filter(item => !item.disabled), [items])
@@ -107,7 +117,7 @@ export function MultiSelect({ title, items, state, onChange, onSubmit, marginTop
     value: item.id,
     label: optionLabel(item),
   })), [enabledItems])
-  const defaultValue = useMemo(() => [...state.selectedIds], [])
+  const defaultValue = useMemo(() => [...state.selectedIds], [state.selectedIds])
 
   useEffect(() => {
     stateRef.current = state
@@ -121,9 +131,8 @@ export function MultiSelect({ title, items, state, onChange, onSubmit, marginTop
     onChangeRef.current({ ...current, selectedIds: selectedIdsSet })
   }, [])
 
-  return (
-    <Box flexDirection="column" marginTop={marginTop}>
-      <Badge color={BAKIN_PINK}>{title}</Badge>
+  const body = (
+    <>
       <Text dimColor>Use up/down to move, space to select, enter to continue.</Text>
       <Box flexDirection="column">
         <ThemeProvider theme={multiSelectTheme}>
@@ -145,6 +154,12 @@ export function MultiSelect({ title, items, state, onChange, onSubmit, marginTop
           </Box>
         ) : null}
       </Box>
+    </>
+  )
+
+  return (
+    <Box flexDirection="column" marginTop={marginTop}>
+      {showTitle ? <Section title={title} marginTop={0}>{body}</Section> : body}
     </Box>
   )
 }

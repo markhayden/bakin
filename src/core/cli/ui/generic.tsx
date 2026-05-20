@@ -1,9 +1,11 @@
 import { Box, Text } from 'ink'
 import type { CliEnvelope } from '../result'
+import type { TuiStatus } from './style-tokens'
+import { FindingRows, ScreenHeader, Section, SummaryStrip, type SummaryItem } from './tui'
 
-function statusLabel(envelope: CliEnvelope): string {
-  if (envelope.ok && envelope.exitCode === 2) return 'WARN'
-  return envelope.ok ? 'OK' : 'FAIL'
+function envelopeStatus(envelope: CliEnvelope): TuiStatus {
+  if (!envelope.ok) return 'fail'
+  return envelope.exitCode === 2 ? 'warn' : 'ok'
 }
 
 function dataPreview(data: unknown): string[] {
@@ -25,30 +27,41 @@ export interface GenericResultViewProps {
 }
 
 export function GenericResultView({ envelope, color = true }: GenericResultViewProps) {
-  const label = statusLabel(envelope)
-  const labelColor = envelope.ok
-    ? envelope.exitCode === 2 ? 'yellow' : 'green'
-    : 'red'
+  const status = envelopeStatus(envelope)
   const preview = dataPreview(envelope.data)
+  const summary: SummaryItem[] = [
+    { label: 'exit code', value: envelope.exitCode, status },
+  ]
+  if (envelope.error) summary.push({ label: 'code', value: envelope.error.code })
 
   return (
     <Box flexDirection="column">
-      <Box>
-        <Text color={color ? labelColor : undefined}>[{label}]</Text>
-        <Text> {envelope.command}</Text>
-      </Box>
+      <ScreenHeader
+        title={envelope.error ? 'Command failed' : envelope.command}
+        subtitle={envelope.error?.message}
+        meta={envelope.error ? envelope.command : undefined}
+        color={color}
+      />
+      <SummaryStrip items={summary} color={color} />
       {envelope.error ? (
-        <Box flexDirection="column" marginTop={1}>
-          <Text>{envelope.error.message}</Text>
-          <Text dimColor={color}>Code: {envelope.error.code}</Text>
-        </Box>
+        <Section title="Problem" color={color}>
+          <FindingRows
+            color={color}
+            rows={[{
+              status: 'fail',
+              label: envelope.command,
+              message: envelope.error.message,
+              detail: `Code: ${envelope.error.code}`,
+            }]}
+          />
+        </Section>
       ) : null}
       {preview.length > 0 ? (
-        <Box flexDirection="column" marginTop={1}>
+        <Section title="Data" color={color}>
           {preview.map((line, index) => (
             <Text key={index}>{line}</Text>
           ))}
-        </Box>
+        </Section>
       ) : null}
     </Box>
   )

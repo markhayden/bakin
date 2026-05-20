@@ -19,14 +19,29 @@ const consoleSpy = spyOn(console, 'log').mockImplementation(() => {})
 
 describe('CLI schedule commands', () => {
   const originalFetch = globalThis.fetch
+  const originalStdoutIsTTY = Object.getOwnPropertyDescriptor(process.stdout, 'isTTY')
+
+  function setStdoutIsTTY(value: boolean): void {
+    Object.defineProperty(process.stdout, 'isTTY', { value, configurable: true })
+  }
+
+  function output(): string {
+    return consoleSpy.mock.calls.map(c => String(c[0])).join('\n')
+  }
 
   beforeEach(() => {
     mock.clearAllMocks()
-    globalThis.fetch = mockFetch as any
+    globalThis.fetch = ((input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      if (typeof input === 'string' && input.startsWith('data:')) return originalFetch(input, init)
+      return mockFetch(input, init)
+    }) as typeof fetch
+    setStdoutIsTTY(false)
   })
 
   afterEach(() => {
     globalThis.fetch = originalFetch
+    if (originalStdoutIsTTY) Object.defineProperty(process.stdout, 'isTTY', originalStdoutIsTTY)
+    else delete (process.stdout as { isTTY?: boolean }).isTTY
   })
 
   function mockJsonResponse(data: unknown) {
@@ -174,6 +189,35 @@ describe('CLI schedule commands', () => {
         workflowId: 'image-social-post',
         taskPrompt: 'Create daily social media image',
       })
+    })
+
+    it('renders action confirmations with the shared TUI in a TTY', async () => {
+      setStdoutIsTTY(true)
+
+      mockJsonResponse({ ok: true, jobId: 'new-1', cron: '0 9 * * *', human: 'Every day at 9:00 AM' })
+      await cmdScheduleAdd({ name: 'Daily Check', schedule: 'every day at 9am' })
+
+      mockJsonResponse({ ok: true })
+      await cmdSchedulePause('new-1', { until: '2026-04-01' })
+
+      mockJsonResponse({ ok: true })
+      await cmdScheduleResume('new-1')
+
+      mockJsonResponse({ ok: true })
+      await cmdScheduleRun('new-1')
+
+      mockJsonResponse({ ok: true })
+      await cmdScheduleRemove('new-1')
+
+      expect(output()).toContain("┃ 🐷 Bakin'               (v0.0.0-dev) ┃")
+      expect(output()).toContain('Schedule action')
+      expect(output()).toContain('RESULT')
+      expect(output()).toContain('Created schedule Daily Check')
+      expect(output()).toContain('Paused new-1')
+      expect(output()).toContain('Resumed new-1')
+      expect(output()).toContain('Triggered immediate run for new-1')
+      expect(output()).toContain('Removed new-1')
+      expect(output()).not.toContain('Created schedule "Daily Check"')
     })
   })
 

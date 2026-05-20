@@ -21,17 +21,28 @@ import { APP_VERSION } from '../../packages/core/src/constants'
 
 const NAME_RE = /^[a-z][a-z0-9-]{0,39}$/
 
-export function scaffoldPlugin(name: string): number {
+export interface PluginScaffoldResult {
+  ok: boolean
+  id?: string
+  root?: string
+  next?: string[]
+  error?: string
+}
+
+export function createPluginScaffold(name: string): PluginScaffoldResult {
   if (!NAME_RE.test(name)) {
-    console.error(`Invalid plugin name: ${JSON.stringify(name)}`)
-    console.error('  Must start with a lowercase letter, be <=40 chars, and use only [a-z0-9-].')
-    return 1
+    return {
+      ok: false,
+      error: `Invalid plugin name: ${JSON.stringify(name)}. Must start with a lowercase letter, be <=40 chars, and use only [a-z0-9-].`,
+    }
   }
 
   const root = resolve(process.cwd(), name)
   if (existsSync(root)) {
-    console.error(`Refusing to scaffold into existing directory: ${root}`)
-    return 1
+    return {
+      ok: false,
+      error: `Refusing to scaffold into existing directory: ${root}`,
+    }
   }
 
   try {
@@ -158,13 +169,32 @@ bakin-plugin.json — manifest
 `,
     )
 
-    console.log(`Scaffolded plugin at ${root}`)
-    console.log('')
-    console.log('Next steps:')
-    console.log(`  cd ${name} && bun install && bakin plugins install .`)
-    return 0
+    return {
+      ok: true,
+      id: name,
+      root,
+      next: [`cd ${name} && bun install && bakin plugins install .`],
+    }
   } catch (err) {
-    console.error(`Scaffold failed: ${err instanceof Error ? err.message : String(err)}`)
+    return {
+      ok: false,
+      error: `Scaffold failed: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+}
+
+export function scaffoldPlugin(name: string): number {
+  const result = createPluginScaffold(name)
+  if (!result.ok) {
+    console.error(result.error)
     return 1
   }
+
+  console.log(`Scaffolded plugin at ${result.root}`)
+  console.log('')
+  console.log('Next steps:')
+  for (const next of result.next ?? []) {
+    console.log(`  ${next}`)
+  }
+  return 0
 }
