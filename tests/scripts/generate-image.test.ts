@@ -1,12 +1,15 @@
-import { describe, it, expect, beforeEach, mock, spyOn, type Mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterAll, mock, spyOn } from 'bun:test'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { basename, join } from 'path'
+import { resetContentDir } from '../../src/core/content-dir'
 
-(() => {
-  const { mkdtempSync } = require('fs')
-  const { tmpdir } = require('os')
-  const { join } = require('path')
-  process.env.BAKIN_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-home-'))
-  process.env.OPENCLAW_HOME = mkdtempSync(join(tmpdir(), 'bakin-test-openclaw-'))
-})()
+const originalBakinHome = process.env.BAKIN_HOME
+const originalOpenclawHome = process.env.OPENCLAW_HOME
+const testBakinHome = mkdtempSync(join(tmpdir(), 'bakin-test-home-'))
+const testOpenclawHome = mkdtempSync(join(tmpdir(), 'bakin-test-openclaw-'))
+process.env.BAKIN_HOME = testBakinHome
+process.env.OPENCLAW_HOME = testOpenclawHome
 
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
@@ -14,28 +17,8 @@ mock.module('@bakin/core/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
-mock.module('../../src/core/content-dir', () => ({
-  getContentDir: mock(() => '/tmp/bakin-test'),
-  getBakinPaths: mock(() => ({
-    home: '/tmp/bakin-test',
-    assets: '/tmp/bakin-test/assets',
-    'assets.store': '/tmp/bakin-test/assets/store',
-  isUsingBakinHome: () => true,
-  resetContentDir: () => {},
-  initBakinHome: () => {},
-})),
-}))
-
 mock.module('../../scripts/lib/registry', () => ({
   addExecTool: mock(),
-}))
-
-mock.module('../../plugins/assets/lib/save-asset', () => ({
-  saveAsset: mock(),
-}))
-
-mock.module('child_process', () => ({
-  execFileSync: mock(() => Buffer.from('1080,1920')),
 }))
 
 let mockRuntimeConfig: Record<string, unknown> = {}
@@ -49,16 +32,6 @@ mock.module('../../src/core/app-services', () => ({
     },
   }),
 }))
-
-mock.module('fs', () => {
-  const actual = require('fs') as Record<string, unknown>
-  return {
-    ...actual,
-    existsSync: mock(() => true),
-    mkdirSync: mock(),
-    writeFileSync: mock(),
-  }
-})
 
 // Mock fetch for Gemini API calls
 const mockFetchResponse = (imageData = 'fakebase64data') => ({
@@ -75,28 +48,30 @@ const mockFetchResponse = (imageData = 'fakebase64data') => ({
 }) as unknown as Response
 
 import { generateImage } from '../../scripts/lib/generate-image'
-import { saveAsset } from '../../plugins/assets/lib/save-asset'
-import { existsSync } from 'fs'
-import { execFileSync } from 'child_process'
-
-const mockSaveAsset = vi.mocked(saveAsset)
 
 describe('generateImage', () => {
+  afterAll(() => {
+    if (originalBakinHome === undefined) delete process.env.BAKIN_HOME
+    else process.env.BAKIN_HOME = originalBakinHome
+    if (originalOpenclawHome === undefined) delete process.env.OPENCLAW_HOME
+    else process.env.OPENCLAW_HOME = originalOpenclawHome
+    rmSync(testBakinHome, { recursive: true, force: true })
+    rmSync(testOpenclawHome, { recursive: true, force: true })
+    resetContentDir()
+  })
+
   beforeEach(() => {
     mock.clearAllMocks()
     mockRuntimeConfig = {}
+    process.env.BAKIN_HOME = testBakinHome
+    process.env.OPENCLAW_HOME = testOpenclawHome
+    resetContentDir()
     // Set API key for tests
     process.env.GEMINI_API_KEY = 'test-key-123'
   })
 
   it('calls Gemini API and saves asset on success', async () => {
     spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
-    mockSaveAsset.mockResolvedValue({
-      ok: true,
-      path: 'assets/images/task-123/20260326-test.jpg',
-      metadataPath: 'assets/images/task-123/20260326-test.jpg.meta.json',
-      filename: '20260326-test.jpg',
-    })
 
     const result = await generateImage({
       prompt: 'Golden hour smoothie',
@@ -111,13 +86,10 @@ describe('generateImage', () => {
     expect(result.height).toBe(1920)
     expect(result.preset).toBe('social-portrait')
     expect(result.model).toContain('flash')
-    expect(mockSaveAsset).toHaveBeenCalledWith(
-      expect.objectContaining({
-        taskId: 'task-123',
-        type: 'images',
-        tool: 'gemini-3.1-flash-image-preview',
-      }),
-    )
+    expect(result.path).toContain('assets/store/')
+    expect(result.metadataPath).toBe(`${result.path}.meta.json`)
+    expect(result.filename).toBe(basename(result.path as string))
+    expect(result.image_filename).toBe(result.filename)
     // Verify Gemini API was called with flash model
     expect(globalThis.fetch).toHaveBeenCalledWith(
       expect.stringContaining('gemini-3.1-flash-image-preview'),
@@ -127,7 +99,6 @@ describe('generateImage', () => {
 
   it('uses pro model when specified', async () => {
     spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
-    mockSaveAsset.mockResolvedValue({ ok: true, path: 'x', metadataPath: 'x.meta.json', filename: 'x.jpg' })
 
     const result = await generateImage({
       prompt: 'test',
@@ -138,6 +109,8 @@ describe('generateImage', () => {
     })
 
     expect(result.ok).toBe(true)
+    expect(result.filename).toBeDefined()
+    expect(result.image_filename).toBe(result.filename)
     expect(result.model).toContain('pro')
     expect(globalThis.fetch).toHaveBeenCalledWith(
       expect.stringContaining('gemini-3-pro-image-preview'),
@@ -147,7 +120,6 @@ describe('generateImage', () => {
 
   it('uses social-square preset dimensions', async () => {
     spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
-    mockSaveAsset.mockResolvedValue({ ok: true, path: 'x', metadataPath: 'x.meta.json', filename: 'x.jpg' })
 
     const result = await generateImage({
       prompt: 'test',
@@ -158,13 +130,14 @@ describe('generateImage', () => {
     })
 
     expect(result.ok).toBe(true)
+    expect(result.filename).toBeDefined()
+    expect(result.image_filename).toBe(result.filename)
     expect(result.width).toBe(1080)
     expect(result.height).toBe(1080)
   })
 
   it('caps custom dimensions at MAX_IMAGE_EDGE', async () => {
     spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
-    mockSaveAsset.mockResolvedValue({ ok: true, path: 'x', metadataPath: 'x.meta.json', filename: 'x.jpg' })
 
     const result = await generateImage({
       prompt: 'test',
@@ -177,6 +150,8 @@ describe('generateImage', () => {
     })
 
     expect(result.ok).toBe(true)
+    expect(result.filename).toBeDefined()
+    expect(result.image_filename).toBe(result.filename)
     expect(result.width).toBe(1200)
     expect(result.height).toBe(1200)
   })
@@ -212,7 +187,6 @@ describe('generateImage', () => {
     }
 
     spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
-    mockSaveAsset.mockResolvedValue({ ok: true, path: 'x', metadataPath: 'x.meta.json', filename: 'x.jpg' })
 
     const result = await generateImage({
       prompt: 'test',
@@ -249,7 +223,6 @@ describe('generateImage', () => {
     }
 
     spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
-    mockSaveAsset.mockResolvedValue({ ok: true, path: 'x', metadataPath: 'x.meta.json', filename: 'x.jpg' })
 
     const result = await generateImage({
       prompt: 'test',
@@ -284,8 +257,11 @@ describe('generateImage', () => {
   }, 30_000)
 
   it('returns fail when asset save fails', async () => {
+    const brokenHome = mkdtempSync(join(tmpdir(), 'bakin-test-broken-home-'))
+    process.env.BAKIN_HOME = brokenHome
+    resetContentDir()
+    writeFileSync(join(brokenHome, 'assets'), 'not-a-directory')
     spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
-    mockSaveAsset.mockResolvedValue({ ok: false, error: 'disk full' })
 
     const result = await generateImage({
       prompt: 'test',
@@ -296,11 +272,13 @@ describe('generateImage', () => {
 
     expect(result.ok).toBe(false)
     expect(result.error).toContain('asset save failed')
+    rmSync(brokenHome, { recursive: true, force: true })
+    process.env.BAKIN_HOME = testBakinHome
+    resetContentDir()
   })
 
   it('truncates prompt in return value to 500 chars', async () => {
     spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
-    mockSaveAsset.mockResolvedValue({ ok: true, path: 'x', metadataPath: 'x.meta.json', filename: 'x.jpg' })
 
     const longPrompt = 'a'.repeat(1000)
     const result = await generateImage({
@@ -315,17 +293,12 @@ describe('generateImage', () => {
   })
 
   it('imports raw file through asset pipeline via filePath', async () => {
-    vi.mocked(existsSync).mockReturnValue(true)
-    vi.mocked(execFileSync).mockReturnValue(Buffer.from('1080,1920'))
-    mockSaveAsset.mockResolvedValue({
-      ok: true,
-      path: 'assets/images/task-raw/20260404-imported.jpg',
-      metadataPath: 'assets/images/task-raw/20260404-imported.jpg.meta.json',
-      filename: '20260404-imported.jpg',
-    })
+    const sourceDir = mkdtempSync(join(tmpdir(), 'bakin-test-image-src-'))
+    const sourceFile = join(sourceDir, 'some-image.jpg')
+    writeFileSync(sourceFile, 'not-a-real-jpeg')
 
     const result = await generateImage({
-      filePath: '/tmp/some-image.jpg',
+      filePath: sourceFile,
       prompt: 'Backstroke takeoff',
       taskId: 'task-raw',
       agent: 'pixel',
@@ -334,26 +307,17 @@ describe('generateImage', () => {
 
     expect(result.ok).toBe(true)
     expect(result.model).toBe('raw-import')
-    expect(result.width).toBe(1080)
-    expect(result.height).toBe(1920)
-    expect(result.path).toContain('assets/images/task-raw')
-    expect(mockSaveAsset).toHaveBeenCalledWith(
-      expect.objectContaining({
-        taskId: 'task-raw',
-        type: 'images',
-        tool: 'raw-import',
-        tags: ['imported'],
-      }),
-    )
+    expect(result.filename).toBe(basename(result.path as string))
+    expect(result.image_filename).toBe(result.filename)
+    expect(result.path).toContain('assets/store/')
     // Should NOT call Gemini API
     expect(globalThis.fetch).not.toHaveBeenCalled()
+    rmSync(sourceDir, { recursive: true, force: true })
   })
 
   it('fails raw import when file does not exist', async () => {
-    vi.mocked(existsSync).mockReturnValue(false)
-
     const result = await generateImage({
-      filePath: '/tmp/nonexistent.jpg',
+      filePath: join(testBakinHome, 'nonexistent.jpg'),
       taskId: 'task-missing',
       agent: 'pixel',
       thumbnail: false,

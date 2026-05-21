@@ -39,6 +39,27 @@ function filenameFromRel(relPath: string): string {
   return relPath.split('/').pop() || ''
 }
 
+function existingManagedAssetResult(filePath: string): { path: string; metadataPath: string; filename: string; alreadyManaged: true } | null {
+  const contentDir = getContentDir()
+  const normalizedInput = filePath.trim()
+  if (!normalizedInput) return null
+  const contentPrefix = `${contentDir}/`
+  const relPath = normalizedInput.startsWith(contentPrefix)
+    ? normalizedInput.slice(contentPrefix.length)
+    : normalizedInput
+  if (!relPath.startsWith('assets/store/')) return null
+  const filename = filenameFromRel(relPath)
+  if (!filename || !isSafeCanonicalFilename(filename)) return null
+  if (pathForFilename(filename) !== relPath) return null
+  if (!existsSync(join(contentDir, relPath))) return null
+  return {
+    path: relPath,
+    metadataPath: `${relPath}.meta.json`,
+    filename,
+    alreadyManaged: true,
+  }
+}
+
 const log = createLogger('assets')
 
 // ─── Module-scope plugin ctx (set during activate) ──────────────────────
@@ -704,7 +725,7 @@ const assetsPlugin: BakinPlugin = definePlugin({
       label: 'Saved an asset',
       description: 'Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically.',
       parameters: {
-        filePath: z.string().describe('Absolute path to the source file to save'),
+        filePath: z.string().describe('Absolute path to the source file to save, or an existing managed assets/store/... path to return idempotently'),
         taskId: z.string().describe('Task ID to record in sidecar metadata'),
         type: z.enum(ASSET_TYPES).describe(TYPE_RUBRIC),
         description: z.string().optional().describe('One-sentence summary visible in the asset grid and search. Be specific — "Q2 blog hero image" not "an image".'),
@@ -713,6 +734,12 @@ const assetsPlugin: BakinPlugin = definePlugin({
         slug: z.string().optional().describe('Custom filename slug. Auto-derived from source filename if omitted.'),
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
+        const filePath = typeof params.filePath === 'string' ? params.filePath : ''
+        const existing = existingManagedAssetResult(filePath)
+        if (existing) {
+          indexAsset(existing.path).catch(() => {})
+          return { ok: true, ...existing }
+        }
         const result = await saveAsset({ ...params, agent } as Parameters<typeof saveAsset>[0])
         if (result.ok && result.path) indexAsset(result.path as string).catch(() => {})
         return result
