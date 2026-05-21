@@ -17,6 +17,15 @@ const SCAN_ROOTS = [
 const EXT_RE = /\.(ts|tsx|mjs|mts|js|jsx|cjs|json|ya?ml)$/
 const WORKFLOW_DEFAULTS_RE = /(^|\/)plugins\/[^/]+\/defaults\/workflows\/[^/]+\.ya?ml$/
 
+// The disposable OpenClaw Docker dev rig (scripts/instance*) is, by definition,
+// OpenClaw-specific orchestration: it speaks the OpenClaw CLI, mounts the
+// OpenClaw home, and drives Docker. It sits AT the adapter layer (never ships
+// in the binary, can never be runtime-agnostic), so the three provider-boundary
+// rules below exempt it. All other rules (antfly/sqlite/flow_runs/discord
+// endpoints) still apply to keep the rig honest.
+const isOpenClawDevRig = (rel: string) =>
+  rel === 'scripts/instance.ts' || rel.startsWith('scripts/instance/')
+
 const DENYLIST = [
   {
     label: 'concrete adapter import outside adapter factories',
@@ -34,11 +43,12 @@ const DENYLIST = [
   {
     label: 'raw OpenClaw home/path access outside adapter-openclaw',
     regex: /(?:~\/\.openclaw|OPENCLAW_HOME|getOpenClawHome|getOpenClawPath)/,
-    allow: (rel: string) => rel === 'scripts/bin/check-home-bypasses.mjs',
+    allow: (rel: string) => rel === 'scripts/bin/check-home-bypasses.mjs' || isOpenClawDevRig(rel),
   },
   {
     label: 'legacy OpenClaw implementation module',
     regex: /(?:openclaw-home|openclaw-config|openclaw-client|discord-gateway)/,
+    allow: (rel: string) => isOpenClawDevRig(rel),
   },
   {
     label: 'legacy flow_runs task metadata',
@@ -55,6 +65,7 @@ const DENYLIST = [
   {
     label: 'raw OpenClaw CLI command outside runtime adapter',
     regex: /openclaw\s+(?:cron|flows|agent|config)\b/,
+    allow: (rel: string) => isOpenClawDevRig(rel),
   },
   {
     label: 'raw Discord provider endpoint outside runtime adapter',

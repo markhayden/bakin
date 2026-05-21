@@ -95,6 +95,10 @@ function shouldScanProviderBoundary(rel) {
   if (!EXT_RE.test(rel)) return false
   if (rel.startsWith('packages/adapter-openclaw/') || rel.startsWith('packages/adapter-antfly/')) return false
   if (ALLOWED_FILES.has(rel)) return false
+  // The OpenClaw Docker dev rig is inherently OpenClaw-specific dev tooling at
+  // the adapter layer (see tests/architecture/adapter-boundary.test.ts). The CI
+  // test exempts it per-rule; the edit-time hook exempts it wholesale.
+  if (rel === 'scripts/instance.ts' || rel.startsWith('scripts/instance/')) return false
   return CODE_ROOT_RE.test(rel) || CODE_FILE_RE.test(rel)
 }
 
