@@ -218,15 +218,20 @@ export async function generateImage(params: GenImageParams): Promise<ExecToolRes
     const description = prompt || basename(filePath)
     const dims = probeImageDimensions(filePath)
 
-    const assetResult = await saveAsset({
-      filePath,
-      taskId,
-      agent,
-      type: 'images',
-      tool: 'raw-import',
-      description: description.slice(0, 200),
-      tags: ['imported'],
-    })
+    let assetResult
+    try {
+      assetResult = await saveAsset({
+        filePath,
+        taskId,
+        agent,
+        type: 'images',
+        tool: 'raw-import',
+        description: description.slice(0, 200),
+        tags: ['imported'],
+      })
+    } catch (err) {
+      return fail(`Asset save failed: ${String(err)}`)
+    }
 
     if (!assetResult.ok) {
       return fail(`Asset save failed: ${assetResult.error}`)
@@ -246,6 +251,8 @@ export async function generateImage(params: GenImageParams): Promise<ExecToolRes
     return succeed({
       path: assetResult.path,
       metadataPath: assetResult.metadataPath,
+      filename: assetResult.filename,
+      image_filename: assetResult.filename,
       thumbnailPath,
       width: dims?.width ?? 0,
       height: dims?.height ?? 0,
@@ -282,15 +289,20 @@ export async function generateImage(params: GenImageParams): Promise<ExecToolRes
 
   // Save via standard asset pipeline
   const modelName = GEMINI_MODELS[model]
-  const assetResult = await saveAsset({
-    filePath: generated.filePath,
-    taskId,
-    agent,
-    type: 'images',
-    tool: modelName,
-    description: prompt.slice(0, 200),
-    tags: [preset !== 'custom' ? preset : `${width}x${height}`, model],
-  })
+  let assetResult
+  try {
+    assetResult = await saveAsset({
+      filePath: generated.filePath,
+      taskId,
+      agent,
+      type: 'images',
+      tool: modelName,
+      description: prompt.slice(0, 200),
+      tags: [preset !== 'custom' ? preset : `${width}x${height}`, model],
+    })
+  } catch (err) {
+    return fail(`Image generated but asset save failed: ${String(err)}`)
+  }
 
   if (!assetResult.ok) {
     return fail(`Image generated but asset save failed: ${assetResult.error}`)
@@ -311,6 +323,8 @@ export async function generateImage(params: GenImageParams): Promise<ExecToolRes
   return succeed({
     path: assetResult.path,
     metadataPath: assetResult.metadataPath,
+    filename: assetResult.filename,
+    image_filename: assetResult.filename,
     thumbnailPath,
     width,
     height,

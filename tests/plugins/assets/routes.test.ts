@@ -908,6 +908,54 @@ describe('exec tool: bakin_exec_assets_save', () => {
     expect(result.error).toMatch(/not found/i)
   })
 
+  it('returns an existing managed asset instead of re-saving it', async () => {
+    const filename = '20260521-existing-image-a1b2c3d4.jpg'
+    const relPath = `assets/store/2026-05/${filename}`
+    const fullPath = join(testDir, relPath)
+    mkdirSync(join(testDir, 'assets', 'store', '2026-05'), { recursive: true })
+    writeFileSync(fullPath, 'already-managed-image')
+
+    const tool = findTool(plugin.execTools, 'bakin_exec_assets_save')!
+    const result = await callTool(tool, {
+      filePath: relPath,
+      taskId: 'task-managed',
+      type: 'images',
+      description: 'Should not duplicate',
+    }, 'pixel')
+
+    expect(result).toMatchObject({
+      ok: true,
+      path: relPath,
+      metadataPath: `${relPath}.meta.json`,
+      filename,
+      alreadyManaged: true,
+    })
+  })
+
+  it('returns an existing managed asset from an absolute Bakin path instead of re-saving it', async () => {
+    const filename = '20260521-absolute-image-a1b2c3d4.jpg'
+    const relPath = `assets/store/2026-05/${filename}`
+    const fullPath = join(testDir, relPath)
+    mkdirSync(join(testDir, 'assets', 'store', '2026-05'), { recursive: true })
+    writeFileSync(fullPath, 'already-managed-image')
+
+    const tool = findTool(plugin.execTools, 'bakin_exec_assets_save')!
+    const result = await callTool(tool, {
+      filePath: fullPath,
+      taskId: 'task-managed',
+      type: 'images',
+      description: 'Should not duplicate',
+    }, 'pixel')
+
+    expect(result).toMatchObject({
+      ok: true,
+      path: relPath,
+      metadataPath: `${relPath}.meta.json`,
+      filename,
+      alreadyManaged: true,
+    })
+  })
+
   it('logs activity on successful save', async () => {
     const sourceFile = join(testDir, 'activity-test.txt')
     writeFileSync(sourceFile, 'activity test')
