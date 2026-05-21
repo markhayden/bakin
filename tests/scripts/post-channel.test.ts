@@ -19,6 +19,22 @@ const contentDirMock = {
 mock.module('../../src/core/content-dir', () => contentDirMock)
 mock.module('@/core/content-dir', () => contentDirMock)
 
+let mockChannelAliases: Record<string, string> = {}
+let mockNotificationChannel = ''
+let mockNotificationTarget = ''
+const settingsMock = {
+  getSettings: () => ({
+    notifications: {
+      channel: mockNotificationChannel,
+      target: mockNotificationTarget,
+      gateAlerts: true,
+      channelAliases: mockChannelAliases,
+    },
+  }),
+}
+mock.module('@/core/settings', () => settingsMock)
+mock.module('../../src/core/settings', () => settingsMock)
+
 let mockWorkflowAuthorizationError: Error | null = null
 const mockAssertWorkflowToolAllowed = mock(async (..._args: unknown[]) => {
   if (mockWorkflowAuthorizationError) throw mockWorkflowAuthorizationError
@@ -35,16 +51,21 @@ import { postChannel } from '../../scripts/lib/post-channel'
 describe('postChannel', () => {
   const originalEnv = { ...process.env }
   const deliverContent = mock(async () => ({
-    deliveries: [{ channelId: 'general', ref: 'message:1', renderedAt: '2026-04-11T10:00:00Z' }],
+    deliveries: [{ channelId: 'discord:channel-123', ref: 'message:1', renderedAt: '2026-04-11T10:00:00Z' }],
   }))
+  const listChannels = mock(async () => [{ id: 'discord', label: 'Discord', capabilities: ['message'] }])
   const runtime = {
-    channels: { deliverContent },
+    channels: { deliverContent, list: listChannels },
   } as unknown as AgentRuntimeAdapter
 
   beforeEach(() => {
     deliverContent.mockClear()
+    listChannels.mockClear()
     mockAssertWorkflowToolAllowed.mockClear()
     mockWorkflowAuthorizationError = null
+    mockNotificationChannel = ''
+    mockNotificationTarget = ''
+    mockChannelAliases = { general: 'discord:channel-123', 'testing-ground': 'discord:test-channel' }
     mockContentDir = tmpdir()
   })
 
@@ -62,12 +83,12 @@ describe('postChannel', () => {
     }, runtime)
 
     expect(result.ok).toBe(true)
-    expect(result.channel).toBe('#general')
+    expect(result.channel).toBe('discord:channel-123')
     expect(result.taskId).toBe('task-123')
     expect(deliverContent).toHaveBeenCalledTimes(1)
     const [call] = deliverContent.mock.calls[0] as unknown as [Record<string, unknown>]
     expect(call).toEqual({
-      channels: ['general'],
+      channels: ['discord:channel-123'],
       content: {
         title: 'Channel post',
         body: 'test message',
@@ -77,9 +98,57 @@ describe('postChannel', () => {
           taskId: 'task-123',
           embed: undefined,
           requestedChannel: '#general',
+          resolvedChannel: 'discord:channel-123',
         },
       },
     })
+  })
+
+  it('fails before runtime delivery when a bare channel has no alias or runtime channel match', async () => {
+    mockChannelAliases = {}
+
+    const result = await postChannel({
+      channel: '#general',
+      content: 'test message',
+      agent: 'chef',
+      taskId: 'task-123',
+    }, runtime)
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('No channel alias configured for #general')
+    expect(result.error).toContain('notifications.channelAliases.general')
+    expect(deliverContent).not.toHaveBeenCalled()
+  })
+
+  it('allows direct runtime channel ids without aliases', async () => {
+    mockChannelAliases = {}
+
+    const result = await postChannel({
+      channel: 'discord',
+      content: 'test message',
+      agent: 'chef',
+    }, runtime)
+
+    expect(result.ok).toBe(true)
+    const [call] = deliverContent.mock.calls[0] as unknown as [Record<string, unknown>]
+    expect(call.channels).toEqual(['discord'])
+  })
+
+  it('uses the legacy notification target as the default general alias', async () => {
+    mockChannelAliases = {}
+    mockNotificationChannel = 'discord'
+    mockNotificationTarget = 'channel-123'
+
+    const result = await postChannel({
+      channel: '#general',
+      content: 'test message',
+      agent: 'chef',
+    }, runtime)
+
+    expect(result.ok).toBe(true)
+    expect(result.channel).toBe('discord:channel-123')
+    const [call] = deliverContent.mock.calls[0] as unknown as [Record<string, unknown>]
+    expect(call.channels).toEqual(['discord:channel-123'])
   })
 
   it('returns a failed exec result when runtime delivery fails', async () => {
@@ -154,10 +223,10 @@ describe('postChannel', () => {
     }, runtime)
 
     expect(result.ok).toBe(true)
-    expect(result.channel).toBe('#testing-ground')
+    expect(result.channel).toBe('discord:test-channel')
     expect(result.testMode).toBe(true)
     expect(result.requestedChannel).toBe('#general')
     const [call] = deliverContent.mock.calls[0] as unknown as [Record<string, unknown> & { channels: unknown }]
-    expect(call.channels).toEqual(['testing-ground'])
+    expect(call.channels).toEqual(['discord:test-channel'])
   })
 })

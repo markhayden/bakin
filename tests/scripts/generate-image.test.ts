@@ -228,6 +228,43 @@ describe('generateImage', () => {
     )
   })
 
+  it('reads Gemini API key from runtime Google provider config', async () => {
+    delete process.env.GEMINI_API_KEY
+    delete process.env.GOOGLE_AI_API_KEY
+    mockRuntimeConfig = {
+      models: {
+        providers: {
+          google: {
+            apiKey: 'provider-key-123',
+          },
+        },
+      },
+      agents: {
+        defaults: {
+          imageGenerationModel: {
+            primary: 'google/gemini-3-pro-image-preview',
+          },
+        },
+      },
+    }
+
+    spyOn(globalThis, 'fetch').mockResolvedValue(mockFetchResponse())
+    mockSaveAsset.mockResolvedValue({ ok: true, path: 'x', metadataPath: 'x.meta.json', filename: 'x.jpg' })
+
+    const result = await generateImage({
+      prompt: 'test',
+      taskId: 'task-google-provider',
+      agent: 'pixel',
+      thumbnail: false,
+    })
+
+    expect(result.ok).toBe(true)
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('key=provider-key-123'),
+      expect.anything(),
+    )
+  })
+
   it('returns fail when Gemini API returns error', async () => {
     spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: false,

@@ -55,6 +55,8 @@ export type {
   RuntimeMemoryReadRange,
   RuntimeMemorySearchResult,
   RuntimeMemoryTier,
+  RuntimeMessageToolPolicy,
+  RuntimeMessageToolsMode,
   RuntimeMetadata,
   RuntimePermissionPatch,
   RawCronSnapshot,

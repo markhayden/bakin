@@ -340,7 +340,21 @@ export interface RuntimeChannel {
   metadata?: Record<string, unknown>
 }
 
-export interface RuntimeMessageArgs {
+export type RuntimeMessageToolsMode = 'auto' | 'none'
+
+export interface RuntimeMessageToolPolicy {
+  /**
+   * Controls whether runtime-native tools are available for this agent turn.
+   * `none` disables tools. Omit or use `auto` for runtime/provider defaults.
+   */
+  toolsMode?: RuntimeMessageToolsMode
+  /** Optional runtime-native tool allowlist for this turn. */
+  toolsAllow?: string[]
+  /** Optional runtime-native tool denylist for this turn. */
+  toolsDeny?: string[]
+}
+
+export interface RuntimeMessageArgs extends RuntimeMessageToolPolicy {
   agentId: string
   content: string
   /**

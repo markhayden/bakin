@@ -10,6 +10,13 @@ Core Bakin keeps only the stable host surface for installed plugins:
 
 Planning sessions are plugin-owned durable records. The plugin stores visible user, assistant, and `activity` timeline entries under `messaging/sessions/<id>.json`, plus proposals. Runtime conversation continuity is adapter-owned: session message routes and exec tools pass a stable SDK-built `threadId` (`messaging:${sessionId}:${agentId}`) through `ctx.runtime.messaging`, rather than replaying prior stored messages into every prompt. Search indexes user/assistant planning text and proposal summaries; tool activity stays available in the UI timeline but is excluded from `message_body`.
 
+Live runtime turns can be scoped per request with `RuntimeMessageArgs`:
+`toolsMode`, `toolsAllow`, and `toolsDeny`. Use this on
+`ctx.runtime.messaging.send()` or `.stream()` when a planning/prep turn needs a
+hard tool boundary, for example `toolsMode: 'none'` for text-only planning. This
+is separate from cron `toolsAllow`, plugin manifest permissions, and workflow
+step ownership.
+
 The official plugin must use task-backed scheduling for production work:
 
 - Plans hold concrete `channels`, not core-owned state.

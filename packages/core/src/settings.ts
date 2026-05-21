@@ -147,7 +147,9 @@ export interface BakinSettings {
   }
   notifications: {
     channel: string
+    target: string
     gateAlerts: boolean
+    channelAliases: Record<string, string>
   }
   workflow: {
     stepTimeoutMs: number
@@ -259,7 +261,9 @@ export const DEFAULT_SETTINGS: BakinSettings = {
   },
   notifications: {
     channel: '',
+    target: '',
     gateAlerts: true,
+    channelAliases: {},
   },
   workflow: {
     stepTimeoutMs: 60 * 60 * 1000,       // 1 hour

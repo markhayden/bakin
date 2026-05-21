@@ -46,6 +46,9 @@ interface RuntimeSkillConfig {
   skills?: {
     entries?: Record<string, { apiKey?: unknown; env?: { GEMINI_API_KEY?: unknown } }>
   }
+  models?: {
+    providers?: Record<string, { apiKey?: unknown; env?: { GEMINI_API_KEY?: unknown; GOOGLE_AI_API_KEY?: unknown } }>
+  }
 }
 
 async function getApiKey(): Promise<string | null> {
@@ -59,6 +62,10 @@ async function getApiKey(): Promise<string | null> {
     const skill = config?.skills?.entries?.['nano-banana-pro']
     if (typeof skill?.apiKey === 'string') return skill.apiKey
     if (typeof skill?.env?.GEMINI_API_KEY === 'string') return skill.env.GEMINI_API_KEY
+    const google = config?.models?.providers?.google
+    if (typeof google?.apiKey === 'string') return google.apiKey
+    if (typeof google?.env?.GEMINI_API_KEY === 'string') return google.env.GEMINI_API_KEY
+    if (typeof google?.env?.GOOGLE_AI_API_KEY === 'string') return google.env.GOOGLE_AI_API_KEY
     return null
   } catch {
     return null
@@ -255,7 +262,7 @@ export async function generateImage(params: GenImageParams): Promise<ExecToolRes
 
   const apiKey = await getApiKey()
   if (!apiKey) {
-    return fail('No Gemini API key found. Set GEMINI_API_KEY env var or configure the runtime skill entry')
+    return fail('No Gemini API key found. Set GEMINI_API_KEY env var or configure the runtime Google model provider')
   }
 
   // Resolve dimensions

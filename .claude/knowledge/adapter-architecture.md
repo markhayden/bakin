@@ -119,6 +119,27 @@ into runtime provider metadata. The runtime may expose execution status through
 `runtime.tasks.*`, but task title, column, priority, blockers, workflow state,
 and logs belong to the Bakin task store.
 
+## Permission Layers
+
+Bakin has several permission and capability layers. Do not treat a failure in
+one layer as evidence that the others should be loosened:
+
+- Filesystem/process sandbox policy controls what a local command may read,
+  write, or reach over the network.
+- Plugin manifest permissions control which `ctx.runtime.*` surfaces an
+  installed plugin can call through `src/lib/plugin-permissions.ts`.
+- Workflow step ownership controls `bakin_exec_*` tools with
+  `assertWorkflowToolAllowed`; the current step owner may log progress, submit
+  work, block work, or post an output according to the active step type.
+- Runtime messaging tool policy controls the tools available to one live
+  runtime agent turn. `RuntimeMessageArgs` supports `toolsMode`, `toolsAllow`,
+  and `toolsDeny`; the OpenClaw adapter forwards these to Gateway agent
+  requests. Use `toolsMode: 'none'` when a delegated turn must produce text
+  only.
+- Runtime cron `toolsAllow` is native isolated cron agent policy. It is exposed
+  as `CronJob.toolsAllow` for scheduling visibility and is separate from live
+  messaging policy and MCP routing.
+
 ## Runtime Messaging Streams
 
 Messaging callers pass stable Bakin `threadId` values such as
@@ -146,6 +167,16 @@ available as the provider-agnostic fallback.
 Channel operations go through `runtime.channels.*`. Cron operations go through
 `runtime.cron.*`. Plugin notification channel definitions still belong to the
 Bakin workflow/channel registry; provider delivery is adapter-backed.
+
+Logical channel labels such as `general` or `#general` are not assumed to be
+runtime delivery targets. Exec tools that deliver content resolve labels through
+`settings.notifications.channelAliases` before calling the runtime adapter. A
+fully-qualified target such as `discord:<target>` passes through unchanged; a
+bare id is allowed only when it matches `runtime.channels.list()`. The
+`health.channel-aliases` check validates alias targets without sending a
+message. For backwards compatibility, a legacy
+`notifications.channel` + `notifications.target` pair supplies the default
+`general` alias only when `channelAliases.general` is not set.
 
 Cron adapter policy fields should be normalized at the runtime boundary. For
 OpenClaw, native isolated agent-turn cron tool allowlists live on

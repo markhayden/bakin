@@ -89,10 +89,12 @@ mock.module('../../src/core/task-store', () => taskStoreMock)
 
 const mockLoadInstance = mock((..._args: unknown[]) => null)
 const mockCreateInstance = mock((..._args: unknown[]) => undefined)
+const mockCancelWorkflowInstance = mock((..._args: unknown[]) => undefined)
 
 mock.module('@bakin/workflows/lib/runtime', () => ({
   createInstance: (...args: unknown[]) => mockCreateInstance(...args),
   loadInstance: (...args: unknown[]) => mockLoadInstance(...args),
+  cancelInstance: (...args: unknown[]) => mockCancelWorkflowInstance(...args),
 }))
 
 mock.module('@bakin/workflows/lib/matcher', () => ({
@@ -113,6 +115,7 @@ const hookHandlers: Record<string, (...args: unknown[]) => unknown> = {
   'workflows.matchWorkflow': () => null,
   'workflows.loadDefinition': (data: any) => mockLoadDefinition(data),
   'workflows.definitions.list': () => mockListDefinitions(),
+  'workflows.cancelInstance': (data: any) => mockCancelWorkflowInstance(data),
 }
 
 const mockHookRegistry = {
@@ -265,6 +268,18 @@ describe('task-service', () => {
         expect.objectContaining({ id: 'task-1', reason: 'API key expired' }),
         undefined,
       )
+    })
+
+    it('cancels active workflow instance when blocking a workflow-backed task', async () => {
+      mockLoadInstance.mockReturnValueOnce({ status: 'in_progress' } as any)
+
+      await service.blockTaskWithEffects('task-1', 'Image provider unavailable', 'pixel')
+
+      expect(mockCancelWorkflowInstance).toHaveBeenCalledWith({
+        taskId: 'task-1',
+        reason: 'Task blocked: Image provider unavailable',
+        actor: { source: 'agent', id: 'pixel', displayName: 'pixel' },
+      })
     })
   })
 

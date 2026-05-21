@@ -12,6 +12,7 @@ import type {
   CronRun,
   CreateCronJobInput,
   CreateRuntimeAgentInput,
+  MessageArgs,
   RuntimeAgent,
   RuntimeAvailableModel,
   RuntimeMetadata,
@@ -97,6 +98,15 @@ const NATIVE_APPROVAL_NOTICE = [
 const NATIVE_APPROVAL_PROVIDERS = new Set(['discord', 'telegram', 'slack', 'matrix', 'qqbot'])
 const OPENCLAW_PLUGIN_ALLOWLIST_WARNING = 'plugins.allow is empty'
 const ANSI_RE = /\x1b\[[0-?]*[ -/]*[@-~]/g
+
+interface OpenClawAgentTurnOptions {
+  agentId: string
+  messages: Array<{ role: string; content: string }>
+  sessionKey?: string
+  toolsMode?: MessageArgs['toolsMode']
+  toolsAllow?: string[]
+  toolsDeny?: string[]
+}
 
 class OpenClawCommandError extends Error {
   readonly args: string[]
@@ -470,18 +480,24 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   messaging = {
-    send: async (args: { agentId: string; content: string; threadId?: string; metadata?: RuntimeMetadata }) => {
+    send: async (args: MessageArgs) => {
       const content = await this.chatCompletion({
         agentId: args.agentId,
         messages: [{ role: 'user', content: args.content }],
         sessionKey: args.threadId,
+        toolsMode: args.toolsMode,
+        toolsAllow: args.toolsAllow,
+        toolsDeny: args.toolsDeny,
       })
       return { id: `msg-${Date.now()}`, content }
     },
-    stream: (args: { agentId: string; content: string; threadId?: string; metadata?: RuntimeMetadata }): AsyncIterable<ChatChunk> => this.streamChat({
+    stream: (args: MessageArgs): AsyncIterable<ChatChunk> => this.streamChat({
       agentId: args.agentId,
       messages: [{ role: 'user', content: args.content }],
       sessionKey: args.threadId,
+      toolsMode: args.toolsMode,
+      toolsAllow: args.toolsAllow,
+      toolsDeny: args.toolsDeny,
     }),
   }
 
@@ -992,11 +1008,11 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return headers
   }
 
-  private async chatCompletion(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): Promise<string> {
+  private async chatCompletion(opts: OpenClawAgentTurnOptions): Promise<string> {
     return this.runOpenClawAgentGateway(opts)
   }
 
-  private async *streamChat(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): AsyncIterable<ChatChunk> {
+  private async *streamChat(opts: OpenClawAgentTurnOptions): AsyncIterable<ChatChunk> {
     const primary = this.runOpenClawAgentGatewayStream(opts)
     if (!opts.sessionKey) {
       yield* primary
@@ -1016,13 +1032,13 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     yield* mergeChatStreams(primary, activity, () => activityAbort.abort())
   }
 
-  private async *runOpenClawAgentGatewayStream(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): AsyncIterable<ChatChunk> {
+  private async *runOpenClawAgentGatewayStream(opts: OpenClawAgentTurnOptions): AsyncIterable<ChatChunk> {
     const content = await this.runOpenClawAgentGateway(opts)
     if (content) yield { type: 'text', content }
     yield { type: 'done' }
   }
 
-  private async runOpenClawAgentGateway(opts: { agentId: string; messages: Array<{ role: string; content: string }>; sessionKey?: string }): Promise<string> {
+  private async runOpenClawAgentGateway(opts: OpenClawAgentTurnOptions): Promise<string> {
     const params: Record<string, unknown> = {
       agentId: opts.agentId,
       message: messagesToOpenClawPrompt(opts.messages),
@@ -1030,6 +1046,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       timeout: OPENCLAW_AGENT_TIMEOUT_SECONDS,
       idempotencyKey: `bakin-${randomUUID()}`,
     }
+    applyRuntimeMessageToolPolicy(params, opts)
     if (opts.sessionKey) params.sessionId = openClawCliSessionId(opts.agentId, opts.sessionKey)
     try {
       const payload = await this.openClawChatGateway().request('agent', params, {
@@ -1083,6 +1100,27 @@ function messagesToOpenClawPrompt(messages: Array<{ role: string; content: strin
   const lastUser = [...messages].reverse().find((message) => message.role === 'user' && message.content.trim())
   if (lastUser) return lastUser.content
   return messages.map((message) => message.content).filter(Boolean).join('\n\n')
+}
+
+function normalizeToolList(value: string[] | undefined): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const seen = new Set<string>()
+  const tools: string[] = []
+  for (const entry of value) {
+    const tool = typeof entry === 'string' ? entry.trim() : ''
+    if (!tool || seen.has(tool)) continue
+    seen.add(tool)
+    tools.push(tool)
+  }
+  return tools.length > 0 ? tools : undefined
+}
+
+function applyRuntimeMessageToolPolicy(params: Record<string, unknown>, opts: OpenClawAgentTurnOptions): void {
+  if (opts.toolsMode === 'none' || opts.toolsMode === 'auto') params.toolsMode = opts.toolsMode
+  const toolsAllow = normalizeToolList(opts.toolsAllow)
+  const toolsDeny = normalizeToolList(opts.toolsDeny)
+  if (toolsAllow) params.toolsAllow = toolsAllow
+  if (toolsDeny) params.toolsDeny = toolsDeny
 }
 
 function extractOpenClawAgentText(value: unknown): string {

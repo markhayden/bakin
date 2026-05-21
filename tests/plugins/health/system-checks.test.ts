@@ -53,6 +53,9 @@ mock.module('../../../packages/adapter-openclaw/src/home', () => ({
 }))
 
 let mockServiceEnabled = false
+let mockNotificationChannel = ''
+let mockNotificationTarget = ''
+let mockChannelAliases: Record<string, string> = {}
 
 let mockMcporterInstalled = true
 let mockInstallMcporterReturn = true
@@ -98,6 +101,12 @@ mock.module('../../../src/core/settings', () => ({
   getSettings: () => ({
     service: { enabled: mockServiceEnabled },
     search: { adapter: 'antfly', settings: { enabled: mockSearchEnabled, url: mockSearchUrl } },
+    notifications: {
+      channel: mockNotificationChannel,
+      target: mockNotificationTarget,
+      gateAlerts: true,
+      channelAliases: mockChannelAliases,
+    },
   }),
   resetSettingsCache: () => {},
 }))
@@ -139,6 +148,7 @@ import { checkService } from '../../../plugins/health/lib/system-checks/service'
 import { checkMcporter, mcporterRepair } from '../../../plugins/health/lib/system-checks/mcporter'
 import { checkRuntime } from '../../../plugins/health/lib/system-checks/runtime'
 import { checkChannelApprovals } from '../../../plugins/health/lib/system-checks/channel-approvals'
+import { checkChannelAliases } from '../../../plugins/health/lib/system-checks/channel-aliases'
 import { checkSearchAdapter } from '../../../plugins/health/lib/system-checks/search'
 import { checkAndSyncSkill, syncSkillRepair } from '../../../plugins/health/lib/system-checks/sync-skill'
 import { checkPluginAssets } from '../../../plugins/health/lib/system-checks/plugin-assets'
@@ -176,6 +186,9 @@ beforeEach(() => {
   mockUsingBakinHome = true
   mockContentDir = testDir
   mockServiceEnabled = false
+  mockNotificationChannel = ''
+  mockNotificationTarget = ''
+  mockChannelAliases = {}
   mockMcporterInstalled = true
   mockInstallMcporterReturn = true
   mockAgentEntries = []
@@ -400,6 +413,81 @@ describe('checkChannelApprovals', () => {
   })
 })
 
+// ─── checkChannelAliases ─────────────────────────────────────────────────
+
+describe('checkChannelAliases', () => {
+  it('reports ok when no aliases are configured', async () => {
+    mockRuntime.channels.list = async () => [{
+      id: 'discord',
+      platform: 'discord',
+      label: 'Discord',
+      capabilities: ['message'],
+    }]
+
+    const results = await checkChannelAliases(mockRuntime)
+    expect(results).toHaveLength(1)
+    expect(results[0].status).toBe('ok')
+    expect(results[0].message).toContain('No channel aliases')
+  })
+
+  it('reports ok when aliases target available runtime channels', async () => {
+    mockChannelAliases = { general: 'discord:channel-123' }
+    mockRuntime.channels.list = async () => [{
+      id: 'discord',
+      platform: 'discord',
+      label: 'Discord',
+      capabilities: ['message'],
+    }]
+
+    const results = await checkChannelAliases(mockRuntime)
+    expect(results[0].status).toBe('ok')
+    expect(results[0].message).toContain('1 channel alias')
+  })
+
+  it('warns when an alias targets an unavailable runtime channel', async () => {
+    mockChannelAliases = { general: 'slack:channel-123' }
+    mockRuntime.channels.list = async () => [{
+      id: 'discord',
+      platform: 'discord',
+      label: 'Discord',
+      capabilities: ['message'],
+    }]
+
+    const results = await checkChannelAliases(mockRuntime)
+    expect(results[0].status).toBe('warn')
+    expect(results[0].message).toContain('unavailable runtime channel')
+  })
+
+  it('reports ok when a legacy notification target supplies the general alias', async () => {
+    mockNotificationChannel = 'discord'
+    mockNotificationTarget = 'channel-123'
+    mockRuntime.channels.list = async () => [{
+      id: 'discord',
+      platform: 'discord',
+      label: 'Discord',
+      capabilities: ['message'],
+    }]
+
+    const results = await checkChannelAliases(mockRuntime)
+    expect(results[0].status).toBe('ok')
+    expect(results[0].message).toContain('1 channel alias')
+  })
+
+  it('warns when the configured alert channel is a missing alias', async () => {
+    mockNotificationChannel = 'general'
+    mockRuntime.channels.list = async () => [{
+      id: 'discord',
+      platform: 'discord',
+      label: 'Discord',
+      capabilities: ['message'],
+    }]
+
+    const results = await checkChannelAliases(mockRuntime)
+    expect(results[0].status).toBe('warn')
+    expect(results[0].message).toContain('notifications.channelAliases.general')
+  })
+})
+
 // ─── checkSearchAdapter ───────────────────────────────────────────────────
 
 describe('checkSearchAdapter', () => {
@@ -538,7 +626,7 @@ describe('checkPluginAssets', () => {
 // ─── Registration smoke test ──────────────────────────────────────────────
 
 describe('plugin registration', () => {
-  it('registers all 12 system + managed-blocks health checks on activate', async () => {
+  it('registers all 13 system + managed-blocks health checks on activate', async () => {
     const healthPlugin = (await import('../../../plugins/health')).default
     const registeredIds: string[] = []
     const noop = mock()
@@ -565,12 +653,13 @@ describe('plugin registration', () => {
     }
     await healthPlugin.activate(ctx as unknown as Parameters<typeof healthPlugin.activate>[0])
 
-    // 12 health checks: 10 health-owned checks plus the 2 core managed-block scopes.
+    // 13 health checks: 11 health-owned checks plus the 2 core managed-block scopes.
     expect(registeredIds).toContain('content-dir')
     expect(registeredIds).toContain('service')
     expect(registeredIds).toContain('mcporter')
     expect(registeredIds).toContain('runtime')
     expect(registeredIds).toContain('channel-approvals')
+    expect(registeredIds).toContain('channel-aliases')
     expect(registeredIds).toContain('restart-recovery')
     expect(registeredIds).toContain('search')
     expect(registeredIds).toContain('orchestrator-rules')

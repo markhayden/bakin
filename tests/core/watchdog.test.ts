@@ -38,7 +38,7 @@ mock.module('../../src/core/settings', () => ({
       stepTimeoutMs: 60 * 60 * 1000,
       maxRedispatches: 3,
     },
-    notifications: { channel: '', gateAlerts: true },
+    notifications: { channel: '', target: '', gateAlerts: true, channelAliases: {} },
   }),
 }))
 
