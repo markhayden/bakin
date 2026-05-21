@@ -24,6 +24,7 @@ import { checkService } from './lib/system-checks/service'
 import { checkMcporter, mcporterRepair } from './lib/system-checks/mcporter'
 import { checkRuntime } from './lib/system-checks/runtime'
 import { checkChannelApprovals } from './lib/system-checks/channel-approvals'
+import { checkChannelAliases } from './lib/system-checks/channel-aliases'
 import { checkRestartRecovery } from './lib/system-checks/restart-recovery'
 import { checkSearchAdapter } from './lib/system-checks/search'
 import { checkAndSyncSkill, syncSkillRepair } from './lib/system-checks/sync-skill'
@@ -564,6 +565,11 @@ const healthPlugin: BakinPlugin = definePlugin({
       id: 'channel-approvals',
       name: 'Runtime channel approval responses',
       run: () => checkChannelApprovals(ctx.runtime),
+    })
+    ctx.registerHealthCheck({
+      id: 'channel-aliases',
+      name: 'Runtime channel aliases',
+      run: () => checkChannelAliases(ctx.runtime),
     })
     ctx.registerHealthCheck({
       id: 'restart-recovery',

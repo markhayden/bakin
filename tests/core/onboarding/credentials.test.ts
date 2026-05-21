@@ -104,10 +104,10 @@ describe('onboarding credentials component', () => {
       expect(result.message).toContain('no provider entries')
     })
 
-    it('reports warn when all entries have empty apiKeys', async () => {
+    it('reports warn when all entries have empty credentials', async () => {
       writeFileSync(authProfilesPath(), JSON.stringify([
         { provider: 'anthropic', apiKey: '' },
-        { provider: 'openai', apiKey: '   ' },
+        { provider: 'openai', apiKey: '   ', token: '', access: '' },
       ]))
       const result = await llmComponent.check()
       expect(result.status).toBe('warn')
@@ -121,6 +121,25 @@ describe('onboarding credentials component', () => {
       const result = await llmComponent.check()
       expect(result.status).toBe('ok')
       expect(result.details?.providers).toEqual(['anthropic'])
+    })
+
+    it('reports ok from token auth profiles', async () => {
+      writeFileSync(authProfilesPath(), JSON.stringify([
+        { provider: 'anthropic', type: 'token', token: 'anthropic-token' },
+      ]))
+      const result = await llmComponent.check()
+      expect(result.status).toBe('ok')
+      expect(result.details?.providers).toEqual(['anthropic'])
+    })
+
+    it('reports ok from Codex OAuth auth profiles', async () => {
+      writeFileSync(authProfilesPath(), JSON.stringify([
+        { provider: 'openai-codex', type: 'oauth', access: 'access-token', refresh: 'refresh-token' },
+      ]))
+      const result = await llmComponent.check()
+      expect(result.status).toBe('ok')
+      expect(result.message).toContain('openai-codex')
+      expect(result.details?.providers).toEqual(['openai-codex'])
     })
 
     it('reports ok from { profiles: [...] } shape', async () => {
@@ -139,12 +158,12 @@ describe('onboarding credentials component', () => {
       writeFileSync(authProfilesPath(), JSON.stringify({
         profiles: {
           'default-anthropic': { provider: 'anthropic', apiKey: 'sk-ant-dict' },
-          'codex-oauth': { provider: 'openai-codex', mode: 'oauth' },
+          'codex-oauth': { provider: 'openai-codex', mode: 'oauth', access: 'access-token' },
         },
       }))
       const result = await llmComponent.check()
       expect(result.status).toBe('ok')
-      expect(result.details?.providers).toEqual(['anthropic'])
+      expect(result.details?.providers).toEqual(['anthropic', 'openai-codex'])
     })
 
     it('reports ok with multiple providers when several are configured', async () => {

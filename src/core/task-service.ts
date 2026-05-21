@@ -199,6 +199,16 @@ export async function blockTaskWithEffects(
     meta: { taskId, title, reason },
   })
 
+  try {
+    await getHookRegistry().invoke('workflows.cancelInstance', {
+      taskId,
+      reason: `Task blocked: ${reason}`,
+      actor: { source: agent === 'system' || agent === 'human' ? agent : 'agent', id: agent, displayName: agent },
+    })
+  } catch (err) {
+    log.debug('Could not cancel workflow for blocked task', { taskId, err: err instanceof Error ? err.message : String(err) })
+  }
+
   // Propagate block to parent task for child workflow tasks (e.g., "parentId--stepId")
   const dashIdx = taskId.indexOf('--')
   if (dashIdx > 0) {

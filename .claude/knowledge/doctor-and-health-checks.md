@@ -46,7 +46,7 @@ The orchestrator is intentionally trivial — it has no opinion about what's bei
 
 (Plus 3 workflow checks already migrated under #137: `definitions`, `stale-instances`, `skills`.)
 
-### System-owned (10 checks, registered by health plugin)
+### System-owned (13 checks, registered by health plugin)
 
 | File | Registered id |
 |---|---|
@@ -54,10 +54,13 @@ The orchestrator is intentionally trivial — it has no opinion about what's bei
 | `plugins/health/lib/system-checks/service.ts` | `service` |
 | `plugins/health/lib/system-checks/mcporter.ts` | `mcporter` |
 | `plugins/health/lib/system-checks/runtime.ts` | `runtime` |
+| `plugins/health/lib/system-checks/channel-aliases.ts` | `channel-aliases` |
+| `plugins/health/lib/system-checks/restart-recovery.ts` | `restart-recovery` |
 | `plugins/health/lib/system-checks/channel-approvals.ts` | `channel-approvals` |
 | `plugins/health/lib/system-checks/search.ts` | `search` |
 | `plugins/health/lib/system-checks/sync-skill.ts` | `skill` |
 | `plugins/health/lib/system-checks/plugin-assets.ts` | `plugin-assets` |
+| `plugins/health/index.ts` | `plugin-registry` |
 | `src/core/agent-rules/managed-blocks.ts` | `orchestrator-rules` |
 | `src/core/agent-rules/managed-blocks.ts` | `managed-blocks` |
 

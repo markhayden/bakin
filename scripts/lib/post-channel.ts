@@ -6,6 +6,7 @@ import { existsSync } from 'fs'
 import { basename, join } from 'path'
 import { getContentDir } from '@/core/content-dir'
 import { getAppServices } from '@/core/app-services'
+import { resolveRuntimeChannelRef } from '@/core/channel-aliases'
 import { assertWorkflowToolAllowed } from '@/core/workflow-tool-authorization'
 import { pathForFilename } from '@bakin/assets/lib/path-for-filename'
 import { succeed, fail } from './common'
@@ -55,7 +56,15 @@ export async function postChannel(
   }
 
   const requestedChannel = params.channel
-  const channel = normalizeChannelTarget(isTestMode() ? TEST_CHANNEL : requestedChannel)
+  let channel: string
+  try {
+    channel = (await resolveRuntimeChannelRef(
+      runtime,
+      normalizeChannelTarget(isTestMode() ? TEST_CHANNEL : requestedChannel),
+    )).resolved
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : String(err))
+  }
   const { content, imageFilename, videoFilename, embed, taskId } = params
 
   const files = [
@@ -75,6 +84,7 @@ export async function postChannel(
           taskId,
           embed,
           requestedChannel,
+          resolvedChannel: channel,
           ...(isTestMode() && channel !== normalizeChannelTarget(requestedChannel) ? { testMode: true } : {}),
         },
       },

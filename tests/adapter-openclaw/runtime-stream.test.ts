@@ -108,6 +108,42 @@ describe('OpenClaw runtime Gateway chat', () => {
     expect(agentRequest?.params.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
   })
 
+  it('forwards per-turn tool policy on messaging sends', async () => {
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    await runtime.messaging.send({
+      agentId: 'pixel',
+      content: 'Plan without tools.',
+      toolsMode: 'none',
+      toolsAllow: ['message_send', 'message_send', ' '],
+      toolsDeny: ['schedule_create'],
+    })
+
+    const ws = FakeWebSocket.instances[0]!
+    const agentRequest = ws.sentFrames.find(frame => frame.method === 'agent')
+    expect(agentRequest?.params).toMatchObject({
+      toolsMode: 'none',
+      toolsAllow: ['message_send'],
+      toolsDeny: ['schedule_create'],
+    })
+  })
+
+  it('forwards per-turn tool policy on messaging streams', async () => {
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    await collect(runtime.messaging.stream({
+      agentId: 'pixel',
+      content: 'Stream without tools.',
+      toolsMode: 'none',
+    }))
+
+    const ws = FakeWebSocket.instances[0]!
+    const agentRequest = ws.sentFrames.find(frame => frame.method === 'agent')
+    expect(agentRequest?.params).toMatchObject({ toolsMode: 'none' })
+  })
+
   it('waits for the Gateway final response after the accepted ack', async () => {
     let finalEmitted = false
     FakeWebSocket.onRequest = (frame, ws) => {

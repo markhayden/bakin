@@ -111,6 +111,13 @@ blocking are allowed only for the current step owner. Direct task completion is
 denied while a workflow is active. Channel posts are allowed only for the current
 owner of the active `output` step.
 
+When a workflow-backed task is explicitly blocked through `blockTaskWithEffects`,
+core task-service invokes `workflows.cancelInstance` best-effort with the block
+reason. A blocked board task must not leave a stale `in_progress` workflow
+instance behind. Recovery should happen through explicit reopen/retry flows
+such as `workflows.reopenFromStep`, not by silently continuing the canceled
+instance.
+
 ## Node-Type Registry
 
 `plugins/workflows/lib/node-type-registry.ts`. Builtins self-register at module load; plugins add more via `ctx.registerNodeType`:
@@ -168,6 +175,15 @@ Plugin ids are auto-namespaced as `{pluginId}.{id}`; builtins keep their short r
 Teardown: `unregisterPluginNotificationChannels(pluginId)` is called by `src/lib/plugin-registry.ts` in the user-plugin-overrides-builtin path alongside `unregisterPluginNodeTypes`, so hot reload of a plugin that registered channels doesn't leak `{pluginId}.{id}` entries.
 
 The official Messaging plugin resolves channels through this registry from `bakin-bits-official/plugins/messaging`; the old hardcoded channel label/icon maps are gone.
+
+Registry ids are logical workflow/UI ids, not guaranteed provider delivery
+targets. Delivery tools resolve `#general`, `general`, and other labels through
+`settings.notifications.channelAliases` via `src/core/channel-aliases.ts`
+before they call `runtime.channels.*`. Use fully-qualified runtime targets such
+as `discord:<target>` in aliases. A bare value is accepted only when it matches
+an id from `runtime.channels.list()`. Legacy
+`notifications.channel` + `notifications.target` settings act as the default
+`general` alias only when no explicit `channelAliases.general` exists.
 
 ## Runtime Gate Approvals
 
