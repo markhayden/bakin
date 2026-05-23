@@ -8,6 +8,7 @@ import {
   codexAuthRunArgs,
   composeDownArgs,
   composeUpArgs,
+  initRunArgs,
   openclawExecArgs,
   preflight,
   reset,
@@ -25,9 +26,14 @@ function planFor(argv: string[]) {
 }
 
 /** Fake runner that returns canned results by argv prefix and records all calls. */
-function fakeDeps(over: Partial<{ results: (argv: string[]) => RunResult; env: Record<string, string | undefined> }> = {}) {
+function fakeDeps(over: Partial<{
+  results: (argv: string[]) => RunResult
+  env: Record<string, string | undefined>
+  exists: boolean
+}> = {}) {
   const calls: string[][] = []
   const wiped: string[] = []
+  const mkdirs: string[] = []
   const runner: CommandRunner = {
     async run(argv) {
       calls.push(argv)
@@ -42,11 +48,13 @@ function fakeDeps(over: Partial<{ results: (argv: string[]) => RunResult; env: R
   const deps: LifecycleDeps = {
     runner,
     rmrf: async (p) => { wiped.push(p) },
+    mkdirp: async (p) => { mkdirs.push(p) },
+    exists: () => over.exists ?? true, // default: config already present (init skipped)
     sleep: async () => {},
     log: () => {},
     env: over.env ?? { OP_SERVICE_ACCOUNT_TOKEN: 'tok' },
   }
-  return { deps, calls, wiped }
+  return { deps, calls, wiped, mkdirs }
 }
 
 describe('compose argv builders', () => {
@@ -66,6 +74,15 @@ describe('compose argv builders', () => {
   it('openclawExecArgs: non-interactive commands run -T through the cli service', () => {
     expect(openclawExecArgs(COMPOSE, ['mcp', 'set', 'x', '{}'])).toEqual([
       'docker', 'compose', '-f', COMPOSE, 'run', '--rm', '-T', 'openclaw-cli', 'mcp', 'set', 'x', '{}',
+    ])
+  })
+  it('initRunArgs: one-off onboard writes baseline config (mode local, auth skipped, no health probe)', () => {
+    expect(initRunArgs('img', '/tmp/fake-repo/dev/openclaw-home')).toEqual([
+      'docker', 'run', '--rm',
+      '-v', '/tmp/fake-repo/dev/openclaw-home:/home/node/.openclaw',
+      '--entrypoint', 'node', 'img',
+      'dist/index.js', 'onboard',
+      '--non-interactive', '--accept-risk', '--mode', 'local', '--auth-choice', 'skip', '--skip-health',
     ])
   })
   it('codexAuthRunArgs: dedicated docker run publishes the 1455 OAuth callback port (matches proven setup.sh path)', () => {
@@ -100,8 +117,8 @@ describe('preflight', () => {
 
 describe('up — native', () => {
   it('resolves secrets, brings up the gateway, then configures via openclaw CLI', async () => {
-    const { args, paths, plan } = planFor(['up'])
-    const { deps, calls } = fakeDeps()
+    const { paths, plan } = planFor(['up'])
+    const { deps, calls, mkdirs } = fakeDeps()
     await up(plan, paths, 'BRAVE_API_KEY=op://V/brave/cred', deps)
 
     const order = calls.map((c) => c.join(' '))
@@ -111,8 +128,37 @@ describe('up — native', () => {
     expect(opIdx).toBeGreaterThanOrEqual(0)
     expect(upIdx).toBeGreaterThan(opIdx)
     expect(braveIdx).toBeGreaterThan(upIdx)
-    // resolved brave key is injected into the mcp set command
     expect(order.find((c) => c.includes('mcp set brave-search'))).toContain('brave-secret')
+    // bind-mount target is ensured before bringing the container up
+    expect(mkdirs).toContain('/tmp/fake-repo/dev/openclaw-home')
+  })
+
+  it('skips config init when openclaw.json already exists', async () => {
+    const { paths, plan } = planFor(['up'])
+    const { deps, calls } = fakeDeps({ exists: true })
+    await up(plan, paths, 'BRAVE_API_KEY=op://V/brave/cred', deps)
+    expect(calls.some((c) => c.join(' ').includes('onboard --non-interactive'))).toBe(false)
+  })
+
+  it('initializes config before compose up when openclaw.json is absent', async () => {
+    const { paths, plan } = planFor(['up'])
+    const { deps, calls } = fakeDeps({ exists: false })
+    await up(plan, paths, 'BRAVE_API_KEY=op://V/brave/cred', deps)
+    const order = calls.map((c) => c.join(' '))
+    const initIdx = order.findIndex((c) => c.includes('onboard --non-interactive') && c.includes('--skip-health'))
+    const upIdx = order.findIndex((c) => c.includes('up -d'))
+    expect(initIdx).toBeGreaterThanOrEqual(0)
+    expect(upIdx).toBeGreaterThan(initIdx)
+  })
+})
+
+describe('up — fresh', () => {
+  it('brings the container down before wiping (releases the bind mount)', async () => {
+    const { paths, plan } = planFor(['up', '--fresh'])
+    const { deps, calls, wiped } = fakeDeps()
+    await up(plan, paths, 'BRAVE_API_KEY=op://V/brave/cred', deps)
+    expect(calls.some((c) => c.join(' ').includes('compose -f') && c.join(' ').includes('down'))).toBe(true)
+    expect(wiped).toEqual(['/tmp/fake-repo/dev/openclaw-home'])
   })
 })
 

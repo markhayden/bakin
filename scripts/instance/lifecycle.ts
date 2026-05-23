@@ -7,6 +7,8 @@
  * Boundary: dev-rig module, exempt from provider-boundary rules
  * (see tests/architecture/adapter-boundary.test.ts).
  */
+import { join } from 'node:path'
+
 import { ensureCodexAuth, type OpenClawExec } from './codex'
 import { buildConfigCommands } from './openclaw-config'
 import { parseSecretsTemplate, redactSecrets, resolveSecrets } from './op-resolve'
@@ -21,6 +23,8 @@ const HEALTH_RETRIES = 30
 export interface LifecycleDeps {
   runner: CommandRunner
   rmrf: (path: string) => Promise<void>
+  mkdirp: (path: string) => Promise<void>
+  exists: (path: string) => boolean
   sleep: (ms: number) => Promise<void>
   log: (message: string) => void
   env: Record<string, string | undefined>
@@ -53,6 +57,23 @@ export function codexAuthRunArgs(image: string, openclawHome: string, openclawAr
     '-v', `${openclawHome}:/home/node/.openclaw`,
     '--entrypoint', 'node', image,
     'dist/index.js', ...openclawArgs,
+  ]
+}
+
+/**
+ * One-off init that writes a baseline openclaw.json (gateway.mode=local) into
+ * the mounted home. The gateway exits with "Missing config" on an empty home,
+ * so this must run BEFORE bringing the gateway up on a fresh home. Auth is
+ * skipped here (codex is handled separately); --skip-health avoids probing a
+ * gateway that isn't up yet.
+ */
+export function initRunArgs(image: string, openclawHome: string): string[] {
+  return [
+    'docker', 'run', '--rm',
+    '-v', `${openclawHome}:/home/node/.openclaw`,
+    '--entrypoint', 'node', image,
+    'dist/index.js', 'onboard',
+    '--non-interactive', '--accept-risk', '--mode', 'local', '--auth-choice', 'skip', '--skip-health',
   ]
 }
 
@@ -119,15 +140,32 @@ export async function up(
 ): Promise<void> {
   await preflight(deps)
 
-  for (const dir of plan.wipeBeforeUp) {
-    deps.log(`wiping ${dir}`)
-    await deps.rmrf(dir)
+  if (plan.wipeBeforeUp.length > 0) {
+    // Stop containers FIRST so they release the bind mount; wiping a mounted
+    // dir leaves the container pointing at a deleted inode (ENOENT on writes).
+    await deps.runner.run(composeDownArgs(paths.composeFile))
+    for (const dir of plan.wipeBeforeUp) {
+      deps.log(`wiping ${dir}`)
+      await deps.rmrf(dir)
+    }
   }
+  // Ensure the bind-mount target exists as a real, host-owned dir.
+  await deps.mkdirp(paths.openclawHome)
 
   // Resolve secrets host-side; only resolved values flow onward (D4).
   const refs = parseSecretsTemplate(secretTemplateText)
   const secrets = await resolveSecrets(refs, deps.runner)
   const secretValues = Object.values(secrets)
+
+  // The gateway exits on an empty home ("Missing config"), so initialize a
+  // baseline openclaw.json via a one-off container before bringing it up.
+  if (!deps.exists(join(paths.openclawHome, 'openclaw.json'))) {
+    deps.log('initializing OpenClaw config…')
+    const init = await deps.runner.run(initRunArgs(openclawImage(deps), paths.openclawHome))
+    if (init.code !== 0) {
+      throw new Error(`OpenClaw config init failed: ${init.stderr.trim() || `exit ${init.code}`}`)
+    }
+  }
 
   deps.log('starting OpenClaw container…')
   const upResult = await deps.runner.run(

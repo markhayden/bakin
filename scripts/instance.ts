@@ -14,8 +14,8 @@
  *
  * See SPEC.md / tasks/plan.md. Dispatch is wired incrementally (T5/T6/T7).
  */
-import { readFileSync } from 'node:fs'
-import { rm } from 'node:fs/promises'
+import { existsSync, readFileSync } from 'node:fs'
+import { mkdir, rm } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import { parseInstanceArgs, type InstanceArgs } from './instance/args'
@@ -51,6 +51,8 @@ function makeDeps(): LifecycleDeps {
   return {
     runner: bunRunner,
     rmrf: (path) => rm(path, { recursive: true, force: true }),
+    mkdirp: async (path) => { await mkdir(path, { recursive: true }) },
+    exists: (path) => existsSync(path),
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     log: (message) => console.log(`▸ ${message}`),
     env: process.env,
