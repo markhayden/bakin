@@ -145,7 +145,7 @@ process.env.BAKIN_HOME = testDir
 import { ... } from '...'
 ```
 
-Run the full suite with `bun test --isolate` (CI) or `bun test --watch --isolate` (dev). Individual file: `bun test tests/path/to/foo.test.ts --isolate`. `--isolate` gives each test file a fresh global so `mock.module` overlays don't leak across files.
+Run the full suite with `bun run test` (CI) or `bun run test:watch` (dev) — both pass `--path-ignore-patterns "**/dev/**"` so the dockerized-rig's disposable home (`dev/bakin-instances/`, gitignored) doesn't leak stray test files into the run. Individual file: `bun test tests/path/to/foo.test.ts --isolate`. `--isolate` gives each test file a fresh global so `mock.module` overlays don't leak across files.
 
 Additional mandatory rules:
 - **Always clean up:** `afterAll(() => rmSync(testDir, { recursive: true, force: true }))`
