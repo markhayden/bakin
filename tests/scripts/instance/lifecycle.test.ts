@@ -5,10 +5,11 @@ import { instancePaths } from '../../../scripts/instance/paths'
 import { resolvePlan } from '../../../scripts/instance/modes'
 import type { CommandRunner, RunResult } from '../../../scripts/instance/runner'
 import {
+  bootstrapCommands,
   codexAuthRunArgs,
   composeDownArgs,
   composeUpArgs,
-  initRunArgs,
+  oneOffRunArgs,
   openclawExecArgs,
   preflight,
   reset,
@@ -76,14 +77,18 @@ describe('compose argv builders', () => {
       'docker', 'compose', '-f', COMPOSE, 'run', '--rm', '-T', 'openclaw-cli', 'mcp', 'set', 'x', '{}',
     ])
   })
-  it('initRunArgs: one-off onboard writes baseline config (mode local, auth skipped, no health probe)', () => {
-    expect(initRunArgs('img', '/tmp/fake-repo/dev/openclaw-home')).toEqual([
+  it('oneOffRunArgs: docker run of an openclaw command against the mounted home', () => {
+    expect(oneOffRunArgs('img', '/tmp/fake-repo/dev/openclaw-home', ['config', 'set', 'gateway.bind', 'lan'])).toEqual([
       'docker', 'run', '--rm',
       '-v', '/tmp/fake-repo/dev/openclaw-home:/home/node/.openclaw',
       '--entrypoint', 'node', 'img',
-      'dist/index.js', 'onboard',
-      '--non-interactive', '--accept-risk', '--mode', 'local', '--auth-choice', 'skip', '--skip-health',
+      'dist/index.js', 'config', 'set', 'gateway.bind', 'lan',
     ])
+  })
+  it('bootstrapCommands: baseline onboard then gateway.bind=lan (host reachability through published port)', () => {
+    const cmds = bootstrapCommands()
+    expect(cmds[0]).toEqual(['onboard', '--non-interactive', '--accept-risk', '--mode', 'local', '--auth-choice', 'skip', '--skip-health'])
+    expect(cmds).toContainEqual(['config', 'set', 'gateway.bind', 'lan'])
   })
   it('codexAuthRunArgs: dedicated docker run publishes the 1455 OAuth callback port (matches proven setup.sh path)', () => {
     expect(codexAuthRunArgs('ghcr.io/openclaw/openclaw:latest', '/tmp/fake-repo/dev/openclaw-home', ['models', 'auth', 'login', '--provider', 'openai-codex'])).toEqual([

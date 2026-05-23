@@ -18,7 +18,7 @@ import type { InstancePlan } from './modes'
 import type { CommandRunner } from './runner'
 
 const GATEWAY_HEALTH_URL = 'http://127.0.0.1:18789/healthz'
-const HEALTH_RETRIES = 30
+const HEALTH_RETRIES = 60 // ~60s; cold first boot inits workspace/sessions before listening
 
 export interface LifecycleDeps {
   runner: CommandRunner
@@ -60,20 +60,28 @@ export function codexAuthRunArgs(image: string, openclawHome: string, openclawAr
   ]
 }
 
-/**
- * One-off init that writes a baseline openclaw.json (gateway.mode=local) into
- * the mounted home. The gateway exits with "Missing config" on an empty home,
- * so this must run BEFORE bringing the gateway up on a fresh home. Auth is
- * skipped here (codex is handled separately); --skip-health avoids probing a
- * gateway that isn't up yet.
- */
-export function initRunArgs(image: string, openclawHome: string): string[] {
+/** A non-interactive one-off OpenClaw CLI run against the mounted home (gateway not yet up). */
+export function oneOffRunArgs(image: string, openclawHome: string, openclawArgs: string[]): string[] {
   return [
     'docker', 'run', '--rm',
     '-v', `${openclawHome}:/home/node/.openclaw`,
     '--entrypoint', 'node', image,
-    'dist/index.js', 'onboard',
-    '--non-interactive', '--accept-risk', '--mode', 'local', '--auth-choice', 'skip', '--skip-health',
+    'dist/index.js', ...openclawArgs,
+  ]
+}
+
+/**
+ * OpenClaw CLI commands that bootstrap a fresh home, run as one-offs BEFORE the
+ * gateway starts (it exits with "Missing config" on an empty home):
+ *   1. onboard — baseline openclaw.json (gateway.mode=local), auth skipped
+ *      (codex is separate), --skip-health (gateway isn't up yet)
+ *   2. gateway.bind=lan — without it the gateway binds container-loopback only,
+ *      so the host can't reach it through the published port ("Empty reply").
+ */
+export function bootstrapCommands(): string[][] {
+  return [
+    ['onboard', '--non-interactive', '--accept-risk', '--mode', 'local', '--auth-choice', 'skip', '--skip-health'],
+    ['config', 'set', 'gateway.bind', 'lan'],
   ]
 }
 
@@ -157,13 +165,15 @@ export async function up(
   const secrets = await resolveSecrets(refs, deps.runner)
   const secretValues = Object.values(secrets)
 
-  // The gateway exits on an empty home ("Missing config"), so initialize a
-  // baseline openclaw.json via a one-off container before bringing it up.
+  // The gateway exits on an empty home ("Missing config"), so bootstrap a
+  // baseline config via one-off containers before bringing it up.
   if (!deps.exists(join(paths.openclawHome, 'openclaw.json'))) {
     deps.log('initializing OpenClaw config…')
-    const init = await deps.runner.run(initRunArgs(openclawImage(deps), paths.openclawHome))
-    if (init.code !== 0) {
-      throw new Error(`OpenClaw config init failed: ${init.stderr.trim() || `exit ${init.code}`}`)
+    for (const command of bootstrapCommands()) {
+      const result = await deps.runner.run(oneOffRunArgs(openclawImage(deps), paths.openclawHome, command))
+      if (result.code !== 0) {
+        throw new Error(`OpenClaw config init failed (${command.join(' ')}): ${result.stderr.trim() || `exit ${result.code}`}`)
+      }
     }
   }
 
