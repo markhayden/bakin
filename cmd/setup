@@ -1,6 +1,0 @@
-#!/bin/bash
-# First-time setup — pulls image, configures OpenClaw, sets up auth
-set -euo pipefail
-cd "$(dirname "$0")/.."
-
-bash dev/docker/setup.sh
