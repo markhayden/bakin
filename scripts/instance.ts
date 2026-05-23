@@ -14,10 +14,15 @@
  *
  * See SPEC.md / tasks/plan.md. Dispatch is wired incrementally (T5/T6/T7).
  */
+import { readFileSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
-import { parseInstanceArgs, VERBS, type InstanceArgs } from './instance/args'
-import { instancePaths } from './instance/paths'
+import { parseInstanceArgs, type InstanceArgs } from './instance/args'
+import { down, reset, up, type LifecycleDeps } from './instance/lifecycle'
+import { resolvePlan } from './instance/modes'
+import { instancePaths, type InstancePaths } from './instance/paths'
+import { bunRunner } from './instance/runner'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
 
@@ -40,7 +45,25 @@ Flags:
 
 Prerequisites: Docker running, \`op\` CLI installed, OP_SERVICE_ACCOUNT_TOKEN set.`
 
-function main(argv: string[]): number {
+function makeDeps(): LifecycleDeps {
+  return {
+    runner: bunRunner,
+    rmrf: (path) => rm(path, { recursive: true, force: true }),
+    sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+    log: (message) => console.log(`▸ ${message}`),
+    env: process.env,
+  }
+}
+
+function printEnv(paths: InstancePaths, hostEnv: Record<string, string>): void {
+  console.log(`BAKIN_HOME=${hostEnv.BAKIN_HOME ?? '(default ~/.bakin)'}`)
+  for (const [key, value] of Object.entries(hostEnv)) {
+    if (key !== 'BAKIN_HOME') console.log(`${key}=${value}`)
+  }
+  console.log(`# openclaw-home: ${paths.openclawHome}`)
+}
+
+async function main(argv: string[]): Promise<number> {
   if (argv.length === 0 || argv[0] === '-h' || argv[0] === '--help') {
     console.log(USAGE)
     return argv.length === 0 ? 1 : 0
@@ -55,17 +78,52 @@ function main(argv: string[]): number {
     return 1
   }
 
-  // Lifecycle dispatch is implemented in T5–T7. For now, surface the resolved
-  // plan so the entrypoint + arg parsing are exercisable end-to-end.
   const paths = instancePaths(REPO_ROOT, args.mode)
-  console.log(`resolved: verb=${args.verb} mode=${args.mode} fresh=${args.fresh} source=${args.source} preconfigure=${args.preconfigure}`)
-  console.log(`openclaw-home: ${paths.openclawHome}`)
-  console.log(`(lifecycle dispatch lands in T5–T7; verbs known: ${VERBS.join(', ')})`)
+  const plan = resolvePlan(args, paths)
+  const deps = makeDeps()
+
+  try {
+    switch (args.verb) {
+      case 'up': {
+        const template = readFileSync(paths.secretsTemplate, 'utf-8')
+        await up(plan, paths, template, deps)
+        console.log('\n✓ OpenClaw instance ready.')
+        if (plan.bakin.placement === 'host') {
+          console.log('Run Bakin against it with:')
+          printEnv(paths, plan.hostEnv)
+        }
+        return 0
+      }
+      case 'reset':
+        await reset(plan, paths, deps)
+        console.log('✓ instance reset')
+        return 0
+      case 'down':
+        await down(paths, deps)
+        console.log('✓ containers stopped')
+        return 0
+      case 'env':
+        printEnv(paths, plan.hostEnv)
+        return 0
+      case 'status': {
+        const ps = await deps.runner.run(['docker', 'compose', '-f', paths.composeFile, 'ps'])
+        process.stdout.write(ps.stdout)
+        return ps.code
+      }
+      case 'shell':
+      case 'run':
+        console.error(`"${args.verb}" is not wired yet (lands with sandbox in T7).`)
+        return 1
+    }
+  } catch (err) {
+    console.error(`\n✗ ${err instanceof Error ? err.message : String(err)}`)
+    return 1
+  }
   return 0
 }
 
 if (import.meta.main) {
-  process.exit(main(process.argv.slice(2)))
+  main(process.argv.slice(2)).then((code) => process.exit(code))
 }
 
 export { main }

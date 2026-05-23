@@ -8,13 +8,17 @@
 
 services:
   openclaw-gateway:
-    image: ghcr.io/openclaw/openclaw:latest
+    image: ghcr.io/openclaw/openclaw:${OPENCLAW_IMAGE_TAG:-latest}
     container_name: bakin-openclaw-gateway
     ports:
       - "127.0.0.1:18789:18789"
     volumes:
       - ../openclaw-home:/home/node/.openclaw
-    env_file: .env
+    # Optional: the `instance` rig resolves secrets via op and configures through
+    # the OpenClaw CLI, so .env is no longer required (kept for legacy docker:setup).
+    env_file:
+      - path: .env
+        required: false
     environment:
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-dev-token}
     extra_hosts:
@@ -28,10 +32,12 @@ services:
     restart: unless-stopped
 
   openclaw-cli:
-    image: ghcr.io/openclaw/openclaw:latest
+    image: ghcr.io/openclaw/openclaw:${OPENCLAW_IMAGE_TAG:-latest}
     network_mode: "service:openclaw-gateway"
     volumes:
       - ../openclaw-home:/home/node/.openclaw
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     entrypoint: ["node", "dist/index.js"]
     profiles: ["cli"]
