@@ -206,9 +206,11 @@ export async function up(
   }
 
   deps.log('starting OpenClaw container…')
+  // No secrets in the compose env: the compose file consumes none (only the
+  // OPENCLAW_IMAGE_TAG build arg, which loadEnvFile already put on process.env).
+  // Passing resolved tokens here would widen their exposure for no reason.
   const upResult = await deps.runner.run(
     composeUpArgs(paths.composeFile, plan.services, plan.composeProfile),
-    { env: secrets },
   )
   if (upResult.code !== 0) {
     throw new Error(`docker compose up failed: ${upResult.stderr.trim() || `exit ${upResult.code}`}`)
@@ -251,6 +253,11 @@ export async function up(
   // pointed at Bakin) into the agent's container. Without this the agent has no
   // bakin_* tools and falls back to OpenClaw-native routing.
   const agentsList = await exec(['agents', 'list', '--json'])
+  if (agentsList.code !== 0) {
+    // A failed list is indistinguishable from "no agents" once we fall back, so
+    // surface it — otherwise we'd silently wire MCP for the wrong agent set.
+    deps.log(`warning: \`agents list\` failed (${agentsList.stderr.trim() || `exit ${agentsList.code}`}); defaulting to "main"`)
+  }
   const agentIds = parseAgentIds(agentsList.stdout)
   const ids = agentIds.length > 0 ? agentIds : ['main']
   deps.log(`wiring Bakin MCP tools for: ${ids.join(', ')}`)

@@ -104,6 +104,11 @@ bun run instance reset           # stop + wipe state (next up is fresh + re-auth
 docker compose -f dev/docker/docker-compose.yml --profile sandbox down --rmi local  # remove images too
 ```
 
+> **Credentials at rest:** `up` resolves your Brave key + Discord token from
+> 1Password and writes them in cleartext into `dev/openclaw-home/openclaw.json`
+> (gitignored). `down` preserves that; only `reset` scrubs it. Exclude
+> `dev/openclaw-home/` from Time Machine / backups, and `reset` when you're done.
+
 ## Troubleshooting
 
 - **`403 Service Account Deleted` / op auth errors** — a *stale* `OP_SERVICE_ACCOUNT_TOKEN`

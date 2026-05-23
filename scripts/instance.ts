@@ -144,6 +144,9 @@ async function main(argv: string[]): Promise<number> {
           console.error('OpenClaw gateway is not reachable — run `instance up` first.')
           return 1
         }
+        // native mode intentionally uses the real ~/.bakin (isolated mode sets a
+        // throwaway BAKIN_HOME). This is the one spot the rig touches the real
+        // home — only reads/onboards it; reset/wipe never reach here.
         const bakinHome = plan.hostEnv.BAKIN_HOME ?? join(homedir(), '.bakin')
         if (!existsSync(join(bakinHome, '.onboarded'))) {
           console.log('▸ onboarding Bakin home against the container…')

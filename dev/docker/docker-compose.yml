@@ -17,6 +17,9 @@ services:
   openclaw-gateway:
     build: *bakin-build
     container_name: bakin-openclaw-gateway
+    # KEEP the 127.0.0.1: prefix. The in-container gateway binds `lan` (so the
+    # host can reach it through the forward) with a static dev token — dropping
+    # the loopback prefix would expose operator.write on the LAN/Tailscale iface.
     ports:
       - "127.0.0.1:18789:18789"
     volumes:
@@ -47,6 +50,8 @@ services:
   sandbox:
     build: *bakin-build
     container_name: bakin-openclaw-sandbox
+    # KEEP the 127.0.0.1: prefixes — see the gateway service above (static dev
+    # token + lan-bound gateway must stay loopback-scoped).
     ports:
       - "127.0.0.1:3737:3737"    # Bakin UI
       - "127.0.0.1:18789:18789"  # OpenClaw gateway
