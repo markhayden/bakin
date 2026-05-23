@@ -43,7 +43,6 @@
     "dev:mock": "bun run dev/imitation-crab/index.ts --with-bakin",
     "dev:docker": "OPENCLAW_HOME=./dev/openclaw-home OPENCLAW_PATH=./dev/docker/openclaw-shim.sh BAKIN_URL=http://host.docker.internal:3737 bun run server.ts",
     "instance": "bun run scripts/instance.ts",
-    "docker:setup": "bash dev/docker/setup.sh",
     "docker:up": "docker compose -f dev/docker/docker-compose.yml up -d openclaw-gateway",
     "docker:down": "docker compose -f dev/docker/docker-compose.yml down",
     "mock:start": "bun run dev/imitation-crab/index.ts",

@@ -90,7 +90,7 @@ describe('compose argv builders', () => {
     expect(cmds[0]).toEqual(['onboard', '--non-interactive', '--accept-risk', '--mode', 'local', '--auth-choice', 'skip', '--skip-health'])
     expect(cmds).toContainEqual(['config', 'set', 'gateway.bind', 'lan'])
   })
-  it('codexAuthRunArgs: dedicated docker run publishes the 1455 OAuth callback port (matches proven setup.sh path)', () => {
+  it('codexAuthRunArgs: dedicated docker run publishes the 1455 OAuth callback port', () => {
     expect(codexAuthRunArgs('ghcr.io/openclaw/openclaw:latest', '/tmp/fake-repo/dev/openclaw-home', ['models', 'auth', 'login', '--provider', 'openai-codex'])).toEqual([
       'docker', 'run', '--rm', '-it', '-p', '1455:1455',
       '-v', '/tmp/fake-repo/dev/openclaw-home:/home/node/.openclaw',

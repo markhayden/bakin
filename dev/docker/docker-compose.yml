@@ -15,7 +15,7 @@ services:
     volumes:
       - ../openclaw-home:/home/node/.openclaw
     # Optional: the `instance` rig resolves secrets via op and configures through
-    # the OpenClaw CLI, so .env is no longer required (kept for legacy docker:setup).
+    # the OpenClaw CLI; .env only holds host-side rig env (e.g. OP_SERVICE_ACCOUNT_TOKEN).
     env_file:
       - path: .env
         required: false

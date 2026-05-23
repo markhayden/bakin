@@ -54,7 +54,7 @@ export function openclawExecArgs(composeFile: string, openclawArgs: string[]): s
 /**
  * Interactive codex OAuth needs the 1455 callback port published, which the
  * cli service can't do (it shares the gateway's network). Use a dedicated
- * `docker run -it -p 1455:1455 -v <home>` — the path proven in setup.sh.
+ * `docker run -it -p 1455:1455 -v <home>`.
  */
 export function codexAuthRunArgs(image: string, openclawHome: string, openclawArgs: string[]): string[] {
   return [
