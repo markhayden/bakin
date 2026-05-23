@@ -21,6 +21,8 @@
   "exclude": [
     "node_modules",
     "packages/**/dist/**",
-    "plugins/**/dist/**"
+    "plugins/**/dist/**",
+    "dev/openclaw-home",
+    "dev/bakin-instances"
   ]
 }
