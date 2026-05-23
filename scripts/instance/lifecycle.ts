@@ -10,6 +10,7 @@
 import { ensureCodexAuth, type OpenClawExec } from './codex'
 import { buildConfigCommands } from './openclaw-config'
 import { parseSecretsTemplate, redactSecrets, resolveSecrets } from './op-resolve'
+import { bakinOnboardArgs, sandboxBakinArgs, sandboxExecArgs } from './sandbox'
 import type { InstancePaths } from './paths'
 import type { InstancePlan } from './modes'
 import type { CommandRunner } from './runner'
@@ -79,7 +80,22 @@ export async function preflight(deps: LifecycleDeps): Promise<void> {
   }
 }
 
-function makeOpenClawExec(paths: InstancePaths, deps: LifecycleDeps, secretsEnv: Record<string, string>): OpenClawExec {
+function makeOpenClawExec(
+  plan: InstancePlan,
+  paths: InstancePaths,
+  deps: LifecycleDeps,
+  secretsEnv: Record<string, string>,
+): OpenClawExec {
+  // Sandbox: OpenClaw runs in the sandbox container (codex OAuth on the
+  // published 1455 port); exec into it for both config and interactive auth.
+  if (plan.bakin.placement === 'container') {
+    return (args, opts) =>
+      deps.runner.run(sandboxExecArgs(paths.composeFile, args, !!opts?.interactive), {
+        interactive: opts?.interactive,
+        env: secretsEnv,
+      })
+  }
+  // native/isolated: cli service for config; dedicated docker-run for codex OAuth.
   return (args, opts) =>
     opts?.interactive
       ? deps.runner.run(codexAuthRunArgs(openclawImage(deps), paths.openclawHome, args), { interactive: true })
@@ -125,7 +141,7 @@ export async function up(
   await waitForGatewayHealthy(deps, paths)
 
   // Configure exclusively via the OpenClaw CLI (D10).
-  const exec = makeOpenClawExec(paths, deps, secrets)
+  const exec = makeOpenClawExec(plan, paths, deps, secrets)
   const configCommands = buildConfigCommands({ braveApiKey: secrets.BRAVE_API_KEY })
   for (const command of configCommands) {
     deps.log(redactSecrets(`config: openclaw ${command.join(' ')}`, secretValues))
@@ -142,8 +158,18 @@ export async function up(
   deps.log(codex.alreadyAuthed ? 'codex: already authed' : 'codex: completed browser OAuth')
 
   if (plan.bakin.placement === 'container') {
-    // Sandbox Bakin bring-up lands in T7.
-    deps.log('sandbox: Bakin in-container bring-up (T7)')
+    if (plan.bakin.onboard === 'auto') {
+      deps.log('sandbox: onboarding Bakin (--preconfigure)…')
+      const onboard = await deps.runner.run(
+        sandboxBakinArgs(paths.composeFile, plan.bakin.source, bakinOnboardArgs(), false),
+        { env: secrets },
+      )
+      if (onboard.code !== 0) {
+        throw new Error(`bakin onboard failed in sandbox: ${onboard.stderr.trim() || `exit ${onboard.code}`}`)
+      }
+    } else {
+      deps.log('sandbox: Bakin not onboarded (manual). Run `instance shell` then `bakin onboard`.')
+    }
   }
 }
 

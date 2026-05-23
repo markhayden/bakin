@@ -19,10 +19,12 @@ import { rm } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import { parseInstanceArgs, type InstanceArgs } from './instance/args'
+import { loadEnvFile } from './instance/env-file'
 import { down, reset, up, type LifecycleDeps } from './instance/lifecycle'
 import { resolvePlan } from './instance/modes'
 import { instancePaths, type InstancePaths } from './instance/paths'
 import { bunRunner } from './instance/runner'
+import { sandboxBakinArgs, sandboxShellArgs } from './instance/sandbox'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
 
@@ -80,6 +82,9 @@ async function main(argv: string[]): Promise<number> {
 
   const paths = instancePaths(REPO_ROOT, args.mode)
   const plan = resolvePlan(args, paths)
+  // Load host-side rig env (OP_SERVICE_ACCOUNT_TOKEN, OPENCLAW_IMAGE_TAG) from
+  // the gitignored dev/docker/.env; real shell exports still win.
+  loadEnvFile(resolve(REPO_ROOT, 'dev/docker/.env'), process.env)
   const deps = makeDeps()
 
   try {
@@ -110,10 +115,26 @@ async function main(argv: string[]): Promise<number> {
         process.stdout.write(ps.stdout)
         return ps.code
       }
-      case 'shell':
-      case 'run':
-        console.error(`"${args.verb}" is not wired yet (lands with sandbox in T7).`)
-        return 1
+      case 'shell': {
+        if (plan.bakin.placement !== 'container') {
+          console.log('# native/isolated: run Bakin on the host with this env:')
+          printEnv(paths, plan.hostEnv)
+          return 0
+        }
+        const shell = await deps.runner.run(sandboxShellArgs(paths.composeFile), { interactive: true })
+        return shell.code
+      }
+      case 'run': {
+        if (plan.bakin.placement !== 'container') {
+          console.error('run is only supported in --mode sandbox; for native/isolated use the printed env with the bakin CLI.')
+          return 1
+        }
+        const ran = await deps.runner.run(
+          sandboxBakinArgs(paths.composeFile, plan.bakin.source, args.rest, true),
+          { interactive: true },
+        )
+        return ran.code
+      }
     }
   } catch (err) {
     console.error(`\n✗ ${err instanceof Error ? err.message : String(err)}`)
