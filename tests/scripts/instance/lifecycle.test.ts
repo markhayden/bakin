@@ -48,7 +48,7 @@ function fakeDeps(over: Partial<{
   }
   const deps: LifecycleDeps = {
     runner,
-    rmrf: async (p) => { wiped.push(p) },
+    emptyDir: async (p) => { wiped.push(p) },
     mkdirp: async (p) => { mkdirs.push(p) },
     exists: () => over.exists ?? true, // default: config already present (init skipped)
     sleep: async () => {},

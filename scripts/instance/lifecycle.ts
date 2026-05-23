@@ -22,7 +22,12 @@ const HEALTH_RETRIES = 60 // ~60s; cold first boot inits workspace/sessions befo
 
 export interface LifecycleDeps {
   runner: CommandRunner
-  rmrf: (path: string) => Promise<void>
+  /**
+   * Wipe a directory's CONTENTS in place, keeping the directory itself.
+   * Deleting + recreating a bind-mounted dir swaps its inode and poisons
+   * Docker Desktop's file-sharing cache (container sees an empty/stale mount).
+   */
+  emptyDir: (path: string) => Promise<void>
   mkdirp: (path: string) => Promise<void>
   exists: (path: string) => boolean
   sleep: (ms: number) => Promise<void>
@@ -149,12 +154,12 @@ export async function up(
   await preflight(deps)
 
   if (plan.wipeBeforeUp.length > 0) {
-    // Stop containers FIRST so they release the bind mount; wiping a mounted
-    // dir leaves the container pointing at a deleted inode (ENOENT on writes).
+    // Stop containers FIRST so they release the bind mount, then wipe contents
+    // in place (never delete the mounted dir — see emptyDir).
     await deps.runner.run(composeDownArgs(paths.composeFile))
     for (const dir of plan.wipeBeforeUp) {
       deps.log(`wiping ${dir}`)
-      await deps.rmrf(dir)
+      await deps.emptyDir(dir)
     }
   }
   // Ensure the bind-mount target exists as a real, host-owned dir.
@@ -225,7 +230,7 @@ export async function reset(plan: InstancePlan, paths: InstancePaths, deps: Life
   await deps.runner.run(composeDownArgs(paths.composeFile))
   for (const dir of paths.resetTargets) {
     deps.log(`wiping ${dir}`)
-    await deps.rmrf(dir)
+    await deps.emptyDir(dir)
   }
 }
 

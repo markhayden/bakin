@@ -15,8 +15,8 @@
  * See SPEC.md / tasks/plan.md. Dispatch is wired incrementally (T5/T6/T7).
  */
 import { existsSync, readFileSync } from 'node:fs'
-import { mkdir, rm } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { mkdir, readdir, rm } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 
 import { parseInstanceArgs, type InstanceArgs } from './instance/args'
 import { loadEnvFile } from './instance/env-file'
@@ -50,7 +50,16 @@ Prerequisites: Docker running, \`op\` CLI installed, OP_SERVICE_ACCOUNT_TOKEN se
 function makeDeps(): LifecycleDeps {
   return {
     runner: bunRunner,
-    rmrf: (path) => rm(path, { recursive: true, force: true }),
+    emptyDir: async (path) => {
+      // Wipe contents, keep the dir inode stable (Docker bind-mount cache).
+      let entries: string[]
+      try {
+        entries = await readdir(path)
+      } catch {
+        return // dir doesn't exist yet — nothing to empty
+      }
+      await Promise.all(entries.map((entry) => rm(join(path, entry), { recursive: true, force: true })))
+    },
     mkdirp: async (path) => { await mkdir(path, { recursive: true }) },
     exists: (path) => existsSync(path),
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
