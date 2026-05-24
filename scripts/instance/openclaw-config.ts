@@ -43,7 +43,8 @@ export function buildConfigCommands(input: OpenClawConfigInput): string[][] {
   if (input.discord) {
     const { token, guildId, userId } = input.discord
     // The Discord channel plugin must be installed before the channel works.
-    cmds.push(['plugins', 'install', '@openclaw/discord'])
+    // --force makes it idempotent across re-runs (else "plugin already exists").
+    cmds.push(['plugins', 'install', '@openclaw/discord', '--force'])
     // Resolved token inline (the home is disposable + gitignored, like brave).
     cmds.push(['config', 'set', 'channels.discord.token', token])
     cmds.push(['config', 'set', 'channels.discord.enabled', 'true', '--strict-json'])

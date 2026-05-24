@@ -30,7 +30,7 @@ describe('buildConfigCommands — discord (optional, D5 keep)', () => {
       braveApiKey: 'k',
       discord: { token: 'bot-token' },
     })
-    expect(cmds).toContainEqual(['plugins', 'install', '@openclaw/discord'])
+    expect(cmds).toContainEqual(['plugins', 'install', '@openclaw/discord', '--force'])
     expect(cmds).toContainEqual(['config', 'set', 'channels.discord.token', 'bot-token'])
     expect(cmds).toContainEqual(['config', 'set', 'channels.discord.enabled', 'true', '--strict-json'])
     // plugin install must precede enabling the channel

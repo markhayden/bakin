@@ -10,6 +10,7 @@
 import { join } from 'node:path'
 
 import { ensureCodexAuth, type OpenClawExec } from './codex'
+import { mcporterBakinUrlBase, mcporterConfigJson, mcporterWriteArgs, parseAgentIds } from './mcporter'
 import { buildConfigCommands } from './openclaw-config'
 import { parseSecretsTemplate, redactSecrets, resolveSecrets } from './op-resolve'
 import { bakinOnboardArgs, sandboxBakinArgs, sandboxExecArgs } from './sandbox'
@@ -239,6 +240,24 @@ export async function up(
   // Codex: fresh browser OAuth if the mounted home has no codex profile (D3).
   const codex = await ensureCodexAuth(exec)
   deps.log(codex.alreadyAuthed ? 'codex: already authed' : 'codex: completed browser OAuth')
+
+  // Bridge Bakin's MCP tools to the agent: write mcporter config (per agent,
+  // pointed at Bakin) into the agent's container. Without this the agent has no
+  // bakin_* tools and falls back to OpenClaw-native routing.
+  const agentsList = await exec(['agents', 'list', '--json'])
+  const agentIds = parseAgentIds(agentsList.stdout)
+  const ids = agentIds.length > 0 ? agentIds : ['main']
+  deps.log(`wiring Bakin MCP tools for: ${ids.join(', ')}`)
+  const mcpWrite = await deps.runner.run(
+    mcporterWriteArgs(
+      paths.composeFile,
+      plan.services[0],
+      mcporterConfigJson(ids, mcporterBakinUrlBase(plan.bakin.placement === 'container')),
+    ),
+  )
+  if (mcpWrite.code !== 0) {
+    deps.log(`warning: mcporter config write failed (${mcpWrite.stderr.trim() || `exit ${mcpWrite.code}`}); Bakin tools may be unavailable to the agent`)
+  }
 
   if (plan.bakin.placement === 'container') {
     if (plan.bakin.onboard === 'auto') {

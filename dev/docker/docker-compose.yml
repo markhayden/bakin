@@ -6,9 +6,16 @@
 # CLI commands via the shim:
 #   ./dev/docker/openclaw-shim.sh cron list --all --json
 
+# All services build the same custom image (openclaw + bun + mcporter) — see Dockerfile.
+x-bakin-build: &bakin-build
+  context: .
+  dockerfile: Dockerfile
+  args:
+    OPENCLAW_IMAGE_TAG: ${OPENCLAW_IMAGE_TAG:-latest}
+
 services:
   openclaw-gateway:
-    image: ghcr.io/openclaw/openclaw:${OPENCLAW_IMAGE_TAG:-latest}
+    build: *bakin-build
     container_name: bakin-openclaw-gateway
     ports:
       - "127.0.0.1:18789:18789"
@@ -28,21 +35,17 @@ services:
     restart: unless-stopped
 
   openclaw-cli:
-    image: ghcr.io/openclaw/openclaw:${OPENCLAW_IMAGE_TAG:-latest}
+    build: *bakin-build
     network_mode: "service:openclaw-gateway"
     volumes:
       - ../openclaw-home:/home/node/.openclaw
     entrypoint: ["node", "dist/index.js"]
     profiles: ["cli"]
 
-  # Full-sandbox: OpenClaw gateway + bun in one container, Bakin repo mounted at
-  # /bakin and run via `docker exec` (instance shell / run / --preconfigure).
+  # Full-sandbox: OpenClaw gateway + Bakin (repo mounted at /bakin) in one
+  # container, Bakin run via `docker exec` (instance shell / run / --preconfigure).
   sandbox:
-    build:
-      context: .
-      dockerfile: Dockerfile.sandbox
-      args:
-        OPENCLAW_IMAGE_TAG: ${OPENCLAW_IMAGE_TAG:-latest}
+    build: *bakin-build
     container_name: bakin-openclaw-sandbox
     ports:
       - "127.0.0.1:3737:3737"    # Bakin UI
