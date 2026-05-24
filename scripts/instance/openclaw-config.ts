@@ -63,6 +63,17 @@ export function buildConfigCommands(input: OpenClawConfigInput): string[][] {
     cmds.push(['config', 'set', 'channels.discord.token', token])
     cmds.push(['config', 'set', 'channels.discord.enabled', 'true', '--strict-json'])
 
+    if (userId) {
+      // Pre-authorize the owner's DMs. Guild access is the allowlist below, but
+      // direct messages are gated by commands.ownerAllowFrom — without this a
+      // fresh instance answers the first DM with "access not configured" + a
+      // pairing code (the manual `openclaw pairing approve discord <code>` dance).
+      // Setting it here means it survives every wipe/restart.
+      cmds.push([
+        'config', 'set', 'commands.ownerAllowFrom', JSON.stringify([`discord:${userId}`]), '--strict-json',
+      ])
+    }
+
     if (guildId) {
       cmds.push(['config', 'set', 'channels.discord.groupPolicy', '"allowlist"', '--strict-json'])
       const guild: { requireMention: boolean; users?: string[] } = { requireMention: false }

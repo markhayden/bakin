@@ -55,6 +55,19 @@ describe('buildConfigCommands — discord (optional, D5 keep)', () => {
     )
   })
 
+  it('pre-authorizes the owner DMs via commands.ownerAllowFrom (no pairing dance on wipe/restart)', () => {
+    const cmds = buildConfigCommands({
+      braveApiKey: 'k',
+      discord: { token: 'bot-token', userId: '222' },
+    })
+    expect(cmds).toContainEqual(['config', 'set', 'commands.ownerAllowFrom', '["discord:222"]', '--strict-json'])
+  })
+
+  it('omits commands.ownerAllowFrom when no user id is given', () => {
+    const cmds = buildConfigCommands({ braveApiKey: 'k', discord: { token: 'bot-token' } })
+    expect(cmds.some((c) => c[2] === 'commands.ownerAllowFrom')).toBe(false)
+  })
+
   it('adds a guild allowlist when a guild id is given', () => {
     const cmds = buildConfigCommands({
       braveApiKey: 'k',

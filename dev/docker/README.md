@@ -115,6 +115,7 @@ docker compose -f dev/docker/docker-compose.yml --profile sandbox down --rmi loc
   exported in your shell overrides `.env`. Run with `env -u OP_SERVICE_ACCOUNT_TOKEN bun run instance up`.
 - **brave-search ref fails** — vault names with spaces: try the vault ID form in
   `secrets.op.env` (commented there).
+- **Discord "access not configured" + pairing code** — DMs are gated by `commands.ownerAllowFrom` (separate from the guild allowlist). `up` sets it from `DISCORD_USER_ID`, so a fresh instance answers DMs without pairing. If you ever hit the prompt manually, approve it via the shim: `./dev/docker/openclaw-shim.sh pairing list discord` then `… pairing approve discord <code>`.
 - **Codex auth** — `up` runs the Codex CLI **device-code** login: it prints `https://auth.openai.com/codex/device` + a one-time code; open the URL, enter the code (the browser-callback flow can't work behind the container's loopback). Only `reset`/`--fresh` wipes the home and forces re-auth.
 - **`:latest` drift** — pin via `OPENCLAW_IMAGE_TAG=<tag>` in `.env`.
 
