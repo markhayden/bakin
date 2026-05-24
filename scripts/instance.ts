@@ -76,6 +76,15 @@ function makeDeps(): LifecycleDeps {
   }
 }
 
+/**
+ * Env for a host-run Bakin CLI / subshell. The CLI is a client of the server,
+ * so BAKIN_URL must point at localhost — not the host.docker.internal callback
+ * URL (which only resolves inside the OpenClaw container).
+ */
+function hostCliEnv(hostEnv: Record<string, string>): Record<string, string> {
+  return { ...hostEnv, BAKIN_URL: 'http://localhost:3737' }
+}
+
 function printEnv(paths: InstancePaths, hostEnv: Record<string, string>): void {
   console.log(`BAKIN_HOME=${hostEnv.BAKIN_HOME ?? '(default ~/.bakin)'}`)
   for (const [key, value] of Object.entries(hostEnv)) {
@@ -168,7 +177,7 @@ async function main(argv: string[]): Promise<number> {
         console.log('# subshell with instance env. Bakin CLI: `bun run cli/bakin.ts …`  ·  OpenClaw CLI: `./dev/docker/openclaw-shim.sh …`  ·  `exit` to leave.')
         const shell = await deps.runner.run([process.env.SHELL || '/bin/bash'], {
           interactive: true,
-          env: plan.hostEnv,
+          env: hostCliEnv(plan.hostEnv),
           cwd: REPO_ROOT,
         })
         return shell.code
@@ -181,10 +190,12 @@ async function main(argv: string[]): Promise<number> {
           )
           return ran.code
         }
-        // native/isolated: Bakin CLI on the host with the instance env
+        // native/isolated: Bakin CLI on the host. The CLI is a host client of the
+        // server, so it reaches it on localhost — not the host.docker.internal
+        // callback URL (which only resolves inside the container).
         const ran = await deps.runner.run(
           ['bun', 'run', 'cli/bakin.ts', ...args.rest],
-          { interactive: true, env: plan.hostEnv, cwd: REPO_ROOT },
+          { interactive: true, env: hostCliEnv(plan.hostEnv), cwd: REPO_ROOT },
         )
         return ran.code
       }
