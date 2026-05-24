@@ -76,17 +76,28 @@ export function oneOffRunArgs(image: string, openclawHome: string, openclawArgs:
 }
 
 /**
+ * Fixed gateway token for the loopback dev rig. The gateway publishes only to
+ * 127.0.0.1, single-user, so a fixed token is fine — and pinning auth.token ==
+ * remote.token lets the local CLI connect (onboard otherwise generates a random
+ * auth.token with no matching remote.token → "gateway token mismatch").
+ */
+const GATEWAY_DEV_TOKEN = 'bakin-local-dev'
+
+/**
  * OpenClaw CLI commands that bootstrap a fresh home, run as one-offs BEFORE the
  * gateway starts (it exits with "Missing config" on an empty home):
  *   1. onboard — baseline openclaw.json (gateway.mode=local), auth skipped
  *      (codex is separate), --skip-health (gateway isn't up yet)
  *   2. gateway.bind=lan — without it the gateway binds container-loopback only,
  *      so the host can't reach it through the published port ("Empty reply").
+ *   3. gateway auth + remote token pinned equal so the loopback CLI authenticates.
  */
 export function bootstrapCommands(): string[][] {
   return [
     ['onboard', '--non-interactive', '--accept-risk', '--mode', 'local', '--auth-choice', 'skip', '--skip-health'],
     ['config', 'set', 'gateway.bind', 'lan'],
+    ['config', 'set', 'gateway.auth.token', GATEWAY_DEV_TOKEN],
+    ['config', 'set', 'gateway.remote.token', GATEWAY_DEV_TOKEN],
   ]
 }
 

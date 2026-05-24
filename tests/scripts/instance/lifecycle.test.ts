@@ -85,10 +85,16 @@ describe('compose argv builders', () => {
       'dist/index.js', 'config', 'set', 'gateway.bind', 'lan',
     ])
   })
-  it('bootstrapCommands: baseline onboard then gateway.bind=lan (host reachability through published port)', () => {
+  it('bootstrapCommands: onboard, bind=lan, and matching gateway auth/remote tokens', () => {
     const cmds = bootstrapCommands()
     expect(cmds[0]).toEqual(['onboard', '--non-interactive', '--accept-risk', '--mode', 'local', '--auth-choice', 'skip', '--skip-health'])
     expect(cmds).toContainEqual(['config', 'set', 'gateway.bind', 'lan'])
+    // auth.token and remote.token must be pinned equal so the loopback CLI connects
+    const auth = cmds.find((c) => c[2] === 'gateway.auth.token')
+    const remote = cmds.find((c) => c[2] === 'gateway.remote.token')
+    expect(auth).toBeDefined()
+    expect(remote).toBeDefined()
+    expect(auth![3]).toBe(remote![3])
   })
   it('codexAuthRunArgs: dedicated docker run publishes the 1455 OAuth callback port', () => {
     expect(codexAuthRunArgs('ghcr.io/openclaw/openclaw:latest', '/tmp/fake-repo/dev/openclaw-home', ['models', 'auth', 'login', '--provider', 'openai-codex'])).toEqual([

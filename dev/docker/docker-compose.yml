@@ -14,13 +14,9 @@ services:
       - "127.0.0.1:18789:18789"
     volumes:
       - ../openclaw-home:/home/node/.openclaw
-    # Optional: the `instance` rig resolves secrets via op and configures through
-    # the OpenClaw CLI; .env only holds host-side rig env (e.g. OP_SERVICE_ACCOUNT_TOKEN).
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-dev-token}
+    # The `instance` rig configures the gateway entirely through openclaw.json
+    # (auth token, model, mcp). No env_file: a stale OPENCLAW_GATEWAY_TOKEN there
+    # would override gateway.auth.token and break the loopback CLI.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -36,9 +32,6 @@ services:
     network_mode: "service:openclaw-gateway"
     volumes:
       - ../openclaw-home:/home/node/.openclaw
-    env_file:
-      - path: .env
-        required: false
     entrypoint: ["node", "dist/index.js"]
     profiles: ["cli"]
 
@@ -58,9 +51,6 @@ services:
     volumes:
       - ../openclaw-home:/home/node/.openclaw
       - ../..:/bakin
-    env_file:
-      - path: .env
-        required: false
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
