@@ -270,7 +270,7 @@ export async function up(
   // Warn-don't-fail: the user can pick a model in the UI if this can't resolve.
   const modelSet = await exec(['models', 'set', CODEX_DEFAULT_MODEL])
   if (modelSet.code !== 0) {
-    deps.log(`warning: could not set default model ${CODEX_DEFAULT_MODEL} (${modelSet.stderr.trim() || `exit ${modelSet.code}`}); set one in the UI`)
+    deps.log(`warning: could not set default model ${CODEX_DEFAULT_MODEL} (${redactSecrets(modelSet.stderr.trim(), secretValues) || `exit ${modelSet.code}`}); set one in the UI`)
   }
 
   // The gateway started before config ran, so restart it to load the now-enabled
@@ -286,7 +286,7 @@ export async function up(
   if (agentsList.code !== 0) {
     // A failed list is indistinguishable from "no agents" once we fall back, so
     // surface it — otherwise we'd silently wire MCP for the wrong agent set.
-    deps.log(`warning: \`agents list\` failed (${agentsList.stderr.trim() || `exit ${agentsList.code}`}); defaulting to "main"`)
+    deps.log(`warning: \`agents list\` failed (${redactSecrets(agentsList.stderr.trim(), secretValues) || `exit ${agentsList.code}`}); defaulting to "main"`)
   }
   const agentIds = parseAgentIds(agentsList.stdout)
   const ids = agentIds.length > 0 ? agentIds : ['main']
@@ -299,7 +299,7 @@ export async function up(
     ),
   )
   if (mcpWrite.code !== 0) {
-    deps.log(`warning: mcporter config write failed (${mcpWrite.stderr.trim() || `exit ${mcpWrite.code}`}); Bakin tools may be unavailable to the agent`)
+    deps.log(`warning: mcporter config write failed (${redactSecrets(mcpWrite.stderr.trim(), secretValues) || `exit ${mcpWrite.code}`}); Bakin tools may be unavailable to the agent`)
   }
 
   if (plan.bakin.placement === 'container') {

@@ -60,6 +60,18 @@ These cost real debugging; don't re-derive them.
 - **`BAKIN_URL`** = the container's callback URL (`host.docker.internal:3737`); the
   host-run Bakin CLI uses `localhost:3737` instead (`instance run`/`shell` override it).
 
+## Secret handling
+
+Secrets are `op://` references in `secrets.op.env` (committed), resolved host-side
+at `up` and injected only into the disposable home. `redactSecrets` masks resolved
+values in every rig log line. Two accepted residuals on this single-user loopback
+rig: the resolved Discord token transiently appears in the `docker exec … config
+set channels.discord.token <token>` argv (visible via `ps` for that command's
+lifetime — argv is not a safe channel; prefer stdin/env if OpenClaw's CLI grows
+support), and the Codex `auth.json` + device private key sit in cleartext under the
+gitignored `dev/openclaw-home/` until `reset`. Both are documented in
+`dev/docker/README.md`; exclude `dev/openclaw-home/` from backups.
+
 ## Known limitation
 
 Cross-agent dispatch is wired + verified, but relies on the rig pre-approving the
