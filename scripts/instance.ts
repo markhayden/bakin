@@ -15,9 +15,9 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, readdir, rm } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 
+import { getContentDir } from '../packages/core/src/content-dir'
 import { parseInstanceArgs, type InstanceArgs } from './instance/args'
 import { ensureApprovedDevice } from './instance/device-approve'
 import { loadEnvFile } from './instance/env-file'
@@ -142,10 +142,11 @@ async function main(argv: string[]): Promise<number> {
           console.error('OpenClaw gateway is not reachable — run `instance up` first.')
           return 1
         }
-        // native mode intentionally uses the real ~/.bakin (isolated mode sets a
-        // throwaway BAKIN_HOME). This is the one spot the rig touches the real
-        // home — only reads/onboards it; reset/wipe never reach here.
-        const bakinHome = plan.hostEnv.BAKIN_HOME ?? join(homedir(), '.bakin')
+        // native mode intentionally uses the real home (getContentDir() resolves
+        // BAKIN_HOME→~/.bakin); isolated mode sets a throwaway BAKIN_HOME on
+        // hostEnv. This is the one spot the rig touches the real home — only
+        // reads/onboards it; reset/wipe never reach here.
+        const bakinHome = plan.hostEnv.BAKIN_HOME ?? getContentDir()
         if (!existsSync(join(bakinHome, '.onboarded'))) {
           console.log('▸ onboarding Bakin home against the container…')
           const onboard = await deps.runner.run(
