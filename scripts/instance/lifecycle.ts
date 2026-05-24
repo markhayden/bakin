@@ -31,6 +31,8 @@ export interface LifecycleDeps {
   emptyDir: (path: string) => Promise<void>
   mkdirp: (path: string) => Promise<void>
   exists: (path: string) => boolean
+  /** Pre-approve Bakin's gateway device so operator.write is granted (no-op if already set up). */
+  ensureDevice: (inContainer: boolean) => void
   sleep: (ms: number) => Promise<void>
   log: (message: string) => void
   env: Record<string, string | undefined>
@@ -181,6 +183,10 @@ export async function up(
   }
   // Ensure the bind-mount target exists as a real, host-owned dir.
   await deps.mkdirp(paths.openclawHome)
+
+  // Pre-approve Bakin's gateway device (so operator.write / dispatch works) before
+  // the gateway starts. No-op if an identity already exists.
+  deps.ensureDevice(plan.bakin.placement === 'container')
 
   // Resolve secrets host-side; only resolved values flow onward (D4).
   const refs = parseSecretsTemplate(secretTemplateText)

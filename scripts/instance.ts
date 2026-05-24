@@ -12,12 +12,14 @@
  *   isolated  like native, but Bakin uses a throwaway BAKIN_HOME under dev/.
  *   sandbox   Bakin runs inside the container (clean Linux box).
  */
+import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, readdir, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 import { parseInstanceArgs, type InstanceArgs } from './instance/args'
+import { ensureApprovedDevice } from './instance/device-approve'
 import { loadEnvFile } from './instance/env-file'
 import { down, reset, up, type LifecycleDeps } from './instance/lifecycle'
 import { resolvePlan } from './instance/modes'
@@ -55,7 +57,7 @@ Full image cleanup:  docker compose -f dev/docker/docker-compose.yml --profile s
 
 Prerequisites: Docker running, \`op\` CLI installed, OP_SERVICE_ACCOUNT_TOKEN (in dev/docker/.env or env).`
 
-function makeDeps(): LifecycleDeps {
+function makeDeps(paths: InstancePaths): LifecycleDeps {
   return {
     runner: bunRunner,
     emptyDir: async (path) => {
@@ -70,6 +72,11 @@ function makeDeps(): LifecycleDeps {
     },
     mkdirp: async (path) => { await mkdir(path, { recursive: true }) },
     exists: (path) => existsSync(path),
+    ensureDevice: (inContainer) => {
+      // Bakin's process platform: host (native/isolated) vs container (sandbox).
+      const platform = inContainer ? 'linux' : process.platform
+      ensureApprovedDevice(paths.openclawHome, platform, Date.now(), `bakin-dev-${randomUUID()}`)
+    },
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     log: (message) => console.log(`▸ ${message}`),
     env: process.env,
@@ -113,7 +120,7 @@ async function main(argv: string[]): Promise<number> {
   // Load host-side rig env (OP_SERVICE_ACCOUNT_TOKEN, OPENCLAW_IMAGE_TAG) from
   // the gitignored dev/docker/.env; real shell exports still win.
   loadEnvFile(resolve(REPO_ROOT, 'dev/docker/.env'), process.env)
-  const deps = makeDeps()
+  const deps = makeDeps(paths)
 
   try {
     switch (args.verb) {

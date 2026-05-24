@@ -51,6 +51,7 @@ function fakeDeps(over: Partial<{
     emptyDir: async (p) => { wiped.push(p) },
     mkdirp: async (p) => { mkdirs.push(p) },
     exists: () => over.exists ?? true, // default: config already present (init skipped)
+    ensureDevice: () => {},
     sleep: async () => {},
     log: () => {},
     env: over.env ?? { OP_SERVICE_ACCOUNT_TOKEN: 'tok' },

@@ -45,6 +45,10 @@ export function buildConfigCommands(input: OpenClawConfigInput): string[][] {
     // The Discord channel plugin must be installed before the channel works.
     // --force makes it idempotent across re-runs (else "plugin already exists").
     cmds.push(['plugins', 'install', '@openclaw/discord', '--force'])
+    // Trust the non-bundled discord plugin. Without this, the "plugins.allow is
+    // empty" warning makes `agents add` look like it failed, and the adapter
+    // falls back to writing a HOST workspace path that breaks in-container dispatch.
+    cmds.push(['config', 'set', 'plugins.allow', '["discord"]', '--strict-json'])
     // Resolved token inline (the home is disposable + gitignored, like brave).
     cmds.push(['config', 'set', 'channels.discord.token', token])
     cmds.push(['config', 'set', 'channels.discord.enabled', 'true', '--strict-json'])
