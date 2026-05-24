@@ -1196,6 +1196,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       displayName: 'Bakin',
       clientMode: 'backend',
       scopes: ['operator.read', 'operator.write'],
+      useDeviceAuth: true,
       label: 'OpenClaw chat gateway',
     })
     return this.chatGatewayClient
