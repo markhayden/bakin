@@ -21,7 +21,7 @@ describe('buildApprovedDeviceState', () => {
   }
 
   it('pre-approves the device with operator.write + Bakin metadata', () => {
-    const { identity, deviceAuth, paired } = buildApprovedDeviceState(kp, 'tok-1', 'darwin', 1000)
+    const { identity, deviceAuth, paired } = buildApprovedDeviceState(kp, 'tok-1', 1000)
     expect(identity.deviceId).toBe('dev123')
     expect(deviceAuth.tokens.operator.token).toBe('tok-1')
     expect(deviceAuth.tokens.operator.scopes).toContain('operator.write')
@@ -29,13 +29,14 @@ describe('buildApprovedDeviceState', () => {
     const dev = paired.dev123
     expect(dev.clientId).toBe('gateway-client')
     expect(dev.clientMode).toBe('backend')
-    expect(dev.platform).toBe('darwin')
     expect(dev.publicKey).toBe('rawpub')
     expect(dev.approvedScopes).toEqual(['operator.read', 'operator.write'])
     expect(dev.tokens.operator.token).toBe('tok-1')
   })
 
-  it('threads the platform through (linux for sandbox)', () => {
-    expect(buildApprovedDeviceState(kp, 't', 'linux', 1).paired.dev123.platform).toBe('linux')
+  it('does NOT pin platform/deviceFamily (the identity is shared by host + container clients)', () => {
+    const dev = buildApprovedDeviceState(kp, 't', 1).paired.dev123 as Record<string, unknown>
+    expect('platform' in dev).toBe(false)
+    expect('deviceFamily' in dev).toBe(false)
   })
 })

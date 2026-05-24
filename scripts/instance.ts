@@ -72,10 +72,8 @@ function makeDeps(paths: InstancePaths): LifecycleDeps {
     },
     mkdirp: async (path) => { await mkdir(path, { recursive: true }) },
     exists: (path) => existsSync(path),
-    ensureDevice: (inContainer) => {
-      // Bakin's process platform: host (native/isolated) vs container (sandbox).
-      const platform = inContainer ? 'linux' : process.platform
-      ensureApprovedDevice(paths.openclawHome, platform, Date.now(), `bakin-dev-${randomUUID()}`)
+    ensureDevice: () => {
+      ensureApprovedDevice(paths.openclawHome, Date.now(), `bakin-dev-${randomUUID()}`)
     },
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     log: (message) => console.log(`▸ ${message}`),
