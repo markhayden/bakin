@@ -11,8 +11,8 @@
  */
 
 export interface DiscordConfigInput {
-  /** Container env var the bot token is exposed as (resolved from 1Password). */
-  tokenEnvId: string
+  /** Bot token, already resolved from 1Password (inline, like brave). */
+  token: string
   guildId?: string
   userId?: string
 }
@@ -41,13 +41,11 @@ export function buildConfigCommands(input: OpenClawConfigInput): string[][] {
   ])
 
   if (input.discord) {
-    const { tokenEnvId, guildId, userId } = input.discord
-    // Token as a SecretRef pointing at a container env var — the literal value
-    // is never written into openclaw.json.
-    cmds.push([
-      'config', 'set', 'channels.discord.token',
-      '--ref-provider', 'default', '--ref-source', 'env', '--ref-id', tokenEnvId,
-    ])
+    const { token, guildId, userId } = input.discord
+    // The Discord channel plugin must be installed before the channel works.
+    cmds.push(['plugins', 'install', '@openclaw/discord'])
+    // Resolved token inline (the home is disposable + gitignored, like brave).
+    cmds.push(['config', 'set', 'channels.discord.token', token])
     cmds.push(['config', 'set', 'channels.discord.enabled', 'true', '--strict-json'])
 
     if (guildId) {

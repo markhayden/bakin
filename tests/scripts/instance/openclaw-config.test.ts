@@ -18,35 +18,31 @@ describe('buildConfigCommands — brave-search (default)', () => {
   it('keeps brave-search first so it is always registered', () => {
     const cmds = buildConfigCommands({
       braveApiKey: 'k',
-      discord: { tokenEnvId: 'DISCORD_BOT_TOKEN' },
+      discord: { token: 'bot-token' },
     })
     expect(cmds[0][0]).toBe('mcp')
   })
 })
 
 describe('buildConfigCommands — discord (optional, D5 keep)', () => {
-  it('wires the token as a SecretRef to a container env var, then enables the channel', () => {
+  it('installs the discord plugin, sets the resolved token inline, and enables the channel', () => {
     const cmds = buildConfigCommands({
       braveApiKey: 'k',
-      discord: { tokenEnvId: 'DISCORD_BOT_TOKEN' },
+      discord: { token: 'bot-token' },
     })
-    expect(cmds).toContainEqual([
-      'config', 'set', 'channels.discord.token',
-      '--ref-provider', 'default', '--ref-source', 'env', '--ref-id', 'DISCORD_BOT_TOKEN',
-    ])
+    expect(cmds).toContainEqual(['plugins', 'install', '@openclaw/discord'])
+    expect(cmds).toContainEqual(['config', 'set', 'channels.discord.token', 'bot-token'])
     expect(cmds).toContainEqual(['config', 'set', 'channels.discord.enabled', 'true', '--strict-json'])
-  })
-
-  it('does not store the literal token anywhere in the commands', () => {
-    const cmds = buildConfigCommands({ braveApiKey: 'k', discord: { tokenEnvId: 'DISCORD_BOT_TOKEN' } })
-    // SecretRef points at the env id, never the secret value itself.
-    expect(JSON.stringify(cmds)).not.toContain('secret')
+    // plugin install must precede enabling the channel
+    expect(cmds.findIndex((c) => c[1] === 'install')).toBeLessThan(
+      cmds.findIndex((c) => c[2] === 'channels.discord.enabled'),
+    )
   })
 
   it('adds a guild allowlist when a guild id is given', () => {
     const cmds = buildConfigCommands({
       braveApiKey: 'k',
-      discord: { tokenEnvId: 'DISCORD_BOT_TOKEN', guildId: '111', userId: '222' },
+      discord: { token: 'bot-token', guildId: '111', userId: '222' },
     })
     expect(cmds).toContainEqual(['config', 'set', 'channels.discord.groupPolicy', '"allowlist"', '--strict-json'])
     const guildCmd = cmds.find((c) => c[2] === 'channels.discord.guilds.111')

@@ -46,6 +46,11 @@ export function composeDownArgs(composeFile: string): string[] {
   return ['docker', 'compose', '-f', composeFile, 'down']
 }
 
+export function composeRestartArgs(composeFile: string, services: string[], profile: string | null): string[] {
+  const profileFlag = profile ? ['--profile', profile] : []
+  return ['docker', 'compose', ...profileFlag, '-f', composeFile, 'restart', ...services]
+}
+
 /** Run a non-interactive OpenClaw CLI command through the cli service (-T). */
 export function openclawExecArgs(composeFile: string, openclawArgs: string[]): string[] {
   return ['docker', 'compose', '-f', composeFile, 'run', '--rm', '-T', 'openclaw-cli', ...openclawArgs]
@@ -204,9 +209,16 @@ export async function up(
 
   await waitForGatewayHealthy(deps, paths)
 
-  // Configure exclusively via the OpenClaw CLI (D10).
+  // Configure exclusively via the OpenClaw CLI (D10). Discord is configured when
+  // its token is present in the resolved secrets (template-driven, like brave).
   const exec = makeOpenClawExec(plan, paths, deps, secrets)
-  const configCommands = buildConfigCommands({ braveApiKey: secrets.BRAVE_API_KEY })
+  const discordEnabled = Boolean(secrets.DISCORD_BOT_TOKEN)
+  const configCommands = buildConfigCommands({
+    braveApiKey: secrets.BRAVE_API_KEY,
+    discord: discordEnabled
+      ? { token: secrets.DISCORD_BOT_TOKEN, guildId: secrets.DISCORD_GUILD_ID, userId: secrets.DISCORD_USER_ID }
+      : undefined,
+  })
   for (const command of configCommands) {
     deps.log(redactSecrets(`config: openclaw ${command.join(' ')}`, secretValues))
     const result = await exec(command)
@@ -215,6 +227,13 @@ export async function up(
         `openclaw ${command[0]} ${command[1]} failed: ${redactSecrets(result.stderr.trim(), secretValues) || `exit ${result.code}`}`,
       )
     }
+  }
+
+  // Discord needs a gateway restart to connect the bot.
+  if (discordEnabled) {
+    deps.log('discord configured — restarting gateway to connect the bot…')
+    await deps.runner.run(composeRestartArgs(paths.composeFile, plan.services, plan.composeProfile))
+    await waitForGatewayHealthy(deps, paths)
   }
 
   // Codex: fresh browser OAuth if the mounted home has no codex profile (D3).
