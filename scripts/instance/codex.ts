@@ -8,6 +8,11 @@
  * the provider's auth method list is empty (cliSessionKeys: ["codex-cli"]). So we
  * drive the bundled Codex CLI `login` directly.
  *
+ * We use the device-code flow (`--device-auth`): the CLI prints a URL + one-time
+ * code and polls. The browser-callback flow can't work here — its login server
+ * binds 127.0.0.1 inside the container, so the host's port-forward never reaches
+ * it and the redirect hangs (the same loopback problem that forces gateway.bind=lan).
+ *
  * CODEX_HOME lives inside the mounted ~/.openclaw volume so the credentials
  * persist across the throwaway login container AND the long-running gateway reads
  * the same file (its app-server inherits CODEX_HOME from the container env).
@@ -32,9 +37,9 @@ export const CODEX_CLI_ENTRY = '/app/node_modules/@openai/codex/bin/codex.js'
 /** The Codex provider's default model id (from the plugin catalog — not fabricated). */
 export const CODEX_DEFAULT_MODEL = 'openai/gpt-5.5'
 
-/** Codex CLI args (after `node <CODEX_CLI_ENTRY>`) for the interactive ChatGPT OAuth. */
+/** Codex CLI args (after `node <CODEX_CLI_ENTRY>`) for the device-code ChatGPT OAuth. */
 export function codexLoginArgs(): string[] {
-  return ['login']
+  return ['login', '--device-auth']
 }
 
 /** Host path to the Codex auth file; its presence means this instance is already authed. */

@@ -9,8 +9,8 @@ import {
 } from '../../../scripts/instance/codex'
 
 describe('codexLoginArgs', () => {
-  it('drives the Codex CLI login (the provider has no OpenClaw-managed auth method)', () => {
-    expect(codexLoginArgs()).toEqual(['login'])
+  it('uses the device-code flow (browser callback hangs behind the container loopback)', () => {
+    expect(codexLoginArgs()).toEqual(['login', '--device-auth'])
   })
 })
 

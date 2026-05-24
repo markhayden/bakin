@@ -62,7 +62,6 @@ services:
     ports:
       - "127.0.0.1:3737:3737"    # Bakin UI
       - "127.0.0.1:18789:18789"  # OpenClaw gateway
-      - "127.0.0.1:1455:1455"    # codex OAuth callback
     volumes:
       - ../openclaw-home:/home/node/.openclaw
       - ../..:/bakin

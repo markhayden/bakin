@@ -98,18 +98,18 @@ describe('compose argv builders', () => {
     expect(remote).toBeDefined()
     expect(auth![3]).toBe(remote![3])
   })
-  it('codexLoginRunArgs: dedicated docker run publishes 1455 + sets CODEX_HOME in the mounted home', () => {
+  it('codexLoginRunArgs: device-code login (no port publish) with CODEX_HOME in the mounted home', () => {
     expect(codexLoginRunArgs('ghcr.io/openclaw/openclaw:latest', '/tmp/fake-repo/dev/openclaw-home')).toEqual([
-      'docker', 'run', '--rm', '-it', '-p', '1455:1455',
+      'docker', 'run', '--rm', '-it',
       '-e', 'CODEX_HOME=/home/node/.openclaw/codex',
       '-v', '/tmp/fake-repo/dev/openclaw-home:/home/node/.openclaw',
       '--entrypoint', 'node', 'ghcr.io/openclaw/openclaw:latest',
-      CODEX_CLI_ENTRY, 'login',
+      CODEX_CLI_ENTRY, 'login', '--device-auth',
     ])
   })
   it('codexLoginExecArgs: sandbox execs the Codex CLI login into the running container', () => {
     expect(codexLoginExecArgs(COMPOSE, 'sandbox')).toEqual([
-      'docker', 'compose', '-f', COMPOSE, 'exec', 'sandbox', 'node', CODEX_CLI_ENTRY, 'login',
+      'docker', 'compose', '-f', COMPOSE, 'exec', 'sandbox', 'node', CODEX_CLI_ENTRY, 'login', '--device-auth',
     ])
   })
 })

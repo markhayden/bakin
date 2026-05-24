@@ -67,14 +67,14 @@ export function openclawExecArgs(composeFile: string, openclawArgs: string[]): s
 }
 
 /**
- * Interactive Codex CLI login (ChatGPT OAuth). The Codex CLI serves the OAuth
- * callback on 1455, so a dedicated `docker run -it -p 1455:1455` publishes it
- * (the cli service can't — it shares the gateway's network). CODEX_HOME is kept
- * inside the mounted home so the credential persists and the gateway reads it.
+ * Interactive Codex CLI login (ChatGPT device-code OAuth). No port publish: the
+ * device-code flow polls outbound, so unlike the browser-callback flow it needs
+ * no inbound localhost callback. CODEX_HOME is kept inside the mounted home so
+ * the credential persists and the gateway reads it.
  */
 export function codexLoginRunArgs(image: string, openclawHome: string): string[] {
   return [
-    'docker', 'run', '--rm', '-it', '-p', '1455:1455',
+    'docker', 'run', '--rm', '-it',
     '-e', `CODEX_HOME=${CODEX_HOME_CONTAINER}`,
     '-v', `${openclawHome}:/home/node/.openclaw`,
     '--entrypoint', 'node', image,
@@ -256,7 +256,7 @@ export async function up(
   if (deps.exists(codexAuthFile(paths.openclawHome))) {
     deps.log('codex: already authed')
   } else {
-    deps.log('codex: browser OAuth (ChatGPT) — completing on http://localhost:1455 …')
+    deps.log('codex: ChatGPT device-code login — open the printed URL and enter the code…')
     const loginArgs = plan.bakin.placement === 'container'
       ? codexLoginExecArgs(paths.composeFile, plan.services[0])
       : codexLoginRunArgs(openclawImage(deps), paths.openclawHome)
