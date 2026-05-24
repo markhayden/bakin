@@ -6,7 +6,8 @@ import { resolvePlan } from '../../../scripts/instance/modes'
 import type { CommandRunner, RunResult } from '../../../scripts/instance/runner'
 import {
   bootstrapCommands,
-  codexAuthRunArgs,
+  codexLoginExecArgs,
+  codexLoginRunArgs,
   composeDownArgs,
   composeUpArgs,
   oneOffRunArgs,
@@ -16,6 +17,7 @@ import {
   up,
   type LifecycleDeps,
 } from '../../../scripts/instance/lifecycle'
+import { CODEX_CLI_ENTRY } from '../../../scripts/instance/codex'
 
 const ROOT = '/tmp/fake-repo'
 const COMPOSE = '/tmp/fake-repo/dev/docker/docker-compose.yml'
@@ -41,7 +43,6 @@ function fakeDeps(over: Partial<{
       if (over.results) return over.results(argv)
       const j = argv.join(' ')
       if (j.includes('op read')) return { code: 0, stdout: 'brave-secret\n', stderr: '' }
-      if (j.includes('models auth list')) return { code: 0, stdout: 'openai-codex (oauth)', stderr: '' }
       if (j.includes('healthz')) return { code: 0, stdout: 'ok', stderr: '' }
       return { code: 0, stdout: '', stderr: '' }
     },
@@ -97,12 +98,18 @@ describe('compose argv builders', () => {
     expect(remote).toBeDefined()
     expect(auth![3]).toBe(remote![3])
   })
-  it('codexAuthRunArgs: dedicated docker run publishes the 1455 OAuth callback port', () => {
-    expect(codexAuthRunArgs('ghcr.io/openclaw/openclaw:latest', '/tmp/fake-repo/dev/openclaw-home', ['models', 'auth', 'login', '--provider', 'openai-codex'])).toEqual([
+  it('codexLoginRunArgs: dedicated docker run publishes 1455 + sets CODEX_HOME in the mounted home', () => {
+    expect(codexLoginRunArgs('ghcr.io/openclaw/openclaw:latest', '/tmp/fake-repo/dev/openclaw-home')).toEqual([
       'docker', 'run', '--rm', '-it', '-p', '1455:1455',
+      '-e', 'CODEX_HOME=/home/node/.openclaw/codex',
       '-v', '/tmp/fake-repo/dev/openclaw-home:/home/node/.openclaw',
       '--entrypoint', 'node', 'ghcr.io/openclaw/openclaw:latest',
-      'dist/index.js', 'models', 'auth', 'login', '--provider', 'openai-codex',
+      CODEX_CLI_ENTRY, 'login',
+    ])
+  })
+  it('codexLoginExecArgs: sandbox execs the Codex CLI login into the running container', () => {
+    expect(codexLoginExecArgs(COMPOSE, 'sandbox')).toEqual([
+      'docker', 'compose', '-f', COMPOSE, 'exec', 'sandbox', 'node', CODEX_CLI_ENTRY, 'login',
     ])
   })
 })

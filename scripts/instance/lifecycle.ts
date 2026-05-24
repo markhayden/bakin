@@ -9,7 +9,14 @@
  */
 import { join } from 'node:path'
 
-import { ensureCodexAuth, type OpenClawExec } from './codex'
+import {
+  CODEX_CLI_ENTRY,
+  CODEX_DEFAULT_MODEL,
+  CODEX_HOME_CONTAINER,
+  codexAuthFile,
+  codexLoginArgs,
+  type OpenClawExec,
+} from './codex'
 import { mcporterBakinUrlBase, mcporterConfigJson, mcporterWriteArgs, parseAgentIds } from './mcporter'
 import { buildConfigCommands } from './openclaw-config'
 import { parseSecretsTemplate, redactSecrets, resolveSecrets } from './op-resolve'
@@ -60,17 +67,27 @@ export function openclawExecArgs(composeFile: string, openclawArgs: string[]): s
 }
 
 /**
- * Interactive codex OAuth needs the 1455 callback port published, which the
- * cli service can't do (it shares the gateway's network). Use a dedicated
- * `docker run -it -p 1455:1455 -v <home>`.
+ * Interactive Codex CLI login (ChatGPT OAuth). The Codex CLI serves the OAuth
+ * callback on 1455, so a dedicated `docker run -it -p 1455:1455` publishes it
+ * (the cli service can't — it shares the gateway's network). CODEX_HOME is kept
+ * inside the mounted home so the credential persists and the gateway reads it.
  */
-export function codexAuthRunArgs(image: string, openclawHome: string, openclawArgs: string[]): string[] {
+export function codexLoginRunArgs(image: string, openclawHome: string): string[] {
   return [
     'docker', 'run', '--rm', '-it', '-p', '1455:1455',
+    '-e', `CODEX_HOME=${CODEX_HOME_CONTAINER}`,
     '-v', `${openclawHome}:/home/node/.openclaw`,
     '--entrypoint', 'node', image,
-    'dist/index.js', ...openclawArgs,
+    CODEX_CLI_ENTRY, ...codexLoginArgs(),
   ]
+}
+
+/**
+ * Sandbox: the gateway (and its 1455 publish + CODEX_HOME env) already run in the
+ * sandbox container, so exec the Codex CLI login into it rather than a one-off.
+ */
+export function codexLoginExecArgs(composeFile: string, service: string): string[] {
+  return ['docker', 'compose', '-f', composeFile, 'exec', service, 'node', CODEX_CLI_ENTRY, ...codexLoginArgs()]
 }
 
 /** A non-interactive one-off OpenClaw CLI run against the mounted home (gateway not yet up). */
@@ -139,20 +156,13 @@ function makeOpenClawExec(
   deps: LifecycleDeps,
   secretsEnv: Record<string, string>,
 ): OpenClawExec {
-  // Sandbox: OpenClaw runs in the sandbox container (codex OAuth on the
-  // published 1455 port); exec into it for both config and interactive auth.
+  // Non-interactive openclaw CLI commands (config, models set). Sandbox execs into
+  // the running container; native/isolated use the cli service. (Interactive codex
+  // OAuth is handled separately — it drives the Codex CLI, not the openclaw CLI.)
   if (plan.bakin.placement === 'container') {
-    return (args, opts) =>
-      deps.runner.run(sandboxExecArgs(paths.composeFile, args, !!opts?.interactive), {
-        interactive: opts?.interactive,
-        env: secretsEnv,
-      })
+    return (args) => deps.runner.run(sandboxExecArgs(paths.composeFile, args, false), { env: secretsEnv })
   }
-  // native/isolated: cli service for config; dedicated docker-run for codex OAuth.
-  return (args, opts) =>
-    opts?.interactive
-      ? deps.runner.run(codexAuthRunArgs(openclawImage(deps), paths.openclawHome, args), { interactive: true })
-      : deps.runner.run(openclawExecArgs(paths.composeFile, args), { env: secretsEnv })
+  return (args) => deps.runner.run(openclawExecArgs(paths.composeFile, args), { env: secretsEnv })
 }
 
 async function waitForGatewayHealthy(deps: LifecycleDeps, paths: InstancePaths): Promise<void> {
@@ -181,8 +191,10 @@ export async function up(
       await deps.emptyDir(dir)
     }
   }
-  // Ensure the bind-mount target exists as a real, host-owned dir.
+  // Ensure the bind-mount target exists as a real, host-owned dir. CODEX_HOME (a
+  // subdir inside it) must exist too — the Codex CLI refuses to start otherwise.
   await deps.mkdirp(paths.openclawHome)
+  await deps.mkdirp(join(paths.openclawHome, 'codex'))
 
   // Pre-approve Bakin's gateway device (so operator.write / dispatch works) before
   // the gateway starts. No-op if an identity already exists.
@@ -238,14 +250,31 @@ export async function up(
     }
   }
 
-  // Codex: fresh browser OAuth if the mounted home has no codex profile (D3).
-  // The auth one-off reads config fresh, so it sees the enabled codex provider
-  // without the running gateway needing a restart first.
-  const codex = await ensureCodexAuth(exec)
-  deps.log(codex.alreadyAuthed ? 'codex: already authed' : 'codex: completed browser OAuth')
+  // Codex auth: the codex provider reads ChatGPT creds from CODEX_HOME/auth.json,
+  // written by the Codex CLI's own browser OAuth (OpenClaw has no managed auth
+  // method for it). Skip when already authed (D3 — reset wipes it to force re-auth).
+  if (deps.exists(codexAuthFile(paths.openclawHome))) {
+    deps.log('codex: already authed')
+  } else {
+    deps.log('codex: browser OAuth (ChatGPT) — completing on http://localhost:1455 …')
+    const loginArgs = plan.bakin.placement === 'container'
+      ? codexLoginExecArgs(paths.composeFile, plan.services[0])
+      : codexLoginRunArgs(openclawImage(deps), paths.openclawHome)
+    const login = await deps.runner.run(loginArgs, { interactive: true })
+    if (login.code !== 0) {
+      throw new Error(`Codex OAuth login failed (exit ${login.code}). Re-run \`instance up\` to retry the browser flow.`)
+    }
+  }
+
+  // onboard skipped model selection, so point the default at the Codex catalog.
+  // Warn-don't-fail: the user can pick a model in the UI if this can't resolve.
+  const modelSet = await exec(['models', 'set', CODEX_DEFAULT_MODEL])
+  if (modelSet.code !== 0) {
+    deps.log(`warning: could not set default model ${CODEX_DEFAULT_MODEL} (${modelSet.stderr.trim() || `exit ${modelSet.code}`}); set one in the UI`)
+  }
 
   // The gateway started before config ran, so restart it to load the now-enabled
-  // codex provider (+ its auth profile) and, when configured, the Discord bot.
+  // codex provider (+ its auth) and, when configured, the Discord bot.
   deps.log(`restarting gateway to load the provider${discordEnabled ? ' + Discord bot' : ''}…`)
   await deps.runner.run(composeRestartArgs(paths.composeFile, plan.services, plan.composeProfile))
   await waitForGatewayHealthy(deps, paths)

@@ -24,6 +24,11 @@ services:
       - "127.0.0.1:18789:18789"
     volumes:
       - ../openclaw-home:/home/node/.openclaw
+    environment:
+      # Codex provider reads ChatGPT auth from CODEX_HOME/auth.json. Keep it inside
+      # the mounted home so `codex login` (run separately) and this gateway's
+      # app-server share the same credential, and it persists until `reset`.
+      - CODEX_HOME=/home/node/.openclaw/codex
     # The `instance` rig configures the gateway entirely through openclaw.json
     # (auth token, model, mcp). No env_file: a stale OPENCLAW_GATEWAY_TOKEN there
     # would override gateway.auth.token and break the loopback CLI.
@@ -42,6 +47,8 @@ services:
     network_mode: "service:openclaw-gateway"
     volumes:
       - ../openclaw-home:/home/node/.openclaw
+    environment:
+      - CODEX_HOME=/home/node/.openclaw/codex
     entrypoint: ["node", "dist/index.js"]
     profiles: ["cli"]
 
@@ -59,6 +66,8 @@ services:
     volumes:
       - ../openclaw-home:/home/node/.openclaw
       - ../..:/bakin
+    environment:
+      - CODEX_HOME=/home/node/.openclaw/codex
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
