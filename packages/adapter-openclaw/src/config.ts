@@ -64,12 +64,21 @@ export function readOpenClawConfig(): OpenClawConfig | null {
   return config
 }
 
-export function getAgentList(): OpenClawAgent[] {
-  const config = readOpenClawConfig()
+/**
+ * Resolve the agent list from a config object, synthesizing an implicit `main`
+ * agent when none is declared (a minimal OpenClaw config has only
+ * `agents.defaults`). Pure — callers that already hold a config (e.g. the
+ * runtime `config.get`) reuse this instead of consumers assuming `agents.list`.
+ */
+export function agentListFrom(config: OpenClawConfig | null): OpenClawAgent[] {
   if (!config) return []
   const list = config.agents?.list
   if (Array.isArray(list) && list.length > 0) return list
   return [implicitMainAgent(config)]
+}
+
+export function getAgentList(): OpenClawAgent[] {
+  return agentListFrom(readOpenClawConfig())
 }
 
 export function getAgentIds(): string[] {
