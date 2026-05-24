@@ -4,7 +4,7 @@ import { parseInstanceArgs } from '../../../scripts/instance/args'
 
 describe('parseInstanceArgs — verbs', () => {
   it('parses each known verb with native defaults', () => {
-    for (const verb of ['up', 'reset', 'down', 'shell', 'status', 'env'] as const) {
+    for (const verb of ['up', 'dev', 'reset', 'down', 'shell', 'status', 'env'] as const) {
       expect(parseInstanceArgs([verb])).toEqual({
         verb,
         mode: 'native',

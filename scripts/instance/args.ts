@@ -6,7 +6,7 @@
  * effects — so it is exhaustively unit-testable.
  */
 
-export const VERBS = ['up', 'reset', 'down', 'shell', 'status', 'env', 'run'] as const
+export const VERBS = ['up', 'dev', 'reset', 'down', 'shell', 'status', 'env', 'run'] as const
 export type Verb = (typeof VERBS)[number]
 
 export const MODES = ['native', 'isolated', 'sandbox'] as const

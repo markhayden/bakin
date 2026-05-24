@@ -11,11 +11,10 @@
  *   native    OpenClaw in container; Bakin runs from this repo on the host.
  *   isolated  like native, but Bakin uses a throwaway BAKIN_HOME under dev/.
  *   sandbox   Bakin runs inside the container (clean Linux box).
- *
- * See SPEC.md / tasks/plan.md. Dispatch is wired incrementally (T5/T6/T7).
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, readdir, rm } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 import { parseInstanceArgs, type InstanceArgs } from './instance/args'
@@ -30,14 +29,20 @@ const REPO_ROOT = resolve(import.meta.dir, '..')
 
 const USAGE = `Usage: bun run instance <verb> [flags]
 
-Verbs:
+Provision:
   up        Bring up the configured OpenClaw container (and Bakin per --mode)
-  reset     Wipe instance state (openclaw-home + throwaway BAKIN_HOME) and recreate
-  down      Stop the containers
-  shell     Open a shell into the container / print the host env for native
-  status    Report container health, configured providers/tools, and auth state
+
+Run + access (after \`up\`):
+  dev       Run Bakin against the instance → UI at http://localhost:3737
+            (native/isolated; onboards the home first if needed)
+  run -- <args...>   Run a Bakin CLI command in this instance's context
+  shell     Drop into a shell with the instance env set (sandbox: into the container)
+  status    Report container health and configured services
   env       Print the environment this instance exports
-  run -- <args...>   Run an arbitrary bakin/openclaw command in this instance's context
+
+Teardown:
+  down      Stop the containers (state is preserved)
+  reset     Stop + wipe instance state (openclaw-home + throwaway BAKIN_HOME)
 
 Flags:
   --mode native|isolated|sandbox   Where/how Bakin runs (default: native)
@@ -45,7 +50,10 @@ Flags:
   --source repo|installed          Bakin source for isolated/sandbox (default: repo)
   --preconfigure                   Sandbox only: auto-run \`bakin onboard --yes\`
 
-Prerequisites: Docker running, \`op\` CLI installed, OP_SERVICE_ACCOUNT_TOKEN set.`
+OpenClaw CLI access: ./dev/docker/openclaw-shim.sh <args>   (e.g. mcp list)
+Full image cleanup:  docker compose -f dev/docker/docker-compose.yml --profile sandbox down --rmi local
+
+Prerequisites: Docker running, \`op\` CLI installed, OP_SERVICE_ACCOUNT_TOKEN (in dev/docker/.env or env).`
 
 function makeDeps(): LifecycleDeps {
   return {
@@ -110,13 +118,39 @@ async function main(argv: string[]): Promise<number> {
         }
         return 0
       }
+      case 'dev': {
+        if (plan.bakin.placement === 'container') {
+          console.error('`dev` runs Bakin on the host — use --mode native or isolated. For sandbox, use `instance shell` then `bun run server.ts`.')
+          return 1
+        }
+        const health = await deps.runner.run(['curl', '-sf', 'http://127.0.0.1:18789/healthz'])
+        if (health.code !== 0) {
+          console.error('OpenClaw gateway is not reachable — run `instance up` first.')
+          return 1
+        }
+        const bakinHome = plan.hostEnv.BAKIN_HOME ?? join(homedir(), '.bakin')
+        if (!existsSync(join(bakinHome, '.onboarded'))) {
+          console.log('▸ onboarding Bakin home against the container…')
+          const onboard = await deps.runner.run(
+            ['bun', 'run', 'cli/bakin.ts', 'onboard', '--yes'],
+            { interactive: true, env: plan.hostEnv, cwd: REPO_ROOT },
+          )
+          if (onboard.code !== 0) return onboard.code
+        }
+        console.log('▸ starting Bakin → http://localhost:3737  (Ctrl+C to stop)')
+        const server = await deps.runner.run(
+          ['bun', 'run', 'server.ts'],
+          { interactive: true, env: plan.hostEnv, cwd: REPO_ROOT },
+        )
+        return server.code
+      }
       case 'reset':
         await reset(plan, paths, deps)
-        console.log('✓ instance reset')
+        console.log('✓ instance reset (state wiped)')
         return 0
       case 'down':
         await down(paths, deps)
-        console.log('✓ containers stopped')
+        console.log('✓ containers stopped (state preserved; `reset` to wipe, `down --rmi local` via docker to remove images)')
         return 0
       case 'env':
         printEnv(paths, plan.hostEnv)
@@ -127,22 +161,30 @@ async function main(argv: string[]): Promise<number> {
         return ps.code
       }
       case 'shell': {
-        if (plan.bakin.placement !== 'container') {
-          console.log('# native/isolated: run Bakin on the host with this env:')
-          printEnv(paths, plan.hostEnv)
-          return 0
+        if (plan.bakin.placement === 'container') {
+          const shell = await deps.runner.run(sandboxShellArgs(paths.composeFile), { interactive: true })
+          return shell.code
         }
-        const shell = await deps.runner.run(sandboxShellArgs(paths.composeFile), { interactive: true })
+        console.log('# subshell with instance env. Bakin CLI: `bun run cli/bakin.ts …`  ·  OpenClaw CLI: `./dev/docker/openclaw-shim.sh …`  ·  `exit` to leave.')
+        const shell = await deps.runner.run([process.env.SHELL || '/bin/bash'], {
+          interactive: true,
+          env: plan.hostEnv,
+          cwd: REPO_ROOT,
+        })
         return shell.code
       }
       case 'run': {
-        if (plan.bakin.placement !== 'container') {
-          console.error('run is only supported in --mode sandbox; for native/isolated use the printed env with the bakin CLI.')
-          return 1
+        if (plan.bakin.placement === 'container') {
+          const ran = await deps.runner.run(
+            sandboxBakinArgs(paths.composeFile, plan.bakin.source, args.rest, true),
+            { interactive: true },
+          )
+          return ran.code
         }
+        // native/isolated: Bakin CLI on the host with the instance env
         const ran = await deps.runner.run(
-          sandboxBakinArgs(paths.composeFile, plan.bakin.source, args.rest, true),
-          { interactive: true },
+          ['bun', 'run', 'cli/bakin.ts', ...args.rest],
+          { interactive: true, env: plan.hostEnv, cwd: REPO_ROOT },
         )
         return ran.code
       }
