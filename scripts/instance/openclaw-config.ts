@@ -40,15 +40,25 @@ export function buildConfigCommands(input: OpenClawConfigInput): string[][] {
     JSON.stringify({ ...BRAVE_MCP_SPEC, env: { BRAVE_API_KEY: input.braveApiKey } }),
   ])
 
+  // The Discord channel plugin must be installed before the channel works.
+  // --force makes it idempotent across re-runs (else "plugin already exists").
+  if (input.discord) {
+    cmds.push(['plugins', 'install', '@openclaw/discord', '--force'])
+  }
+
+  // plugins.allow is a STRICT allowlist — anything not named is blocked, even
+  // stock plugins. The Codex provider (the LLM) ships stock-but-disabled, so it
+  // must be both allowlisted AND enabled or `models auth login` reports "No
+  // provider plugins found". Discord is a non-stock plugin that likewise must be
+  // allowlisted (without it, `agents add` sees an empty allowlist, looks failed,
+  // and the adapter falls back to a HOST workspace path that breaks dispatch).
+  const allow = ['codex', ...(input.discord ? ['discord'] : [])]
+  cmds.push(['config', 'set', 'plugins.allow', JSON.stringify(allow), '--strict-json'])
+  // enable is idempotent (exit 0 + "Restart to apply" when already enabled).
+  cmds.push(['plugins', 'enable', 'codex'])
+
   if (input.discord) {
     const { token, guildId, userId } = input.discord
-    // The Discord channel plugin must be installed before the channel works.
-    // --force makes it idempotent across re-runs (else "plugin already exists").
-    cmds.push(['plugins', 'install', '@openclaw/discord', '--force'])
-    // Trust the non-bundled discord plugin. Without this, the "plugins.allow is
-    // empty" warning makes `agents add` look like it failed, and the adapter
-    // falls back to writing a HOST workspace path that breaks in-container dispatch.
-    cmds.push(['config', 'set', 'plugins.allow', '["discord"]', '--strict-json'])
     // Resolved token inline (the home is disposable + gitignored, like brave).
     cmds.push(['config', 'set', 'channels.discord.token', token])
     cmds.push(['config', 'set', 'channels.discord.enabled', 'true', '--strict-json'])

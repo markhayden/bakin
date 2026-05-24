@@ -238,16 +238,17 @@ export async function up(
     }
   }
 
-  // Discord needs a gateway restart to connect the bot.
-  if (discordEnabled) {
-    deps.log('discord configured — restarting gateway to connect the bot…')
-    await deps.runner.run(composeRestartArgs(paths.composeFile, plan.services, plan.composeProfile))
-    await waitForGatewayHealthy(deps, paths)
-  }
-
   // Codex: fresh browser OAuth if the mounted home has no codex profile (D3).
+  // The auth one-off reads config fresh, so it sees the enabled codex provider
+  // without the running gateway needing a restart first.
   const codex = await ensureCodexAuth(exec)
   deps.log(codex.alreadyAuthed ? 'codex: already authed' : 'codex: completed browser OAuth')
+
+  // The gateway started before config ran, so restart it to load the now-enabled
+  // codex provider (+ its auth profile) and, when configured, the Discord bot.
+  deps.log(`restarting gateway to load the provider${discordEnabled ? ' + Discord bot' : ''}…`)
+  await deps.runner.run(composeRestartArgs(paths.composeFile, plan.services, plan.composeProfile))
+  await waitForGatewayHealthy(deps, paths)
 
   // Bridge Bakin's MCP tools to the agent: write mcporter config (per agent,
   // pointed at Bakin) into the agent's container. Without this the agent has no
