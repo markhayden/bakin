@@ -25,7 +25,7 @@ interface ScriptedComponent {
   installCalls: number
 }
 
-const COMPONENT_NAMES = ['mkdir', 'settings', 'runtime', 'search', 'search-models', 'mcporter', 'plugin-assets', 'agent-assets', 'llm', 'channels', 'recommended-plugins', 'recommended-agents'] as const
+const COMPONENT_NAMES = ['mkdir', 'settings', 'runtime', 'search', 'search-models', 'mcporter', 'openclaw-integration', 'plugin-assets', 'agent-assets', 'llm', 'channels', 'recommended-plugins', 'recommended-agents'] as const
 
 let scripts: Record<(typeof COMPONENT_NAMES)[number], ScriptedComponent>
 
@@ -58,6 +58,7 @@ mock.module('../../../src/core/onboarding/runtime', () => ({ runtimeComponent: m
 mock.module('../../../src/core/onboarding/search', () => ({ searchComponent: makeMock('search') }))
 mock.module('../../../src/core/onboarding/search-models', () => ({ searchModelsComponent: makeMock('search-models') }))
 mock.module('../../../src/core/onboarding/mcporter', () => ({ mcporterComponent: makeMock('mcporter') }))
+mock.module('../../../src/core/onboarding/openclaw-integration', () => ({ openClawIntegrationComponent: makeMock('openclaw-integration') }))
 mock.module('../../../src/core/onboarding/plugin-assets', () => ({ pluginAssetsComponent: makeMock('plugin-assets') }))
 mock.module('../../../src/core/onboarding/agent-assets', () => ({ agentAssetsComponent: makeMock('agent-assets') }))
 mock.module('../../../src/core/onboarding/credentials', () => ({
@@ -97,6 +98,47 @@ mock.module('../../../src/core/logger', () => ({
     warn: mock(),
     error: mock(),
     debug: mock(),
+  }),
+}))
+
+mock.module('../../../src/core/app-services', () => ({
+  getAppServices: () => ({
+    runtime: {},
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+  maybeGetAppServices: () => ({
+    runtime: {},
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+  createAppServices: async () => ({
+    runtime: {},
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+}))
+mock.module('../../../src/core/app-services.ts', () => ({
+  getAppServices: () => ({
+    runtime: {},
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+  maybeGetAppServices: () => ({
+    runtime: {},
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+  createAppServices: async () => ({
+    runtime: {},
+    search: {},
+    tasks: {},
+    health: {},
   }),
 }))
 
@@ -167,7 +209,7 @@ describe('runOnboard orchestrator', () => {
   // ---------------------------------------------------------------------------
 
   describe('COMPONENT_ORDER', () => {
-    it('contains exactly the 12 expected components in the spec order', () => {
+    it('contains exactly the 13 expected components in the spec order', () => {
       expect(COMPONENT_ORDER.map((c) => c.name)).toEqual([
         'mkdir',
         'settings',
@@ -175,6 +217,7 @@ describe('runOnboard orchestrator', () => {
         'search',
         'search-models',
         'mcporter',
+        'openclaw-integration',
         'plugin-assets',
         'agent-assets',
         'llm',
@@ -195,7 +238,7 @@ describe('runOnboard orchestrator', () => {
       expect(result.exitCode).toBe(0)
       expect(result.markerWritten).toBe(true)
       expect(result.outcomes.map((o) => o.finalStatus)).toEqual([
-        'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok',
+        'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok', 'ok',
       ])
       // check() was called on every component
       for (const n of COMPONENT_NAMES) {
@@ -213,6 +256,7 @@ describe('runOnboard orchestrator', () => {
         search: 'ok',
         'search-models': 'ok',
         mcporter: 'ok',
+        'openclaw-integration': 'ok',
         'plugin-assets': 'ok',
         'agent-assets': 'ok',
         llm: 'ok',

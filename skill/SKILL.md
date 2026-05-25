@@ -7,7 +7,13 @@ description: Mission control integration for multi-agent coordination through Ba
 
 Use Bakin for task-board work, workflow routing, team coordination, assets, schedules, and channel posting.
 
+Bakin is the local task, project, agent, workflow, asset, schedule, and observability system for this OpenClaw runtime.
+
 Your MCP server is `bakin-<agent>`. The main operator uses `bakin-main`.
+
+The local Bakin server normally runs at `http://localhost:3737`. Prefer Bakin MCP tools when they are available. Use the CLI only when MCP is unavailable or when the user asks for a shell command.
+
+The CLI is usually `bakin`. If the runtime shell cannot find it, try `$HOME/.local/bin/bakin` or `/usr/local/bin/bakin`.
 
 ## Live Tool Discovery
 

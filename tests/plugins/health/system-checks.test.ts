@@ -130,6 +130,70 @@ mock.module('../../../src/lib/plugin-registry', () => ({
   }),
 }))
 
+mock.module('../../../src/core/app-services', () => ({
+  getAppServices: () => ({
+    runtime: mockRuntime,
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+  maybeGetAppServices: () => ({
+    runtime: mockRuntime,
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+  createAppServices: async () => ({
+    runtime: mockRuntime,
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+}))
+mock.module('../../../src/core/app-services.ts', () => ({
+  getAppServices: () => ({
+    runtime: mockRuntime,
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+  maybeGetAppServices: () => ({
+    runtime: mockRuntime,
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+  createAppServices: async () => ({
+    runtime: mockRuntime,
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+}))
+mock.module('@/core/app-services', () => ({
+  getAppServices: () => ({
+    runtime: mockRuntime,
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+  maybeGetAppServices: () => ({
+    runtime: mockRuntime,
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+  createAppServices: async () => ({
+    runtime: mockRuntime,
+    search: {},
+    tasks: {},
+    health: {},
+  }),
+}))
+mock.module('@bakin/core/app-services', () => ({
+  createHealthService: () => ({}),
+}))
+
 let mockPluginAssetsResult = { name: 'plugin-assets', status: 'ok' as const, message: '0 plugin assets to install' }
 mock.module('../../../src/core/onboarding/plugin-assets', () => ({
   pluginAssetsComponent: {
