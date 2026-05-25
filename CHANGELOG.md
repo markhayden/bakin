@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.4] - 2026-05-25
+
 ### Fixed
 - Embed the Bakin runtime skill template in release binaries so first-time installs can sync the `bakin` skill outside a source checkout.
 
@@ -52,6 +54,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 [0.0.1-rc.1]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.1
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.3...HEAD
 [0.0.1-rc.3]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.3
 [0.0.1-rc.2]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.2
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.4...HEAD
+[0.0.1-rc.4]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.4
