@@ -19,6 +19,7 @@ import {
 import {
   addTaskLog as appendTaskLog,
   blockTask as blockStoredTask,
+  moveTask as moveStoredTask,
   readTaskboard,
   updateTask as updateStoredTask,
 } from './task-store'
@@ -109,7 +110,12 @@ type DispatchTask = {
   projectId?: string
   availableAt?: string
   dependsOn?: string
-  log?: Array<{ timestamp: string }>
+  log?: Array<{ timestamp: string; message?: string }>
+}
+
+type DispatchTaskSnapshot = {
+  column: keyof DispatchColumns
+  task: DispatchTask
 }
 
 type DispatchEligibilityContext = {
@@ -241,6 +247,141 @@ function getDispatchMarkerTaskId(marker: string): string {
   return separator === -1 ? marker : marker.slice(0, separator)
 }
 
+function removeDispatchMarkersForTask(
+  state: DispatchState,
+  dispatchedSet: Set<string> | null,
+  taskId: string,
+): void {
+  state.dispatched = state.dispatched.filter(marker => getDispatchMarkerTaskId(marker) !== taskId)
+  if (dispatchedSet) {
+    for (const marker of Array.from(dispatchedSet)) {
+      if (getDispatchMarkerTaskId(marker) === taskId) dispatchedSet.delete(marker)
+    }
+  }
+}
+
+function findDispatchTaskSnapshot(taskId: string): DispatchTaskSnapshot | null {
+  const { columns } = readTaskboard() as unknown as { columns: DispatchColumns }
+  for (const column of Object.keys(emptyDispatchColumns()) as Array<keyof DispatchColumns>) {
+    const task = columns[column]?.find(t => t.id === taskId)
+    if (task) return { column, task }
+  }
+  return null
+}
+
+function taskAlreadyLeftActiveWork(column: keyof DispatchColumns): boolean {
+  return column === 'done' || column === 'blocked' || column === 'review' || column === 'archived'
+}
+
+async function tryAddTaskLog(taskId: string, author: string, message: string): Promise<void> {
+  try {
+    await addTaskLog(taskId, author, message)
+  } catch (err) {
+    log.warn('Failed to append dispatch reconciliation task log', err, { id: taskId })
+  }
+}
+
+function formatSanitizedRuntimeFailure(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err)
+  const lower = raw.toLowerCase()
+  if (lower.includes('turn_completion_idle_timeout') || lower.includes('idle timed out waiting for turn/completed')) {
+    return 'codex app-server idle timeout waiting for turn completion'
+  }
+  if (lower.includes('request timed out')) return 'runtime gateway request timed out'
+  if (lower.includes('socket error')) return 'runtime gateway socket error'
+  if (lower.includes('fetch failed')) return 'runtime transport fetch failed'
+  if (err instanceof Error && err.name === 'AbortError') return 'runtime transport request aborted'
+  const http = raw.match(/\bfailed \((\d{3})\)/)
+  if (http) return `runtime adapter returned HTTP ${http[1]}`
+  return 'runtime dispatch failed before task completion'
+}
+
+function isAcceptedRunTerminalFailure(err: unknown): boolean {
+  const raw = err instanceof Error ? err.message : String(err)
+  const lower = raw.toLowerCase()
+  return lower.includes('turn_completion_idle_timeout')
+    || lower.includes('idle timed out waiting for turn/completed')
+}
+
+function shouldBlockAfterDispatchFailure(
+  err: unknown,
+  snapshot: DispatchTaskSnapshot,
+  initialLogCount: number,
+): boolean {
+  if (isAcceptedRunTerminalFailure(err)) return true
+  return (snapshot.task.log?.length ?? 0) > initialLogCount
+}
+
+async function reconcileRejectedDispatch(input: {
+  contentDir: string
+  state: DispatchState
+  dispatchedSet: Set<string> | null
+  task: DispatchTask
+  targetAgent: string
+  err: unknown
+  initialLogCount: number
+  logPrefix: string
+  dispatchKind: 'regular' | 'workflow'
+}): Promise<void> {
+  const snapshot = findDispatchTaskSnapshot(input.task.id)
+  removeDispatchMarkersForTask(input.state, input.dispatchedSet, input.task.id)
+
+  if (snapshot && taskAlreadyLeftActiveWork(snapshot.column)) {
+    delete input.state.failedDispatches?.[input.task.id]
+    appendAudit(input.contentDir, 'task.dispatch_failure_ignored', input.targetAgent, {
+      id: input.task.id,
+      title: input.task.title,
+      column: snapshot.column,
+      error: formatSanitizedRuntimeFailure(input.err),
+    })
+    return
+  }
+
+  const summary = formatSanitizedRuntimeFailure(input.err)
+  if (snapshot?.column === 'inProgress' && shouldBlockAfterDispatchFailure(input.err, snapshot, input.initialLogCount)) {
+    delete input.state.failedDispatches?.[input.task.id]
+    const reason = isAcceptedRunTerminalFailure(input.err)
+      ? 'Agent runtime timed out before reporting completion.'
+      : 'Agent run ended before reporting completion.'
+    await blockStoredTask(input.task.id, `${reason} ${summary}.`)
+    await tryAddTaskLog(input.task.id, 'system', `Agent run ended before task completion: ${summary}. Task moved to blocked for review.`)
+    appendAudit(input.contentDir, 'task.runtime_failed_blocked', input.targetAgent, {
+      id: input.task.id,
+      title: input.task.title,
+      kind: input.dispatchKind,
+      error: summary,
+    })
+    return
+  }
+
+  if (!input.state.failedDispatches) input.state.failedDispatches = {}
+  const prev = getFailureRecord(input.state.failedDispatches[input.task.id])
+  const kind = classifyDispatchError(input.err)
+  const attempt = (prev?.count || 0) + 1
+  input.state.failedDispatches[input.task.id] = { lastAttempt: Date.now(), count: attempt, kind }
+
+  if (snapshot?.column === 'inProgress') {
+    try {
+      await moveStoredTask(input.task.id, 'todo', 'inProgress')
+    } catch (err) {
+      log.warn('Failed to return task to todo after dispatch rejection', err, { id: input.task.id })
+    }
+  }
+
+  await tryAddTaskLog(
+    input.task.id,
+    'system',
+    `${input.logPrefix} (attempt ${attempt}, ${kind}) → ${input.targetAgent}: ${summary}. Returned to Todo for retry when cooldown expires.`,
+  )
+  appendAudit(input.contentDir, 'task.dispatch_failed', input.targetAgent, {
+    id: input.task.id,
+    title: input.task.title,
+    error: summary,
+    attempt,
+    kind,
+  })
+}
+
 export function loadDispatchState(contentDir: string): DispatchState {
   const stateFile = getStateFile(contentDir)
   try {
@@ -282,15 +423,19 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
     // Reconcile dispatch state with taskboard reality
     const columns = await readDispatchColumns()
     const todoTasks = columns.todo
-    const activeIds = new Set([
-      ...columns.inProgress.map(t => t.id),
-      ...columns.done.map(t => t.id),
-      ...columns.archived.map(t => t.id),
-    ])
+    const activeIds = new Set(columns.inProgress.map(t => t.id))
     const completedTaskIds = new Set([
       ...columns.done.map(t => t.id),
       ...columns.archived.map(t => t.id),
     ])
+    for (const task of [
+      ...columns.done,
+      ...columns.archived,
+      ...columns.blocked,
+      ...columns.review,
+    ]) {
+      delete state.failedDispatches?.[task.id]
+    }
     state.dispatched = state.dispatched.filter(id => activeIds.has(getDispatchMarkerTaskId(id)))
     // Rebuild dispatchedSet AFTER reconciliation so tasks moved back to todo are eligible
     const dispatchedSet = new Set(state.dispatched)
@@ -380,6 +525,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         query: buildTaskLessonQuery(task),
       })
       const message = buildDispatchMessage(task, targetAgent, contentDir, port, mainAgentId, lessonBlock)
+      const initialLogCount = task.log?.length ?? 0
 
       try {
         // Move to inProgress BEFORE sending message to eliminate race condition
@@ -389,25 +535,23 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
 
         await sendDispatchMessage(targetAgent, message)
         dispatchedSet.add(task.id)
+        delete state.failedDispatches?.[task.id]
 
         appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title })
         log.info('Task dispatched', { id: task.id, title: task.title, agent: targetAgent })
       } catch (err) {
         log.error(`Failed to dispatch "${task.title}" to ${targetAgent}`, err)
-
-        if (!state.failedDispatches) state.failedDispatches = {}
-        const prev = getFailureRecord(state.failedDispatches[task.id])
-        const kind = classifyDispatchError(err)
-        state.failedDispatches[task.id] = { lastAttempt: Date.now(), count: (prev?.count || 0) + 1, kind }
-
-        const errMsg = formatDispatchError(err)
-        try {
-          await addTaskLog(task.id, 'system', `Dispatch failed (attempt ${(prev?.count || 0) + 1}, ${kind}) → ${targetAgent}: ${errMsg}`)
-        } catch {
-          // best effort
-        }
-
-        appendAudit(contentDir, 'task.dispatch_failed', targetAgent, { id: task.id, title: task.title, error: errMsg, attempt: (prev?.count || 0) + 1, kind })
+        await reconcileRejectedDispatch({
+          contentDir,
+          state,
+          dispatchedSet,
+          task,
+          targetAgent,
+          err,
+          initialLogCount,
+          logPrefix: 'Dispatch failed',
+          dispatchKind: 'regular',
+        })
       }
     }
 
@@ -528,6 +672,7 @@ export async function dispatchSingleTask(
     })
     const message = buildDispatchMessage(task, targetAgent, contentDir, port, mainAgentId, lessonBlock)
     const dispatchStart = Date.now()
+    const initialLogCount = task.log?.length ?? 0
 
     try {
       // Move to inProgress BEFORE sending message to eliminate race condition
@@ -535,6 +680,7 @@ export async function dispatchSingleTask(
       appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
 
       await sendDispatchMessage(targetAgent, message)
+      delete state.failedDispatches?.[task.id]
 
       state.dispatched.push(task.id)
       saveDispatchState(contentDir, state)
@@ -552,19 +698,18 @@ export async function dispatchSingleTask(
       })
     } catch (err) {
       log.error(`dispatchSingleTask: failed to dispatch "${task.title}" to ${targetAgent}`, err)
-
-      if (!state.failedDispatches) state.failedDispatches = {}
-      const prev = getFailureRecord(state.failedDispatches[task.id])
-      const kind = classifyDispatchError(err)
-      state.failedDispatches[task.id] = { lastAttempt: Date.now(), count: (prev?.count || 0) + 1, kind }
+      await reconcileRejectedDispatch({
+        contentDir,
+        state,
+        dispatchedSet: null,
+        task,
+        targetAgent,
+        err,
+        initialLogCount,
+        logPrefix: 'Immediate dispatch failed',
+        dispatchKind: 'regular',
+      })
       saveDispatchState(contentDir, state)
-
-      try {
-        const errMsg = formatDispatchError(err)
-        await addTaskLog(task.id, 'system', `Immediate dispatch failed (attempt ${(prev?.count || 0) + 1}, ${kind}) → ${targetAgent}: ${errMsg}`)
-      } catch {
-        // best effort
-      }
 
       recordUsage({
         kind: 'agent',
@@ -810,10 +955,12 @@ async function dispatchWorkflowTask(
     })
     // Pass contextTaskId so the step/complete API targets the right instance
     const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, port, lessonBlock)
+    const initialLogCount = findDispatchTaskSnapshot(task.id)?.task.log?.length ?? 0
 
     try {
       await sendDispatchMessage(targetAgent, message)
       dispatchedSet.add(`${task.id}:${stepId}`)
+      delete state.failedDispatches?.[task.id]
 
       appendAudit(contentDir, 'task.dispatched', targetAgent, {
         id: task.id,
@@ -824,17 +971,17 @@ async function dispatchWorkflowTask(
       log.info('Workflow step dispatched', { taskId: task.id, stepId, agent: targetAgent })
     } catch (err) {
       log.error(`Failed to dispatch workflow step "${stepId}" to ${targetAgent}`, err)
-      if (!state.failedDispatches) state.failedDispatches = {}
-      const prev = getFailureRecord(state.failedDispatches[task.id])
-      const kind = classifyDispatchError(err)
-      state.failedDispatches[task.id] = { lastAttempt: Date.now(), count: (prev?.count || 0) + 1, kind }
-
-      try {
-        const errMsg = formatDispatchError(err)
-        await addTaskLog(task.id, 'system', `Workflow dispatch failed (attempt ${(prev?.count || 0) + 1}, ${kind}) for step "${stepId}" → ${targetAgent}: ${errMsg}`)
-      } catch {
-        // best effort
-      }
+      await reconcileRejectedDispatch({
+        contentDir,
+        state,
+        dispatchedSet,
+        task,
+        targetAgent,
+        err,
+        initialLogCount,
+        logPrefix: `Workflow dispatch failed for step "${stepId}"`,
+        dispatchKind: 'workflow',
+      })
     }
   }
 }
