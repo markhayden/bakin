@@ -2,7 +2,8 @@
  * `bakin update` — self-replacing binary update (#147 TG4).
  *
  * Flow:
- *   1. GET https://api.github.com/repos/markhayden/bakin/releases/latest
+ *   1. GET GitHub's latest stable release, falling back to the releases list
+ *      when the repo only has prereleases.
  *   2. Pick the asset whose name ends in `bakin-<platform>-<arch>`.
  *   3. Download it alongside `checksums.txt`.
  *   4. Verify SHA256 against the listed value.
@@ -22,7 +23,9 @@ import { Readable } from 'node:stream'
 import { finished } from 'node:stream/promises'
 import type { ReadableStream as WebReadableStream } from 'node:stream/web'
 
-const RELEASE_API = 'https://api.github.com/repos/markhayden/bakin/releases/latest'
+const LATEST_RELEASE_API = 'https://api.github.com/repos/markhayden/bakin/releases/latest'
+const RELEASES_API = 'https://api.github.com/repos/markhayden/bakin/releases?per_page=20'
+const GITHUB_HEADERS = { 'User-Agent': 'bakin-self-update', Accept: 'application/vnd.github+json' }
 
 interface GithubAsset {
   name: string
@@ -31,6 +34,8 @@ interface GithubAsset {
 
 interface GithubRelease {
   tag_name: string
+  draft?: boolean
+  prerelease?: boolean
   assets: GithubAsset[]
 }
 
@@ -42,6 +47,33 @@ export interface SelfUpdateReporter {
 const consoleReporter: SelfUpdateReporter = {
   log: message => console.log(message),
   error: message => console.error(message),
+}
+
+class ReleaseFetchError extends Error {
+  constructor(public readonly status: number, public readonly url: string) {
+    super(`HTTP ${status}`)
+  }
+}
+
+async function fetchGithubJson<T>(url: string): Promise<T> {
+  const res = await fetch(url, { headers: GITHUB_HEADERS })
+  if (!res.ok) throw new ReleaseFetchError(res.status, url)
+  return (await res.json()) as T
+}
+
+export async function fetchLatestRelease(reporter: Pick<SelfUpdateReporter, 'log'>): Promise<GithubRelease> {
+  reporter.log(`Fetching latest release from ${LATEST_RELEASE_API}`)
+  try {
+    return await fetchGithubJson<GithubRelease>(LATEST_RELEASE_API)
+  } catch (err) {
+    if (!(err instanceof ReleaseFetchError) || err.status !== 404) throw err
+  }
+
+  reporter.log(`No stable release found; checking releases from ${RELEASES_API}`)
+  const releases = await fetchGithubJson<GithubRelease[]>(RELEASES_API)
+  const release = releases.find(candidate => !candidate.draft)
+  if (!release) throw new Error('HTTP 404; no published releases found')
+  return release
 }
 
 function currentTriple(): string | null {
@@ -92,14 +124,9 @@ export async function selfUpdate(reporter: SelfUpdateReporter = consoleReporter)
     return 1
   }
 
-  reporter.log(`Fetching latest release from ${RELEASE_API}`)
   let release: GithubRelease
   try {
-    const res = await fetch(RELEASE_API, {
-      headers: { 'User-Agent': 'bakin-self-update', Accept: 'application/vnd.github+json' },
-    })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    release = (await res.json()) as GithubRelease
+    release = await fetchLatestRelease(reporter)
   } catch (err) {
     reporter.error(`Could not fetch release info: ${err instanceof Error ? err.message : String(err)}`)
     return 1
