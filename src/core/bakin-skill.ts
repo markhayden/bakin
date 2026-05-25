@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
+import { readEmbeddedBakinSkillTemplate } from './bakin-skill-template'
 
 const EXEC_TOOLS_START = '<!-- bakin:exec-tools:start -->'
 const EXEC_TOOLS_END = '<!-- bakin:exec-tools:end -->'
@@ -50,11 +51,9 @@ function getRegisteredExecTools(): unknown[] {
 
 export function renderBakinRuntimeSkill(projectRoot: string): string {
   const sourceSkill = join(projectRoot, 'skill', 'SKILL.md')
-  if (!existsSync(sourceSkill)) {
-    throw new Error('Bakin skill source not found at skill/SKILL.md')
-  }
-
-  const templateContent = readFileSync(sourceSkill, 'utf-8')
+  const templateContent = existsSync(sourceSkill)
+    ? readFileSync(sourceSkill, 'utf-8')
+    : readEmbeddedBakinSkillTemplate()
   const startIdx = templateContent.indexOf(EXEC_TOOLS_START)
   const endIdx = templateContent.indexOf(EXEC_TOOLS_END)
   if (startIdx === -1 || endIdx === -1) {
