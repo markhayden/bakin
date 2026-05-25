@@ -113,3 +113,8 @@ interface ImportMeta {
  * TypeScript's static resolution of these non-module files — Bun handles
  * the import at runtime / compile time.
  */
+
+declare module '*.md' {
+  const path: string
+  export default path
+}

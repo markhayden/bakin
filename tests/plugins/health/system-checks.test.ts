@@ -612,13 +612,14 @@ describe('checkSearchAdapter', () => {
 // ─── checkAndSyncSkill ────────────────────────────────────────────────────
 
 describe('checkAndSyncSkill', () => {
-  it('errors when the skill source is missing', async () => {
+  it('uses the embedded skill template when the source checkout template is missing', async () => {
     const projectRoot = pathJoin(testDir, 'project-no-skill')
     mkdirSync(projectRoot, { recursive: true })
     const results = await checkAndSyncSkill(projectRoot, mockRuntime)
     expect(results[0].check).toBe('skill')
-    expect(results[0].status).toBe('error')
-    expect(results[0].message).toMatch(/source not found/)
+    expect(results[0].status).toBe('warn')
+    expect(results[0].autoFixable).toBe(true)
+    expect(results[0].message).toMatch(/not installed in runtime/)
   })
 
   it('errors when the template is missing the exec-tools markers', async () => {
