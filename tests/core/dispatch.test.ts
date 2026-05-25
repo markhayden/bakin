@@ -310,7 +310,8 @@ describe('dispatch', () => {
   // -------------------------------------------------------------------------
 
   describe('failure classification and cooldown', () => {
-    type ColumnsShape = { todo: Array<{ id: string; title: string; agent?: string }>; inProgress: unknown[]; done: unknown[]; archived: unknown[] }
+    type DispatchTaskShape = { id: string; title: string; agent?: string; log?: Array<{ timestamp: string; message?: string }> }
+    type ColumnsShape = { todo: DispatchTaskShape[]; inProgress: DispatchTaskShape[]; done: DispatchTaskShape[]; archived: DispatchTaskShape[] }
 
     function setupTodoTask(
       task: { id: string; title: string; agent?: string },
@@ -500,6 +501,72 @@ describe('dispatch', () => {
       expect(record.count).toBe(1)
       expect(typeof record.lastAttempt).toBe('number')
     })
+
+    it('blocks an in-progress task when the accepted agent run terminates before completion', async () => {
+      const task = { id: 't-idle-timeout', title: 'Terminal timeout task', agent: 'pixel', log: [] }
+      setupTodoTask(task)
+      mockRuntimeSend.mockImplementationOnce(async () => {
+        setDispatchColumns({
+          todo: [],
+          inProgress: [{
+            ...task,
+            log: [
+              { timestamp: new Date().toISOString(), message: 'Started work' },
+            ],
+          }],
+          done: [],
+          archived: [],
+        })
+        throw new Error('OpenClaw chat failed: codex app-server turn idle timed out waiting for turn/completed')
+      })
+
+      await dispatchTasks(tempDir, 3737)
+
+      expect(mockStoreBlockTask).toHaveBeenCalledWith(
+        't-idle-timeout',
+        expect.stringContaining('Agent runtime timed out before reporting completion'),
+      )
+      expect(mockStoreAddTaskLog).toHaveBeenCalledWith(
+        't-idle-timeout',
+        'system',
+        expect.stringContaining('Agent run ended before task completion'),
+      )
+      const state = readState()
+      expect(state.failedDispatches['t-idle-timeout']).toBeUndefined()
+      expect(state.dispatched).not.toContain('t-idle-timeout')
+    })
+
+    it('does not mutate or log dispatch failure when a late runtime error arrives after task completion', async () => {
+      const task = { id: 't-completed-before-timeout', title: 'Completed before timeout', agent: 'pixel', log: [] }
+      setupTodoTask(task)
+      mockRuntimeSend.mockImplementationOnce(async () => {
+        setDispatchColumns({
+          todo: [],
+          inProgress: [],
+          done: [{
+            ...task,
+            log: [
+              { timestamp: new Date().toISOString(), message: 'Task complete' },
+            ],
+          }],
+          archived: [],
+        })
+        throw new Error('OpenClaw chat gateway request timed out: agent')
+      })
+
+      await dispatchTasks(tempDir, 3737)
+
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+      expect(mockStoreMoveTask).not.toHaveBeenCalled()
+      expect(mockStoreAddTaskLog).not.toHaveBeenCalledWith(
+        't-completed-before-timeout',
+        'system',
+        expect.stringContaining('Dispatch failed'),
+      )
+      const state = readState()
+      expect(state.failedDispatches['t-completed-before-timeout']).toBeUndefined()
+      expect(state.dispatched).not.toContain('t-completed-before-timeout')
+    })
   })
 
   describe('workflow re-dispatch guard', () => {
@@ -536,6 +603,30 @@ describe('dispatch', () => {
 
       const state = JSON.parse(readFileSync(join(tempDir, '.dispatch-state.json'), 'utf-8'))
       expect(state.dispatched).toContain('wf-1:step-generate')
+    })
+
+    it('drops dispatch markers for completed tasks during reconciliation', async () => {
+      writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify({
+        lastRun: Date.now(),
+        serverStart: Date.now(),
+        dispatched: ['done-1', 'active-1'],
+        failedDispatches: {
+          'done-1': { lastAttempt: Date.now() - 1000, count: 1, kind: 'structural' },
+        },
+      }))
+
+      setDispatchColumns({
+        todo: [],
+        inProgress: [{ id: 'active-1', title: 'Still running', agent: 'pixel' }],
+        done: [{ id: 'done-1', title: 'Already done', agent: 'pixel' }],
+        archived: [],
+      })
+
+      await dispatchTasks(tempDir, 3737)
+
+      const state = JSON.parse(readFileSync(join(tempDir, '.dispatch-state.json'), 'utf-8'))
+      expect(state.dispatched).toEqual(['active-1'])
+      expect(state.failedDispatches['done-1']).toBeUndefined()
     })
   })
 })

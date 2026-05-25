@@ -32,6 +32,29 @@ Cooldown chosen by class:
 
 Both classes share the `count` field. `settings.dispatch.maxRetries` (default 5) escalates to **blocked** regardless of classification.
 
+## Post-send task reconciliation
+
+Dispatch moves a task to `inProgress` before sending the runtime message so a
+fast agent cannot complete before Bakin records active work. If
+`runtime.messaging.send` later rejects, `dispatch.ts` must re-read the current
+task state before deciding what to do:
+
+- If the task already left active work (`done`, `blocked`, `review`, or
+  `archived`), Bakin leaves it alone and removes stale dispatch markers. This
+  handles late gateway errors after an agent already called
+  `bakin_exec_tasks_complete` or `bakin_exec_tasks_block`.
+- If the task is still `inProgress` and the error is a known accepted-run
+  terminal failure, such as `codex app-server turn idle timed out waiting for
+  turn/completed`, Bakin moves the task to `blocked` and appends a sanitized
+  system log.
+- If the task is still `inProgress` but there is no evidence the agent accepted
+  the work, Bakin returns it to `todo`, records `failedDispatches`, and lets the
+  existing cooldown/retry policy handle the next attempt.
+
+Task logs and audit entries use short sanitized summaries such as
+`codex app-server idle timeout waiting for turn completion`; do not write raw
+prompts, local paths, tokens, or full runtime trajectories to task logs.
+
 ## Task Eligibility
 
 Dispatch only considers `todo` tasks that are actually eligible to run.
