@@ -23,7 +23,7 @@ The product is local-first: Bakin' owns its data under `~/.bakin/`, talks to the
 Install the current release candidate:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | BAKIN_VERSION=v0.0.1-rc.2 bash
+curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | BAKIN_VERSION=v0.0.1-rc.3 bash
 ```
 
 The installer uses `/usr/local/bin` when it can write there, otherwise it falls back to `~/.local/bin`. If `bakin` is not found after install, add the fallback directory to your `PATH`:
