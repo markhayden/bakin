@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.2] - 2026-05-25
+
 ### Added
 - Add native OpenClaw MCP registration during onboarding so Bakin tools are available to fresh main-agent sessions.
 - Add a Bakin runtime skill during onboarding to explain Bakin task, project, workflow, asset, schedule, and agent coordination.
@@ -37,5 +39,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 - Sign and notarize macOS release binaries.
 - Publish release assets, SDK packages, Homebrew formula updates, and post-publish smoke checks from CI.
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.1...HEAD
 [0.0.1-rc.1]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.1
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.2...HEAD
+[0.0.1-rc.2]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.2
