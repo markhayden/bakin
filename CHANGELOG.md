@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.3] - 2026-05-25
+
+### Changed
+- Update release-candidate install commands to pin `v0.0.1-rc.3`.
+
+### Fixed
+- Fix `bakin update` for prerelease-only release trains by falling back to the newest published release candidate when GitHub has no stable `/latest` release.
+
 ## [0.0.1-rc.2] - 2026-05-25
 
 ### Added
@@ -41,5 +49,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 [0.0.1-rc.1]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.1
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.2...HEAD
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.3...HEAD
+[0.0.1-rc.3]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.3
 [0.0.1-rc.2]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.2
