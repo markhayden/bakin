@@ -259,18 +259,18 @@ describe('bakin_exec_team_create_agent', () => {
   it('creates an agent with all fields', async () => {
     const tool = findTool(activated.execTools, 'bakin_exec_team_create_agent')!
     const result = await callTool(tool, {
-      name: 'Jessica Fetcher',
+      name: 'Jessica',
       emoji: '🔎',
       role: 'Research Agent',
       vibe: 'Sharp, credible',
       primaryFunction: 'Multi-source research',
     })
     expect(result.ok).toBe(true)
-    expect(result.id).toBe('jessica-fetcher')
+    expect(result.id).toBe('jessica')
     expect(result.instructions).toBeDefined()
     expect(runtimeMocks.create).toHaveBeenCalledWith(expect.objectContaining({
-      id: 'jessica-fetcher',
-      name: 'Jessica Fetcher',
+      id: 'jessica',
+      name: 'Jessica',
       role: 'Research Agent',
       metadata: expect.objectContaining({
         primaryFunction: 'Multi-source research',

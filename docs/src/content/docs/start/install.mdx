@@ -1,24 +1,20 @@
 ---
 title: Install Bakin
 description: One line, one binary, you're running.
-lastUpdated: 2026-05-05
+lastUpdated: 2026-05-25
 ---
 
 import { Aside, LinkButton } from '@astrojs/starlight/components'
 
-On macOS, install through the Bakin Homebrew tap:
+Install the current release candidate:
 
 ```sh
-brew install markhayden/tap/bakin
+curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | BAKIN_VERSION=v0.0.1-rc.1 bash
 ```
 
-On Linux, CI images, or machines without Homebrew, use the install script. It picks the right binary for your machine, verifies the SHA-256, and drops it on your `PATH` as `bakin`.
+The install script picks the right binary for your machine, verifies the SHA-256, and installs it as `bakin`. The `BAKIN_VERSION` pin is temporary while the public release is still a release candidate; update it when the live stable release is published.
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | bash
-```
-
-That's the whole install.
+That's the whole install, plus one `PATH` check if your shell cannot find it.
 
 ## Supported
 
@@ -37,7 +33,7 @@ bakin version
 bakin --help
 ```
 
-The Homebrew formula installs to Homebrew's prefix. The install script lands in `/usr/local/bin`, or `~/.local/bin` if that's not writable. If it landed in `~/.local/bin`, make sure that directory is on your `PATH`. Otherwise the shell won't find `bakin` and the install will look broken when it isn't.
+The install script lands in `/usr/local/bin`, or `~/.local/bin` if that's not writable. If it landed in `~/.local/bin`, make sure that directory is on your `PATH`. Otherwise the shell won't find `bakin` and the install will look broken when it isn't.
 
 If `bakin: command not found`, add this to your shell profile (`~/.zshrc`, `~/.bashrc`, or equivalent):
 
