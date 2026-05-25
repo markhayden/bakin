@@ -20,16 +20,16 @@ The product is local-first: Bakin' owns its data under `~/.bakin/`, talks to the
 
 ## Install
 
-macOS with Homebrew:
+Install the current release candidate:
 
 ```sh
-brew install markhayden/tap/bakin
+curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | BAKIN_VERSION=v0.0.1-rc.1 bash
 ```
 
-Linux, CI, or machines without Homebrew:
+The installer uses `/usr/local/bin` when it can write there, otherwise it falls back to `~/.local/bin`. If `bakin` is not found after install, add the fallback directory to your `PATH`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | bash
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 Then onboard and start:

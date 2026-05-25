@@ -431,8 +431,8 @@ function OnboardAgentSelectionScreen() {
       description: 'Developer agent for API integrations, automation, debugging, and tool extensions.',
     },
     {
-      id: 'jessica-fetcher',
-      label: 'Jessica Fetcher',
+      id: 'jessica',
+      label: 'Jessica',
       selected: true,
       description: 'Research agent for multi-source discovery, evidence gathering, and synthesis support.',
     },
@@ -469,7 +469,7 @@ function OnboardAgentSelectionScreen() {
       <Section title="Runtime context">
         <FindingRows rows={[
           { status: 'ok', label: 'main', message: 'runtime main agent is already installed and remains the orchestrator.' },
-          { status: 'ready', label: 'selected', message: 'Patch and Jessica Fetcher will be projected into the runtime workspace.' },
+          { status: 'ready', label: 'selected', message: 'Patch and Jessica will be projected into the runtime workspace.' },
         ]} />
       </Section>
     </Box>

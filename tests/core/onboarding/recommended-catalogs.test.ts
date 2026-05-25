@@ -16,7 +16,7 @@ describe('official plugin onboarding catalog', () => {
 describe('official agent onboarding catalog', () => {
   it('loads official agent choices from the shipped catalog', () => {
     expect(agentCatalog.version).toBe(1)
-    expect(agentCatalog.agents.map(agent => agent.id)).toEqual(['pixel', 'rolo', 'jessica-fetcher', 'patch'])
+    expect(agentCatalog.agents.map(agent => agent.id)).toEqual(['pixel', 'rolo', 'jessica', 'patch'])
     expect(agentCatalog.agents.every(agent => agent.trust === 'official')).toBe(true)
     expect(agentCatalog.agents.every(agent => agent.source.startsWith('github:markhayden/bakin-bits-official#agents/'))).toBe(true)
   })

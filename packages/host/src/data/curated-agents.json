@@ -23,12 +23,12 @@
       "trust": "official"
     },
     {
-      "id": "jessica-fetcher",
-      "name": "Jessica Fetcher",
+      "id": "jessica",
+      "name": "Jessica",
       "emoji": "🔎",
       "description": "Research agent — multi-source discovery, evidence gathering, synthesis support.",
       "tags": ["research", "synthesis"],
-      "source": "github:markhayden/bakin-bits-official#agents/jessica-fetcher",
+      "source": "github:markhayden/bakin-bits-official#agents/jessica",
       "ref": null,
       "trust": "official"
     },

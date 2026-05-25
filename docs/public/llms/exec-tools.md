@@ -2102,7 +2102,7 @@ Purpose: Create a new agent: registers it with the active runtime, writes person
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
 | `id` | string | no | Agent ID (lowercase alphanumeric + hyphens). Auto-derived from name if omitted. |
-| `name` | string | yes | Display name (e.g. "Jessica Fetcher") |
+| `name` | string | yes | Display name (e.g. "Jessica") |
 | `emoji` | string | no | Single emoji (e.g. "🔎") |
 | `role` | string | no | One-line role description |
 | `vibe` | string | no | Personality vibe |

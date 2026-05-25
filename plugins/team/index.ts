@@ -1960,7 +1960,7 @@ const teamPlugin: BakinPlugin = definePlugin({
       description: 'Create a new agent: registers it with the active runtime, writes persona files, configures dispatch permissions, optionally assigns it to a team. Returns next-step instructions.',
       parameters: {
         id: z.string().regex(/^[a-z0-9-]+$/).optional().describe('Agent ID (lowercase alphanumeric + hyphens). Auto-derived from name if omitted.'),
-        name: z.string().describe('Display name (e.g. "Jessica Fetcher")'),
+        name: z.string().describe('Display name (e.g. "Jessica")'),
         emoji: z.string().optional().describe('Single emoji (e.g. "🔎")'),
         role: z.string().optional().describe('One-line role description'),
         vibe: z.string().optional().describe('Personality vibe'),
