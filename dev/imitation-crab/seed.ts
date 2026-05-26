@@ -2,7 +2,7 @@
  * Filesystem seeder — creates the configured mock home with all fixture data.
  * Idempotent: skips if directory already exists (use --force to re-seed).
  */
-import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync, rmSync } from 'fs'
+import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync, rmSync, symlinkSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { initBakinHome } from '../../packages/core/src/content-dir'
@@ -77,6 +77,9 @@ export function seed(force = false): void {
 
   // Write .onboarded marker so the server doesn't gate on onboarding
   seedOnboardedMarker(mockHome)
+
+  // Symlink external plugins from bakin-bits-official
+  seedPluginSymlinks(mockHome)
 
   console.log(`[seed] Done — ${mockHome} ready`)
 }
@@ -159,6 +162,29 @@ function seedAvatars(mockHome: string): void {
     cpSync(src, join(destDir, 'avatar.jpg'))
   }
   console.log(`[seed] Avatars seeded for ${agents.length} agents`)
+}
+
+function seedPluginSymlinks(mockHome: string): void {
+  const projectRoot = join(__dirname, '..', '..')
+  const bitsDir = process.env.BAKIN_BITS_DIR || join(projectRoot, '..', 'bakin-bits-official')
+  const plugins = ['messaging', 'projects']
+
+  if (!existsSync(join(bitsDir, 'plugins', 'messaging', 'bakin-plugin.json'))) {
+    console.warn(`[seed] bakin-bits-official not found at ${bitsDir} — skipping plugin symlinks`)
+    return
+  }
+
+  const pluginsDir = join(mockHome, 'plugins')
+  mkdirSync(pluginsDir, { recursive: true })
+
+  for (const id of plugins) {
+    const target = join(bitsDir, 'plugins', id)
+    const link = join(pluginsDir, id)
+    if (existsSync(link)) continue
+    symlinkSync(target, link, 'dir')
+  }
+
+  console.log(`[seed] Plugin symlinks created (${plugins.join(', ')})`)
 }
 
 function seedOnboardedMarker(mockHome: string): void {

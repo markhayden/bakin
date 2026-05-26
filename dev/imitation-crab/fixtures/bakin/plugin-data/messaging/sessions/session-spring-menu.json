@@ -1,0 +1,53 @@
+{
+  "id": "session-spring-menu",
+  "agentId": "jessica",
+  "title": "Spring Menu Content Planning",
+  "scope": "Plan content around the new spring menu items — bacon, smoothie, hot dogs",
+  "status": "active",
+  "createdAtPlanIds": ["plan-spring-launch"],
+  "createdAt": "2026-04-01T09:00:00.000Z",
+  "updatedAt": "2026-04-03T14:30:00.000Z",
+  "messages": [
+    {
+      "id": "msg-sm-001",
+      "role": "user",
+      "content": "Let's plan content around the new spring menu. We've got million dollar bacon, a sunrise smoothie, and loaded hot dogs. I want a blog post and some social coverage.",
+      "timestamp": "2026-04-01T09:00:00.000Z"
+    },
+    {
+      "id": "msg-sm-002",
+      "role": "assistant",
+      "content": "Great lineup! Here's what I'd recommend:\n\n1. **Million Dollar Bacon** — lead with a blog recipe post. This has viral potential with the name alone. Pair with a hero image from Pixel.\n2. **Sunrise Smoothie** — perfect for Instagram. Layered drinks photograph incredibly well. Single image post with recipe in caption.\n3. **Loaded Hot Dog** — tie this to the menu review workflow already in progress for task-rv-003.\n\nI'd suggest a two-week rollout: bacon blog first (biggest reach), smoothie social mid-week, then hot dog content tied to the weekend menu launch.\n\nWant me to draft a plan with those channels and timing?",
+      "timestamp": "2026-04-01T09:05:00.000Z",
+      "agentId": "jessica"
+    },
+    {
+      "id": "msg-sm-003",
+      "role": "user",
+      "content": "Yes, let's do it. Start bacon blog prep by April 5 and have the smoothie post ready for April 8.",
+      "timestamp": "2026-04-01T09:10:00.000Z"
+    },
+    {
+      "id": "msg-sm-004",
+      "role": "assistant",
+      "content": "Plan created: **Spring Menu Launch**. I've set up two channels:\n- Blog: Million dollar bacon recipe (prep starts Apr 5)\n- Instagram: Sunrise smoothie image post (prep starts Apr 6)\n\nBoth deliverables are now in the pipeline. You'll get review prompts when drafts are ready.",
+      "timestamp": "2026-04-01T09:15:00.000Z",
+      "agentId": "jessica",
+      "proposalIds": ["proposal-sm-001"]
+    }
+  ],
+  "proposals": [
+    {
+      "id": "proposal-sm-001",
+      "messageId": "msg-sm-004",
+      "revision": 1,
+      "agentId": "jessica",
+      "title": "Spring Menu Launch",
+      "targetDate": "2026-04-12",
+      "brief": "Two-week content rollout for spring menu items: bacon blog, smoothie social, hot dog tie-in.",
+      "suggestedChannels": ["blog", "instagram"],
+      "status": "approved",
+      "planId": "plan-spring-launch"
+    }
+  ]
+}

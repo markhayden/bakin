@@ -1,0 +1,46 @@
+{
+  "id": "session-easter",
+  "agentId": "jessica",
+  "title": "Easter Campaign Brainstorm",
+  "scope": "Plan Easter dessert content for the food blog",
+  "status": "archived",
+  "createdAtPlanIds": ["plan-easter-campaign"],
+  "createdAt": "2026-03-28T10:00:00.000Z",
+  "updatedAt": "2026-04-06T16:00:00.000Z",
+  "messages": [
+    {
+      "id": "msg-ea-001",
+      "role": "user",
+      "content": "Easter is coming up. Let's do a dessert roundup post — something with spring vibes. Macarons, trifles, that kind of thing.",
+      "timestamp": "2026-03-28T10:00:00.000Z"
+    },
+    {
+      "id": "msg-ea-002",
+      "role": "assistant",
+      "content": "Love it. I'll put together a roundup with 5 picks — mixing difficulty levels so there's something for everyone. Lemon lavender macarons for the ambitious bakers, strawberry shortcake trifle for the easy wins. I'll have Pixel shoot a hero image with pastel styling.\n\nTarget publish date before Easter weekend?",
+      "timestamp": "2026-03-28T10:05:00.000Z",
+      "agentId": "jessica",
+      "proposalIds": ["proposal-ea-001"]
+    },
+    {
+      "id": "msg-ea-003",
+      "role": "user",
+      "content": "Perfect. Publish by April 5 so people have time to shop and prep.",
+      "timestamp": "2026-03-28T10:10:00.000Z"
+    }
+  ],
+  "proposals": [
+    {
+      "id": "proposal-ea-001",
+      "messageId": "msg-ea-002",
+      "revision": 1,
+      "agentId": "jessica",
+      "title": "Easter Dessert Campaign",
+      "targetDate": "2026-04-05",
+      "brief": "Seasonal dessert roundup blog post with 5 spring picks, published before Easter weekend.",
+      "suggestedChannels": ["blog"],
+      "status": "approved",
+      "planId": "plan-easter-campaign"
+    }
+  ]
+}

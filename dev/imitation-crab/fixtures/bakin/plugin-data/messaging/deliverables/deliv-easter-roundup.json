@@ -1,0 +1,22 @@
+{
+  "id": "deliv-easter-roundup",
+  "planId": "plan-easter-campaign",
+  "planChannelId": "ch-blog-easter",
+  "channel": "blog",
+  "contentType": "blog",
+  "tone": "inspiring",
+  "agent": "jessica",
+  "title": "Easter Dessert Roundup: Five Spring Picks",
+  "brief": "Curated roundup of five Easter desserts ranging from easy to advanced.",
+  "publishAt": "2026-04-05T14:00:00Z",
+  "prepStartAt": "2026-03-30T09:00:00Z",
+  "status": "published",
+  "taskId": null,
+  "draft": {
+    "caption": "Five Easter desserts for every skill level — from 30-minute trifles to showstopper macarons",
+    "agentNotes": "Published on schedule. Strong engagement on the macaron and bread pudding sections."
+  },
+  "publishedAt": "2026-04-05T14:00:00.000Z",
+  "createdAt": "2026-03-28T10:15:00.000Z",
+  "updatedAt": "2026-04-05T14:00:00.000Z"
+}
