@@ -1,0 +1,9 @@
+{
+  "agent": "jessica",
+  "taskId": null,
+  "created": "2026-04-01T12:00:00Z",
+  "type": "text",
+  "description": "Gourmet popcorn seasoning recipe with three flavor variations",
+  "tags": ["recipe", "popcorn", "snack"],
+  "source": "agent"
+}

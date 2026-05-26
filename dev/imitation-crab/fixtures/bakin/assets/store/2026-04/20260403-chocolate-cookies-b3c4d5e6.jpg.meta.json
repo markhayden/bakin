@@ -1,0 +1,10 @@
+{
+  "agent": "pixel",
+  "taskId": "task-dn-001",
+  "created": "2026-04-03T14:30:00Z",
+  "type": "images",
+  "description": "Double chocolate cookies fresh from the oven",
+  "tags": ["food", "cookies", "baking"],
+  "source": "agent",
+  "originalFilename": "chocolate-cookies.jpg"
+}

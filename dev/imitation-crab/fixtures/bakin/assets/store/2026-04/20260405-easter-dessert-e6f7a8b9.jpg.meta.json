@@ -1,0 +1,10 @@
+{
+  "agent": "pixel",
+  "taskId": "task-ip-001",
+  "created": "2026-04-05T13:00:00Z",
+  "type": "images",
+  "description": "Easter dessert spread with pastel macarons and spring flowers",
+  "tags": ["food", "dessert", "easter"],
+  "source": "agent",
+  "originalFilename": "easter-desert.jpg"
+}

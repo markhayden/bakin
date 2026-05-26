@@ -1,0 +1,10 @@
+{
+  "agent": "pixel",
+  "taskId": null,
+  "created": "2026-04-02T09:15:00Z",
+  "type": "images",
+  "description": "Freshly baked artisan bread on a wooden board",
+  "tags": ["food", "bread", "baking"],
+  "source": "agent",
+  "originalFilename": "fresh-bread.jpg"
+}

@@ -1,0 +1,9 @@
+{
+  "agent": "jessica",
+  "taskId": "task-ip-001",
+  "created": "2026-04-04T08:45:00Z",
+  "type": "text",
+  "description": "Tropical sunrise smoothie recipe with layering technique",
+  "tags": ["recipe", "smoothie", "beverage"],
+  "source": "agent"
+}

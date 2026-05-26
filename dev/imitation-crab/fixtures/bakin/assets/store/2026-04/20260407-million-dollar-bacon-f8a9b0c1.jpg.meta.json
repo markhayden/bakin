@@ -1,0 +1,10 @@
+{
+  "agent": "pixel",
+  "taskId": null,
+  "created": "2026-04-07T10:00:00Z",
+  "type": "images",
+  "description": "Million dollar candied bacon with brown sugar and black pepper",
+  "tags": ["food", "bacon", "recipe"],
+  "source": "agent",
+  "originalFilename": "million-dollar-bacon.png"
+}
