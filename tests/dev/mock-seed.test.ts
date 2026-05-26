@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'bun:test'
-import { existsSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, mkdtempSync, rmSync, readFileSync, writeFileSync, lstatSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { getMockHome, seed } from '../../dev/imitation-crab/seed'
@@ -54,6 +54,21 @@ describe('mock seed', () => {
     const sidecars = files.filter((f: string) => f.endsWith('.meta.json'))
     expect(assets.length).toBeGreaterThanOrEqual(19)
     expect(sidecars.length).toBe(assets.length)
+  })
+
+  it('seeds plugin symlinks when bakin-bits-official is available', () => {
+    const home = configureTempHome()
+    seed(true)
+    const pluginsDir = join(home, 'plugins')
+    if (existsSync(pluginsDir)) {
+      for (const id of ['messaging', 'projects']) {
+        const link = join(pluginsDir, id)
+        if (existsSync(link)) {
+          expect(lstatSync(link).isSymbolicLink()).toBe(true)
+          expect(existsSync(join(link, 'bakin-plugin.json'))).toBe(true)
+        }
+      }
+    }
   })
 
   it('force reseed removes stale files before copying fixtures', () => {
