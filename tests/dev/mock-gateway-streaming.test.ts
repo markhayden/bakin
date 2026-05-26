@@ -4,7 +4,7 @@ import { handleGatewayRpcRequest } from '../../dev/imitation-crab/gateway'
 describe('mock gateway agent RPC', () => {
   it('returns final agent text payloads through the Gateway RPC contract', async () => {
     const res = await handleGatewayRpcRequest('agent', {
-      agentId: 'chef',
+      agentId: 'jessica',
       message: 'Plan next week',
       expectFinal: true,
     })
@@ -13,8 +13,8 @@ describe('mock gateway agent RPC', () => {
     const payload = res.payload as {
       result?: { payloads?: Array<{ text?: string }>; meta?: { finalAssistantVisibleText?: string } }
     }
-    expect(payload.result?.payloads?.[0]?.text).toContain('mock:Chef')
-    expect(payload.result?.meta?.finalAssistantVisibleText).toContain('mock:Chef')
+    expect(payload.result?.payloads?.[0]?.text).toContain('mock:Jessica')
+    expect(payload.result?.meta?.finalAssistantVisibleText).toContain('mock:Jessica')
   })
 
   it('uses the message param for echo mode replies', async () => {
@@ -23,13 +23,13 @@ describe('mock gateway agent RPC', () => {
 
     try {
       const res = await handleGatewayRpcRequest('agent', {
-        agentId: 'explorer',
+        agentId: 'rolo',
         message: 'Plan outdoor content',
         expectFinal: true,
       })
 
       expect(res.ok).toBe(true)
-      expect(JSON.stringify(res.payload)).toContain('[mock:Explorer] Plan outdoor content')
+      expect(JSON.stringify(res.payload)).toContain('[mock:Rolo] Plan outdoor content')
     } finally {
       process.env.OPENCLAW_MOCK_CHAT_MODE = original
     }

@@ -60,15 +60,12 @@ describe('mock seed', () => {
     const fixturesDir = join(import.meta.dirname, '..', '..', 'dev', 'imitation-crab', 'fixtures')
     const config = JSON.parse(readFileSync(join(fixturesDir, 'openclaw.json'), 'utf-8'))
 
-    expect(config.agents.list).toHaveLength(8)
+    expect(config.agents.list).toHaveLength(5)
     const ids = config.agents.list.map((a: { id: string }) => a.id)
     expect(ids).toContain('main')
     expect(ids).toContain('pixel')
     expect(ids).toContain('rolo')
-    expect(ids).toContain('chef')
-    expect(ids).toContain('explorer')
-    expect(ids).toContain('trainer')
-    expect(ids).toContain('coach')
+    expect(ids).toContain('jessica')
     expect(ids).toContain('patch')
 
     // Each agent has identity
@@ -148,12 +145,31 @@ describe('mock seed', () => {
 
   it('has workspace files for all subagents', () => {
     const fixturesDir = join(import.meta.dirname, '..', '..', 'dev', 'imitation-crab', 'fixtures')
-    const subagents = ['pixel', 'rolo', 'chef', 'explorer', 'trainer', 'coach', 'patch']
+    const subagents = ['pixel', 'rolo', 'jessica', 'patch']
 
     for (const agent of subagents) {
       const wsDir = join(fixturesDir, 'workspaces', agent)
       expect(existsSync(join(wsDir, 'IDENTITY.md')), `${agent} missing IDENTITY.md`).toBe(true)
       expect(existsSync(join(wsDir, 'SOUL.md')), `${agent} missing SOUL.md`).toBe(true)
+    }
+  })
+
+  it('has avatar fixtures for all agents', () => {
+    const fixturesDir = join(import.meta.dirname, '..', '..', 'dev', 'imitation-crab', 'fixtures')
+    const agents = ['main', 'pixel', 'rolo', 'jessica', 'patch']
+    for (const agent of agents) {
+      const avatarPath = join(fixturesDir, 'avatars', `${agent}.jpg`)
+      expect(existsSync(avatarPath), `${agent} missing avatar fixture`).toBe(true)
+    }
+  })
+
+  it('seeds avatar files into agent directories', () => {
+    const home = configureTempHome()
+    seed(true)
+    const agents = ['main', 'pixel', 'rolo', 'jessica', 'patch']
+    for (const agent of agents) {
+      const avatarPath = join(home, 'agents', agent, 'avatar.jpg')
+      expect(existsSync(avatarPath), `${agent} missing seeded avatar`).toBe(true)
     }
   })
 })

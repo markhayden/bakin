@@ -44,7 +44,7 @@ describe('imitation-crab harness', () => {
     expect(agents.find((agent) => agent.id === 'main')?.metadata?.workspacePath).toBe(`${harness.env.home}/workspace`)
 
     const mainSoul = await runtime.agents.readWorkspaceFile('main', 'SOUL.md')
-    expect(mainSoul?.content).toContain('Crab')
+    expect(mainSoul?.content).toContain('Margo')
 
     const patchSoul = await runtime.agents.readWorkspaceFile('patch', 'SOUL.md')
     expect(patchSoul?.content).toContain('Patch')
