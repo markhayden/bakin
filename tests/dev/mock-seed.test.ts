@@ -42,7 +42,18 @@ describe('mock seed', () => {
     expect(existsSync(join(home, 'workflows', 'instances', 'task-rv-002.json'))).toBe(true)
     expect(existsSync(join(home, 'workflows', 'instances', 'task-rv-003.json'))).toBe(true)
     expect(existsSync(join(home, 'workflows', 'instances', 'task-rv-004.json'))).toBe(true)
-    expect(existsSync(join(home, 'assets', 'images', 'task-rv-003', 'trail-status-concept.svg'))).toBe(true)
+    expect(existsSync(join(home, 'assets', 'store', '2026-04', '20260406-trail-status-concept-a1b2c3d4.svg'))).toBe(true)
+  })
+
+  it('seeds canonical asset store with images and sidecars', () => {
+    const home = configureTempHome()
+    seed(true)
+    const storeDir = join(home, 'assets', 'store', '2026-04')
+    const files = existsSync(storeDir) ? require('fs').readdirSync(storeDir) as string[] : []
+    const assets = files.filter((f: string) => !f.endsWith('.meta.json'))
+    const sidecars = files.filter((f: string) => f.endsWith('.meta.json'))
+    expect(assets.length).toBeGreaterThanOrEqual(19)
+    expect(sidecars.length).toBe(assets.length)
   })
 
   it('force reseed removes stale files before copying fixtures', () => {
