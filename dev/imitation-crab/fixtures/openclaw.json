@@ -7,43 +7,27 @@
     "list": [
       {
         "id": "main",
-        "identity": { "name": "Crab", "emoji": "🦀" },
+        "identity": { "name": "Margo", "emoji": "🐷" },
         "model": { "primary": "anthropic/claude-sonnet-4-20250514" }
       },
       {
         "id": "pixel",
         "identity": { "name": "Pixel", "emoji": "🎨" },
-        "model": { "primary": "anthropic/claude-sonnet-4-20250514" },
-        "subagents": { "allowAgents": ["explorer"], "model": "anthropic/claude-haiku-4-5-20251001" }
+        "model": { "primary": "anthropic/claude-sonnet-4-20250514" }
       },
       {
         "id": "rolo",
-        "identity": { "name": "Rolo", "emoji": "📊" },
+        "identity": { "name": "Rolo", "emoji": "🎬" },
         "model": { "primary": "anthropic/claude-sonnet-4-20250514" }
       },
       {
-        "id": "chef",
-        "identity": { "name": "Chef", "emoji": "🌿" },
-        "model": { "primary": "anthropic/claude-sonnet-4-20250514" }
-      },
-      {
-        "id": "explorer",
-        "identity": { "name": "Explorer", "emoji": "🔍" },
-        "model": { "primary": "anthropic/claude-haiku-4-5-20251001" }
-      },
-      {
-        "id": "trainer",
-        "identity": { "name": "Trainer", "emoji": "🐟" },
-        "model": { "primary": "anthropic/claude-sonnet-4-20250514" }
-      },
-      {
-        "id": "coach",
-        "identity": { "name": "Coach", "emoji": "🧘" },
+        "id": "jessica",
+        "identity": { "name": "Jessica", "emoji": "🔎" },
         "model": { "primary": "anthropic/claude-sonnet-4-20250514" }
       },
       {
         "id": "patch",
-        "identity": { "name": "Patch", "emoji": "🩹" },
+        "identity": { "name": "Patch", "emoji": "⚙️" },
         "model": { "primary": "anthropic/claude-sonnet-4-20250514" }
       }
     ]

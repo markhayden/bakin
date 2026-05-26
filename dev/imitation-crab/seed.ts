@@ -54,7 +54,7 @@ export function seed(force = false): void {
   }
 
   // Copy subagent workspaces
-  const subagents = ['pixel', 'rolo', 'chef', 'explorer', 'trainer', 'coach', 'patch']
+  const subagents = ['pixel', 'rolo', 'jessica', 'patch']
   for (const agent of subagents) {
     const src = join(FIXTURES_DIR, 'workspaces', agent)
     const dest = join(mockHome, 'workspaces', agent)
@@ -62,6 +62,9 @@ export function seed(force = false): void {
       cpSync(src, dest, { recursive: true })
     }
   }
+
+  // Seed avatar images for all agents
+  seedAvatars(mockHome)
 
   // Seed Bakin-owned task-store data.
   seedTasks(mockHome)
@@ -71,6 +74,9 @@ export function seed(force = false): void {
 
   // Seed audit entries for watchdog recoveries into ~/.bakin/audit.jsonl
   seedAuditLog(mockHome)
+
+  // Write .onboarded marker so the server doesn't gate on onboarding
+  seedOnboardedMarker(mockHome)
 
   console.log(`[seed] Done — ${mockHome} ready`)
 }
@@ -111,7 +117,7 @@ function seedGatewayLog(): void {
   if (!existsSync(logPath)) {
     const sampleLog = [
       `${new Date().toISOString()} [INFO] Gateway started (mock)`,
-      `${new Date().toISOString()} [INFO] Loaded 8 agents from config`,
+      `${new Date().toISOString()} [INFO] Loaded 5 agents from config`,
       `${new Date().toISOString()} [INFO] Listening on :18789`,
     ].join('\n') + '\n'
     writeFileSync(logPath, sampleLog)
@@ -142,7 +148,37 @@ function seedAuditLog(mockHome: string): void {
   }
 }
 
-// Run directly: npx tsx dev/imitation-crab/seed.ts [--force]
+function seedAvatars(mockHome: string): void {
+  const avatarsDir = join(FIXTURES_DIR, 'avatars')
+  const agents = ['main', 'pixel', 'rolo', 'jessica', 'patch']
+  for (const agent of agents) {
+    const src = join(avatarsDir, `${agent}.jpg`)
+    if (!existsSync(src)) continue
+    const destDir = join(mockHome, 'agents', agent)
+    mkdirSync(destDir, { recursive: true })
+    cpSync(src, join(destDir, 'avatar.jpg'))
+  }
+  console.log(`[seed] Avatars seeded for ${agents.length} agents`)
+}
+
+function seedOnboardedMarker(mockHome: string): void {
+  const markerPath = join(mockHome, '.onboarded')
+  const marker = {
+    version: 3,
+    completedAt: new Date().toISOString(),
+    bakinVersion: '0.0.0-dev',
+    components: {
+      directories: 'ok',
+      runtime: 'ok',
+      search: 'ok',
+      channels: 'skipped',
+    },
+  }
+  writeFileSync(markerPath, JSON.stringify(marker, null, 2), 'utf-8')
+  console.log(`[seed] Onboarding marker written`)
+}
+
+// Run directly: bun run dev/imitation-crab/seed.ts [--force]
 if (import.meta.url === `file://${process.argv[1]}`) {
   const force = process.argv.includes('--force')
   seed(force)

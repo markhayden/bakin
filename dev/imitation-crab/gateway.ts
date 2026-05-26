@@ -21,13 +21,10 @@ export interface StartGatewayOptions {
 
 // Agent name lookup for canned responses
 const AGENT_NAMES: Record<string, string> = {
-  main: 'Crab',
+  main: 'Margo',
   pixel: 'Pixel',
   rolo: 'Rolo',
-  chef: 'Chef',
-  explorer: 'Explorer',
-  trainer: 'Trainer',
-  coach: 'Coach',
+  jessica: 'Jessica',
   patch: 'Patch',
 }
 
