@@ -251,3 +251,31 @@ screenshots:
     viewport:
       width: 1920
       height: 900
+
+  # ── using/workflows ───────────────────────────────────────────────
+
+  - id: grid
+    doc: using/workflows
+    route: /workflows
+    caption: "The workflows grid: each card shows the workflow's name, description, step count, and the agents it touches."
+    waitFor: "text=Workflows"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.75
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: canvas
+    doc: using/workflows
+    route: /workflows
+    caption: "The canvas with steps stacked top to bottom. A \"Start\" card up top summarizes the inputs."
+    waitFor: "text=Workflows"
+    actions:
+      - click: "text=Image Generation"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.85
+    viewport:
+      width: 1920
+      height: 900
