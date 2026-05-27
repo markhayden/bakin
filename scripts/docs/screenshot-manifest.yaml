@@ -51,3 +51,53 @@ screenshots:
     selector: "header"
     delay: 500
     cropLeft: 0.35
+
+  # ── using/tasks ───────────────────────────────────────────────────
+
+  - id: board
+    doc: using/tasks
+    route: /tasks
+    caption: "The Bakin Board with seven columns: Backlog, Todo, Blocked, In Progress, Review, Done, Archived."
+    waitFor: "text=Backlog"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.75
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: new-task-dialog
+    doc: using/tasks
+    route: /tasks
+    caption: "New-task dialog with title, owner, and optional workflow fields."
+    waitFor: "text=Backlog"
+    actions:
+      - click: "button:has-text('New Task')"
+      - waitFor: "[data-slot='sheet-content']"
+    delay: 500
+    selector: "[data-slot='sheet-content']"
+    cropHeight: 0.55
+
+  - id: task-detail
+    doc: using/tasks
+    route: /tasks
+    caption: "Task detail panel showing fields, dependencies, and the activity log."
+    waitFor: "text=Backlog"
+    actions:
+      - click: "text=Research competitor pricing"
+      - waitFor: "[data-slot='sheet-content']"
+    delay: 500
+    selector: "[data-slot='sheet-content']"
+    cropHeight: 0.5
+
+  - id: filters
+    doc: using/tasks
+    route: /tasks
+    caption: "Filter chips for column, owner, tag, and workflow."
+    waitFor: "text=Backlog"
+    delay: 500
+    selector: "main.flex-1"
+    cropHeight: 0.18
+    viewport:
+      width: 1920
+      height: 900
