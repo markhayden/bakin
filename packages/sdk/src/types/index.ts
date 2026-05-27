@@ -620,6 +620,7 @@ export interface FileBackedContentTypeDefinition extends SearchContentTypeDefini
   onSync?: (relPath: string, content: string) => Promise<void>
   onUnlink?: (relPath: string) => Promise<void>
   buildOnStartup?: boolean
+  preserveVirtualDocuments?: boolean
 }
 
 export interface SearchQueryParams {
@@ -775,13 +776,20 @@ export interface SkillDefinition {
   source?: string
 }
 
+export interface WorkflowLayoutInput {
+  positions?: Record<string, { x: number; y: number; [key: string]: unknown }>
+  [key: string]: unknown
+}
+
 export interface WorkflowDefinitionInput {
   id?: string
   name: string
   description: string
   version: number
   inputs?: Record<string, unknown>
+  layout?: WorkflowLayoutInput
   steps: unknown[]
+  [key: string]: unknown
 }
 
 export type FormFieldType = 'string' | 'text' | 'number' | 'boolean' | 'select' | 'agent' | 'skill' | 'list'

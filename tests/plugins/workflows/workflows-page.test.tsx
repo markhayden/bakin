@@ -11,9 +11,10 @@
  *  5. Clicking a card triggers router.push.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import type { ReactNode } from 'react'
 
 // ─── Test isolation mocks (mandatory per CLAUDE.md) ────────────────────────
 //
@@ -85,10 +86,12 @@ mock.module('@/hooks/use-query-state', () => ({
 // useSearch stub — returns whatever the test sets in `searchState`.
 const searchState: {
   results: Array<{ id: string; table: string; score: number; fields: Record<string, unknown> }>
+  meta: { query: string; total: number; took_ms: number; source: 'search' | 'fallback' } | null
   search: ReturnType<typeof mock>
   clear: ReturnType<typeof mock>
 } = {
   results: [],
+  meta: null,
   search: mock(),
   clear: mock(),
 }
@@ -99,7 +102,7 @@ mock.module('@/hooks/use-search', () => ({
     aggregations: {},
     loading: false,
     error: null,
-    meta: null,
+    meta: searchState.meta,
     search: searchState.search,
     clear: searchState.clear,
   }),
@@ -110,9 +113,11 @@ mock.module('@/components/plugin-header', () => ({
   PluginHeader: ({
     title,
     search,
+    actions,
   }: {
     title: string
     search?: { value: string; onChange: (v: string) => void; placeholder?: string }
+    actions?: ReactNode
   }) => (
     <div>
       <h1>{title}</h1>
@@ -124,6 +129,7 @@ mock.module('@/components/plugin-header', () => ({
           onChange={(e) => search.onChange(e.target.value)}
         />
       )}
+      {actions}
     </div>
   ),
 }))
@@ -148,9 +154,10 @@ mock.module('@bakin/workflows/components/workflow-card', () => ({
 const TEMPLATES = [
   {
     filename: 'content-pipeline',
-    name: 'content-pipeline',
+    name: 'Content Pipeline',
+    source: 'plugin',
     definition: {
-      name: 'content-pipeline',
+      name: 'Content Pipeline',
       description: 'Generate and publish content',
       steps: [],
     },
@@ -158,6 +165,7 @@ const TEMPLATES = [
   {
     filename: 'onboarding',
     name: 'onboarding',
+    source: 'user',
     definition: {
       name: 'onboarding',
       description: 'Welcome new agents',
@@ -167,6 +175,8 @@ const TEMPLATES = [
   {
     filename: 'release',
     name: 'release',
+    source: 'plugin',
+    disabled: true,
     definition: {
       name: 'release',
       description: 'Ship a new build',
@@ -183,6 +193,7 @@ import { WorkflowsPage } from '../../../plugins/workflows/components/workflows-p
 beforeEach(() => {
   routerPush.mockReset()
   searchState.results = []
+  searchState.meta = null
   searchState.search.mockReset()
   searchState.clear.mockReset()
 
@@ -222,6 +233,9 @@ describe('WorkflowsPage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
     })
+    const customHeading = screen.getByText('Custom workflows')
+    const managedHeading = screen.getByText('Managed workflows')
+    expect(customHeading.compareDocumentPosition(managedHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getByTestId('card-onboarding')).toBeDefined()
     expect(screen.getByTestId('card-release')).toBeDefined()
   })
@@ -242,6 +256,7 @@ describe('WorkflowsPage', () => {
         fields: { name: 'content-pipeline' },
       },
     ]
+    searchState.meta = { query: 'pipeline', total: 1, took_ms: 1, source: 'search' }
 
     const input = screen.getByLabelText('search') as HTMLInputElement
     fireEvent.change(input, { target: { value: 'pipeline' } })
@@ -255,6 +270,32 @@ describe('WorkflowsPage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
       expect(screen.queryByTestId('card-onboarding')).toBeNull()
+      expect(screen.queryByTestId('card-release')).toBeNull()
+    })
+  })
+
+  it('falls back to local filtering when search returns only workflow instance rows', async () => {
+    render(<WorkflowsPage />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
+    })
+
+    searchState.results = [
+      {
+        id: 'inst:task-123',
+        table: 'bakin_workflows',
+        score: 0.88,
+        fields: { name: 'Onboarding instance', type: 'instance' },
+      },
+    ]
+
+    const input = screen.getByLabelText('search') as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'onboard' } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('card-onboarding')).toBeDefined()
+      expect(screen.queryByTestId('card-content-pipeline')).toBeNull()
       expect(screen.queryByTestId('card-release')).toBeNull()
     })
   })
@@ -279,6 +320,32 @@ describe('WorkflowsPage', () => {
     })
   })
 
+  it('ignores stale search results from a previous query while filtering the current query', async () => {
+    render(<WorkflowsPage />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('card-content-pipeline')).toBeDefined()
+    })
+
+    searchState.results = [
+      {
+        id: 'def:content-pipeline',
+        table: 'bakin_workflows',
+        score: 0.92,
+        fields: { name: 'Content Pipeline', type: 'definition' },
+      },
+    ]
+    searchState.meta = { query: 'content', total: 1, took_ms: 1, source: 'search' }
+
+    const input = screen.getByLabelText('search') as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'onboard' } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('card-onboarding')).toBeDefined()
+      expect(screen.queryByTestId('card-content-pipeline')).toBeNull()
+    })
+  })
+
   it('navigates via router.push when a card is clicked', async () => {
     render(<WorkflowsPage />)
 
@@ -289,5 +356,129 @@ describe('WorkflowsPage', () => {
     fireEvent.click(screen.getByTestId('card-onboarding'))
 
     expect(routerPush).toHaveBeenCalledWith('/workflows/onboarding')
+  })
+
+  it('creates a workflow from the list modal before navigating to the editor', async () => {
+    const fetchMock = mock((url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/workflows/definitions' && init?.method === 'POST') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ id: 'custom-launch', source: 'user' }), {
+            status: 201,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        )
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ templates: TEMPLATES }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<WorkflowsPage />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('card-onboarding')).toBeDefined()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /new workflow/i }))
+    expect(routerPush).not.toHaveBeenCalled()
+
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getAllByText('Create workflow').length).toBeGreaterThan(0)
+    fireEvent.change(within(dialog).getByLabelText(/workflow name/i), {
+      target: { value: 'Launch Plan' },
+    })
+    expect((within(dialog).getByLabelText(/workflow id/i) as HTMLInputElement).value).toBe('launch-plan')
+    fireEvent.change(within(dialog).getByLabelText(/workflow id/i), {
+      target: { value: 'custom-launch' },
+    })
+    fireEvent.change(within(dialog).getByLabelText(/workflow name/i), {
+      target: { value: 'Launch Plan Updated' },
+    })
+    expect((within(dialog).getByLabelText(/workflow id/i) as HTMLInputElement).value).toBe('custom-launch')
+    fireEvent.change(within(dialog).getByLabelText(/description/i), {
+      target: { value: 'Plan and approve a campaign launch.' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: /create workflow/i }))
+
+    await waitFor(() => expect(routerPush).toHaveBeenCalledWith('/workflows/custom-launch/edit'))
+    const [, init] = fetchMock.mock.calls.find(([url, request]) => (
+      url === '/api/plugins/workflows/definitions' && request?.method === 'POST'
+    ))!
+    const body = JSON.parse(init!.body as string) as Record<string, unknown>
+    expect(body).toMatchObject({
+      id: 'custom-launch',
+      name: 'Launch Plan Updated',
+      description: 'Plan and approve a campaign launch.',
+      version: 1,
+      steps: [],
+    })
+  })
+
+  it('shows field-level create workflow validation before posting', async () => {
+    render(<WorkflowsPage />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('card-onboarding')).toBeDefined()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /new workflow/i }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /create workflow/i }))
+
+    expect(within(dialog).getByText('Workflow name is required.')).toBeDefined()
+    expect(within(dialog).getByText('Workflow id is required.')).toBeDefined()
+    expect(within(dialog).queryByText(/validation failed/i)).toBeNull()
+    expect((globalThis.fetch as unknown as ReturnType<typeof mock>).mock.calls).toHaveLength(1)
+  })
+
+  it('explains stale empty-step server validation during workflow creation', async () => {
+    const fetchMock = mock((url: string, init?: RequestInit) => {
+      if (url === '/api/plugins/workflows/definitions' && init?.method === 'POST') {
+        return Promise.resolve(
+          new Response(JSON.stringify({
+            error: 'validation failed',
+            issues: [
+              {
+                code: 'too_small',
+                path: ['steps'],
+                message: 'Too small: expected array to have >=1 items',
+              },
+            ],
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        )
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ templates: TEMPLATES }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<WorkflowsPage />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('card-onboarding')).toBeDefined()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /new workflow/i }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText(/workflow name/i), {
+      target: { value: 'Testing' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: /create workflow/i }))
+
+    await waitFor(() => {
+      expect(within(dialog).getByText(/old server schema/i)).toBeDefined()
+    })
+    expect(within(dialog).queryByText(/^validation failed$/i)).toBeNull()
   })
 })

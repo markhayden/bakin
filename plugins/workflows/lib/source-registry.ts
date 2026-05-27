@@ -32,6 +32,12 @@ export interface SourceEntry {
   packageId?: string
 }
 
+export interface ShadowedSource {
+  source: 'plugin' | 'agent-package'
+  pluginId?: string
+  packageId?: string
+}
+
 interface PluginEntry {
   pluginId: string
   definition: WorkflowDefinition
@@ -181,6 +187,38 @@ export function getDefinition(id: string): SourceEntry | undefined {
       pluginId: pluginEntry.pluginId,
     }
   }
+  return undefined
+}
+
+export function getManagedDefinition(id: string): SourceEntry | undefined {
+  const store = getStore()
+  const pkgEntry = store.agentPackage.get(id)
+  if (pkgEntry) {
+    return {
+      id,
+      definition: pkgEntry.definition,
+      source: 'agent-package',
+      packageId: pkgEntry.packageId,
+    }
+  }
+  const pluginEntry = store.plugin.get(id)
+  if (pluginEntry) {
+    return {
+      id,
+      definition: pluginEntry.definition,
+      source: 'plugin',
+      pluginId: pluginEntry.pluginId,
+    }
+  }
+  return undefined
+}
+
+export function getShadowedSource(id: string): ShadowedSource | undefined {
+  const store = getStore()
+  const pkgEntry = store.agentPackage.get(id)
+  if (pkgEntry) return { source: 'agent-package', packageId: pkgEntry.packageId }
+  const pluginEntry = store.plugin.get(id)
+  if (pluginEntry) return { source: 'plugin', pluginId: pluginEntry.pluginId }
   return undefined
 }
 

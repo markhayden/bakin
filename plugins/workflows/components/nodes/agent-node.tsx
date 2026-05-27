@@ -2,8 +2,7 @@
 
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { User } from 'lucide-react'
-import { useAgent } from "@makinbakin/sdk/hooks"
-import { AgentAvatar } from "@makinbakin/sdk/components"
+import { AgentAssignmentLabel } from './agent-assignment-label'
 
 interface AgentNodeData extends Record<string, unknown> {
   label: string
@@ -11,33 +10,26 @@ interface AgentNodeData extends Record<string, unknown> {
   task?: string
 }
 
-const isDynamic = (agent?: string) => agent === '$assigned'
-
 export function AgentNode({ data }: NodeProps) {
   const { label, agent, task } = data as AgentNodeData
-  const lookedUp = useAgent(agent ?? '')
-  const agentMeta = agent && !isDynamic(agent) ? lookedUp : undefined
 
   // Show first ~80 chars of task as excerpt
   const excerpt = task && task.length > 80 ? task.slice(0, 80).trim() + '…' : task
 
   return (
-    <div className="w-[280px] rounded-lg border-2 border-zinc-700 bg-zinc-900 p-3 shadow-lg">
-      <div className="mb-1.5 flex items-center gap-2">
-        {isDynamic(agent) ? (
-          <span className="inline-flex size-7 items-center justify-center rounded-full bg-blue-900/50 ring-1 ring-blue-500/40">
-            <User className="size-3.5 text-blue-400" />
-          </span>
-        ) : (
-          <AgentAvatar agentId={agent ?? 'unknown'} size="sm" />
-        )}
+    <div className="flex h-full w-full flex-col justify-center rounded-lg border-2 border-zinc-700 bg-zinc-900 px-4 py-3 shadow-lg">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-emerald-500/10 ring-1 ring-emerald-500/25">
+          <User className="size-3.5 text-emerald-400" />
+        </span>
         <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-          {isDynamic(agent) ? 'Assigned Agent' : agentMeta?.name ?? agent ?? 'Agent'}
+          Agent Task
         </span>
       </div>
-      <div className="mb-1 text-sm text-zinc-200">{label}</div>
+      <div className="truncate text-sm font-medium text-zinc-100">{label}</div>
+      <AgentAssignmentLabel agent={agent} className="mt-1" />
       {excerpt && (
-        <p className="text-xs text-zinc-500 leading-relaxed line-clamp-2">{excerpt}</p>
+        <p className="mt-0.5 truncate text-[11px] leading-snug text-zinc-500">{excerpt}</p>
       )}
       <Handle type="target" position={Position.Top} className="!bg-zinc-500" />
       <Handle type="source" position={Position.Bottom} className="!bg-zinc-500" />

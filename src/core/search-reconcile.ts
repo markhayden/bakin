@@ -257,6 +257,24 @@ export async function performStartupReconcile(
   }
 
   const useEscapeHatch = typeof def.onSync === 'function'
+  const reconciledVirtualKeys = new Set<string>()
+
+  if (def.preserveVirtualDocuments && typeof def.reindex === 'function') {
+    for await (const { key, doc } of def.reindex()) {
+      if (!key || fsByKey.has(key)) continue
+      try {
+        if (!await def.verifyExists(key)) {
+          continue
+        }
+        await deps.index(key, { ...doc, [MTIME_FIELD]: 0 })
+        reconciledVirtualKeys.add(key)
+        result.indexed++
+      } catch (err) {
+        log.warn('Reconcile virtual index failed', err, { table: tableName, key })
+        result.errors++
+      }
+    }
+  }
 
   for (const [key, { entry, mapper }] of fsByKey) {
     const indexedMtime = indexedMtimes.get(key) ?? 0
@@ -301,7 +319,12 @@ export async function performStartupReconcile(
       continue
     }
     if (fsByKey.has(indexedKey)) continue
+    if (reconciledVirtualKeys.has(indexedKey)) continue
     try {
+      if (def.preserveVirtualDocuments && await def.verifyExists(indexedKey)) {
+        result.skipped++
+        continue
+      }
       // Escape-hatch and default paths both delegate to deps.remove. The
       // plugin can observe the removal through its own bookkeeping if it
       // registered an onUnlink hook.

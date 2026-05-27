@@ -7,6 +7,8 @@
  *      the compiled binary serves production index.html byte-identical.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 
 // Per CLAUDE.md testing rules — mock content-dir even when the test
 // doesn't appear to need storage. Transitive imports can surprise you.
@@ -82,6 +84,15 @@ describe('transformIndexHtmlForDev', () => {
     const input = Buffer.from('<html><body></html>', 'utf-8') // malformed, no </body>
     const output = transformIndexHtmlForDev(input)
     expect(output.toString('utf-8')).not.toContain('__bakin-dev')
+  })
+})
+
+describe('host index boot fallback', () => {
+  it('includes visible fallback content inside #root before the app bundle loads', () => {
+    const html = readFileSync(join(process.cwd(), 'packages/host/public/index.html'), 'utf-8')
+    expect(html).toContain('class="bakin-boot"')
+    expect(html).toContain('Loading app')
+    expect(html.indexOf('class="bakin-boot"')).toBeLessThan(html.indexOf('/assets/main.js'))
   })
 })
 

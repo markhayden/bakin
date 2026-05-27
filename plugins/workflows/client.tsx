@@ -4,7 +4,7 @@
  * - `registerPlugin` contributes nav items and page slots.
  * - `registerNodeRenderer` wires each xyflow node kind to its visual
  *   component. Kinds are globally unique — built-ins use their bare name
- *   (`agent`, `gate`, `parallel`, `output`, `workflow`, `trigger`,
+ *   (`agent`, `gate`, `parallel`, `output`, `workflow`, `createTask`, `trigger`,
  *   `subflowGroup`); plugin-owned kinds arrive pre-namespaced as
  *   `{pluginId}.{kind}`.
  */
@@ -17,6 +17,7 @@ import { GateNode } from './components/nodes/gate-node'
 import { ParallelNode } from './components/nodes/parallel-node'
 import { OutputNode } from './components/nodes/output-node'
 import { WorkflowNode } from './components/nodes/workflow-node'
+import { CreateTaskNode } from './components/nodes/create-task-node'
 import { SubflowGroupNode } from './components/nodes/subflow-group-node'
 import { WorkflowsPage } from './components/workflows-page'
 import { WorkflowDetail } from './components/workflow-detail'
@@ -51,6 +52,7 @@ registerNodeRenderer('gate', GateNode)
 registerNodeRenderer('parallel', ParallelNode)
 registerNodeRenderer('output', OutputNode)
 registerNodeRenderer('workflow', WorkflowNode)
+registerNodeRenderer('createTask', CreateTaskNode)
 registerNodeRenderer('subflowGroup', SubflowGroupNode)
 
 // v2 dev hot-swap teardown: the SDK's unregisterPlugin clears nav + slots,

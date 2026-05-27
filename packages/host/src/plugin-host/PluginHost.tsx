@@ -152,6 +152,19 @@ function isDevModeActive(): boolean {
   return !!document.querySelector('script[src="/__bakin-dev/client.js"]')
 }
 
+function AppBootLoader() {
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-background text-foreground" role="status" aria-live="polite">
+      <div className="flex items-center gap-3.5 text-sm text-muted-foreground">
+        <span className="size-7 animate-spin rounded-full border-[3px] border-[#ff4d94]/20 border-t-[#ff4d94]" aria-hidden="true" />
+        <span className="leading-none">
+          Loading plugins
+        </span>
+      </div>
+    </div>
+  )
+}
+
 export function PluginHost({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
 
@@ -209,6 +222,6 @@ export function PluginHost({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(VERSION_MISMATCH_EVENT, handler)
   }, [])
 
-  if (!ready) return null
+  if (!ready) return <AppBootLoader />
   return <>{children}</>
 }

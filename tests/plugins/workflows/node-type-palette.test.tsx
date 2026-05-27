@@ -44,6 +44,7 @@ import {
 const FIXTURES: PaletteNodeType[] = [
   { kind: 'agent', runtime: 'builtin', formFields: [] },
   { kind: 'gate', runtime: 'builtin', formFields: [] },
+  { kind: 'output', runtime: 'builtin', formFields: [] },
   { kind: 'fx.noise-gate', runtime: 'plugin', pluginId: 'fx', formFields: [] },
 ]
 
@@ -52,13 +53,40 @@ afterEach(cleanup)
 describe('NodeTypePalette', () => {
   it('renders Builtin and Plugins groups from initialNodeTypes', () => {
     render(<NodeTypePalette initialNodeTypes={FIXTURES} />)
+    expect(screen.getByText('Step Types')).toBeDefined()
     expect(screen.getByText('Builtin')).toBeDefined()
     expect(screen.getByText('Plugins')).toBeDefined()
-    expect(screen.getByText('agent')).toBeDefined()
-    expect(screen.getByText('gate')).toBeDefined()
+    expect(screen.getByText('Agent Task')).toBeDefined()
+    expect(screen.getByText('Approval Gate')).toBeDefined()
+    expect(screen.getByText('Completion')).toBeDefined()
+    const agentItem = screen.getByText('Agent Task').closest('li')!
+    expect(agentItem.querySelector('svg')).toBeDefined()
     // Plugin display strips the prefix; the pluginId appears as a badge.
     expect(screen.getByText('noise-gate')).toBeDefined()
     expect(screen.getByText('fx')).toBeDefined()
+  })
+
+  it('disables node types the editor says cannot be added', () => {
+    const onDragKind = mock()
+    render(
+      <NodeTypePalette
+        initialNodeTypes={FIXTURES}
+        disabledKinds={new Set(['output'])}
+        onDragKind={onDragKind}
+      />,
+    )
+
+    const item = screen.getByText('Completion').closest('li')!
+    expect(item.getAttribute('aria-disabled')).toBe('true')
+    expect(screen.getByText('This workflow already has a completion step.')).toBeDefined()
+
+    const setData = mock()
+    fireEvent.dragStart(item, {
+      dataTransfer: { setData, effectAllowed: '' },
+    })
+
+    expect(setData).not.toHaveBeenCalled()
+    expect(onDragKind).not.toHaveBeenCalled()
   })
 
   it('sets the drag MIME payload to the namespaced kind on dragstart', () => {
@@ -97,7 +125,7 @@ describe('NodeTypePalette', () => {
 
     render(<NodeTypePalette />)
     // Wait a tick for fetch resolution.
-    await screen.findByText('agent')
+    await screen.findByText('Agent Task')
     expect(fetchMock).toHaveBeenCalledWith('/api/plugins/workflows/node-types')
 
     vi.unstubAllGlobals()
