@@ -350,11 +350,9 @@ screenshots:
 
   - id: task-profiles
     doc: using/models
-    route: /models
+    route: /models?tab=profiles
     caption: "Task profiles map a name to a concrete model, so agents can be configured by purpose instead of vendor id."
-    waitFor: "text=Agent Config"
-    actions:
-      - click: "text=Task Profiles"
+    waitFor: "text=Add Profile"
     delay: 1500
     selector: "main.flex-1"
     cropHeight: 0.6
