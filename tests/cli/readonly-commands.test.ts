@@ -1183,7 +1183,7 @@ describe('read-only CLI TTY commands', () => {
         {
           table: 'bakin_tasks',
           pluginId: 'tasks',
-          stats: { num_docs: 12 },
+          stats: { documents: 12 },
           healthy: true,
           indexHealth: [],
         },
@@ -1194,6 +1194,7 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).toContain('Search Stats')
     expect(output()).toContain('TABLES')
     expect(output()).toContain('bakin_tasks')
+    expect(output()).toContain('12')
     expect(output()).not.toContain('Search: enabled')
   })
 

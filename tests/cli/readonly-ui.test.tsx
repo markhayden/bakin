@@ -662,7 +662,7 @@ describe('read-only CLI TUI screens', () => {
           {
             table: 'bakin_tasks',
             pluginId: 'tasks',
-            stats: { num_docs: 12 },
+            stats: { documents: 12 },
             healthy: true,
             indexHealth: [],
           },
