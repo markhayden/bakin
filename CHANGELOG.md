@@ -6,6 +6,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.5] - 2026-05-27
+
+### Added
+- Seed imitation-crab with the production five-agent roster, canonical asset fixtures, projects and messaging plugin data, expanded schedule fixtures, and Health usage/session cost data for richer local smoke testing.
+- Add workflow editor support for ordered canvas editing, node configuration, add/reorder/delete/copy flows, enable/disable handling, availability tracking, and unsaved-change protection.
+
+### Changed
+- Update release-candidate install commands to pin `v0.0.1-rc.5`.
+- Keep Health cost reporting tied to runtime-provided values, including nullable unavailable costs and totals derived from runtime cost components.
+
+### Fixed
+- Reconcile accepted runtime dispatch failures when app-server idle or runtime errors arrive after handoff, while preserving the existing retry and cooldown path for delivery failures.
+- Route OpenClaw schedule cron list/create/update/delete/run-history operations through the CLI/Gateway path, preserve provider-generated ids and timezones, expose full-day calendar coverage, and confirm scheduled job deletes.
+- Show current Health search document counts by normalizing adapter document count fields across memory, search, and CLI health surfaces.
+
 ## [0.0.1-rc.4] - 2026-05-25
 
 ### Fixed
@@ -57,5 +72,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 [0.0.1-rc.3]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.3
 [0.0.1-rc.2]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.2
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.4...HEAD
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.5...HEAD
+[0.0.1-rc.5]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.5
 [0.0.1-rc.4]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.4
