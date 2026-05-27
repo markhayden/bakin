@@ -54,7 +54,7 @@ Schedule splits ownership: the runtime owns the cron, Bakin owns everything arou
 - **The runtime owns the cron itself.** The actual cron daemon, expressions, and run logs live in the runtime home directory. Bakin asks the runtime adapter to add, edit, remove, or fire them.
 - **Bakin owns sidecar metadata.** Display name, owner, agent assignment, task title and prompt, workflow link, and pause/failure state live in `~/.bakin/schedule/sidecar.json`.
 
-When a cron fires, the runtime POSTs the **bridge endpoint** (`/api/plugins/schedule/bridge`) with an HMAC-signed payload. Bakin verifies the signature, creates a real task, optionally starts a workflow, and dispatches the work to the assigned agent. The bridge secret auto-generates on first use.
+When a cron fires, the runtime records a run. While Bakin is running, Schedule polls runtime run history, reconciles each new successful run, creates a real task, optionally starts a workflow, and dispatches the work to the assigned agent. The bridge endpoint still exists for runtimes that deliver signed webhook callbacks, but OpenClaw schedules use the reconciler path.
 
 ## Failure handling
 

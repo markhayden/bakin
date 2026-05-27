@@ -76,8 +76,8 @@ The schedule page (`schedule-page.tsx`) offers three calendar views plus a list:
 
 | View | Component | Description |
 |------|-----------|-------------|
-| Today | `calendar-today.tsx` | Timeline of today's jobs by hour |
-| Week | `calendar-weekly.tsx` | 7-day grid (6am-10pm) with job cards |
+| Today | `calendar-today.tsx` | 24-hour timeline of today's jobs |
+| Week | `calendar-weekly.tsx` | 7-day, 24-hour grid with job cards |
 | Month | `calendar-monthly.tsx` | Monthly grid with agent dot indicators |
 | List | `job-list.tsx` / `job-row.tsx` | Table with status, schedule, agent, actions |
 

@@ -3,6 +3,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
+const cronExecOpts = { timeout: 35000 }
+
 describe('OpenClaw runtime cron adapter', () => {
   let testDir: string
   let originalOpenClawHome: string | undefined
@@ -20,11 +22,22 @@ describe('OpenClaw runtime cron adapter', () => {
     rmSync(testDir, { recursive: true, force: true })
   })
 
-  it('creates Bakin schedule cron jobs as OpenClaw main-session system events', async () => {
+  it('creates Bakin schedule cron jobs as OpenClaw main-session system events through the CLI', async () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter()
+    const exec = mock(async (_args: string[]) => JSON.stringify({
+      id: 'openclaw-schedule-1',
+      name: 'Schedule One',
+      enabled: true,
+      schedule: { kind: 'cron', expr: '0 9 * * *', tz: 'America/Denver' },
+      sessionTarget: 'main',
+      wakeMode: 'now',
+      delivery: { mode: 'none' },
+      payload: { kind: 'systemEvent', text: 'bakin:schedule:schedule-1' },
+    }))
+    ;(runtime as unknown as { exec: typeof exec }).exec = exec
 
-    await runtime.cron.create({
+    const created = await runtime.cron.create({
       id: 'schedule-1',
       name: 'Schedule One',
       schedule: '0 9 * * *',
@@ -32,23 +45,54 @@ describe('OpenClaw runtime cron adapter', () => {
       metadata: { bakinSchedule: true, tz: 'America/Denver' },
     })
 
-    const store = JSON.parse(readFileSync(join(testDir, 'cron', 'jobs.json'), 'utf-8'))
-    expect(store.jobs[0]).toEqual(expect.objectContaining({
-      id: 'schedule-1',
-      sessionTarget: 'main',
-      wakeMode: 'now',
-      delivery: { mode: 'none' },
-      payload: { kind: 'systemEvent', text: 'bakin:schedule:schedule-1' },
-      metadata: expect.objectContaining({ bakinSchedule: true }),
+    expect(created).toEqual(expect.objectContaining({
+      id: 'openclaw-schedule-1',
+      command: 'bakin:schedule:schedule-1',
+      toolsAllow: undefined,
     }))
-    expect(typeof store.jobs[0].createdAtMs).toBe('number')
+    expect(exec).toHaveBeenCalledWith([
+      'cron',
+      'add',
+      '--name',
+      'Schedule One',
+      '--cron',
+      '0 9 * * *',
+      '--wake',
+      'now',
+      '--json',
+      '--timeout',
+      '30000',
+      '--tz',
+      'America/Denver',
+      '--session',
+      'main',
+      '--system-event',
+      'bakin:schedule:schedule-1',
+    ], cronExecOpts)
   })
 
   it('persists toolsAllow on native isolated cron jobs and returns it from list/get', async () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter()
+    const rawJob = {
+      id: 'openclaw-native-tools',
+      name: 'Native Tools',
+      enabled: true,
+      schedule: { kind: 'cron', expr: '0 7 * * *' },
+      sessionTarget: 'isolated',
+      payload: {
+        kind: 'agentTurn',
+        message: 'Post the daily recipe',
+        toolsAllow: ['message', 'image_generate'],
+      },
+    }
+    const exec = mock(async (args: string[]) => {
+      if (args[1] === 'list') return JSON.stringify([rawJob])
+      return JSON.stringify(rawJob)
+    })
+    ;(runtime as unknown as { exec: typeof exec }).exec = exec
 
-    await runtime.cron.create({
+    const created = await runtime.cron.create({
       id: 'native-tools',
       name: 'Native Tools',
       schedule: '0 7 * * *',
@@ -56,78 +100,123 @@ describe('OpenClaw runtime cron adapter', () => {
       toolsAllow: ['message', 'image_generate'],
     })
 
-    const store = JSON.parse(readFileSync(join(testDir, 'cron', 'jobs.json'), 'utf-8'))
-    expect(store.jobs[0].payload).toEqual(expect.objectContaining({
-      kind: 'agentTurn',
-      message: 'Post the daily recipe',
+    expect(created).toEqual(expect.objectContaining({
+      id: 'openclaw-native-tools',
       toolsAllow: ['message', 'image_generate'],
     }))
+    expect(exec).toHaveBeenCalledWith([
+      'cron',
+      'add',
+      '--name',
+      'Native Tools',
+      '--cron',
+      '0 7 * * *',
+      '--wake',
+      'now',
+      '--json',
+      '--timeout',
+      '30000',
+      '--session',
+      'isolated',
+      '--message',
+      'Post the daily recipe',
+      '--tools',
+      'message,image_generate',
+    ], cronExecOpts)
 
-    await expect(runtime.cron.get('native-tools')).resolves.toEqual(expect.objectContaining({
-      id: 'native-tools',
+    await expect(runtime.cron.get('openclaw-native-tools')).resolves.toEqual(expect.objectContaining({
+      id: 'openclaw-native-tools',
       toolsAllow: ['message', 'image_generate'],
     }))
     await expect(runtime.cron.list()).resolves.toEqual([
-      expect.objectContaining({ id: 'native-tools', toolsAllow: ['message', 'image_generate'] }),
+      expect.objectContaining({ id: 'openclaw-native-tools', toolsAllow: ['message', 'image_generate'] }),
     ])
   })
 
-  it('updates and clears toolsAllow without dropping native cron payload fields', async () => {
-    mkdirSync(join(testDir, 'cron'), { recursive: true })
-    writeFileSync(join(testDir, 'cron', 'jobs.json'), JSON.stringify({
-      version: 1,
-      jobs: [{
-        id: 'native-update-tools',
-        name: 'Native Update Tools',
-        enabled: true,
-        schedule: { kind: 'cron', expr: '0 8 * * *' },
-        sessionTarget: 'isolated',
-        payload: {
-          kind: 'agentTurn',
-          message: 'Original native command',
-          model: 'openai/gpt-5.4',
-          toolsAllow: ['message'],
-        },
-        delivery: { mode: 'none' },
-      }],
-    }), 'utf-8')
-
+  it('updates and clears toolsAllow with OpenClaw cron edit', async () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter()
+    const rawJob: {
+      id: string
+      name: string
+      enabled: boolean
+      schedule: { kind: string; expr: string }
+      sessionTarget: string
+      payload: Record<string, unknown>
+      delivery: { mode: string }
+    } = {
+      id: 'native-update-tools',
+      name: 'Native Update Tools',
+      enabled: true,
+      schedule: { kind: 'cron', expr: '0 8 * * *' },
+      sessionTarget: 'isolated',
+      payload: {
+        kind: 'agentTurn',
+        message: 'Original native command',
+        model: 'openai/gpt-5.4',
+        toolsAllow: ['message'],
+      },
+      delivery: { mode: 'none' },
+    }
+    const exec = mock(async (args: string[]) => {
+      if (args[1] === 'list') return JSON.stringify([rawJob])
+      if (args[1] === 'edit') {
+        const toolsIndex = args.indexOf('--tools')
+        if (toolsIndex !== -1) rawJob.payload.toolsAllow = args[toolsIndex + 1].split(',')
+        if (args.includes('--clear-tools')) delete rawJob.payload.toolsAllow
+      }
+      return ''
+    })
+    ;(runtime as unknown as { exec: typeof exec }).exec = exec
 
-    await runtime.cron.update('native-update-tools', { toolsAllow: ['message', 'exec'] })
-
-    const updatedStore = JSON.parse(readFileSync(join(testDir, 'cron', 'jobs.json'), 'utf-8'))
-    expect(updatedStore.jobs[0].payload).toEqual(expect.objectContaining({
-      kind: 'agentTurn',
-      message: 'Original native command',
-      model: 'openai/gpt-5.4',
+    await expect(runtime.cron.update('native-update-tools', { toolsAllow: ['message', 'exec'] })).resolves.toEqual(expect.objectContaining({
       toolsAllow: ['message', 'exec'],
     }))
+    expect(exec).toHaveBeenCalledWith([
+      'cron',
+      'edit',
+      'native-update-tools',
+      '--timeout',
+      '30000',
+      '--session',
+      'isolated',
+      '--message',
+      'Original native command',
+      '--tools',
+      'message,exec',
+    ], cronExecOpts)
 
-    await expect(runtime.cron.get('native-update-tools')).resolves.toEqual(expect.objectContaining({
-      toolsAllow: ['message', 'exec'],
-    }))
-
-    await runtime.cron.update('native-update-tools', { toolsAllow: null })
-
-    const clearedStore = JSON.parse(readFileSync(join(testDir, 'cron', 'jobs.json'), 'utf-8'))
-    expect(clearedStore.jobs[0].payload).toEqual(expect.objectContaining({
-      kind: 'agentTurn',
-      message: 'Original native command',
-      model: 'openai/gpt-5.4',
-    }))
-    expect(clearedStore.jobs[0].payload.toolsAllow).toBeUndefined()
-    await expect(runtime.cron.get('native-update-tools')).resolves.toEqual(expect.objectContaining({
+    await expect(runtime.cron.update('native-update-tools', { toolsAllow: null })).resolves.toEqual(expect.objectContaining({
       toolsAllow: undefined,
     }))
+    expect(exec).toHaveBeenCalledWith([
+      'cron',
+      'edit',
+      'native-update-tools',
+      '--timeout',
+      '30000',
+      '--session',
+      'isolated',
+      '--message',
+      'Original native command',
+      '--clear-tools',
+    ], cronExecOpts)
   })
 
   it('does not attach toolsAllow to Bakin schedule system-event cron jobs', async () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter()
+    const exec = mock(async (_args: string[]) => JSON.stringify({
+      id: 'openclaw-schedule-tools',
+      name: 'Schedule Tools',
+      enabled: true,
+      schedule: { kind: 'cron', expr: '0 9 * * *' },
+      sessionTarget: 'main',
+      payload: { kind: 'systemEvent', text: 'bakin:schedule:schedule-tools' },
+    }))
+    ;(runtime as unknown as { exec: typeof exec }).exec = exec
 
-    await runtime.cron.create({
+    const created = await runtime.cron.create({
       id: 'schedule-tools',
       name: 'Schedule Tools',
       schedule: '0 9 * * *',
@@ -136,11 +225,29 @@ describe('OpenClaw runtime cron adapter', () => {
       toolsAllow: ['message'],
     })
 
-    const store = JSON.parse(readFileSync(join(testDir, 'cron', 'jobs.json'), 'utf-8'))
-    expect(store.jobs[0].payload).toEqual({ kind: 'systemEvent', text: 'bakin:schedule:schedule-tools' })
-    await expect(runtime.cron.get('schedule-tools')).resolves.toEqual(expect.objectContaining({
-      toolsAllow: undefined,
-    }))
+    expect(created.toolsAllow).toBeUndefined()
+    expect(exec.mock.calls[0][0]).not.toContain('--tools')
+  })
+
+  it('preserves the timezone from OpenClaw cron schedule objects when listing jobs', async () => {
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+    const exec = mock(async () => JSON.stringify([{
+      id: 'openclaw-tz',
+      name: 'Timezone job',
+      enabled: true,
+      schedule: { kind: 'cron', expr: '0 9 * * *', tz: 'America/Denver' },
+      payload: { kind: 'systemEvent', text: 'bakin:schedule:timezone-job' },
+    }]))
+    ;(runtime as unknown as { exec: typeof exec }).exec = exec
+
+    await expect(runtime.cron.list()).resolves.toEqual([
+      expect.objectContaining({
+        id: 'openclaw-tz',
+        schedule: '0 9 * * *',
+        metadata: expect.objectContaining({ tz: 'America/Denver' }),
+      }),
+    ])
   })
 
   it('captures and restores raw cron snapshots without dropping provider-specific fields', async () => {
@@ -167,54 +274,82 @@ describe('OpenClaw runtime cron adapter', () => {
     const runtime = createOpenClawRuntimeAdapter()
     const raw = await runtime.cron.getRaw('native-1', 'test capture')
 
-    await runtime.cron.update('native-1', {
-      command: 'bakin:schedule:native-1',
-      metadata: { bakinSchedule: true },
-    })
-    const adoptedStore = JSON.parse(readFileSync(join(testDir, 'cron', 'jobs.json'), 'utf-8'))
-    expect(adoptedStore.jobs[0]).toEqual(expect.objectContaining({
-      sessionTarget: 'main',
-      wakeMode: 'now',
-      delivery: { mode: 'none' },
-      payload: { kind: 'systemEvent', text: 'bakin:schedule:native-1' },
-    }))
-
+    writeFileSync(join(testDir, 'cron', 'jobs.json'), JSON.stringify({ version: 1, jobs: [] }), 'utf-8')
     await runtime.cron.restoreRaw('native-1', raw, 'test restore')
 
     const store = JSON.parse(readFileSync(join(testDir, 'cron', 'jobs.json'), 'utf-8'))
     expect(store.jobs[0]).toEqual(raw)
   })
 
-  it('converts metadata-only Bakin updates to system-event payloads', async () => {
-    mkdirSync(join(testDir, 'cron'), { recursive: true })
-    writeFileSync(join(testDir, 'cron', 'jobs.json'), JSON.stringify({
-      version: 1,
-      jobs: [{
-        id: 'native-2',
-        name: 'Native Two',
-        enabled: true,
-        schedule: { kind: 'cron', expr: '0 8 * * *' },
-        sessionTarget: 'isolated',
-        payload: { kind: 'agentTurn', message: 'Original native command' },
-        delivery: { mode: 'announce', channel: 'last' },
-      }],
-    }), 'utf-8')
-
+  it('converts metadata-only Bakin updates to system-event payloads through the CLI', async () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter()
-
-    await runtime.cron.update('native-2', {
-      metadata: { bakinSchedule: true },
+    const rawJob: {
+      id: string
+      name: string
+      enabled: boolean
+      schedule: { kind: string; expr: string }
+      sessionTarget: string
+      payload: Record<string, unknown>
+      delivery: { mode: string; channel: string }
+    } = {
+      id: 'native-2',
+      name: 'Native Two',
+      enabled: true,
+      schedule: { kind: 'cron', expr: '0 8 * * *' },
+      sessionTarget: 'isolated',
+      payload: { kind: 'agentTurn', message: 'Original native command' },
+      delivery: { mode: 'announce', channel: 'last' },
+    }
+    const exec = mock(async (args: string[]) => {
+      if (args[1] === 'edit') {
+        rawJob.sessionTarget = 'main'
+        rawJob.payload = { kind: 'systemEvent', text: 'Original native command' }
+      }
+      return JSON.stringify([rawJob])
     })
+    ;(runtime as unknown as { exec: typeof exec }).exec = exec
 
-    const store = JSON.parse(readFileSync(join(testDir, 'cron', 'jobs.json'), 'utf-8'))
-    expect(store.jobs[0]).toEqual(expect.objectContaining({
-      sessionTarget: 'main',
-      wakeMode: 'now',
-      delivery: { mode: 'none' },
-      payload: { kind: 'systemEvent', text: 'Original native command' },
+    await expect(runtime.cron.update('native-2', {
       metadata: { bakinSchedule: true },
+    })).resolves.toEqual(expect.objectContaining({
+      command: 'Original native command',
+      toolsAllow: undefined,
     }))
+    expect(exec).toHaveBeenCalledWith([
+      'cron',
+      'edit',
+      'native-2',
+      '--timeout',
+      '30000',
+      '--session',
+      'main',
+      '--system-event',
+      'Original native command',
+    ], cronExecOpts)
+  })
+
+  it('reads cron run history through the OpenClaw cron CLI', async () => {
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+    const exec = mock(async () => JSON.stringify([
+      { runId: 'run-1', jobId: 'cron-history', status: 'success', timestamp: '2026-03-31T09:00:00Z' },
+    ]))
+    ;(runtime as unknown as { exec: typeof exec }).exec = exec
+
+    await expect(runtime.cron.listRuns('cron-history')).resolves.toEqual([
+      expect.objectContaining({ id: 'run-1', jobId: 'cron-history', status: 'succeeded' }),
+    ])
+    expect(exec).toHaveBeenCalledWith([
+      'cron',
+      'runs',
+      '--id',
+      'cron-history',
+      '--limit',
+      '50',
+      '--timeout',
+      '30000',
+    ], cronExecOpts)
   })
 
   it('runs cron jobs without passing unsupported force flags', async () => {

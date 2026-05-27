@@ -28,7 +28,7 @@ export const AGENT_STYLES: Record<string, {
 
 export const FALLBACK_STYLE = AGENT_STYLES.patch!
 
-const HOURS = Array.from({ length: 17 }, (_, i) => i + 6) // 6am–10pm
+export const CALENDAR_HOURS = Array.from({ length: 24 }, (_, i) => i)
 const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 function getWeekStart(date: Date): Date {
@@ -246,7 +246,7 @@ export function CalendarWeekly({
           ))}
 
           {/* Hour rows */}
-          {HOURS.map(hour => (
+          {CALENDAR_HOURS.map(hour => (
             <Fragment key={hour}>
               <div className="text-[10px] text-zinc-600 text-right pr-2.5 py-3 border-t border-border/[0.06] font-mono tabular-nums">
                 {formatHour(hour)}

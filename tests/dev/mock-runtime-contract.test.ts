@@ -113,34 +113,33 @@ describe('imitation-crab runtime contract', () => {
       deliveries: [expect.objectContaining({ channelId: 'discord:contract-channel' })],
     }))
 
-    await expect(runtime.cron.create({
-      id: 'contract-cron',
+    const createdCron = await runtime.cron.create({
       name: 'Contract Cron',
       schedule: '*/10 * * * *',
       command: 'Run contract cron',
       toolsAllow: ['message'],
-    })).resolves.toEqual(expect.objectContaining({
-      id: 'contract-cron',
+    })
+    expect(createdCron).toEqual(expect.objectContaining({
       command: 'Run contract cron',
       toolsAllow: ['message'],
     }))
-    await expect(runtime.cron.update('contract-cron', {
+    await expect(runtime.cron.update(createdCron.id, {
       schedule: '0 * * * *',
       toolsAllow: ['message', 'exec'],
     })).resolves.toEqual(expect.objectContaining({
-      id: 'contract-cron',
+      id: createdCron.id,
       schedule: '0 * * * *',
       toolsAllow: ['message', 'exec'],
     }))
-    await expect(runtime.cron.runNow('contract-cron')).resolves.toEqual(expect.objectContaining({
-      jobId: 'contract-cron',
+    await expect(runtime.cron.runNow(createdCron.id)).resolves.toEqual(expect.objectContaining({
+      jobId: createdCron.id,
       status: 'succeeded',
     }))
-    await expect(runtime.cron.listRuns('contract-cron')).resolves.toEqual([
-      expect.objectContaining({ jobId: 'contract-cron', status: 'succeeded' }),
+    await expect(runtime.cron.listRuns(createdCron.id)).resolves.toEqual([
+      expect.objectContaining({ jobId: createdCron.id, status: 'succeeded' }),
     ])
-    await runtime.cron.remove('contract-cron')
-    await expect(runtime.cron.get('contract-cron')).resolves.toBeNull()
+    await runtime.cron.remove(createdCron.id)
+    await expect(runtime.cron.get(createdCron.id)).resolves.toBeNull()
 
     await expect(runtime.tasks.dispatch({
       bakinTaskId: 'task-contract',

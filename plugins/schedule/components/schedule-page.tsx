@@ -16,6 +16,7 @@ import { useScheduleJobs, type ScheduleJob } from "@makinbakin/sdk/hooks"
 import { JobList } from './job-list'
 import { JobDrawer } from './job-drawer'
 import { JobForm, type JobFormData } from './job-form'
+import { DeleteScheduleDialog } from './delete-schedule-dialog'
 import { CalendarMonthly } from './calendar-monthly'
 import { CalendarWeekly } from './calendar-weekly'
 import { CalendarToday } from './calendar-today'
@@ -42,6 +43,8 @@ export function SchedulePage() {
   const [mode, setMode, pushMode] = useQueryState('mode', '')
 
   const [submitting, setSubmitting] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<ScheduleJob | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const [debug] = useDebug()
 
   const {
@@ -95,6 +98,25 @@ export function SchedulePage() {
 
   const openJob = (job: ScheduleJob) => pushJobId(job.id)
   const closeJob = () => setJobIdParam('')
+
+  const requestDelete = (jobId: string) => {
+    const job = jobs.find(j => j.id === jobId) ?? (selectedJob?.id === jobId ? selectedJob : null)
+    if (job) setDeleteTarget(job)
+  }
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      const ok = await deleteJob(deleteTarget.id)
+      if (ok) {
+        if (jobIdParam === deleteTarget.id) closeJob()
+        setDeleteTarget(null)
+      }
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const openCreate = () => {
     // Atomic: set mode=create, clear jobId
@@ -251,7 +273,7 @@ export function SchedulePage() {
             onPause={(id) => pauseJob(id)}
             onResume={(id) => resumeJob(id)}
             onRunNow={(id) => runNow(id)}
-            onDelete={(id) => deleteJob(id)}
+            onDelete={requestDelete}
             onEdit={openEditFor}
             onDuplicate={openDuplicateFor}
             onAdopt={(job) => {
@@ -281,13 +303,20 @@ export function SchedulePage() {
         onClose={closeJob}
         onPause={pauseJob}
         onResume={resumeJob}
-        onDelete={deleteJob}
+        onDelete={requestDelete}
         onRunNow={runNow}
         onEdit={openEdit}
         onDuplicate={openDuplicate}
         onAdopt={openAdopt}
         onRestoreNative={restoreNative}
         onSkipNext={skipNext}
+      />
+
+      <DeleteScheduleDialog
+        job={deleteTarget}
+        deleting={deleting}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
       />
 
       {/* Create / Edit / Duplicate form */}

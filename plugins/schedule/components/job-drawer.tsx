@@ -1,6 +1,4 @@
 'use client'
-
-import { useState } from 'react'
 import { Play, Pencil, Copy, Trash2, SkipForward, MoreHorizontal, Clock, Timer, Workflow, Terminal, CirclePlus, Undo2, Power, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { BakinDrawer } from "@makinbakin/sdk/components"
 import { AgentAvatar } from "@makinbakin/sdk/components"
@@ -39,7 +37,7 @@ export function JobDrawer({
   onClose: () => void
   onPause: (jobId: string, pauseUntil?: string) => Promise<boolean>
   onResume: (jobId: string) => Promise<boolean>
-  onDelete: (jobId: string) => Promise<boolean>
+  onDelete: (jobId: string) => void
   onRunNow: (jobId: string) => Promise<boolean>
   onEdit: () => void
   onDuplicate: () => void
@@ -47,19 +45,12 @@ export function JobDrawer({
   onRestoreNative: (jobId: string) => Promise<boolean>
   onSkipNext: (jobId: string, n?: number) => Promise<boolean>
 }) {
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const jobAgent = useAgent(job?.agentId ?? '')
 
   if (!job) return null
 
-  const handleDelete = async () => {
-    if (!confirmDelete) {
-      setConfirmDelete(true)
-      return
-    }
-    const ok = await onDelete(job.id)
-    if (ok) onClose()
-    setConfirmDelete(false)
+  const handleDelete = () => {
+    onDelete(job.id)
   }
 
   return (
@@ -68,7 +59,6 @@ export function JobDrawer({
       onOpenChange={(o) => {
         if (!o) {
           onClose()
-          setConfirmDelete(false)
         }
       }}
       title={
@@ -80,7 +70,7 @@ export function JobDrawer({
         </span>
       }
       actions={
-        <DropdownMenu onOpenChange={(o) => { if (!o) setConfirmDelete(false) }}>
+        <DropdownMenu>
           <DropdownMenuTrigger className="p-1.5 rounded-md hover:bg-accent transition-colors">
             <MoreHorizontal className="size-4" />
           </DropdownMenuTrigger>
@@ -108,7 +98,7 @@ export function JobDrawer({
               className="text-red-400 focus:text-red-400"
             >
               <Trash2 className="size-3.5 mr-2" />
-              {confirmDelete ? 'Confirm Delete' : 'Delete'}
+              Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

@@ -93,7 +93,7 @@ export function mergeJob(
     taskPrompt: meta?.taskPrompt ?? orphanContext.prompt,
     taskTitle: meta?.taskTitle,
     toolsAllow: job.toolsAllow,
-    toolsAllowMissing: job.toolsAllowMissing ?? false,
+    toolsAllowMissing: meta?.isBakinJob ? false : job.toolsAllowMissing ?? false,
     paused: meta?.paused ?? false,
     pauseUntil: meta?.pauseUntil,
     pauseReason: meta?.pauseReason,

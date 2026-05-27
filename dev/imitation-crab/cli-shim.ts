@@ -39,6 +39,12 @@ function hasFlag(name: string): boolean {
   return args.includes(`--${name}`)
 }
 
+function parseTools(value: string | undefined): string[] | undefined {
+  if (!value) return undefined
+  const tools = value.split(/[,\s]+/).map(tool => tool.trim()).filter(Boolean)
+  return tools.length > 0 ? Array.from(new Set(tools)) : undefined
+}
+
 async function main(): Promise<void> {
   if (command === 'cron') {
     switch (subcommand) {
@@ -57,10 +63,11 @@ async function main(): Promise<void> {
       case 'add': {
         const name = getFlag('name') || 'unnamed'
         const id = randomUUID().slice(0, 8)
+        const toolsAllow = parseTools(getFlag('tools'))
         const job: Record<string, unknown> = {
           id,
           name,
-          enabled: true,
+          enabled: !hasFlag('disabled'),
           createdAt: new Date().toISOString(),
         }
 
@@ -68,8 +75,20 @@ async function main(): Promise<void> {
         else if (getFlag('every')) job.schedule = { kind: 'every', expr: getFlag('every') }
         else if (getFlag('at')) job.schedule = { kind: 'at', expr: getFlag('at') }
 
-        if (getFlag('session')) job.delivery = { mode: getFlag('session') === 'main' ? 'announce' : 'none' }
-        if (getFlag('message')) job.payload = { message: getFlag('message') }
+        if (getFlag('session')) {
+          job.sessionTarget = getFlag('session')
+          job.delivery = { mode: getFlag('session') === 'main' ? 'announce' : 'none' }
+        }
+        if (getFlag('system-event')) {
+          job.payload = { kind: 'systemEvent', text: getFlag('system-event') }
+        } else if (getFlag('message')) {
+          job.payload = {
+            kind: 'agentTurn',
+            message: getFlag('message'),
+            ...(toolsAllow ? { toolsAllow } : {}),
+          }
+        }
+        if (getFlag('wake')) job.wakeMode = getFlag('wake')
 
         const data = readJobs()
         data.jobs.push(job)
@@ -79,6 +98,22 @@ async function main(): Promise<void> {
           process.stdout.write(JSON.stringify({ id }))
         } else {
           console.log(`Created job ${id}`)
+        }
+        break
+      }
+
+      case 'show': {
+        const jobId = args[2]
+        const data = readJobs()
+        const job = data.jobs.find(j => j.id === jobId || j.name === jobId)
+        if (!job) {
+          console.error(`Job ${jobId} not found`)
+          process.exit(1)
+        }
+        if (hasFlag('json')) {
+          process.stdout.write(JSON.stringify(job))
+        } else {
+          console.log(`${job.id}\t${job.name}\t${job.enabled ? 'enabled' : 'disabled'}`)
         }
         break
       }
@@ -99,6 +134,26 @@ async function main(): Promise<void> {
         if (hasFlag('enable')) job.enabled = true
         if (hasFlag('disable')) job.enabled = false
         if (getFlag('tz') && job.schedule) (job.schedule as Record<string, unknown>).tz = getFlag('tz')
+        if (getFlag('session')) job.sessionTarget = getFlag('session')
+        if (getFlag('wake')) job.wakeMode = getFlag('wake')
+        if (getFlag('system-event')) {
+          job.payload = { kind: 'systemEvent', text: getFlag('system-event') }
+        } else if (getFlag('message')) {
+          const existingPayload = typeof job.payload === 'object' && job.payload !== null ? job.payload as Record<string, unknown> : {}
+          const toolsAllow = parseTools(getFlag('tools'))
+          job.payload = {
+            ...existingPayload,
+            kind: 'agentTurn',
+            message: getFlag('message'),
+            ...(toolsAllow ? { toolsAllow } : {}),
+          }
+        } else if (getFlag('tools')) {
+          const existingPayload = typeof job.payload === 'object' && job.payload !== null ? job.payload as Record<string, unknown> : {}
+          job.payload = { ...existingPayload, toolsAllow: parseTools(getFlag('tools')) }
+        }
+        if (hasFlag('clear-tools') && typeof job.payload === 'object' && job.payload !== null) {
+          delete (job.payload as Record<string, unknown>).toolsAllow
+        }
 
         job.updatedAt = new Date().toISOString()
         writeJobs(data)
@@ -128,6 +183,16 @@ async function main(): Promise<void> {
         }
         appendFileSync(join(runsDir, `${jobId}.jsonl`), JSON.stringify(runEntry) + '\n')
         console.log(`Ran job ${jobId} (mock)`)
+        break
+      }
+
+      case 'runs': {
+        const jobId = getFlag('id') || args[2]
+        const limit = Number.parseInt(getFlag('limit') || '50', 10)
+        const runsPath = join(OPENCLAW_HOME, 'cron', 'runs', `${jobId}.jsonl`)
+        if (!existsSync(runsPath)) break
+        const lines = readFileSync(runsPath, 'utf-8').split('\n').filter(Boolean)
+        process.stdout.write(lines.slice(-limit).join('\n'))
         break
       }
 

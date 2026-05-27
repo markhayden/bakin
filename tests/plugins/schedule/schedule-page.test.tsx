@@ -14,7 +14,7 @@
  * focused on filter/search behavior in `view='list'` mode.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -129,18 +129,22 @@ const scheduleState: { jobs: ScheduleJobStub[]; loading: boolean } = {
   loading: false,
 }
 
+const scheduleActions = {
+  refresh: mock(),
+  pauseJob: mock(),
+  resumeJob: mock(),
+  deleteJob: mock(async () => true),
+  runNow: mock(),
+  updateJob: mock(),
+  skipNext: mock(),
+  duplicateJob: mock(),
+}
+
 mock.module('@/hooks/use-schedule', () => ({
   useScheduleJobs: () => ({
     jobs: scheduleState.jobs,
     loading: scheduleState.loading,
-    refresh: mock(),
-    pauseJob: mock(),
-    resumeJob: mock(),
-    deleteJob: mock(),
-    runNow: mock(),
-    updateJob: mock(),
-    skipNext: mock(),
-    duplicateJob: mock(),
+    ...scheduleActions,
   }),
 }))
 
@@ -178,10 +182,13 @@ mock.module('@/components/ui/button', () => ({
 }))
 
 mock.module('@bakin/schedule/components/job-list', () => ({
-  JobList: ({ jobs }: { jobs: ScheduleJobStub[] }) => (
+  JobList: ({ jobs, onDelete }: { jobs: ScheduleJobStub[]; onDelete: (jobId: string) => void }) => (
     <ul data-testid="job-list">
       {jobs.map(j => (
-        <li key={j.id} data-testid={`job-${j.id}`}>{j.displayName}</li>
+        <li key={j.id} data-testid={`job-${j.id}`}>
+          {j.displayName}
+          <button onClick={() => onDelete(j.id)}>Delete {j.displayName}</button>
+        </li>
       ))}
     </ul>
   ),
@@ -193,6 +200,25 @@ mock.module('@bakin/schedule/components/job-drawer', () => ({
 
 mock.module('@bakin/schedule/components/job-form', () => ({
   JobForm: () => null,
+}))
+
+mock.module('@bakin/schedule/components/delete-schedule-dialog', () => ({
+  DeleteScheduleDialog: ({
+    job,
+    onConfirm,
+    onCancel,
+  }: {
+    job: ScheduleJobStub | null
+    onConfirm: () => void
+    onCancel: () => void
+  }) => job ? (
+    <div role="dialog" aria-label="Delete scheduled job">
+      <span>Delete scheduled job</span>
+      <span>{job.displayName}</span>
+      <button onClick={onCancel}>Cancel</button>
+      <button onClick={onConfirm}>Delete</button>
+    </div>
+  ) : null,
 }))
 
 mock.module('@bakin/schedule/components/calendar-monthly', () => ({
@@ -236,6 +262,8 @@ beforeEach(() => {
   searchHookState.results = []
   searchHookState.search.mockReset()
   searchHookState.clear.mockReset()
+  for (const action of Object.values(scheduleActions)) action.mockReset()
+  scheduleActions.deleteJob.mockImplementation(async () => true)
   scheduleState.jobs = []
   scheduleState.loading = false
 })
@@ -322,5 +350,24 @@ describe('SchedulePage smoke', () => {
     // AgentAvatar stubs render the agent id as text
     expect(screen.getAllByText('chef').length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByText('pixel').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('confirms before deleting a scheduled job from the list', async () => {
+    scheduleState.jobs = [makeJob({ id: 'job-delete', displayName: 'Delete candidate' })]
+    queryStateRefs.view = 'list'
+
+    render(<SchedulePage />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Delete candidate' }))
+
+    expect(scheduleActions.deleteJob).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog', { name: 'Delete scheduled job' })).toBeDefined()
+    expect(screen.getAllByText('Delete candidate').length).toBeGreaterThan(0)
+
+    fireEvent.click(screen.getByRole('button', { name: /^Delete$/ }))
+
+    await waitFor(() => {
+      expect(scheduleActions.deleteJob).toHaveBeenCalledWith('job-delete')
+    })
   })
 })
