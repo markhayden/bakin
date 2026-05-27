@@ -733,7 +733,9 @@ const eventBus = new BakinEventBus(broadcast)
       }
 
       if (process.env.BAKIN_SEED_USAGE === '1') {
-        import('./dev/imitation-crab/usage-seed').then(m => m.seedMockUsage()).catch(() => {})
+        import('./dev/imitation-crab/usage-seed')
+          .then(m => m.seedMockUsage())
+          .catch(err => log.warn('Mock usage seed failed', err))
       }
     })()
   })
