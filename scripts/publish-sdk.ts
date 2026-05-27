@@ -145,6 +145,19 @@ function assertGeneratedPackage(packageDir: string, version: string): void {
   if (pkg.version !== version) throw new Error(`Generated package version is ${pkg.version}, expected ${version}`)
 }
 
+function publishArgs(tag: PublishSdkOptions['tag'], provenance: boolean): string[] {
+  return ['publish', provenance ? '--provenance' : '--provenance=false', '--access', 'public', '--tag', tag]
+}
+
+function isDuplicateTransparencyLogError(result: CommandResult): boolean {
+  const output = `${result.stdout}\n${result.stderr}`
+  return /TLOG_CREATE_ENTRY_ERROR/i.test(output) && /equivalent entry already exists|409/i.test(output)
+}
+
+function packageExists(runner: CommandRunner, viewArgs: string[]): boolean | null {
+  return packageAlreadyExistsResult(runner('npm', viewArgs, REPO_ROOT))
+}
+
 export async function publishSdkPackage(
   opts: PublishSdkOptions,
   deps: {
@@ -160,12 +173,12 @@ export async function publishSdkPackage(
   assertGeneratedPackage(packageDir, opts.version)
 
   const viewArgs = ['view', `${SDK_PACKAGE_NAME}@${opts.version}`, 'version', '--json']
-  const publishArgs = ['publish', ...(opts.provenance ? ['--provenance'] : []), '--access', 'public', '--tag', opts.tag]
+  const primaryPublishArgs = publishArgs(opts.tag, opts.provenance)
 
   if (opts.dryRun) {
     console.log(`[dry-run] Built ${SDK_PACKAGE_NAME}@${opts.version} at ${packageDir}`)
     console.log(`[dry-run] Would run: npm ${viewArgs.join(' ')}`)
-    console.log(`[dry-run] Would run: npm ${publishArgs.join(' ')} (in ${packageDir})`)
+    console.log(`[dry-run] Would run: npm ${primaryPublishArgs.join(' ')} (in ${packageDir})`)
     return 'dry-run'
   }
 
@@ -181,9 +194,31 @@ export async function publishSdkPackage(
     throw new Error(`Could not check npm package version ${SDK_PACKAGE_NAME}@${opts.version}`)
   }
 
-  const publish = runner('npm', publishArgs, packageDir)
+  const publish = runner('npm', primaryPublishArgs, packageDir)
   echoResult(publish)
   if (publish.status !== 0) {
+    const afterPublishExists = packageExists(runner, viewArgs)
+    if (afterPublishExists === true) {
+      console.log(`${SDK_PACKAGE_NAME}@${opts.version} exists on npm after publish failure; treating publish as complete`)
+      return 'exists'
+    }
+
+    if (opts.provenance && isDuplicateTransparencyLogError(publish)) {
+      console.warn('npm provenance publish hit a duplicate transparency-log entry before the package reached the registry; retrying once with provenance disabled')
+      const retry = runner('npm', publishArgs(opts.tag, false), packageDir)
+      echoResult(retry)
+      if (retry.status === 0) {
+        console.log(`Published ${SDK_PACKAGE_NAME}@${opts.version} with dist-tag ${opts.tag} without provenance`)
+        return 'published'
+      }
+
+      const afterRetryExists = packageExists(runner, viewArgs)
+      if (afterRetryExists === true) {
+        console.log(`${SDK_PACKAGE_NAME}@${opts.version} exists on npm after retry failure; treating publish as complete`)
+        return 'exists'
+      }
+    }
+
     throw new Error(`npm publish failed for ${SDK_PACKAGE_NAME}@${opts.version}`)
   }
   console.log(`Published ${SDK_PACKAGE_NAME}@${opts.version} with dist-tag ${opts.tag}`)
