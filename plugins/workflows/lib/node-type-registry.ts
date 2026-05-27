@@ -140,12 +140,12 @@ const stepOutputSchema = z.object({
   id: z.string(),
   type: z.enum(['string', 'file', 'number']).optional(),
   path: z.string().optional(),
-})
+}).passthrough()
 
 const notifyChannelSchema = z.object({
   channel: z.string().min(1),
   target: z.string(),
-})
+}).passthrough()
 
 // ─── Builtin step schemas ───────────────────────────────────────────────────
 
@@ -160,7 +160,7 @@ export const agentStepSchema = z.object({
   outputs: z.array(stepOutputSchema).optional(),
   dependsOn: dependsOnSchema,
   deny_tools: z.array(z.string()).optional(),
-})
+}).passthrough()
 
 export const gateStepSchema = z.object({
   id: z.string().min(1),
@@ -176,9 +176,10 @@ export const gateStepSchema = z.object({
       goto: z.string(),
       note_to_agent: z.boolean().optional(),
     })
+    .passthrough()
     .optional(),
   dependsOn: dependsOnSchema,
-})
+}).passthrough()
 
 export const outputStepSchema = z.object({
   id: z.string().min(1),
@@ -192,7 +193,7 @@ export const outputStepSchema = z.object({
   schedule: z.string().optional(),
   dependsOn: dependsOnSchema,
   deny_tools: z.array(z.string()).optional(),
-})
+}).passthrough()
 
 export const nestedWorkflowStepSchema = z.object({
   id: z.string().min(1),
@@ -201,14 +202,14 @@ export const nestedWorkflowStepSchema = z.object({
   workflow_id: z.string().min(1),
   description: z.string().optional(),
   dependsOn: dependsOnSchema,
-})
+}).passthrough()
 
 const taskSourceSchema = z.object({
   pluginId: z.string().optional(),
   entityType: z.string().optional(),
   entityId: z.string().optional(),
   purpose: z.string().optional(),
-})
+}).passthrough()
 
 export const createTaskStepSchema = z.object({
   id: z.string().min(1),
@@ -227,7 +228,7 @@ export const createTaskStepSchema = z.object({
   source: taskSourceSchema.optional(),
   skipWorkflowReason: z.string().optional(),
   dependsOn: dependsOnSchema,
-})
+}).passthrough()
 
 // Parallel children are a closed subset (agent | gate). Defined separately so
 // the parallel schema can reference them without recursion through the union.
@@ -238,7 +239,7 @@ export const parallelStepSchema = z.object({
   type: z.literal('parallel'),
   label: z.string().min(1),
   steps: z.array(parallelChildSchema).min(1),
-})
+}).passthrough()
 
 // ─── Builtin form-field metadata (drives the editor UI) ─────────────────────
 
@@ -405,7 +406,7 @@ export const workflowInputSchema = z.object({
   description: z.string(),
   required: z.boolean().optional(),
   default: z.unknown().optional(),
-})
+}).passthrough()
 
 /**
  * Canvas-editor layout hints. Optional — the workflow engine does not consult
@@ -416,11 +417,11 @@ export const workflowInputSchema = z.object({
 export const nodePositionSchema = z.object({
   x: z.number(),
   y: z.number(),
-})
+}).passthrough()
 
 export const workflowLayoutSchema = z.object({
   positions: z.record(z.string(), nodePositionSchema).optional(),
-})
+}).passthrough()
 
 export const workflowDefinitionSchema = z.object({
   id: z.string().optional(),
@@ -428,8 +429,8 @@ export const workflowDefinitionSchema = z.object({
   description: z.string(),
   version: z.number(),
   inputs: z.record(z.string(), workflowInputSchema).optional(),
-  steps: z.array(stepSchema).min(1),
+  steps: z.array(stepSchema),
   layout: workflowLayoutSchema.optional(),
-})
+}).passthrough()
 
 export type WorkflowDefinitionParsed = z.infer<typeof workflowDefinitionSchema>

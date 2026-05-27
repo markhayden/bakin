@@ -58,7 +58,7 @@ const PROFILE = {
 }
 
 interface FetchExpectation {
-  stats?: { usage: { agent: string; sessionId: string; sessionStarted: string; model: string; messages: number; tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number }; cost: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number } } | null }
+  stats?: { usage: { agent: string; sessionId: string; sessionStarted: string; model: string; messages: number; tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number }; cost: { input: number | null; output: number | null; cacheRead: number | null; cacheWrite: number | null; total: number | null; source: 'runtime' | 'unavailable' } } | null }
   recentActivity?: { ok: boolean; activity?: { windowMs: Record<string, number>; errors: Record<string, number>; sinceServerStart: string } }
   skills?: { skills: Array<{ id: string }> }
   lessons?: { ok: boolean; lessons?: Array<{ enabled: boolean }> }
@@ -141,7 +141,7 @@ describe('OverviewTab', () => {
 
   it('fetches stats / recent-activity / skills / lessons in parallel and renders the counts', async () => {
     setupFetch({
-      stats: { usage: { agent: 'pixel', sessionId: 's', sessionStarted: '', model: 'claude-opus-4-7', messages: 12, tokens: { input: 1000, output: 500, cacheRead: 200, cacheWrite: 50, total: 1750 }, cost: { input: 0.01, output: 0.02, cacheRead: 0.001, cacheWrite: 0.001, total: 0.03 } } },
+      stats: { usage: { agent: 'pixel', sessionId: 's', sessionStarted: '', model: 'claude-opus-4-7', messages: 12, tokens: { input: 1000, output: 500, cacheRead: 200, cacheWrite: 50, total: 1750 }, cost: { input: 0.01, output: 0.02, cacheRead: 0.001, cacheWrite: 0.001, total: 0.03, source: 'runtime' } } },
       recentActivity: { ok: true, activity: { windowMs: { '5m': 1, '1h': 7, '24h': 23 }, errors: { '5m': 0, '1h': 1, '24h': 1 }, sinceServerStart: new Date().toISOString() } },
       skills: { skills: [{ id: 'a' }, { id: 'b' }, { id: 'c' }] },
       lessons: { ok: true, lessons: [{ enabled: true }, { enabled: true }, { enabled: false }, { enabled: false }, { enabled: false }] },
@@ -167,6 +167,25 @@ describe('OverviewTab', () => {
     expect(screen.queryByText('Cache reads')).toBeNull()
     expect(screen.queryByText('Cache writes')).toBeNull()
     expect(screen.queryByText('Messages')).toBeNull()
+  })
+
+  it('does not render missing runtime cost as zero dollars', async () => {
+    setupFetch({
+      stats: {
+        usage: {
+          agent: 'pixel',
+          sessionId: 's',
+          sessionStarted: '',
+          model: 'local-model',
+          messages: 1,
+          tokens: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, total: 150 },
+          cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: null, source: 'unavailable' },
+        },
+      },
+    })
+    renderTab()
+    await waitFor(() => expect(screen.getByText('150')).toBeDefined())
+    expect(screen.queryByText('$0.00')).toBeNull()
   })
 
   it('writes /team on team select change', async () => {

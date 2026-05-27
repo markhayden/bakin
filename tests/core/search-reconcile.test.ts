@@ -221,6 +221,52 @@ describe('search-reconcile', () => {
     expect(result.removed).toBe(1)
   })
 
+  it('keeps virtual index entries that still exist according to verifyExists', async () => {
+    mkdirSync(join(tempDir, 'projects'), { recursive: true })
+
+    const removed: string[] = []
+    const result = await performStartupReconcile(makeDef({
+      preserveVirtualDocuments: true,
+      verifyExists: async (key) => key === 'virtual',
+    }), tempDir, {
+      index: async () => {},
+      remove: async (key) => { removed.push(key) },
+      scanIndex: async function* () {
+        yield { key: 'virtual', mtimeMs: 1000 }
+        yield { key: 'stale', mtimeMs: 1000 }
+      },
+    })
+
+    expect(removed).toEqual(['stale'])
+    expect(result.removed).toBe(1)
+    expect(result.skipped).toBe(1)
+  })
+
+  it('indexes virtual documents from reindex when preserveVirtualDocuments is enabled', async () => {
+    mkdirSync(join(tempDir, 'projects'), { recursive: true })
+
+    const indexed: Array<{ key: string; doc: Record<string, unknown> }> = []
+    const removed: string[] = []
+    const result = await performStartupReconcile(makeDef({
+      preserveVirtualDocuments: true,
+      reindex: async function* () {
+        yield { key: 'virtual', doc: { title: 'Virtual doc' } }
+      },
+      verifyExists: async (key) => key === 'virtual',
+    }), tempDir, {
+      index: async (key, doc) => { indexed.push({ key, doc }) },
+      remove: async (key) => { removed.push(key) },
+      scanIndex: async function* () {},
+    })
+
+    expect(indexed).toHaveLength(1)
+    expect(indexed[0].key).toBe('virtual')
+    expect(indexed[0].doc.title).toBe('Virtual doc')
+    expect(indexed[0].doc[MTIME_FIELD]).toBe(0)
+    expect(removed).toEqual([])
+    expect(result.indexed).toBe(1)
+  })
+
   it('skips files whose mtime matches the indexed mtime', async () => {
     mkdirSync(join(tempDir, 'projects'), { recursive: true })
     const filePath = join(tempDir, 'projects', 'beta.md')

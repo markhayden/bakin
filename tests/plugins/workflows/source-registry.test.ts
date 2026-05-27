@@ -31,6 +31,7 @@ import {
   unregisterAgentPackageDefinitions,
   unregisterUserDefinition,
   getDefinition,
+  getManagedDefinition,
   listAll,
   isReadOnly,
   getSource,
@@ -180,6 +181,16 @@ describe('source-registry', () => {
       const entry = getDefinition('wf')
       expect(entry!.source).toBe('user')
       expect(entry!.definition.name).toBe('User')
+    })
+
+    it('getManagedDefinition ignores user shadows and resolves the managed fallback', () => {
+      registerPluginDefinition('workflows', 'wf', def('Plugin'))
+      registerAgentPackageDefinition('pixel', 'wf', def('Package'))
+      registerUserDefinition('wf', def('User'))
+
+      const entry = getManagedDefinition('wf')
+      expect(entry!.source).toBe('agent-package')
+      expect(entry!.definition.name).toBe('Package')
     })
 
     it('unregistering the agent-package falls back through the precedence chain', () => {

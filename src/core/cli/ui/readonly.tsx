@@ -1357,7 +1357,10 @@ function searchIndexHealth(value: unknown): Array<{ name?: unknown; error?: unkn
 }
 
 function searchStatsDocCount(stats: unknown): string {
-  return valueText(objectField(stats, 'num_docs'), '?')
+  return valueText(
+    objectField(stats, 'documents') ?? objectField(stats, 'num_docs') ?? objectField(stats, 'documentCount'),
+    '?',
+  )
 }
 
 function searchStatsStatus(table: SearchStatsTableData, enabled: boolean): TuiStatus {

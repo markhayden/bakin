@@ -29,7 +29,7 @@ import type {
   NestedWorkflowStep,
   CreateTaskStep,
 } from '../types'
-import { loadDefinition } from './parser'
+import { loadDefinition, validateWorkflowId } from './parser'
 import { loadSkill } from './skill-loader'
 import { validateStepOutput, detectRejectionRepeat } from './schema-validator'
 import { notifyGateReached, notifyGateApproved, notifyGateRejected, notifyWorkflowComplete, notifyWorkflowReopened, notifyStepDispatched, notifyStepComplete, sendGateApprovalRequest, getGateNotificationSettings } from './notifications'
@@ -280,8 +280,13 @@ export function createInstance(
   parentContext?: Record<string, unknown>,
 ): WorkflowInstance {
   const dir = contentDir || getContentDir()
+  const workflowIdError = validateWorkflowId(workflowId)
+  if (workflowIdError) throw new Error(workflowIdError)
   const def = loadDefinition(workflowId, dir)
   if (!def) throw new Error(`Workflow definition not found: ${workflowId}`)
+  if (!Array.isArray(def.steps) || def.steps.length === 0) {
+    throw new Error(`Workflow "${workflowId}" must have at least one step`)
+  }
 
   const now = new Date().toISOString()
   const stepStates: Record<string, StepState> = {}

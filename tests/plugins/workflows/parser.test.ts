@@ -39,7 +39,14 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawPath: (...parts: string[]) => join(testDir, 'openclaw', ...parts),
 }))
 
-import { parseYAML, validateDefinition, loadDefinition, listDefinitions } from '@bakin/workflows/lib/parser'
+import {
+  WORKFLOW_ID_VALIDATION_MESSAGE,
+  parseYAML,
+  validateDefinition,
+  validateWorkflowId,
+  loadDefinition,
+  listDefinitions,
+} from '@bakin/workflows/lib/parser'
 import {
   registerPluginDefinition,
   clearSourceRegistry,
@@ -82,6 +89,14 @@ steps:
   })
 
   describe('validateDefinition', () => {
+    it('validates workflow ids used for disk-backed definitions', () => {
+      expect(validateWorkflowId('social-post')).toBeNull()
+      expect(validateWorkflowId('clip-creation-2')).toBeNull()
+      expect(validateWorkflowId('../escape')).toBe(WORKFLOW_ID_VALIDATION_MESSAGE)
+      expect(validateWorkflowId('Bad Id')).toBe(WORKFLOW_ID_VALIDATION_MESSAGE)
+      expect(validateWorkflowId('trailing-')).toBe(WORKFLOW_ID_VALIDATION_MESSAGE)
+    })
+
     it('accepts a valid definition', () => {
       const def: WorkflowDefinition = {
         name: 'Test',
@@ -93,6 +108,28 @@ steps:
         ],
       }
       expect(validateDefinition(def)).toEqual([])
+    })
+
+    it('rejects empty workflows for runtime validation by default', () => {
+      const def: WorkflowDefinition = {
+        name: 'Draft',
+        description: 'Empty draft',
+        version: 1,
+        steps: [],
+      }
+
+      expect(validateDefinition(def)).toContain('Workflow must have at least one step')
+    })
+
+    it('allows empty steps when validating draft CRUD saves', () => {
+      const def: WorkflowDefinition = {
+        name: 'Draft',
+        description: 'Empty draft',
+        version: 1,
+        steps: [],
+      }
+
+      expect(validateDefinition(def, { allowEmptySteps: true })).toEqual([])
     })
 
     it('rejects definition with duplicate step IDs', () => {

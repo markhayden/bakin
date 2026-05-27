@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import {
   ReactFlow,
   Background,
@@ -30,8 +30,9 @@ import { getNodeRendererSnapshot, subscribeNodeRenderers } from '../lib/node-ren
 import type { WorkflowDefinition, WorkflowStep } from '../types'
 
 const NODE_WIDTH = 280
-const NODE_HEIGHT = 100
-const Y_SPACING = 130
+const NODE_HEIGHT = 120
+const Y_SPACING = 164
+const STANDARD_NODE_STYLE = { width: NODE_WIDTH, height: NODE_HEIGHT }
 const SUBFLOW_PADDING_X = 30
 const SUBFLOW_PADDING_TOP = 48
 const SUBFLOW_PADDING_BOTTOM = 32
@@ -45,21 +46,28 @@ interface WorkflowCanvasProps {
 /** Map a step type to its ReactFlow node type */
 function stepNodeType(step: WorkflowStep): string {
   if (step.type === 'gate') return 'gate'
+  if (step.type === 'parallel') return 'parallel'
   if (step.type === 'output') return 'output'
   if (step.type === 'workflow') return 'workflow'
-  return 'agent'
+  if (step.type === 'createTask') return 'createTask'
+  return step.type
 }
 
 /** Build node data from a step */
 function stepNodeData(step: WorkflowStep) {
   return {
     label: step.label,
-    agent: step.type === 'agent' ? step.agent : undefined,
+    agent: step.type === 'agent' || step.type === 'output' || step.type === 'createTask'
+      ? step.agent
+      : undefined,
     task: step.type === 'agent' ? step.task : undefined,
+    title: step.type === 'createTask' ? step.title : undefined,
+    column: step.type === 'createTask' ? step.column : undefined,
     channels: step.type === 'output' ? step.channels : undefined,
     description: step.type === 'gate' ? step.description
       : step.type === 'workflow' ? step.description
       : step.type === 'output' ? step.description
+      : step.type === 'createTask' ? step.description
       : undefined,
     workflow_id: step.type === 'workflow' ? (step as { workflow_id?: string }).workflow_id : undefined,
   }
@@ -101,7 +109,7 @@ function buildGraph(
     type: 'trigger',
     position: { x: centerX, y },
     data: { description: inputDesc },
-    style: { width: NODE_WIDTH },
+    style: STANDARD_NODE_STYLE,
   })
 
   let prevNodeIds = ['__trigger']
@@ -131,7 +139,10 @@ function buildGraph(
         if (subDef) {
           // Inline expansion — create a group node and emit sub-workflow steps inside it
           const subStepCount = measureSubWorkflowStepCount(subDef, subWorkflows)
-          const groupHeight = SUBFLOW_PADDING_TOP + subStepCount * Y_SPACING + SUBFLOW_PADDING_BOTTOM
+          const groupHeight = SUBFLOW_PADDING_TOP
+            + Math.max(0, subStepCount - 1) * Y_SPACING
+            + NODE_HEIGHT
+            + SUBFLOW_PADDING_BOTTOM
           const groupWidth = NODE_WIDTH + SUBFLOW_PADDING_X * 2
           const groupId = nodeId
 
@@ -175,7 +186,10 @@ function buildGraph(
               const nestedDef = nestedWfId ? subWorkflows[nestedWfId] : undefined
               if (nestedDef) {
                 const nestedCount = measureSubWorkflowStepCount(nestedDef, subWorkflows)
-                const nestedGroupHeight = SUBFLOW_PADDING_TOP + nestedCount * Y_SPACING + SUBFLOW_PADDING_BOTTOM
+                const nestedGroupHeight = SUBFLOW_PADDING_TOP
+                  + Math.max(0, nestedCount - 1) * Y_SPACING
+                  + NODE_HEIGHT
+                  + SUBFLOW_PADDING_BOTTOM
                 const nestedGroupWidth = NODE_WIDTH + SUBFLOW_PADDING_X * 2
 
                 nodes.push({
@@ -203,7 +217,7 @@ function buildGraph(
                     type: stepNodeType(nestedStep),
                     position: { x: SUBFLOW_PADDING_X, y: nestedY },
                     data: stepNodeData(nestedStep),
-                    style: { width: NODE_WIDTH },
+                    style: STANDARD_NODE_STYLE,
                     parentId: subNodeId,
                     extent: 'parent' as const,
                   })
@@ -225,7 +239,7 @@ function buildGraph(
               type: subNodeType,
               position: { x: SUBFLOW_PADDING_X, y: innerY },
               data: stepNodeData(subStep),
-              style: { width: NODE_WIDTH },
+              style: STANDARD_NODE_STYLE,
               parentId: groupId,
               extent: 'parent' as const,
             })
@@ -257,7 +271,7 @@ function buildGraph(
         type: nodeType,
         position,
         data: stepNodeData(step),
-        style: { width: NODE_WIDTH },
+        style: STANDARD_NODE_STYLE,
         ...(parentId ? { parentId, extent: 'parent' as const } : {}),
       })
 
@@ -299,8 +313,8 @@ export function WorkflowCanvas({ definition, subWorkflows, onNodeClick }: Workfl
     [],
   )
 
-  // Reset nodes when definition changes
-  useMemo(() => {
+  // Reset nodes when definition changes.
+  useEffect(() => {
     setNodes(initialNodes)
   }, [initialNodes])
 

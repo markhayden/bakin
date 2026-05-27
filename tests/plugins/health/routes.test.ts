@@ -146,7 +146,7 @@ mock.module('../../../src/core/doctor-repair-store', () => ({
 
 mock.module('../../../src/core/agent-usage', () => ({
   getAllAgentUsage: () => [
-    { agent: 'patch', sessionId: 's1', model: 'claude-4', messages: 10, tokens: { total: 1000 }, cost: { total: 0.05 } },
+    { agent: 'patch', sessionId: 's1', model: 'claude-4', messages: 10, tokens: { total: 1000 }, cost: { total: 0.05, source: 'runtime' } },
   ],
 }))
 

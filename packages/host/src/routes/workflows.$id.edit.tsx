@@ -19,7 +19,8 @@ function WorkflowEditPage() {
   const { id } = Route.useParams()
   const navigate = useNavigate()
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null)
-  const [source, setSource] = useState<'plugin' | 'user' | undefined>()
+  const [source, setSource] = useState<'plugin' | 'agent-package' | 'user' | undefined>()
+  const [shadowedSource, setShadowedSource] = useState<unknown>()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -34,6 +35,7 @@ function WorkflowEditPage() {
         const data = await res.json()
         setDefinition(data.definition)
         setSource(data.source)
+        setShadowedSource(data.shadowedSource)
       } catch {
         setError('Failed to load workflow')
       } finally {
@@ -68,9 +70,11 @@ function WorkflowEditPage() {
       initialId={id}
       initialDefinition={definition}
       source={source}
+      shadowedSource={shadowedSource}
       onSaved={(savedId: string) => navigate({ to: '/workflows/$id', params: { id: savedId } })}
+      onCopied={(copiedId: string) => navigate({ to: '/workflows/$id/edit', params: { id: copiedId } })}
       onDeleted={() => navigate({ to: '/workflows' })}
-      onCancel={() => navigate({ to: '/workflows/$id', params: { id } })}
+      onCancel={() => navigate({ to: '/workflows' })}
     />
   )
 }

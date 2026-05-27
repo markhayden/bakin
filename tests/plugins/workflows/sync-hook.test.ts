@@ -17,6 +17,7 @@ import type {
   PluginContext,
   FileBackedContentTypeDefinition,
 } from '@bakin/core/plugin-types'
+import type { WorkflowDefinition } from '../../../plugins/workflows/types'
 import { BakinEventBus } from '../../../src/lib/events/event-bus'
 import { MarkdownStorageAdapter } from '../../../src/lib/storage/markdown-adapter'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
@@ -65,6 +66,8 @@ mock.module('@/core/task-store', () => ({
 }))
 
 import workflowsPlugin from '../../../plugins/workflows'
+import { clearSourceRegistry, registerPluginDefinition } from '../../../plugins/workflows/lib/source-registry'
+import { resetWorkflowAvailabilityCache, setWorkflowDisabled } from '../../../plugins/workflows/lib/availability'
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
@@ -159,11 +162,28 @@ const SAMPLE_INSTANCE = (taskId: string) => JSON.stringify({
   updatedAt: '2026-04-12T00:00:00.000Z',
 })
 
+const MANAGED_DEF: WorkflowDefinition = {
+  name: 'Managed Flow',
+  description: 'A plugin-shipped workflow',
+  version: 1,
+  steps: [
+    {
+      id: 'managed-step',
+      type: 'agent',
+      label: 'Managed step',
+      agent: 'writer',
+      prompt: 'run managed step',
+    },
+  ],
+}
+
 describe('workflows plugin — file-backed sync hook', () => {
   beforeEach(() => {
     rmSync(testDir, { recursive: true, force: true })
     mkdirSync(defsDir, { recursive: true })
     mkdirSync(instancesDir, { recursive: true })
+    clearSourceRegistry()
+    resetWorkflowAvailabilityCache()
   })
 
   it('registers a file-backed content type with TWO filePatterns', async () => {
@@ -245,11 +265,12 @@ describe('workflows plugin — file-backed sync hook', () => {
     expect(doc).toBeNull()
   })
 
-  it('reindex generator yields both definitions and instances', async () => {
+  it('reindex generator yields effective definitions from every source and instances', async () => {
     writeFileSync(join(defsDir, 'one.yaml'), SAMPLE_DEF.replace('Sample Flow', 'One'))
     writeFileSync(join(defsDir, 'two.yml'), SAMPLE_DEF.replace('Sample Flow', 'Two'))
     writeFileSync(join(instancesDir, 'task-1.json'), SAMPLE_INSTANCE('task-1'))
     writeFileSync(join(instancesDir, 'task-2.json'), SAMPLE_INSTANCE('task-2'))
+    registerPluginDefinition('workflows', 'managed', MANAGED_DEF)
 
     const captured = makeCtx()
     await workflowsPlugin.activate(captured.ctx)
@@ -259,22 +280,92 @@ describe('workflows plugin — file-backed sync hook', () => {
       yielded.push(item as { key: string; doc: Record<string, unknown> })
     }
     const keys = yielded.map(y => y.key).sort()
-    expect(keys).toEqual(['def:one', 'def:two', 'inst:task-1', 'inst:task-2'])
+    expect(keys).toEqual(['def:managed', 'def:one', 'def:two', 'inst:task-1', 'inst:task-2'])
+    expect(yielded.find(y => y.key === 'def:managed')?.doc).toMatchObject({
+      name: 'Managed Flow',
+      type: 'definition',
+      status: 'active',
+    })
+  })
+
+  it('indexes a user shadow as active even when the managed fallback is disabled', async () => {
+    registerPluginDefinition('workflows', 'shadowed', MANAGED_DEF)
+    setWorkflowDisabled('shadowed', true)
+    writeFileSync(join(defsDir, 'shadowed.yaml'), SAMPLE_DEF.replace('Sample Flow', 'User Shadow'))
+
+    const captured = makeCtx()
+    await workflowsPlugin.activate(captured.ctx)
+
+    const yielded: Array<{ key: string; doc: Record<string, unknown> }> = []
+    for await (const item of captured.capturedDef!.reindex()) {
+      yielded.push(item as { key: string; doc: Record<string, unknown> })
+    }
+
+    expect(yielded.find(y => y.key === 'def:shadowed')?.doc).toMatchObject({
+      name: 'User Shadow',
+      type: 'definition',
+      status: 'active',
+    })
   })
 
   it('verifyExists handles def: keys (yaml and yml) and inst: keys', async () => {
     writeFileSync(join(defsDir, 'present.yaml'), SAMPLE_DEF)
     writeFileSync(join(defsDir, 'present-yml.yml'), SAMPLE_DEF)
     writeFileSync(join(instancesDir, 'task-99.json'), SAMPLE_INSTANCE('task-99'))
+    registerPluginDefinition('workflows', 'managed', MANAGED_DEF)
 
     const captured = makeCtx()
     await workflowsPlugin.activate(captured.ctx)
 
     expect(await captured.capturedDef!.verifyExists!('def:present')).toBe(true)
     expect(await captured.capturedDef!.verifyExists!('def:present-yml')).toBe(true)
+    expect(await captured.capturedDef!.verifyExists!('def:managed')).toBe(true)
     expect(await captured.capturedDef!.verifyExists!('def:missing')).toBe(false)
     expect(await captured.capturedDef!.verifyExists!('inst:task-99')).toBe(true)
     expect(await captured.capturedDef!.verifyExists!('inst:task-nope')).toBe(false)
     expect(await captured.capturedDef!.verifyExists!('unknown:foo')).toBe(false)
+  })
+
+  it('unlinking a user definition reindexes the managed fallback when one exists', async () => {
+    registerPluginDefinition('workflows', 'shadowed', {
+      ...MANAGED_DEF,
+      name: 'Managed Shadowed Flow',
+      description: 'Fallback managed workflow',
+    })
+
+    const captured = makeCtx()
+    await workflowsPlugin.activate(captured.ctx)
+
+    await captured.capturedDef!.onUnlink!('workflows/definitions/shadowed.yaml')
+
+    expect(captured.removeCalls).toEqual([])
+    expect(captured.indexCalls).toHaveLength(1)
+    expect(captured.indexCalls[0]).toMatchObject({
+      key: 'def:shadowed',
+      doc: {
+        name: 'Managed Shadowed Flow',
+        type: 'definition',
+      },
+    })
+  })
+
+  it('unlinking one user definition extension keeps the alternate extension indexed', async () => {
+    writeFileSync(join(defsDir, 'alternate.yml'), SAMPLE_DEF.replace('Sample Flow', 'Alternate Extension Flow'))
+
+    const captured = makeCtx()
+    await workflowsPlugin.activate(captured.ctx)
+
+    await captured.capturedDef!.onUnlink!('workflows/definitions/alternate.yaml')
+
+    expect(captured.removeCalls).toEqual([])
+    expect(captured.indexCalls).toHaveLength(1)
+    expect(captured.indexCalls[0]).toMatchObject({
+      key: 'def:alternate',
+      doc: {
+        name: 'Alternate Extension Flow',
+        type: 'definition',
+        status: 'active',
+      },
+    })
   })
 })

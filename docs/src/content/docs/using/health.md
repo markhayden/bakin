@@ -16,7 +16,7 @@ Live token counts, session costs, MCP and REST volumes, error rates, plugin stat
 Two cards anchor the top of the dashboard side by side. They cover the questions that pile up fastest when you've got a roster running: what each agent is costing you, and whose context is about to overflow. Glance at them on the way past, look closer when something looks off.
 
 <figure class="screenshot-frame">
-  <figcaption>Context usage on the left (tokens in each agent's latest session), session cost on the right with the day's running total.</figcaption>
+  <figcaption>Context usage on the left (tokens in each agent's latest session), runtime-reported cost estimates on the right.</figcaption>
 </figure>
 
 <div class="table-light-full table-label-wrap">
@@ -24,7 +24,7 @@ Two cards anchor the top of the dashboard side by side. They cover the questions
 | Card | What it answers |
 | --- | --- |
 | **Context Usage** | Total tokens in each agent's latest session, bar-charted. Spot who's pushing the model's window before they hit it. |
-| **Session Cost** | Input, output, cache-read, cache-write, and total per agent with the day's running total at the top. Pulled from the runtime's posted rates, directional not invoice-grade. Answers "is Main Operator's day eating my budget?" without making you go ask the gateway. |
+| **Runtime Cost Estimate** | Input, output, cache-read, cache-write, and total per agent for each agent's latest session. Bakin reports cost values only when the runtime includes them in session usage events; it does not maintain its own model pricing table. These values are directional, not invoice-grade. When the runtime omits cost, Health shows the cost as unavailable instead of treating it as `$0.00`. |
 
 </div>
 

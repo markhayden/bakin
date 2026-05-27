@@ -148,6 +148,11 @@ export interface SkillDefinition {
 // workflows plugin, but core needs the type to expose ctx.registerWorkflow
 // without an upward import. The workflows plugin re-validates with Zod.)
 // ---------------------------------------------------------------------------
+export interface WorkflowLayoutInput {
+  positions?: Record<string, { x: number; y: number; [key: string]: unknown }>
+  [key: string]: unknown
+}
+
 export interface WorkflowDefinitionInput {
   /** Stable workflow id. Falls back to slug(name) when omitted. */
   id?: string
@@ -155,7 +160,9 @@ export interface WorkflowDefinitionInput {
   description: string
   version: number
   inputs?: Record<string, unknown>
+  layout?: WorkflowLayoutInput
   steps: unknown[]
+  [key: string]: unknown
 }
 
 // ---------------------------------------------------------------------------
@@ -831,6 +838,13 @@ export interface FileBackedContentTypeDefinition extends SearchContentTypeDefini
    * own initial population (rare).
    */
   buildOnStartup?: boolean
+  /**
+   * Keep indexed documents that are not represented by a matched file when
+   * verifyExists(key) still returns true. Use this only for hybrid content
+   * types that combine file-backed rows with registry/runtime rows in the
+   * same table.
+   */
+  preserveVirtualDocuments?: boolean
 }
 
 /** Search API provided to plugins via ctx.search */

@@ -3,7 +3,7 @@
  *
  * Mirrors `src/app/workflows/new/page.tsx`. The workflows plugin's
  * canvas editor handles saved/cancel lifecycle via callbacks; we
- * navigate to the new workflow's detail page on save, back to the
+ * navigate to the new workflow's editor on save, back to the
  * list on cancel.
  */
 import { createRoute, useNavigate } from '@tanstack/react-router'
@@ -16,7 +16,7 @@ function WorkflowsNewPage() {
     <Slot
       name="page:/workflows/new"
       mode="create"
-      onSaved={(savedId: string) => navigate({ to: '/workflows/$id', params: { id: savedId } })}
+      onSaved={(savedId: string) => navigate({ to: '/workflows/$id/edit', params: { id: savedId } })}
       onCancel={() => navigate({ to: '/workflows' })}
     />
   )

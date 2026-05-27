@@ -1,6 +1,6 @@
 'use client'
 
-import { Workflow, Lock } from 'lucide-react'
+import { Workflow, Lock, PauseCircle, GitBranch } from 'lucide-react'
 import { Badge } from "@makinbakin/sdk/ui"
 import { AgentAvatar } from "@makinbakin/sdk/components"
 import type { WorkflowTemplate, WorkflowStep, AgentStep } from '../types'
@@ -36,6 +36,7 @@ export function WorkflowCard({
   scoreInfo?: ScoreInfo
 }) {
   const agentIds = collectAgents(template.definition.steps)
+  const disabled = template.disabled === true
 
   const semKey = 'embeddings'
   const bm25Key = scoreInfo?.indexScores
@@ -45,10 +46,14 @@ export function WorkflowCard({
   return (
     <button
       onClick={onClick}
-      className="relative text-left w-full rounded-lg border border-border bg-card p-4 hover:bg-[rgba(255,255,255,0.04)] transition-colors group"
+      className={`relative text-left w-full rounded-lg border border-border bg-card p-4 transition-colors group ${
+        disabled
+          ? 'opacity-55 hover:opacity-75'
+          : 'hover:bg-[rgba(255,255,255,0.04)]'
+      }`}
     >
       {scoreInfo && (
-        <div className="absolute top-1.5 left-1.5 flex flex-col gap-0.5 font-mono text-[10px] bg-black/80 px-1.5 py-1 rounded pointer-events-none">
+        <div className="pointer-events-none absolute right-3 top-3 z-10 flex flex-col items-end gap-0.5 rounded bg-black/80 px-1.5 py-1 text-right font-mono text-[10px]">
           <span className="text-amber-400">RRF {scoreInfo.score.toFixed(3)}</span>
           <span className="text-cyan-400">
             BM25 {(bm25Key ? scoreInfo.indexScores?.[bm25Key] ?? 0 : 0).toFixed(3)}
@@ -58,14 +63,14 @@ export function WorkflowCard({
           </span>
         </div>
       )}
-      <div className="flex items-start gap-2 mb-2">
+      <div className={`flex items-start gap-2 mb-2 ${scoreInfo ? 'pr-24' : ''}`}>
         <Workflow className="size-4 shrink-0 text-amber-400 mt-0.5" />
         <h3 className="text-sm font-medium text-foreground group-hover:text-white line-clamp-1">
           {template.name}
         </h3>
       </div>
 
-      <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 mb-3">
+      <p className={`text-xs text-muted-foreground leading-relaxed line-clamp-2 mb-3 ${scoreInfo ? 'pr-24' : ''}`}>
         {template.description || 'No description'}
       </p>
 
@@ -82,6 +87,26 @@ export function WorkflowCard({
             >
               <Lock className="size-2.5" />
               {template.pluginId ?? 'plugin'}
+            </Badge>
+          )}
+          {template.source === 'user' && template.shadowedSource && (
+            <Badge
+              variant="outline"
+              className="text-[10px] gap-1 border-cyan-500/40 text-cyan-200"
+              title="This custom workflow shadows a managed workflow with the same id"
+            >
+              <GitBranch className="size-2.5" />
+              shadows default
+            </Badge>
+          )}
+          {disabled && (
+            <Badge
+              variant="outline"
+              className="text-[10px] gap-1 border-zinc-600 text-zinc-400"
+              title="Disabled for automatic workflow selection"
+            >
+              <PauseCircle className="size-2.5" />
+              disabled
             </Badge>
           )}
         </div>

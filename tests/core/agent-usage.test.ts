@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'bun:test'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
 import type { AgentRuntimeAdapter, RuntimeMemoryEntry } from '@bakin/core/adapters/runtime'
-import { getAllAgentUsage } from '../../src/core/agent-usage'
+import { getAllAgentUsage, parseSessionUsageContent } from '../../src/core/agent-usage'
 
 interface FixtureSession {
   agentId: string
@@ -60,6 +60,125 @@ function writeSession(agentId: string, id: string, lines: object[], opts: { upda
 
 beforeEach(() => {
   sessions = []
+})
+
+describe('parseSessionUsageContent', () => {
+  it('marks cost unavailable when runtime usage omits cost data', () => {
+    const content = [
+      JSON.stringify({ type: 'session', id: 'sess-unknown-cost', timestamp: '2026-03-26T10:00:00Z' }),
+      JSON.stringify({
+        type: 'message',
+        id: 'msg-1',
+        message: {
+          role: 'assistant',
+          model: 'claude-opus-4-6',
+          usage: { input: 1000, output: 500, cacheRead: 200, cacheWrite: 0, totalTokens: 1700 },
+        },
+      }),
+    ].join('\n') + '\n'
+
+    const result = parseSessionUsageContent(content, 'patch')
+
+    expect(result).not.toBeNull()
+    expect(result?.tokens).toEqual({ input: 1000, output: 500, cacheRead: 200, cacheWrite: 0, total: 1700 })
+    expect(result?.cost.source).toBe('unavailable')
+    expect(result?.cost.total).toBeNull()
+  })
+
+  it('keeps runtime-reported zero cost distinct from unavailable cost', () => {
+    const content = [
+      JSON.stringify({ type: 'session', id: 'sess-zero-cost', timestamp: '2026-03-26T10:00:00Z' }),
+      JSON.stringify({
+        type: 'message',
+        id: 'msg-1',
+        message: {
+          role: 'assistant',
+          model: 'local-model',
+          usage: {
+            input: 100,
+            output: 50,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 150,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          },
+        },
+      }),
+    ].join('\n') + '\n'
+
+    const result = parseSessionUsageContent(content, 'local')
+
+    expect(result).not.toBeNull()
+    expect(result?.cost.source).toBe('runtime')
+    expect(result?.cost.total).toBe(0)
+  })
+
+  it('derives total cost from runtime component costs when total is omitted', () => {
+    const content = [
+      JSON.stringify({ type: 'session', id: 'sess-component-cost', timestamp: '2026-03-26T10:00:00Z' }),
+      JSON.stringify({
+        type: 'message',
+        id: 'msg-1',
+        message: {
+          role: 'assistant',
+          model: 'claude-opus-4-6',
+          usage: {
+            input: 1000,
+            output: 500,
+            cacheRead: 200,
+            cacheWrite: 300,
+            totalTokens: 2000,
+            cost: { input: 0.01, output: 0.005, cacheRead: 0.001, cacheWrite: 0.002 },
+          },
+        },
+      }),
+    ].join('\n') + '\n'
+
+    const result = parseSessionUsageContent(content, 'patch')
+
+    expect(result).not.toBeNull()
+    expect(result?.cost.source).toBe('runtime')
+    expect(result?.cost.total).toBeCloseTo(0.018)
+  })
+
+  it('sums explicit totals with component-derived totals across messages', () => {
+    const content = [
+      JSON.stringify({ type: 'session', id: 'sess-mixed-cost', timestamp: '2026-03-26T10:00:00Z' }),
+      JSON.stringify({
+        type: 'message',
+        id: 'msg-explicit',
+        message: {
+          role: 'assistant',
+          model: 'claude-opus-4-6',
+          usage: {
+            input: 100,
+            output: 50,
+            totalTokens: 150,
+            cost: { input: 0.01, output: 0.02, total: 0.03 },
+          },
+        },
+      }),
+      JSON.stringify({
+        type: 'message',
+        id: 'msg-components',
+        message: {
+          role: 'assistant',
+          model: 'claude-opus-4-6',
+          usage: {
+            input: 200,
+            output: 100,
+            totalTokens: 300,
+            cost: { input: 0.04, output: 0.05 },
+          },
+        },
+      }),
+    ].join('\n') + '\n'
+
+    const result = parseSessionUsageContent(content, 'patch')
+
+    expect(result).not.toBeNull()
+    expect(result?.cost.total).toBeCloseTo(0.12)
+  })
 })
 
 describe('getAllAgentUsage', () => {
