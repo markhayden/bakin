@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { readFileSync, mkdirSync, existsSync } from 'fs'
+import { readFileSync, mkdirSync, existsSync, renameSync } from 'fs'
 import { join, resolve } from 'path'
 import { load as loadYaml } from 'js-yaml'
 import { chromium, type BrowserContext, type Page } from 'playwright'
@@ -102,10 +102,10 @@ async function waitForServer(baseUrl: string): Promise<void> {
 
 function killProcessTree(pid: number): void {
   try {
-    process.kill(-pid, 'SIGTERM')
-  } catch {
-    try { process.kill(pid, 'SIGKILL') } catch { /* already dead */ }
-  }
+    // pkill -P kills all children of the given PID
+    Bun.spawnSync(['pkill', '-P', String(pid)])
+  } catch { /* best effort */ }
+  try { process.kill(pid, 'SIGTERM') } catch { /* already dead */ }
 }
 
 async function executeActions(page: Page, actions: Action[]): Promise<void> {
@@ -231,7 +231,6 @@ async function captureScreenshot(
         await sharp(outputPath)
           .extract({ left, top: 0, width: meta.width - left, height: meta.height })
           .toFile(outputPath + '.tmp')
-        const { renameSync } = await import('fs')
         renameSync(outputPath + '.tmp', outputPath)
       }
     }
@@ -321,7 +320,7 @@ async function main(): Promise<void> {
       }
     }
 
-    console.log(`\nDone: ${succeeded} captured, ${failed} failed, ${skipped.length} skipped`)
+    console.log(`\nDone: ${succeeded} captured, ${failed} failed, ${skipped} skipped`)
 
     await context.close()
     await browser.close()

@@ -73,7 +73,8 @@ function injectIntoMarkdown(content: string, mappings: CaptionMapping[]): { cont
       const filePath = join(SCREENSHOTS_DIR, filename)
       if (!existsSync(filePath)) return match
 
-      const imgTag = `<img src="/docs/media/screenshots/${filename}" alt="${captionText}" loading="lazy">`
+      const safeAlt = captionText.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
+      const imgTag = `<img src="/docs/media/screenshots/${filename}" alt="${safeAlt}" loading="lazy">`
       const updated = `<figure class="screenshot-frame">\n  ${imgTag}\n</figure>`
 
       if (match.trim() !== updated.trim()) count++
