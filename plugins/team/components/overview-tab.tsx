@@ -104,7 +104,8 @@ function fmtNum(n: number): string {
   return n.toLocaleString()
 }
 
-function fmtCost(n: number): string {
+function fmtCost(n: number | null): string {
+  if (n === null) return '—'
   if (n === 0) return '$0.00'
   if (n < 0.01) return `$${n.toFixed(4)}`
   return `$${n.toFixed(2)}`
@@ -259,8 +260,8 @@ export function OverviewTab({
           />
           <MetricTile
             label="Cost"
-            value={loading ? '—' : fmtCost(usage?.cost.total ?? 0)}
-            sublabel={usage && usage.messages > 0 ? `${fmtCost(usage.cost.total / usage.messages)}/msg` : undefined}
+            value={loading ? '—' : fmtCost(usage?.cost.total ?? null)}
+            sublabel={usage && usage.messages > 0 && usage.cost.total !== null ? `${fmtCost(usage.cost.total / usage.messages)}/msg` : undefined}
             icon={Coins}
             accent="text-emerald-300"
             accentBg="bg-emerald-500/15"

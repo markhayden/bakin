@@ -23,12 +23,30 @@ export interface AgentUsage {
     total: number
   }
   cost: {
-    input: number
-    output: number
-    cacheRead: number
-    cacheWrite: number
-    total: number
+    input: number | null
+    output: number | null
+    cacheRead: number | null
+    cacheWrite: number | null
+    total: number | null
+    source: 'runtime' | 'unavailable'
   }
+}
+
+interface SessionUsageCost {
+  input?: number
+  output?: number
+  cacheRead?: number
+  cacheWrite?: number
+  total?: number
+}
+
+interface SessionUsage {
+  input?: number
+  output?: number
+  cacheRead?: number
+  cacheWrite?: number
+  totalTokens?: number
+  cost?: SessionUsageCost
 }
 
 interface SessionMessage {
@@ -38,20 +56,7 @@ interface SessionMessage {
   message?: {
     role?: string
     model?: string
-    usage?: {
-      input?: number
-      output?: number
-      cacheRead?: number
-      cacheWrite?: number
-      totalTokens?: number
-      cost?: {
-        input?: number
-        output?: number
-        cacheRead?: number
-        cacheWrite?: number
-        total?: number
-      }
-    }
+    usage?: SessionUsage
   }
 }
 
@@ -67,7 +72,8 @@ export function parseSessionUsageContent(content: string, agentName: string): Ag
     let model = ''
     let messageCount = 0
     const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }
-    const cost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }
+    const costValues = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }
+    const costSeen = { input: false, output: false, cacheRead: false, cacheWrite: false, total: false }
 
     for (const line of lines) {
       try {
@@ -83,18 +89,14 @@ export function parseSessionUsageContent(content: string, agentName: string): Ag
           const u = entry.message.usage
           if (entry.message.model) model = entry.message.model
 
-          tokens.input += u.input || 0
-          tokens.output += u.output || 0
-          tokens.cacheRead += u.cacheRead || 0
-          tokens.cacheWrite += u.cacheWrite || 0
-          tokens.total += u.totalTokens || 0
+          tokens.input += u.input ?? 0
+          tokens.output += u.output ?? 0
+          tokens.cacheRead += u.cacheRead ?? 0
+          tokens.cacheWrite += u.cacheWrite ?? 0
+          tokens.total += u.totalTokens ?? 0
 
           if (u.cost) {
-            cost.input += u.cost.input || 0
-            cost.output += u.cost.output || 0
-            cost.cacheRead += u.cost.cacheRead || 0
-            cost.cacheWrite += u.cost.cacheWrite || 0
-            cost.total += u.cost.total || 0
+            addUsageCost(costValues, costSeen, u.cost)
           }
         }
       } catch {
@@ -104,6 +106,9 @@ export function parseSessionUsageContent(content: string, agentName: string): Ag
 
     if (messageCount === 0) return null
 
+    const hasAnyComponentCost = costSeen.input || costSeen.output || costSeen.cacheRead || costSeen.cacheWrite
+    const hasAnyCost = hasAnyComponentCost || costSeen.total
+
     return {
       agent: agentName,
       sessionId,
@@ -111,12 +116,53 @@ export function parseSessionUsageContent(content: string, agentName: string): Ag
       model,
       messages: messageCount,
       tokens,
-      cost,
+      cost: {
+        input: costSeen.input ? costValues.input : null,
+        output: costSeen.output ? costValues.output : null,
+        cacheRead: costSeen.cacheRead ? costValues.cacheRead : null,
+        cacheWrite: costSeen.cacheWrite ? costValues.cacheWrite : null,
+        total: costSeen.total ? costValues.total : null,
+        source: hasAnyCost ? 'runtime' : 'unavailable',
+      },
     }
   } catch (err) {
     log.debug('Failed to parse session usage', { agentName, error: err instanceof Error ? err.message : String(err) })
     return null
   }
+}
+
+type CostField = 'input' | 'output' | 'cacheRead' | 'cacheWrite' | 'total'
+
+function addUsageCost(
+  values: Record<CostField, number>,
+  seen: Record<CostField, boolean>,
+  cost: SessionUsageCost,
+) {
+  const componentValues = [
+    addCostField(values, seen, 'input', cost.input),
+    addCostField(values, seen, 'output', cost.output),
+    addCostField(values, seen, 'cacheRead', cost.cacheRead),
+    addCostField(values, seen, 'cacheWrite', cost.cacheWrite),
+  ]
+  const hasExplicitTotal = addCostField(values, seen, 'total', cost.total)
+  if (hasExplicitTotal) return
+
+  const knownComponents = componentValues.filter((value): value is number => value !== null)
+  if (knownComponents.length === 0) return
+  values.total += knownComponents.reduce((sum, value) => sum + value, 0)
+  seen.total = true
+}
+
+function addCostField(
+  values: Record<CostField, number>,
+  seen: Record<CostField, boolean>,
+  field: CostField,
+  value: number | undefined,
+): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  values[field] += value
+  seen[field] = true
+  return value
 }
 
 /**
