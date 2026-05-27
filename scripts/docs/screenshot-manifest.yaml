@@ -333,3 +333,31 @@ screenshots:
     viewport:
       width: 1920
       height: 900
+
+  # ── using/models ──────────────────────────────────────────────────
+
+  - id: overview
+    doc: using/models
+    route: /models
+    caption: "The models view: agent config on top, with tabs for the available catalog, aliases, and task profiles."
+    waitFor: "text=Agent Config"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.75
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: task-profiles
+    doc: using/models
+    route: /models
+    caption: "Task profiles map a name to a concrete model, so agents can be configured by purpose instead of vendor id."
+    waitFor: "text=Agent Config"
+    actions:
+      - click: "text=Task Profiles"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.6
+    viewport:
+      width: 1920
+      height: 900
