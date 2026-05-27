@@ -2,7 +2,7 @@
  * Filesystem seeder — creates the configured mock home with all fixture data.
  * Idempotent: skips if directory already exists (use --force to re-seed).
  */
-import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync, rmSync, symlinkSync } from 'fs'
+import { existsSync, mkdirSync, cpSync, readFileSync, writeFileSync, rmSync, symlinkSync, appendFileSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { initBakinHome } from '../../packages/core/src/content-dir'
@@ -112,7 +112,6 @@ function seedTasks(mockHome: string): void {
 }
 
 function seedGatewayLog(): void {
-  const { writeFileSync } = require('fs')
   const today = new Date().toISOString().slice(0, 10)
   const logDir = join('/tmp', 'openclaw')
   mkdirSync(logDir, { recursive: true })
@@ -129,7 +128,6 @@ function seedGatewayLog(): void {
 }
 
 function seedAuditLog(mockHome: string): void {
-  const { appendFileSync } = require('fs')
   const bakinHome = process.env.BAKIN_HOME || mockHome
   const auditPath = join(bakinHome, 'audit.jsonl')
 

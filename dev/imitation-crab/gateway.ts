@@ -230,6 +230,8 @@ export function startGateway(port = getGatewayPort(), options: StartGatewayOptio
     const close = async (): Promise<void> => {
       process.off('SIGINT', shutdown)
       process.off('SIGTERM', shutdown)
+      for (const client of wss.clients) client.terminate()
+      wss.close()
       if (!server.listening) return
       await new Promise<void>((closeResolve, closeReject) => {
         server.close((err) => {

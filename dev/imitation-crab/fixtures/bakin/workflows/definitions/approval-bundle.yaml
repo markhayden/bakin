@@ -7,7 +7,7 @@ steps:
   - id: package-bundle
     type: agent
     label: Package Bundle
-    agent: explorer
+    agent: jessica
 
   - id: bundle-gate
     type: gate
