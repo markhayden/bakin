@@ -237,14 +237,14 @@ describe('node-type-registry', () => {
       expect(result.success).toBe(false)
     })
 
-    it('rejects a definition with no steps', () => {
+    it('accepts an empty draft definition before semantic runtime validation', () => {
       const result = workflowDefinitionSchema.safeParse({
         name: 'Empty',
         description: 'x',
         version: 1,
         steps: [],
       })
-      expect(result.success).toBe(false)
+      expect(result.success).toBe(true)
     })
 
     it('rejects a definition missing required top-level fields', () => {

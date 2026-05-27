@@ -12,7 +12,7 @@ import { z } from 'zod'
 import type { ApprovalActor, BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { defineRoute, definePlugin } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
-import { listDefinitions, loadDefinition, validateDefinition } from './lib/parser'
+import { listDefinitions, loadDefinition, validateDefinition, validateWorkflowId } from './lib/parser'
 import { workflowDefinitionNameFromHookInput } from './lib/hook-input'
 import { loadDefaultWorkflows } from './lib/load-defaults'
 import { workflowDefinitionSchema, listNodeTypes } from './lib/node-type-registry'
@@ -26,7 +26,14 @@ import {
   checkWorkflowSkills,
   staleWorkflowInstancesRepair,
 } from './lib/health-checks'
-import { isReadOnly, getDefinition as getRegistryDefinition } from './lib/source-registry'
+import {
+  isReadOnly,
+  getDefinition as getRegistryDefinition,
+  getManagedDefinition,
+  getShadowedSource,
+  type DefinitionSource,
+} from './lib/source-registry'
+import { isWorkflowDisabled, readDisabledWorkflowIds, setWorkflowDisabled } from './lib/availability'
 import {
   createInstance,
   loadInstance,
@@ -99,12 +106,16 @@ function resolveSubWorkflows(steps: WorkflowDefinition['steps'], subWorkflows: R
   }
 }
 
-function buildTemplateList(): { templates: WorkflowTemplate[]; subWorkflows: Record<string, WorkflowDefinition> } {
+function buildTemplateList(options: { includeDisabled?: boolean } = {}): { templates: WorkflowTemplate[]; subWorkflows: Record<string, WorkflowDefinition> } {
   const defs = listDefinitions()
+  const disabledWorkflowIds = readDisabledWorkflowIds()
   const subWorkflows: Record<string, WorkflowDefinition> = {}
-  const templates: WorkflowTemplate[] = defs.map(d => {
+  const templates: WorkflowTemplate[] = defs.flatMap(d => {
+    const disabled = d.source !== 'user' && disabledWorkflowIds.has(d.name)
+    const shadowedSource = d.source === 'user' ? getShadowedSource(d.name) : undefined
+    if (disabled && !options.includeDisabled) return []
     resolveSubWorkflows(d.definition.steps, subWorkflows)
-    return {
+    return [{
       name: d.definition.name,
       filename: d.name,
       description: d.definition.description,
@@ -113,7 +124,9 @@ function buildTemplateList(): { templates: WorkflowTemplate[]; subWorkflows: Rec
       source: d.source,
       pluginId: d.pluginId,
       packageId: d.packageId,
-    }
+      disabled,
+      shadowedSource,
+    }]
   })
   return { templates, subWorkflows }
 }
@@ -186,12 +199,27 @@ async function validateWorkflowForStart(
   contentDir?: string,
 ): Promise<string[]> {
   const errors: string[] = []
+  const workflowIdError = validateWorkflowId(workflowId)
+  if (workflowIdError) {
+    errors.push(workflowIdError)
+    return errors
+  }
   const def = loadDefinition(workflowId, contentDir)
   if (!def) {
     errors.push(`Unknown workflow id: ${workflowId}`)
     return errors
   }
   const knownAgents = await getRuntimeAgentNames()
+  const knownWorkflowIds = new Set(listDefinitions(contentDir).map((entry) => entry.name))
+  errors.push(...validateDefinition(def, {
+    definitionId: workflowId,
+    source: def.source,
+    contentDir,
+    knownWorkflowIds,
+    runtimeAgents: knownAgents,
+    assignee,
+    requireResolvedAgents: true,
+  }))
   if (assignee && !knownAgents.has(assignee)) {
     errors.push(`Assignee "${assignee}" is not a known runtime agent`)
   }
@@ -330,6 +358,21 @@ function countSteps(steps: { type: string; steps?: unknown[] }[]): number {
   return count
 }
 
+/** Convert a workflow definition to a search document. */
+function definitionToSearchDoc(name: string, def: WorkflowDefinition, source?: DefinitionSource): Record<string, unknown> {
+  const stepsText = def.steps.map(s => `${s.id}: ${s.label || ''}`).join(', ')
+  const definitionSource = source ?? (def as WorkflowDefinition & { source?: DefinitionSource }).source
+  return {
+    name: def.name,
+    description: def.description || '',
+    type: 'definition',
+    status: definitionSource !== 'user' && isWorkflowDisabled(name) ? 'disabled' : 'active',
+    task_id: '',
+    steps: stepsText,
+    updated_at: new Date().toISOString(),
+  }
+}
+
 function populateWorkflowRoutes(arr: any[]): void {
   arr.push(defineRoute({
     path: '/notification-channels',
@@ -345,44 +388,12 @@ function populateWorkflowRoutes(arr: any[]): void {
 
   // ─── Template Routes ──────────────────────────────────────────────
 
-  /** Collect all referenced sub-workflow definitions recursively */
-  function resolveSubWorkflows(steps: WorkflowDefinition['steps'], subWorkflows: Record<string, WorkflowDefinition>) {
-    for (const step of steps) {
-      if (step.type === 'workflow') {
-        const nested = step as NestedWorkflowStep
-        if (nested.workflow_id && !subWorkflows[nested.workflow_id]) {
-          const subDef = loadDefinition(nested.workflow_id)
-          if (subDef) {
-            subWorkflows[nested.workflow_id] = subDef
-            resolveSubWorkflows(subDef.steps, subWorkflows)
-          }
-        }
-      }
-    }
-  }
-
-  /** Build template list with sub-workflow resolution */
-  function buildTemplateList() {
-    const defs = listDefinitions()
-    const subWorkflows: Record<string, WorkflowDefinition> = {}
-    const templates: WorkflowTemplate[] = defs.map(d => {
-      resolveSubWorkflows(d.definition.steps, subWorkflows)
-      return {
-        name: d.definition.name,
-        filename: d.name,
-        description: d.definition.description,
-        stepCount: countSteps(d.definition.steps),
-        definition: d.definition,
-        source: d.source,
-        pluginId: d.pluginId,
-        packageId: d.packageId,
-      }
-    })
-    return { templates, subWorkflows }
-  }
-
   // GET /definitions — list all workflow templates
-  const listHandler = async (_req: Request, _ctx: PluginContextLite) => Response.json(buildTemplateList())
+  const listHandler = async (req: Request, _ctx: PluginContextLite) => {
+    const url = new URL(req.url)
+    const includeDisabled = url.searchParams.get('includeDisabled') === '1' || url.searchParams.get('includeDisabled') === 'true'
+    return Response.json(buildTemplateList({ includeDisabled }))
+  }
   arr.push(defineRoute({ path: '/definitions', method: 'GET', description: 'List all workflow templates with step counts and resolved sub-workflows', summary: 'List all workflow templates with step counts and resolved sub-workflows', responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: listHandler }))
 
   // GET /definitions/:name — get a specific definition with resolved sub-workflows
@@ -392,6 +403,10 @@ function populateWorkflowRoutes(arr: any[]): void {
 
     if (!name) {
       return Response.json({ error: 'name param required' }, { status: 400 })
+    }
+    const nameError = validateWorkflowId(name)
+    if (nameError) {
+      return Response.json({ error: nameError }, { status: 400 })
     }
 
     const definition = loadDefinition(name)
@@ -408,6 +423,8 @@ function populateWorkflowRoutes(arr: any[]): void {
       subWorkflows,
       source: definition.source,
       pluginId: definition.pluginId,
+      disabled: definition.source !== 'user' && isWorkflowDisabled(name),
+      shadowedSource: definition.source === 'user' ? getShadowedSource(name) : undefined,
     })
   }
   arr.push(defineRoute({ path: '/definitions/:name', method: 'GET', description: 'Get a specific workflow definition by name', summary: 'Get a specific workflow definition by name', params: z.object({ name: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: getDefinitionHandler }))
@@ -420,11 +437,25 @@ function populateWorkflowRoutes(arr: any[]): void {
   // because the user-wins rule lets a user override a plugin definition.
 
   const getDefinitionsDir = (): string => join(getContentDir(), 'workflows', 'definitions')
+  const getUserDefinitionPaths = (id: string): { yamlPath: string; ymlPath: string } => {
+    const dir = getDefinitionsDir()
+    return {
+      yamlPath: join(dir, `${id}.yaml`),
+      ymlPath: join(dir, `${id}.yml`),
+    }
+  }
+
+  const findExistingUserDefinitionPath = (id: string): string | null => {
+    const { yamlPath, ymlPath } = getUserDefinitionPaths(id)
+    return existsSync(yamlPath) ? yamlPath : existsSync(ymlPath) ? ymlPath : null
+  }
+
+  const userDefinitionExists = (id: string): boolean => findExistingUserDefinitionPath(id) !== null
 
   const writeUserDefinition = (id: string, def: unknown): void => {
     const dir = getDefinitionsDir()
     mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, `${id}.yaml`), yaml.dump(def), 'utf-8')
+    writeFileSync(findExistingUserDefinitionPath(id) ?? join(dir, `${id}.yaml`), yaml.dump(def), 'utf-8')
   }
 
   // POST /definitions — create a new user-owned workflow YAML
@@ -439,6 +470,16 @@ function populateWorkflowRoutes(arr: any[]): void {
     const id = typeof body.id === 'string' ? body.id : undefined
     if (!id) {
       return Response.json({ error: 'id is required' }, { status: 400 })
+    }
+    const idError = validateWorkflowId(id)
+    if (idError) {
+      return Response.json({ error: idError }, { status: 400 })
+    }
+    if (userDefinitionExists(id)) {
+      return Response.json(
+        { error: `Workflow id "${id}" already exists. Use PUT to update it.` },
+        { status: 409 },
+      )
     }
 
     // Refuse to overwrite a plugin-only id (no user shadow yet)
@@ -464,6 +505,7 @@ function populateWorkflowRoutes(arr: any[]): void {
       definitionId: id,
       source: 'user',
       knownWorkflowIds: new Set([...listDefinitions().map((entry) => entry.name), id]),
+      allowEmptySteps: true,
     })
     if (semanticErrors.length > 0) {
       return Response.json(
@@ -483,6 +525,10 @@ function populateWorkflowRoutes(arr: any[]): void {
     const name = url.searchParams.get('name')
     if (!name) {
       return Response.json({ error: 'name param required' }, { status: 400 })
+    }
+    const nameError = validateWorkflowId(name)
+    if (nameError) {
+      return Response.json({ error: nameError }, { status: 400 })
     }
 
     let body: Record<string, unknown>
@@ -506,6 +552,7 @@ function populateWorkflowRoutes(arr: any[]): void {
       definitionId: name,
       source: 'user',
       knownWorkflowIds: new Set([...listDefinitions().map((entry) => entry.name), name]),
+      allowEmptySteps: true,
     })
     if (semanticErrors.length > 0) {
       return Response.json(
@@ -519,6 +566,47 @@ function populateWorkflowRoutes(arr: any[]): void {
   }
   arr.push(defineRoute({ path: '/definitions/:name', method: 'PUT', description: 'Update or shadow a workflow definition (writes user YAML)', summary: 'Update or shadow a workflow definition (writes user YAML)', params: z.object({ name: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: updateDefinitionHandler }))
 
+  // PATCH /definitions/:name/availability — enable/disable a managed workflow
+  const updateAvailabilityHandler = async (req: Request, _ctx: PluginContextLite) => {
+    const url = new URL(req.url)
+    const name = url.searchParams.get('name')
+    if (!name) {
+      return Response.json({ error: 'name param required' }, { status: 400 })
+    }
+    const nameError = validateWorkflowId(name)
+    if (nameError) {
+      return Response.json({ error: nameError }, { status: 400 })
+    }
+
+    let body: { disabled?: unknown }
+    try {
+      body = await req.json()
+    } catch {
+      return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
+    }
+
+    if (typeof body.disabled !== 'boolean') {
+      return Response.json({ error: 'disabled must be a boolean' }, { status: 400 })
+    }
+
+    const effectiveDefinition = loadDefinition(name)
+    if (!effectiveDefinition || effectiveDefinition.source === 'user') {
+      return Response.json({ error: 'Only managed workflows can be disabled' }, { status: 409 })
+    }
+
+    setWorkflowDisabled(name, body.disabled)
+    try {
+      await pluginCtx?.search.index(
+        `def:${name}`,
+        definitionToSearchDoc(name, effectiveDefinition, effectiveDefinition.source),
+      )
+    } catch (err) {
+      log.warn('Failed to reindex workflow availability change', { name, error: err instanceof Error ? err.message : String(err) })
+    }
+    return Response.json({ id: name, disabled: body.disabled })
+  }
+  arr.push(defineRoute({ path: '/definitions/:name/availability', method: 'PATCH', description: 'Enable or disable a managed workflow definition for automatic selection', summary: 'Toggle managed workflow availability', params: z.object({ name: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: updateAvailabilityHandler }))
+
   // DELETE /definitions/:name — remove the user-owned YAML for this id
   const deleteDefinitionHandler = async (req: Request, _ctx: PluginContextLite) => {
     const url = new URL(req.url)
@@ -526,11 +614,12 @@ function populateWorkflowRoutes(arr: any[]): void {
     if (!name) {
       return Response.json({ error: 'name param required' }, { status: 400 })
     }
+    const nameError = validateWorkflowId(name)
+    if (nameError) {
+      return Response.json({ error: nameError }, { status: 400 })
+    }
 
-    const dir = getDefinitionsDir()
-    const yamlPath = join(dir, `${name}.yaml`)
-    const ymlPath = join(dir, `${name}.yml`)
-    const existing = existsSync(yamlPath) ? yamlPath : existsSync(ymlPath) ? ymlPath : null
+    const existing = findExistingUserDefinitionPath(name)
 
     if (!existing) {
       // No user file. If plugin owns this id, the user is trying to delete
@@ -1130,20 +1219,6 @@ const workflowsPlugin: BakinPlugin = definePlugin({
 
     // ─── Search Content Type Registration ─────────────────────────────
 
-    /** Convert a workflow definition to a search document */
-    function definitionToSearchDoc(name: string, def: WorkflowDefinition): Record<string, unknown> {
-      const stepsText = def.steps.map(s => `${s.id}: ${s.label || ''}`).join(', ')
-      return {
-        name: def.name,
-        description: def.description || '',
-        type: 'definition',
-        status: 'active',
-        task_id: '',
-        steps: stepsText,
-        updated_at: new Date().toISOString(),
-      }
-    }
-
     /** Convert a workflow instance to a search document */
     function instanceToSearchDoc(inst: WorkflowInstance): Record<string, unknown> {
       const def = loadDefinition(inst.workflowId)
@@ -1184,7 +1259,7 @@ const workflowsPlugin: BakinPlugin = definePlugin({
           fileToDoc: async (rel) => {
             const name = rel.replace(/^workflows\/definitions\//, '').replace(/\.(yaml|yml)$/, '')
             const def = loadDefinition(name)
-            return def ? definitionToSearchDoc(name, def) : null
+            return def ? definitionToSearchDoc(name, def, def.source) : null
           },
         },
         {
@@ -1203,21 +1278,51 @@ const workflowsPlugin: BakinPlugin = definePlugin({
           },
         },
       ],
+      preserveVirtualDocuments: true,
+      onUnlink: async (rel) => {
+        if (rel.startsWith('workflows/definitions/')) {
+          const name = rel.replace(/^workflows\/definitions\//, '').replace(/\.(yaml|yml)$/, '')
+          const defsDir = join(getContentDir(), 'workflows', 'definitions')
+          const alternateUserPath = rel.endsWith('.yaml')
+            ? join(defsDir, `${name}.yml`)
+            : join(defsDir, `${name}.yaml`)
+
+          if (existsSync(alternateUserPath)) {
+            const alternateDefinition = yaml.load(readFileSync(alternateUserPath, 'utf-8')) as WorkflowDefinition
+            await ctx.search.index(
+              `def:${name}`,
+              definitionToSearchDoc(name, { ...alternateDefinition, source: 'user' }, 'user'),
+            )
+            return
+          }
+
+          const fallbackEntry = getManagedDefinition(name)
+          if (fallbackEntry) {
+            await ctx.search.index(
+              `def:${name}`,
+              definitionToSearchDoc(
+                name,
+                { ...fallbackEntry.definition, source: fallbackEntry.source },
+                fallbackEntry.source,
+              ),
+            )
+          } else {
+            await ctx.search.remove(`def:${name}`)
+          }
+          return
+        }
+        if (rel.startsWith('workflows/instances/')) {
+          const taskId = rel.replace(/^workflows\/instances\//, '').replace(/\.json$/, '')
+          await ctx.search.remove(`inst:${taskId}`)
+        }
+      },
       reindex: async function* () {
         const contentDir = getContentDir()
 
-        // Yield definitions
-        const defsDir = join(contentDir, 'workflows', 'definitions')
-        if (existsSync(defsDir)) {
-          for (const file of readdirSync(defsDir).filter(f => f.endsWith('.yaml') || f.endsWith('.yml'))) {
-            try {
-              const name = file.replace(/\.(yaml|yml)$/, '')
-              const def = loadDefinition(name)
-              if (def) {
-                yield { key: `def:${name}`, doc: definitionToSearchDoc(name, def) }
-              }
-            } catch { /* skip corrupt definitions */ }
-          }
+        // Yield effective definitions from every source: plugin defaults,
+        // agent-package definitions, and user YAML shadows.
+        for (const entry of listDefinitions(contentDir)) {
+          yield { key: `def:${entry.name}`, doc: definitionToSearchDoc(entry.name, entry.definition, entry.source) }
         }
 
         // Yield instances
@@ -1235,8 +1340,7 @@ const workflowsPlugin: BakinPlugin = definePlugin({
         const contentDir = getContentDir()
         if (key.startsWith('def:')) {
           const name = key.slice(4)
-          return existsSync(join(contentDir, 'workflows', 'definitions', `${name}.yaml`))
-            || existsSync(join(contentDir, 'workflows', 'definitions', `${name}.yml`))
+          return loadDefinition(name, contentDir) !== null
         }
         if (key.startsWith('inst:')) {
           const taskId = key.slice(5)
@@ -1312,6 +1416,11 @@ const workflowsPlugin: BakinPlugin = definePlugin({
       const visited = new Set<string>()
 
       const visit = (id: string, path: string[]): void => {
+        const workflowIdError = validateWorkflowId(id)
+        if (workflowIdError) {
+          errors.push(`Workflow "${id}": ${workflowIdError}`)
+          return
+        }
         if (path.includes(id)) {
           errors.push(`Workflow nesting cycle detected: ${[...path, id].join(' -> ')}`)
           return

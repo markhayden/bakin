@@ -376,6 +376,17 @@ Write a great caption.
     it('throws for unknown workflow definition', () => {
       expect(() => createInstance('task-x', 'nonexistent', testDir)).toThrow()
     })
+
+    it('throws for empty draft workflows before reading the first step', () => {
+      writeFileSync(join(defsDir, 'draft.yaml'), `
+name: Draft
+description: Not ready to run
+version: 1
+steps: []
+`)
+
+      expect(() => createInstance('task-draft', 'draft', testDir)).toThrow(/at least one step/)
+    })
   })
 
   // ─── getCurrentStep ─────────────────────────────────────────────────

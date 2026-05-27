@@ -2,14 +2,21 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from '@makinbakin/sdk/hooks'
-import { ArrowLeft, Workflow, Lock, Pencil } from 'lucide-react'
+import { ArrowLeft, Workflow, Lock, Pencil, GitBranch } from 'lucide-react'
 import { Button } from "@makinbakin/sdk/ui"
-import { Badge } from "@makinbakin/sdk/ui"
+import { Switch } from "@makinbakin/sdk/ui"
 import { WorkflowCanvas } from './workflow-canvas'
 import { StepDetailDrawer } from './step-detail-drawer'
-import { collectAgents } from './workflow-card'
-import { AgentAvatar } from "@makinbakin/sdk/components"
-import type { WorkflowDefinition, WorkflowStep, ParallelStep, NestedWorkflowStep } from '../types'
+import { ManagedWorkflowCopyDialog } from './managed-workflow-copy-dialog'
+import {
+  clearWorkflowDialogFieldError,
+  hasWorkflowDialogFieldErrors,
+  parseWorkflowDialogServerError,
+  validateWorkflowDialogFields,
+  type WorkflowDialogFieldErrors,
+} from './workflow-dialog-validation'
+import { WorkflowDeleteAction } from './workflow-delete-action'
+import type { WorkflowDefinition, WorkflowStep, ParallelStep, NestedWorkflowStep, WorkflowShadowedSource } from '../types'
 
 /** Find a step by ID in the step tree (top-level, parallel children, sub-workflow expansions) */
 function findStepById(
@@ -75,16 +82,37 @@ interface WorkflowDetailProps {
   onBack: () => void
 }
 
+function slugify(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
 export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
   const router = useRouter()
   const [definition, setDefinition] = useState<WorkflowDefinition | null>(null)
   const [subWorkflows, setSubWorkflows] = useState<Record<string, WorkflowDefinition>>({})
-  const [source, setSource] = useState<'plugin' | 'user' | undefined>()
-  const [pluginId, setPluginId] = useState<string | undefined>()
+  const [source, setSource] = useState<'plugin' | 'agent-package' | 'user' | undefined>()
+  const [shadowedSource, setShadowedSource] = useState<WorkflowShadowedSource | undefined>()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedStep, setSelectedStep] = useState<WorkflowStep | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [copyOpen, setCopyOpen] = useState(false)
+  const [copyError, setCopyError] = useState<string | null>(null)
+  const [copyFieldErrors, setCopyFieldErrors] = useState<WorkflowDialogFieldErrors>({})
+  const [creatingCopy, setCreatingCopy] = useState(false)
+  const [copyName, setCopyName] = useState('')
+  const [copyId, setCopyId] = useState('')
+  const [copyIdEdited, setCopyIdEdited] = useState(false)
+  const [disableOriginal, setDisableOriginal] = useState(true)
+  const [workflowDisabled, setWorkflowDisabled] = useState(false)
+  const [availabilitySaving, setAvailabilitySaving] = useState(false)
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
     async function fetchDefinition() {
@@ -95,10 +123,20 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
           return
         }
         const data = await res.json()
-        setDefinition(data.definition)
+        const loadedDefinition = data.definition as WorkflowDefinition
+        const defaultCopyName = loadedDefinition.name ? `${loadedDefinition.name} Copy` : `${workflowId} Copy`
+        setDefinition(loadedDefinition)
         setSubWorkflows(data.subWorkflows ?? {})
         setSource(data.source)
-        setPluginId(data.pluginId)
+        setShadowedSource(data.shadowedSource)
+        setWorkflowDisabled(data.disabled === true)
+        setAvailabilityError(null)
+        setCopyError(null)
+        setCopyFieldErrors({})
+        setCopyName(defaultCopyName)
+        setCopyId(slugify(defaultCopyName))
+        setCopyIdEdited(false)
+        setDisableOriginal(true)
       } catch {
         setError('Failed to load workflow')
       } finally {
@@ -119,6 +157,132 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
       setDrawerOpen(true)
     }
   }, [definition, subWorkflows])
+
+  const isManagedSource = source === 'plugin' || source === 'agent-package'
+  const canDelete = source === 'user'
+
+  function handlePrimaryEditAction() {
+    if (workflowDisabled) return
+    if (!isManagedSource) {
+      router.push(`/workflows/${workflowId}/edit`)
+      return
+    }
+    setCopyError(null)
+    setCopyFieldErrors({})
+    setCopyOpen(true)
+  }
+
+  async function handleAvailabilityChange(nextEnabled: boolean) {
+    if (!isManagedSource) return
+    const nextDisabled = !nextEnabled
+    const previousDisabled = workflowDisabled
+
+    setWorkflowDisabled(nextDisabled)
+    setAvailabilitySaving(true)
+    setAvailabilityError(null)
+    try {
+      const availabilityRes = await fetch(`/api/plugins/workflows/definitions/${workflowId}/availability`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ disabled: nextDisabled }),
+      })
+      const availabilityData = (await availabilityRes.json().catch(() => ({}))) as Record<string, unknown>
+      if (!availabilityRes.ok) {
+        setWorkflowDisabled(previousDisabled)
+        setAvailabilityError((availabilityData.error as string | undefined) || `Availability update failed (${availabilityRes.status})`)
+        return
+      }
+      setWorkflowDisabled(availabilityData.disabled === true)
+    } catch (e) {
+      setWorkflowDisabled(previousDisabled)
+      setAvailabilityError((e as Error).message)
+    } finally {
+      setAvailabilitySaving(false)
+    }
+  }
+
+  async function handleCreateCopy() {
+    if (!definition) return
+    const nextId = copyId.trim()
+    const nextName = copyName.trim()
+    const fieldErrors = validateWorkflowDialogFields({
+      id: nextId,
+      name: nextName,
+      nameRequiredMessage: 'Copy name is required.',
+    })
+    if (hasWorkflowDialogFieldErrors(fieldErrors)) {
+      setCopyFieldErrors(fieldErrors)
+      setCopyError(null)
+      return
+    }
+
+    setCreatingCopy(true)
+    setCopyError(null)
+    setCopyFieldErrors({})
+    try {
+      const nextDefinition = {
+        ...definition,
+        id: nextId,
+        name: nextName,
+      }
+      const createRes = await fetch('/api/plugins/workflows/definitions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...nextDefinition, id: nextId }),
+      })
+      const createData = (await createRes.json().catch(() => ({}))) as Record<string, unknown>
+      if (!createRes.ok) {
+        const parsedError = parseWorkflowDialogServerError(createData, `Copy failed (${createRes.status})`)
+        setCopyFieldErrors(parsedError.fieldErrors)
+        setCopyError(parsedError.error)
+        return
+      }
+
+      if (disableOriginal) {
+        const availabilityRes = await fetch(`/api/plugins/workflows/definitions/${workflowId}/availability`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ disabled: true }),
+        })
+        if (!availabilityRes.ok) {
+          const availabilityData = (await availabilityRes.json().catch(() => ({}))) as Record<string, unknown>
+          setCopyError((availabilityData.error as string | undefined) || `Copied, but disabling the managed workflow failed (${availabilityRes.status})`)
+        } else {
+          setWorkflowDisabled(true)
+        }
+      }
+
+      router.push(`/workflows/${nextId}/edit`)
+    } catch (e) {
+      setCopyError((e as Error).message)
+    } finally {
+      setCreatingCopy(false)
+    }
+  }
+
+  async function handleDeleteWorkflow() {
+    if (!canDelete) return false
+
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      const res = await fetch(`/api/plugins/workflows/definitions/${workflowId}`, {
+        method: 'DELETE',
+      })
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
+      if (!res.ok) {
+        setDeleteError((data.error as string | undefined) || `Delete failed (${res.status})`)
+        return false
+      }
+      onBack()
+      return true
+    } catch (e) {
+      setDeleteError((e as Error).message)
+      return false
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -143,8 +307,6 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
     )
   }
 
-  const agentIds = collectAgents(definition.steps)
-
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -159,38 +321,76 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
             <p className="text-xs text-muted-foreground truncate">{definition.description}</p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
+          {isManagedSource && (
+            <div
+              className={`flex items-center gap-2 ${availabilitySaving ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+              title="Controls whether this managed workflow is available for matching and automatic starts"
+            >
+              <Switch
+                size="sm"
+                checked={!workflowDisabled}
+                onCheckedChange={handleAvailabilityChange}
+                disabled={availabilitySaving}
+                aria-label={workflowDisabled ? 'Enable workflow' : 'Disable workflow'}
+              />
+              <span className={`select-none text-xs font-medium ${workflowDisabled ? 'text-muted-foreground' : 'text-foreground'}`}>
+                {workflowDisabled ? 'Disabled' : 'Enabled'}
+              </span>
+            </div>
+          )}
           <Button
             variant="outline"
             size="sm"
-            onClick={() => router.push(`/workflows/${workflowId}/edit`)}
-            title={source === 'plugin' ? 'Edit a copy of this workflow' : 'Edit workflow'}
+            onClick={handlePrimaryEditAction}
+            title={isManagedSource ? 'Create an editable copy of this workflow' : 'Edit workflow'}
+            disabled={workflowDisabled}
           >
             <Pencil className="size-3.5 mr-1" />
-            {source === 'plugin' ? 'Customize' : 'Edit'}
+            Edit
           </Button>
-          <Badge variant="secondary" className="text-[10px]">
-            {definition.steps.length} steps
-          </Badge>
-          {agentIds.length > 0 && (
-            <div className="flex -space-x-1.5">
-              {agentIds.slice(0, 5).map(id => (
-                <AgentAvatar key={id} agentId={id} size="xs" />
-              ))}
-            </div>
+          {canDelete && (
+            <WorkflowDeleteAction
+              workflowName={definition.name || workflowId}
+              deleting={deleting}
+              error={deleteError}
+              onClearError={() => setDeleteError(null)}
+              onDelete={handleDeleteWorkflow}
+            />
           )}
         </div>
       </div>
 
-      {/* Read-only banner — plugin-shipped definitions cannot be edited in place */}
-      {source === 'plugin' && (
+      {availabilityError && (
+        <div className="border-b border-border bg-destructive/10 px-6 py-2 text-xs text-destructive">
+          {availabilityError}
+        </div>
+      )}
+
+      {isManagedSource && workflowDisabled && (
+        <div className="flex items-center gap-2 border-b border-border bg-destructive/10 px-6 py-2 text-xs text-destructive">
+          <Lock className="size-3.5" />
+          <span>
+            Disabled: matching and automatic starts skip this workflow. Enable it before editing or creating a copy.
+          </span>
+        </div>
+      )}
+
+      {/* Read-only banner — managed definitions cannot be edited in place */}
+      {isManagedSource && (
         <div className="flex items-center gap-2 border-b border-border bg-amber-500/10 px-6 py-2 text-xs text-amber-200">
           <Lock className="size-3.5" />
           <span>
-            Read-only: this workflow ships with the
-            {pluginId ? ` "${pluginId}"` : ''} plugin. Save a copy under
-            <code className="px-1 mx-1 rounded bg-black/30 font-mono text-[11px]">~/.bakin/workflows/definitions/{workflowId}.yaml</code>
-            to override it locally.
+            This workflow is managed by Bakin directly. If you&apos;d like to make changes select &ldquo;Edit&rdquo; and create a copy when prompted. You&apos;ll optionally be able to disable this default workflow as well.
+          </span>
+        </div>
+      )}
+
+      {source === 'user' && shadowedSource && (
+        <div className="flex items-center gap-2 border-b border-border bg-cyan-500/10 px-6 py-2 text-xs text-cyan-200">
+          <GitBranch className="size-3.5" />
+          <span>
+            This custom workflow shadows a managed default with the same id.
           </span>
         </div>
       )}
@@ -211,6 +411,43 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
       />
+
+      <ManagedWorkflowCopyDialog
+        open={copyOpen}
+        creating={creatingCopy}
+        error={copyError}
+        fieldErrors={copyFieldErrors}
+        copyName={copyName}
+        copyId={copyId}
+        disableOriginal={disableOriginal}
+        onOpenChange={(open) => {
+          setCopyOpen(open)
+          if (!open) {
+            setCopyError(null)
+            setCopyFieldErrors({})
+          }
+        }}
+        onCopyNameChange={(value) => {
+          setCopyName(value)
+          setCopyError(null)
+          setCopyFieldErrors((prev) => (
+            copyIdEdited
+              ? clearWorkflowDialogFieldError(prev, 'name')
+              : clearWorkflowDialogFieldError(prev, 'name', 'id')
+          ))
+          if (!copyIdEdited) setCopyId(slugify(value))
+        }}
+        onCopyIdChange={(value) => {
+          setCopyIdEdited(true)
+          setCopyError(null)
+          setCopyFieldErrors((prev) => clearWorkflowDialogFieldError(prev, 'id'))
+          setCopyId(slugify(value))
+        }}
+        onDisableOriginalChange={setDisableOriginal}
+        onCancel={() => setCopyOpen(false)}
+        onCreate={handleCreateCopy}
+      />
+
     </div>
   )
 }

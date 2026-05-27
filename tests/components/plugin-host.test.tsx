@@ -116,17 +116,25 @@ afterEach(() => {
 })
 
 describe('PluginHost — boot', () => {
+  it('shows a loader while the manifest request is pending', () => {
+    vi.stubGlobal('fetch', mock(() => new Promise(() => {})))
+
+    render(
+      <PluginHost>
+        <ProbeTree />
+      </PluginHost>,
+    )
+
+    expect(screen.getByText('Loading plugins')).toBeDefined()
+  })
+
   it('renders children after the manifest fetch resolves', async () => {
     render(
       <PluginHost>
         <ProbeTree />
       </PluginHost>,
     )
-    // Slot with no entries renders null, but the parent <div> is still there.
-    await waitFor(() => {
-      // The <ProbeTree>'s <div> wrapper is visible in the DOM
-      expect(document.querySelector('div')).not.toBeNull()
-    })
+    await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
   })
 })
 
@@ -137,7 +145,7 @@ describe('PluginHost — window.__bakinHotSwapPlugin bridge', () => {
         <ProbeTree />
       </PluginHost>,
     )
-    await waitFor(() => expect(document.querySelector('div')).not.toBeNull())
+    await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
     expect((window as unknown as { __bakinHotSwapPlugin?: unknown }).__bakinHotSwapPlugin)
       .toBeUndefined()
   })
@@ -149,7 +157,7 @@ describe('PluginHost — window.__bakinHotSwapPlugin bridge', () => {
         <ProbeTree />
       </PluginHost>,
     )
-    await waitFor(() => expect(document.querySelector('div')).not.toBeNull())
+    await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
     await waitFor(() => {
       expect(typeof (window as unknown as { __bakinHotSwapPlugin?: unknown })
         .__bakinHotSwapPlugin).toBe('function')
@@ -165,7 +173,7 @@ describe('PluginHost — hot-swap unregisters synchronously', () => {
         <ProbeTree />
       </PluginHost>,
     )
-    await waitFor(() => expect(document.querySelector('div')).not.toBeNull())
+    await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
 
     act(() => {
       registerPlugin({
@@ -198,7 +206,7 @@ describe('PluginHost — hot-swap unregisters synchronously', () => {
         <ProbeTree />
       </PluginHost>,
     )
-    await waitFor(() => expect(document.querySelector('div')).not.toBeNull())
+    await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
 
     const moduleDir = mkdtempSync(join(tmpdir(), 'bakin-plugin-host-hotswap-'))
     const modulePath = join(moduleDir, 'client.mjs')
@@ -245,7 +253,7 @@ describe('Slot — re-renders on registry change', () => {
         <ProbeTree />
       </PluginHost>,
     )
-    await waitFor(() => expect(document.querySelector('div')).not.toBeNull())
+    await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
 
     // Initial: no registration → Slot renders null
     expect(screen.queryByTestId('slot-content')).toBeNull()
@@ -277,7 +285,7 @@ describe('Slot — re-renders on registry change', () => {
         <ProbeTree />
       </PluginHost>,
     )
-    await waitFor(() => expect(document.querySelector('div')).not.toBeNull())
+    await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
 
     act(() => {
       registerPlugin({ id: 'x', slots: { 'page:/probe': SlotPage } })

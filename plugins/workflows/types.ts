@@ -14,23 +14,27 @@ export interface WorkflowInput {
   description: string
   required?: boolean
   default?: unknown
+  [k: string]: unknown
 }
 
 export interface StepOutput {
   id: string
   type?: 'string' | 'file' | 'number'
   path?: string
+  [k: string]: unknown
 }
 
 export interface NotifyChannel {
   /** Channel id — resolves against the workflows.notificationChannels registry. */
   channel: string
   target: string
+  [k: string]: unknown
 }
 
 export interface BaseStep {
   id: string
   label: string
+  [k: string]: unknown
 }
 
 export interface AgentStep extends BaseStep {
@@ -54,6 +58,7 @@ export interface GateStep extends BaseStep {
   on_reject?: {
     goto: string
     note_to_agent?: boolean
+    [k: string]: unknown
   }
   dependsOn?: string | string[]
 }
@@ -99,6 +104,7 @@ export interface CreateTaskStep extends BaseStep {
     entityType?: string
     entityId?: string
     purpose?: string
+    [k: string]: unknown
   }
   skipWorkflowReason?: string
   dependsOn?: string | string[]
@@ -109,6 +115,7 @@ export type WorkflowStep = AgentStep | GateStep | ParallelStep | OutputStep | Ne
 export interface NodePosition {
   x: number
   y: number
+  [k: string]: unknown
 }
 
 /**
@@ -117,6 +124,7 @@ export interface NodePosition {
  */
 export interface WorkflowLayout {
   positions?: Record<string, NodePosition>
+  [k: string]: unknown
 }
 
 export interface WorkflowDefinition {
@@ -127,9 +135,16 @@ export interface WorkflowDefinition {
   inputs?: Record<string, WorkflowInput>
   steps: WorkflowStep[]
   layout?: WorkflowLayout
+  [k: string]: unknown
 }
 
 // ─── Template Types ─────────────────────────────────────────────────────────
+
+export interface WorkflowShadowedSource {
+  source: 'plugin' | 'agent-package'
+  pluginId?: string
+  packageId?: string
+}
 
 export interface WorkflowTemplate {
   name: string
@@ -149,6 +164,10 @@ export interface WorkflowTemplate {
   pluginId?: string
   /** Set when source === 'agent-package' — the id of the package that shipped this workflow */
   packageId?: string
+  /** True when a managed workflow has been disabled by the user. */
+  disabled?: boolean
+  /** Set when a user workflow shadows a managed definition with the same id. */
+  shadowedSource?: WorkflowShadowedSource
 }
 
 // ─── Skill Types ────────────────────────────────────────────────────────────

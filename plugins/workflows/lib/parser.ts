@@ -46,6 +46,16 @@ export interface ValidateDefinitionOptions {
   assignee?: string
   requireResolvedAgents?: boolean
   validateNestedWorkflowRefs?: boolean
+  allowEmptySteps?: boolean
+}
+
+export const WORKFLOW_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+export const WORKFLOW_ID_VALIDATION_MESSAGE = 'Workflow id must use lowercase letters, numbers, and hyphens.'
+
+export function validateWorkflowId(id: string, label = 'Workflow id'): string | null {
+  if (!id.trim()) return `${label} is required`
+  if (!WORKFLOW_ID_PATTERN.test(id)) return WORKFLOW_ID_VALIDATION_MESSAGE
+  return null
 }
 
 function getDefinitionsDir(contentDir?: string): string {
@@ -97,7 +107,12 @@ export function validateDefinition(def: WorkflowDefinition, opts: ValidateDefini
   const validateNestedWorkflowRefs = opts.validateNestedWorkflowRefs ?? true
 
   if (!def.name) errors.push('Missing required field: name')
-  if (!def.steps || !Array.isArray(def.steps) || def.steps.length === 0) {
+  if (!def.steps || !Array.isArray(def.steps)) {
+    errors.push('Workflow must have at least one step')
+    return errors
+  }
+  if (def.steps.length === 0) {
+    if (opts.allowEmptySteps) return errors
     errors.push('Workflow must have at least one step')
     return errors
   }

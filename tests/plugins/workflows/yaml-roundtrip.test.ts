@@ -81,6 +81,46 @@ describe('live workflow YAML round-trip', () => {
     expect(files.length).toBeGreaterThan(0)
   })
 
+  it('preserves YAML-backed fields outside the editor-owned field set', () => {
+    const parsed = workflowDefinitionSchema.safeParse({
+      name: 'Round Trip',
+      description: 'Synthetic preserve-set fixture',
+      version: 1,
+      metadata: { owner: 'roundtrip-test' },
+      triggers: [{ type: 'manual', enabled: true }],
+      inputs: {
+        topic: {
+          type: 'string',
+          description: 'Subject',
+          ui: { widget: 'longtext' },
+        },
+      },
+      steps: [
+        {
+          id: 'write',
+          type: 'agent',
+          label: 'Write',
+          agent: 'chef',
+          output_schema: { type: 'object' },
+          plugin_config: { keep: true },
+        },
+      ],
+      layout: {
+        positions: { write: { x: 1, y: 2 } },
+        viewport: { x: 10, y: 20, zoom: 0.8 },
+      },
+    })
+
+    expect(parsed.success).toBe(true)
+    if (!parsed.success) return
+    expect((parsed.data as Record<string, unknown>).metadata).toEqual({ owner: 'roundtrip-test' })
+    expect((parsed.data as Record<string, unknown>).triggers).toEqual([{ type: 'manual', enabled: true }])
+    expect((parsed.data.inputs?.topic as Record<string, unknown>).ui).toEqual({ widget: 'longtext' })
+    expect((parsed.data.steps[0] as Record<string, unknown>).output_schema).toEqual({ type: 'object' })
+    expect((parsed.data.steps[0] as Record<string, unknown>).plugin_config).toEqual({ keep: true })
+    expect((parsed.data.layout as Record<string, unknown>).viewport).toEqual({ x: 10, y: 20, zoom: 0.8 })
+  })
+
   for (const file of files) {
     const relPath = file.slice(REPO_ROOT.length + 1)
 
