@@ -153,6 +153,13 @@ function formatDateShort(date: Date): string {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
+function searchStatsDocumentCount(stats: Record<string, unknown> | null | undefined): number {
+  if (!stats) return 0
+  const value = stats.documents ?? stats.num_docs ?? stats.documentCount
+  const count = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(count) ? count : 0
+}
+
 // ---------------------------------------------------------------------------
 // Horizontal bar chart component (pure CSS, no dependencies)
 // ---------------------------------------------------------------------------
@@ -627,7 +634,7 @@ export function HealthPage() {
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {searchHealth.tables.map(t => {
-                  const docs = typeof t.stats?.num_docs === 'number' ? t.stats.num_docs : 0
+                  const docs = searchStatsDocumentCount(t.stats)
                   const progress = reindexProgress[t.table]
                   const isActive = reindexing && progress && !progress.done
                   const hasEnrichmentError = t.indexHealth?.some(i => i.error)

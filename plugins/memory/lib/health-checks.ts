@@ -28,6 +28,13 @@ function error(check: string, message: string): HealthCheckResult {
   return { check, status: 'error', message, autoFixable: false }
 }
 
+function documentCountFromStats(stats: Record<string, unknown> | null | undefined): number | null {
+  if (!stats) return null
+  const value = stats.documents ?? stats.num_docs ?? stats.documentCount
+  const count = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(count) ? count : null
+}
+
 // ─── Search tables: registered content types have stats / non-empty docs ──
 
 /**
@@ -66,8 +73,8 @@ export async function checkSearchTables(
       }
 
       const statRecord = t.stats as Record<string, unknown>
-      const rawNumDocs = Number(statRecord.documents ?? statRecord.num_docs)
-      if (Number.isFinite(rawNumDocs)) {
+      const rawNumDocs = documentCountFromStats(statRecord)
+      if (rawNumDocs !== null) {
         if (rawNumDocs === 0) {
           if (t.pluginId === 'schedule') {
             results.push(ok('search-tables', `Table "${t.table}" (${t.pluginId}) has 0 persisted documents; schedule jobs are indexed at runtime`))
@@ -86,8 +93,8 @@ export async function checkSearchTables(
 
     if (results.length === 0) {
       const totals = health.tables
-        .map(t => Number((t.stats as Record<string, unknown>)?.num_docs))
-        .filter(n => Number.isFinite(n))
+        .map(t => documentCountFromStats(t.stats as Record<string, unknown> | null))
+        .filter((n): n is number => n !== null)
 
       if (totals.length > 0) {
         const total = totals.reduce((sum, n) => sum + n, 0)

@@ -161,8 +161,8 @@ describe('checkSearchTables — registry shape', () => {
     mockHealth = {
       enabled: true,
       tables: [
-        { table: 'tasks', pluginId: 'tasks', healthy: true, stats: { num_docs: 12 } },
-        { table: 'projects', pluginId: 'projects', healthy: true, stats: { num_docs: 5 } },
+        { table: 'tasks', pluginId: 'tasks', healthy: true, stats: { documents: 12 } },
+        { table: 'projects', pluginId: 'projects', healthy: true, stats: { documents: 5 } },
       ],
     }
     const results = await checkSearchTables(readMockSearchHealth)
