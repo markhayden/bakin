@@ -101,3 +101,41 @@ screenshots:
     viewport:
       width: 1920
       height: 900
+
+  # ── using/assets ──────────────────────────────────────────────────
+
+  - id: library
+    doc: using/assets
+    route: /assets
+    caption: "The assets library with type filters, grid and list views, and search."
+    waitFor: "text=Assets"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.75
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: detail-modal
+    doc: using/assets
+    route: /assets
+    caption: "The asset detail modal with preview, sidecar metadata, retype/relink, and inline editor."
+    waitFor: "text=Assets"
+    actions:
+      - click: "text=million-dollar-bacon"
+      - waitFor: "[data-slot='dialog-content']"
+    delay: 500
+    selector: "[data-slot='dialog-content']"
+    cropHeight: 0.85
+
+  - id: trash
+    doc: using/assets
+    route: /assets?view=trash
+    caption: "The trash view with restore and permanent-delete actions."
+    waitFor: "text=Empty Trash"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.45
+    viewport:
+      width: 1920
+      height: 900

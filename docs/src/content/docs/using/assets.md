@@ -8,7 +8,7 @@ Your agents are hoarders, in the good way. Every image they ship, every plan the
 ## The library
 
 <figure class="screenshot-frame">
-  <figcaption>The assets library with type filters, grid and list views, and search.</figcaption>
+  <img src="/docs/media/screenshots/using-assets--library.png" alt="The assets library with type filters, grid and list views, and search." loading="lazy">
 </figure>
 
 The library is a unified view across every asset Bakin knows about. Filter by type, switch between grid and list, paginate. Each card shows a thumbnail (auto-generated for images), filename, type, and key sidecar metadata. Click any card for the detail modal.
@@ -43,10 +43,6 @@ Four paths in. They all converge on the same canonical treatment: filename, side
 
 ### Drag and drop
 
-<figure class="screenshot-frame">
-  <figcaption>The upload dialog with drag-drop, multi-file selection, optional task link, and tags.</figcaption>
-</figure>
-
 Hit `+ Add` on the assets page or any task with the `task-assets` slot. Drop one or many files. Optional fields: link to a task, description, tags. Done.
 
 ### Drop into the inbox
@@ -64,7 +60,7 @@ Agents call `bakin_exec_assets_save` with content and metadata. Bakin canonicali
 ## Managing assets
 
 <figure class="screenshot-frame">
-  <figcaption>The asset detail modal with preview, sidecar metadata, retype/relink, and inline editor.</figcaption>
+  <img src="/docs/media/screenshots/using-assets--detail-modal.png" alt="The asset detail modal with preview, sidecar metadata, retype/relink, and inline editor." loading="lazy">
 </figure>
 
 Click any asset to open the detail modal. From there:
@@ -108,7 +104,7 @@ If anything looks stale, reindex from the [Health](/docs/using/health/) page.
 Soft delete first. Files move to `~/.bakin/assets/.trash/` with a `__deleted-{timestamp}` suffix and stay restorable by default.
 
 <figure class="screenshot-frame">
-  <figcaption>The trash view with restore and permanent-delete actions.</figcaption>
+  <img src="/docs/media/screenshots/using-assets--trash.png" alt="The trash view with restore and permanent-delete actions." loading="lazy">
 </figure>
 
 The default recovery window is 7 days. Past that window, asset health checks can purge expired trash through the explicit doctor repair workflow. You can also empty trash manually at any time. Restore drops the file back at its canonical path, sidecar and all, and re-indexes.
