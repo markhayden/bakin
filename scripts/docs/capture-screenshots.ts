@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
-import { readFileSync, mkdirSync, existsSync, renameSync } from 'fs'
+import { readFileSync, mkdirSync, existsSync, renameSync, unlinkSync } from 'fs'
 import { join, resolve } from 'path'
+import { execSync, spawn as nodeSpawn } from 'child_process'
 import { load as loadYaml } from 'js-yaml'
 import { chromium, type BrowserContext, type Page } from 'playwright'
 import sharp from 'sharp'
@@ -52,12 +53,9 @@ function loadManifest(): Manifest {
 }
 
 async function ensureBrowser(): Promise<void> {
-  const result = Bun.spawnSync(['bunx', 'playwright', 'install', 'chromium'], {
-    cwd: PROJECT_ROOT,
-    stdout: 'inherit',
-    stderr: 'inherit',
-  })
-  if (result.exitCode !== 0) {
+  try {
+    execSync('bunx playwright install chromium', { cwd: PROJECT_ROOT, stdio: 'inherit' })
+  } catch {
     throw new Error('Failed to install Playwright Chromium browser')
   }
 }
@@ -71,13 +69,13 @@ async function isServerRunning(baseUrl: string): Promise<boolean> {
   }
 }
 
-async function startMockServer(): Promise<Bun.Subprocess> {
+async function startMockServer(): Promise<import('child_process').ChildProcess> {
   console.log('Starting dev:mock server...')
-  const proc = Bun.spawn(['bun', 'run', 'dev:mock'], {
+  const proc = nodeSpawn('bun', ['run', 'dev:mock'], {
     cwd: PROJECT_ROOT,
     env: { ...process.env, BAKIN_SEED_USAGE: '1' },
-    stdout: 'pipe',
-    stderr: 'pipe',
+    stdio: ['pipe', 'pipe', 'pipe'],
+    detached: true,
   })
   return proc
 }
@@ -95,15 +93,14 @@ async function waitForServer(baseUrl: string): Promise<void> {
     } catch {
       // not ready yet
     }
-    await Bun.sleep(intervalMs)
+    await new Promise((r) => setTimeout(r, intervalMs))
   }
   throw new Error(`Server at ${baseUrl} did not become ready within ${maxRetries}s`)
 }
 
 function killProcessTree(pid: number): void {
   try {
-    // pkill -P kills all children of the given PID
-    Bun.spawnSync(['pkill', '-P', String(pid)])
+    execSync(`pkill -P ${pid}`, { stdio: 'ignore' })
   } catch { /* best effort */ }
   try { process.kill(pid, 'SIGTERM') } catch { /* already dead */ }
 }
@@ -253,7 +250,6 @@ async function optimizeImage(pngPath: string): Promise<void> {
     .resize({ width: MAX_WIDTH, withoutEnlargement: true })
     .webp({ quality: 82 })
     .toFile(webpPath)
-  const { unlinkSync } = await import('fs')
   unlinkSync(pngPath)
 }
 
@@ -297,7 +293,7 @@ async function main(): Promise<void> {
 
   // Use an existing server if one is already running, otherwise start one
   const serverAlreadyRunning = await isServerRunning(settings.baseUrl)
-  let mockProcess: Bun.Subprocess | null = null
+  let mockProcess: import('child_process').ChildProcess | null = null
 
   if (serverAlreadyRunning) {
     console.log('Using existing server at', settings.baseUrl)
@@ -343,7 +339,7 @@ async function main(): Promise<void> {
     if (failed > 0) process.exit(1)
   } finally {
     browser?.close().catch(() => {})
-    if (mockProcess) {
+    if (mockProcess?.pid) {
       killProcessTree(mockProcess.pid)
     }
   }
