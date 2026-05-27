@@ -238,9 +238,23 @@ async function captureScreenshot(
     if (entry.gradient) {
       await applyGradientOverlay(outputPath, entry.gradient)
     }
+
+    await optimizeImage(outputPath)
   } finally {
     await page.close()
   }
+}
+
+const MAX_WIDTH = 1600
+
+async function optimizeImage(pngPath: string): Promise<void> {
+  const webpPath = pngPath.replace(/\.png$/, '.webp')
+  await sharp(pngPath)
+    .resize({ width: MAX_WIDTH, withoutEnlargement: true })
+    .webp({ quality: 82 })
+    .toFile(webpPath)
+  const { unlinkSync } = await import('fs')
+  unlinkSync(pngPath)
 }
 
 function parseFilters(): { doc?: string; id?: string } {

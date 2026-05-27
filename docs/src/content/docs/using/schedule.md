@@ -8,7 +8,7 @@ Cron for normal humans. Visible, debuggable, paused with a click. Each scheduled
 ## The schedule view
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-schedule--list-view.png" alt="The schedule view in list mode, with today/week/month calendar toggles in the header." loading="lazy">
+  <img src="/docs/media/screenshots/using-schedule--list-view.webp" alt="The schedule view in list mode, with today/week/month calendar toggles in the header." loading="lazy">
 </figure>
 
 As close to telling the future as it gets. Four view modes from the header: **List**, **Today**, **Week**, **Month**. List is the dense table; the calendar grids lay out every job your team is about to fire. Filter by agent, search by name. Click a row to open the detail drawer (sidecar fields, run history, last failure).
@@ -18,7 +18,7 @@ As close to telling the future as it gets. Four view modes from the header: **Li
 ### Create
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-schedule--job-form.png" alt="The job form with cron expression, agent picker, task title and prompt, and optional workflow." loading="lazy">
+  <img src="/docs/media/screenshots/using-schedule--job-form.webp" alt="The job form with cron expression, agent picker, task title and prompt, and optional workflow." loading="lazy">
 </figure>
 
 `+ New Job` opens a side drawer. Type the cadence in plain English ("every day at 9am", "weekdays at noon", "first of the month") and Bakin translates it into cron. Or drop in a raw cron expression if you've got one. Pick the agent who runs it, give the task a title and a prompt, optionally attach a workflow.

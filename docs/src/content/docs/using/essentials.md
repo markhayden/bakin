@@ -50,7 +50,7 @@ Agent kits are projected, not copied. The runtime home directory stays the sourc
 ## Activity Feed
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-essentials--activity-drawer.png" alt="The live activity drawer streaming real-time agent events." loading="lazy">
+  <img src="/docs/media/screenshots/using-essentials--activity-drawer.webp" alt="The live activity drawer streaming real-time agent events." loading="lazy">
 </figure>
 
 This is the heart and soul of observability. The activity feed streams every agent action (turn) in real time: task moves, dispatch events, retries, recoveries, completions, the exact moment work gets stuck. No black box. No secrets. You see what your agent army is up to, and what it isn't, while it's happening.
@@ -66,7 +66,7 @@ Toggle from the header to open the panel. For us, this baby is always open.
 </div>
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-essentials--search-results.png" alt="The search bar with full-text and semantic results across tasks, projects, memory, and assets." loading="lazy">
+  <img src="/docs/media/screenshots/using-essentials--search-results.webp" alt="The search bar with full-text and semantic results across tasks, projects, memory, and assets." loading="lazy">
 </figure>
 
 Not your ordinary search. Think of it as brain connectivity for your whole agent team. Every fact, artifact, and result findable the moment it exists. Full-text, semantic, vector, BM25, hybrid (text + meaning), multimodal for images and assets. Cross-table by default, so a single query can reach across tasks, projects, assets, memory, audit logs, every research note, every shipped asset.
@@ -101,7 +101,7 @@ bakin dispatch       # fire dispatch immediately
 ## X-Ray
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-essentials--xray-mode.png" alt="X-Ray on, surfacing extra context across the activity feed and search." loading="lazy">
+  <img src="/docs/media/screenshots/using-essentials--xray-mode.webp" alt="X-Ray on, surfacing extra context across the activity feed and search." loading="lazy">
 </figure>
 
 Bakin is all about visibility, and that doesn't stop at the top level. Flip on X-Ray for deeper detail across the interface: extra context in the activity feed, why certain results are coming back in search, the raw data behind any view.
@@ -115,7 +115,7 @@ You don't have to keep Bakin's tab focused. Browser alerts push through whenever
 Alerts also fan out to any messaging channels you've connected (Discord, Slack, email). You don't need Bakin open to stay in the loop and keep things flowing.
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-essentials--alerting.png" alt="Header bar showing dispatch ticker, debug toggle, notification bell, and connection status." loading="lazy">
+  <img src="/docs/media/screenshots/using-essentials--alerting.webp" alt="Header bar showing dispatch ticker, debug toggle, notification bell, and connection status." loading="lazy">
 </figure>
 
 ## System Status

@@ -6,7 +6,7 @@ description: "Pick the right model for each agent and each role. Live catalog fr
 Right model for the right job. Premium where the work earns it, budget where it doesn't. A heartbeat ping shouldn't run on GPT-5; a real strategy doc shouldn't run on Haiku. This is where you make sure each agent and each kind of work lands on a model that fits.
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-models--overview.png" alt="The models view: agent config on top, with tabs for the available catalog, aliases, and task profiles." loading="lazy">
+  <img src="/docs/media/screenshots/using-models--overview.webp" alt="The models view: agent config on top, with tabs for the available catalog, aliases, and task profiles." loading="lazy">
 </figure>
 
 ## Agent Config
@@ -49,7 +49,7 @@ Custom names mapped to model ids. Define `daily-driver` → `claude-sonnet-4-6` 
 ## Task Profiles
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-models--task-profiles.png" alt="Task profiles map a name to a concrete model, so agents can be configured by purpose instead of vendor id." loading="lazy">
+  <img src="/docs/media/screenshots/using-models--task-profiles.webp" alt="Task profiles map a name to a concrete model, so agents can be configured by purpose instead of vendor id." loading="lazy">
 </figure>
 
 Named presets that abstract away vendor naming entirely. `budget`, `standard`, `premium` ship by default; add your own from the Task Profiles tab. Configure an agent with a profile name and Bakin resolves it at dispatch time. Lets you reason about cost vs capability instead of model ids.

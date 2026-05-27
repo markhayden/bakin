@@ -6,7 +6,7 @@ description: "Markdown spec docs with checklists that can link to real tasks and
 Some work needs more than a task can hold. Projects give you a spec, milestone tasks, pinned attachments, and a brainstorm panel where you and an agent shape the bigger picture. Tasks ship; projects orchestrate.
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-projects--grid.png" alt="The projects grid with status tabs and per-card progress." loading="lazy">
+  <img src="/docs/media/screenshots/using-projects--grid.webp" alt="The projects grid with status tabs and per-card progress." loading="lazy">
 </figure>
 
 Start at the grid. Each card is a live read on how far along you and your agents are. Filter by status from the tabs, search by name or content, click in for the full spec. Hit `+ New Project` to start fresh: title, status, owner, body, done. Tasks and attachments show up once you save.
@@ -18,7 +18,7 @@ The plan sits at the heart of every project. A markdown spec covering what you'r
 ### Brainstorm
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-projects--brainstorm-panel.png" alt="The brainstorm panel inside a project: chat thread with an agent, reference material, and task suggestions in context." loading="lazy">
+  <img src="/docs/media/screenshots/using-projects--brainstorm-panel.webp" alt="The brainstorm panel inside a project: chat thread with an agent, reference material, and task suggestions in context." loading="lazy">
 </figure>
 
 Most of the work happens here. Open the panel, pick an agent, start the conversation. Talk through goals, constraints, the things you haven't figured out yet. With your pinned attachments on hand, the agent grounds every suggestion in what you've got. Bit by bit the plan sharpens, tasks surface, new attachments come in. The conversation stays put so you can come back tomorrow.
@@ -30,7 +30,7 @@ Project brainstorm uses a stable runtime thread per project and agent, so a reop
 ### Tasks
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-projects--tasks-panel.png" alt="The tasks panel inside a project: plain checkboxes alongside linked board tasks with live status." loading="lazy">
+  <img src="/docs/media/screenshots/using-projects--tasks-panel.webp" alt="The tasks panel inside a project: plain checkboxes alongside linked board tasks with live status." loading="lazy">
 </figure>
 
 Project tasks are the plan in motion. Each one starts as a milestone in the spec, a checkbox sitting next to something that needs to happen. Small stuff you tick yourself and move on. When an item hardens into real work, promote it. One click spins up a task on the [board](/docs/using/tasks/) and wires the link back to the project.

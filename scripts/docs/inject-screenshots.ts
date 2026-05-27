@@ -45,7 +45,7 @@ function buildCaptionIndex(): Map<string, CaptionMapping[]> {
   for (const entry of manifest.screenshots) {
     if (entry.skip) continue
     const docSlug = entry.doc.replace(/\//g, '-')
-    const filename = `${docSlug}--${entry.id}.png`
+    const filename = `${docSlug}--${entry.id}.webp`
     const existing = index.get(entry.doc) || []
     existing.push({ filename, caption: entry.caption })
     index.set(entry.doc, existing)

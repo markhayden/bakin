@@ -8,7 +8,7 @@ What's each agent costing you? Which tool got hammered today? Whose context wind
 Live token counts, session costs, MCP and REST volumes, error rates, plugin status, search-engine state, the full diagnostic sweep. Without Bakin you'd be grepping JSONL transcripts to answer any of it.
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-health--dashboard.png" alt="The health dashboard: cost and context cards, usage tabs, doctor results, system status, all in one feed." loading="lazy">
+  <img src="/docs/media/screenshots/using-health--dashboard.webp" alt="The health dashboard: cost and context cards, usage tabs, doctor results, system status, all in one feed." loading="lazy">
 </figure>
 
 ## Cost and Context
@@ -33,7 +33,7 @@ Cache-read tokens cost a fraction of fresh input tokens. That column tells you w
 Three tabs sit below the cost cards, all feeding from the same in-memory recorder. Same activity, sliced three ways. When something looks off in the system, this is usually the first place you'll see it.
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-health--usage-panel.png" alt="The usage panel: tool, endpoint, and agent tabs, windowed to 5m, 1h, or 24h." loading="lazy">
+  <img src="/docs/media/screenshots/using-health--usage-panel.webp" alt="The usage panel: tool, endpoint, and agent tabs, windowed to 5m, 1h, or 24h." loading="lazy">
 </figure>
 
 <div class="table-light-full table-label-wrap">

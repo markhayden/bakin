@@ -8,13 +8,13 @@ Rails when your agents need them. A workflow is an ordered recipe of steps that 
 Workflows attach to tasks. When an agent creates a task it picks the workflow that fits, or skips with a reason. You can change the call later from the task's detail panel: swap workflows, attach one, or detach.
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-workflows--grid.png" alt="The workflows grid: each card shows the workflow's name, description, step count, and the agents it touches." loading="lazy">
+  <img src="/docs/media/screenshots/using-workflows--grid.webp" alt="The workflows grid: each card shows the workflow's name, description, step count, and the agents it touches." loading="lazy">
 </figure>
 
 ## Canvas
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-workflows--canvas.png" alt="The canvas with steps stacked top to bottom. A Start card up top summarizes the inputs." loading="lazy">
+  <img src="/docs/media/screenshots/using-workflows--canvas.webp" alt="The canvas with steps stacked top to bottom. A Start card up top summarizes the inputs." loading="lazy">
 </figure>
 
 Open any workflow to see its recipe on the canvas. Steps stack top to bottom in runtime order; edges show the supported flow between those steps. A `Start` card up top summarizes the inputs. Each step shows its type, label, and the agent that runs it. Click any step to look inside: who owns it, what it depends on, what it expects to output, where it routes on approve or reject.

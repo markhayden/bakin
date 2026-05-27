@@ -13,7 +13,7 @@ Tasks are Bakin's work unit. Each one records what needs to happen, who owns it,
 ## Bakin Board
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-tasks--board.png" alt="The Bakin Board with seven columns: Backlog, Todo, Blocked, In Progress, Review, Done, Archived." loading="lazy">
+  <img src="/docs/media/screenshots/using-tasks--board.webp" alt="The Bakin Board with seven columns: Backlog, Todo, Blocked, In Progress, Review, Done, Archived." loading="lazy">
 </figure>
 
 The board is the home view. Each column is a state, each card is a task. Drag cards between columns to move work forward. Click a card to open its detail panel and see the full history.
@@ -23,7 +23,7 @@ The board is the home view. Each column is a state, each card is a task. Drag ca
 ### Create a task
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-tasks--new-task-dialog.png" alt="New-task dialog with title, owner, and optional workflow fields." loading="lazy">
+  <img src="/docs/media/screenshots/using-tasks--new-task-dialog.webp" alt="New-task dialog with title, owner, and optional workflow fields." loading="lazy">
 </figure>
 
 Hit `+ New Task` in the top right of the board. Give it a title, pick an owner (an agent or yourself), and optionally attach a workflow. Workflows tell the assigned agent what kind of work this is.
@@ -31,7 +31,7 @@ Hit `+ New Task` in the top right of the board. Give it a title, pick an owner (
 ### Edit task details
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-tasks--task-detail.png" alt="Task detail panel showing fields, dependencies, and the activity log." loading="lazy">
+  <img src="/docs/media/screenshots/using-tasks--task-detail.webp" alt="Task detail panel showing fields, dependencies, and the activity log." loading="lazy">
 </figure>
 
 Click any card to open the detail panel. From here you can change the title, owner, column, dependencies, and append to the activity log. The log captures every state change and any progress notes from agents. It's the audit trail that survives outside chat history.
@@ -59,7 +59,7 @@ Use the trash icon in the detail panel. Task deletes remove the task from the bo
 ## Filtering and searching
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-tasks--filters.png" alt="Filter chips for column, owner, tag, and workflow." loading="lazy">
+  <img src="/docs/media/screenshots/using-tasks--filters.webp" alt="Filter chips for column, owner, tag, and workflow." loading="lazy">
 </figure>
 
 The filter bar above the board narrows by column, owner, tag, or attached workflow. Filters are URL-synced, so you can bookmark or share a specific view.

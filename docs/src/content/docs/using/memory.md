@@ -8,7 +8,7 @@ Your window into everything an agent knows or should know. Sessions, daily notes
 The runtime owns the data, this just shows you what's there.
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-memory--dashboard.png" alt="The memory dashboard: tier overview cards on top, search and filters in the middle, a recent feed (or your search hits) below." loading="lazy">
+  <img src="/docs/media/screenshots/using-memory--dashboard.webp" alt="The memory dashboard: tier overview cards on top, search and filters in the middle, a recent feed (or your search hits) below." loading="lazy">
 </figure>
 
 ## Search
