@@ -14,7 +14,7 @@ Use Quick Post when you need a one-off Deliverable without a larger Plan.
 ## Calendar
 
 <figure class="screenshot-frame">
-  <figcaption>The content calendar with status, agent, content type, channel, and search filters above.</figcaption>
+  <img src="/docs/media/screenshots/using-messaging--calendar.webp" alt="The content calendar with status, agent, content type, channel, and search filters above." loading="lazy">
 </figure>
 
 The calendar shows Deliverables, not brainstorm drafts. Filters cover agent,
@@ -53,7 +53,7 @@ the gate.
 ## Plans
 
 <figure class="screenshot-frame">
-  <figcaption>A Plan workspace with timeline, tasks, brainstorm context, and content-piece review.</figcaption>
+  <img src="/docs/media/screenshots/using-messaging--plan-workspace.webp" alt="A Plan workspace with timeline, tasks, brainstorm context, and content-piece review." loading="lazy">
 </figure>
 
 A Plan is one topic or date focus, such as "Taco Tuesday". It carries a lead
@@ -74,7 +74,7 @@ published, published, cancelled, or needs repair.
 ## Brainstorm
 
 <figure class="screenshot-frame">
-  <figcaption>A brainstorm session with chat and Plan proposal review.</figcaption>
+  <img src="/docs/media/screenshots/using-messaging--brainstorm.webp" alt="A brainstorm session with chat and Plan proposal review." loading="lazy">
 </figure>
 
 Brainstorm sessions are open-ended. Pick an agent, name the session, and talk

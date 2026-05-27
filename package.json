@@ -36,6 +36,8 @@
     "docs:validate": "bun run scripts/docs/check.ts",
     "docs:validate:routes": "bun run scripts/docs/route-contract-check.ts",
     "docs:build": "bun run docs:generate && bun run --cwd docs build",
+    "docs:screenshots": "bun run scripts/docs/capture-screenshots.ts",
+    "docs:inject-screenshots": "bun run scripts/docs/inject-screenshots.ts",
     "docs:check": "bun run docs:generate && bun run docs:validate && bun run docs:validate:routes && bun run --cwd docs build",
     "cli:tui-gallery": "bun run scripts/cli-tui-gallery.tsx",
     "dev:mock": "bun run dev/imitation-crab/index.ts --with-bakin",
@@ -100,6 +102,8 @@
     "eslint": "^9",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "playwright": "^1.60.0",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4",
     "typescript": "^5",
     "typescript-eslint": "^8.59.0"

@@ -6,7 +6,7 @@ description: "Every Bakin knob in one panel. System config, plugin settings, no 
 Every knob Bakin gives you, in one panel. System-wide stuff (dispatch, watchdog, alerts) sits in `System & Alerts`. Every plugin that exposes options gets its own tab. Save and it's live; the watchdog re-reads on its next cycle, no restart needed.
 
 <figure class="screenshot-frame">
-  <figcaption>The settings panel, gear icon top-right of the dashboard. Tabs on the left, fields on the right.</figcaption>
+  <img src="/docs/media/screenshots/using-settings--panel.webp" alt="The settings panel, gear icon top-right of the dashboard. Tabs on the left, fields on the right." loading="lazy">
 </figure>
 
 ## System & Alerts

@@ -1,0 +1,386 @@
+settings:
+  baseUrl: "http://127.0.0.1:3737"
+  defaultViewport:
+    width: 1280
+    height: 800
+  deviceScaleFactor: 2
+  colorScheme: "dark"
+  outputDir: "docs/public/media/screenshots"
+
+screenshots:
+  # ── using/essentials ──────────────────────────────────────────────
+
+  - id: activity-drawer
+    doc: using/essentials
+    route: /
+    caption: "The live activity drawer streaming real-time agent events."
+    waitFor: "text=Live Activity"
+    delay: 1500
+    cropHeight: 0.5
+    gradient: "left-to-right"
+
+  - id: search-results
+    doc: using/essentials
+    route: /health
+    caption: "The search bar with full-text and semantic results across tasks, projects, memory, and assets."
+    waitFor: "text=Connected"
+    delay: 1500
+    selector: "[data-slot='card']:has-text('Reindex All')"
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: xray-mode
+    doc: using/essentials
+    route: /assets?q=baked+goods
+    caption: "X-Ray on, surfacing extra context across the activity feed and search."
+    waitFor: ".asset-card, [class*='grid']"
+    debug: true
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.75
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: alerting
+    doc: using/essentials
+    route: /
+    caption: "A browser notification surfacing a blocked task, plus the same alert arriving in a connected Discord channel."
+    waitFor: "header"
+    selector: "header"
+    delay: 500
+    cropLeft: 0.35
+
+  # ── using/tasks ───────────────────────────────────────────────────
+
+  - id: board
+    doc: using/tasks
+    route: /tasks
+    caption: "The Bakin Board with seven columns: Backlog, Todo, Blocked, In Progress, Review, Done, Archived."
+    waitFor: "text=Backlog"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.75
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: new-task-dialog
+    doc: using/tasks
+    route: /tasks
+    caption: "New-task dialog with title, owner, and optional workflow fields."
+    waitFor: "text=Backlog"
+    actions:
+      - click: "button:has-text('New Task')"
+      - waitFor: "[data-slot='sheet-content']"
+    delay: 500
+    selector: "[data-slot='sheet-content']"
+    cropHeight: 0.55
+
+  - id: task-detail
+    doc: using/tasks
+    route: /tasks
+    caption: "Task detail panel showing fields, dependencies, and the activity log."
+    waitFor: "text=Backlog"
+    actions:
+      - click: "text=Research competitor pricing"
+      - waitFor: "[data-slot='sheet-content']"
+    delay: 500
+    selector: "[data-slot='sheet-content']"
+    cropHeight: 0.5
+
+  - id: filters
+    doc: using/tasks
+    route: /tasks
+    caption: "Filter chips for column, owner, tag, and workflow."
+    waitFor: "text=Backlog"
+    delay: 500
+    selector: "main.flex-1"
+    cropHeight: 0.18
+    viewport:
+      width: 1920
+      height: 900
+
+  # ── using/assets ──────────────────────────────────────────────────
+
+  - id: library
+    doc: using/assets
+    route: /assets
+    caption: "The assets library with type filters, grid and list views, and search."
+    waitFor: "text=Assets"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.75
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: detail-modal
+    doc: using/assets
+    route: /assets
+    caption: "The asset detail modal with preview, sidecar metadata, retype/relink, and inline editor."
+    waitFor: "text=Assets"
+    actions:
+      - click: "text=million-dollar-bacon"
+      - waitFor: "[data-slot='dialog-content']"
+    delay: 500
+    selector: "[data-slot='dialog-content']"
+    cropHeight: 0.85
+
+  - id: trash
+    doc: using/assets
+    route: /assets?view=trash
+    caption: "The trash view with restore and permanent-delete actions."
+    waitFor: "text=Empty Trash"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.45
+    viewport:
+      width: 1920
+      height: 900
+
+  # ── using/schedule ────────────────────────────────────────────────
+
+  - id: list-view
+    doc: using/schedule
+    route: /schedule
+    caption: "The schedule view in list mode, with today/week/month calendar toggles in the header."
+    waitFor: "text=Today"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.75
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: job-form
+    doc: using/schedule
+    route: /schedule
+    caption: "The job form with cron expression, agent picker, task title and prompt, and optional workflow."
+    waitFor: "text=Schedule"
+    actions:
+      - click: "button:has-text('New Job')"
+      - waitFor: "[data-slot='sheet-content']"
+    delay: 500
+    selector: "[data-slot='sheet-content']"
+    cropHeight: 0.5
+
+  # ── using/messaging ───────────────────────────────────────────────
+
+  - id: calendar
+    doc: using/messaging
+    route: /messaging/plans
+    caption: "The content calendar with status, agent, content type, channel, and search filters above."
+    waitFor: "text=Plans"
+    delay: 1500
+    selector: "main.flex-1"
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: plan-workspace
+    doc: using/messaging
+    route: /messaging/plans
+    caption: "A Plan workspace with timeline, tasks, brainstorm context, and content-piece review."
+    waitFor: "text=Plans"
+    actions:
+      - click: "text=Spring Menu Launch"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.85
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: brainstorm
+    doc: using/messaging
+    route: /messaging/brainstorm
+    caption: "A brainstorm session with chat and Plan proposal review."
+    waitFor: "text=Brainstorm"
+    actions:
+      - click: "text=Spring Menu Content Planning"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.85
+    viewport:
+      width: 1920
+      height: 900
+
+  # ── using/projects ────────────────────────────────────────────────
+
+  - id: grid
+    doc: using/projects
+    route: /projects
+    caption: "The projects grid with status tabs and per-card progress."
+    waitFor: "text=Projects"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.5
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: brainstorm-panel
+    doc: using/projects
+    route: /projects
+    caption: "The brainstorm panel inside a project: chat thread with an agent, reference material, and task suggestions in context."
+    waitFor: "text=Projects"
+    actions:
+      - click: "text=Spring Menu Launch"
+      - waitFor: "button:has-text('Brainstorm')"
+      - click: "button:has-text('Brainstorm')"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.85
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: tasks-panel
+    doc: using/projects
+    route: /projects
+    caption: "The tasks panel inside a project: plain checkboxes alongside linked board tasks with live status."
+    waitFor: "text=Projects"
+    actions:
+      - click: "text=Spring Menu Launch"
+      - waitFor: "text=TASKS"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.85
+    viewport:
+      width: 1920
+      height: 900
+
+  # ── using/workflows ───────────────────────────────────────────────
+
+  - id: grid
+    doc: using/workflows
+    route: /workflows
+    caption: "The workflows grid: each card shows the workflow's name, description, step count, and the agents it touches."
+    waitFor: "text=Workflows"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.75
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: canvas
+    doc: using/workflows
+    route: /workflows
+    caption: "The canvas with steps stacked top to bottom. A \"Start\" card up top summarizes the inputs."
+    waitFor: "text=Workflows"
+    actions:
+      - click: "text=Image Generation"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.85
+    viewport:
+      width: 1920
+      height: 900
+
+  # ── using/memory ──────────────────────────────────────────────────
+
+  - id: dashboard
+    doc: using/memory
+    route: /memory
+    caption: "The memory dashboard: tier overview cards on top, search and filters in the middle, a recent feed (or your search hits) below."
+    waitFor: "text=Memory"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.75
+    viewport:
+      width: 1920
+      height: 900
+
+  # ── using/team ────────────────────────────────────────────────────
+
+  - id: roster
+    doc: using/team
+    route: /team
+    caption: "The roster with agent cards arranged by reporting and team structure."
+    waitFor: "text=Team"
+    delay: 2000
+    selector: "main.flex-1"
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: profile
+    doc: using/team
+    route: /team
+    caption: "The profile with tabs across the top, agent identity on the left, edits land in the runtime when you save."
+    waitFor: "text=Team"
+    actions:
+      - click: "text=pixel"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.8
+    viewport:
+      width: 1920
+      height: 900
+
+  # ── using/models ──────────────────────────────────────────────────
+
+  - id: overview
+    doc: using/models
+    route: /models
+    caption: "The models view: agent config on top, with tabs for the available catalog, aliases, and task profiles."
+    waitFor: "text=Agent Config"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.75
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: task-profiles
+    doc: using/models
+    route: /models?tab=profiles
+    caption: "Task profiles map a name to a concrete model, so agents can be configured by purpose instead of vendor id."
+    waitFor: "text=Add Profile"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.6
+    viewport:
+      width: 1920
+      height: 900
+
+  # ── using/health ──────────────────────────────────────────────────
+
+  - id: dashboard
+    doc: using/health
+    route: /health
+    caption: "The health dashboard: cost and context cards, usage tabs, doctor results, system status, all in one feed."
+    waitFor: "text=System Health"
+    delay: 1500
+    cropHeight: 0.55
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: usage-panel
+    doc: using/health
+    route: /health?usage_tab=endpoints
+    caption: "The usage panel: tool, endpoint, and agent tabs, windowed to 5m, 1h, or 24h."
+    waitFor: "text=Endpoint Usage"
+    delay: 1500
+    selector: "[data-slot='card']:has-text('Endpoint Usage')"
+    viewport:
+      width: 1920
+      height: 900
+
+  # ── using/settings ────────────────────────────────────────────────
+
+  - id: panel
+    doc: using/settings
+    route: /settings
+    caption: "The settings panel, gear icon top-right of the dashboard. Tabs on the left, fields on the right."
+    waitFor: "text=Settings"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.75
+    viewport:
+      width: 1920
+      height: 900

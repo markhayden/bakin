@@ -1,5 +1,5 @@
 ---
-title: Git
+title: Development
 description: "Task-scoped git worktrees for agents doing code work."
 ---
 
