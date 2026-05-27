@@ -1,0 +1,9 @@
+{
+  "agent": "jessica",
+  "taskId": "task-rv-003",
+  "created": "2026-04-06T11:00:00Z",
+  "type": "text",
+  "description": "Gourmet hot dog stand menu with pricing and descriptions",
+  "tags": ["menu", "hot-dog", "street-food"],
+  "source": "agent"
+}

@@ -1,0 +1,9 @@
+{
+  "agent": "jessica",
+  "taskId": "task-td-003",
+  "created": "2026-04-07T09:30:00Z",
+  "type": "text",
+  "description": "April food blog content calendar with publishing schedule",
+  "tags": ["planning", "content-calendar", "blog"],
+  "source": "agent"
+}

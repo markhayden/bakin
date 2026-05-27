@@ -7,7 +7,7 @@ steps:
   - id: draft-copy
     type: agent
     label: Draft Copy
-    agent: chef
+    agent: jessica
     skill: write-copy
 
   - id: copy-gate

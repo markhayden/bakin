@@ -1,0 +1,10 @@
+{
+  "agent": "pixel",
+  "taskId": null,
+  "created": "2026-04-01T11:30:00Z",
+  "type": "images",
+  "description": "Gourmet seasoned popcorn with rosemary and parmesan",
+  "tags": ["food", "popcorn", "snack"],
+  "source": "agent",
+  "originalFilename": "popcorn.jpg"
+}

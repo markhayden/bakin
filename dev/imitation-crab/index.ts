@@ -2,8 +2,8 @@
  * Imitation Crab — OpenClaw mock orchestrator for Bakin development.
  *
  * Usage:
- *   npx tsx dev/imitation-crab/index.ts              # Start mock only
- *   npx tsx dev/imitation-crab/index.ts --with-bakin  # Start mock + Bakin dev server
+ *   bun run dev/imitation-crab/index.ts              # Start mock only
+ *   bun run dev/imitation-crab/index.ts --with-bakin  # Start mock + Bakin dev server
  *
  * Sets OPENCLAW_HOME to the configured mock home and OPENCLAW_PATH to the CLI
  * shim, then starts the mock HTTP gateway.
@@ -66,9 +66,9 @@ async function main(): Promise<void> {
   if (withBakin) {
     console.log('')
     console.log('[bakin] Starting dev server...')
-    bakinProcess = spawn('npx', ['tsx', 'server.ts'], {
+    bakinProcess = spawn('bun', ['run', 'scripts/dev.ts'], {
       cwd: PROJECT_ROOT,
-      env,
+      env: { ...env, OPENCLAW_BASE_URL: getGatewayUrl() },
       stdio: 'inherit',
     })
 
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
     console.log('')
     console.log('Mock gateway is running. Start Bakin in another terminal with:')
     console.log('')
-    console.log(`  BAKIN_HOME=${mockHome} OPENCLAW_HOME=${mockHome} OPENCLAW_PATH=${shimPath} OPENCLAW_BASE_URL=${getGatewayUrl()} npm run dev`)
+    console.log(`  BAKIN_HOME=${mockHome} OPENCLAW_HOME=${mockHome} OPENCLAW_PATH=${shimPath} OPENCLAW_BASE_URL=${getGatewayUrl()} bun run dev`)
     console.log('')
   }
 }

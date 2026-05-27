@@ -25,7 +25,7 @@ describe('imitation-crab runtime failure contract', () => {
     })).rejects.toThrow('OpenClaw chat failed: Mock error mode; code=mock_error')
 
     await expect(drain(runtime.messaging.stream({
-      agentId: 'chef',
+      agentId: 'jessica',
       content: 'This stream should fail',
     }))).rejects.toThrow('OpenClaw chat failed: Mock error mode; code=mock_error')
   })

@@ -34,7 +34,7 @@ describe('imitation-crab runtime contract', () => {
     await expect(runtime.agents.get('pixel')).resolves.toEqual(expect.objectContaining({
       id: 'pixel',
       name: 'Pixel',
-      metadata: expect.objectContaining({ subagentAllowAgents: ['explorer'] }),
+      metadata: expect.objectContaining({ subagentAllowAgents: null }),
     }))
     await expect(runtime.agents.heartbeat('patch')).resolves.toBe(false)
 
@@ -91,9 +91,9 @@ describe('imitation-crab runtime contract', () => {
       content: '[mock:Pixel] Send a contract message',
     }))
     await expect(collectText(runtime.messaging.stream({
-      agentId: 'chef',
+      agentId: 'jessica',
       content: 'Stream a contract message',
-    }))).resolves.toBe('[mock:Chef] Stream a contract message')
+    }))).resolves.toBe('[mock:Jessica] Stream a contract message')
 
     await expect(runtime.tools.invoke('pixel', 'message_send', { message: 'hello' })).resolves.toEqual({
       ok: true,

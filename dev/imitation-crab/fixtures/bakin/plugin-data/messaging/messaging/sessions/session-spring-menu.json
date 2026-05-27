@@ -1,0 +1,170 @@
+{
+  "id": "session-spring-menu",
+  "agentId": "jessica",
+  "title": "Spring Menu Content Planning",
+  "scope": "Plan content around the new spring menu items — bacon, smoothie, hot dogs, bread, popcorn",
+  "status": "active",
+  "createdAtPlanIds": ["plan-spring-launch"],
+  "createdAt": "2026-04-01T09:00:00.000Z",
+  "updatedAt": "2026-04-03T14:30:00.000Z",
+  "messages": [
+    {
+      "id": "msg-sm-001",
+      "role": "user",
+      "content": "Let's plan content around the new spring menu. We've got million dollar bacon, a sunrise smoothie, loaded hot dogs, fresh bread, and gourmet popcorn. I want a full content push — blog, social, maybe video.",
+      "timestamp": "2026-04-01T09:00:00.000Z"
+    },
+    {
+      "id": "msg-sm-002",
+      "role": "assistant",
+      "content": "Love this lineup. Here's my read on each item's content potential:\n\n**Million Dollar Bacon** — This is the star. The name alone is clickbait-worthy. I'd lead with a blog recipe post and follow up with a short-form video showing the caramelization. Viral potential is high.\n\n**Sunrise Smoothie** — Perfect for Instagram. Layered drinks photograph incredibly well. Single image post with recipe in caption, maybe a Reel showing the pour.\n\n**Loaded Hot Dogs** — Tie this to the menu review workflow already in progress. Great for a \"behind the menu\" blog post showing how we develop new items.\n\n**Fresh Bread** — Evergreen content. A no-knead recipe post will drive steady organic traffic for months.\n\n**Gourmet Popcorn** — Fun, low-effort social content. Three flavor variations = carousel post.\n\nWant me to propose specific content pieces with timing?",
+      "timestamp": "2026-04-01T09:05:00.000Z",
+      "agentId": "jessica"
+    },
+    {
+      "id": "msg-sm-003",
+      "role": "user",
+      "content": "Yes, hit me with proposals. Prioritize the bacon and smoothie first — those are the most photogenic. Then we can plan the rest.",
+      "timestamp": "2026-04-01T09:10:00.000Z"
+    },
+    {
+      "id": "msg-sm-004",
+      "role": "assistant",
+      "content": "Here's my first proposal — the anchor piece for the whole campaign:\n\n**Million Dollar Bacon Recipe Blog Post**\nFull recipe with hero image, step-by-step photos, and a \"why brown sugar works\" explainer section. Conversational tone. Pixel handles the photography. Target publish April 10.\n\nThis becomes the hub that other content links back to.",
+      "timestamp": "2026-04-01T09:12:00.000Z",
+      "agentId": "jessica",
+      "proposalIds": ["proposal-sm-001"]
+    },
+    {
+      "id": "msg-sm-005",
+      "role": "user",
+      "content": "Approved. What about the smoothie?",
+      "timestamp": "2026-04-01T09:15:00.000Z"
+    },
+    {
+      "id": "msg-sm-006",
+      "role": "assistant",
+      "content": "**Sunrise Smoothie Instagram Post**\nSingle hero image showing the layered colors — mango on bottom, strawberry middle, berry top. Recipe in caption with the layering technique. Energetic, morning-vibes tone. Pixel shoots this one backlit for that golden glow.\n\nPublish April 8, two days before the bacon blog drops. Builds anticipation.",
+      "timestamp": "2026-04-01T09:17:00.000Z",
+      "agentId": "jessica",
+      "proposalIds": ["proposal-sm-002"]
+    },
+    {
+      "id": "msg-sm-007",
+      "role": "user",
+      "content": "Great. Now what about video? The bacon has potential there.",
+      "timestamp": "2026-04-01T09:20:00.000Z"
+    },
+    {
+      "id": "msg-sm-008",
+      "role": "assistant",
+      "content": "Absolutely. Here's the pitch:\n\n**Million Dollar Bacon — 60 Second Reel**\nShort-form vertical video. Overhead shot of raw bacon hitting the sheet pan, sugar mixture close-up, time-lapse in the oven, pull shot of the finished product with that crackly glaze. End card: \"Recipe on the blog.\"\n\nRolo handles the edit. We can repurpose the same footage for TikTok and YouTube Shorts. One shoot, three platforms.",
+      "timestamp": "2026-04-01T09:22:00.000Z",
+      "agentId": "jessica",
+      "proposalIds": ["proposal-sm-003"]
+    },
+    {
+      "id": "msg-sm-009",
+      "role": "user",
+      "content": "I like that. Let's also get something for the popcorn — it's a quick win for social.",
+      "timestamp": "2026-04-01T09:25:00.000Z"
+    },
+    {
+      "id": "msg-sm-010",
+      "role": "assistant",
+      "content": "Quick and fun:\n\n**Gourmet Popcorn Three Ways — Carousel Post**\nThree slides, one per flavor: Rosemary Parmesan, Smoky Chili Lime, Honey Sriracha. Clean overhead shots on a dark background. Swipe-through format with recipe on each slide.\n\nThis is a same-day turnaround piece. Pixel can shoot and I can write the captions in a single afternoon. Low effort, high engagement — carousels consistently outperform single images.",
+      "timestamp": "2026-04-01T09:27:00.000Z",
+      "agentId": "jessica",
+      "proposalIds": ["proposal-sm-004"]
+    },
+    {
+      "id": "msg-sm-011",
+      "role": "user",
+      "content": "Love it. And the bread — let's do a blog post for that too. Evergreen content is exactly what we need.",
+      "timestamp": "2026-04-01T09:30:00.000Z"
+    },
+    {
+      "id": "msg-sm-012",
+      "role": "assistant",
+      "content": "Perfect closer for the campaign:\n\n**No-Knead Artisan Bread Recipe**\nDetailed blog post with overnight timing, step-by-step photos of the dough at each stage, and a \"troubleshooting\" FAQ section. Educational tone. This is the kind of post that ranks well on Google for months — \"no knead bread recipe overnight\" gets 40K+ monthly searches.\n\nPublish last in the sequence. It's the slow burn that keeps driving traffic long after the campaign peaks.\n\nSo the full sequence would be:\n1. Apr 8 — Smoothie IG post (builds buzz)\n2. Apr 9 — Popcorn carousel (quick engagement)\n3. Apr 10 — Bacon blog + Reel (main event)\n4. Apr 14 — Bread blog (evergreen anchor)\n\nWant me to build a plan from all five proposals?",
+      "timestamp": "2026-04-01T09:32:00.000Z",
+      "agentId": "jessica",
+      "proposalIds": ["proposal-sm-005"]
+    },
+    {
+      "id": "msg-sm-013",
+      "role": "user",
+      "content": "That sequence is perfect. Build the plan.",
+      "timestamp": "2026-04-01T09:35:00.000Z"
+    },
+    {
+      "id": "msg-sm-014",
+      "role": "assistant",
+      "content": "Plan created: **Spring Menu Launch**. Five deliverables across blog, Instagram, and video — all sequenced for maximum impact over two weeks. You'll get review prompts as each draft comes in.\n\nI've kicked off prep for the smoothie and popcorn pieces since those have the shortest lead times. Bacon blog and Reel are queued for April 5 start. Bread post starts April 10.",
+      "timestamp": "2026-04-01T09:37:00.000Z",
+      "agentId": "jessica"
+    }
+  ],
+  "proposals": [
+    {
+      "id": "proposal-sm-001",
+      "messageId": "msg-sm-004",
+      "revision": 1,
+      "agentId": "jessica",
+      "title": "Million Dollar Bacon — Blog Recipe",
+      "targetDate": "2026-04-10",
+      "brief": "Full recipe blog post with hero image, step-by-step method, and serving suggestions. Conversational tone. Hub piece for the campaign.",
+      "suggestedChannels": ["blog"],
+      "status": "approved",
+      "planId": "plan-spring-launch"
+    },
+    {
+      "id": "proposal-sm-002",
+      "messageId": "msg-sm-006",
+      "revision": 1,
+      "agentId": "jessica",
+      "title": "Sunrise Smoothie — Instagram Post",
+      "targetDate": "2026-04-08",
+      "brief": "Single hero image of layered smoothie with recipe in caption. Backlit, golden morning energy. Builds anticipation before the bacon blog.",
+      "suggestedChannels": ["instagram"],
+      "status": "approved",
+      "planId": "plan-spring-launch"
+    },
+    {
+      "id": "proposal-sm-003",
+      "messageId": "msg-sm-008",
+      "revision": 1,
+      "agentId": "jessica",
+      "title": "Million Dollar Bacon — 60s Reel",
+      "targetDate": "2026-04-10",
+      "brief": "Short-form vertical video: overhead bacon prep, sugar close-up, oven time-lapse, finish pull shot. Repurpose across IG Reels, TikTok, YT Shorts.",
+      "suggestedChannels": ["instagram", "tiktok"],
+      "status": "approved",
+      "planId": "plan-spring-launch"
+    },
+    {
+      "id": "proposal-sm-004",
+      "messageId": "msg-sm-010",
+      "revision": 1,
+      "agentId": "jessica",
+      "title": "Gourmet Popcorn Three Ways — Carousel",
+      "targetDate": "2026-04-09",
+      "brief": "Three-slide carousel: Rosemary Parmesan, Smoky Chili Lime, Honey Sriracha. Clean overhead shots, recipe on each slide. Quick turnaround.",
+      "suggestedChannels": ["instagram"],
+      "status": "approved",
+      "planId": "plan-spring-launch"
+    },
+    {
+      "id": "proposal-sm-005",
+      "messageId": "msg-sm-012",
+      "revision": 1,
+      "agentId": "jessica",
+      "title": "No-Knead Artisan Bread — Blog Recipe",
+      "targetDate": "2026-04-14",
+      "brief": "Evergreen blog post with overnight method, step-by-step dough photos, and troubleshooting FAQ. SEO play targeting 40K+ monthly searches.",
+      "suggestedChannels": ["blog"],
+      "status": "approved",
+      "planId": "plan-spring-launch"
+    }
+  ]
+}

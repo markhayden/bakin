@@ -142,9 +142,11 @@ async function main(): Promise<void> {
     console.log(`[mock] Message sent to ${channel}:${target}: ${message.slice(0, 100)}`)
   } else if (command === 'gateway' && subcommand === 'restart') {
     console.log('[mock] Gateway restart acknowledged')
+  } else if (command === 'models' && subcommand === 'list') {
+    process.stdout.write(JSON.stringify([]))
   } else {
     console.error(`Unknown command: ${command} ${subcommand || ''}`)
-    console.error('Supported: cron (list|add|edit|rm|run), message send, gateway restart')
+    console.error('Supported: cron (list|add|edit|rm|run), message send, gateway restart, models list')
     process.exit(1)
   }
 }

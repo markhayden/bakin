@@ -1,0 +1,10 @@
+{
+  "agent": "pixel",
+  "taskId": "task-ip-001",
+  "created": "2026-04-04T08:20:00Z",
+  "type": "images",
+  "description": "Tropical sunrise smoothie with mango and berry layers",
+  "tags": ["food", "smoothie", "beverage"],
+  "source": "agent",
+  "originalFilename": "sunrise-smoothie.png"
+}

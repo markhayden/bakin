@@ -1,0 +1,9 @@
+{
+  "agent": "jessica",
+  "taskId": null,
+  "created": "2026-04-07T10:30:00Z",
+  "type": "text",
+  "description": "Million dollar candied bacon recipe",
+  "tags": ["recipe", "bacon", "brunch"],
+  "source": "agent"
+}

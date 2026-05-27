@@ -9,6 +9,12 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'http'
 import { getChatMode, getGatewayPort, getToolMode } from './env'
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- avoid @types/ws dev dependency for mock-only code
+const { WebSocketServer } = require('ws') as { WebSocketServer: new (opts: { noServer: boolean }) => WsServer }
+
+interface WsClient { send(data: string): void; on(event: string, fn: (data: Buffer) => void): void; terminate(): void }
+interface WsServer { handleUpgrade(req: IncomingMessage, socket: unknown, head: Buffer, cb: (ws: WsClient) => void): void; on(event: string, fn: (ws: WsClient) => void): void; emit(event: string, ...args: unknown[]): void; clients: Set<WsClient>; close(): void }
+
 export interface ImitationCrabGateway {
   port: number
   url: string
@@ -21,13 +27,10 @@ export interface StartGatewayOptions {
 
 // Agent name lookup for canned responses
 const AGENT_NAMES: Record<string, string> = {
-  main: 'Crab',
+  main: 'Margo',
   pixel: 'Pixel',
   rolo: 'Rolo',
-  chef: 'Chef',
-  explorer: 'Explorer',
-  trainer: 'Trainer',
-  coach: 'Coach',
+  jessica: 'Jessica',
   patch: 'Patch',
 }
 
@@ -174,6 +177,52 @@ export function startGateway(port = getGatewayPort(), options: StartGatewayOptio
       })
     })
 
+    const wss = new WebSocketServer({ noServer: true })
+
+    server.on('upgrade', (req, socket, head) => {
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit('connection', ws, req)
+      })
+    })
+
+    wss.on('connection', (ws: WsClient) => {
+      console.log(`${timestamp()} WS connected`)
+      ws.send(JSON.stringify({
+        type: 'event',
+        event: 'connect.challenge',
+        payload: { nonce: 'imitation-crab' },
+      }))
+
+      ws.on('message', (raw: Buffer) => {
+        let frame: { id?: string; method?: string; params?: Record<string, unknown> }
+        try {
+          frame = JSON.parse(raw.toString())
+        } catch {
+          return
+        }
+        const id = typeof frame.id === 'string' ? frame.id : ''
+        const method = typeof frame.method === 'string' ? frame.method : ''
+        const params = frame.params ?? {}
+        handleGatewayRpcRequest(method, params)
+          .then((response) => {
+            ws.send(JSON.stringify({
+              type: 'res',
+              id,
+              ok: response.ok,
+              ...(response.ok ? { payload: response.payload } : { error: response.error }),
+            }))
+          })
+          .catch((err) => {
+            ws.send(JSON.stringify({
+              type: 'res',
+              id,
+              ok: false,
+              error: { message: err instanceof Error ? err.message : String(err) },
+            }))
+          })
+      })
+    })
+
     server.on('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE') {
         console.error(`[gateway] Port ${port} is already in use`)
@@ -186,6 +235,8 @@ export function startGateway(port = getGatewayPort(), options: StartGatewayOptio
     const close = async (): Promise<void> => {
       process.off('SIGINT', shutdown)
       process.off('SIGTERM', shutdown)
+      for (const client of wss.clients) client.terminate()
+      wss.close()
       if (!server.listening) return
       await new Promise<void>((closeResolve, closeReject) => {
         server.close((err) => {

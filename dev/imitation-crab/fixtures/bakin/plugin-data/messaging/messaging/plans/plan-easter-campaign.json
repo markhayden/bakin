@@ -1,0 +1,25 @@
+{
+  "id": "plan-easter-campaign",
+  "title": "Easter Dessert Campaign",
+  "brief": "Seasonal dessert roundup blog post with five spring picks, published before Easter weekend.",
+  "targetDate": "2026-04-05",
+  "agent": "jessica",
+  "status": "done",
+  "sourceSessionId": "session-easter",
+  "campaign": "Easter 2026",
+  "channels": [
+    {
+      "id": "ch-blog-easter",
+      "channel": "blog",
+      "contentType": "blog",
+      "publishAt": "2026-04-05T14:00:00Z",
+      "prepStartAt": "2026-03-30T09:00:00Z",
+      "agent": "jessica",
+      "tone": "inspiring",
+      "title": "Easter Dessert Roundup: Five Spring Picks",
+      "brief": "Curated roundup of five Easter desserts ranging from easy to advanced, with a shared shopping list."
+    }
+  ],
+  "createdAt": "2026-03-28T10:15:00.000Z",
+  "updatedAt": "2026-04-05T16:00:00.000Z"
+}

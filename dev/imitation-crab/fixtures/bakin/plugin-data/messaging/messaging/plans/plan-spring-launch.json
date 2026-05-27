@@ -1,0 +1,36 @@
+{
+  "id": "plan-spring-launch",
+  "title": "Spring Menu Launch",
+  "brief": "Two-week content rollout for spring menu items: million dollar bacon blog post and sunrise smoothie Instagram image.",
+  "targetDate": "2026-04-12",
+  "agent": "jessica",
+  "status": "in_prep",
+  "sourceSessionId": "session-spring-menu",
+  "campaign": "Spring 2026",
+  "channels": [
+    {
+      "id": "ch-blog-bacon",
+      "channel": "blog",
+      "contentType": "blog",
+      "publishAt": "2026-04-10T16:00:00Z",
+      "prepStartAt": "2026-04-05T09:00:00Z",
+      "agent": "jessica",
+      "tone": "conversational",
+      "title": "Million Dollar Bacon Recipe",
+      "brief": "Full recipe post with hero image, ingredient list, step-by-step method, and serving suggestions. Emphasize the sweet-spicy contrast."
+    },
+    {
+      "id": "ch-ig-smoothie",
+      "channel": "instagram",
+      "contentType": "image",
+      "publishAt": "2026-04-08T11:00:00Z",
+      "prepStartAt": "2026-04-06T09:00:00Z",
+      "agent": "jessica",
+      "tone": "energetic",
+      "title": "Sunrise Smoothie",
+      "brief": "Layered tropical smoothie image with recipe in caption. Bright, colorful, morning energy vibe."
+    }
+  ],
+  "createdAt": "2026-04-01T09:15:00.000Z",
+  "updatedAt": "2026-04-05T10:00:00.000Z"
+}
