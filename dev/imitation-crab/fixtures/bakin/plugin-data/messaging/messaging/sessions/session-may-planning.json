@@ -1,0 +1,39 @@
+{
+  "id": "session-may-planning",
+  "agentId": "jessica",
+  "title": "May Content Calendar Planning",
+  "scope": "Plan the May content schedule — Mother's Day, farmers market season, summer grilling preview",
+  "status": "active",
+  "createdAtPlanIds": ["plan-may-content"],
+  "createdAt": "2026-04-20T10:00:00.000Z",
+  "updatedAt": "2026-04-20T10:15:00.000Z",
+  "messages": [
+    {
+      "id": "msg-mp-001",
+      "role": "user",
+      "content": "Let's map out May. I want to keep the 2-3 posts per week cadence. Mother's Day is May 10 — we should have something for that. Farmers market season starts too.",
+      "timestamp": "2026-04-20T10:00:00.000Z"
+    },
+    {
+      "id": "msg-mp-002",
+      "role": "assistant",
+      "content": "Here's my May framework:\n\n**Week 1 (May 1-4):** Kick off with a \"May Menu Kickoff\" blog post previewing the month's highlights. Follow with a Farmers Market Guide on Instagram.\n\n**Week 2 (May 5-10):** Mother's Day Brunch Guide (blog) — publish by May 8 so people have time to plan. This is our biggest traffic opportunity of the month.\n\n**Week 3 (May 11-15):** Grilled Salmon Recipe (blog) transitions into summer grilling content. Cookie Baking Reel (Instagram) for a sweet midweek pick-me-up.\n\nI'll build this into a plan with deliverables and lead times for each piece.",
+      "timestamp": "2026-04-20T10:05:00.000Z",
+      "agentId": "jessica"
+    },
+    {
+      "id": "msg-mp-003",
+      "role": "user",
+      "content": "That works. Build the plan and make sure Pixel is lined up for the photography.",
+      "timestamp": "2026-04-20T10:10:00.000Z"
+    },
+    {
+      "id": "msg-mp-004",
+      "role": "assistant",
+      "content": "Plan created: **May Content Calendar** with 6 deliverables across blog and Instagram. Pixel is tagged for all image assets. Lead times are staggered so we're never prepping more than 2 pieces simultaneously.",
+      "timestamp": "2026-04-20T10:15:00.000Z",
+      "agentId": "jessica"
+    }
+  ],
+  "proposals": []
+}

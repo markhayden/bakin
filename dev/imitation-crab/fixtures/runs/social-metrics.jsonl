@@ -1,0 +1,4 @@
+{"runId":"run-sm-001","jobId":"social-metrics","timestamp":"2026-04-07T14:00:02Z","status":"success","duration":28300,"taskId":"task-sm-001"}
+{"runId":"run-sm-002","jobId":"social-metrics","timestamp":"2026-04-06T14:00:01Z","status":"success","duration":31200,"taskId":"task-sm-002"}
+{"runId":"run-sm-003","jobId":"social-metrics","timestamp":"2026-04-05T14:00:03Z","status":"success","duration":26700,"taskId":"task-sm-003"}
+{"runId":"run-sm-004","jobId":"social-metrics","timestamp":"2026-04-04T14:00:01Z","status":"failure","duration":5400,"error":"Instagram API rate limit exceeded"}
