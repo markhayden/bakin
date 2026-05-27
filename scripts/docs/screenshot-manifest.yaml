@@ -165,3 +165,44 @@ screenshots:
     delay: 500
     selector: "[data-slot='sheet-content']"
     cropHeight: 0.5
+
+  # ── using/messaging ───────────────────────────────────────────────
+
+  - id: calendar
+    doc: using/messaging
+    route: /messaging/plans
+    caption: "The content calendar with status, agent, content type, channel, and search filters above."
+    waitFor: "text=Plans"
+    delay: 1500
+    selector: "main.flex-1"
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: plan-workspace
+    doc: using/messaging
+    route: /messaging/plans
+    caption: "A Plan workspace with timeline, tasks, brainstorm context, and content-piece review."
+    waitFor: "text=Plans"
+    actions:
+      - click: "text=Spring Menu Launch"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.85
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: brainstorm
+    doc: using/messaging
+    route: /messaging/brainstorm
+    caption: "A brainstorm session with chat and Plan proposal review."
+    waitFor: "text=Brainstorm"
+    actions:
+      - click: "text=Spring Menu Content Planning"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.85
+    viewport:
+      width: 1920
+      height: 900
