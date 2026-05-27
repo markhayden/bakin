@@ -8,7 +8,7 @@ Visual roster of your agents. Who reports to whom, who's online, what each one k
 The runtime owns the agents themselves. Bakin reads them, edits them, never copies them.
 
 <figure class="screenshot-frame">
-  <figcaption>The roster with agent cards arranged by reporting and team structure.</figcaption>
+  <img src="/docs/media/screenshots/using-team--roster.png" alt="The roster with agent cards arranged by reporting and team structure." loading="lazy">
 </figure>
 
 ## Roster
@@ -20,7 +20,7 @@ Each agent is a card connected by reporting and team structure. Cards show name,
 ## Profile
 
 <figure class="screenshot-frame">
-  <figcaption>The profile with tabs across the top, agent identity on the left, edits land in the runtime when you save.</figcaption>
+  <img src="/docs/media/screenshots/using-team--profile.png" alt="The profile with tabs across the top, agent identity on the left, edits land in the runtime when you save." loading="lazy">
 </figure>
 
 Click an agent and their profile opens. Ten tabs across the top:

@@ -306,3 +306,30 @@ screenshots:
     viewport:
       width: 1920
       height: 900
+
+  # ── using/team ────────────────────────────────────────────────────
+
+  - id: roster
+    doc: using/team
+    route: /team
+    caption: "The roster with agent cards arranged by reporting and team structure."
+    waitFor: "text=Team"
+    delay: 2000
+    selector: "main.flex-1"
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: profile
+    doc: using/team
+    route: /team
+    caption: "The profile with tabs across the top, agent identity on the left, edits land in the runtime when you save."
+    waitFor: "text=Team"
+    actions:
+      - click: "text=pixel"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.8
+    viewport:
+      width: 1920
+      height: 900
