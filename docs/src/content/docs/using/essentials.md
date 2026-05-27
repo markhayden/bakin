@@ -50,6 +50,7 @@ Agent kits are projected, not copied. The runtime home directory stays the sourc
 ## Activity Feed
 
 <figure class="screenshot-frame">
+  <img src="/docs/media/screenshots/using-essentials--activity-drawer.png" alt="The live activity drawer streaming real-time agent events." loading="lazy">
   <figcaption>The live activity drawer streaming real-time agent events.</figcaption>
 </figure>
 
@@ -66,6 +67,7 @@ Toggle from the header to open the panel. For us, this baby is always open.
 </div>
 
 <figure class="screenshot-frame">
+  <img src="/docs/media/screenshots/using-essentials--search-results.png" alt="The search bar with full-text and semantic results across tasks, projects, memory, and assets." loading="lazy">
   <figcaption>The search bar with full-text and semantic results across tasks, projects, memory, and assets.</figcaption>
 </figure>
 
@@ -89,6 +91,7 @@ This is the main menu. All apps have one, but this one is ours. Self-explanatory
 ## Dispatch Ticker
 
 <figure class="screenshot-frame">
+  <img src="/docs/media/screenshots/using-essentials--dispatch-ticker.png" alt="The dispatch ticker counting down to the next cycle." loading="lazy">
   <figcaption>The dispatch ticker counting down to the next cycle.</figcaption>
 </figure>
 
@@ -105,6 +108,7 @@ bakin dispatch       # fire dispatch immediately
 ## X-Ray
 
 <figure class="screenshot-frame">
+  <img src="/docs/media/screenshots/using-essentials--xray-mode.png" alt="X-Ray on, surfacing extra context across the activity feed and search." loading="lazy">
   <figcaption>X-Ray on, surfacing extra context across the activity feed and search.</figcaption>
 </figure>
 

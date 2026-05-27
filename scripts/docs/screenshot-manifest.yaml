@@ -1,0 +1,53 @@
+settings:
+  baseUrl: "http://127.0.0.1:3737"
+  defaultViewport:
+    width: 1280
+    height: 800
+  deviceScaleFactor: 2
+  colorScheme: "dark"
+  outputDir: "docs/public/media/screenshots"
+
+screenshots:
+  # ── using/essentials ──────────────────────────────────────────────
+
+  - id: activity-drawer
+    doc: using/essentials
+    route: /
+    caption: "The live activity drawer streaming real-time agent events."
+    waitFor: "text=Live Activity"
+    delay: 1500
+    selector: "div[class*='w-[360px]']"
+
+  - id: search-results
+    doc: using/essentials
+    route: /memory
+    caption: "The search bar with full-text and semantic results across tasks, projects, memory, and assets."
+    waitFor: "input[placeholder*='Search across']"
+    delay: 1500
+
+  - id: dispatch-ticker
+    doc: using/essentials
+    route: /
+    caption: "The dispatch ticker counting down to the next cycle."
+    waitFor: "button[title='Run dispatch now']"
+    selector: "header"
+    delay: 500
+
+  - id: xray-mode
+    doc: using/essentials
+    route: /assets?q=baked+goods
+    caption: "X-Ray on, surfacing extra context across the activity feed and search."
+    waitFor: ".asset-card, [class*='grid']"
+    debug: true
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.75
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: alerting
+    doc: using/essentials
+    route: /
+    caption: "A browser notification surfacing a blocked task, plus the same alert arriving in a connected Discord channel."
+    skip: true
