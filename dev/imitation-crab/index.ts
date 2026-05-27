@@ -68,7 +68,7 @@ async function main(): Promise<void> {
     console.log('[bakin] Starting dev server...')
     bakinProcess = spawn('bun', ['run', 'scripts/dev.ts'], {
       cwd: PROJECT_ROOT,
-      env: { ...env, OPENCLAW_BASE_URL: getGatewayUrl() },
+      env: { ...env, OPENCLAW_BASE_URL: getGatewayUrl(), BAKIN_SEED_USAGE: '1' },
       stdio: 'inherit',
     })
 

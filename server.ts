@@ -731,6 +731,10 @@ const eventBus = new BakinEventBus(broadcast)
       } finally {
         doctor.start(CONTENT_DIR, process.cwd())
       }
+
+      if (process.env.BAKIN_SEED_USAGE === '1') {
+        import('./dev/imitation-crab/usage-seed').then(m => m.seedMockUsage()).catch(() => {})
+      }
     })()
   })
 

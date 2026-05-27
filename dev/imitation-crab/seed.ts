@@ -63,8 +63,9 @@ export function seed(force = false): void {
     }
   }
 
-  // Seed avatar images for all agents
+  // Seed avatar images and session transcripts for all agents
   seedAvatars(mockHome)
+  seedSessionJsonl(mockHome)
 
   // Seed Bakin-owned task-store data.
   seedTasks(mockHome)
@@ -160,6 +161,19 @@ function seedAvatars(mockHome: string): void {
     cpSync(src, join(destDir, 'avatar.jpg'))
   }
   console.log(`[seed] Avatars seeded for ${agents.length} agents`)
+}
+
+function seedSessionJsonl(mockHome: string): void {
+  const sessionsFixtures = join(FIXTURES_DIR, 'sessions')
+  const agents = ['main', 'pixel', 'rolo', 'jessica', 'patch']
+  for (const agent of agents) {
+    const src = join(sessionsFixtures, agent, 'latest.jsonl')
+    if (!existsSync(src)) continue
+    const destDir = join(mockHome, 'agents', agent, 'sessions')
+    mkdirSync(destDir, { recursive: true })
+    cpSync(src, join(destDir, 'latest.jsonl'))
+  }
+  console.log(`[seed] Session transcripts seeded for ${agents.length} agents`)
 }
 
 function seedPluginSymlinks(mockHome: string): void {
