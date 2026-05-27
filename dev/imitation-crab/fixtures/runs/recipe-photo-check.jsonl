@@ -1,0 +1,5 @@
+{"runId":"run-rpc-001","jobId":"recipe-photo-check","timestamp":"2026-04-07T08:00:01Z","status":"success","duration":12400,"taskId":"task-rpc-001"}
+{"runId":"run-rpc-002","jobId":"recipe-photo-check","timestamp":"2026-04-06T20:00:02Z","status":"success","duration":11800,"taskId":"task-rpc-002"}
+{"runId":"run-rpc-003","jobId":"recipe-photo-check","timestamp":"2026-04-06T08:00:01Z","status":"success","duration":13200,"taskId":"task-rpc-003"}
+{"runId":"run-rpc-004","jobId":"recipe-photo-check","timestamp":"2026-04-05T20:00:03Z","status":"failure","duration":3100,"error":"Asset store connection timeout"}
+{"runId":"run-rpc-005","jobId":"recipe-photo-check","timestamp":"2026-04-05T08:00:01Z","status":"success","duration":12900,"taskId":"task-rpc-005"}

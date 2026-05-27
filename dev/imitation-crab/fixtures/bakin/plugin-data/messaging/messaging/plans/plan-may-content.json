@@ -1,0 +1,69 @@
+{
+  "id": "plan-may-content",
+  "title": "May Content Calendar",
+  "brief": "Six-piece content plan for May: menu kickoff, farmers market guide, Mother's Day brunch, grilled salmon, cookie reel, plus late-April carryover.",
+  "targetDate": "2026-05-15",
+  "agent": "jessica",
+  "status": "planning",
+  "sourceSessionId": "session-may-planning",
+  "campaign": "May 2026",
+  "channels": [
+    {
+      "id": "ch-may-kickoff",
+      "channel": "blog",
+      "contentType": "blog",
+      "publishAt": "2026-05-01T16:00:00Z",
+      "prepStartAt": "2026-04-28T09:00:00Z",
+      "agent": "jessica",
+      "tone": "energetic",
+      "title": "May Menu Kickoff",
+      "brief": "Preview of May highlights — new seasonal items, upcoming events, what to expect."
+    },
+    {
+      "id": "ch-farmers-market",
+      "channel": "instagram",
+      "contentType": "image",
+      "publishAt": "2026-05-05T11:00:00Z",
+      "prepStartAt": "2026-05-02T09:00:00Z",
+      "agent": "jessica",
+      "tone": "inspiring",
+      "title": "Farmers Market Guide",
+      "brief": "Seasonal produce guide with what to buy and what's at peak this month."
+    },
+    {
+      "id": "ch-mothers-day",
+      "channel": "blog",
+      "contentType": "blog",
+      "publishAt": "2026-05-08T14:00:00Z",
+      "prepStartAt": "2026-05-04T09:00:00Z",
+      "agent": "jessica",
+      "tone": "inspiring",
+      "title": "Mother's Day Brunch Guide",
+      "brief": "Complete brunch menu with make-ahead tips. Target the gift-givers searching for brunch ideas."
+    },
+    {
+      "id": "ch-salmon",
+      "channel": "blog",
+      "contentType": "blog",
+      "publishAt": "2026-05-12T16:00:00Z",
+      "prepStartAt": "2026-05-08T09:00:00Z",
+      "agent": "jessica",
+      "tone": "educational",
+      "title": "Grilled Salmon with Lemon Dill",
+      "brief": "Summer grilling recipe post. Transition piece from spring to summer content."
+    },
+    {
+      "id": "ch-cookie-reel",
+      "channel": "instagram",
+      "contentType": "video",
+      "publishAt": "2026-05-15T11:00:00Z",
+      "prepStartAt": "2026-05-12T09:00:00Z",
+      "agent": "jessica",
+      "tone": "energetic",
+      "title": "Cookie Baking Reel",
+      "brief": "60-second overhead baking reel. Brown butter technique as the hook."
+    }
+  ],
+  "createdAt": "2026-04-20T10:15:00.000Z",
+  "updatedAt": "2026-04-20T10:15:00.000Z"
+}
