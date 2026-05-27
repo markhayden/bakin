@@ -107,7 +107,7 @@ export default defineConfig({
             { label: 'Memory', slug: 'using/memory' },
             { label: 'Team', slug: 'using/team' },
             { label: 'Models', slug: 'using/models' },
-            { label: 'Git', slug: 'using/git' },
+            { label: 'Development', slug: 'using/git' },
             { label: 'Health', slug: 'using/health' },
             { label: 'Settings', slug: 'using/settings' },
           ],

@@ -8,7 +8,7 @@ What's each agent costing you? Which tool got hammered today? Whose context wind
 Live token counts, session costs, MCP and REST volumes, error rates, plugin status, search-engine state, the full diagnostic sweep. Without Bakin you'd be grepping JSONL transcripts to answer any of it.
 
 <figure class="screenshot-frame">
-  <figcaption>The health dashboard: cost and context cards, usage tabs, doctor results, system status, all in one feed.</figcaption>
+  <img src="/docs/media/screenshots/using-health--dashboard.png" alt="The health dashboard: cost and context cards, usage tabs, doctor results, system status, all in one feed." loading="lazy">
 </figure>
 
 ## Cost and Context
@@ -16,7 +16,7 @@ Live token counts, session costs, MCP and REST volumes, error rates, plugin stat
 Two cards anchor the top of the dashboard side by side. They cover the questions that pile up fastest when you've got a roster running: what each agent is costing you, and whose context is about to overflow. Glance at them on the way past, look closer when something looks off.
 
 <figure class="screenshot-frame">
-  <figcaption>Context usage on the left (tokens in each agent's latest session), runtime-reported cost estimates on the right.</figcaption>
+  <img src="/docs/media/screenshots/using-health--cost-context.png" alt="Context usage on the left (tokens in each agent's latest session), runtime-reported cost estimates on the right." loading="lazy">
 </figure>
 
 <div class="table-light-full table-label-wrap">
@@ -37,7 +37,7 @@ Cache-read tokens cost a fraction of fresh input tokens. That column tells you w
 Three tabs sit below the cost cards, all feeding from the same in-memory recorder. Same activity, sliced three ways. When something looks off in the system, this is usually the first place you'll see it.
 
 <figure class="screenshot-frame">
-  <figcaption>The usage panel: tool, endpoint, and agent tabs, windowed to 5m, 1h, or 24h.</figcaption>
+  <img src="/docs/media/screenshots/using-health--usage-panel.png" alt="The usage panel: tool, endpoint, and agent tabs, windowed to 5m, 1h, or 24h." loading="lazy">
 </figure>
 
 <div class="table-light-full table-label-wrap">
