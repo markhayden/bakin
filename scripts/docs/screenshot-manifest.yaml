@@ -279,3 +279,30 @@ screenshots:
     viewport:
       width: 1920
       height: 900
+
+  # ── using/memory ──────────────────────────────────────────────────
+
+  - id: dashboard
+    doc: using/memory
+    route: /memory
+    caption: "The memory dashboard: tier overview cards on top, search and filters in the middle, a recent feed (or your search hits) below."
+    waitFor: "text=Memory"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.75
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: search
+    doc: using/memory
+    route: /memory
+    caption: "Search across every tier in one ranked list, with the agent strip and tier chips above the results."
+    waitFor: "text=Memory"
+    debug: true
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.75
+    viewport:
+      width: 1920
+      height: 900

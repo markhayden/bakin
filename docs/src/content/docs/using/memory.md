@@ -8,16 +8,12 @@ Your window into everything an agent knows or should know. Sessions, daily notes
 The runtime owns the data, this just shows you what's there.
 
 <figure class="screenshot-frame">
-  <figcaption>The memory dashboard: tier overview cards on top, search and filters in the middle, a recent feed (or your search hits) below.</figcaption>
+  <img src="/docs/media/screenshots/using-memory--dashboard.png" alt="The memory dashboard: tier overview cards on top, search and filters in the middle, a recent feed (or your search hits) below." loading="lazy">
 </figure>
 
 ## Search
 
 Type a query, get ranked hits across every tier in one list. Hybrid scoring (keyword + semantic) so "launch plan" finds the document titled exactly that AND the session where you talked about going to market. Click any row for the full content in a side drawer.
-
-<figure class="screenshot-frame">
-  <figcaption>Search across every tier in one ranked list, with the agent strip and tier chips above the results.</figcaption>
-</figure>
 
 Three filters narrow the result set:
 
