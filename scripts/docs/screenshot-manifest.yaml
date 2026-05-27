@@ -144,10 +144,10 @@ screenshots:
 
   - id: list-view
     doc: using/schedule
-    route: /schedule?view=list
+    route: /schedule
     caption: "The schedule view in list mode, with today/week/month calendar toggles in the header."
-    waitFor: "text=Daily Brief"
-    delay: 1000
+    waitFor: "text=Today"
+    delay: 1500
     selector: "main.flex-1"
     cropHeight: 0.75
     viewport:
