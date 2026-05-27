@@ -66,11 +66,12 @@ interface AgentUsage {
     total: number
   }
   cost: {
-    input: number
-    output: number
-    cacheRead: number
-    cacheWrite: number
-    total: number
+    input: number | null
+    output: number | null
+    cacheRead: number | null
+    cacheWrite: number | null
+    total: number | null
+    source: 'runtime' | 'unavailable'
   }
 }
 
@@ -147,6 +148,13 @@ function formatTokenCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
   return String(n)
+}
+
+function formatRuntimeCost(value: number | null): string {
+  if (value === null) return 'unavailable'
+  if (value === 0) return '$0.00'
+  if (value < 0.01) return `$${value.toFixed(4)}`
+  return `$${value.toFixed(2)}`
 }
 
 function formatDateShort(date: Date): string {
@@ -747,9 +755,11 @@ export function HealthPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
-                <span>Session Cost (est.)</span>
+                <span>Runtime Cost Estimate</span>
                 <Badge variant="secondary" className="font-mono text-xs">
-                  ~${usage.reduce((sum, u) => sum + u.cost.total, 0).toFixed(2)} total
+                  {usage.some((u) => u.cost.total !== null)
+                    ? `~${formatRuntimeCost(usage.reduce((sum, u) => sum + (u.cost.total ?? 0), 0))} reported`
+                    : 'cost unavailable'}
                 </Badge>
               </CardTitle>
             </CardHeader>
@@ -778,8 +788,8 @@ export function HealthPage() {
                     <span className="w-16 text-right font-mono text-xs text-muted-foreground">
                       {formatTokenCount(u.tokens.cacheWrite)}
                     </span>
-                    <span className="w-16 text-right font-mono text-xs font-medium">
-                      ${u.cost.total.toFixed(2)}
+                    <span className={`w-16 text-right font-mono text-xs font-medium ${u.cost.total === null ? 'text-muted-foreground' : ''}`}>
+                      {formatRuntimeCost(u.cost.total)}
                     </span>
                   </div>
                 ))}

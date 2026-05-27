@@ -21,6 +21,15 @@ recordUsage({ kind, name, agent, durationMs, status, meta })
 
 The ring buffer holds 10 000 entries, FIFO-evicted.
 
+## Runtime session usage
+
+Health's context and cost cards do **not** come from the in-memory usage recorder above. They are derived from runtime session JSONL entries via `src/core/agent-usage.ts`, then served by `plugins/health` at `/usage`.
+
+- Token fields (`input`, `output`, `cacheRead`, `cacheWrite`, `totalTokens`) are summed from assistant messages in each agent's latest session.
+- Cost fields are runtime-reported only. Bakin does not map model ids to pricing tables for Health.
+- Missing runtime cost is represented as unavailable, not `$0.00`.
+- Historical token/cost aggregation across multiple sessions is separate follow-up work; the current Health card is latest-session scoped.
+
 ## Reading
 
 | API | Use |

@@ -38,6 +38,46 @@ function jsonResponse(body: unknown): Response {
   })
 }
 
+function setupHealthFetch(options: {
+  usage?: unknown[]
+  searchTables?: unknown[]
+} = {}) {
+  const fetchMock = mock((url: string) => {
+    if (url === '/api/plugins/health/summary') {
+      return Promise.resolve(jsonResponse({
+        doctor: null,
+        errors1h: { total: 0, byKind: { mcp: 0, rest: 0, agent: 0 } },
+        activeSessions: [],
+        upSince: '2026-05-01T00:00:00.000Z',
+        server: { port: 3737, pid: 1, nodeVersion: 'v22.0.0', memoryMB: 512, totalMemoryMB: 4096 },
+      }))
+    }
+    if (url === '/api/plugins/health/registry') {
+      return Promise.resolve(jsonResponse({ plugins: [] }))
+    }
+    if (url === '/api/plugins/health/usage') {
+      return Promise.resolve(jsonResponse(options.usage ?? []))
+    }
+    if (url === '/api/plugins/health/search-status') {
+      return Promise.resolve(jsonResponse({
+        enabled: true,
+        tables: options.searchTables ?? [],
+      }))
+    }
+    if (url.startsWith('/api/plugins/health/usage-feed')) {
+      return Promise.resolve(jsonResponse({
+        totals: { count: 0, errors: 0, errorRate: 0 },
+        topByName: [],
+        byAgent: [],
+        recent: [],
+      }))
+    }
+    return Promise.resolve(jsonResponse({}))
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
+}
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -46,49 +86,52 @@ afterEach(() => {
 
 describe('HealthPage search stats', () => {
   it('renders adapter document counts from the stable documents field', async () => {
-    const fetchMock = mock((url: string) => {
-      if (url === '/api/plugins/health/summary') {
-        return Promise.resolve(jsonResponse({
-          doctor: null,
-          errors1h: { total: 0, byKind: { mcp: 0, rest: 0, agent: 0 } },
-          activeSessions: [],
-          upSince: '2026-05-01T00:00:00.000Z',
-          server: { port: 3737, pid: 1, nodeVersion: 'v22.0.0', memoryMB: 512, totalMemoryMB: 4096 },
-        }))
-      }
-      if (url === '/api/plugins/health/registry') {
-        return Promise.resolve(jsonResponse({ plugins: [] }))
-      }
-      if (url === '/api/plugins/health/usage') {
-        return Promise.resolve(jsonResponse([]))
-      }
-      if (url === '/api/plugins/health/search-status') {
-        return Promise.resolve(jsonResponse({
-          enabled: true,
-          tables: [{
-            table: 'bakin_tasks',
-            pluginId: 'tasks',
-            healthy: true,
-            stats: { table: 'bakin_tasks', documents: 17 },
-          }],
-        }))
-      }
-      if (url.startsWith('/api/plugins/health/usage-feed')) {
-        return Promise.resolve(jsonResponse({
-          totals: { count: 0, errors: 0, errorRate: 0 },
-          topByName: [],
-          byAgent: [],
-          recent: [],
-        }))
-      }
-      return Promise.resolve(jsonResponse({}))
+    const fetchMock = setupHealthFetch({
+      searchTables: [{
+        table: 'bakin_tasks',
+        pluginId: 'tasks',
+        healthy: true,
+        stats: { table: 'bakin_tasks', documents: 17 },
+      }],
     })
-    vi.stubGlobal('fetch', fetchMock)
 
     render(<HealthPage />)
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/plugins/health/search-status'))
     expect(await screen.findByText('bakin_tasks')).toBeDefined()
     expect(screen.getByText('17')).toBeDefined()
+  })
+})
+
+describe('HealthPage runtime cost display', () => {
+  it('separates runtime-reported cost from unavailable cost', async () => {
+    setupHealthFetch({
+      usage: [
+        {
+          agent: 'patch',
+          sessionId: 's1',
+          sessionStarted: '2026-05-26T10:00:00.000Z',
+          model: 'claude-4',
+          messages: 2,
+          tokens: { input: 1000, output: 500, cacheRead: 200, cacheWrite: 0, total: 1700 },
+          cost: { input: 0.01, output: 0.02, cacheRead: 0.001, cacheWrite: 0, total: 0.031, source: 'runtime' },
+        },
+        {
+          agent: 'local',
+          sessionId: 's2',
+          sessionStarted: '2026-05-26T11:00:00.000Z',
+          model: 'local-model',
+          messages: 1,
+          tokens: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, total: 150 },
+          cost: { input: null, output: null, cacheRead: null, cacheWrite: null, total: null, source: 'unavailable' },
+        },
+      ],
+    })
+
+    render(<HealthPage />)
+
+    expect(await screen.findByText('Runtime Cost Estimate')).toBeDefined()
+    expect(screen.getByText('~$0.03 reported')).toBeDefined()
+    expect(screen.getByText('unavailable')).toBeDefined()
   })
 })
