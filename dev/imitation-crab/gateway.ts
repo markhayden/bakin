@@ -7,8 +7,13 @@
  *   RPC  agent
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'http'
-import { WebSocketServer, type WebSocket } from 'ws'
 import { getChatMode, getGatewayPort, getToolMode } from './env'
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- avoid @types/ws dev dependency for mock-only code
+const { WebSocketServer } = require('ws') as { WebSocketServer: new (opts: { noServer: boolean }) => WsServer }
+
+interface WsClient { send(data: string): void; on(event: string, fn: (data: Buffer) => void): void; terminate(): void }
+interface WsServer { handleUpgrade(req: IncomingMessage, socket: unknown, head: Buffer, cb: (ws: WsClient) => void): void; on(event: string, fn: (ws: WsClient) => void): void; emit(event: string, ...args: unknown[]): void; clients: Set<WsClient>; close(): void }
 
 export interface ImitationCrabGateway {
   port: number
@@ -180,7 +185,7 @@ export function startGateway(port = getGatewayPort(), options: StartGatewayOptio
       })
     })
 
-    wss.on('connection', (ws: WebSocket) => {
+    wss.on('connection', (ws: WsClient) => {
       console.log(`${timestamp()} WS connected`)
       ws.send(JSON.stringify({
         type: 'event',
