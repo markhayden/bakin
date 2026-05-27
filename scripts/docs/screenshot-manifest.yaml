@@ -139,3 +139,29 @@ screenshots:
     viewport:
       width: 1920
       height: 900
+
+  # ── using/schedule ────────────────────────────────────────────────
+
+  - id: list-view
+    doc: using/schedule
+    route: /schedule?view=list
+    caption: "The schedule view in list mode, with today/week/month calendar toggles in the header."
+    waitFor: "text=Daily Brief"
+    delay: 1000
+    selector: "main.flex-1"
+    cropHeight: 0.75
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: job-form
+    doc: using/schedule
+    route: /schedule
+    caption: "The job form with cron expression, agent picker, task title and prompt, and optional workflow."
+    waitFor: "text=Schedule"
+    actions:
+      - click: "button:has-text('New Job')"
+      - waitFor: "[data-slot='sheet-content']"
+    delay: 500
+    selector: "[data-slot='sheet-content']"
+    cropHeight: 0.5
