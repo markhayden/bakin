@@ -368,32 +368,18 @@ screenshots:
     caption: "The health dashboard: cost and context cards, usage tabs, doctor results, system status, all in one feed."
     waitFor: "text=System Health"
     delay: 1500
-    selector: "main.flex-1"
-    cropHeight: 0.5
+    cropHeight: 0.55
     viewport:
       width: 1920
       height: 900
 
-  - id: cost-context
-    doc: using/health
-    route: /health
-    caption: "Context usage on the left (tokens in each agent's latest session), runtime-reported cost estimates on the right."
-    waitFor: "text=Context Usage"
-    delay: 1500
-    selector: "main.flex-1"
-    cropLeft: 0.02
-    viewport:
-      width: 1920
-      height: 1200
-
   - id: usage-panel
     doc: using/health
-    route: /health
+    route: /health?usage_tab=endpoints
     caption: "The usage panel: tool, endpoint, and agent tabs, windowed to 5m, 1h, or 24h."
-    waitFor: "text=Tool Usage"
+    waitFor: "text=Endpoint Usage"
     delay: 1500
-    selector: "main.flex-1"
-    cropHeight: 0.55
+    selector: "[data-slot='card']:has-text('Endpoint Usage')"
     viewport:
       width: 1920
       height: 900

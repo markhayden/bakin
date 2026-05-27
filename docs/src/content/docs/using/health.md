@@ -15,10 +15,6 @@ Live token counts, session costs, MCP and REST volumes, error rates, plugin stat
 
 Two cards anchor the top of the dashboard side by side. They cover the questions that pile up fastest when you've got a roster running: what each agent is costing you, and whose context is about to overflow. Glance at them on the way past, look closer when something looks off.
 
-<figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-health--cost-context.png" alt="Context usage on the left (tokens in each agent's latest session), runtime-reported cost estimates on the right." loading="lazy">
-</figure>
-
 <div class="table-light-full table-label-wrap">
 
 | Card | What it answers |
