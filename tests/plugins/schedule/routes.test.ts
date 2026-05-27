@@ -82,6 +82,7 @@ const mockMergedJobs: MergedJob[] = []
 const mockRuntimeCronJobs: CronJob[] = []
 const mockRuns: RunEntry[] = []
 let lastRunOverride: RunEntry | null = null
+let mockCronRemoveError: Error | null = null
 
 function mergedJobToCronJob(job: MergedJob): CronJob {
   return {
@@ -140,7 +141,7 @@ function runEntryToCronRun(run: RunEntry): CronRun {
 
 const mockCronCreate = mock(async (input: CreateCronJobInput): Promise<CronJob> => {
   const job = {
-    id: input.id ?? 'new-job-id',
+    id: input.id === 'plugin-nightly-sync' ? 'runtime-plugin-nightly-sync' : input.id ?? 'new-job-id',
     name: input.name,
     schedule: input.schedule,
     command: input.command,
@@ -165,6 +166,7 @@ const mockCronUpdate = mock(async (id: string, patch: UpdateCronJobInput): Promi
   return next
 })
 const mockCronRemove = mock(async (id: string) => {
+  if (mockCronRemoveError) throw mockCronRemoveError
   const index = mockRuntimeCronJobs.findIndex(job => job.id === id)
   if (index !== -1) mockRuntimeCronJobs.splice(index, 1)
 })
@@ -319,6 +321,7 @@ beforeEach(() => {
   mockRuntimeCronJobs.length = 0
   mockRuns.length = 0
   lastRunOverride = null
+  mockCronRemoveError = null
   // Reset sidecar on disk
   writeFileSync(join(sidecarDir, 'sidecar.json'), JSON.stringify({ version: 1, jobs: {} }))
 })
@@ -570,6 +573,21 @@ describe('schedule routes', () => {
       expect(mockCronUpdate).toHaveBeenCalledWith('job-123', { schedule: '0 10 * * *' })
     })
 
+    it('preserves the schedule timezone when the cron expression changes', async () => {
+      upsertJob(makeMeta({ jobId: 'job-tz', tz: 'America/Denver' }))
+
+      const route = findRoute(plugin.routes, 'PUT', '/:jobId')!
+      await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'job-tz' },
+        body: { schedule: '0 10 * * *' },
+      })
+
+      expect(mockCronUpdate).toHaveBeenCalledWith('job-tz', expect.objectContaining({
+        schedule: '0 10 * * *',
+        metadata: expect.objectContaining({ tz: 'America/Denver' }),
+      }))
+    })
+
     it('calls runtime cron update when name is changed', async () => {
       upsertJob(makeMeta({ jobId: 'job-123' }))
 
@@ -723,6 +741,23 @@ describe('schedule routes', () => {
       expect(body.ok).toBe(true)
       expect(mockCronRemove).toHaveBeenCalledWith('job-del')
       expect(getJob('job-del')).toBeNull()
+      expect(plugin.ctx.search.remove).toHaveBeenCalledWith('job-del')
+    })
+
+    it('cleans up Bakin records when the runtime cron job is already gone', async () => {
+      upsertJob(makeMeta({ jobId: 'job-stale-del' }))
+      mockCronRemoveError = new Error('Cron job not found: job-stale-del')
+
+      const route = findRoute(plugin.routes, 'DELETE', '/:jobId')!
+      const { status, body } = await callRoute(route, plugin.ctx, {
+        searchParams: { jobId: 'job-stale-del' },
+        body: {},
+      })
+
+      expect(status).toBe(200)
+      expect(body.ok).toBe(true)
+      expect(getJob('job-stale-del')).toBeNull()
+      expect(plugin.ctx.search.remove).toHaveBeenCalledWith('job-stale-del')
     })
 
     it('deletes a job when clients send no DELETE body', async () => {
@@ -1225,6 +1260,21 @@ describe('schedule exec tools', () => {
       expect(mockCronUpdate).toHaveBeenCalledWith('job-upd-sched', { schedule: '0 10 * * *' })
     })
 
+    it('preserves timezone when the exec tool changes a schedule', async () => {
+      upsertJob(makeMeta({ jobId: 'job-upd-tz', tz: 'America/Denver' }))
+
+      const tool = findTool(plugin.execTools, 'bakin_exec_schedule_update')!
+      await callTool(tool, {
+        jobId: 'job-upd-tz',
+        schedule: '0 10 * * *',
+      })
+
+      expect(mockCronUpdate).toHaveBeenCalledWith('job-upd-tz', expect.objectContaining({
+        schedule: '0 10 * * *',
+        metadata: expect.objectContaining({ tz: 'America/Denver' }),
+      }))
+    })
+
     it('returns error when jobId is missing', async () => {
       const tool = findTool(plugin.execTools, 'bakin_exec_schedule_update')!
       const result = await callTool(tool, { name: 'Test' })
@@ -1697,7 +1747,7 @@ describe('schedule plugin activation', () => {
     }
   })
 
-  it('registers a hook for deterministic Bakin-managed plugin jobs', async () => {
+  it('registers a hook for provider-backed Bakin-managed plugin jobs', async () => {
     const activated = await activatePlugin(schedulePlugin, testDir)
     const registerMock = activated.ctx.hooks.register as unknown as {
       mock: { calls: Array<[string, (data: Record<string, unknown>) => Promise<Record<string, unknown>>, Record<string, unknown>]> }
@@ -1716,7 +1766,7 @@ describe('schedule plugin activation', () => {
 
     expect(result).toEqual(expect.objectContaining({
       ok: true,
-      jobId: 'plugin-nightly-sync',
+      jobId: 'runtime-plugin-nightly-sync',
       cron: '*/5 * * * *',
     }))
     expect(mockCronCreate).toHaveBeenCalledWith(expect.objectContaining({
@@ -1730,10 +1780,93 @@ describe('schedule plugin activation', () => {
         scheduleType: 'cron',
       }),
     }))
-    expect(getJob('plugin-nightly-sync')).toEqual(expect.objectContaining({
+    expect(getJob('runtime-plugin-nightly-sync')).toEqual(expect.objectContaining({
       isBakinJob: true,
       source: 'bakin',
       displayName: 'Plugin nightly sync',
+      logicalJobId: 'plugin-nightly-sync',
+    }))
+  })
+
+  it('updates an existing provider-backed plugin job by logical id after a rename', async () => {
+    const activated = await activatePlugin(schedulePlugin, testDir)
+    const registerMock = activated.ctx.hooks.register as unknown as {
+      mock: { calls: Array<[string, (data: Record<string, unknown>) => Promise<Record<string, unknown>>, Record<string, unknown>]> }
+    }
+    const call = registerMock.mock.calls.find(([name]) => name === 'schedule.ensureBakinJob')
+    expect(call).toBeDefined()
+    const handler = call![1]
+
+    const first = await handler({
+      jobId: 'plugin-nightly-sync',
+      name: 'Plugin nightly sync',
+      schedule: '*/5 * * * *',
+      command: 'bakin:reports:refresh',
+      metadata: { pluginId: 'reports' },
+    })
+    expect(first.jobId).toBe('runtime-plugin-nightly-sync')
+
+    mockCronCreate.mockClear()
+    mockCronUpdate.mockClear()
+
+    const second = await handler({
+      jobId: 'plugin-nightly-sync',
+      name: 'Plugin nightly sync renamed',
+      schedule: '0 2 * * *',
+      command: 'bakin:reports:refresh',
+      metadata: { pluginId: 'reports' },
+    })
+
+    expect(second).toEqual(expect.objectContaining({
+      ok: true,
+      jobId: 'runtime-plugin-nightly-sync',
+      cron: '0 2 * * *',
+    }))
+    expect(mockCronCreate).not.toHaveBeenCalled()
+    expect(mockCronUpdate).toHaveBeenCalledWith('runtime-plugin-nightly-sync', expect.objectContaining({
+      name: 'Plugin nightly sync renamed',
+      schedule: '0 2 * * *',
+      command: 'bakin:reports:refresh',
+    }))
+    expect(getJob('runtime-plugin-nightly-sync')).toEqual(expect.objectContaining({
+      displayName: 'Plugin nightly sync renamed',
+      logicalJobId: 'plugin-nightly-sync',
+    }))
+  })
+
+  it('does not recover provider-backed plugin jobs by command alone', async () => {
+    const activated = await activatePlugin(schedulePlugin, testDir)
+    const registerMock = activated.ctx.hooks.register as unknown as {
+      mock: { calls: Array<[string, (data: Record<string, unknown>) => Promise<Record<string, unknown>>, Record<string, unknown>]> }
+    }
+    const call = registerMock.mock.calls.find(([name]) => name === 'schedule.ensureBakinJob')
+    expect(call).toBeDefined()
+
+    mockRuntimeCronJobs.push({
+      id: 'runtime-existing-reports-refresh',
+      name: 'Existing reports refresh',
+      schedule: '0 1 * * *',
+      command: 'bakin:reports:refresh',
+      enabled: true,
+    })
+
+    const result = await call![1]({
+      jobId: 'plugin-nightly-sync',
+      name: 'Plugin nightly sync',
+      schedule: '*/5 * * * *',
+      command: 'bakin:reports:refresh',
+      metadata: { pluginId: 'reports' },
+    })
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      jobId: 'runtime-plugin-nightly-sync',
+    }))
+    expect(mockCronUpdate).not.toHaveBeenCalled()
+    expect(mockCronCreate).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'plugin-nightly-sync',
+      name: 'Plugin nightly sync',
+      command: 'bakin:reports:refresh',
     }))
   })
 

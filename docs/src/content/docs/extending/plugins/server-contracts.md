@@ -145,8 +145,8 @@ async activate(ctx) {
     },
   )
 
-  await ctx.runtime.cron.create({
-    id: 'reports-refresh',
+  const result = await ctx.hooks.invoke('schedule.ensureBakinJob', {
+    jobId: 'reports-refresh',
     name: 'Reports refresh',
     schedule: '*/15 * * * *',
     command: 'bakin:reports:refresh',
@@ -156,6 +156,9 @@ async activate(ctx) {
       description: 'Refresh plugin-owned report snapshots.',
     },
   })
+
+  // Persist result.jobId if your plugin needs to reference the runtime job later.
+  // Some runtimes generate provider ids even when jobId is supplied.
 }
 ```
 

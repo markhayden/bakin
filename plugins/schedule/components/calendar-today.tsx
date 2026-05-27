@@ -8,10 +8,9 @@ import {
   formatHour,
   jobOnDow,
   JobCard,
+  CALENDAR_HOURS,
 } from './calendar-weekly'
 import type { ScheduleJob } from "@makinbakin/sdk/hooks"
-
-const HOURS = Array.from({ length: 17 }, (_, i) => i + 6) // 6am–10pm
 
 export function CalendarToday({
   jobs,
@@ -64,7 +63,7 @@ export function CalendarToday({
       {/* Timeline */}
       <div className="overflow-auto flex-1 min-h-0 border border-border/30 rounded-lg bg-background/50">
         <div className="divide-y divide-border/[0.06]">
-          {HOURS.map(hour => {
+          {CALENDAR_HOURS.map(hour => {
             const hourJobs = hourGrid.map[hour] || []
             const isPast = hour < currentHour
             const isCurrent = hour === currentHour

@@ -13,6 +13,8 @@ export interface ScheduleSidecar {
 
 export interface BakinJobMeta {
   jobId: string
+  /** Stable caller-owned id used when a runtime/provider generates a different job id. */
+  logicalJobId?: string
   isBakinJob: boolean
   source?: 'bakin' | 'runtime' | 'adopted'
   displayName?: string

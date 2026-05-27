@@ -177,6 +177,14 @@ describe('schedule/jobs-reader', () => {
       expect(merged.owner).toBe('main')
     })
 
+    it('does not flag Bakin sidecar jobs missing runtime cron toolsAllow', () => {
+      const job = makeRuntimeJob({ id: 'j1', toolsAllowMissing: true })
+      const sidecar = makeMeta({ jobId: 'j1', isBakinJob: true })
+      const merged = mergeJob(job, sidecar, defaultOwner)
+
+      expect(merged.toolsAllowMissing).toBe(false)
+    })
+
     it('uses sidecar defaults for missing fields', () => {
       const job = makeRuntimeJob({ id: 'j1', schedule: { type: 'cron', value: '0 * * * *' } })
       const sidecar = makeMeta({ jobId: 'j1' })

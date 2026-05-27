@@ -79,6 +79,8 @@ const OPENCLAW_AGENT_TRANSPORT_TIMEOUT_MS = OPENCLAW_AGENT_TIMEOUT_MS + 30_000
 const OPENCLAW_SESSION_ACTIVITY_POLL_MS = 200
 const OPENCLAW_ACTIVITY_PREVIEW_CHARS = 500
 const OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS = 600000
+const OPENCLAW_CRON_TIMEOUT_MS = 30000
+const OPENCLAW_CRON_PROCESS_TIMEOUT_MS = OPENCLAW_CRON_TIMEOUT_MS + 5000
 const OPENCLAW_PLUGIN_APPROVAL_REF_PREFIX = 'openclaw-plugin-approval:'
 const OPENCLAW_PLUGIN_ID = 'bakin'
 const OPENCLAW_WORKFLOW_GATE_TOOL = 'workflow.gate'
@@ -866,76 +868,12 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   cron = {
-    list: async (): Promise<CronJob[]> => readCronJobs().map(cronStoreJobToRuntime),
-    get: async (id: string): Promise<CronJob | null> => {
-      const job = readCronJobs().find((entry) => entry.id === id)
-      return job ? cronStoreJobToRuntime(job) : null
-    },
-    create: async (input: CreateCronJobInput): Promise<CronJob> => {
-      const store = readCronStore()
-      const jobs = store.jobs ?? []
-      const id = input.id ?? uniqueCronId(input.name, jobs)
-      if (jobs.some((job) => job.id === id)) throw new Error(`Cron job already exists: ${id}`)
-      const nowMs = Date.now()
-      const now = new Date(nowMs).toISOString()
-      const bakinSchedule = isBakinScheduleMetadata(input.metadata)
-      const payload = bakinSchedule
-        ? { kind: 'systemEvent', text: input.command }
-        : withCronToolsAllow({ kind: 'agentTurn', message: input.command }, input.toolsAllow)
-      const job: OpenClawCronStoreJob = {
-        id,
-        name: input.name,
-        enabled: input.enabled ?? true,
-        schedule: { kind: 'cron', expr: input.schedule },
-        sessionTarget: bakinSchedule ? 'main' : 'isolated',
-        wakeMode: 'now',
-        delivery: cronDeliveryFromMetadata(input.metadata) ?? { mode: 'none' },
-        payload,
-        createdAt: now,
-        updatedAt: now,
-        createdAtMs: nowMs,
-        updatedAtMs: nowMs,
-        state: {},
-        metadata: input.metadata,
-      }
-      writeCronStore({ ...store, jobs: [...jobs, job] })
-      return cronStoreJobToRuntime(job)
-    },
-    update: async (id: string, patch: UpdateCronJobInput): Promise<CronJob> => {
-      const store = readCronStore()
-      const jobs = store.jobs ?? []
-      const index = jobs.findIndex((job) => job.id === id)
-      if (index === -1) throw new Error(`Cron job not found: ${id}`)
-      const current = jobs[index]
-      const metadata = patch.metadata ?? current.metadata
-      const bakinSchedule = isBakinScheduleMetadata(metadata)
-      const command = patch.command ?? cronStoreJobToRuntime(current).command
-      const nowMs = Date.now()
-      const payload = bakinSchedule || patch.command !== undefined || patch.toolsAllow !== undefined
-        ? withCronToolsAllow(cronPayloadForCommand(command, current.payload, bakinSchedule), patch.toolsAllow)
-        : current.payload
-      const next: OpenClawCronStoreJob = {
-        ...current,
-        name: patch.name ?? current.name,
-        enabled: patch.enabled ?? current.enabled ?? true,
-        schedule: patch.schedule ? { kind: 'cron', expr: patch.schedule } : current.schedule,
-        sessionTarget: bakinSchedule ? 'main' : current.sessionTarget,
-        wakeMode: bakinSchedule ? 'now' : current.wakeMode,
-        delivery: bakinSchedule
-          ? { mode: 'none' }
-          : patch.metadata ? cronDeliveryFromMetadata(patch.metadata) ?? current.delivery ?? { mode: 'none' } : current.delivery,
-        payload,
-        metadata,
-        updatedAt: new Date(nowMs).toISOString(),
-        updatedAtMs: nowMs,
-      }
-      jobs[index] = next
-      writeCronStore({ ...store, jobs })
-      return cronStoreJobToRuntime(next)
-    },
+    list: async (): Promise<CronJob[]> => this.listCronJobs(),
+    get: async (id: string): Promise<CronJob | null> => this.getCronJob(id),
+    create: async (input: CreateCronJobInput): Promise<CronJob> => this.createCronJob(input),
+    update: async (id: string, patch: UpdateCronJobInput): Promise<CronJob> => this.updateCronJob(id, patch),
     remove: async (id: string): Promise<void> => {
-      const store = readCronStore()
-      writeCronStore({ ...store, jobs: (store.jobs ?? []).filter((job) => job.id !== id) })
+      await this.execCron(['cron', 'rm', id, '--timeout', String(OPENCLAW_CRON_TIMEOUT_MS)])
     },
     runNow: async (jobId: string): Promise<CronRun> => {
       await this.exec(['cron', 'run', jobId])
@@ -946,7 +884,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         startedAt: new Date().toISOString(),
       }
     },
-    listRuns: async (jobId: string): Promise<CronRun[]> => readCronRuns(jobId),
+    listRuns: async (jobId: string): Promise<CronRun[]> => this.listCronRuns(jobId),
     getRaw: async (id: string, reason: string): Promise<unknown | null> => {
       if (!reason) throw new Error('cron.getRaw requires a reason')
       const job = readCronJobs().find((entry) => entry.id === id)
@@ -993,6 +931,68 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       if (!config) return null as T
       return (key === '*' ? config : readPath(config as Record<string, unknown>, key)) as T
     },
+  }
+
+  private async listCronJobs(): Promise<CronJob[]> {
+    const stdout = await this.execCron(['cron', 'list', '--all', '--json', '--timeout', String(OPENCLAW_CRON_TIMEOUT_MS)])
+    return extractCronStoreJobs(stdout).map(cronStoreJobToRuntime)
+  }
+
+  private async getCronJob(id: string): Promise<CronJob | null> {
+    const jobs = await this.listCronJobs()
+    return jobs.find((job) => job.id === id) ?? null
+  }
+
+  private async createCronJob(input: CreateCronJobInput): Promise<CronJob> {
+    const args = cronCreateArgs(input)
+    const stdout = await this.execCron(args)
+    const parsed = parseJsonValue(stdout)
+    const rawJob = extractCronStoreJob(parsed)
+    const id = cronJobIdFromCliResult(parsed) ?? rawJob?.id ?? input.id
+    if (!id) throw new Error('OpenClaw cron add did not return a job id')
+
+    const runtime = rawJob ? cronStoreJobToRuntime(withCronInputFallbacks(rawJob, id, input)) : cronJobFromInput(id, input)
+    return {
+      ...runtime,
+      metadata: input.metadata ?? runtime.metadata,
+      toolsAllow: isBakinCron(input.command, input.metadata)
+        ? undefined
+        : normalizeCronToolsAllow(input.toolsAllow) ?? runtime.toolsAllow,
+    }
+  }
+
+  private async updateCronJob(id: string, patch: UpdateCronJobInput): Promise<CronJob> {
+    const current = await this.getCronJob(id)
+    if (!current) throw new Error(`Cron job not found: ${id}`)
+
+    const args = cronUpdateArgs(id, current, patch)
+    if (args.length > 5) await this.execCron(args)
+
+    const refreshed = await this.getCronJob(id).catch(() => null)
+    return refreshed ?? cronJobFromUpdatePatch(id, current, patch)
+  }
+
+  private async listCronRuns(jobId: string): Promise<CronRun[]> {
+    try {
+      const stdout = await this.execCron([
+        'cron',
+        'runs',
+        '--id',
+        jobId,
+        '--limit',
+        '50',
+        '--timeout',
+        String(OPENCLAW_CRON_TIMEOUT_MS),
+      ])
+      const runs = extractCronRuns(stdout, jobId)
+      return runs.length > 0 || stdout.trim().length === 0 ? runs : readCronRuns(jobId)
+    } catch (err) {
+      this.logger.debug('OpenClaw cron runs CLI failed; falling back to JSONL run history', {
+        jobId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      return readCronRuns(jobId)
+    }
   }
 
   private baseUrl(): string {
@@ -1086,13 +1086,17 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     return res.json()
   }
 
-  private async exec(args: string[], opts: { maxBuffer?: number } = {}): Promise<string> {
+  private async exec(args: string[], opts: { maxBuffer?: number; timeout?: number } = {}): Promise<string> {
     try {
       const { stdout } = await execFileAsync(this.settings.binaryPath, args, { timeout: 15000, ...opts })
       return stdout
     } catch (err) {
       throw new OpenClawCommandError(args, err)
     }
+  }
+
+  private async execCron(args: string[]): Promise<string> {
+    return this.exec(args, { timeout: OPENCLAW_CRON_PROCESS_TIMEOUT_MS })
   }
 }
 
@@ -1506,6 +1510,12 @@ function readCronJobs(): OpenClawCronStoreJob[] {
 }
 
 function cronStoreJobToRuntime(job: OpenClawCronStoreJob): CronJob {
+  const scheduleTz = typeof job.schedule === 'object' && typeof job.schedule.tz === 'string' && job.schedule.tz.length > 0
+    ? job.schedule.tz
+    : undefined
+  const metadata = scheduleTz && !metadataValue(job.metadata, 'tz')
+    ? { ...(job.metadata ?? {}), tz: scheduleTz }
+    : job.metadata
   return {
     id: job.id,
     name: job.name ?? job.id,
@@ -1517,17 +1527,124 @@ function cronStoreJobToRuntime(job: OpenClawCronStoreJob): CronJob {
         : '',
     enabled: job.enabled ?? true,
     toolsAllow: normalizeCronToolsAllow(job.payload?.toolsAllow),
-    metadata: job.metadata,
+    metadata,
   }
-}
-
-function cronDeliveryFromMetadata(metadata: RuntimeMetadata | undefined): OpenClawCronStoreJob['delivery'] | undefined {
-  const webhookUrl = metadataValue(metadata, 'webhookUrl')
-  return webhookUrl ? { mode: 'webhook', to: webhookUrl, url: webhookUrl } : undefined
 }
 
 function isBakinScheduleMetadata(metadata: RuntimeMetadata | undefined): boolean {
   return metadata?.bakinSchedule === true || metadata?.['bakin.schedule'] === true
+}
+
+function isBakinCron(command: string, metadata: RuntimeMetadata | undefined): boolean {
+  return isBakinScheduleMetadata(metadata) || command.trim().startsWith('bakin:')
+}
+
+function cronCreateArgs(input: CreateCronJobInput): string[] {
+  const args = [
+    'cron',
+    'add',
+    '--name',
+    input.name,
+    '--cron',
+    input.schedule,
+    '--wake',
+    'now',
+    '--json',
+    '--timeout',
+    String(OPENCLAW_CRON_TIMEOUT_MS),
+  ]
+  const tz = metadataValue(input.metadata, 'tz')
+  if (tz) args.push('--tz', tz)
+  if (input.enabled === false) args.push('--disabled')
+  appendCronPayloadArgs(args, input.command, input.metadata, input.toolsAllow, { allowClearTools: false })
+  return args
+}
+
+function cronUpdateArgs(id: string, current: CronJob, patch: UpdateCronJobInput): string[] {
+  const args = ['cron', 'edit', id, '--timeout', String(OPENCLAW_CRON_TIMEOUT_MS)]
+  if (patch.name !== undefined) args.push('--name', patch.name)
+  if (patch.schedule !== undefined) args.push('--cron', patch.schedule)
+  if (patch.enabled === true) args.push('--enable')
+  if (patch.enabled === false) args.push('--disable')
+
+  const metadata = patch.metadata ?? current.metadata
+  const tz = metadataValue(metadata, 'tz')
+  if (patch.metadata !== undefined && tz) args.push('--tz', tz)
+
+  if (patch.command !== undefined || patch.metadata !== undefined || patch.toolsAllow !== undefined) {
+    appendCronPayloadArgs(args, patch.command ?? current.command, metadata, patch.toolsAllow)
+  }
+
+  return args
+}
+
+function appendCronPayloadArgs(
+  args: string[],
+  command: string,
+  metadata: RuntimeMetadata | undefined,
+  toolsAllow: string[] | null | undefined,
+  opts: { allowClearTools?: boolean } = {},
+): void {
+  if (isBakinCron(command, metadata)) {
+    args.push('--session', 'main', '--system-event', command)
+    return
+  }
+
+  args.push('--session', 'isolated', '--message', command)
+  if (toolsAllow === undefined) return
+
+  const normalized = normalizeCronToolsAllow(toolsAllow)
+  if (normalized) {
+    args.push('--tools', normalized.join(','))
+  } else if (opts.allowClearTools !== false) {
+    args.push('--clear-tools')
+  }
+}
+
+function cronJobFromInput(id: string, input: CreateCronJobInput): CronJob {
+  const bakinCron = isBakinCron(input.command, input.metadata)
+  return {
+    id,
+    name: input.name,
+    schedule: input.schedule,
+    command: input.command,
+    enabled: input.enabled ?? true,
+    toolsAllow: bakinCron ? undefined : normalizeCronToolsAllow(input.toolsAllow),
+    metadata: input.metadata,
+  }
+}
+
+function cronJobFromUpdatePatch(id: string, current: CronJob, patch: UpdateCronJobInput): CronJob {
+  const command = patch.command ?? current.command
+  const metadata = patch.metadata ?? current.metadata
+  const toolsAllow = patch.toolsAllow === null
+    ? undefined
+    : patch.toolsAllow !== undefined
+      ? normalizeCronToolsAllow(patch.toolsAllow)
+      : current.toolsAllow
+
+  return {
+    id,
+    name: patch.name ?? current.name,
+    schedule: patch.schedule ?? current.schedule,
+    command,
+    enabled: patch.enabled ?? current.enabled,
+    toolsAllow: isBakinCron(command, metadata) ? undefined : toolsAllow,
+    metadata,
+  }
+}
+
+function withCronInputFallbacks(raw: OpenClawCronStoreJob, id: string, input: CreateCronJobInput): OpenClawCronStoreJob {
+  const bakinCron = isBakinCron(input.command, input.metadata)
+  return {
+    ...raw,
+    id,
+    name: raw.name ?? input.name,
+    enabled: raw.enabled ?? input.enabled ?? true,
+    schedule: raw.schedule ?? { kind: 'cron', expr: input.schedule },
+    payload: raw.payload ?? cronPayloadForCommand(input.command, undefined, bakinCron),
+    metadata: raw.metadata ?? input.metadata,
+  }
 }
 
 function cronPayloadForCommand(
@@ -1539,18 +1656,6 @@ function cronPayloadForCommand(
     return { kind: 'systemEvent', text: command }
   }
   return { ...(current ?? {}), kind: 'agentTurn', message: command }
-}
-
-function withCronToolsAllow(
-  payload: OpenClawCronStoreJob['payload'],
-  toolsAllow: string[] | null | undefined,
-): OpenClawCronStoreJob['payload'] {
-  if (payload?.kind !== 'agentTurn' || toolsAllow === undefined) return payload
-  const next = { ...payload }
-  const normalized = normalizeCronToolsAllow(toolsAllow)
-  if (normalized) next.toolsAllow = normalized
-  else delete next.toolsAllow
-  return next
 }
 
 function normalizeCronToolsAllow(value: unknown): string[] | undefined {
@@ -1576,13 +1681,154 @@ function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
 }
 
-function uniqueCronId(name: string, jobs: OpenClawCronStoreJob[]): string {
-  const base = `cron-${slug(name)}`
-  const ids = new Set(jobs.map((job) => job.id))
-  if (!ids.has(base)) return base
-  let suffix = 2
-  while (ids.has(`${base}-${suffix}`)) suffix += 1
-  return `${base}-${suffix}`
+function extractCronStoreJobs(raw: string | unknown): OpenClawCronStoreJob[] {
+  const parsed = typeof raw === 'string' ? parseJsonValue(raw) : raw
+  const candidates = cronJobCandidates(parsed)
+  return candidates
+    .map(normalizeOpenClawCronStoreJob)
+    .filter((job): job is OpenClawCronStoreJob => job !== null)
+}
+
+function extractCronStoreJob(raw: unknown): OpenClawCronStoreJob | null {
+  return extractCronStoreJobs(raw)[0] ?? null
+}
+
+function cronJobCandidates(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value
+  if (!isPlainObject(value)) return []
+
+  for (const key of ['jobs', 'items', 'results', 'data']) {
+    const candidate = value[key]
+    if (Array.isArray(candidate)) return candidate
+  }
+
+  for (const key of ['job', 'cronJob', 'result', 'payload']) {
+    const candidate = value[key]
+    if (Array.isArray(candidate)) return candidate
+    if (isPlainObject(candidate)) {
+      const nested = cronJobCandidates(candidate)
+      if (nested.length > 0) return nested
+      if (typeof candidate.id === 'string') return [candidate]
+    }
+  }
+
+  return typeof value.id === 'string' ? [value] : []
+}
+
+function normalizeOpenClawCronStoreJob(value: unknown): OpenClawCronStoreJob | null {
+  if (!isPlainObject(value)) return null
+  const id = firstString(value.id, value.jobId, value.key)
+  if (!id) return null
+
+  const rawSchedule = value.schedule
+  const schedule = typeof rawSchedule === 'string' || isPlainObject(rawSchedule)
+    ? rawSchedule as OpenClawCronStoreJob['schedule']
+    : firstString(value.cron, value.expr)
+      ? { kind: 'cron', expr: firstString(value.cron, value.expr), tz: firstString(value.tz, value.timezone) }
+      : undefined
+
+  const rawPayload = isPlainObject(value.payload) ? value.payload : undefined
+  const systemEvent = firstString(value.systemEvent)
+  const message = firstString(value.message, value.command)
+  const rawTools = rawPayload?.toolsAllow ?? value.toolsAllow ?? value.tools
+  const toolsAllow = normalizeCronToolsAllow(Array.isArray(rawTools) ? rawTools : typeof rawTools === 'string' ? rawTools.split(/[,\s]+/) : undefined)
+  const payload = rawPayload
+    ? {
+        ...rawPayload,
+        ...(toolsAllow ? { toolsAllow } : {}),
+      } as OpenClawCronStoreJob['payload']
+    : systemEvent
+      ? { kind: 'systemEvent', text: systemEvent }
+      : message
+        ? {
+            kind: 'agentTurn',
+            message,
+            ...(toolsAllow ? { toolsAllow } : {}),
+          }
+        : undefined
+
+  return {
+    id,
+    ...(typeof value.agentId === 'string' ? { agentId: value.agentId } : {}),
+    ...(typeof value.sessionKey === 'string' ? { sessionKey: value.sessionKey } : {}),
+    ...(typeof value.name === 'string' ? { name: value.name } : {}),
+    ...(typeof value.description === 'string' ? { description: value.description } : {}),
+    ...(typeof value.enabled === 'boolean' ? { enabled: value.enabled } : {}),
+    ...(typeof value.deleteAfterRun === 'boolean' ? { deleteAfterRun: value.deleteAfterRun } : {}),
+    ...(schedule ? { schedule } : {}),
+    ...(typeof value.sessionTarget === 'string' ? { sessionTarget: value.sessionTarget } : {}),
+    ...(typeof value.wakeMode === 'string' ? { wakeMode: value.wakeMode } : {}),
+    ...(isPlainObject(value.delivery) ? { delivery: value.delivery as OpenClawCronStoreJob['delivery'] } : {}),
+    ...(payload ? { payload } : {}),
+    ...(value.failureAlert !== undefined ? { failureAlert: value.failureAlert } : {}),
+    ...(isPlainObject(value.state) ? { state: value.state } : {}),
+    ...(typeof value.createdAt === 'string' ? { createdAt: value.createdAt } : {}),
+    ...(typeof value.updatedAt === 'string' ? { updatedAt: value.updatedAt } : {}),
+    ...(typeof value.createdAtMs === 'number' ? { createdAtMs: value.createdAtMs } : {}),
+    ...(typeof value.updatedAtMs === 'number' ? { updatedAtMs: value.updatedAtMs } : {}),
+    ...(isPlainObject(value.metadata) ? { metadata: value.metadata as RuntimeMetadata } : {}),
+  }
+}
+
+function cronJobIdFromCliResult(value: unknown): string | undefined {
+  return firstString(
+    getJsonPath(value, ['id']),
+    getJsonPath(value, ['jobId']),
+    getJsonPath(value, ['job', 'id']),
+    getJsonPath(value, ['cronJob', 'id']),
+    getJsonPath(value, ['payload', 'id']),
+    getJsonPath(value, ['payload', 'job', 'id']),
+    getJsonPath(value, ['result', 'id']),
+    getJsonPath(value, ['result', 'job', 'id']),
+  )
+}
+
+function extractCronRuns(raw: string, jobId: string): CronRun[] {
+  const parsed = parseJsonValue(raw)
+  const candidates = cronRunCandidates(parsed)
+  const source = candidates.length > 0 ? candidates : parseJsonLines(raw)
+  const runs = source
+    .map((entry) => normalizeOpenClawCronRun(entry, jobId))
+    .filter((run): run is CronRun => run !== null)
+  runs.sort((a, b) => Date.parse(b.startedAt ?? '') - Date.parse(a.startedAt ?? ''))
+  return runs
+}
+
+function cronRunCandidates(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value
+  if (!isPlainObject(value)) return []
+  for (const key of ['runs', 'items', 'results', 'data']) {
+    const candidate = value[key]
+    if (Array.isArray(candidate)) return candidate
+  }
+  const payload = value.payload
+  if (Array.isArray(payload)) return payload
+  if (isPlainObject(payload)) return cronRunCandidates(payload)
+  return typeof value.runId === 'string' || typeof value.id === 'string' ? [value] : []
+}
+
+function parseJsonLines(raw: string): unknown[] {
+  const entries: unknown[] = []
+  for (const line of raw.split('\n')) {
+    const parsed = parseJsonValue(line)
+    if (parsed !== null) entries.push(parsed)
+  }
+  return entries
+}
+
+function normalizeOpenClawCronRun(value: unknown, requestedJobId: string): CronRun | null {
+  if (!isPlainObject(value)) return null
+  const runJobId = firstString(value.jobId, value.cronJobId) ?? requestedJobId
+  if (runJobId !== requestedJobId) return null
+  return {
+    id: firstString(value.runId, value.id) ?? `run-${Date.now()}`,
+    jobId: requestedJobId,
+    status: normalizeCronRunStatus(firstString(value.status)),
+    startedAt: firstString(value.startedAt, value.timestamp, value.createdAt),
+    endedAt: firstString(value.endedAt, value.finishedAt),
+    output: firstString(value.output, value.stdout),
+    error: firstString(value.error, value.stderr),
+  }
 }
 
 function readCronRuns(jobId: string, limit = 50): CronRun[] {
@@ -2064,11 +2310,15 @@ function firstString(...values: unknown[]): string | undefined {
 }
 
 function parseJsonObject(raw: string): Record<string, unknown> | null {
+  const parsed = parseJsonValue(raw)
+  return isPlainObject(parsed) ? parsed : null
+}
+
+function parseJsonValue(raw: string): unknown | null {
   const trimmed = raw.trim()
   if (!trimmed) return null
   try {
-    const parsed = JSON.parse(trimmed)
-    return isPlainObject(parsed) ? parsed : null
+    return JSON.parse(trimmed)
   } catch {
     return null
   }

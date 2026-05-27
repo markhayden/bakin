@@ -6,10 +6,10 @@ import { randomBytes, timingSafeEqual } from 'crypto'
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute, searchRoute } from '@bakin/core/routing'
-import type { CronRun } from '@bakin/core/adapters/runtime'
+import type { CronJob, CronRun, UpdateCronJobInput } from '@bakin/core/adapters/runtime'
 import { readMergedJobs } from './lib/jobs-reader'
 import { getLastRun, readRuns } from './lib/runs-reader'
-import { upsertJob, removeJob, getJob, isPaused, shouldSkip, recordFailure, recordSuccess, withDefaults, hasProcessedRun, recordProcessedRun } from './lib/sidecar'
+import { upsertJob, removeJob, getJob, readSidecar, isPaused, shouldSkip, recordFailure, recordSuccess, withDefaults, hasProcessedRun, recordProcessedRun } from './lib/sidecar'
 import { parseSchedule } from './lib/cron-parser'
 import { createTaskWithEffects } from '../../src/core/task-service'
 import { getContentDir } from '../../src/core/content-dir'
@@ -68,6 +68,8 @@ interface EnsureBakinJobResult {
   error?: string
 }
 
+type ScheduleDeleteContext = Pick<PluginContext, 'runtime' | 'search'>
+
 /** Constant-time string comparison. Returns false for any length mismatch. */
 function safeEqual(a: string, b: string): boolean {
   const aBuf = Buffer.from(a, 'utf-8')
@@ -121,27 +123,34 @@ async function ensureBakinJob(ctx: PluginContext, input: Record<string, unknown>
     metadata: {
       ...metadata,
       tz,
+      logicalJobId: jobId,
       source: metadata.source ?? 'bakin',
       scheduleType: 'cron',
       bakinSchedule: true,
     },
   }
 
-  const existingRuntime = await ctx.runtime.cron.get(jobId)
+  const logicalExisting = getJobByLogicalJobId(jobId)
+  const runtimeJobs = await ctx.runtime.cron.list()
+  const existingRuntime = findExistingBakinRuntimeJob(runtimeJobs, { jobId, runtimeJobId: logicalExisting?.jobId, name, command })
+  let runtimeJob: CronJob
   if (existingRuntime) {
-    await ctx.runtime.cron.update(jobId, runtimePatch)
+    runtimeJob = await ctx.runtime.cron.update(existingRuntime.id, runtimePatch)
   } else {
-    await ctx.runtime.cron.create({ id: jobId, ...runtimePatch })
+    runtimeJob = await ctx.runtime.cron.create({ id: jobId, ...runtimePatch })
   }
+  const runtimeJobId = runtimeJob.id || existingRuntime?.id || jobId
 
-  const existing = getJob(jobId)
+  const staleExisting = runtimeJobId !== jobId ? getJob(jobId) : null
+  const existing = getJob(runtimeJobId) ?? logicalExisting ?? staleExisting
   const owner = typeof input.owner === 'string' && input.owner.trim()
     ? input.owner.trim()
     : existing?.owner ?? await getRuntimeMainAgentId(ctx.runtime)
   const description = typeof input.description === 'string' ? input.description : existing?.description
   const meta: BakinJobMeta = {
     ...(existing ?? {}),
-    jobId,
+    jobId: runtimeJobId,
+    logicalJobId: jobId,
     isBakinJob: true,
     source: 'bakin',
     displayName: name,
@@ -160,9 +169,66 @@ async function ensureBakinJob(ctx: PluginContext, input: Record<string, unknown>
     updatedAt: now,
   }
   upsertJob(meta)
-  indexJob(jobId)
+  for (const staleId of new Set([jobId, logicalExisting?.jobId, staleExisting?.jobId])) {
+    if (staleId && staleId !== runtimeJobId) removeJob(staleId)
+  }
+  indexJob(runtimeJobId)
 
-  return { ok: true, jobId, cron: parsed.cron, human: parsed.human }
+  return { ok: true, jobId: runtimeJobId, cron: parsed.cron, human: parsed.human }
+}
+
+function findExistingBakinRuntimeJob(
+  jobs: CronJob[],
+  input: { jobId: string; runtimeJobId?: string; name: string; command: string },
+): CronJob | undefined {
+  return (input.runtimeJobId ? jobs.find(job => job.id === input.runtimeJobId) : undefined)
+    ?? jobs.find(job => job.id === input.jobId)
+    ?? findUniqueCronJob(jobs, job => job.command === input.command && job.name === input.name)
+    ?? findUniqueCronJob(jobs, job => job.name === input.name && job.command.startsWith('bakin:'))
+}
+
+function findUniqueCronJob(jobs: CronJob[], predicate: (job: CronJob) => boolean): CronJob | undefined {
+  const matches = jobs.filter(predicate)
+  return matches.length === 1 ? matches[0] : undefined
+}
+
+function getJobByLogicalJobId(logicalJobId: string): BakinJobMeta | null {
+  const matches = Object.values(readSidecar().jobs)
+    .filter(job => job.logicalJobId === logicalJobId)
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+  return matches[0] ?? null
+}
+
+function scheduleUpdateMetadata(meta: BakinJobMeta): UpdateCronJobInput['metadata'] | undefined {
+  if (!meta.tz) return undefined
+  return {
+    tz: meta.tz,
+    scheduleType: 'cron',
+    ...(meta.isBakinJob ? { bakinSchedule: true } : {}),
+    ...(meta.logicalJobId ? { logicalJobId: meta.logicalJobId } : {}),
+  }
+}
+
+function isCronAlreadyGoneError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err)
+  return /\bnot found\b/i.test(message) && /\b(cron|job)\b/i.test(message)
+}
+
+async function deleteScheduleJob(ctx: ScheduleDeleteContext, jobId: string): Promise<{ runtimeMissing: boolean }> {
+  let runtimeMissing = false
+  try {
+    await ctx.runtime.cron.remove(jobId)
+  } catch (err) {
+    if (!isCronAlreadyGoneError(err)) throw err
+    runtimeMissing = true
+    log.warn('Schedule runtime cron was already gone during delete; removing Bakin records', {
+      jobId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+  removeJob(jobId)
+  ctx.search.remove(jobId).catch(() => {})
+  return { runtimeMissing }
 }
 
 // ---------------------------------------------------------------------------
@@ -660,12 +726,14 @@ const routes = [
       if (!jobId) return json({ error: 'jobId required' }, 400)
       const meta = getJob(jobId)
       if (!meta) return json({ error: 'Job not found in sidecar' }, 404)
-      const runtimePatch: { name?: string; schedule?: string } = {}
+      const runtimePatch: UpdateCronJobInput = {}
       const b = body as Record<string, unknown>
       if (b.schedule && typeof b.schedule === 'string') {
         const parsed = parseSchedule(b.schedule)
         if (!parsed) return json({ error: 'Could not parse schedule' }, 400)
         runtimePatch.schedule = parsed.cron
+        const metadata = scheduleUpdateMetadata(meta)
+        if (metadata) runtimePatch.metadata = metadata
       }
       if (b.name && typeof b.name === 'string') {
         runtimePatch.name = b.name
@@ -733,12 +801,10 @@ const routes = [
     responses: { 200: okResponse, 400: errorResponse },
     handler: async (_req, ctx, { params }) => {
       const jobId = params.jobId
-      await ctx.runtime.cron.remove(jobId)
-      removeJob(jobId)
-      ctx.search.remove(jobId).catch(() => {})
+      const result = await deleteScheduleJob(ctx, jobId)
       ctx.activity.audit('job.deleted', 'system', { jobId })
       ctx.activity.log('system', `Deleted schedule "${jobId}"`)
-      return json({ ok: true })
+      return json({ ok: true, ...result })
     },
   }),
 
@@ -1000,7 +1066,7 @@ const schedulePlugin: BakinPlugin = definePlugin({
     ctx.hooks.register('schedule.ensureBakinJob', (data: Record<string, unknown>) => ensureBakinJob(ctx, data), {
       hookKind: 'rpc',
       label: 'Ensure Bakin schedule',
-      summary: 'Create or update a deterministic Bakin-managed runtime cron job.',
+      summary: 'Create or update a Bakin-managed runtime cron job and return the provider job id.',
     })
 
     // ─── Search Content Type Registration ─────────────────────────────
@@ -1147,7 +1213,10 @@ const schedulePlugin: BakinPlugin = definePlugin({
         if (params.schedule) {
           const parsed = parseSchedule(params.schedule as string)
           if (!parsed) return { ok: false, error: 'Could not parse schedule' }
-          await ctx.runtime.cron.update(params.jobId as string, { schedule: parsed.cron })
+          const patch: UpdateCronJobInput = { schedule: parsed.cron }
+          const metadata = scheduleUpdateMetadata(meta)
+          if (metadata) patch.metadata = metadata
+          await ctx.runtime.cron.update(params.jobId as string, patch)
         }
         if (params.name) await ctx.runtime.cron.update(params.jobId as string, { name: params.name as string })
 
@@ -1222,10 +1291,8 @@ const schedulePlugin: BakinPlugin = definePlugin({
       },
       handler: async (params: Record<string, unknown>) => {
         if (!params.jobId) return { ok: false, error: 'jobId required' }
-        await ctx.runtime.cron.remove(params.jobId as string)
-        removeJob(params.jobId as string)
-        ctx.search.remove(params.jobId as string).catch(() => {})
-        return { ok: true }
+        const result = await deleteScheduleJob(ctx, params.jobId as string)
+        return { ok: true, ...result }
       },
     })
 
