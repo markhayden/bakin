@@ -206,3 +206,48 @@ screenshots:
     viewport:
       width: 1920
       height: 900
+
+  # ── using/projects ────────────────────────────────────────────────
+
+  - id: grid
+    doc: using/projects
+    route: /projects
+    caption: "The projects grid with status tabs and per-card progress."
+    waitFor: "text=Projects"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.5
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: brainstorm-panel
+    doc: using/projects
+    route: /projects
+    caption: "The brainstorm panel inside a project: chat thread with an agent, reference material, and task suggestions in context."
+    waitFor: "text=Projects"
+    actions:
+      - click: "text=Spring Menu Launch"
+      - waitFor: "button:has-text('Brainstorm')"
+      - click: "button:has-text('Brainstorm')"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.85
+    viewport:
+      width: 1920
+      height: 900
+
+  - id: tasks-panel
+    doc: using/projects
+    route: /projects
+    caption: "The tasks panel inside a project: plain checkboxes alongside linked board tasks with live status."
+    waitFor: "text=Projects"
+    actions:
+      - click: "text=Spring Menu Launch"
+      - waitFor: "text=TASKS"
+    delay: 1500
+    selector: "main.flex-1"
+    cropHeight: 0.85
+    viewport:
+      width: 1920
+      height: 900
