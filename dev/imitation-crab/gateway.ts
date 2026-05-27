@@ -7,6 +7,7 @@
  *   RPC  agent
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'http'
+import { WebSocketServer, type WebSocket } from 'ws'
 import { getChatMode, getGatewayPort, getToolMode } from './env'
 
 export interface ImitationCrabGateway {
@@ -168,6 +169,52 @@ export function startGateway(port = getGatewayPort(), options: StartGatewayOptio
       handleRequest(req, res).catch((err) => {
         console.error(`${timestamp()} ERROR:`, err)
         json(res, { error: 'Internal mock error' }, 500)
+      })
+    })
+
+    const wss = new WebSocketServer({ noServer: true })
+
+    server.on('upgrade', (req, socket, head) => {
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit('connection', ws, req)
+      })
+    })
+
+    wss.on('connection', (ws: WebSocket) => {
+      console.log(`${timestamp()} WS connected`)
+      ws.send(JSON.stringify({
+        type: 'event',
+        event: 'connect.challenge',
+        payload: { nonce: 'imitation-crab' },
+      }))
+
+      ws.on('message', (raw: Buffer) => {
+        let frame: { id?: string; method?: string; params?: Record<string, unknown> }
+        try {
+          frame = JSON.parse(raw.toString())
+        } catch {
+          return
+        }
+        const id = typeof frame.id === 'string' ? frame.id : ''
+        const method = typeof frame.method === 'string' ? frame.method : ''
+        const params = frame.params ?? {}
+        handleGatewayRpcRequest(method, params)
+          .then((response) => {
+            ws.send(JSON.stringify({
+              type: 'res',
+              id,
+              ok: response.ok,
+              ...(response.ok ? { payload: response.payload } : { error: response.error }),
+            }))
+          })
+          .catch((err) => {
+            ws.send(JSON.stringify({
+              type: 'res',
+              id,
+              ok: false,
+              error: { message: err instanceof Error ? err.message : String(err) },
+            }))
+          })
       })
     })
 
