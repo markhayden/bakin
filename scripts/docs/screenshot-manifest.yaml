@@ -16,22 +16,19 @@ screenshots:
     caption: "The live activity drawer streaming real-time agent events."
     waitFor: "text=Live Activity"
     delay: 1500
-    selector: "div[class*='w-[360px]']"
+    cropHeight: 0.5
+    gradient: "left-to-right"
 
   - id: search-results
     doc: using/essentials
-    route: /memory
+    route: /health
     caption: "The search bar with full-text and semantic results across tasks, projects, memory, and assets."
-    waitFor: "input[placeholder*='Search across']"
+    waitFor: "text=Connected"
     delay: 1500
-
-  - id: dispatch-ticker
-    doc: using/essentials
-    route: /
-    caption: "The dispatch ticker counting down to the next cycle."
-    waitFor: "button[title='Run dispatch now']"
-    selector: "header"
-    delay: 500
+    selector: "[data-slot='card']:has-text('Reindex All')"
+    viewport:
+      width: 1920
+      height: 900
 
   - id: xray-mode
     doc: using/essentials
@@ -50,4 +47,7 @@ screenshots:
     doc: using/essentials
     route: /
     caption: "A browser notification surfacing a blocked task, plus the same alert arriving in a connected Discord channel."
-    skip: true
+    waitFor: "header"
+    selector: "header"
+    delay: 500
+    cropLeft: 0.35

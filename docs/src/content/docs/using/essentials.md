@@ -51,7 +51,6 @@ Agent kits are projected, not copied. The runtime home directory stays the sourc
 
 <figure class="screenshot-frame">
   <img src="/docs/media/screenshots/using-essentials--activity-drawer.png" alt="The live activity drawer streaming real-time agent events." loading="lazy">
-  <figcaption>The live activity drawer streaming real-time agent events.</figcaption>
 </figure>
 
 This is the heart and soul of observability. The activity feed streams every agent action (turn) in real time: task moves, dispatch events, retries, recoveries, completions, the exact moment work gets stuck. No black box. No secrets. You see what your agent army is up to, and what it isn't, while it's happening.
@@ -68,7 +67,6 @@ Toggle from the header to open the panel. For us, this baby is always open.
 
 <figure class="screenshot-frame">
   <img src="/docs/media/screenshots/using-essentials--search-results.png" alt="The search bar with full-text and semantic results across tasks, projects, memory, and assets." loading="lazy">
-  <figcaption>The search bar with full-text and semantic results across tasks, projects, memory, and assets.</figcaption>
 </figure>
 
 Not your ordinary search. Think of it as brain connectivity for your whole agent team. Every fact, artifact, and result findable the moment it exists. Full-text, semantic, vector, BM25, hybrid (text + meaning), multimodal for images and assets. Cross-table by default, so a single query can reach across tasks, projects, assets, memory, audit logs, every research note, every shipped asset.
@@ -90,11 +88,6 @@ This is the main menu. All apps have one, but this one is ours. Self-explanatory
 
 ## Dispatch Ticker
 
-<figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-essentials--dispatch-ticker.png" alt="The dispatch ticker counting down to the next cycle." loading="lazy">
-  <figcaption>The dispatch ticker counting down to the next cycle.</figcaption>
-</figure>
-
 Dispatch ensures queued work gets picked up by the right agent. Tasks pile up in a queue as they're created. Every dispatch cycle, Bakin scans the queue, picks out anything ready to run, and routes each task to its assigned agent through the runtime. The agent takes it from there.
 
 Agents can dispatch other agents on the fly too. When one finishes a task or hands off new work, it can route directly to whoever's next without waiting for the cycle. Bakin's dispatch loop sits behind that as the safety net: it catches anything that fell through, retries transient failures, and cools down structural ones so nothing sits stuck indefinitely.
@@ -109,7 +102,6 @@ bakin dispatch       # fire dispatch immediately
 
 <figure class="screenshot-frame">
   <img src="/docs/media/screenshots/using-essentials--xray-mode.png" alt="X-Ray on, surfacing extra context across the activity feed and search." loading="lazy">
-  <figcaption>X-Ray on, surfacing extra context across the activity feed and search.</figcaption>
 </figure>
 
 Bakin is all about visibility, and that doesn't stop at the top level. Flip on X-Ray for deeper detail across the interface: extra context in the activity feed, why certain results are coming back in search, the raw data behind any view.
@@ -123,7 +115,7 @@ You don't have to keep Bakin's tab focused. Browser alerts push through whenever
 Alerts also fan out to any messaging channels you've connected (Discord, Slack, email). You don't need Bakin open to stay in the loop and keep things flowing.
 
 <figure class="screenshot-frame">
-  <figcaption>A browser notification surfacing a blocked task, plus the same alert arriving in a connected Discord channel.</figcaption>
+  <img src="/docs/media/screenshots/using-essentials--alerting.png" alt="Header bar showing dispatch ticker, debug toggle, notification bell, and connection status." loading="lazy">
 </figure>
 
 ## System Status

@@ -3,6 +3,7 @@ import { readFileSync, mkdirSync, existsSync } from 'fs'
 import { join, resolve } from 'path'
 import { load as loadYaml } from 'js-yaml'
 import { chromium, type BrowserContext, type Page } from 'playwright'
+import sharp from 'sharp'
 
 const PROJECT_ROOT = resolve(import.meta.dirname, '../..')
 const MANIFEST_PATH = join(PROJECT_ROOT, 'scripts/docs/screenshot-manifest.yaml')
@@ -28,6 +29,8 @@ interface ScreenshotEntry {
   skip?: boolean
   debug?: boolean
   cropHeight?: number
+  cropLeft?: number
+  gradient?: 'left-to-right' | 'right-to-left'
 }
 
 interface ManifestSettings {
@@ -56,6 +59,15 @@ async function ensureBrowser(): Promise<void> {
   })
   if (result.exitCode !== 0) {
     throw new Error('Failed to install Playwright Chromium browser')
+  }
+}
+
+async function isServerRunning(baseUrl: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${baseUrl}/api/health`, { signal: AbortSignal.timeout(2_000) })
+    return res.ok
+  } catch {
+    return false
   }
 }
 
@@ -88,6 +100,14 @@ async function waitForServer(baseUrl: string): Promise<void> {
   throw new Error(`Server at ${baseUrl} did not become ready within ${maxRetries}s`)
 }
 
+function killProcessTree(pid: number): void {
+  try {
+    process.kill(-pid, 'SIGTERM')
+  } catch {
+    try { process.kill(pid, 'SIGKILL') } catch { /* already dead */ }
+  }
+}
+
 async function executeActions(page: Page, actions: Action[]): Promise<void> {
   for (const action of actions) {
     if (action.click) {
@@ -105,6 +125,31 @@ async function executeActions(page: Page, actions: Action[]): Promise<void> {
   }
 }
 
+async function applyGradientOverlay(imagePath: string, direction: 'left-to-right' | 'right-to-left'): Promise<void> {
+  const metadata = await sharp(imagePath).metadata()
+  const { width, height } = metadata
+  if (!width || !height) return
+
+  // Build an SVG gradient: black on one side, transparent on the other
+  const x1 = direction === 'left-to-right' ? '0%' : '100%'
+  const x2 = direction === 'left-to-right' ? '100%' : '0%'
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+    <defs>
+      <linearGradient id="g" x1="${x1}" y1="0%" x2="${x2}" y2="0%">
+        <stop offset="0%" stop-color="black" stop-opacity="1"/>
+        <stop offset="45%" stop-color="black" stop-opacity="0.7"/>
+        <stop offset="70%" stop-color="black" stop-opacity="0.15"/>
+        <stop offset="100%" stop-color="black" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <rect width="${width}" height="${height}" fill="url(#g)"/>
+  </svg>`
+
+  const overlay = Buffer.from(svg)
+  const result = await sharp(imagePath).composite([{ input: overlay, blend: 'over' }]).toBuffer()
+  await sharp(result).toFile(imagePath)
+}
+
 async function captureScreenshot(
   context: BrowserContext,
   settings: ManifestSettings,
@@ -118,8 +163,6 @@ async function captureScreenshot(
       await page.setViewportSize(entry.viewport)
     }
 
-    // Set debug mode in localStorage before navigation so the app
-    // picks it up on first render — no flash of non-debug state.
     if (entry.debug) {
       await page.addInitScript(() => {
         localStorage.setItem('bakin-debug', 'true')
@@ -180,33 +223,79 @@ async function captureScreenshot(
         })
       }
     }
+
+    if (entry.cropLeft) {
+      const meta = await sharp(outputPath).metadata()
+      if (meta.width && meta.height) {
+        const left = Math.round(meta.width * entry.cropLeft)
+        await sharp(outputPath)
+          .extract({ left, top: 0, width: meta.width - left, height: meta.height })
+          .toFile(outputPath + '.tmp')
+        const { renameSync } = await import('fs')
+        renameSync(outputPath + '.tmp', outputPath)
+      }
+    }
+
+    if (entry.gradient) {
+      await applyGradientOverlay(outputPath, entry.gradient)
+    }
   } finally {
     await page.close()
   }
 }
 
+function parseFilters(): { doc?: string; id?: string } {
+  const args = process.argv.slice(2)
+  const filters: { doc?: string; id?: string } = {}
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--doc' && args[i + 1]) filters.doc = args[++i]
+    else if (args[i] === '--id' && args[i + 1]) filters.id = args[++i]
+    else if (!args[i].startsWith('--')) filters.doc = args[i]
+  }
+  return filters
+}
+
 async function main(): Promise<void> {
   const manifest = loadManifest()
   const { settings, screenshots } = manifest
+  const filters = parseFilters()
 
-  const entries = screenshots.filter((s) => !s.skip)
-  const skipped = screenshots.filter((s) => s.skip)
+  let candidates = screenshots.filter((s) => !s.skip)
+  if (filters.doc) {
+    const match = filters.doc
+    candidates = candidates.filter((s) => s.doc === match || s.doc.includes(match))
+  }
+  if (filters.id) {
+    const match = filters.id
+    candidates = candidates.filter((s) => s.id === match || s.id.includes(match))
+  }
 
-  if (entries.length === 0) {
-    console.log('No screenshots to capture.')
+  const skipped = screenshots.length - candidates.length
+
+  if (candidates.length === 0) {
+    console.log('No screenshots match the filter.')
     return
   }
 
-  console.log(`\nCapturing ${entries.length} screenshots (${skipped.length} skipped)\n`)
+  const filterDesc = filters.doc || filters.id ? ` matching "${filters.doc || filters.id}"` : ''
+  console.log(`\nCapturing ${candidates.length} screenshot(s)${filterDesc} (${skipped} skipped)\n`)
 
   await ensureBrowser()
 
-  const mockProcess = await startMockServer()
+  // Use an existing server if one is already running, otherwise start one
+  const serverAlreadyRunning = await isServerRunning(settings.baseUrl)
+  let mockProcess: Bun.Subprocess | null = null
+
+  if (serverAlreadyRunning) {
+    console.log('Using existing server at', settings.baseUrl)
+  } else {
+    mockProcess = await startMockServer()
+    await waitForServer(settings.baseUrl)
+  }
+
   let browser
 
   try {
-    await waitForServer(settings.baseUrl)
-
     browser = await chromium.launch({ headless: true })
     const context = await browser.newContext({
       viewport: settings.defaultViewport,
@@ -220,7 +309,7 @@ async function main(): Promise<void> {
     let succeeded = 0
     let failed = 0
 
-    for (const entry of entries) {
+    for (const entry of candidates) {
       try {
         await captureScreenshot(context, settings, entry, outputDir)
         succeeded++
@@ -241,7 +330,9 @@ async function main(): Promise<void> {
     if (failed > 0) process.exit(1)
   } finally {
     browser?.close().catch(() => {})
-    mockProcess.kill()
+    if (mockProcess) {
+      killProcessTree(mockProcess.pid)
+    }
   }
 }
 
