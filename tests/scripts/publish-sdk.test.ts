@@ -154,8 +154,66 @@ describe('publishSdkPackage', () => {
     })
 
     expect(result).toBe('published')
-    expect(calls[1]).toContain('npm publish --access public --tag next')
-    expect(calls[1]).not.toContain('--provenance')
+    expect(calls[1]).toContain('npm publish --provenance=false --access public --tag next')
+  })
+
+  it('retries without provenance when npm records a duplicate tlog entry before publishing', async () => {
+    const calls: string[] = []
+    const result = await publishSdkPackage({
+      version: '0.1.0-rc.3',
+      packageDir: join(testRoot, 'tlog-retry-package'),
+      tag: 'next',
+      dryRun: false,
+      keepPackageDir: false,
+      provenance: true,
+    }, {
+      builder: packageBuilder(),
+      runner: ((cmd, args, cwd) => {
+        calls.push(`${cwd}: ${cmd} ${args.join(' ')}`)
+        if (args[0] === 'view') {
+          return { status: 1, stdout: '', stderr: 'npm ERR! code E404\nnpm ERR! 404 Not Found' }
+        }
+        if (args.includes('--provenance')) {
+          return {
+            status: 1,
+            stdout: '',
+            stderr: 'npm ERR! code TLOG_CREATE_ENTRY_ERROR\nnpm ERR! error creating tlog entry - (409) an equivalent entry already exists',
+          }
+        }
+        return { status: 0, stdout: 'published\n', stderr: '' }
+      }) satisfies CommandRunner,
+    })
+
+    expect(result).toBe('published')
+    expect(calls[1]).toContain('npm publish --provenance --access public --tag next')
+    expect(calls[3]).toContain('npm publish --provenance=false --access public --tag next')
+  })
+
+  it('treats a failed publish as complete when the version appears on npm afterward', async () => {
+    const calls: string[] = []
+    const result = await publishSdkPackage({
+      version: '0.1.0-rc.4',
+      packageDir: join(testRoot, 'post-failure-exists-package'),
+      tag: 'next',
+      dryRun: false,
+      keepPackageDir: false,
+      provenance: true,
+    }, {
+      builder: packageBuilder(),
+      runner: ((cmd, args, cwd) => {
+        calls.push(`${cwd}: ${cmd} ${args.join(' ')}`)
+        if (args[0] === 'view') {
+          const viewCalls = calls.filter((call) => call.includes(' npm view ')).length
+          return viewCalls === 1
+            ? { status: 1, stdout: '', stderr: 'npm ERR! code E404\nnpm ERR! 404 Not Found' }
+            : { status: 0, stdout: '"0.1.0-rc.4"\n', stderr: '' }
+        }
+        return { status: 1, stdout: '', stderr: 'transient registry failure after publish' }
+      }) satisfies CommandRunner,
+    })
+
+    expect(result).toBe('exists')
+    expect(calls).toHaveLength(3)
   })
 
   it('fails loudly on unexpected npm view and publish errors', async () => {
