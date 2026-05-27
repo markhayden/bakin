@@ -1,4 +1,4 @@
-{"runId":"run-bss-001","jobId":"blog-seo-scan","timestamp":"2026-04-07T08:00:01Z","status":"success","duration":45600,"taskId":"task-bss-001"}
-{"runId":"run-bss-002","jobId":"blog-seo-scan","timestamp":"2026-04-02T08:00:03Z","status":"success","duration":52100,"taskId":"task-bss-002"}
-{"runId":"run-bss-003","jobId":"blog-seo-scan","timestamp":"2026-03-26T08:00:02Z","status":"failure","duration":8700,"error":"Crawl depth exceeded — 3 pages returned 404"}
-{"runId":"run-bss-004","jobId":"blog-seo-scan","timestamp":"2026-03-19T08:00:01Z","status":"success","duration":41300,"taskId":"task-bss-004"}
+{"runId":"run-bss-001","jobId":"blog-seo-scan","timestamp":"2026-04-08T08:00:01Z","status":"success","duration":45600,"taskId":"task-bss-001"}
+{"runId":"run-bss-002","jobId":"blog-seo-scan","timestamp":"2026-04-01T08:00:03Z","status":"success","duration":52100,"taskId":"task-bss-002"}
+{"runId":"run-bss-003","jobId":"blog-seo-scan","timestamp":"2026-03-25T08:00:02Z","status":"failure","duration":8700,"error":"Crawl depth exceeded — 3 pages returned 404"}
+{"runId":"run-bss-004","jobId":"blog-seo-scan","timestamp":"2026-03-18T08:00:01Z","status":"success","duration":41300,"taskId":"task-bss-004"}
