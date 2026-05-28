@@ -146,6 +146,7 @@ Declare permissions before calling the corresponding APIs.
 | `runtime.cron` | Create and manage runtime cron jobs |
 | `runtime.skills` | Read runtime skills |
 | `runtime.models` | Read runtime model metadata |
+| `runtime.images` | Generate images through the configured runtime adapter |
 | `search.read` | Query Bakin search indexes |
 | `search.write` | Register or mutate plugin-owned search indexes |
 | `storage.read` | Read files in ~/.bakin/ |

@@ -1,13 +1,17 @@
 # Create Image With OpenAI
 
-Use this skill when the image should be generated through the OpenAI images adapter.
+Use this skill when the image should be generated through an OpenAI image route.
+The images plugin prefers the runtime route first, so OpenClaw Codex OAuth can
+be used without exposing OpenClaw tokens to Bakin.
 
 ## Inputs
 
 - `taskId`: required task id for asset linkage
 - `brief`: creative brief
 - `surface`: optional surface profile
-- `model`: optional OpenAI model, defaulting through routing
+- `model`: optional OpenAI model, defaulting through routing. Prefer
+  `gpt-image-2` unless the request specifically needs another configured
+  OpenAI image model.
 - `quality`: optional quality tier
 
 ## Procedure
@@ -18,4 +22,5 @@ Use this skill when the image should be generated through the OpenAI images adap
 4. Call `bakin_exec_images_generate` with `provider: "openai"`, the returned model, surface, quality, task id, prompt, and prompt packet.
 5. Return `image_filename`, `filename`, provider, model, surface, width, height, and promptHash.
 
-Do not call the OpenAI API directly. The images plugin owns the adapter, authentication lookup, asset save, and generation metadata.
+Do not call the OpenAI API directly. The images plugin owns runtime/native
+routing, authentication lookup, asset save, and generation metadata.

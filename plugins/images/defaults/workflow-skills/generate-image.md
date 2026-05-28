@@ -32,7 +32,9 @@ output_schema:
 
 ## Instructions
 
-Generate the approved image through the images plugin.
+Generate the approved image through the images plugin. The plugin owns
+runtime/native routing, provider authentication, asset saving, and sidecar
+metadata.
 
 1. Read the approved prompt, promptPacket, route, surface, and quality from priorStepOutput.
 2. Call `bakin_exec_images_generate` with the current task id, `promptPacket`, `prompt`, `provider`, `model`, `surface`, `quality`, and `savePromptPacket: true` when the workflow has an approval gate.

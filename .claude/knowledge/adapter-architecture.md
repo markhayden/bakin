@@ -41,7 +41,8 @@ Bakin owns:
 
 The runtime adapter owns runtime provider state:
 
-- agent identity, rules, tools, models, channels, cron jobs, workspaces, memory
+- agent identity, rules, tools, models, image generation routes, channels, cron
+  jobs, workspaces, memory
 - provider paths such as `~/.openclaw/`
 - provider-specific transport, retry, and config parsing
 
@@ -73,7 +74,8 @@ boot should use `getAppServices()` or the injected plugin/tool context.
 Plugins use:
 
 - `ctx.runtime` for agent rosters, messaging, channels, cron, workspace files,
-  skills, sessions, memory, models, and runtime task execution status.
+  skills, sessions, memory, models, image generation, and runtime task
+  execution status.
 - `ctx.search` for content type registration, indexing, transforms, removal,
   and queries.
 - `ctx.tasks` for Bakin-owned task metadata.

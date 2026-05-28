@@ -2,7 +2,9 @@
 
 Core plugin id: `images`.
 
-The images plugin owns provider-routed image generation primitives. Generated
+The images plugin owns provider-routed image generation primitives. It prefers
+the active runtime adapter's `ctx.runtime.images` capability and falls back to
+native direct adapters only when the runtime route is not configured. Generated
 and imported files are persisted through the Assets plugin, so downstream
 workflows should pass canonical asset filenames such as `image_filename`, not
 local filesystem paths.
@@ -11,25 +13,35 @@ local filesystem paths.
 
 - `bakin_exec_images_recommend`: deterministic route selection for provider,
   model, surface profile, dimensions, and quality.
-- `bakin_exec_images_generate`: generates through a native provider adapter and
-  saves the result into Assets with generation metadata.
+- `bakin_exec_images_generate`: generates through a runtime image provider or
+  native direct adapter and saves the result into Assets with generation
+  metadata.
 - `bakin_exec_images_import`: imports a local image file into Assets.
 - `bakin_exec_images_export`: creates resized/cropped/format-converted variants
   for a target surface profile.
 - `bakin_exec_images_profiles`: lists platform surface profiles and provider
   readiness.
 
-## Providers
+## Providers And Auth
 
-V1 formal adapters:
+Runtime routes:
 
-- OpenAI: `gpt-image-2`, `gpt-5.5`
-- Google Gemini: `gemini-3.1-flash-image`, `gemini-3-pro-image`,
-  `gemini-2.5-flash-image`
+- OpenClaw implements `ctx.runtime.images` with `openclaw infer image
+  providers|generate|edit --json`.
+- OpenClaw-owned auth, including OpenAI Codex OAuth, stays inside OpenClaw.
+  The images plugin never reads OpenClaw home files or extracts tokens.
+- Runtime providers discovered from OpenClaw can include OpenAI, Google,
+  OpenRouter, LiteLLM, DeepInfra, fal, ComfyUI, MiniMax, Vydra, and xAI.
+
+Native direct fallback adapters:
+
+- OpenAI: `gpt-image-2`, `gpt-image-1.5`, `gpt-image-1`, `gpt-image-1-mini`
+- Google Gemini: `gemini-3.1-flash-image-preview`,
+  `gemini-3-pro-image-preview`
 
 Provider support is adapter-based, not raw generic HTTP. Add new providers by
-adding a descriptor, credentials lookup, adapter implementation, route tests,
-and generation metadata coverage.
+adding a runtime adapter provider route or a native descriptor, credentials
+lookup, adapter implementation, route tests, and generation metadata coverage.
 
 ## Workflows And Skills
 

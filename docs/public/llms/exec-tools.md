@@ -424,7 +424,7 @@ mcporter call bakin-<agent>.bakin_exec_images_export
 ### bakin_exec_images_generate
 
 Label: Generated an image
-Purpose: Generate an image through a configured native image provider adapter, save it into Assets, and return the canonical image filename.
+Purpose: Generate an image through a configured runtime image provider or native image provider adapter, save it into Assets, and return the canonical image filename.
 
 Arguments: none.
 

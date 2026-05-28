@@ -479,6 +479,7 @@ PermissionSchema = z.enum([
   'runtime.cron',
   'runtime.skills',
   'runtime.models',
+  'runtime.images',
   'search.read',
   'search.write',
   'storage.read',
@@ -570,7 +571,7 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `storage: StorageAdapter` | Read/write markdown files in `~/.bakin/` |
 | `events: EventBus` | Pub/sub with pattern matching |
 | `pluginId: string` | This plugin's ID |
-| `runtime: AgentRuntimeAdapter` | Adapter-backed runtime surface for agents, messaging, channels, cron, workspace files, skills, sessions, memory, models, and execution status. Plugins never import runtime provider packages directly. |
+| `runtime: AgentRuntimeAdapter` | Adapter-backed runtime surface for agents, messaging, channels, cron, workspace files, skills, sessions, memory, models, image generation, and execution status. Plugins never import runtime provider packages directly. |
 | `tasks: BakinTaskStore` | Bakin-owned task metadata store under `~/.bakin/tasks/`. Runtime execution ids are delivery refs only. |
 | `registerNav(items)` | Add sidebar navigation items (server-side) |
 | `registerRoute(route)` | Add HTTP API route at `/api/plugins/{id}/{path}` |
