@@ -2,21 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { resetContentDir } from '../../src/core/content-dir'
 
 let testDir = join(tmpdir(), `bakin-plugin-assets-api-${Date.now()}`)
-
-mock.module('../../src/core/content-dir', () => ({
-  getContentDir: () => testDir,
-  getBakinPaths: () => {
-    const base = join(testDir, 'assets')
-    return {
-      assets: base,
-      'assets.store': join(base, 'store'),
-      'assets.inbox': join(base, 'inbox'),
-      'assets.trash': join(base, '.trash'),
-    }
-  },
-}))
+const originalBakinHome = process.env.BAKIN_HOME
 
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({ info: () => {}, warn: () => {}, error: () => {}, debug: () => {} }),
@@ -28,9 +17,14 @@ describe('createPluginAssetsAPI', () => {
   beforeEach(() => {
     testDir = join(tmpdir(), `bakin-plugin-assets-api-${Date.now()}-${Math.random().toString(16).slice(2)}`)
     mkdirSync(testDir, { recursive: true })
+    process.env.BAKIN_HOME = testDir
+    resetContentDir()
   })
 
   afterEach(() => {
+    if (originalBakinHome === undefined) delete process.env.BAKIN_HOME
+    else process.env.BAKIN_HOME = originalBakinHome
+    resetContentDir()
     rmSync(testDir, { recursive: true, force: true })
     mock.restore()
   })

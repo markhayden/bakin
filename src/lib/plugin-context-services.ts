@@ -298,6 +298,15 @@ export function createPluginRuntimeFacade(runtime: AgentRuntimeAdapter): AgentRu
     models: {
       listAvailable: runtime.models.listAvailable.bind(runtime.models),
     },
+    ...(runtime.images
+      ? {
+          images: {
+            providers: runtime.images.providers.bind(runtime.images),
+            generate: runtime.images.generate.bind(runtime.images),
+            edit: runtime.images.edit.bind(runtime.images),
+          },
+        }
+      : {}),
     tasks: {
       dispatch: runtime.tasks.dispatch.bind(runtime.tasks),
       getExecutionStatus: runtime.tasks.getExecutionStatus.bind(runtime.tasks),

@@ -32,6 +32,11 @@ function makeContext() {
     cron: {
       create: mock(async () => ({ id: 'job-1' })),
     },
+    images: {
+      providers: mock(async () => []),
+      generate: mock(async () => ({ images: [] })),
+      edit: mock(async () => ({ images: [] })),
+    },
   }
   const search = {
     index: mock(async () => {}),
@@ -230,6 +235,29 @@ describe('plugin runtime permission wrapper', () => {
       agent: 'pixel',
     })
     expect(assets.save).toHaveBeenCalledTimes(1)
+  })
+
+  it('gates runtime image generation under runtime.images', async () => {
+    const { ctx, runtime } = makeContext()
+    const denied = wrapPluginContextPermissions(ctx, {
+      pluginId: 'fixture',
+      source: 'core',
+      manifestPermissions: ['runtime.models'],
+      mode: 'enforce',
+    })
+
+    expect(() => denied.runtime.images!.providers()).toThrow(PermissionDenied)
+    expect(runtime.images.providers).not.toHaveBeenCalled()
+
+    const allowed = wrapPluginContextPermissions(ctx, {
+      pluginId: 'fixture',
+      source: 'core',
+      manifestPermissions: ['runtime.images'],
+      mode: 'enforce',
+    })
+
+    await allowed.runtime.images!.providers()
+    expect(runtime.images.providers).toHaveBeenCalledTimes(1)
   })
 
   it('does not gate event subscriptions under events.emit', () => {

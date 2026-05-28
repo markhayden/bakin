@@ -1,4 +1,5 @@
-import { accessSync, closeSync, constants, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
+import { accessSync, closeSync, constants, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
 import { dirname, join } from 'path'
 import { execFile } from 'child_process'
 import { createHash, randomUUID } from 'crypto'
@@ -15,6 +16,10 @@ import type {
   MessageArgs,
   RuntimeAgent,
   RuntimeAvailableModel,
+  RuntimeImageEditInput,
+  RuntimeImageGenerateInput,
+  RuntimeImageGenerationResult,
+  RuntimeImageProvider,
   RuntimeMetadata,
   RuntimeMemorySearchResult,
   RuntimeSkill,
@@ -81,6 +86,8 @@ const OPENCLAW_ACTIVITY_PREVIEW_CHARS = 500
 const OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS = 600000
 const OPENCLAW_CRON_TIMEOUT_MS = 30000
 const OPENCLAW_CRON_PROCESS_TIMEOUT_MS = OPENCLAW_CRON_TIMEOUT_MS + 5000
+const OPENCLAW_IMAGE_PROCESS_TIMEOUT_MS = 600000
+const OPENCLAW_IMAGE_OUTPUT_MAX_BUFFER = 16 * 1024 * 1024
 const OPENCLAW_PLUGIN_APPROVAL_REF_PREFIX = 'openclaw-plugin-approval:'
 const OPENCLAW_PLUGIN_ID = 'bakin'
 const OPENCLAW_WORKFLOW_GATE_TOOL = 'workflow.gate'
@@ -859,6 +866,22 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     },
   }
 
+  images = {
+    providers: async (): Promise<RuntimeImageProvider[]> => {
+      const stdout = await this.exec(['infer', 'image', 'providers', '--json'], {
+        timeout: OPENCLAW_IMAGE_PROCESS_TIMEOUT_MS,
+        maxBuffer: OPENCLAW_IMAGE_OUTPUT_MAX_BUFFER,
+      })
+      return parseOpenClawImageProviders(stdout)
+    },
+    generate: async (input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult> => {
+      return this.runImageInference('generate', input)
+    },
+    edit: async (input: RuntimeImageEditInput): Promise<RuntimeImageGenerationResult> => {
+      return this.runImageInference('edit', input)
+    },
+  }
+
   tasks = {
     dispatch: async (args: { bakinTaskId: string }) => ({ flowId: `flow-${args.bakinTaskId}` }),
     getExecutionStatus: async (flowId: string) => ({ flowId, state: 'unknown' as const }),
@@ -1084,6 +1107,36 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     })
     if (!res.ok) throw new Error(`OpenClaw invokeTool failed (${res.status}): ${await res.text()}`)
     return res.json()
+  }
+
+  private async runImageInference(
+    command: 'generate' | 'edit',
+    input: RuntimeImageGenerateInput | RuntimeImageEditInput,
+  ): Promise<RuntimeImageGenerationResult> {
+    const prompt = input.prompt.trim()
+    if (!prompt) throw new Error(`OpenClaw image ${command} requires a prompt`)
+
+    const outputPath = input.outputPath ?? defaultOpenClawImageOutputPath(input.outputFormat)
+    const args = ['infer', 'image', command, '--prompt', prompt, '--output', outputPath, '--json']
+    const model = openClawImageModelArg(input)
+    if (model) args.push('--model', model)
+    if (typeof input.count === 'number') args.push('--count', String(input.count))
+    const size = input.size ?? (input.width && input.height ? `${input.width}x${input.height}` : undefined)
+    if (size) args.push('--size', size)
+    if (input.aspectRatio) args.push('--aspect-ratio', input.aspectRatio)
+    if (input.resolution) args.push('--resolution', input.resolution)
+    if (input.outputFormat) args.push('--output-format', normalizeOpenClawOutputFormat(input.outputFormat))
+    if (input.background) args.push('--background', input.background)
+    if (command === 'edit') {
+      for (const file of (input as RuntimeImageEditInput).files) args.push('--file', file)
+    }
+    if (typeof input.timeoutMs === 'number') args.push('--timeout-ms', String(input.timeoutMs))
+
+    const stdout = await this.exec(args, {
+      timeout: input.timeoutMs ?? OPENCLAW_IMAGE_PROCESS_TIMEOUT_MS,
+      maxBuffer: OPENCLAW_IMAGE_OUTPUT_MAX_BUFFER,
+    })
+    return parseOpenClawImageResult(stdout, { input, outputPath })
   }
 
   private async exec(args: string[], opts: { maxBuffer?: number; timeout?: number } = {}): Promise<string> {
@@ -2307,6 +2360,148 @@ function firstString(...values: unknown[]): string | undefined {
     if (typeof value === 'string' && value.length > 0) return value
   }
   return undefined
+}
+
+function defaultOpenClawImageOutputPath(format?: string): string {
+  const normalized = normalizeOpenClawOutputFormat(format)
+  const ext = normalized === 'jpeg' ? 'jpg' : normalized
+  return join(mkdtempSync(join(tmpdir(), 'bakin-openclaw-image-')), `image.${ext}`)
+}
+
+function normalizeOpenClawOutputFormat(format?: string): string {
+  if (format === 'jpg') return 'jpeg'
+  if (format === 'jpeg' || format === 'webp' || format === 'png') return format
+  return 'png'
+}
+
+function openClawImageModelArg(input: Pick<RuntimeImageGenerateInput, 'provider' | 'model'>): string | undefined {
+  if (!input.model) return undefined
+  if (input.model.includes('/') || !input.provider) return input.model
+  return `${input.provider}/${input.model}`
+}
+
+function providerFromImageModel(model: string | undefined): string | undefined {
+  if (!model?.includes('/')) return undefined
+  return model.split('/')[0] || undefined
+}
+
+function modelNameFromImageModel(model: string | undefined): string | undefined {
+  if (!model) return undefined
+  const [, ...modelParts] = model.split('/')
+  return modelParts.length > 0 ? modelParts.join('/') : model
+}
+
+function parseOpenClawImageProviders(raw: string): RuntimeImageProvider[] {
+  const parsed = parseJsonValue(raw)
+  const rows = Array.isArray(parsed)
+    ? parsed
+    : isRecord(parsed) && Array.isArray(parsed.providers)
+      ? parsed.providers
+      : []
+  return rows
+    .filter(isRecord)
+    .map((row): RuntimeImageProvider | null => {
+      const id = firstString(row.id)
+      if (!id) return null
+      const provider: RuntimeImageProvider = { id }
+      const label = firstString(row.label)
+      if (label) provider.label = label
+      const defaultModel = firstString(row.defaultModel)
+      if (defaultModel) provider.defaultModel = defaultModel
+      if (Array.isArray(row.models)) provider.models = row.models.filter((model): model is string => typeof model === 'string')
+      if (typeof row.available === 'boolean') provider.available = row.available
+      if (typeof row.configured === 'boolean') provider.configured = row.configured
+      if (typeof row.selected === 'boolean') provider.selected = row.selected
+      if (isRecord(row.capabilities)) provider.capabilities = row.capabilities as RuntimeImageProvider['capabilities']
+      return provider
+    })
+    .filter((provider): provider is RuntimeImageProvider => provider !== null)
+}
+
+function parseOpenClawImageResult(
+  raw: string,
+  opts: { input: RuntimeImageGenerateInput; outputPath: string },
+): RuntimeImageGenerationResult {
+  const parsed = parseJsonValue(raw)
+  const files = collectOpenClawImageFiles(parsed)
+  if (files.length === 0 && existsSync(opts.outputPath)) {
+    files.push({ filePath: opts.outputPath, mimeType: imageMimeTypeForPath(opts.outputPath) })
+  }
+  if (files.length === 0) {
+    throw new Error('OpenClaw image inference did not return a saved image file')
+  }
+
+  const modelArg = openClawImageModelArg(opts.input)
+  const provider = opts.input.provider ?? providerFromImageModel(modelArg)
+  const model = modelNameFromImageModel(modelArg)
+  const providerText = openClawImageProviderText(parsed)
+  return {
+    images: files.map(file => ({
+      ...file,
+      provider: file.provider ?? provider,
+      model: file.model ?? model,
+    })),
+    ...(provider ? { provider } : {}),
+    ...(model ? { model } : {}),
+    ...(providerText ? { providerText } : {}),
+    metadata: { source: 'openclaw.infer.image' },
+  }
+}
+
+function collectOpenClawImageFiles(value: unknown): Array<{ filePath: string; mimeType?: string; width?: number; height?: number; provider?: string; model?: string; metadata?: RuntimeMetadata }> {
+  const out: Array<{ filePath: string; mimeType?: string; width?: number; height?: number; provider?: string; model?: string; metadata?: RuntimeMetadata }> = []
+  const seen = new Set<string>()
+
+  const visit = (current: unknown): void => {
+    if (Array.isArray(current)) {
+      for (const item of current) visit(item)
+      return
+    }
+    if (!isRecord(current)) return
+
+    const candidate = openClawImageFileCandidate(current)
+    if (candidate && !seen.has(candidate.filePath)) {
+      seen.add(candidate.filePath)
+      out.push(candidate)
+    }
+
+    for (const key of ['images', 'files', 'outputs', 'output', 'saved', 'result']) {
+      if (key in current) visit(current[key])
+    }
+  }
+
+  visit(value)
+  return out
+}
+
+function openClawImageFileCandidate(record: Record<string, unknown>): { filePath: string; mimeType?: string; width?: number; height?: number; provider?: string; model?: string; metadata?: RuntimeMetadata } | null {
+  const filePath = firstString(record.filePath, record.path, record.outputPath, record.filename)
+  if (!filePath || !existsSync(filePath)) return null
+  const out: { filePath: string; mimeType?: string; width?: number; height?: number; provider?: string; model?: string; metadata?: RuntimeMetadata } = {
+    filePath,
+    mimeType: firstString(record.mimeType, record.mime_type, record.contentType) ?? imageMimeTypeForPath(filePath),
+  }
+  if (typeof record.width === 'number') out.width = record.width
+  if (typeof record.height === 'number') out.height = record.height
+  const provider = firstString(record.provider)
+  if (provider) out.provider = provider
+  const model = firstString(record.model)
+  if (model) out.model = modelNameFromImageModel(model)
+  if (isRecord(record.metadata)) out.metadata = record.metadata as RuntimeMetadata
+  return out
+}
+
+function imageMimeTypeForPath(filePath: string): string {
+  const lower = filePath.toLowerCase()
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg'
+  if (lower.endsWith('.webp')) return 'image/webp'
+  if (lower.endsWith('.gif')) return 'image/gif'
+  return 'image/png'
+}
+
+function openClawImageProviderText(value: unknown): string | undefined {
+  if (!isRecord(value)) return undefined
+  return firstString(value.providerText, value.text, value.message, value.revisedPrompt, value.revised_prompt)
 }
 
 function parseJsonObject(raw: string): Record<string, unknown> | null {

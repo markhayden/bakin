@@ -326,6 +326,95 @@ export interface RuntimeAvailableModel {
   metadata?: RuntimeMetadata
 }
 
+export type RuntimeImageOutputFormat = 'png' | 'jpeg' | 'jpg' | 'webp'
+export type RuntimeImageBackground = 'transparent' | 'opaque' | 'auto'
+
+export interface RuntimeImageProviderCapabilities {
+  generate?: {
+    maxCount?: number
+    supportsSize?: boolean
+    supportsAspectRatio?: boolean
+    supportsResolution?: boolean
+  }
+  edit?: {
+    enabled?: boolean
+    maxCount?: number
+    maxInputImages?: number
+    supportsSize?: boolean
+    supportsAspectRatio?: boolean
+    supportsResolution?: boolean
+  }
+  geometry?: {
+    sizes?: string[]
+    aspectRatios?: string[]
+    resolutions?: string[]
+  }
+  output?: {
+    formats?: string[]
+    qualities?: string[]
+    backgrounds?: string[]
+  }
+  metadata?: RuntimeMetadata
+}
+
+export interface RuntimeImageProvider {
+  id: string
+  label?: string
+  defaultModel?: string
+  models?: string[]
+  available?: boolean
+  configured?: boolean
+  selected?: boolean
+  capabilities?: RuntimeImageProviderCapabilities
+  metadata?: RuntimeMetadata
+}
+
+export interface RuntimeImageGenerateInput {
+  prompt: string
+  provider?: string
+  model?: string
+  count?: number
+  width?: number
+  height?: number
+  size?: string
+  aspectRatio?: string
+  resolution?: string
+  outputPath?: string
+  outputFormat?: RuntimeImageOutputFormat
+  background?: RuntimeImageBackground
+  timeoutMs?: number
+  metadata?: RuntimeMetadata
+}
+
+export interface RuntimeImageEditInput extends RuntimeImageGenerateInput {
+  files: string[]
+}
+
+export interface RuntimeImageFile {
+  filePath: string
+  mimeType?: string
+  width?: number
+  height?: number
+  provider?: string
+  model?: string
+  url?: string
+  metadata?: RuntimeMetadata
+}
+
+export interface RuntimeImageGenerationResult {
+  images: RuntimeImageFile[]
+  provider?: string
+  model?: string
+  providerText?: string
+  metadata?: RuntimeMetadata
+}
+
+export interface RuntimeImagesAccess {
+  providers(): Promise<RuntimeImageProvider[]>
+  generate(input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult>
+  edit(input: RuntimeImageEditInput): Promise<RuntimeImageGenerationResult>
+}
+
 export interface TaskDispatchArgs {
   bakinTaskId: string
   agentId?: string
@@ -491,6 +580,8 @@ export interface AgentRuntimeAdapter {
   models: {
     listAvailable(opts?: { includeUnavailable?: boolean }): Promise<RuntimeAvailableModel[]>
   }
+
+  images?: RuntimeImagesAccess
 
   tasks: {
     dispatch(args: TaskDispatchArgs): Promise<TaskDispatchResult>
