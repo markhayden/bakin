@@ -21,16 +21,7 @@
 
 import type { ComponentType } from 'react'
 import { registerSlot, clearSlotsOwnedBy } from './slots'
-
-interface NavItem {
-  id: string
-  label: string
-  icon?: string
-  href?: string
-  order?: number
-  alwaysExpanded?: boolean
-  children?: NavItem[]
-}
+import type { NavBadge, NavItem } from './types'
 
 interface PluginRegistration {
   id: string
@@ -64,6 +55,12 @@ interface ClientRegistry {
   navItemsSnapshot: NavItem[]
   version: number
   listeners: Set<() => void>
+  // Nav badge state. Outer key: pluginId (so unregister can drop all of a
+  // plugin's badges). Inner key: navItemId. A flattened snapshot is rebuilt
+  // on every mutation for useSyncExternalStore consumers.
+  badgesByPlugin: Map<string, Map<string, NavBadge>>
+  badgesSnapshot: Map<string, NavBadge>
+  badgeListeners: Set<() => void>
 }
 
 function buildNavItemsSnapshot(registry: ClientRegistry): NavItem[] {
@@ -84,13 +81,42 @@ function getRegistry(): ClientRegistry {
       navItemsSnapshot: [],
       version: 0,
       listeners: new Set<() => void>(),
+      badgesByPlugin: new Map<string, Map<string, NavBadge>>(),
+      badgesSnapshot: new Map<string, NavBadge>(),
+      badgeListeners: new Set<() => void>(),
     } as ClientRegistry
   }
   const registry = g.__bakinClientRegistry as ClientRegistry
   if (!Array.isArray(registry.navItemsSnapshot)) {
     registry.navItemsSnapshot = buildNavItemsSnapshot(registry)
   }
+  // Hydrate badge fields if the registry pre-dates this addition (HMR retains
+  // the singleton across reloads, so older shapes can show up).
+  if (!registry.badgesByPlugin) registry.badgesByPlugin = new Map()
+  if (!registry.badgesSnapshot) registry.badgesSnapshot = buildBadgesSnapshot(registry)
+  if (!registry.badgeListeners) registry.badgeListeners = new Set()
   return registry
+}
+
+function buildBadgesSnapshot(registry: ClientRegistry): Map<string, NavBadge> {
+  const snapshot = new Map<string, NavBadge>()
+  for (const byNavItemId of registry.badgesByPlugin.values()) {
+    for (const [navItemId, badge] of byNavItemId) {
+      // First plugin wins. NavItem ids are conventionally globally unique
+      // (plugins prefix their own ids), so collisions are an authoring bug —
+      // we deliberately don't paper over them.
+      if (!snapshot.has(navItemId)) snapshot.set(navItemId, badge)
+    }
+  }
+  return snapshot
+}
+
+function bumpBadges(): void {
+  const registry = getRegistry()
+  registry.badgesSnapshot = buildBadgesSnapshot(registry)
+  for (const l of registry.badgeListeners) {
+    try { l() } catch (err) { console.error('[bakin] badge listener threw:', err) }
+  }
 }
 
 function bumpVersion(): void {
@@ -151,7 +177,13 @@ export function unregisterPlugin(id: string): void {
   registry.routesByPlugin.delete(id)
   clearSlotsOwnedBy(id)
 
+  // Badges are tracked on a separate channel so badge ticks don't force a
+  // full nav re-render — but unregister wipes both at once. Only notify
+  // badge subscribers if the plugin actually had badges.
+  const hadBadges = registry.badgesByPlugin.delete(id)
+
   bumpVersion()
+  if (hadBadges) bumpBadges()
 }
 
 /**
@@ -206,6 +238,57 @@ export function getNavItemsSnapshot(): readonly NavItem[] {
  */
 export function getPluginNavItems(pluginId: string): ReadonlyArray<NavItem> {
   return getRegistry().navByPlugin.get(pluginId) ?? []
+}
+
+// ---------------------------------------------------------------------------
+// Nav badge registry
+// ---------------------------------------------------------------------------
+
+/**
+ * Set or clear the badge for a nav item owned by a plugin. Pass `null` to
+ * clear. Safe to call before the nav item itself is registered — the badge
+ * survives in the registry until the owning plugin is unregistered.
+ */
+export function setNavBadge(pluginId: string, navItemId: string, badge: NavBadge | null): void {
+  const registry = getRegistry()
+  let plugin = registry.badgesByPlugin.get(pluginId)
+  if (badge === null) {
+    if (!plugin?.has(navItemId)) return
+    plugin.delete(navItemId)
+    if (plugin.size === 0) registry.badgesByPlugin.delete(pluginId)
+    bumpBadges()
+    return
+  }
+  if (!plugin) {
+    plugin = new Map()
+    registry.badgesByPlugin.set(pluginId, plugin)
+  }
+  plugin.set(navItemId, badge)
+  bumpBadges()
+}
+
+/** Read the current badge for a nav item, or undefined if none. */
+export function getNavBadge(navItemId: string): NavBadge | undefined {
+  return getRegistry().badgesSnapshot.get(navItemId)
+}
+
+/**
+ * Stable snapshot of every active badge keyed by navItemId. The identity
+ * of the returned Map only changes when a badge is set, cleared, or its
+ * owning plugin is unregistered — safe for React's `useSyncExternalStore`.
+ */
+export function getNavBadgesSnapshot(): ReadonlyMap<string, NavBadge> {
+  return getRegistry().badgesSnapshot
+}
+
+/**
+ * Subscribe to badge mutations on a channel separate from `subscribeRegistry`
+ * so high-frequency badge ticks don't force the whole nav to re-render.
+ */
+export function subscribeNavBadges(listener: () => void): () => void {
+  const registry = getRegistry()
+  registry.badgeListeners.add(listener)
+  return () => { registry.badgeListeners.delete(listener) }
 }
 
 function normalizePattern(pattern: string): string[] {

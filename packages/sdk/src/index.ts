@@ -40,6 +40,14 @@ export { getAllNavItems } from './register'
 export { getNavItemsSnapshot } from './register'
 /** Get nav items contributed by a specific plugin. */
 export { getPluginNavItems } from './register'
+/** Set or clear a runtime badge on a plugin-owned nav item. */
+export { setNavBadge } from './register'
+/** Read the current badge for a nav item, or undefined if none. */
+export { getNavBadge } from './register'
+/** Stable snapshot of every active nav badge keyed by navItemId. */
+export { getNavBadgesSnapshot } from './register'
+/** Subscribe to nav-badge mutations (separate channel from `subscribeRegistry`). */
+export { subscribeNavBadges } from './register'
 /** Look up a specific client route by plugin id + path. */
 export { getPluginRoute } from './register'
 /** Get all registered client routes (across all plugins). */
