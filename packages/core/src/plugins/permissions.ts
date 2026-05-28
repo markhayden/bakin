@@ -14,6 +14,7 @@ import { z } from 'zod'
 export const PermissionSchema = z.enum([
   'events.emit',
   'assets.read',
+  'assets.write',
   'runtime.read',
   'runtime.agents',
   'runtime.messaging',
@@ -51,6 +52,7 @@ export class PermissionDenied extends Error {
 export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   'events.emit':   'Broadcast Server-Sent Events to connected browsers',
   'assets.read':   'Read asset metadata and runtime-deliverable asset references',
+  'assets.write':  'Save files into the asset store and write asset metadata',
   'runtime.read':  'Read general runtime adapter state',
   'runtime.agents': 'Read runtime agent identity and status',
   'runtime.messaging': 'Send messages through the runtime adapter',

@@ -10,7 +10,7 @@ import { mkdirSync, copyFileSync, writeFileSync, existsSync } from 'fs'
 import { join, extname, basename } from 'path'
 import { execSync } from 'child_process'
 import { getContentDir } from '../../../src/core/content-dir'
-import type { AssetSource } from './sidecar'
+import type { AssetGenerationMeta, AssetSource } from './sidecar'
 import type { AssetType } from './constants'
 import { generateConventionalFilename, slugify as filenameSlugify } from './filename-id'
 import { pathForFilename, relPathForFilename, yearMonthFromFilename } from './path-for-filename'
@@ -26,6 +26,7 @@ export interface SaveAssetParams {
   slug?: string
   source?: AssetSource
   originalFilename?: string
+  generation?: AssetGenerationMeta
 }
 
 export interface SaveAssetResult {
@@ -61,7 +62,7 @@ function generateThumbnail(inputPath: string, outputPath: string, widthPx = 400)
 }
 
 export async function saveAsset(params: SaveAssetParams): Promise<SaveAssetResult> {
-  const { filePath, taskId, type, agent, description, tags, tool, slug, source, originalFilename } = params
+  const { filePath, taskId, type, agent, description, tags, tool, slug, source, originalFilename, generation } = params
 
   if (!existsSync(filePath)) {
     return { ok: false, error: `Source file not found: ${filePath}` }
@@ -97,6 +98,7 @@ export async function saveAsset(params: SaveAssetParams): Promise<SaveAssetResul
     ...(tags && tags.length > 0 ? { tags } : {}),
     ...(source ? { source } : {}),
     ...(originalFilename ? { originalFilename } : {}),
+    ...(generation ? { generation } : {}),
   }
   const metadataPath = `${destPath}.meta.json`
   writeFileSync(metadataPath, JSON.stringify(sidecar, null, 2))

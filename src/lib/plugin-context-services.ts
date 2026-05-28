@@ -3,6 +3,8 @@ import { join } from 'path'
 import type {
   AssetFileRef,
   AssetMeta,
+  AssetSaveInput,
+  AssetSaveResult,
   AssetsAPI,
   PluginTask,
   PluginTaskColumn,
@@ -153,6 +155,16 @@ function toAssetMeta(asset: {
 
 export function createPluginAssetsAPI(): AssetsAPI {
   return {
+    async save(input: AssetSaveInput): Promise<AssetSaveResult> {
+      const [{ saveAsset }, { upsertAsset }] = await Promise.all([
+        import('../../plugins/assets/lib/save-asset'),
+        import('../../plugins/assets/lib/asset-index'),
+      ])
+      const result = await saveAsset(input)
+      if (result.ok && typeof result.path === 'string') upsertAsset(result.path)
+      return result
+    },
+
     async getByFilename(filename: string): Promise<AssetMeta | null> {
       const [{ getAsset }, { pathForFilename }] = await Promise.all([
         import('../../plugins/assets/lib/asset-index'),

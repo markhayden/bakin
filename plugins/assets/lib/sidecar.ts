@@ -9,6 +9,19 @@ const log = createLogger('assets:sidecar')
 
 export type AssetSource = 'agent' | 'upload' | 'clipboard'
 
+export interface AssetGenerationMeta {
+  provider: string
+  model: string
+  surface: string
+  width: number
+  height: number
+  quality: string
+  promptHash: string
+  promptAssetFilename?: string
+  routeReason?: string
+  createdByTool: string
+}
+
 export interface SidecarMeta {
   agent: string
   taskId: string | null
@@ -23,6 +36,7 @@ export interface SidecarMeta {
   tags?: string[]
   originalFilename?: string
   source?: AssetSource
+  generation?: AssetGenerationMeta
 }
 
 const REQUIRED_FIELDS = ['agent', 'taskId', 'created'] as const
@@ -40,7 +54,7 @@ export const FIELD_ALIASES: Record<string, string> = {
 
 /** All valid fields in a sidecar .meta.json file. */
 export const KNOWN_FIELDS = new Set([
-  'agent', 'taskId', 'created', 'type', 'tool', 'description', 'tags', 'originalFilename', 'source',
+  'agent', 'taskId', 'created', 'type', 'tool', 'description', 'tags', 'originalFilename', 'source', 'generation',
 ])
 
 export function getSidecarPath(assetPath: string): string {
@@ -107,6 +121,7 @@ function validateAndNormalize(meta: Record<string, unknown>): SidecarMeta {
   const type = typeof meta.type === 'string' && (ASSET_TYPES as readonly string[]).includes(meta.type)
     ? (meta.type as AssetType)
     : undefined
+  const generation = normalizeGeneration(meta.generation)
 
   return {
     agent: typeof meta.agent === 'string' ? meta.agent : 'unknown',
@@ -118,7 +133,67 @@ function validateAndNormalize(meta: Record<string, unknown>): SidecarMeta {
     tags: Array.isArray(meta.tags) ? meta.tags.filter((t): t is string => typeof t === 'string') : undefined,
     originalFilename: typeof meta.originalFilename === 'string' ? meta.originalFilename : undefined,
     source: typeof meta.source === 'string' && ['agent', 'upload', 'clipboard'].includes(meta.source) ? meta.source as AssetSource : undefined,
+    generation,
   }
+}
+
+function positiveNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined
+}
+
+function normalizeGeneration(value: unknown): AssetGenerationMeta | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const meta = value as Record<string, unknown>
+  const provider = nonEmptyString(meta.provider)
+  const model = nonEmptyString(meta.model)
+  const surface = nonEmptyString(meta.surface)
+  const width = positiveNumber(meta.width)
+  const height = positiveNumber(meta.height)
+  const quality = nonEmptyString(meta.quality)
+  const promptHash = nonEmptyString(meta.promptHash)
+  const createdByTool = nonEmptyString(meta.createdByTool)
+  if (!provider || !model || !surface || !width || !height || !quality || !promptHash || !createdByTool) {
+    return undefined
+  }
+
+  return {
+    provider,
+    model,
+    surface,
+    width,
+    height,
+    quality,
+    promptHash,
+    ...(nonEmptyString(meta.promptAssetFilename) ? { promptAssetFilename: nonEmptyString(meta.promptAssetFilename) } : {}),
+    ...(nonEmptyString(meta.routeReason) ? { routeReason: nonEmptyString(meta.routeReason) } : {}),
+    createdByTool,
+  }
+}
+
+function validateGeneration(value: unknown): string[] {
+  const issues: string[] = []
+  if (value === undefined) return issues
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return ['generation must be an object']
+  }
+
+  const meta = value as Record<string, unknown>
+  for (const field of ['provider', 'model', 'surface', 'quality', 'promptHash', 'createdByTool']) {
+    if (!nonEmptyString(meta[field])) issues.push(`generation.${field} must be a non-empty string`)
+  }
+  for (const field of ['width', 'height']) {
+    if (!positiveNumber(meta[field])) issues.push(`generation.${field} must be a positive number`)
+  }
+  for (const field of ['promptAssetFilename', 'routeReason']) {
+    if (meta[field] !== undefined && !nonEmptyString(meta[field])) {
+      issues.push(`generation.${field} must be a non-empty string when provided`)
+    }
+  }
+  return issues
 }
 
 /**
@@ -155,6 +230,8 @@ export function validateSidecar(metaPath: string): string[] {
     if (extraFields.length > 0) {
       issues.push(`Unknown fields: ${extraFields.join(', ')} — only use standard sidecar fields`)
     }
+
+    issues.push(...validateGeneration(meta.generation))
   } catch {
     issues.push('Invalid JSON')
   }

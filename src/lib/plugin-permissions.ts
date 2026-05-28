@@ -65,6 +65,7 @@ const METHOD_PERMISSIONS: Record<string, Permission> = {
   'assets.list': 'assets.read',
   'assets.exists': 'assets.read',
   'assets.fileRef': 'assets.read',
+  'assets.save': 'assets.write',
 
   'search.registerContentType': 'search.write',
   'search.registerFileBackedContentType': 'search.write',

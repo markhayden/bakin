@@ -802,6 +802,19 @@ export interface AssetVariantMeta {
   mimeType: string
 }
 
+export interface AssetGenerationMeta {
+  provider: string
+  model: string
+  surface: string
+  width: number
+  height: number
+  quality: string
+  promptHash: string
+  promptAssetFilename?: string
+  routeReason?: string
+  createdByTool: string
+}
+
 /** Full asset record: file info + sidecar metadata + auto-generated variants. */
 export interface AssetMeta {
   path: string
@@ -818,6 +831,7 @@ export interface AssetMeta {
     description?: string
     tags?: string[]
     originalFilename?: string
+    generation?: AssetGenerationMeta
   }
   variants?: AssetVariantMeta[]
 }
@@ -841,8 +855,32 @@ export interface AssetFileRef {
   mimeType?: string
 }
 
-/** Assets API exposed via `ctx.assets` — read-only asset lookups. */
+export interface AssetSaveInput {
+  filePath: string
+  taskId: string | null
+  type: AssetMeta['type']
+  agent: string
+  description?: string
+  tags?: string[]
+  tool?: string
+  slug?: string
+  source?: 'agent' | 'upload' | 'clipboard'
+  originalFilename?: string
+  generation?: AssetGenerationMeta
+}
+
+export interface AssetSaveResult {
+  ok: boolean
+  path?: string
+  metadataPath?: string
+  filename?: string
+  error?: string
+  [key: string]: unknown
+}
+
+/** Assets API exposed via `ctx.assets` — asset persistence and lookups. */
 export interface AssetsAPI {
+  save(input: AssetSaveInput): Promise<AssetSaveResult>
   getByFilename(filename: string): Promise<AssetMeta | null>
   list(filter?: { type?: AssetMeta['type']; taskId?: string | null }): Promise<AssetMeta[]>
   exists(filename: string): Promise<boolean>
