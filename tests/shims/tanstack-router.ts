@@ -15,7 +15,7 @@
  * module because this shim only loads when the Vitest config's alias map
  * kicks in.
  */
-import { createElement, type ComponentType, type ReactNode } from 'react'
+import type { ComponentType, ReactNode } from 'react'
 
 export function useNavigate(): (...args: unknown[]) => void {
   return () => {}
@@ -59,15 +59,11 @@ export const RouterProvider: ComponentType<{ router: unknown; children?: ReactNo
 
 export const Outlet: ComponentType = () => null
 
-type LinkProps = {
-  to?: string
-  children?: ReactNode
-  className?: string
-  onClick?: (e: unknown) => void
-  'aria-label'?: string
-}
-export const Link: ComponentType<LinkProps> = (props) => {
-  const { to, children, className, onClick } = props
-  const ariaLabel = props['aria-label']
-  return createElement('a', { href: to, className, onClick, 'aria-label': ariaLabel }, children)
+export const Link: ComponentType<{ to?: string; children?: ReactNode; className?: string; onClick?: (e: unknown) => void }> = ({
+  to,
+  children,
+  className,
+  onClick,
+}) => {
+  return { type: 'a', props: { href: to, className, onClick, children }, key: null, ref: null } as any
 }
