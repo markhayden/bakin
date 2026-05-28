@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.7] - 2026-05-28
+
+### Changed
+- Update release-candidate install commands to pin `v0.0.1-rc.7`.
+
 ### Fixed
 - Repair compiled binary service setup and restart launch paths so macOS LaunchAgents and Linux user services run the real `bakin serve` executable instead of Bun virtual filesystem paths.
 
@@ -76,12 +81,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 - Sign and notarize macOS release binaries.
 - Publish release assets, SDK packages, Homebrew formula updates, and post-publish smoke checks from CI.
 
-[0.0.1-rc.1]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.1
-
-[0.0.1-rc.3]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.3
-[0.0.1-rc.2]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.2
-
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.6...HEAD
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.7...HEAD
+[0.0.1-rc.7]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.7
 [0.0.1-rc.6]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.6
 [0.0.1-rc.5]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.5
 [0.0.1-rc.4]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.4
+[0.0.1-rc.3]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.3
+[0.0.1-rc.2]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.2
+[0.0.1-rc.1]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.1
