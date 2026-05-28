@@ -28,7 +28,7 @@ bakin stop
 bakin restart
 ```
 
-`restart` is a `stop` followed by `start`. Good for picking up settings changes, core agent file changes, or rare plugin manifest/schema changes that don't auto-reload.
+Without a service installed, `restart` is a `stop` followed by `start`. With a service installed, it asks the service manager to restart Bakin and waits for the server to respond. Good for picking up settings changes, core agent file changes, or rare plugin manifest/schema changes that don't auto-reload.
 
 Dev-installed plugins (`bakin plugins install --dev <path>`) load on normal start because Bakin follows the symlink under `~/.bakin/plugins/<id>`. Live rebuilds for source edits only run under `bakin dev`.
 
@@ -86,11 +86,11 @@ Prefer the dashboard? The same controls live in the [Health plugin](/docs/using/
 Optional. To keep Bakin running across reboots:
 
 ```sh
-bakin setup service             # install LaunchAgent
+bakin setup service             # install LaunchAgent and start it now
 bakin setup service --uninstall # remove it
 ```
 
-Plenty of people just leave `bakin start` running in a terminal session or window. Whatever works.
+Setup starts the service immediately and verifies the server responds before reporting success. Plenty of people just leave `bakin start` running in a terminal session or window. Whatever works.
 
 <div class="for-agents">
 

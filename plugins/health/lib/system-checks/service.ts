@@ -2,8 +2,8 @@
  * System check — macOS LaunchAgent plist health.
  *
  * Migrated out of src/core/doctor.ts (#139 C6). Verifies the bakin
- * service plist exists, references the current project root + server.ts
- * path, and is loaded into launchd. macOS-only; gated on
+ * service plist exists, does not reference Bun's virtual compiled
+ * filesystem, and is loaded into launchd. macOS-only; gated on
  * settings.service.enabled. NOT auto-fixable — stale paths require
  * human judgment.
  */
@@ -14,7 +14,7 @@ import { join } from 'path'
 import { getSettings } from '../../../../src/core/settings'
 import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
 
-const SERVICE_LABEL = 'com.bakin.mc'
+const SERVICE_LABEL = 'com.makinbakin.bakin'
 
 function ok(message: string): HealthCheckResult {
   return { check: 'service', status: 'ok', message, autoFixable: false }
@@ -48,18 +48,29 @@ export function checkService(projectRoot: string): HealthCheckResult[] {
   try {
     const plistContent = readFileSync(plistPath, 'utf-8')
 
-    // Check WorkingDirectory matches current project
+    if (plistContent.includes('/$bunfs/')) {
+      results.push(error('LaunchAgent references Bun virtual filesystem path — run: bakin setup service'))
+    }
+
     const wdMatch = plistContent.match(/<key>WorkingDirectory<\/key>\s*<string>([^<]+)<\/string>/)
-    if (wdMatch && wdMatch[1] !== projectRoot) {
+    const serverMatch = plistContent.match(/<string>([^<]*server\.ts)<\/string>/)
+
+    if (!wdMatch) {
+      results.push(error('LaunchAgent is missing WorkingDirectory — run: bakin setup service'))
+    }
+
+    if (serverMatch && wdMatch && wdMatch[1] !== projectRoot) {
       results.push(error(
         `LaunchAgent WorkingDirectory is "${wdMatch[1]}" but project is at "${projectRoot}" — run: bakin setup service`
       ))
     }
 
-    // Check server.ts path matches
-    const serverMatch = plistContent.match(/<string>([^<]*server\.ts)<\/string>/)
     if (serverMatch && serverMatch[1] !== join(projectRoot, 'server.ts')) {
       results.push(error('LaunchAgent references stale server.ts path — run: bakin setup service'))
+    }
+
+    if (!serverMatch && !/<string>serve<\/string>/.test(plistContent)) {
+      results.push(error('LaunchAgent does not run `bakin serve` — run: bakin setup service'))
     }
   } catch (err) {
     results.push(error(`Failed to read plist: ${err}`))

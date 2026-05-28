@@ -389,7 +389,7 @@ bakin version
 bakin update
 ```
 </CliCommandCard>
-<CliCommandCard id="setup-service" name="setup service" summary="Install or remove autostart service integration." description="Installs or removes a macOS LaunchAgent or Linux user systemd service that runs `bakin serve` on login. Manual startup remains the default until this command is run.">
+<CliCommandCard id="setup-service" name="setup service" summary="Install or remove autostart service integration." description="Installs or removes a macOS LaunchAgent or Linux user systemd service that runs `bakin serve` on login, starts it immediately, and verifies the server responds.">
 ```sh frame="terminal"
 bakin setup service [--uninstall]
 ```

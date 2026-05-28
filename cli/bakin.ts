@@ -42,7 +42,7 @@ import type {
 } from '../src/core/cli/ui/readonly'
 import type { CheckResult, InstallResult } from '../src/core/onboarding/types'
 
-const BASE_URL = process.env.BAKIN_URL || 'http://localhost:3737'
+const BASE_URL = process.env.BAKIN_URL || `http://localhost:${process.env.PORT || 3737}`
 
 // Lazy so importing this module (e.g. from src/core/cli.ts when the
 // compiled binary delegates unknown commands here) does not initialize
@@ -2338,26 +2338,74 @@ function systemdEscape(value: string): string {
   return `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
 }
 
-async function serviceProgramArgs(): Promise<string[]> {
+interface ServerLaunchSpec {
+  programArgs: string[]
+  workingDir: string
+}
+
+function isBunVirtualPath(value: string | undefined): boolean {
+  return typeof value === 'string' && value.startsWith('/$bunfs/')
+}
+
+function currentExecutable(): string {
+  for (const candidate of [process.execPath, process.argv[0]]) {
+    if (candidate && !isBunVirtualPath(candidate)) return candidate
+  }
+  return 'bakin'
+}
+
+async function resolveServerLaunchSpec(): Promise<ServerLaunchSpec> {
   const { existsSync } = await import('fs')
   const { join, resolve, dirname } = await import('path')
   const argvScript = process.argv[1]
-  if (argvScript && existsSync(argvScript) && /\.(ts|js|mjs|cjs)$/.test(argvScript)) {
+  if (argvScript && !isBunVirtualPath(argvScript) && /\.(ts|js|mjs|cjs)$/.test(argvScript)) {
     const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
     const serverPath = join(projectDir, 'server.ts')
-    if (existsSync(serverPath)) return [process.execPath, serverPath, 'serve']
-    return [process.execPath, argvScript, 'serve']
+    if (existsSync(serverPath)) {
+      return { programArgs: [currentExecutable(), serverPath, 'serve'], workingDir: projectDir }
+    }
+    return { programArgs: [currentExecutable(), argvScript, 'serve'], workingDir: projectDir }
   }
-  return [argvScript || process.execPath, 'serve']
+  const { getBakinPaths } = await import('../packages/core/src/content-dir')
+  return { programArgs: [currentExecutable(), 'serve'], workingDir: getBakinPaths().home }
+}
+
+function serviceEnvironment(): Record<string, string> {
+  const env: Record<string, string> = {
+    PATH: '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin',
+  }
+  for (const key of ['BAKIN_HOME', 'PORT'] as const) {
+    const value = process.env[key]
+    if (value) env[key] = value
+  }
+  return env
+}
+
+async function waitForServerVersion(timeoutSeconds = 15): Promise<{ ok: true; version: string } | { ok: false }> {
+  for (let i = 0; i < timeoutSeconds; i++) {
+    await new Promise(r => setTimeout(r, 1000))
+    try {
+      const res = await fetch(`${BASE_URL}/api/version`, { signal: AbortSignal.timeout(2000) })
+      if (res.ok) {
+        const data = await res.json() as { version?: unknown }
+        return { ok: true, version: typeof data.version === 'string' ? data.version : 'unknown' }
+      }
+    } catch { /* not ready yet */ }
+  }
+  return { ok: false }
 }
 
 function generateLaunchAgentPlist(opts: {
   programArgs: string[]
+  environment: Record<string, string>
   workingDir: string
   stdoutPath: string
   stderrPath: string
 }): string {
   const args = opts.programArgs.map(arg => `    <string>${xmlEscape(arg)}</string>`).join('\n')
+  const env = Object.entries(opts.environment)
+    .map(([key, value]) => `    <key>${xmlEscape(key)}</key>\n    <string>${xmlEscape(value)}</string>`)
+    .join('\n')
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -2371,8 +2419,7 @@ ${args}
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>PATH</key>
-    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+${env}
   </dict>
   <key>WorkingDirectory</key>
   <string>${xmlEscape(opts.workingDir)}</string>
@@ -2391,10 +2438,14 @@ ${args}
 
 function generateSystemdUnit(opts: {
   programArgs: string[]
+  environment: Record<string, string>
   workingDir: string
   stdoutPath: string
   stderrPath: string
 }): string {
+  const env = Object.entries(opts.environment)
+    .map(([key, value]) => `Environment=${systemdEscape(`${key}=${value}`)}`)
+    .join('\n')
   return `[Unit]
 Description=Bakin server
 After=network.target
@@ -2405,7 +2456,7 @@ WorkingDirectory=${systemdEscape(opts.workingDir)}
 ExecStart=${opts.programArgs.map(systemdEscape).join(' ')}
 Restart=on-failure
 RestartSec=3
-Environment=PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin
+${env}
 StandardOutput=append:${opts.stdoutPath}
 StandardError=append:${opts.stderrPath}
 
@@ -2415,7 +2466,7 @@ WantedBy=default.target
 }
 
 function serverProcessPattern(): string {
-  return 'tsx.*server\\.ts|bakin.*serve'
+  return 'tsx.*server\\.ts|bun.*server\\.ts.*serve|bakin.*serve'
 }
 
 async function cmdStartServer(command: 'start' | 'serve', args: string[] = []): Promise<void> {
@@ -2429,11 +2480,9 @@ async function cmdStartServer(command: 'start' | 'serve', args: string[] = []): 
   }
 
   const { spawn } = await import('child_process')
-  const { dirname, resolve } = await import('path')
-  const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
-  const programArgs = await serviceProgramArgs()
-  const child = spawn(programArgs[0], programArgs.slice(1), {
-    cwd: projectDir,
+  const launch = await resolveServerLaunchSpec()
+  const child = spawn(launch.programArgs[0], launch.programArgs.slice(1), {
+    cwd: launch.workingDir,
     stdio: 'inherit',
     env: { ...process.env },
   })
@@ -2460,7 +2509,7 @@ async function cmdStartServer(command: 'start' | 'serve', args: string[] = []): 
 async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<void> {
   const { execFileSync } = await import('child_process')
   const { existsSync, mkdirSync, unlinkSync, writeFileSync } = await import('fs')
-  const { join, dirname, resolve } = await import('path')
+  const { join } = await import('path')
   const { homedir } = await import('os')
   const { getBakinPaths } = await import('../packages/core/src/content-dir')
   const isTTY = process.stdout.isTTY
@@ -2480,8 +2529,8 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
     })
   }
 
-  const programArgs = await serviceProgramArgs()
-  const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
+  const launch = await resolveServerLaunchSpec()
+  const environment = serviceEnvironment()
   const paths = getBakinPaths()
   const stdoutPath = join(paths.logs, 'server.out.log')
   const stderrPath = join(paths.logs, 'server.err.log')
@@ -2522,29 +2571,36 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
       removePlist(join(launchAgentsDir, `${label}.plist`))
     }
     writeFileSync(plistPath, generateLaunchAgentPlist({
-      programArgs,
-      workingDir: projectDir,
+      programArgs: launch.programArgs,
+      environment,
+      workingDir: launch.workingDir,
       stdoutPath,
       stderrPath,
     }), 'utf-8')
     execFileSync('launchctl', ['bootstrap', `gui/${uid}`, plistPath], { stdio: 'pipe' })
     execFileSync('launchctl', ['kickstart', '-k', `gui/${uid}/${SERVICE_LABEL}`], { stdio: 'pipe' })
+    const started = await waitForServerVersion()
+    if (!started.ok) process.exitCode = 1
     if (isTTY) {
       await printServiceResult({
         ok: true,
-        status: 'ok',
-        message: 'Bakin autostart enabled.',
+        status: started.ok ? 'ok' : 'warn',
+        message: started.ok ? 'Bakin autostart enabled.' : 'Bakin autostart enabled, but the service did not respond.',
         service: SERVICE_LABEL,
         platform: 'darwin',
       }, [
         `Service: ${SERVICE_LABEL}`,
+        started.ok ? `Version: ${started.version}` : 'Status: not responding after startup',
         `Logs: ${stdoutPath}`,
+        `Errors: ${stderrPath}`,
         'Disable: bakin setup service --uninstall',
       ].join('\n'))
     } else {
-      console.log('[OK] Bakin autostart enabled')
+      console.log(started.ok ? '[OK] Bakin autostart enabled' : '[WARN] Bakin autostart enabled, but the service did not respond')
       console.log(`  Service: ${SERVICE_LABEL}`)
+      if (started.ok) console.log(`  Version: ${started.version}`)
       console.log(`  Logs:    ${stdoutPath}`)
+      console.log(`  Errors:  ${stderrPath}`)
       console.log('  Disable: bakin setup service --uninstall')
     }
     return
@@ -2574,29 +2630,36 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
 
     mkdirSync(systemdDir, { recursive: true })
     writeFileSync(unitPath, generateSystemdUnit({
-      programArgs,
-      workingDir: projectDir,
+      programArgs: launch.programArgs,
+      environment,
+      workingDir: launch.workingDir,
       stdoutPath,
       stderrPath,
     }), 'utf-8')
     execFileSync('systemctl', ['--user', 'daemon-reload'], { stdio: 'pipe' })
     execFileSync('systemctl', ['--user', 'enable', '--now', `${SERVICE_LABEL}.service`], { stdio: 'pipe' })
+    const started = await waitForServerVersion()
+    if (!started.ok) process.exitCode = 1
     if (isTTY) {
       await printServiceResult({
         ok: true,
-        status: 'ok',
-        message: 'Bakin autostart enabled.',
+        status: started.ok ? 'ok' : 'warn',
+        message: started.ok ? 'Bakin autostart enabled.' : 'Bakin autostart enabled, but the service did not respond.',
         service: `${SERVICE_LABEL}.service`,
         platform: 'linux',
       }, [
         `Service: ${SERVICE_LABEL}.service`,
+        started.ok ? `Version: ${started.version}` : 'Status: not responding after startup',
         `Logs: ${stdoutPath}`,
+        `Errors: ${stderrPath}`,
         'Disable: bakin setup service --uninstall',
       ].join('\n'))
     } else {
-      console.log('[OK] Bakin autostart enabled')
+      console.log(started.ok ? '[OK] Bakin autostart enabled' : '[WARN] Bakin autostart enabled, but the service did not respond')
       console.log(`  Service: ${SERVICE_LABEL}.service`)
+      if (started.ok) console.log(`  Version: ${started.version}`)
       console.log(`  Logs:    ${stdoutPath}`)
+      console.log(`  Errors:  ${stderrPath}`)
       console.log('  Disable: bakin setup service --uninstall')
     }
     return
@@ -2612,10 +2675,15 @@ async function cmdSetupService(options: { uninstall?: boolean } = {}): Promise<v
 }
 
 async function cmdReboot(): Promise<void> {
-  const { execFileSync } = await import('child_process')
-  const { join, resolve, dirname } = await import('path')
+  const { execFileSync, spawn } = await import('child_process')
+  const { existsSync } = await import('fs')
+  const { join } = await import('path')
+  const { homedir } = await import('os')
+  const { getBakinPaths } = await import('../packages/core/src/content-dir')
   const isTTY = process.stdout.isTTY
   const details: string[] = []
+  const paths = getBakinPaths()
+  const logPath = join(paths.logs, 'server.log')
 
   const printRestartResult = async (result: Record<string, unknown>): Promise<void> => {
     const message = typeof result.message === 'string' ? result.message : 'Bakin restart request completed.'
@@ -2633,31 +2701,96 @@ async function cmdReboot(): Promise<void> {
     else console.log(message)
   }
 
-  // --- launchctl restart path commented out — manual process management only ---
-  // const { existsSync } = await import('fs')
-  // const { homedir } = await import('os')
-  // const uid = execSync('id -u', { encoding: 'utf-8' }).trim()
-  // const plistPath = join(homedir(), 'Library', 'LaunchAgents', `${SERVICE_LABEL}.plist`)
-  // const isService = existsSync(plistPath)
-  //
-  // if (isService) {
-  //   console.log('[..] Restarting Bakin via launchctl...')
-  //   try {
-  //     execSync(`launchctl kickstart -k gui/${uid}/${SERVICE_LABEL}`, { stdio: 'pipe' })
-  //     console.log('[OK] Bakin restarting')
-  //   } catch {
-  //     console.log('[..] Kickstart failed, trying bootout + bootstrap...')
-  //     try { execSync(`launchctl bootout gui/${uid} ${plistPath}`, { stdio: 'pipe' }) } catch { /* ok */ }
-  //     await new Promise(r => setTimeout(r, 1000))
-  //     try {
-  //       execSync(`launchctl bootstrap gui/${uid} ${plistPath}`, { stdio: 'pipe' })
-  //       console.log('[OK] Bakin restarting')
-  //     } catch (err) {
-  //       console.error('[FAIL] Could not restart:', err instanceof Error ? err.message : String(err))
-  //       process.exit(1)
-  //     }
-  //   }
-  // } else {
+  if (process.platform === 'darwin') {
+    const plistPath = join(homedir(), 'Library', 'LaunchAgents', `${SERVICE_LABEL}.plist`)
+    if (existsSync(plistPath)) {
+      const uid = execFileSync('id', ['-u'], { encoding: 'utf-8' }).trim()
+      if (!isTTY) console.log('[..] Restarting Bakin LaunchAgent...')
+      try {
+        execFileSync('launchctl', ['kickstart', '-k', `gui/${uid}/${SERVICE_LABEL}`], { stdio: 'pipe' })
+      } catch {
+        details.push('LaunchAgent was not loaded; bootstrapped it before restart.')
+        execFileSync('launchctl', ['bootstrap', `gui/${uid}`, plistPath], { stdio: 'pipe' })
+        execFileSync('launchctl', ['kickstart', '-k', `gui/${uid}/${SERVICE_LABEL}`], { stdio: 'pipe' })
+      }
+      details.push(`Service: ${SERVICE_LABEL}`)
+      details.push(`Logs: tail -f ${logPath}`)
+      if (!isTTY) console.log('[OK] Bakin LaunchAgent restart requested')
+
+      if (!isTTY) console.log('[..] Waiting for server to come up...')
+      const started = await waitForServerVersion()
+      if (started.ok) {
+        if (!isTTY) {
+          console.log(`[OK] Bakin is up (${started.version})`)
+          return
+        }
+        details.push(`Version: ${started.version}`)
+        await printRestartResult({
+          ok: true,
+          status: 'ok',
+          message: 'Bakin restarted.',
+          service: SERVICE_LABEL,
+          version: started.version,
+        })
+        return
+      }
+      if (!isTTY) {
+        console.log('[WARN] Server not responding after 15s - check logs')
+        process.exitCode = 1
+        return
+      }
+      process.exitCode = 1
+      await printRestartResult({
+        ok: true,
+        status: 'warn',
+        message: 'Server not responding after 15s - check logs.',
+        service: SERVICE_LABEL,
+      })
+      return
+    }
+  }
+
+  if (process.platform === 'linux') {
+    const unitPath = join(homedir(), '.config', 'systemd', 'user', `${SERVICE_LABEL}.service`)
+    if (existsSync(unitPath)) {
+      if (!isTTY) console.log('[..] Restarting Bakin user service...')
+      execFileSync('systemctl', ['--user', 'restart', `${SERVICE_LABEL}.service`], { stdio: 'pipe' })
+      details.push(`Service: ${SERVICE_LABEL}.service`)
+      details.push(`Logs: tail -f ${logPath}`)
+      if (!isTTY) console.log('[OK] Bakin user service restart requested')
+
+      if (!isTTY) console.log('[..] Waiting for server to come up...')
+      const started = await waitForServerVersion()
+      if (started.ok) {
+        if (!isTTY) {
+          console.log(`[OK] Bakin is up (${started.version})`)
+          return
+        }
+        details.push(`Version: ${started.version}`)
+        await printRestartResult({
+          ok: true,
+          status: 'ok',
+          message: 'Bakin restarted.',
+          service: `${SERVICE_LABEL}.service`,
+          version: started.version,
+        })
+        return
+      }
+      if (!isTTY) {
+        console.log('[WARN] Server not responding after 15s - check logs')
+        process.exitCode = 1
+        return
+      }
+      process.exitCode = 1
+      await printRestartResult({
+        ok: true,
+        status: 'warn',
+        message: 'Server not responding after 15s - check logs.',
+        service: `${SERVICE_LABEL}.service`,
+      })
+      return
+    }
+  }
 
   // Kill any running Bakin server processes
   if (!isTTY) console.log('[..] Stopping Bakin server...')
@@ -2682,14 +2815,10 @@ async function cmdReboot(): Promise<void> {
   }
 
   // Start the server in background
-  const projectDir = resolve(dirname(new URL(import.meta.url).pathname), '..')
-  const logPath = join(projectDir, 'mc-server.log')
-
   if (!isTTY) console.log('[..] Starting Bakin server...')
-  const { spawn } = await import('child_process')
-  const programArgs = await serviceProgramArgs()
-  const child = spawn(programArgs[0], programArgs.slice(1), {
-    cwd: projectDir,
+  const launch = await resolveServerLaunchSpec()
+  const child = spawn(launch.programArgs[0], launch.programArgs.slice(1), {
+    cwd: launch.workingDir,
     detached: true,
     stdio: ['ignore', 'ignore', 'ignore'],
     env: { ...process.env },
@@ -2700,36 +2829,30 @@ async function cmdReboot(): Promise<void> {
   if (!isTTY) console.log(`[OK] Bakin starting (pid ${child.pid})`)
   if (!isTTY) console.log(`  Logs: tail -f ${logPath}`)
 
-  // } // end of else branch for non-service path
-
   // Wait and verify
   if (!isTTY) console.log('[..] Waiting for server to come up...')
-  for (let i = 0; i < 15; i++) {
-    await new Promise(r => setTimeout(r, 1000))
-    try {
-      const res = await fetch(`${BASE_URL}/api/version`, { signal: AbortSignal.timeout(2000) })
-      if (res.ok) {
-        const data = await res.json() as { version: string }
-        if (!isTTY) {
-          console.log(`[OK] Bakin is up (${data.version})`)
-          return
-        }
-        details.push(`Version: ${data.version}`)
-        await printRestartResult({
-          ok: true,
-          status: 'ok',
-          message: 'Bakin restarted.',
-          pid: child.pid,
-          version: data.version,
-        })
-        return
-      }
-    } catch { /* not ready yet */ }
-  }
-  if (!isTTY) {
-    console.log('[WARN] Server not responding after 15s — check logs')
+  const started = await waitForServerVersion()
+  if (started.ok) {
+    if (!isTTY) {
+      console.log(`[OK] Bakin is up (${started.version})`)
+      return
+    }
+    details.push(`Version: ${started.version}`)
+    await printRestartResult({
+      ok: true,
+      status: 'ok',
+      message: 'Bakin restarted.',
+      pid: child.pid,
+      version: started.version,
+    })
     return
   }
+  if (!isTTY) {
+    console.log('[WARN] Server not responding after 15s - check logs')
+    process.exitCode = 1
+    return
+  }
+  process.exitCode = 1
   await printRestartResult({
     ok: true,
     status: 'warn',
