@@ -26,6 +26,10 @@ The main entry. Re-exports the plugin contract types (`./types`) plus the high-t
 | `getAllNavItems` | Get every registered nav item across all plugins. |
 | `getNavItemsSnapshot` | Get a snapshot of the current nav items (non-subscribing). |
 | `getPluginNavItems` | Get nav items contributed by a specific plugin. |
+| `setNavBadge` | Set or clear a runtime badge on a plugin-owned nav item. |
+| `getNavBadge` | Read the current badge for a nav item, or undefined if none. |
+| `getNavBadgesSnapshot` | Stable snapshot of every active nav badge keyed by navItemId. |
+| `subscribeNavBadges` | Subscribe to nav-badge mutations (separate channel from `subscribeRegistry`). |
 | `getPluginRoute` | Look up a specific client route by plugin id + path. |
 | `getPluginRoutes` | Get all registered client routes (across all plugins). |
 | `ClientRouteEntry` | — |
@@ -325,13 +329,14 @@ Sidebar navigation item registered by a plugin via `ctx.registerNav()`.
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `id` | `string` | Unique nav item id (used for active-state tracking). |
+| `id` | `string` | Unique nav item id (used for active-state tracking and badge keying). |
 | `label` | `string` | Display label in the sidebar. |
-| `icon` | `string` | Lucide icon name (e.g. "tasks", "calendar"). |
-| `href` | `string` | Target route path. |
+| `icon?` | `string` | Lucide icon name (e.g. "tasks", "calendar"). |
+| `href?` | `string` | Target route path. |
 | `order?` | `number` | Sort order within the parent group. Lower renders first. |
 | `children?` | `NavItem[]` | Optional nested nav items for groups. |
 | `alwaysExpanded?` | `boolean` | If true, the group cannot be collapsed. |
+| `badge?` | `NavBadge` | Initial badge state. Runtime updates flow through `setNavBadge` — the |
 
 #### `APIRoute`
 
@@ -430,6 +435,8 @@ The `bakin.config.ts` shape — root configuration for a Bakin installation.
 
 | Type | Description |
 | --- | --- |
+| `NavBadgeTone` | Visual tone for a |
+| `NavBadge` | Runtime badge attached to a nav item. Both fields are optional: |
 | `UISlotRegistration` | Slot registration record: place a component at a named extension point. |
 | `ContentFile` | Static content file shipped with a plugin (e.g. README, docs page). |
 
@@ -640,5 +647,5 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `DefinePluginInput` | — |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 27, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 28, 2026 · Bakin 0.0.0-dev</span>
 </aside>

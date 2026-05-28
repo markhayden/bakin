@@ -49,8 +49,55 @@ Navigation items should be stable and specific to the plugin. Use lucide icon na
 | `href` | Route path. |
 | `order` | Optional sort order. Defaults to `100`. |
 | `children` | Nested nav items. |
+| `badge` | Optional initial badge — runtime values flow through `setNavBadge`. |
 
 </div>
+
+## Nav badges
+
+A nav item can carry a runtime badge — a small count pill or a presence
+dot — that updates live without re-registering the plugin. Use it for
+"needs attention" surfaces such as a Messaging Plans review queue or an
+inbox count.
+
+The contract is identical for core and installed plugins.
+
+```tsx
+import { registerPlugin, setNavBadge } from '@makinbakin/sdk'
+import { useEffect } from 'react'
+
+function PlansBadgeProvider() {
+  // Use whatever data hook the plugin already has — REST, SSE, local cache.
+  const { summary } = usePlansSummary()
+  useEffect(() => {
+    const needsReview = summary?.needsReview ?? 0
+    setNavBadge('messaging', 'messaging-plans',
+      needsReview > 0 ? { count: needsReview, tone: 'attention' } : null)
+  }, [summary])
+  return null
+}
+
+registerPlugin({
+  id: 'messaging',
+  navItems: [
+    { id: 'messaging-plans', label: 'Plans', icon: 'ClipboardList', href: '/messaging/plans' },
+  ],
+  // Background components rendered into the well-known nav-badge-providers
+  // slot stay mounted while the plugin is registered, so their hooks run
+  // even when you're on another page.
+  slots: { 'nav-badge-providers': PlansBadgeProvider },
+})
+```
+
+The `NavBadge` shape is `{ count?: number; tone?: 'attention' | 'info' | 'success' }`.
+Counts greater than 99 render as `99+`. Passing `null` to `setNavBadge`
+clears the badge. The `badge?` field on `NavItem` itself is only an
+initial seed — runtime values from `setNavBadge` take precedence and are
+what the sidebar reads.
+
+Badges are cleaned up automatically when the owning plugin unregisters
+or hot-reloads. The sidebar renders a presence rollup dot on the
+collapsed parent when any child has a badge.
 
 ## Routes
 

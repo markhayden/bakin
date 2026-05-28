@@ -812,12 +812,95 @@ Core-registered slots:
 | `asset-preview` | `{ asset: AssetMeta }` | assets plugin |
 | `asset-detail-modal` | `{ filename?, assetPath?, onClose }` | assets plugin |
 | `task-assets` | `{ taskId, readOnly? }` | assets plugin |
+| `nav-badge-providers` | none — components render `null` | per-plugin (see Nav badges below) |
 | `page:/<route>` | component-defined | per-plugin — mounted at that URL by TanStack Router |
 
 The `page:/<route>` convention binds a slot to a router path. The host
 shell's routes (`packages/host/src/routes/*.tsx`) render
 `<Slot name="page:/xyz" />` at `/xyz`, and plugins contribute the
 component by registering against that slot name.
+
+## Nav badges (runtime)
+
+Plugin nav items can carry runtime badges — counts or presence dots —
+that update live without re-registering the plugin. The contract is
+**identical for core and installed plugins**: the registry is keyed on
+`(pluginId, navItemId)` regardless of source.
+
+### SDK API
+
+```ts
+import { setNavBadge, getNavBadge, subscribeNavBadges } from '@makinbakin/sdk'
+
+// Set a count badge with the default attention tone
+setNavBadge('messaging', 'messaging-plans', { count: 3, tone: 'attention' })
+
+// Clear it
+setNavBadge('messaging', 'messaging-plans', null)
+```
+
+The `NavBadge` shape is `{ count?: number; tone?: 'attention' | 'info' | 'success' }`.
+Rendering rules:
+- `count` present and `> 0` → small pill, clamped at `99+`.
+- `count` omitted, object present → small dot (presence-only).
+- `count: 0` or passing `null` → cleared.
+- `tone` defaults to `'attention'` (amber, matches the existing
+  `needs_review` palette).
+
+### Mount point — `nav-badge-providers` slot
+
+Plugins keep badges in sync with their data by contributing a
+background component through the well-known `nav-badge-providers` slot.
+PluginHost mounts `<Slot name="nav-badge-providers" />` once at root, so
+contributed components stay mounted while the plugin is registered:
+
+```tsx
+// plugins/messaging/client.tsx
+registerPlugin({
+  id: 'messaging',
+  navItems: [...],
+  slots: { 'nav-badge-providers': PlansBadgeProvider },
+})
+
+// plugins/messaging/components/plans-badge-provider.tsx
+function PlansBadgeProvider() {
+  const { summary } = usePlansSummary()
+  useEffect(() => {
+    setNavBadge('messaging', 'messaging-plans',
+      summary?.needsReview ? { count: summary.needsReview } : null)
+  }, [summary])
+  return null
+}
+```
+
+### Sidebar rendering
+
+`AppSidebar` (`packages/host/src/components/layout/app-sidebar.tsx`)
+subscribes to badge mutations on a **separate channel**
+(`subscribeNavBadges`) from the main registry, so high-frequency badge
+ticks don't force the whole nav to re-render. Badges are rendered in all
+six paths:
+
+1. Flat nav item, expanded — pill after label.
+2. Flat nav item, collapsed — dot overlay on icon; aria-label gets the count.
+3. Parent nav item, expanded — pill if the parent itself has a badge.
+4. Child nav item, expanded — pill after child label.
+5. Parent nav item, collapsed + `alwaysExpanded` (Popover flyout) —
+   rollup dot on parent icon if any child has a badge; per-child pills
+   inside the popover.
+6. Parent nav item, collapsed (Tooltip) — rollup dot on parent icon.
+
+The collapsed rollup is **presence-only** (one dot, most-attention-worthy
+tone among children) — no count math. Expanded mode shows real per-child
+counts.
+
+### Lifecycle
+
+Badges live in the SDK's `ClientRegistry` globalThis singleton, keyed by
+pluginId. `unregisterPlugin(id)` is extended to drop the plugin's badges
+along with its nav items, slots, and routes — so hot-swap and uninstall
+clear stale state automatically. Re-registering a plugin starts with an
+empty badge map.
 
 ## HookRegistry — Cross-Plugin Server Communication
 
