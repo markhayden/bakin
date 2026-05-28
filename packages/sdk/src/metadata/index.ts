@@ -30,12 +30,17 @@ export type {
   SourceLocation,
 } from '@bakin/core/docs'
 
-export {
-  defineApiRoute,
-  defineCliCommandContract,
-  defineExecToolContract,
-  defineHookContract,
-  definePluginRoute,
-  defineRouteContract,
-  defineSlotContract,
-} from '@bakin/core/docs'
+/** Legacy: declare an API route with docs metadata. Prefer `defineRoute` from `/routing`. */
+export { defineApiRoute } from '@bakin/core/docs'
+/** Define a CLI command contract for documentation. */
+export { defineCliCommandContract } from '@bakin/core/docs'
+/** Define an MCP exec tool contract for documentation. */
+export { defineExecToolContract } from '@bakin/core/docs'
+/** Define a cross-plugin hook contract for documentation. */
+export { defineHookContract } from '@bakin/core/docs'
+/** Legacy: declare a plugin route with docs metadata. Prefer `defineRoute` from `/routing`. */
+export { definePluginRoute } from '@bakin/core/docs'
+/** Define a generic route contract (shared shape for API + plugin routes). */
+export { defineRouteContract } from '@bakin/core/docs'
+/** Define a UI slot contract for documentation. */
+export { defineSlotContract } from '@bakin/core/docs'
