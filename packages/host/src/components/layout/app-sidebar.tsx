@@ -21,7 +21,15 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
-import { getNavItemsSnapshot, subscribeRegistry } from '@makinbakin/sdk'
+import {
+  getNavItemsSnapshot,
+  getNavBadgesSnapshot,
+  subscribeRegistry,
+  subscribeNavBadges,
+  type NavBadge as NavBadgeData,
+  type NavBadgeTone,
+  type NavItem,
+} from '@makinbakin/sdk'
 import { useSidebarContext } from '@/context/sidebar-context'
 import { usePathname } from '../../hooks/use-pathname'
 import {
@@ -34,6 +42,31 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from '@/components/ui/popover'
+import { NavBadge, NavBadgeDot, navBadgeAriaSuffix } from './nav-badge'
+
+const TONE_PRIORITY: Record<NavBadgeTone, number> = {
+  attention: 0,
+  info: 1,
+  success: 2,
+}
+
+/**
+ * For a parent nav item, pick the most-attention-worthy tone across its
+ * direct children that currently have a badge. Returns null when no child
+ * has a badge — caller renders nothing in that case.
+ */
+function pickRollupTone(item: NavItem, badges: ReadonlyMap<string, NavBadgeData>): NavBadgeTone | null {
+  if (!item.children?.length) return null
+  let best: NavBadgeTone | null = null
+  for (const child of item.children) {
+    const b = badges.get(child.id)
+    if (!b) continue
+    if (typeof b.count === 'number' && b.count <= 0) continue
+    const tone = b.tone ?? 'attention'
+    if (best === null || TONE_PRIORITY[tone] < TONE_PRIORITY[best]) best = tone
+  }
+  return best
+}
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   CheckSquare,
@@ -62,6 +95,12 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
   // plugin hot-swaps (v2 dev mode) — PluginHost's own subscription only
   // forces PluginHost itself to re-render; consumers below need their own.
   const allNavItems = useSyncExternalStore(subscribeRegistry, getNavItemsSnapshot, getNavItemsSnapshot)
+  // Nav badges live on a separate subscription channel so high-frequency
+  // badge ticks don't force the whole nav tree to re-render through the
+  // main registry version. The rendered badge for an item is the runtime
+  // value if present, else the item's static `badge` seed.
+  const navBadges = useSyncExternalStore(subscribeNavBadges, getNavBadgesSnapshot, getNavBadgesSnapshot)
+  const badgeFor = (item: NavItem): NavBadgeData | undefined => navBadges.get(item.id) ?? item.badge
   // Runtime registry populated by each plugin's client.mjs via registerPlugin
   // after PluginHost dynamically imports it.
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
@@ -117,6 +156,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
         if (hasChildren && !collapsed) {
           const alwaysExpanded = item.alwaysExpanded === true
           const expanded = alwaysExpanded || expandedIds.has(item.id)
+          const parentBadge = badgeFor(item)
           return (
             <div key={item.id} className="flex flex-col">
               <div
@@ -133,6 +173,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                 >
                   {Icon && <Icon className="size-4 shrink-0" />}
                   <span>{item.label}</span>
+                  <NavBadge badge={parentBadge} />
                 </Link>
                 {!alwaysExpanded && (
                   <button
@@ -149,6 +190,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                   {item.children!.map((child) => {
                     const ChildIcon = child.icon ? ICONS[child.icon] : undefined
                     const childActive = pathname === child.href || pathname.startsWith(child.href + '/')
+                    const childBadge = badgeFor(child)
                     return (
                       <Link
                         key={child.id}
@@ -159,9 +201,11 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                             ? 'text-foreground bg-[rgba(255,255,255,0.10)]'
                             : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.06)]'
                         }`}
+                        aria-label={`${child.label}${navBadgeAriaSuffix(childBadge)}`}
                       >
                         {ChildIcon && <ChildIcon className="size-3.5 shrink-0" />}
                         <span>{child.label}</span>
+                        <NavBadge badge={childBadge} />
                       </Link>
                     )
                   })}
@@ -173,6 +217,10 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
 
         // Collapsed mode with children: show parent icon, tooltip with label
         if (hasChildren && collapsed) {
+          const parentBadge = badgeFor(item)
+          const rollupTone = parentBadge
+            ? (parentBadge.tone ?? 'attention')
+            : pickRollupTone(item, navBadges)
           // alwaysExpanded groups use a hover flyout so children remain reachable
           if (item.alwaysExpanded) {
             return (
@@ -186,13 +234,15 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                     <Link
                       to={item.children![0].href}
                       onClick={onNavigate}
-                      className={`flex items-center justify-center px-0 py-1.5 rounded-md text-sm transition-colors duration-150 ${
+                      className={`relative flex items-center justify-center px-0 py-1.5 rounded-md text-sm transition-colors duration-150 ${
                         active
                           ? 'text-foreground bg-[rgba(255,255,255,0.06)] shadow-[inset_2px_0_0_0_var(--color-pink-500)]'
                           : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
                       }`}
+                      aria-label={`${item.label}${navBadgeAriaSuffix(parentBadge)}`}
                     >
                       {Icon && <Icon className="size-4 shrink-0" />}
+                      {rollupTone && <NavBadgeDot tone={rollupTone} />}
                     </Link>
                   }
                 />
@@ -209,6 +259,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                     {item.children!.map((child) => {
                       const ChildIcon = child.icon ? ICONS[child.icon] : undefined
                       const childActive = pathname === child.href || pathname.startsWith(child.href + '/')
+                      const childBadge = badgeFor(child)
                       return (
                         <Link
                           key={child.id}
@@ -219,9 +270,11 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                               ? 'text-foreground bg-[rgba(255,255,255,0.06)]'
                               : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
                           }`}
+                          aria-label={`${child.label}${navBadgeAriaSuffix(childBadge)}`}
                         >
                           {ChildIcon && <ChildIcon className="size-3.5 shrink-0" />}
                           <span>{child.label}</span>
+                          <NavBadge badge={childBadge} />
                         </Link>
                       )
                     })}
@@ -237,13 +290,15 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                 <Link
                   to={item.children![0].href}
                   onClick={onNavigate}
-                  className={`flex items-center justify-center px-0 py-1.5 rounded-md text-sm transition-colors duration-150 ${
+                  className={`relative flex items-center justify-center px-0 py-1.5 rounded-md text-sm transition-colors duration-150 ${
                     active
                       ? 'text-foreground bg-[rgba(255,255,255,0.06)] shadow-[inset_2px_0_0_0_var(--color-pink-500)]'
                       : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
                   }`}
+                  aria-label={`${item.label}${navBadgeAriaSuffix(parentBadge)}`}
                 >
                   {Icon && <Icon className="size-4 shrink-0" />}
+                  {rollupTone && <NavBadgeDot tone={rollupTone} />}
                 </Link>
               </TooltipTrigger>
               <TooltipContent side="right" sideOffset={8}>
@@ -254,21 +309,26 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
         }
 
         // Flat item (no children)
+        const flatBadge = badgeFor(item)
+        const flatTone = flatBadge && !(typeof flatBadge.count === 'number' && flatBadge.count <= 0)
+          ? (flatBadge.tone ?? 'attention')
+          : null
         const linkContent = (
           <Link
             key={item.id}
             to={item.href}
             onClick={onNavigate}
-            className={`flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-colors duration-150 ${
-              collapsed ? 'justify-center px-0' : ''
-            } ${
+            className={`${collapsed ? 'relative justify-center px-0' : ''} flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-colors duration-150 ${
               active
                 ? 'text-foreground bg-[rgba(255,255,255,0.06)] shadow-[inset_2px_0_0_0_var(--color-pink-500)]'
                 : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
             }`}
+            aria-label={collapsed ? `${item.label}${navBadgeAriaSuffix(flatBadge)}` : undefined}
           >
             {Icon && <Icon className="size-4 shrink-0" />}
             {!collapsed && <span>{item.label}</span>}
+            {!collapsed && <NavBadge badge={flatBadge} />}
+            {collapsed && flatTone && <NavBadgeDot tone={flatTone} />}
           </Link>
         )
 
