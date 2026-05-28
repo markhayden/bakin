@@ -311,6 +311,7 @@ describe('PluginRegistryImpl', () => {
       deps?: string[]
       activate?: string
       onReady?: string
+      settingsSchema?: string
       manifest?: Record<string, unknown>
       root?: string
     } = {},
@@ -337,6 +338,7 @@ describe('PluginRegistryImpl', () => {
         id: '${id}',
         name: '${id.charAt(0).toUpperCase() + id.slice(1)}',
         version: '1.0.0',
+        settingsSchema: ${opts.settingsSchema || 'undefined'},
         activate: function(ctx) { ${opts.activate || ''} },
         onReady: ${opts.onReady || 'undefined'},
       }
@@ -1039,11 +1041,14 @@ describe('PluginRegistryImpl', () => {
       await pluginRegistry.notifySettingsChange('nonexistent', { foo: 'bar' })
     })
 
-    it('getSettingsSchemas returns only plugins with schemas', async () => {
+    it('getSettingsSchemas returns only plugins with schemas, tagged by source', async () => {
       const pathA = writeFakePlugin('alpha', {
         settingsSchema: `{ fields: [{ key: 'theme', type: 'string', label: 'Theme' }] }`,
       })
-      const pathB = writeFakePlugin('bravo') // no schema
+      const pathB = writeFakePlugin('bravo') // no schema — should be filtered out
+      writeUserPlugin('charlie', {
+        settingsSchema: `{ fields: [{ key: 'color', type: 'string', label: 'Color' }] }`,
+      })
 
       await pluginRegistry.initialize(
         { plugins: [{ path: pathA }, { path: pathB }] },
@@ -1052,9 +1057,12 @@ describe('PluginRegistryImpl', () => {
       )
 
       const schemas = pluginRegistry.getSettingsSchemas()
-      expect(schemas).toHaveLength(1)
-      expect(schemas[0]).toMatchObject({ id: 'alpha', name: 'Alpha' })
-      expect(schemas[0].schema.fields).toHaveLength(1)
+      expect(schemas).toHaveLength(2)
+      const alpha = schemas.find((s: { id: string }) => s.id === 'alpha')
+      const charlie = schemas.find((s: { id: string }) => s.id === 'charlie')
+      expect(alpha).toMatchObject({ id: 'alpha', name: 'Alpha', source: 'built-in' })
+      expect(alpha.schema.fields).toHaveLength(1)
+      expect(charlie).toMatchObject({ id: 'charlie', name: 'Charlie', source: 'user' })
     })
   })
 })
