@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+### Fixed
+- Remove stale lint violations that blocked release-candidate CI after `v0.0.1-rc.7`.
+
 ## [0.0.1-rc.7] - 2026-05-28
 
 ### Changed
