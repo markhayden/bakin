@@ -35,6 +35,7 @@
     "assets.write",
     "events.emit",
     "runtime.images",
+    "runtime.read",
     "storage.read",
     "storage.write"
   ],
