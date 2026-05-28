@@ -19,6 +19,7 @@ export interface AssetGenerationMeta {
   promptHash: string
   promptAssetFilename?: string
   routeReason?: string
+  routeSource?: 'runtime' | 'native' | string
   createdByTool: string
 }
 
@@ -170,6 +171,7 @@ function normalizeGeneration(value: unknown): AssetGenerationMeta | undefined {
     promptHash,
     ...(nonEmptyString(meta.promptAssetFilename) ? { promptAssetFilename: nonEmptyString(meta.promptAssetFilename) } : {}),
     ...(nonEmptyString(meta.routeReason) ? { routeReason: nonEmptyString(meta.routeReason) } : {}),
+    ...(nonEmptyString(meta.routeSource) ? { routeSource: nonEmptyString(meta.routeSource) } : {}),
     createdByTool,
   }
 }
@@ -188,7 +190,7 @@ function validateGeneration(value: unknown): string[] {
   for (const field of ['width', 'height']) {
     if (!positiveNumber(meta[field])) issues.push(`generation.${field} must be a positive number`)
   }
-  for (const field of ['promptAssetFilename', 'routeReason']) {
+  for (const field of ['promptAssetFilename', 'routeReason', 'routeSource']) {
     if (meta[field] !== undefined && !nonEmptyString(meta[field])) {
       issues.push(`generation.${field} must be a non-empty string when provided`)
     }

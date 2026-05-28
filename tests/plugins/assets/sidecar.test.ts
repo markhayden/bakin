@@ -87,6 +87,34 @@ describe('assets/sidecar', () => {
       })
     })
 
+    it('preserves the routeSource provenance field', () => {
+      const assetPath = join(assetsDir, 'routed.png')
+      writeFileSync(assetPath, 'fake-image-data')
+
+      writeSidecar(assetPath, {
+        agent: 'pixel',
+        taskId: 'task123',
+        created: '2026-03-23T14:00:00Z',
+        type: 'images',
+        generation: {
+          provider: 'google',
+          model: 'gemini-3.1-flash-image-preview',
+          surface: 'instagram-square',
+          width: 1080,
+          height: 1080,
+          quality: 'standard',
+          promptHash: 'sha256:def456',
+          routeSource: 'runtime',
+          createdByTool: 'bakin_exec_images_generate',
+        },
+      })
+
+      // Regression: normalizeGeneration used to drop routeSource on read,
+      // silently discarding runtime-vs-native provenance written by the
+      // images plugin.
+      expect(readSidecar(assetPath)?.generation?.routeSource).toBe('runtime')
+    })
+
     it('returns null when sidecar does not exist', () => {
       const result = readSidecar(join(assetsDir, 'nonexistent.png'))
       expect(result).toBeNull()
