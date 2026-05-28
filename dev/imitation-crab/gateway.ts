@@ -9,7 +9,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'http'
 import { getChatMode, getGatewayPort, getToolMode } from './env'
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports -- avoid @types/ws dev dependency for mock-only code
 const { WebSocketServer } = require('ws') as { WebSocketServer: new (opts: { noServer: boolean }) => WsServer }
 
 interface WsClient { send(data: string): void; on(event: string, fn: (data: Buffer) => void): void; terminate(): void }
