@@ -8,40 +8,81 @@
  */
 
 // Group 1: Bakin-wide hooks
-export { useAssets, useTrash } from '@/hooks/use-assets'
+
+/** Fetch and filter the asset library with live SSE updates. */
+export { useAssets } from '@/hooks/use-assets'
+/** Fetch trashed assets eligible for restore or permanent delete. */
+export { useTrash } from '@/hooks/use-assets'
+/** Access the global Zustand store for SSE-driven content state. */
 export { useContentStore } from '@/hooks/use-content-store'
+/** Read/toggle the global debug (X-Ray) flag. */
 export { useDebug } from '@/hooks/use-debug'
+/** Guard a form against unmounting while submission is in flight. */
 export { useFormGuard } from '@/hooks/use-form-guard'
+/** Subscribe to runtime connection status (online/offline, last heartbeat). */
 export { useRuntimeStatus } from '@/hooks/use-runtime-status'
-export { useQueryState, useQueryArrayState } from '@/hooks/use-query-state'
-export { useScheduleJobs, useRunHistory } from '@/hooks/use-schedule'
+/** Bind a single component-state value to a URL query param. */
+export { useQueryState } from '@/hooks/use-query-state'
+/** Bind a multi-value (array) component state to a URL query param. */
+export { useQueryArrayState } from '@/hooks/use-query-state'
+/** List scheduled jobs with live updates. */
+export { useScheduleJobs } from '@/hooks/use-schedule'
+/** Fetch run history for a scheduled job. */
+export { useRunHistory } from '@/hooks/use-schedule'
 export type { ScheduleJob, RunEntry } from '@/hooks/use-schedule'
-export { useSearch, reorderBySearchResults } from '@/hooks/use-search'
+/** Hybrid full-text + semantic search across plugins with facet filtering. */
+export { useSearch } from '@/hooks/use-search'
+/** Re-rank a local list to match the order returned by a search query. */
+export { reorderBySearchResults } from '@/hooks/use-search'
 export type { SearchResult, SearchResponse, UseSearchOptions, UseSearchReturn } from '@/hooks/use-search'
+/** Read sidebar open/closed state and toggle helper. */
 export { useSidebar } from '@/hooks/use-sidebar'
+/** Subscribe to a Server-Sent Events endpoint with auto-reconnect. */
 export { useSSE } from '@/hooks/use-sse'
-export { toast, useToastStore } from '@/hooks/use-toast'
+/** Fire a toast notification (success/error/info). */
+export { toast } from '@/hooks/use-toast'
+/** Subscribe to the toast store for custom toast UIs. */
+export { useToastStore } from '@/hooks/use-toast'
+/** Imperatively resize a vertical pane via mouse drag handle. */
 export { useVerticalResize } from '@/hooks/use-vertical-resize'
 
 // Group 2: Agent data (from team plugin)
-export {
-  useAgentStore,
-  useAgent,
-  useAgentList,
-  useAgentColor,
-  useAgentDisplayName,
-  useAgentIds,
-  useMainAgentId,
-  usePackageState,
-  hexToMuted,
-} from '@bakin/team/hooks/use-agent-store'
+
+/** Access the agent registry store (Zustand). */
+export { useAgentStore } from '@bakin/team/hooks/use-agent-store'
+/** Look up a single agent by ID. */
+export { useAgent } from '@bakin/team/hooks/use-agent-store'
+/** List all registered agents. */
+export { useAgentList } from '@bakin/team/hooks/use-agent-store'
+/** Get an agent's brand color (hex string). */
+export { useAgentColor } from '@bakin/team/hooks/use-agent-store'
+/** Get an agent's display name (fallback to ID). */
+export { useAgentDisplayName } from '@bakin/team/hooks/use-agent-store'
+/** List all registered agent IDs. */
+export { useAgentIds } from '@bakin/team/hooks/use-agent-store'
+/** Get the ID of the designated main/orchestrator agent. */
+export { useMainAgentId } from '@bakin/team/hooks/use-agent-store'
+/** Read agent-package install state (managed/adopted/unmanaged). */
+export { usePackageState } from '@bakin/team/hooks/use-agent-store'
+/** Convert a hex color to a muted variant for backgrounds. */
+export { hexToMuted } from '@bakin/team/hooks/use-agent-store'
 
 // Group 3: Notification channels (from workflows plugin)
-export {
-  useNotificationChannels,
-  getChannelLabel,
-  getChannelInitials,
-} from '@bakin/workflows/hooks/use-notification-channels'
+
+/** List configured notification channels (Discord, Slack, email, etc.). */
+export { useNotificationChannels } from '@bakin/workflows/hooks/use-notification-channels'
+/** Get a human-readable label for a channel ID. */
+export { getChannelLabel } from '@bakin/workflows/hooks/use-notification-channels'
+/** Get initials for a channel (e.g. "Discord" → "D"). */
+export { getChannelInitials } from '@bakin/workflows/hooks/use-notification-channels'
 
 // Group 4: Router hooks (TanStack Router wrappers; Next.js-shape compatible)
-export { useRouter, usePathname, useSearchParams, useParams } from './router'
+
+/** Access the TanStack Router instance for imperative navigation. */
+export { useRouter } from './router'
+/** Current URL pathname (Next.js-shape compatible). */
+export { usePathname } from './router'
+/** Current URL search params as a URLSearchParams instance. */
+export { useSearchParams } from './router'
+/** Current route's typed path parameters. */
+export { useParams } from './router'
