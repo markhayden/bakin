@@ -195,6 +195,18 @@ steps:
     description: Publish it all
 `
 
+  const preferredWorkflow = `
+name: Preferred Agent Test
+description: Prefer pixel with assigned fallback
+version: 1
+steps:
+  - id: create-image
+    type: agent
+    label: Create Image
+    agent: $preferred(pixel,$assigned)
+    description: Create the image
+`
+
   // Workflow with gate step
   const gateWorkflow = `
 name: Gate Test
@@ -253,6 +265,7 @@ steps:
 
     writeFileSync(join(defsDir, 'linear.yaml'), linearWorkflow)
     writeFileSync(join(defsDir, 'parallel.yaml'), parallelWorkflow)
+    writeFileSync(join(defsDir, 'preferred.yaml'), preferredWorkflow)
     writeFileSync(join(defsDir, 'gate.yaml'), gateWorkflow)
     writeFileSync(join(defsDir, 'skill-test.yaml'), skillWorkflow)
     writeFileSync(join(defsDir, 'task-node.yaml'), `
@@ -948,6 +961,18 @@ steps: []
       const agents = getActiveAgents('task-agents-par', testDir)
       expect(agents.length).toBe(2)
       expect(agents.map(a => a.agent).sort()).toEqual(['pixel', 'rolo'])
+    })
+
+    it('uses the preferred agent when available in the workflow snapshot', () => {
+      createInstance('task-preferred-pixel', 'preferred', testDir, 'main', undefined, ['main', 'pixel'])
+      const agents = getActiveAgents('task-preferred-pixel', testDir)
+      expect(agents).toEqual([{ agent: 'pixel', stepId: 'create-image' }])
+    })
+
+    it('falls back to the assigned agent when the preferred agent is unavailable', () => {
+      createInstance('task-preferred-assigned', 'preferred', testDir, 'main', undefined, ['main'])
+      const agents = getActiveAgents('task-preferred-assigned', testDir)
+      expect(agents).toEqual([{ agent: 'main', stepId: 'create-image' }])
     })
   })
 

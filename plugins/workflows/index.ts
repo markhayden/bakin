@@ -197,6 +197,7 @@ async function validateWorkflowForStart(
   workflowId: string,
   assignee: string | undefined,
   contentDir?: string,
+  runtimeAgents?: Set<string>,
 ): Promise<string[]> {
   const errors: string[] = []
   const workflowIdError = validateWorkflowId(workflowId)
@@ -209,7 +210,7 @@ async function validateWorkflowForStart(
     errors.push(`Unknown workflow id: ${workflowId}`)
     return errors
   }
-  const knownAgents = await getRuntimeAgentNames()
+  const knownAgents = runtimeAgents ?? await getRuntimeAgentNames()
   const knownWorkflowIds = new Set(listDefinitions(contentDir).map((entry) => entry.name))
   errors.push(...validateDefinition(def, {
     definitionId: workflowId,
@@ -233,11 +234,12 @@ async function createValidatedInstance(
   contentDir?: string,
   parentContext?: Record<string, unknown>,
 ) {
-  const errors = await validateWorkflowForStart(workflowId, assignee, contentDir)
+  const knownAgents = await getRuntimeAgentNames()
+  const errors = await validateWorkflowForStart(workflowId, assignee, contentDir, knownAgents)
   if (errors.length > 0) {
     throw new Error(errors.join('; '))
   }
-  return createInstance(taskId, workflowId, contentDir, assignee, parentContext)
+  return createInstance(taskId, workflowId, contentDir, assignee, parentContext, knownAgents)
 }
 
 // ---------------------------------------------------------------------------
@@ -1409,9 +1411,10 @@ const workflowsPlugin: BakinPlugin = definePlugin({
       workflowId: string,
       assignee: string | undefined,
       contentDir?: string,
+      runtimeAgents?: Set<string>,
     ): Promise<string[]> => {
       const errors: string[] = []
-      const runtimeAgents = await getRuntimeAgentNames()
+      const knownAgents = runtimeAgents ?? await getRuntimeAgentNames()
       const knownWorkflowIds = new Set(listDefinitions(contentDir).map((entry) => entry.name))
       const visited = new Set<string>()
 
@@ -1439,7 +1442,7 @@ const workflowsPlugin: BakinPlugin = definePlugin({
           source: def.source,
           contentDir,
           knownWorkflowIds,
-          runtimeAgents,
+          runtimeAgents: knownAgents,
           assignee,
           requireResolvedAgents: true,
         }).map((message) => `Workflow "${id}": ${message}`))
@@ -1461,11 +1464,12 @@ const workflowsPlugin: BakinPlugin = definePlugin({
       contentDir?: string,
       parentContext?: Record<string, unknown>,
     ) => {
-      const errors = await validateWorkflowForStart(workflowId, assignee, contentDir)
+      const knownAgents = await getRuntimeAgentNames()
+      const errors = await validateWorkflowForStart(workflowId, assignee, contentDir, knownAgents)
       if (errors.length > 0) {
         throw new Error(errors.join('; '))
       }
-      return createInstance(taskId, workflowId, contentDir, assignee, parentContext)
+      return createInstance(taskId, workflowId, contentDir, assignee, parentContext, knownAgents)
     }
 
     const approvalRehydration = await rehydratePendingApprovals({

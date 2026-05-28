@@ -29,7 +29,7 @@ import type {
   NestedWorkflowStep,
   CreateTaskStep,
 } from '../types'
-import { loadDefinition, validateWorkflowId } from './parser'
+import { loadDefinition, parsePreferredAgentExpression, validateWorkflowId } from './parser'
 import { loadSkill } from './skill-loader'
 import { validateStepOutput, detectRejectionRepeat } from './schema-validator'
 import { notifyGateReached, notifyGateApproved, notifyGateRejected, notifyWorkflowComplete, notifyWorkflowReopened, notifyStepDispatched, notifyStepComplete, sendGateApprovalRequest, getGateNotificationSettings } from './notifications'
@@ -278,6 +278,8 @@ export function createInstance(
   assignee?: string,
   /** Context from parent workflow — prior step output at spawn time */
   parentContext?: Record<string, unknown>,
+  /** Snapshot of available runtime agents at workflow start for preferred selectors */
+  availableAgents?: Iterable<string>,
 ): WorkflowInstance {
   const dir = contentDir || getContentDir()
   const workflowIdError = validateWorkflowId(workflowId)
@@ -323,6 +325,7 @@ export function createInstance(
     createdAt: now,
     updatedAt: now,
     resolvedAgent: assignee,
+    availableAgents: availableAgents ? [...new Set(availableAgents)].sort() : undefined,
     parentContext,
   }
 
@@ -332,7 +335,7 @@ export function createInstance(
   if (firstStep.type === 'workflow') {
     const nested = firstStep as NestedWorkflowStep
     const childTaskId = `${taskId}--${nested.id}`
-    const childInstance = createInstance(childTaskId, nested.workflow_id, dir, assignee, parentContext)
+    const childInstance = createInstance(childTaskId, nested.workflow_id, dir, assignee, parentContext, instance.availableAgents)
     childInstance.parentTaskId = taskId
     childInstance.parentStepId = nested.id
     saveInstance(childInstance, dir)
@@ -358,6 +361,18 @@ export function createInstance(
  */
 function resolveAgent(agentValue: string | undefined, instance: WorkflowInstance): string | undefined {
   if (agentValue === '$assigned') return instance.resolvedAgent || agentValue
+  const preferred = agentValue ? parsePreferredAgentExpression(agentValue) : null
+  if (preferred) {
+    const available = instance.availableAgents ? new Set(instance.availableAgents) : null
+    for (const choice of preferred) {
+      if (choice === '$assigned') {
+        if (instance.resolvedAgent) return instance.resolvedAgent
+        continue
+      }
+      if (!choice.startsWith('$') && available?.has(choice)) return choice
+    }
+    return undefined
+  }
   return agentValue
 }
 
@@ -1008,7 +1023,7 @@ function advanceWorkflow(instance: WorkflowInstance, def: WorkflowDefinition, co
       ...(priorStepOutput || {}),
     }
 
-    const childInstance = createInstance(childTaskId, nested.workflow_id, contentDir, instance.resolvedAgent, childParentContext)
+    const childInstance = createInstance(childTaskId, nested.workflow_id, contentDir, instance.resolvedAgent, childParentContext, instance.availableAgents)
     childInstance.parentTaskId = instance.taskId
     childInstance.parentStepId = nested.id
     saveInstance(childInstance, contentDir)

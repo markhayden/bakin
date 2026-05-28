@@ -96,6 +96,28 @@ function isSymbolicAgent(agent: string): boolean {
 
 const SUPPORTED_AGENT_SYMBOLS = new Set(['$assigned'])
 
+export function parsePreferredAgentExpression(agent: string): string[] | null {
+  const match = agent.match(/^\$preferred\((.*)\)$/)
+  if (!match) return null
+  const raw = match[1].split(',').map(part => part.trim())
+  if (raw.length < 2 || raw.some(part => part.length === 0)) return null
+  return raw
+}
+
+function resolvePreferredForValidation(
+  choices: string[],
+  opts: { runtimeAgents?: Set<string>; assignee?: string },
+): string | null {
+  for (const choice of choices) {
+    if (choice === '$assigned') {
+      if (opts.assignee && (!opts.runtimeAgents || opts.runtimeAgents.has(opts.assignee))) return opts.assignee
+      continue
+    }
+    if (!choice.startsWith('$') && opts.runtimeAgents?.has(choice)) return choice
+  }
+  return null
+}
+
 /**
  * Validate a parsed workflow definition.
  * Returns an array of error messages (empty if valid).
@@ -138,7 +160,19 @@ export function validateDefinition(def: WorkflowDefinition, opts: ValidateDefini
     if (typeof agent !== 'string' || agent.length === 0) return
 
     if (isSymbolicAgent(agent)) {
-      if (!SUPPORTED_AGENT_SYMBOLS.has(agent)) {
+      const preferred = parsePreferredAgentExpression(agent)
+      if (preferred) {
+        for (const choice of preferred) {
+          if (choice.startsWith('$') && !SUPPORTED_AGENT_SYMBOLS.has(choice)) {
+            errors.push(`Step "${step.id}": unsupported agent symbol "${choice}" in selector at ${path}.agent`)
+          }
+        }
+        if (opts.requireResolvedAgents && !resolvePreferredForValidation(preferred, { runtimeAgents, assignee: opts.assignee })) {
+          errors.push(`Step "${step.id}": agent selector "${agent}" cannot resolve to a known runtime agent`)
+        }
+      } else if (agent.startsWith('$preferred(')) {
+        errors.push(`Step "${step.id}": unsupported agent selector "${agent}" at ${path}.agent`)
+      } else if (!SUPPORTED_AGENT_SYMBOLS.has(agent)) {
         errors.push(`Step "${step.id}": unsupported agent symbol "${agent}" at ${path}.agent`)
       } else if (agent === '$assigned' && opts.requireResolvedAgents && !opts.assignee) {
         errors.push(`Step "${step.id}": agent "$assigned" cannot resolve because the task has no assignee`)
