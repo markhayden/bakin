@@ -363,13 +363,19 @@ function resolveAgent(agentValue: string | undefined, instance: WorkflowInstance
   if (agentValue === '$assigned') return instance.resolvedAgent || agentValue
   const preferred = agentValue ? parsePreferredAgentExpression(agentValue) : null
   if (preferred) {
+    // `availableAgents` is a snapshot taken at workflow start. When it is
+    // missing — instances rehydrated from disk that predate the snapshot, or
+    // a start where the runtime agent list was transiently empty — fall back
+    // to accepting the first named choice rather than dropping the owner.
+    // Otherwise an unresolved selector returns undefined, which silently
+    // degrades preferred routing AND bypasses the step's agent-scoping guard.
     const available = instance.availableAgents ? new Set(instance.availableAgents) : null
     for (const choice of preferred) {
       if (choice === '$assigned') {
         if (instance.resolvedAgent) return instance.resolvedAgent
         continue
       }
-      if (!choice.startsWith('$') && available?.has(choice)) return choice
+      if (!choice.startsWith('$') && (available === null || available.has(choice))) return choice
     }
     return undefined
   }

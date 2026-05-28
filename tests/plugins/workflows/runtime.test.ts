@@ -974,6 +974,16 @@ steps: []
       const agents = getActiveAgents('task-preferred-assigned', testDir)
       expect(agents).toEqual([{ agent: 'main', stepId: 'create-image' }])
     })
+
+    it('resolves the named preferred agent when no availableAgents snapshot exists', () => {
+      // Instances rehydrated from disk that predate the snapshot have
+      // availableAgents === undefined. The named choice must still resolve
+      // (best-effort) rather than dropping the step owner — otherwise
+      // preferred routing degrades AND the agent-scoping guard is bypassed.
+      createInstance('task-preferred-nosnapshot', 'preferred', testDir, 'main')
+      const agents = getActiveAgents('task-preferred-nosnapshot', testDir)
+      expect(agents).toEqual([{ agent: 'pixel', stepId: 'create-image' }])
+    })
   })
 
   // ─── Agent-scoping on step/complete ─────────────────────────────────
