@@ -51,6 +51,23 @@ const TONE_PRIORITY: Record<NavBadgeTone, number> = {
 }
 
 /**
+ * A badge counts as "active" when it would actually render — present and
+ * not zero-counted. Mirrors the same guard inside the `NavBadge` component
+ * so rollup logic agrees with what the user sees.
+ */
+function badgeIsActive(badge: NavBadgeData | undefined): badge is NavBadgeData {
+  if (!badge) return false
+  if (typeof badge.count === 'number' && badge.count <= 0) return false
+  return true
+}
+
+/** Match the current pathname against an item's href, tolerating undefined hrefs. */
+function isNavActive(pathname: string, href: string | undefined): boolean {
+  if (!href) return false
+  return pathname === href || pathname.startsWith(href + '/')
+}
+
+/**
  * For a parent nav item, pick the most-attention-worthy tone across its
  * direct children that currently have a badge. Returns null when no child
  * has a badge — caller renders nothing in that case.
@@ -108,7 +125,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
     const initial = new Set<string>()
     for (const item of allNavItems) {
       if (!item.children?.length) continue
-      if (pathname === item.href || pathname.startsWith(item.href + '/')) {
+      if (isNavActive(pathname, item.href)) {
         initial.add(item.id)
       }
     }
@@ -127,8 +144,8 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
       const next = new Set(current)
       for (const item of allNavItems) {
         if (!item.children?.length) continue
-        const wasActive = prev === item.href || prev.startsWith(item.href + '/')
-        const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+        const wasActive = isNavActive(prev, item.href)
+        const isActive = isNavActive(pathname, item.href)
         if (isActive && !wasActive) next.add(item.id)
         if (!isActive && wasActive) next.delete(item.id)
       }
@@ -150,7 +167,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
       {allNavItems.map((item) => {
         const Icon = item.icon ? ICONS[item.icon] : undefined
         const hasChildren = item.children && item.children.length > 0
-        const active = pathname === item.href || pathname.startsWith(item.href + '/')
+        const active = isNavActive(pathname, item.href)
 
         // Items with children: clickable parent with chevron toggle
         if (hasChildren && !collapsed) {
@@ -189,7 +206,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                 <div className="mt-1 mb-1 py-1 rounded-md bg-[rgba(255,255,255,0.04)] flex flex-col overflow-hidden">
                   {item.children!.map((child) => {
                     const ChildIcon = child.icon ? ICONS[child.icon] : undefined
-                    const childActive = pathname === child.href || pathname.startsWith(child.href + '/')
+                    const childActive = isNavActive(pathname, child.href)
                     const childBadge = badgeFor(child)
                     return (
                       <Link
@@ -218,9 +235,17 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
         // Collapsed mode with children: show parent icon, tooltip with label
         if (hasChildren && collapsed) {
           const parentBadge = badgeFor(item)
-          const rollupTone = parentBadge
+          const rollupTone = badgeIsActive(parentBadge)
             ? (parentBadge.tone ?? 'attention')
             : pickRollupTone(item, navBadges)
+          // If the dot comes from a child rollup (not the parent's own
+          // badge), announce that to screen readers — otherwise the icon
+          // changes silently.
+          const rollupAriaSuffix = badgeIsActive(parentBadge)
+            ? navBadgeAriaSuffix(parentBadge)
+            : rollupTone
+              ? `, children ${rollupTone === 'attention' ? 'need review' : rollupTone}`
+              : ''
           // alwaysExpanded groups use a hover flyout so children remain reachable
           if (item.alwaysExpanded) {
             return (
@@ -239,7 +264,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                           ? 'text-foreground bg-[rgba(255,255,255,0.06)] shadow-[inset_2px_0_0_0_var(--color-pink-500)]'
                           : 'text-muted-foreground hover:text-foreground hover:bg-[rgba(255,255,255,0.04)]'
                       }`}
-                      aria-label={`${item.label}${navBadgeAriaSuffix(parentBadge)}`}
+                      aria-label={`${item.label}${rollupAriaSuffix}`}
                     >
                       {Icon && <Icon className="size-4 shrink-0" />}
                       {rollupTone && <NavBadgeDot tone={rollupTone} />}
@@ -258,7 +283,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
                   <div className="flex flex-col gap-0.5">
                     {item.children!.map((child) => {
                       const ChildIcon = child.icon ? ICONS[child.icon] : undefined
-                      const childActive = pathname === child.href || pathname.startsWith(child.href + '/')
+                      const childActive = isNavActive(pathname, child.href)
                       const childBadge = badgeFor(child)
                       return (
                         <Link

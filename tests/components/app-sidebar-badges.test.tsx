@@ -153,6 +153,52 @@ describe('AppSidebar — badges', () => {
     expect(container.querySelectorAll('[data-testid="nav-badge-pill"]').length).toBe(0)
   })
 
+  it('collapsed parent with a count-0 direct badge does NOT show a rollup dot', () => {
+    registerPlugin({
+      id: 'group-test',
+      navItems: [
+        {
+          id: 'group-test-parent',
+          label: 'Group',
+          icon: 'Workflow',
+          href: '/group',
+          alwaysExpanded: true,
+          children: [
+            { id: 'group-test-child', label: 'Child', icon: 'ClipboardList', href: '/group/child' },
+          ],
+        },
+      ],
+    })
+    act(() => {
+      setNavBadge('group-test', 'group-test-parent', { count: 0, tone: 'attention' })
+    })
+    const { container } = renderSidebar({ collapsed: true })
+    expect(container.querySelector('[data-testid="nav-badge-dot"]')).toBeNull()
+  })
+
+  it('collapsed parent driven by child rollup augments aria-label with a children hint', () => {
+    registerPlugin({
+      id: 'group-test',
+      navItems: [
+        {
+          id: 'group-test-parent',
+          label: 'Group',
+          icon: 'Workflow',
+          href: '/group',
+          alwaysExpanded: true,
+          children: [
+            { id: 'group-test-child', label: 'Child', icon: 'ClipboardList', href: '/group/child' },
+          ],
+        },
+      ],
+    })
+    act(() => {
+      setNavBadge('group-test', 'group-test-child', { count: 1, tone: 'attention' })
+    })
+    const { container } = renderSidebar({ collapsed: true })
+    expect(container.querySelector('a[aria-label="Group, children need review"]')).not.toBeNull()
+  })
+
   it('works identically for built-in plugin ids and user plugin ids', () => {
     // The registry doesn't distinguish core vs installed — same call path
     // for any pluginId. Register two plugins with different ids and ensure
