@@ -16,9 +16,9 @@
 import { buildOnePlugin } from './dev-build-one-plugin'
 
 const CORE_PLUGINS = [
-  'tasks', 'team', 'workflows', 'assets',
-  'schedule', 'memory', 'models', 'health',
-  'git',
+  'tasks', 'team', 'memory', 'models',
+  'assets', 'images', 'workflows', 'schedule',
+  'health', 'git',
 ]
 
 const EXTERNAL = [

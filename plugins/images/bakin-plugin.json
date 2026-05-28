@@ -1,0 +1,64 @@
+{
+  "id": "images",
+  "name": "Images",
+  "version": "0.1.0",
+  "bakin": ">=1.0.0",
+  "description": "Provider-routed image generation, editing, import, export, prompt routing, and platform surface profiles",
+  "entry": {
+    "server": "index.ts"
+  },
+  "contentFiles": [],
+  "secrets": [
+    {
+      "name": "OPENAI_API_KEY",
+      "description": "OpenAI API key used by the images plugin for GPT Image and Responses image-generation routes.",
+      "required": false
+    },
+    {
+      "name": "GEMINI_API_KEY",
+      "description": "Google Gemini API key used by the images plugin for Gemini image generation.",
+      "required": false
+    },
+    {
+      "name": "GOOGLE_AI_API_KEY",
+      "description": "Alternative Google AI API key environment variable for Gemini image generation.",
+      "required": false
+    }
+  ],
+  "tests": "tests/",
+  "dependencies": [
+    "assets",
+    "models"
+  ],
+  "permissions": [
+    "assets.read",
+    "assets.write",
+    "events.emit",
+    "storage.read",
+    "storage.write"
+  ],
+  "contributes": {
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/profiles",
+        "summary": "List image surface profiles"
+      },
+      {
+        "method": "GET",
+        "path": "/providers",
+        "summary": "List image providers and readiness"
+      }
+    ],
+    "execTools": [
+      {
+        "name": "bakin_exec_images_profiles",
+        "summary": "List image surface profiles and configured provider readiness",
+        "description": "List image surface profiles and configured provider readiness. Use this before choosing dimensions or provider routes for image generation."
+      }
+    ],
+    "docs": {
+      "slug": "using/images"
+    }
+  }
+}
