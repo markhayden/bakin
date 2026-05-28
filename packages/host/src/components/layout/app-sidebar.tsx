@@ -27,7 +27,6 @@ import {
   subscribeRegistry,
   subscribeNavBadges,
   type NavBadge as NavBadgeData,
-  type NavBadgeTone,
   type NavItem,
 } from '@makinbakin/sdk'
 import { useSidebarContext } from '@/context/sidebar-context'
@@ -43,47 +42,12 @@ import {
   PopoverContent,
 } from '@/components/ui/popover'
 import { NavBadge, NavBadgeDot, navBadgeAriaSuffix } from './nav-badge'
-
-const TONE_PRIORITY: Record<NavBadgeTone, number> = {
-  attention: 0,
-  info: 1,
-  success: 2,
-}
-
-/**
- * A badge counts as "active" when it would actually render — present and
- * not zero-counted. Mirrors the same guard inside the `NavBadge` component
- * so rollup logic agrees with what the user sees.
- */
-function badgeIsActive(badge: NavBadgeData | undefined): badge is NavBadgeData {
-  if (!badge) return false
-  if (typeof badge.count === 'number' && badge.count <= 0) return false
-  return true
-}
-
-/** Match the current pathname against an item's href, tolerating undefined hrefs. */
-function isNavActive(pathname: string, href: string | undefined): boolean {
-  if (!href) return false
-  return pathname === href || pathname.startsWith(href + '/')
-}
-
-/**
- * For a parent nav item, pick the most-attention-worthy tone across its
- * direct children that currently have a badge. Returns null when no child
- * has a badge — caller renders nothing in that case.
- */
-function pickRollupTone(item: NavItem, badges: ReadonlyMap<string, NavBadgeData>): NavBadgeTone | null {
-  if (!item.children?.length) return null
-  let best: NavBadgeTone | null = null
-  for (const child of item.children) {
-    const b = badges.get(child.id)
-    if (!b) continue
-    if (typeof b.count === 'number' && b.count <= 0) continue
-    const tone = b.tone ?? 'attention'
-    if (best === null || TONE_PRIORITY[tone] < TONE_PRIORITY[best]) best = tone
-  }
-  return best
-}
+import {
+  badgeIsActive,
+  isNavActive,
+  collapsedParentRollupTone,
+  collapsedParentAriaSuffix,
+} from './nav-badge-logic'
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   CheckSquare,
@@ -235,17 +199,8 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
         // Collapsed mode with children: show parent icon, tooltip with label
         if (hasChildren && collapsed) {
           const parentBadge = badgeFor(item)
-          const rollupTone = badgeIsActive(parentBadge)
-            ? (parentBadge.tone ?? 'attention')
-            : pickRollupTone(item, navBadges)
-          // If the dot comes from a child rollup (not the parent's own
-          // badge), announce that to screen readers — otherwise the icon
-          // changes silently.
-          const rollupAriaSuffix = badgeIsActive(parentBadge)
-            ? navBadgeAriaSuffix(parentBadge)
-            : rollupTone
-              ? `, children ${rollupTone === 'attention' ? 'need review' : rollupTone}`
-              : ''
+          const rollupTone = collapsedParentRollupTone(item, parentBadge, navBadges)
+          const rollupAriaSuffix = collapsedParentAriaSuffix(parentBadge, rollupTone)
           // alwaysExpanded groups use a hover flyout so children remain reachable
           if (item.alwaysExpanded) {
             return (
@@ -335,9 +290,7 @@ export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
 
         // Flat item (no children)
         const flatBadge = badgeFor(item)
-        const flatTone = flatBadge && !(typeof flatBadge.count === 'number' && flatBadge.count <= 0)
-          ? (flatBadge.tone ?? 'attention')
-          : null
+        const flatTone = badgeIsActive(flatBadge) ? (flatBadge.tone ?? 'attention') : null
         const linkContent = (
           <Link
             key={item.id}
