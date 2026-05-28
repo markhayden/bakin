@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { readFileSync, mkdirSync, existsSync, renameSync, unlinkSync } from 'fs'
+import { readFileSync, mkdirSync, renameSync, unlinkSync } from 'fs'
 import { join, resolve } from 'path'
 import { execSync, spawn as nodeSpawn } from 'child_process'
 import { load as loadYaml } from 'js-yaml'
