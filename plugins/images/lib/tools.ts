@@ -308,7 +308,3 @@ export async function exportImage(ctx: PluginContext, params: ImagesExportParams
     format,
   }
 }
-
-export async function editImage(): Promise<ExecToolResult> {
-  return fail('Image editing is not implemented yet. Use bakin_exec_images_generate or bakin_exec_images_import for v1.')
-}

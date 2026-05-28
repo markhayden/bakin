@@ -267,14 +267,17 @@ bakin agent-rules [--apply|--check|--apply-all|--check-all]
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="logs" name="logs" summary="Tail audit logs." description="Prints audit log entries, optionally filtered by event type or agent.">
+<CliCommandCard id="logs" name="logs" summary="Tail audit logs." description="Prints audit log entries, optionally filtered by channel or agent. TTY output is a compact live view; --json emits newline-delimited JSON events.">
 ```sh frame="terminal"
-bakin logs [filter]
+bakin logs [filter] [--json] [--lines <n>] [--no-follow]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
     <tbody>
       <tr><td><code>[filter]</code></td><td>argument</td><td>no</td><td>Optional log filter.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+      <tr><td><code>[--lines &lt;n&gt;]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[--no-follow]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
     </tbody>
   </table>
 </CliCommandCard>
@@ -808,5 +811,5 @@ bakin serve
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 16, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 28, 2026 · Bakin 0.0.0-dev</span>
 </aside>

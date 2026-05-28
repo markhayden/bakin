@@ -730,7 +730,7 @@ const assetsPlugin: BakinPlugin = definePlugin({
         type: z.enum(ASSET_TYPES).describe(TYPE_RUBRIC),
         description: z.string().optional().describe('One-sentence summary visible in the asset grid and search. Be specific — "Q2 blog hero image" not "an image".'),
         tags: z.array(z.string()).optional().describe('Lowercase hyphenated tags for filtering. Use domain tags (social, blog), format tags (draft, final), and project tags.'),
-        tool: z.string().optional().describe('Tool used to generate (e.g., "dall-e-3", "nano-banana-pro")'),
+        tool: z.string().optional().describe('Tool used to generate or import the asset (e.g., "bakin_exec_images_generate")'),
         slug: z.string().optional().describe('Custom filename slug. Auto-derived from source filename if omitted.'),
       },
       handler: async (params: Record<string, unknown>, agent: string) => {

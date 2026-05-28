@@ -138,6 +138,7 @@ Declare permissions before calling the corresponding APIs.
 | --- | --- |
 | `events.emit` | Broadcast Server-Sent Events to connected browsers |
 | `assets.read` | Read asset metadata and runtime-deliverable asset references |
+| `assets.write` | Save files into the asset store and write asset metadata |
 | `runtime.read` | Read general runtime adapter state |
 | `runtime.agents` | Read runtime agent identity and status |
 | `runtime.messaging` | Send messages through the runtime adapter |

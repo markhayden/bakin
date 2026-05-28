@@ -210,12 +210,12 @@ Purpose: Save an agent-created file to the assets directory with standardized na
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
-| `filePath` | string | yes | Absolute path to the source file to save |
+| `filePath` | string | yes | Absolute path to the source file to save, or an existing managed assets/store/... path to return idempotently |
 | `taskId` | string | yes | Task ID to record in sidecar metadata |
 | `type` | choice | yes |  |
 | `description` | string | no | One-sentence summary visible in the asset grid and search. Be specific — "Q2 blog hero image" not "an image". |
 | `tags` | array | no | Lowercase hyphenated tags for filtering. Use domain tags (social, blog), format tags (draft, final), and project tags. |
-| `tool` | string | no | Tool used to generate (e.g., "dall-e-3", "nano-banana-pro") |
+| `tool` | string | no | Tool used to generate or import the asset (e.g., "bakin_exec_images_generate") |
 | `slug` | string | no | Custom filename slug. Auto-derived from source filename if omitted. |
 
 Example:
@@ -269,41 +269,6 @@ Example:
 ```sh
 mcporter call bakin-<agent>.bakin_exec_check_gates --args '{
   "taskId": "value"
-}'
-```
-
-## Gen
-
-Generation tools create or import media through Bakin so outputs land in the asset pipeline with task context.
-
-### bakin_exec_gen_image
-
-Label: Generated an image
-Purpose: Generate an image via Gemini Imagen (Nano Banana), or import an existing image file into the asset pipeline via filePath. Default model: flash (cheaper). Use model=pro for higher quality. Default: 1080x1920 portrait (9:16) for Stories/Reels. Presets: social-portrait, social-square, social-landscape, custom. Auto-generates thumbnail. Max ${MAX_IMAGE_EDGE}px on any edge.
-
-| Argument | Type | Required | Description |
-| --- | --- | --- | --- |
-| `prompt` | string | no | Image generation prompt (required for Gemini generation, optional description for raw file import) |
-| `filePath` | string | no | Path to an existing image file to import through the asset pipeline (skips Gemini generation) |
-| `taskId` | string | yes | Task ID for asset organization |
-| `preset` | choice | no | Size preset (default: social-portrait = 1080x1920) |
-| `width` | number | no | Custom width (only when preset=custom, max ${MAX_IMAGE_EDGE}) |
-| `height` | number | no | Custom height (only when preset=custom, max ${MAX_IMAGE_EDGE}) |
-| `model` | choice | no | Model tier: flash (default, cheaper) or pro (higher quality) |
-| `thumbnail` | boolean | no | Generate a 400px WebP thumbnail for UI previews (default: true) |
-
-Example:
-
-```sh
-mcporter call bakin-<agent>.bakin_exec_gen_image --args '{
-  "prompt": "value",
-  "filePath": "value",
-  "taskId": "value",
-  "preset": "value",
-  "width": 20,
-  "height": 20,
-  "model": "value",
-  "thumbnail": true
 }'
 ```
 
@@ -439,6 +404,73 @@ mcporter call bakin-<agent>.bakin_exec_heartbeat --args '{
   "currentTask": "value",
   "message": "value"
 }'
+```
+
+## Images
+
+### bakin_exec_images_export
+
+Label: Exported an image
+Purpose: Export an existing image asset to a target surface profile by resizing, cropping, and format-converting it.
+
+Arguments: none.
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_images_export
+```
+
+### bakin_exec_images_generate
+
+Label: Generated an image
+Purpose: Generate an image through a configured native image provider adapter, save it into Assets, and return the canonical image filename.
+
+Arguments: none.
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_images_generate
+```
+
+### bakin_exec_images_import
+
+Label: Imported an image
+Purpose: Import an existing local image file into the Assets pipeline and return the canonical image filename.
+
+Arguments: none.
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_images_import
+```
+
+### bakin_exec_images_profiles
+
+Label: Listed image profiles
+Purpose: List image surface profiles and configured provider readiness. Use this before choosing dimensions or provider routes for image generation.
+
+Arguments: none.
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_images_profiles
+```
+
+### bakin_exec_images_recommend
+
+Label: Recommended an image route
+Purpose: Recommend a deterministic image provider, model, surface profile, dimensions, and quality tier for an image generation request.
+
+Arguments: none.
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_images_recommend
 ```
 
 ## Lesson

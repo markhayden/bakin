@@ -3,7 +3,7 @@
   "name": "Images",
   "version": "0.1.0",
   "bakin": ">=1.0.0",
-  "description": "Provider-routed image generation, editing, import, export, prompt routing, and platform surface profiles",
+  "description": "Provider-routed image generation, import, export, prompt routing, and platform surface profiles",
   "entry": {
     "server": "index.ts"
   },
@@ -70,11 +70,6 @@
         "name": "bakin_exec_images_export",
         "summary": "Export an image asset to a target surface profile",
         "description": "Export an existing image asset to a target surface profile by resizing, cropping, and format-converting it."
-      },
-      {
-        "name": "bakin_exec_images_edit",
-        "summary": "Edit an existing image asset through a configured provider",
-        "description": "Edit an existing image asset through a configured image provider. This tool is reserved for provider edit adapters."
       },
       {
         "name": "bakin_exec_images_profiles",

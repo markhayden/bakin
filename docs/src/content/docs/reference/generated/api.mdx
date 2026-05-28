@@ -713,6 +713,24 @@ curl -sS \
 ```
 </OpenApiReference>
 
+## Images
+
+<OpenApiReference tag="Images" summary />
+
+<OpenApiReference operationId="images.get.profiles">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/images/profiles?id=<id>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="images.get.providers">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/images/providers'
+```
+</OpenApiReference>
+
 ## Memory
 
 <OpenApiReference tag="Memory" summary />
@@ -1434,6 +1452,14 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="workflows.patch.definitions-name-availability">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X PATCH \
+  'http://localhost:3737/api/plugins/workflows/definitions/<name>/availability'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="workflows.post.gates-task-id-approve">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -1531,5 +1557,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 16, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 28, 2026 · Bakin 0.0.0-dev</span>
 </aside>

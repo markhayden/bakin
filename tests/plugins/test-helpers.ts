@@ -116,6 +116,7 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
     runtime,
     tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
     assets: {
+      save: vi.fn(async () => ({ ok: false, error: 'not implemented' })),
       getByFilename: vi.fn(async () => null),
       list: vi.fn(async () => []),
       exists: vi.fn(async () => false),

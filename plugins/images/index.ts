@@ -4,13 +4,13 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
-import type { BakinPlugin, HealthCheckResult, PluginContext } from '@bakin/core/plugin-types'
+import type { BakinPlugin, ExecToolResult, HealthCheckResult, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
 import { createLogger } from '../../src/core/logger'
 import { loadDefaultWorkflows } from '../workflows/lib/load-defaults'
 import { DEFAULT_IMAGE_SETTINGS, listImageProviders, providerReadiness } from './lib/providers'
 import { getImageProfile, listImageProfiles } from './lib/platform-profiles'
-import { editImage, exportImage, generateImage, importImage } from './lib/tools'
+import { exportImage, generateImage, importImage } from './lib/tools'
 import { recommendImageRoute } from './lib/routing'
 
 const log = createLogger('images')
@@ -67,12 +67,6 @@ const exportShape = {
   height: z.number().int().positive().optional().describe('Override export height.'),
   format: imageFormatEnum.optional().describe('Output format.'),
   quality: z.number().int().min(1).max(100).optional().describe('JPEG/WebP quality from 1 to 100.'),
-}
-
-const editShape = {
-  filename: z.string().min(1).describe('Canonical source image asset filename.'),
-  prompt: z.string().min(1).describe('Image edit prompt.'),
-  taskId: z.string().min(1).describe('Task ID to link the edited image asset.'),
 }
 
 const routes = [
@@ -194,7 +188,7 @@ const imagesPlugin = definePlugin({
       description: 'Recommend a deterministic image provider, model, surface profile, dimensions, and quality tier for an image generation request.',
       label: 'Recommended an image route',
       parameters: recommendShape,
-      handler: async (params) => recommendImageRoute(ctx, params as never),
+      handler: async (params) => await recommendImageRoute(ctx, params as never) as ExecToolResult,
     })
     ctx.registerExecTool({
       name: 'bakin_exec_images_generate',
@@ -216,13 +210,6 @@ const imagesPlugin = definePlugin({
       label: 'Exported an image',
       parameters: exportShape,
       handler: async (params, agent) => exportImage(ctx, params as never, agent),
-    })
-    ctx.registerExecTool({
-      name: 'bakin_exec_images_edit',
-      description: 'Edit an existing image asset through a configured image provider. This tool is reserved for provider edit adapters.',
-      label: 'Edited an image',
-      parameters: editShape,
-      handler: async () => editImage(),
     })
     ctx.registerExecTool({
       name: 'bakin_exec_images_profiles',

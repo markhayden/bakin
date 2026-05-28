@@ -102,12 +102,21 @@ Under filename-as-identity:
   "agent": "pixel",
   "taskId": "b082bb01",
   "created": "2026-03-23T14:30:00.000Z",
-  "tool": "dall-e-3",
+  "tool": "bakin_exec_images_generate",
   "description": "Hero image for blog post",
   "tags": ["social", "blog"],
   "type": "images",
   "originalFilename": "hero.png",
-  "source": "agent"
+  "source": "agent",
+  "generation": {
+    "provider": "openai",
+    "model": "gpt-image-2",
+    "surface": "blog-hero",
+    "width": 1600,
+    "height": 900,
+    "quality": "standard",
+    "promptHash": "sha256:..."
+  }
 }
 ```
 
@@ -115,6 +124,7 @@ Under filename-as-identity:
 - `taskId` — linked task, or null for unlinked assets. Relink changes only this field.
 - `source` — how the asset entered the store: `"agent"` (MCP tool), `"upload"` (UI dialog), `"clipboard"` (pasted into task description), `"inbox"` (canonicalized from `assets/inbox/`).
 - `originalFilename` — the pre-canonicalization filename, preserved for human reference.
+- `generation` — optional structured image-generation metadata written by the images plugin. Approval-gated workflows may also link `promptAssetFilename`; direct/manual generation stores a prompt hash instead of a full prompt.
 
 Field aliases are auto-corrected by the sidecar normalizer: `author` → `agent`, `createdAt` → `created`, `task` → `taskId`.
 

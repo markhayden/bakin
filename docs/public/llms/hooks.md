@@ -23,7 +23,7 @@ Asset hooks expose file, sidecar, variant, and trash helpers for plugins that ne
 Label: Create sidecar stub.
 Purpose: Creates a starter sidecar for an asset file and returns the written metadata. Use it when adopting a file into Bakin-managed asset state.
 Kind: rpc
-Source: plugins/assets/index.ts:522
+Source: plugins/assets/index.ts:543
 
 Example:
 
@@ -41,7 +41,7 @@ const result = await ctx.hooks.invoke(
 Label: Detect asset variant.
 Purpose: Infers the asset variant represented by a filename, such as before, after, or reference. Use it to keep imported assets grouped and labeled consistently.
 Kind: rpc
-Source: plugins/assets/index.ts:523
+Source: plugins/assets/index.ts:544
 
 Example:
 
@@ -59,7 +59,7 @@ const result = await ctx.hooks.invoke(
 Label: Empty asset trash.
 Purpose: Permanently removes every asset currently in trash for the provided asset root. Use it for explicit cleanup actions where restore is no longer expected.
 Kind: rpc
-Source: plugins/assets/index.ts:558
+Source: plugins/assets/index.ts:579
 
 Example:
 
@@ -77,7 +77,7 @@ const result = await ctx.hooks.invoke(
 Label: List asset types.
 Purpose: Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories.
 Kind: rpc
-Source: plugins/assets/index.ts:524
+Source: plugins/assets/index.ts:545
 
 Example:
 
@@ -93,7 +93,7 @@ const result = await ctx.hooks.invoke(
 Label: Get sidecar path.
 Purpose: Resolves the metadata sidecar path for a managed asset file. Use it when another plugin has an asset path and needs to read or write the matching metadata.
 Kind: rpc
-Source: plugins/assets/index.ts:521
+Source: plugins/assets/index.ts:542
 
 Example:
 
@@ -111,7 +111,7 @@ const result = await ctx.hooks.invoke(
 Label: Resolve asset path.
 Purpose: Calculates the managed asset path for a filename. Use it when a plugin needs to place or reference a file using Bakin asset storage conventions.
 Kind: rpc
-Source: plugins/assets/index.ts:525
+Source: plugins/assets/index.ts:546
 
 Example:
 
@@ -129,7 +129,7 @@ const result = await ctx.hooks.invoke(
 Label: Purge task clipboard assets.
 Purpose: Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized.
 Kind: rpc
-Source: plugins/assets/index.ts:528
+Source: plugins/assets/index.ts:549
 
 Example:
 
@@ -147,7 +147,7 @@ const result = await ctx.hooks.invoke(
 Label: Restore trashed asset.
 Purpose: Restores one soft-deleted asset from the trash back into managed asset storage. Use it when a plugin needs undo behavior for asset deletion.
 Kind: rpc
-Source: plugins/assets/index.ts:557
+Source: plugins/assets/index.ts:578
 
 Example:
 
@@ -166,7 +166,7 @@ const result = await ctx.hooks.invoke(
 Label: List trashed assets.
 Purpose: Returns soft-deleted assets currently available for restore or permanent removal. Use it to power trash views without duplicating filesystem conventions.
 Kind: rpc
-Source: plugins/assets/index.ts:556
+Source: plugins/assets/index.ts:577
 
 Example:
 
@@ -184,7 +184,7 @@ const result = await ctx.hooks.invoke(
 Label: Validate sidecar metadata.
 Purpose: Checks an asset sidecar JSON file and returns validation details. Use it before trusting metadata created by imports, repairs, or external tools.
 Kind: rpc
-Source: plugins/assets/index.ts:520
+Source: plugins/assets/index.ts:541
 
 Example:
 
@@ -206,7 +206,7 @@ Health hooks expose registered readiness and diagnostic checks so other surfaces
 Label: Get a health check.
 Purpose: Returns metadata for one registered health check by id, without running the check. Use it when a plugin needs the check name, owner, and autofix capability before deciding what to show or run.
 Kind: rpc
-Source: plugins/health/index.ts:475
+Source: plugins/health/index.ts:476
 
 Example:
 
@@ -224,7 +224,7 @@ const result = await ctx.hooks.invoke(
 Label: List health checks.
 Purpose: Returns the health checks registered by core and plugins without executing them. Use it when another surface needs to show the available diagnostics or autofix support.
 Kind: rpc
-Source: plugins/health/index.ts:474
+Source: plugins/health/index.ts:475
 
 Example:
 
@@ -332,7 +332,7 @@ await ctx.hooks.callAll(
 Label: Ensure Bakin schedule
 Purpose: Create or update a Bakin-managed runtime cron job and return the provider job id.
 Kind: rpc
-Source: plugins/schedule/index.ts:1000
+Source: plugins/schedule/index.ts:1066
 
 Example:
 
@@ -521,7 +521,7 @@ Workflow hooks expose workflow definitions, instances, steps, gates, and notific
 Label: Approve workflow gate.
 Purpose: Approves a pending workflow gate and advances the instance. Use it from plugins that own an external review surface for workflow-backed tasks.
 Kind: rpc
-Source: plugins/workflows/index.ts:1479
+Source: plugins/workflows/index.ts:1592
 
 Example:
 
@@ -537,7 +537,7 @@ const result = await ctx.hooks.invoke(
 Label: Authorize workflow tool use.
 Purpose: Checks whether an agent may perform a workflow-scoped tool action for a task. Use it before executing workflow-sensitive automation.
 Kind: rpc
-Source: plugins/workflows/index.ts:1505
+Source: plugins/workflows/index.ts:1618
 
 Example:
 
@@ -553,7 +553,7 @@ const result = await ctx.hooks.invoke(
 Label: Cancel workflow instance.
 Purpose: Cancels the workflow instance attached to a task. Use it when task state changes make the workflow no longer relevant or safe to continue.
 Kind: event
-Source: plugins/workflows/index.ts:1509
+Source: plugins/workflows/index.ts:1622
 
 Example:
 
@@ -571,7 +571,7 @@ await ctx.hooks.callAll(
 Label: Complete workflow step.
 Purpose: Submits output for a workflow step and advances the instance when validation passes. Use it from agents or tools that finish a workflow action.
 Kind: rpc
-Source: plugins/workflows/index.ts:1497
+Source: plugins/workflows/index.ts:1610
 
 Example:
 
@@ -593,7 +593,7 @@ const result = await ctx.hooks.invoke(
 Label: Create workflow instance.
 Purpose: Creates a workflow instance for a task and optional assignee context. Use it when task creation or routing should immediately attach a workflow.
 Kind: rpc
-Source: plugins/workflows/index.ts:1478
+Source: plugins/workflows/index.ts:1591
 
 Example:
 
@@ -613,7 +613,7 @@ const result = await ctx.hooks.invoke(
 Label: List workflow definitions.
 Purpose: Returns available workflow definitions from the configured content directory. Use it to populate workflow selectors or validate workflow ids before creating instances.
 Kind: rpc
-Source: plugins/workflows/index.ts:1499
+Source: plugins/workflows/index.ts:1612
 
 Example:
 
@@ -629,7 +629,7 @@ const result = await ctx.hooks.invoke(
 Label: List active workflow agents.
 Purpose: Returns agents currently active in a workflow task. Use it for coordination, notification, or assignment views that need live workflow participants.
 Kind: rpc
-Source: plugins/workflows/index.ts:1504
+Source: plugins/workflows/index.ts:1617
 
 Example:
 
@@ -647,7 +647,7 @@ const result = await ctx.hooks.invoke(
 Label: Get current step.
 Purpose: Returns the current workflow step for a task, optionally scoped to an agent. Use it when a plugin needs to know what work is currently actionable.
 Kind: rpc
-Source: plugins/workflows/index.ts:1496
+Source: plugins/workflows/index.ts:1609
 
 Example:
 
@@ -666,7 +666,7 @@ const result = await ctx.hooks.invoke(
 Label: Get notification channel.
 Purpose: Returns one workflow notification channel by id. Use it before sending or configuring alerts that depend on a specific channel implementation.
 Kind: rpc
-Source: plugins/workflows/index.ts:1515
+Source: plugins/workflows/index.ts:1628
 
 Example:
 
@@ -684,7 +684,7 @@ const result = await ctx.hooks.invoke(
 Label: List workflow instances.
 Purpose: Returns workflow instances, optionally filtered by status. Use it for dashboards, queues, and maintenance flows that need a broad view of active workflow state.
 Kind: rpc
-Source: plugins/workflows/index.ts:1495
+Source: plugins/workflows/index.ts:1608
 
 Example:
 
@@ -702,7 +702,7 @@ const result = await ctx.hooks.invoke(
 Label: Check gate notification.
 Purpose: Checks whether a workflow gate notification has already been sent. Use it to avoid duplicate alerts for the same task and gate step.
 Kind: rpc
-Source: plugins/workflows/index.ts:1506
+Source: plugins/workflows/index.ts:1619
 
 Example:
 
@@ -721,7 +721,7 @@ const result = await ctx.hooks.invoke(
 Label: Load workflow definition.
 Purpose: Loads one workflow definition by name. Use it when a plugin needs the template shape, steps, or metadata behind a workflow id.
 Kind: rpc
-Source: plugins/workflows/index.ts:1500
+Source: plugins/workflows/index.ts:1613
 
 Example:
 
@@ -739,7 +739,7 @@ const result = await ctx.hooks.invoke(
 Label: Load workflow instance.
 Purpose: Loads the workflow instance attached to a task. Use it when a plugin needs current workflow state without reading workflow files directly.
 Kind: rpc
-Source: plugins/workflows/index.ts:1476
+Source: plugins/workflows/index.ts:1589
 
 Example:
 
@@ -757,7 +757,7 @@ const result = await ctx.hooks.invoke(
 Label: Mark gate notified.
 Purpose: Records that a workflow gate notification was sent. Use it immediately after notifying a reviewer or channel so future checks can suppress duplicates.
 Kind: rpc
-Source: plugins/workflows/index.ts:1507
+Source: plugins/workflows/index.ts:1620
 
 Example:
 
@@ -776,7 +776,7 @@ const result = await ctx.hooks.invoke(
 Label: Match workflow.
 Purpose: Suggests a workflow based on a task title and description. Use it when creating tasks that should automatically pick the most relevant workflow template.
 Kind: rpc
-Source: plugins/workflows/index.ts:1498
+Source: plugins/workflows/index.ts:1611
 
 Example:
 
@@ -795,7 +795,7 @@ const result = await ctx.hooks.invoke(
 Label: List notification channels.
 Purpose: Returns workflow notification channels registered by core or plugins. Use it to show available delivery targets for gate and workflow alerts.
 Kind: rpc
-Source: plugins/workflows/index.ts:1514
+Source: plugins/workflows/index.ts:1627
 
 Example:
 
@@ -811,7 +811,7 @@ const result = await ctx.hooks.invoke(
 Label: Reject workflow gate.
 Purpose: Rejects a pending workflow gate, records the reason, and rewinds the instance per the workflow gate policy. Use it from plugins that own an external review surface for workflow-backed tasks.
 Kind: rpc
-Source: plugins/workflows/index.ts:1483
+Source: plugins/workflows/index.ts:1596
 
 Example:
 
@@ -827,7 +827,7 @@ const result = await ctx.hooks.invoke(
 Label: Reopen workflow from step.
 Purpose: Reopens an existing workflow instance at a prior actionable step. Use it when a plugin needs explicit user recovery without creating a replacement workflow task.
 Kind: rpc
-Source: plugins/workflows/index.ts:1488
+Source: plugins/workflows/index.ts:1601
 
 Example:
 
@@ -843,7 +843,7 @@ const result = await ctx.hooks.invoke(
 Label: Save workflow instance.
 Purpose: Persists a workflow instance after a plugin has changed its state. Use it to keep workflow updates routed through the workflow plugin storage layer.
 Kind: rpc
-Source: plugins/workflows/index.ts:1477
+Source: plugins/workflows/index.ts:1590
 
 Example:
 
@@ -864,7 +864,7 @@ const result = await ctx.hooks.invoke(
 Label: Validate step output.
 Purpose: Validates workflow step output against the step schema. Use it before accepting agent or tool output that should advance a workflow.
 Kind: rpc
-Source: plugins/workflows/index.ts:1508
+Source: plugins/workflows/index.ts:1621
 
 Example:
 

@@ -42,7 +42,6 @@ import {
 // Script execution tools that stay in scripts/lib/ — self-register on import.
 // Must be imported AFTER registry.ts so the Map is initialized.
 import '../../scripts/lib/log-progress'
-import '../../scripts/lib/generate-image'
 import '../../scripts/lib/post-channel'
 import '../../scripts/lib/get-paths'
 import '../../scripts/lib/heartbeat'

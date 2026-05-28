@@ -547,6 +547,7 @@ export interface AssetVariantMeta {
   mimeType: string
 }
 
+/** Structured provenance written by image-generation tools into an asset sidecar. */
 export interface AssetGenerationMeta {
   provider: string
   model: string
@@ -586,6 +587,7 @@ export interface AssetFileRef {
   mimeType?: string
 }
 
+/** Input for saving an agent-created or plugin-created file through the Assets plugin. */
 export interface AssetSaveInput {
   filePath: string
   taskId: string | null
@@ -600,6 +602,7 @@ export interface AssetSaveInput {
   generation?: AssetGenerationMeta
 }
 
+/** Result returned after the Assets plugin canonicalizes and persists a file. */
 export interface AssetSaveResult {
   ok: boolean
   path?: string

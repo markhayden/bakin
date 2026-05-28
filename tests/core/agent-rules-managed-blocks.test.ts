@@ -300,12 +300,13 @@ Prose after.
 
     const pixel = readFileSync(agentsMdPath('pixel'), 'utf-8')
     expect(pixel).toContain(sectionMarker('media-delegation'))
-    expect(pixel).not.toContain('You cannot generate images. Ever.')
+    expect(pixel).toContain('Any assigned agent may create images through the core images plugin tools')
     expect(pixel).toContain('You cannot generate video. Ever.')
 
     const rolo = readFileSync(agentsMdPath('rolo'), 'utf-8')
     expect(rolo).toContain(sectionMarker('media-delegation'))
-    expect(rolo).toContain('You cannot generate images. Ever.')
+    expect(rolo).toContain('Any assigned agent may create images through the core images plugin tools')
+    expect(rolo).not.toContain('You cannot generate images. Ever.')
     expect(rolo).not.toContain('You cannot generate video. Ever.')
   })
 })

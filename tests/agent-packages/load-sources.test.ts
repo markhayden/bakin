@@ -125,7 +125,7 @@ output_schema:
 
 ## Instructions
 
-Run nano-banana-pro and report the asset path.
+Run the images plugin tools and report the asset filename.
 `,
   )
 

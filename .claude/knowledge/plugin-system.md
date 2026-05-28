@@ -858,10 +858,10 @@ const instance = await hooks.invoke<WorkflowInstance>('workflows.loadInstance', 
 ```
 
 **Critical:** No direct imports between plugins or from core → plugins.
-All cross-boundary calls go through hooks. The sole exception is
-`scripts/lib/generate-image.ts` which imports `saveAsset` from
-`plugins/assets/lib/save-asset` directly — the asset pipeline is a
-shared utility, not a plugin-to-plugin dependency.
+All cross-boundary calls go through hooks or explicit plugin context APIs. Image
+generation now lives in the core images plugin and saves through
+`ctx.assets.save`; scripts should not bypass plugin boundaries to write asset
+sidecars directly.
 
 ## Exec Tool Registry
 

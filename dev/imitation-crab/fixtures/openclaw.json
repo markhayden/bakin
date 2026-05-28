@@ -43,8 +43,12 @@
   },
   "skills": {
     "entries": {
-      "web-search": { "apiKey": "mock-websearch-key" },
-      "nano-banana-pro": { "apiKey": "mock-gemini-key", "env": { "GEMINI_API_KEY": "mock-gemini-key" } }
+      "web-search": { "apiKey": "mock-websearch-key" }
+    }
+  },
+  "models": {
+    "providers": {
+      "google": { "apiKey": "mock-gemini-key", "env": { "GEMINI_API_KEY": "mock-gemini-key" } }
     }
   }
 }

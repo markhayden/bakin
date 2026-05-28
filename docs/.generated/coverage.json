@@ -34,21 +34,21 @@
     },
     "execTools": {
       "status": "audited",
-      "count": 118,
+      "count": 122,
       "source": "source scan"
     },
     "corePlugins": {
       "status": "active",
-      "count": 9,
+      "count": 10,
       "source": "plugins/*/bakin-plugin.json"
     },
     "settings": {
       "status": "active",
-      "count": 57,
+      "count": 58,
       "source": "packages/core/src/settings.ts"
     },
     "sdkSubpaths": {
-      "status": "audited",
+      "status": "active",
       "count": 9,
       "source": "packages/sdk/package.json"
     },

@@ -486,10 +486,13 @@ The `bakin.config.ts` shape — root configuration for a Bakin installation.
 | Type | Description |
 | --- | --- |
 | `AssetVariantMeta` | Auto-generated variant (thumbnail/optimized/webp) for an asset. |
+| `AssetGenerationMeta` | Structured provenance written by image-generation tools into an asset sidecar. |
 | `AssetMeta` | Full asset record: file info + sidecar metadata + auto-generated variants. |
 | `TrashedAssetMeta` | Asset record while in trash (with deleted/expires timestamps). |
 | `AssetFileRef` | Compact reference to an asset by filename — used in channel deliveries. |
-| `AssetsAPI` | Assets API exposed via `ctx.assets` — read-only asset lookups. |
+| `AssetSaveInput` | Input for saving an agent-created or plugin-created file through the Assets plugin. |
+| `AssetSaveResult` | Result returned after the Assets plugin canonicalizes and persists a file. |
+| `AssetsAPI` | Assets API exposed via `ctx.assets` — asset persistence and lookups. |
 
 ### Exec Tools & Workflows
 
@@ -640,5 +643,5 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `DefinePluginInput` | — |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 27, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 28, 2026 · Bakin 0.0.0-dev</span>
 </aside>

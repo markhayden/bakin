@@ -139,17 +139,17 @@ Agents interact with Bakin through MCP tools served by `src/core/mcp-server.ts`:
 | tasks plugin | 11 | `ctx.registerExecTool()` | `bakin_exec_tasks_list`, `bakin_exec_tasks_create`, `bakin_exec_tasks_move` |
 | workflows plugin | 10 | `ctx.registerExecTool()` | `bakin_exec_workflows_list_definitions`, `bakin_exec_workflows_get_step` |
 | assets plugin | 9 | `ctx.registerExecTool()` | `bakin_exec_assets_save`, `bakin_exec_assets_list` |
+| images plugin | 5 | `ctx.registerExecTool()` | `bakin_exec_images_recommend`, `bakin_exec_images_generate`, `bakin_exec_images_import`, `bakin_exec_images_export` |
 | schedule plugin | 10 | `ctx.registerExecTool()` | `bakin_exec_schedule_list`, `bakin_exec_schedule_fire` |
 | official messaging plugin | 15 | `ctx.registerExecTool()` | `bakin_exec_messaging_list`, `bakin_exec_messaging_create`, `bakin_exec_messaging_session_list` |
 | official projects plugin | 15 | `ctx.registerExecTool()` | `bakin_exec_project_list`, `bakin_exec_project_create` |
 | team plugin | 12 | `ctx.registerExecTool()` | `bakin_exec_team_list`, `bakin_exec_team_org`, `bakin_exec_team_create_agent`, `bakin_exec_team_delete_agent`, `bakin_exec_team_update_identity`, `bakin_exec_team_set_permissions` |
 | scripts/lib/log-progress.ts | 1 | `addExecTool()` | `bakin_exec_log` |
-| scripts/lib/generate-image.ts | 1 | `addExecTool()` | `bakin_exec_gen_image` (Gemini generation or raw file import via `filePath` param) |
 | scripts/lib/post-channel.ts | 1 | `addExecTool()` | `bakin_exec_post_channel` |
 | scripts/lib/get-paths.ts | 1 | `addExecTool()` | `bakin_exec_get_paths` |
 | scripts/lib/heartbeat.ts | 1 | `addExecTool()` | `bakin_exec_heartbeat` |
 
-**Total:** 79 exec tools (74 plugin + 5 script). Naming: `bakin_exec_{pluginId}_{action}`.
+Exec tools are discovered from the registry at runtime. Plugin-owned tools use the naming pattern `bakin_exec_{pluginId}_{action}`.
 
 ### Agent identity
 MCP sessions bind agent identity via `?agent=chef` query param at connection time. All tool calls carry the agent ID for audit attribution.
