@@ -31,6 +31,10 @@ mock.module('@/core/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ workflows: join(testDir, 'workflows') }),
 }))
+// Isolate plugin discovery from the live core-plugin set: this smoke test
+// asserts the "nothing ships" branch, which must not depend on whether a
+// core plugin (e.g. images) happens to ship defaults/runtime-skills/.
+mock.module('../../bakin.config', () => ({ default: { plugins: [] } }))
 mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => openClawDir,
   getOpenClawPath: (...parts: string[]) => join(openClawDir, ...parts),
