@@ -52,6 +52,26 @@
     ],
     "execTools": [
       {
+        "name": "bakin_exec_images_generate",
+        "summary": "Generate an image through a configured native provider adapter",
+        "description": "Generate an image through a configured native image provider adapter, save it into Assets, and return the canonical image filename."
+      },
+      {
+        "name": "bakin_exec_images_import",
+        "summary": "Import an existing local image file into Assets",
+        "description": "Import an existing local image file into the Assets pipeline and return the canonical image filename."
+      },
+      {
+        "name": "bakin_exec_images_export",
+        "summary": "Export an image asset to a target surface profile",
+        "description": "Export an existing image asset to a target surface profile by resizing, cropping, and format-converting it."
+      },
+      {
+        "name": "bakin_exec_images_edit",
+        "summary": "Edit an existing image asset through a configured provider",
+        "description": "Edit an existing image asset through a configured image provider. This tool is reserved for provider edit adapters."
+      },
+      {
         "name": "bakin_exec_images_profiles",
         "summary": "List image surface profiles and configured provider readiness",
         "description": "List image surface profiles and configured provider readiness. Use this before choosing dimensions or provider routes for image generation."

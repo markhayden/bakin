@@ -6,6 +6,7 @@ import type { BakinPlugin, HealthCheckResult, PluginContext } from '@bakin/core/
 import { definePlugin, defineRoute } from '@bakin/core/routing'
 import { DEFAULT_IMAGE_SETTINGS, listImageProviders, providerReadinessFromEnv } from './lib/providers'
 import { getImageProfile, listImageProfiles } from './lib/platform-profiles'
+import { editImage, exportImage, generateImage, importImage } from './lib/tools'
 
 const okResponse = z.object({ ok: z.boolean() }).passthrough()
 const errorResponse = z.object({ error: z.string() }).passthrough()
@@ -17,6 +18,46 @@ const profileQuery = z.object({
 const profileToolShape = {
   profileId: z.string().optional().describe('Optional surface profile id to return. Omit to list all profiles.'),
   includeProviders: z.boolean().default(true).describe('Include provider readiness and routable model metadata.'),
+}
+
+const imageProviderEnum = z.enum(['auto', 'openai', 'google'])
+const imageQualityEnum = z.enum(['draft', 'standard', 'premium'])
+const imageFormatEnum = z.enum(['jpg', 'png', 'webp'])
+
+const generateShape = {
+  prompt: z.string().optional().describe('Provider-neutral image prompt. Required unless promptPacket is supplied.'),
+  promptPacket: z.record(z.string(), z.unknown()).optional().describe('Structured prompt packet compiled into the provider prompt.'),
+  taskId: z.string().min(1).describe('Task ID to link the generated image asset.'),
+  surface: z.string().optional().describe('Image surface profile id, such as instagram-feed-portrait or google-display-landscape.'),
+  provider: imageProviderEnum.optional().describe('Provider route. Defaults to auto routing.'),
+  model: z.string().optional().describe('Provider model id, such as gpt-image-2 or gemini-3.1-flash-image.'),
+  width: z.number().int().positive().optional().describe('Optional custom width. Defaults from surface profile.'),
+  height: z.number().int().positive().optional().describe('Optional custom height. Defaults from surface profile.'),
+  quality: imageQualityEnum.optional().describe('Generation quality tier.'),
+  savePromptPacket: z.boolean().optional().describe('Save the full prompt packet as a linked text asset. Use for approval-gated workflows.'),
+}
+
+const importShape = {
+  filePath: z.string().min(1).describe('Absolute path to an existing image file to import into Assets.'),
+  taskId: z.string().min(1).describe('Task ID to link the imported image asset.'),
+  description: z.string().optional().describe('Human-readable asset description.'),
+  tags: z.array(z.string()).optional().describe('Asset tags.'),
+}
+
+const exportShape = {
+  filename: z.string().min(1).describe('Canonical source image asset filename.'),
+  taskId: z.string().min(1).describe('Task ID to link the exported variant asset.'),
+  surface: z.string().optional().describe('Target surface profile id. Use custom with width and height for custom exports.'),
+  width: z.number().int().positive().optional().describe('Override export width.'),
+  height: z.number().int().positive().optional().describe('Override export height.'),
+  format: imageFormatEnum.optional().describe('Output format.'),
+  quality: z.number().int().min(1).max(100).optional().describe('JPEG/WebP quality from 1 to 100.'),
+}
+
+const editShape = {
+  filename: z.string().min(1).describe('Canonical source image asset filename.'),
+  prompt: z.string().min(1).describe('Image edit prompt.'),
+  taskId: z.string().min(1).describe('Task ID to link the edited image asset.'),
 }
 
 const routes = [
@@ -125,6 +166,34 @@ const imagesPlugin = definePlugin({
   navItems: [],
   contentFiles: [],
   activate(ctx: PluginContext) {
+    ctx.registerExecTool({
+      name: 'bakin_exec_images_generate',
+      description: 'Generate an image through a configured native image provider adapter, save it into Assets, and return the canonical image filename.',
+      label: 'Generated an image',
+      parameters: generateShape,
+      handler: async (params, agent) => generateImage(ctx, params as never, agent),
+    })
+    ctx.registerExecTool({
+      name: 'bakin_exec_images_import',
+      description: 'Import an existing local image file into the Assets pipeline and return the canonical image filename.',
+      label: 'Imported an image',
+      parameters: importShape,
+      handler: async (params, agent) => importImage(ctx, params as never, agent),
+    })
+    ctx.registerExecTool({
+      name: 'bakin_exec_images_export',
+      description: 'Export an existing image asset to a target surface profile by resizing, cropping, and format-converting it.',
+      label: 'Exported an image',
+      parameters: exportShape,
+      handler: async (params, agent) => exportImage(ctx, params as never, agent),
+    })
+    ctx.registerExecTool({
+      name: 'bakin_exec_images_edit',
+      description: 'Edit an existing image asset through a configured image provider. This tool is reserved for provider edit adapters.',
+      label: 'Edited an image',
+      parameters: editShape,
+      handler: async () => editImage(),
+    })
     ctx.registerExecTool({
       name: 'bakin_exec_images_profiles',
       description: 'List image surface profiles and configured provider readiness. Use this before choosing dimensions or provider routes for image generation.',
