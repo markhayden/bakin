@@ -329,11 +329,39 @@ describe('checkService', () => {
       const launchDir = join(testDir, 'Library', 'LaunchAgents')
       mkdirSync(launchDir, { recursive: true })
       writeFileSync(
-        join(launchDir, 'com.bakin.mc.plist'),
+        join(launchDir, 'com.makinbakin.bakin.plist'),
         `<key>WorkingDirectory</key><string>/old/path</string><string>/old/path/server.ts</string>`,
       )
       const results = checkService('/new/project')
       expect(results.some(r => r.status === 'error' && r.message.includes('/old/path'))).toBe(true)
+    } finally {
+      if (previousHome === undefined) delete process.env.HOME
+      else process.env.HOME = previousHome
+    }
+  })
+
+  it('accepts binary LaunchAgent plists for the current service label', () => {
+    if (process.platform !== 'darwin') return
+    mockServiceEnabled = true
+    const previousHome = process.env.HOME
+    process.env.HOME = testDir
+    try {
+      const launchDir = join(testDir, 'Library', 'LaunchAgents')
+      mkdirSync(launchDir, { recursive: true })
+      writeFileSync(
+        join(launchDir, 'com.makinbakin.bakin.plist'),
+        [
+          '<key>ProgramArguments</key>',
+          '<array>',
+          '<string>/usr/local/bin/bakin</string>',
+          '<string>serve</string>',
+          '</array>',
+          '<key>WorkingDirectory</key><string>/Users/tester/.bakin</string>',
+        ].join(''),
+      )
+      const results = checkService('/Users/tester/.bakin')
+      expect(results.some(r => r.message.includes('plist not found'))).toBe(false)
+      expect(results.some(r => r.status === 'error')).toBe(false)
     } finally {
       if (previousHome === undefined) delete process.env.HOME
       else process.env.HOME = previousHome

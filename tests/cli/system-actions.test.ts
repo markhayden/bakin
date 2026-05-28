@@ -45,6 +45,11 @@ describe('CLI system action TUI commands', () => {
     return log.mock.calls.map((call: unknown[]) => String(call[0])).join('\n')
   }
 
+  function writtenTextForPath(suffix: string): string {
+    const call = writeFileSync.mock.calls.find((args: unknown[]) => String(args[0]).endsWith(suffix))
+    return call ? String(call[1]) : ''
+  }
+
   beforeEach(() => {
     mock.clearAllMocks()
     execFileSync.mockImplementation((...args: unknown[]) => args[0] === 'id' ? '501\n' : '')
@@ -123,6 +128,33 @@ describe('CLI system action TUI commands', () => {
     expect(writeFileSync).toHaveBeenCalled()
     expect(execFileSync).toHaveBeenCalledWith('launchctl', expect.arrayContaining(['bootstrap', 'gui/501', expect.any(String)]), expect.any(Object))
     expect(error.mock.calls).toHaveLength(0)
+  })
+
+  it('uses the real executable when compiled argv points at Bun virtual fs', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    process.argv = ['/usr/local/bin/bakin', '/$bunfs/root/bakin-darwin-arm64', 'setup', 'service']
+    await main()
+
+    const plist = writtenTextForPath('com.makinbakin.bakin.plist')
+    expect(plist).toContain(`<string>${process.execPath}</string>`)
+    expect(plist).toContain('<string>serve</string>')
+    expect(plist).toContain('<key>WorkingDirectory</key>')
+    expect(plist).toContain('<string>/Users/tester/.bakin</string>')
+    expect(plist).not.toContain('/$bunfs')
+  })
+
+  it('restarts through launchctl when the LaunchAgent is installed', async () => {
+    const { main } = await import('../../cli/bakin')
+
+    existsSync.mockImplementation((path?: unknown) => String(path).endsWith('com.makinbakin.bakin.plist'))
+    process.argv = ['bun', 'cli/bakin.ts', 'restart']
+    await main()
+
+    expect(execFileSync).toHaveBeenCalledWith('launchctl', ['kickstart', '-k', 'gui/501/com.makinbakin.bakin'], expect.any(Object))
+    expect(spawn).not.toHaveBeenCalled()
+    expect(output()).toContain('Bakin restarted.')
+    expect(output()).toContain('Service: com.makinbakin.bakin')
   })
 
   it('renders setup service uninstall results with the shared runtime action TUI in a TTY', async () => {
