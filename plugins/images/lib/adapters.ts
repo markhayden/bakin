@@ -1,10 +1,10 @@
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { ImageProviderId } from '../types'
+import type { NativeImageProviderId } from '../types'
 
 export interface ImageAdapterRequest {
-  provider: ImageProviderId
+  provider: NativeImageProviderId
   model: string
   prompt: string
   width: number
@@ -22,7 +22,7 @@ export interface ImageAdapterResult {
 }
 
 export interface ImageProviderAdapter {
-  provider: ImageProviderId
+  provider: NativeImageProviderId
   generate(request: ImageAdapterRequest): Promise<ImageAdapterResult>
 }
 
@@ -74,24 +74,16 @@ function extractOpenAIImage(data: unknown): { base64?: string; url?: string; mim
 }
 
 export class OpenAIImageAdapter implements ImageProviderAdapter {
-  provider: ImageProviderId = 'openai'
+  provider: NativeImageProviderId = 'openai'
 
   async generate(request: ImageAdapterRequest): Promise<ImageAdapterResult> {
-    const isResponsesRoute = request.model === 'gpt-5.5'
-    const url = isResponsesRoute ? 'https://api.openai.com/v1/responses' : 'https://api.openai.com/v1/images/generations'
-    const body = isResponsesRoute
-      ? {
-          model: request.model,
-          input: request.prompt,
-          tools: [{ type: 'image_generation', size: sizeString(request.width, request.height), quality: qualityForOpenAI(request.quality) }],
-          tool_choice: { type: 'image_generation' },
-        }
-      : {
-          model: request.model,
-          prompt: request.prompt,
-          size: sizeString(request.width, request.height),
-          quality: qualityForOpenAI(request.quality),
-        }
+    const url = 'https://api.openai.com/v1/images/generations'
+    const body = {
+      model: request.model,
+      prompt: request.prompt,
+      size: sizeString(request.width, request.height),
+      quality: qualityForOpenAI(request.quality),
+    }
 
     const response = await fetch(url, {
       method: 'POST',
@@ -123,7 +115,7 @@ export class OpenAIImageAdapter implements ImageProviderAdapter {
 }
 
 export class GeminiImageAdapter implements ImageProviderAdapter {
-  provider: ImageProviderId = 'google'
+  provider: NativeImageProviderId = 'google'
 
   async generate(request: ImageAdapterRequest): Promise<ImageAdapterResult> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${request.model}:generateContent?key=${encodeURIComponent(request.apiKey)}`
@@ -162,7 +154,7 @@ export class GeminiImageAdapter implements ImageProviderAdapter {
   }
 }
 
-export function getImageAdapter(provider: ImageProviderId): ImageProviderAdapter {
+export function getImageAdapter(provider: NativeImageProviderId): ImageProviderAdapter {
   if (provider === 'openai') return new OpenAIImageAdapter()
   return new GeminiImageAdapter()
 }

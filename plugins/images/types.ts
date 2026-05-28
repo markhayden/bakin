@@ -1,4 +1,5 @@
-export type ImageProviderId = 'openai' | 'google'
+export type NativeImageProviderId = 'openai' | 'google'
+export type ImageProviderId = NativeImageProviderId | (string & {})
 
 export type ImageModelCapability =
   | 'generate'
@@ -33,6 +34,9 @@ export interface ImageProviderReadiness {
   envVars: string[]
   configuredEnvVars: string[]
   models: ImageModelDescriptor[]
+  defaultModel?: string
+  selected?: boolean
+  source?: 'native' | 'runtime' | 'native+runtime'
 }
 
 export type ImageSurfaceCategory =

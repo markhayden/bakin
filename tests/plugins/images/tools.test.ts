@@ -4,18 +4,16 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import sharp from 'sharp'
 import type { PluginContext } from '@bakin/core/plugin-types'
+import { resetContentDir } from '../../../src/core/content-dir'
 
 let testDir = join(tmpdir(), `bakin-images-tools-${Date.now()}`)
-
-mock.module('../../../src/core/content-dir', () => ({
-  getContentDir: () => testDir,
-}))
 
 import { exportImage, generateImage, importImage } from '../../../plugins/images/lib/tools'
 
 const originalOpenAI = process.env.OPENAI_API_KEY
 const originalGemini = process.env.GEMINI_API_KEY
 const originalGoogle = process.env.GOOGLE_AI_API_KEY
+const originalBakinHome = process.env.BAKIN_HOME
 
 function makeContext(overrides: Partial<PluginContext> = {}) {
   const saved: Array<Record<string, unknown>> = []
@@ -60,6 +58,8 @@ describe('images tools', () => {
   beforeEach(() => {
     testDir = join(tmpdir(), `bakin-images-tools-${Date.now()}-${Math.random().toString(16).slice(2)}`)
     mkdirSync(testDir, { recursive: true })
+    process.env.BAKIN_HOME = testDir
+    resetContentDir()
     process.env.GEMINI_API_KEY = 'gemini-key'
     process.env.OPENAI_API_KEY = 'openai-key'
     delete process.env.GOOGLE_AI_API_KEY
@@ -72,6 +72,9 @@ describe('images tools', () => {
     else process.env.GEMINI_API_KEY = originalGemini
     if (originalGoogle === undefined) delete process.env.GOOGLE_AI_API_KEY
     else process.env.GOOGLE_AI_API_KEY = originalGoogle
+    if (originalBakinHome === undefined) delete process.env.BAKIN_HOME
+    else process.env.BAKIN_HOME = originalBakinHome
+    resetContentDir()
     rmSync(testDir, { recursive: true, force: true })
     mock.restore()
   })
@@ -84,19 +87,19 @@ describe('images tools', () => {
       prompt: 'Golden hour smoothie',
       taskId: 'task-1',
       provider: 'google',
-      model: 'gemini-3.1-flash-image',
+      model: 'gemini-3.1-flash-image-preview',
       surface: 'instagram-story',
     }, 'pixel')
 
     expect(result.ok).toBe(true)
     expect(result.image_filename).toBe('20260528-image-a1b2c3d4.png')
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('gemini-3.1-flash-image:generateContent'),
+      expect.stringContaining('gemini-3.1-flash-image-preview:generateContent'),
       expect.anything(),
     )
     expect(saved[0].generation).toMatchObject({
       provider: 'google',
-      model: 'gemini-3.1-flash-image',
+      model: 'gemini-3.1-flash-image-preview',
       surface: 'instagram-story',
       width: 1080,
       height: 1920,
@@ -135,6 +138,61 @@ describe('images tools', () => {
       width: 1600,
       height: 900,
       quality: 'premium',
+    })
+  })
+
+  it('prefers configured runtime image generation before direct provider adapters', async () => {
+    const fetchSpy = spyOn(globalThis, 'fetch').mockRejectedValue(new Error('direct fetch should not be called'))
+    const runtimeFile = join(testDir, 'runtime-generated.png')
+    writeFileSync(runtimeFile, 'runtime-image')
+    const runtimeGenerate = mock(async () => ({
+      provider: 'openai',
+      model: 'gpt-image-2',
+      providerText: 'runtime revised prompt',
+      images: [{ filePath: runtimeFile, mimeType: 'image/png', width: 1024, height: 1024 }],
+    }))
+    const { ctx, saved } = makeContext({
+      runtime: {
+        images: {
+          providers: mock(async () => [
+            {
+              id: 'openai',
+              label: 'OpenAI',
+              configured: true,
+              defaultModel: 'gpt-image-2',
+              models: ['gpt-image-2'],
+              capabilities: { generate: { maxCount: 4, supportsSize: true } },
+            },
+          ]),
+          generate: runtimeGenerate,
+        },
+        config: {
+          get: mock(async () => ({})),
+        },
+      } as never,
+    })
+
+    const result = await generateImage(ctx, {
+      prompt: 'Codex-routed test image',
+      taskId: 'task-runtime',
+      provider: 'openai',
+      model: 'gpt-image-2',
+      surface: 'blog-hero',
+    }, 'pixel')
+
+    expect(result.ok).toBe(true)
+    expect(runtimeGenerate).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'openai',
+      model: 'gpt-image-2',
+      width: 1600,
+      height: 900,
+    }))
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(saved[0]).toMatchObject({ filePath: runtimeFile })
+    expect(saved[0].generation).toMatchObject({
+      provider: 'openai',
+      model: 'gpt-image-2',
+      routeSource: 'runtime',
     })
   })
 

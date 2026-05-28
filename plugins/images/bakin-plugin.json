@@ -11,17 +11,17 @@
   "secrets": [
     {
       "name": "OPENAI_API_KEY",
-      "description": "OpenAI API key used by the images plugin for GPT Image and Responses image-generation routes.",
+      "description": "Optional direct OpenAI API key used when the runtime adapter does not provide a configured OpenAI image route.",
       "required": false
     },
     {
       "name": "GEMINI_API_KEY",
-      "description": "Google Gemini API key used by the images plugin for Gemini image generation.",
+      "description": "Optional direct Google Gemini API key used when the runtime adapter does not provide a configured Google image route.",
       "required": false
     },
     {
       "name": "GOOGLE_AI_API_KEY",
-      "description": "Alternative Google AI API key environment variable for Gemini image generation.",
+      "description": "Alternative direct Google AI API key environment variable for Gemini image generation.",
       "required": false
     }
   ],
@@ -34,6 +34,7 @@
     "assets.read",
     "assets.write",
     "events.emit",
+    "runtime.images",
     "storage.read",
     "storage.write"
   ],
@@ -58,8 +59,8 @@
       },
       {
         "name": "bakin_exec_images_generate",
-        "summary": "Generate an image through a configured native provider adapter",
-        "description": "Generate an image through a configured native image provider adapter, save it into Assets, and return the canonical image filename."
+        "summary": "Generate an image through a configured runtime or native provider adapter",
+        "description": "Generate an image through a configured runtime image provider or native image provider adapter, save it into Assets, and return the canonical image filename."
       },
       {
         "name": "bakin_exec_images_import",

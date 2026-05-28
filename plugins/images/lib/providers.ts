@@ -1,5 +1,6 @@
 import type { PluginContext } from '@bakin/core/plugin-types'
-import type { ImagePluginSettings, ImageProviderDescriptor, ImageProviderReadiness } from '../types'
+import type { RuntimeImageProvider } from '@bakin/core/adapters/runtime'
+import type { ImageModelDescriptor, ImagePluginSettings, ImageProviderDescriptor, ImageProviderId, ImageProviderReadiness, NativeImageProviderId } from '../types'
 import { resolveImageApiKey } from './credentials'
 
 export const IMAGE_PROVIDERS: ImageProviderDescriptor[] = [
@@ -18,13 +19,31 @@ export const IMAGE_PROVIDERS: ImageProviderDescriptor[] = [
         defaultQuality: 'standard',
       },
       {
-        id: 'gpt-5.5',
+        id: 'gpt-image-1.5',
         provider: 'openai',
-        label: 'GPT-5.5 image generation tool',
+        label: 'GPT Image 1.5',
         tier: 'premium',
         status: 'routable',
-        capabilities: ['generate', 'responses-image-tool', 'text-rendering'],
+        capabilities: ['generate', 'edit', 'reference-images', 'text-rendering', 'transparent-background'],
         defaultQuality: 'premium',
+      },
+      {
+        id: 'gpt-image-1',
+        provider: 'openai',
+        label: 'GPT Image 1',
+        tier: 'standard',
+        status: 'routable',
+        capabilities: ['generate', 'edit', 'reference-images', 'text-rendering'],
+        defaultQuality: 'standard',
+      },
+      {
+        id: 'gpt-image-1-mini',
+        provider: 'openai',
+        label: 'GPT Image 1 Mini',
+        tier: 'budget',
+        status: 'routable',
+        capabilities: ['generate', 'edit', 'reference-images'],
+        defaultQuality: 'draft',
       },
     ],
   },
@@ -34,31 +53,22 @@ export const IMAGE_PROVIDERS: ImageProviderDescriptor[] = [
     envVars: ['GEMINI_API_KEY', 'GOOGLE_AI_API_KEY'],
     models: [
       {
-        id: 'gemini-3.1-flash-image',
+        id: 'gemini-3.1-flash-image-preview',
         provider: 'google',
-        label: 'Gemini 3.1 Flash Image',
+        label: 'Gemini 3.1 Flash Image Preview',
         tier: 'budget',
         status: 'routable',
         capabilities: ['generate', 'edit', 'reference-images'],
         defaultQuality: 'standard',
       },
       {
-        id: 'gemini-3-pro-image',
+        id: 'gemini-3-pro-image-preview',
         provider: 'google',
-        label: 'Gemini 3 Pro Image',
+        label: 'Gemini 3 Pro Image Preview',
         tier: 'premium',
         status: 'routable',
         capabilities: ['generate', 'edit', 'reference-images', 'text-rendering'],
         defaultQuality: 'premium',
-      },
-      {
-        id: 'gemini-2.5-flash-image',
-        provider: 'google',
-        label: 'Gemini 2.5 Flash Image',
-        tier: 'budget',
-        status: 'routable',
-        capabilities: ['generate', 'edit', 'reference-images'],
-        defaultQuality: 'standard',
       },
     ],
   },
@@ -69,8 +79,8 @@ export const DEFAULT_IMAGE_SETTINGS: Required<ImagePluginSettings> = {
   defaultSurface: 'instagram-feed-portrait',
   fallbackOrder: [
     'openai/gpt-image-2',
-    'google/gemini-3.1-flash-image',
-    'google/gemini-3-pro-image',
+    'google/gemini-3.1-flash-image-preview',
+    'google/gemini-3-pro-image-preview',
   ],
   quality: 'standard',
 }
@@ -81,6 +91,10 @@ export function listImageProviders(): ImageProviderDescriptor[] {
 
 export function getImageProvider(id: string): ImageProviderDescriptor | null {
   return IMAGE_PROVIDERS.find(provider => provider.id === id) ?? null
+}
+
+export function isNativeImageProvider(id: ImageProviderId): id is NativeImageProviderId {
+  return id === 'openai' || id === 'google'
 }
 
 export function providerReadinessFromEnv(env: Record<string, string | undefined> = process.env): ImageProviderReadiness[] {
@@ -101,19 +115,82 @@ export function providerReadinessFromEnv(env: Record<string, string | undefined>
 export async function providerReadiness(ctx: PluginContext): Promise<ImageProviderReadiness[]> {
   const envReadiness = providerReadinessFromEnv()
   const envById = new Map(envReadiness.map(provider => [provider.id, provider]))
+  const runtimeProviders = await runtimeImageProviders(ctx)
+  const runtimeById = new Map(runtimeProviders.map(provider => [provider.id, provider]))
 
-  return Promise.all(IMAGE_PROVIDERS.map(async (provider) => {
-    const apiKey = await resolveImageApiKey(ctx, provider.id)
+  const native: ImageProviderReadiness[] = await Promise.all(IMAGE_PROVIDERS.map(async (provider): Promise<ImageProviderReadiness> => {
+    const providerId = provider.id as NativeImageProviderId
+    const apiKey = await resolveImageApiKey(ctx, providerId)
     const env = envById.get(provider.id)
-    const configured = Boolean(apiKey)
+    const runtime = runtimeById.get(provider.id)
+    const configured = Boolean(apiKey) || runtime?.configured === true
+    const routable = configured && (
+      provider.models.some(model => model.status === 'routable')
+      || runtimeProviderRoutable(runtime)
+    )
     return {
       id: provider.id,
-      label: provider.label,
+      label: runtime?.label ?? provider.label,
       configured,
-      routable: configured && provider.models.some(model => model.status === 'routable'),
+      routable,
       envVars: provider.envVars,
       configuredEnvVars: env?.configuredEnvVars ?? [],
-      models: provider.models,
+      models: mergeImageModels(provider.models, runtimeModels(runtime, provider.id)),
+      defaultModel: runtime?.defaultModel,
+      selected: runtime?.selected,
+      source: runtime ? 'native+runtime' as const : 'native' as const,
     }
   }))
+
+  const nativeIds = new Set(native.map(provider => provider.id))
+  const runtimeOnly = runtimeProviders
+    .filter(provider => !nativeIds.has(provider.id))
+    .map((provider): ImageProviderReadiness => ({
+      id: provider.id,
+      label: provider.label ?? provider.id,
+      configured: provider.configured === true,
+      routable: runtimeProviderRoutable(provider),
+      envVars: [],
+      configuredEnvVars: [],
+      models: runtimeModels(provider, provider.id),
+      defaultModel: provider.defaultModel,
+      selected: provider.selected,
+      source: 'runtime',
+    }))
+
+  return [...native, ...runtimeOnly]
+}
+
+async function runtimeImageProviders(ctx: PluginContext): Promise<RuntimeImageProvider[]> {
+  try {
+    return await ctx.runtime.images?.providers() ?? []
+  } catch {
+    return []
+  }
+}
+
+function runtimeProviderRoutable(provider: RuntimeImageProvider | undefined): boolean {
+  if (!provider || provider.configured !== true) return false
+  if (provider.capabilities?.generate && provider.capabilities.generate.maxCount === 0) return false
+  return (provider.models?.length ?? 0) > 0 || Boolean(provider.defaultModel)
+}
+
+function runtimeModels(provider: RuntimeImageProvider | undefined, providerId: string): ImageModelDescriptor[] {
+  if (!provider) return []
+  const models = provider.models?.length ? provider.models : provider.defaultModel ? [provider.defaultModel] : []
+  return models.map((model): ImageModelDescriptor => ({
+    id: model,
+    provider: providerId,
+    label: model,
+    tier: provider.selected ? 'standard' : 'budget',
+    status: provider.configured ? 'routable' : 'known',
+    capabilities: ['generate', ...(provider.capabilities?.edit?.enabled ? ['edit' as const] : [])],
+    defaultQuality: 'standard',
+  }))
+}
+
+function mergeImageModels(primary: ImageModelDescriptor[], secondary: ImageModelDescriptor[]): ImageModelDescriptor[] {
+  const out = new Map<string, ImageModelDescriptor>()
+  for (const model of [...primary, ...secondary]) out.set(model.id, model)
+  return [...out.values()]
 }

@@ -9,12 +9,13 @@ describe('image providers', () => {
 
     expect(byId.get('openai')?.models.map(model => model.id)).toEqual([
       'gpt-image-2',
-      'gpt-5.5',
+      'gpt-image-1.5',
+      'gpt-image-1',
+      'gpt-image-1-mini',
     ])
     expect(byId.get('google')?.models.map(model => model.id)).toEqual([
-      'gemini-3.1-flash-image',
-      'gemini-3-pro-image',
-      'gemini-2.5-flash-image',
+      'gemini-3.1-flash-image-preview',
+      'gemini-3-pro-image-preview',
     ])
     expect(providers.flatMap(provider => provider.models).every(model => model.status === 'routable')).toBe(true)
   })
@@ -60,6 +61,37 @@ describe('image providers', () => {
     expect(ready.find(provider => provider.id === 'google')).toMatchObject({
       configured: true,
       routable: true,
+    })
+  })
+
+  it('merges configured runtime image providers into readiness', async () => {
+    const ctx = {
+      runtime: {
+        images: {
+          providers: mock(async () => [
+            {
+              id: 'openrouter',
+              label: 'OpenRouter',
+              configured: true,
+              defaultModel: 'google/gemini-3.1-flash-image-preview',
+              models: ['google/gemini-3.1-flash-image-preview'],
+              capabilities: { generate: { maxCount: 4 } },
+            },
+          ]),
+        },
+        config: {
+          get: mock(async () => ({})),
+        },
+      },
+    } as unknown as PluginContext
+
+    const ready = await providerReadiness(ctx)
+
+    expect(ready.find(provider => provider.id === 'openrouter')).toMatchObject({
+      configured: true,
+      routable: true,
+      source: 'runtime',
+      models: [expect.objectContaining({ id: 'google/gemini-3.1-flash-image-preview' })],
     })
   })
 

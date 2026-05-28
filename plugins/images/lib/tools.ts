@@ -4,10 +4,11 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import sharp from 'sharp'
 import type { ExecToolResult, PluginContext } from '@bakin/core/plugin-types'
-import type { ImagePluginSettings, ImageProviderId } from '../types'
+import type { RuntimeImageGenerationResult } from '@bakin/core/adapters/runtime'
+import type { ImagePluginSettings, ImageProviderId, ImageProviderReadiness, NativeImageProviderId } from '../types'
 import { getImageAdapter } from './adapters'
 import { resolveImageApiKey } from './credentials'
-import { DEFAULT_IMAGE_SETTINGS, getImageProvider, providerReadiness } from './providers'
+import { DEFAULT_IMAGE_SETTINGS, getImageProvider, isNativeImageProvider, providerReadiness } from './providers'
 import { getImageProfile } from './platform-profiles'
 import { getContentDir } from '../../../src/core/content-dir'
 
@@ -82,30 +83,36 @@ function dimensionsForSurface(surfaceId: string, width?: number, height?: number
 function parseProviderModel(route: string): { provider: ImageProviderId; model: string } | null {
   const [provider, ...modelParts] = route.split('/')
   const model = modelParts.join('/')
-  if ((provider === 'openai' || provider === 'google') && model) return { provider, model }
+  if (provider && model) return { provider, model }
   return null
 }
 
-function defaultModelForProvider(provider: ImageProviderId): string {
-  return provider === 'openai' ? 'gpt-image-2' : 'gemini-3.1-flash-image'
+function defaultModelForProvider(provider: ImageProviderId, readiness: ImageProviderReadiness[] = []): string {
+  const runtimeDefault = readiness.find(candidate => candidate.id === provider)?.defaultModel
+  if (runtimeDefault) return runtimeDefault
+  if (provider === 'openai') return 'gpt-image-2'
+  if (provider === 'google') return 'gemini-3.1-flash-image-preview'
+  return readiness.find(candidate => candidate.id === provider)?.models[0]?.id ?? ''
 }
 
 async function resolveRoute(ctx: PluginContext, params: ImagesGenerateParams): Promise<{ provider: ImageProviderId; model: string } | null> {
+  const readiness = await providerReadiness(ctx)
   if (params.provider && params.provider !== 'auto') {
-    return { provider: params.provider, model: params.model ?? defaultModelForProvider(params.provider) }
+    return { provider: params.provider, model: params.model ?? defaultModelForProvider(params.provider, readiness) }
   }
 
   if (params.model) {
     const explicit = parseProviderModel(params.model)
     if (explicit) return explicit
+    const inferred = readiness.find(provider => provider.models.some(model => model.id === params.model))
+    if (inferred) return { provider: inferred.id, model: params.model }
   }
 
   const settings = effectiveSettings(ctx)
   if (settings.defaultProvider !== 'auto') {
-    return { provider: settings.defaultProvider, model: params.model ?? defaultModelForProvider(settings.defaultProvider) }
+    return { provider: settings.defaultProvider, model: params.model ?? defaultModelForProvider(settings.defaultProvider, readiness) }
   }
 
-  const readiness = await providerReadiness(ctx)
   for (const route of settings.fallbackOrder) {
     const parsed = parseProviderModel(route)
     if (!parsed) continue
@@ -113,7 +120,7 @@ async function resolveRoute(ctx: PluginContext, params: ImagesGenerateParams): P
   }
 
   const first = parseProviderModel(settings.fallbackOrder[0])
-  return first ?? { provider: 'google', model: defaultModelForProvider('google') }
+  return first ?? { provider: 'google', model: defaultModelForProvider('google', readiness) }
 }
 
 async function savePromptPacketAsset(
@@ -159,6 +166,42 @@ async function imageDimensions(filePath: string): Promise<{ width: number; heigh
   }
 }
 
+function nativeProvider(provider: ImageProviderId): NativeImageProviderId | null {
+  return isNativeImageProvider(provider) ? provider : null
+}
+
+async function runtimeRouteReady(ctx: PluginContext, route: { provider: ImageProviderId; model: string }): Promise<boolean> {
+  if (!ctx.runtime.images) return false
+  try {
+    const providers = await ctx.runtime.images.providers()
+    const provider = providers.find(candidate => candidate.id === route.provider)
+    if (!provider || provider.configured !== true) return false
+    const models = provider.models?.length ? provider.models : provider.defaultModel ? [provider.defaultModel] : []
+    return models.includes(route.model)
+  } catch {
+    return false
+  }
+}
+
+async function generateWithRuntime(
+  ctx: PluginContext,
+  route: { provider: ImageProviderId; model: string },
+  prompt: string,
+  dims: { width: number; height: number },
+  quality: 'draft' | 'standard' | 'premium',
+): Promise<RuntimeImageGenerationResult> {
+  if (!ctx.runtime.images) throw new Error('Runtime image generation is unavailable')
+  return ctx.runtime.images.generate({
+    prompt,
+    provider: route.provider,
+    model: route.model,
+    width: dims.width,
+    height: dims.height,
+    outputFormat: 'png',
+    metadata: { quality },
+  })
+}
+
 export async function importImage(ctx: PluginContext, params: ImagesImportParams, agent: string): Promise<ExecToolResult> {
   if (!existsSync(params.filePath)) return fail(`File not found: ${params.filePath}`)
   const dims = await imageDimensions(params.filePath)
@@ -195,28 +238,52 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
   const route = await resolveRoute(ctx, params)
   if (!route) return fail('No image provider route available')
   const provider = getImageProvider(route.provider)
-  if (!provider || !provider.models.some(model => model.id === route.model && model.status === 'routable')) {
+  const readiness = await providerReadiness(ctx)
+  const readyProvider = readiness.find(candidate => candidate.id === route.provider)
+  const knownModel = provider?.models.some(model => model.id === route.model && model.status === 'routable')
+    || readyProvider?.models.some(model => model.id === route.model && model.status === 'routable')
+  if (!knownModel) {
     return fail(`Image model is not routable: ${route.provider}/${route.model}`)
   }
 
-  const apiKey = await resolveImageApiKey(ctx, route.provider)
-  if (!apiKey) return fail(`No API key configured for image provider: ${route.provider}`)
-
   const quality = params.quality ?? settings.quality
-  const adapter = getImageAdapter(route.provider)
-  let generated
-  try {
-    generated = await adapter.generate({
-      provider: route.provider,
-      model: route.model,
-      prompt,
-      width: dims.width,
-      height: dims.height,
-      quality,
-      apiKey,
-    })
-  } catch (err) {
-    return fail(`Image generation failed: ${err instanceof Error ? err.message : String(err)}`)
+  let generated: { filePath: string; mimeType: string; width: number; height: number; providerText?: string }
+  let routeSource: 'runtime' | 'native' = 'native'
+  if (await runtimeRouteReady(ctx, route)) {
+    try {
+      const runtimeGenerated = await generateWithRuntime(ctx, route, prompt, dims, quality)
+      const image = runtimeGenerated.images[0]
+      if (!image?.filePath) return fail('Runtime image generation returned no image file')
+      generated = {
+        filePath: image.filePath,
+        mimeType: image.mimeType ?? 'image/png',
+        width: image.width ?? dims.width,
+        height: image.height ?? dims.height,
+        ...(runtimeGenerated.providerText ? { providerText: runtimeGenerated.providerText } : {}),
+      }
+      routeSource = 'runtime'
+    } catch (err) {
+      return fail(`Runtime image generation failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  } else {
+    const directProvider = nativeProvider(route.provider)
+    if (!directProvider) return fail(`No runtime image provider route or native adapter is configured for: ${route.provider}`)
+    const apiKey = await resolveImageApiKey(ctx, directProvider)
+    if (!apiKey) return fail(`No API key configured for image provider: ${route.provider}`)
+    const adapter = getImageAdapter(directProvider)
+    try {
+      generated = await adapter.generate({
+        provider: directProvider,
+        model: route.model,
+        prompt,
+        width: dims.width,
+        height: dims.height,
+        quality,
+        apiKey,
+      })
+    } catch (err) {
+      return fail(`Image generation failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   const promptAssetFilename = params.savePromptPacket
@@ -240,6 +307,7 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
       height: dims.height,
       quality,
       promptHash,
+      routeSource,
       ...(promptAssetFilename ? { promptAssetFilename } : {}),
       createdByTool: 'bakin_exec_images_generate',
     },
@@ -258,6 +326,7 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
     provider: route.provider,
     model: route.model,
     quality,
+    routeSource,
     prompt: prompt.slice(0, 500),
     promptHash,
     ...(promptAssetFilename ? { promptAssetFilename } : {}),

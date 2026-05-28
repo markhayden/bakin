@@ -79,7 +79,7 @@ describe('image route recommendation', () => {
     if (!result.ok) return
     expect(result).toMatchObject({
       provider: 'google',
-      model: 'gemini-3.1-flash-image',
+      model: 'gemini-3.1-flash-image-preview',
       surface: 'email-header',
     })
   })
@@ -88,7 +88,7 @@ describe('image route recommendation', () => {
     process.env.GEMINI_API_KEY = 'gemini-key'
 
     const result = await recommendImageRoute(makeContext(), {
-      model: 'gemini-3-pro-image',
+      model: 'gemini-3-pro-image-preview',
       surface: 'open-graph',
     })
 
@@ -96,8 +96,40 @@ describe('image route recommendation', () => {
     if (!result.ok) return
     expect(result).toMatchObject({
       provider: 'google',
-      model: 'gemini-3-pro-image',
+      model: 'gemini-3-pro-image-preview',
       surface: 'open-graph',
+    })
+  })
+
+  it('accepts runtime provider/model routes when the runtime provider is configured', async () => {
+    const ctx = {
+      getSettings: mock(() => ({
+        fallbackOrder: ['openrouter/google/gemini-3.1-flash-image-preview'],
+      })),
+      runtime: {
+        images: {
+          providers: mock(async () => [
+            {
+              id: 'openrouter',
+              label: 'OpenRouter',
+              configured: true,
+              defaultModel: 'google/gemini-3.1-flash-image-preview',
+              models: ['google/gemini-3.1-flash-image-preview'],
+              capabilities: { generate: { maxCount: 4 } },
+            },
+          ]),
+        },
+      },
+    } as unknown as PluginContext
+
+    const result = await recommendImageRoute(ctx, { surface: 'blog-hero' })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result).toMatchObject({
+      provider: 'openrouter',
+      model: 'google/gemini-3.1-flash-image-preview',
+      surface: 'blog-hero',
     })
   })
 

@@ -1,5 +1,5 @@
 import type { PluginContext } from '@bakin/core/plugin-types'
-import type { ImageProviderId } from '../types'
+import type { NativeImageProviderId } from '../types'
 
 interface RuntimeProviderConfig {
   apiKey?: unknown
@@ -16,7 +16,7 @@ function stringValue(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value : null
 }
 
-export async function resolveImageApiKey(ctx: PluginContext, provider: ImageProviderId): Promise<string | null> {
+export async function resolveImageApiKey(ctx: PluginContext, provider: NativeImageProviderId): Promise<string | null> {
   if (provider === 'openai') {
     if (process.env.OPENAI_API_KEY) return process.env.OPENAI_API_KEY
   } else {

@@ -27,14 +27,14 @@ const profileToolShape = {
   includeProviders: z.boolean().default(true).describe('Include provider readiness and routable model metadata.'),
 }
 
-const imageProviderEnum = z.enum(['auto', 'openai', 'google'])
+const imageProviderRoute = z.string().min(1)
 const imageQualityEnum = z.enum(['draft', 'standard', 'premium'])
 const imageFormatEnum = z.enum(['jpg', 'png', 'webp'])
 
 const recommendShape = {
   surface: z.string().optional().describe('Target surface profile id, such as instagram-feed-portrait or blog-hero.'),
   objective: z.string().optional().describe('Creative/business goal used for model routing, such as CTR, brand photography, typography, or landing page hero.'),
-  provider: imageProviderEnum.optional().describe('Optional forced provider. Use auto to let the router choose.'),
+  provider: imageProviderRoute.optional().describe('Optional forced provider. Use auto to let the router choose, or pass a runtime provider id such as openai, google, openrouter, fal, or xai.'),
   model: z.string().optional().describe('Optional model id. May be provider/model or a provider-specific model id.'),
   quality: imageQualityEnum.optional().describe('Requested quality tier.'),
 }
@@ -44,8 +44,8 @@ const generateShape = {
   promptPacket: z.record(z.string(), z.unknown()).optional().describe('Structured prompt packet compiled into the provider prompt.'),
   taskId: z.string().min(1).describe('Task ID to link the generated image asset.'),
   surface: z.string().optional().describe('Image surface profile id, such as instagram-feed-portrait or google-display-landscape.'),
-  provider: imageProviderEnum.optional().describe('Provider route. Defaults to auto routing.'),
-  model: z.string().optional().describe('Provider model id, such as gpt-image-2 or gemini-3.1-flash-image.'),
+  provider: imageProviderRoute.optional().describe('Provider route. Defaults to auto routing.'),
+  model: z.string().optional().describe('Provider model id, such as gpt-image-2 or gemini-3.1-flash-image-preview.'),
   width: z.number().int().positive().optional().describe('Optional custom width. Defaults from surface profile.'),
   height: z.number().int().positive().optional().describe('Optional custom height. Defaults from surface profile.'),
   quality: imageQualityEnum.optional().describe('Generation quality tier.'),
@@ -124,7 +124,7 @@ async function checkImages(ctx: PluginContext): Promise<HealthCheckResult[]> {
     status: readyProviders.length > 0 ? 'ok' : 'warn',
     message: readyProviders.length > 0
       ? `${readyProviders.map(provider => provider.label).join(', ')} configured for image generation.`
-      : 'No image provider credentials found. Set OPENAI_API_KEY, GEMINI_API_KEY, or GOOGLE_AI_API_KEY.',
+      : 'No image provider route found. Configure OpenClaw image auth or set OPENAI_API_KEY, GEMINI_API_KEY, or GOOGLE_AI_API_KEY.',
     autoFixable: false,
   })
 
@@ -141,7 +141,7 @@ const imagesPlugin = definePlugin({
       {
         key: 'defaultProvider',
         label: 'Default provider',
-        description: 'Provider routing policy for image generation.',
+        description: 'Provider routing policy for image generation. Runtime image providers are used first when configured.',
         type: 'select',
         default: DEFAULT_IMAGE_SETTINGS.defaultProvider,
         options: [
@@ -192,7 +192,7 @@ const imagesPlugin = definePlugin({
     })
     ctx.registerExecTool({
       name: 'bakin_exec_images_generate',
-      description: 'Generate an image through a configured native image provider adapter, save it into Assets, and return the canonical image filename.',
+      description: 'Generate an image through a configured runtime image provider or native image provider adapter, save it into Assets, and return the canonical image filename.',
       label: 'Generated an image',
       parameters: generateShape,
       handler: async (params, agent) => generateImage(ctx, params as never, agent),

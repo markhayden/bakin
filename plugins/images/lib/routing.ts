@@ -1,5 +1,5 @@
 import type { PluginContext } from '@bakin/core/plugin-types'
-import type { ImagePluginSettings, ImageProviderId } from '../types'
+import type { ImagePluginSettings, ImageProviderId, ImageProviderReadiness } from '../types'
 import { DEFAULT_IMAGE_SETTINGS, getImageProvider, providerReadiness } from './providers'
 import { getImageProfile } from './platform-profiles'
 
@@ -36,18 +36,27 @@ function settings(ctx: PluginContext): Required<ImagePluginSettings> {
 function parseRoute(route: string): { provider: ImageProviderId; model: string } | null {
   const [provider, ...modelParts] = route.split('/')
   const model = modelParts.join('/')
-  if ((provider === 'openai' || provider === 'google') && model) return { provider, model }
+  if (provider && model) return { provider, model }
   return null
 }
 
-function defaultModel(provider: ImageProviderId): string {
-  return provider === 'openai' ? 'gpt-image-2' : 'gemini-3.1-flash-image'
+function defaultModel(provider: ImageProviderId, readiness: ImageProviderReadiness[] = []): string {
+  const runtimeDefault = readiness.find(candidate => candidate.id === provider)?.defaultModel
+  if (runtimeDefault) return runtimeDefault
+  if (provider === 'openai') return 'gpt-image-2'
+  if (provider === 'google') return 'gemini-3.1-flash-image-preview'
+  return readiness.find(candidate => candidate.id === provider)?.models[0]?.id ?? ''
 }
 
-function providerForModel(model: string): ImageProviderId | null {
-  for (const providerId of ['openai', 'google'] as ImageProviderId[]) {
+function providerForModel(model: string, readiness: ImageProviderReadiness[] = []): ImageProviderId | null {
+  for (const providerId of new Set([
+    ...['openai', 'google'],
+    ...readiness.map(provider => provider.id),
+  ])) {
     const provider = getImageProvider(providerId)
     if (provider?.models.some(candidate => candidate.id === model)) return providerId
+    const runtime = readiness.find(candidate => candidate.id === providerId)
+    if (runtime?.models.some(candidate => candidate.id === model)) return providerId
   }
   return null
 }
@@ -55,15 +64,16 @@ function providerForModel(model: string): ImageProviderId | null {
 function normalizeRequestedRoute(
   provider: ImageProviderId | 'auto' | undefined,
   model: string | undefined,
+  readiness: ImageProviderReadiness[],
 ): { provider: ImageProviderId; model: string } | null {
   if (provider && provider !== 'auto') {
     const explicit = model ? parseRoute(model) : null
-    return explicit ?? { provider, model: model ?? defaultModel(provider) }
+    return explicit ?? { provider, model: model ?? defaultModel(provider, readiness) }
   }
   if (!model) return null
   const explicit = parseRoute(model)
   if (explicit) return explicit
-  const inferredProvider = providerForModel(model)
+  const inferredProvider = providerForModel(model, readiness)
   return inferredProvider ? { provider: inferredProvider, model } : null
 }
 
@@ -87,13 +97,13 @@ export async function recommendImageRoute(ctx: PluginContext, request: ImageRout
   const fallbackRoutes = configuredFallbacks.filter(route => readyProviderIds.has(route.provider))
 
   let chosen: { provider: ImageProviderId; model: string } | null = null
-  const requested = normalizeRequestedRoute(request.provider, request.model)
+  const requested = normalizeRequestedRoute(request.provider, request.model, readiness)
   if (requested) {
     chosen = requested
   } else if (request.model) {
     return { ok: false, error: `Unknown image model: ${request.model}` }
   } else if (effective.defaultProvider !== 'auto') {
-    chosen = { provider: effective.defaultProvider, model: defaultModel(effective.defaultProvider) }
+    chosen = { provider: effective.defaultProvider, model: defaultModel(effective.defaultProvider, readiness) }
   } else {
     const biased = objectiveBias(request.objective)
     chosen = (biased ? fallbackRoutes.find(route => route.provider === biased) : null) ?? fallbackRoutes[0] ?? configuredFallbacks[0] ?? null
@@ -101,13 +111,16 @@ export async function recommendImageRoute(ctx: PluginContext, request: ImageRout
 
   if (!chosen) return { ok: false, error: 'No image provider route is configured.' }
   const provider = getImageProvider(chosen.provider)
+  const readyProvider = readiness.find(candidate => candidate.id === chosen.provider)
   const model = provider?.models.find(candidate => candidate.id === chosen.model)
-  if (!provider || !model) return { ok: false, error: `Unknown image model: ${chosen.provider}/${chosen.model}` }
+    ?? readyProvider?.models.find(candidate => candidate.id === chosen.model)
+  if (!model || (!provider && !readyProvider)) return { ok: false, error: `Unknown image model: ${chosen.provider}/${chosen.model}` }
 
   const configured = readyProviderIds.has(chosen.provider)
+  const label = provider?.label ?? readyProvider?.label ?? chosen.provider
   const reason = configured
-    ? `${provider.label} ${model.label} is configured and fits ${profile.label}.`
-    : `${provider.label} ${model.label} is the preferred route for ${profile.label}, but credentials are not configured yet.`
+    ? `${label} ${model.label} is configured and fits ${profile.label}.`
+    : `${label} ${model.label} is the preferred route for ${profile.label}, but credentials are not configured yet.`
 
   return {
     ok: true,
