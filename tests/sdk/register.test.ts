@@ -39,12 +39,16 @@ import {
   getPluginNavItems,
   getPluginRoute,
   getPluginRoutes,
+  setNavBadge,
+  getNavBadge,
+  getNavBadgesSnapshot,
+  subscribeNavBadges,
 } from '@makinbakin/sdk'
 import { getSlotEntries } from '@makinbakin/sdk/slots'
 
 function NoopComp() { return null }
 
-const USED_IDS = ['x', 'A', 'B', 'cleanup-test', 'routes']
+const USED_IDS = ['x', 'A', 'B', 'cleanup-test', 'routes', 'badge-A', 'badge-B']
 
 afterEach(() => {
   for (const id of USED_IDS) unregisterPlugin(id)
@@ -255,5 +259,81 @@ describe('getRegistryVersion + subscribeRegistry', () => {
 
     unregisterPlugin('x')
     expect(getNavItemsSnapshot()).not.toBe(afterRegister)
+  })
+})
+
+describe('nav badge registry', () => {
+  it('set then get returns the badge', () => {
+    setNavBadge('badge-A', 'badge-A-item', { count: 3, tone: 'attention' })
+    expect(getNavBadge('badge-A-item')).toEqual({ count: 3, tone: 'attention' })
+  })
+
+  it('passing null clears the badge', () => {
+    setNavBadge('badge-A', 'badge-A-item', { count: 3 })
+    expect(getNavBadge('badge-A-item')).toEqual({ count: 3 })
+    setNavBadge('badge-A', 'badge-A-item', null)
+    expect(getNavBadge('badge-A-item')).toBeUndefined()
+  })
+
+  it('two plugins setting different navItemIds are isolated and both visible', () => {
+    setNavBadge('badge-A', 'badge-A-item', { count: 1 })
+    setNavBadge('badge-B', 'badge-B-item', { count: 2, tone: 'info' })
+    expect(getNavBadge('badge-A-item')).toEqual({ count: 1 })
+    expect(getNavBadge('badge-B-item')).toEqual({ count: 2, tone: 'info' })
+  })
+
+  it('unregisterPlugin clears the unregistering plugin\'s badges', () => {
+    setNavBadge('badge-A', 'badge-A-item', { count: 1 })
+    setNavBadge('badge-B', 'badge-B-item', { count: 2 })
+    unregisterPlugin('badge-A')
+    expect(getNavBadge('badge-A-item')).toBeUndefined()
+    expect(getNavBadge('badge-B-item')).toEqual({ count: 2 })
+  })
+
+  it('re-registering plugin A after unregister starts with no stale badges', () => {
+    setNavBadge('badge-A', 'badge-A-item', { count: 1 })
+    unregisterPlugin('badge-A')
+    expect(getNavBadge('badge-A-item')).toBeUndefined()
+    registerPlugin({ id: 'badge-A' })
+    expect(getNavBadge('badge-A-item')).toBeUndefined()
+  })
+
+  it('subscribeNavBadges fires on badge mutation', () => {
+    const listener = mock()
+    const unsub = subscribeNavBadges(listener)
+    setNavBadge('badge-A', 'badge-A-item', { count: 1 })
+    expect(listener).toHaveBeenCalledTimes(1)
+    setNavBadge('badge-A', 'badge-A-item', null)
+    expect(listener).toHaveBeenCalledTimes(2)
+    unsub()
+    setNavBadge('badge-A', 'badge-A-item', { count: 1 })
+    expect(listener).toHaveBeenCalledTimes(2)
+  })
+
+  it('subscribeNavBadges does NOT fire on plain registerPlugin nav mutations', () => {
+    const listener = mock()
+    const unsub = subscribeNavBadges(listener)
+    registerPlugin({ id: 'badge-A', navItems: [{ id: 'badge-A-item', label: 'A', href: '/a' }] })
+    expect(listener).not.toHaveBeenCalled()
+    unsub()
+  })
+
+  it('getNavBadgesSnapshot returns a stable reference until mutation', () => {
+    const before = getNavBadgesSnapshot()
+    expect(getNavBadgesSnapshot()).toBe(before)
+    setNavBadge('badge-A', 'badge-A-item', { count: 1 })
+    const after = getNavBadgesSnapshot()
+    expect(after).not.toBe(before)
+    expect(after.get('badge-A-item')).toEqual({ count: 1 })
+    expect(getNavBadgesSnapshot()).toBe(after)
+  })
+
+  it('unregisterPlugin notifies badge subscribers when the plugin had badges', () => {
+    setNavBadge('badge-A', 'badge-A-item', { count: 1 })
+    const listener = mock()
+    const unsub = subscribeNavBadges(listener)
+    unregisterPlugin('badge-A')
+    expect(listener).toHaveBeenCalledTimes(1)
+    unsub()
   })
 })
