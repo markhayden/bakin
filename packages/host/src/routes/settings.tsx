@@ -37,30 +37,30 @@ export interface PluginSchemaEntry {
 }
 
 interface GroupedSchemas {
-  system: PluginSchemaEntry[]
-  builtIn: PluginSchemaEntry[]
-  installed: PluginSchemaEntry[]
+  core: PluginSchemaEntry[]
+  extensions: PluginSchemaEntry[]
 }
 
 /**
- * Partition the settings schemas into three sections — System & Alerts
- * (pinned), built-in plugins (A-Z), user-installed plugins (A-Z). Exported
- * so the pure ordering logic is unit-testable without mounting the route.
+ * Partition the settings schemas into two sections — Core (System &
+ * Alerts pinned at top, then built-in plugins A-Z) and Extensions
+ * (user-installed plugins, A-Z). Exported so the pure ordering logic is
+ * unit-testable without mounting the route.
  */
 export function groupAndSortSchemas(schemas: PluginSchemaEntry[]): GroupedSchemas {
   const system: PluginSchemaEntry[] = []
-  const builtIn: PluginSchemaEntry[] = []
-  const installed: PluginSchemaEntry[] = []
+  const core: PluginSchemaEntry[] = []
+  const extensions: PluginSchemaEntry[] = []
   for (const entry of schemas) {
     if (entry.id === SYSTEM_SETTINGS_TAB_ID) system.push(entry)
-    else if (entry.source === 'built-in') builtIn.push(entry)
-    else installed.push(entry)
+    else if (entry.source === 'built-in') core.push(entry)
+    else extensions.push(entry)
   }
   const alpha = (a: PluginSchemaEntry, b: PluginSchemaEntry) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
-  builtIn.sort(alpha)
-  installed.sort(alpha)
-  return { system, builtIn, installed }
+  core.sort(alpha)
+  extensions.sort(alpha)
+  return { core: [...system, ...core], extensions }
 }
 
 function SettingsPage() {
@@ -163,25 +163,24 @@ function SettingsPage() {
       {p.name}
     </button>
   )
-  const sectionLabel = 'px-3 pt-3 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground'
+  const sectionLabel = 'px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/60'
 
   return (
     <PageLayout title="Settings" subtitle="Configure plugin behavior">
       <div className="flex gap-8">
         {/* Plugin list */}
-        <nav className="w-40 shrink-0 space-y-1">
-          {grouped.system.map(renderTab)}
-          {grouped.builtIn.length > 0 && (
-            <>
-              <div className={sectionLabel}>Built-in</div>
-              {grouped.builtIn.map(renderTab)}
-            </>
+        <nav className="w-40 shrink-0">
+          {grouped.core.length > 0 && (
+            <div className="space-y-1">
+              <div className={sectionLabel}>Core</div>
+              {grouped.core.map(renderTab)}
+            </div>
           )}
-          {grouped.installed.length > 0 && (
-            <>
-              <div className={sectionLabel}>Installed</div>
-              {grouped.installed.map(renderTab)}
-            </>
+          {grouped.extensions.length > 0 && (
+            <div className="space-y-1 mt-6">
+              <div className={sectionLabel}>Extensions</div>
+              {grouped.extensions.map(renderTab)}
+            </div>
           )}
         </nav>
 
