@@ -29,14 +29,42 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/empty-state'
 import { Route as RootRoute } from './__root'
 
-interface PluginSchema {
+export interface PluginSchemaEntry {
   id: string
   name: string
   schema: PluginSettingsSchema
+  source: 'built-in' | 'user'
+}
+
+interface GroupedSchemas {
+  system: PluginSchemaEntry[]
+  builtIn: PluginSchemaEntry[]
+  installed: PluginSchemaEntry[]
+}
+
+/**
+ * Partition the settings schemas into three sections — System & Alerts
+ * (pinned), built-in plugins (A-Z), user-installed plugins (A-Z). Exported
+ * so the pure ordering logic is unit-testable without mounting the route.
+ */
+export function groupAndSortSchemas(schemas: PluginSchemaEntry[]): GroupedSchemas {
+  const system: PluginSchemaEntry[] = []
+  const builtIn: PluginSchemaEntry[] = []
+  const installed: PluginSchemaEntry[] = []
+  for (const entry of schemas) {
+    if (entry.id === SYSTEM_SETTINGS_TAB_ID) system.push(entry)
+    else if (entry.source === 'built-in') builtIn.push(entry)
+    else installed.push(entry)
+  }
+  const alpha = (a: PluginSchemaEntry, b: PluginSchemaEntry) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+  builtIn.sort(alpha)
+  installed.sort(alpha)
+  return { system, builtIn, installed }
 }
 
 function SettingsPage() {
-  const [plugins, setPlugins] = useState<PluginSchema[]>([])
+  const [plugins, setPlugins] = useState<PluginSchemaEntry[]>([])
   const [activePlugin, setActivePlugin] = useState<string>('')
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [loading, setLoading] = useState(true)
@@ -47,9 +75,9 @@ function SettingsPage() {
   useEffect(() => {
     fetch('/api/plugin-settings/schemas')
       .then(r => r.json())
-      .then((data: PluginSchema[]) => {
-        const withSystem: PluginSchema[] = [
-          { id: SYSTEM_SETTINGS_TAB_ID, name: 'System & Alerts', schema: SYSTEM_SETTINGS_SCHEMA },
+      .then((data: PluginSchemaEntry[]) => {
+        const withSystem: PluginSchemaEntry[] = [
+          { id: SYSTEM_SETTINGS_TAB_ID, name: 'System & Alerts', schema: SYSTEM_SETTINGS_SCHEMA, source: 'built-in' },
           ...data,
         ]
         setPlugins(withSystem)
@@ -121,24 +149,40 @@ function SettingsPage() {
     )
   }
 
+  const grouped = groupAndSortSchemas(plugins)
+  const renderTab = (p: PluginSchemaEntry) => (
+    <button
+      key={p.id}
+      onClick={() => setActivePlugin(p.id)}
+      className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${
+        p.id === activePlugin
+          ? 'bg-muted text-foreground font-medium'
+          : 'text-muted-foreground hover:text-foreground'
+      }`}
+    >
+      {p.name}
+    </button>
+  )
+  const sectionLabel = 'px-3 pt-3 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground'
+
   return (
     <PageLayout title="Settings" subtitle="Configure plugin behavior">
       <div className="flex gap-8">
         {/* Plugin list */}
         <nav className="w-40 shrink-0 space-y-1">
-          {plugins.map(p => (
-            <button
-              key={p.id}
-              onClick={() => setActivePlugin(p.id)}
-              className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${
-                p.id === activePlugin
-                  ? 'bg-muted text-foreground font-medium'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {p.name}
-            </button>
-          ))}
+          {grouped.system.map(renderTab)}
+          {grouped.builtIn.length > 0 && (
+            <>
+              <div className={sectionLabel}>Built-in</div>
+              {grouped.builtIn.map(renderTab)}
+            </>
+          )}
+          {grouped.installed.length > 0 && (
+            <>
+              <div className={sectionLabel}>Installed</div>
+              {grouped.installed.map(renderTab)}
+            </>
+          )}
         </nav>
 
         {/* Settings form */}
