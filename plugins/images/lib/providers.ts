@@ -1,7 +1,7 @@
 import type { PluginContext } from '@bakin/core/plugin-types'
 import type { RuntimeImageProvider } from '@bakin/core/adapters/runtime'
 import type { ImageModelDescriptor, ImagePluginSettings, ImageProviderDescriptor, ImageProviderId, ImageProviderReadiness, NativeImageProviderId } from '../types'
-import { resolveImageApiKey } from './credentials'
+import { loadRuntimeConfig, resolveImageApiKeyFrom } from './credentials'
 
 export const IMAGE_PROVIDERS: ImageProviderDescriptor[] = [
   {
@@ -112,15 +112,21 @@ export function providerReadinessFromEnv(env: Record<string, string | undefined>
   })
 }
 
-export async function providerReadiness(ctx: PluginContext): Promise<ImageProviderReadiness[]> {
+export async function providerReadiness(
+  ctx: PluginContext,
+  prefetchedRuntimeProviders?: RuntimeImageProvider[],
+): Promise<ImageProviderReadiness[]> {
   const envReadiness = providerReadinessFromEnv()
   const envById = new Map(envReadiness.map(provider => [provider.id, provider]))
-  const runtimeProviders = await runtimeImageProviders(ctx)
+  const runtimeProviders = prefetchedRuntimeProviders ?? await fetchRuntimeImageProviders(ctx)
   const runtimeById = new Map(runtimeProviders.map(provider => [provider.id, provider]))
+  // Load the raw runtime config once and reuse it for every native key lookup
+  // rather than re-fetching (a subprocess in the real adapter) per provider.
+  const config = await loadRuntimeConfig(ctx)
 
-  const native: ImageProviderReadiness[] = await Promise.all(IMAGE_PROVIDERS.map(async (provider): Promise<ImageProviderReadiness> => {
+  const native: ImageProviderReadiness[] = IMAGE_PROVIDERS.map((provider): ImageProviderReadiness => {
     const providerId = provider.id as NativeImageProviderId
-    const apiKey = await resolveImageApiKey(ctx, providerId)
+    const apiKey = resolveImageApiKeyFrom(providerId, config)
     const env = envById.get(provider.id)
     const runtime = runtimeById.get(provider.id)
     const configured = Boolean(apiKey) || runtime?.configured === true
@@ -140,7 +146,7 @@ export async function providerReadiness(ctx: PluginContext): Promise<ImageProvid
       selected: runtime?.selected,
       source: runtime ? 'native+runtime' as const : 'native' as const,
     }
-  }))
+  })
 
   const nativeIds = new Set(native.map(provider => provider.id))
   const runtimeOnly = runtimeProviders
@@ -161,7 +167,7 @@ export async function providerReadiness(ctx: PluginContext): Promise<ImageProvid
   return [...native, ...runtimeOnly]
 }
 
-async function runtimeImageProviders(ctx: PluginContext): Promise<RuntimeImageProvider[]> {
+export async function fetchRuntimeImageProviders(ctx: PluginContext): Promise<RuntimeImageProvider[]> {
   try {
     return await ctx.runtime.images?.providers() ?? []
   } catch {

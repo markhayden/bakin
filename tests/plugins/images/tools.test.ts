@@ -141,6 +141,64 @@ describe('images tools', () => {
     })
   })
 
+  it('sends OpenAI a supported size for non-square surfaces', async () => {
+    const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [{ b64_json: Buffer.from('openai-image').toString('base64') }] }),
+    } as unknown as Response)
+    const { ctx } = makeContext()
+
+    // instagram-story is 1080x1920 (portrait) — the raw dimensions are not a
+    // size OpenAI accepts, so the adapter must snap to a supported portrait size.
+    await generateImage(ctx, {
+      prompt: 'Portrait promo',
+      taskId: 'task-size',
+      provider: 'openai',
+      model: 'gpt-image-2',
+      surface: 'instagram-story',
+    }, 'pixel')
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string)
+    expect(body.size).toBe('1024x1536')
+  })
+
+  it('falls back to the native adapter when runtime generation fails', async () => {
+    spyOn(globalThis, 'fetch').mockResolvedValue(imageResponse())
+    const runtimeGenerate = mock(async () => { throw new Error('runtime exploded') })
+    const { ctx, saved } = makeContext({
+      runtime: {
+        images: {
+          providers: mock(async () => [
+            {
+              id: 'google',
+              label: 'Google Gemini',
+              configured: true,
+              defaultModel: 'gemini-3.1-flash-image-preview',
+              models: ['gemini-3.1-flash-image-preview'],
+              capabilities: { generate: { maxCount: 4 } },
+            },
+          ]),
+          generate: runtimeGenerate,
+        },
+        config: { get: mock(async () => ({})) },
+      } as never,
+    })
+
+    const result = await generateImage(ctx, {
+      prompt: 'Resilient render',
+      taskId: 'task-fallback',
+      provider: 'google',
+      model: 'gemini-3.1-flash-image-preview',
+      surface: 'instagram-square',
+    }, 'pixel')
+
+    expect(result.ok).toBe(true)
+    expect(runtimeGenerate).toHaveBeenCalled()
+    expect(globalThis.fetch).toHaveBeenCalled()
+    expect(result.routeSource).toBe('native')
+    expect(saved[0].generation).toMatchObject({ routeSource: 'native' })
+  })
+
   it('prefers configured runtime image generation before direct provider adapters', async () => {
     const fetchSpy = spyOn(globalThis, 'fetch').mockRejectedValue(new Error('direct fetch should not be called'))
     const runtimeFile = join(testDir, 'runtime-generated.png')

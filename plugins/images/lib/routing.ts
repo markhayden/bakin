@@ -77,11 +77,52 @@ function normalizeRequestedRoute(
   return inferredProvider ? { provider: inferredProvider, model } : null
 }
 
+/**
+ * Match keywords on a word-start boundary so substrings don't misfire — e.g.
+ * a plain `includes('text')` matched "context"/"subtext" and biased unrelated
+ * briefs toward OpenAI. The leading `\b` still lets a stem match inflections
+ * ("photo" → "photography").
+ */
+function mentionsAny(text: string, words: string[]): boolean {
+  return words.some(word => new RegExp(`\\b${word}`).test(text))
+}
+
 function objectiveBias(objective: string | undefined): ImageProviderId | null {
   const text = (objective || '').toLowerCase()
-  if (text.includes('ctr') || text.includes('carousel') || text.includes('text') || text.includes('typography')) return 'openai'
-  if (text.includes('brand') || text.includes('landing') || text.includes('email') || text.includes('photo')) return 'google'
+  if (mentionsAny(text, ['ctr', 'carousel', 'text', 'typography'])) return 'openai'
+  if (mentionsAny(text, ['brand', 'landing', 'email', 'photo'])) return 'google'
   return null
+}
+
+/**
+ * Resolve a concrete provider/model route from readiness, settings, and an
+ * optional request. Shared by `recommendImageRoute` (the recommend tool) and
+ * `generateImage` so the recommendation can never diverge from what generation
+ * actually picks. Returns null when no route can be determined.
+ */
+export function resolveImageRoute(
+  readiness: ImageProviderReadiness[],
+  effective: Required<ImagePluginSettings>,
+  request: { provider?: ImageProviderId | 'auto'; model?: string; objective?: string } = {},
+): { provider: ImageProviderId; model: string } | null {
+  const requested = normalizeRequestedRoute(request.provider, request.model, readiness)
+  if (requested) return requested
+  if (request.model) return null // explicit model that can't be resolved
+
+  if (effective.defaultProvider !== 'auto') {
+    return { provider: effective.defaultProvider, model: defaultModel(effective.defaultProvider, readiness) }
+  }
+
+  const configuredFallbacks = effective.fallbackOrder
+    .map(parseRoute)
+    .filter((route): route is { provider: ImageProviderId; model: string } => Boolean(route))
+  const readyProviderIds = new Set(readiness.filter(provider => provider.routable).map(provider => provider.id))
+  const routableFallbacks = configuredFallbacks.filter(route => readyProviderIds.has(route.provider))
+  const biased = objectiveBias(request.objective)
+  return (biased ? routableFallbacks.find(route => route.provider === biased) : null)
+    ?? routableFallbacks[0]
+    ?? configuredFallbacks[0]
+    ?? null
 }
 
 export async function recommendImageRoute(ctx: PluginContext, request: ImageRouteRequest = {}): Promise<ImageRouteRecommendation | { ok: false; error: string }> {
@@ -91,25 +132,20 @@ export async function recommendImageRoute(ctx: PluginContext, request: ImageRout
 
   const readiness = await providerReadiness(ctx)
   const readyProviderIds = new Set(readiness.filter(provider => provider.routable).map(provider => provider.id))
-  const configuredFallbacks = effective.fallbackOrder
+  const fallbackRoutes = effective.fallbackOrder
     .map(parseRoute)
     .filter((route): route is { provider: ImageProviderId; model: string } => Boolean(route))
-  const fallbackRoutes = configuredFallbacks.filter(route => readyProviderIds.has(route.provider))
+    .filter(route => readyProviderIds.has(route.provider))
 
-  let chosen: { provider: ImageProviderId; model: string } | null = null
-  const requested = normalizeRequestedRoute(request.provider, request.model, readiness)
-  if (requested) {
-    chosen = requested
-  } else if (request.model) {
-    return { ok: false, error: `Unknown image model: ${request.model}` }
-  } else if (effective.defaultProvider !== 'auto') {
-    chosen = { provider: effective.defaultProvider, model: defaultModel(effective.defaultProvider, readiness) }
-  } else {
-    const biased = objectiveBias(request.objective)
-    chosen = (biased ? fallbackRoutes.find(route => route.provider === biased) : null) ?? fallbackRoutes[0] ?? configuredFallbacks[0] ?? null
+  const chosen = resolveImageRoute(readiness, effective, {
+    provider: request.provider,
+    model: request.model,
+    objective: request.objective,
+  })
+  if (!chosen) {
+    if (request.model) return { ok: false, error: `Unknown image model: ${request.model}` }
+    return { ok: false, error: 'No image provider route is configured.' }
   }
-
-  if (!chosen) return { ok: false, error: 'No image provider route is configured.' }
   const provider = getImageProvider(chosen.provider)
   const readyProvider = readiness.find(candidate => candidate.id === chosen.provider)
   const model = provider?.models.find(candidate => candidate.id === chosen.model)

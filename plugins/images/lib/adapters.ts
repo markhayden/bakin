@@ -45,8 +45,15 @@ async function fetchImageUrl(prefix: string, url: string): Promise<{ filePath: s
   return { filePath, mimeType }
 }
 
-function sizeString(width: number, height: number): string {
-  return `${Math.round(width)}x${Math.round(height)}`
+/**
+ * OpenAI's images API only accepts a fixed set of sizes — it rejects arbitrary
+ * surface dimensions (e.g. 1080x1350) with HTTP 400. Snap the requested aspect
+ * ratio onto the nearest supported size; the asset can be cropped/resized to
+ * the exact surface dimensions later via the export tool.
+ */
+function openAISize(width: number, height: number): string {
+  if (width === height) return '1024x1024'
+  return width > height ? '1536x1024' : '1024x1536'
 }
 
 function qualityForOpenAI(quality: ImageAdapterRequest['quality']): string {
@@ -81,7 +88,7 @@ export class OpenAIImageAdapter implements ImageProviderAdapter {
     const body = {
       model: request.model,
       prompt: request.prompt,
-      size: sizeString(request.width, request.height),
+      size: openAISize(request.width, request.height),
       quality: qualityForOpenAI(request.quality),
     }
 

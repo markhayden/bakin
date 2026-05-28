@@ -84,6 +84,23 @@ describe('image route recommendation', () => {
     })
   })
 
+  it('does not bias toward OpenAI when "text" only appears as a substring', async () => {
+    process.env.OPENAI_API_KEY = 'openai-key'
+    process.env.GEMINI_API_KEY = 'gemini-key'
+
+    // "context" contains the substring "text" but should not trigger the
+    // OpenAI text-rendering bias; with Gemini first in the fallback order the
+    // route should stay on Gemini.
+    const result = await recommendImageRoute(
+      makeContext({ fallbackOrder: ['google/gemini-3.1-flash-image-preview', 'openai/gpt-image-2'] }),
+      { surface: 'blog-hero', objective: 'add more context to the hero scene' },
+    )
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.provider).toBe('google')
+  })
+
   it('accepts an unqualified explicit model id', async () => {
     process.env.GEMINI_API_KEY = 'gemini-key'
 
