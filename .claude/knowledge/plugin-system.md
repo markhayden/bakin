@@ -631,6 +631,16 @@ renders them via `PluginSettingsRenderer`. Values persist at
 `~/.bakin/plugin-settings/{pluginId}.json` via
 `GET/PUT /api/plugin-settings/{pluginId}`.
 
+`GET /api/plugin-settings/schemas` returns each schema tagged with
+`source: 'built-in' | 'user'` (built-in iff `isCorePlugin(id)`). The
+settings page groups tabs into two sections — Core (System & Alerts
+pinned at top, then built-in plugins A-Z) and Extensions (user-installed
+plugins A-Z, hidden when empty) — using the pure `groupAndSortSchemas`
+helper exported from `packages/host/src/routes/settings.tsx`. List-field
+rows in `PluginSettingsRenderer` use a `repeat(auto-fit, minmax(180px,
+1fr))` grid so editors with many sub-fields (e.g. messaging's content
+types) wrap cleanly on narrow viewports.
+
 `PUT /api/plugin-settings/{pluginId}` also broadcasts an SSE event:
 `{ type: 'plugin:settings-changed', pluginId, timestamp }`. Plugin
 clients that cache settings-derived labels, filters, or routing data should

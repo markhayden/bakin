@@ -29,14 +29,42 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/empty-state'
 import { Route as RootRoute } from './__root'
 
-interface PluginSchema {
+export interface PluginSchemaEntry {
   id: string
   name: string
   schema: PluginSettingsSchema
+  source: 'built-in' | 'user'
+}
+
+interface GroupedSchemas {
+  core: PluginSchemaEntry[]
+  extensions: PluginSchemaEntry[]
+}
+
+/**
+ * Partition the settings schemas into two sections — Core (System &
+ * Alerts pinned at top, then built-in plugins A-Z) and Extensions
+ * (user-installed plugins, A-Z). Exported so the pure ordering logic is
+ * unit-testable without mounting the route.
+ */
+export function groupAndSortSchemas(schemas: PluginSchemaEntry[]): GroupedSchemas {
+  const system: PluginSchemaEntry[] = []
+  const core: PluginSchemaEntry[] = []
+  const extensions: PluginSchemaEntry[] = []
+  for (const entry of schemas) {
+    if (entry.id === SYSTEM_SETTINGS_TAB_ID) system.push(entry)
+    else if (entry.source === 'built-in') core.push(entry)
+    else extensions.push(entry)
+  }
+  const alpha = (a: PluginSchemaEntry, b: PluginSchemaEntry) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+  core.sort(alpha)
+  extensions.sort(alpha)
+  return { core: [...system, ...core], extensions }
 }
 
 function SettingsPage() {
-  const [plugins, setPlugins] = useState<PluginSchema[]>([])
+  const [plugins, setPlugins] = useState<PluginSchemaEntry[]>([])
   const [activePlugin, setActivePlugin] = useState<string>('')
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [loading, setLoading] = useState(true)
@@ -47,9 +75,9 @@ function SettingsPage() {
   useEffect(() => {
     fetch('/api/plugin-settings/schemas')
       .then(r => r.json())
-      .then((data: PluginSchema[]) => {
-        const withSystem: PluginSchema[] = [
-          { id: SYSTEM_SETTINGS_TAB_ID, name: 'System & Alerts', schema: SYSTEM_SETTINGS_SCHEMA },
+      .then((data: PluginSchemaEntry[]) => {
+        const withSystem: PluginSchemaEntry[] = [
+          { id: SYSTEM_SETTINGS_TAB_ID, name: 'System & Alerts', schema: SYSTEM_SETTINGS_SCHEMA, source: 'built-in' },
           ...data,
         ]
         setPlugins(withSystem)
@@ -121,28 +149,43 @@ function SettingsPage() {
     )
   }
 
+  const grouped = groupAndSortSchemas(plugins)
+  const renderTab = (p: PluginSchemaEntry) => (
+    <button
+      key={p.id}
+      onClick={() => setActivePlugin(p.id)}
+      className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${
+        p.id === activePlugin
+          ? 'bg-muted text-foreground font-medium'
+          : 'text-muted-foreground hover:text-foreground'
+      }`}
+    >
+      {p.name}
+    </button>
+  )
+  const sectionLabel = 'px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/60'
+
   return (
     <PageLayout title="Settings" subtitle="Configure plugin behavior">
       <div className="flex gap-8">
         {/* Plugin list */}
-        <nav className="w-40 shrink-0 space-y-1">
-          {plugins.map(p => (
-            <button
-              key={p.id}
-              onClick={() => setActivePlugin(p.id)}
-              className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${
-                p.id === activePlugin
-                  ? 'bg-muted text-foreground font-medium'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {p.name}
-            </button>
-          ))}
+        <nav className="w-40 shrink-0">
+          {grouped.core.length > 0 && (
+            <div className="space-y-1">
+              <div className={sectionLabel}>Core</div>
+              {grouped.core.map(renderTab)}
+            </div>
+          )}
+          {grouped.extensions.length > 0 && (
+            <div className="space-y-1 mt-6">
+              <div className={sectionLabel}>Extensions</div>
+              {grouped.extensions.map(renderTab)}
+            </div>
+          )}
         </nav>
 
         {/* Settings form */}
-        <div className="flex-1 max-w-lg">
+        <div className="flex-1">
           {plugin && (
             <>
               <h2 className="text-base font-semibold mb-4">{plugin.name}</h2>

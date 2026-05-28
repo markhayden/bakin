@@ -270,7 +270,7 @@ function ListField({ field, value, onChange }: ListFieldProps) {
               className="flex items-end gap-2 rounded-md border border-border/60 bg-muted/20 p-3"
               data-testid={`list-row-${field.key}-${i}`}
             >
-              <div className="flex-1 grid gap-3" style={{ gridTemplateColumns: `repeat(${subEntries.length}, minmax(0, 1fr))` }}>
+              <div className="flex-1 grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
                 {subEntries.map(([subKey, subField]) => (
                   <ScalarFieldRow
                     key={subKey}

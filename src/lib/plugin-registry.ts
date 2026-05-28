@@ -1366,11 +1366,16 @@ class PluginRegistryImpl {
   }
 
   /** Get all plugin settings schemas (for the settings page). */
-  getSettingsSchemas(): Array<{ id: string; name: string; schema: PluginSettingsSchema }> {
-    const result: Array<{ id: string; name: string; schema: PluginSettingsSchema }> = []
+  getSettingsSchemas(): Array<{ id: string; name: string; schema: PluginSettingsSchema; source: 'built-in' | 'user' }> {
+    const result: Array<{ id: string; name: string; schema: PluginSettingsSchema; source: 'built-in' | 'user' }> = []
     for (const [id, state] of this.plugins) {
       if (state.plugin.settingsSchema) {
-        result.push({ id, name: state.plugin.name, schema: state.plugin.settingsSchema })
+        result.push({
+          id,
+          name: state.plugin.name,
+          schema: state.plugin.settingsSchema,
+          source: isCorePlugin(id) ? 'built-in' as const : 'user' as const,
+        })
       }
     }
     return result
