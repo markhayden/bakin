@@ -217,4 +217,19 @@ describe('PluginSettingsRenderer — list field', () => {
       expect.objectContaining({ type: 'error', message: expect.stringMatching(/at least 3/i) })
     )
   })
+
+  it('renders list-row sub-fields in a responsive auto-fit grid', () => {
+    render(
+      <PluginSettingsRenderer
+        pluginId="messaging"
+        schema={listSchema}
+        values={{ contentTypes: [{ id: 'post', label: 'Post' }] }}
+        onSave={mock()}
+      />
+    )
+    const row = screen.getByTestId('list-row-contentTypes-0')
+    const gridContainer = row.querySelector('.grid') as HTMLElement | null
+    expect(gridContainer).not.toBeNull()
+    expect(gridContainer!.style.gridTemplateColumns).toBe('repeat(auto-fit, minmax(180px, 1fr))')
+  })
 })

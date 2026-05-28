@@ -186,7 +186,7 @@ function SettingsPage() {
         </nav>
 
         {/* Settings form */}
-        <div className="flex-1 max-w-lg">
+        <div className="flex-1">
           {plugin && (
             <>
               <h2 className="text-base font-semibold mb-4">{plugin.name}</h2>
