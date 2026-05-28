@@ -1,12 +1,19 @@
 /**
  * Images plugin — provider-routed image generation primitives.
  */
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
 import type { BakinPlugin, HealthCheckResult, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute } from '@bakin/core/routing'
-import { DEFAULT_IMAGE_SETTINGS, listImageProviders, providerReadinessFromEnv } from './lib/providers'
+import { createLogger } from '../../src/core/logger'
+import { loadDefaultWorkflows } from '../workflows/lib/load-defaults'
+import { DEFAULT_IMAGE_SETTINGS, listImageProviders, providerReadiness } from './lib/providers'
 import { getImageProfile, listImageProfiles } from './lib/platform-profiles'
 import { editImage, exportImage, generateImage, importImage } from './lib/tools'
+import { recommendImageRoute } from './lib/routing'
+
+const log = createLogger('images')
 
 const okResponse = z.object({ ok: z.boolean() }).passthrough()
 const errorResponse = z.object({ error: z.string() }).passthrough()
@@ -23,6 +30,14 @@ const profileToolShape = {
 const imageProviderEnum = z.enum(['auto', 'openai', 'google'])
 const imageQualityEnum = z.enum(['draft', 'standard', 'premium'])
 const imageFormatEnum = z.enum(['jpg', 'png', 'webp'])
+
+const recommendShape = {
+  surface: z.string().optional().describe('Target surface profile id, such as instagram-feed-portrait or blog-hero.'),
+  objective: z.string().optional().describe('Creative/business goal used for model routing, such as CTR, brand photography, typography, or landing page hero.'),
+  provider: imageProviderEnum.optional().describe('Optional forced provider. Use auto to let the router choose.'),
+  model: z.string().optional().describe('Optional model id. May be provider/model or a provider-specific model id.'),
+  quality: imageQualityEnum.optional().describe('Requested quality tier.'),
+}
 
 const generateShape = {
   prompt: z.string().optional().describe('Provider-neutral image prompt. Required unless promptPacket is supplied.'),
@@ -81,17 +96,17 @@ const routes = [
     method: 'GET',
     summary: 'List image providers and readiness',
     responses: { 200: okResponse },
-    handler: async () => Response.json({
+    handler: async (_req, ctx) => Response.json({
       ok: true,
       providers: listImageProviders(),
-      readiness: providerReadinessFromEnv(),
+      readiness: await providerReadiness(ctx as PluginContext),
     }),
   }),
 ]
 
-function checkImages(ctx: PluginContext): HealthCheckResult[] {
+async function checkImages(ctx: PluginContext): Promise<HealthCheckResult[]> {
   const rows: HealthCheckResult[] = []
-  const readiness = providerReadinessFromEnv()
+  const readiness = await providerReadiness(ctx)
   const readyProviders = readiness.filter(provider => provider.routable)
 
   rows.push({
@@ -166,6 +181,21 @@ const imagesPlugin = definePlugin({
   navItems: [],
   contentFiles: [],
   activate(ctx: PluginContext) {
+    const moduleDir = dirname(fileURLToPath(import.meta.url))
+    const defaultsLoaded = loadDefaultWorkflows(ctx, join(moduleDir, 'defaults', 'workflows'), log)
+    if (defaultsLoaded.registered.length > 0) {
+      log.info(`Registered ${defaultsLoaded.registered.length} image workflow(s)`, {
+        ids: defaultsLoaded.registered,
+      })
+    }
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_images_recommend',
+      description: 'Recommend a deterministic image provider, model, surface profile, dimensions, and quality tier for an image generation request.',
+      label: 'Recommended an image route',
+      parameters: recommendShape,
+      handler: async (params) => recommendImageRoute(ctx, params as never),
+    })
     ctx.registerExecTool({
       name: 'bakin_exec_images_generate',
       description: 'Generate an image through a configured native image provider adapter, save it into Assets, and return the canonical image filename.',
@@ -207,7 +237,7 @@ const imagesPlugin = definePlugin({
         return {
           ok: true,
           ...(profile ? { profile } : { profiles: listImageProfiles() }),
-          ...(includeProviders ? { providers: providerReadinessFromEnv() } : {}),
+          ...(includeProviders ? { providers: await providerReadiness(ctx) } : {}),
         }
       },
     })

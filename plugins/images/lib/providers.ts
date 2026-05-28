@@ -1,4 +1,6 @@
+import type { PluginContext } from '@bakin/core/plugin-types'
 import type { ImagePluginSettings, ImageProviderDescriptor, ImageProviderReadiness } from '../types'
+import { resolveImageApiKey } from './credentials'
 
 export const IMAGE_PROVIDERS: ImageProviderDescriptor[] = [
   {
@@ -94,4 +96,24 @@ export function providerReadinessFromEnv(env: Record<string, string | undefined>
       models: provider.models,
     }
   })
+}
+
+export async function providerReadiness(ctx: PluginContext): Promise<ImageProviderReadiness[]> {
+  const envReadiness = providerReadinessFromEnv()
+  const envById = new Map(envReadiness.map(provider => [provider.id, provider]))
+
+  return Promise.all(IMAGE_PROVIDERS.map(async (provider) => {
+    const apiKey = await resolveImageApiKey(ctx, provider.id)
+    const env = envById.get(provider.id)
+    const configured = Boolean(apiKey)
+    return {
+      id: provider.id,
+      label: provider.label,
+      configured,
+      routable: configured && provider.models.some(model => model.status === 'routable'),
+      envVars: provider.envVars,
+      configuredEnvVars: env?.configuredEnvVars ?? [],
+      models: provider.models,
+    }
+  }))
 }

@@ -52,6 +52,11 @@
     ],
     "execTools": [
       {
+        "name": "bakin_exec_images_recommend",
+        "summary": "Recommend an image provider, model, surface, dimensions, and quality tier",
+        "description": "Recommend a deterministic image provider, model, surface profile, dimensions, and quality tier for an image generation request."
+      },
+      {
         "name": "bakin_exec_images_generate",
         "summary": "Generate an image through a configured native provider adapter",
         "description": "Generate an image through a configured native image provider adapter, save it into Assets, and return the canonical image filename."

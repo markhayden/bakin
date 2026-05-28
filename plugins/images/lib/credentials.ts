@@ -7,9 +7,6 @@ interface RuntimeProviderConfig {
 }
 
 interface RuntimeConfig {
-  skills?: {
-    entries?: Record<string, RuntimeProviderConfig>
-  }
   models?: {
     providers?: Record<string, RuntimeProviderConfig>
   }
@@ -35,13 +32,10 @@ export async function resolveImageApiKey(ctx: PluginContext, provider: ImageProv
     }
 
     const google = config.models?.providers?.google
-    const nanoBanana = config.skills?.entries?.['nano-banana-pro']
     return (
       stringValue(google?.apiKey)
       || stringValue(google?.env?.GEMINI_API_KEY)
       || stringValue(google?.env?.GOOGLE_AI_API_KEY)
-      || stringValue(nanoBanana?.apiKey)
-      || stringValue(nanoBanana?.env?.GEMINI_API_KEY)
     )
   } catch {
     return null

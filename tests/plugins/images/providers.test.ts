@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'bun:test'
-import { DEFAULT_IMAGE_SETTINGS, listImageProviders, providerReadinessFromEnv } from '../../../plugins/images/lib/providers'
+import { describe, expect, it, mock } from 'bun:test'
+import type { PluginContext } from '@bakin/core/plugin-types'
+import { DEFAULT_IMAGE_SETTINGS, listImageProviders, providerReadiness, providerReadinessFromEnv } from '../../../plugins/images/lib/providers'
 
 describe('image providers', () => {
   it('ships routable OpenAI and Gemini providers for v1', () => {
@@ -36,6 +37,29 @@ describe('image providers', () => {
       configured: true,
       routable: true,
       configuredEnvVars: ['GEMINI_API_KEY'],
+    })
+  })
+
+  it('reports readiness from runtime provider configuration', async () => {
+    const ctx = {
+      runtime: {
+        config: {
+          get: mock(async () => ({
+            models: {
+              providers: {
+                google: { apiKey: 'runtime-gemini-key' },
+              },
+            },
+          })),
+        },
+      },
+    } as unknown as PluginContext
+
+    const ready = await providerReadiness(ctx)
+
+    expect(ready.find(provider => provider.id === 'google')).toMatchObject({
+      configured: true,
+      routable: true,
     })
   })
 

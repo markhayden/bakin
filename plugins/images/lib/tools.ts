@@ -7,7 +7,7 @@ import type { ExecToolResult, PluginContext } from '@bakin/core/plugin-types'
 import type { ImagePluginSettings, ImageProviderId } from '../types'
 import { getImageAdapter } from './adapters'
 import { resolveImageApiKey } from './credentials'
-import { DEFAULT_IMAGE_SETTINGS, getImageProvider, providerReadinessFromEnv } from './providers'
+import { DEFAULT_IMAGE_SETTINGS, getImageProvider, providerReadiness } from './providers'
 import { getImageProfile } from './platform-profiles'
 import { getContentDir } from '../../../src/core/content-dir'
 
@@ -90,7 +90,7 @@ function defaultModelForProvider(provider: ImageProviderId): string {
   return provider === 'openai' ? 'gpt-image-2' : 'gemini-3.1-flash-image'
 }
 
-function resolveRoute(ctx: PluginContext, params: ImagesGenerateParams): { provider: ImageProviderId; model: string } | null {
+async function resolveRoute(ctx: PluginContext, params: ImagesGenerateParams): Promise<{ provider: ImageProviderId; model: string } | null> {
   if (params.provider && params.provider !== 'auto') {
     return { provider: params.provider, model: params.model ?? defaultModelForProvider(params.provider) }
   }
@@ -105,7 +105,7 @@ function resolveRoute(ctx: PluginContext, params: ImagesGenerateParams): { provi
     return { provider: settings.defaultProvider, model: params.model ?? defaultModelForProvider(settings.defaultProvider) }
   }
 
-  const readiness = providerReadinessFromEnv()
+  const readiness = await providerReadiness(ctx)
   for (const route of settings.fallbackOrder) {
     const parsed = parseProviderModel(route)
     if (!parsed) continue
@@ -192,7 +192,7 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
   const surfaceId = params.surface || settings.defaultSurface
   const dims = dimensionsForSurface(surfaceId, params.width, params.height)
   if (!dims) return fail(`Unknown image surface: ${surfaceId}`)
-  const route = resolveRoute(ctx, params)
+  const route = await resolveRoute(ctx, params)
   if (!route) return fail('No image provider route available')
   const provider = getImageProvider(route.provider)
   if (!provider || !provider.models.some(model => model.id === route.model && model.status === 'routable')) {
