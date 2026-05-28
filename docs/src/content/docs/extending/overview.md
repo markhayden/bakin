@@ -3,6 +3,10 @@ title: Extend Bakin
 description: Choose the right extension surface for plugins, agent kits, SDK code, and Bakin core work.
 ---
 
+:::note[Looking for official plugins and agent kits?]
+The [Bakin' Bits](https://github.com/markhayden/bakin-bits-official) repo is the official source for supported plugins and agent kits. Install from there with `bakin plugins install github:markhayden/bakin-bits-official#<plugin-name>` or `bakin agents install github:markhayden/bakin-bits-official#<agent-name>`.
+:::
+
 Bakin is meant to be shaped by the people using it. Start here when you want to add a plugin, package an agent, share a workflow, expose a new tool for agents, or improve the core app without fighting the system.
 
 ## Surfaces
