@@ -21,16 +21,7 @@
 
 import type { ComponentType } from 'react'
 import { registerSlot, clearSlotsOwnedBy } from './slots'
-
-interface NavItem {
-  id: string
-  label: string
-  icon?: string
-  href?: string
-  order?: number
-  alwaysExpanded?: boolean
-  children?: NavItem[]
-}
+import type { NavItem } from './types'
 
 interface PluginRegistration {
   id: string
