@@ -20,21 +20,38 @@
  * (emitted by Bakin) resolves those to the host's bundled copies so there
  * is a single React instance and a single SDK.
  */
+
+/** Re-exports every plugin contract type. See `@makinbakin/sdk/types` for the full list. */
 export * from './types'
-export {
-  registerPlugin,
-  unregisterPlugin,
-  registerPluginCleanup,
-  getRegistryVersion,
-  subscribeRegistry,
-  getAllNavItems,
-  getNavItemsSnapshot,
-  getPluginNavItems,
-  getPluginRoute,
-  getPluginRoutes,
-} from './register'
+
+/** Register a plugin (single-call entry from a plugin's `client.tsx`). */
+export { registerPlugin } from './register'
+/** Tear down all registrations owned by a plugin (used during hot-swap). */
+export { unregisterPlugin } from './register'
+/** Register a cleanup callback fired when the plugin is unregistered. */
+export { registerPluginCleanup } from './register'
+/** Current registry version — bumps on every mutation (for useSyncExternalStore). */
+export { getRegistryVersion } from './register'
+/** Subscribe to registry-version changes. */
+export { subscribeRegistry } from './register'
+/** Get every registered nav item across all plugins. */
+export { getAllNavItems } from './register'
+/** Get a snapshot of the current nav items (non-subscribing). */
+export { getNavItemsSnapshot } from './register'
+/** Get nav items contributed by a specific plugin. */
+export { getPluginNavItems } from './register'
+/** Look up a specific client route by plugin id + path. */
+export { getPluginRoute } from './register'
+/** Get all registered client routes (across all plugins). */
+export { getPluginRoutes } from './register'
 export type { ClientRouteEntry, MatchedPluginRoute, NavItem, PluginRegistration } from './register'
-export { defineRoute, defineCoreRoute, definePlugin } from './routing'
+
+/** Define a plugin HTTP route with typed input/output schemas. */
+export { defineRoute } from './routing'
+/** Define a core (non-plugin) HTTP route. */
+export { defineCoreRoute } from './routing'
+/** Compose a plugin's routes into a single definition for the server. */
+export { definePlugin } from './routing'
 export type {
   APIRoute,
   HttpStatus,

@@ -8,11 +8,12 @@
  * deliberately avoiding.
  */
 
-export {
-  defineRoute,
-  defineCoreRoute,
-  definePlugin,
-} from '@bakin/core/routing'
+/** Define a plugin HTTP route with typed input/output and handler. */
+export { defineRoute } from '@bakin/core/routing'
+/** Define a core (non-plugin) HTTP route. */
+export { defineCoreRoute } from '@bakin/core/routing'
+/** Compose a plugin's routes into a single definition for the server. */
+export { definePlugin } from '@bakin/core/routing'
 
 export type {
   HttpMethod,

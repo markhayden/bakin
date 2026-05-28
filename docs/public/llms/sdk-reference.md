@@ -6,4 +6,4 @@ Audience: coding agents and technical authors.
 
 Canonical docs: https://makinbakin.com/docs/
 
-The SDK reference is currently generated from packages/sdk/package.json and SDK barrel files. Current SDK subpath count: 9. Full TypeDoc output and TSDoc coverage checks are still required before public launch.
+The SDK reference is generated from JSDoc comments on SDK barrel files (`packages/sdk/src/*/index.ts`). Current SDK subpath count: 9. Core plugin contract types (BakinPlugin, PluginContext, etc.) include field-level documentation; remaining types are grouped by domain with one-line summaries.
