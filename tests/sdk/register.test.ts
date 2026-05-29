@@ -310,6 +310,28 @@ describe('nav badge registry', () => {
     expect(listener).toHaveBeenCalledTimes(2)
   })
 
+  it('is idempotent — a set with an identical value does not fire subscribers or rebuild the snapshot', () => {
+    setNavBadge('badge-A', 'badge-A-item', { count: 3, tone: 'attention' })
+    const snapshot = getNavBadgesSnapshot()
+    const listener = mock()
+    const unsub = subscribeNavBadges(listener)
+
+    // Same value → no-op: no tick, same snapshot identity.
+    setNavBadge('badge-A', 'badge-A-item', { count: 3, tone: 'attention' })
+    expect(listener).not.toHaveBeenCalled()
+    expect(getNavBadgesSnapshot()).toBe(snapshot)
+
+    // Changed count → fires.
+    setNavBadge('badge-A', 'badge-A-item', { count: 4, tone: 'attention' })
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(getNavBadgesSnapshot()).not.toBe(snapshot)
+
+    // Changed tone only → fires.
+    setNavBadge('badge-A', 'badge-A-item', { count: 4, tone: 'error' })
+    expect(listener).toHaveBeenCalledTimes(2)
+    unsub()
+  })
+
   it('subscribeNavBadges does NOT fire on plain registerPlugin nav mutations', () => {
     const listener = mock()
     const unsub = subscribeNavBadges(listener)
