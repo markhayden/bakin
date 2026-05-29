@@ -242,6 +242,9 @@ Tracked, not MVP-blocking:
 - **GitHub #380** — `extForMime` (shim) and the provider env-var map are
   duplicated across the core/plugin boundary (core must not import plugin code);
   reconciling needs a shared mime/provider table in core.
+- **GitHub #381** — image model catalog drift: `IMAGE_PROVIDERS` (images) vs
+  `known-models.ts` (models) use different ids; the models plugin should own
+  model metadata and the images plugin reference it.
 
 ## Non-goals
 
