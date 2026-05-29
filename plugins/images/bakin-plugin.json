@@ -63,6 +63,11 @@
         "description": "Generate an image through a configured runtime image provider or native image provider adapter, save it into Assets, and return the canonical image filename."
       },
       {
+        "name": "bakin_exec_images_edit",
+        "summary": "Edit an existing image through the runtime provider and save the result into Assets",
+        "description": "Edit an existing image (a managed asset or a local file) through the configured runtime image provider using edit instructions, save the result into Assets, and return the canonical image filename."
+      },
+      {
         "name": "bakin_exec_images_import",
         "summary": "Import an existing local image file into Assets",
         "description": "Import an existing local image file into the Assets pipeline and return the canonical image filename."

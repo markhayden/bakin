@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import sharp from 'sharp'
 import type { PluginContext } from '@bakin/core/plugin-types'
@@ -8,7 +8,7 @@ import { resetContentDir } from '../../../src/core/content-dir'
 
 let testDir = join(tmpdir(), `bakin-images-tools-${Date.now()}`)
 
-import { exportImage, generateImage, importImage } from '../../../plugins/images/lib/tools'
+import { editImage, exportImage, generateImage, importImage } from '../../../plugins/images/lib/tools'
 
 const originalOpenAI = process.env.OPENAI_API_KEY
 const originalGemini = process.env.GEMINI_API_KEY
@@ -229,6 +229,55 @@ describe('images tools', () => {
       model: 'gpt-image-2',
       routeSource: 'runtime',
     })
+  })
+
+  it('edits an existing managed asset through the runtime edit capability', async () => {
+    const sourceRel = 'assets/store/2026-05/20260529-src-a1b2c3d4.png'
+    const sourceAbs = join(testDir, sourceRel)
+    mkdirSync(dirname(sourceAbs), { recursive: true })
+    writeFileSync(sourceAbs, 'src-bytes')
+    const editedFile = join(testDir, 'edited.png')
+    writeFileSync(editedFile, 'edited-bytes')
+
+    const edit = mock(async () => ({
+      provider: 'google',
+      model: 'gemini-3.1-flash-image-preview',
+      images: [{ filePath: editedFile, mimeType: 'image/png', width: 1080, height: 1080 }],
+      metadata: { servedBy: 'runtime', credentialSource: 'runtime' },
+    }))
+    const editSaved: Array<Record<string, unknown>> = []
+    const ctx = {
+      getSettings: mock(() => ({})),
+      assets: {
+        save: mock(async (input: Record<string, unknown>) => {
+          editSaved.push(input)
+          return { ok: true, path: 'assets/store/2026-05/20260529-edit-b2c3.png', metadataPath: 'x.meta.json', filename: '20260529-edit-b2c3.png' }
+        }),
+        getByFilename: mock(async () => ({ filename: '20260529-src-a1b2c3d4.png', path: sourceRel, type: 'images', mimeType: 'image/png', size: 1, metadata: {} })),
+      },
+      runtime: { images: { providers: mock(async () => []), generate: mock(), edit } },
+    } as unknown as PluginContext
+
+    const result = await editImage(ctx, {
+      prompt: 'add a capybara in the foreground',
+      taskId: 'task-edit',
+      filename: '20260529-src-a1b2c3d4.png',
+      provider: 'google',
+      model: 'gemini-3.1-flash-image-preview',
+      surface: 'instagram-square',
+    }, 'pixel')
+
+    expect(result.ok).toBe(true)
+    expect(edit).toHaveBeenCalledWith(expect.objectContaining({ files: [sourceAbs], provider: 'google' }))
+    expect(editSaved[0]).toMatchObject({ tool: 'bakin_exec_images_edit' })
+    expect(editSaved[0].generation).toMatchObject({ createdByTool: 'bakin_exec_images_edit', routeSource: 'runtime' })
+  })
+
+  it('fails an edit with no source image', async () => {
+    const { ctx } = makeContext({ runtime: { images: { providers: mock(async () => []), generate: mock(), edit: mock() } } as never })
+    const result = await editImage(ctx, { prompt: 'x', taskId: 't', provider: 'google', model: 'gemini-3.1-flash-image-preview' }, 'pixel')
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/requires an existing source image/i)
   })
 
   it('imports a local image file through assets', async () => {

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import sharp from 'sharp'
 import type { ExecToolResult, PluginContext } from '@bakin/core/plugin-types'
+import type { RuntimeImageGenerationResult } from '@bakin/core/adapters/runtime'
 import type { ImageProviderId } from '../types'
 import { effectiveImageSettings, getImageProvider, providerReadiness } from './providers'
 import { resolveImageRoute } from './routing'
@@ -31,6 +32,13 @@ export interface ImagesImportParams {
   taskId: string
   description?: string
   tags?: string[]
+}
+
+export interface ImagesEditParams extends ImagesGenerateParams {
+  /** Managed asset filename to edit (preferred), resolved to its stored path. */
+  filename?: string
+  /** Or an explicit local source-image path. */
+  sourcePath?: string
 }
 
 export interface ImagesExportParams {
@@ -151,98 +159,86 @@ export async function importImage(ctx: PluginContext, params: ImagesImportParams
   }
 }
 
-export async function generateImage(ctx: PluginContext, params: ImagesGenerateParams, agent: string): Promise<ExecToolResult> {
+interface PreparedImageRequest {
+  prompt: string
+  dims: { surface: string; width: number; height: number }
+  route: { provider: ImageProviderId; model: string }
+  quality: 'draft' | 'standard' | 'premium'
+}
+
+/** Shared prologue for generate + edit: compile prompt, resolve surface + route, validate routability. */
+async function prepareImageRequest(ctx: PluginContext, params: ImagesGenerateParams): Promise<PreparedImageRequest | { error: string }> {
   const prompt = compilePrompt(params)
-  if (!prompt) return fail('prompt or promptPacket is required')
+  if (!prompt) return { error: 'prompt or promptPacket is required' }
   const settings = effectiveImageSettings(ctx)
   const surfaceId = params.surface || settings.defaultSurface
   const dims = dimensionsForSurface(surfaceId, params.width, params.height)
-  if (!dims) return fail(`Unknown image surface: ${surfaceId}`)
+  if (!dims) return { error: `Unknown image surface: ${surfaceId}` }
 
   const readiness = await providerReadiness(ctx)
   const route = resolveImageRoute(readiness, settings, { provider: params.provider, model: params.model })
-  if (!route) return fail('No image provider route available')
+  if (!route) return { error: 'No image provider route available' }
 
   const provider = getImageProvider(route.provider)
   const readyProvider = readiness.find(candidate => candidate.id === route.provider)
   const knownModel = provider?.models.some(model => model.id === route.model && model.status === 'routable')
     || readyProvider?.models.some(model => model.id === route.model && model.status === 'routable')
-  if (!knownModel) {
-    return fail(`Image model is not routable: ${route.provider}/${route.model}`)
-  }
+  if (!knownModel) return { error: `Image model is not routable: ${route.provider}/${route.model}` }
 
-  // The runtime capability owns transport: it serves the route natively when it
-  // can, or composes the shared direct-provider shim when it can't. The plugin
-  // never touches provider HTTP or credentials.
-  if (!ctx.runtime.images) {
-    return fail('The active runtime does not provide an image generation capability')
-  }
+  return { prompt, dims, route, quality: params.quality ?? settings.quality }
+}
 
-  const quality = params.quality ?? settings.quality
-  let generated: { filePath: string; mimeType: string; width: number; height: number; providerText?: string }
-  let routeSource: string
-  let credentialSource: string | undefined
-  try {
-    const result = await ctx.runtime.images.generate({
-      prompt,
-      provider: route.provider,
-      model: route.model,
-      width: dims.width,
-      height: dims.height,
-      outputFormat: 'png',
-      metadata: { quality },
-    })
-    const image = result.images[0]
-    if (!image?.filePath) return fail('Runtime image generation returned no image file')
-    generated = {
-      filePath: image.filePath,
-      mimeType: image.mimeType ?? 'image/png',
-      width: image.width ?? dims.width,
-      height: image.height ?? dims.height,
-      ...(result.providerText ? { providerText: result.providerText } : {}),
-    }
-    const servedBy = typeof result.metadata?.servedBy === 'string' ? result.metadata.servedBy : undefined
-    routeSource = servedBy === 'shim' ? 'shim' : 'runtime'
-    credentialSource = typeof result.metadata?.credentialSource === 'string' ? result.metadata.credentialSource : undefined
-  } catch (err) {
-    return fail(`Image generation failed: ${errorMessage(err)}`)
-  }
+/**
+ * Persist a runtime image result (from generate or edit) as a managed asset
+ * with generation provenance, and build the tool result. Records the ACTUAL
+ * produced pixel dimensions (a provider may snap to its own nearest supported
+ * size) by probing the file; surface intent stays in `generation.surface`.
+ */
+async function persistImageAsset(
+  ctx: PluginContext,
+  params: ImagesGenerateParams,
+  agent: string,
+  opts: { req: PreparedImageRequest; result: RuntimeImageGenerationResult; tool: string; tag: 'generated' | 'edited' },
+): Promise<ExecToolResult> {
+  const { req, result, tool, tag } = opts
+  const image = result.images[0]
+  if (!image?.filePath) return fail('Runtime image operation returned no image file')
 
-  // Record the ACTUAL produced pixel dimensions — a provider may snap to its
-  // own nearest supported size (e.g. OpenAI 1024x1536), so the surface intent
-  // (dims.surface) and the real file size can differ. Probe the file; fall back
-  // to the provider-reported / requested dims if the probe fails.
-  const probed = await imageDimensions(generated.filePath)
-  const actualWidth = probed.width || generated.width || dims.width
-  const actualHeight = probed.height || generated.height || dims.height
+  const servedBy = typeof result.metadata?.servedBy === 'string' ? result.metadata.servedBy : undefined
+  const routeSource = servedBy === 'shim' ? 'shim' : 'runtime'
+  const credentialSource = typeof result.metadata?.credentialSource === 'string' ? result.metadata.credentialSource : undefined
+
+  const probed = await imageDimensions(image.filePath)
+  const width = probed.width || image.width || req.dims.width
+  const height = probed.height || image.height || req.dims.height
 
   const promptAssetFilename = params.savePromptPacket
-    ? await savePromptPacketAsset(ctx, agent, params.taskId, prompt, params.promptPacket)
+    ? await savePromptPacketAsset(ctx, agent, params.taskId, req.prompt, params.promptPacket)
     : undefined
-  const promptHash = hashPrompt(prompt)
+  const promptHash = hashPrompt(req.prompt)
   const saved = await ctx.assets.save({
-    filePath: generated.filePath,
+    filePath: image.filePath,
     taskId: params.taskId,
     type: 'images',
     agent,
-    tool: 'bakin_exec_images_generate',
-    description: prompt.slice(0, 200),
-    tags: ['generated', dims.surface, route.provider, route.model],
-    slug: `${dims.surface}-image`,
+    tool,
+    description: req.prompt.slice(0, 200),
+    tags: [tag, req.dims.surface, req.route.provider, req.route.model],
+    slug: `${req.dims.surface}-image`,
     generation: {
-      provider: route.provider,
-      model: route.model,
-      surface: dims.surface,
-      width: actualWidth,
-      height: actualHeight,
-      quality,
+      provider: req.route.provider,
+      model: req.route.model,
+      surface: req.dims.surface,
+      width,
+      height,
+      quality: req.quality,
       promptHash,
       routeSource,
       ...(promptAssetFilename ? { promptAssetFilename } : {}),
-      createdByTool: 'bakin_exec_images_generate',
+      createdByTool: tool,
     },
   })
-  if (!saved.ok) return fail(`Image generated but asset save failed: ${saved.error}`)
+  if (!saved.ok) return fail(`Image ${tag} but asset save failed: ${saved.error}`)
 
   return {
     ok: true,
@@ -250,18 +246,80 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
     metadataPath: saved.metadataPath,
     filename: saved.filename,
     image_filename: saved.filename,
-    width: actualWidth,
-    height: actualHeight,
-    surface: dims.surface,
-    provider: route.provider,
-    model: route.model,
-    quality,
+    width,
+    height,
+    surface: req.dims.surface,
+    provider: req.route.provider,
+    model: req.route.model,
+    quality: req.quality,
     routeSource,
     ...(credentialSource ? { credentialSource } : {}),
-    prompt: prompt.slice(0, 500),
+    prompt: req.prompt.slice(0, 500),
     promptHash,
     ...(promptAssetFilename ? { promptAssetFilename } : {}),
-    ...(generated.providerText ? { providerText: generated.providerText } : {}),
+    ...(result.providerText ? { providerText: result.providerText } : {}),
+  }
+}
+
+export async function generateImage(ctx: PluginContext, params: ImagesGenerateParams, agent: string): Promise<ExecToolResult> {
+  const req = await prepareImageRequest(ctx, params)
+  if ('error' in req) return fail(req.error)
+
+  // The runtime capability owns transport: it serves the route natively when it
+  // can, or composes the shared direct-provider shim when it can't. The plugin
+  // never touches provider HTTP or credentials.
+  if (!ctx.runtime.images) return fail('The active runtime does not provide an image generation capability')
+
+  try {
+    const result = await ctx.runtime.images.generate({
+      prompt: req.prompt,
+      provider: req.route.provider,
+      model: req.route.model,
+      width: req.dims.width,
+      height: req.dims.height,
+      outputFormat: 'png',
+      metadata: { quality: req.quality },
+    })
+    return await persistImageAsset(ctx, params, agent, { req, result, tool: 'bakin_exec_images_generate', tag: 'generated' })
+  } catch (err) {
+    return fail(`Image generation failed: ${errorMessage(err)}`)
+  }
+}
+
+export async function editImage(ctx: PluginContext, params: ImagesEditParams, agent: string): Promise<ExecToolResult> {
+  // Resolve the source image: a managed asset filename or an explicit path.
+  let sourcePath: string | undefined
+  if (params.filename) {
+    const asset = await ctx.assets.getByFilename(params.filename)
+    if (!asset) return fail(`Asset not found: ${params.filename}`)
+    sourcePath = join(getContentDir(), asset.path)
+  } else if (params.sourcePath) {
+    sourcePath = params.sourcePath
+  }
+  if (!sourcePath || !existsSync(sourcePath)) {
+    return fail('edit requires an existing source image (pass filename for a managed asset or sourcePath for a local file)')
+  }
+
+  const req = await prepareImageRequest(ctx, params)
+  if ('error' in req) return fail(req.error)
+
+  // Edit is runtime-only — the shared shim does generation, not editing.
+  if (!ctx.runtime.images?.edit) return fail('The active runtime does not provide an image edit capability')
+
+  try {
+    const result = await ctx.runtime.images.edit({
+      prompt: req.prompt,
+      provider: req.route.provider,
+      model: req.route.model,
+      width: req.dims.width,
+      height: req.dims.height,
+      outputFormat: 'png',
+      files: [sourcePath],
+      metadata: { quality: req.quality },
+    })
+    return await persistImageAsset(ctx, params, agent, { req, result, tool: 'bakin_exec_images_edit', tag: 'edited' })
+  } catch (err) {
+    return fail(`Image edit failed: ${errorMessage(err)}`)
   }
 }
 

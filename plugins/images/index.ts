@@ -10,7 +10,7 @@ import { createLogger } from '../../src/core/logger'
 import { loadDefaultWorkflows } from '../workflows/lib/load-defaults'
 import { DEFAULT_IMAGE_SETTINGS, listImageProviders, providerReadiness } from './lib/providers'
 import { getImageProfile, listImageProfiles } from './lib/platform-profiles'
-import { exportImage, generateImage, importImage } from './lib/tools'
+import { editImage, exportImage, generateImage, importImage } from './lib/tools'
 import { recommendImageRoute } from './lib/routing'
 
 const log = createLogger('images')
@@ -50,6 +50,20 @@ const generateShape = {
   height: z.number().int().positive().optional().describe('Optional custom height. Defaults from surface profile.'),
   quality: imageQualityEnum.optional().describe('Generation quality tier.'),
   savePromptPacket: z.boolean().optional().describe('Save the full prompt packet as a linked text asset. Use for approval-gated workflows.'),
+}
+
+const editShape = {
+  prompt: z.string().min(1).describe('Edit instruction, e.g. "add a capybara in the foreground".'),
+  filename: z.string().optional().describe('Managed source image asset filename to edit. Provide this or sourcePath.'),
+  sourcePath: z.string().optional().describe('Absolute path to a local source image to edit, if not already a managed asset.'),
+  taskId: z.string().min(1).describe('Task ID to link the edited image asset.'),
+  surface: z.string().optional().describe('Output surface profile id for sizing.'),
+  provider: imageProviderRoute.optional().describe('Provider route. Defaults to auto routing.'),
+  model: z.string().optional().describe('Provider model id.'),
+  width: z.number().int().positive().optional().describe('Optional custom width.'),
+  height: z.number().int().positive().optional().describe('Optional custom height.'),
+  quality: imageQualityEnum.optional().describe('Edit quality tier.'),
+  savePromptPacket: z.boolean().optional().describe('Save the edit prompt as a linked text asset.'),
 }
 
 const importShape = {
@@ -196,6 +210,13 @@ const imagesPlugin = definePlugin({
       label: 'Generated an image',
       parameters: generateShape,
       handler: async (params, agent) => generateImage(ctx, params as never, agent),
+    })
+    ctx.registerExecTool({
+      name: 'bakin_exec_images_edit',
+      description: 'Edit an existing image (managed asset or local file) through the runtime image provider with edit instructions, save the result into Assets, and return the canonical image filename.',
+      label: 'Edited an image',
+      parameters: editShape,
+      handler: async (params, agent) => editImage(ctx, params as never, agent),
     })
     ctx.registerExecTool({
       name: 'bakin_exec_images_import',
