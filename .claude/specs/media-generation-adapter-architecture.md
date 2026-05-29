@@ -1,10 +1,11 @@
 # Media Generation Adapter Architecture
 
-Status: **Phase 1 done; Phase 2 in progress.** Landed in Phase 2: native-path
-retry parity, capability-contract tightening (dropped `outputPath`), shim
-namespace settled (`@bakin/core/media`), and the Bakin-owned provider secret
-store (env → store, `0600`). Remaining: the dashboard secret field + REST write
-API, and the Hermes adapter when a 2nd runtime is actually built.
+Status: **Phase 1 done; Phase 2 substantially done.** Landed in Phase 2:
+native-path retry parity, capability-contract tightening (dropped `outputPath`),
+shim namespace settled (`@bakin/core/media`), the Bakin-owned provider secret
+store (env → store, `0600`), the `/api/secrets` write API, and the image-scoped
+Provider Keys settings tab. Remaining: the all-domains global credential
+inventory (GitHub #378), and the Hermes adapter when a 2nd runtime is built.
 Scope: image generation today; the template generalizes to video / audio / any
 provider-backed media modality and to runtimes beyond OpenClaw.
 
@@ -200,13 +201,16 @@ runtime needs it).
 - [x] Bakin-owned provider secret store — `~/.bakin/secrets.json` (`0600`,
   dedicated file), provider-keyed, resolution order env → store. The shim path
   and readiness/`servedBy` consult it. Populated via env or by editing the file.
-- [ ] **Remaining:** dashboard secret field type + REST write API (set/unset/
-  masked-status) so keys are editable from the UI rather than by hand. Resolved
-  ownership: a dedicated core module (`@bakin/core/media/secret-store`), NOT the
-  per-plugin settings infra (provider grain, shared across modalities); the UI
-  field type rides the existing settings renderer. Near-term scope is
-  **image-scoped**; the broader global credential-status inventory (all runtime
-  domains: models, gateway, channels, skills/tools) is tracked in
+- [x] REST write API — `/api/secrets` (GET masked status, POST set, DELETE
+  clear), wired in `server.ts`. Generic/provider-keyed.
+- [x] Dashboard surface — image-scoped **Provider Keys** tab in Settings
+  (synthetic tab pinned under Core, not a new nav item; a bespoke component
+  rather than a generic schema field, since secret rows are write-only/masked).
+  Shows runtime / env / store / none per provider; editing limited to the Bakin
+  store.
+- [ ] **Remaining:** generalize the image-scoped tab into the all-domains
+  global credential-status inventory (models, gateway, channels, skills/tools)
+  via a boundary-safe `runtime.providers.status()` capability — tracked in
   **GitHub #378**.
 - [ ] Build the Hermes adapter against this to confirm the abstraction
   (synthesized `providers()`, no extractable key → store/shim-only).
