@@ -136,6 +136,31 @@ describe('images tools', () => {
     expect(saved[0].generation).toMatchObject({ routeSource: 'shim' })
   })
 
+  it('clamps oversized custom dimensions proportionally before generating', async () => {
+    const file = join(testDir, 'big.png')
+    writeFileSync(file, 'img')
+    const generate = mock(async () => ({
+      provider: 'google',
+      model: 'gemini-3.1-flash-image-preview',
+      images: [{ filePath: file, mimeType: 'image/png', width: 2048, height: 1024 }],
+      metadata: { servedBy: 'runtime' },
+    }))
+    const { ctx } = makeContext({ runtime: { images: { providers: mock(async () => []), generate } } as never })
+
+    await generateImage(ctx, {
+      prompt: 'wide banner',
+      taskId: 'task-clamp',
+      provider: 'google',
+      model: 'gemini-3.1-flash-image-preview',
+      surface: 'custom',
+      width: 4000,
+      height: 2000,
+    }, 'pixel')
+
+    // 4000x2000 exceeds MAX_IMAGE_EDGE(2048) → scaled to 2048x1024, aspect kept.
+    expect(generate).toHaveBeenCalledWith(expect.objectContaining({ width: 2048, height: 1024 }))
+  })
+
   it('fails clearly when the active runtime has no image capability', async () => {
     const { ctx } = makeContext() // default ctx has no runtime.images
 

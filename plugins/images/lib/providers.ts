@@ -85,6 +85,17 @@ export const DEFAULT_IMAGE_SETTINGS: Required<ImagePluginSettings> = {
   quality: 'standard',
 }
 
+/** Merge configured plugin settings over the defaults. Shared by tools + routing. */
+export function effectiveImageSettings(ctx: PluginContext): Required<ImagePluginSettings> {
+  const settings = ctx.getSettings<ImagePluginSettings>()
+  return {
+    defaultProvider: settings.defaultProvider ?? DEFAULT_IMAGE_SETTINGS.defaultProvider,
+    defaultSurface: settings.defaultSurface ?? DEFAULT_IMAGE_SETTINGS.defaultSurface,
+    fallbackOrder: settings.fallbackOrder ?? DEFAULT_IMAGE_SETTINGS.fallbackOrder,
+    quality: settings.quality ?? DEFAULT_IMAGE_SETTINGS.quality,
+  }
+}
+
 export function listImageProviders(): ImageProviderDescriptor[] {
   return IMAGE_PROVIDERS
 }

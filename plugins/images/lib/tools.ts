@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import sharp from 'sharp'
 import type { ExecToolResult, PluginContext } from '@bakin/core/plugin-types'
-import type { ImagePluginSettings, ImageProviderId } from '../types'
-import { DEFAULT_IMAGE_SETTINGS, getImageProvider, providerReadiness } from './providers'
+import type { ImageProviderId } from '../types'
+import { effectiveImageSettings, getImageProvider, providerReadiness } from './providers'
 import { resolveImageRoute } from './routing'
 import { getImageProfile } from './platform-profiles'
 import { getContentDir } from '../../../src/core/content-dir'
@@ -55,16 +55,6 @@ function hashPrompt(prompt: string): string {
   return `sha256:${createHash('sha256').update(prompt).digest('hex')}`
 }
 
-function effectiveSettings(ctx: PluginContext): Required<ImagePluginSettings> {
-  const settings = ctx.getSettings<ImagePluginSettings>()
-  return {
-    defaultProvider: settings.defaultProvider ?? DEFAULT_IMAGE_SETTINGS.defaultProvider,
-    defaultSurface: settings.defaultSurface ?? DEFAULT_IMAGE_SETTINGS.defaultSurface,
-    fallbackOrder: settings.fallbackOrder ?? DEFAULT_IMAGE_SETTINGS.fallbackOrder,
-    quality: settings.quality ?? DEFAULT_IMAGE_SETTINGS.quality,
-  }
-}
-
 function compilePrompt(params: Pick<ImagesGenerateParams, 'prompt' | 'promptPacket'>): string | null {
   if (params.prompt && params.prompt.trim().length > 0) return params.prompt
   if (params.promptPacket && Object.keys(params.promptPacket).length > 0) {
@@ -75,18 +65,21 @@ function compilePrompt(params: Pick<ImagesGenerateParams, 'prompt' | 'promptPack
   return null
 }
 
-function clampEdge(value: number): number {
-  return Math.min(Math.max(1, Math.round(value)), MAX_IMAGE_EDGE)
+/** Clamp to MAX_IMAGE_EDGE while preserving aspect ratio (scales both edges). */
+function clampDimensions(width: number, height: number): { width: number; height: number } {
+  const longest = Math.max(width, height)
+  const scale = longest > MAX_IMAGE_EDGE ? MAX_IMAGE_EDGE / longest : 1
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  }
 }
 
 function dimensionsForSurface(surfaceId: string, width?: number, height?: number): { surface: string; width: number; height: number } | null {
   const profile = getImageProfile(surfaceId)
   if (!profile && (!width || !height)) return null
-  return {
-    surface: profile?.id ?? 'custom',
-    width: clampEdge(width ?? profile!.width),
-    height: clampEdge(height ?? profile!.height),
-  }
+  const clamped = clampDimensions(width ?? profile!.width, height ?? profile!.height)
+  return { surface: profile?.id ?? 'custom', ...clamped }
 }
 
 async function savePromptPacketAsset(
@@ -161,7 +154,7 @@ export async function importImage(ctx: PluginContext, params: ImagesImportParams
 export async function generateImage(ctx: PluginContext, params: ImagesGenerateParams, agent: string): Promise<ExecToolResult> {
   const prompt = compilePrompt(params)
   if (!prompt) return fail('prompt or promptPacket is required')
-  const settings = effectiveSettings(ctx)
+  const settings = effectiveImageSettings(ctx)
   const surfaceId = params.surface || settings.defaultSurface
   const dims = dimensionsForSurface(surfaceId, params.width, params.height)
   if (!dims) return fail(`Unknown image surface: ${surfaceId}`)
@@ -215,6 +208,14 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
     return fail(`Image generation failed: ${errorMessage(err)}`)
   }
 
+  // Record the ACTUAL produced pixel dimensions — a provider may snap to its
+  // own nearest supported size (e.g. OpenAI 1024x1536), so the surface intent
+  // (dims.surface) and the real file size can differ. Probe the file; fall back
+  // to the provider-reported / requested dims if the probe fails.
+  const probed = await imageDimensions(generated.filePath)
+  const actualWidth = probed.width || generated.width || dims.width
+  const actualHeight = probed.height || generated.height || dims.height
+
   const promptAssetFilename = params.savePromptPacket
     ? await savePromptPacketAsset(ctx, agent, params.taskId, prompt, params.promptPacket)
     : undefined
@@ -232,8 +233,8 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
       provider: route.provider,
       model: route.model,
       surface: dims.surface,
-      width: dims.width,
-      height: dims.height,
+      width: actualWidth,
+      height: actualHeight,
       quality,
       promptHash,
       routeSource,
@@ -249,8 +250,8 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
     metadataPath: saved.metadataPath,
     filename: saved.filename,
     image_filename: saved.filename,
-    width: dims.width,
-    height: dims.height,
+    width: actualWidth,
+    height: actualHeight,
     surface: dims.surface,
     provider: route.provider,
     model: route.model,
@@ -269,7 +270,7 @@ export async function exportImage(ctx: PluginContext, params: ImagesExportParams
   if (!asset) return fail(`Asset not found: ${params.filename}`)
   const surfaceId = params.surface || 'custom'
   const dims = surfaceId === 'custom'
-    ? (params.width && params.height ? { surface: 'custom', width: clampEdge(params.width), height: clampEdge(params.height) } : null)
+    ? (params.width && params.height ? { surface: 'custom', ...clampDimensions(params.width, params.height) } : null)
     : dimensionsForSurface(surfaceId, params.width, params.height)
   if (!dims) return fail(`Unknown image surface or missing custom dimensions: ${surfaceId}`)
 

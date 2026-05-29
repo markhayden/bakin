@@ -1,6 +1,6 @@
 import type { PluginContext } from '@bakin/core/plugin-types'
 import type { ImagePluginSettings, ImageProviderId, ImageProviderReadiness } from '../types'
-import { DEFAULT_IMAGE_SETTINGS, getImageProvider, providerReadiness } from './providers'
+import { effectiveImageSettings, getImageProvider, providerReadiness } from './providers'
 import { getImageProfile } from './platform-profiles'
 
 export interface ImageRouteRequest {
@@ -25,15 +25,6 @@ export interface ImageRouteRecommendation {
   fallbackRoutes: Array<{ provider: ImageProviderId; model: string }>
 }
 
-function settings(ctx: PluginContext): Required<ImagePluginSettings> {
-  const configured = ctx.getSettings<ImagePluginSettings>()
-  return {
-    defaultProvider: configured.defaultProvider ?? DEFAULT_IMAGE_SETTINGS.defaultProvider,
-    defaultSurface: configured.defaultSurface ?? DEFAULT_IMAGE_SETTINGS.defaultSurface,
-    fallbackOrder: configured.fallbackOrder ?? DEFAULT_IMAGE_SETTINGS.fallbackOrder,
-    quality: configured.quality ?? DEFAULT_IMAGE_SETTINGS.quality,
-  }
-}
 
 function parseRoute(route: string): { provider: ImageProviderId; model: string } | null {
   const [provider, ...modelParts] = route.split('/')
@@ -128,7 +119,7 @@ export function resolveImageRoute(
 }
 
 export async function recommendImageRoute(ctx: PluginContext, request: ImageRouteRequest = {}): Promise<ImageRouteRecommendation | { ok: false; error: string }> {
-  const effective = settings(ctx)
+  const effective = effectiveImageSettings(ctx)
   const profile = getImageProfile(request.surface || effective.defaultSurface)
   if (!profile) return { ok: false, error: `Unknown image surface: ${request.surface || effective.defaultSurface}` }
 
