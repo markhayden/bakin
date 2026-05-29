@@ -38,6 +38,7 @@ export function ProviderKeysTab() {
   const [loading, setLoading] = useState(true)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -48,6 +49,7 @@ export function ProviderKeysTab() {
       ])
       setRows(Array.isArray(providers?.readiness) ? providers.readiness : [])
       setStored(Array.isArray(secrets?.stored) ? secrets.stored : [])
+      setError(null)
     } finally {
       setLoading(false)
     }
@@ -55,32 +57,38 @@ export function ProviderKeysTab() {
 
   useEffect(() => { void load() }, [load])
 
-  const save = async (id: string) => {
-    const apiKey = (drafts[id] ?? '').trim()
-    if (!apiKey) return
+  // Surface a failed write instead of silently reloading to a stale row.
+  async function mutate(id: string, run: () => Promise<Response>): Promise<void> {
     setBusy(id)
+    setError(null)
     try {
-      await fetch('/api/secrets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: id, apiKey }),
-      })
-      setDrafts(d => ({ ...d, [id]: '' }))
+      const res = await run()
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null
+        setError(body?.error ? `${id}: ${body.error}` : `${id}: request failed (${res.status})`)
+        return
+      }
       await load()
+    } catch (err) {
+      setError(`${id}: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setBusy(null)
     }
   }
 
-  const clear = async (id: string) => {
-    setBusy(id)
-    try {
-      await fetch(`/api/secrets?provider=${encodeURIComponent(id)}`, { method: 'DELETE' })
-      await load()
-    } finally {
-      setBusy(null)
-    }
+  const save = async (id: string) => {
+    const apiKey = (drafts[id] ?? '').trim()
+    if (!apiKey) return
+    await mutate(id, () => fetch('/api/secrets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: id, apiKey }),
+    }))
+    setDrafts(d => ({ ...d, [id]: '' }))
   }
+
+  const clear = (id: string) =>
+    mutate(id, () => fetch(`/api/secrets?provider=${encodeURIComponent(id)}`, { method: 'DELETE' }))
 
   if (loading) {
     return (
@@ -97,6 +105,11 @@ export function ProviderKeysTab() {
 
   return (
     <div className="space-y-3 max-w-2xl">
+      {error && (
+        <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {error}
+        </p>
+      )}
       <p className="text-sm text-muted-foreground">
         Runtime-managed providers are configured in OpenClaw and shown here read-only. Bakin keys are
         used only when the runtime can&apos;t serve a route; an environment variable always overrides a stored key.

@@ -47,6 +47,28 @@ describe('ProviderKeysTab', () => {
     expect(screen.getAllByPlaceholderText(/API key|Replace stored key/i)).toHaveLength(2)
   })
 
+  it('surfaces a failed save instead of silently succeeding', async () => {
+    spyOn(globalThis, 'fetch').mockImplementation((async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input)
+      if (url.includes('/api/plugins/images/providers')) {
+        return json({ ok: true, readiness: [{ id: 'openai', label: 'OpenAI', servedBy: 'unconfigured', source: 'native', configuredEnvVars: [] }] })
+      }
+      if (url.includes('/api/secrets')) {
+        if (init?.method === 'POST') return { ok: false, status: 400, json: async () => ({ ok: false, error: 'invalid provider id' }) } as unknown as Response
+        return json({ stored: [] })
+      }
+      return json({})
+    }) as typeof fetch)
+
+    render(<ProviderKeysTab />)
+    await waitFor(() => screen.getByText('OpenAI'))
+    fireEvent.change(screen.getByPlaceholderText(/Enter API key/i), { target: { value: 'x' } })
+    fireEvent.click(screen.getByText('Save'))
+
+    await waitFor(() => screen.getByRole('alert'))
+    expect(screen.getByRole('alert').textContent).toContain('invalid provider id')
+  })
+
   it('stores a key via POST /api/secrets', async () => {
     const fetchSpy = mockFetch([])
     render(<ProviderKeysTab />)
