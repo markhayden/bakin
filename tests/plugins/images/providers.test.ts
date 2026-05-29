@@ -53,6 +53,7 @@ describe('image providers', () => {
     expect(ready.find(provider => provider.id === 'google')).toMatchObject({
       configured: true,
       routable: true,
+      servedBy: 'shim',
     })
   })
 

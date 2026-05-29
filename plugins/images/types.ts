@@ -37,6 +37,13 @@ export interface ImageProviderReadiness {
   defaultModel?: string
   selected?: boolean
   source?: 'native' | 'runtime' | 'native+runtime'
+  /**
+   * Predicted serving path for this provider (operator diagnostic): 'runtime'
+   * when the runtime serves it natively, 'shim' when only a Bakin-owned key is
+   * present so the adapter gap-fills, 'unconfigured' when neither is available.
+   * Provider-level — the adapter makes the authoritative per-model decision.
+   */
+  servedBy?: 'runtime' | 'shim' | 'unconfigured'
 }
 
 export type ImageSurfaceCategory =

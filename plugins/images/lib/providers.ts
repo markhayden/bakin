@@ -126,7 +126,8 @@ export async function providerReadiness(
     // A native provider is reachable if the runtime serves it OR a Bakin-owned
     // shim key (env) is present. We no longer read provider keys out of the
     // runtime's raw config — that crossed the adapter boundary.
-    const configured = (env?.configuredEnvVars.length ?? 0) > 0 || runtime?.configured === true
+    const hasEnvKey = (env?.configuredEnvVars.length ?? 0) > 0
+    const configured = hasEnvKey || runtime?.configured === true
     const routable = configured && (
       provider.models.some(model => model.status === 'routable')
       || runtimeProviderRoutable(runtime)
@@ -142,6 +143,7 @@ export async function providerReadiness(
       defaultModel: runtime?.defaultModel,
       selected: runtime?.selected,
       source: runtime ? 'native+runtime' as const : 'native' as const,
+      servedBy: runtime?.configured === true ? 'runtime' : hasEnvKey ? 'shim' : 'unconfigured',
     }
   })
 
@@ -159,6 +161,7 @@ export async function providerReadiness(
       defaultModel: provider.defaultModel,
       selected: provider.selected,
       source: 'runtime',
+      servedBy: provider.configured === true ? 'runtime' : 'unconfigured',
     }))
 
   return [...native, ...runtimeOnly]

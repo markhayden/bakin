@@ -41,6 +41,7 @@ describe('image route recommendation', () => {
       width: 1600,
       height: 900,
       quality: 'standard',
+      servedBy: 'unconfigured',
       fallbackRoutes: [],
     })
     expect(result.reason).toContain('credentials are not configured')
@@ -63,6 +64,8 @@ describe('image route recommendation', () => {
       model: 'gpt-image-2',
       surface: 'google-display-square',
       quality: 'premium',
+      // env key present, no runtime → the direct shim would serve it
+      servedBy: 'shim',
     })
   })
 

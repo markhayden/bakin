@@ -20,6 +20,8 @@ export interface ImageRouteRecommendation {
   model: string
   quality: 'draft' | 'standard' | 'premium'
   reason: string
+  /** Predicted serving path for the chosen provider (operator diagnostic). */
+  servedBy: 'runtime' | 'shim' | 'unconfigured'
   fallbackRoutes: Array<{ provider: ImageProviderId; model: string }>
 }
 
@@ -154,9 +156,13 @@ export async function recommendImageRoute(ctx: PluginContext, request: ImageRout
 
   const configured = readyProviderIds.has(chosen.provider)
   const label = provider?.label ?? readyProvider?.label ?? chosen.provider
-  const reason = configured
+  const servedBy = readyProvider?.servedBy ?? (configured ? 'runtime' : 'unconfigured')
+  const baseReason = configured
     ? `${label} ${model.label} is configured and fits ${profile.label}.`
     : `${label} ${model.label} is the preferred route for ${profile.label}, but credentials are not configured yet.`
+  const reason = servedBy === 'shim'
+    ? `${baseReason} This route will be served by the direct shim using a Bakin-side key, not the runtime.`
+    : baseReason
 
   return {
     ok: true,
@@ -167,6 +173,7 @@ export async function recommendImageRoute(ctx: PluginContext, request: ImageRout
     model: chosen.model,
     quality: request.quality ?? effective.quality,
     reason,
+    servedBy,
     fallbackRoutes,
   }
 }
