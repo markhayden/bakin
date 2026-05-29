@@ -3,8 +3,11 @@
  * Reads/writes to $OPENCLAW_HOME for cron operations.
  */
 import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { randomUUID } from 'crypto'
+
+/** 1x1 transparent PNG — enough for the mock to return a real image file. */
+const ONE_PX_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
 
 const OPENCLAW_HOME = process.env.OPENCLAW_HOME || join(require('os').homedir(), '.openclaw')
 
@@ -209,9 +212,36 @@ async function main(): Promise<void> {
     console.log('[mock] Gateway restart acknowledged')
   } else if (command === 'models' && subcommand === 'list') {
     process.stdout.write(JSON.stringify([]))
+  } else if (command === 'infer' && subcommand === 'image') {
+    const action = args[2]
+    if (action === 'providers') {
+      process.stdout.write(JSON.stringify([
+        {
+          id: 'openai', label: 'OpenAI', available: true, configured: true, selected: true,
+          defaultModel: 'gpt-image-2', models: ['gpt-image-2', 'gpt-image-1.5'],
+          capabilities: { generate: { maxCount: 4, supportsSize: true }, output: { formats: ['png', 'jpeg', 'webp'] } },
+        },
+        {
+          id: 'google', label: 'Google Gemini', available: true, configured: true,
+          defaultModel: 'gemini-3.1-flash-image-preview', models: ['gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'],
+          capabilities: { generate: { maxCount: 4 } },
+        },
+      ]))
+    } else if (action === 'generate' || action === 'edit') {
+      const output = getFlag('output') || join(OPENCLAW_HOME, `mock-image-${randomUUID()}.png`)
+      mkdirSync(dirname(output), { recursive: true })
+      writeFileSync(output, Buffer.from(ONE_PX_PNG_BASE64, 'base64'))
+      const model = getFlag('model')
+      process.stdout.write(JSON.stringify({
+        images: [{ filePath: output, mimeType: 'image/png', width: 1024, height: 1024, provider: model?.split('/')[0] ?? 'openai', model: model ?? 'gpt-image-2' }],
+      }))
+    } else {
+      console.error(`Unknown infer image action: ${action || ''}`)
+      process.exit(1)
+    }
   } else {
     console.error(`Unknown command: ${command} ${subcommand || ''}`)
-    console.error('Supported: cron (list|add|edit|rm|run), message send, gateway restart, models list')
+    console.error('Supported: cron (list|add|edit|rm|run), message send, gateway restart, models list, infer image (providers|generate|edit)')
     process.exit(1)
   }
 }
