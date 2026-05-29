@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -56,8 +56,12 @@ echo "{}"
     chmodSync(openclaw, 0o755)
   })
 
+  const originalOpenAI = process.env.OPENAI_API_KEY
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true })
+    if (originalOpenAI === undefined) delete process.env.OPENAI_API_KEY
+    else process.env.OPENAI_API_KEY = originalOpenAI
+    mock.restore()
   })
 
   it('lists OpenClaw image providers through infer image providers', async () => {
@@ -107,5 +111,31 @@ echo "{}"
     expect(existsSync(outputPath)).toBe(true)
     expect(readFileSync(callsFile, 'utf-8')).toContain('openai/gpt-image-2')
     expect(readFileSync(callsFile, 'utf-8')).toContain('1024x1024')
+  })
+
+  it('falls back to the direct shim when OpenClaw cannot serve the model natively', async () => {
+    process.env.OPENAI_API_KEY = 'shim-key'
+    const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [{ b64_json: Buffer.from('shim-img').toString('base64') }] }),
+    } as unknown as Response)
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: openclaw } })
+
+    // The mock binary advertises only gpt-image-2; gpt-image-1.5 is a gap.
+    const result = await runtime.images!.generate({
+      prompt: 'Premium hero',
+      provider: 'openai',
+      model: 'gpt-image-1.5',
+      width: 1024,
+      height: 1024,
+    })
+
+    expect(fetchSpy).toHaveBeenCalledWith('https://api.openai.com/v1/images/generations', expect.anything())
+    expect(result.metadata).toMatchObject({ servedBy: 'shim', credentialSource: 'bakin-env' })
+    expect(result.images[0]?.provider).toBe('openai')
+    // Native generate must NOT have run for the unsupported model.
+    expect(readFileSync(callsFile, 'utf-8')).not.toContain('generate')
   })
 })

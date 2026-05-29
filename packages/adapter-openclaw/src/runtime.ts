@@ -27,6 +27,7 @@ import type {
   WorkspaceFile,
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
+import { generateDirectImage, isDirectImageProvider, resolveDirectImageKey } from '@bakin/core/media/direct-image-provider'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
   findAgentById,
@@ -88,6 +89,7 @@ const OPENCLAW_CRON_TIMEOUT_MS = 30000
 const OPENCLAW_CRON_PROCESS_TIMEOUT_MS = OPENCLAW_CRON_TIMEOUT_MS + 5000
 const OPENCLAW_IMAGE_PROCESS_TIMEOUT_MS = 600000
 const OPENCLAW_IMAGE_OUTPUT_MAX_BUFFER = 16 * 1024 * 1024
+const OPENCLAW_IMAGE_PROVIDERS_TTL_MS = 5000
 const OPENCLAW_PLUGIN_APPROVAL_REF_PREFIX = 'openclaw-plugin-approval:'
 const OPENCLAW_PLUGIN_ID = 'bakin'
 const OPENCLAW_WORKFLOW_GATE_TOOL = 'workflow.gate'
@@ -866,20 +868,86 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     },
   }
 
+  private imageProvidersCache: { at: number; value: RuntimeImageProvider[] } | null = null
+
   images = {
     providers: async (): Promise<RuntimeImageProvider[]> => {
       const stdout = await this.exec(['infer', 'image', 'providers', '--json'], {
         timeout: OPENCLAW_IMAGE_PROCESS_TIMEOUT_MS,
         maxBuffer: OPENCLAW_IMAGE_OUTPUT_MAX_BUFFER,
       })
-      return parseOpenClawImageProviders(stdout)
+      const value = parseOpenClawImageProviders(stdout)
+      this.imageProvidersCache = { at: Date.now(), value }
+      return value
     },
     generate: async (input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult> => {
-      return this.runImageInference('generate', input)
+      // Gap-fill: when OpenClaw cannot serve this provider/model natively but
+      // it's a direct provider with a configured Bakin key, generate through
+      // the shared shim. Otherwise let the native path run (and error if it
+      // genuinely can't serve it).
+      if (!(await this.canServeImageNatively(input))) {
+        const shimmed = await this.generateImageViaShim(input)
+        if (shimmed) return shimmed
+      }
+      return tagImageServedBy(await this.runImageInference('generate', input), 'runtime')
     },
     edit: async (input: RuntimeImageEditInput): Promise<RuntimeImageGenerationResult> => {
-      return this.runImageInference('edit', input)
+      return tagImageServedBy(await this.runImageInference('edit', input), 'runtime')
     },
+  }
+
+  private async cachedImageProviders(): Promise<RuntimeImageProvider[]> {
+    const cached = this.imageProvidersCache
+    if (cached && Date.now() - cached.at < OPENCLAW_IMAGE_PROVIDERS_TTL_MS) return cached.value
+    return this.images.providers()
+  }
+
+  /** Can OpenClaw serve this provider/model itself? Undeterminable → assume yes (let native try). */
+  private async canServeImageNatively(input: RuntimeImageGenerateInput): Promise<boolean> {
+    const provider = input.provider ?? providerFromImageModel(openClawImageModelArg(input))
+    if (!provider) return true
+    let providers: RuntimeImageProvider[]
+    try {
+      providers = await this.cachedImageProviders()
+    } catch {
+      return true // discovery failed — don't pre-empt the native attempt
+    }
+    const match = providers.find(candidate => candidate.id === provider)
+    if (!match || match.configured !== true) return false
+    if (!input.model) return true
+    const models = match.models?.length ? match.models : match.defaultModel ? [match.defaultModel] : []
+    return models.includes(input.model)
+  }
+
+  private async generateImageViaShim(input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult | null> {
+    const provider = input.provider
+    if (!provider || !isDirectImageProvider(provider)) return null
+    const apiKey = resolveDirectImageKey(provider)
+    if (!apiKey) return null
+    const model = input.model ?? ''
+    const result = await generateDirectImage({
+      provider,
+      model,
+      prompt: input.prompt,
+      width: input.width ?? 1024,
+      height: input.height ?? 1024,
+      quality: imageQualityFromMetadata(input.metadata),
+      apiKey,
+    })
+    return {
+      images: [{
+        filePath: result.filePath,
+        mimeType: result.mimeType,
+        width: result.width,
+        height: result.height,
+        provider,
+        ...(model ? { model } : {}),
+      }],
+      provider,
+      ...(model ? { model } : {}),
+      ...(result.providerText ? { providerText: result.providerText } : {}),
+      metadata: { source: 'bakin.direct-image-provider', servedBy: 'shim', credentialSource: 'bakin-env' },
+    }
   }
 
   tasks = {
@@ -2416,6 +2484,26 @@ function parseOpenClawImageProviders(raw: string): RuntimeImageProvider[] {
       return provider
     })
     .filter((provider): provider is RuntimeImageProvider => provider !== null)
+}
+
+function imageQualityFromMetadata(metadata: RuntimeMetadata | undefined): 'draft' | 'standard' | 'premium' {
+  const quality = metadata && typeof metadata === 'object' ? (metadata as Record<string, unknown>).quality : undefined
+  return quality === 'draft' || quality === 'premium' ? quality : 'standard'
+}
+
+/** Record which path served the request, for operator-facing diagnostics. */
+function tagImageServedBy(
+  result: RuntimeImageGenerationResult,
+  servedBy: 'runtime' | 'shim',
+): RuntimeImageGenerationResult {
+  return {
+    ...result,
+    metadata: {
+      ...(result.metadata ?? {}),
+      servedBy,
+      credentialSource: servedBy === 'shim' ? 'bakin-env' : 'runtime',
+    },
+  }
 }
 
 function parseOpenClawImageResult(
