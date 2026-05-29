@@ -54,6 +54,7 @@ import * as activityRoute from './packages/host/src/api/activity'
 import * as agentsAvatarRoute from './packages/host/src/api/agents/avatar'
 import * as agentsHealthRoute from './packages/host/src/api/agents/health'
 import * as agentsSettingsRoute from './packages/host/src/api/agents/settings'
+import * as secretsRoute from './packages/host/src/api/secrets'
 import * as agentsActionRoute from './packages/host/src/api/agents/[action]'
 import * as memoryLogRoute from './packages/host/src/api/memory/log'
 import * as pluginSettingsIdRoute from './packages/host/src/api/plugin-settings/[pluginId]'
@@ -357,6 +358,22 @@ const eventBus = new BakinEventBus(broadcast)
           const { updateSettings } = require('./src/core/settings')
           return updateSettings(body)
         })
+        return
+      }
+    }
+
+    // Provider secret store (Bakin-owned shim keys; write-only/masked)
+    if (url.pathname === '/api/secrets') {
+      if (req.method === 'GET') {
+        dispatchWebHandler(req, res, secretsRoute.get)
+        return
+      }
+      if (req.method === 'POST') {
+        dispatchWebHandler(req, res, secretsRoute.post)
+        return
+      }
+      if (req.method === 'DELETE') {
+        dispatchWebHandler(req, res, secretsRoute.del)
         return
       }
     }
