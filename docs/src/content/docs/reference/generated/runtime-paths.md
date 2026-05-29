@@ -100,5 +100,5 @@ description: Reference for Bakin runtime files under the resolved Bakin home dir
 </table>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 16, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 29, 2026 · Bakin 0.0.0-dev</span>
 </aside>

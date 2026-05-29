@@ -210,7 +210,7 @@ Purpose: Save an agent-created file to the assets directory with standardized na
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
-| `filePath` | string | yes | Absolute path to the source file to save |
+| `filePath` | string | yes | Absolute path to the source file to save, or an existing managed assets/store/... path to return idempotently |
 | `taskId` | string | yes | Task ID to record in sidecar metadata |
 | `type` | choice | yes |  |
 | `description` | string | no | One-sentence summary visible in the asset grid and search. Be specific — "Q2 blog hero image" not "an image". |
