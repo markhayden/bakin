@@ -27,7 +27,7 @@ import type {
   WorkspaceFile,
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
-import { generateDirectImage, isDirectImageProvider, resolveDirectImageKey } from '@bakin/core/media/direct-image-provider'
+import { generateDirectImage, isDirectImageProvider, resolveDirectImageKey, withImageRetry } from '@bakin/core/media/direct-image-provider'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
   findAgentById,
@@ -1200,10 +1200,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     }
     if (typeof input.timeoutMs === 'number') args.push('--timeout-ms', String(input.timeoutMs))
 
-    const stdout = await this.exec(args, {
+    const stdout = await withImageRetry(() => this.exec(args, {
       timeout: input.timeoutMs ?? OPENCLAW_IMAGE_PROCESS_TIMEOUT_MS,
       maxBuffer: OPENCLAW_IMAGE_OUTPUT_MAX_BUFFER,
-    })
+    }))
     return parseOpenClawImageResult(stdout, { input, outputPath })
   }
 

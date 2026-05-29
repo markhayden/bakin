@@ -79,7 +79,8 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
-function isTransientError(err: unknown): boolean {
+/** Whether an image-provider error looks transient (rate limit, 5xx, network). */
+export function isTransientImageError(err: unknown): boolean {
   const message = errorMessage(err)
   return /\b(408|429|5\d\d)\b/.test(message)
     || /timeout|timed out|network|fetch failed|econn|socket|temporarily|rate limit/i.test(message)
@@ -89,14 +90,15 @@ function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+/** Run an image-provider call, retrying once on a transient error. Shared by the shim and runtime adapters. */
+export async function withImageRetry<T>(fn: () => Promise<T>): Promise<T> {
   let lastError: unknown
   for (let attempt = 1; attempt <= GENERATION_ATTEMPTS; attempt++) {
     try {
       return await fn()
     } catch (err) {
       lastError = err
-      if (attempt >= GENERATION_ATTEMPTS || !isTransientError(err)) throw err
+      if (attempt >= GENERATION_ATTEMPTS || !isTransientImageError(err)) throw err
       await delay(RETRY_DELAY_MS)
     }
   }
@@ -211,5 +213,5 @@ async function generateGemini(request: DirectImageRequest): Promise<DirectImageR
 
 /** Generate an image directly against the provider's HTTP API, retrying transient errors once. */
 export async function generateDirectImage(request: DirectImageRequest): Promise<DirectImageResult> {
-  return withRetry(() => (request.provider === 'openai' ? generateOpenAI(request) : generateGemini(request)))
+  return withImageRetry(() => (request.provider === 'openai' ? generateOpenAI(request) : generateGemini(request)))
 }
