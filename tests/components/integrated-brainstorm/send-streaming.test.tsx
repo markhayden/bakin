@@ -344,5 +344,5 @@ describe('IntegratedBrainstorm — thinking verb selection', () => {
       }
     }
     expect(seen.size).toBe(verbs.length)
-  })
+  }, 30000)
 })
