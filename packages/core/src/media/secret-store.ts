@@ -90,10 +90,21 @@ export function listStoredProviders(): string[] {
 }
 
 /**
- * Resolve a direct-image provider key with the full Bakin-owned precedence:
- * env override → secret store. Used by runtime adapters' shim path and by
- * readiness to decide whether the shim can serve a provider.
+ * Resolve a direct-image provider key with the full Bakin-owned precedence
+ * (env override → secret store) AND report which source supplied it, so callers
+ * can label the credential source accurately for diagnostics.
  */
+export function resolveProviderApiKeySource(
+  provider: DirectImageProviderId,
+): { apiKey: string; source: 'env' | 'store' } | null {
+  const env = resolveDirectImageKey(provider)
+  if (env) return { apiKey: env, source: 'env' }
+  const stored = getStoredProviderKey(provider)
+  if (stored) return { apiKey: stored, source: 'store' }
+  return null
+}
+
+/** Resolve a key with env → store precedence (no source label). */
 export function resolveProviderApiKey(provider: DirectImageProviderId): string | null {
-  return resolveDirectImageKey(provider) ?? getStoredProviderKey(provider)
+  return resolveProviderApiKeySource(provider)?.apiKey ?? null
 }

@@ -36,9 +36,6 @@ export interface DirectImageResult {
   providerText?: string
 }
 
-const GENERATION_ATTEMPTS = 2
-const RETRY_DELAY_MS = 2000
-
 export function isDirectImageProvider(id: string): id is DirectImageProviderId {
   return id === 'openai' || id === 'google'
 }
@@ -73,36 +70,6 @@ async function fetchImageUrl(prefix: string, url: string): Promise<{ filePath: s
   const mimeType = response.headers.get('content-type') || 'image/jpeg'
   const filePath = writeTempImage(prefix, mimeType, Buffer.from(await response.arrayBuffer()))
   return { filePath, mimeType }
-}
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
-}
-
-/** Whether an image-provider error looks transient (rate limit, 5xx, network). */
-export function isTransientImageError(err: unknown): boolean {
-  const message = errorMessage(err)
-  return /\b(408|429|5\d\d)\b/.test(message)
-    || /timeout|timed out|network|fetch failed|econn|socket|temporarily|rate limit/i.test(message)
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-/** Run an image-provider call, retrying once on a transient error. Shared by the shim and runtime adapters. */
-export async function withImageRetry<T>(fn: () => Promise<T>): Promise<T> {
-  let lastError: unknown
-  for (let attempt = 1; attempt <= GENERATION_ATTEMPTS; attempt++) {
-    try {
-      return await fn()
-    } catch (err) {
-      lastError = err
-      if (attempt >= GENERATION_ATTEMPTS || !isTransientImageError(err)) throw err
-      await delay(RETRY_DELAY_MS)
-    }
-  }
-  throw lastError
 }
 
 /**
@@ -211,7 +178,14 @@ async function generateGemini(request: DirectImageRequest): Promise<DirectImageR
   }
 }
 
-/** Generate an image directly against the provider's HTTP API, retrying transient errors once. */
+/**
+ * Generate an image directly against the provider's HTTP API.
+ *
+ * Deliberately does NOT retry: image generation is non-idempotent and billed
+ * per call, so a transient-looking error after the provider already produced
+ * (and charged for) an image would double-bill on retry. A failed generation
+ * surfaces to the caller to re-trigger explicitly.
+ */
 export async function generateDirectImage(request: DirectImageRequest): Promise<DirectImageResult> {
-  return withImageRetry(() => (request.provider === 'openai' ? generateOpenAI(request) : generateGemini(request)))
+  return request.provider === 'openai' ? generateOpenAI(request) : generateGemini(request)
 }

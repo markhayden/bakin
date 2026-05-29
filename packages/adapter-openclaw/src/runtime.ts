@@ -27,7 +27,7 @@ import type {
   WorkspaceFile,
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
-import { generateDirectImage, isDirectImageProvider, resolveProviderApiKey, withImageRetry } from '@bakin/core/media'
+import { generateDirectImage, isDirectImageProvider, resolveProviderApiKeySource } from '@bakin/core/media'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
   findAgentById,
@@ -881,14 +881,22 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       return value
     },
     generate: async (input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult> => {
-      // Gap-fill: when OpenClaw cannot serve this provider/model natively but
-      // it's a direct provider with a configured Bakin key, generate through
-      // the shared shim. Otherwise let the native path run (and error if it
-      // genuinely can't serve it).
-      if (!(await this.canServeImageNatively(input))) {
+      if (await this.canServeImageNatively(input)) {
+        return tagImageServedBy(await this.runImageInference('generate', input), 'runtime')
+      }
+      // The runtime can't serve it. For a direct provider, gap-fill via the
+      // shared shim; if no Bakin key is configured, fail with a clear message
+      // rather than spawning a native call that's already known to fail.
+      const provider = input.provider
+      if (provider && isDirectImageProvider(provider)) {
         const shimmed = await this.generateImageViaShim(input)
         if (shimmed) return shimmed
+        const envVar = provider === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY'
+        throw new Error(
+          `No API key configured for image provider "${provider}". Set ${envVar} or store a key (Settings → Provider Keys).`,
+        )
       }
+      // A provider only the runtime can own (e.g. openrouter) — let it try.
       return tagImageServedBy(await this.runImageInference('generate', input), 'runtime')
     },
     edit: async (input: RuntimeImageEditInput): Promise<RuntimeImageGenerationResult> => {
@@ -922,8 +930,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   private async generateImageViaShim(input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult | null> {
     const provider = input.provider
     if (!provider || !isDirectImageProvider(provider)) return null
-    const apiKey = resolveProviderApiKey(provider)
-    if (!apiKey) return null
+    const resolved = resolveProviderApiKeySource(provider)
+    if (!resolved) return null
     const model = input.model ?? ''
     const result = await generateDirectImage({
       provider,
@@ -932,7 +940,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       width: input.width ?? 1024,
       height: input.height ?? 1024,
       quality: imageQualityFromMetadata(input.metadata),
-      apiKey,
+      apiKey: resolved.apiKey,
     })
     return {
       images: [{
@@ -946,7 +954,11 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       provider,
       ...(model ? { model } : {}),
       ...(result.providerText ? { providerText: result.providerText } : {}),
-      metadata: { source: 'bakin.direct-image-provider', servedBy: 'shim', credentialSource: 'bakin-env' },
+      metadata: {
+        source: 'bakin.direct-image-provider',
+        servedBy: 'shim',
+        credentialSource: resolved.source === 'env' ? 'bakin-env' : 'bakin-store',
+      },
     }
   }
 
@@ -1203,10 +1215,13 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     }
     if (typeof input.timeoutMs === 'number') args.push('--timeout-ms', String(input.timeoutMs))
 
-    const stdout = await withImageRetry(() => this.exec(args, {
+    // No retry: `infer image generate` is non-idempotent and billed; a
+    // transient-looking failure after the upstream provider already generated
+    // would double-bill on retry. Surface the failure to the caller instead.
+    const stdout = await this.exec(args, {
       timeout: input.timeoutMs ?? OPENCLAW_IMAGE_PROCESS_TIMEOUT_MS,
       maxBuffer: OPENCLAW_IMAGE_OUTPUT_MAX_BUFFER,
-    }))
+    })
     return parseOpenClawImageResult(stdout, { input, outputPath })
   }
 

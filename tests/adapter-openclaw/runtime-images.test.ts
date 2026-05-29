@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:te
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { resetContentDir } from '../../src/core/content-dir'
+import { setStoredProviderKey } from '../../packages/core/src/media/secret-store'
 
 describe('OpenClaw runtime images adapter', () => {
   let testDir: string
@@ -10,6 +12,10 @@ describe('OpenClaw runtime images adapter', () => {
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), 'bakin-openclaw-images-test-'))
+    // The shim's credential lookup reads the secret store (getContentDir) when
+    // no env key is set — point it at the temp dir so it stays isolated.
+    process.env.BAKIN_HOME = testDir
+    resetContentDir()
     const binDir = join(testDir, 'bin')
     mkdirSync(binDir, { recursive: true })
     openclaw = join(binDir, 'openclaw')
@@ -57,10 +63,14 @@ echo "{}"
   })
 
   const originalOpenAI = process.env.OPENAI_API_KEY
+  const originalHome = process.env.BAKIN_HOME
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true })
     if (originalOpenAI === undefined) delete process.env.OPENAI_API_KEY
     else process.env.OPENAI_API_KEY = originalOpenAI
+    if (originalHome === undefined) delete process.env.BAKIN_HOME
+    else process.env.BAKIN_HOME = originalHome
+    resetContentDir()
     mock.restore()
   })
 
@@ -136,5 +146,37 @@ echo "{}"
     expect(result.images[0]?.provider).toBe('openai')
     // Native generate must NOT have run for the unsupported model.
     expect(readFileSync(callsFile, 'utf-8')).not.toContain('generate')
+  })
+
+  it('labels the credential source as bakin-store when the key comes from the store', async () => {
+    delete process.env.OPENAI_API_KEY
+    setStoredProviderKey('openai', 'stored-key')
+    spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [{ b64_json: Buffer.from('shim-img').toString('base64') }] }),
+    } as unknown as Response)
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: openclaw } })
+
+    const result = await runtime.images!.generate({
+      prompt: 'Premium hero', provider: 'openai', model: 'gpt-image-1.5', width: 1024, height: 1024,
+    })
+    expect(result.metadata).toMatchObject({ servedBy: 'shim', credentialSource: 'bakin-store' })
+  })
+
+  it('throws a clear error when a direct provider has no key and the runtime cannot serve it', async () => {
+    delete process.env.OPENAI_API_KEY
+    const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => ({}) } as unknown as Response)
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: openclaw } })
+
+    await expect(runtime.images!.generate({
+      prompt: 'x', provider: 'openai', model: 'gpt-image-1.5', width: 1024, height: 1024,
+    })).rejects.toThrow(/No API key configured for image provider "openai"/)
+    // No native generate spawn, no provider HTTP call.
+    expect(readFileSync(callsFile, 'utf-8')).not.toContain('generate')
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 })

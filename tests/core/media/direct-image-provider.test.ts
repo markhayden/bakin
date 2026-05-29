@@ -67,11 +67,13 @@ describe('direct-image-provider', () => {
       expect(result.mimeType).toBe('image/png')
     })
 
-    it('does not retry a non-transient (4xx) provider error', async () => {
+    it('never retries a failed generation (no double-bill), even on a 5xx', async () => {
+      // Generation is non-idempotent and billed — a transient-looking failure
+      // must NOT trigger a second paid call. fetch is invoked exactly once.
       const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue({
         ok: false,
-        status: 400,
-        text: async () => 'bad request',
+        status: 503,
+        text: async () => 'service unavailable',
       } as unknown as Response)
 
       await expect(generateDirectImage({
@@ -82,7 +84,7 @@ describe('direct-image-provider', () => {
         height: 1024,
         quality: 'standard',
         apiKey: 'key',
-      })).rejects.toThrow(/400/)
+      })).rejects.toThrow(/503/)
       expect(fetchSpy).toHaveBeenCalledTimes(1)
     })
   })
