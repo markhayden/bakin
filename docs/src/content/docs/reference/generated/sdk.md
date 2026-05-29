@@ -128,6 +128,12 @@ import { useSearch, useAssets, useDebug } from '@makinbakin/sdk/hooks'
 | `useRuntimeStatus` | Subscribe to runtime connection status (online/offline, last heartbeat). |
 | `useSSE` | Subscribe to a Server-Sent Events endpoint with auto-reconnect. |
 
+### Other
+
+| Hook | Description |
+| --- | --- |
+| `useNavBadge` | Sync a nav item's badge to a derived value; the recommended provider glue. |
+
 ## `@makinbakin/sdk/components`
 
 Source: `packages/sdk/src/components/index.ts`.
