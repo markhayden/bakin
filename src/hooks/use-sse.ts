@@ -23,6 +23,7 @@ export function useSSE() {
   const appendActivityEvent = useContentStore((s) => s.appendActivityEvent)
   const setSseConnected = useContentStore((s) => s.setSseConnected)
   const bumpTaskboard = useContentStore((s) => s.bumpTaskboard)
+  const bumpDoctor = useContentStore((s) => s.bumpDoctor)
   const setReindexProgress = useContentStore((s) => s.setReindexProgress)
   const esRef = useRef<EventSource | null>(null)
   const retryRef = useRef(0)
@@ -86,6 +87,9 @@ export function useSSE() {
             const entry = data.entry
             const entryData = entry.data || {}
             appendAuditEntry(entry)
+            // A doctor run just refreshed the health-check cache — bump a
+            // reactive signal the Health nav badge refetches on.
+            if (entry.event === 'doctor.run') bumpDoctor()
             appendActivityEvent({
               id: `${entry.ts}-${entry.event}-${entry.agent}`,
               ts: entry.ts,
@@ -233,5 +237,5 @@ export function useSSE() {
       esRef.current?.close()
       esRef.current = null
     }
-  }, [updateFile, setConnected, setHeartbeats, initialize, appendAuditEntry, appendActivityEvent, setSseConnected, bumpTaskboard, setReindexProgress])
+  }, [updateFile, setConnected, setHeartbeats, initialize, appendAuditEntry, appendActivityEvent, setSseConnected, bumpTaskboard, bumpDoctor, setReindexProgress])
 }
