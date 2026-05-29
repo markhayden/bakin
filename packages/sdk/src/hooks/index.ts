@@ -15,6 +15,8 @@ export { useAssets } from '@/hooks/use-assets'
 export { useTrash } from '@/hooks/use-assets'
 /** Access the global Zustand store for SSE-driven content state. */
 export { useContentStore } from '@/hooks/use-content-store'
+/** Sync a nav item's badge to a derived value; the recommended provider glue. */
+export { useNavBadge } from '@/hooks/use-nav-badge'
 /** Read/toggle the global debug (X-Ray) flag. */
 export { useDebug } from '@/hooks/use-debug'
 /** Guard a form against unmounting while submission is in flight. */

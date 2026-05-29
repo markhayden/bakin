@@ -868,14 +868,21 @@ registerPlugin({
 
 // plugins/messaging/components/plans-badge-provider.tsx
 function PlansBadgeProvider() {
-  const { summary } = usePlansSummary()
-  useEffect(() => {
-    setNavBadge('messaging', 'messaging-plans',
-      summary?.needsReview ? { count: summary.needsReview } : null)
-  }, [summary])
+  const { summary } = usePlansSummary()      // your own fetch + refresh
+  const badge = summary?.needsReview ? { count: summary.needsReview } : null
+  useNavBadge('messaging', 'messaging-plans', badge)
   return null
 }
 ```
+
+Use the `useNavBadge(pluginId, navItemId, badge)` hook from
+`@makinbakin/sdk/hooks` for the glue (recommended over calling
+`setNavBadge` in a raw `useEffect`): it syncs the badge keyed on its
+value (`count` + `tone`), so it only writes when the value actually
+changes — not on every render. Keep your own summary hook (fetch +
+refresh signal) per plugin; the hook is deliberately refresh-agnostic.
+`setNavBadge` itself is **idempotent** — a set with an identical value is
+a no-op (no snapshot rebuild, no subscriber notification).
 
 ### Sidebar rendering
 

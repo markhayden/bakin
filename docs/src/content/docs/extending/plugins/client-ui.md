@@ -63,17 +63,18 @@ inbox count.
 The contract is identical for core and installed plugins.
 
 ```tsx
-import { registerPlugin, setNavBadge } from '@makinbakin/sdk'
-import { useEffect } from 'react'
+import { registerPlugin } from '@makinbakin/sdk'
+import { useNavBadge } from '@makinbakin/sdk/hooks'
 
 function PlansBadgeProvider() {
   // Use whatever data hook the plugin already has — REST, SSE, local cache.
   const { summary } = usePlansSummary()
-  useEffect(() => {
-    const needsReview = summary?.needsReview ?? 0
-    setNavBadge('messaging', 'messaging-plans',
-      needsReview > 0 ? { count: needsReview, tone: 'attention' } : null)
-  }, [summary])
+  const needsReview = summary?.needsReview ?? 0
+  // useNavBadge syncs the badge keyed on its value, so it only writes when
+  // count/tone actually change. (setNavBadge is also idempotent if you call
+  // it directly.)
+  useNavBadge('messaging', 'messaging-plans',
+    needsReview > 0 ? { count: needsReview, tone: 'attention' } : null)
   return null
 }
 

@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect } from 'react'
-import { setNavBadge } from '@makinbakin/sdk'
+import type { NavBadge } from '@makinbakin/sdk'
+import { useNavBadge } from '@makinbakin/sdk/hooks'
 import { useTaskSummary } from '../hooks/use-task-summary'
 
 /**
@@ -17,15 +17,15 @@ import { useTaskSummary } from '../hooks/use-task-summary'
 export function TasksBadgeProvider() {
   const { summary } = useTaskSummary()
 
-  useEffect(() => {
-    if (!summary) return
-    const badge = summary.blocked > 0
-      ? { count: summary.blocked, tone: 'error' as const }
+  const badge: NavBadge | null = !summary
+    ? null
+    : summary.blocked > 0
+      ? { count: summary.blocked, tone: 'error' }
       : summary.review > 0
-        ? { count: summary.review, tone: 'attention' as const }
+        ? { count: summary.review, tone: 'attention' }
         : null
-    setNavBadge('tasks', 'tasks', badge)
-  }, [summary])
+
+  useNavBadge('tasks', 'tasks', badge)
 
   return null
 }

@@ -259,11 +259,20 @@ export function setNavBadge(pluginId: string, navItemId: string, badge: NavBadge
     bumpBadges()
     return
   }
+  // Idempotent: a set with an identical value is a no-op, so a redundant
+  // call (e.g. an SSE tick that didn't change the count) doesn't rebuild the
+  // snapshot or notify subscribers. (`useNavBadge` keys on the same
+  // {count, tone} identity — keep the two in lockstep if NavBadge grows.)
+  const prev = plugin?.get(navItemId)
+  if (prev && prev.count === badge.count && prev.tone === badge.tone) return
   if (!plugin) {
     plugin = new Map()
     registry.badgesByPlugin.set(pluginId, plugin)
   }
-  plugin.set(navItemId, badge)
+  // Store a copy so the registry owns its value — a caller can't mutate a
+  // previously-passed object and have the guard self-compare (dropping the
+  // update), and registry state can't be mutated out from under the snapshot.
+  plugin.set(navItemId, { count: badge.count, tone: badge.tone })
   bumpBadges()
 }
 
