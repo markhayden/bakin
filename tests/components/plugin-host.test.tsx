@@ -305,3 +305,25 @@ describe('Slot — re-renders on registry change', () => {
     })
   })
 })
+
+describe('PluginHost — nav-badge-providers slot', () => {
+  it('renders components contributed via the well-known nav-badge-providers slot', async () => {
+    function BadgeRecorder() {
+      return <span data-testid="badge-recorder">badge-runner-mounted</span>
+    }
+    render(
+      <PluginHost>
+        <div />
+      </PluginHost>,
+    )
+    await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
+
+    act(() => {
+      registerPlugin({ id: 'x', slots: { 'nav-badge-providers': BadgeRecorder } })
+    })
+    await waitFor(() => expect(screen.getByTestId('badge-recorder')).toBeDefined())
+
+    act(() => { unregisterPlugin('x') })
+    await waitFor(() => expect(screen.queryByTestId('badge-recorder')).toBeNull())
+  })
+})

@@ -34,7 +34,7 @@
     },
     "execTools": {
       "status": "audited",
-      "count": 122,
+      "count": 123,
       "source": "source scan"
     },
     "corePlugins": {

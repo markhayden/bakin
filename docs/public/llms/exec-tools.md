@@ -408,6 +408,19 @@ mcporter call bakin-<agent>.bakin_exec_heartbeat --args '{
 
 ## Images
 
+### bakin_exec_images_edit
+
+Label: Edited an image
+Purpose: Edit an existing image (managed asset or local file) through the runtime image provider with edit instructions, save the result into Assets, and return the canonical image filename.
+
+Arguments: none.
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_images_edit
+```
+
 ### bakin_exec_images_export
 
 Label: Exported an image

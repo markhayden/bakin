@@ -335,22 +335,44 @@ export type HookKind = 'rpc' | 'event' | 'waterfall'
 // Navigation, API routes, UI slots
 // ---------------------------------------------------------------------------
 
+/** Visual tone for a {@link NavBadge}. Maps to a fixed palette in the sidebar.
+ *  Ordered by severity: `error` (red) is the most urgent and wins rollups. */
+export type NavBadgeTone = 'error' | 'attention' | 'info' | 'success'
+
+/**
+ * Runtime badge attached to a nav item. Both fields are optional:
+ *   - `count` present → renders as a small pill (clamped at `99+`).
+ *   - `count` omitted but object present → renders as a small dot.
+ *   - `count: 0` or passing `null` to `setNavBadge` clears the badge.
+ * `tone` defaults to `'attention'`.
+ */
+export interface NavBadge {
+  count?: number
+  tone?: NavBadgeTone
+}
+
 /** Sidebar navigation item registered by a plugin via `ctx.registerNav()`. */
 export interface NavItem {
-  /** Unique nav item id (used for active-state tracking). */
+  /** Unique nav item id (used for active-state tracking and badge keying). */
   id: string
   /** Display label in the sidebar. */
   label: string
   /** Lucide icon name (e.g. "tasks", "calendar"). */
-  icon: string
+  icon?: string
   /** Target route path. */
-  href: string
+  href?: string
   /** Sort order within the parent group. Lower renders first. */
   order?: number
   /** Optional nested nav items for groups. */
   children?: NavItem[]
   /** If true, the group cannot be collapsed. */
   alwaysExpanded?: boolean
+  /**
+   * Initial badge state. Runtime updates flow through `setNavBadge` — the
+   * rendered badge for an item is `runtimeRegistry.get(id) ?? item.badge`.
+   * Most plugins leave this undefined and set badges purely at runtime.
+   */
+  badge?: NavBadge
 }
 
 /** HTTP route handler registered by a plugin via `ctx.registerRoute()`. */

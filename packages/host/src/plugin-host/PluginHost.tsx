@@ -27,6 +27,7 @@
  */
 import { useEffect, useState, type ReactNode } from 'react'
 import { unregisterPlugin } from '@makinbakin/sdk'
+import { Slot } from '@makinbakin/sdk/slots'
 import { assertReactInstance } from '../lib/react-identity'
 import {
   installVersionMismatchDetector,
@@ -223,5 +224,15 @@ export function PluginHost({ children }: { children: ReactNode }) {
   }, [])
 
   if (!ready) return <AppBootLoader />
-  return <>{children}</>
+  // Plugins can contribute background hook runners (rendered null,
+  // mounted purely so their hooks run while the plugin is registered)
+  // via the well-known `nav-badge-providers` slot. Currently used by
+  // messaging's PlansBadgeProvider; available to any plugin that needs
+  // to keep registry state live without a visible UI surface.
+  return (
+    <>
+      {children}
+      <Slot name="nav-badge-providers" />
+    </>
+  )
 }

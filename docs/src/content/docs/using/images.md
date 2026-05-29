@@ -49,6 +49,7 @@ only for the built-in OpenAI and Google routes.
 ## Tools
 
 <!-- docs:exec-tools images -->
+- `bakin_exec_images_edit`: Edit an existing image (managed asset or local file) through the runtime image provider with edit instructions, save the result into Assets, and return the canonical image filename.
 - `bakin_exec_images_export`: Export an existing image asset to a target surface profile by resizing, cropping, and format-converting it.
 - `bakin_exec_images_generate`: Generate an image through a configured runtime image provider or native image provider adapter, save it into Assets, and return the canonical image filename.
 - `bakin_exec_images_import`: Import an existing local image file into the Assets pipeline and return the canonical image filename.

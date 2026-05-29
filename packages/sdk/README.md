@@ -86,6 +86,7 @@ component for a slot via `registerPlugin({ slots: { 'slot-name': Component } })`
 | `task-assets`         | Task drawer, asset attachments section                   |
 | `task-sidebar`        | Task drawer sidebar (custom panels for a plugin's tasks) |
 | `home-widget`         | Dashboard home widget grid                               |
+| `nav-badge-providers` | Background hook runners (render `null`) that drive `setNavBadge` |
 | `page:/<route>`       | Full-page mount at `<route>`                             |
 
 ## Sub-path imports

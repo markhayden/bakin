@@ -5943,6 +5943,61 @@
         "x-bakin-full-path": "/api/plugins/tasks/"
       }
     },
+    "/api/plugins/tasks/summary": {
+      "get": {
+        "operationId": "tasks.get.summary",
+        "summary": "Counts of tasks needing attention (nav-badge source)",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "blocked": {
+                      "type": "number"
+                    },
+                    "review": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "blocked",
+                    "review"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Tasks"
+        ],
+        "description": "Returns blocked/review counts only — cheap source for the Tasks nav badge.",
+        "x-bakin-full-path": "/api/plugins/tasks/summary"
+      }
+    },
     "/api/plugins/tasks/{taskId}": {
       "get": {
         "operationId": "tasks.get.task-id",

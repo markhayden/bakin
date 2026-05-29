@@ -429,6 +429,8 @@ const TYPE_DOMAIN_GROUPS: Record<string, string> = {
   // Navigation & routes (NavItem/APIRoute are core, handled separately)
   UISlotRegistration: 'UI & Navigation',
   ContentFile: 'UI & Navigation',
+  NavBadge: 'UI & Navigation',
+  NavBadgeTone: 'UI & Navigation',
   // Runtime
   RuntimeAgent: 'Runtime',
   RuntimeChannel: 'Runtime',
