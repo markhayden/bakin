@@ -15,7 +15,7 @@ import { useHealthSummary } from '../hooks/use-health-summary'
 export function HealthBadgeProvider() {
   const { errors } = useHealthSummary()
 
-  const badge: NavBadge | null = errors && errors > 0
+  const badge: NavBadge | null = errors !== null && errors > 0
     ? { count: errors, tone: 'error' }
     : null
 
