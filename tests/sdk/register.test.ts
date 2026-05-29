@@ -332,6 +332,18 @@ describe('nav badge registry', () => {
     unsub()
   })
 
+  it('stores a copy — a mutated-and-resubmitted object still updates (no self-compare drop)', () => {
+    const badge = { count: 1, tone: 'attention' as const }
+    setNavBadge('badge-A', 'badge-A-item', badge)
+    badge.count = 9 // mutate the same object the caller passed in
+    const listener = mock()
+    const unsub = subscribeNavBadges(listener)
+    setNavBadge('badge-A', 'badge-A-item', badge) // resubmit the mutated object
+    expect(listener).toHaveBeenCalledTimes(1) // not skipped as a self-compare no-op
+    expect(getNavBadge('badge-A-item')).toEqual({ count: 9, tone: 'attention' })
+    unsub()
+  })
+
   it('subscribeNavBadges does NOT fire on plain registerPlugin nav mutations', () => {
     const listener = mock()
     const unsub = subscribeNavBadges(listener)
