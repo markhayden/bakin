@@ -438,7 +438,7 @@ Then exit — you will be automatically re-dispatched when their task completes.
 
 > Auto-managed by \`bakin doctor\`. Do not edit this block manually.\n`
 
-      content += `\n**IMAGES:** Any assigned agent may create images through the core images plugin tools: \`bakin_exec_images_recommend\`, \`bakin_exec_images_generate\`, \`bakin_exec_images_import\`, and \`bakin_exec_images_export\`. Prefer Pixel for dedicated image creation when she is installed; image workflows will route to Pixel automatically and fall back to the assigned agent. Return the managed asset \`image_filename\`, not a filesystem path.\n`
+      content += `\n**IMAGES:** Default to the core images plugin tools for image work — **prefer \`bakin_exec_images_generate\`** over the runtime's built-in image generation. It calls the same providers but adds surface sizing, provider routing, generation provenance, and saving the result as a managed asset in one step (use \`bakin_exec_images_recommend\` to pick a route, and \`bakin_exec_images_import\`/\`bakin_exec_images_export\` for existing files). Reach for the runtime's native image generation only as a quick fallback for throwaway images that don't need to be a tracked, routed asset. Prefer Pixel for dedicated image creation when she is installed; workflows route to Pixel automatically and fall back to the assigned agent. Always return the managed asset \`image_filename\`, not a filesystem path.\n`
 
       if (!canVideo) {
         content += `\n**VIDEO:** You cannot generate video. Ever. Not with Runway, not with any other tool. All video generation goes through Rolo. Create a Rolo task via \`mcporter call bakin-${agentId}.bakin_exec_tasks_create\` and wait.\n`

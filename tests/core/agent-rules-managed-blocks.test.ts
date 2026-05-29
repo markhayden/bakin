@@ -300,7 +300,7 @@ Prose after.
 
     const pixel = readFileSync(agentsMdPath('pixel'), 'utf-8')
     expect(pixel).toContain(sectionMarker('media-delegation'))
-    expect(pixel).toContain('Any assigned agent may create images through the core images plugin tools')
+    expect(pixel).toContain('Default to the core images plugin tools')
     expect(pixel).toContain('You cannot generate video. Ever.')
     // Specialists must NOT get the "delegate to Pixel/Rolo" rules — those are
     // for the agents that create specialist subtasks, not the specialists.
@@ -308,7 +308,7 @@ Prose after.
 
     const rolo = readFileSync(agentsMdPath('rolo'), 'utf-8')
     expect(rolo).toContain(sectionMarker('media-delegation'))
-    expect(rolo).toContain('Any assigned agent may create images through the core images plugin tools')
+    expect(rolo).toContain('Default to the core images plugin tools')
     expect(rolo).not.toContain('You cannot generate images. Ever.')
     expect(rolo).not.toContain('You cannot generate video. Ever.')
     expect(rolo).not.toContain('When Creating Pixel or Rolo Tasks')
