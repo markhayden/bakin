@@ -1,11 +1,12 @@
 # Media Generation Adapter Architecture
 
 Status: **Phase 1 done; Phase 2 substantially done.** Landed in Phase 2:
-native-path retry parity, capability-contract tightening (dropped `outputPath`),
-shim namespace settled (`@bakin/core/media`), the Bakin-owned provider secret
-store (env → store, `0600`), the `/api/secrets` write API, and the image-scoped
-Provider Keys settings tab. Remaining: the all-domains global credential
-inventory (GitHub #378), and the Hermes adapter when a 2nd runtime is built.
+capability-contract tightening (dropped `outputPath`), shim namespace settled
+(`@bakin/core/media`), the Bakin-owned provider secret store (env → store,
+atomic `0600`, validated provider ids), the `/api/secrets` write API, and the
+image-scoped Provider Keys settings tab. Remaining: the all-domains global
+credential inventory (GitHub #378), and the Hermes adapter when a 2nd runtime
+is built.
 Scope: image generation today; the template generalizes to video / audio / any
 provider-backed media modality and to runtimes beyond OpenClaw.
 
@@ -214,6 +215,31 @@ runtime needs it).
   **GitHub #378**.
 - [ ] Build the Hermes adapter against this to confirm the abstraction
   (synthesized `providers()`, no extractable key → store/shim-only).
+
+## Constraints
+
+- **Never auto-retry generation.** Image generation is non-idempotent and
+  billed per call — a transient-looking failure after the provider already
+  produced (and charged for) an image would double-bill on retry. Both the shim
+  and the native path fail closed and surface the error for explicit re-trigger.
+  Only idempotent discovery (`providers()`) may retry.
+- **Status-only credential surfacing.** The inventory/readiness returns
+  `configured`/`servedBy`; it never reads, returns, logs, or persists a
+  runtime-owned secret value. Bakin manages only its own store.
+- **Record true output dimensions.** A provider may snap to its nearest
+  supported size (e.g. OpenAI 1024×1536); the asset records the actual produced
+  pixels, with the surface field capturing the intent.
+
+## Known limitations (acceptable for now)
+
+- The direct shim is single-image and ignores `count`/`aspectRatio`/
+  `background`/`outputFormat` that the native path forwards — the plugin never
+  requests those today, so it's a latent gap, not a live one.
+- The native path does not forward `quality` to OpenClaw (no known flag); the
+  shim honors it. Quality routing is effective only on the shim path.
+- `extForMime` (shim) and the provider env-var map are duplicated across the
+  core/plugin boundary because core must not import plugin code; reconciling
+  needs a shared mime/provider table in core (deferred).
 
 ## Non-goals
 
