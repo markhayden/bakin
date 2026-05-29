@@ -430,7 +430,9 @@ Then exit — you will be automatically re-dispatched when their task completes.
     target: 'subagent',
     contentFn: (agentId: string) => {
       const canVideo = agentId === 'rolo'
-      const createsSpecialistSubtasks = agentId !== 'pixel' || !canVideo
+      // Only non-specialist agents delegate to Pixel/Rolo. The specialists
+      // themselves must not get "when creating Pixel/Rolo tasks" rules.
+      const createsSpecialistSubtasks = agentId !== 'pixel' && agentId !== 'rolo'
 
       let content = `## Bakin Media Delegation Rules
 
