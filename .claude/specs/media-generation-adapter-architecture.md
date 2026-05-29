@@ -232,14 +232,16 @@ runtime needs it).
 
 ## Known limitations (acceptable for now)
 
-- The direct shim is single-image and ignores `count`/`aspectRatio`/
-  `background`/`outputFormat` that the native path forwards — the plugin never
-  requests those today, so it's a latent gap, not a live one.
-- The native path does not forward `quality` to OpenClaw (no known flag); the
-  shim honors it. Quality routing is effective only on the shim path.
-- `extForMime` (shim) and the provider env-var map are duplicated across the
-  core/plugin boundary because core must not import plugin code; reconciling
-  needs a shared mime/provider table in core (deferred).
+Tracked, not MVP-blocking:
+
+- **GitHub #379** — path parity: the direct shim is single-image and ignores
+  `count`/`aspectRatio`/`background`/`outputFormat` the native path forwards
+  (latent — the plugin never requests them today); and the native path does not
+  forward `quality` to OpenClaw (no known flag), so quality routing is effective
+  only on the shim path.
+- **GitHub #380** — `extForMime` (shim) and the provider env-var map are
+  duplicated across the core/plugin boundary (core must not import plugin code);
+  reconciling needs a shared mime/provider table in core.
 
 ## Non-goals
 
