@@ -219,8 +219,11 @@ runtime or the video plugin lands).**
 
 ## Open questions
 
-- Exact package boundary/home for the shared shim
-  (`packages/core/src/media/` vs a standalone `@bakin/media-direct`) — decide at
-  Phase 1 implementation.
+- ~~Exact package boundary/home for the shared shim.~~ **Resolved:** lives in
+  `packages/core/src/media/`, exported as the `@bakin/core/media` namespace. No
+  standalone package — a single-binary Bun build gains nothing from the extra
+  package wiring, and core is already the shared dependency for adapters + host.
+  Future modalities (video, audio) add sibling transports under the same
+  namespace.
 - Whether the secret store is owned by a dedicated concern or rides the existing
   settings infra with a new secret field type (Phase 2).

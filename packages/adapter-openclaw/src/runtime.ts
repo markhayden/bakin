@@ -27,7 +27,7 @@ import type {
   WorkspaceFile,
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
-import { generateDirectImage, isDirectImageProvider, resolveDirectImageKey, withImageRetry } from '@bakin/core/media/direct-image-provider'
+import { generateDirectImage, isDirectImageProvider, resolveDirectImageKey, withImageRetry } from '@bakin/core/media'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
   findAgentById,
