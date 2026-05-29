@@ -2,12 +2,19 @@
 
 Core plugin id: `images`.
 
-The images plugin owns provider-routed image generation primitives. It prefers
-the active runtime adapter's `ctx.runtime.images` capability and falls back to
-native direct adapters only when the runtime route is not configured. Generated
-and imported files are persisted through the Assets plugin, so downstream
-workflows should pass canonical asset filenames such as `image_filename`, not
-local filesystem paths.
+The images plugin owns provider-routed image generation primitives. It speaks
+*only* the runtime image capability (`ctx.runtime.images`) — it no longer owns
+any provider HTTP transport or credential handling. The active runtime adapter
+serves a route natively when it can, or composes the shared
+`@bakin/core/media/direct-image-provider` shim when it can't (gap-fill). The
+plugin's job is domain/UX: surface profiles, routing policy, asset persistence,
+prompt packaging, and QC. Generated and imported files are persisted through the
+Assets plugin, so downstream workflows should pass canonical asset filenames
+such as `image_filename`, not local filesystem paths.
+
+See `.claude/specs/media-generation-adapter-architecture.md` for the four-layer
+model (plugin / capability contract / runtime adapter / shared shim) and the
+credential-ownership rules.
 
 ## Tools
 
@@ -33,15 +40,25 @@ Runtime routes:
 - Runtime providers discovered from OpenClaw can include OpenAI, Google,
   OpenRouter, LiteLLM, DeepInfra, fal, ComfyUI, MiniMax, Vydra, and xAI.
 
-Native direct fallback adapters:
+Direct shim (gap-fill, owned by the runtime adapter, not the plugin):
 
-- OpenAI: `gpt-image-2`, `gpt-image-1.5`, `gpt-image-1`, `gpt-image-1-mini`
-- Google Gemini: `gemini-3.1-flash-image-preview`,
-  `gemini-3-pro-image-preview`
+- Lives in `@bakin/core/media/direct-image-provider` and is composed by the
+  OpenClaw adapter's `images.generate` when OpenClaw can't serve the route.
+- Direct providers: OpenAI (`gpt-image-2`, `gpt-image-1.5`, `gpt-image-1`,
+  `gpt-image-1-mini`) and Google Gemini (`gemini-3.1-flash-image-preview`,
+  `gemini-3-pro-image-preview`).
+- Shim credentials are Bakin-owned secrets — env vars (`OPENAI_API_KEY`,
+  `GEMINI_API_KEY`/`GOOGLE_AI_API_KEY`) in Phase 1, resolved at the adapter.
+  The plugin never reads runtime config for keys.
+
+Serving-path diagnostics ("how"): generation results carry
+`routeSource` (`runtime` | `shim`) + `credentialSource`; provider readiness and
+`recommend` report a provider-level `servedBy` prediction
+(`runtime` | `shim` | `unconfigured`).
 
 Provider support is adapter-based, not raw generic HTTP. Add new providers by
-adding a runtime adapter provider route or a native descriptor, credentials
-lookup, adapter implementation, route tests, and generation metadata coverage.
+adding a runtime adapter provider route, or (for the direct shim) a provider
+entry in the shared module plus route tests and generation metadata coverage.
 
 ## Workflows And Skills
 

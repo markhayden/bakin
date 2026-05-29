@@ -1,6 +1,6 @@
 # Media Generation Adapter Architecture
 
-Status: **accepted** (design + decisions locked, Phase 1 not yet implemented)
+Status: **Phase 1 implemented** (design + decisions locked; Phase 2 pending the 2nd runtime / video plugin)
 Scope: image generation today; the template generalizes to video / audio / any
 provider-backed media modality and to runtimes beyond OpenClaw.
 
