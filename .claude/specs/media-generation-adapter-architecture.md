@@ -1,6 +1,10 @@
 # Media Generation Adapter Architecture
 
-Status: **Phase 1 implemented** (design + decisions locked; Phase 2 pending the 2nd runtime / video plugin)
+Status: **Phase 1 done; Phase 2 in progress.** Landed in Phase 2: native-path
+retry parity, capability-contract tightening (dropped `outputPath`), shim
+namespace settled (`@bakin/core/media`), and the Bakin-owned provider secret
+store (env → store, `0600`). Remaining: the dashboard secret field + REST write
+API, and the Hermes adapter when a 2nd runtime is actually built.
 Scope: image generation today; the template generalizes to video / audio / any
 provider-backed media modality and to runtimes beyond OpenClaw.
 
@@ -187,16 +191,22 @@ runtime needs it).
   (`dev/imitation-crab/fixtures/openclaw.json` models no image providers today)
   so `dev:mock` exercises both the native and gap-fill paths.
 
-**Phase 2 — settings-backed secret store + contract tightening (when the 2nd
-runtime or the video plugin lands).**
-- Introduce the central, provider-keyed, settings-backed secret store (with
-  env override, write-only/masked API, `0600` dedicated file) so services no
-  runtime fronts (Kling, Seedance…) have a credential home and keys are
-  dashboard-editable. Add the "secret" field type to the settings renderer.
-- Tighten the capability contract (drop `outputPath` leak; document the
-  thin-runtime mapping expectation).
-- Build the Hermes adapter against this to confirm the abstraction (synthesized
-  `providers()`, no extractable key → shim-only).
+**Phase 2 — secret store + contract tightening.**
+- [x] Native-path retry parity (the native OpenClaw path now retries transient
+  errors, matching the shim).
+- [x] Tighten the capability contract — dropped the `outputPath` leak; the
+  adapter owns the output path. Documented the thin-runtime mapping expectation.
+- [x] Settle the shim namespace — `@bakin/core/media` (no standalone package).
+- [x] Bakin-owned provider secret store — `~/.bakin/secrets.json` (`0600`,
+  dedicated file), provider-keyed, resolution order env → store. The shim path
+  and readiness/`servedBy` consult it. Populated via env or by editing the file.
+- [ ] **Remaining:** dashboard secret field type + REST write API (set/unset/
+  masked-status) so keys are editable from the UI rather than by hand. Resolved
+  ownership: a dedicated core module (`@bakin/core/media/secret-store`), NOT the
+  per-plugin settings infra (provider grain, shared across modalities); the UI
+  field type rides the existing settings renderer.
+- [ ] Build the Hermes adapter against this to confirm the abstraction
+  (synthesized `providers()`, no extractable key → store/shim-only).
 
 ## Non-goals
 
@@ -225,5 +235,8 @@ runtime or the video plugin lands).**
   package wiring, and core is already the shared dependency for adapters + host.
   Future modalities (video, audio) add sibling transports under the same
   namespace.
-- Whether the secret store is owned by a dedicated concern or rides the existing
-  settings infra with a new secret field type (Phase 2).
+- ~~Whether the secret store is owned by a dedicated concern or rides the
+  existing settings infra.~~ **Resolved:** a dedicated core module
+  (`@bakin/core/media/secret-store`), keyed per provider (shared across
+  modalities); the future dashboard editing rides the existing settings
+  renderer via a new "secret" field type.
