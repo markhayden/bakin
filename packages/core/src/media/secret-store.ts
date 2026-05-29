@@ -122,7 +122,3 @@ export function resolveProviderApiKeySource(
   return null
 }
 
-/** Resolve a key with env → store precedence (no source label). */
-export function resolveProviderApiKey(provider: DirectImageProviderId): string | null {
-  return resolveProviderApiKeySource(provider)?.apiKey ?? null
-}

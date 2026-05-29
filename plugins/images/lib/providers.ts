@@ -1,7 +1,7 @@
 import type { PluginContext } from '@bakin/core/plugin-types'
 import type { RuntimeImageProvider } from '@bakin/core/adapters/runtime'
 import { listStoredProviders } from '@bakin/core/media'
-import type { ImageModelDescriptor, ImagePluginSettings, ImageProviderDescriptor, ImageProviderId, ImageProviderReadiness, NativeImageProviderId } from '../types'
+import type { ImageModelDescriptor, ImagePluginSettings, ImageProviderDescriptor, ImageProviderReadiness } from '../types'
 
 export const IMAGE_PROVIDERS: ImageProviderDescriptor[] = [
   {
@@ -104,9 +104,6 @@ export function getImageProvider(id: string): ImageProviderDescriptor | null {
   return IMAGE_PROVIDERS.find(provider => provider.id === id) ?? null
 }
 
-export function isNativeImageProvider(id: ImageProviderId): id is NativeImageProviderId {
-  return id === 'openai' || id === 'google'
-}
 
 export function providerReadinessFromEnv(env: Record<string, string | undefined> = process.env): ImageProviderReadiness[] {
   return IMAGE_PROVIDERS.map((provider) => {

@@ -165,18 +165,22 @@ echo "{}"
     expect(result.metadata).toMatchObject({ servedBy: 'shim', credentialSource: 'bakin-store' })
   })
 
-  it('throws a clear error when a direct provider has no key and the runtime cannot serve it', async () => {
+  it('falls through to the native runtime as a last resort when no Bakin key is configured', async () => {
+    // The model isn't in the runtime's advertised list AND there's no Bakin
+    // key, but the runtime may still serve it (listings are often partial) —
+    // so we attempt native rather than pre-empting it with an error.
     delete process.env.OPENAI_API_KEY
-    const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, json: async () => ({}) } as unknown as Response)
+    const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false, status: 500, text: async () => 'unused' } as unknown as Response)
 
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: openclaw } })
 
-    await expect(runtime.images!.generate({
+    const result = await runtime.images!.generate({
       prompt: 'x', provider: 'openai', model: 'gpt-image-1.5', width: 1024, height: 1024,
-    })).rejects.toThrow(/No API key configured for image provider "openai"/)
-    // No native generate spawn, no provider HTTP call.
-    expect(readFileSync(callsFile, 'utf-8')).not.toContain('generate')
+    })
+    // Native path ran (mock serves any model); no direct provider HTTP call.
+    expect(result.metadata).toMatchObject({ servedBy: 'runtime' })
+    expect(readFileSync(callsFile, 'utf-8')).toContain('generate')
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 })

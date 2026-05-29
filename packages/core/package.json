@@ -19,7 +19,6 @@
     "./adapters/runtime/concepts": "./src/adapters/runtime/concepts.ts",
     "./adapters/runtime/testing": "./src/adapters/runtime/testing.ts",
     "./media": "./src/media/index.ts",
-    "./media/direct-image-provider": "./src/media/direct-image-provider.ts",
     "./adapters/search": "./src/adapters/search/index.ts",
     "./adapters/search/concepts": "./src/adapters/search/concepts.ts",
     "./adapters/search/testing": "./src/adapters/search/testing.ts",

@@ -6,7 +6,7 @@ import { resetContentDir } from '../../../src/core/content-dir'
 import {
   getStoredProviderKey,
   listStoredProviders,
-  resolveProviderApiKey,
+  resolveProviderApiKeySource,
   setStoredProviderKey,
   unsetStoredProviderKey,
 } from '../../../packages/core/src/media/secret-store'
@@ -71,14 +71,14 @@ describe('media secret-store', () => {
     expect(statSync(path).mode & 0o777).toBe(0o600)
   })
 
-  it('resolves env over the store (env override)', () => {
+  it('resolves env over the store and reports the source', () => {
     setStoredProviderKey('openai', 'sk-stored')
     process.env.OPENAI_API_KEY = 'sk-env'
-    expect(resolveProviderApiKey('openai')).toBe('sk-env')
+    expect(resolveProviderApiKeySource('openai')).toEqual({ apiKey: 'sk-env', source: 'env' })
   })
 
   it('falls back to the store when no env key is present', () => {
     setStoredProviderKey('google', 'g-stored')
-    expect(resolveProviderApiKey('google')).toBe('g-stored')
+    expect(resolveProviderApiKeySource('google')).toEqual({ apiKey: 'g-stored', source: 'store' })
   })
 })

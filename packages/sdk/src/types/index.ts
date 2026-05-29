@@ -813,7 +813,7 @@ export interface AssetGenerationMeta {
   promptHash: string
   promptAssetFilename?: string
   routeReason?: string
-  routeSource?: 'runtime' | 'native' | string
+  routeSource?: 'runtime' | 'shim' | string
   createdByTool: string
 }
 

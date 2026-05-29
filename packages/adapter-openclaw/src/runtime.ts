@@ -882,25 +882,22 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     },
     generate: async (input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult> => {
       if (await this.canServeImageNatively(input)) {
-        return tagImageServedBy(await this.runImageInference('generate', input), 'runtime')
+        return tagRuntimeServed(await this.runImageInference('generate', input))
       }
-      // The runtime can't serve it. For a direct provider, gap-fill via the
-      // shared shim; if no Bakin key is configured, fail with a clear message
-      // rather than spawning a native call that's already known to fail.
+      // The requested model isn't in the runtime's advertised set. Prefer the
+      // shared shim when a Bakin key is configured for a direct provider;
+      // otherwise fall through to a native attempt as a LAST RESORT — the
+      // runtime may still serve a model it didn't enumerate (provider listings
+      // often report only a subset/defaultModel), so we must not pre-empt it.
       const provider = input.provider
       if (provider && isDirectImageProvider(provider)) {
         const shimmed = await this.generateImageViaShim(input)
         if (shimmed) return shimmed
-        const envVar = provider === 'openai' ? 'OPENAI_API_KEY' : 'GEMINI_API_KEY'
-        throw new Error(
-          `No API key configured for image provider "${provider}". Set ${envVar} or store a key (Settings → Provider Keys).`,
-        )
       }
-      // A provider only the runtime can own (e.g. openrouter) — let it try.
-      return tagImageServedBy(await this.runImageInference('generate', input), 'runtime')
+      return tagRuntimeServed(await this.runImageInference('generate', input))
     },
     edit: async (input: RuntimeImageEditInput): Promise<RuntimeImageGenerationResult> => {
-      return tagImageServedBy(await this.runImageInference('edit', input), 'runtime')
+      return tagRuntimeServed(await this.runImageInference('edit', input))
     },
   }
 
@@ -2509,18 +2506,12 @@ function imageQualityFromMetadata(metadata: RuntimeMetadata | undefined): 'draft
   return quality === 'draft' || quality === 'premium' ? quality : 'standard'
 }
 
-/** Record which path served the request, for operator-facing diagnostics. */
-function tagImageServedBy(
-  result: RuntimeImageGenerationResult,
-  servedBy: 'runtime' | 'shim',
-): RuntimeImageGenerationResult {
+/** Tag a natively-served result for operator diagnostics. The shim path sets
+ * its own servedBy/credentialSource inline (it knows env vs store). */
+function tagRuntimeServed(result: RuntimeImageGenerationResult): RuntimeImageGenerationResult {
   return {
     ...result,
-    metadata: {
-      ...(result.metadata ?? {}),
-      servedBy,
-      credentialSource: servedBy === 'shim' ? 'bakin-env' : 'runtime',
-    },
+    metadata: { ...(result.metadata ?? {}), servedBy: 'runtime', credentialSource: 'runtime' },
   }
 }
 
