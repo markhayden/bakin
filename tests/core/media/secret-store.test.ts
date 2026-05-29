@@ -53,6 +53,16 @@ describe('media secret-store', () => {
     expect(unsetStoredProviderKey('openai')).toBe(false)
   })
 
+  it('rejects reserved/invalid provider ids (no prototype pollution / data loss)', () => {
+    expect(() => setStoredProviderKey('__proto__', 'x')).toThrow(/Invalid provider id/)
+    expect(() => setStoredProviderKey('constructor', 'x')).toThrow(/Invalid provider id/)
+    expect(() => setStoredProviderKey('bad id!', 'x')).toThrow(/Invalid provider id/)
+    expect(getStoredProviderKey('openai')).toBeNull()
+    expect(listStoredProviders()).toEqual([])
+    // a key under a "polluted" name never leaks into a real provider lookup
+    expect(getStoredProviderKey('__proto__')).toBeNull()
+  })
+
   it('writes the store file with 0600 permissions', () => {
     setStoredProviderKey('google', 'g-stored')
     const path = join(testDir, 'secrets.json')

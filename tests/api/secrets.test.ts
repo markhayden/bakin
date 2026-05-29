@@ -53,4 +53,12 @@ describe('/api/secrets', () => {
     const noKey = await post(new Request(url(), { method: 'POST', body: JSON.stringify({ provider: 'openai' }) }), url())
     expect(noKey.status).toBe(400)
   })
+
+  it('rejects an invalid/reserved provider id and an oversized key', async () => {
+    const reserved = await post(new Request(url(), { method: 'POST', body: JSON.stringify({ provider: '__proto__', apiKey: 'x' }) }), url())
+    expect(reserved.status).toBe(400)
+    const oversized = await post(new Request(url(), { method: 'POST', body: JSON.stringify({ provider: 'openai', apiKey: 'a'.repeat(9000) }) }), url())
+    expect(oversized.status).toBe(400)
+    expect(await (await get(new Request(url()), url())).json()).toEqual({ stored: [] })
+  })
 })

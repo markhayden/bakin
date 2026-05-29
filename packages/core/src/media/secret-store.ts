@@ -16,7 +16,7 @@
  * the env override + 0600 + dedicated-file mitigations bound the risk. See
  * .claude/specs/media-generation-adapter-architecture.md.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, renameSync, rmSync } from 'fs'
 import { dirname, join } from 'path'
 import { getContentDir } from '../content-dir'
 import { resolveDirectImageKey, type DirectImageProviderId } from './direct-image-provider'
@@ -31,6 +31,16 @@ interface SecretStoreFile {
 
 function secretsPath(): string {
   return join(getContentDir(), 'secrets.json')
+}
+
+const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
+
+/**
+ * Validate a provider id: a safe slug, not a reserved object key (guards
+ * against prototype-pollution / silent data-loss when used as a map key).
+ */
+export function isValidProviderId(id: unknown): id is string {
+  return typeof id === 'string' && /^[a-z0-9][a-z0-9._-]{0,63}$/i.test(id) && !RESERVED_KEYS.has(id)
 }
 
 function readStore(): SecretStoreFile {
@@ -50,12 +60,19 @@ function readStore(): SecretStoreFile {
 function writeStore(store: SecretStoreFile): void {
   const path = secretsPath()
   mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, JSON.stringify(store, null, 2))
+  // Write to a temp file created 0600, then atomically rename over the target.
+  // This avoids the window where the plaintext-key file exists at the default
+  // umask (0644) between an in-place write and a follow-up chmod.
+  const tmp = `${path}.tmp-${process.pid}`
+  writeFileSync(tmp, JSON.stringify(store, null, 2), { mode: 0o600 })
   try {
-    chmodSync(path, 0o600)
-  } catch {
-    /* best-effort on platforms without POSIX perms */
+    renameSync(tmp, path)
+  } catch (err) {
+    try { rmSync(tmp, { force: true }) } catch { /* ignore cleanup failure */ }
+    throw err
   }
+  // Belt-and-suspenders: ensure perms on platforms where rename keeps dest perms.
+  try { chmodSync(path, 0o600) } catch { /* best-effort on non-POSIX */ }
 }
 
 function nonEmpty(value: unknown): string | null {
@@ -67,8 +84,9 @@ export function getStoredProviderKey(providerId: string): string | null {
   return nonEmpty(readStore().providers[providerId]?.apiKey)
 }
 
-/** Persist a provider key to the 0600 store. */
+/** Persist a provider key to the 0600 store. Rejects invalid/reserved ids. */
 export function setStoredProviderKey(providerId: string, apiKey: string): void {
+  if (!isValidProviderId(providerId)) throw new Error(`Invalid provider id: ${providerId}`)
   const store = readStore()
   store.providers[providerId] = { apiKey }
   writeStore(store)

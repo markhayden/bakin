@@ -1,6 +1,6 @@
 import type { PluginContext } from '@bakin/core/plugin-types'
 import type { RuntimeImageProvider } from '@bakin/core/adapters/runtime'
-import { getStoredProviderKey } from '@bakin/core/media'
+import { listStoredProviders } from '@bakin/core/media'
 import type { ImageModelDescriptor, ImagePluginSettings, ImageProviderDescriptor, ImageProviderId, ImageProviderReadiness, NativeImageProviderId } from '../types'
 
 export const IMAGE_PROVIDERS: ImageProviderDescriptor[] = [
@@ -120,16 +120,17 @@ export async function providerReadiness(
   const envById = new Map(envReadiness.map(provider => [provider.id, provider]))
   const runtimeProviders = prefetchedRuntimeProviders ?? await fetchRuntimeImageProviders(ctx)
   const runtimeById = new Map(runtimeProviders.map(provider => [provider.id, provider]))
+  // Read the secret store once for the whole pass (not once per provider).
+  const storedProviders = new Set(listStoredProviders())
 
   const native: ImageProviderReadiness[] = IMAGE_PROVIDERS.map((provider): ImageProviderReadiness => {
     const env = envById.get(provider.id)
     const runtime = runtimeById.get(provider.id)
     // A native provider is reachable if the runtime serves it OR a Bakin-owned
-    // shim key (env) is present. We no longer read provider keys out of the
-    // runtime's raw config — that crossed the adapter boundary.
+    // shim key (env or secret store) is present. We no longer read provider
+    // keys out of the runtime's raw config — that crossed the adapter boundary.
     const hasEnvKey = (env?.configuredEnvVars.length ?? 0) > 0
-    // Env overrides; only touch the secret store when no env key is present.
-    const hasBakinKey = hasEnvKey || getStoredProviderKey(provider.id) !== null
+    const hasBakinKey = hasEnvKey || storedProviders.has(provider.id)
     const configured = hasBakinKey || runtime?.configured === true
     const routable = configured && (
       provider.models.some(model => model.status === 'routable')
