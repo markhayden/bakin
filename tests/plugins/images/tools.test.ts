@@ -41,19 +41,6 @@ function makeContext(overrides: Partial<PluginContext> = {}) {
   return { ctx, saved }
 }
 
-function imageResponse(mimeType = 'image/png') {
-  return {
-    ok: true,
-    json: async () => ({
-      candidates: [{
-        content: {
-          parts: [{ inlineData: { mimeType, data: Buffer.from('fake-image').toString('base64') } }],
-        },
-      }],
-    }),
-  } as unknown as Response
-}
-
 describe('images tools', () => {
   beforeEach(() => {
     testDir = join(tmpdir(), `bakin-images-tools-${Date.now()}-${Math.random().toString(16).slice(2)}`)
@@ -79,9 +66,19 @@ describe('images tools', () => {
     mock.restore()
   })
 
-  it('generates with Gemini current model ids and saves generation metadata', async () => {
-    spyOn(globalThis, 'fetch').mockResolvedValue(imageResponse())
-    const { ctx, saved } = makeContext()
+  it('generates through the runtime image capability and saves generation metadata', async () => {
+    const runtimeFile = join(testDir, 'runtime-generated.png')
+    writeFileSync(runtimeFile, 'runtime-image')
+    const generate = mock(async () => ({
+      provider: 'google',
+      model: 'gemini-3.1-flash-image-preview',
+      providerText: 'revised prompt',
+      images: [{ filePath: runtimeFile, mimeType: 'image/png', width: 1080, height: 1920 }],
+      metadata: { servedBy: 'runtime', credentialSource: 'runtime' },
+    }))
+    const { ctx, saved } = makeContext({
+      runtime: { images: { providers: mock(async () => []), generate } } as never,
+    })
 
     const result = await generateImage(ctx, {
       prompt: 'Golden hour smoothie',
@@ -93,113 +90,68 @@ describe('images tools', () => {
 
     expect(result.ok).toBe(true)
     expect(result.image_filename).toBe('20260528-image-a1b2c3d4.png')
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      expect.stringContaining('gemini-3.1-flash-image-preview:generateContent'),
-      expect.anything(),
-    )
+    expect(generate).toHaveBeenCalledWith(expect.objectContaining({
+      provider: 'google',
+      model: 'gemini-3.1-flash-image-preview',
+      width: 1080,
+      height: 1920,
+    }))
+    expect(result.routeSource).toBe('runtime')
+    expect(saved[0]).toMatchObject({ filePath: runtimeFile })
     expect(saved[0].generation).toMatchObject({
       provider: 'google',
       model: 'gemini-3.1-flash-image-preview',
       surface: 'instagram-story',
       width: 1080,
       height: 1920,
+      routeSource: 'runtime',
       createdByTool: 'bakin_exec_images_generate',
     })
   })
 
-  it('generates with OpenAI and saves canonical image filename fields', async () => {
-    spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: [{ b64_json: Buffer.from('openai-image').toString('base64') }] }),
-    } as unknown as Response)
-    const { ctx, saved } = makeContext()
-
-    const result = await generateImage(ctx, {
-      prompt: 'Blog hero image',
-      taskId: 'task-openai',
+  it('records the shim serving path and credential source when the adapter gap-fills', async () => {
+    const file = join(testDir, 'shim-generated.png')
+    writeFileSync(file, 'shim-image')
+    const generate = mock(async () => ({
       provider: 'openai',
-      model: 'gpt-image-2',
-      surface: 'blog-hero',
-      quality: 'premium',
-    }, 'pixel')
-
-    expect(result.ok).toBe(true)
-    expect(result.filename).toBe(result.image_filename)
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      'https://api.openai.com/v1/images/generations',
-      expect.objectContaining({
-        headers: expect.objectContaining({ Authorization: 'Bearer openai-key' }),
-      }),
-    )
-    expect(saved[0].generation).toMatchObject({
-      provider: 'openai',
-      model: 'gpt-image-2',
-      surface: 'blog-hero',
-      width: 1600,
-      height: 900,
-      quality: 'premium',
-    })
-  })
-
-  it('sends OpenAI a supported size for non-square surfaces', async () => {
-    const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: [{ b64_json: Buffer.from('openai-image').toString('base64') }] }),
-    } as unknown as Response)
-    const { ctx } = makeContext()
-
-    // instagram-story is 1080x1920 (portrait) — the raw dimensions are not a
-    // size OpenAI accepts, so the adapter must snap to a supported portrait size.
-    await generateImage(ctx, {
-      prompt: 'Portrait promo',
-      taskId: 'task-size',
-      provider: 'openai',
-      model: 'gpt-image-2',
-      surface: 'instagram-story',
-    }, 'pixel')
-
-    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string)
-    expect(body.size).toBe('1024x1536')
-  })
-
-  it('falls back to the native adapter when runtime generation fails', async () => {
-    spyOn(globalThis, 'fetch').mockResolvedValue(imageResponse())
-    const runtimeGenerate = mock(async () => { throw new Error('runtime exploded') })
+      model: 'gpt-image-1.5',
+      images: [{ filePath: file, mimeType: 'image/png', width: 1600, height: 900 }],
+      metadata: { servedBy: 'shim', credentialSource: 'bakin-env' },
+    }))
     const { ctx, saved } = makeContext({
-      runtime: {
-        images: {
-          providers: mock(async () => [
-            {
-              id: 'google',
-              label: 'Google Gemini',
-              configured: true,
-              defaultModel: 'gemini-3.1-flash-image-preview',
-              models: ['gemini-3.1-flash-image-preview'],
-              capabilities: { generate: { maxCount: 4 } },
-            },
-          ]),
-          generate: runtimeGenerate,
-        },
-        config: { get: mock(async () => ({})) },
-      } as never,
+      runtime: { images: { providers: mock(async () => []), generate } } as never,
     })
 
     const result = await generateImage(ctx, {
-      prompt: 'Resilient render',
-      taskId: 'task-fallback',
-      provider: 'google',
-      model: 'gemini-3.1-flash-image-preview',
-      surface: 'instagram-square',
+      prompt: 'Premium hero',
+      taskId: 'task-shim',
+      provider: 'openai',
+      model: 'gpt-image-1.5',
+      surface: 'blog-hero',
     }, 'pixel')
 
     expect(result.ok).toBe(true)
-    expect(runtimeGenerate).toHaveBeenCalled()
-    expect(globalThis.fetch).toHaveBeenCalled()
-    expect(result.routeSource).toBe('native')
-    expect(saved[0].generation).toMatchObject({ routeSource: 'native' })
+    expect(result.routeSource).toBe('shim')
+    expect(result.credentialSource).toBe('bakin-env')
+    expect(saved[0].generation).toMatchObject({ routeSource: 'shim' })
   })
 
-  it('prefers configured runtime image generation before direct provider adapters', async () => {
+  it('fails clearly when the active runtime has no image capability', async () => {
+    const { ctx } = makeContext() // default ctx has no runtime.images
+
+    const result = await generateImage(ctx, {
+      prompt: 'x',
+      taskId: 'task-none',
+      provider: 'openai',
+      model: 'gpt-image-2',
+      surface: 'blog-hero',
+    }, 'pixel')
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/does not provide an image generation capability/i)
+  })
+
+  it('passes the resolved route and dimensions through to the runtime capability', async () => {
     const fetchSpy = spyOn(globalThis, 'fetch').mockRejectedValue(new Error('direct fetch should not be called'))
     const runtimeFile = join(testDir, 'runtime-generated.png')
     writeFileSync(runtimeFile, 'runtime-image')

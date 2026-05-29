@@ -4,20 +4,14 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import sharp from 'sharp'
 import type { ExecToolResult, PluginContext } from '@bakin/core/plugin-types'
-import type { RuntimeImageGenerationResult, RuntimeImageProvider } from '@bakin/core/adapters/runtime'
-import type { ImagePluginSettings, ImageProviderId, NativeImageProviderId } from '../types'
-import { getImageAdapter, type ImageAdapterResult } from './adapters'
-import { resolveImageApiKey } from './credentials'
-import { DEFAULT_IMAGE_SETTINGS, fetchRuntimeImageProviders, getImageProvider, isNativeImageProvider, providerReadiness } from './providers'
+import type { ImagePluginSettings, ImageProviderId } from '../types'
+import { DEFAULT_IMAGE_SETTINGS, getImageProvider, providerReadiness } from './providers'
 import { resolveImageRoute } from './routing'
 import { getImageProfile } from './platform-profiles'
 import { getContentDir } from '../../../src/core/content-dir'
 
 /** Largest edge we send to a provider / feed into sharp, to bound cost. */
 const MAX_IMAGE_EDGE = 2048
-/** Number of attempts for a transient provider failure (1 retry). */
-const IMAGE_GENERATION_ATTEMPTS = 2
-const IMAGE_RETRY_DELAY_MS = 2000
 
 export interface ImagesGenerateParams {
   prompt?: string
@@ -138,89 +132,6 @@ async function imageDimensions(filePath: string): Promise<{ width: number; heigh
   }
 }
 
-function nativeProvider(provider: ImageProviderId): NativeImageProviderId | null {
-  return isNativeImageProvider(provider) ? provider : null
-}
-
-function runtimeRouteReady(runtimeProviders: RuntimeImageProvider[], route: { provider: ImageProviderId; model: string }): boolean {
-  const provider = runtimeProviders.find(candidate => candidate.id === route.provider)
-  if (!provider || provider.configured !== true) return false
-  const models = provider.models?.length ? provider.models : provider.defaultModel ? [provider.defaultModel] : []
-  return models.includes(route.model)
-}
-
-function isTransientError(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err)
-  return /\b(408|429|5\d\d)\b/.test(message)
-    || /timeout|timed out|network|fetch failed|econn|socket|temporarily|rate limit/i.test(message)
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-/** Retry a provider call once on a transient error; surface other errors immediately. */
-async function withImageRetry<T>(fn: () => Promise<T>): Promise<T> {
-  let lastError: unknown
-  for (let attempt = 1; attempt <= IMAGE_GENERATION_ATTEMPTS; attempt++) {
-    try {
-      return await fn()
-    } catch (err) {
-      lastError = err
-      if (attempt >= IMAGE_GENERATION_ATTEMPTS || !isTransientError(err)) throw err
-      await delay(IMAGE_RETRY_DELAY_MS)
-    }
-  }
-  throw lastError
-}
-
-/**
- * Generate directly through a native provider adapter. Returns null when the
- * provider has no native adapter or no configured API key (so the caller can
- * decide whether that's a hard failure or just an unavailable fallback).
- */
-async function generateNative(
-  ctx: PluginContext,
-  route: { provider: ImageProviderId; model: string },
-  prompt: string,
-  dims: { width: number; height: number },
-  quality: 'draft' | 'standard' | 'premium',
-): Promise<ImageAdapterResult | null> {
-  const directProvider = nativeProvider(route.provider)
-  if (!directProvider) return null
-  const apiKey = await resolveImageApiKey(ctx, directProvider)
-  if (!apiKey) return null
-  const adapter = getImageAdapter(directProvider)
-  return withImageRetry(() => adapter.generate({
-    provider: directProvider,
-    model: route.model,
-    prompt,
-    width: dims.width,
-    height: dims.height,
-    quality,
-    apiKey,
-  }))
-}
-
-async function generateWithRuntime(
-  ctx: PluginContext,
-  route: { provider: ImageProviderId; model: string },
-  prompt: string,
-  dims: { width: number; height: number },
-  quality: 'draft' | 'standard' | 'premium',
-): Promise<RuntimeImageGenerationResult> {
-  if (!ctx.runtime.images) throw new Error('Runtime image generation is unavailable')
-  return ctx.runtime.images.generate({
-    prompt,
-    provider: route.provider,
-    model: route.model,
-    width: dims.width,
-    height: dims.height,
-    outputFormat: 'png',
-    metadata: { quality },
-  })
-}
-
 export async function importImage(ctx: PluginContext, params: ImagesImportParams, agent: string): Promise<ExecToolResult> {
   if (!existsSync(params.filePath)) return fail(`File not found: ${params.filePath}`)
   const dims = await imageDimensions(params.filePath)
@@ -255,11 +166,7 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
   const dims = dimensionsForSurface(surfaceId, params.width, params.height)
   if (!dims) return fail(`Unknown image surface: ${surfaceId}`)
 
-  // Resolve runtime providers and readiness once, then reuse for routing, the
-  // routable check, and the runtime-readiness gate — these used to each issue
-  // their own provider/config probe (a subprocess per call in the real adapter).
-  const runtimeProviders = await fetchRuntimeImageProviders(ctx)
-  const readiness = await providerReadiness(ctx, runtimeProviders)
+  const readiness = await providerReadiness(ctx)
   const route = resolveImageRoute(readiness, settings, { provider: params.provider, model: params.model })
   if (!route) return fail('No image provider route available')
 
@@ -271,45 +178,41 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
     return fail(`Image model is not routable: ${route.provider}/${route.model}`)
   }
 
+  // The runtime capability owns transport: it serves the route natively when it
+  // can, or composes the shared direct-provider shim when it can't. The plugin
+  // never touches provider HTTP or credentials.
+  if (!ctx.runtime.images) {
+    return fail('The active runtime does not provide an image generation capability')
+  }
+
   const quality = params.quality ?? settings.quality
   let generated: { filePath: string; mimeType: string; width: number; height: number; providerText?: string }
-  let routeSource: 'runtime' | 'native' = 'native'
-  if (runtimeRouteReady(runtimeProviders, route)) {
-    try {
-      const runtimeGenerated = await withImageRetry(() => generateWithRuntime(ctx, route, prompt, dims, quality))
-      const image = runtimeGenerated.images[0]
-      if (!image?.filePath) throw new Error('runtime returned no image file')
-      generated = {
-        filePath: image.filePath,
-        mimeType: image.mimeType ?? 'image/png',
-        width: image.width ?? dims.width,
-        height: image.height ?? dims.height,
-        ...(runtimeGenerated.providerText ? { providerText: runtimeGenerated.providerText } : {}),
-      }
-      routeSource = 'runtime'
-    } catch (runtimeErr) {
-      // Degrade to the native adapter when one is configured rather than
-      // hard-failing on a transient runtime error.
-      try {
-        const fallback = await generateNative(ctx, route, prompt, dims, quality)
-        if (!fallback) return fail(`Runtime image generation failed: ${errorMessage(runtimeErr)}`)
-        generated = fallback
-        routeSource = 'native'
-      } catch (nativeErr) {
-        return fail(`Runtime image generation failed: ${errorMessage(runtimeErr)}; native fallback also failed: ${errorMessage(nativeErr)}`)
-      }
+  let routeSource: string
+  let credentialSource: string | undefined
+  try {
+    const result = await ctx.runtime.images.generate({
+      prompt,
+      provider: route.provider,
+      model: route.model,
+      width: dims.width,
+      height: dims.height,
+      outputFormat: 'png',
+      metadata: { quality },
+    })
+    const image = result.images[0]
+    if (!image?.filePath) return fail('Runtime image generation returned no image file')
+    generated = {
+      filePath: image.filePath,
+      mimeType: image.mimeType ?? 'image/png',
+      width: image.width ?? dims.width,
+      height: image.height ?? dims.height,
+      ...(result.providerText ? { providerText: result.providerText } : {}),
     }
-  } else {
-    if (!nativeProvider(route.provider)) {
-      return fail(`No runtime image provider route or native adapter is configured for: ${route.provider}`)
-    }
-    try {
-      const native = await generateNative(ctx, route, prompt, dims, quality)
-      if (!native) return fail(`No API key configured for image provider: ${route.provider}`)
-      generated = native
-    } catch (err) {
-      return fail(`Image generation failed: ${errorMessage(err)}`)
-    }
+    const servedBy = typeof result.metadata?.servedBy === 'string' ? result.metadata.servedBy : undefined
+    routeSource = servedBy === 'shim' ? 'shim' : 'runtime'
+    credentialSource = typeof result.metadata?.credentialSource === 'string' ? result.metadata.credentialSource : undefined
+  } catch (err) {
+    return fail(`Image generation failed: ${errorMessage(err)}`)
   }
 
   const promptAssetFilename = params.savePromptPacket
@@ -353,6 +256,7 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
     model: route.model,
     quality,
     routeSource,
+    ...(credentialSource ? { credentialSource } : {}),
     prompt: prompt.slice(0, 500),
     promptHash,
     ...(promptAssetFilename ? { promptAssetFilename } : {}),

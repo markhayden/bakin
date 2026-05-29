@@ -41,20 +41,12 @@ describe('image providers', () => {
     })
   })
 
-  it('reports readiness from runtime provider configuration', async () => {
-    const ctx = {
-      runtime: {
-        config: {
-          get: mock(async () => ({
-            models: {
-              providers: {
-                google: { apiKey: 'runtime-gemini-key' },
-              },
-            },
-          })),
-        },
-      },
-    } as unknown as PluginContext
+  it('reports a native provider as configured from a Bakin-owned env secret', async () => {
+    // Native readiness no longer reads provider keys out of the runtime's raw
+    // config (that crossed the adapter boundary). A Bakin-owned env secret is
+    // the legitimate signal that the direct shim can serve the provider.
+    process.env.GEMINI_API_KEY = 'gemini-key'
+    const ctx = {} as unknown as PluginContext
 
     const ready = await providerReadiness(ctx)
 

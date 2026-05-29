@@ -1,7 +1,6 @@
 import type { PluginContext } from '@bakin/core/plugin-types'
 import type { RuntimeImageProvider } from '@bakin/core/adapters/runtime'
 import type { ImageModelDescriptor, ImagePluginSettings, ImageProviderDescriptor, ImageProviderId, ImageProviderReadiness, NativeImageProviderId } from '../types'
-import { loadRuntimeConfig, resolveImageApiKeyFrom } from './credentials'
 
 export const IMAGE_PROVIDERS: ImageProviderDescriptor[] = [
   {
@@ -120,16 +119,14 @@ export async function providerReadiness(
   const envById = new Map(envReadiness.map(provider => [provider.id, provider]))
   const runtimeProviders = prefetchedRuntimeProviders ?? await fetchRuntimeImageProviders(ctx)
   const runtimeById = new Map(runtimeProviders.map(provider => [provider.id, provider]))
-  // Load the raw runtime config once and reuse it for every native key lookup
-  // rather than re-fetching (a subprocess in the real adapter) per provider.
-  const config = await loadRuntimeConfig(ctx)
 
   const native: ImageProviderReadiness[] = IMAGE_PROVIDERS.map((provider): ImageProviderReadiness => {
-    const providerId = provider.id as NativeImageProviderId
-    const apiKey = resolveImageApiKeyFrom(providerId, config)
     const env = envById.get(provider.id)
     const runtime = runtimeById.get(provider.id)
-    const configured = Boolean(apiKey) || runtime?.configured === true
+    // A native provider is reachable if the runtime serves it OR a Bakin-owned
+    // shim key (env) is present. We no longer read provider keys out of the
+    // runtime's raw config — that crossed the adapter boundary.
+    const configured = (env?.configuredEnvVars.length ?? 0) > 0 || runtime?.configured === true
     const routable = configured && (
       provider.models.some(model => model.status === 'routable')
       || runtimeProviderRoutable(runtime)
