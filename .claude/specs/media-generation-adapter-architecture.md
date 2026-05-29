@@ -204,7 +204,10 @@ runtime needs it).
   masked-status) so keys are editable from the UI rather than by hand. Resolved
   ownership: a dedicated core module (`@bakin/core/media/secret-store`), NOT the
   per-plugin settings infra (provider grain, shared across modalities); the UI
-  field type rides the existing settings renderer.
+  field type rides the existing settings renderer. Near-term scope is
+  **image-scoped**; the broader global credential-status inventory (all runtime
+  domains: models, gateway, channels, skills/tools) is tracked in
+  **GitHub #378**.
 - [ ] Build the Hermes adapter against this to confirm the abstraction
   (synthesized `providers()`, no extractable key → store/shim-only).
 
