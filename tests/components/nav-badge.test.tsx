@@ -57,6 +57,11 @@ describe('NavBadge', () => {
     render(<NavBadge badge={{ count: 1, tone: 'success' }} />)
     expect(screen.getByTestId('nav-badge-pill').className).toContain('bg-emerald-500/20')
   })
+
+  it('applies the error palette (red) when tone is error', () => {
+    render(<NavBadge badge={{ count: 1, tone: 'error' }} />)
+    expect(screen.getByTestId('nav-badge-pill').className).toContain('bg-red-500/20')
+  })
 })
 
 describe('NavBadgeDot', () => {
@@ -89,5 +94,13 @@ describe('navBadgeAriaSuffix', () => {
 
   it('returns just the tone for presence-only badges', () => {
     expect(navBadgeAriaSuffix({ tone: 'success' })).toBe(', success')
+  })
+
+  it('formats error tone as the neutral word "urgent"', () => {
+    expect(navBadgeAriaSuffix({ count: 3, tone: 'error' })).toBe(', 3 urgent')
+  })
+
+  it('formats presence-only error (no count) as "urgent"', () => {
+    expect(navBadgeAriaSuffix({ tone: 'error' })).toBe(', urgent')
   })
 })

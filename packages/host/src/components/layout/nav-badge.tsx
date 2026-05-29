@@ -1,15 +1,30 @@
 import type { NavBadge as NavBadgeData, NavBadgeTone } from '@makinbakin/sdk'
 
 const PILL_TONE: Record<NavBadgeTone, string> = {
+  error: 'bg-red-500/20 text-red-300',
   attention: 'bg-amber-500/20 text-amber-300',
   info: 'bg-sky-500/20 text-sky-300',
   success: 'bg-emerald-500/20 text-emerald-300',
 }
 
 const DOT_TONE: Record<NavBadgeTone, string> = {
+  error: 'bg-red-400',
   attention: 'bg-amber-400',
   info: 'bg-sky-400',
   success: 'bg-emerald-400',
+}
+
+/**
+ * Canonical screen-reader word per tone. Single source of truth shared by
+ * both aria-suffix builders (the flat/counted one here and the
+ * collapsed-parent rollup in nav-badge-logic) so the wording can't diverge
+ * per tone as the palette grows.
+ */
+export const TONE_LABEL: Record<NavBadgeTone, string> = {
+  error: 'urgent',
+  attention: 'needing review',
+  info: 'info',
+  success: 'success',
 }
 
 function formatCount(n: number): string {
@@ -64,8 +79,7 @@ export function NavBadgeDot({ tone }: { tone: NavBadgeTone }) {
  */
 export function navBadgeAriaSuffix(badge: NavBadgeData | undefined): string {
   if (!badge || (typeof badge.count === 'number' && badge.count <= 0)) return ''
-  const tone = badge.tone ?? 'attention'
-  const toneLabel = tone === 'attention' ? 'needing review' : tone
+  const toneLabel = TONE_LABEL[badge.tone ?? 'attention']
   if (typeof badge.count === 'number') return `, ${formatCount(badge.count)} ${toneLabel}`
   return `, ${toneLabel}`
 }

@@ -89,7 +89,9 @@ registerPlugin({
 })
 ```
 
-The `NavBadge` shape is `{ count?: number; tone?: 'attention' | 'info' | 'success' }`.
+The `NavBadge` shape is `{ count?: number; tone?: 'error' | 'attention' | 'info' | 'success' }`.
+Tones render by severity — `error` (red) > `attention` (amber) > `info`
+(blue) > `success` (green) — and `error` wins a collapsed-parent rollup.
 Counts greater than 99 render as `99+`. Passing `null` to `setNavBadge`
 clears the badge. The `badge?` field on `NavItem` itself is only an
 initial seed — runtime values from `setNavBadge` take precedence and are

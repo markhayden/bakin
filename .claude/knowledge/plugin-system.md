@@ -839,13 +839,17 @@ setNavBadge('messaging', 'messaging-plans', { count: 3, tone: 'attention' })
 setNavBadge('messaging', 'messaging-plans', null)
 ```
 
-The `NavBadge` shape is `{ count?: number; tone?: 'attention' | 'info' | 'success' }`.
+The `NavBadge` shape is `{ count?: number; tone?: 'error' | 'attention' | 'info' | 'success' }`.
 Rendering rules:
 - `count` present and `> 0` → small pill, clamped at `99+`.
 - `count` omitted, object present → small dot (presence-only).
 - `count: 0` or passing `null` → cleared.
-- `tone` defaults to `'attention'` (amber, matches the existing
-  `needs_review` palette).
+- `tone` defaults to `'attention'` (amber). Tones by severity:
+  `error` (red) > `attention` (amber) > `info` (blue) > `success` (green) —
+  this `TONE_PRIORITY` ordering decides which wins a collapsed-parent dot
+  rollup. The producer picks the single winning tone (one badge, one
+  color); see the Tasks plugin for a two-severity example (blocked →
+  `error`, review → `attention`).
 
 ### Mount point — `nav-badge-providers` slot
 

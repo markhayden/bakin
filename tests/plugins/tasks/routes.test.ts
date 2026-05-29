@@ -179,12 +179,13 @@ describe('Tasks Plugin — :taskId path-param routing', () => {
 // ─── Route Registration ────────────────────────────────────────────────────
 
 describe('Tasks Plugin — Route Registration', () => {
-  it('registers 13 routes', () => {
-    expect(activated.routes.length).toBe(13)
+  it('registers 14 routes', () => {
+    expect(activated.routes.length).toBe(14)
   })
 
   it.each([
     ['GET', '/'],
+    ['GET', '/summary'],
     ['GET', '/:taskId'],
     ['POST', '/'],
     ['PUT', '/:taskId'],
@@ -223,6 +224,55 @@ describe('GET / — List Tasks', () => {
 
     expect(status).toBe(500)
     expect(body.error).toContain('read failed')
+  })
+})
+
+// ─── GET /summary — Nav badge counts ───────────────────────────────────────
+
+describe('GET /summary — nav badge counts', () => {
+  it('returns blocked and review counts only', async () => {
+    mockReadTaskboard.mockResolvedValue({
+      columns: {
+        blocked: [{ id: 'b1' }, { id: 'b2' }],
+        review: [{ id: 'r1' }],
+        todo: [{ id: 't1' }],
+      },
+    })
+
+    const route = findRoute(activated.routes, 'GET', '/summary')!
+    const { status, body } = await callRoute(route, activated.ctx)
+
+    expect(status).toBe(200)
+    expect(body).toEqual({ blocked: 2, review: 1 })
+  })
+
+  it('reports zeros on an empty board', async () => {
+    mockReadTaskboard.mockResolvedValue({ columns: { blocked: [], review: [] } })
+
+    const route = findRoute(activated.routes, 'GET', '/summary')!
+    const { status, body } = await callRoute(route, activated.ctx)
+
+    expect(status).toBe(200)
+    expect(body).toEqual({ blocked: 0, review: 0 })
+  })
+
+  it('returns 500 on error', async () => {
+    mockReadTaskboard.mockRejectedValue(new Error('summary read failed'))
+
+    const route = findRoute(activated.routes, 'GET', '/summary')!
+    const { status, body } = await callRoute(route, activated.ctx)
+
+    expect(status).toBe(500)
+    expect(body.error).toContain('summary read failed')
+  })
+
+  // The literal `/summary` is registered as its own route, distinct from the
+  // `/:taskId` param route. Precedence at dispatch time (literal beats param)
+  // is guaranteed + tested by the core routing registry; here we just pin that
+  // the route is registered under its own path.
+  it('registers /summary as a distinct literal route', () => {
+    const summary = findRoute(activated.routes, 'GET', '/summary')
+    expect(summary?.path).toBe('/summary')
   })
 })
 

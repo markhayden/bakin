@@ -97,6 +97,8 @@ const errorResponse = z.object({ error: z.string() })
 
 const taskBoardResponse = z.object({}).passthrough()  // structural; defined elsewhere
 
+const taskSummaryResponse = z.object({ blocked: z.number(), review: z.number() })
+
 const taskSourceSchema = z.object({
   pluginId: z.string().optional(),
   entityType: z.string().optional(),
@@ -204,6 +206,25 @@ const routes = [
       try {
         const board = await readTaskboard()
         return Response.json(board)
+      } catch (err) {
+        return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
+      }
+    },
+  }),
+
+  defineRoute({
+    path: '/summary',
+    method: 'GET',
+    summary: 'Counts of tasks needing attention (nav-badge source)',
+    description: 'Returns blocked/review counts only — cheap source for the Tasks nav badge.',
+    responses: { 200: taskSummaryResponse, 500: errorResponse },
+    handler: async () => {
+      try {
+        const board = await readTaskboard()
+        return Response.json({
+          blocked: board.columns.blocked.length,
+          review: board.columns.review.length,
+        })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
