@@ -20,6 +20,7 @@ interface ContentStore extends ContentState {
   activityEvents: ActivityEvent[]
   sseConnected: boolean
   taskboardVersion: number
+  doctorVersion: number
   debug: boolean
   reindexProgress: Record<string, ReindexProgressEntry>
   setFiles: (files: Record<string, string>) => void
@@ -31,6 +32,7 @@ interface ContentStore extends ContentState {
   setActivityEvents: (events: ActivityEvent[]) => void
   setSseConnected: (connected: boolean) => void
   bumpTaskboard: () => void
+  bumpDoctor: () => void
   setDebug: (debug: boolean) => void
   toggleDebug: () => void
   setReindexProgress: (table: string, indexed: number, done: boolean) => void
@@ -47,6 +49,7 @@ export const useContentStore = create<ContentStore>((set, get) => ({
   activityEvents: [],
   sseConnected: false,
   taskboardVersion: 0,
+  doctorVersion: 0,
   debug: false,
   reindexProgress: {},
 
@@ -67,6 +70,7 @@ export const useContentStore = create<ContentStore>((set, get) => ({
     set({ activityEvents: events.filter((e) => !isNoisyEvent(e)).slice(0, 100) }),
   setSseConnected: (connected) => set({ sseConnected: connected }),
   bumpTaskboard: () => set((state) => ({ taskboardVersion: state.taskboardVersion + 1 })),
+  bumpDoctor: () => set((state) => ({ doctorVersion: state.doctorVersion + 1 })),
   setDebug: (debug) => {
     set({ debug })
     try { localStorage.setItem('bakin-debug', String(debug)) } catch {}

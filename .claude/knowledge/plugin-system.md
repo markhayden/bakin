@@ -884,6 +884,20 @@ refresh signal) per plugin; the hook is deliberately refresh-agnostic.
 `setNavBadge` itself is **idempotent** — a set with an identical value is
 a no-op (no snapshot rebuild, no subscriber notification).
 
+The refresh signal is per-plugin — the hook doesn't prescribe one. The
+three adopters show the range:
+- **messaging** (Plans, `attention`) — its own `EventSource` filtering
+  `messaging/plans/` file events.
+- **tasks** (blocked→`error` / review→`attention`, winning-severity) —
+  the SSE content-store's `taskboardVersion`.
+- **health** (failing checks, `error`-only) — the content-store's
+  `doctorVersion`, a counter bumped in `use-sse` when a `doctor.run`
+  audit event arrives (every doctor run already emits one). This rides
+  the existing audit SSE — no new broadcast, no poll — and is the clean
+  pattern for any cron/cache-backed source. (Health is errors-only on
+  purpose: many `warn` checks are steady-state, so an amber badge would
+  be permanent noise.)
+
 ### Sidebar rendering
 
 `AppSidebar` (`packages/host/src/components/layout/app-sidebar.tsx`)
