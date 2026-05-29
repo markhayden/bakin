@@ -14,60 +14,57 @@ mock.module('../../packages/core/src/content-dir', () => ({
   getBakinPaths: () => ({ root: testDir }),
 }))
 
-import { render, screen } from '@testing-library/react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { NavBadge, NavBadgeDot, navBadgeAriaSuffix } from '../../packages/host/src/components/layout/nav-badge'
+
+// Render to an HTML string rather than mounting into happy-dom — these are
+// pure presentational components, so the markup is enough to assert on, and
+// it keeps this file's memory footprint near zero (the full --isolate suite
+// sits close to a Bun segfault threshold; mounting here would add to it).
 
 describe('NavBadge', () => {
   it('renders nothing when badge is undefined', () => {
-    const { container } = render(<NavBadge badge={undefined} />)
-    expect(container.firstChild).toBeNull()
+    expect(renderToStaticMarkup(<NavBadge badge={undefined} />)).toBe('')
   })
 
   it('renders nothing when count is 0', () => {
-    const { container } = render(<NavBadge badge={{ count: 0 }} />)
-    expect(container.firstChild).toBeNull()
+    expect(renderToStaticMarkup(<NavBadge badge={{ count: 0 }} />)).toBe('')
   })
 
   it('renders a pill with the count when count is positive', () => {
-    render(<NavBadge badge={{ count: 3 }} />)
-    expect(screen.getByTestId('nav-badge-pill').textContent).toBe('3')
+    const html = renderToStaticMarkup(<NavBadge badge={{ count: 3 }} />)
+    expect(html).toContain('nav-badge-pill')
+    expect(html).toContain('>3<')
   })
 
   it('clamps counts above 99 to "99+"', () => {
-    render(<NavBadge badge={{ count: 250 }} />)
-    expect(screen.getByTestId('nav-badge-pill').textContent).toBe('99+')
+    expect(renderToStaticMarkup(<NavBadge badge={{ count: 250 }} />)).toContain('99+')
   })
 
-  it('renders a dot when count is omitted', () => {
-    render(<NavBadge badge={{ tone: 'info' }} />)
-    expect(screen.getByTestId('nav-badge-pill').className).toContain('bg-sky-400')
+  it('renders a dot (no count) when count is omitted', () => {
+    expect(renderToStaticMarkup(<NavBadge badge={{ tone: 'info' }} />)).toContain('bg-sky-400')
   })
 
   it('applies the attention palette by default', () => {
-    render(<NavBadge badge={{ count: 1 }} />)
-    expect(screen.getByTestId('nav-badge-pill').className).toContain('bg-amber-500/20')
+    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1 }} />)).toContain('bg-amber-500/20')
   })
 
   it('applies the info palette when tone is info', () => {
-    render(<NavBadge badge={{ count: 1, tone: 'info' }} />)
-    expect(screen.getByTestId('nav-badge-pill').className).toContain('bg-sky-500/20')
+    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'info' }} />)).toContain('bg-sky-500/20')
   })
 
   it('applies the success palette when tone is success', () => {
-    render(<NavBadge badge={{ count: 1, tone: 'success' }} />)
-    expect(screen.getByTestId('nav-badge-pill').className).toContain('bg-emerald-500/20')
+    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'success' }} />)).toContain('bg-emerald-500/20')
   })
 
   it('applies the error palette (red) when tone is error', () => {
-    render(<NavBadge badge={{ count: 1, tone: 'error' }} />)
-    expect(screen.getByTestId('nav-badge-pill').className).toContain('bg-red-500/20')
+    expect(renderToStaticMarkup(<NavBadge badge={{ count: 1, tone: 'error' }} />)).toContain('bg-red-500/20')
   })
 })
 
 describe('NavBadgeDot', () => {
   it('renders a small dot using the given tone', () => {
-    render(<NavBadgeDot tone="attention" />)
-    expect(screen.getByTestId('nav-badge-dot').className).toContain('bg-amber-400')
+    expect(renderToStaticMarkup(<NavBadgeDot tone="attention" />)).toContain('bg-amber-400')
   })
 })
 
