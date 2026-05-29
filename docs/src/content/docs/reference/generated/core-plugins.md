@@ -44,7 +44,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Messaging<br/><span>Content messaging with scheduling, brainstorming, and multi-agent content pipeline</span></td>
       <td><code>messaging</code></td>
       <td>Official</td>
-      <td><code>1.0.0</code></td>
+      <td><code>0.0.1</code></td>
       <td><code>team</code> <code>workflows</code></td>
     </tr>
     <tr>
@@ -58,7 +58,7 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>Projects<br/><span>Project management with specs, checklists, task linking, and agent access via MCP tools</span></td>
       <td><code>projects</code></td>
       <td>Official</td>
-      <td><code>1.0.0</code></td>
+      <td><code>0.0.1</code></td>
       <td><code>tasks</code> <code>assets</code> <code>team</code></td>
     </tr>
     <tr>
@@ -93,5 +93,5 @@ description: Generated catalog of official plugins supported by Bakin.
 </table>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 16, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 29, 2026 · Bakin 0.0.0-dev</span>
 </aside>

@@ -44,11 +44,11 @@
     },
     "settings": {
       "status": "active",
-      "count": 57,
+      "count": 58,
       "source": "packages/core/src/settings.ts"
     },
     "sdkSubpaths": {
-      "status": "audited",
+      "status": "active",
       "count": 9,
       "source": "packages/sdk/package.json"
     },
