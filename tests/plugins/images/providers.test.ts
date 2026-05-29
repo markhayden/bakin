@@ -1,8 +1,38 @@
-import { describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { rmSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import type { PluginContext } from '@bakin/core/plugin-types'
+import { resetContentDir } from '../../../src/core/content-dir'
 import { DEFAULT_IMAGE_SETTINGS, listImageProviders, providerReadiness, providerReadinessFromEnv } from '../../../plugins/images/lib/providers'
 
 describe('image providers', () => {
+  // readiness consults the Bakin secret store (getContentDir) — isolate it.
+  let testDir: string
+  const original = {
+    openai: process.env.OPENAI_API_KEY,
+    gemini: process.env.GEMINI_API_KEY,
+    google: process.env.GOOGLE_AI_API_KEY,
+    home: process.env.BAKIN_HOME,
+  }
+  beforeEach(() => {
+    testDir = join(tmpdir(), `bakin-images-providers-${Date.now()}-${Math.random().toString(16).slice(2)}`)
+    process.env.BAKIN_HOME = testDir
+    resetContentDir()
+    delete process.env.OPENAI_API_KEY
+    delete process.env.GEMINI_API_KEY
+    delete process.env.GOOGLE_AI_API_KEY
+  })
+  afterEach(() => {
+    for (const [key, value] of [['OPENAI_API_KEY', original.openai], ['GEMINI_API_KEY', original.gemini], ['GOOGLE_AI_API_KEY', original.google], ['BAKIN_HOME', original.home]] as const) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+    resetContentDir()
+    rmSync(testDir, { recursive: true, force: true })
+    mock.restore()
+  })
+
   it('ships routable OpenAI and Gemini providers for v1', () => {
     const providers = listImageProviders()
     const byId = new Map(providers.map(provider => [provider.id, provider]))

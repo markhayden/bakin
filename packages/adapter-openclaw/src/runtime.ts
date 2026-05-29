@@ -27,7 +27,7 @@ import type {
   WorkspaceFile,
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
-import { generateDirectImage, isDirectImageProvider, resolveDirectImageKey, withImageRetry } from '@bakin/core/media'
+import { generateDirectImage, isDirectImageProvider, resolveProviderApiKey, withImageRetry } from '@bakin/core/media'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
   findAgentById,
@@ -922,7 +922,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   private async generateImageViaShim(input: RuntimeImageGenerateInput): Promise<RuntimeImageGenerationResult | null> {
     const provider = input.provider
     if (!provider || !isDirectImageProvider(provider)) return null
-    const apiKey = resolveDirectImageKey(provider)
+    const apiKey = resolveProviderApiKey(provider)
     if (!apiKey) return null
     const model = input.model ?? ''
     const result = await generateDirectImage({

@@ -9,3 +9,4 @@
  * See .claude/specs/media-generation-adapter-architecture.md.
  */
 export * from './direct-image-provider'
+export * from './secret-store'

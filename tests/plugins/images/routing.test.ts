@@ -1,10 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { rmSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import type { PluginContext } from '@bakin/core/plugin-types'
+import { resetContentDir } from '../../../src/core/content-dir'
 import { recommendImageRoute } from '../../../plugins/images/lib/routing'
 
 const originalOpenAI = process.env.OPENAI_API_KEY
 const originalGemini = process.env.GEMINI_API_KEY
 const originalGoogle = process.env.GOOGLE_AI_API_KEY
+const originalHome = process.env.BAKIN_HOME
 
 function makeContext(settings: Record<string, unknown> = {}): PluginContext {
   return {
@@ -13,7 +18,13 @@ function makeContext(settings: Record<string, unknown> = {}): PluginContext {
 }
 
 describe('image route recommendation', () => {
+  let testDir: string
   beforeEach(() => {
+    // recommend → providerReadiness consults the Bakin secret store
+    // (getContentDir); isolate it from the real ~/.bakin.
+    testDir = join(tmpdir(), `bakin-images-routing-${Date.now()}-${Math.random().toString(16).slice(2)}`)
+    process.env.BAKIN_HOME = testDir
+    resetContentDir()
     delete process.env.OPENAI_API_KEY
     delete process.env.GEMINI_API_KEY
     delete process.env.GOOGLE_AI_API_KEY
@@ -26,6 +37,10 @@ describe('image route recommendation', () => {
     else process.env.GEMINI_API_KEY = originalGemini
     if (originalGoogle === undefined) delete process.env.GOOGLE_AI_API_KEY
     else process.env.GOOGLE_AI_API_KEY = originalGoogle
+    if (originalHome === undefined) delete process.env.BAKIN_HOME
+    else process.env.BAKIN_HOME = originalHome
+    resetContentDir()
+    rmSync(testDir, { recursive: true, force: true })
     mock.restore()
   })
 

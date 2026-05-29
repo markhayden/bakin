@@ -1,5 +1,6 @@
 import type { PluginContext } from '@bakin/core/plugin-types'
 import type { RuntimeImageProvider } from '@bakin/core/adapters/runtime'
+import { getStoredProviderKey } from '@bakin/core/media'
 import type { ImageModelDescriptor, ImagePluginSettings, ImageProviderDescriptor, ImageProviderId, ImageProviderReadiness, NativeImageProviderId } from '../types'
 
 export const IMAGE_PROVIDERS: ImageProviderDescriptor[] = [
@@ -127,7 +128,9 @@ export async function providerReadiness(
     // shim key (env) is present. We no longer read provider keys out of the
     // runtime's raw config — that crossed the adapter boundary.
     const hasEnvKey = (env?.configuredEnvVars.length ?? 0) > 0
-    const configured = hasEnvKey || runtime?.configured === true
+    // Env overrides; only touch the secret store when no env key is present.
+    const hasBakinKey = hasEnvKey || getStoredProviderKey(provider.id) !== null
+    const configured = hasBakinKey || runtime?.configured === true
     const routable = configured && (
       provider.models.some(model => model.status === 'routable')
       || runtimeProviderRoutable(runtime)
@@ -143,7 +146,7 @@ export async function providerReadiness(
       defaultModel: runtime?.defaultModel,
       selected: runtime?.selected,
       source: runtime ? 'native+runtime' as const : 'native' as const,
-      servedBy: runtime?.configured === true ? 'runtime' : hasEnvKey ? 'shim' : 'unconfigured',
+      servedBy: runtime?.configured === true ? 'runtime' : hasBakinKey ? 'shim' : 'unconfigured',
     }
   })
 
