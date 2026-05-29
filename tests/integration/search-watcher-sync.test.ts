@@ -113,6 +113,7 @@ function makeCtx(plugin: BakinPlugin): PluginContext {
     runtime: createMockRuntimeAdapter(),
     tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
     assets: {
+      save: mock(async () => ({ ok: false, error: 'not implemented' })),
       getByFilename: mock(async () => null),
       list: mock(async () => []),
       exists: mock(async () => false),

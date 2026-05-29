@@ -1,0 +1,90 @@
+{
+  "id": "images",
+  "name": "Images",
+  "version": "0.1.0",
+  "bakin": ">=1.0.0",
+  "description": "Provider-routed image generation, import, export, prompt routing, and platform surface profiles",
+  "entry": {
+    "server": "index.ts"
+  },
+  "contentFiles": [],
+  "secrets": [
+    {
+      "name": "OPENAI_API_KEY",
+      "description": "Optional direct OpenAI API key used when the runtime adapter does not provide a configured OpenAI image route.",
+      "required": false
+    },
+    {
+      "name": "GEMINI_API_KEY",
+      "description": "Optional direct Google Gemini API key used when the runtime adapter does not provide a configured Google image route.",
+      "required": false
+    },
+    {
+      "name": "GOOGLE_AI_API_KEY",
+      "description": "Alternative direct Google AI API key environment variable for Gemini image generation.",
+      "required": false
+    }
+  ],
+  "tests": "tests/",
+  "dependencies": [
+    "assets",
+    "models"
+  ],
+  "permissions": [
+    "assets.read",
+    "assets.write",
+    "events.emit",
+    "runtime.images",
+    "storage.read",
+    "storage.write"
+  ],
+  "contributes": {
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/profiles",
+        "summary": "List image surface profiles"
+      },
+      {
+        "method": "GET",
+        "path": "/providers",
+        "summary": "List image providers and readiness"
+      }
+    ],
+    "execTools": [
+      {
+        "name": "bakin_exec_images_recommend",
+        "summary": "Recommend an image provider, model, surface, dimensions, and quality tier",
+        "description": "Recommend a deterministic image provider, model, surface profile, dimensions, and quality tier for an image generation request."
+      },
+      {
+        "name": "bakin_exec_images_generate",
+        "summary": "Generate an image through a configured runtime or native provider adapter",
+        "description": "Generate an image through a configured runtime image provider or native image provider adapter, save it into Assets, and return the canonical image filename."
+      },
+      {
+        "name": "bakin_exec_images_edit",
+        "summary": "Edit an existing image through the runtime provider and save the result into Assets",
+        "description": "Edit an existing image (a managed asset or a local file) through the configured runtime image provider using edit instructions, save the result into Assets, and return the canonical image filename."
+      },
+      {
+        "name": "bakin_exec_images_import",
+        "summary": "Import an existing local image file into Assets",
+        "description": "Import an existing local image file into the Assets pipeline and return the canonical image filename."
+      },
+      {
+        "name": "bakin_exec_images_export",
+        "summary": "Export an image asset to a target surface profile",
+        "description": "Export an existing image asset to a target surface profile by resizing, cropping, and format-converting it."
+      },
+      {
+        "name": "bakin_exec_images_profiles",
+        "summary": "List image surface profiles and configured provider readiness",
+        "description": "List image surface profiles and configured provider readiness. Use this before choosing dimensions or provider routes for image generation."
+      }
+    ],
+    "docs": {
+      "slug": "using/images"
+    }
+  }
+}

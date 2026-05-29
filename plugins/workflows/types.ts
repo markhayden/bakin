@@ -236,6 +236,8 @@ export interface WorkflowInstance {
   updatedAt: string
   /** Snapshot of the task assignee at workflow start, used to resolve `$assigned` agent steps */
   resolvedAgent?: string
+  /** Snapshot of runtime agents at workflow start, used to resolve preferred-agent selectors */
+  availableAgents?: string[]
   /** If this instance was spawned by a parent workflow step */
   parentTaskId?: string
   parentStepId?: string

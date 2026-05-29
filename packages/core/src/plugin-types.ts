@@ -547,6 +547,21 @@ export interface AssetVariantMeta {
   mimeType: string
 }
 
+/** Structured provenance written by image-generation tools into an asset sidecar. */
+export interface AssetGenerationMeta {
+  provider: string
+  model: string
+  surface: string
+  width: number
+  height: number
+  quality: string
+  promptHash: string
+  promptAssetFilename?: string
+  routeReason?: string
+  routeSource?: 'runtime' | 'shim' | string
+  createdByTool: string
+}
+
 export interface AssetMeta {
   path: string
   filename: string
@@ -562,6 +577,7 @@ export interface AssetMeta {
     description?: string
     tags?: string[]
     originalFilename?: string
+    generation?: AssetGenerationMeta
   }
   variants?: AssetVariantMeta[]
 }
@@ -572,7 +588,33 @@ export interface AssetFileRef {
   mimeType?: string
 }
 
+/** Input for saving an agent-created or plugin-created file through the Assets plugin. */
+export interface AssetSaveInput {
+  filePath: string
+  taskId: string | null
+  type: AssetMeta['type']
+  agent: string
+  description?: string
+  tags?: string[]
+  tool?: string
+  slug?: string
+  source?: 'agent' | 'upload' | 'clipboard'
+  originalFilename?: string
+  generation?: AssetGenerationMeta
+}
+
+/** Result returned after the Assets plugin canonicalizes and persists a file. */
+export interface AssetSaveResult {
+  ok: boolean
+  path?: string
+  metadataPath?: string
+  filename?: string
+  error?: string
+  [key: string]: unknown
+}
+
 export interface AssetsAPI {
+  save(input: AssetSaveInput): Promise<AssetSaveResult>
   getByFilename(filename: string): Promise<AssetMeta | null>
   list(filter?: { type?: AssetMeta['type']; taskId?: string | null }): Promise<AssetMeta[]>
   exists(filename: string): Promise<boolean>

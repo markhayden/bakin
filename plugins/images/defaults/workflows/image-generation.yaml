@@ -1,0 +1,129 @@
+id: image-generation
+name: Image Generation
+description: >
+  Build a provider-neutral image prompt packet from a creative brief, recommend
+  the best configured image route, get human approval, then generate and save
+  the approved image as an Assets filename. Designed to run standalone or as a
+  nested primitive inside other workflows.
+version: 4
+
+steps:
+  - id: develop-prompt
+    type: agent
+    label: Develop Prompt And Route
+    agent: $preferred(pixel,$assigned)
+    description: >
+      Develop an image prompt packet from the creative brief in priorStepOutput
+      or stepOutputs.__parentContext. If the workflow is nested, preserve the
+      parent's platform, usage constraints, caption, and imageBrief fields.
+
+      Build a provider-neutral prompt packet that follows this framework:
+      subject, audience/use, platform surface, composition, lighting, style,
+      color/material cues, required text, exclusion constraints, brand-safety
+      constraints, and accessibility notes. Front-load the subject and the most
+      important visual outcome. Avoid resolution words like 2K/4K and avoid raw
+      aspect-ratio instructions; use an images surface profile instead.
+
+      Choose the closest surface profile. Prefer instagram-feed-portrait for
+      social feed posts, instagram-story for stories/reels/tall mobile assets,
+      blog-hero for article headers, open-graph for link previews, and
+      google-display-landscape or google-display-square for ads.
+
+      Call bakin_exec_images_recommend before submitting your step output. Pass
+      surface, objective, quality, and any forced provider/model requested by
+      the brief. Include the returned route in your output. Do not generate the
+      image in this step.
+    output_schema:
+      prompt:
+        type: string
+        description: Provider-neutral prompt compiled from promptPacket
+      promptPacket:
+        type: object
+        description: Structured approved prompt packet for the generation tool
+      surface:
+        type: string
+        description: Recommended image surface profile id
+      objective:
+        type: string
+        description: Primary creative or business objective for routing
+      route:
+        type: object
+        fields:
+          provider:
+            type: string
+            description: Recommended provider id
+          model:
+            type: string
+            description: Recommended model id
+          surface:
+            type: string
+            description: Surface profile id
+          width:
+            type: number
+            description: Generated image width
+          height:
+            type: number
+            description: Generated image height
+          quality:
+            type: string
+            description: draft | standard | premium
+          reason:
+            type: string
+            description: Short routing rationale
+      notes:
+        type: string
+        description: Prompt/routing tradeoffs or reviewer notes
+
+  - id: prompt-gate
+    type: gate
+    label: Approve Prompt, Route, And Use
+    description: >
+      Review the prompt packet, platform surface, provider/model route, quality
+      tier, and usage constraints before generation. Reject with notes if the
+      prompt is vague, unsafe for the brand, routed to the wrong surface, or
+      missing required copy/reference constraints.
+    approval_required: true
+    on_approve: generate-image
+    on_reject:
+      goto: develop-prompt
+      note_to_agent: true
+
+  - id: generate-image
+    type: agent
+    label: Generate Image
+    agent: $preferred(pixel,$assigned)
+    skill: generate-image
+    description: >
+      Use the approved develop-prompt output. Call bakin_exec_images_generate
+      with taskId, promptPacket, prompt, provider, model, surface, quality, and
+      savePromptPacket: true. Do not manually write files or sidecars; the
+      images and assets plugins handle persistence. Submit the canonical asset
+      filename returned by the tool.
+    output_schema:
+      image_filename:
+        type: string
+        description: Canonical generated image asset filename
+      filename:
+        type: string
+        description: Same canonical generated image asset filename
+      provider:
+        type: string
+        description: Provider used for generation
+      model:
+        type: string
+        description: Model used for generation
+      surface:
+        type: string
+        description: Surface profile used for generation
+      width:
+        type: number
+        description: Generated image width
+      height:
+        type: number
+        description: Generated image height
+      promptHash:
+        type: string
+        description: Hash of the approved prompt text
+      promptAssetFilename:
+        type: string
+        description: Prompt packet asset filename saved for the approval trail

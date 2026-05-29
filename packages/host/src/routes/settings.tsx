@@ -27,6 +27,7 @@ import {
 } from '@/components/system-settings'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/empty-state'
+import { ProviderKeysTab, PROVIDER_KEYS_TAB_ID } from '@/components/provider-keys-tab'
 import { Route as RootRoute } from './__root'
 
 export interface PluginSchemaEntry {
@@ -49,10 +50,12 @@ interface GroupedSchemas {
  */
 export function groupAndSortSchemas(schemas: PluginSchemaEntry[]): GroupedSchemas {
   const system: PluginSchemaEntry[] = []
+  const providerKeys: PluginSchemaEntry[] = []
   const core: PluginSchemaEntry[] = []
   const extensions: PluginSchemaEntry[] = []
   for (const entry of schemas) {
     if (entry.id === SYSTEM_SETTINGS_TAB_ID) system.push(entry)
+    else if (entry.id === PROVIDER_KEYS_TAB_ID) providerKeys.push(entry)
     else if (entry.source === 'built-in') core.push(entry)
     else extensions.push(entry)
   }
@@ -60,7 +63,8 @@ export function groupAndSortSchemas(schemas: PluginSchemaEntry[]): GroupedSchema
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
   core.sort(alpha)
   extensions.sort(alpha)
-  return { core: [...system, ...core], extensions }
+  // System & Alerts pinned first, then Provider Keys, then built-ins A-Z.
+  return { core: [...system, ...providerKeys, ...core], extensions }
 }
 
 function SettingsPage() {
@@ -78,6 +82,7 @@ function SettingsPage() {
       .then((data: PluginSchemaEntry[]) => {
         const withSystem: PluginSchemaEntry[] = [
           { id: SYSTEM_SETTINGS_TAB_ID, name: 'System & Alerts', schema: SYSTEM_SETTINGS_SCHEMA, source: 'built-in' },
+          { id: PROVIDER_KEYS_TAB_ID, name: 'Provider Keys', schema: { fields: [] }, source: 'built-in' },
           ...data,
         ]
         setPlugins(withSystem)
@@ -91,6 +96,13 @@ function SettingsPage() {
   // /api/settings (core settings.json) instead of /api/plugin-settings/*.
   useEffect(() => {
     if (!activePlugin) return
+    // Provider Keys manages its own data via /api/secrets + the images
+    // readiness route, so the generic values fetch is skipped.
+    if (activePlugin === PROVIDER_KEYS_TAB_ID) {
+      setValues({})
+      setLoading(false)
+      return
+    }
     setLoading(true)
     if (activePlugin === SYSTEM_SETTINGS_TAB_ID) {
       fetch('/api/settings')
@@ -189,7 +201,9 @@ function SettingsPage() {
           {plugin && (
             <>
               <h2 className="text-base font-semibold mb-4">{plugin.name}</h2>
-              {loading ? (
+              {activePlugin === PROVIDER_KEYS_TAB_ID ? (
+                <ProviderKeysTab />
+              ) : loading ? (
                 <div className="space-y-4">
                   <Skeleton className="h-8 w-60" />
                   <Skeleton className="h-8 w-40" />

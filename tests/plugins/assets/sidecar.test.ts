@@ -49,6 +49,72 @@ describe('assets/sidecar', () => {
       expect(read!.tags).toEqual(['hero', 'blog'])
     })
 
+    it('preserves typed image generation metadata', () => {
+      const assetPath = join(assetsDir, 'hero.png')
+      writeFileSync(assetPath, 'fake-image-data')
+
+      writeSidecar(assetPath, {
+        agent: 'pixel',
+        taskId: 'task123',
+        created: '2026-03-23T14:00:00Z',
+        type: 'images',
+        generation: {
+          provider: 'openai',
+          model: 'gpt-image-2',
+          surface: 'instagram-feed-portrait',
+          width: 1080,
+          height: 1350,
+          quality: 'standard',
+          promptHash: 'sha256:abc123',
+          promptAssetFilename: '20260323-prompt-a1b2c3d4.md',
+          routeReason: 'Best configured model for social portrait.',
+          createdByTool: 'bakin_exec_images_generate',
+        },
+      })
+
+      const read = readSidecar(assetPath)
+      expect(read?.generation).toEqual({
+        provider: 'openai',
+        model: 'gpt-image-2',
+        surface: 'instagram-feed-portrait',
+        width: 1080,
+        height: 1350,
+        quality: 'standard',
+        promptHash: 'sha256:abc123',
+        promptAssetFilename: '20260323-prompt-a1b2c3d4.md',
+        routeReason: 'Best configured model for social portrait.',
+        createdByTool: 'bakin_exec_images_generate',
+      })
+    })
+
+    it('preserves the routeSource provenance field', () => {
+      const assetPath = join(assetsDir, 'routed.png')
+      writeFileSync(assetPath, 'fake-image-data')
+
+      writeSidecar(assetPath, {
+        agent: 'pixel',
+        taskId: 'task123',
+        created: '2026-03-23T14:00:00Z',
+        type: 'images',
+        generation: {
+          provider: 'google',
+          model: 'gemini-3.1-flash-image-preview',
+          surface: 'instagram-square',
+          width: 1080,
+          height: 1080,
+          quality: 'standard',
+          promptHash: 'sha256:def456',
+          routeSource: 'runtime',
+          createdByTool: 'bakin_exec_images_generate',
+        },
+      })
+
+      // Regression: normalizeGeneration used to drop routeSource on read,
+      // silently discarding runtime-vs-native provenance written by the
+      // images plugin.
+      expect(readSidecar(assetPath)?.generation?.routeSource).toBe('runtime')
+    })
+
     it('returns null when sidecar does not exist', () => {
       const result = readSidecar(join(assetsDir, 'nonexistent.png'))
       expect(result).toBeNull()
@@ -186,6 +252,54 @@ describe('assets/sidecar', () => {
 
       const issues = validateSidecar(metaPath)
       expect(issues).toHaveLength(0)
+    })
+
+    it('accepts valid generation metadata as a known optional field', () => {
+      const metaPath = join(assetsDir, 'generated.png.meta.json')
+      writeFileSync(metaPath, JSON.stringify({
+        agent: 'pixel',
+        taskId: 'task123',
+        created: '2026-03-23T14:00:00Z',
+        type: 'images',
+        generation: {
+          provider: 'google',
+          model: 'gemini-3.1-flash-image',
+          surface: 'google-display-landscape',
+          width: 1200,
+          height: 628,
+          quality: 'standard',
+          promptHash: 'sha256:def456',
+          createdByTool: 'bakin_exec_images_generate',
+        },
+      }))
+
+      const issues = validateSidecar(metaPath)
+      expect(issues).toHaveLength(0)
+    })
+
+    it('reports malformed generation metadata', () => {
+      const metaPath = join(assetsDir, 'bad-generated.png.meta.json')
+      writeFileSync(metaPath, JSON.stringify({
+        agent: 'pixel',
+        taskId: 'task123',
+        created: '2026-03-23T14:00:00Z',
+        generation: {
+          provider: '',
+          model: 42,
+          width: -1,
+          height: 'tall',
+          promptHash: '',
+          createdByTool: '',
+        },
+      }))
+
+      const issues = validateSidecar(metaPath)
+      expect(issues.some(i => i.includes('generation.provider'))).toBe(true)
+      expect(issues.some(i => i.includes('generation.model'))).toBe(true)
+      expect(issues.some(i => i.includes('generation.width'))).toBe(true)
+      expect(issues.some(i => i.includes('generation.height'))).toBe(true)
+      expect(issues.some(i => i.includes('generation.promptHash'))).toBe(true)
+      expect(issues.some(i => i.includes('generation.createdByTool'))).toBe(true)
     })
   })
 

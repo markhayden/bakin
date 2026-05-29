@@ -100,6 +100,7 @@ export default defineConfig({
             { label: 'Essentials', slug: 'using/essentials' },
             { label: 'Tasks', slug: 'using/tasks' },
             { label: 'Assets', slug: 'using/assets' },
+            { label: 'Images', slug: 'using/images' },
             { label: 'Schedule', slug: 'using/schedule' },
             { label: 'Messaging', slug: 'using/messaging' },
             { label: 'Projects', slug: 'using/projects' },

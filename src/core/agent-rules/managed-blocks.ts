@@ -429,30 +429,29 @@ Then exit — you will be automatically re-dispatched when their task completes.
     blockId: 'media-delegation',
     target: 'subagent',
     contentFn: (agentId: string) => {
-      const canImage = agentId === 'pixel'
       const canVideo = agentId === 'rolo'
-      const createsSubtasks = !canImage // everyone except pixel creates pixel subtasks
+      // Only non-specialist agents delegate to Pixel/Rolo. The specialists
+      // themselves must not get "when creating Pixel/Rolo tasks" rules.
+      const createsSpecialistSubtasks = agentId !== 'pixel' && agentId !== 'rolo'
 
       let content = `## Bakin Media Delegation Rules
 
 > Auto-managed by \`bakin doctor\`. Do not edit this block manually.\n`
 
-      if (!canImage) {
-        content += `\n**IMAGES:** You cannot generate images. Ever. Not with nano-banana-pro, not with any other tool. All image generation goes through Pixel. Create a Pixel task via \`mcporter call bakin-${agentId}.bakin_exec_tasks_create\` and wait.\n`
-      }
+      content += `\n**IMAGES:** Default to the core images plugin tools for image work — **prefer \`bakin_exec_images_generate\`** over the runtime's built-in image generation. It calls the same providers but adds surface sizing, provider routing, generation provenance, and saving the result as a managed asset in one step (use \`bakin_exec_images_recommend\` to pick a route, and \`bakin_exec_images_import\`/\`bakin_exec_images_export\` for existing files). Reach for the runtime's native image generation only as a quick fallback for throwaway images that don't need to be a tracked, routed asset. Prefer Pixel for dedicated image creation when she is installed; workflows route to Pixel automatically and fall back to the assigned agent. Always return the managed asset \`image_filename\`, not a filesystem path.\n`
 
       if (!canVideo) {
         content += `\n**VIDEO:** You cannot generate video. Ever. Not with Runway, not with any other tool. All video generation goes through Rolo. Create a Rolo task via \`mcporter call bakin-${agentId}.bakin_exec_tasks_create\` and wait.\n`
       }
 
-      if (!canImage && !canVideo) {
-        content += `\nIf you find yourself about to run an image or video generation tool — stop. Create a subtask for the right agent instead.\n`
+      if (!canVideo) {
+        content += `\nIf you find yourself about to run a video generation tool — stop. Create a subtask for Rolo instead.\n`
       }
 
-      if (createsSubtasks) {
+      if (createsSpecialistSubtasks) {
         content += `\n### When Creating Pixel or Rolo Tasks\n`
         content += `\n- **NEVER include posting instructions in a Pixel or Rolo brief.** They generate assets only — they do not post.`
-        content += `\n- Task descriptions for Pixel/Rolo should end with asset delivery: "Save to the assets directory (discover path via \`bakin_exec_get_paths\`) and report the file path."`
+        content += `\n- Task descriptions for Pixel/Rolo should end with asset delivery: "Save through Bakin assets and report the managed asset filename."`
         content += `\n- YOU are responsible for posting the finished content. Not Pixel. Not Rolo.`
       }
 

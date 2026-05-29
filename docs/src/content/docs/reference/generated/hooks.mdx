@@ -317,7 +317,7 @@ const result = await ctx.hooks.invoke(
 <p class="hook-section-description">Workflow hooks expose workflow definitions, instances, steps, gates, and notification helpers for task automation.</p>
 
 <div class="hook-card-list">
-<HookCard id="workflows-approvegate" name="workflows.approveGate" label="Approve workflow gate." summary="Approves a pending workflow gate and advances the instance. Use it from plugins that own an external review surface for workflow-backed tasks." source="plugins/workflows/index.ts:1588" badges={["rpc"]}>
+<HookCard id="workflows-approvegate" name="workflows.approveGate" label="Approve workflow gate." summary="Approves a pending workflow gate and advances the instance. Use it from plugins that own an external review surface for workflow-backed tasks." source="plugins/workflows/index.ts:1592" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.approveGate',
@@ -325,7 +325,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-authorizetooluse" name="workflows.authorizeToolUse" label="Authorize workflow tool use." summary="Checks whether an agent may perform a workflow-scoped tool action for a task. Use it before executing workflow-sensitive automation." source="plugins/workflows/index.ts:1614" badges={["rpc"]}>
+<HookCard id="workflows-authorizetooluse" name="workflows.authorizeToolUse" label="Authorize workflow tool use." summary="Checks whether an agent may perform a workflow-scoped tool action for a task. Use it before executing workflow-sensitive automation." source="plugins/workflows/index.ts:1618" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.authorizeToolUse',
@@ -333,7 +333,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-cancelinstance" name="workflows.cancelInstance" label="Cancel workflow instance." summary="Cancels the workflow instance attached to a task. Use it when task state changes make the workflow no longer relevant or safe to continue." source="plugins/workflows/index.ts:1618" badges={["event"]}>
+<HookCard id="workflows-cancelinstance" name="workflows.cancelInstance" label="Cancel workflow instance." summary="Cancels the workflow instance attached to a task. Use it when task state changes make the workflow no longer relevant or safe to continue." source="plugins/workflows/index.ts:1622" badges={["event"]}>
 ```ts frame="terminal"
 await ctx.hooks.callAll(
   'workflows.cancelInstance',
@@ -343,7 +343,7 @@ await ctx.hooks.callAll(
 )
 ```
 </HookCard>
-<HookCard id="workflows-completestep" name="workflows.completeStep" label="Complete workflow step." summary="Submits output for a workflow step and advances the instance when validation passes. Use it from agents or tools that finish a workflow action." source="plugins/workflows/index.ts:1606" badges={["rpc"]}>
+<HookCard id="workflows-completestep" name="workflows.completeStep" label="Complete workflow step." summary="Submits output for a workflow step and advances the instance when validation passes. Use it from agents or tools that finish a workflow action." source="plugins/workflows/index.ts:1610" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.completeStep',
@@ -357,7 +357,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-createinstance" name="workflows.createInstance" label="Create workflow instance." summary="Creates a workflow instance for a task and optional assignee context. Use it when task creation or routing should immediately attach a workflow." source="plugins/workflows/index.ts:1587" badges={["rpc"]}>
+<HookCard id="workflows-createinstance" name="workflows.createInstance" label="Create workflow instance." summary="Creates a workflow instance for a task and optional assignee context. Use it when task creation or routing should immediately attach a workflow." source="plugins/workflows/index.ts:1591" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.createInstance',
@@ -369,7 +369,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-definitions-list" name="workflows.definitions.list" label="List workflow definitions." summary="Returns available workflow definitions from the configured content directory. Use it to populate workflow selectors or validate workflow ids before creating instances." source="plugins/workflows/index.ts:1608" badges={["rpc"]}>
+<HookCard id="workflows-definitions-list" name="workflows.definitions.list" label="List workflow definitions." summary="Returns available workflow definitions from the configured content directory. Use it to populate workflow selectors or validate workflow ids before creating instances." source="plugins/workflows/index.ts:1612" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.definitions.list',
@@ -377,7 +377,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-getactiveagents" name="workflows.getActiveAgents" label="List active workflow agents." summary="Returns agents currently active in a workflow task. Use it for coordination, notification, or assignment views that need live workflow participants." source="plugins/workflows/index.ts:1613" badges={["rpc"]}>
+<HookCard id="workflows-getactiveagents" name="workflows.getActiveAgents" label="List active workflow agents." summary="Returns agents currently active in a workflow task. Use it for coordination, notification, or assignment views that need live workflow participants." source="plugins/workflows/index.ts:1617" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.getActiveAgents',
@@ -387,7 +387,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-getcurrentstep" name="workflows.getCurrentStep" label="Get current step." summary="Returns the current workflow step for a task, optionally scoped to an agent. Use it when a plugin needs to know what work is currently actionable." source="plugins/workflows/index.ts:1605" badges={["rpc"]}>
+<HookCard id="workflows-getcurrentstep" name="workflows.getCurrentStep" label="Get current step." summary="Returns the current workflow step for a task, optionally scoped to an agent. Use it when a plugin needs to know what work is currently actionable." source="plugins/workflows/index.ts:1609" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.getCurrentStep',
@@ -398,7 +398,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-getnotificationchannel" name="workflows.getNotificationChannel" label="Get notification channel." summary="Returns one workflow notification channel by id. Use it before sending or configuring alerts that depend on a specific channel implementation." source="plugins/workflows/index.ts:1624" badges={["rpc"]}>
+<HookCard id="workflows-getnotificationchannel" name="workflows.getNotificationChannel" label="Get notification channel." summary="Returns one workflow notification channel by id. Use it before sending or configuring alerts that depend on a specific channel implementation." source="plugins/workflows/index.ts:1628" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.getNotificationChannel',
@@ -408,7 +408,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-instances-list" name="workflows.instances.list" label="List workflow instances." summary="Returns workflow instances, optionally filtered by status. Use it for dashboards, queues, and maintenance flows that need a broad view of active workflow state." source="plugins/workflows/index.ts:1604" badges={["rpc"]}>
+<HookCard id="workflows-instances-list" name="workflows.instances.list" label="List workflow instances." summary="Returns workflow instances, optionally filtered by status. Use it for dashboards, queues, and maintenance flows that need a broad view of active workflow state." source="plugins/workflows/index.ts:1608" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.instances.list',
@@ -418,7 +418,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-isgatenotified" name="workflows.isGateNotified" label="Check gate notification." summary="Checks whether a workflow gate notification has already been sent. Use it to avoid duplicate alerts for the same task and gate step." source="plugins/workflows/index.ts:1615" badges={["rpc"]}>
+<HookCard id="workflows-isgatenotified" name="workflows.isGateNotified" label="Check gate notification." summary="Checks whether a workflow gate notification has already been sent. Use it to avoid duplicate alerts for the same task and gate step." source="plugins/workflows/index.ts:1619" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.isGateNotified',
@@ -429,7 +429,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-loaddefinition" name="workflows.loadDefinition" label="Load workflow definition." summary="Loads one workflow definition by name. Use it when a plugin needs the template shape, steps, or metadata behind a workflow id." source="plugins/workflows/index.ts:1609" badges={["rpc"]}>
+<HookCard id="workflows-loaddefinition" name="workflows.loadDefinition" label="Load workflow definition." summary="Loads one workflow definition by name. Use it when a plugin needs the template shape, steps, or metadata behind a workflow id." source="plugins/workflows/index.ts:1613" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.loadDefinition',
@@ -439,7 +439,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-loadinstance" name="workflows.loadInstance" label="Load workflow instance." summary="Loads the workflow instance attached to a task. Use it when a plugin needs current workflow state without reading workflow files directly." source="plugins/workflows/index.ts:1585" badges={["rpc"]}>
+<HookCard id="workflows-loadinstance" name="workflows.loadInstance" label="Load workflow instance." summary="Loads the workflow instance attached to a task. Use it when a plugin needs current workflow state without reading workflow files directly." source="plugins/workflows/index.ts:1589" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.loadInstance',
@@ -449,7 +449,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-markgatenotified" name="workflows.markGateNotified" label="Mark gate notified." summary="Records that a workflow gate notification was sent. Use it immediately after notifying a reviewer or channel so future checks can suppress duplicates." source="plugins/workflows/index.ts:1616" badges={["rpc"]}>
+<HookCard id="workflows-markgatenotified" name="workflows.markGateNotified" label="Mark gate notified." summary="Records that a workflow gate notification was sent. Use it immediately after notifying a reviewer or channel so future checks can suppress duplicates." source="plugins/workflows/index.ts:1620" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.markGateNotified',
@@ -460,7 +460,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-matchworkflow" name="workflows.matchWorkflow" label="Match workflow." summary="Suggests a workflow based on a task title and description. Use it when creating tasks that should automatically pick the most relevant workflow template." source="plugins/workflows/index.ts:1607" badges={["rpc"]}>
+<HookCard id="workflows-matchworkflow" name="workflows.matchWorkflow" label="Match workflow." summary="Suggests a workflow based on a task title and description. Use it when creating tasks that should automatically pick the most relevant workflow template." source="plugins/workflows/index.ts:1611" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.matchWorkflow',
@@ -471,7 +471,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-notificationchannels-list" name="workflows.notificationChannels.list" label="List notification channels." summary="Returns workflow notification channels registered by core or plugins. Use it to show available delivery targets for gate and workflow alerts." source="plugins/workflows/index.ts:1623" badges={["rpc"]}>
+<HookCard id="workflows-notificationchannels-list" name="workflows.notificationChannels.list" label="List notification channels." summary="Returns workflow notification channels registered by core or plugins. Use it to show available delivery targets for gate and workflow alerts." source="plugins/workflows/index.ts:1627" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.notificationChannels.list',
@@ -479,7 +479,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-rejectgate" name="workflows.rejectGate" label="Reject workflow gate." summary="Rejects a pending workflow gate, records the reason, and rewinds the instance per the workflow gate policy. Use it from plugins that own an external review surface for workflow-backed tasks." source="plugins/workflows/index.ts:1592" badges={["rpc"]}>
+<HookCard id="workflows-rejectgate" name="workflows.rejectGate" label="Reject workflow gate." summary="Rejects a pending workflow gate, records the reason, and rewinds the instance per the workflow gate policy. Use it from plugins that own an external review surface for workflow-backed tasks." source="plugins/workflows/index.ts:1596" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.rejectGate',
@@ -487,7 +487,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-reopenfromstep" name="workflows.reopenFromStep" label="Reopen workflow from step." summary="Reopens an existing workflow instance at a prior actionable step. Use it when a plugin needs explicit user recovery without creating a replacement workflow task." source="plugins/workflows/index.ts:1597" badges={["rpc"]}>
+<HookCard id="workflows-reopenfromstep" name="workflows.reopenFromStep" label="Reopen workflow from step." summary="Reopens an existing workflow instance at a prior actionable step. Use it when a plugin needs explicit user recovery without creating a replacement workflow task." source="plugins/workflows/index.ts:1601" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.reopenFromStep',
@@ -495,7 +495,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-saveinstance" name="workflows.saveInstance" label="Save workflow instance." summary="Persists a workflow instance after a plugin has changed its state. Use it to keep workflow updates routed through the workflow plugin storage layer." source="plugins/workflows/index.ts:1586" badges={["rpc"]}>
+<HookCard id="workflows-saveinstance" name="workflows.saveInstance" label="Save workflow instance." summary="Persists a workflow instance after a plugin has changed its state. Use it to keep workflow updates routed through the workflow plugin storage layer." source="plugins/workflows/index.ts:1590" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.saveInstance',
@@ -508,7 +508,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="workflows-validatestepoutput" name="workflows.validateStepOutput" label="Validate step output." summary="Validates workflow step output against the step schema. Use it before accepting agent or tool output that should advance a workflow." source="plugins/workflows/index.ts:1617" badges={["rpc"]}>
+<HookCard id="workflows-validatestepoutput" name="workflows.validateStepOutput" label="Validate step output." summary="Validates workflow step output against the step schema. Use it before accepting agent or tool output that should advance a workflow." source="plugins/workflows/index.ts:1621" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'workflows.validateStepOutput',

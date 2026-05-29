@@ -12,7 +12,6 @@ mock.module('../../src/core/content-dir', () => ({
 
 // Mock self-registering tool imports to prevent side-effect errors
 mock.module('../../scripts/lib/log-progress', () => ({}))
-mock.module('../../scripts/lib/generate-image', () => ({}))
 mock.module('../../scripts/lib/post-channel', () => ({}))
 mock.module('../../scripts/lib/get-paths', () => ({}))
 

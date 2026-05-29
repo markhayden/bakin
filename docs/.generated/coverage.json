@@ -34,12 +34,12 @@
     },
     "execTools": {
       "status": "audited",
-      "count": 118,
+      "count": 123,
       "source": "source scan"
     },
     "corePlugins": {
       "status": "active",
-      "count": 9,
+      "count": 10,
       "source": "plugins/*/bakin-plugin.json"
     },
     "settings": {

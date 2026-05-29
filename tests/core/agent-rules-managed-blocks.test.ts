@@ -300,13 +300,40 @@ Prose after.
 
     const pixel = readFileSync(agentsMdPath('pixel'), 'utf-8')
     expect(pixel).toContain(sectionMarker('media-delegation'))
-    expect(pixel).not.toContain('You cannot generate images. Ever.')
+    expect(pixel).toContain('Default to the core images plugin tools')
     expect(pixel).toContain('You cannot generate video. Ever.')
+    // Specialists must NOT get the "delegate to Pixel/Rolo" rules — those are
+    // for the agents that create specialist subtasks, not the specialists.
+    expect(pixel).not.toContain('When Creating Pixel or Rolo Tasks')
 
     const rolo = readFileSync(agentsMdPath('rolo'), 'utf-8')
     expect(rolo).toContain(sectionMarker('media-delegation'))
-    expect(rolo).toContain('You cannot generate images. Ever.')
+    expect(rolo).toContain('Default to the core images plugin tools')
+    expect(rolo).not.toContain('You cannot generate images. Ever.')
     expect(rolo).not.toContain('You cannot generate video. Ever.')
+    expect(rolo).not.toContain('When Creating Pixel or Rolo Tasks')
+  })
+
+  it('gives a non-specialist subagent the Pixel/Rolo delegation rules', async () => {
+    const files = new Map<string, string>([['chef:AGENTS.md', '# Chef\n']])
+    const runtime = createMockRuntimeAdapter()
+    runtime.agents.list = async () => [
+      { id: 'main', name: 'Main', role: 'Orchestrator', status: 'active' },
+      { id: 'chef', name: 'Chef', role: 'Generalist', status: 'active' },
+    ]
+    runtime.agents.readWorkspaceFile = async (agentId, path) => {
+      const content = files.get(`${agentId}:${path}`)
+      return content === undefined ? null : { path, content }
+    }
+    runtime.agents.writeWorkspaceFile = async (agentId, file) => {
+      files.set(`${agentId}:${file.path}`, file.content)
+    }
+
+    await applyAllManagedBlocksForRuntime(runtime, true)
+
+    const chef = files.get('chef:AGENTS.md') ?? ''
+    expect(chef).toContain('When Creating Pixel or Rolo Tasks')
+    expect(chef).toContain('You cannot generate video. Ever.')
   })
 })
 

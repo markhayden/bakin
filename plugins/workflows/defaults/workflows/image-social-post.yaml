@@ -3,7 +3,7 @@ name: Image Social Post
 description: >
   Write social copy with a creative image brief, generate the image via nested
   workflow, review the assembled post, and publish.
-version: 2
+version: 3
 
 steps:
   - id: write-copy
@@ -85,10 +85,11 @@ steps:
     label: Generate Image
     workflow_id: image-generation
     description: >
-      Nested image generation workflow. Pixel develops a prompt from the
-      approved brief, generates via Nano Banana, and the image goes through
-      approval. The brief's dimensions and orientation carry through —
-      Pixel should not override them unless technically necessary.
+      Nested image generation workflow. The images plugin prefers Pixel when
+      installed, falls back to the assigned agent, develops an approved prompt
+      and route from the brief, then saves the generated image as an Assets
+      filename. The brief's dimensions and orientation carry through unless the
+      selected surface profile needs a safer platform fit.
 
   - id: final-review
     type: gate
@@ -116,12 +117,12 @@ steps:
       From stepOutputs, extract:
         - Caption: stepOutputs['write-copy'].caption
         - Platform: stepOutputs['write-copy'].platform
-        - Image: stepOutputs['generate-image'].finalOutput.imagePath
+        - Image filename: stepOutputs['generate-image'].finalOutput.image_filename
 
       Call bakin_exec_post_channel with:
         - channel: the appropriate runtime channel for the platform
         - content: the caption text
-        - imagePath: the generated image path
+        - imageFilename: the generated image filename
         - taskId: your task ID
 
       After posting, submit output with the returned messageId, channel, and url.

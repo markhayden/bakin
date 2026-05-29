@@ -18,8 +18,9 @@ import teamPlugin from '../../plugins/team'
 import tasksPlugin from '../../plugins/tasks'
 import memoryPlugin from '../../plugins/memory'
 import modelsPlugin from '../../plugins/models'
-import workflowsPlugin from '../../plugins/workflows'
 import assetsPlugin from '../../plugins/assets'
+import imagesPlugin from '../../plugins/images'
+import workflowsPlugin from '../../plugins/workflows'
 import schedulePlugin from '../../plugins/schedule'
 import healthPlugin from '../../plugins/health'
 import gitPlugin from '../../plugins/git'
@@ -31,8 +32,9 @@ export const CORE_PLUGIN_IMPORTS: Readonly<Record<string, BakinPlugin>> = {
   'plugins/tasks': tasksPlugin,
   'plugins/memory': memoryPlugin,
   'plugins/models': modelsPlugin,
-  'plugins/workflows': workflowsPlugin,
   'plugins/assets': assetsPlugin,
+  'plugins/images': imagesPlugin,
+  'plugins/workflows': workflowsPlugin,
   'plugins/schedule': schedulePlugin,
   'plugins/health': healthPlugin,
   'plugins/git': gitPlugin,

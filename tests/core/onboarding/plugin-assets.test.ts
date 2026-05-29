@@ -40,6 +40,10 @@ mock.module('@bakin/core/content-dir', () => ({
 mock.module('@/core/logger', () => ({
   createLogger: () => ({ info: mock(), warn: mock(), error: mock(), debug: mock() }),
 }))
+// discoverPlugins() scans the live core-plugin set from bakin.config; the
+// pluginAssetsComponent.check() test below asserts the empty/"nothing to do"
+// branch, so isolate it from whatever runtime-skills core plugins ship.
+mock.module('../../../bakin.config', () => ({ default: { plugins: [] } }))
 
 import {
   scanPluginAssets,

@@ -65,6 +65,7 @@ const METHOD_PERMISSIONS: Record<string, Permission> = {
   'assets.list': 'assets.read',
   'assets.exists': 'assets.read',
   'assets.fileRef': 'assets.read',
+  'assets.save': 'assets.write',
 
   'search.registerContentType': 'search.write',
   'search.registerFileBackedContentType': 'search.write',
@@ -86,6 +87,7 @@ const RUNTIME_DOMAIN_PERMISSIONS: Record<string, Permission> = {
   cron: 'runtime.cron',
   skills: 'runtime.skills',
   models: 'runtime.models',
+  images: 'runtime.images',
   sessions: 'runtime.read',
   memory: 'runtime.read',
   tasks: 'runtime.read',
@@ -98,7 +100,7 @@ for (const method of ['initialize', 'shutdown', 'ping', 'restart', 'getHealthChe
 }
 
 for (const [domain, permission] of Object.entries(RUNTIME_DOMAIN_PERMISSIONS)) {
-  for (const method of ['list', 'get', 'create', 'update', 'remove', 'listWorkspaceFiles', 'readWorkspaceFile', 'writeWorkspaceFile', 'removeWorkspaceFile', 'updatePermissions', 'updateAllowlist', 'heartbeat', 'send', 'stream', 'invoke', 'sendNotification', 'sendMessage', 'deliverContent', 'createApproval', 'editApproval', 'cancelApproval', 'resolveApproval', 'subscribeApprovalResponses', 'onMessage', 'onInteraction', 'write', 'listTiers', 'listEntries', 'getEntry', 'statEntry', 'readEntryRange', 'resolvePath', 'watchPaths', 'search', 'listAvailable', 'dispatch', 'getExecutionStatus', 'listExecutions', 'cancelExecution', 'subscribeExecutionUpdates', 'runNow', 'listRuns', 'getRaw', 'restoreRaw', 'replace', 'raw']) {
+  for (const method of ['list', 'get', 'create', 'update', 'remove', 'listWorkspaceFiles', 'readWorkspaceFile', 'writeWorkspaceFile', 'removeWorkspaceFile', 'updatePermissions', 'updateAllowlist', 'heartbeat', 'send', 'stream', 'invoke', 'sendNotification', 'sendMessage', 'deliverContent', 'createApproval', 'editApproval', 'cancelApproval', 'resolveApproval', 'subscribeApprovalResponses', 'onMessage', 'onInteraction', 'write', 'listTiers', 'listEntries', 'getEntry', 'statEntry', 'readEntryRange', 'resolvePath', 'watchPaths', 'search', 'listAvailable', 'providers', 'generate', 'edit', 'dispatch', 'getExecutionStatus', 'listExecutions', 'cancelExecution', 'subscribeExecutionUpdates', 'runNow', 'listRuns', 'getRaw', 'restoreRaw', 'replace', 'raw']) {
     METHOD_PERMISSIONS[`runtime.${domain}.${method}`] = permission
   }
 }

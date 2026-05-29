@@ -14,6 +14,7 @@ import { z } from 'zod'
 export const PermissionSchema = z.enum([
   'events.emit',
   'assets.read',
+  'assets.write',
   'runtime.read',
   'runtime.agents',
   'runtime.messaging',
@@ -21,6 +22,7 @@ export const PermissionSchema = z.enum([
   'runtime.cron',
   'runtime.skills',
   'runtime.models',
+  'runtime.images',
   'search.read',
   'search.write',
   'storage.read',
@@ -51,6 +53,7 @@ export class PermissionDenied extends Error {
 export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   'events.emit':   'Broadcast Server-Sent Events to connected browsers',
   'assets.read':   'Read asset metadata and runtime-deliverable asset references',
+  'assets.write':  'Save files into the asset store and write asset metadata',
   'runtime.read':  'Read general runtime adapter state',
   'runtime.agents': 'Read runtime agent identity and status',
   'runtime.messaging': 'Send messages through the runtime adapter',
@@ -58,6 +61,7 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   'runtime.cron': 'Create and manage runtime cron jobs',
   'runtime.skills': 'Read runtime skills',
   'runtime.models': 'Read runtime model metadata',
+  'runtime.images': 'Generate images through the configured runtime adapter',
   'search.read': 'Query Bakin search indexes',
   'search.write': 'Register or mutate plugin-owned search indexes',
   'storage.read':  'Read files in ~/.bakin/',

@@ -149,6 +149,42 @@ describe('assets/save-asset', () => {
     expect(typeof meta.created).toBe('string')
   })
 
+  it('writes generation metadata when provided', async () => {
+    const src = join(testDir, 'src-generated.png')
+    writeFileSync(src, 'data')
+
+    const result = await saveAsset({
+      filePath: src,
+      taskId: 'task-abc',
+      type: 'images',
+      agent: 'pixel',
+      description: 'Generated hero',
+      generation: {
+        provider: 'openai',
+        model: 'gpt-image-2',
+        surface: 'blog-hero',
+        width: 1600,
+        height: 900,
+        quality: 'standard',
+        promptHash: 'sha256:abc123',
+        createdByTool: 'bakin_exec_images_generate',
+      },
+    })
+
+    const metaPath = join(testDir, result.metadataPath!)
+    const meta = JSON.parse(require('fs').readFileSync(metaPath, 'utf-8'))
+    expect(meta.generation).toEqual({
+      provider: 'openai',
+      model: 'gpt-image-2',
+      surface: 'blog-hero',
+      width: 1600,
+      height: 900,
+      quality: 'standard',
+      promptHash: 'sha256:abc123',
+      createdByTool: 'bakin_exec_images_generate',
+    })
+  })
+
   it('produces unique filenames across many same-slug saves', async () => {
     // Ten consecutive same-slug saves must all collide-check against disk
     // and regenerate the id8 suffix whenever a file is already present.

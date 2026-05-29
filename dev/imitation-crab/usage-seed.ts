@@ -3,7 +3,8 @@ import { recordUsage } from '../../src/core/usage'
 const MCP_TOOLS = [
   'bakin_exec_tasks_list',
   'bakin_exec_tasks_update',
-  'bakin_exec_gen_image',
+  'bakin_exec_images_generate',
+  'bakin_exec_images_recommend',
   'bakin_exec_log_progress',
   'bakin_exec_heartbeat',
   'bakin_exec_search',

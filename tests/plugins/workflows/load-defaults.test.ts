@@ -38,7 +38,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 import { loadDefaultWorkflows } from '@bakin/workflows/lib/load-defaults'
-import { clearSourceRegistry, getDefinition } from '@bakin/workflows/lib/source-registry'
+import { clearSourceRegistry, getDefinition, registerPluginDefinition } from '@bakin/workflows/lib/source-registry'
 import { activatePlugin } from '../test-helpers'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 
@@ -117,15 +117,22 @@ describe('loadDefaultWorkflows', () => {
   })
 
   it('keeps repository default workflows valid and portable', () => {
-    const realDefaultsDir = join(process.cwd(), 'plugins', 'workflows', 'defaults', 'workflows')
     const registered: string[] = []
-    const result = loadDefaultWorkflows({
-      registerWorkflow: (definition: { id?: string; name: string }) => {
-        registered.push(definition.id ?? definition.name)
-      },
-    } as unknown as PluginContext, realDefaultsDir, fakeLog)
 
-    expect(result.skipped).toEqual([])
+    const ctx = {
+      registerWorkflow: (definition: { id?: string; name: string }) => {
+        const id = definition.id ?? definition.name
+        registered.push(id)
+        registerPluginDefinition('repository-defaults-test', id, definition as never)
+      },
+    } as unknown as PluginContext
+
+    const imagesResult = loadDefaultWorkflows(ctx, join(process.cwd(), 'plugins', 'images', 'defaults', 'workflows'), fakeLog)
+    const workflowsResult = loadDefaultWorkflows(ctx, join(process.cwd(), 'plugins', 'workflows', 'defaults', 'workflows'), fakeLog)
+
+    expect(imagesResult.skipped).toEqual([])
+    expect(workflowsResult.skipped).toEqual([])
+    expect(registered).toContain('image-generation')
     expect(registered).toContain('text-social-post')
     expect(registered).toContain('image-social-post')
     expect(registered).toContain('video-social-post')

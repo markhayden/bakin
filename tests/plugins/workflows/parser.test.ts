@@ -259,6 +259,65 @@ steps:
       expect(errors.some(e => e.includes('has no assignee'))).toBe(true)
     })
 
+    it('allows plugin-shipped workflows to prefer Pixel with an assigned fallback', () => {
+      const def: WorkflowDefinition = {
+        name: 'Image Workflow',
+        description: 'Prefer Pixel when present',
+        version: 1,
+        steps: [{ id: 'generate', type: 'agent', label: 'Generate', agent: '$preferred(pixel,$assigned)' }],
+      }
+
+      expect(validateDefinition(def, {
+        source: 'plugin',
+        runtimeAgents: ['main'],
+        assignee: 'main',
+        requireResolvedAgents: true,
+      })).toEqual([])
+    })
+
+    it('resolves preferred literal agents when present at start validation', () => {
+      const def: WorkflowDefinition = {
+        name: 'Image Workflow',
+        description: 'Prefer Pixel when present',
+        version: 1,
+        steps: [{ id: 'generate', type: 'agent', label: 'Generate', agent: '$preferred(pixel,$assigned)' }],
+      }
+
+      expect(validateDefinition(def, {
+        source: 'plugin',
+        runtimeAgents: ['pixel'],
+        requireResolvedAgents: true,
+      })).toEqual([])
+    })
+
+    it('fails preferred selectors that cannot resolve at workflow start', () => {
+      const def: WorkflowDefinition = {
+        name: 'Image Workflow',
+        description: 'No preferred agent available',
+        version: 1,
+        steps: [{ id: 'generate', type: 'agent', label: 'Generate', agent: '$preferred(pixel,$assigned)' }],
+      }
+
+      const errors = validateDefinition(def, {
+        source: 'plugin',
+        runtimeAgents: ['main'],
+        requireResolvedAgents: true,
+      })
+      expect(errors.some(e => e.includes('cannot resolve'))).toBe(true)
+    })
+
+    it('rejects malformed preferred selectors', () => {
+      const def: WorkflowDefinition = {
+        name: 'Image Workflow',
+        description: 'Bad selector',
+        version: 1,
+        steps: [{ id: 'generate', type: 'agent', label: 'Generate', agent: '$preferred(pixel)' }],
+      }
+
+      const errors = validateDefinition(def, { source: 'plugin' })
+      expect(errors.some(e => e.includes('unsupported agent selector'))).toBe(true)
+    })
+
     it('rejects nested workflows that reference themselves', () => {
       const def: WorkflowDefinition = {
         name: 'Self Reference',

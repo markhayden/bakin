@@ -479,6 +479,7 @@ PermissionSchema = z.enum([
   'runtime.cron',
   'runtime.skills',
   'runtime.models',
+  'runtime.images',
   'search.read',
   'search.write',
   'storage.read',
@@ -570,7 +571,7 @@ Provided to `activate()`. The plugin's only interface to the system:
 | `storage: StorageAdapter` | Read/write markdown files in `~/.bakin/` |
 | `events: EventBus` | Pub/sub with pattern matching |
 | `pluginId: string` | This plugin's ID |
-| `runtime: AgentRuntimeAdapter` | Adapter-backed runtime surface for agents, messaging, channels, cron, workspace files, skills, sessions, memory, models, and execution status. Plugins never import runtime provider packages directly. |
+| `runtime: AgentRuntimeAdapter` | Adapter-backed runtime surface for agents, messaging, channels, cron, workspace files, skills, sessions, memory, models, image generation, and execution status. Plugins never import runtime provider packages directly. |
 | `tasks: BakinTaskStore` | Bakin-owned task metadata store under `~/.bakin/tasks/`. Runtime execution ids are delivery refs only. |
 | `registerNav(items)` | Add sidebar navigation items (server-side) |
 | `registerRoute(route)` | Add HTTP API route at `/api/plugins/{id}/{path}` |
@@ -966,10 +967,10 @@ const instance = await hooks.invoke<WorkflowInstance>('workflows.loadInstance', 
 ```
 
 **Critical:** No direct imports between plugins or from core → plugins.
-All cross-boundary calls go through hooks. The sole exception is
-`scripts/lib/generate-image.ts` which imports `saveAsset` from
-`plugins/assets/lib/save-asset` directly — the asset pipeline is a
-shared utility, not a plugin-to-plugin dependency.
+All cross-boundary calls go through hooks or explicit plugin context APIs. Image
+generation now lives in the core images plugin and saves through
+`ctx.assets.save`; scripts should not bypass plugin boundaries to write asset
+sidecars directly.
 
 ## Exec Tool Registry
 

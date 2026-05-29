@@ -32,6 +32,11 @@ function makeContext() {
     cron: {
       create: mock(async () => ({ id: 'job-1' })),
     },
+    images: {
+      providers: mock(async () => []),
+      generate: mock(async () => ({ images: [] })),
+      edit: mock(async () => ({ images: [] })),
+    },
   }
   const search = {
     index: mock(async () => {}),
@@ -45,6 +50,9 @@ function makeContext() {
     log: mock(),
     audit: mock(),
   }
+  const assets = {
+    save: mock(async () => ({ ok: true, filename: '20260401-image-a1b2c3d4.png' })),
+  }
 
   const ctx = {
     pluginId: 'fixture',
@@ -53,7 +61,7 @@ function makeContext() {
     runtime,
     search,
     tasks,
-    assets: {},
+    assets,
     activity,
     registerNav: mock(),
     registerRoute: mock(),
@@ -76,7 +84,7 @@ function makeContext() {
     },
   } as unknown as PluginContext
 
-  return { ctx, storage, events, runtime, search, tasks, activity }
+  return { ctx, storage, events, runtime, search, tasks, assets, activity }
 }
 
 describe('plugin runtime permission wrapper', () => {
@@ -194,6 +202,62 @@ describe('plugin runtime permission wrapper', () => {
     expect(runtime.cron.create).toHaveBeenCalledTimes(1)
     expect(search.index).toHaveBeenCalledTimes(1)
     expect(tasks.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('gates asset writes under assets.write', async () => {
+    const { ctx, assets } = makeContext()
+    const denied = wrapPluginContextPermissions(ctx, {
+      pluginId: 'fixture',
+      source: 'core',
+      manifestPermissions: ['assets.read'],
+      mode: 'enforce',
+    })
+
+    expect(() => denied.assets.save({
+      filePath: '/tmp/image.png',
+      taskId: 'task-1',
+      type: 'images',
+      agent: 'pixel',
+    })).toThrow(PermissionDenied)
+    expect(assets.save).not.toHaveBeenCalled()
+
+    const allowed = wrapPluginContextPermissions(ctx, {
+      pluginId: 'fixture',
+      source: 'core',
+      manifestPermissions: ['assets.write'],
+      mode: 'enforce',
+    })
+
+    await allowed.assets.save({
+      filePath: '/tmp/image.png',
+      taskId: 'task-1',
+      type: 'images',
+      agent: 'pixel',
+    })
+    expect(assets.save).toHaveBeenCalledTimes(1)
+  })
+
+  it('gates runtime image generation under runtime.images', async () => {
+    const { ctx, runtime } = makeContext()
+    const denied = wrapPluginContextPermissions(ctx, {
+      pluginId: 'fixture',
+      source: 'core',
+      manifestPermissions: ['runtime.models'],
+      mode: 'enforce',
+    })
+
+    expect(() => denied.runtime.images!.providers()).toThrow(PermissionDenied)
+    expect(runtime.images.providers).not.toHaveBeenCalled()
+
+    const allowed = wrapPluginContextPermissions(ctx, {
+      pluginId: 'fixture',
+      source: 'core',
+      manifestPermissions: ['runtime.images'],
+      mode: 'enforce',
+    })
+
+    await allowed.runtime.images!.providers()
+    expect(runtime.images.providers).toHaveBeenCalledTimes(1)
   })
 
   it('does not gate event subscriptions under events.emit', () => {

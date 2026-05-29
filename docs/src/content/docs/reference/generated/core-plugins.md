@@ -34,6 +34,13 @@ description: Generated catalog of official plugins supported by Bakin.
       <td>none</td>
     </tr>
     <tr>
+      <td>Images<br/><span>Provider-routed image generation, import, export, prompt routing, and platform surface profiles</span></td>
+      <td><code>images</code></td>
+      <td>Core</td>
+      <td><code>0.1.0</code></td>
+      <td><code>assets</code> <code>models</code></td>
+    </tr>
+    <tr>
       <td>Memory<br/><span>Observability dashboard over runtime memory tiers plus Bakin's audit log</span></td>
       <td><code>memory</code></td>
       <td>Core</td>

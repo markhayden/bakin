@@ -40,6 +40,7 @@ import asset_api_plugins_tasks_assets_client_js from '../../../../plugins/tasks/
 import asset_api_plugins_tasks_assets_index_js from '../../../../plugins/tasks/dist/index.js' with { type: 'file' }
 import asset_api_plugins_memory_assets_client_js from '../../../../plugins/memory/dist/client.js' with { type: 'file' }
 import asset_api_plugins_memory_assets_index_js from '../../../../plugins/memory/dist/index.js' with { type: 'file' }
+import asset_api_plugins_images_assets_index_js from '../../../../plugins/images/dist/index.js' with { type: 'file' }
 import asset_api_plugins_health_assets_client_js from '../../../../plugins/health/dist/client.js' with { type: 'file' }
 import asset_api_plugins_health_assets_index_js from '../../../../plugins/health/dist/index.js' with { type: 'file' }
 import asset_api_plugins_health_assets_SKILL_r49bkmzv_md from '../../../../plugins/health/dist/SKILL-r49bkmzv.md' with { type: 'file' }
@@ -86,6 +87,7 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/api/plugins/tasks/assets/index.js', asset_api_plugins_tasks_assets_index_js],
   ['/api/plugins/memory/assets/client.js', asset_api_plugins_memory_assets_client_js],
   ['/api/plugins/memory/assets/index.js', asset_api_plugins_memory_assets_index_js],
+  ['/api/plugins/images/assets/index.js', asset_api_plugins_images_assets_index_js],
   ['/api/plugins/health/assets/client.js', asset_api_plugins_health_assets_client_js],
   ['/api/plugins/health/assets/index.js', asset_api_plugins_health_assets_index_js],
   ['/api/plugins/health/assets/SKILL-r49bkmzv.md', asset_api_plugins_health_assets_SKILL_r49bkmzv_md],
@@ -104,4 +106,4 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/data/curated-agents.json', asset_data_curated_agents_json],
 ])
 
-export const EMBEDDED_ASSET_COUNT = 41
+export const EMBEDDED_ASSET_COUNT = 42

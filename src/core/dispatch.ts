@@ -838,8 +838,9 @@ ${mc('bakin_exec_assets_save', `taskId=${task.id} type=<images|text|video|audio|
 # Post to a runtime channel (with optional image/video attachment)
 ${mc('bakin_exec_post_channel', `channel="<name>" content="<message>" taskId=${task.id}`)}
 
-# Generate image via Nano Banana
-${mc('bakin_exec_gen_image', `taskId=${task.id} prompt="<text>" preset=social-portrait model=flash`)}
+# Recommend and generate an image through the core images plugin
+${mc('bakin_exec_images_recommend', `surface=instagram-feed-portrait objective="<goal>"`)}
+${mc('bakin_exec_images_generate', `taskId=${task.id} prompt="<text>" surface=instagram-feed-portrait provider=auto`)}
 
 # Check workflow gate statuses
 ${mc('bakin_exec_check_gates', `taskId=${task.id}`)}
@@ -1160,8 +1161,9 @@ function buildWorkflowDispatchMessage(
   lines.push(`# Save any file as a managed asset`)
   lines.push(`${wfMc('bakin_exec_assets_save', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what>"`)}`);
   lines.push('')
-  lines.push(`# Generate image via Nano Banana`)
-  lines.push(`${wfMc('bakin_exec_gen_image', `taskId=${task.id} prompt="<text>" preset=social-portrait model=flash`)}`);
+  lines.push(`# Recommend and generate an image through the core images plugin`)
+  lines.push(`${wfMc('bakin_exec_images_recommend', `surface=instagram-feed-portrait objective="<goal>"`)}`);
+  lines.push(`${wfMc('bakin_exec_images_generate', `taskId=${task.id} prompt="<text>" surface=instagram-feed-portrait provider=auto`)}`);
   lines.push('')
   lines.push(`# Check workflow gate statuses`)
   lines.push(`${wfMc('bakin_exec_check_gates', `taskId=${task.id}`)}`);
