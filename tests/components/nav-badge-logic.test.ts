@@ -99,6 +99,15 @@ describe('pickRollupTone', () => {
     ])
     expect(pickRollupTone(item, badges)).toBe('error')
   })
+
+  it('info wins over success (pins the lower-priority ordering)', () => {
+    const item = parent([child('a'), child('b')])
+    const badges = new Map<string, { count?: number; tone?: 'error' | 'attention' | 'info' | 'success' }>([
+      ['a', { count: 1, tone: 'success' }],
+      ['b', { count: 1, tone: 'info' }],
+    ])
+    expect(pickRollupTone(item, badges)).toBe('info')
+  })
 })
 
 describe('collapsedParentRollupTone', () => {
@@ -125,11 +134,15 @@ describe('collapsedParentAriaSuffix', () => {
   })
 
   it('announces a children hint when the dot is child-driven', () => {
-    expect(collapsedParentAriaSuffix(undefined, 'attention')).toBe(', children need review')
+    expect(collapsedParentAriaSuffix(undefined, 'attention')).toBe(', children needing review')
   })
 
-  it('uses the tone label for non-attention child rollups', () => {
+  it('uses the shared tone label for non-attention child rollups', () => {
     expect(collapsedParentAriaSuffix(undefined, 'info')).toBe(', children info')
+  })
+
+  it('announces error child rollups as "urgent" (consistent with the counted suffix)', () => {
+    expect(collapsedParentAriaSuffix(undefined, 'error')).toBe(', children urgent')
   })
 
   it('empty string when there is no dot at all', () => {

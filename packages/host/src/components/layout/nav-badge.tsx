@@ -14,6 +14,19 @@ const DOT_TONE: Record<NavBadgeTone, string> = {
   success: 'bg-emerald-400',
 }
 
+/**
+ * Canonical screen-reader word per tone. Single source of truth shared by
+ * both aria-suffix builders (the flat/counted one here and the
+ * collapsed-parent rollup in nav-badge-logic) so the wording can't diverge
+ * per tone as the palette grows.
+ */
+export const TONE_LABEL: Record<NavBadgeTone, string> = {
+  error: 'urgent',
+  attention: 'needing review',
+  info: 'info',
+  success: 'success',
+}
+
 function formatCount(n: number): string {
   return n > 99 ? '99+' : String(n)
 }
@@ -66,8 +79,7 @@ export function NavBadgeDot({ tone }: { tone: NavBadgeTone }) {
  */
 export function navBadgeAriaSuffix(badge: NavBadgeData | undefined): string {
   if (!badge || (typeof badge.count === 'number' && badge.count <= 0)) return ''
-  const tone = badge.tone ?? 'attention'
-  const toneLabel = tone === 'attention' ? 'needing review' : tone === 'error' ? 'urgent' : tone
+  const toneLabel = TONE_LABEL[badge.tone ?? 'attention']
   if (typeof badge.count === 'number') return `, ${formatCount(badge.count)} ${toneLabel}`
   return `, ${toneLabel}`
 }

@@ -10,7 +10,6 @@ export interface TaskSummary {
 
 interface UseTaskSummaryResult {
   summary: TaskSummary | null
-  refresh: () => Promise<void>
 }
 
 /**
@@ -41,5 +40,5 @@ export function useTaskSummary(): UseTaskSummaryResult {
 
   useEffect(() => { void refresh() }, [refresh, taskboardVersion])
 
-  return { summary, refresh }
+  return { summary }
 }

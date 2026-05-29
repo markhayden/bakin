@@ -185,6 +185,7 @@ describe('Tasks Plugin — Route Registration', () => {
 
   it.each([
     ['GET', '/'],
+    ['GET', '/summary'],
     ['GET', '/:taskId'],
     ['POST', '/'],
     ['PUT', '/:taskId'],
@@ -255,10 +256,23 @@ describe('GET /summary — nav badge counts', () => {
     expect(body).toEqual({ blocked: 0, review: 0 })
   })
 
-  it('resolves /summary to the exact route, not /:taskId', () => {
+  it('returns 500 on error', async () => {
+    mockReadTaskboard.mockRejectedValue(new Error('summary read failed'))
+
+    const route = findRoute(activated.routes, 'GET', '/summary')!
+    const { status, body } = await callRoute(route, activated.ctx)
+
+    expect(status).toBe(500)
+    expect(body.error).toContain('summary read failed')
+  })
+
+  // The literal `/summary` is registered as its own route, distinct from the
+  // `/:taskId` param route. Precedence at dispatch time (literal beats param)
+  // is guaranteed + tested by the core routing registry; here we just pin that
+  // the route is registered under its own path.
+  it('registers /summary as a distinct literal route', () => {
     const summary = findRoute(activated.routes, 'GET', '/summary')
-    expect(summary).toBeDefined()
-    expect(summary!.path).toBe('/summary')
+    expect(summary?.path).toBe('/summary')
   })
 })
 

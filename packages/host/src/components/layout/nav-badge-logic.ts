@@ -1,5 +1,5 @@
 import type { NavBadge as NavBadgeData, NavBadgeTone, NavItem } from '@makinbakin/sdk'
-import { navBadgeAriaSuffix } from './nav-badge'
+import { navBadgeAriaSuffix, TONE_LABEL } from './nav-badge'
 
 /**
  * Pure decision logic behind nav-badge rendering, extracted from
@@ -75,5 +75,5 @@ export function collapsedParentAriaSuffix(
 ): string {
   if (badgeIsActive(parentBadge)) return navBadgeAriaSuffix(parentBadge)
   if (!rollupTone) return ''
-  return `, children ${rollupTone === 'attention' ? 'need review' : rollupTone}`
+  return `, children ${TONE_LABEL[rollupTone]}`
 }

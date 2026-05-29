@@ -99,4 +99,8 @@ describe('navBadgeAriaSuffix', () => {
   it('formats error tone as the neutral word "urgent"', () => {
     expect(navBadgeAriaSuffix({ count: 3, tone: 'error' })).toBe(', 3 urgent')
   })
+
+  it('formats presence-only error (no count) as "urgent"', () => {
+    expect(navBadgeAriaSuffix({ tone: 'error' })).toBe(', urgent')
+  })
 })
