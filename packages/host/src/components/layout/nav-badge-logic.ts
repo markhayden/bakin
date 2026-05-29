@@ -10,9 +10,10 @@ import { navBadgeAriaSuffix } from './nav-badge'
  */
 
 const TONE_PRIORITY: Record<NavBadgeTone, number> = {
-  attention: 0,
-  info: 1,
-  success: 2,
+  error: 0,
+  attention: 1,
+  info: 2,
+  success: 3,
 }
 
 /**

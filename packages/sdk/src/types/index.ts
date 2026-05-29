@@ -335,8 +335,9 @@ export type HookKind = 'rpc' | 'event' | 'waterfall'
 // Navigation, API routes, UI slots
 // ---------------------------------------------------------------------------
 
-/** Visual tone for a {@link NavBadge}. Maps to a fixed palette in the sidebar. */
-export type NavBadgeTone = 'attention' | 'info' | 'success'
+/** Visual tone for a {@link NavBadge}. Maps to a fixed palette in the sidebar.
+ *  Ordered by severity: `error` (red) is the most urgent and wins rollups. */
+export type NavBadgeTone = 'error' | 'attention' | 'info' | 'success'
 
 /**
  * Runtime badge attached to a nav item. Both fields are optional:

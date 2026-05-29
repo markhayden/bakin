@@ -1,12 +1,14 @@
 import type { NavBadge as NavBadgeData, NavBadgeTone } from '@makinbakin/sdk'
 
 const PILL_TONE: Record<NavBadgeTone, string> = {
+  error: 'bg-red-500/20 text-red-300',
   attention: 'bg-amber-500/20 text-amber-300',
   info: 'bg-sky-500/20 text-sky-300',
   success: 'bg-emerald-500/20 text-emerald-300',
 }
 
 const DOT_TONE: Record<NavBadgeTone, string> = {
+  error: 'bg-red-400',
   attention: 'bg-amber-400',
   info: 'bg-sky-400',
   success: 'bg-emerald-400',
@@ -65,7 +67,7 @@ export function NavBadgeDot({ tone }: { tone: NavBadgeTone }) {
 export function navBadgeAriaSuffix(badge: NavBadgeData | undefined): string {
   if (!badge || (typeof badge.count === 'number' && badge.count <= 0)) return ''
   const tone = badge.tone ?? 'attention'
-  const toneLabel = tone === 'attention' ? 'needing review' : tone
+  const toneLabel = tone === 'attention' ? 'needing review' : tone === 'error' ? 'urgent' : tone
   if (typeof badge.count === 'number') return `, ${formatCount(badge.count)} ${toneLabel}`
   return `, ${toneLabel}`
 }

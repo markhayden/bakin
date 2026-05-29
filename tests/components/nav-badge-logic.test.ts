@@ -90,6 +90,15 @@ describe('pickRollupTone', () => {
     const item = parent([child('a')])
     expect(pickRollupTone(item, new Map([['a', { count: 1 }]]))).toBe('attention')
   })
+
+  it('error wins over attention across children', () => {
+    const item = parent([child('a'), child('b')])
+    const badges = new Map<string, { count?: number; tone?: 'error' | 'attention' | 'info' | 'success' }>([
+      ['a', { count: 5, tone: 'attention' }],
+      ['b', { count: 1, tone: 'error' }],
+    ])
+    expect(pickRollupTone(item, badges)).toBe('error')
+  })
 })
 
 describe('collapsedParentRollupTone', () => {
