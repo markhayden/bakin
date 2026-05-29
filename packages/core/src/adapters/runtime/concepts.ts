@@ -329,6 +329,14 @@ export interface RuntimeAvailableModel {
 export type RuntimeImageOutputFormat = 'png' | 'jpeg' | 'jpg' | 'webp'
 export type RuntimeImageBackground = 'transparent' | 'opaque' | 'auto'
 
+/**
+ * Image capability is intentionally all-optional. A thin runtime that exposes a
+ * single image tool maps on by filling minimal fields (e.g. one synthesized
+ * provider with a defaultModel); a rich runtime fills more. Consumers MUST
+ * treat a sparse capability as normal and never require a field a thin runtime
+ * cannot provide — gaps are filled below, in the adapter/shim, not pushed up
+ * into plugins. See .claude/specs/media-generation-adapter-architecture.md.
+ */
 export interface RuntimeImageProviderCapabilities {
   generate?: {
     maxCount?: number
@@ -379,7 +387,6 @@ export interface RuntimeImageGenerateInput {
   size?: string
   aspectRatio?: string
   resolution?: string
-  outputPath?: string
   outputFormat?: RuntimeImageOutputFormat
   background?: RuntimeImageBackground
   timeoutMs?: number

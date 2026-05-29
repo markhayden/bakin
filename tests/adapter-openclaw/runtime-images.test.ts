@@ -91,7 +91,6 @@ echo "{}"
   it('generates image files through OpenClaw infer image generate', async () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: openclaw } })
-    const outputPath = join(testDir, 'generated.png')
 
     const result = await runtime.images!.generate({
       prompt: 'One blue square',
@@ -99,16 +98,16 @@ echo "{}"
       model: 'gpt-image-2',
       width: 1024,
       height: 1024,
-      outputPath,
       outputFormat: 'png',
     })
 
     expect(result).toMatchObject({
       provider: 'openai',
       model: 'gpt-image-2',
-      images: [{ filePath: outputPath, mimeType: 'image/png', provider: 'openai', model: 'gpt-image-2' }],
+      images: [{ mimeType: 'image/png', provider: 'openai', model: 'gpt-image-2' }],
     })
-    expect(existsSync(outputPath)).toBe(true)
+    // The adapter owns the output path; assert the returned file exists.
+    expect(existsSync(result.images[0]!.filePath)).toBe(true)
     expect(readFileSync(callsFile, 'utf-8')).toContain('openai/gpt-image-2')
     expect(readFileSync(callsFile, 'utf-8')).toContain('1024x1024')
   })

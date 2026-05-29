@@ -1184,7 +1184,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     const prompt = input.prompt.trim()
     if (!prompt) throw new Error(`OpenClaw image ${command} requires a prompt`)
 
-    const outputPath = input.outputPath ?? defaultOpenClawImageOutputPath(input.outputFormat)
+    // The adapter owns where the file lands — the capability contract no longer
+    // carries an outputPath (that was a file/CLI concept leaking into a
+    // runtime-agnostic interface).
+    const outputPath = defaultOpenClawImageOutputPath(input.outputFormat)
     const args = ['infer', 'image', command, '--prompt', prompt, '--output', outputPath, '--json']
     const model = openClawImageModelArg(input)
     if (model) args.push('--model', model)
