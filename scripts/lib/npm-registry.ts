@@ -16,10 +16,16 @@ export interface CommandResult {
 
 export type CommandRunner = (cmd: string, args: string[], cwd: string) => CommandResult
 
-export function runCommand(cmd: string, args: string[], cwd: string): CommandResult {
+export interface RunCommandOptions {
+  /** Hard cap per invocation; a timed-out process is killed and surfaces as status null. */
+  timeoutMs?: number
+}
+
+export function runCommand(cmd: string, args: string[], cwd: string, opts: RunCommandOptions = {}): CommandResult {
   const result = spawnSync(cmd, args, {
     cwd,
     encoding: 'utf-8',
+    ...(opts.timeoutMs ? { timeout: opts.timeoutMs } : {}),
   })
   return {
     status: result.status,
@@ -37,7 +43,10 @@ export function npmViewArgs(pkg: string, version: string): string[] {
  * Classify the result of `npm view <pkg>@<version> version --json`.
  *   true  → the exact version resolves on the registry (exit 0)
  *   false → the registry reports it does not exist yet (E404 / 404 / not-in-registry)
- *   null  → ambiguous / real failure (network, auth, etc.); caller must fail loudly
+ *   null  → ambiguous / real failure (network, auth, timeout/kill → status null); caller must fail loudly
+ *
+ * The not-found match is best-effort; the `null` default is the real safety net,
+ * so anything we cannot confidently read as "not published yet" fails loudly.
  */
 export function versionResolves(result: CommandResult): boolean | null {
   if (result.status === 0) return true

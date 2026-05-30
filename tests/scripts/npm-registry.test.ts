@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { npmViewArgs, versionResolves, type CommandResult } from '../../scripts/lib/npm-registry'
+import { npmViewArgs, runCommand, versionResolves, type CommandResult } from '../../scripts/lib/npm-registry'
 
 function result(partial: Partial<CommandResult>): CommandResult {
   return { status: 1, stdout: '', stderr: '', ...partial }
@@ -40,5 +40,13 @@ describe('versionResolves', () => {
   it('returns null for an ambiguous / real failure so the caller fails loudly', () => {
     expect(versionResolves(result({ stderr: 'npm ERR! network request failed' }))).toBeNull()
     expect(versionResolves(result({ status: null, stderr: 'killed by signal' }))).toBeNull()
+  })
+})
+
+describe('runCommand timeout', () => {
+  it('kills a hung process at the deadline and surfaces a null status (classified as a loud failure)', () => {
+    const result = runCommand('sleep', ['5'], process.cwd(), { timeoutMs: 50 })
+    expect(result.status).toBeNull()
+    expect(versionResolves(result)).toBeNull()
   })
 })

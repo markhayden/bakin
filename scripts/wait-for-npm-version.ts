@@ -21,6 +21,9 @@ import {
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
 const RELEASE_VERSION_RE = /^\d+\.\d+\.\d+(?:-rc\.\d+)?$/
+// Hard cap per `npm view` so a stalled registry call can never hang the gate
+// past its deadline; a killed call surfaces as status null → loud failure.
+const NPM_VIEW_TIMEOUT_MS = 30_000
 
 export { PUBLIC_SDK_PACKAGE_NAME }
 
@@ -97,8 +100,9 @@ export function parseArgs(argv: string[]): WaitOptions {
 }
 
 function echoResult(result: CommandResult): void {
-  if (result.stdout) process.stdout.write(result.stdout)
-  if (result.stderr) process.stderr.write(result.stderr)
+  const trailingNewline = (text: string): string => (text.endsWith('\n') ? text : `${text}\n`)
+  if (result.stdout) process.stdout.write(trailingNewline(result.stdout))
+  if (result.stderr) process.stderr.write(trailingNewline(result.stderr))
 }
 
 /**
@@ -106,21 +110,22 @@ function echoResult(result: CommandResult): void {
  * a real npm error or when the version is still unavailable at the deadline.
  */
 export async function waitForNpmVersion(opts: WaitOptions, deps: WaitDeps = {}): Promise<void> {
-  const runner = deps.runner ?? runCommand
+  const runner = deps.runner ?? ((cmd, args, cwd) => runCommand(cmd, args, cwd, { timeoutMs: NPM_VIEW_TIMEOUT_MS }))
   const sleep = deps.sleep ?? realSleep
   const now = deps.now ?? Date.now
 
   const target = `${opts.package}@${opts.version}`
   const viewArgs = npmViewArgs(opts.package, opts.version)
   const start = now()
-  const elapsedSeconds = () => Math.round((now() - start) / 1000)
+  const secs = (ms: number): number => Math.round(ms / 1000)
 
   for (let attempt = 0; ; attempt++) {
     const result = runner('npm', viewArgs, REPO_ROOT)
     const resolved = versionResolves(result)
+    const elapsed = now() - start
 
     if (resolved === true) {
-      console.log(`${target} is resolvable on npm (attempt ${attempt + 1}, ${elapsedSeconds()}s elapsed)`)
+      console.log(`${target} is resolvable on npm (attempt ${attempt + 1}, ${secs(elapsed)}s elapsed)`)
       return
     }
     if (resolved === null) {
@@ -128,17 +133,20 @@ export async function waitForNpmVersion(opts: WaitOptions, deps: WaitDeps = {}):
       throw new Error(`Could not check npm package version ${target}`)
     }
 
-    const delay = Math.min(opts.baseDelayMs * 2 ** attempt, opts.maxDelayMs)
-    if (now() - start + delay > opts.timeoutMs) {
+    // Clamp the backoff to the remaining budget so the full --timeout is used;
+    // give up only once there is no time left for another check.
+    const remaining = opts.timeoutMs - elapsed
+    const delay = Math.min(opts.baseDelayMs * 2 ** attempt, opts.maxDelayMs, remaining)
+    if (delay <= 0) {
       throw new Error(
-        `${target} did not become resolvable on npm within ${Math.round(opts.timeoutMs / 1000)}s ` +
-          `(${attempt + 1} attempts, ${elapsedSeconds()}s elapsed)`,
+        `${target} did not become resolvable on npm within ${secs(opts.timeoutMs)}s ` +
+          `(${attempt + 1} attempts, ${secs(elapsed)}s elapsed)`,
       )
     }
 
     console.log(
-      `${target} not visible on npm yet (attempt ${attempt + 1}, ${elapsedSeconds()}s elapsed); ` +
-        `retrying in ${Math.round(delay / 1000)}s`,
+      `${target} not visible on npm yet (attempt ${attempt + 1}, ${secs(elapsed)}s elapsed); ` +
+        `retrying in ${secs(delay)}s`,
     )
     await sleep(delay)
   }

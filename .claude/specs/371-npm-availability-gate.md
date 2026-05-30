@@ -63,7 +63,7 @@ export interface WaitOptions {
   maxDelayMs: number      // default 30_000
 }
 
-export function parseArgs(argv: string[], env?: ...): WaitOptions
+export function parseArgs(argv: string[]): WaitOptions
   // flags: --package, --version, --timeout (seconds), --base-delay (seconds), --max-delay (seconds)
 
 export async function waitForNpmVersion(

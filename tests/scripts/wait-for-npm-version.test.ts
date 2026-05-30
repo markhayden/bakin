@@ -122,9 +122,11 @@ describe('waitForNpmVersion', () => {
       { package: PUBLIC_SDK_PACKAGE_NAME, version: '2.0.0', timeoutMs: 10_000, baseDelayMs: 2_000, maxDelayMs: 30_000 },
       { ...harness, runner },
     )).rejects.toThrow(/2\.0\.0/)
-    // 0s: delay 2000 (ok) -> 2000; delay 4000 (ok) -> 6000; delay 8000 would pass 10000 -> throw
-    expect(harness.viewCalls).toBe(3)
-    expect(harness.slept).toEqual([2_000, 4_000])
+    // Delay is clamped to the remaining budget so the full 10s is used:
+    // 0s -> sleep 2000; 2s -> sleep 4000; 6s -> sleep min(8000, 4000)=4000;
+    // 10s -> no budget left -> throw. Four checks, full deadline consumed.
+    expect(harness.viewCalls).toBe(4)
+    expect(harness.slept).toEqual([2_000, 4_000, 4_000])
   })
 
   it('caps the backoff delay at maxDelayMs', async () => {
