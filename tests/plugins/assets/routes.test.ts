@@ -195,8 +195,8 @@ describe('route registration', () => {
 // ===========================================================================
 
 describe('exec tool registration', () => {
-  it('registers all 13 exec tools', () => {
-    expect(plugin.execTools.length).toBe(13)
+  it('registers all 12 exec tools', () => {
+    expect(plugin.execTools.length).toBe(12)
   })
 
   it.each([
@@ -212,7 +212,6 @@ describe('exec tool registration', () => {
     'bakin_exec_assets_empty_trash',
     'bakin_exec_assets_permanent_delete',
     'bakin_exec_assets_retype',
-    'bakin_exec_assets_update_content',
   ])('registers tool: %s', (name) => {
     const tool = findTool(plugin.execTools, name)
     expect(tool).toBeDefined()
@@ -873,8 +872,7 @@ describe('exec tool: bakin_exec_assets_get', () => {
 // ===========================================================================
 
 describe('exec tool: bakin_exec_assets_save', () => {
-  it('saves a new asset with sidecar metadata', async () => {
-    // Create a source file to save
+  it('saves a new source file as a versioned asset (v1)', async () => {
     const sourceFile = join(testDir, 'source-image.png')
     writeFileSync(sourceFile, 'raw-image-bytes')
 
@@ -890,10 +888,9 @@ describe('exec tool: bakin_exec_assets_save', () => {
     }, 'pixel')
 
     expect(result.ok).toBe(true)
-    expect(result.filename).toBeDefined()
-    expect((result.filename as string)).toMatch(/^\d{8}-saved-hero-[0-9a-f]{8}\.png$/)
-    expect(result.path).toBeDefined()
-    expect(result.metadataPath).toBeDefined()
+    expect((result.assetId as string)).toMatch(/^\d{8}-saved-hero-[0-9a-f]{8}$/)
+    expect(result.version).toBe(1)
+    expect(result.changed).toBe(true)
   })
 
   it('returns error for nonexistent source file', async () => {
@@ -908,52 +905,32 @@ describe('exec tool: bakin_exec_assets_save', () => {
     expect(result.error).toMatch(/not found/i)
   })
 
-  it('returns an existing managed asset instead of re-saving it', async () => {
-    const filename = '20260521-existing-image-a1b2c3d4.jpg'
-    const relPath = `assets/store/2026-05/${filename}`
-    const fullPath = join(testDir, relPath)
-    mkdirSync(join(testDir, 'assets', 'store', '2026-05'), { recursive: true })
-    writeFileSync(fullPath, 'already-managed-image')
-
+  it('versions the existing asset when the same source is re-saved with new content', async () => {
+    const sourceFile = join(testDir, 'evolving-doc.md')
+    writeFileSync(sourceFile, '# v1\n')
     const tool = findTool(plugin.execTools, 'bakin_exec_assets_save')!
-    const result = await callTool(tool, {
-      filePath: relPath,
-      taskId: 'task-managed',
-      type: 'images',
-      description: 'Should not duplicate',
-    }, 'pixel')
 
-    expect(result).toMatchObject({
-      ok: true,
-      path: relPath,
-      metadataPath: `${relPath}.meta.json`,
-      filename,
-      alreadyManaged: true,
-    })
+    const first = await callTool(tool, { filePath: sourceFile, taskId: 't', type: 'text', slug: 'doc' }, 'margo')
+    expect(first.version).toBe(1)
+    expect(first.changed).toBe(true)
+
+    writeFileSync(sourceFile, '# v2 — changed\n')
+    const second = await callTool(tool, { filePath: sourceFile, taskId: 't', type: 'text', slug: 'doc' }, 'margo')
+    expect(second.assetId).toBe(first.assetId) // same asset, not a duplicate
+    expect(second.version).toBe(2)
+    expect(second.changed).toBe(true)
   })
 
-  it('returns an existing managed asset from an absolute Bakin path instead of re-saving it', async () => {
-    const filename = '20260521-absolute-image-a1b2c3d4.jpg'
-    const relPath = `assets/store/2026-05/${filename}`
-    const fullPath = join(testDir, relPath)
-    mkdirSync(join(testDir, 'assets', 'store', '2026-05'), { recursive: true })
-    writeFileSync(fullPath, 'already-managed-image')
-
+  it('no-ops when the same source is re-saved with identical content', async () => {
+    const sourceFile = join(testDir, 'static-doc.md')
+    writeFileSync(sourceFile, 'unchanged content')
     const tool = findTool(plugin.execTools, 'bakin_exec_assets_save')!
-    const result = await callTool(tool, {
-      filePath: fullPath,
-      taskId: 'task-managed',
-      type: 'images',
-      description: 'Should not duplicate',
-    }, 'pixel')
 
-    expect(result).toMatchObject({
-      ok: true,
-      path: relPath,
-      metadataPath: `${relPath}.meta.json`,
-      filename,
-      alreadyManaged: true,
-    })
+    const a = await callTool(tool, { filePath: sourceFile, taskId: 't', type: 'text' }, 'margo')
+    const b = await callTool(tool, { filePath: sourceFile, taskId: 't', type: 'text' }, 'margo')
+    expect(b.assetId).toBe(a.assetId)
+    expect(b.version).toBe(1)
+    expect(b.changed).toBe(false)
   })
 
   it('logs activity on successful save', async () => {
@@ -1747,25 +1724,8 @@ describe('bakin_exec_assets_retype', () => {
   })
 })
 
-describe('bakin_exec_assets_update_content', () => {
-  it('updates content via MCP tool', async () => {
-    const filename = '20260415-mcp-doc-eeeeffff.md'
-    createAssetFixture(filename, '# Original', {
-      agent: 'scribe', taskId: 'mcp-content', created: '2026-04-15T10:00:00Z', type: 'text',
-    })
-    const rel = relPathFor(filename)
-
-    const tool = findTool(plugin.execTools, 'bakin_exec_assets_update_content')!
-    const result = await callTool(tool, {
-      filename,
-      content: '# Revised',
-    }, 'scribe')
-
-    expect(result.ok).toBe(true)
-    const written = readFileSync(join(testDir, rel), 'utf-8')
-    expect(written).toBe('# Revised')
-  })
-})
+// bakin_exec_assets_update_content retired (B6): re-saving the source via
+// bakin_exec_assets_save now versions the asset instead.
 
 // ===========================================================================
 // Research type

@@ -26,9 +26,9 @@ import { validateSidecar, getSidecarPath, createStub } from './lib/sidecar'
 import { isSafeCanonicalFilename, pathForFilename } from './lib/path-for-filename'
 import { resolveAssetServe } from './lib/serve'
 import { isValidAssetId } from './lib/asset-id'
-import { getAsset } from './lib/asset-service'
+import { getAsset, upsertFromSource } from './lib/asset-service'
 import { versionedAssetPath, buildVersionedAssetSearchDoc } from './lib/search-doc'
-import { ASSET_TYPES } from './lib/constants'
+import { ASSET_TYPES, type AssetType } from './lib/constants'
 import { listTrash, restoreAsset, emptyTrash, permanentDelete, softDelete, type TrashedAsset } from './lib/trash'
 import { saveAsset } from './lib/save-asset'
 import { ingestInboxFile, ingestInboxDir } from './lib/ingest-inbox'
@@ -771,26 +771,36 @@ const assetsPlugin: BakinPlugin = definePlugin({
     ctx.registerExecTool({
       name: 'bakin_exec_assets_save',
       label: 'Saved an asset',
-      description: 'Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically.',
+      description: 'Save an agent-created file as a managed, versioned asset. Re-saving the SAME source file appends a new version to the existing asset (or no-ops if unchanged) instead of creating a duplicate — so an evolving doc stays one asset with a version history. Returns the asset id.',
       parameters: {
-        filePath: z.string().describe('Absolute path to the source file to save, or an existing managed assets/store/... path to return idempotently'),
-        taskId: z.string().describe('Task ID to record in sidecar metadata'),
+        filePath: z.string().describe('Absolute path to the source file to save. Re-saving the same path versions the existing asset.'),
+        taskId: z.string().describe('Task ID to link the asset.'),
         type: z.enum(ASSET_TYPES).describe(TYPE_RUBRIC),
         description: z.string().optional().describe('One-sentence summary visible in the asset grid and search. Be specific — "Q2 blog hero image" not "an image".'),
         tags: z.array(z.string()).optional().describe('Lowercase hyphenated tags for filtering. Use domain tags (social, blog), format tags (draft, final), and project tags.'),
         tool: z.string().optional().describe('Tool used to generate or import the asset (e.g., "bakin_exec_images_generate")'),
-        slug: z.string().optional().describe('Custom filename slug. Auto-derived from source filename if omitted.'),
+        slug: z.string().optional().describe('Custom slug for the asset id. Auto-derived from source filename if omitted.'),
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
         const filePath = typeof params.filePath === 'string' ? params.filePath : ''
-        const existing = existingManagedAssetResult(filePath)
-        if (existing) {
-          indexAsset(existing.path).catch(() => {})
-          return { ok: true, ...existing }
+        if (!filePath) return { ok: false, error: 'filePath is required' }
+        try {
+          const r = await upsertFromSource(filePath, {
+            sourceFilePath: filePath,
+            type: params.type as AssetType,
+            agent,
+            taskId: (params.taskId as string) ?? null,
+            slug: params.slug as string | undefined,
+            op: 'upload',
+            tool: (params.tool as string) ?? null,
+            description: params.description as string | undefined,
+            tags: params.tags as string[] | undefined,
+          })
+          ctx.activity.audit(r.changed ? 'asset.saved' : 'asset.unchanged', agent, { assetId: r.assetId, version: r.version })
+          return { ok: true, assetId: r.assetId, version: r.version, changed: r.changed }
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
-        const result = await saveAsset({ ...params, agent } as Parameters<typeof saveAsset>[0])
-        if (result.ok && result.path) indexAsset(result.path as string).catch(() => {})
-        return result
       },
     })
 
@@ -1031,29 +1041,10 @@ const assetsPlugin: BakinPlugin = definePlugin({
       },
     })
 
-    ctx.registerExecTool({
-      name: 'bakin_exec_assets_update_content',
-      label: 'Updated asset content',
-      description: 'Update the text content of an editable asset. Only works for text-based MIME types (markdown, plain text, YAML, JSON, CSV, XML). Rewrites the entire file.',
-      parameters: {
-        filename: z.string().describe('Canonical asset filename (e.g. "20260401-doc-a1b2c3d4.md")'),
-        content: z.string().describe('New file content (replaces entire file)'),
-      },
-      handler: async (params: Record<string, unknown>, agent: string) => {
-        const req = new Request('http://localhost/api/plugins/assets/content', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ filename: params.filename, content: params.content }),
-        })
-        const res = await handleContent(req)
-        const data = await res.json()
-        if (data.ok) {
-          ctx.activity.audit('asset.content_updated', agent, { filename: params.filename, path: data.path })
-          if (data.path) indexAsset(data.path as string).catch(() => {})
-        }
-        return data
-      },
-    })
+    // bakin_exec_assets_update_content retired: re-saving the source via
+    // bakin_exec_assets_save now versions the asset (see upsertFromSource), so a
+    // separate "rewrite the file" tool is no longer needed and was a
+    // discoverability trap (agents kept minting new assets via save instead).
 
     ctx.registerExecTool({
       name: 'bakin_exec_assets_empty_trash',

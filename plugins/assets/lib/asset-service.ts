@@ -10,9 +10,10 @@
  * Type-agnostic: images are the first consumer, but any asset type uses the
  * same spine.
  */
-import { mkdirSync, copyFileSync, existsSync, readdirSync, statSync, renameSync, rmSync } from 'node:fs'
+import { mkdirSync, copyFileSync, existsSync, readdirSync, statSync, renameSync, rmSync, readFileSync } from 'node:fs'
 import { join, extname } from 'node:path'
 import { execSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import sharp from 'sharp'
 import { getContentDir } from '../../../src/core/content-dir'
 import { createLogger } from '../../../src/core/logger'
@@ -479,4 +480,69 @@ export function restoreAsset(trashName: string): { assetId: string } {
   mkdirSync(join(destAbs, '..'), { recursive: true })
   renameSync(trashPath, destAbs)
   return { assetId }
+}
+
+function sha256File(absPath: string): string | null {
+  try {
+    return createHash('sha256').update(readFileSync(absPath)).digest('hex')
+  } catch {
+    return null
+  }
+}
+
+/** Find the asset whose `source.path` matches `sourcePath`, or null. */
+export function findBySourcePath(sourcePath: string): string | null {
+  const storeRoot = join(getContentDir(), 'assets', 'store')
+  if (!existsSync(storeRoot)) return null
+  for (const month of readdirSync(storeRoot)) {
+    const monthDir = join(storeRoot, month)
+    let entries: string[]
+    try {
+      if (!statSync(monthDir).isDirectory()) continue
+      entries = readdirSync(monthDir)
+    } catch {
+      continue
+    }
+    for (const assetId of entries) {
+      if (!yearMonthFromAssetId(assetId)) continue
+      const manifest = readManifest(join(monthDir, assetId))
+      if (manifest?.source?.path === sourcePath) return assetId
+    }
+  }
+  return null
+}
+
+/**
+ * Save a source file as a versioned asset, keyed by its source path: create v1
+ * if no asset tracks this path, append a version if its content changed, or
+ * no-op if identical. The markdown twin of the image edit→version fix — an
+ * agent re-saving an evolving file versions ONE asset instead of minting N.
+ */
+export async function upsertFromSource(sourcePath: string, input: AssetCreateInput): Promise<{ assetId: string; version: number; changed: boolean }> {
+  const source = input.source ?? { kind: 'workspace-file' as const, path: sourcePath }
+  const existingId = findBySourcePath(sourcePath)
+  if (!existingId) {
+    const created = await createAsset({ ...input, source })
+    return { assetId: created.assetId, version: created.version, changed: true }
+  }
+  const manifest = getAsset(existingId)
+  if (!manifest) {
+    const created = await createAsset({ ...input, source })
+    return { assetId: created.assetId, version: created.version, changed: true }
+  }
+  const current = manifest.versions.find((v) => v.version === manifest.currentVersion)
+  const currentAbs = current ? join(getContentDir(), assetDirRelPath(existingId)!, current.file) : null
+  const newHash = sha256File(sourcePath)
+  const curHash = currentAbs ? sha256File(currentAbs) : null
+  if (newHash && curHash && newHash === curHash) {
+    return { assetId: existingId, version: manifest.currentVersion, changed: false }
+  }
+  const next = await addVersion(existingId, {
+    sourceFilePath: sourcePath,
+    op: 'upload',
+    tool: input.tool ?? null,
+    description: input.description,
+    tags: input.tags,
+  })
+  return { assetId: next.assetId, version: next.version, changed: true }
 }
