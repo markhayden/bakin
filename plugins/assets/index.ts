@@ -25,6 +25,9 @@ import { buildIndex, upsertAsset, removeAsset, detectVariant, listAssets } from 
 import { validateSidecar, getSidecarPath, createStub } from './lib/sidecar'
 import { isSafeCanonicalFilename, pathForFilename } from './lib/path-for-filename'
 import { resolveAssetServe } from './lib/serve'
+import { isValidAssetId } from './lib/asset-id'
+import { getAsset } from './lib/asset-service'
+import { versionedAssetPath, buildVersionedAssetSearchDoc } from './lib/search-doc'
 import { ASSET_TYPES } from './lib/constants'
 import { listTrash, restoreAsset, emptyTrash, permanentDelete, softDelete, type TrashedAsset } from './lib/trash'
 import { saveAsset } from './lib/save-asset'
@@ -83,6 +86,22 @@ async function indexAsset(relPath: string): Promise<void> {
     await pluginCtx.search.index(filename, doc)
   } catch (err) {
     log.warn('Failed to index asset for search', { path: relPath, error: err instanceof Error ? err.message : String(err) })
+  }
+}
+
+// ─── Versioned-asset (manifest-driven) search indexing ────────────────────
+// One search row per asset, keyed by assetId, built from the CURRENT version.
+// Coexists with the legacy filename path below until the cutover (B10).
+// versionedAssetPath + buildVersionedAssetSearchDoc live in ./lib/search-doc.
+
+async function indexVersionedAsset(assetId: string): Promise<void> {
+  if (!pluginCtx) return
+  try {
+    const manifest = getAsset(assetId)
+    if (!manifest) return
+    await pluginCtx.search.index(assetId, await buildVersionedAssetSearchDoc(manifest, assetId))
+  } catch (err) {
+    log.warn('Failed to index versioned asset for search', { assetId, error: err instanceof Error ? err.message : String(err) })
   }
 }
 
@@ -403,6 +422,14 @@ const assetsPlugin: BakinPlugin = definePlugin({
         if (!relativePath.startsWith('assets/')) return
         if (relativePath.includes('.trash/')) return
 
+        // Versioned asset: index on manifest write; ignore version/thumb/export
+        // files (they ride with the manifest's assetId row).
+        const versioned = versionedAssetPath(relativePath)
+        if (versioned) {
+          if (versioned.isManifest) await indexVersionedAsset(versioned.assetId).catch(() => { /* non-blocking */ })
+          return
+        }
+
         // Intercept inbox drops: canonicalize, move to store/, write a stub
         // sidecar. The subsequent onSync for the destination path does the
         // normal index/search upsert.
@@ -426,6 +453,13 @@ const assetsPlugin: BakinPlugin = definePlugin({
       onUnlink: async (relativePath: string) => {
         if (!relativePath.startsWith('assets/')) return
         if (relativePath.includes('.trash/')) return
+
+        // Versioned asset: manifest unlink (dir trashed/removed) removes the row.
+        const versioned = versionedAssetPath(relativePath)
+        if (versioned) {
+          if (versioned.isManifest) await ctx.search.remove(versioned.assetId).catch(() => { /* non-blocking */ })
+          return
+        }
         // Sidecar deletion alone doesn't remove the asset — the binary
         // may still exist on disk and remain searchable with stub
         // metadata. Only treat binary deletion as removal.
@@ -474,9 +508,21 @@ const assetsPlugin: BakinPlugin = definePlugin({
               yield { key, doc }
             } catch { /* skip unreadable sidecars */ }
           }
+
+          // Versioned assets: subdirs named by a valid assetId, indexed by their
+          // manifest's current version.
+          let dirEntries: string[]
+          try { dirEntries = readdirSync(monthDir) } catch { dirEntries = [] }
+          for (const entry of dirEntries) {
+            if (!isValidAssetId(entry)) continue
+            const manifest = getAsset(entry)
+            if (!manifest) continue
+            yield { key: entry, doc: await buildVersionedAssetSearchDoc(manifest, entry) }
+          }
         }
       },
       verifyExists: async (key: string) => {
+        if (isValidAssetId(key)) return getAsset(key) !== null
         const metaPath = join(getContentDir(), key + '.meta.json')
         return existsSync(metaPath)
       },
