@@ -26,7 +26,7 @@ import { validateSidecar, getSidecarPath, createStub } from './lib/sidecar'
 import { isSafeCanonicalFilename, pathForFilename } from './lib/path-for-filename'
 import { resolveAssetServe } from './lib/serve'
 import { isValidAssetId } from './lib/asset-id'
-import { getAsset, upsertFromSource } from './lib/asset-service'
+import { getAsset, upsertFromSource, listAssets as listVersionedAssets, deleteAsset as deleteVersionedAsset } from './lib/asset-service'
 import { versionedAssetPath, buildVersionedAssetSearchDoc } from './lib/search-doc'
 import { ASSET_TYPES, type AssetType } from './lib/constants'
 import { listTrash, restoreAsset, emptyTrash, permanentDelete, softDelete, type TrashedAsset } from './lib/trash'
@@ -426,7 +426,11 @@ const assetsPlugin: BakinPlugin = definePlugin({
         // files (they ride with the manifest's assetId row).
         const versioned = versionedAssetPath(relativePath)
         if (versioned) {
-          if (versioned.isManifest) await indexVersionedAsset(versioned.assetId).catch(() => { /* non-blocking */ })
+          if (versioned.isManifest) {
+            await indexVersionedAsset(versioned.assetId).catch(() => { /* non-blocking */ })
+            // Live UI refresh: any mutation rewrites the manifest.
+            ctx.events.emit('asset.changed', { assetId: versioned.assetId })
+          }
           return
         }
 
@@ -434,10 +438,10 @@ const assetsPlugin: BakinPlugin = definePlugin({
         // sidecar. The subsequent onSync for the destination path does the
         // normal index/search upsert.
         if (relativePath.startsWith('assets/inbox/') && !relativePath.endsWith('.meta.json')) {
-          const result = ingestInboxFile(relativePath)
+          const result = await ingestInboxFile(relativePath)
           if (result.ok) {
-            ctx.activity.log('user', `Ingested "${result.filename}" from inbox`)
-            ctx.activity.audit('asset.ingested', 'user', { filename: result.filename, path: result.path })
+            ctx.activity.log('user', `Ingested "${result.assetId}" from inbox`)
+            ctx.activity.audit('asset.ingested', 'user', { assetId: result.assetId })
           } else if (result.error) {
             log.warn('Inbox ingestion failed', { path: relativePath, error: result.error })
           }
@@ -457,7 +461,10 @@ const assetsPlugin: BakinPlugin = definePlugin({
         // Versioned asset: manifest unlink (dir trashed/removed) removes the row.
         const versioned = versionedAssetPath(relativePath)
         if (versioned) {
-          if (versioned.isManifest) await ctx.search.remove(versioned.assetId).catch(() => { /* non-blocking */ })
+          if (versioned.isManifest) {
+            await ctx.search.remove(versioned.assetId).catch(() => { /* non-blocking */ })
+            ctx.events.emit('asset.removed', { assetId: versioned.assetId })
+          }
           return
         }
         // Sidecar deletion alone doesn't remove the asset — the binary
@@ -616,6 +623,18 @@ const assetsPlugin: BakinPlugin = definePlugin({
         }
       }
 
+      // Versioned assets: trash whole assets whose source is clipboard.
+      for (const summary of listVersionedAssets({ taskId })) {
+        const manifest = getAsset(summary.assetId)
+        if (manifest?.source?.kind !== 'clipboard') continue
+        try {
+          await deleteVersionedAsset(summary.assetId) // onUnlink removes from search + emits
+          purged++
+        } catch (err) {
+          log.warn('Failed to purge clipboard asset', { assetId: summary.assetId, error: err instanceof Error ? err.message : String(err) })
+        }
+      }
+
       if (purged > 0) {
         log.info(`Purged ${purged} clipboard asset(s) for completed task ${taskId}`)
         ctx.activity.log('system', `Purged ${purged} clipboard asset(s) for task ${taskId}`)
@@ -629,15 +648,12 @@ const assetsPlugin: BakinPlugin = definePlugin({
     // Drain the inbox first — anything a user dropped while the watcher
     // wasn't running gets canonicalized into store/ before the index is
     // built, so those assets appear in the first listing.
-    try {
-      const ingested = ingestInboxDir()
-      const succeeded = ingested.filter(r => r.ok)
-      if (succeeded.length > 0) {
-        log.info('Ingested inbox drops on startup', { count: succeeded.length })
-      }
-    } catch (err) {
-      log.warn('Inbox startup scan failed', err)
-    }
+    ingestInboxDir()
+      .then(ingested => {
+        const succeeded = ingested.filter(r => r.ok)
+        if (succeeded.length > 0) log.info('Ingested inbox drops on startup', { count: succeeded.length })
+      })
+      .catch(err => log.warn('Inbox startup scan failed', err))
 
     // Build the in-memory tracker on startup. (Search index reconcile is
     // owned by registerFileBackedContentType above and runs separately.)

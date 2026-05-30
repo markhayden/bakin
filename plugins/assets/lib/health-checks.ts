@@ -16,6 +16,8 @@ import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/c
 
 import { createStub } from './sidecar'
 import { yearMonthFromFilename } from './path-for-filename'
+import { isValidAssetId } from './asset-id'
+import { readManifest } from './manifest'
 
 const log = createLogger('assets:health')
 
@@ -302,6 +304,50 @@ function checkAssetsInternal(contentDir: string, autoFix: boolean): HealthCheckR
       }
     }
   } catch { /* skip */ }
+
+  // Versioned assets (asset-as-directory): manifest integrity.
+  let versionedCount = 0
+  let brokenCount = 0
+  if (existsSync(storeRoot)) {
+    let shards: string[]
+    try { shards = readdirSync(storeRoot) } catch { shards = [] }
+    for (const shard of shards) {
+      const shardDir = join(storeRoot, shard)
+      let entries: string[]
+      try {
+        if (!statSync(shardDir).isDirectory()) continue
+        entries = readdirSync(shardDir)
+      } catch { continue }
+      for (const entry of entries) {
+        if (!isValidAssetId(entry)) continue
+        versionedCount++
+        const dirAbs = join(shardDir, entry)
+        const manifest = readManifest(dirAbs)
+        if (!manifest) {
+          results.push(warn('assets', `Versioned asset ${entry} has a missing or invalid manifest.json`))
+          brokenCount++
+          continue
+        }
+        if (!manifest.versions.some(v => v.version === manifest.currentVersion)) {
+          results.push(warn('assets', `Versioned asset ${entry}: currentVersion ${manifest.currentVersion} is not in versions[]`))
+          brokenCount++
+        }
+        for (const v of manifest.versions) {
+          if (!existsSync(join(dirAbs, v.file))) {
+            results.push(warn('assets', `Versioned asset ${entry}: missing version file ${v.file}`))
+            brokenCount++
+          }
+          if (v.thumb && !existsSync(join(dirAbs, v.thumb))) {
+            results.push(warn('assets', `Versioned asset ${entry}: missing thumbnail ${v.thumb}`))
+            brokenCount++
+          }
+        }
+      }
+    }
+  }
+  if (versionedCount > 0 && brokenCount === 0) {
+    results.push(ok('assets', `${versionedCount} versioned asset(s), all manifests valid`))
+  }
 
   if (results.length === 0) {
     results.push(ok('assets', `${totalAssets} asset(s), all sidecars present`))
