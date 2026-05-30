@@ -8,16 +8,23 @@
  * source repositories.
  */
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { spawnSync } from 'node:child_process'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { PUBLIC_SDK_PACKAGE_NAME, buildSdkPackage } from './build-sdk-package'
+import {
+  type CommandResult,
+  type CommandRunner,
+  npmViewArgs,
+  runCommand,
+  versionResolves,
+} from './lib/npm-registry'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
 const SDK_PACKAGE_NAME = PUBLIC_SDK_PACKAGE_NAME
 const RELEASE_VERSION_RE = /^\d+\.\d+\.\d+(?:-rc\.\d+)?$/
 
 export { PUBLIC_SDK_PACKAGE_NAME }
+export type { CommandRunner }
 
 export interface PublishSdkOptions {
   version: string
@@ -28,29 +35,10 @@ export interface PublishSdkOptions {
   provenance: boolean
 }
 
-interface CommandResult {
-  status: number | null
-  stdout: string
-  stderr: string
-}
-
-export type CommandRunner = (cmd: string, args: string[], cwd: string) => CommandResult
 export type SdkPackageBuilder = (opts: { version: string; outDir: string }) => Promise<void>
 
 function readJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, 'utf-8')) as T
-}
-
-function runCommand(cmd: string, args: string[], cwd: string): CommandResult {
-  const result = spawnSync(cmd, args, {
-    cwd,
-    encoding: 'utf-8',
-  })
-  return {
-    status: result.status,
-    stdout: result.stdout ?? '',
-    stderr: result.stderr ?? '',
-  }
 }
 
 function stripTagPrefix(ref: string): string {
@@ -125,13 +113,6 @@ export function parseArgs(argv: string[], env: Record<string, string | undefined
   }
 }
 
-function packageAlreadyExistsResult(result: CommandResult): boolean | null {
-  if (result.status === 0) return true
-  const output = `${result.stdout}\n${result.stderr}`
-  if (/E404|404 Not Found|is not in this registry|No match found/i.test(output)) return false
-  return null
-}
-
 function echoResult(result: CommandResult): void {
   if (result.stdout) process.stdout.write(result.stdout)
   if (result.stderr) process.stderr.write(result.stderr)
@@ -155,7 +136,7 @@ function isDuplicateTransparencyLogError(result: CommandResult): boolean {
 }
 
 function packageExists(runner: CommandRunner, viewArgs: string[]): boolean | null {
-  return packageAlreadyExistsResult(runner('npm', viewArgs, REPO_ROOT))
+  return versionResolves(runner('npm', viewArgs, REPO_ROOT))
 }
 
 export async function publishSdkPackage(
@@ -172,7 +153,7 @@ export async function publishSdkPackage(
   await builder({ version: opts.version, outDir: packageDir })
   assertGeneratedPackage(packageDir, opts.version)
 
-  const viewArgs = ['view', `${SDK_PACKAGE_NAME}@${opts.version}`, 'version', '--json']
+  const viewArgs = npmViewArgs(SDK_PACKAGE_NAME, opts.version)
   const primaryPublishArgs = publishArgs(opts.tag, opts.provenance)
 
   if (opts.dryRun) {
@@ -183,7 +164,7 @@ export async function publishSdkPackage(
   }
 
   const view = runner('npm', viewArgs, REPO_ROOT)
-  const exists = packageAlreadyExistsResult(view)
+  const exists = versionResolves(view)
   if (exists === true) {
     echoResult(view)
     console.log(`${SDK_PACKAGE_NAME}@${opts.version} already exists on npm; skipping publish`)
