@@ -9,6 +9,7 @@ import type { ImageProviderId } from '../types'
 import { effectiveImageSettings, getImageProvider, providerReadiness } from './providers'
 import { resolveImageRoute } from './routing'
 import { getImageProfile } from './platform-profiles'
+import { runBilledImageCall, type ImageCallKey } from './idempotency'
 import { getContentDir } from '../../../src/core/content-dir'
 
 /** Largest edge we send to a provider / feed into sharp, to bound cost. */
@@ -269,21 +270,37 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
   // can, or composes the shared direct-provider shim when it can't. The plugin
   // never touches provider HTTP or credentials.
   if (!ctx.runtime.images) return fail('The active runtime does not provide an image generation capability')
+  const runGenerate = ctx.runtime.images.generate
 
-  try {
-    const result = await ctx.runtime.images.generate({
-      prompt: req.prompt,
-      provider: req.route.provider,
-      model: req.route.model,
-      width: req.dims.width,
-      height: req.dims.height,
-      outputFormat: 'png',
-      metadata: { quality: req.quality },
-    })
-    return await persistImageAsset(ctx, params, agent, { req, result, tool: 'bakin_exec_images_generate', tag: 'generated' })
-  } catch (err) {
-    return fail(`Image generation failed: ${errorMessage(err)}`)
+  // Idempotent: a client (mcporter) timeout that retries this identical billed
+  // call must not bill twice — return the in-flight / just-saved result instead.
+  const key: ImageCallKey = {
+    taskId: params.taskId,
+    op: 'generate',
+    source: null,
+    promptHash: hashPrompt(req.prompt),
+    provider: req.route.provider,
+    model: req.route.model,
+    width: req.dims.width,
+    height: req.dims.height,
+    quality: req.quality,
   }
+  return runBilledImageCall(key, async () => {
+    try {
+      const result = await runGenerate({
+        prompt: req.prompt,
+        provider: req.route.provider,
+        model: req.route.model,
+        width: req.dims.width,
+        height: req.dims.height,
+        outputFormat: 'png',
+        metadata: { quality: req.quality },
+      })
+      return await persistImageAsset(ctx, params, agent, { req, result, tool: 'bakin_exec_images_generate', tag: 'generated' })
+    } catch (err) {
+      return fail(`Image generation failed: ${errorMessage(err)}`)
+    }
+  })
 }
 
 export async function editImage(ctx: PluginContext, params: ImagesEditParams, agent: string): Promise<ExecToolResult> {
@@ -305,22 +322,37 @@ export async function editImage(ctx: PluginContext, params: ImagesEditParams, ag
 
   // Edit is runtime-only — the shared shim does generation, not editing.
   if (!ctx.runtime.images?.edit) return fail('The active runtime does not provide an image edit capability')
+  const runEdit = ctx.runtime.images.edit
 
-  try {
-    const result = await ctx.runtime.images.edit({
-      prompt: req.prompt,
-      provider: req.route.provider,
-      model: req.route.model,
-      width: req.dims.width,
-      height: req.dims.height,
-      outputFormat: 'png',
-      files: [sourcePath],
-      metadata: { quality: req.quality },
-    })
-    return await persistImageAsset(ctx, params, agent, { req, result, tool: 'bakin_exec_images_edit', tag: 'edited' })
-  } catch (err) {
-    return fail(`Image edit failed: ${errorMessage(err)}`)
+  // Idempotent like generate: an identical retried edit must not double-bill.
+  const key: ImageCallKey = {
+    taskId: params.taskId,
+    op: 'edit',
+    source: params.filename ?? params.sourcePath ?? null,
+    promptHash: hashPrompt(req.prompt),
+    provider: req.route.provider,
+    model: req.route.model,
+    width: req.dims.width,
+    height: req.dims.height,
+    quality: req.quality,
   }
+  return runBilledImageCall(key, async () => {
+    try {
+      const result = await runEdit({
+        prompt: req.prompt,
+        provider: req.route.provider,
+        model: req.route.model,
+        width: req.dims.width,
+        height: req.dims.height,
+        outputFormat: 'png',
+        files: [sourcePath],
+        metadata: { quality: req.quality },
+      })
+      return await persistImageAsset(ctx, params, agent, { req, result, tool: 'bakin_exec_images_edit', tag: 'edited' })
+    } catch (err) {
+      return fail(`Image edit failed: ${errorMessage(err)}`)
+    }
+  })
 }
 
 export async function exportImage(ctx: PluginContext, params: ImagesExportParams, agent: string): Promise<ExecToolResult> {
