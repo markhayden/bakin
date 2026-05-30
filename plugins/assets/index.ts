@@ -24,6 +24,7 @@ import { retypeAsset } from './lib/retype'
 import { buildIndex, upsertAsset, removeAsset, detectVariant, listAssets } from './lib/asset-index'
 import { validateSidecar, getSidecarPath, createStub } from './lib/sidecar'
 import { isSafeCanonicalFilename, pathForFilename } from './lib/path-for-filename'
+import { resolveAssetServe } from './lib/serve'
 import { ASSET_TYPES } from './lib/constants'
 import { listTrash, restoreAsset, emptyTrash, permanentDelete, softDelete, type TrashedAsset } from './lib/trash'
 import { saveAsset } from './lib/save-asset'
@@ -544,6 +545,7 @@ const assetsPlugin: BakinPlugin = definePlugin({
     ctx.hooks.register('assets.detectVariant', (d: Record<string, unknown>) => detectVariant(d.filename as string), { label: 'Detect asset variant.', summary: 'Infers the asset variant represented by a filename, such as before, after, or reference. Use it to keep imported assets grouped and labeled consistently.', hookKind: 'rpc' })
     ctx.hooks.register('assets.getAssetTypes', () => ASSET_TYPES, { label: 'List asset types.', summary: 'Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories.', hookKind: 'rpc' })
     ctx.hooks.register('assets.pathForFilename', (d: Record<string, unknown>) => pathForFilename(d.filename as string), { label: 'Resolve asset path.', summary: 'Calculates the managed asset path for a filename. Use it when a plugin needs to place or reference a file using Bakin asset storage conventions.', hookKind: 'rpc' })
+    ctx.hooks.register('assets.resolveServe', (d: Record<string, unknown>) => resolveAssetServe((d.segments as string[]) ?? []), { label: 'Resolve versioned asset serve request.', summary: 'Resolves an /api/assets/<assetId> path (current, /v/<n>, /thumb, /export/<name>) to a file on disk for serving. Returns match:false for non-assetId (legacy filename) requests so the host can fall back.', hookKind: 'rpc' })
 
     // Purge clipboard-source assets when a task completes (if enabled)
     ctx.hooks.register('assets.purgeClipboardForTask', async (d: Record<string, unknown>) => {
