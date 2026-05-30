@@ -21,5 +21,6 @@ export function useNavBadge(pluginId: string, navItemId: string, badge: NavBadge
   const key = badge ? `${badge.count ?? ''}:${badge.tone ?? ''}` : 'null'
   useEffect(() => {
     setNavBadge(pluginId, navItemId, badge)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: keyed on `key`, not `badge` identity (see above)
   }, [pluginId, navItemId, key])
 }

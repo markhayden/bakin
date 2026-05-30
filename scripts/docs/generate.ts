@@ -595,7 +595,10 @@ function readSdkExports(): SdkSubpath[] {
     },
   })
 
-  const checker = program.getTypeChecker()
+  // Binds the program so node.getSourceFile()/getText() resolve while walking
+  // declarations below. The checker value itself is unused — only this side
+  // effect matters — so it is not threaded through the extract helpers.
+  program.getTypeChecker()
   const result: SdkSubpath[] = []
 
   for (const { importPath, sourcePath } of subpathSources) {
@@ -604,7 +607,7 @@ function readSdkExports(): SdkSubpath[] {
       result.push({ importPath, source: relativeSource(sourcePath), symbols: [] })
       continue
     }
-    const symbols = extractSdkSymbols(sourceFile, checker)
+    const symbols = extractSdkSymbols(sourceFile)
     result.push({ importPath, source: relativeSource(sourcePath), symbols })
   }
   return result
@@ -626,7 +629,7 @@ function jsdocTextOf(node: ts.Node): string {
   return ''
 }
 
-function extractSdkSymbols(sourceFile: ts.SourceFile, checker: ts.TypeChecker): SdkSymbol[] {
+function extractSdkSymbols(sourceFile: ts.SourceFile): SdkSymbol[] {
   const symbols: SdkSymbol[] = []
 
   ts.forEachChild(sourceFile, (node) => {
@@ -644,7 +647,7 @@ function extractSdkSymbols(sourceFile: ts.SourceFile, checker: ts.TypeChecker): 
         jsdoc: jsdocTextOf(node),
       }
       if (CORE_TYPES.has(name)) {
-        sym.members = extractInterfaceMembers(node, checker)
+        sym.members = extractInterfaceMembers(node)
       }
       symbols.push(sym)
       return
@@ -744,7 +747,7 @@ function inferKindFromName(name: string): SdkSymbol['kind'] {
   return 'function'
 }
 
-function extractInterfaceMembers(node: ts.InterfaceDeclaration, checker: ts.TypeChecker): SdkMember[] {
+function extractInterfaceMembers(node: ts.InterfaceDeclaration): SdkMember[] {
   const members: SdkMember[] = []
   for (const member of node.members) {
     if (!ts.isPropertySignature(member) && !ts.isMethodSignature(member)) continue
