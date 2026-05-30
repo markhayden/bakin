@@ -613,12 +613,79 @@ export interface AssetSaveResult {
   [key: string]: unknown
 }
 
+/** Per-version generation provenance (matches the manifest's `generation` block). */
+export interface AssetGenerationInfo {
+  provider: string
+  model: string
+  surface: string
+  quality: string
+  routeSource: string
+  routeReason?: string
+}
+
+/** Create a new versioned asset (v1) from a source file. */
+export interface AssetCreateInput {
+  sourceFilePath: string
+  type: AssetMeta['type']
+  agent: string
+  taskId: string | null
+  slug?: string
+  op?: 'generate' | 'upload' | 'import'
+  tool?: string | null
+  prompt?: string | null
+  promptHash?: string | null
+  description?: string
+  tags?: string[]
+  source?: { kind: 'generated' | 'upload' | 'import' | 'clipboard' | 'workspace-file'; path: string | null }
+  generation?: AssetGenerationInfo | null
+}
+
+/** Append a new version to an existing asset. */
+export interface AssetVersionCreateInput {
+  sourceFilePath: string
+  op?: 'edit' | 'generate' | 'upload' | 'import'
+  tool?: string | null
+  prompt?: string | null
+  promptHash?: string | null
+  description?: string
+  tags?: string[]
+  generation?: AssetGenerationInfo | null
+}
+
+/** Render a derived export of a version (keyed/idempotent by surface). */
+export interface AssetExportRequest {
+  fromVersion?: number
+  surface: string
+  format: 'jpg' | 'png' | 'webp'
+  width: number
+  height: number
+  quality?: number
+}
+
+export interface VersionedAssetRef {
+  assetId: string
+  version: number
+}
+
+export interface AssetVersionFileRef {
+  absPath: string
+  mimeType: string
+  version: number
+}
+
 export interface AssetsAPI {
+  // Legacy filename-identity surface (removed at the versioned-assets cutover).
   save(input: AssetSaveInput): Promise<AssetSaveResult>
   getByFilename(filename: string): Promise<AssetMeta | null>
   list(filter?: { type?: AssetMeta['type']; taskId?: string | null }): Promise<AssetMeta[]>
   exists(filename: string): Promise<boolean>
   fileRef(filename: string): Promise<AssetFileRef>
+
+  // Versioned (asset-as-directory) surface.
+  createAsset(input: AssetCreateInput): Promise<VersionedAssetRef>
+  addVersion(assetId: string, input: AssetVersionCreateInput): Promise<VersionedAssetRef>
+  addExport(assetId: string, input: AssetExportRequest): Promise<{ name: string; file: string }>
+  resolveVersionFile(assetId: string, version?: number): Promise<AssetVersionFileRef | null>
 }
 
 // ---------------------------------------------------------------------------

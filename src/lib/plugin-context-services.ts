@@ -192,6 +192,31 @@ export function createPluginAssetsAPI(): AssetsAPI {
       if (!asset) throw new Error(`Asset not found: ${filename}`)
       return { kind: 'asset', filename: asset.filename, mimeType: asset.mimeType }
     },
+
+    // Versioned (asset-as-directory) surface — delegates to the asset service.
+    async createAsset(input) {
+      const { createAsset } = await import('../../plugins/assets/lib/asset-service')
+      const r = await createAsset(input)
+      return { assetId: r.assetId, version: r.version }
+    },
+
+    async addVersion(assetId, input) {
+      const { addVersion } = await import('../../plugins/assets/lib/asset-service')
+      const r = await addVersion(assetId, input)
+      return { assetId: r.assetId, version: r.version }
+    },
+
+    async addExport(assetId, input) {
+      const { addExport } = await import('../../plugins/assets/lib/asset-service')
+      const r = await addExport(assetId, input)
+      return { name: r.name, file: r.file }
+    },
+
+    async resolveVersionFile(assetId, version) {
+      const { resolveFile } = await import('../../plugins/assets/lib/asset-service')
+      const ref = resolveFile(assetId, version)
+      return ref ? { absPath: ref.absPath, mimeType: ref.mimeType, version: ref.version } : null
+    },
   }
 }
 
