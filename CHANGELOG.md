@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+### Fixed
+- Gate the release `smoke-sdk` job on the exact SDK version becoming resolvable on npm (bounded exponential backoff via `scripts/wait-for-npm-version.ts`) so it no longer races registry propagation right after publish.
+
 ## [0.0.1-rc.8] - 2026-05-28
 
 ### Changed

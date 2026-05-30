@@ -296,11 +296,12 @@ Each step:
 4. `actual=$(./<artifact> --version)`; `expected=${{ github.event.release.tag_name }}`; assert `actual == ${expected#v}`
 
 **`sdk` job:**
-1. `runs-on: ubuntu-latest`, install Bun (`oven-sh/setup-bun`)
-2. `mkdir scratch && cd scratch && bun init -y`
-3. `bun add react@^19 react-dom@^19 @makinbakin/sdk@<exact-tag-version>` (not `latest` — verify the exact published version)
-4. `bun -e "import('@makinbakin/sdk').then(m => { if (typeof m.registerPlugin !== 'function') throw new Error('missing registerPlugin'); })"`
-5. One `bun -e "import('@makinbakin/sdk/<subpath>')"` line per entry in the SDK's `exports` map
+1. `runs-on: ubuntu-latest`, check out the release commit (needed for the gate script), install Bun (`oven-sh/setup-bun`)
+2. **npm availability gate:** `bun run scripts/wait-for-npm-version.ts --version <exact-tag-version>` polls `npm view` with bounded exponential backoff until the exact version resolves, then proceeds; it fails loudly at the deadline. Closes the read-after-write propagation race that previously let `bun add` fail right after publish. (Helper logic shared with `publish-sdk.ts` via `scripts/lib/npm-registry.ts`.)
+3. `mkdir scratch && cd scratch && bun init -y`
+4. `bun add react@^19 react-dom@^19 @makinbakin/sdk@<exact-tag-version>` (not `latest` — verify the exact published version)
+5. `bun -e "import('@makinbakin/sdk').then(m => { if (typeof m.registerPlugin !== 'function') throw new Error('missing registerPlugin'); })"`
+6. One `bun -e "import('@makinbakin/sdk/<subpath>')"` line per entry in the SDK's `exports` map
 
 **Critical:** the smoke uses Bun because Bakin plugin authors target Bun. The package must still be a real published package: built JS, declarations, no repo-only imports, and installable from a clean directory.
 
