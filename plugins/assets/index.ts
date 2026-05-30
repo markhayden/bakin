@@ -25,6 +25,10 @@ import { buildIndex, upsertAsset, removeAsset, detectVariant, listAssets } from 
 import { validateSidecar, getSidecarPath, createStub } from './lib/sidecar'
 import { isSafeCanonicalFilename, pathForFilename } from './lib/path-for-filename'
 import { resolveAssetServe } from './lib/serve'
+import {
+  handleVersionedList, handleVersionedGet, handleVersionedPromote,
+  handleVersionedDeleteVersion, handleVersionedDeleteAsset, handleVersionedExport,
+} from './routes/versioned'
 import { isValidAssetId } from './lib/asset-id'
 import { getAsset, upsertFromSource, listAssets as listVersionedAssets, deleteAsset as deleteVersionedAsset } from './lib/asset-service'
 import { versionedAssetPath, buildVersionedAssetSearchDoc } from './lib/search-doc'
@@ -309,6 +313,57 @@ const routes = [
       }
       return res
     },
+  }),
+
+  // Versioned (asset-as-directory) routes — power the versioned grid + detail.
+  defineRoute({
+    path: '/versioned',
+    method: 'GET',
+    summary: 'List versioned assets',
+    responses: { 200: passthrough, 500: errorResponse },
+    handler: async (req) => handleVersionedList(req),
+  }),
+  defineRoute({
+    path: '/versioned/:assetId',
+    method: 'GET',
+    summary: 'Get a versioned asset manifest',
+    params: z.object({ assetId: z.string().min(1) }),
+    responses: { 200: passthrough, 404: errorResponse },
+    handler: async (req) => handleVersionedGet(req),
+  }),
+  defineRoute({
+    path: '/versioned/:assetId/promote',
+    method: 'POST',
+    summary: 'Promote a version to current',
+    params: z.object({ assetId: z.string().min(1) }),
+    responses: { 200: okPassthrough, 400: errorResponse },
+    handler: async (req) => handleVersionedPromote(req),
+  }),
+  defineRoute({
+    path: '/versioned/:assetId/v/:version',
+    method: 'DELETE',
+    summary: 'Delete a version',
+    params: z.object({ assetId: z.string().min(1), version: z.string().min(1) }),
+    body: { contentType: 'none' },
+    responses: { 200: okPassthrough, 400: errorResponse },
+    handler: async (req) => handleVersionedDeleteVersion(req),
+  }),
+  defineRoute({
+    path: '/versioned/:assetId/export',
+    method: 'POST',
+    summary: 'Attach a derived export',
+    params: z.object({ assetId: z.string().min(1) }),
+    responses: { 200: okPassthrough, 400: errorResponse },
+    handler: async (req) => handleVersionedExport(req),
+  }),
+  defineRoute({
+    path: '/versioned/:assetId',
+    method: 'DELETE',
+    summary: 'Trash a whole versioned asset',
+    params: z.object({ assetId: z.string().min(1) }),
+    body: { contentType: 'none' },
+    responses: { 200: okPassthrough, 400: errorResponse },
+    handler: async (req) => handleVersionedDeleteAsset(req),
   }),
 
   searchRoute({ table: 'assets' }),

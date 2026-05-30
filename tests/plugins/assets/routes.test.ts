@@ -166,8 +166,8 @@ afterAll(() => {
 // ===========================================================================
 
 describe('route registration', () => {
-  it('registers all 12 routes', () => {
-    expect(plugin.routes.length).toBe(12)
+  it('registers all 18 routes', () => {
+    expect(plugin.routes.length).toBe(18)
   })
 
   it.each([
