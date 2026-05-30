@@ -74,7 +74,7 @@ describe('manifest atomic IO', () => {
     assetId: '20260529-m-aabbccdd', type: 'text', source: { kind: 'upload', path: null },
     agent: 'tester', taskId: null, created: 'c', updated: 'c', currentVersion: 1,
     description: 'd', tags: ['t'],
-    versions: [{ version: 1, file: 'v1.md', thumb: null, mimeType: 'text/markdown', size: 3, width: null, height: null, created: 'c', op: 'upload', parentVersion: null, tool: null, prompt: null, promptHash: null, generation: null }],
+    versions: [{ version: 1, file: 'v1.md', thumb: null, mimeType: 'text/markdown', size: 3, width: null, height: null, created: 'c', description: 'd', tags: ['t'], op: 'upload', parentVersion: null, tool: null, prompt: null, promptHash: null, generation: null }],
     exports: [],
   }
 
