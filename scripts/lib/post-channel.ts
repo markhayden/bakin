@@ -3,12 +3,11 @@
  */
 import { z } from 'zod'
 import { existsSync } from 'fs'
-import { basename, join } from 'path'
-import { getContentDir } from '@/core/content-dir'
+import { basename } from 'path'
 import { getAppServices } from '@/core/app-services'
 import { resolveRuntimeChannelRef } from '@/core/channel-aliases'
 import { assertWorkflowToolAllowed } from '@/core/workflow-tool-authorization'
-import { pathForFilename } from '@bakin/assets/lib/path-for-filename'
+import { resolveFile } from '@bakin/assets/lib/asset-service'
 import { succeed, fail } from './common'
 import { addExecTool } from './registry'
 import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
@@ -18,22 +17,20 @@ export interface PostChannelParams {
   channel: string
   content: string
   agent: string
-  imageFilename?: string
-  videoFilename?: string
+  imageAssetId?: string
+  videoAssetId?: string
   embed?: Record<string, unknown>
   taskId?: string
 }
 
 /**
- * Derive an absolute file path from a canonical asset filename. Returns null
- * when the filename is non-canonical or missing from disk.
+ * Resolve an assetId to its current-version file on disk. Returns null when the
+ * asset is unknown or its file is missing.
  */
-function resolveAssetAbsPath(filename: string | undefined): string | null {
-  if (!filename) return null
-  const rel = pathForFilename(filename)
-  if (!rel) return null
-  const abs = join(getContentDir(), rel)
-  return existsSync(abs) ? abs : null
+function resolveAssetAbsPath(assetId: string | undefined): string | null {
+  if (!assetId) return null
+  const ref = resolveFile(assetId)
+  return ref && existsSync(ref.absPath) ? ref.absPath : null
 }
 
 // When BAKIN_CHANNEL_TEST_MODE=1 (or "true"), all posts are routed to
@@ -65,11 +62,11 @@ export async function postChannel(
   } catch (err) {
     return fail(err instanceof Error ? err.message : String(err))
   }
-  const { content, imageFilename, videoFilename, embed, taskId } = params
+  const { content, imageAssetId, videoAssetId, embed, taskId } = params
 
   const files = [
-    filePayload(imageFilename, resolveAssetAbsPath(imageFilename)),
-    filePayload(videoFilename, resolveAssetAbsPath(videoFilename)),
+    filePayload(resolveAssetAbsPath(imageAssetId)),
+    filePayload(resolveAssetAbsPath(videoAssetId)),
   ].filter((file): file is { name: string; path: string } => Boolean(file))
 
   try {
@@ -112,9 +109,9 @@ function displayChannel(channel: string): string {
   return channel.includes(':') ? channel : `#${channel}`
 }
 
-function filePayload(filename: string | undefined, path: string | null): { name: string; path: string } | null {
-  if (!filename || !path) return null
-  return { name: basename(filename), path }
+function filePayload(path: string | null): { name: string; path: string } | null {
+  if (!path) return null
+  return { name: basename(path), path }
 }
 
 addExecTool({
@@ -125,8 +122,8 @@ addExecTool({
   parameters: {
     channel: z.string().describe('Channel name or runtime channel target'),
     content: z.string().describe('Message text / caption'),
-    imageFilename: z.string().optional().describe('Asset filename resolved via the assets index.'),
-    videoFilename: z.string().optional().describe('Asset filename resolved via the assets index.'),
+    imageAssetId: z.string().optional().describe('Asset id of an image to attach (current version is sent).'),
+    videoAssetId: z.string().optional().describe('Asset id of a video to attach (current version is sent).'),
     embed: z.record(z.string(), z.unknown()).optional().describe('Optional rich metadata for adapters that support it'),
     taskId: z.string().optional().describe('Task ID for audit trail'),
   },

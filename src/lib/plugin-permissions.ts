@@ -61,12 +61,7 @@ const METHOD_PERMISSIONS: Record<string, Permission> = {
   'tasks.remove': 'tasks.write',
   'tasks.appendLog': 'tasks.write',
 
-  'assets.getByFilename': 'assets.read',
-  'assets.list': 'assets.read',
-  'assets.exists': 'assets.read',
-  'assets.fileRef': 'assets.read',
   'assets.resolveVersionFile': 'assets.read',
-  'assets.save': 'assets.write',
   'assets.createAsset': 'assets.write',
   'assets.addVersion': 'assets.write',
   'assets.addExport': 'assets.write',

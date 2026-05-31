@@ -116,10 +116,10 @@ async function checkImages(ctx: PluginContext): Promise<HealthCheckResult[]> {
 
   rows.push({
     check: 'images.assets',
-    status: typeof ctx.assets.save === 'function' ? 'ok' : 'error',
-    message: typeof ctx.assets.save === 'function'
+    status: typeof ctx.assets.createAsset === 'function' ? 'ok' : 'error',
+    message: typeof ctx.assets.createAsset === 'function'
       ? 'Images plugin can save generated files through the Assets plugin API.'
-      : 'Images plugin cannot save generated files because ctx.assets.save is unavailable.',
+      : 'Images plugin cannot save generated files because ctx.assets.createAsset is unavailable.',
     autoFixable: false,
   })
 

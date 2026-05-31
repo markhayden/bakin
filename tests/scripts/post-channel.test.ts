@@ -179,30 +179,43 @@ describe('postChannel', () => {
     expect(deliverContent).not.toHaveBeenCalled()
   })
 
-  it('attaches image and video files resolved via pathForFilename', async () => {
+  it('attaches the current-version file of image and video assets resolved by assetId', async () => {
     const tmpDir = mkdtempSync(join(tmpdir(), 'channel-test-'))
     mockContentDir = tmpDir
-    const imgRel = 'assets/store/2026-04/20260401-hero-a1b2c3d4.png'
-    const vidRel = 'assets/store/2026-04/20260401-clip-e5f6a7b8.mp4'
-    const imgAbs = join(tmpDir, imgRel)
-    const vidAbs = join(tmpDir, vidRel)
+
+    // Seed two versioned assets (manifest.json is the source of truth).
+    function seed(assetId: string, file: string, mime: string, body: string): string {
+      const dir = join(tmpDir, 'assets', 'store', '2026-04', assetId)
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, file), body)
+      const manifest = {
+        assetId, type: 'images', source: { kind: 'generated', path: null },
+        agent: 'pixel', taskId: null, created: 'c', updated: 'c',
+        currentVersion: 1, description: '', tags: [],
+        versions: [{
+          version: 1, file, thumb: null, mimeType: mime, size: body.length,
+          width: null, height: null, created: 'c', description: '', tags: [],
+          op: 'generate', parentVersion: null, tool: null, prompt: null, promptHash: null, generation: null,
+        }],
+        exports: [],
+      }
+      writeFileSync(join(dir, 'manifest.json'), JSON.stringify(manifest))
+      return join(dir, file)
+    }
+    const imgAbs = seed('20260401-hero-a1b2c3d4', 'v1.png', 'image/png', 'fake-image')
+    const vidAbs = seed('20260401-clip-e5f6a7b8', 'v1.mp4', 'video/mp4', 'fake-video')
     const expectedFiles = [
-      { name: '20260401-hero-a1b2c3d4.png', path: imgAbs },
-      { name: '20260401-clip-e5f6a7b8.mp4', path: vidAbs },
+      { name: 'v1.png', path: imgAbs },
+      { name: 'v1.mp4', path: vidAbs },
     ]
 
     try {
-      mkdirSync(dirname(imgAbs), { recursive: true })
-      mkdirSync(dirname(vidAbs), { recursive: true })
-      writeFileSync(imgAbs, 'fake-image')
-      writeFileSync(vidAbs, 'fake-video')
-
       const result = await postChannel({
         channel: 'general',
         content: 'Post with attachments',
         agent: 'pixel',
-        imageFilename: '20260401-hero-a1b2c3d4.png',
-        videoFilename: '20260401-clip-e5f6a7b8.mp4',
+        imageAssetId: '20260401-hero-a1b2c3d4',
+        videoAssetId: '20260401-clip-e5f6a7b8',
       }, runtime)
 
       expect(result.ok).toBe(true)

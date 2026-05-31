@@ -1,10 +1,4 @@
-import { existsSync } from 'fs'
-import { join } from 'path'
 import type {
-  AssetFileRef,
-  AssetMeta,
-  AssetSaveInput,
-  AssetSaveResult,
   AssetsAPI,
   PluginTask,
   PluginTaskColumn,
@@ -12,9 +6,8 @@ import type {
   PluginTaskService,
   PluginTaskUpdateInput,
 } from '@bakin/core/plugin-types'
-import type { AgentRuntimeAdapter, ContentDeliveryArgs } from '@bakin/core/adapters/runtime'
+import type { AgentRuntimeAdapter } from '@bakin/core/adapters/runtime'
 import type { BakinTask, BakinTaskPatch, BakinTaskStore } from '@bakin/core/tasks/store'
-import { getContentDir } from '../core/content-dir'
 
 function isDoneColumn(column: string): boolean {
   return column === 'done' || column === 'archived'
@@ -133,66 +126,8 @@ export function createPluginTaskService(store: BakinTaskStore): PluginTaskServic
   }
 }
 
-function toAssetMeta(asset: {
-  path: string
-  filename: string
-  type: string
-  mimeType: string
-  size: number
-  mtimeMs?: number
-  metadata: AssetMeta['metadata']
-}): AssetMeta {
-  return {
-    path: asset.path,
-    filename: asset.filename,
-    type: asset.type as AssetMeta['type'],
-    mimeType: asset.mimeType,
-    size: asset.size,
-    mtimeMs: asset.mtimeMs,
-    metadata: asset.metadata,
-  }
-}
-
 export function createPluginAssetsAPI(): AssetsAPI {
   return {
-    async save(input: AssetSaveInput): Promise<AssetSaveResult> {
-      const [{ saveAsset }, { upsertAsset }] = await Promise.all([
-        import('../../plugins/assets/lib/save-asset'),
-        import('../../plugins/assets/lib/asset-index'),
-      ])
-      const result = await saveAsset(input)
-      if (result.ok && typeof result.path === 'string') upsertAsset(result.path)
-      return result
-    },
-
-    async getByFilename(filename: string): Promise<AssetMeta | null> {
-      const [{ getAsset }, { pathForFilename }] = await Promise.all([
-        import('../../plugins/assets/lib/asset-index'),
-        import('../../plugins/assets/lib/path-for-filename'),
-      ])
-      const path = pathForFilename(filename)
-      const asset = path ? getAsset(path) : null
-      return asset ? toAssetMeta(asset) : null
-    },
-
-    async list(filter = {}): Promise<AssetMeta[]> {
-      const { listAssets } = await import('../../plugins/assets/lib/asset-index')
-      return listAssets({
-        type: filter.type,
-        taskId: filter.taskId ?? undefined,
-      }).map(toAssetMeta)
-    },
-
-    async exists(filename: string): Promise<boolean> {
-      return (await this.getByFilename(filename)) !== null
-    },
-
-    async fileRef(filename: string): Promise<AssetFileRef> {
-      const asset = await this.getByFilename(filename)
-      if (!asset) throw new Error(`Asset not found: ${filename}`)
-      return { kind: 'asset', filename: asset.filename, mimeType: asset.mimeType }
-    },
-
     // Versioned (asset-as-directory) surface — delegates to the asset service.
     async createAsset(input) {
       const { createAsset } = await import('../../plugins/assets/lib/asset-service')
@@ -216,35 +151,6 @@ export function createPluginAssetsAPI(): AssetsAPI {
       const { resolveFile } = await import('../../plugins/assets/lib/asset-service')
       const ref = resolveFile(assetId, version)
       return ref ? { absPath: ref.absPath, mimeType: ref.mimeType, version: ref.version } : null
-    },
-  }
-}
-
-async function resolveAssetFile(ref: AssetFileRef): Promise<{ name: string; path: string; contentType?: string }> {
-  const { pathForFilename, isSafeCanonicalFilename } = await import('../../plugins/assets/lib/path-for-filename')
-  if (!isSafeCanonicalFilename(ref.filename)) throw new Error(`Invalid asset filename: ${ref.filename}`)
-  const rel = pathForFilename(ref.filename)
-  if (!rel) throw new Error(`Invalid asset filename: ${ref.filename}`)
-  const abs = join(getContentDir(), rel)
-  if (!existsSync(abs)) throw new Error(`Asset file not found: ${ref.filename}`)
-  return { name: ref.filename, path: abs, contentType: ref.mimeType }
-}
-
-function isAssetFileRef(file: AssetFileRef | { name: string; path: string; contentType?: string }): file is AssetFileRef {
-  return 'kind' in file && file.kind === 'asset'
-}
-
-async function resolveContentDeliveryArgs(
-  args: ContentDeliveryArgs & { content: ContentDeliveryArgs['content'] & { files?: Array<AssetFileRef | { name: string; path: string; contentType?: string }> } },
-): Promise<ContentDeliveryArgs> {
-  const files = args.content.files
-    ? await Promise.all(args.content.files.map(file => isAssetFileRef(file) ? resolveAssetFile(file) : file))
-    : undefined
-  return {
-    ...args,
-    content: {
-      ...args.content,
-      ...(files ? { files } : {}),
     },
   }
 }
@@ -291,7 +197,7 @@ export function createPluginRuntimeFacade(runtime: AgentRuntimeAdapter): AgentRu
       list: runtime.channels.list.bind(runtime.channels),
       sendNotification: runtime.channels.sendNotification.bind(runtime.channels),
       sendMessage: runtime.channels.sendMessage.bind(runtime.channels),
-      deliverContent: async (args) => runtime.channels.deliverContent(await resolveContentDeliveryArgs(args)),
+      deliverContent: runtime.channels.deliverContent.bind(runtime.channels),
       createApproval: runtime.channels.createApproval.bind(runtime.channels),
       editApproval: runtime.channels.editApproval.bind(runtime.channels),
       cancelApproval: runtime.channels.cancelApproval.bind(runtime.channels),

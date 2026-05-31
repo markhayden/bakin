@@ -29,44 +29,53 @@ describe('createPluginAssetsAPI', () => {
     mock.restore()
   })
 
-  it('saves assets through the public plugin API and indexes them immediately', async () => {
+  it('creates a versioned asset (v1) through the public plugin API', async () => {
     const src = join(testDir, 'source.png')
     writeFileSync(src, 'fake-image')
     const assets = createPluginAssetsAPI()
 
-    const saved = await assets.save({
-      filePath: src,
+    const { assetId, version } = await assets.createAsset({
+      sourceFilePath: src,
       taskId: 'task-123',
       type: 'images',
       agent: 'pixel',
       description: 'Generated image',
       slug: 'generated-image',
+      op: 'generate',
       generation: {
         provider: 'google',
         model: 'gemini-3.1-flash-image',
         surface: 'instagram-story',
-        width: 1080,
-        height: 1920,
         quality: 'standard',
-        promptHash: 'sha256:abc123',
-        createdByTool: 'bakin_exec_images_generate',
+        routeSource: 'runtime',
       },
     })
 
-    expect(saved.ok).toBe(true)
-    expect(saved.filename).toMatch(/^\d{8}-generated-image-[0-9a-f]{8}\.png$/)
+    expect(version).toBe(1)
+    expect(assetId).toMatch(/^\d{8}-generated-image-[0-9a-f]{8}$/)
 
-    const indexed = await assets.getByFilename(saved.filename!)
-    expect(indexed?.filename).toBe(saved.filename)
-    expect(indexed?.metadata.generation).toEqual({
-      provider: 'google',
-      model: 'gemini-3.1-flash-image',
-      surface: 'instagram-story',
-      width: 1080,
-      height: 1920,
-      quality: 'standard',
-      promptHash: 'sha256:abc123',
-      createdByTool: 'bakin_exec_images_generate',
+    const ref = await assets.resolveVersionFile(assetId)
+    expect(ref?.version).toBe(1)
+    expect(ref?.mimeType).toBe('image/png')
+    expect(ref?.absPath).toContain(assetId)
+  })
+
+  it('appends a new version to an existing asset', async () => {
+    const src = join(testDir, 'doc.md')
+    writeFileSync(src, '# v1\n')
+    const assets = createPluginAssetsAPI()
+
+    const created = await assets.createAsset({
+      sourceFilePath: src, taskId: null, type: 'text', agent: 'margo', slug: 'doc',
     })
+    expect(created.version).toBe(1)
+
+    writeFileSync(src, '# v2\n')
+    const next = await assets.addVersion(created.assetId, { sourceFilePath: src, op: 'edit' })
+    expect(next.assetId).toBe(created.assetId)
+    expect(next.version).toBe(2)
+
+    const ref = await assets.resolveVersionFile(created.assetId)
+    expect(ref?.version).toBe(2)
   })
 })

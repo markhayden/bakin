@@ -145,11 +145,6 @@ function createMockContext(pluginId: string): {
     runtime: createMockRuntimeAdapter(),
     tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
     assets: {
-      save: async () => ({ ok: false, error: 'not implemented' }),
-      getByFilename: async () => null,
-      list: async () => [],
-      exists: async () => false,
-      fileRef: async (filename: string) => ({ kind: 'asset' as const, filename }),
       createAsset: async () => ({ assetId: 'test-asset', version: 1 }),
       addVersion: async () => ({ assetId: 'test-asset', version: 2 }),
       addExport: async () => ({ name: 'export', file: 'exports/export.jpg' }),

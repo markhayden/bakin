@@ -116,11 +116,6 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
     runtime,
     tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
     assets: {
-      save: vi.fn(async () => ({ ok: false, error: 'not implemented' })),
-      getByFilename: vi.fn(async () => null),
-      list: vi.fn(async () => []),
-      exists: vi.fn(async () => false),
-      fileRef: vi.fn(async (filename: string) => ({ kind: 'asset' as const, filename })),
       createAsset: vi.fn(async () => ({ assetId: 'test-asset', version: 1 })),
       addVersion: vi.fn(async () => ({ assetId: 'test-asset', version: 2 })),
       addExport: vi.fn(async () => ({ name: 'export', file: 'exports/export.jpg' })),

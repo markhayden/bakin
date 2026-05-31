@@ -35,13 +35,12 @@ mock.module('../../../src/core/watcher', () => ({
 }))
 
 import assetsPlugin from '@bakin/assets'
-import { buildIndex } from '@bakin/assets/lib/asset-index'
 
 let plugin: ActivatedPlugin
 let purgeHandler: ((data: Record<string, unknown>) => Promise<unknown>) | undefined
 
 beforeAll(async () => {
-  mkdirSync(testDir, { recursive: true })
+  mkdirSync(join(assetsRoot, '.trash'), { recursive: true })
   plugin = await activatePlugin(assetsPlugin, testDir)
 
   // Find the purge hook handler that was registered
@@ -54,29 +53,24 @@ afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-function createAsset(
-  type: string,
-  taskId: string,
-  filename: string,
-  source: string,
-): string {
-  // Filename must be canonical (YYYYMMDD-slug-id8.ext) — the date prefix
-  // determines the month shard under assets/store/{YYYY-MM}/.
-  const ym = `${filename.slice(0, 4)}-${filename.slice(4, 6)}`
-  const dir = join(assetsRoot, 'store', ym)
+/** Seed a versioned asset (manifest + v1 file) linked to a task with a source kind. */
+function seedAsset(assetId: string, taskId: string, sourceKind: string): string {
+  const ym = `${assetId.slice(0, 4)}-${assetId.slice(4, 6)}`
+  const dir = join(assetsRoot, 'store', ym, assetId)
   mkdirSync(dir, { recursive: true })
-  const filePath = join(dir, filename)
-  writeFileSync(filePath, 'test-content')
-  writeFileSync(`${filePath}.meta.json`, JSON.stringify({
-    agent: 'user',
-    taskId,
-    created: new Date().toISOString(),
-    type,
-    source,
+  writeFileSync(join(dir, 'v1.png'), 'test-content')
+  writeFileSync(join(dir, 'manifest.json'), JSON.stringify({
+    assetId, type: 'images', source: { kind: sourceKind, path: null },
+    agent: 'user', taskId, created: 'c', updated: 'c',
+    currentVersion: 1, description: '', tags: [],
+    versions: [{
+      version: 1, file: 'v1.png', thumb: null, mimeType: 'image/png', size: 12,
+      width: null, height: null, created: 'c', description: '', tags: [],
+      op: 'upload', parentVersion: null, tool: null, prompt: null, promptHash: null, generation: null,
+    }],
+    exports: [],
   }))
-  // Also need trash directory
-  mkdirSync(join(assetsRoot, '.trash'), { recursive: true })
-  return filePath
+  return dir
 }
 
 describe('clipboard purge hook', () => {
@@ -85,15 +79,12 @@ describe('clipboard purge hook', () => {
   })
 
   it('does nothing when purgeClipboardOnComplete is disabled', async () => {
-    const filename = '20260404-clip-aaaaaaaa.png'
-    createAsset('images', 'task-purge-1', filename, 'clipboard')
+    const dir = seedAsset('20260404-clip-aaaaaaaa', 'task-purge-1', 'clipboard')
     plugin.ctx.getSettings = (() => ({ purgeClipboardOnComplete: false })) as typeof plugin.ctx.getSettings
 
     const result = await purgeHandler!({ taskId: 'task-purge-1' })
     expect(result).toEqual({ purged: 0 })
-
-    // File should still exist
-    expect(existsSync(join(assetsRoot, 'store', '2026-04', filename))).toBe(true)
+    expect(existsSync(dir)).toBe(true)
   })
 
   it('does nothing when no taskId provided', async () => {
@@ -104,29 +95,24 @@ describe('clipboard purge hook', () => {
 
   it('purges clipboard assets when enabled', async () => {
     const taskId = 'task-purge-2'
-    const filename = '20260404-pasted-bbbbbbbb.png'
-    createAsset('images', taskId, filename, 'clipboard')
-    buildIndex() // Rebuild index to pick up the new file
+    const dir = seedAsset('20260404-pasted-bbbbbbbb', taskId, 'clipboard')
     plugin.ctx.getSettings = (() => ({ purgeClipboardOnComplete: true })) as typeof plugin.ctx.getSettings
 
     const result = await purgeHandler!({ taskId }) as { purged: number }
     expect(result.purged).toBeGreaterThanOrEqual(1)
+    // The asset directory is trashed (moved out of store/).
+    expect(existsSync(dir)).toBe(false)
   })
 
   it('preserves non-clipboard assets', async () => {
     const taskId = 'task-purge-3'
-    const agentFile = '20260404-agent-cccccccc.png'
-    const uploadFile = '20260404-upload-dddddddd.jpg'
-    createAsset('images', taskId, agentFile, 'agent')
-    createAsset('images', taskId, uploadFile, 'upload')
-    buildIndex() // Rebuild index to pick up the new files
+    const agentDir = seedAsset('20260404-agent-cccccccc', taskId, 'generated')
+    const uploadDir = seedAsset('20260404-upload-dddddddd', taskId, 'upload')
     plugin.ctx.getSettings = (() => ({ purgeClipboardOnComplete: true })) as typeof plugin.ctx.getSettings
 
     const result = await purgeHandler!({ taskId }) as { purged: number }
     expect(result.purged).toBe(0)
-
-    // Files should still exist
-    expect(existsSync(join(assetsRoot, 'store', '2026-04', agentFile))).toBe(true)
-    expect(existsSync(join(assetsRoot, 'store', '2026-04', uploadFile))).toBe(true)
+    expect(existsSync(agentDir)).toBe(true)
+    expect(existsSync(uploadDir)).toBe(true)
   })
 })

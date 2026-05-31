@@ -113,11 +113,6 @@ function makeCtx(plugin: BakinPlugin): PluginContext {
     runtime: createMockRuntimeAdapter(),
     tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
     assets: {
-      save: mock(async () => ({ ok: false, error: 'not implemented' })),
-      getByFilename: mock(async () => null),
-      list: mock(async () => []),
-      exists: mock(async () => false),
-      fileRef: mock(async (filename: string) => ({ kind: 'asset' as const, filename })),
       createAsset: mock(async () => ({ assetId: 'test-asset', version: 1 })),
       addVersion: mock(async () => ({ assetId: 'test-asset', version: 2 })),
       addExport: mock(async () => ({ name: 'export', file: 'exports/export.jpg' })),
@@ -230,36 +225,41 @@ describe('integration: search ↔ watcher sync', () => {
     expect(removeCalls).toContainEqual({ table: 'bakin_workflows', key: 'inst:task-99' })
   })
 
-  it('assets plugin: binary delete removes from index, sidecar-only delete does not', async () => {
+  it('assets plugin: manifest delete removes from index, version-file delete does not', async () => {
     await assetsPlugin.activate(makeCtx(assetsPlugin))
     const eventBus = new BakinEventBus(() => {})
     start({ contentDir: testDir, eventBus, onInboxFile: mock() })
     const handlers = await getChokidarHandlers()
 
-    const assetFile = join(testDir, 'assets', 'images', 'task-1', 'photo.png')
-    const sidecarFile = assetFile + '.meta.json'
-    writeFileSync(assetFile, 'fake png bytes')
-    writeFileSync(sidecarFile, JSON.stringify({
-      description: 'integration photo',
-      tags: ['x'],
-      agent: 'tester',
-      taskId: 'task-1',
-      tool: 'test',
-      created: '2026-04-12T00:00:00.000Z',
+    const assetId = '20260412-photo-a1b2c3d4'
+    const dir = join(testDir, 'assets', 'store', '2026-04', assetId)
+    const versionFile = join(dir, 'v1.png')
+    const manifestFile = join(dir, 'manifest.json')
+    mkdirSync(dir, { recursive: true })
+    writeFileSync(versionFile, 'fake png bytes')
+    writeFileSync(manifestFile, JSON.stringify({
+      assetId, type: 'images', source: { kind: 'generated', path: null },
+      agent: 'tester', taskId: 'task-1', created: '2026-04-12T00:00:00.000Z', updated: '2026-04-12T00:00:00.000Z',
+      currentVersion: 1, description: 'integration photo', tags: ['x'],
+      versions: [{
+        version: 1, file: 'v1.png', thumb: null, mimeType: 'image/png', size: 14,
+        width: null, height: null, created: '2026-04-12T00:00:00.000Z', description: 'integration photo', tags: ['x'],
+        op: 'generate', parentVersion: null, tool: null, prompt: null, promptHash: null, generation: null,
+      }],
+      exports: [],
     }))
 
-    // Sidecar-only delete: must NOT remove from search
-    handlers.unlink(sidecarFile)
+    // Version-file delete: must NOT remove from search (it rides with the manifest)
+    handlers.unlink(versionFile)
     await flushHooks()
     expect(removeCalls.find(c => c.table === 'bakin_assets')).toBeUndefined()
 
-    // Binary delete: must remove from search (keyed by filename under
-    // filename-as-identity)
-    handlers.unlink(assetFile)
+    // Manifest delete: removes the asset row keyed by assetId
+    handlers.unlink(manifestFile)
     await flushHooks()
     expect(removeCalls).toContainEqual({
       table: 'bakin_assets',
-      key: 'photo.png',
+      key: assetId,
     })
   })
 

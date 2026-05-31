@@ -51,7 +51,7 @@ function makeContext() {
     audit: mock(),
   }
   const assets = {
-    save: mock(async () => ({ ok: true, filename: '20260401-image-a1b2c3d4.png' })),
+    createAsset: mock(async () => ({ assetId: '20260401-image-a1b2c3d4', version: 1 })),
   }
 
   const ctx = {
@@ -213,13 +213,13 @@ describe('plugin runtime permission wrapper', () => {
       mode: 'enforce',
     })
 
-    expect(() => denied.assets.save({
-      filePath: '/tmp/image.png',
+    expect(() => denied.assets.createAsset({
+      sourceFilePath: '/tmp/image.png',
       taskId: 'task-1',
       type: 'images',
       agent: 'pixel',
     })).toThrow(PermissionDenied)
-    expect(assets.save).not.toHaveBeenCalled()
+    expect(assets.createAsset).not.toHaveBeenCalled()
 
     const allowed = wrapPluginContextPermissions(ctx, {
       pluginId: 'fixture',
@@ -228,13 +228,13 @@ describe('plugin runtime permission wrapper', () => {
       mode: 'enforce',
     })
 
-    await allowed.assets.save({
-      filePath: '/tmp/image.png',
+    await allowed.assets.createAsset({
+      sourceFilePath: '/tmp/image.png',
       taskId: 'task-1',
       type: 'images',
       agent: 'pixel',
     })
-    expect(assets.save).toHaveBeenCalledTimes(1)
+    expect(assets.createAsset).toHaveBeenCalledTimes(1)
   })
 
   it('gates runtime image generation under runtime.images', async () => {

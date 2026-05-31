@@ -539,79 +539,8 @@ export interface PluginTaskService {
 // Public assets service
 // ---------------------------------------------------------------------------
 
-export interface AssetVariantMeta {
-  role: 'thumbnail' | 'optimized' | 'webp'
-  path: string
-  filename: string
-  size: number
-  mimeType: string
-}
-
-/** Structured provenance written by image-generation tools into an asset sidecar. */
-export interface AssetGenerationMeta {
-  provider: string
-  model: string
-  surface: string
-  width: number
-  height: number
-  quality: string
-  promptHash: string
-  promptAssetFilename?: string
-  routeReason?: string
-  routeSource?: 'runtime' | 'shim' | string
-  createdByTool: string
-}
-
-export interface AssetMeta {
-  path: string
-  filename: string
-  type: 'text' | 'images' | 'video' | 'audio' | 'plans' | 'research' | 'pdf' | 'data' | 'other'
-  mimeType: string
-  size: number
-  mtimeMs?: number
-  metadata: {
-    agent: string
-    taskId: string | null
-    created: string
-    tool?: string
-    description?: string
-    tags?: string[]
-    originalFilename?: string
-    generation?: AssetGenerationMeta
-  }
-  variants?: AssetVariantMeta[]
-}
-
-export interface AssetFileRef {
-  kind: 'asset'
-  filename: string
-  mimeType?: string
-}
-
-/** Input for saving an agent-created or plugin-created file through the Assets plugin. */
-export interface AssetSaveInput {
-  filePath: string
-  taskId: string | null
-  type: AssetMeta['type']
-  agent: string
-  description?: string
-  tags?: string[]
-  tool?: string
-  slug?: string
-  source?: 'agent' | 'upload' | 'clipboard'
-  originalFilename?: string
-  generation?: AssetGenerationMeta
-}
-
-/** Result returned after the Assets plugin canonicalizes and persists a file. */
-export interface AssetSaveResult {
-  ok: boolean
-  path?: string
-  metadataPath?: string
-  filename?: string
-  error?: string
-  [key: string]: unknown
-}
+/** The asset type taxonomy (mirrors ASSET_TYPES in the assets plugin). */
+export type AssetTypeName = 'text' | 'images' | 'video' | 'audio' | 'plans' | 'research' | 'pdf' | 'data' | 'other'
 
 /** Per-version generation provenance (matches the manifest's `generation` block). */
 export interface AssetGenerationInfo {
@@ -626,7 +555,7 @@ export interface AssetGenerationInfo {
 /** Create a new versioned asset (v1) from a source file. */
 export interface AssetCreateInput {
   sourceFilePath: string
-  type: AssetMeta['type']
+  type: AssetTypeName
   agent: string
   taskId: string | null
   slug?: string
@@ -674,13 +603,6 @@ export interface AssetVersionFileRef {
 }
 
 export interface AssetsAPI {
-  // Legacy filename-identity surface (removed at the versioned-assets cutover).
-  save(input: AssetSaveInput): Promise<AssetSaveResult>
-  getByFilename(filename: string): Promise<AssetMeta | null>
-  list(filter?: { type?: AssetMeta['type']; taskId?: string | null }): Promise<AssetMeta[]>
-  exists(filename: string): Promise<boolean>
-  fileRef(filename: string): Promise<AssetFileRef>
-
   // Versioned (asset-as-directory) surface.
   createAsset(input: AssetCreateInput): Promise<VersionedAssetRef>
   addVersion(assetId: string, input: AssetVersionCreateInput): Promise<VersionedAssetRef>

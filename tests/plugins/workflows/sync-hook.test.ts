@@ -98,11 +98,6 @@ function makeCtx(): CapturedCtx {
     runtime: createMockRuntimeAdapter(),
     tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
     assets: {
-      save: mock(async () => ({ ok: false, error: 'not implemented' })),
-      getByFilename: mock(async () => null),
-      list: mock(async () => []),
-      exists: mock(async () => false),
-      fileRef: mock(async (filename: string) => ({ kind: 'asset' as const, filename })),
       createAsset: mock(async () => ({ assetId: 'test-asset', version: 1 })),
       addVersion: mock(async () => ({ assetId: 'test-asset', version: 2 })),
       addExport: mock(async () => ({ name: 'export', file: 'exports/export.jpg' })),
