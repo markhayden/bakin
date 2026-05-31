@@ -42,7 +42,7 @@ Created by `bakin onboard` / `initBakinHome()`. Per-installation state, NOT in t
   plugin-data/<id>/        — Installed plugin runtime data
   agents/                  — Per-agent UI data ({id}/avatar.jpg, avatar-full.png + .installedBy)
   packages/                — Agent-package install state (lock.json + per-kind dirs)
-  assets/                  — Content files sharded by month under store/
+  assets/                  — Versioned assets: store/<YYYY-MM>/<assetId>/ (manifest.json + vN files + exports/); see .claude/knowledge/assets-versioning.md
   heartbeats/              — Agent status heartbeats (JSON)
   tasks/                   — Bakin-owned task metadata JSON, sharded by created month
   schedule/                — Cron job state
@@ -167,6 +167,7 @@ If a test does not mock the content-dir resolvers, it **will** eventually write 
 - **Adapter Boundary** — Provider code is factory-only from Bakin's perspective. Use `getAppServices().runtime/search/tasks` in core, `ctx.runtime/search/tasks` in plugins/tools, and `src/core/runtime-config-raw.ts` for the small allowlisted raw-config gate. Deep reference: `.claude/knowledge/adapter-architecture.md`.
 - **OpenClaw Home Directory** — Adapter-private `getOpenClawHome()` / `getOpenClawPath()` in `packages/adapter-openclaw/src/home.ts`. Resolution: `OPENCLAW_HOME` env → `~/.openclaw/`. For dev without OpenClaw: `bun run dev:mock` (Imitation Crab in `dev/imitation-crab/`); reseed with `bun run mock:seed --force`.
 - **Content Directory** — `getContentDir()` in `packages/core/src/content-dir.ts`. Resolution: `BAKIN_HOME` env → `~/.bakin/`. Well-known paths via `getBakinPaths()`.
+- **Versioned Assets** — An asset is a stable `assetId` naming a directory of versioned files + one `manifest.json` (no per-file sidecars). Linear versions, free `currentVersion` pointer, exports are derived (not versions). Manifest writes are atomic + serialized per-asset; addressed by id (`/api/assets/<assetId>[/v/<n>|/thumb|/export/<name>]`); one search row per asset; mutations emit `asset.changed`. Image tools (`generate`→v1, `edit(assetId)`→new version) are idempotent to prevent client-timeout double-bills. `bakin_exec_assets_save` upserts by source path. Deep reference: `.claude/knowledge/assets-versioning.md`.
 - **Plugin Communication** — Cross-plugin and core ↔ plugin calls go exclusively through the HookRegistry (`packages/core/src/hooks/hook-registry.ts`). Plugins register hooks in `activate()` via `ctx.hooks.register(name, handler)`; callers use `getHookRegistry().invoke<R>(name, data)`. Hook naming: `{pluginId}.{operation}`. No direct imports between plugins.
 - **MCP Tool Registration** — Fully dynamic. Plugins register exec tools via `ctx.registerExecTool()` during activation. Scripts self-register via `addExecTool()` on import. `mcp-server.ts` calls `getAllExecTools()` at startup.
 - **Plugin Settings** — Each plugin declares a `settingsSchema`; the settings page renders schemas via `PluginSettingsRenderer`. Values persisted at `~/.bakin/plugin-settings/{pluginId}.json`, accessible via `ctx.getSettings<T>()`. The same renderer drives a built-in **System & Alerts** tab that edits `~/.bakin/settings.json` via `/api/settings`. Watchdog re-reads settings every cycle — no restart needed.

@@ -580,6 +580,52 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="assets.get.versioned">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/assets/versioned'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.get.versioned-asset-id">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.delete.versioned-asset-id">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.post.versioned-asset-id-export">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/export'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.post.versioned-asset-id-promote">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/promote'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.delete.versioned-asset-id-v-version">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/v/<version>'
+```
+</OpenApiReference>
+
 ## Git
 
 <OpenApiReference tag="Git" summary />
@@ -1564,5 +1610,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 29, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 30, 2026 · Bakin 0.0.0-dev</span>
 </aside>

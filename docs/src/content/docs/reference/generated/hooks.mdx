@@ -15,7 +15,7 @@ import HookCard from '../../../../components/HookCard.astro'
 <p class="hook-section-description">Asset hooks expose file, sidecar, variant, and trash helpers for plugins that need to work with Bakin-managed files.</p>
 
 <div class="hook-card-list">
-<HookCard id="assets-createstub" name="assets.createStub" label="Create sidecar stub." summary="Creates a starter sidecar for an asset file and returns the written metadata. Use it when adopting a file into Bakin-managed asset state." source="plugins/assets/index.ts:543" badges={["rpc"]}>
+<HookCard id="assets-createstub" name="assets.createStub" label="Create sidecar stub." summary="Creates a starter sidecar for an asset file and returns the written metadata. Use it when adopting a file into Bakin-managed asset state." source="plugins/assets/index.ts:652" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.createStub',
@@ -25,7 +25,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-detectvariant" name="assets.detectVariant" label="Detect asset variant." summary="Infers the asset variant represented by a filename, such as before, after, or reference. Use it to keep imported assets grouped and labeled consistently." source="plugins/assets/index.ts:544" badges={["rpc"]}>
+<HookCard id="assets-detectvariant" name="assets.detectVariant" label="Detect asset variant." summary="Infers the asset variant represented by a filename, such as before, after, or reference. Use it to keep imported assets grouped and labeled consistently." source="plugins/assets/index.ts:653" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.detectVariant',
@@ -35,7 +35,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-emptytrash" name="assets.emptyTrash" label="Empty asset trash." summary="Permanently removes every asset currently in trash for the provided asset root. Use it for explicit cleanup actions where restore is no longer expected." source="plugins/assets/index.ts:579" badges={["rpc"]}>
+<HookCard id="assets-emptytrash" name="assets.emptyTrash" label="Empty asset trash." summary="Permanently removes every asset currently in trash for the provided asset root. Use it for explicit cleanup actions where restore is no longer expected." source="plugins/assets/index.ts:701" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.emptyTrash',
@@ -45,7 +45,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-getassettypes" name="assets.getAssetTypes" label="List asset types." summary="Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories." source="plugins/assets/index.ts:545" badges={["rpc"]}>
+<HookCard id="assets-getassettypes" name="assets.getAssetTypes" label="List asset types." summary="Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories." source="plugins/assets/index.ts:654" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.getAssetTypes',
@@ -53,7 +53,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-getsidecarpath" name="assets.getSidecarPath" label="Get sidecar path." summary="Resolves the metadata sidecar path for a managed asset file. Use it when another plugin has an asset path and needs to read or write the matching metadata." source="plugins/assets/index.ts:542" badges={["rpc"]}>
+<HookCard id="assets-getsidecarpath" name="assets.getSidecarPath" label="Get sidecar path." summary="Resolves the metadata sidecar path for a managed asset file. Use it when another plugin has an asset path and needs to read or write the matching metadata." source="plugins/assets/index.ts:651" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.getSidecarPath',
@@ -63,7 +63,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-pathforfilename" name="assets.pathForFilename" label="Resolve asset path." summary="Calculates the managed asset path for a filename. Use it when a plugin needs to place or reference a file using Bakin asset storage conventions." source="plugins/assets/index.ts:546" badges={["rpc"]}>
+<HookCard id="assets-pathforfilename" name="assets.pathForFilename" label="Resolve asset path." summary="Calculates the managed asset path for a filename. Use it when a plugin needs to place or reference a file using Bakin asset storage conventions." source="plugins/assets/index.ts:655" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.pathForFilename',
@@ -73,7 +73,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-purgeclipboardfortask" name="assets.purgeClipboardForTask" label="Purge task clipboard assets." summary="Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized." source="plugins/assets/index.ts:549" badges={["rpc"]}>
+<HookCard id="assets-purgeclipboardfortask" name="assets.purgeClipboardForTask" label="Purge task clipboard assets." summary="Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized." source="plugins/assets/index.ts:659" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.purgeClipboardForTask',
@@ -83,7 +83,15 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-restoreasset" name="assets.restoreAsset" label="Restore trashed asset." summary="Restores one soft-deleted asset from the trash back into managed asset storage. Use it when a plugin needs undo behavior for asset deletion." source="plugins/assets/index.ts:578" badges={["rpc"]}>
+<HookCard id="assets-resolveserve" name="assets.resolveServe" label="Resolve versioned asset serve request." summary="Resolves an /api/assets/&lt;assetId&gt; path (current, /v/&lt;n&gt;, /thumb, /export/&lt;name&gt;) to a file on disk for serving. Returns match:false for non-assetId (legacy filename) requests so the host can fall back." source="plugins/assets/index.ts:656" badges={["rpc"]}>
+```ts frame="terminal"
+const result = await ctx.hooks.invoke(
+  'assets.resolveServe',
+  {},
+)
+```
+</HookCard>
+<HookCard id="assets-restoreasset" name="assets.restoreAsset" label="Restore trashed asset." summary="Restores one soft-deleted asset from the trash back into managed asset storage. Use it when a plugin needs undo behavior for asset deletion." source="plugins/assets/index.ts:700" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.restoreAsset',
@@ -94,7 +102,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-trash-list" name="assets.trash.list" label="List trashed assets." summary="Returns soft-deleted assets currently available for restore or permanent removal. Use it to power trash views without duplicating filesystem conventions." source="plugins/assets/index.ts:577" badges={["rpc"]}>
+<HookCard id="assets-trash-list" name="assets.trash.list" label="List trashed assets." summary="Returns soft-deleted assets currently available for restore or permanent removal. Use it to power trash views without duplicating filesystem conventions." source="plugins/assets/index.ts:699" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.trash.list',
@@ -104,7 +112,7 @@ const result = await ctx.hooks.invoke(
 )
 ```
 </HookCard>
-<HookCard id="assets-validatesidecar" name="assets.validateSidecar" label="Validate sidecar metadata." summary="Checks an asset sidecar JSON file and returns validation details. Use it before trusting metadata created by imports, repairs, or external tools." source="plugins/assets/index.ts:541" badges={["rpc"]}>
+<HookCard id="assets-validatesidecar" name="assets.validateSidecar" label="Validate sidecar metadata." summary="Checks an asset sidecar JSON file and returns validation details. Use it before trusting metadata created by imports, repairs, or external tools." source="plugins/assets/index.ts:650" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.validateSidecar',
@@ -526,5 +534,5 @@ const result = await ctx.hooks.invoke(
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 29, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 30, 2026 · Bakin 0.0.0-dev</span>
 </aside>

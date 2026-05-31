@@ -1,19 +1,19 @@
 ---
 title: Assets
-description: "Files and sidecar metadata that travel with your work. Searchable, linkable, recoverable."
+description: "Versioned files and their history. One asset, many versions — searchable, linkable, recoverable."
 ---
 
-Your agents are hoarders, in the good way. Every image they ship, every plan they write, every screenshot they grab lands in Assets. You drop in whatever else they should see. Indexed across text and pixels, so the catalog gets sharper every time someone touches it.
+Your agents are hoarders, in the good way. Every image they ship, every plan they write, every screenshot they grab lands in Assets. You drop in whatever else they should see. And when something gets *revised* — a generated image refined three times, a doc re-saved as it evolves — it stays **one asset with a version history**, not a pile of near-duplicates. Indexed across text and pixels, so the catalog gets sharper every time someone touches it.
 
 ## The library
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-assets--library.webp" alt="The assets library with type filters, grid and list views, and search." loading="lazy">
+  <img src="/docs/media/screenshots/using-assets--library.webp" alt="The assets library: one card per asset, with a version-count badge on assets that have history." loading="lazy">
 </figure>
 
-The library is a unified view across every asset Bakin knows about. Filter by type, switch between grid and list, paginate. Each card shows a thumbnail (auto-generated for images), filename, type, and key sidecar metadata. Click any card for the detail modal.
+The library shows **one card per asset**. An asset that has been revised shows a `v3 · 3 versions` badge in the corner; the card always renders the *current* version. Click any card to open its [detail page](#the-detail-page) — preview, full version history, and exports.
 
-Search is semantic and reaches text and pixels at the same time. Type "italian food" and you'll get recipes for carbonara, photos of pasta the visual index spotted on sight, research notes on regional cooking, video clips of pizza-making. None of those need to literally say "italian" to surface. One query, the whole library.
+Search is semantic and reaches text and pixels at the same time. Type "italian food" and you'll get recipes for carbonara, photos of pasta the visual index spotted on sight, research notes on regional cooking, video clips of pizza-making. None of those need to literally say "italian" to surface. One query, the whole library. Search indexes the **current version** of each asset.
 
 ## What can be an asset
 
@@ -35,92 +35,92 @@ Bakin classifies files by extension into nine types:
 
 </div>
 
-`other` is a real type. Files outside the whitelist still upload and get all the same metadata, indexing, and trash treatment. `research` doesn't claim any extension automatically, but you can retype anything into it from the detail modal when the content fits the role. Default size limit is 50 MB per file, configurable in Settings.
+`other` is a real type. Files outside the whitelist still upload and get all the same versioning, metadata, indexing, and trash treatment. Default size limit is 50 MB per file, configurable in Settings.
 
-## Creating assets
+## Creating and versioning assets
 
-Four paths in. They all converge on the same canonical treatment: filename, sidecar, thumbnail, search index. Mix and match however suits the moment.
+Every asset is a **stable id** (`YYYYMMDD-{slug}-{8charId}`) naming a directory that holds its versions. The first save creates `v1`. A *re-save of the same source*, or an *edit*, appends a new version and advances the "current" pointer — it does **not** mint a new asset.
 
-### Drag and drop
+### Drag and drop / inbox / clipboard
 
-Hit `+ Add` on the assets page or any task with the `task-assets` slot. Drop one or many files. Optional fields: link to a task, description, tags. Done.
-
-### Drop into the inbox
-
-`~/.bakin/assets/inbox/` is a watched folder. Drop a file in (or `inbox/{type}/` to hint the type) and Bakin moves it to the canonical location, writes a sidecar tagged `source=manual`, and indexes it. Useful for batch imports from anywhere on your machine.
-
-### Paste from clipboard
-
-In the task detail dialog, paste an image or a long block of text directly into the description. Bakin uploads it as an asset (source: `clipboard`), writes a markdown reference into the description, and links it to that task. Ten megabyte cap on clipboard payloads.
+- **Drag and drop**: `+ Add` on the assets page or any task. Drop one or many files — each becomes a new asset (v1).
+- **Inbox**: `~/.bakin/assets/inbox/` is a watched folder. Drop a file (or into `inbox/{type}/` to hint the type) and Bakin ingests it as a managed asset and indexes it.
+- **Clipboard**: paste an image or long text into a task description. Bakin uploads it (source `clipboard`), links it to the task, and writes a reference into the description.
 
 ### Saved by an agent
 
-Agents call `bakin_exec_assets_save` with content and metadata. Bakin canonicalizes the filename, writes the sidecar (source: `agent`), generates the thumbnail, and indexes. Most assets in a busy Bakin show up this way.
+Agents call `bakin_exec_assets_save` with a source file. The key behavior: **re-saving the same source path versions the existing asset** (or no-ops if the content is unchanged) instead of creating duplicates. So an agent iterating on a document ends with one asset and a clean `v1 → v2 → v3` history. Image agents likewise generate (`v1`) and edit (`v2`, `v3`) through the [Images plugin](/docs/using/images/) onto a single asset.
 
-## Managing assets
+## The detail page
 
 <figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-assets--detail-modal.webp" alt="The asset detail modal with preview, sidecar metadata, retype/relink, and inline editor." loading="lazy">
+  <img src="/docs/media/screenshots/using-assets--detail.webp" alt="The asset detail page: current preview, exports, and the version timeline with promote and delete-version actions." loading="lazy">
 </figure>
 
-Click any asset to open the detail modal. From there:
+Clicking a card opens `/assets/<assetId>` — the home for everything version-related:
 
-- **Retype**: change the type classification without moving the file (sidecar-only update).
-- **Relink**: attach the asset to a task or detach it. One task at a time; relinking replaces the previous link.
-- **Edit content**: for editable text formats (markdown, plain text, JSON, YAML, CSV, etc.), the pencil opens an in-modal editor. Save updates the file in place and re-runs indexing.
-- **Download**: pulls the original file.
-- **Delete**: soft-delete to trash.
+- **Current preview** of the asset, plus its description, agent, task, and tags (these mirror the current version).
+- **Exports**: derived, surface-sized deliverables (e.g. an `open-graph.jpg` cropped from a chosen version). Exports are *not* versions — they're published artifacts that download directly.
+- **Version history**: every version newest-first, each showing its op (generate/edit/upload), prompt, and provenance (provider · model · route · surface). Two actions per version:
+  - **Make current** — promote any older version back to current. No files change; the card, search, and default export source all follow the pointer.
+  - **Delete** — remove a single version. Numbers stay stable (deleting `v2` leaves `[v1, v3]`); deleting the *current* version auto-falls-back to the latest remaining.
+- **Delete asset** — trashes the whole asset (all versions). The dialog defaults to "whole asset" but offers "just the current version" when more than one exists.
 
-Filename is identity. None of these actions move the file on disk. Retype, relink, and content edits all touch the sidecar or the file contents in place.
+Editing a text asset's content saves a **new version** — the history captures the edit, nothing is overwritten in place.
 
 ## Where they live
 
 ```
 ~/.bakin/assets/
   store/
-    YYYY-MM/                                       # month shard
-      20260401-hero-a1b2c3d4.png                   # the asset
-      20260401-hero-a1b2c3d4.png.meta.json         # sidecar
-      20260401-hero-a1b2c3d4.thumb.jpg             # auto thumbnail
-  inbox/                                           # ingestion staging
-  .trash/                                          # soft-deleted items
+    YYYY-MM/                                   # month shard (from the assetId date)
+      20260401-hero-a1b2c3d4/                  # the asset (a directory)
+        manifest.json                          # sole source of truth: versions[] + exports[]
+        v1.png  v1.thumb.jpg                   # version 1 + thumbnail
+        v2.png  v2.thumb.jpg
+        v3.png  v3.thumb.jpg                   # current (pointer lives in manifest.json)
+        exports/
+          open-graph.jpg                       # a derived export (from a version)
+  inbox/                                       # ingestion staging
+  .trash/                                      # soft-deleted assets (whole directories)
 ```
 
-Filenames follow `YYYYMMDD-{slug}-{8charId}.{ext}`. The path is a pure function of the filename, so anything that knows the filename can find the file. Sidecars carry `agent`, `taskId`, `created`, `type`, `tool`, `description`, `tags`, `originalFilename`, and `source`.
+The `manifest.json` is the single source of truth — there are no per-file sidecars. It holds asset-level metadata (`type`, `agent`, `taskId`, `currentVersion`, mirrored `description`/`tags`) plus the full `versions[]` and `exports[]`. Writes are atomic; mutations are serialized per asset.
+
+## Addressing
+
+Assets are addressed by **id**, not filename:
+
+```
+GET /api/assets/<assetId>                # current version bytes
+GET /api/assets/<assetId>/v/<n>          # a specific version
+GET /api/assets/<assetId>/thumb          # current thumbnail
+GET /api/assets/<assetId>/export/<name>  # a derived export
+```
+
+ETags are keyed on `assetId:currentVersion`, so promoting or editing busts the browser cache automatically.
 
 ## Indexing and search
 
-Assets register with the search system as a file-backed content type, table `bakin_assets`. Indexed across two Antfly indexes:
+Assets register with the search system as a file-backed content type, table `bakin_assets` — **one row per asset, keyed by `assetId`**, built from the current version. The `manifest.json` is both the indexed unit and the reindex trigger: any mutation rewrites it and re-indexes that one row. Indexed across two Antfly indexes:
 
-- **Text**: filename, description, tags, and extracted content (PDF text, markdown, plain text, JSON, CSV, YAML capped at 50K characters or 100 PDF pages).
-- **Visual** (raster images only): a CLIP embedding of the image itself. Search "blueprint sketch" and visual matches surface alongside any text matches.
+- **Text**: description, tags, and extracted content (PDF text, markdown, plain text, JSON, CSV, YAML).
+- **Visual** (raster images only): a CLIP embedding of the current version's image.
 
-Facets for filtering: `asset_type`, `agent`, `tool`. Cross-table search means a single query reaches assets, tasks, projects, memory, and everything else in one shot.
-
-If anything looks stale, reindex from the [Health](/docs/using/health/) page.
+Facets for filtering: `asset_type`, `agent`, `tool`. Cross-table search reaches assets, tasks, projects, memory, and everything else in one query. If anything looks stale, reindex from the [Health](/docs/using/health/) page.
 
 ## Trash and recovery
 
-Soft delete first. Files move to `~/.bakin/assets/.trash/` with a `__deleted-{timestamp}` suffix and stay restorable by default.
-
-<figure class="screenshot-frame">
-  <img src="/docs/media/screenshots/using-assets--trash.webp" alt="The trash view with restore and permanent-delete actions." loading="lazy">
-</figure>
-
-The default recovery window is 7 days. Past that window, asset health checks can purge expired trash through the explicit doctor repair workflow. You can also empty trash manually at any time. Restore drops the file back at its canonical path, sidecar and all, and re-indexes.
-
-Permanent delete is irreversible. Empty trash wipes everything in one shot.
+Delete soft-deletes the whole asset directory to `~/.bakin/assets/.trash/` with a `__deleted-{timestamp}` suffix, restorable for 7 days by default. `delete-version` is different — it removes a single version in place and never goes to trash. Past the recovery window, asset health checks can purge expired trash through the doctor repair workflow. Restore drops the asset directory back at its canonical path and re-indexes.
 
 ## How other plugins use assets
 
-Assets is one of Bakin's most-consumed plugins. Cross-plugin touchpoints:
+- **Images**: generate/edit/export all run through the asset service — one asset, versioned. See [Images](/docs/using/images/).
+- **Tasks**: clipboard paste auto-uploads; each task page renders the `task-assets` slot showing assets linked to that task (and its subtasks).
+- **Projects / Messaging**: render asset previews via `/api/assets/<assetId>`.
+- **Memory**: listens to asset events so anything that happens to an asset surfaces in your memory tier.
 
-- **Tasks**: clipboard paste auto-uploads. Each task page renders the `task-assets` slot showing every asset linked to that task.
-- **Projects**: project pages fetch and render asset thumbnails for everything attached to the project.
-- **Messaging**: message drafts can carry image or video filenames; the messaging plugin renders them via `/api/assets/{filename}`.
-- **Memory**: listens to asset audit events (`asset.uploaded`, `asset.deleted`, `asset.relinked`, `asset.retyped`, and so on) so anything that happens to an asset surfaces in your memory tier.
-
-Plugins compose by filename (`/api/assets/{filename}` is a stable URL) or by slot (`asset-preview`, `asset-detail-modal`, `task-assets`).
+Plugins compose by `assetId` (`/api/assets/<assetId>` is a stable URL) or by slot (`asset-preview`, `asset-detail-modal`, `task-assets`).
 
 ## Settings
 
@@ -146,15 +146,13 @@ Most asset workflows happen in the UI or through agents. Trash is CLI-friendly:
 | `bakin trash [list\|restore\|empty] ...` | Manage trashed assets. |
 <!-- /docs:cli-commands -->
 
-Full surface in the [CLI reference](/docs/reference/generated/cli/).
-
-HTTP API surface for this plugin: see the [API reference](/docs/reference/generated/api/#assets).
+Full surface in the [CLI reference](/docs/reference/generated/cli/). HTTP API surface: see the [API reference](/docs/reference/generated/api/#assets).
 
 <div class="for-agents">
 
 ## <svg class="heading-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.2" fill="currentColor"/><circle cx="15" cy="14" r="1.2" fill="currentColor"/><path d="M12 4v4"/><circle cx="12" cy="4" r="1" fill="currentColor"/></svg>For agents
 
-Agents create, link, and curate assets through MCP exec tools.
+Agents create, version, link, and curate assets through MCP exec tools. The headline: **`bakin_exec_assets_save` upserts** — re-saving the same source versions the existing asset instead of duplicating it. (The old `bakin_exec_assets_update_content` tool is gone; saving the updated file is how you revise content now.)
 
 <!-- docs:exec-tools assets -->
 - `bakin_exec_assets_audit`: Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files. Set fix=true to auto-generate missing thumbnails and create stub sidecars.
@@ -168,8 +166,7 @@ Agents create, link, and curate assets through MCP exec tools.
 - `bakin_exec_assets_permanent_delete`: Permanently delete a specific trashed asset. This cannot be undone.
 - `bakin_exec_assets_restore`: Restore a trashed asset back to its original location. Use bakin_exec_assets_list_trash first to get the filename.
 - `bakin_exec_assets_retype`: Change an asset's type classification. Sidecar-only edit — no file move.
-- `bakin_exec_assets_save`: Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically.
-- `bakin_exec_assets_update_content`: Update the text content of an editable asset. Only works for text-based MIME types (markdown, plain text, YAML, JSON, CSV, XML). Rewrites the entire file.
+- `bakin_exec_assets_save`: Save an agent-created file as a managed, versioned asset. Re-saving the SAME source file appends a new version to the existing asset (or no-ops if unchanged) instead of creating a duplicate — so an evolving doc stays one asset with a version history. Returns the asset id.
 <!-- /docs:exec-tools -->
 
 Full schemas and arguments in the [Exec tools reference](/docs/reference/generated/exec-tools/).
@@ -178,6 +175,7 @@ Full schemas and arguments in the [Exec tools reference](/docs/reference/generat
 
 ## Related
 
+- [Images](/docs/using/images/): generation, editing, and exports run on the versioned asset model
 - [Tasks](/docs/using/tasks/): tasks own clipboard pastes and the `task-assets` slot
 - [Memory](/docs/using/memory/): asset events feed memory automatically
 - [Essentials](/docs/using/essentials/#search): the search index covers every asset's text and image content

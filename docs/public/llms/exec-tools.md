@@ -206,17 +206,17 @@ mcporter call bakin-<agent>.bakin_exec_assets_retype --args '{
 ### bakin_exec_assets_save
 
 Label: Saved an asset
-Purpose: Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically.
+Purpose: Save an agent-created file as a managed, versioned asset. Re-saving the SAME source file appends a new version to the existing asset (or no-ops if unchanged) instead of creating a duplicate — so an evolving doc stays one asset with a version history. Returns the asset id.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
-| `filePath` | string | yes | Absolute path to the source file to save, or an existing managed assets/store/... path to return idempotently |
-| `taskId` | string | yes | Task ID to record in sidecar metadata |
+| `filePath` | string | yes | Absolute path to the source file to save. Re-saving the same path versions the existing asset. |
+| `taskId` | string | yes | Task ID to link the asset. |
 | `type` | choice | yes |  |
 | `description` | string | no | One-sentence summary visible in the asset grid and search. Be specific — "Q2 blog hero image" not "an image". |
 | `tags` | array | no | Lowercase hyphenated tags for filtering. Use domain tags (social, blog), format tags (draft, final), and project tags. |
 | `tool` | string | no | Tool used to generate or import the asset (e.g., "bakin_exec_images_generate") |
-| `slug` | string | no | Custom filename slug. Auto-derived from source filename if omitted. |
+| `slug` | string | no | Custom slug for the asset id. Auto-derived from source filename if omitted. |
 
 Example:
 
@@ -231,25 +231,6 @@ mcporter call bakin-<agent>.bakin_exec_assets_save --args '{
   ],
   "tool": "value",
   "slug": "value"
-}'
-```
-
-### bakin_exec_assets_update_content
-
-Label: Updated asset content
-Purpose: Update the text content of an editable asset. Only works for text-based MIME types (markdown, plain text, YAML, JSON, CSV, XML). Rewrites the entire file.
-
-| Argument | Type | Required | Description |
-| --- | --- | --- | --- |
-| `filename` | string | yes | Canonical asset filename (e.g. "20260401-doc-a1b2c3d4.md") |
-| `content` | string | yes | New file content (replaces entire file) |
-
-Example:
-
-```sh
-mcporter call bakin-<agent>.bakin_exec_assets_update_content --args '{
-  "filename": "value",
-  "content": "value"
 }'
 ```
 
@@ -411,7 +392,7 @@ mcporter call bakin-<agent>.bakin_exec_heartbeat --args '{
 ### bakin_exec_images_edit
 
 Label: Edited an image
-Purpose: Edit an existing image (managed asset or local file) through the runtime image provider with edit instructions, save the result into Assets, and return the canonical image filename.
+Purpose: Edit a managed image asset (by assetId) through the runtime image provider — edits the current version, appends a new version, and returns the assetId.
 
 Arguments: none.
 
@@ -437,7 +418,7 @@ mcporter call bakin-<agent>.bakin_exec_images_export
 ### bakin_exec_images_generate
 
 Label: Generated an image
-Purpose: Generate an image through a configured runtime image provider or native image provider adapter, save it into Assets, and return the canonical image filename.
+Purpose: Generate an image through a configured runtime image provider, save it as a new managed asset (v1), and return its assetId.
 
 Arguments: none.
 
@@ -450,7 +431,7 @@ mcporter call bakin-<agent>.bakin_exec_images_generate
 ### bakin_exec_images_import
 
 Label: Imported an image
-Purpose: Import an existing local image file into the Assets pipeline and return the canonical image filename.
+Purpose: Import an existing local image file as a new managed asset (v1) and return its assetId.
 
 Arguments: none.
 
