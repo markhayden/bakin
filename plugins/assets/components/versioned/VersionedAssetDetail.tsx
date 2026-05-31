@@ -141,11 +141,6 @@ export function VersionedAssetDetail() {
           onImageClick={() => setLightbox(true)}
           onSaved={fetchManifest}
         />
-        {previewVersion !== manifest.currentVersion && (
-          <p className="mt-1 text-center text-[11px] text-blue-400" data-testid="previewing-note">
-            Previewing v{previewVersion} (current is v{manifest.currentVersion})
-          </p>
-        )}
       </div>
 
       <div className="mb-4"><AssetMetaSummary agent={manifest.agent} created={manifest.created} taskId={manifest.taskId} tags={manifest.tags} /></div>
