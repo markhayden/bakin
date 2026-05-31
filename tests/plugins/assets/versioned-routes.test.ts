@@ -4,7 +4,7 @@
  */
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { mkdirSync, rmSync, readFileSync } from 'node:fs'
+import { mkdirSync, rmSync, readFileSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 
 const testDir = join(tmpdir(), `bakin-versioned-routes-${Date.now()}-${randomUUID()}`)
@@ -104,6 +104,30 @@ describe('add-version + trash routes', () => {
     expect(body.ok).toBe(true)
     expect(body.version).toBe(2)
     expect(getAsset(id)!.versions).toHaveLength(2)
+  })
+
+  it('sanitizes a path-traversal upload filename — no write escapes the temp dir', async () => {
+    // A crafted multipart filename must not let the staged write escape into the
+    // content dir. Plant a canary the traversal would target, then add a version
+    // to a DEDICATED asset (don't perturb the shared `id` other tests assert on).
+    const subject = await createAsset({ sourceFilePath: join(srcDir, 'a.png'), type: 'images', agent: 'pixel', taskId: null, slug: 'traversal', op: 'upload', description: 'traversal subject' })
+    const canary = join(testDir, 'CANARY.txt')
+    writeFileSync(canary, 'original')
+
+    const form = new FormData()
+    // The handler stages under os.tmpdir()/bakin-addversion-<uuid>, a sibling of
+    // testDir. So `../<testDir-name>/CANARY.txt` is exactly one level up — without
+    // basename() this write lands on the canary; with it, it stays in the temp dir.
+    const evilName = `../${testDir.split('/').pop()}/CANARY.txt`
+    form.append('file', new File([readFileSync(join(srcDir, 'b.png'))], evilName, { type: 'image/png' }))
+    const res = await handleVersionedAddVersion(new Request(`${base}/${subject.assetId}/version`, { method: 'POST', body: form }))
+    const body = await res.json()
+
+    // Version still added (staged under basename inside the unique temp dir)...
+    expect(body.ok).toBe(true)
+    expect(getAsset(subject.assetId)!.versions).toHaveLength(2)
+    // ...and the canary outside the temp dir is untouched.
+    expect(readFileSync(canary, 'utf8')).toBe('original')
   })
 
   it('404s add-version for an unknown asset', async () => {

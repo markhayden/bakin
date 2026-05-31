@@ -4,7 +4,7 @@
  * manifest writes trigger search reindex + the asset.changed SSE event.
  */
 import { writeFileSync, mkdirSync, unlinkSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import {
@@ -102,7 +102,9 @@ export async function handleVersionedAddVersion(req: Request): Promise<Response>
 
   const tmpDir = join(tmpdir(), `bakin-addversion-${randomUUID()}`)
   mkdirSync(tmpDir, { recursive: true })
-  const tmpPath = join(tmpDir, file.name)
+  // basename() the client-supplied filename — it's only a staging name (addVersion
+  // derives the real vN.<ext>), and a raw name like "../../x" would escape tmpDir.
+  const tmpPath = join(tmpDir, basename(file.name))
   try {
     writeFileSync(tmpPath, Buffer.from(await file.arrayBuffer()))
     const r = await addVersion(assetId, { sourceFilePath: tmpPath, op: 'upload' })
