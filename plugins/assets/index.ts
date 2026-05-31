@@ -8,19 +8,7 @@ import { join } from 'path'
 import { z } from 'zod'
 import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute, searchRoute } from '@bakin/core/routing'
-import { handleList } from './routes/list'
-import { handleFile } from './routes/file'
-import { handleDelete } from './routes/delete'
 import { handleUpload } from './routes/upload'
-import { handleListTrash } from './routes/list-trash'
-import { handleRestore } from './routes/restore'
-import { handlePermanentDelete } from './routes/permanent-delete'
-import { handleEmptyTrash } from './routes/empty-trash'
-import { handleLink } from './routes/link'
-import { handleRetype } from './routes/retype'
-import { handleContent } from './routes/content'
-import { relinkAsset } from './lib/relink'
-import { retypeAsset } from './lib/retype'
 import { buildIndex, upsertAsset, removeAsset, detectVariant, listAssets } from './lib/asset-index'
 import { validateSidecar, getSidecarPath, createStub } from './lib/sidecar'
 import { isSafeCanonicalFilename, pathForFilename } from './lib/path-for-filename'
@@ -39,8 +27,7 @@ import {
 } from './lib/asset-service'
 import { versionedAssetPath, buildVersionedAssetSearchDoc } from './lib/search-doc'
 import { ASSET_TYPES, type AssetType } from './lib/constants'
-import { listTrash, restoreAsset, emptyTrash, permanentDelete, softDelete, type TrashedAsset } from './lib/trash'
-import { saveAsset } from './lib/save-asset'
+import { listTrash, restoreAsset, emptyTrash, softDelete } from './lib/trash'
 import { ingestInboxFile, ingestInboxDir } from './lib/ingest-inbox'
 import { getContentDir } from '../../src/core/content-dir'
 import { createLogger } from '../../src/core/logger'
@@ -140,20 +127,10 @@ async function assetToSearchDocModule(meta: Record<string, unknown>, filename: s
 const passthrough = z.object({}).passthrough()
 const errorResponse = z.object({ error: z.string() }).passthrough()
 const okPassthrough = z.object({ ok: z.boolean() }).passthrough()
-const binaryResponse = { contentType: 'application/octet-stream' as const }
 
 // ─── Routes (declarative) ────────────────────────────────────────────────
 
 const routes = [
-  defineRoute({
-    path: '/',
-    method: 'GET',
-    summary: 'List assets',
-    description: 'List assets with optional filter parameters.',
-    responses: { 200: passthrough, 500: errorResponse },
-    handler: async (req) => handleList(req),
-  }),
-
   defineRoute({
     path: '/upload',
     method: 'POST',
@@ -163,151 +140,6 @@ const routes = [
     // createAsset writes a manifest, which the watcher picks up for reindex +
     // the asset.changed SSE event — no explicit indexing needed here.
     handler: async (req, ctx) => handleUpload(req, ctx as unknown as PluginContext),
-  }),
-
-  defineRoute({
-    path: '/file',
-    method: 'GET',
-    summary: 'Serve asset file',
-    description: 'Streams an asset file by canonical filename for rendering.',
-    responses: {
-      200: binaryResponse,
-      404: errorResponse,
-    },
-    handler: async (req) => handleFile(req),
-  }),
-
-  defineRoute({
-    path: '/',
-    method: 'DELETE',
-    summary: 'Soft-delete an asset',
-    body: { contentType: 'none' },
-    responses: { 200: okPassthrough, 404: errorResponse },
-    handler: async (req, ctx) => {
-      const url = new URL(req.url, 'http://localhost')
-      const filename = url.searchParams.get('filename') || ''
-      const res = await handleDelete(req)
-      if (res.ok) {
-        ctx.activity.audit('deleted', 'system')
-        ctx.activity.log('system', 'Asset deleted')
-        if (filename) ctx.search.remove(filename).catch(() => {})
-      }
-      return res
-    },
-  }),
-
-  defineRoute({
-    path: '/link',
-    method: 'PATCH',
-    summary: 'Relink or unlink an asset',
-    body: passthrough,
-    responses: { 200: okPassthrough, 400: errorResponse },
-    handler: async (req, ctx) => {
-      const res = await handleLink(req)
-      const data = await res.clone().json()
-      if (data.ok) {
-        ctx.activity.audit('asset.relinked', 'user', { filename: data.filename, newTaskId: data.newTaskId })
-        ctx.activity.log('user', `Relinked asset ${data.filename} to ${data.newTaskId ?? '(unlinked)'}`)
-        if (data.path) indexAsset(data.path).catch(() => {})
-      }
-      return res
-    },
-  }),
-
-  defineRoute({
-    path: '/retype',
-    method: 'PATCH',
-    summary: 'Change asset type classification',
-    body: passthrough,
-    responses: { 200: okPassthrough, 400: errorResponse },
-    handler: async (req, ctx) => {
-      const res = await handleRetype(req)
-      const data = await res.clone().json()
-      if (data.ok) {
-        ctx.activity.audit('asset.retyped', 'user', { filename: data.filename, newType: data.newType })
-        ctx.activity.log('user', `Retyped asset ${data.filename} to ${data.newType}`)
-        if (data.path) indexAsset(data.path).catch(() => {})
-      }
-      return res
-    },
-  }),
-
-  defineRoute({
-    path: '/content',
-    method: 'PUT',
-    summary: 'Update text content of an editable asset',
-    body: passthrough,
-    responses: { 200: okPassthrough, 400: errorResponse, 500: errorResponse },
-    handler: async (req) => {
-      const res = await handleContent(req)
-      try {
-        const data = await res.clone().json()
-        if (data.ok && data.path) indexAsset(data.path as string).catch(() => {})
-      } catch { /* best-effort reindex */ }
-      return res
-    },
-  }),
-
-  defineRoute({
-    path: '/trash',
-    method: 'GET',
-    summary: 'List trashed assets',
-    responses: { 200: passthrough },
-    handler: async (req) => handleListTrash(req),
-  }),
-
-  defineRoute({
-    path: '/trash/:file/restore',
-    method: 'POST',
-    summary: 'Restore a trashed asset',
-    params: z.object({ file: z.string().min(1) }),
-    body: { contentType: 'none' },
-    responses: { 200: okPassthrough, 404: errorResponse },
-    handler: async (req, ctx) => {
-      const res = await handleRestore(req)
-      if (res.ok) {
-        ctx.activity.audit('restored', 'system')
-        ctx.activity.log('system', 'Asset restored from trash')
-        try {
-          const data = await res.clone().json()
-          if (data.restoredPath) indexAsset(data.restoredPath).catch(() => {})
-        } catch { /* index best-effort */ }
-      }
-      return res
-    },
-  }),
-
-  defineRoute({
-    path: '/trash',
-    method: 'DELETE',
-    summary: 'Empty entire trash',
-    body: { contentType: 'none' },
-    responses: { 200: okPassthrough },
-    handler: async (req, ctx) => {
-      const res = await handleEmptyTrash(req)
-      if (res.ok) {
-        ctx.activity.audit('trash-emptied', 'system')
-        ctx.activity.log('system', 'Trash emptied')
-      }
-      return res
-    },
-  }),
-
-  defineRoute({
-    path: '/trash/:file',
-    method: 'DELETE',
-    summary: 'Permanently delete a trashed asset',
-    params: z.object({ file: z.string().min(1) }),
-    body: { contentType: 'none' },
-    responses: { 200: okPassthrough, 404: errorResponse },
-    handler: async (req, ctx) => {
-      const res = await handlePermanentDelete(req)
-      if (res.ok) {
-        ctx.activity.audit('permanent-deleted', 'system')
-        ctx.activity.log('system', 'Asset permanently deleted')
-      }
-      return res
-    },
   }),
 
   // Versioned (asset-as-directory) routes — power the versioned grid + detail.
