@@ -38,16 +38,16 @@ export function AssetPreview({ assetId, type, mimeType, version, currentFile, on
 
   if (type === 'images') {
     return (
-      <div className="flex items-center justify-center rounded-lg bg-zinc-950 p-2" style={{ maxHeight: 480 }} data-testid="preview-image">
+      <div className="flex max-h-[76vh] items-center justify-center rounded-lg bg-zinc-950 p-2" data-testid="preview-image">
         <img src={fileUrl} alt={assetId} onClick={onImageClick}
-          className={`max-h-[460px] max-w-full rounded object-contain ${onImageClick ? 'cursor-zoom-in' : ''}`} />
+          className={`max-h-[74vh] max-w-full rounded object-contain ${onImageClick ? 'cursor-zoom-in' : ''}`} />
       </div>
     )
   }
   if (type === 'video') {
     return (
       <div className="overflow-hidden rounded-lg bg-zinc-950" data-testid="preview-video">
-        <video src={fileUrl} controls preload="metadata" className="max-h-[480px] w-full" />
+        <video src={fileUrl} controls preload="metadata" className="max-h-[76vh] w-full" />
       </div>
     )
   }
@@ -61,7 +61,7 @@ export function AssetPreview({ assetId, type, mimeType, version, currentFile, on
   }
   if (type === 'pdf') {
     return (
-      <div className="h-[480px] overflow-hidden rounded-lg bg-zinc-950" data-testid="preview-pdf">
+      <div className="h-[78vh] overflow-hidden rounded-lg bg-zinc-950" data-testid="preview-pdf">
         <embed src={fileUrl} type="application/pdf" className="h-full w-full" />
       </div>
     )
@@ -140,7 +140,7 @@ function TextPreview({ assetId, fileUrl, mimeType, currentFile, onSaved }: {
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          className="h-[440px] w-full resize-none rounded bg-zinc-950 p-2 font-mono text-sm text-zinc-200 outline-none"
+          className="h-[72vh] w-full resize-none rounded bg-zinc-950 p-2 font-mono text-sm text-zinc-200 outline-none"
           spellCheck={false}
         />
         {error && <p className="px-1 pt-1 text-xs text-destructive">{error}</p>}
@@ -167,9 +167,9 @@ function TextPreview({ assetId, fileUrl, mimeType, currentFile, onSaved }: {
         </Button>
       )}
       {mimeType === 'text/markdown' ? (
-        <div className="max-h-[480px] overflow-y-auto p-4"><MarkdownContent content={content} /></div>
+        <div className="max-h-[76vh] overflow-y-auto p-4"><MarkdownContent content={content} /></div>
       ) : (
-        <pre className="max-h-[480px] overflow-auto whitespace-pre-wrap p-4 font-mono text-sm text-zinc-300">{display}</pre>
+        <pre className="max-h-[76vh] overflow-auto whitespace-pre-wrap p-4 font-mono text-sm text-zinc-300">{display}</pre>
       )}
     </div>
   )
