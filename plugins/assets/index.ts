@@ -28,6 +28,7 @@ import { resolveAssetServe } from './lib/serve'
 import {
   handleVersionedList, handleVersionedGet, handleVersionedPromote,
   handleVersionedDeleteVersion, handleVersionedDeleteAsset, handleVersionedExport,
+  handleVersionedRelink,
 } from './routes/versioned'
 import { isValidAssetId } from './lib/asset-id'
 import {
@@ -360,6 +361,14 @@ const routes = [
     params: z.object({ assetId: z.string().min(1) }),
     responses: { 200: okPassthrough, 400: errorResponse },
     handler: async (req) => handleVersionedExport(req),
+  }),
+  defineRoute({
+    path: '/versioned/:assetId/relink',
+    method: 'POST',
+    summary: 'Relink an asset to a task (or null)',
+    params: z.object({ assetId: z.string().min(1) }),
+    responses: { 200: okPassthrough, 400: errorResponse },
+    handler: async (req) => handleVersionedRelink(req),
   }),
   defineRoute({
     path: '/versioned/:assetId',
