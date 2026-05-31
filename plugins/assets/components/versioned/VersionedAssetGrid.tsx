@@ -234,6 +234,12 @@ export function VersionedAssetGrid() {
   )
   const scoreFor = (assetId: string): AssetScoreInfo | undefined => (debug && q.trim() ? scoreMap.get(assetId) : undefined)
 
+  // A search is "pending" while the request is in flight OR the last completed
+  // search query doesn't yet match the current input (covers the debounce gap).
+  // Used to show a spinner and suppress the "no match" flash before results land.
+  const searching = q.trim().length > 0
+  const pending = searching && (search.loading || (search.meta?.query ?? '') !== q.trim())
+
   const filtered = useMemo(() => {
     const searching = q.trim().length > 0
     let list = assets.filter(a => typeFilter.length === 0 || typeFilter.includes(a.type))
@@ -275,6 +281,7 @@ export function VersionedAssetGrid() {
 
   const actions = (
     <div className="flex items-center gap-2">
+      {pending && <Loader2 className="size-4 animate-spin text-muted-foreground" data-testid="search-spinner" />}
       <Button size="sm" onClick={openPicker} disabled={uploading} data-testid="add-asset">
         {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
         {uploading ? 'Uploading…' : 'Add asset'}
@@ -362,6 +369,10 @@ export function VersionedAssetGrid() {
             ))}
           </div>
         )
+      ) : pending && filtered.length === 0 ? (
+        <div className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground" data-testid="assets-searching">
+          <Loader2 className="size-4 animate-spin" /> Searching…
+        </div>
       ) : filtered.length === 0 ? (
         <div className="p-8 text-sm text-muted-foreground" data-testid="assets-no-match">No assets match your filters.</div>
       ) : view === 'list' ? (
