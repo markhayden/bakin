@@ -252,6 +252,12 @@ export function VersionedAssetGrid() {
     return list
   }, [assets, typeFilter, q, search.results])
 
+  // Keep the last settled list on screen while a search is pending — the
+  // results only change once the request completes (no flicker / takeover).
+  const displayedRef = useRef<VersionedAssetSummary[]>([])
+  if (!pending) displayedRef.current = filtered
+  const displayed = pending ? displayedRef.current : filtered
+
   const fileInput = (
     <input
       ref={fileInputRef}
@@ -320,7 +326,7 @@ export function VersionedAssetGrid() {
       {fileInput}
       <PluginHeader
         title="Assets"
-        count={view === 'trash' ? trash.length : filtered.length}
+        count={view === 'trash' ? trash.length : displayed.length}
         actions={actions}
         search={view === 'trash' ? undefined : { value: q, onChange: setQ, placeholder: 'Search assets…' }}
       />
@@ -369,21 +375,17 @@ export function VersionedAssetGrid() {
             ))}
           </div>
         )
-      ) : pending && filtered.length === 0 ? (
-        <div className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground" data-testid="assets-searching">
-          <Loader2 className="size-4 animate-spin" /> Searching…
-        </div>
-      ) : filtered.length === 0 ? (
+      ) : displayed.length === 0 ? (
         <div className="p-8 text-sm text-muted-foreground" data-testid="assets-no-match">No assets match your filters.</div>
       ) : view === 'list' ? (
         <div className="flex flex-col gap-1.5" data-testid="assets-list">
-          {filtered.map(asset => (
+          {displayed.map(asset => (
             <AssetListRow key={asset.assetId} asset={asset} scoreInfo={scoreFor(asset.assetId)} onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })} />
           ))}
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5" data-testid="assets-grid">
-          {filtered.map(asset => (
+          {displayed.map(asset => (
             <AssetCard key={asset.assetId} asset={asset} scoreInfo={scoreFor(asset.assetId)} onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })} />
           ))}
         </div>
