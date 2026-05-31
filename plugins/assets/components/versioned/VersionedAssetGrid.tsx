@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useQueryState, useQueryArrayState, useSearch } from '@makinbakin/sdk/hooks'
+import { useQueryState, useQueryArrayState, useSearch, useDebug } from '@makinbakin/sdk/hooks'
 import { Badge, Button } from '@makinbakin/sdk/ui'
 import { PluginHeader, FacetFilter } from '@makinbakin/sdk/components'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
@@ -35,7 +35,32 @@ const TYPE_OPTIONS = [
   { value: 'other', label: 'Other', icon: <Package className="size-3.5" /> },
 ]
 
-function AssetCard({ asset, onOpen }: { asset: VersionedAssetSummary; onOpen: () => void }) {
+/** Per-result Antfly relevance breakdown. */
+export interface AssetScoreInfo { score: number; indexScores?: Record<string, number> }
+
+/**
+ * Search-relevance debug overlay. bakin_assets is multimodal: Bleve BM25 +
+ * assets_text (BGE text embeddings) + assets_visual (CLIP on pixels). The Bleve
+ * index key is an absolute path containing "bleve"/"full_text", so detect it by
+ * substring rather than a fixed key.
+ */
+function ScoreOverlay({ info, className = '' }: { info: AssetScoreInfo; className?: string }) {
+  const scores = info.indexScores ?? {}
+  const bm25Key = Object.keys(scores).find(k => /bleve|full_text/.test(k))
+  const bm25 = bm25Key ? scores[bm25Key] ?? 0 : 0
+  const txt = scores['assets_text'] ?? 0
+  const vis = scores['assets_visual'] ?? 0
+  return (
+    <div className={`flex flex-col gap-0.5 rounded bg-black/80 px-1.5 py-1 font-mono text-[9px] ${className}`} data-testid="score-overlay">
+      <span className="text-amber-400">RRF {info.score.toFixed(4)}</span>
+      <span className="text-cyan-400">BM25 {bm25.toFixed(4)}</span>
+      <span className="text-purple-400">TXT {txt.toFixed(4)}</span>
+      <span className="text-pink-400">VIS {vis.toFixed(4)}</span>
+    </div>
+  )
+}
+
+function AssetCard({ asset, onOpen, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; scoreInfo?: AssetScoreInfo }) {
   return (
     <div
       onClick={onOpen}
@@ -44,8 +69,9 @@ function AssetCard({ asset, onOpen }: { asset: VersionedAssetSummary; onOpen: ()
     >
       <div className="relative h-32 overflow-hidden bg-zinc-900/50">
         <AssetThumb assetId={asset.assetId} type={asset.type} hasThumb={asset.hasThumb} />
+        {scoreInfo && <ScoreOverlay info={scoreInfo} className="absolute right-1.5 top-1.5 z-10" />}
         {asset.versionCount > 1 && (
-          <span className="absolute left-1.5 top-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300" data-testid="version-badge">
+          <span className="absolute bottom-1.5 left-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300" data-testid="version-badge">
             v{asset.currentVersion} · {asset.versionCount} versions
           </span>
         )}
@@ -63,7 +89,7 @@ function AssetCard({ asset, onOpen }: { asset: VersionedAssetSummary; onOpen: ()
   )
 }
 
-function AssetListRow({ asset, onOpen }: { asset: VersionedAssetSummary; onOpen: () => void }) {
+function AssetListRow({ asset, onOpen, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; scoreInfo?: AssetScoreInfo }) {
   return (
     <button
       onClick={onOpen}
@@ -82,6 +108,7 @@ function AssetListRow({ asset, onOpen }: { asset: VersionedAssetSummary; onOpen:
           {asset.versionCount > 1 && <><span>·</span><span className="text-emerald-400">v{asset.currentVersion} of {asset.versionCount}</span></>}
         </div>
       </div>
+      {scoreInfo && <ScoreOverlay info={scoreInfo} className="shrink-0" />}
       <span className="shrink-0 text-[11px] text-muted-foreground">{formatSize(asset.size)}</span>
       <span className="shrink-0 text-[11px] text-muted-foreground">{formatAge(asset.created)}</span>
     </button>
@@ -90,6 +117,7 @@ function AssetListRow({ asset, onOpen }: { asset: VersionedAssetSummary; onOpen:
 
 export function VersionedAssetGrid() {
   const navigate = useNavigate()
+  const [debug] = useDebug()
   const [linkTo] = useQueryState('linkTo', '')
   const [q, setQ] = useQueryState('q', '')
   const [view, setView] = useQueryState('view', 'grid')
@@ -199,6 +227,12 @@ export function VersionedAssetGrid() {
     for (const a of assets) c[a.type] = (c[a.type] ?? 0) + 1
     return c
   }, [assets])
+
+  const scoreMap = useMemo(
+    () => new Map<string, AssetScoreInfo>(search.results.map(r => [r.id, { score: r.score, indexScores: r.indexScores }])),
+    [search.results],
+  )
+  const scoreFor = (assetId: string): AssetScoreInfo | undefined => (debug && q.trim() ? scoreMap.get(assetId) : undefined)
 
   const filtered = useMemo(() => {
     const searching = q.trim().length > 0
@@ -333,13 +367,13 @@ export function VersionedAssetGrid() {
       ) : view === 'list' ? (
         <div className="flex flex-col gap-1.5" data-testid="assets-list">
           {filtered.map(asset => (
-            <AssetListRow key={asset.assetId} asset={asset} onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })} />
+            <AssetListRow key={asset.assetId} asset={asset} scoreInfo={scoreFor(asset.assetId)} onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })} />
           ))}
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5" data-testid="assets-grid">
           {filtered.map(asset => (
-            <AssetCard key={asset.assetId} asset={asset} onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })} />
+            <AssetCard key={asset.assetId} asset={asset} scoreInfo={scoreFor(asset.assetId)} onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })} />
           ))}
         </div>
       )}

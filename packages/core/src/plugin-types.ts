@@ -763,6 +763,8 @@ export interface SearchResult {
   fields: Record<string, unknown>
   /** Cross-encoder reranker score (present when a reranker was used). */
   rerankScore?: number
+  /** Per-index score breakdown (e.g. { full_text_index_v0, assets_text, assets_visual }). */
+  indexScores?: Record<string, number>
 }
 
 /** Search response from a query */

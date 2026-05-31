@@ -5,6 +5,7 @@ import { useParams, useNavigate, Link } from '@tanstack/react-router'
 import { Badge, Button } from '@makinbakin/sdk/ui'
 import { ArrowLeft, Download, Trash2, Upload, Loader2, X } from 'lucide-react'
 import { AssetTypeIcon, AssetMetaSummary } from './atoms'
+import { AssetPreview } from './AssetPreview'
 import { VersionRow } from './VersionRow'
 import { assetCurrentUrl, assetExportUrl, VERSIONED_API } from './asset-urls'
 import type { VersionedAssetManifest } from './types'
@@ -93,6 +94,7 @@ export function VersionedAssetDetail() {
 
   const versions = [...manifest.versions].sort((a, b) => b.version - a.version)
   const isImage = manifest.type === 'images'
+  const current = manifest.versions.find(v => v.version === manifest.currentVersion) ?? manifest.versions[manifest.versions.length - 1]
 
   return (
     <div className="w-full p-4" data-testid="asset-detail">
@@ -118,21 +120,17 @@ export function VersionedAssetDetail() {
       </div>
       {versionError && <p className="mb-2 text-xs text-destructive">{versionError}</p>}
 
-      {/* Current version preview */}
-      <div className="mb-4 flex items-center justify-center rounded-lg bg-zinc-950 p-3" style={{ maxHeight: 420 }} data-testid="current-preview">
-        {isImage ? (
-          <img
-            src={assetCurrentUrl(manifest.assetId, manifest.currentVersion)}
-            alt={manifest.assetId}
-            className="max-h-[400px] max-w-full cursor-zoom-in rounded object-contain"
-            onClick={() => setLightbox(true)}
-            data-testid="open-lightbox"
-          />
-        ) : (
-          <a href={assetCurrentUrl(manifest.assetId, manifest.currentVersion)} download className="flex flex-col items-center gap-2 py-8 text-sm text-blue-400">
-            <AssetTypeIcon type={manifest.type} className="size-12" /> Download current version
-          </a>
-        )}
+      {/* Current version preview — inline render by type, with editor for text. */}
+      <div className="mb-4" data-testid="current-preview">
+        <AssetPreview
+          assetId={manifest.assetId}
+          type={manifest.type}
+          mimeType={current.mimeType}
+          version={manifest.currentVersion}
+          currentFile={current.file}
+          onImageClick={() => setLightbox(true)}
+          onSaved={fetchManifest}
+        />
       </div>
 
       <div className="mb-4"><AssetMetaSummary agent={manifest.agent} created={manifest.created} taskId={manifest.taskId} tags={manifest.tags} /></div>

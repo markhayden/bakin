@@ -767,6 +767,8 @@ export interface SearchResult {
   score: number
   fields: Record<string, unknown>
   rerankScore?: number
+  /** Per-index score breakdown (e.g. full_text / text-embedding / visual). */
+  indexScores?: Record<string, number>
 }
 
 /** Full search response: results, aggregations, and query metadata. */

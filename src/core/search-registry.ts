@@ -1049,12 +1049,16 @@ export async function getSearchHealth(): Promise<SearchHealthSnapshot> {
 }
 
 function adapterHitToPluginResult(hit: SearchHit, tableName: string): SearchResult {
+  // Surface the per-index score breakdown (BM25 / text-embedding / visual)
+  // minus the rerank entry, which has its own field. Powers the debug overlay.
+  const { rerank, ...indexScores } = hit.scoreBreakdown ?? {}
   return {
     id: hit.key,
     table: tableName,
     score: hit.score,
     fields: hit.document,
-    rerankScore: hit.scoreBreakdown?.rerank,
+    rerankScore: rerank,
+    ...(Object.keys(indexScores).length > 0 ? { indexScores } : {}),
   }
 }
 
