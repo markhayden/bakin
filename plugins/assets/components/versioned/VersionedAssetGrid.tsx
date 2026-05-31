@@ -67,7 +67,7 @@ function AssetCard({ asset, onOpen, scoreInfo }: { asset: VersionedAssetSummary;
       className="flex cursor-pointer flex-col overflow-hidden rounded-lg border border-border bg-card transition-all duration-150 hover:-translate-y-0.5 hover:border-[rgba(255,255,255,0.15)]"
       data-testid={`asset-card-${asset.assetId}`}
     >
-      <div className="relative h-32 overflow-hidden bg-zinc-900/50">
+      <div className="relative aspect-square overflow-hidden bg-zinc-900/50">
         <AssetThumb assetId={asset.assetId} type={asset.type} hasThumb={asset.hasThumb} />
         {scoreInfo && <ScoreOverlay info={scoreInfo} className="absolute right-1.5 top-1.5 z-10" />}
         {asset.versionCount > 1 && (
