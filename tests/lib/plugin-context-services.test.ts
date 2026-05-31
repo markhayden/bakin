@@ -58,6 +58,13 @@ describe('createPluginAssetsAPI', () => {
     expect(ref?.version).toBe(1)
     expect(ref?.mimeType).toBe('image/png')
     expect(ref?.absPath).toContain(assetId)
+
+    const summary = await assets.getAsset(assetId)
+    expect(summary?.assetId).toBe(assetId)
+    expect(summary?.type).toBe('images')
+    expect(summary?.description).toBe('Generated image')
+    expect(summary?.currentVersion).toBe(1)
+    expect(await assets.getAsset('20260101-missing-deadbeef')).toBeNull()
   })
 
   it('appends a new version to an existing asset', async () => {

@@ -62,6 +62,7 @@ const METHOD_PERMISSIONS: Record<string, Permission> = {
   'tasks.appendLog': 'tasks.write',
 
   'assets.resolveVersionFile': 'assets.read',
+  'assets.getAsset': 'assets.read',
   'assets.createAsset': 'assets.write',
   'assets.addVersion': 'assets.write',
   'assets.addExport': 'assets.write',

@@ -117,6 +117,7 @@ export function createTestContext(pluginId: string, testDir: string): ActivatedP
     tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
     assets: {
       createAsset: vi.fn(async () => ({ assetId: 'test-asset', version: 1 })),
+      getAsset: vi.fn(async () => null),
       addVersion: vi.fn(async () => ({ assetId: 'test-asset', version: 2 })),
       addExport: vi.fn(async () => ({ name: 'export', file: 'exports/export.jpg' })),
       resolveVersionFile: vi.fn(async () => null),

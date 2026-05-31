@@ -469,6 +469,7 @@ const TYPE_DOMAIN_GROUPS: Record<string, string> = {
   SearchAPI: 'Search',
   // Assets
   AssetTypeName: 'Assets',
+  AssetSummary: 'Assets',
   AssetGenerationInfo: 'Assets',
   AssetCreateInput: 'Assets',
   AssetVersionCreateInput: 'Assets',

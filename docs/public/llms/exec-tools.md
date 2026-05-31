@@ -1235,12 +1235,12 @@ mcporter call bakin-<agent>.bakin_exec_projects_ask --args '{
 ### bakin_exec_projects_attach_asset
 
 Label: Attached asset to project
-Purpose: Attach an existing asset to a project by filename. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in projects_get — use asset tools to read full content when needed.
+Purpose: Attach an existing asset to a project by assetId. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in projects_get — use asset tools to read full content when needed.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
 | `projectId` | string | yes | Project ID |
-| `filename` | string | yes | Asset filename (e.g., "20260327-hero-a1b2c3d4.png") — globally unique, stable across retype/relink |
+| `assetId` | string | yes | Asset id (e.g., "20260327-hero-a1b2c3d4") — stable across versions |
 | `label` | string | no | Human-readable label or summary of what this asset contains |
 
 Example:
@@ -1248,7 +1248,7 @@ Example:
 ```sh
 mcporter call bakin-<agent>.bakin_exec_projects_attach_asset --args '{
   "projectId": "value",
-  "filename": "value",
+  "assetId": "value",
   "label": "value"
 }'
 ```
@@ -1298,19 +1298,19 @@ mcporter call bakin-<agent>.bakin_exec_projects_delete --args '{
 ### bakin_exec_projects_detach_asset
 
 Label: Detached asset from project
-Purpose: Remove an asset reference from a project by filename. Does not delete the asset itself.
+Purpose: Remove an asset reference from a project by assetId. Does not delete the asset itself.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
 | `projectId` | string | yes | Project ID |
-| `filename` | string | yes | Asset filename to detach |
+| `assetId` | string | yes | Asset id to detach |
 
 Example:
 
 ```sh
 mcporter call bakin-<agent>.bakin_exec_projects_detach_asset --args '{
   "projectId": "value",
-  "filename": "value"
+  "assetId": "value"
 }'
 ```
 

@@ -602,9 +602,30 @@ export interface AssetVersionFileRef {
   version: number
 }
 
+/** Current-version summary of an asset, addressed by id. */
+export interface AssetSummary {
+  assetId: string
+  type: AssetTypeName
+  agent: string
+  taskId: string | null
+  created: string
+  updated: string
+  currentVersion: number
+  versionCount: number
+  description: string
+  tags: string[]
+  mimeType: string
+  width: number | null
+  height: number | null
+  size: number
+  hasThumb: boolean
+}
+
 export interface AssetsAPI {
   // Versioned (asset-as-directory) surface.
   createAsset(input: AssetCreateInput): Promise<VersionedAssetRef>
+  /** Read an asset's current-version summary by id (metadata: type/description/tags/etc.), or null. */
+  getAsset(assetId: string): Promise<AssetSummary | null>
   addVersion(assetId: string, input: AssetVersionCreateInput): Promise<VersionedAssetRef>
   addExport(assetId: string, input: AssetExportRequest): Promise<{ name: string; file: string }>
   resolveVersionFile(assetId: string, version?: number): Promise<AssetVersionFileRef | null>

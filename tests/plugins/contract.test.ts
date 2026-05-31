@@ -146,6 +146,7 @@ function createMockContext(pluginId: string): {
     tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
     assets: {
       createAsset: async () => ({ assetId: 'test-asset', version: 1 }),
+      getAsset: async () => null,
       addVersion: async () => ({ assetId: 'test-asset', version: 2 }),
       addExport: async () => ({ name: 'export', file: 'exports/export.jpg' }),
       resolveVersionFile: async () => null,

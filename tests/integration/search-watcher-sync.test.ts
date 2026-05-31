@@ -114,6 +114,7 @@ function makeCtx(plugin: BakinPlugin): PluginContext {
     tasks: createMockBakinTaskStore() as unknown as PluginContext['tasks'],
     assets: {
       createAsset: mock(async () => ({ assetId: 'test-asset', version: 1 })),
+      getAsset: mock(async () => null),
       addVersion: mock(async () => ({ assetId: 'test-asset', version: 2 })),
       addExport: mock(async () => ({ name: 'export', file: 'exports/export.jpg' })),
       resolveVersionFile: mock(async () => null),

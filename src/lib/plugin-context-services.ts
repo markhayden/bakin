@@ -135,6 +135,11 @@ export function createPluginAssetsAPI(): AssetsAPI {
       return { assetId: r.assetId, version: r.version }
     },
 
+    async getAsset(assetId) {
+      const { getAssetSummary } = await import('../../plugins/assets/lib/asset-service')
+      return getAssetSummary(assetId) as Awaited<ReturnType<AssetsAPI['getAsset']>>
+    },
+
     async addVersion(assetId, input) {
       const { addVersion } = await import('../../plugins/assets/lib/asset-service')
       const r = await addVersion(assetId, input)

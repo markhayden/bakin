@@ -606,11 +606,11 @@ mcporter call bakin-<agent>.bakin_exec_projects_ask --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="projects-attach-asset" name="bakin_exec_projects_attach_asset" label="Attached asset to project" description="Attach an existing asset to a project by filename. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in projects_get — use asset tools to read full content when needed." source="bakin-bits-official/plugins/projects/index.ts:842" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"filename","type":"string","required":true,"description":"Asset filename (e.g., \"20260327-hero-a1b2c3d4.png\") — globally unique, stable across retype/relink"},{"name":"label","type":"string","required":false,"description":"Human-readable label or summary of what this asset contains"}]}>
+<McpToolCard id="projects-attach-asset" name="bakin_exec_projects_attach_asset" label="Attached asset to project" description="Attach an existing asset to a project by assetId. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in projects_get — use asset tools to read full content when needed." source="bakin-bits-official/plugins/projects/index.ts:842" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"assetId","type":"string","required":true,"description":"Asset id (e.g., \"20260327-hero-a1b2c3d4\") — stable across versions"},{"name":"label","type":"string","required":false,"description":"Human-readable label or summary of what this asset contains"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_projects_attach_asset --args '{
   "projectId": "value",
-  "filename": "value",
+  "assetId": "value",
   "label": "value"
 }'
 ```
@@ -634,11 +634,11 @@ mcporter call bakin-<agent>.bakin_exec_projects_delete --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="projects-detach-asset" name="bakin_exec_projects_detach_asset" label="Detached asset from project" description="Remove an asset reference from a project by filename. Does not delete the asset itself." source="bakin-bits-official/plugins/projects/index.ts:862" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"filename","type":"string","required":true,"description":"Asset filename to detach"}]}>
+<McpToolCard id="projects-detach-asset" name="bakin_exec_projects_detach_asset" label="Detached asset from project" description="Remove an asset reference from a project by assetId. Does not delete the asset itself." source="bakin-bits-official/plugins/projects/index.ts:862" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"assetId","type":"string","required":true,"description":"Asset id to detach"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_projects_detach_asset --args '{
   "projectId": "value",
-  "filename": "value"
+  "assetId": "value"
 }'
 ```
 </McpToolCard>

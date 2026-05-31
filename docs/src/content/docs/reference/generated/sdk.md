@@ -501,8 +501,9 @@ The `bakin.config.ts` shape — root configuration for a Bakin installation.
 | `AssetCreateInput` | Create a new versioned asset (v1) from a source file. |
 | `AssetVersionCreateInput` | Append a new version to an existing asset. |
 | `AssetExportRequest` | Render a derived export of a version (keyed/idempotent by surface). |
-| `VersionedAssetRef` | — |
-| `AssetVersionFileRef` | — |
+| `VersionedAssetRef` | Reference to a versioned asset: its stable id and the version just written. |
+| `AssetVersionFileRef` | Resolved on-disk location of a specific asset version, for reads/serving. |
+| `AssetSummary` | Current-version summary of an asset, addressed by id. |
 | `AssetsAPI` | Assets API exposed via `ctx.assets` — versioned asset-as-directory surface. |
 
 ### Exec Tools & Workflows

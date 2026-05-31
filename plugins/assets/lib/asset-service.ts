@@ -232,6 +232,12 @@ function toSummary(manifest: AssetManifest): AssetSummary {
   }
 }
 
+/** Read one asset's current-version summary by id, or null if missing/invalid. */
+export function getAssetSummary(assetId: string): AssetSummary | null {
+  const manifest = getAsset(assetId)
+  return manifest ? toSummary(manifest) : null
+}
+
 /** List assets (one summary per asset, current-version view), newest first. */
 export function listAssets(filter?: { type?: AssetType; taskId?: string | null }): AssetSummary[] {
   const contentDir = getContentDir()
