@@ -119,7 +119,7 @@ describe('deleteAsset / restoreAsset', () => {
     const { trashName } = await deleteAsset(assetId)
     expect(getAsset(assetId)).toBeNull()
     expect(existsSync(join(testDir, assetDirRelPath(assetId)!))).toBe(false)
-    const restored = restoreAsset(trashName)
+    const restored = await restoreAsset(trashName)
     expect(restored.assetId).toBe(assetId)
     expect(getAsset(assetId)?.assetId).toBe(assetId)
   })

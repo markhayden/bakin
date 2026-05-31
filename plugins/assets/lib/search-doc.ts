@@ -26,6 +26,12 @@ export function versionedAssetPath(rel: string): { assetId: string; isManifest: 
 
 const RASTER_RE = /\.(png|jpe?g|gif|webp|bmp)$/i
 
+// Cache extracted text per (assetId, version, size). Version files are
+// immutable, so metadata-only manifest writes (relink/retype/promote/addExport)
+// re-index without re-running pdf-parse / re-reading the file on the hot path.
+const contentCache = new Map<string, string>()
+const CONTENT_CACHE_MAX = 256
+
 /** Build the search document for a versioned asset from its current version. */
 export async function buildVersionedAssetSearchDoc(manifest: AssetManifest, assetId: string): Promise<Record<string, unknown>> {
   const ym = yearMonthFromAssetId(assetId)
@@ -33,7 +39,13 @@ export async function buildVersionedAssetSearchDoc(manifest: AssetManifest, asse
   const relFromAssetsRoot = `store/${ym}/${assetId}/${current.file}`
   const absPath = join(getContentDir(), 'assets', relFromAssetsRoot)
   const isRaster = manifest.type === 'images' && RASTER_RE.test(current.file)
-  const content = await extractAssetContent(absPath, current.file).catch(() => '')
+  const cacheKey = `${assetId}:${current.version}:${current.size}`
+  let content = contentCache.get(cacheKey)
+  if (content === undefined) {
+    content = await extractAssetContent(absPath, current.file).catch(() => '')
+    if (contentCache.size >= CONTENT_CACHE_MAX) contentCache.clear()
+    contentCache.set(cacheKey, content)
+  }
   return {
     description: manifest.description || '',
     tags: (manifest.tags || []).join(', '),

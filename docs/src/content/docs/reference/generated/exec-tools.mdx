@@ -553,7 +553,7 @@ mcporter call bakin-<agent>.bakin_exec_models_list --args '{
 <p class="mcp-section-description">Publishing tools send completed work to configured channels through Bakin adapters.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="post-channel" name="bakin_exec_post_channel" label="Posted to channel" description="Post a message through the active runtime channel adapter. Supports image/video attachments when the adapter supports rich content." source="scripts/lib/post-channel.ts:118" parameters={[{"name":"channel","type":"string","required":true,"description":"Channel name or runtime channel target"},{"name":"content","type":"string","required":true,"description":"Message text / caption"},{"name":"imageAssetId","type":"string","required":false,"description":"Asset id of an image to attach (current version is sent)."},{"name":"videoAssetId","type":"string","required":false,"description":"Asset id of a video to attach (current version is sent)."},{"name":"embed","type":"record","required":false,"description":"Optional rich metadata for adapters that support it"},{"name":"taskId","type":"string","required":false,"description":"Task ID for audit trail"}]}>
+<McpToolCard id="post-channel" name="bakin_exec_post_channel" label="Posted to channel" description="Post a message through the active runtime channel adapter. Supports image/video attachments when the adapter supports rich content." source="scripts/lib/post-channel.ts:121" parameters={[{"name":"channel","type":"string","required":true,"description":"Channel name or runtime channel target"},{"name":"content","type":"string","required":true,"description":"Message text / caption"},{"name":"imageAssetId","type":"string","required":false,"description":"Asset id of an image to attach (current version is sent)."},{"name":"videoAssetId","type":"string","required":false,"description":"Asset id of a video to attach (current version is sent)."},{"name":"embed","type":"record","required":false,"description":"Optional rich metadata for adapters that support it"},{"name":"taskId","type":"string","required":false,"description":"Task ID for audit trail"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_post_channel --args '{
   "channel": "value",
@@ -1178,5 +1178,5 @@ mcporter call bakin-<agent>.bakin_exec_workflows_start --args '{
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 30, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 31, 2026 · Bakin 0.0.0-dev</span>
 </aside>

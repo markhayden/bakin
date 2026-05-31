@@ -271,7 +271,7 @@ export async function editImage(ctx: PluginContext, params: ImagesEditParams, ag
   })
 }
 
-export async function exportImage(ctx: PluginContext, params: ImagesExportParams, agent: string): Promise<ExecToolResult> {
+export async function exportImage(ctx: PluginContext, params: ImagesExportParams, _agent: string): Promise<ExecToolResult> {
   const surfaceId = params.surface || 'custom'
   const dims = surfaceId === 'custom'
     ? (params.width && params.height ? { surface: 'custom', ...clampDimensions(params.width, params.height) } : null)

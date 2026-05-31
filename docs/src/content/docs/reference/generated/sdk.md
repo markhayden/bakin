@@ -51,7 +51,7 @@ The main entry. Re-exports the plugin contract types (`./types`) plus the high-t
 Source: `packages/sdk/src/hooks/index.ts`.
 
 ```ts
-import { useSearch, useAssets, useDebug } from '@makinbakin/sdk/hooks'
+import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 ```
 
 ### Data & State
@@ -655,5 +655,5 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `DefinePluginInput` | — |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 30, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 31, 2026 · Bakin 0.0.0-dev</span>
 </aside>

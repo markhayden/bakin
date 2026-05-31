@@ -3,7 +3,7 @@
  */
 import { z } from 'zod'
 import { existsSync } from 'fs'
-import { basename } from 'path'
+import { basename, extname } from 'path'
 import { getAppServices } from '@/core/app-services'
 import { resolveRuntimeChannelRef } from '@/core/channel-aliases'
 import { assertWorkflowToolAllowed } from '@/core/workflow-tool-authorization'
@@ -65,8 +65,8 @@ export async function postChannel(
   const { content, imageAssetId, videoAssetId, embed, taskId } = params
 
   const files = [
-    filePayload(resolveAssetAbsPath(imageAssetId)),
-    filePayload(resolveAssetAbsPath(videoAssetId)),
+    filePayload(imageAssetId, resolveAssetAbsPath(imageAssetId)),
+    filePayload(videoAssetId, resolveAssetAbsPath(videoAssetId)),
   ].filter((file): file is { name: string; path: string } => Boolean(file))
 
   try {
@@ -109,9 +109,12 @@ function displayChannel(channel: string): string {
   return channel.includes(':') ? channel : `#${channel}`
 }
 
-function filePayload(path: string | null): { name: string; path: string } | null {
+function filePayload(assetId: string | undefined, path: string | null): { name: string; path: string } | null {
   if (!path) return null
-  return { name: basename(path), path }
+  // Name the attachment by assetId + the version file's extension (e.g.
+  // 20260401-hero-a1b2c3d4.png) rather than the on-disk "v1.png".
+  const name = assetId ? `${assetId}${extname(path)}` : basename(path)
+  return { name, path }
 }
 
 addExecTool({

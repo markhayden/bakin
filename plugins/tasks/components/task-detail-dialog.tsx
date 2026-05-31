@@ -17,7 +17,7 @@ import { useAgent } from "@makinbakin/sdk/hooks"
 import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
 import { toast } from "@makinbakin/sdk/hooks"
 import type { Task, ColumnId } from '../types'
-import { isRenderableAssetImageFilename } from '../lib/output-assets'
+import { isRenderableAssetRef } from '../lib/output-assets'
 import { createShortClientId } from '../lib/client-id'
 
 /** Normalize step output — handles string (possibly JSON), object, or unexpected types. */
@@ -43,12 +43,12 @@ function humanizeKey(key: string): string {
 /** Render a single output value in human-readable form. */
 function OutputValue({ value }: { value: unknown }) {
   if (typeof value === 'string') {
-    if (isRenderableAssetImageFilename(value)) {
-      const filename = value
+    if (isRenderableAssetRef(value)) {
+      const ref = value
       return (
         <div className="mt-0.5">
-          <p className="text-xs text-zinc-400 break-all">{filename}</p>
-          <img src={`/api/assets/${encodeURIComponent(filename)}`} alt={filename} className="mt-1 max-h-48 rounded border border-border object-contain" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+          <p className="text-xs text-zinc-400 break-all">{ref}</p>
+          <img src={`/api/assets/${encodeURIComponent(ref)}`} alt={ref} className="mt-1 max-h-48 rounded border border-border object-contain" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
         </div>
       )
     }

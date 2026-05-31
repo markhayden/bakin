@@ -3,13 +3,11 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQueryState, useQueryArrayState, useSearch, useDebug } from '@makinbakin/sdk/hooks'
-import { Badge, Button } from '@makinbakin/sdk/ui'
+import { Button } from '@makinbakin/sdk/ui'
 import { PluginHeader, FacetFilter } from '@makinbakin/sdk/components'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
-import {
-  ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter,
-  FileText, Image as ImageIcon, Video, Music, Map as MapIcon, Database, Package,
-} from 'lucide-react'
+import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter } from 'lucide-react'
+import { ASSET_TYPES } from '../../lib/constants'
 import { AssetThumb, AssetMetaSummary, AssetTypeIcon } from './atoms'
 import { VERSIONED_API, UPLOAD_API, TRASH_API } from './asset-urls'
 import type { VersionedAssetSummary, TrashedAssetSummary } from './types'
@@ -22,18 +20,13 @@ const VIEW_OPTIONS: Array<{ key: View; label: string; Icon: typeof LayoutGrid }>
   { key: 'trash', label: 'Trash', Icon: Trash2 },
 ]
 
-// Full asset-type taxonomy with icons (drives the Type facet).
-const TYPE_OPTIONS = [
-  { value: 'text', label: 'Text', icon: <FileText className="size-3.5" /> },
-  { value: 'images', label: 'Images', icon: <ImageIcon className="size-3.5" /> },
-  { value: 'video', label: 'Video', icon: <Video className="size-3.5" /> },
-  { value: 'audio', label: 'Audio', icon: <Music className="size-3.5" /> },
-  { value: 'plans', label: 'Plans', icon: <MapIcon className="size-3.5" /> },
-  { value: 'research', label: 'Research', icon: <FileText className="size-3.5" /> },
-  { value: 'pdf', label: 'PDF', icon: <FileText className="size-3.5" /> },
-  { value: 'data', label: 'Data', icon: <Database className="size-3.5" /> },
-  { value: 'other', label: 'Other', icon: <Package className="size-3.5" /> },
-]
+// Type facet — derived from the canonical ASSET_TYPES taxonomy; icons reuse
+// AssetTypeIcon so the facet and thumbnails never diverge.
+const TYPE_OPTIONS = ASSET_TYPES.map((value) => ({
+  value,
+  label: value === 'pdf' ? 'PDF' : value.charAt(0).toUpperCase() + value.slice(1),
+  icon: <AssetTypeIcon type={value} className="size-3.5" />,
+}))
 
 /** Per-result Antfly relevance breakdown. */
 export interface AssetScoreInfo { score: number; indexScores?: Record<string, number> }
@@ -163,7 +156,10 @@ export function VersionedAssetGrid() {
       .catch(() => {})
   }, [])
 
-  useEffect(() => { fetchAssets(); fetchTrash() }, [fetchAssets, fetchTrash])
+  useEffect(() => { fetchAssets() }, [fetchAssets])
+  // Trash only needs refetching when entering the tab (it also changes on the
+  // explicit restore/empty/permanent-delete actions, which refetch directly).
+  useEffect(() => { if (view === 'trash') fetchTrash() }, [view, fetchTrash])
 
   // Drive the search hook from the URL query.
   useEffect(() => { search.search(q) }, [q]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -173,9 +169,9 @@ export function VersionedAssetGrid() {
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data)
-        if (data.type === 'plugin-event' && (data.event === 'asset.changed' || data.event === 'asset.removed')) {
-          fetchAssets(); fetchTrash()
-        }
+        if (data.type !== 'plugin-event') return
+        if (data.event === 'asset.changed') fetchAssets()
+        else if (data.event === 'asset.removed') { fetchAssets(); fetchTrash() }
       } catch { /* ignore non-JSON */ }
     }
     return () => es.close()
@@ -241,16 +237,15 @@ export function VersionedAssetGrid() {
   const pending = searching && (search.loading || (search.meta?.query ?? '') !== q.trim())
 
   const filtered = useMemo(() => {
-    const searching = q.trim().length > 0
     let list = assets.filter(a => typeFilter.length === 0 || typeFilter.includes(a.type))
-    if (searching) {
-      const score = new Map<string, number>(search.results.map(r => [r.id, r.score] as [string, number]))
+    if (q.trim()) {
+      // Restrict to search matches, ordered by relevance (reuse scoreMap).
       list = list
-        .filter(a => score.has(a.assetId))
-        .sort((a, b) => (score.get(b.assetId) ?? 0) - (score.get(a.assetId) ?? 0))
+        .filter(a => scoreMap.has(a.assetId))
+        .sort((a, b) => (scoreMap.get(b.assetId)?.score ?? 0) - (scoreMap.get(a.assetId)?.score ?? 0))
     }
     return list
-  }, [assets, typeFilter, q, search.results])
+  }, [assets, typeFilter, q, scoreMap])
 
   // Keep the last settled list on screen while a search is pending — the
   // results only change once the request completes (no flicker / takeover).

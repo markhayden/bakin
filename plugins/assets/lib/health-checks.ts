@@ -182,8 +182,12 @@ function checkAssetsInternal(contentDir: string, autoFix: boolean): HealthCheckR
       let expired = 0
       for (const file of trashFiles) {
         try {
-          const stat = statSync(join(trashDir, file))
-          if (stat.mtimeMs < cutoff) {
+          // Retention is measured from DELETION time (the `__deleted-<ms>`
+          // suffix), not file mtime — renameSync preserves the original mtime,
+          // so an old asset deleted today must not be purged immediately.
+          const m = /__deleted-(\d+)$/.exec(file)
+          const deletedAt = m ? Number(m[1]) : statSync(join(trashDir, file)).mtimeMs
+          if (deletedAt < cutoff) {
             if (autoFix) {
               rmSync(join(trashDir, file), { recursive: true, force: true })
               purged++

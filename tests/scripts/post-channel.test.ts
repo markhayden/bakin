@@ -205,8 +205,8 @@ describe('postChannel', () => {
     const imgAbs = seed('20260401-hero-a1b2c3d4', 'v1.png', 'image/png', 'fake-image')
     const vidAbs = seed('20260401-clip-e5f6a7b8', 'v1.mp4', 'video/mp4', 'fake-video')
     const expectedFiles = [
-      { name: 'v1.png', path: imgAbs },
-      { name: 'v1.mp4', path: vidAbs },
+      { name: '20260401-hero-a1b2c3d4.png', path: imgAbs },
+      { name: '20260401-clip-e5f6a7b8.mp4', path: vidAbs },
     ]
 
     try {

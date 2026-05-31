@@ -64,7 +64,12 @@ Example:
 ```ts
 const result = await ctx.hooks.invoke(
   'assets.resolveServe',
-  {},
+  {
+    segments: [
+      '20260401-hero-a1b2c3d4',
+      'thumb'
+    ]
+  },
 )
 ```
 

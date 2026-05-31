@@ -4,10 +4,10 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from '@tanstack/react-router'
 import { Badge, Button } from '@makinbakin/sdk/ui'
 import { ArrowLeft, Download, Trash2, Upload, Loader2, X } from 'lucide-react'
-import { AssetTypeIcon, AssetMetaSummary } from './atoms'
+import { AssetMetaSummary } from './atoms'
 import { AssetPreview } from './AssetPreview'
 import { VersionRow } from './VersionRow'
-import { assetCurrentUrl, assetExportUrl, VERSIONED_API } from './asset-urls'
+import { assetVersionUrl, assetExportUrl, VERSIONED_API } from './asset-urls'
 import type { VersionedAssetManifest } from './types'
 
 export function VersionedAssetDetail() {
@@ -194,7 +194,7 @@ export function VersionedAssetDetail() {
             <X className="size-6" />
           </button>
           <img
-            src={assetCurrentUrl(manifest.assetId, previewVersion)}
+            src={assetVersionUrl(manifest.assetId, previewVersion)}
             alt={manifest.assetId}
             className="max-h-[92vh] max-w-[92vw] rounded object-contain"
             onClick={(e) => e.stopPropagation()}

@@ -552,7 +552,7 @@ const assetsPlugin: BakinPlugin = definePlugin({
       parameters: { trashName: z.string().describe('Trash name (includes __deleted- suffix)') },
       handler: async (params: Record<string, unknown>, agent: string) => {
         try {
-          const { assetId } = restoreVersionedAsset(params.trashName as string)
+          const { assetId } = await restoreVersionedAsset(params.trashName as string)
           ctx.activity.audit('asset.restored', agent, { assetId })
           return { ok: true, assetId }
         } catch (err) {

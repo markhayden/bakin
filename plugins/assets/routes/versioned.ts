@@ -32,7 +32,7 @@ export async function handleTrashList(): Promise<Response> {
 export async function handleTrashRestore(req: Request): Promise<Response> {
   const trashName = segmentsAfter(new URL(req.url), 'trash')[0] || ''
   try {
-    return Response.json({ ok: true, ...restoreAsset(trashName) })
+    return Response.json({ ok: true, ...(await restoreAsset(trashName)) })
   } catch (err) {
     return Response.json({ error: errMsg(err) }, { status: 400 })
   }

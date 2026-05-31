@@ -60,11 +60,13 @@ export type PluginPermission =
   | 'runtime.cron'
   | 'runtime.skills'
   | 'runtime.models'
+  | 'runtime.images'
   | 'tasks.read'
   | 'tasks.write'
   | 'search.read'
   | 'search.write'
   | 'assets.read'
+  | 'assets.write'
 
 /** Runtime feature a plugin declares it needs (used by doctor/health checks). */
 export type RuntimeCapability =

@@ -10,13 +10,10 @@ import { useEffect, useState } from 'react'
 import { Download, Pencil, Save, X } from 'lucide-react'
 import { Button } from '@makinbakin/sdk/ui'
 import { MarkdownContent } from '@makinbakin/sdk/components'
+import { isEditableMimeType } from '../../lib/constants'
 import { AssetTypeIcon } from './atoms'
-import { assetCurrentUrl, VERSIONED_API } from './asset-urls'
+import { assetVersionUrl, VERSIONED_API } from './asset-urls'
 
-const EDITABLE_MIMES = new Set([
-  'text/markdown', 'text/plain', 'application/rtf', 'text/yaml', 'application/yaml',
-  'application/json', 'text/csv', 'text/tab-separated-values', 'application/xml',
-])
 const EXT_BY_MIME: Record<string, string> = {
   'text/markdown': 'md', 'text/plain': 'txt', 'application/rtf': 'rtf',
   'text/yaml': 'yaml', 'application/yaml': 'yaml', 'application/json': 'json',
@@ -34,7 +31,9 @@ interface AssetPreviewProps {
 }
 
 export function AssetPreview({ assetId, type, mimeType, version, currentFile, onImageClick, onSaved }: AssetPreviewProps) {
-  const fileUrl = assetCurrentUrl(assetId, version)
+  // Version-specific path (/v/<n>) so the selected version actually renders —
+  // a query cache-bust on the bare assetId always served the current version.
+  const fileUrl = assetVersionUrl(assetId, version)
 
   if (type === 'images') {
     return (
@@ -97,7 +96,7 @@ function TextPreview({ assetId, fileUrl, mimeType, currentFile, onSaved }: {
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const editable = EDITABLE_MIMES.has(mimeType)
+  const editable = isEditableMimeType(mimeType)
 
   useEffect(() => {
     let cancelled = false

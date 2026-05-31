@@ -37,7 +37,12 @@ const result = await ctx.hooks.invoke(
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'assets.resolveServe',
-  {},
+  {
+    segments: [
+      '20260401-hero-a1b2c3d4',
+      'thumb'
+    ]
+  },
 )
 ```
 </HookCard>
@@ -453,5 +458,5 @@ const result = await ctx.hooks.invoke(
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 30, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 31, 2026 · Bakin 0.0.0-dev</span>
 </aside>

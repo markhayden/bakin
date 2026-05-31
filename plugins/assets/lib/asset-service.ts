@@ -17,7 +17,7 @@ import { createHash } from 'node:crypto'
 import sharp from 'sharp'
 import { getContentDir } from '../../../src/core/content-dir'
 import { createLogger } from '../../../src/core/logger'
-import type { AssetType } from './constants'
+import { getMimeType, type AssetType } from './constants'
 import { generateAssetId, assetDirRelPath, yearMonthFromAssetId } from './asset-id'
 import { withAssetLock } from './asset-lock'
 import {
@@ -74,21 +74,8 @@ export interface AssetSummary {
   hasThumb: boolean
 }
 
-const MIME_BY_EXT: Record<string, string> = {
-  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
-  webp: 'image/webp', svg: 'image/svg+xml', bmp: 'image/bmp', ico: 'image/x-icon',
-  mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm',
-  mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', ogg: 'audio/ogg',
-  pdf: 'application/pdf', json: 'application/json', csv: 'text/csv',
-  md: 'text/markdown', txt: 'text/plain', yaml: 'application/yaml', yml: 'application/yaml',
-}
-
 function extOf(filePath: string): string {
   return extname(filePath).slice(1).toLowerCase()
-}
-
-function extToMime(ext: string): string {
-  return MIME_BY_EXT[ext] ?? 'application/octet-stream'
 }
 
 function nowIso(): string {
@@ -151,7 +138,7 @@ export async function createAsset(input: AssetCreateInput): Promise<{ assetId: s
     version: 1,
     file,
     thumb,
-    mimeType: extToMime(ext),
+    mimeType: getMimeType(input.sourceFilePath),
     size: statSync(fileAbs).size,
     width: dims.width,
     height: dims.height,
@@ -325,7 +312,7 @@ export async function addVersion(assetId: string, input: AssetVersionInput): Pro
 
     const created = nowIso()
     const version: AssetVersion = {
-      version: nextVersion, file, thumb, mimeType: extToMime(ext), size: statSync(fileAbs).size,
+      version: nextVersion, file, thumb, mimeType: getMimeType(input.sourceFilePath), size: statSync(fileAbs).size,
       width: dims.width, height: dims.height, created,
       description: (input.description ?? input.prompt ?? '').slice(0, 200),
       tags: input.tags ?? [],
@@ -405,7 +392,10 @@ export async function addExport(assetId: string, input: AssetExportInput): Promi
     const src = manifest.versions.find((v) => v.version === fromVersion)
     if (!src) throw new Error(`Version ${fromVersion} not found in ${assetId}`)
 
+    // Surface is the export key AND the on-disk filename — reject anything
+    // that isn't a safe slug to prevent path traversal on write.
     const name = input.surface
+    if (!/^[a-zA-Z0-9_-]+$/.test(name)) throw new Error(`Invalid export surface: ${input.surface}`)
     const file = `exports/${name}.${input.format}`
     mkdirSync(join(dirAbs, 'exports'), { recursive: true })
 
@@ -533,16 +523,23 @@ export function emptyAssetTrash(): number {
 }
 
 /** Restore a trashed asset directory back into the store. */
-export function restoreAsset(trashName: string): { assetId: string } {
+export async function restoreAsset(trashName: string): Promise<{ assetId: string }> {
+  // Reject path-traversal in the trash entry name (matches permanentlyDeleteTrashed).
+  if (!trashName || trashName.includes('/') || trashName.includes('\\') || trashName.includes('..')) {
+    throw new Error(`Invalid trash name: ${trashName}`)
+  }
   const assetId = trashName.split(TRASH_SEPARATOR)[0]
   const rel = assetDirRelPath(assetId)
   if (!rel) throw new Error(`Cannot restore — invalid assetId in: ${trashName}`)
-  const trashPath = join(getContentDir(), 'assets', '.trash', trashName)
-  if (!existsSync(trashPath)) throw new Error(`Trashed asset not found: ${trashName}`)
-  const destAbs = join(getContentDir(), rel)
-  mkdirSync(join(destAbs, '..'), { recursive: true })
-  renameSync(trashPath, destAbs)
-  return { assetId }
+  return withAssetLock(assetId, async () => {
+    const trashPath = join(getContentDir(), 'assets', '.trash', trashName)
+    if (!existsSync(trashPath)) throw new Error(`Trashed asset not found: ${trashName}`)
+    const destAbs = join(getContentDir(), rel)
+    if (existsSync(destAbs)) throw new Error(`Cannot restore — an asset already exists at ${assetId}`)
+    mkdirSync(join(destAbs, '..'), { recursive: true })
+    renameSync(trashPath, destAbs)
+    return { assetId }
+  })
 }
 
 function sha256File(absPath: string): string | null {
@@ -582,6 +579,12 @@ export function findBySourcePath(sourcePath: string): string | null {
  * agent re-saving an evolving file versions ONE asset instead of minting N.
  */
 export async function upsertFromSource(sourcePath: string, input: AssetCreateInput): Promise<{ assetId: string; version: number; changed: boolean }> {
+  // Serialize on the source path so concurrent saves of the same source can't
+  // both miss findBySourcePath and mint duplicate assets (the dedup invariant).
+  return withAssetLock(`source:${sourcePath}`, () => upsertFromSourceInner(sourcePath, input))
+}
+
+async function upsertFromSourceInner(sourcePath: string, input: AssetCreateInput): Promise<{ assetId: string; version: number; changed: boolean }> {
   const source = input.source ?? { kind: 'workspace-file' as const, path: sourcePath }
   const existingId = findBySourcePath(sourcePath)
   if (!existingId) {
