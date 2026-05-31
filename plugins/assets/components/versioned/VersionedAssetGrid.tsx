@@ -68,7 +68,7 @@ function AssetCard({ asset, onOpen, scoreInfo }: { asset: VersionedAssetSummary;
       data-testid={`asset-card-${asset.assetId}`}
     >
       <div className="relative aspect-square overflow-hidden bg-zinc-900/50">
-        <AssetThumb assetId={asset.assetId} type={asset.type} hasThumb={asset.hasThumb} />
+        <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
         {scoreInfo && <ScoreOverlay info={scoreInfo} className="absolute right-1.5 top-1.5 z-10" />}
         {asset.versionCount > 1 && (
           <span className="absolute bottom-1.5 left-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300" data-testid="version-badge">
@@ -97,7 +97,7 @@ function AssetListRow({ asset, onOpen, scoreInfo }: { asset: VersionedAssetSumma
       data-testid={`asset-row-${asset.assetId}`}
     >
       <div className="size-10 shrink-0 overflow-hidden rounded">
-        <AssetThumb assetId={asset.assetId} type={asset.type} hasThumb={asset.hasThumb} />
+        <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">{asset.description || asset.assetId}</p>

@@ -93,7 +93,7 @@ export function TaskAssets({ taskId, readOnly }: TaskAssetsProps) {
               className="flex items-center gap-2 flex-1 min-w-0"
             >
               <div className="size-8 shrink-0 overflow-hidden rounded">
-                <AssetThumb assetId={asset.assetId} type={asset.type} hasThumb={asset.hasThumb} />
+                <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-medium text-foreground truncate">{asset.description || asset.assetId}</p>
