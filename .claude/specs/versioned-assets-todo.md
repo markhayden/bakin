@@ -27,7 +27,7 @@ Each phase ends at a **green checkpoint** (full `bun test --isolate` + `typechec
     - [x] **B10d-1** dead client UI: 11 legacy components + asset-preview/asset-detail-modal slots + useAssets/useTrash hook & SDK exports. ✅ a6e4fb3c.
     - [x] **B10d-2** legacy filename routes (list/file/delete/link/retype/content/trash) + handler files; routes.test.ts → surviving surface (9 routes). ✅ fb86bf42.
     - [x] **B10d-3+4** search/hook machinery + filename `ctx.assets` surface: manifest-only onSync/onUnlink/reindex/verifyExists; dropped sidecar/path-for-filename/trash hooks (kept getAssetTypes/resolveServe/purgeClipboard versioned-only); deleted libs (asset-index/sidecar/path-for-filename/relink/retype/trash/save-asset); rewrote health-checks to versioned manifest integrity; removed AssetMeta/AssetVariantMeta/AssetSaveInput/AssetSaveResult/AssetFileRef from core+SDK (added AssetTypeName, versioned AssetsAPI in SDK); serve route dropped pathForFilename fallback; post_channel → imageAssetId/videoAssetId; images health check → createAsset; permissions trimmed; consumer tests rewritten. ✅ suite 4082/0, typecheck + full build clean.
-  - [ ] **B10e** data wipe (this machine — authorized; user does other box), open PR B.
+  - [x] **B10e** data wipe — removed the 308 legacy filename-era files under `~/.bakin/assets` on this dev box (0 versioned manifests; all pre-cutover), recreated a clean empty store/inbox/.trash tree. User wipes their other box. PR B opened.
   - NOTE: deep-link to /assets/<id> on hard refresh showed "Not found" in the dev server (in-app nav works) — verify production SPA-fallback during e2e.
 
 ## Cross-repo / merge
