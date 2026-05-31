@@ -116,7 +116,7 @@ export function VersionedAssetDetail() {
         data-testid="add-version-input"
         onChange={(e) => addVersion(e.target.files)}
       />
-      <div className="mb-4 flex items-center gap-2">
+      <div className="sticky top-0 z-20 -mx-4 -mt-4 mb-4 flex items-center gap-2 border-b border-border bg-background px-4 py-3">
         <Button size="sm" variant="ghost" onClick={() => navigate({ to: '/assets' })}><ArrowLeft className="size-4 mr-1" /> Assets</Button>
         <h1 className="truncate text-base font-semibold" title={manifest.assetId}>{manifest.description || manifest.assetId}</h1>
         <Badge variant="secondary" className="ml-auto" data-testid="version-count">{manifest.versions.length} version{manifest.versions.length === 1 ? '' : 's'}</Badge>
