@@ -306,7 +306,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
   }
 
   /** Upload a file to the assets system and return the result. */
-  async function uploadAsset(file: File, taskId: string, source: 'clipboard' | 'upload'): Promise<{ ok: boolean; path?: string; filename?: string; error?: string }> {
+  async function uploadAsset(file: File, taskId: string, source: 'clipboard' | 'upload'): Promise<{ ok: boolean; assetId?: string; filename?: string; error?: string }> {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('taskId', taskId)
@@ -337,8 +337,8 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
         setPasting(true)
         try {
           const result = await uploadAsset(file, currentTaskId, 'clipboard')
-          if (result.ok) {
-            const ref = `![${result.filename || 'pasted image'}](/api/assets/${encodeURIComponent(result.filename!)})`
+          if (result.ok && result.assetId) {
+            const ref = `![${result.filename || 'pasted image'}](/api/assets/${encodeURIComponent(result.assetId)})`
             insertAtCursor(ref)
             window.dispatchEvent(new CustomEvent('bakin:asset-uploaded', { detail: { taskId: currentTaskId } }))
             toast('Image added to task assets', 'success')
@@ -366,8 +366,8 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
           const filename = `pasted-text-${Date.now()}.md`
           const file = new File([blob], filename, { type: 'text/markdown' })
           const result = await uploadAsset(file, currentTaskId, 'clipboard')
-          if (result.ok) {
-            const ref = `[Attached: ${result.filename} (${lineCount} lines)](/api/assets/${encodeURIComponent(result.filename!)})`
+          if (result.ok && result.assetId) {
+            const ref = `[Attached: ${result.filename} (${lineCount} lines)](/api/assets/${encodeURIComponent(result.assetId)})`
             insertAtCursor(ref)
             window.dispatchEvent(new CustomEvent('bakin:asset-uploaded', { detail: { taskId: currentTaskId } }))
             toast(`Text saved as task asset (${lineCount} lines)`, 'success')

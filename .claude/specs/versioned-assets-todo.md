@@ -21,8 +21,8 @@ Each phase ends at a **green checkpoint** (full `bun test --isolate` + `typechec
 - [x] **B9** docs: rewrote `using/assets.md`, hardened `using/images.md`, regenerated reference docs (exec-tools/openapi), new `.claude/knowledge/assets-versioning.md`, `CLAUDE.md`, recaptured the 2 relevant screenshots (grid + detail) via cwebp + removed stale ones; `docs:check` green. ✅ a9121908. (README needs no change. **bakin-bits Pixel docs = post-PR-B follow-up** — its contract goes live when PR B merges.)
 - [~] **B10 cutover** (functional cutover — re-point consumers; dead-file deletion is fast-follow):
   - [x] **B10a** all 12 agent exec tools → assetId (asset-service); versioned-exec-tools test; dead filename exec-tool tests removed. ✅ 4c966052, 4278/0.
-  - [ ] **B10b** cross-plugin UI → assetId: task-assets, asset-detail-modal, asset-renderer (consumed by tasks/projects).
-  - [ ] **B10c** empty-state + versioned upload flow ("Add your first asset").
+  - [x] **B10b** cross-plugin UI → assetId: task-assets (versioned fetch/thumb/navigate/relink), `POST /versioned/:id/relink` + includeChildren; route count → 19. ✅ c578d800, 4278/0.
+  - [x] **B10c** empty-state + versioned upload: `handleUpload`→`createAsset` (one v1 per file), `VersionedAssetGrid` "Add your first asset" CTA + header "Add asset" + hidden file input honoring `?linkTo=`, task-detail clipboard paste writes `/api/assets/<assetId>` refs; upload test rewritten to assert the manifest. ✅ suite 4280/0, typecheck + plugin build clean.
   - [ ] **B10d** remove dead legacy: old routes (list/file/delete/link/retype/content/trash), old `ctx.assets` methods (save/getByFilename/list/exists/fileRef), dead libs (save-asset/sidecar/path-for-filename/asset-index/relink/retype/trash) + dead imports + their tests.
   - [ ] **B10e** data wipe (this machine — authorized; user does other box), open PR B.
   - NOTE: deep-link to /assets/<id> on hard refresh showed "Not found" in the dev server (in-app nav works) — verify production SPA-fallback during e2e.

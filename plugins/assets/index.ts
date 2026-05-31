@@ -160,20 +160,9 @@ const routes = [
     summary: 'Upload asset files',
     body: { contentType: 'multipart/form-data' },
     responses: { 200: passthrough, 400: errorResponse, 500: errorResponse },
-    handler: async (req, ctx) => {
-      const res = await handleUpload(req, ctx as unknown as PluginContext)
-      if (res.ok) {
-        try {
-          const clone = await res.clone().json()
-          if (clone.saved && Array.isArray(clone.saved)) {
-            for (const saved of clone.saved) {
-              if (saved.path) indexAsset(saved.path).catch(() => {})
-            }
-          }
-        } catch { /* index best-effort */ }
-      }
-      return res
-    },
+    // createAsset writes a manifest, which the watcher picks up for reindex +
+    // the asset.changed SSE event — no explicit indexing needed here.
+    handler: async (req, ctx) => handleUpload(req, ctx as unknown as PluginContext),
   }),
 
   defineRoute({

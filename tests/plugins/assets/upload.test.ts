@@ -1,8 +1,10 @@
 /**
  * Tests for the asset upload route (POST /api/plugins/assets/upload).
+ * Each uploaded file becomes a versioned asset (v1) via createAsset; the route
+ * returns the new assetId and the manifest is the source of truth.
  */
 import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
-import { mkdirSync, rmSync, existsSync, readFileSync } from 'fs'
+import { mkdirSync, rmSync, readFileSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import {
@@ -87,6 +89,13 @@ async function callUpload(form: FormData): Promise<{ status: number; body: Recor
   return { status: res.status, body: await res.json() }
 }
 
+/** Read the manifest for an assetId (assetId encodes its YYYYMM shard). */
+function readManifest(assetId: string): Record<string, unknown> {
+  const month = `${assetId.slice(0, 4)}-${assetId.slice(4, 6)}`
+  const path = join(testDir, 'assets', 'store', month, assetId, 'manifest.json')
+  return JSON.parse(readFileSync(path, 'utf-8'))
+}
+
 describe('POST /upload', () => {
   it('registers the upload route', () => {
     expect(findUploadRoute()).toBeDefined()
@@ -100,18 +109,15 @@ describe('POST /upload', () => {
     const { status, body } = await callUpload(form)
     expect(status).toBe(200)
     expect(body.ok).toBe(true)
-    expect(body.path).toMatch(/^assets\/store\/\d{4}-\d{2}\//)
-    expect(body.filename).toMatch(/\.png$/)
+    expect(body.assetId).toMatch(/^\d{8}-.+-[0-9a-f]{8}$/)
+    expect(body.filename).toBe('test-photo.png')
 
-    // Verify sidecar was created with source field
-    const metaPath = join(testDir, body.metadataPath as string)
-    expect(existsSync(metaPath)).toBe(true)
-    const sidecar = JSON.parse(readFileSync(metaPath, 'utf-8'))
-    expect(sidecar.agent).toBe('user')
-    expect(sidecar.source).toBe('upload')
-    expect(sidecar.taskId).toBe('task-upload-1')
-    expect(sidecar.type).toBe('images')
-    expect(sidecar.originalFilename).toBe('test-photo.png')
+    const manifest = readManifest(body.assetId as string)
+    expect(manifest.agent).toBe('user')
+    expect((manifest.source as Record<string, unknown>).kind).toBe('upload')
+    expect(manifest.taskId).toBe('task-upload-1')
+    expect(manifest.type).toBe('images')
+    expect(manifest.currentVersion).toBe(1)
   })
 
   it('uploads a text file', async () => {
@@ -122,12 +128,11 @@ describe('POST /upload', () => {
     const { status, body } = await callUpload(form)
     expect(status).toBe(200)
     expect(body.ok).toBe(true)
-    expect(body.path).toMatch(/^assets\/store\/\d{4}-\d{2}\//)
 
-    const metaPath = join(testDir, body.metadataPath as string)
-    const sidecar = JSON.parse(readFileSync(metaPath, 'utf-8'))
-    expect(sidecar.description).toBe('My notes')
-    expect(sidecar.tags).toEqual(['draft', 'notes'])
+    const manifest = readManifest(body.assetId as string)
+    expect(manifest.description).toBe('My notes')
+    expect(manifest.tags).toEqual(['draft', 'notes'])
+    expect(manifest.type).toBe('text')
   })
 
   it('writes to the store even when no taskId is provided', async () => {
@@ -136,10 +141,8 @@ describe('POST /upload', () => {
     )
     const { status, body } = await callUpload(form)
     expect(status).toBe(200)
-    expect(body.path).toMatch(/^assets\/store\/\d{4}-\d{2}\//)
-    // taskId lives in the sidecar — the absence of a task doesn't affect path.
-    const sidecar = JSON.parse(readFileSync(join(testDir, body.metadataPath as string), 'utf-8'))
-    expect(sidecar.taskId).toBeNull()
+    const manifest = readManifest(body.assetId as string)
+    expect(manifest.taskId).toBeNull()
   })
 
   it('sets source to clipboard when specified', async () => {
@@ -149,9 +152,24 @@ describe('POST /upload', () => {
     )
     const { status, body } = await callUpload(form)
     expect(status).toBe(200)
-    const metaPath = join(testDir, body.metadataPath as string)
-    const sidecar = JSON.parse(readFileSync(metaPath, 'utf-8'))
-    expect(sidecar.source).toBe('clipboard')
+    const manifest = readManifest(body.assetId as string)
+    expect((manifest.source as Record<string, unknown>).kind).toBe('clipboard')
+  })
+
+  it('creates a distinct asset per file on a multi-file upload', async () => {
+    const form = createFormData([
+      { name: 'a.txt', content: 'alpha', type: 'text/plain' },
+      { name: 'b.txt', content: 'bravo', type: 'text/plain' },
+    ])
+    const route = findUploadRoute()
+    const req = new Request('http://localhost/api/plugins/assets/upload', { method: 'POST', body: form })
+    const res = await route!.handler(req, plugin.ctx)
+    const body = await res.json() as { ok: boolean; results: Array<{ ok: boolean; assetId: string }> }
+    expect(res.status).toBe(200)
+    expect(body.ok).toBe(true)
+    expect(body.results).toHaveLength(2)
+    const ids = new Set(body.results.map(r => r.assetId))
+    expect(ids.size).toBe(2)
   })
 
   it('rejects empty file', async () => {
@@ -198,9 +216,20 @@ describe('POST /upload', () => {
     )
     const { status, body } = await callUpload(form)
     expect(status).toBe(200)
-    expect(body.path).toMatch(/^assets\/store\/\d{4}-\d{2}\//)
-    const sidecar = JSON.parse(readFileSync(join(testDir, body.metadataPath as string), 'utf-8'))
-    expect(sidecar.type).toBe('pdf')
-    expect(sidecar.taskId).toBe('task-pdf-1')
+    const manifest = readManifest(body.assetId as string)
+    expect(manifest.type).toBe('pdf')
+    expect(manifest.taskId).toBe('task-pdf-1')
+  })
+})
+
+// Sanity: the readdir helper above keeps the store layout assumption honest.
+describe('upload store layout', () => {
+  it('shards assets under assets/store/<YYYY-MM>/<assetId>/', async () => {
+    const form = createFormData([{ name: 'layout.txt', content: 'x', type: 'text/plain' }])
+    const { body } = await callUpload(form)
+    const assetId = body.assetId as string
+    const month = `${assetId.slice(0, 4)}-${assetId.slice(4, 6)}`
+    const dir = join(testDir, 'assets', 'store', month, assetId)
+    expect(readdirSync(dir)).toContain('manifest.json')
   })
 })

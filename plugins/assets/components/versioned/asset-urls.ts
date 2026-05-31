@@ -24,3 +24,6 @@ export function assetExportUrl(assetId: string, name: string): string {
 
 /** Plugin API base for versioned mutations. */
 export const VERSIONED_API = '/api/plugins/assets/versioned'
+
+/** Multipart upload endpoint — one versioned asset (v1) per file. */
+export const UPLOAD_API = '/api/plugins/assets/upload'
