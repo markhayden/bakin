@@ -72,7 +72,7 @@ function AssetCard({ asset, onOpen, scoreInfo }: { asset: VersionedAssetSummary;
         {scoreInfo && <ScoreOverlay info={scoreInfo} className="absolute right-1.5 top-1.5 z-10" />}
         {asset.versionCount > 1 && (
           <span className="absolute bottom-1.5 left-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300" data-testid="version-badge">
-            v{asset.currentVersion} · {asset.versionCount} versions
+            {asset.versionCount} versions
           </span>
         )}
         <span className="absolute bottom-1.5 right-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-zinc-400">
@@ -105,7 +105,7 @@ function AssetListRow({ asset, onOpen, scoreInfo }: { asset: VersionedAssetSumma
           <span className="capitalize">{asset.type}</span>
           <span>·</span>
           <span>{asset.agent}</span>
-          {asset.versionCount > 1 && <><span>·</span><span className="text-emerald-400">v{asset.currentVersion} of {asset.versionCount}</span></>}
+          {asset.versionCount > 1 && <><span>·</span><span className="text-emerald-400">{asset.versionCount} versions</span></>}
         </div>
       </div>
       {scoreInfo && <ScoreOverlay info={scoreInfo} className="shrink-0" />}

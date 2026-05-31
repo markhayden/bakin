@@ -20,6 +20,7 @@ export function VersionedAssetDetail() {
   const [addingVersion, setAddingVersion] = useState(false)
   const [versionError, setVersionError] = useState<string | null>(null)
   const [lightbox, setLightbox] = useState(false)
+  const [selectedVersion, setSelectedVersion] = useState<number | null>(null)
   const versionInputRef = useRef<HTMLInputElement | null>(null)
 
   const fetchManifest = useCallback(() => {
@@ -92,9 +93,18 @@ export function VersionedAssetDetail() {
     </div>
   )
 
-  const versions = [...manifest.versions].sort((a, b) => b.version - a.version)
+  // Current pinned to the top, then the rest newest-first.
+  const versions = [...manifest.versions].sort((a, b) => {
+    if (a.version === manifest.currentVersion) return -1
+    if (b.version === manifest.currentVersion) return 1
+    return b.version - a.version
+  })
+  // Preview the selected version when it still exists, else the current one.
+  const previewVersion = (selectedVersion != null && manifest.versions.some(v => v.version === selectedVersion))
+    ? selectedVersion
+    : manifest.currentVersion
+  const previewVer = manifest.versions.find(v => v.version === previewVersion) ?? manifest.versions[manifest.versions.length - 1]
   const isImage = manifest.type === 'images'
-  const current = manifest.versions.find(v => v.version === manifest.currentVersion) ?? manifest.versions[manifest.versions.length - 1]
 
   return (
     <div className="w-full p-4" data-testid="asset-detail">
@@ -125,12 +135,17 @@ export function VersionedAssetDetail() {
         <AssetPreview
           assetId={manifest.assetId}
           type={manifest.type}
-          mimeType={current.mimeType}
-          version={manifest.currentVersion}
-          currentFile={current.file}
+          mimeType={previewVer.mimeType}
+          version={previewVersion}
+          currentFile={previewVer.file}
           onImageClick={() => setLightbox(true)}
           onSaved={fetchManifest}
         />
+        {previewVersion !== manifest.currentVersion && (
+          <p className="mt-1 text-center text-[11px] text-blue-400" data-testid="previewing-note">
+            Previewing v{previewVersion} (current is v{manifest.currentVersion})
+          </p>
+        )}
       </div>
 
       <div className="mb-4"><AssetMetaSummary agent={manifest.agent} created={manifest.created} taskId={manifest.taskId} tags={manifest.tags} /></div>
@@ -160,7 +175,9 @@ export function VersionedAssetDetail() {
             assetType={manifest.type}
             version={v}
             isCurrent={v.version === manifest.currentVersion}
+            isSelected={v.version === previewVersion}
             canDelete={manifest.versions.length > 1}
+            onSelect={setSelectedVersion}
             onPromote={promote}
             onDelete={deleteVersion}
           />
@@ -182,7 +199,7 @@ export function VersionedAssetDetail() {
             <X className="size-6" />
           </button>
           <img
-            src={assetCurrentUrl(manifest.assetId, manifest.currentVersion)}
+            src={assetCurrentUrl(manifest.assetId, previewVersion)}
             alt={manifest.assetId}
             className="max-h-[92vh] max-w-[92vw] rounded object-contain"
             onClick={(e) => e.stopPropagation()}
