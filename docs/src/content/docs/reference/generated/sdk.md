@@ -58,8 +58,6 @@ import { useSearch, useAssets, useDebug } from '@makinbakin/sdk/hooks'
 
 | Hook | Description |
 | --- | --- |
-| `useAssets` | Fetch and filter the asset library with live SSE updates. |
-| `useTrash` | Fetch trashed assets eligible for restore or permanent delete. |
 | `useContentStore` | Access the global Zustand store for SSE-driven content state. |
 | `useScheduleJobs` | List scheduled jobs with live updates. |
 | `useRunHistory` | Fetch run history for a scheduled job. |
@@ -498,14 +496,14 @@ The `bakin.config.ts` shape — root configuration for a Bakin installation.
 
 | Type | Description |
 | --- | --- |
-| `AssetVariantMeta` | Auto-generated variant (thumbnail/optimized/webp) for an asset. |
-| `AssetGenerationMeta` | Structured provenance written by image-generation tools into an asset sidecar. |
-| `AssetMeta` | Full asset record: file info + sidecar metadata + auto-generated variants. |
-| `TrashedAssetMeta` | Asset record while in trash (with deleted/expires timestamps). |
-| `AssetFileRef` | Compact reference to an asset by filename — used in channel deliveries. |
-| `AssetSaveInput` | Input for saving an agent-created or plugin-created file through the Assets plugin. |
-| `AssetSaveResult` | Result returned after the Assets plugin canonicalizes and persists a file. |
-| `AssetsAPI` | Assets API exposed via `ctx.assets` — asset persistence and lookups. |
+| `AssetTypeName` | The asset type taxonomy (mirrors ASSET_TYPES in the assets plugin). |
+| `AssetGenerationInfo` | Per-version generation provenance (matches the manifest's `generation` block). |
+| `AssetCreateInput` | Create a new versioned asset (v1) from a source file. |
+| `AssetVersionCreateInput` | Append a new version to an existing asset. |
+| `AssetExportRequest` | Render a derived export of a version (keyed/idempotent by surface). |
+| `VersionedAssetRef` | — |
+| `AssetVersionFileRef` | — |
+| `AssetsAPI` | Assets API exposed via `ctx.assets` — versioned asset-as-directory surface. |
 
 ### Exec Tools & Workflows
 

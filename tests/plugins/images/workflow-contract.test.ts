@@ -18,19 +18,20 @@ describe('images workflow contract', () => {
     expect(raw).toContain('bakin_exec_images_recommend')
     expect(raw).toContain('bakin_exec_images_generate')
     expect(raw).toContain('$preferred(pixel,$assigned)')
-    expect(raw).toContain('image_filename')
+    expect(raw).toContain('assetId')
+    expect(raw).not.toContain('image_filename')
     expect(raw).not.toContain('bakin_exec_gen_image')
     expect(raw).not.toContain('imagePath')
     expect(raw).not.toContain('thumbnailPath')
     expect(raw).not.toContain('Nano Banana')
   })
 
-  it('keeps social post as a composite workflow using asset filenames', () => {
+  it('keeps social post as a composite workflow using asset ids', () => {
     const raw = readWorkflow('plugins/workflows/defaults/workflows/image-social-post.yaml')
 
     expect(raw).toContain('workflow_id: image-generation')
-    expect(raw).toContain('finalOutput.image_filename')
-    expect(raw).toContain('imageFilename')
+    expect(raw).toContain('finalOutput.assetId')
+    expect(raw).toContain('imageAssetId')
     expect(raw).not.toContain('bakin_exec_gen_image')
     expect(raw).not.toContain('imagePath')
     expect(raw).not.toContain('Nano Banana')

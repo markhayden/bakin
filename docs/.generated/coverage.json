@@ -23,13 +23,13 @@
     },
     "hookRegistrations": {
       "status": "audited",
-      "count": 48,
+      "count": 40,
       "source": "source scan"
     },
     "slots": {
       "status": "documented",
       "count": 6,
-      "auditedRegistrations": 1,
+      "auditedRegistrations": 0,
       "source": "packages/sdk/src/register.ts and slot source scan"
     },
     "execTools": {

@@ -867,11 +867,13 @@ export interface AssetExportRequest {
   quality?: number
 }
 
+/** Reference to a versioned asset: its stable id and the version just written. */
 export interface VersionedAssetRef {
   assetId: string
   version: number
 }
 
+/** Resolved on-disk location of a specific asset version, for reads/serving. */
 export interface AssetVersionFileRef {
   absPath: string
   mimeType: string

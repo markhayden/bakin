@@ -480,93 +480,10 @@ curl -sS \
 
 <OpenApiReference tag="Assets" summary />
 
-<OpenApiReference operationId="assets.get.root">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  'http://localhost:3737/api/plugins/assets/'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="assets.delete.root">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  -X DELETE \
-  'http://localhost:3737/api/plugins/assets/'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="assets.put.content">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  -X PUT \
-  'http://localhost:3737/api/plugins/assets/content' \
-  -H 'Content-Type: application/json' \
-  --data '{}'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="assets.get.file">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  'http://localhost:3737/api/plugins/assets/file'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="assets.patch.link">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  -X PATCH \
-  'http://localhost:3737/api/plugins/assets/link' \
-  -H 'Content-Type: application/json' \
-  --data '{}'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="assets.patch.retype">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  -X PATCH \
-  'http://localhost:3737/api/plugins/assets/retype' \
-  -H 'Content-Type: application/json' \
-  --data '{}'
-```
-</OpenApiReference>
-
 <OpenApiReference operationId="assets.get.search">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   'http://localhost:3737/api/plugins/assets/search?q=<q>&limit=<limit>&offset=<offset>&facets=<facets>'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="assets.get.trash">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  'http://localhost:3737/api/plugins/assets/trash'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="assets.delete.trash">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  -X DELETE \
-  'http://localhost:3737/api/plugins/assets/trash'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="assets.delete.trash-file">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  -X DELETE \
-  'http://localhost:3737/api/plugins/assets/trash/<file>'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="assets.post.trash-file-restore">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  -X POST \
-  'http://localhost:3737/api/plugins/assets/trash/<file>/restore'
 ```
 </OpenApiReference>
 
@@ -615,6 +532,14 @@ curl -sS \
 curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/assets/versioned/<assetId>/promote'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.post.versioned-asset-id-relink">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/relink'
 ```
 </OpenApiReference>
 

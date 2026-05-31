@@ -155,17 +155,17 @@ Full surface in the [CLI reference](/docs/reference/generated/cli/). HTTP API su
 Agents create, version, link, and curate assets through MCP exec tools. The headline: **`bakin_exec_assets_save` upserts** — re-saving the same source versions the existing asset instead of duplicating it. (The old `bakin_exec_assets_update_content` tool is gone; saving the updated file is how you revise content now.)
 
 <!-- docs:exec-tools assets -->
-- `bakin_exec_assets_audit`: Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files. Set fix=true to auto-generate missing thumbnails and create stub sidecars.
-- `bakin_exec_assets_delete`: Soft-delete an asset (moves to trash, restorable until trash is emptied).
-- `bakin_exec_assets_empty_trash`: Permanently delete all items from trash. This cannot be undone.
-- `bakin_exec_assets_get`: Retrieve a single asset's sidecar metadata by canonical filename.
-- `bakin_exec_assets_link`: Link an asset to a different task, or unlink it (set taskId to null). Sidecar-only edit — no file move.
-- `bakin_exec_assets_list`: List assets with optional type filter. Returns asset count, canonical filenames, and metadata.
-- `bakin_exec_assets_list_trash`: List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge.
-- `bakin_exec_assets_open`: Open an attached asset by canonical filename. Returns sidecar metadata plus extracted text for text-like assets; non-extractable assets return metadata-only status.
+- `bakin_exec_assets_audit`: Audit versioned-asset health: manifest integrity, current-pointer resolution, and missing version files.
+- `bakin_exec_assets_delete`: Soft-delete a whole asset (all versions) to trash, restorable until trash is emptied.
+- `bakin_exec_assets_empty_trash`: Permanently delete all trashed assets. This cannot be undone.
+- `bakin_exec_assets_get`: Retrieve an asset manifest (versions, current pointer, exports) by assetId.
+- `bakin_exec_assets_link`: Link an asset to a different task, or unlink it (set taskId to null).
+- `bakin_exec_assets_list`: List managed assets (one entry per asset, current-version view). Optional type filter.
+- `bakin_exec_assets_list_trash`: List trashed assets (whole-asset deletions) with deletion time and version count.
+- `bakin_exec_assets_open`: Open an asset by assetId: returns its manifest plus the current version’s extracted text for text-like assets.
 - `bakin_exec_assets_permanent_delete`: Permanently delete a specific trashed asset. This cannot be undone.
-- `bakin_exec_assets_restore`: Restore a trashed asset back to its original location. Use bakin_exec_assets_list_trash first to get the filename.
-- `bakin_exec_assets_retype`: Change an asset's type classification. Sidecar-only edit — no file move.
+- `bakin_exec_assets_restore`: Restore a trashed asset by its trash name (from bakin_exec_assets_list_trash).
+- `bakin_exec_assets_retype`: Change an asset type classification.
 - `bakin_exec_assets_save`: Save an agent-created file as a managed, versioned asset. Re-saving the SAME source file appends a new version to the existing asset (or no-ops if unchanged) instead of creating a duplicate — so an evolving doc stays one asset with a version history. Returns the asset id.
 <!-- /docs:exec-tools -->
 

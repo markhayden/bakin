@@ -21,43 +21,37 @@ Asset tools let agents list, inspect, save, link, restore, and clean up files ma
 ### bakin_exec_assets_audit
 
 Label: Audited assets
-Purpose: Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files. Set fix=true to auto-generate missing thumbnails and create stub sidecars.
+Purpose: Audit versioned-asset health: manifest integrity, current-pointer resolution, and missing version files.
 
-| Argument | Type | Required | Description |
-| --- | --- | --- | --- |
-| `type` | choice | no | Limit audit to a specific asset type |
-| `fix` | boolean | no | Auto-fix issues where possible |
+Arguments: none.
 
 Example:
 
 ```sh
-mcporter call bakin-<agent>.bakin_exec_assets_audit --args '{
-  "type": "value",
-  "fix": true
-}'
+mcporter call bakin-<agent>.bakin_exec_assets_audit
 ```
 
 ### bakin_exec_assets_delete
 
 Label: Deleted an asset
-Purpose: Soft-delete an asset (moves to trash, restorable until trash is emptied).
+Purpose: Soft-delete a whole asset (all versions) to trash, restorable until trash is emptied.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
-| `filename` | string | yes | Canonical asset filename (e.g. "20260401-hero-a1b2c3d4.png") |
+| `assetId` | string | yes | Asset id |
 
 Example:
 
 ```sh
 mcporter call bakin-<agent>.bakin_exec_assets_delete --args '{
-  "filename": "value"
+  "assetId": "value"
 }'
 ```
 
 ### bakin_exec_assets_empty_trash
 
 Label: Emptied asset trash
-Purpose: Permanently delete all items from trash. This cannot be undone.
+Purpose: Permanently delete all trashed assets. This cannot be undone.
 
 Arguments: none.
 
@@ -70,35 +64,35 @@ mcporter call bakin-<agent>.bakin_exec_assets_empty_trash
 ### bakin_exec_assets_get
 
 Label: Read asset details
-Purpose: Retrieve a single asset's sidecar metadata by canonical filename.
+Purpose: Retrieve an asset manifest (versions, current pointer, exports) by assetId.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
-| `filename` | string | yes | Canonical asset filename (e.g. "20260401-hero-a1b2c3d4.png") |
+| `assetId` | string | yes | Asset id, e.g. "20260401-hero-a1b2c3d4" |
 
 Example:
 
 ```sh
 mcporter call bakin-<agent>.bakin_exec_assets_get --args '{
-  "filename": "value"
+  "assetId": "value"
 }'
 ```
 
 ### bakin_exec_assets_link
 
 Label: Linked an asset
-Purpose: Link an asset to a different task, or unlink it (set taskId to null). Sidecar-only edit — no file move.
+Purpose: Link an asset to a different task, or unlink it (set taskId to null).
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
-| `filename` | string | yes | Canonical asset filename (e.g. "20260401-hero-a1b2c3d4.png") |
+| `assetId` | string | yes | Asset id |
 | `taskId` | string | yes | Target task ID, or null to unlink |
 
 Example:
 
 ```sh
 mcporter call bakin-<agent>.bakin_exec_assets_link --args '{
-  "filename": "value",
+  "assetId": "value",
   "taskId": "value"
 }'
 ```
@@ -106,7 +100,7 @@ mcporter call bakin-<agent>.bakin_exec_assets_link --args '{
 ### bakin_exec_assets_list
 
 Label: Listed assets
-Purpose: List assets with optional type filter. Returns asset count, canonical filenames, and metadata.
+Purpose: List managed assets (one entry per asset, current-version view). Optional type filter.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -123,7 +117,7 @@ mcporter call bakin-<agent>.bakin_exec_assets_list --args '{
 ### bakin_exec_assets_list_trash
 
 Label: Listed trashed assets
-Purpose: List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge.
+Purpose: List trashed assets (whole-asset deletions) with deletion time and version count.
 
 Arguments: none.
 
@@ -136,17 +130,17 @@ mcporter call bakin-<agent>.bakin_exec_assets_list_trash
 ### bakin_exec_assets_open
 
 Label: Opened an asset
-Purpose: Open an attached asset by canonical filename. Returns sidecar metadata plus extracted text for text-like assets; non-extractable assets return metadata-only status.
+Purpose: Open an asset by assetId: returns its manifest plus the current version’s extracted text for text-like assets.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
-| `filename` | string | yes | Canonical asset filename (e.g. "20260401-hero-a1b2c3d4.png") |
+| `assetId` | string | yes | Asset id |
 
 Example:
 
 ```sh
 mcporter call bakin-<agent>.bakin_exec_assets_open --args '{
-  "filename": "value"
+  "assetId": "value"
 }'
 ```
 
@@ -157,48 +151,48 @@ Purpose: Permanently delete a specific trashed asset. This cannot be undone.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
-| `filename` | string | yes | The trash filename (includes __deleted- suffix) |
+| `trashName` | string | yes | Trash name (includes __deleted- suffix) |
 
 Example:
 
 ```sh
 mcporter call bakin-<agent>.bakin_exec_assets_permanent_delete --args '{
-  "filename": "value"
+  "trashName": "value"
 }'
 ```
 
 ### bakin_exec_assets_restore
 
 Label: Restored an asset
-Purpose: Restore a trashed asset back to its original location. Use bakin_exec_assets_list_trash first to get the filename.
+Purpose: Restore a trashed asset by its trash name (from bakin_exec_assets_list_trash).
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
-| `filename` | string | yes | The trash filename (includes __deleted- suffix) |
+| `trashName` | string | yes | Trash name (includes __deleted- suffix) |
 
 Example:
 
 ```sh
 mcporter call bakin-<agent>.bakin_exec_assets_restore --args '{
-  "filename": "value"
+  "trashName": "value"
 }'
 ```
 
 ### bakin_exec_assets_retype
 
 Label: Retyped an asset
-Purpose: Change an asset's type classification. Sidecar-only edit — no file move.
+Purpose: Change an asset type classification.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
-| `filename` | string | yes | Canonical asset filename (e.g. "20260401-hero-a1b2c3d4.png") |
+| `assetId` | string | yes | Asset id |
 | `type` | choice | yes |  |
 
 Example:
 
 ```sh
 mcporter call bakin-<agent>.bakin_exec_assets_retype --args '{
-  "filename": "value",
+  "assetId": "value",
   "type": "value"
 }'
 ```
@@ -213,9 +207,9 @@ Purpose: Save an agent-created file as a managed, versioned asset. Re-saving the
 | `filePath` | string | yes | Absolute path to the source file to save. Re-saving the same path versions the existing asset. |
 | `taskId` | string | yes | Task ID to link the asset. |
 | `type` | choice | yes |  |
-| `description` | string | no | One-sentence summary visible in the asset grid and search. Be specific — "Q2 blog hero image" not "an image". |
-| `tags` | array | no | Lowercase hyphenated tags for filtering. Use domain tags (social, blog), format tags (draft, final), and project tags. |
-| `tool` | string | no | Tool used to generate or import the asset (e.g., "bakin_exec_images_generate") |
+| `description` | string | no | One-sentence summary visible in the asset grid and search. Be specific. |
+| `tags` | array | no | Lowercase hyphenated tags for filtering. |
+| `tool` | string | no | Tool used to generate or import the asset. |
 | `slug` | string | no | Custom slug for the asset id. Auto-derived from source filename if omitted. |
 
 Example:
@@ -1145,8 +1139,8 @@ Purpose: Post a message through the active runtime channel adapter. Supports ima
 | --- | --- | --- | --- |
 | `channel` | string | yes | Channel name or runtime channel target |
 | `content` | string | yes | Message text / caption |
-| `imageFilename` | string | no | Asset filename resolved via the assets index. |
-| `videoFilename` | string | no | Asset filename resolved via the assets index. |
+| `imageAssetId` | string | no | Asset id of an image to attach (current version is sent). |
+| `videoAssetId` | string | no | Asset id of a video to attach (current version is sent). |
 | `embed` | record | no | Optional rich metadata for adapters that support it |
 | `taskId` | string | no | Task ID for audit trail |
 
@@ -1156,8 +1150,8 @@ Example:
 mcporter call bakin-<agent>.bakin_exec_post_channel --args '{
   "channel": "value",
   "content": "value",
-  "imageFilename": "value",
-  "videoFilename": "value",
+  "imageAssetId": "value",
+  "videoAssetId": "value",
   "embed": {
     "key": "value"
   },
