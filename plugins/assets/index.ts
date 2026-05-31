@@ -30,7 +30,12 @@ import {
   handleVersionedDeleteVersion, handleVersionedDeleteAsset, handleVersionedExport,
 } from './routes/versioned'
 import { isValidAssetId } from './lib/asset-id'
-import { getAsset, upsertFromSource, listAssets as listVersionedAssets, deleteAsset as deleteVersionedAsset } from './lib/asset-service'
+import {
+  getAsset, upsertFromSource, resolveFile as resolveVersionedFile,
+  listAssets as listVersionedAssets, deleteAsset as deleteVersionedAsset,
+  relink as relinkVersioned, retype as retypeVersioned,
+  listTrashedAssets, emptyAssetTrash, permanentlyDeleteTrashed, restoreAsset as restoreVersionedAsset,
+} from './lib/asset-service'
 import { versionedAssetPath, buildVersionedAssetSearchDoc } from './lib/search-doc'
 import { ASSET_TYPES, type AssetType } from './lib/constants'
 import { listTrash, restoreAsset, emptyTrash, permanentDelete, softDelete, type TrashedAsset } from './lib/trash'
@@ -734,108 +739,41 @@ const assetsPlugin: BakinPlugin = definePlugin({
     ctx.registerExecTool({
       name: 'bakin_exec_assets_list',
       label: 'Listed assets',
-      description: 'List assets with optional type filter. Returns asset count, canonical filenames, and metadata.',
-      parameters: {
-        type: z.enum(ASSET_TYPES).optional().describe('Filter by asset type'),
-      },
+      description: 'List managed assets (one entry per asset, current-version view). Optional type filter.',
+      parameters: { type: z.enum(ASSET_TYPES).optional().describe('Filter by asset type') },
       handler: async (params: Record<string, unknown>) => {
-        // Delegate to the existing list handler via a synthetic request
-        const typeFilter = params.type ? `?type=${params.type}` : ''
-        const req = new Request(`http://localhost/api/plugins/assets/list${typeFilter}`)
-        const res = await handleList(req)
-        const data = await res.json()
-        return { ok: true, ...data }
+        const assets = listVersionedAssets(params.type ? { type: params.type as AssetType } : undefined)
+        return { ok: true, count: assets.length, assets }
       },
     })
 
     ctx.registerExecTool({
       name: 'bakin_exec_assets_get',
       label: 'Read asset details',
-      description: 'Retrieve a single asset\'s sidecar metadata by canonical filename.',
-      parameters: {
-        filename: z.string().describe('Canonical asset filename (e.g. "20260401-hero-a1b2c3d4.png")'),
-      },
+      description: 'Retrieve an asset manifest (versions, current pointer, exports) by assetId.',
+      parameters: { assetId: z.string().describe('Asset id, e.g. "20260401-hero-a1b2c3d4"') },
       handler: async (params: Record<string, unknown>) => {
-        const filename = typeof params.filename === 'string' ? params.filename : ''
-        if (!isSafeCanonicalFilename(filename)) return { ok: false, error: 'Invalid filename' }
-        const assetPath = pathForFilename(filename)
-        if (!assetPath) return { ok: false, error: 'Invalid filename' }
-        const contentDir = getContentDir()
-        const fullPath = join(contentDir, assetPath)
-        if (!existsSync(fullPath)) {
-          return { ok: false, error: 'Asset not found' }
-        }
-        const sidecarPath = getSidecarPath(fullPath)
-        if (!existsSync(sidecarPath)) {
-          return { ok: true, asset: { filename, path: assetPath, sidecar: null } }
-        }
-        try {
-          const sidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
-          return { ok: true, asset: { filename, path: assetPath, ...sidecar } }
-        } catch (err) {
-          return { ok: false, error: `Failed to read sidecar: ${(err as Error).message}` }
-        }
+        const assetId = params.assetId as string
+        if (!isValidAssetId(assetId)) return { ok: false, error: 'Invalid assetId' }
+        const asset = getAsset(assetId)
+        return asset ? { ok: true, asset } : { ok: false, error: 'Asset not found' }
       },
     })
 
     ctx.registerExecTool({
       name: 'bakin_exec_assets_open',
       label: 'Opened an asset',
-      description: 'Open an attached asset by canonical filename. Returns sidecar metadata plus extracted text for text-like assets; non-extractable assets return metadata-only status.',
-      parameters: {
-        filename: z.string().describe('Canonical asset filename (e.g. "20260401-hero-a1b2c3d4.png")'),
-      },
+      description: 'Open an asset by assetId: returns its manifest plus the current version’s extracted text for text-like assets.',
+      parameters: { assetId: z.string().describe('Asset id') },
       handler: async (params: Record<string, unknown>) => {
-        const filename = typeof params.filename === 'string' ? params.filename : ''
-        if (!isSafeCanonicalFilename(filename)) return { ok: false, error: 'Invalid filename' }
-        const assetPath = pathForFilename(filename)
-        if (!assetPath) return { ok: false, error: 'Invalid filename' }
-
-        const contentDir = getContentDir()
-        const fullPath = join(contentDir, assetPath)
-        if (!existsSync(fullPath)) return { ok: false, error: 'Asset not found' }
-
-        const sidecarPath = getSidecarPath(fullPath)
-        let sidecar: Record<string, unknown> | null = null
-        if (existsSync(sidecarPath)) {
-          try {
-            sidecar = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
-          } catch (err) {
-            return { ok: false, error: `Failed to read sidecar: ${(err as Error).message}` }
-          }
-        }
-
-        if (!canExtractAssetContent(filename)) {
-          return {
-            ok: true,
-            asset: {
-              filename,
-              path: assetPath,
-              sidecar,
-              content: {
-                mode: 'metadata-only',
-                available: false,
-                text: '',
-                note: 'This asset type has no extractable text content; use the metadata or asset preview UI for binary inspection.',
-              },
-            },
-          }
-        }
-
-        const text = await extractAssetContent(fullPath, filename)
-        return {
-          ok: true,
-          asset: {
-            filename,
-            path: assetPath,
-            sidecar,
-            content: {
-              mode: 'text',
-              available: text.length > 0,
-              text,
-            },
-          },
-        }
+        const assetId = params.assetId as string
+        if (!isValidAssetId(assetId)) return { ok: false, error: 'Invalid assetId' }
+        const asset = getAsset(assetId)
+        if (!asset) return { ok: false, error: 'Asset not found' }
+        const ref = resolveVersionedFile(assetId)
+        let content = ''
+        if (ref) content = await extractAssetContent(ref.absPath, ref.absPath.split('/').pop() || '').catch(() => '')
+        return { ok: true, asset, content }
       },
     })
 
@@ -847,9 +785,9 @@ const assetsPlugin: BakinPlugin = definePlugin({
         filePath: z.string().describe('Absolute path to the source file to save. Re-saving the same path versions the existing asset.'),
         taskId: z.string().describe('Task ID to link the asset.'),
         type: z.enum(ASSET_TYPES).describe(TYPE_RUBRIC),
-        description: z.string().optional().describe('One-sentence summary visible in the asset grid and search. Be specific — "Q2 blog hero image" not "an image".'),
-        tags: z.array(z.string()).optional().describe('Lowercase hyphenated tags for filtering. Use domain tags (social, blog), format tags (draft, final), and project tags.'),
-        tool: z.string().optional().describe('Tool used to generate or import the asset (e.g., "bakin_exec_images_generate")'),
+        description: z.string().optional().describe('One-sentence summary visible in the asset grid and search. Be specific.'),
+        tags: z.array(z.string()).optional().describe('Lowercase hyphenated tags for filtering.'),
+        tool: z.string().optional().describe('Tool used to generate or import the asset.'),
         slug: z.string().optional().describe('Custom slug for the asset id. Auto-derived from source filename if omitted.'),
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
@@ -857,15 +795,10 @@ const assetsPlugin: BakinPlugin = definePlugin({
         if (!filePath) return { ok: false, error: 'filePath is required' }
         try {
           const r = await upsertFromSource(filePath, {
-            sourceFilePath: filePath,
-            type: params.type as AssetType,
-            agent,
-            taskId: (params.taskId as string) ?? null,
-            slug: params.slug as string | undefined,
-            op: 'upload',
-            tool: (params.tool as string) ?? null,
-            description: params.description as string | undefined,
-            tags: params.tags as string[] | undefined,
+            sourceFilePath: filePath, type: params.type as AssetType, agent,
+            taskId: (params.taskId as string) ?? null, slug: params.slug as string | undefined,
+            op: 'upload', tool: (params.tool as string) ?? null,
+            description: params.description as string | undefined, tags: params.tags as string[] | undefined,
           })
           ctx.activity.audit(r.changed ? 'asset.saved' : 'asset.unchanged', agent, { assetId: r.assetId, version: r.version })
           return { ok: true, assetId: r.assetId, version: r.version, changed: r.changed }
@@ -879,25 +812,18 @@ const assetsPlugin: BakinPlugin = definePlugin({
       name: 'bakin_exec_assets_delete',
       label: 'Deleted an asset',
       activityDuplicate: true,
-      description: 'Soft-delete an asset (moves to trash, restorable until trash is emptied).',
-      parameters: {
-        filename: z.string().describe('Canonical asset filename (e.g. "20260401-hero-a1b2c3d4.png")'),
-      },
+      description: 'Soft-delete a whole asset (all versions) to trash, restorable until trash is emptied.',
+      parameters: { assetId: z.string().describe('Asset id') },
       handler: async (params: Record<string, unknown>, agent: string) => {
-        const filename = params.filename as string
-        if (!isSafeCanonicalFilename(filename)) return { ok: false, error: 'Invalid filename' }
-        const assetPath = pathForFilename(filename)
-        if (!assetPath) return { ok: false, error: 'Invalid filename' }
-        const contentDir = getContentDir()
-        const fullPath = join(contentDir, assetPath)
-        const assetsRoot = join(contentDir, 'assets')
-        if (!existsSync(fullPath)) return { ok: false, error: 'Asset not found' }
-        const success = softDelete(fullPath, assetsRoot)
-        if (!success) return { ok: false, error: 'Failed to delete asset' }
-        removeAsset(assetPath)
-        ctx.search.remove(filename).catch(() => {})
-        ctx.activity.audit('asset.deleted', agent, { filename, path: assetPath })
-        return { ok: true, filename, trashed: [assetPath] }
+        const assetId = params.assetId as string
+        if (!isValidAssetId(assetId)) return { ok: false, error: 'Invalid assetId' }
+        try {
+          const { trashName } = await deleteVersionedAsset(assetId)
+          ctx.activity.audit('asset.deleted', agent, { assetId })
+          return { ok: true, assetId, trashName }
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
+        }
       },
     })
 
@@ -905,188 +831,21 @@ const assetsPlugin: BakinPlugin = definePlugin({
       name: 'bakin_exec_assets_link',
       label: 'Linked an asset',
       activityDuplicate: true,
-      description: 'Link an asset to a different task, or unlink it (set taskId to null). Sidecar-only edit — no file move.',
+      description: 'Link an asset to a different task, or unlink it (set taskId to null).',
       parameters: {
-        filename: z.string().describe('Canonical asset filename (e.g. "20260401-hero-a1b2c3d4.png")'),
+        assetId: z.string().describe('Asset id'),
         taskId: z.string().nullable().describe('Target task ID, or null to unlink'),
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
-        const result = relinkAsset({
-          filename: params.filename as string,
-          newTaskId: (params.taskId as string | null) ?? null,
-        })
-        if (result.ok) {
-          ctx.activity.audit('asset.relinked', agent, { filename: result.filename, newTaskId: result.newTaskId })
-          if (result.path) indexAsset(result.path as string).catch(() => {})
-        }
-        return result
-      },
-    })
-
-    ctx.registerExecTool({
-      name: 'bakin_exec_assets_list_trash',
-      label: 'Listed trashed assets',
-      description: 'List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge.',
-      parameters: {},
-      handler: async () => {
-        const assetsRoot = join(getContentDir(), 'assets')
-        const items = await listTrash(assetsRoot)
-        return {
-          ok: true,
-          count: items.length,
-          items: items.map((i: TrashedAsset) => ({
-            filename: i.filename, originalFilename: i.originalFilename,
-            type: i.type, size: i.size, deletedAt: i.deletedAt, expiresAt: i.expiresAt,
-            agent: i.metadata?.agent ?? 'unknown',
-          })),
-        }
-      },
-    })
-
-    ctx.registerExecTool({
-      name: 'bakin_exec_assets_restore',
-      label: 'Restored an asset',
-      description: 'Restore a trashed asset back to its original location. Use bakin_exec_assets_list_trash first to get the filename.',
-      parameters: {
-        filename: z.string().describe('The trash filename (includes __deleted- suffix)'),
-      },
-      handler: async (params: Record<string, unknown>) => {
-        const filename = params.filename as string
-        const assetsRoot = join(getContentDir(), 'assets')
-        const restoredPath = await restoreAsset(filename, assetsRoot)
-        if (!restoredPath) return { ok: false, error: 'Failed to restore asset — file may not exist in trash' }
-        indexAsset(restoredPath).catch(() => {})
-        return { ok: true, restoredPath }
-      },
-    })
-
-    ctx.registerExecTool({
-      name: 'bakin_exec_assets_audit',
-      label: 'Audited assets',
-      description: 'Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files. Set fix=true to auto-generate missing thumbnails and create stub sidecars.',
-      parameters: {
-        type: z.enum(ASSET_TYPES).optional().describe('Limit audit to a specific asset type'),
-        fix: z.boolean().optional().default(false).describe('Auto-fix issues where possible'),
-      },
-      handler: async (params: Record<string, unknown>) => {
-        const fix = params.fix === true
-        const typeFilter = typeof params.type === 'string' ? params.type : undefined
-        const contentDir = getContentDir()
-        const assetsRoot = join(contentDir, 'assets')
-
-        if (!existsSync(assetsRoot)) {
-          return { ok: false, error: 'Assets directory not found' }
-        }
-
-        interface AuditIssue { path: string; issue: string; fixed: boolean }
-        const issues: AuditIssue[] = []
-        let total = 0
-        let fixed = 0
-
-        const storeRoot = join(assetsRoot, 'store')
-        if (!existsSync(storeRoot)) {
-          return { ok: true, summary: { total: 0, healthy: 0, issues: 0, fixed: 0 }, issues: [] }
-        }
-
-        const isAssetFile = (filename: string) => !filename.endsWith('.meta.json') && !filename.startsWith('.')
-
-        let months: string[]
+        const assetId = params.assetId as string
+        if (!isValidAssetId(assetId)) return { ok: false, error: 'Invalid assetId' }
         try {
-          months = readdirSync(storeRoot).filter(m => {
-            if (m.startsWith('.')) return false
-            try { return statSync(join(storeRoot, m)).isDirectory() } catch { return false }
-          })
-        } catch { months = [] }
-
-        for (const month of months) {
-          const monthDir = join(storeRoot, month)
-          let files: string[]
-          try { files = readdirSync(monthDir).filter(isAssetFile) } catch { continue }
-
-          const allFiles = new Set(files)
-          const primaryFiles: string[] = []
-          const variantFiles: string[] = []
-          for (const file of files) {
-            if (detectVariant(file)) variantFiles.push(file)
-            else primaryFiles.push(file)
-          }
-
-          for (const file of primaryFiles) {
-            const fullPath = join(monthDir, file)
-            const relPath = `assets/store/${month}/${file}`
-
-            let sidecarType = 'other'
-            const sidecarPath = getSidecarPath(fullPath)
-            if (!existsSync(sidecarPath)) {
-              if (fix) {
-                createStub(fullPath)
-                issues.push({ path: relPath, issue: 'missing-sidecar', fixed: true })
-                fixed++
-              } else {
-                issues.push({ path: relPath, issue: 'missing-sidecar', fixed: false })
-              }
-            } else {
-              const sidecarIssues = validateSidecar(sidecarPath)
-              if (sidecarIssues.length > 0) {
-                issues.push({ path: relPath, issue: `invalid-sidecar: ${sidecarIssues.join('; ')}`, fixed: false })
-              }
-              try {
-                const raw = JSON.parse(readFileSync(sidecarPath, 'utf-8'))
-                if (typeof raw.type === 'string') sidecarType = raw.type
-                if (raw.agent === 'unknown') {
-                  issues.push({ path: relPath, issue: 'stub-sidecar', fixed: false })
-                }
-              } catch { /* already caught by validateSidecar */ }
-            }
-
-            if (typeFilter && sidecarType !== typeFilter) continue
-            total++
-
-            if (sidecarType === 'images') {
-              const dotIdx = file.lastIndexOf('.')
-              const stem = dotIdx > 0 ? file.substring(0, dotIdx) : file
-              const hasThumb = allFiles.has(`${stem}.thumb.jpg`) || allFiles.has(`${stem}.thumb.jpeg`)
-              if (!hasThumb) {
-                if (fix) {
-                  const thumbPath = join(monthDir, `${stem}.thumb.jpg`)
-                  if (generateThumbnail(fullPath, thumbPath)) {
-                    issues.push({ path: relPath, issue: 'missing-thumbnail', fixed: true })
-                    fixed++
-                  } else {
-                    issues.push({ path: relPath, issue: 'missing-thumbnail (fix failed)', fixed: false })
-                  }
-                } else {
-                  issues.push({ path: relPath, issue: 'missing-thumbnail', fixed: false })
-                }
-              }
-            }
-          }
-
-          for (const file of variantFiles) {
-            const relPath = `assets/store/${month}/${file}`
-            const v = detectVariant(file)
-            if (!v) continue
-            const hasPrimary = primaryFiles.some(p => {
-              const pDot = p.lastIndexOf('.')
-              const pStem = pDot > 0 ? p.substring(0, pDot) : p
-              return pStem === v.baseStem
-            })
-            if (!hasPrimary) issues.push({ path: relPath, issue: 'orphaned-variant', fixed: false })
-          }
-
-          try {
-            for (const f of readdirSync(monthDir)) {
-              if (!f.endsWith('.meta.json')) continue
-              const assetName = f.replace('.meta.json', '')
-              if (!allFiles.has(assetName)) {
-                issues.push({ path: `assets/store/${month}/${f}`, issue: 'orphaned-sidecar', fixed: false })
-              }
-            }
-          } catch { /* skip */ }
+          await relinkVersioned(assetId, (params.taskId as string | null) ?? null)
+          ctx.activity.audit('asset.relinked', agent, { assetId, newTaskId: (params.taskId as string | null) ?? null })
+          return { ok: true, assetId }
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
-
-        const healthy = total - issues.filter(i => !i.issue.startsWith('orphaned') && !i.fixed).length
-        return { ok: true, summary: { total, healthy, issues: issues.length, fixed }, issues }
       },
     })
 
@@ -1094,38 +853,59 @@ const assetsPlugin: BakinPlugin = definePlugin({
       name: 'bakin_exec_assets_retype',
       label: 'Retyped an asset',
       activityDuplicate: true,
-      description: 'Change an asset\'s type classification. Sidecar-only edit — no file move.',
+      description: 'Change an asset type classification.',
       parameters: {
-        filename: z.string().describe('Canonical asset filename (e.g. "20260401-hero-a1b2c3d4.png")'),
+        assetId: z.string().describe('Asset id'),
         type: z.enum(ASSET_TYPES).describe(TYPE_RUBRIC),
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
-        const result = retypeAsset({
-          filename: params.filename as string,
-          newType: params.type as typeof ASSET_TYPES[number],
-        })
-        if (result.ok) {
-          ctx.activity.audit('asset.retyped', agent, { filename: result.filename, newType: result.newType })
-          if (result.path) indexAsset(result.path).catch(() => {})
+        const assetId = params.assetId as string
+        if (!isValidAssetId(assetId)) return { ok: false, error: 'Invalid assetId' }
+        try {
+          await retypeVersioned(assetId, params.type as AssetType)
+          ctx.activity.audit('asset.retyped', agent, { assetId, newType: params.type })
+          return { ok: true, assetId }
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
-        return result
       },
     })
 
-    // bakin_exec_assets_update_content retired: re-saving the source via
-    // bakin_exec_assets_save now versions the asset (see upsertFromSource), so a
-    // separate "rewrite the file" tool is no longer needed and was a
-    // discoverability trap (agents kept minting new assets via save instead).
+    ctx.registerExecTool({
+      name: 'bakin_exec_assets_list_trash',
+      label: 'Listed trashed assets',
+      description: 'List trashed assets (whole-asset deletions) with deletion time and version count.',
+      parameters: {},
+      handler: async () => {
+        const items = listTrashedAssets()
+        return { ok: true, count: items.length, items }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_assets_restore',
+      label: 'Restored an asset',
+      description: 'Restore a trashed asset by its trash name (from bakin_exec_assets_list_trash).',
+      parameters: { trashName: z.string().describe('Trash name (includes __deleted- suffix)') },
+      handler: async (params: Record<string, unknown>, agent: string) => {
+        try {
+          const { assetId } = restoreVersionedAsset(params.trashName as string)
+          ctx.activity.audit('asset.restored', agent, { assetId })
+          return { ok: true, assetId }
+        } catch (err) {
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
+        }
+      },
+    })
 
     ctx.registerExecTool({
       name: 'bakin_exec_assets_empty_trash',
       label: 'Emptied asset trash',
       activityDuplicate: true,
-      description: 'Permanently delete all items from trash. This cannot be undone.',
+      description: 'Permanently delete all trashed assets. This cannot be undone.',
       parameters: {},
       handler: async (_params: Record<string, unknown>, agent: string) => {
-        const assetsRoot = join(getContentDir(), 'assets')
-        const deleted = emptyTrash(assetsRoot)
+        const deleted = emptyAssetTrash()
         ctx.activity.audit('assets.trash.emptied', agent, { deleted })
         return { ok: true, deleted }
       },
@@ -1136,19 +916,23 @@ const assetsPlugin: BakinPlugin = definePlugin({
       label: 'Permanently deleted an asset',
       activityDuplicate: true,
       description: 'Permanently delete a specific trashed asset. This cannot be undone.',
-      parameters: {
-        filename: z.string().describe('The trash filename (includes __deleted- suffix)'),
-      },
+      parameters: { trashName: z.string().describe('Trash name (includes __deleted- suffix)') },
       handler: async (params: Record<string, unknown>, agent: string) => {
-        const filename = params.filename as string
-        if (!filename || filename.includes('/') || filename.includes('..')) {
-          return { ok: false, error: 'Invalid filename' }
-        }
-        const assetsRoot = join(getContentDir(), 'assets')
-        const success = permanentDelete(filename, assetsRoot)
-        if (!success) return { ok: false, error: 'Failed to permanently delete — file may not exist in trash' }
-        ctx.activity.audit('assets.trash.permanent_delete', agent, { filename })
+        const ok = permanentlyDeleteTrashed(params.trashName as string)
+        if (!ok) return { ok: false, error: 'Not found in trash' }
+        ctx.activity.audit('assets.trash.permanent_delete', agent, { trashName: params.trashName })
         return { ok: true }
+      },
+    })
+
+    ctx.registerExecTool({
+      name: 'bakin_exec_assets_audit',
+      label: 'Audited assets',
+      description: 'Audit versioned-asset health: manifest integrity, current-pointer resolution, and missing version files.',
+      parameters: {},
+      handler: async () => {
+        const results = checkAssets(getContentDir())
+        return { ok: true, count: results.length, results }
       },
     })
 

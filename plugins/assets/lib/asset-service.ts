@@ -469,6 +469,63 @@ export async function deleteAsset(assetId: string): Promise<{ trashName: string 
   })
 }
 
+export interface TrashedAssetInfo {
+  trashName: string
+  assetId: string
+  type: string
+  agent: string
+  deletedAt: number
+  versionCount: number
+  description: string
+}
+
+const TRASH_SUFFIX_RE = new RegExp(`(.+)${TRASH_SEPARATOR.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\d+)$`)
+
+/** List trashed versioned assets (directories under .trash/). */
+export function listTrashedAssets(): TrashedAssetInfo[] {
+  const trashRoot = join(getContentDir(), 'assets', '.trash')
+  if (!existsSync(trashRoot)) return []
+  const out: TrashedAssetInfo[] = []
+  for (const entry of readdirSync(trashRoot)) {
+    const m = TRASH_SUFFIX_RE.exec(entry)
+    if (!m) continue
+    const dir = join(trashRoot, entry)
+    try { if (!statSync(dir).isDirectory()) continue } catch { continue }
+    const manifest = readManifest(dir)
+    out.push({
+      trashName: entry,
+      assetId: m[1],
+      type: manifest?.type ?? 'other',
+      agent: manifest?.agent ?? 'unknown',
+      deletedAt: Number(m[2]),
+      versionCount: manifest?.versions.length ?? 0,
+      description: manifest?.description ?? '',
+    })
+  }
+  return out.sort((a, b) => b.deletedAt - a.deletedAt)
+}
+
+/** Permanently delete one trashed asset directory. */
+export function permanentlyDeleteTrashed(trashName: string): boolean {
+  if (!trashName || trashName.includes('/') || trashName.includes('..')) return false
+  const dir = join(getContentDir(), 'assets', '.trash', trashName)
+  if (!existsSync(dir)) return false
+  rmSync(dir, { recursive: true, force: true })
+  return true
+}
+
+/** Empty the whole asset trash. Returns the count removed. */
+export function emptyAssetTrash(): number {
+  const trashRoot = join(getContentDir(), 'assets', '.trash')
+  if (!existsSync(trashRoot)) return 0
+  const entries = readdirSync(trashRoot)
+  let n = 0
+  for (const entry of entries) {
+    try { rmSync(join(trashRoot, entry), { recursive: true, force: true }); n++ } catch { /* skip */ }
+  }
+  return n
+}
+
 /** Restore a trashed asset directory back into the store. */
 export function restoreAsset(trashName: string): { assetId: string } {
   const assetId = trashName.split(TRASH_SEPARATOR)[0]
