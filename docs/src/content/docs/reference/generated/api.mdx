@@ -487,6 +487,37 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="assets.get.trash">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/assets/trash'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.delete.trash">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/assets/trash'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.delete.trash-trash-name">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/assets/trash/<trashName>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.post.trash-trash-name-restore">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/trash/<trashName>/restore'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="assets.post.upload">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -548,6 +579,16 @@ curl -sS \
 curl -sS \
   -X DELETE \
   'http://localhost:3737/api/plugins/assets/versioned/<assetId>/v/<version>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.post.versioned-asset-id-version">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/version' \
+  -H 'Content-Type: multipart/form-data' \
+  --data '"value"'
 ```
 </OpenApiReference>
 

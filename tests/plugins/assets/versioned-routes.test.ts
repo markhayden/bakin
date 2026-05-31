@@ -4,7 +4,7 @@
  */
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { mkdirSync, rmSync } from 'node:fs'
+import { mkdirSync, rmSync, readFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 
 const testDir = join(tmpdir(), `bakin-versioned-routes-${Date.now()}-${randomUUID()}`)
@@ -17,6 +17,8 @@ import { createAsset, addVersion, getAsset } from '../../../plugins/assets/lib/a
 import {
   handleVersionedList, handleVersionedGet, handleVersionedPromote,
   handleVersionedDeleteVersion, handleVersionedDeleteAsset, handleVersionedExport,
+  handleVersionedAddVersion, handleTrashList, handleTrashRestore,
+  handleTrashPermanentDelete, handleTrashEmpty,
 } from '../../../plugins/assets/routes/versioned'
 
 const base = 'http://localhost/api/plugins/assets/versioned'
@@ -81,5 +83,67 @@ describe('versioned routes', () => {
     const res = await handleVersionedDeleteAsset(send(`/${assetId}`, 'DELETE'))
     expect((await res.json()).ok).toBe(true)
     expect(getAsset(assetId)).toBeNull()
+  })
+})
+
+describe('add-version + trash routes', () => {
+  const trashBase = 'http://localhost/api/plugins/assets/trash'
+  let id = ''
+
+  beforeAll(async () => {
+    const created = await createAsset({ sourceFilePath: join(srcDir, 'a.png'), type: 'images', agent: 'pixel', taskId: null, slug: 'tr', op: 'upload', description: 'trash subject' })
+    id = created.assetId
+  })
+
+  it('appends a version from an uploaded file', async () => {
+    const form = new FormData()
+    form.append('file', new File([readFileSync(join(srcDir, 'b.png'))], 'b.png', { type: 'image/png' }))
+    const req = new Request(`${base}/${id}/version`, { method: 'POST', body: form })
+    const res = await handleVersionedAddVersion(req)
+    const body = await res.json()
+    expect(body.ok).toBe(true)
+    expect(body.version).toBe(2)
+    expect(getAsset(id)!.versions).toHaveLength(2)
+  })
+
+  it('404s add-version for an unknown asset', async () => {
+    const form = new FormData()
+    form.append('file', new File([readFileSync(join(srcDir, 'b.png'))], 'b.png', { type: 'image/png' }))
+    const res = await handleVersionedAddVersion(new Request(`${base}/20260529-ghost-deadbeef/version`, { method: 'POST', body: form }))
+    expect(res.status).toBe(404)
+  })
+
+  it('lists, restores, and permanently deletes trashed assets', async () => {
+    // Trash it.
+    await handleVersionedDeleteAsset(send(`/${id}`, 'DELETE'))
+    expect(getAsset(id)).toBeNull()
+
+    // It appears in the trash list.
+    const listed = await (await handleTrashList()).json()
+    const entry = listed.items.find((t: { assetId: string }) => t.assetId === id)
+    expect(entry).toBeDefined()
+    expect(entry.versionCount).toBe(2)
+
+    // Restore brings it back.
+    const restored = await handleTrashRestore(new Request(`${trashBase}/${encodeURIComponent(entry.trashName)}/restore`, { method: 'POST' }))
+    expect((await restored.json()).ok).toBe(true)
+    expect(getAsset(id)).not.toBeNull()
+
+    // Trash again, then permanently delete by trashName.
+    await handleVersionedDeleteAsset(send(`/${id}`, 'DELETE'))
+    const again = (await (await handleTrashList()).json()).items.find((t: { assetId: string }) => t.assetId === id)
+    const del = await handleTrashPermanentDelete(new Request(`${trashBase}/${encodeURIComponent(again.trashName)}`, { method: 'DELETE' }))
+    expect((await del.json()).ok).toBe(true)
+    expect((await (await handleTrashList()).json()).items.some((t: { assetId: string }) => t.assetId === id)).toBe(false)
+  })
+
+  it('empties the trash', async () => {
+    const created = await createAsset({ sourceFilePath: join(srcDir, 'a.png'), type: 'images', agent: 'pixel', taskId: null, slug: 'tr2', op: 'upload' })
+    await handleVersionedDeleteAsset(send(`/${created.assetId}`, 'DELETE'))
+    const res = await handleTrashEmpty()
+    const body = await res.json()
+    expect(body.ok).toBe(true)
+    expect(body.deleted).toBeGreaterThanOrEqual(1)
+    expect((await (await handleTrashList()).json()).items).toHaveLength(0)
   })
 })

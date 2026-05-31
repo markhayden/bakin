@@ -27,3 +27,6 @@ export const VERSIONED_API = '/api/plugins/assets/versioned'
 
 /** Multipart upload endpoint — one versioned asset (v1) per file. */
 export const UPLOAD_API = '/api/plugins/assets/upload'
+
+/** Trash endpoint — list / restore / permanent-delete / empty. */
+export const TRASH_API = '/api/plugins/assets/trash'

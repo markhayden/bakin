@@ -1,14 +1,39 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useQueryState } from '@makinbakin/sdk/hooks'
+import { useQueryState, useQueryArrayState, useSearch } from '@makinbakin/sdk/hooks'
 import { Badge, Button } from '@makinbakin/sdk/ui'
-import { formatSize } from '@makinbakin/sdk/utils'
-import { ImagePlus, Upload, Loader2 } from 'lucide-react'
-import { AssetThumb, AssetMetaSummary } from './atoms'
-import { VERSIONED_API, UPLOAD_API } from './asset-urls'
-import type { VersionedAssetSummary } from './types'
+import { PluginHeader, FacetFilter } from '@makinbakin/sdk/components'
+import { formatSize, formatAge } from '@makinbakin/sdk/utils'
+import {
+  ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter,
+  FileText, Image as ImageIcon, Video, Music, Map as MapIcon, Database, Package,
+} from 'lucide-react'
+import { AssetThumb, AssetMetaSummary, AssetTypeIcon } from './atoms'
+import { VERSIONED_API, UPLOAD_API, TRASH_API } from './asset-urls'
+import type { VersionedAssetSummary, TrashedAssetSummary } from './types'
+
+type View = 'grid' | 'list' | 'trash'
+
+const VIEW_OPTIONS: Array<{ key: View; label: string; Icon: typeof LayoutGrid }> = [
+  { key: 'grid', label: 'Grid', Icon: LayoutGrid },
+  { key: 'list', label: 'List', Icon: List },
+  { key: 'trash', label: 'Trash', Icon: Trash2 },
+]
+
+// Full asset-type taxonomy with icons (drives the Type facet).
+const TYPE_OPTIONS = [
+  { value: 'text', label: 'Text', icon: <FileText className="size-3.5" /> },
+  { value: 'images', label: 'Images', icon: <ImageIcon className="size-3.5" /> },
+  { value: 'video', label: 'Video', icon: <Video className="size-3.5" /> },
+  { value: 'audio', label: 'Audio', icon: <Music className="size-3.5" /> },
+  { value: 'plans', label: 'Plans', icon: <MapIcon className="size-3.5" /> },
+  { value: 'research', label: 'Research', icon: <FileText className="size-3.5" /> },
+  { value: 'pdf', label: 'PDF', icon: <FileText className="size-3.5" /> },
+  { value: 'data', label: 'Data', icon: <Database className="size-3.5" /> },
+  { value: 'other', label: 'Other', icon: <Package className="size-3.5" /> },
+]
 
 function AssetCard({ asset, onOpen }: { asset: VersionedAssetSummary; onOpen: () => void }) {
   return (
@@ -38,15 +63,62 @@ function AssetCard({ asset, onOpen }: { asset: VersionedAssetSummary; onOpen: ()
   )
 }
 
+function AssetListRow({ asset, onOpen }: { asset: VersionedAssetSummary; onOpen: () => void }) {
+  return (
+    <button
+      onClick={onOpen}
+      className="flex w-full items-center gap-3 rounded-md border border-border bg-card px-3 py-2 text-left transition-colors hover:border-[rgba(255,255,255,0.15)]"
+      data-testid={`asset-row-${asset.assetId}`}
+    >
+      <div className="size-10 shrink-0 overflow-hidden rounded">
+        <AssetThumb assetId={asset.assetId} type={asset.type} hasThumb={asset.hasThumb} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-foreground">{asset.description || asset.assetId}</p>
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+          <span className="capitalize">{asset.type}</span>
+          <span>·</span>
+          <span>{asset.agent}</span>
+          {asset.versionCount > 1 && <><span>·</span><span className="text-emerald-400">v{asset.currentVersion} of {asset.versionCount}</span></>}
+        </div>
+      </div>
+      <span className="shrink-0 text-[11px] text-muted-foreground">{formatSize(asset.size)}</span>
+      <span className="shrink-0 text-[11px] text-muted-foreground">{formatAge(asset.created)}</span>
+    </button>
+  )
+}
+
 export function VersionedAssetGrid() {
   const navigate = useNavigate()
-  // When arriving from a task ("Add" on TaskAssets), uploads link to that task.
   const [linkTo] = useQueryState('linkTo', '')
+  const [q, setQ] = useQueryState('q', '')
+  const [view, setView] = useQueryState('view', 'grid')
+  const [typeFilter, setTypeFilter] = useQueryArrayState('type')
+
   const [assets, setAssets] = useState<VersionedAssetSummary[]>([])
+  const [trash, setTrash] = useState<TrashedAssetSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  // Antfly-backed search (semantic + visual), with a client-side metadata
+  // fallback when search is disabled or returns nothing.
+  const search = useSearch({
+    plugin: 'assets',
+    facets: ['asset_type', 'agent'],
+    fallback: (query: string) => {
+      const n = query.toLowerCase()
+      return assets
+        .filter(a =>
+          a.assetId.toLowerCase().includes(n) ||
+          a.description.toLowerCase().includes(n) ||
+          a.agent.toLowerCase().includes(n) ||
+          (a.tags || []).some(t => t.toLowerCase().includes(n)),
+        )
+        .map(a => ({ id: a.assetId, table: 'bakin_assets', score: 1, fields: {} }))
+    },
+  })
 
   const fetchAssets = useCallback(() => {
     fetch(VERSIONED_API)
@@ -56,22 +128,32 @@ export function VersionedAssetGrid() {
       .finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => { fetchAssets() }, [fetchAssets])
+  const fetchTrash = useCallback(() => {
+    fetch(TRASH_API)
+      .then(r => r.ok ? r.json() : { items: [] })
+      .then(d => setTrash(d.items || []))
+      .catch(() => {})
+  }, [])
 
-  // Live refresh: any asset mutation rewrites a manifest → asset.changed/removed.
+  useEffect(() => { fetchAssets(); fetchTrash() }, [fetchAssets, fetchTrash])
+
+  // Drive the search hook from the URL query.
+  useEffect(() => { search.search(q) }, [q]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const es = new EventSource('/api/events')
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data)
         if (data.type === 'plugin-event' && (data.event === 'asset.changed' || data.event === 'asset.removed')) {
-          fetchAssets()
+          fetchAssets(); fetchTrash()
         }
       } catch { /* ignore non-JSON */ }
     }
     return () => es.close()
-  }, [fetchAssets])
+  }, [fetchAssets, fetchTrash])
 
+  // ─── Upload ──────────────────────────────────────────────────────────
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return
     setUploading(true)
@@ -85,8 +167,6 @@ export function VersionedAssetGrid() {
         const body = await res.json().catch(() => ({})) as { error?: string }
         throw new Error(body.error || `Upload failed (${res.status})`)
       }
-      // Manifest writes drive asset.changed, but refetch immediately so the
-      // grid updates even if the SSE round-trip is slow.
       fetchAssets()
       if (linkTo) window.dispatchEvent(new CustomEvent('bakin:asset-uploaded', { detail: { taskId: linkTo } }))
     } catch (err) {
@@ -99,7 +179,39 @@ export function VersionedAssetGrid() {
 
   const openPicker = () => fileInputRef.current?.click()
 
-  // Hidden file input shared by the empty-state CTA and the header "Add" button.
+  // ─── Trash actions ───────────────────────────────────────────────────
+  const restore = async (trashName: string) => {
+    const res = await fetch(`${TRASH_API}/${encodeURIComponent(trashName)}/restore`, { method: 'POST' })
+    if (res.ok) { fetchTrash(); fetchAssets() }
+  }
+  const permanentDelete = async (trashName: string) => {
+    const res = await fetch(`${TRASH_API}/${encodeURIComponent(trashName)}`, { method: 'DELETE' })
+    if (res.ok) fetchTrash()
+  }
+  const emptyTrash = async () => {
+    const res = await fetch(TRASH_API, { method: 'DELETE' })
+    if (res.ok) fetchTrash()
+  }
+
+  // ─── Derived: counts + filtered/ordered list ─────────────────────────
+  const typeCounts = useMemo(() => {
+    const c: Record<string, number> = {}
+    for (const a of assets) c[a.type] = (c[a.type] ?? 0) + 1
+    return c
+  }, [assets])
+
+  const filtered = useMemo(() => {
+    const searching = q.trim().length > 0
+    let list = assets.filter(a => typeFilter.length === 0 || typeFilter.includes(a.type))
+    if (searching) {
+      const score = new Map<string, number>(search.results.map(r => [r.id, r.score] as [string, number]))
+      list = list
+        .filter(a => score.has(a.assetId))
+        .sort((a, b) => (score.get(b.assetId) ?? 0) - (score.get(a.assetId) ?? 0))
+    }
+    return list
+  }, [assets, typeFilter, q, search.results])
+
   const fileInput = (
     <input
       ref={fileInputRef}
@@ -112,9 +224,35 @@ export function VersionedAssetGrid() {
     />
   )
 
+  const viewToggle = (
+    <div className="flex items-center gap-0.5 rounded-md border border-border p-0.5">
+      {VIEW_OPTIONS.map(({ key, label, Icon }) => (
+        <button
+          key={key}
+          onClick={() => setView(key)}
+          data-testid={`view-${key}`}
+          className={`flex items-center gap-1 rounded px-2 py-1 text-xs transition-colors ${view === key ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          <Icon className="size-3.5" /> {label}
+        </button>
+      ))}
+    </div>
+  )
+
+  const actions = (
+    <div className="flex items-center gap-2">
+      <Button size="sm" onClick={openPicker} disabled={uploading} data-testid="add-asset">
+        {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+        {uploading ? 'Uploading…' : 'Add asset'}
+      </Button>
+      {viewToggle}
+    </div>
+  )
+
   if (loading) return <div className="p-8 text-sm text-muted-foreground">Loading assets…</div>
 
-  if (assets.length === 0) {
+  // True empty state (no assets at all, not in trash view) — promote upload.
+  if (assets.length === 0 && view !== 'trash') {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center p-8 text-center" data-testid="assets-empty">
         {fileInput}
@@ -137,29 +275,74 @@ export function VersionedAssetGrid() {
   }
 
   return (
-    <div className="p-4">
+    <div className="p-4" data-testid="assets-browser">
       {fileInput}
-      <div className="mb-3 flex items-center gap-2">
-        <h1 className="text-lg font-semibold">Assets</h1>
-        <Badge variant="secondary">{assets.length}</Badge>
-        <Button size="sm" className="ml-auto" onClick={openPicker} disabled={uploading} data-testid="add-asset">
-          {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-          {uploading ? 'Uploading…' : 'Add asset'}
-        </Button>
-      </div>
+      <PluginHeader
+        title="Assets"
+        count={view === 'trash' ? trash.length : filtered.length}
+        actions={actions}
+        search={view === 'trash' ? undefined : { value: q, onChange: setQ, placeholder: 'Search assets…' }}
+      />
+
       {uploadError && <p className="mb-2 text-xs text-destructive">{uploadError}</p>}
-      {linkTo && (
-        <p className="mb-2 text-xs text-muted-foreground">New uploads will be linked to this task.</p>
+      {linkTo && view !== 'trash' && <p className="mb-2 text-xs text-muted-foreground">New uploads will be linked to this task.</p>}
+
+      {view !== 'trash' && (
+        <div className="mb-3 mt-3 flex items-center gap-2" data-testid="asset-filters">
+          <ListFilter className="size-3.5 shrink-0 text-muted-foreground" />
+          <FacetFilter label="Type" options={TYPE_OPTIONS} selected={typeFilter} onChange={setTypeFilter} counts={typeCounts} />
+        </div>
       )}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5" data-testid="assets-grid">
-        {assets.map(asset => (
-          <AssetCard
-            key={asset.assetId}
-            asset={asset}
-            onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })}
-          />
-        ))}
-      </div>
+
+      {/* ─── Trash view ─── */}
+      {view === 'trash' ? (
+        trash.length === 0 ? (
+          <div className="p-8 text-sm text-muted-foreground" data-testid="trash-empty">Trash is empty.</div>
+        ) : (
+          <div className="flex flex-col gap-2" data-testid="trash-list">
+            <div className="mb-1 flex justify-end">
+              <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300" onClick={emptyTrash} data-testid="empty-trash">
+                <Trash2 className="size-3.5" /> Empty trash
+              </Button>
+            </div>
+            {trash.map(item => (
+              <div key={item.trashName} className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2" data-testid={`trash-row-${item.assetId}`}>
+                <div className="flex size-9 shrink-0 items-center justify-center rounded bg-zinc-900/50">
+                  <AssetTypeIcon type={item.type} className="size-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{item.description || item.assetId}</p>
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <span className="capitalize">{item.type}</span><span>·</span>
+                    <span>{item.versionCount} version{item.versionCount === 1 ? '' : 's'}</span><span>·</span>
+                    <span>deleted {formatAge(new Date(item.deletedAt).toISOString())}</span>
+                  </div>
+                </div>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => restore(item.trashName)} data-testid={`restore-${item.assetId}`}>
+                  <RotateCcw className="size-3.5" /> Restore
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs text-red-400 hover:text-red-300" onClick={() => permanentDelete(item.trashName)} data-testid={`permanent-delete-${item.assetId}`}>
+                  <X className="size-3.5" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )
+      ) : filtered.length === 0 ? (
+        <div className="p-8 text-sm text-muted-foreground" data-testid="assets-no-match">No assets match your filters.</div>
+      ) : view === 'list' ? (
+        <div className="flex flex-col gap-1.5" data-testid="assets-list">
+          {filtered.map(asset => (
+            <AssetListRow key={asset.assetId} asset={asset} onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })} />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5" data-testid="assets-grid">
+          {filtered.map(asset => (
+            <AssetCard key={asset.assetId} asset={asset} onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

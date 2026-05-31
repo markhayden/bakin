@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from '@tanstack/react-router'
 import { Badge, Button } from '@makinbakin/sdk/ui'
-import { ArrowLeft, Download, Trash2 } from 'lucide-react'
+import { ArrowLeft, Download, Trash2, Upload, Loader2, X } from 'lucide-react'
 import { AssetTypeIcon, AssetMetaSummary } from './atoms'
 import { VersionRow } from './VersionRow'
 import { assetCurrentUrl, assetExportUrl, VERSIONED_API } from './asset-urls'
@@ -16,6 +16,10 @@ export function VersionedAssetDetail() {
   const [loading, setLoading] = useState(true)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleteScope, setDeleteScope] = useState<'asset' | 'current'>('asset')
+  const [addingVersion, setAddingVersion] = useState(false)
+  const [versionError, setVersionError] = useState<string | null>(null)
+  const [lightbox, setLightbox] = useState(false)
+  const versionInputRef = useRef<HTMLInputElement | null>(null)
 
   const fetchManifest = useCallback(() => {
     fetch(`${VERSIONED_API}/${encodeURIComponent(assetId)}`)
@@ -49,6 +53,27 @@ export function VersionedAssetDetail() {
     method: 'DELETE',
   }).then(fetchManifest)
 
+  const addVersion = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    setAddingVersion(true)
+    setVersionError(null)
+    try {
+      const form = new FormData()
+      form.append('file', files[0])
+      const res = await fetch(`${VERSIONED_API}/${encodeURIComponent(assetId)}/version`, { method: 'POST', body: form })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(body.error || `Upload failed (${res.status})`)
+      }
+      fetchManifest()
+    } catch (err) {
+      setVersionError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setAddingVersion(false)
+      if (versionInputRef.current) versionInputRef.current.value = ''
+    }
+  }, [assetId, fetchManifest])
+
   const doDelete = async () => {
     if (deleteScope === 'current' && manifest) {
       await deleteVersion(manifest.currentVersion)
@@ -70,20 +95,39 @@ export function VersionedAssetDetail() {
   const isImage = manifest.type === 'images'
 
   return (
-    <div className="mx-auto max-w-4xl p-4" data-testid="asset-detail">
+    <div className="w-full p-4" data-testid="asset-detail">
+      <input
+        ref={versionInputRef}
+        type="file"
+        className="hidden"
+        aria-label="Add version"
+        data-testid="add-version-input"
+        onChange={(e) => addVersion(e.target.files)}
+      />
       <div className="mb-4 flex items-center gap-2">
         <Button size="sm" variant="ghost" onClick={() => navigate({ to: '/assets' })}><ArrowLeft className="size-4 mr-1" /> Assets</Button>
         <h1 className="truncate text-base font-semibold" title={manifest.assetId}>{manifest.description || manifest.assetId}</h1>
         <Badge variant="secondary" className="ml-auto" data-testid="version-count">{manifest.versions.length} version{manifest.versions.length === 1 ? '' : 's'}</Badge>
+        <Button size="sm" variant="outline" onClick={() => versionInputRef.current?.click()} disabled={addingVersion} data-testid="add-version">
+          {addingVersion ? <Loader2 className="size-4 animate-spin mr-1" /> : <Upload className="size-4 mr-1" />}
+          {addingVersion ? 'Uploading…' : 'Add version'}
+        </Button>
         <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300" onClick={() => { setDeleteScope('asset'); setConfirmDelete(true) }} data-testid="delete-asset">
           <Trash2 className="size-4" />
         </Button>
       </div>
+      {versionError && <p className="mb-2 text-xs text-destructive">{versionError}</p>}
 
       {/* Current version preview */}
       <div className="mb-4 flex items-center justify-center rounded-lg bg-zinc-950 p-3" style={{ maxHeight: 420 }} data-testid="current-preview">
         {isImage ? (
-          <img src={assetCurrentUrl(manifest.assetId, manifest.currentVersion)} alt={manifest.assetId} className="max-h-[400px] max-w-full rounded object-contain" />
+          <img
+            src={assetCurrentUrl(manifest.assetId, manifest.currentVersion)}
+            alt={manifest.assetId}
+            className="max-h-[400px] max-w-full cursor-zoom-in rounded object-contain"
+            onClick={() => setLightbox(true)}
+            data-testid="open-lightbox"
+          />
         ) : (
           <a href={assetCurrentUrl(manifest.assetId, manifest.currentVersion)} download className="flex flex-col items-center gap-2 py-8 text-sm text-blue-400">
             <AssetTypeIcon type={manifest.type} className="size-12" /> Download current version
@@ -124,6 +168,29 @@ export function VersionedAssetDetail() {
           />
         ))}
       </div>
+
+      {/* Fullscreen image lightbox */}
+      {lightbox && isImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-6"
+          onClick={() => setLightbox(false)}
+          data-testid="lightbox"
+        >
+          <button
+            className="absolute right-4 top-4 text-zinc-300 hover:text-white"
+            onClick={() => setLightbox(false)}
+            aria-label="Close"
+          >
+            <X className="size-6" />
+          </button>
+          <img
+            src={assetCurrentUrl(manifest.assetId, manifest.currentVersion)}
+            alt={manifest.assetId}
+            className="max-h-[92vh] max-w-[92vw] rounded object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
 
       {/* Delete-scope dialog */}
       {confirmDelete && (

@@ -12,7 +12,8 @@ import { resolveAssetServe } from './lib/serve'
 import {
   handleVersionedList, handleVersionedGet, handleVersionedPromote,
   handleVersionedDeleteVersion, handleVersionedDeleteAsset, handleVersionedExport,
-  handleVersionedRelink,
+  handleVersionedRelink, handleVersionedAddVersion,
+  handleTrashList, handleTrashRestore, handleTrashPermanentDelete, handleTrashEmpty,
 } from './routes/versioned'
 import { isValidAssetId } from './lib/asset-id'
 import {
@@ -119,6 +120,15 @@ const routes = [
     handler: async (req) => handleVersionedRelink(req),
   }),
   defineRoute({
+    path: '/versioned/:assetId/version',
+    method: 'POST',
+    summary: 'Append a new version from an uploaded file',
+    params: z.object({ assetId: z.string().min(1) }),
+    body: { contentType: 'multipart/form-data' },
+    responses: { 200: okPassthrough, 400: errorResponse, 404: errorResponse },
+    handler: async (req) => handleVersionedAddVersion(req),
+  }),
+  defineRoute({
     path: '/versioned/:assetId',
     method: 'DELETE',
     summary: 'Trash a whole versioned asset',
@@ -126,6 +136,49 @@ const routes = [
     body: { contentType: 'none' },
     responses: { 200: okPassthrough, 400: errorResponse },
     handler: async (req) => handleVersionedDeleteAsset(req),
+  }),
+
+  // Trash (versioned whole-asset deletions) — restore/permanent-delete/empty.
+  defineRoute({
+    path: '/trash',
+    method: 'GET',
+    summary: 'List trashed assets',
+    responses: { 200: passthrough },
+    handler: async () => handleTrashList(),
+  }),
+  defineRoute({
+    path: '/trash/:trashName/restore',
+    method: 'POST',
+    summary: 'Restore a trashed asset',
+    params: z.object({ trashName: z.string().min(1) }),
+    body: { contentType: 'none' },
+    responses: { 200: okPassthrough, 400: errorResponse },
+    handler: async (req, ctx) => {
+      const res = await handleTrashRestore(req)
+      if (res.ok) ctx.activity.audit('asset.restored', 'user')
+      return res
+    },
+  }),
+  defineRoute({
+    path: '/trash/:trashName',
+    method: 'DELETE',
+    summary: 'Permanently delete a trashed asset',
+    params: z.object({ trashName: z.string().min(1) }),
+    body: { contentType: 'none' },
+    responses: { 200: okPassthrough, 404: errorResponse },
+    handler: async (req) => handleTrashPermanentDelete(req),
+  }),
+  defineRoute({
+    path: '/trash',
+    method: 'DELETE',
+    summary: 'Empty the asset trash',
+    body: { contentType: 'none' },
+    responses: { 200: okPassthrough },
+    handler: async (_req, ctx) => {
+      const res = await handleTrashEmpty()
+      if (res.ok) ctx.activity.audit('assets.trash.emptied', 'user')
+      return res
+    },
   }),
 
   searchRoute({ table: 'assets' }),

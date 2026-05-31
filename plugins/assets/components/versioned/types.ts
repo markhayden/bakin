@@ -21,6 +21,16 @@ export interface VersionedAssetSummary {
   hasThumb: boolean
 }
 
+export interface TrashedAssetSummary {
+  trashName: string
+  assetId: string
+  type: string
+  agent: string
+  deletedAt: number
+  versionCount: number
+  description: string
+}
+
 export interface AssetGenerationInfo {
   provider: string
   model: string

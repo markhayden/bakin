@@ -68,8 +68,8 @@ afterAll(() => {
 // ===========================================================================
 
 describe('route registration', () => {
-  it('registers all 9 routes', () => {
-    expect(plugin.routes.length).toBe(9)
+  it('registers all 14 routes', () => {
+    expect(plugin.routes.length).toBe(14)
   })
 
   it.each([
@@ -80,7 +80,12 @@ describe('route registration', () => {
     ['DELETE', '/versioned/:assetId/v/:version'],
     ['POST', '/versioned/:assetId/export'],
     ['POST', '/versioned/:assetId/relink'],
+    ['POST', '/versioned/:assetId/version'],
     ['DELETE', '/versioned/:assetId'],
+    ['GET', '/trash'],
+    ['POST', '/trash/:trashName/restore'],
+    ['DELETE', '/trash/:trashName'],
+    ['DELETE', '/trash'],
     ['GET', '/search'],
   ])('registers %s %s', (method, path) => {
     const route = findRoute(plugin.routes, method, path)
