@@ -14,7 +14,6 @@ import { mkdirSync, copyFileSync, existsSync, readdirSync, statSync, renameSync,
 import { join, extname } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import sharp from 'sharp'
 import { getContentDir } from '../../../src/core/content-dir'
 import { createLogger } from '../../../src/core/logger'
 import { getMimeType, type AssetType } from './constants'
@@ -31,6 +30,8 @@ import {
 } from './manifest'
 
 const log = createLogger('asset-service')
+type Sharp = typeof import('sharp')
+let sharpModule: Promise<Sharp | null> | null = null
 
 export interface AssetCreateInput {
   /** Absolute path to the source file to copy in as v1. */
@@ -82,8 +83,20 @@ function nowIso(): string {
   return new Date().toISOString()
 }
 
+async function loadSharp(): Promise<Sharp | null> {
+  sharpModule ??= import('sharp')
+    .then((mod): Sharp => (mod as unknown as { default?: Sharp }).default ?? (mod as unknown as Sharp))
+    .catch((err) => {
+      log.warn('sharp unavailable; image metadata/export support disabled', { error: err instanceof Error ? err.message : String(err) })
+      return null
+    })
+  return sharpModule
+}
+
 async function imageDimensions(filePath: string): Promise<{ width: number | null; height: number | null }> {
   try {
+    const sharp = await loadSharp()
+    if (!sharp) return { width: null, height: null }
     const meta = await sharp(filePath).metadata()
     return { width: meta.width ?? null, height: meta.height ?? null }
   } catch {
@@ -424,6 +437,8 @@ export async function addExport(assetId: string, input: AssetExportInput): Promi
     const prior = manifest.exports.find((e) => e.name === name)
     if (prior && prior.file !== file) removeFileQuietly(join(dirAbs, prior.file))
 
+    const sharp = await loadSharp()
+    if (!sharp) throw new Error('Image export requires sharp, but the native sharp package is unavailable for this runtime')
     let pipeline = sharp(join(dirAbs, src.file)).resize(input.width, input.height, { fit: 'cover' })
     if (input.format === 'jpg') pipeline = pipeline.jpeg({ quality: input.quality ?? 82 })
     else if (input.format === 'png') pipeline = pipeline.png()

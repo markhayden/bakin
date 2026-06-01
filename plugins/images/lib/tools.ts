@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { basename } from 'node:path'
-import sharp from 'sharp'
 import type { ExecToolResult, PluginContext } from '@bakin/core/plugin-types'
 import type { RuntimeImageGenerationResult } from '@bakin/core/adapters/runtime'
 import type { ImageProviderId } from '../types'
@@ -12,6 +11,8 @@ import { runBilledImageCall, type ImageCallKey } from './idempotency'
 
 /** Largest edge we send to a provider / feed into sharp, to bound cost. */
 const MAX_IMAGE_EDGE = 2048
+type Sharp = typeof import('sharp')
+let sharpModule: Promise<Sharp | null> | null = null
 
 export interface ImagesGenerateParams {
   prompt?: string
@@ -55,6 +56,13 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+async function loadSharp(): Promise<Sharp | null> {
+  sharpModule ??= import('sharp')
+    .then((mod): Sharp => (mod as unknown as { default?: Sharp }).default ?? (mod as unknown as Sharp))
+    .catch(() => null)
+  return sharpModule
+}
+
 function hashPrompt(prompt: string): string {
   return `sha256:${createHash('sha256').update(prompt).digest('hex')}`
 }
@@ -88,6 +96,8 @@ function dimensionsForSurface(surfaceId: string, width?: number, height?: number
 
 async function imageDimensions(filePath: string): Promise<{ width: number; height: number }> {
   try {
+    const sharp = await loadSharp()
+    if (!sharp) return { width: 0, height: 0 }
     const metadata = await sharp(filePath).metadata()
     return { width: metadata.width ?? 0, height: metadata.height ?? 0 }
   } catch {
