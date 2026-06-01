@@ -12,7 +12,7 @@
  */
 import { mkdirSync, copyFileSync, existsSync, readdirSync, statSync, renameSync, rmSync, readFileSync } from 'node:fs'
 import { join, extname } from 'node:path'
-import { execSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import sharp from 'sharp'
 import { getContentDir } from '../../../src/core/content-dir'
@@ -93,8 +93,14 @@ async function imageDimensions(filePath: string): Promise<{ width: number | null
 
 function generateThumbnail(inputPath: string, outputPath: string, widthPx = 400): boolean {
   try {
-    execSync(`ffmpeg -i "${inputPath}" -vf "scale=${widthPx}:-1" -q:v 5 -y "${outputPath}"`, { stdio: 'pipe', timeout: 30_000 })
-    return existsSync(outputPath)
+    // argv form (no shell) — paths/extensions are derived from client filenames,
+    // so a shell string would expand $(...)/backticks in a crafted name.
+    const r = spawnSync(
+      'ffmpeg',
+      ['-i', inputPath, '-vf', `scale=${widthPx}:-1`, '-q:v', '5', '-y', outputPath],
+      { stdio: 'pipe', timeout: 30_000 },
+    )
+    return r.status === 0 && existsSync(outputPath)
   } catch {
     return false
   }
@@ -381,8 +387,23 @@ export interface AssetExportInput {
   quality?: number
 }
 
+const EXPORT_FORMATS = new Set(['jpg', 'png', 'webp'])
+const MAX_EXPORT_DIM = 8192 // sharp/libvips practical ceiling; bounds the resize alloc
+
 /** Render a derived export of a version, keyed (idempotent) by surface. */
 export async function addExport(assetId: string, input: AssetExportInput): Promise<{ name: string; file: string; manifest: AssetManifest }> {
+  // Validate every field that reaches the on-disk path or sharp — `format` is
+  // appended to the filename (traversal if unchecked) and the dims/quality feed
+  // resize/encode directly. Reject at the boundary before any I/O.
+  if (!EXPORT_FORMATS.has(input.format)) throw new Error(`Invalid export format: ${input.format}`)
+  for (const [label, dim] of [['width', input.width], ['height', input.height]] as const) {
+    if (!Number.isInteger(dim) || dim <= 0 || dim > MAX_EXPORT_DIM) {
+      throw new Error(`Invalid export ${label}: ${dim} (expected 1..${MAX_EXPORT_DIM})`)
+    }
+  }
+  if (input.quality !== undefined && (!Number.isInteger(input.quality) || input.quality < 1 || input.quality > 100)) {
+    throw new Error(`Invalid export quality: ${input.quality} (expected 1..100)`)
+  }
   return withAssetLock(assetId, async () => {
     const dirAbs = assetDirAbs(assetId)
     if (!dirAbs) throw new Error(`Invalid assetId: ${assetId}`)

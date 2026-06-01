@@ -14,6 +14,7 @@ process.env.OPENCLAW_HOME = join(testDir, 'openclaw')
 import { describe, it, expect, beforeAll, afterAll } from 'bun:test'
 import sharp from 'sharp'
 import { createAsset, addVersion, getAsset } from '../../../plugins/assets/lib/asset-service'
+import { assetDirRelPath } from '../../../plugins/assets/lib/asset-id'
 import {
   handleVersionedList, handleVersionedGet, handleVersionedPromote,
   handleVersionedDeleteVersion, handleVersionedDeleteAsset, handleVersionedExport,
@@ -83,6 +84,19 @@ describe('versioned routes', () => {
     const res = await handleVersionedDeleteAsset(send(`/${assetId}`, 'DELETE'))
     expect((await res.json()).ok).toBe(true)
     expect(getAsset(assetId)).toBeNull()
+  })
+
+  it('rejects an assetId that decodes to a path traversal (no escape via %2F/..)', async () => {
+    // segmentsAfterVersioned decodeURIComponent's each segment, so %2F → "/".
+    // assetDirRelPath now gates on isValidAssetId, so every service handler 4xxs
+    // instead of resolving a path outside the asset store.
+    const evil = '20260101-..%2F..%2F..%2Fetc-deadbeef' // → 20260101-../../../etc-deadbeef
+    // Chokepoint: assetDirRelPath rejects the decoded id outright (state-independent).
+    expect(assetDirRelPath('20260101-../../../etc-deadbeef')).toBeNull()
+    expect((await handleVersionedGet(get(`/${evil}`))).status).toBe(404)
+    expect((await handleVersionedPromote(send(`/${evil}/promote`, 'POST', { version: 1 }))).status).toBe(400)
+    expect((await handleVersionedExport(send(`/${evil}/export`, 'POST', { surface: 'og', format: 'jpg', width: 10, height: 10 }))).status).toBe(400)
+    expect((await handleVersionedDeleteAsset(send(`/${evil}`, 'DELETE'))).status).toBeGreaterThanOrEqual(400)
   })
 })
 

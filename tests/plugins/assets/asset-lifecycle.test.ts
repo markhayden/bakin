@@ -103,6 +103,22 @@ describe('addExport', () => {
     await addExport(assetId, { surface: 'square', format: 'jpg', width: 60, height: 60 })
     expect(getAsset(assetId)!.exports).toHaveLength(2)
   })
+
+  it('rejects unsafe format/dimensions/quality before touching disk', async () => {
+    const { assetId } = await freshImageAsset()
+    // format is appended to the on-disk path — a traversal/unknown format must throw.
+    await expect(addExport(assetId, { surface: 'og', format: 'jpg/../../x' as 'jpg', width: 10, height: 10 })).rejects.toThrow(/Invalid export format/)
+    await expect(addExport(assetId, { surface: 'og', format: 'gif' as 'jpg', width: 10, height: 10 })).rejects.toThrow(/Invalid export format/)
+    // dimensions feed sharp.resize — reject non-positive / non-finite / oversized.
+    await expect(addExport(assetId, { surface: 'og', format: 'jpg', width: 0, height: 10 })).rejects.toThrow(/Invalid export width/)
+    await expect(addExport(assetId, { surface: 'og', format: 'jpg', width: 10, height: 99999 })).rejects.toThrow(/Invalid export height/)
+    await expect(addExport(assetId, { surface: 'og', format: 'jpg', width: Number.NaN, height: 10 })).rejects.toThrow(/Invalid export width/)
+    // quality is 1..100.
+    await expect(addExport(assetId, { surface: 'og', format: 'jpg', width: 10, height: 10, quality: 0 })).rejects.toThrow(/Invalid export quality/)
+    await expect(addExport(assetId, { surface: 'og', format: 'jpg', width: 10, height: 10, quality: 101 })).rejects.toThrow(/Invalid export quality/)
+    // No export was written despite the rejected calls.
+    expect(getAsset(assetId)!.exports).toHaveLength(0)
+  })
 })
 
 describe('relink / retype', () => {

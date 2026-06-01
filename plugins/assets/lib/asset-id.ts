@@ -44,8 +44,14 @@ export function isValidAssetId(assetId: string): boolean {
   )
 }
 
-/** Content-dir-relative directory path for an assetId, or null if invalid. */
+/**
+ * Content-dir-relative directory path for an assetId, or null if invalid.
+ * Rejects anything `isValidAssetId` rejects (separators / `..`) so an
+ * externally-supplied id can never resolve a path outside the asset store —
+ * this is the single chokepoint every service path-resolution flows through.
+ */
 export function assetDirRelPath(assetId: string): string | null {
+  if (!isValidAssetId(assetId)) return null
   const ym = yearMonthFromAssetId(assetId)
   return ym ? `assets/store/${ym}/${assetId}` : null
 }

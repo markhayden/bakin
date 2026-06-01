@@ -49,18 +49,36 @@ export async function get(req: Request, url: URL): Promise<Response> {
   const fileSize = stat.size
   const { mimeType } = resolved
 
-  // Range requests for video seeking.
+  // Range requests for video seeking. Parse strictly per RFC 7233 and clamp to
+  // the file size — a malformed or out-of-bounds range must never feed NaN /
+  // negative / huge values into Buffer.alloc (crash or unbounded allocation).
   const range = req.headers.get('range')
   if (range && mimeType.startsWith('video/')) {
-    const parts = range.replace(/bytes=/, '').split('-')
-    const start = parseInt(parts[0], 10)
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1
-    const chunkSize = end - start + 1
+    const invalidRange = () => new Response(null, {
+      status: 416,
+      headers: { 'Content-Range': `bytes */${fileSize}`, 'Accept-Ranges': 'bytes' },
+    })
+    const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim())
+    if (!m || (m[1] === '' && m[2] === '')) return invalidRange()
 
+    let start: number
+    let end: number
+    if (m[1] === '') {
+      // Suffix range `bytes=-N`: the last N bytes.
+      const suffix = parseInt(m[2], 10)
+      if (suffix <= 0) return invalidRange()
+      start = Math.max(0, fileSize - suffix)
+      end = fileSize - 1
+    } else {
+      start = parseInt(m[1], 10)
+      end = m[2] === '' ? fileSize - 1 : Math.min(parseInt(m[2], 10), fileSize - 1)
+    }
+    if (start > end || start >= fileSize) return invalidRange()
+
+    const chunkSize = end - start + 1
     const buffer = Buffer.alloc(chunkSize)
     const fd = openSync(resolved.absPath, 'r')
-    readSync(fd, buffer, 0, chunkSize, start)
-    closeSync(fd)
+    try { readSync(fd, buffer, 0, chunkSize, start) } finally { closeSync(fd) }
 
     return new Response(new Uint8Array(buffer), {
       status: 206,
