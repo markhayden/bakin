@@ -6,8 +6,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.9] - 2026-06-01
+
+### Added
+- Add the versioned asset model across storage, HTTP routes, search indexing, lifecycle operations, uploads, trash, relinking, and the asset browser UI, including version timelines, previews, current-version pinning, and empty states.
+- Add runtime-routed image generation with the core images plugin, execution tools, workflow defaults, provider routing, provider-key management, and OpenClaw native image support.
+- Add SDK and host nav-badge support, including Tasks and Health badge providers and Health doctor-version signaling.
+- Add the TypeScript compiler-backed SDK reference generator and refresh generated documentation/reference output.
+
+### Changed
+- Cut asset, task-asset, image, clipboard, inbox, health, search, and agent-facing asset flows over to stable asset IDs and retire the legacy filename-based asset UI/routes/surfaces.
+- Improve Settings layout, plugin setting grouping, labels, and responsive row behavior.
+- Update asset, image, plugin, and release-pipeline docs for the new runtime and release-candidate behavior.
+
 ### Fixed
+- Prevent schedule cron double execution.
 - Gate the release `smoke-sdk` job on the exact SDK version becoming resolvable on npm (bounded exponential backoff via `scripts/wait-for-npm-version.ts`) so it no longer races registry propagation right after publish.
+- Bound npm registry checks to the full timeout budget to avoid stuck release gates.
+- Harden versioned asset path resolution, filename sanitization, thumbnails, export/range handling, stale grid previews, and search result stability.
+- Harden image generation billing/idempotency, provider fallback, credential lookup, generated-dimension recording, and provider settings error reporting.
+- Harden provider secret storage with atomic `0600` writes and secret id validation.
+- Fix host/sidebar nav-badge rollups, test stability, and onboarding asset plugin isolation.
 
 ## [0.0.1-rc.8] - 2026-05-28
 
@@ -92,7 +111,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 - Sign and notarize macOS release binaries.
 - Publish release assets, SDK packages, Homebrew formula updates, and post-publish smoke checks from CI.
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.8...HEAD
 [0.0.1-rc.8]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.8
 [0.0.1-rc.7]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.7
 [0.0.1-rc.6]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.6
@@ -101,3 +119,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 [0.0.1-rc.3]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.3
 [0.0.1-rc.2]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.2
 [0.0.1-rc.1]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.1
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.9...HEAD
+[0.0.1-rc.9]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.9
