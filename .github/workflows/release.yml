@@ -436,8 +436,19 @@ jobs:
     env:
       VERSION: ${{ needs.gate.outputs.version }}
     steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.gate.outputs.commit }}
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Wait for SDK version to be resolvable on npm
+        shell: bash
+        run: bun run scripts/wait-for-npm-version.ts --version "${VERSION}"
 
       - name: Install exact SDK version and import subpaths
         shell: bash

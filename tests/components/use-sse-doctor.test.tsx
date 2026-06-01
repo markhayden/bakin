@@ -19,18 +19,20 @@ import { useSSE } from '@/hooks/use-sse'
 import { useContentStore } from '@/hooks/use-content-store'
 
 // Controllable EventSource — captures the instance so the test can drive
-// onmessage directly (no real network).
-let lastES: { onmessage: ((e: { data: string }) => void) | null; onopen: (() => void) | null; onerror: ((e?: unknown) => void) | null; close: () => void } | null = null
-class MockEventSource {
-  onmessage: ((e: { data: string }) => void) | null = null
-  onopen: (() => void) | null = null
-  onerror: ((e?: unknown) => void) | null = null
+// onmessage directly (no real network). A factory (constructor returning an
+// object) avoids aliasing `this` while still satisfying `new EventSource()`.
+interface MockEventSource {
+  onmessage: ((e: { data: string }) => void) | null
+  onopen: (() => void) | null
+  onerror: ((e?: unknown) => void) | null
   url: string
-  constructor(url: string) {
-    this.url = url
-    lastES = this
-  }
-  close() {}
+  close: () => void
+}
+let lastES: MockEventSource | null = null
+function createMockEventSource(url: string): MockEventSource {
+  const es: MockEventSource = { onmessage: null, onopen: null, onerror: null, url, close() {} }
+  lastES = es
+  return es
 }
 
 function Probe() {
@@ -47,7 +49,7 @@ function emitAudit(event: string) {
 beforeEach(() => {
   lastES = null
   useContentStore.setState({ doctorVersion: 0 })
-  ;(globalThis as { EventSource: unknown }).EventSource = MockEventSource as unknown
+  ;(globalThis as { EventSource: unknown }).EventSource = createMockEventSource as unknown
   // initialize() fetches a few endpoints on mount — stub them to empty.
   ;(globalThis as { fetch: typeof fetch }).fetch = (mock(async () => new Response('{}', { status: 200 }))) as unknown as typeof fetch
 })
