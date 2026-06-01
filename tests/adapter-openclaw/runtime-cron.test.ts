@@ -22,7 +22,7 @@ describe('OpenClaw runtime cron adapter', () => {
     rmSync(testDir, { recursive: true, force: true })
   })
 
-  it('creates Bakin schedule cron jobs as OpenClaw main-session system events through the CLI', async () => {
+  it('creates Bakin schedule cron jobs as isolated no-delivery timer messages through the CLI', async () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter()
     const exec = mock(async (_args: string[]) => JSON.stringify({
@@ -30,10 +30,13 @@ describe('OpenClaw runtime cron adapter', () => {
       name: 'Schedule One',
       enabled: true,
       schedule: { kind: 'cron', expr: '0 9 * * *', tz: 'America/Denver' },
-      sessionTarget: 'main',
+      sessionTarget: 'isolated',
       wakeMode: 'now',
       delivery: { mode: 'none' },
-      payload: { kind: 'systemEvent', text: 'bakin:schedule:schedule-1' },
+      payload: {
+        kind: 'agentTurn',
+        message: 'bakin:schedule:schedule-1',
+      },
     }))
     ;(runtime as unknown as { exec: typeof exec }).exec = exec
 
@@ -65,9 +68,11 @@ describe('OpenClaw runtime cron adapter', () => {
       '--tz',
       'America/Denver',
       '--session',
-      'main',
-      '--system-event',
+      'isolated',
+      '--message',
       'bakin:schedule:schedule-1',
+      '--no-deliver',
+      '--light-context',
     ], cronExecOpts)
   })
 
@@ -203,7 +208,7 @@ describe('OpenClaw runtime cron adapter', () => {
     ], cronExecOpts)
   })
 
-  it('does not attach toolsAllow to Bakin schedule system-event cron jobs', async () => {
+  it('does not attach toolsAllow to Bakin schedule timer cron jobs', async () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter()
     const exec = mock(async (_args: string[]) => JSON.stringify({
@@ -211,8 +216,11 @@ describe('OpenClaw runtime cron adapter', () => {
       name: 'Schedule Tools',
       enabled: true,
       schedule: { kind: 'cron', expr: '0 9 * * *' },
-      sessionTarget: 'main',
-      payload: { kind: 'systemEvent', text: 'bakin:schedule:schedule-tools' },
+      sessionTarget: 'isolated',
+      payload: {
+        kind: 'agentTurn',
+        message: 'bakin:schedule:schedule-tools',
+      },
     }))
     ;(runtime as unknown as { exec: typeof exec }).exec = exec
 
@@ -227,6 +235,32 @@ describe('OpenClaw runtime cron adapter', () => {
 
     expect(created.toolsAllow).toBeUndefined()
     expect(exec.mock.calls[0][0]).not.toContain('--tools')
+  })
+
+  it('preserves provider tool allowlists when listing runtime cron jobs with bakin commands', async () => {
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+    const exec = mock(async () => JSON.stringify([{
+      id: 'openclaw-schedule-listed',
+      name: 'Schedule Listed',
+      enabled: true,
+      schedule: { kind: 'cron', expr: '0 9 * * *' },
+      sessionTarget: 'isolated',
+      payload: {
+        kind: 'agentTurn',
+        message: 'bakin:schedule:schedule-listed',
+        toolsAllow: ['message'],
+      },
+    }]))
+    ;(runtime as unknown as { exec: typeof exec }).exec = exec
+
+    await expect(runtime.cron.list()).resolves.toEqual([
+      expect.objectContaining({
+        id: 'openclaw-schedule-listed',
+        command: 'bakin:schedule:schedule-listed',
+        toolsAllow: ['message'],
+      }),
+    ])
   })
 
   it('preserves the timezone from OpenClaw cron schedule objects when listing jobs', async () => {
@@ -281,7 +315,7 @@ describe('OpenClaw runtime cron adapter', () => {
     expect(store.jobs[0]).toEqual(raw)
   })
 
-  it('converts metadata-only Bakin updates to system-event payloads through the CLI', async () => {
+  it('converts metadata-only Bakin updates to isolated timer payloads through the CLI', async () => {
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
     const runtime = createOpenClawRuntimeAdapter()
     const rawJob: {
@@ -303,8 +337,12 @@ describe('OpenClaw runtime cron adapter', () => {
     }
     const exec = mock(async (args: string[]) => {
       if (args[1] === 'edit') {
-        rawJob.sessionTarget = 'main'
-        rawJob.payload = { kind: 'systemEvent', text: 'Original native command' }
+        rawJob.sessionTarget = 'isolated'
+        rawJob.payload = {
+          kind: 'agentTurn',
+          message: 'Original native command',
+        }
+        rawJob.delivery = { mode: 'none', channel: 'last' }
       }
       return JSON.stringify([rawJob])
     })
@@ -323,9 +361,12 @@ describe('OpenClaw runtime cron adapter', () => {
       '--timeout',
       '30000',
       '--session',
-      'main',
-      '--system-event',
+      'isolated',
+      '--message',
       'Original native command',
+      '--no-deliver',
+      '--light-context',
+      '--clear-tools',
     ], cronExecOpts)
   })
 

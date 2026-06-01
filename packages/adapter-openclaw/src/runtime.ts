@@ -1068,8 +1068,23 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     const args = cronUpdateArgs(id, current, patch)
     if (args.length > 5) await this.execCron(args)
 
+    const effective = cronJobFromUpdatePatch(id, current, patch)
     const refreshed = await this.getCronJob(id).catch(() => null)
-    return refreshed ?? cronJobFromUpdatePatch(id, current, patch)
+    if (!refreshed) return effective
+
+    const command = patch.command ?? refreshed.command
+    const metadata = patch.metadata ?? refreshed.metadata
+    const bakinCron = isBakinCron(command, metadata)
+    return {
+      ...refreshed,
+      command,
+      metadata,
+      toolsAllow: bakinCron
+        ? undefined
+        : patch.toolsAllow !== undefined
+          ? effective.toolsAllow
+          : refreshed.toolsAllow,
+    }
   }
 
   private async listCronRuns(jobId: string): Promise<CronRun[]> {
@@ -1652,15 +1667,16 @@ function cronStoreJobToRuntime(job: OpenClawCronStoreJob): CronJob {
   const metadata = scheduleTz && !metadataValue(job.metadata, 'tz')
     ? { ...(job.metadata ?? {}), tz: scheduleTz }
     : job.metadata
+  const command = typeof job.payload?.message === 'string'
+    ? job.payload.message
+    : typeof job.payload?.text === 'string'
+      ? job.payload.text
+      : ''
   return {
     id: job.id,
     name: job.name ?? job.id,
     schedule: cronScheduleToString(job.schedule),
-    command: typeof job.payload?.message === 'string'
-      ? job.payload.message
-      : typeof job.payload?.text === 'string'
-        ? job.payload.text
-        : '',
+    command,
     enabled: job.enabled ?? true,
     toolsAllow: normalizeCronToolsAllow(job.payload?.toolsAllow),
     metadata,
@@ -1722,7 +1738,15 @@ function appendCronPayloadArgs(
   opts: { allowClearTools?: boolean } = {},
 ): void {
   if (isBakinCron(command, metadata)) {
-    args.push('--session', 'main', '--system-event', command)
+    args.push(
+      '--session',
+      'isolated',
+      '--message',
+      command,
+      '--no-deliver',
+      '--light-context',
+    )
+    if (opts.allowClearTools !== false) args.push('--clear-tools')
     return
   }
 
@@ -1788,7 +1812,10 @@ function cronPayloadForCommand(
   current: OpenClawCronStoreJob['payload'],
   bakinSchedule: boolean,
 ): OpenClawCronStoreJob['payload'] {
-  if (bakinSchedule || current?.kind === 'systemEvent') {
+  if (bakinSchedule) {
+    return { kind: 'agentTurn', message: command }
+  }
+  if (current?.kind === 'systemEvent') {
     return { kind: 'systemEvent', text: command }
   }
   return { ...(current ?? {}), kind: 'agentTurn', message: command }

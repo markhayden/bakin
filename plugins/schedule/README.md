@@ -26,6 +26,14 @@ Runtime cron fires   →  OpenClaw records a cron run
 
 The `/bridge` endpoint remains as a private callback path for future runtimes or explicit webhook callers, but OpenClaw webhook delivery is not the canonical path for task creation.
 
+OpenClaw currently requires cron jobs to have either an agent-turn message or a
+main-session system-event payload. Bakin-owned schedules use an isolated,
+no-delivery, light-context agent-turn whose message stays in the reserved
+`bakin:*` namespace. This keeps OpenClaw's cron runner and run history active
+without waking the main Bakin session, which would otherwise see the schedule
+event as normal work and could create a second task before the reconciler creates
+the canonical scheduled task.
+
 ### Runtime vs Bakin Ownership
 
 Schedule jobs have three user-visible states:
@@ -159,7 +167,7 @@ When the reconciler or bridge processes a successful runtime run, the shared tas
 
 OpenClaw supports per-cron tool policy on native isolated agent-turn jobs through `payload.toolsAllow` (`openclaw cron add/edit --tools`). The OpenClaw runtime adapter maps that field to `CronJob.toolsAllow` so Schedule can display and audit it without shelling out to the provider CLI.
 
-Bakin-owned schedules are different: runtime cron acts as a timer and Bakin creates tasks after successful runs are reconciled. Those jobs do not rely on cron `toolsAllow` for the eventual task's MCP permissions. Hard scoping of `bakin_exec_*` MCP tools is a separate Bakin routing-layer concern tracked outside this plugin.
+Bakin-owned schedules are different: runtime cron acts as a timer and Bakin creates tasks after successful runs are reconciled. The OpenClaw adapter deliberately leaves cron `toolsAllow` unset for Bakin-owned schedule timers because OpenClaw treats an allowlist with no registered tools as a failed run. These jobs do not rely on cron `toolsAllow` for the eventual task's MCP permissions. Hard scoping of `bakin_exec_*` MCP tools is a separate Bakin routing-layer concern tracked outside this plugin.
 
 Common native cron examples:
 
