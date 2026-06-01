@@ -1317,7 +1317,13 @@ async function cmdAgentPackagesInstall(source: string, flags: AgentsCmdFlags): P
 async function cmdAgentPackagesList(flags: AgentsCmdFlags): Promise<void> {
   const result = await apiGet('/api/agent-packages') as {
     ok: boolean
-    agents: Array<{ agentId: string; state: string; packageId?: string }>
+    agents: Array<{
+      agentId: string
+      state: string
+      version?: string
+      packageId?: string
+      entry?: { version?: string }
+    }>
   }
   if (flags.json) {
     print(result)
@@ -1329,8 +1335,9 @@ async function cmdAgentPackagesList(flags: AgentsCmdFlags): Promise<void> {
   }
   console.log('Agents (package state):')
   for (const a of result.agents) {
+    const version = a.version ?? a.entry?.version ?? '-'
     const pkg = a.packageId ? `  [${a.packageId}]` : ''
-    console.log(`  ${a.agentId.padEnd(20)} ${a.state}${pkg}`)
+    console.log(`  ${a.agentId.padEnd(20)} ${a.state.padEnd(10)} ${version.padEnd(10)}${pkg}`)
   }
 }
 

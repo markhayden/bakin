@@ -207,6 +207,12 @@ Critical correctness rule: a runtime agent without a lockfile entry MUST surface
 as `unmanaged` (NOT `absent`). Mis-classifying lets the installer create a
 fresh runtime agent with the same id, risking the user's existing setup.
 
+Version reporting rule: managed/adopted agent package state includes a top-level
+`version` copied from the lockfile entry. The team detail view and
+`bakin agents list --packages` must render that lockfile/API version (falling
+back to nested `entry.version` only for compatibility), not infer the version
+from an install path, source ref, package id, or stale runtime state.
+
 ## Doctor integration
 
 `plugins/team/lib/health-checks.ts:checkAgentAssets()` surfaces drift in the

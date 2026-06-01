@@ -60,8 +60,9 @@ const PKG_OK: PkgResponse = {
     {
       agentId: 'pixel',
       state: 'managed',
+      version: '0.1.0',
       packageId: 'examples/pixel@0.1.0',
-      entry: { source: 'github:examples/pixel', ref: 'v0.1.0', commitSha: 'abc1234', installedAt: '2026-04-25T00:00:00Z' },
+      entry: { version: '0.1.0', source: 'github:examples/pixel', ref: 'v0.1.0', commitSha: 'abc1234', installedAt: '2026-04-25T00:00:00Z' },
     },
     { agentId: 'orca', state: 'unmanaged' },
   ],
@@ -139,8 +140,11 @@ describe('useAgentStore — package state plumbing', () => {
     expect(packageStates['pixel']).toMatchObject({
       agentId: 'pixel',
       state: 'managed',
+      version: '0.1.0',
       packageId: 'examples/pixel@0.1.0',
     })
+    expect(packageStates['pixel']?.version).toBe('0.1.0')
+    expect(packageStates['pixel']?.entry?.version).toBe('0.1.0')
     expect(packageStates['orca']).toMatchObject({ agentId: 'orca', state: 'unmanaged' })
     expect(packageStates['nonexistent']).toBeUndefined()
   })
@@ -204,13 +208,14 @@ describe('useAgentStore — package state plumbing', () => {
     pkgVariant = {
       ok: true,
       agents: [
-        { agentId: 'pixel', state: 'managed', packageId: 'examples/pixel@0.1.0', entry: PKG_OK.agents?.[0].entry },
-        { agentId: 'orca', state: 'adopted', packageId: 'examples/orca@0.1.0' },
+        { agentId: 'pixel', state: 'managed', version: '0.1.0', packageId: 'examples/pixel@0.1.0', entry: PKG_OK.agents?.[0].entry },
+        { agentId: 'orca', state: 'adopted', version: '0.2.0', packageId: 'examples/orca@0.2.0', entry: { version: '0.2.0', source: 'github:examples/orca', ref: 'main', commitSha: 'def5678', installedAt: '2026-04-25T00:00:00Z' } },
       ],
     }
     await useAgentStore.getState().refreshPackageStates()
 
     expect(useAgentStore.getState().packageStates['orca']?.state).toBe('adopted')
+    expect(useAgentStore.getState().packageStates['orca']?.version).toBe('0.2.0')
   })
 
   it('roster fetch failure short-circuits before package merge', async () => {

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, mock, spyOn, type Mock } from 'bun:test'
 import { AsyncResource } from 'async_hooks'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
 import { createHealthService } from '@bakin/core/app-services'
@@ -696,6 +696,39 @@ describe('PluginRegistryImpl', () => {
       expect(pluginRegistry.getPluginIds()).toContain('dist-only-user')
       const active = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'dist-only-user')
       expect(active).toMatchObject({ status: 'active' })
+    })
+
+    it('uses the installed lockfile version for active user plugin snapshots', async () => {
+      const pluginDir = writeUserPlugin('versioned-user')
+      const contentDir = await import('../../packages/core/src/content-dir')
+      contentDir.resetContentDir()
+      const { getPluginLockfilePath } = await import('../../packages/core/src/plugins/lockfile')
+      const lockPath = getPluginLockfilePath()
+      mkdirSync(dirname(lockPath), { recursive: true })
+      writeFileSync(lockPath, JSON.stringify({
+        version: 1,
+        plugins: {
+          'versioned-user': {
+            source: pluginDir,
+            type: 'local',
+            ref: '',
+            commitSha: '',
+            installedAt: '2026-05-25T02:57:29.278Z',
+            version: '2.5.0',
+            permissions: [],
+            manifestSha: 'sha256:test',
+          },
+        },
+      }))
+
+      await pluginRegistry.initialize({ plugins: [] }, mockStorage(), mockEvents())
+
+      const active = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'versioned-user')
+      expect(active).toMatchObject({
+        status: 'active',
+        source: 'user',
+        version: '2.5.0',
+      })
     })
 
     it('reports a clear failure when a user plugin is not built', async () => {

@@ -82,6 +82,7 @@ export interface SkillSummary {
 export interface PackageStateRow {
   agentId: string
   state: 'absent' | 'unmanaged' | 'adopted' | 'managed' | 'drifted' | 'update-available'
+  version?: string
   packageId?: string
   entry?: {
     source: string

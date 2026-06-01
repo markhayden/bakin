@@ -691,8 +691,8 @@ describe('read-only CLI TUI screens', () => {
     const agentPackages = renderToString(
       <AgentPackagesListReport
         agents={[
-          { agentId: 'patch', state: 'managed', packageId: 'bakin.patch' },
-          { agentId: 'docs', state: 'adopted', packageId: 'bakin.docs' },
+          { agentId: 'patch', state: 'managed', packageId: 'bakin.patch', version: '1.2.0' },
+          { agentId: 'docs', state: 'adopted', packageId: 'bakin.docs', entry: { version: '1.1.0' } },
         ]}
       />,
     )
@@ -716,8 +716,11 @@ describe('read-only CLI TUI screens', () => {
     )
 
     expect(agentPackages).toContain('Agent Packages')
+    expect(agentPackages).toContain('VERSION')
     expect(agentPackages).toContain('PACKAGE')
     expect(agentPackages).toContain('bakin.patch')
+    expect(agentPackages).toContain('1.2.0')
+    expect(agentPackages).toContain('1.1.0')
     expect(lessons).toContain('Agent Lessons')
     expect(lessons).toContain('LESSON')
     expect(lessons).toContain('ENABLED')

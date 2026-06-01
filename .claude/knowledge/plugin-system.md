@@ -116,6 +116,12 @@ Pure mutators (`addPlugin`, `removePlugin`, `updatePlugin`) never touch
 fs. `setCorePluginCheck(predicate)` wires defense-in-depth so mutators
 throw for core ids. Set during `pluginRegistry.initialize()`.
 
+Version reporting rule: Health and registry snapshots report core plugin
+versions from the bundled plugin export, but user plugin versions come from
+`~/.bakin/plugins/lock.json` when a lockfile entry exists. This keeps the UI
+and CLI aligned with install/upgrade provenance instead of whatever a loaded
+module or copied manifest happens to expose at runtime.
+
 ### Install flow — `bakin plugins install <src> [--ref <ref>] [--yes]`
 
 Two-phase with a HMAC-signed consent token binding to defend against a

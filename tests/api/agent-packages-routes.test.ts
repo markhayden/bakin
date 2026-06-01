@@ -193,6 +193,37 @@ describe('GET /api/agent-packages', () => {
     expect(body.ok).toBe(true)
     const pixelEntry = body.agents.find((a: { agentId: string }) => a.agentId === 'pixel')
     expect(pixelEntry?.state).toBe('managed')
+    expect(pixelEntry?.version).toBe('0.1.0')
+    expect(pixelEntry?.entry?.version).toBe('0.1.0')
+  })
+
+  it('returns the updated version after an agent package update', async () => {
+    const src = seedAgentPackage()
+    {
+      const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
+      await installRoute.post(req, url)
+    }
+
+    const manifestPath = join(src, 'bakin-package.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+    writeFileSync(manifestPath, JSON.stringify({ ...manifest, version: '0.2.0' }))
+
+    const { req: updateReq, url: updateUrl } = makeRequest('POST', '/api/agent-packages/pixel/update', {})
+    const updateRes = await dynamicRoute.handler(updateReq, updateUrl)
+    expect(updateRes.status).toBe(200)
+    const updateBody = await updateRes.json()
+    expect(updateBody.ok).toBe(true)
+    expect(updateBody.result.fromVersion).toBe('0.1.0')
+    expect(updateBody.result.toVersion).toBe('0.2.0')
+
+    const { req, url } = makeRequest('GET', '/api/agent-packages')
+    const res = await listRoute.get(req, url)
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    const pixelEntry = body.agents.find((a: { agentId: string }) => a.agentId === 'pixel')
+    expect(pixelEntry?.state).toBe('managed')
+    expect(pixelEntry?.version).toBe('0.2.0')
+    expect(pixelEntry?.entry?.version).toBe('0.2.0')
   })
 })
 

@@ -141,6 +141,7 @@ describe('PackageCard — read-only display per state', () => {
         state: 'managed',
         packageId: 'examples/pixel@0.1.0',
         entry: {
+          version: '0.1.0',
           source: 'github:examples/pixel',
           ref: 'v0.1.0',
           commitSha: 'abc1234567',
@@ -151,6 +152,7 @@ describe('PackageCard — read-only display per state', () => {
     })
     await renderDetail()
     expect(screen.getByText('managed')).toBeDefined()
+    expect(screen.getByText('0.1.0')).toBeDefined()
     expect(screen.getByText('github:examples/pixel')).toBeDefined()
     expect(screen.getByText('v0.1.0')).toBeDefined()
     // commitSha gets sliced to 7 chars
@@ -160,6 +162,27 @@ describe('PackageCard — read-only display per state', () => {
     expect(screen.queryByRole('button', { name: 'Adopt' })).toBeNull()
   })
 
+  it('prefers the top-level installed version over nested entry metadata', async () => {
+    primeState({
+      pixel: {
+        agentId: 'pixel',
+        state: 'managed',
+        version: '0.2.0',
+        packageId: 'examples/pixel',
+        entry: {
+          version: '0.1.0',
+          source: 'github:examples/pixel',
+          ref: 'main',
+          commitSha: 'abc1234567',
+          installedAt: '2026-04-25T00:00:00Z',
+        },
+      },
+    })
+    await renderDetail()
+    expect(screen.getByText('0.2.0')).toBeDefined()
+    expect(screen.queryByText('0.1.0')).toBeNull()
+  })
+
   it('renders an adopted badge + entry fields when state=adopted', async () => {
     primeState({
       pixel: {
@@ -167,6 +190,7 @@ describe('PackageCard — read-only display per state', () => {
         state: 'adopted',
         packageId: 'examples/pixel@0.1.0',
         entry: {
+          version: '0.1.0',
           source: 'github:examples/pixel',
           ref: 'main',
           commitSha: 'feedface',
@@ -176,6 +200,7 @@ describe('PackageCard — read-only display per state', () => {
     })
     await renderDetail()
     expect(screen.getByText('adopted')).toBeDefined()
+    expect(screen.getByText('0.1.0')).toBeDefined()
     expect(screen.getByText('github:examples/pixel')).toBeDefined()
     expect(screen.queryByRole('button', { name: 'Adopt' })).toBeNull()
   })
@@ -240,7 +265,7 @@ describe('PackageCard — main agent special-case', () => {
         agentId: 'main',
         state: 'managed',
         packageId: 'examples/main@0.1.0',
-        entry: { source: 'github:examples/main', ref: 'v0.1.0', commitSha: 'abcdefg', installedAt: '2026-04-25T00:00:00Z' },
+        entry: { version: '0.1.0', source: 'github:examples/main', ref: 'v0.1.0', commitSha: 'abcdefg', installedAt: '2026-04-25T00:00:00Z' },
       },
     })
     render(<AgentDetail agentId="main" />)
@@ -249,6 +274,7 @@ describe('PackageCard — main agent special-case', () => {
     // Managed/adopted main bypasses the Self-managed special-case and shows
     // standard package fields. (This is an unusual state but should not crash.)
     expect(screen.getByText('managed')).toBeDefined()
+    expect(screen.getByText('0.1.0')).toBeDefined()
     expect(screen.getByText('github:examples/main')).toBeDefined()
   })
 })
