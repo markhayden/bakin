@@ -19,7 +19,8 @@ Success means we can answer, with evidence:
 - Runtime timing is delegated to `ctx.runtime.cron`.
 - Bakin metadata is stored in `~/.bakin/schedule/sidecar.json`.
 - OpenClaw cron records are managed by the Gateway-backed `openclaw cron` CLI. Raw snapshot capture/restore still reads `OPENCLAW_HOME/cron/jobs.json` to preserve provider-specific fields during adoption.
-- OpenClaw adapter creates Bakin schedules as main-session `systemEvent` cron jobs with payload text like `bakin:schedule:<name-or-id>`.
+- Prior to the 2026-05-31 follow-up fix, the OpenClaw adapter created Bakin schedules as main-session `systemEvent` cron jobs with payload text like `bakin:schedule:<name-or-id>`.
+- The affected machine showed one enabled OpenClaw cron job and one successful cron fire, but two Bakin execution paths: the Schedule reconciler created the canonical scheduled task, while the cron-launched main session separately called `bakin_exec_tasks_create`.
 - Installed OpenClaw 2026.5.4 reports `openclaw cron` as "Manage cron jobs (via Gateway)" and exposes `cron add|edit|rm|run|runs|show|status`.
 - The Bakin OpenClaw adapter previously shelled out for `cron run`, but create/update/delete/list/get read or wrote `cron/jobs.json` directly. That was fixed so live cron operations go through the OpenClaw CLI/Gateway path.
 - The maintainer README says OpenClaw webhook delivery is not canonical for task creation; the Schedule plugin reconciler polls successful runtime cron runs and creates Bakin tasks.
@@ -59,6 +60,20 @@ The reported symptom, a visually Bakin-owned schedule with no run history, is mo
 
 The fix is to make OpenClaw cron list/get/create/update/delete and run-history reads use the same `openclaw cron` CLI surface the scheduler owns. Schedule continues to own sidecar metadata and task creation. Raw snapshot capture/restore remains file-based only for native-job adoption rollback.
 
+## Follow-Up Triage: Duplicate Scheduled Runs
+
+The later affected-machine triage ruled out duplicate cron registration for issue #393. The persisted evidence showed:
+
+- one enabled OpenClaw cron job
+- one OpenClaw run at `2026-05-31T15:00:00Z`
+- one Schedule-reconciled task created at `2026-05-31T15:00:59Z`
+- one separate main-session-created Bakin task at `2026-05-31T15:02:15Z`
+- both tasks posted to Discord
+
+Root cause: Bakin-owned cron jobs were delivered to OpenClaw as main-session system events. OpenClaw recorded the timer run, which Schedule correctly reconciled into a task, but it also woke the main Bakin session with normal orchestrator context. The main session interpreted the schedule event as work and created its own task.
+
+The Bakin-side fix is to keep OpenClaw as the timer but stop waking `main` for Bakin-owned schedules. Since OpenClaw requires a payload, the OpenClaw adapter now registers Bakin cron jobs as isolated, no-delivery, light-context agent turns with the reserved `bakin:*` marker. Schedule remains the only canonical creator of tasks for successful runtime runs.
+
 ## Commands
 
 - Focused verification: `bun test --isolate tests/plugins/schedule tests/adapter-openclaw/runtime-cron.test.ts tests/plugins/tasks/scheduled.test.ts tests/dev/mock-runtime-contract.test.ts`
@@ -85,7 +100,7 @@ The fix is to make OpenClaw cron list/get/create/update/delete and run-history r
 ## Testing Strategy
 
 - Preserve existing focused Schedule/OpenClaw cron suite.
-- Add adapter regression coverage proving Bakin schedules call `openclaw cron add --session main --system-event`.
+- Add adapter regression coverage proving Bakin schedules do not call `openclaw cron add --session main --system-event`; they use isolated no-delivery timer payloads.
 - Add adapter regression coverage proving native cron tool allowlists use `--tools` / `--clear-tools`.
 - Add a contract test proving provider-generated cron ids are accepted by Schedule sidecar metadata.
 - Update docs where the bridge/reconciler contract is inconsistent.

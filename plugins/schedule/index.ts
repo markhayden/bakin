@@ -4,7 +4,7 @@
  */
 import { randomBytes, timingSafeEqual } from 'crypto'
 import { z } from 'zod'
-import type { BakinPlugin, PluginContext } from '@bakin/core/plugin-types'
+import type { BakinPlugin, HealthCheckResult, HealthRepairHandler, PluginContext } from '@bakin/core/plugin-types'
 import { definePlugin, defineRoute, searchRoute } from '@bakin/core/routing'
 import type { CronJob, CronRun, UpdateCronJobInput } from '@bakin/core/adapters/runtime'
 import { readMergedJobs } from './lib/jobs-reader'
@@ -209,6 +209,174 @@ function scheduleUpdateMetadata(meta: BakinJobMeta): UpdateCronJobInput['metadat
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function needsBakinCronWakeRepair(raw: unknown): boolean {
+  if (!isRecord(raw)) return false
+  const payload = isRecord(raw.payload) ? raw.payload : null
+  return raw.sessionTarget === 'main' || payload?.kind === 'systemEvent'
+}
+
+function scheduleMetadataForRepair(meta: BakinJobMeta): UpdateCronJobInput['metadata'] {
+  return scheduleUpdateMetadata(meta) ?? {
+    scheduleType: 'cron',
+    bakinSchedule: true,
+    ...(meta.logicalJobId ? { logicalJobId: meta.logicalJobId } : {}),
+  }
+}
+
+interface LegacyCronRepairSummary {
+  checked: number
+  repaired: number
+  failed: number
+  remainingLegacy: number
+}
+
+async function repairMainSessionBakinCronPayloads(ctx: PluginContext): Promise<LegacyCronRepairSummary> {
+  const summary: LegacyCronRepairSummary = { checked: 0, repaired: 0, failed: 0, remainingLegacy: 0 }
+  const jobs = Object.values(readSidecar().jobs).filter(job => job.isBakinJob)
+  for (const meta of jobs) {
+    summary.checked += 1
+    try {
+      const raw = await ctx.runtime.cron.getRaw(meta.jobId, 'schedule startup checks for legacy main-session Bakin cron payloads')
+      if (!needsBakinCronWakeRepair(raw)) continue
+      const runtime = await ctx.runtime.cron.get(meta.jobId)
+      const runtimeCommand = runtime?.command?.trim() ?? ''
+      const command = runtimeCommand.startsWith('bakin:')
+        ? runtimeCommand
+        : `bakin:schedule:${meta.displayName ?? meta.jobId}`
+      await ctx.runtime.cron.update(meta.jobId, {
+        command,
+        metadata: scheduleMetadataForRepair(meta),
+      })
+      summary.repaired += 1
+      log.info('Repaired Bakin schedule cron payload to avoid main-session wake', { jobId: meta.jobId })
+    } catch (err) {
+      summary.failed += 1
+      summary.remainingLegacy += 1
+      log.warn('Failed to repair legacy Bakin schedule cron payload', {
+        jobId: meta.jobId,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+  return summary
+}
+
+function shouldRetryLegacyCronRepair(summary: LegacyCronRepairSummary): boolean {
+  return summary.failed > 0 || summary.remainingLegacy > 0
+}
+
+function scheduleLegacyCronRepairRetry(ctx: PluginContext, attempt: number): void {
+  if (legacyCronRepairTimer) clearTimeout(legacyCronRepairTimer)
+  const delay = LEGACY_CRON_REPAIR_RETRY_DELAYS_MS[attempt]
+  if (delay === undefined) return
+  legacyCronRepairTimer = setTimeout(() => {
+    legacyCronRepairTimer = null
+    runLegacyCronRepair(ctx, attempt + 1).catch((err) => {
+      log.warn('Legacy Bakin schedule cron repair retry failed', err)
+    })
+  }, delay)
+  legacyCronRepairTimer.unref?.()
+}
+
+async function runLegacyCronRepair(ctx: PluginContext, attempt = 0): Promise<void> {
+  const summary = await repairMainSessionBakinCronPayloads(ctx)
+  if (shouldRetryLegacyCronRepair(summary)) {
+    if (attempt < LEGACY_CRON_REPAIR_RETRY_DELAYS_MS.length) {
+      scheduleLegacyCronRepairRetry(ctx, attempt)
+    } else {
+      log.warn('Legacy Bakin schedule cron repair exhausted retries', summary)
+    }
+  }
+}
+
+async function checkLegacyBakinCronPayloads(ctx: PluginContext): Promise<HealthCheckResult[]> {
+  const check = 'schedule-legacy-cron-wake'
+  const jobs = Object.values(readSidecar().jobs).filter(job => job.isBakinJob)
+  if (jobs.length === 0) {
+    return [{ check, status: 'ok', message: 'No Bakin schedule cron jobs to inspect', autoFixable: false }]
+  }
+
+  const legacy: string[] = []
+  const failures: string[] = []
+  for (const meta of jobs) {
+    try {
+      const raw = await ctx.runtime.cron.getRaw(meta.jobId, 'schedule health checks for legacy main-session Bakin cron payloads')
+      if (needsBakinCronWakeRepair(raw)) legacy.push(meta.displayName ?? meta.jobId)
+    } catch (err) {
+      failures.push(`${meta.displayName ?? meta.jobId}: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+
+  const rows: HealthCheckResult[] = []
+  if (legacy.length > 0) {
+    rows.push({
+      check,
+      status: 'warn',
+      message: `${legacy.length} Bakin schedule cron job(s) still wake the main session: ${legacy.join(', ')}`,
+      autoFixable: true,
+    })
+  }
+  if (failures.length > 0) {
+    rows.push({
+      check,
+      status: 'warn',
+      message: `Failed to inspect ${failures.length} Bakin schedule cron job(s): ${failures.join('; ')}`,
+      autoFixable: false,
+    })
+  }
+
+  return rows.length > 0
+    ? rows
+    : [{ check, status: 'ok', message: `${jobs.length} Bakin schedule cron job(s), none wake the main session`, autoFixable: false }]
+}
+
+function legacyCronWakeRepair(ctx: PluginContext): HealthRepairHandler {
+  const check = 'schedule-legacy-cron-wake'
+  return {
+    async plan(rows) {
+      const matching = rows.filter(row => row.check === check && row.autoFixable)
+      if (matching.length === 0) return []
+      return [{
+        id: 'schedule.repair-legacy-cron-wake',
+        checkId: check,
+        title: 'Repair legacy Bakin schedule cron payloads',
+        reason: matching.map(row => row.message).join('; '),
+        safety: 'safe',
+        requiresConfirmation: true,
+        changes: [{
+          kind: 'runtime',
+          target: 'OpenClaw cron jobs',
+          action: 'update',
+          description: 'Rewrite Bakin-owned cron payloads so they no longer wake the main session.',
+        }],
+      }]
+    },
+    async apply(items) {
+      if (items.length === 0) return []
+      const summary = await repairMainSessionBakinCronPayloads(ctx)
+      const failed = shouldRetryLegacyCronRepair(summary)
+      return [{
+        id: 'schedule.repair-legacy-cron-wake',
+        checkId: check,
+        status: failed ? 'failed' : 'applied',
+        message: `Checked ${summary.checked}, repaired ${summary.repaired}, failed ${summary.failed}`,
+        changes: summary.repaired > 0
+          ? [{
+              kind: 'runtime' as const,
+              target: 'OpenClaw cron jobs',
+              action: 'update' as const,
+              description: `Repaired ${summary.repaired} legacy Bakin schedule cron job(s).`,
+            }]
+          : [],
+      }]
+    },
+  }
+}
+
 function isCronAlreadyGoneError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err)
   return /\bnot found\b/i.test(message) && /\b(cron|job)\b/i.test(message)
@@ -238,9 +406,11 @@ async function deleteScheduleJob(ctx: ScheduleDeleteContext, jobId: string): Pro
 /** Module-level ctx set during activate(), used by handleBridge + routes */
 let pluginCtx: PluginContext | null = null
 let reconcileTimer: ReturnType<typeof setInterval> | null = null
+let legacyCronRepairTimer: ReturnType<typeof setTimeout> | null = null
 let reconcileRunning = false
 
 const RECONCILE_INTERVAL_MS = 60_000
+const LEGACY_CRON_REPAIR_RETRY_DELAYS_MS = [30_000, 120_000, 300_000] as const
 
 // ─── Module-scope helpers (use pluginCtx for runtime access) ─────────────
 
@@ -554,6 +724,13 @@ async function processScheduledRun(payload: BridgePayload): Promise<ProcessRunRe
       assignee: defaults.requireTriage ? undefined : meta.agentId,
       workflowId: meta.workflowId,
       createdBy: 'schedule',
+      scheduleJobId: jobId,
+      source: {
+        pluginId: 'schedule',
+        entityType: 'job',
+        entityId: jobId,
+        purpose: 'scheduled-run',
+      },
     })
     const taskId = result.id
 
@@ -1437,8 +1614,18 @@ const schedulePlugin: BakinPlugin = definePlugin({
       repair: scheduleSyncRepair(getContentDir(), ctx.runtime.cron, () => getRuntimeMainAgentId(ctx.runtime)),
     })
 
-    log.info('Schedule plugin activated')
+    ctx.registerHealthCheck({
+      id: 'schedule-legacy-cron-wake',
+      name: 'Bakin schedule cron wake mode',
+      run: async () => checkLegacyBakinCronPayloads(ctx),
+      repair: legacyCronWakeRepair(ctx),
+    })
+
     startReconciler()
+    log.info('Schedule plugin activated')
+    runLegacyCronRepair(ctx).catch((err) => {
+      log.warn('Legacy Bakin schedule cron repair failed', err)
+    })
   },
 
   async onReady() {
@@ -1452,6 +1639,10 @@ const schedulePlugin: BakinPlugin = definePlugin({
 
   onShutdown() {
     stopReconciler()
+    if (legacyCronRepairTimer) {
+      clearTimeout(legacyCronRepairTimer)
+      legacyCronRepairTimer = null
+    }
     log.info('Schedule plugin shutting down')
   },
 }) as unknown as BakinPlugin

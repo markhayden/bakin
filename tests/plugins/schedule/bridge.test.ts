@@ -319,6 +319,13 @@ describe('schedule/bridge', () => {
     expect(args.assignee).toBe('chef')
     expect(args.createdBy).toBe('schedule')
     expect(args.column).toBe('todo')
+    expect(args.scheduleJobId).toBe('test-job')
+    expect(args.source).toEqual({
+      pluginId: 'schedule',
+      entityType: 'job',
+      entityId: 'test-job',
+      purpose: 'scheduled-run',
+    })
   })
 
   it('expands title template variables', async () => {

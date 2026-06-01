@@ -355,6 +355,89 @@ describe('schedule search indexing', () => {
       enabled: 'true',
     }))
   })
+
+  it('repairs legacy main-session Bakin cron payloads on activation', async () => {
+    upsertJob(makeMeta({
+      jobId: 'legacy-main-cron',
+      displayName: 'Legacy Main Cron',
+      tz: 'America/Denver',
+    }))
+    mockRuntimeCronJobs.push({
+      id: 'legacy-main-cron',
+      name: 'Legacy Main Cron',
+      schedule: '0 9 * * *',
+      command: 'bakin:schedule:Legacy Main Cron',
+      enabled: true,
+      sessionTarget: 'main',
+      payload: { kind: 'systemEvent', text: 'bakin:schedule:Legacy Main Cron' },
+    } as CronJob)
+
+    await activatePlugin(schedulePlugin, testDir)
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(mockCronUpdate).toHaveBeenCalledWith('legacy-main-cron', expect.objectContaining({
+      command: 'bakin:schedule:Legacy Main Cron',
+      metadata: expect.objectContaining({
+        bakinSchedule: true,
+        scheduleType: 'cron',
+        tz: 'America/Denver',
+      }),
+    }))
+  })
+
+  it('registers a repairable health warning for legacy main-session cron payloads', async () => {
+    const activated = await activatePlugin(schedulePlugin, testDir)
+    const registerMock = activated.ctx.registerHealthCheck as unknown as {
+      mock: { calls: Array<[Record<string, unknown>]> }
+    }
+    const health = registerMock.mock.calls
+      .map(call => call[0])
+      .find(def => def.id === 'schedule-legacy-cron-wake') as {
+        run: () => Promise<Array<Record<string, unknown>>>
+        repair: {
+          plan: (rows: Array<Record<string, unknown>>) => Promise<Array<Record<string, unknown>>>
+          apply: (items: Array<Record<string, unknown>>) => Promise<Array<Record<string, unknown>>>
+        }
+      } | undefined
+
+    expect(health).toBeDefined()
+    upsertJob(makeMeta({
+      jobId: 'legacy-health-cron',
+      displayName: 'Legacy Health Cron',
+    }))
+    mockRuntimeCronJobs.push({
+      id: 'legacy-health-cron',
+      name: 'Legacy Health Cron',
+      schedule: '0 9 * * *',
+      command: 'bakin:schedule:Legacy Health Cron',
+      enabled: true,
+      sessionTarget: 'main',
+      payload: { kind: 'systemEvent', text: 'bakin:schedule:Legacy Health Cron' },
+    } as CronJob)
+
+    const rows = await health!.run()
+    expect(rows).toEqual([
+      expect.objectContaining({
+        check: 'schedule-legacy-cron-wake',
+        status: 'warn',
+        autoFixable: true,
+      }),
+    ])
+
+    const plan = await health!.repair.plan(rows)
+    expect(plan).toHaveLength(1)
+    const result = await health!.repair.apply(plan)
+    expect(result).toEqual([
+      expect.objectContaining({
+        id: 'schedule.repair-legacy-cron-wake',
+        status: 'applied',
+      }),
+    ])
+    expect(mockCronUpdate).toHaveBeenCalledWith('legacy-health-cron', expect.objectContaining({
+      command: 'bakin:schedule:Legacy Health Cron',
+      metadata: expect.objectContaining({ bakinSchedule: true, scheduleType: 'cron' }),
+    }))
+  })
 })
 
 describe('schedule routes', () => {
