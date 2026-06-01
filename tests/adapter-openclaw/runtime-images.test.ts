@@ -42,6 +42,11 @@ cat <<'JSON'
 JSON
 exit 0
 fi
+if [ "$1" = "gateway" ] && [ "$2" = "restart" ]; then
+printf 'MCPORTER_CALL_TIMEOUT=%s\\n' "$MCPORTER_CALL_TIMEOUT" >> "${callsFile}"
+echo "{}"
+exit 0
+fi
 if [ "$1" = "infer" ] && [ "$2" = "image" ] && [ "$3" = "generate" ]; then
 out=""
 while [ "$#" -gt 0 ]; do
@@ -64,14 +69,28 @@ echo "{}"
 
   const originalOpenAI = process.env.OPENAI_API_KEY
   const originalHome = process.env.BAKIN_HOME
+  const originalMcporterCallTimeout = process.env.MCPORTER_CALL_TIMEOUT
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true })
     if (originalOpenAI === undefined) delete process.env.OPENAI_API_KEY
     else process.env.OPENAI_API_KEY = originalOpenAI
     if (originalHome === undefined) delete process.env.BAKIN_HOME
     else process.env.BAKIN_HOME = originalHome
+    if (originalMcporterCallTimeout === undefined) delete process.env.MCPORTER_CALL_TIMEOUT
+    else process.env.MCPORTER_CALL_TIMEOUT = originalMcporterCallTimeout
     resetContentDir()
     mock.restore()
+  })
+
+  it('starts OpenClaw child processes with a long mcporter call timeout by default', async () => {
+    delete process.env.MCPORTER_CALL_TIMEOUT
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: openclaw } })
+
+    await runtime.restart()
+
+    expect(readFileSync(callsFile, 'utf-8')).toContain('gateway\nrestart')
+    expect(readFileSync(callsFile, 'utf-8')).toContain('MCPORTER_CALL_TIMEOUT=600000')
   })
 
   it('lists OpenClaw image providers through infer image providers', async () => {

@@ -123,6 +123,25 @@ describe('exec tool registration', () => {
   })
 })
 
+describe('exec tool: bakin_exec_assets_list', () => {
+  it('filters assets by task id', async () => {
+    const save = findTool(plugin.execTools, 'bakin_exec_assets_save')!
+    const list = findTool(plugin.execTools, 'bakin_exec_assets_list')!
+    const a = join(testDir, 'task-a-note.md')
+    const b = join(testDir, 'task-b-note.md')
+    writeFileSync(a, 'task a')
+    writeFileSync(b, 'task b')
+
+    await callTool(save, { filePath: a, taskId: 'task-list-a', type: 'text', slug: 'task-a-note' }, 'margo')
+    await callTool(save, { filePath: b, taskId: 'task-list-b', type: 'text', slug: 'task-b-note' }, 'margo')
+    const result = await callTool(list, { taskId: 'task-list-a' }, 'margo')
+
+    expect(result.ok).toBe(true)
+    expect(result.count).toBe(1)
+    expect((result.assets as Array<{ taskId: string }>).map(asset => asset.taskId)).toEqual(['task-list-a'])
+  })
+})
+
 // ===========================================================================
 // Exec tool: bakin_exec_assets_save (source → versioned asset, upsert on re-save)
 // ===========================================================================

@@ -17,6 +17,7 @@ describe('images workflow contract', () => {
     expect(parsed.id).toBe('image-generation')
     expect(raw).toContain('bakin_exec_images_recommend')
     expect(raw).toContain('bakin_exec_images_generate')
+    expect(raw).toContain('--timeout 600000')
     expect(raw).toContain('$preferred(pixel,$assigned)')
     expect(raw).toContain('assetId')
     expect(raw).not.toContain('image_filename')
@@ -24,6 +25,19 @@ describe('images workflow contract', () => {
     expect(raw).not.toContain('imagePath')
     expect(raw).not.toContain('thumbnailPath')
     expect(raw).not.toContain('Nano Banana')
+  })
+
+  it('tells image skills to use a long mcporter timeout for generation', () => {
+    const files = [
+      'plugins/images/defaults/workflow-skills/generate-image.md',
+      'plugins/images/defaults/runtime-skills/create-image/SKILL.md',
+      'plugins/images/defaults/runtime-skills/create-image-openai/SKILL.md',
+      'plugins/images/defaults/runtime-skills/create-image-gemini/SKILL.md',
+    ]
+
+    for (const file of files) {
+      expect(readWorkflow(file)).toContain('--timeout 600000')
+    }
   })
 
   it('keeps social post as a composite workflow using asset ids', () => {

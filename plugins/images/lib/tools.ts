@@ -3,6 +3,8 @@ import { existsSync } from 'node:fs'
 import { basename } from 'node:path'
 import type { ExecToolResult, PluginContext } from '@bakin/core/plugin-types'
 import type { RuntimeImageGenerationResult } from '@bakin/core/adapters/runtime'
+import { getAsset, listAssets } from '../../assets/lib/asset-service'
+import type { AssetManifest, AssetVersion } from '../../assets/lib/manifest'
 import type { ImageProviderId } from '../types'
 import { effectiveImageSettings, getImageProvider, providerReadiness } from './providers'
 import { resolveImageRoute } from './routing'
@@ -67,11 +69,25 @@ function hashPrompt(prompt: string): string {
   return `sha256:${createHash('sha256').update(prompt).digest('hex')}`
 }
 
+function sortJsonValue(value: unknown): unknown {
+  if (value == null || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map(sortJsonValue)
+  const sorted = Object.keys(value as Record<string, unknown>).sort()
+  const out: Record<string, unknown> = {}
+  for (const key of sorted) out[key] = sortJsonValue((value as Record<string, unknown>)[key])
+  return out
+}
+
+function stablePromptValue(value: unknown): string {
+  return JSON.stringify(sortJsonValue(value))
+}
+
 function compilePrompt(params: Pick<ImagesGenerateParams, 'prompt' | 'promptPacket'>): string | null {
   if (params.prompt && params.prompt.trim().length > 0) return params.prompt
   if (params.promptPacket && Object.keys(params.promptPacket).length > 0) {
     return Object.entries(params.promptPacket)
-      .map(([key, value]) => `${key}: ${typeof value === 'string' ? value : JSON.stringify(value)}`)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, value]) => `${key}: ${typeof value === 'string' ? value : stablePromptValue(value)}`)
       .join('\n')
   }
   return null
@@ -220,9 +236,68 @@ async function persistImageResult(
   }
 }
 
+function versionMatchesRequest(version: AssetVersion | undefined, req: PreparedImageRequest, promptHash: string, tool: string): boolean {
+  if (!version) return false
+  return version.tool === tool
+    && version.promptHash === promptHash
+    && version.generation?.provider === req.route.provider
+    && version.generation?.model === req.route.model
+    && version.generation?.surface === req.dims.surface
+    && version.generation?.quality === req.quality
+}
+
+function reusableGenerateResult(params: ImagesGenerateParams, req: PreparedImageRequest, promptHash: string): ExecToolResult | null {
+  const existing = listAssets({ type: 'images', taskId: params.taskId })
+  for (const summary of existing) {
+    const manifest = getAsset(summary.assetId)
+    const current = currentVersion(manifest)
+    if (!current) continue
+    if (!versionMatchesRequest(current, req, promptHash, 'bakin_exec_images_generate')) continue
+    return imageToolResultFromVersion(summary.assetId, current, req, { reused: true, idempotency: 'asset' })
+  }
+  return null
+}
+
+function reusableEditResult(assetId: string, req: PreparedImageRequest, promptHash: string): ExecToolResult | null {
+  const manifest = getAsset(assetId)
+  const current = currentVersion(manifest)
+  if (!current || !versionMatchesRequest(current, req, promptHash, 'bakin_exec_images_edit')) return null
+  return imageToolResultFromVersion(assetId, current, req, { reused: true, idempotency: 'asset' })
+}
+
+function currentVersion(manifest: AssetManifest | null): AssetVersion | undefined {
+  return manifest?.versions.find(version => version.version === manifest.currentVersion)
+}
+
+function imageToolResultFromVersion(
+  assetId: string,
+  version: AssetVersion,
+  req: PreparedImageRequest,
+  extra: Record<string, unknown> = {},
+): ExecToolResult {
+  return {
+    ok: true,
+    assetId,
+    version: version.version,
+    width: version.width ?? req.dims.width,
+    height: version.height ?? req.dims.height,
+    surface: req.dims.surface,
+    provider: req.route.provider,
+    model: req.route.model,
+    quality: req.quality,
+    routeSource: version.generation?.routeSource ?? 'runtime',
+    prompt: (version.prompt ?? req.prompt).slice(0, 500),
+    promptHash: version.promptHash ?? hashPrompt(req.prompt),
+    ...extra,
+  }
+}
+
 export async function generateImage(ctx: PluginContext, params: ImagesGenerateParams, agent: string): Promise<ExecToolResult> {
   const req = await prepareImageRequest(ctx, params)
   if ('error' in req) return fail(req.error)
+  const promptHash = hashPrompt(req.prompt)
+  const reused = reusableGenerateResult(params, req, promptHash)
+  if (reused) return reused
 
   // The runtime capability owns transport: native when it can, the shared
   // direct-provider shim when it can't. The plugin never touches provider HTTP.
@@ -233,7 +308,7 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
   // call must not bill twice.
   const key: ImageCallKey = {
     taskId: params.taskId, op: 'generate', source: null,
-    promptHash: hashPrompt(req.prompt), provider: req.route.provider, model: req.route.model,
+    promptHash, provider: req.route.provider, model: req.route.model,
     width: req.dims.width, height: req.dims.height, quality: req.quality,
   }
   return runBilledImageCall(key, async () => {
@@ -257,6 +332,9 @@ export async function editImage(ctx: PluginContext, params: ImagesEditParams, ag
 
   const req = await prepareImageRequest(ctx, params)
   if ('error' in req) return fail(req.error)
+  const promptHash = hashPrompt(req.prompt)
+  const reused = reusableEditResult(params.assetId, req, promptHash)
+  if (reused) return reused
 
   // Edit is runtime-only — the shared shim does generation, not editing.
   if (!ctx.runtime.images?.edit) return fail('The active runtime does not provide an image edit capability')
@@ -264,7 +342,7 @@ export async function editImage(ctx: PluginContext, params: ImagesEditParams, ag
 
   const key: ImageCallKey = {
     taskId: params.taskId, op: 'edit', source: params.assetId,
-    promptHash: hashPrompt(req.prompt), provider: req.route.provider, model: req.route.model,
+    promptHash, provider: req.route.provider, model: req.route.model,
     width: req.dims.width, height: req.dims.height, quality: req.quality,
   }
   return runBilledImageCall(key, async () => {

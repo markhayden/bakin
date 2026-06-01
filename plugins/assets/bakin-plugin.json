@@ -89,8 +89,8 @@
     "execTools": [
       {
         "name": "bakin_exec_assets_list",
-        "summary": "List managed assets (one entry per asset, current-version view). Optional type filter.",
-        "description": "List managed assets (one entry per asset, current-version view). Optional type filter."
+        "summary": "List managed assets (one entry per asset, current-version view). Optional type and task filters.",
+        "description": "List managed assets (one entry per asset, current-version view). Optional type and task filters."
       },
       {
         "name": "bakin_exec_assets_get",
