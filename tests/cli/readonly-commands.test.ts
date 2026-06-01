@@ -870,15 +870,18 @@ describe('read-only CLI TTY commands', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({
       ok: true,
       agents: [
-        { agentId: 'patch', state: 'managed', packageId: 'bakin.patch' },
-        { agentId: 'docs', state: 'adopted', packageId: 'bakin.docs' },
+        { agentId: 'patch', state: 'managed', packageId: 'bakin.patch', version: '1.2.0' },
+        { agentId: 'docs', state: 'adopted', packageId: 'bakin.docs', entry: { version: '1.1.0' } },
       ],
     }))
     process.argv = ['bun', 'cli/bakin.ts', 'agents', 'list', '--packages']
     await main()
     expect(output()).toContain('Agent Packages')
+    expect(output()).toContain('VERSION')
     expect(output()).toContain('PACKAGE')
     expect(output()).toContain('bakin.patch')
+    expect(output()).toContain('1.2.0')
+    expect(output()).toContain('1.1.0')
     expect(output()).not.toContain('Agents (package state):')
 
     log.mockClear()
@@ -912,6 +915,28 @@ describe('read-only CLI TTY commands', () => {
     expect(output()).toContain('lessons')
     expect(output()).not.toContain('bakin.patch')
     expect(output()).not.toContain('Installed packages:')
+  })
+
+  it('prints agent package versions in plain output outside a TTY', async () => {
+    setStdoutIsTTY(false)
+    const { main } = await import('../../cli/bakin')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      agents: [
+        { agentId: 'patch', state: 'managed', packageId: 'bakin.patch', version: '1.2.0' },
+        { agentId: 'docs', state: 'adopted', packageId: 'bakin.docs', entry: { version: '1.1.0' } },
+      ],
+    }))
+    process.argv = ['bun', 'cli/bakin.ts', 'agents', 'list', '--packages']
+
+    await main()
+
+    expect(output()).toContain('Agents (package state):')
+    expect(output()).toContain('patch')
+    expect(output()).toContain('1.2.0')
+    expect(output()).toContain('docs')
+    expect(output()).toContain('1.1.0')
   })
 
   it('renders package action confirmations with the shared TUI screen in a TTY', async () => {

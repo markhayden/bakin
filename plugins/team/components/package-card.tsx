@@ -43,13 +43,28 @@ function CliHint({ command }: { command: string }) {
   )
 }
 
-function PackageEntryFields({ entry, packageId }: { entry: NonNullable<PackageStateRow['entry']>; packageId?: string }) {
+function PackageEntryFields({
+  entry,
+  packageId,
+  version,
+}: {
+  entry: NonNullable<PackageStateRow['entry']>
+  packageId?: string
+  version?: string
+}) {
+  const installedVersion = version ?? entry.version
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1 text-xs">
       {packageId && (
         <>
           <dt className="text-muted-foreground">Package</dt>
           <dd className="font-mono text-foreground break-all">{packageId}</dd>
+        </>
+      )}
+      {installedVersion && (
+        <>
+          <dt className="text-muted-foreground">Version</dt>
+          <dd className="font-mono text-foreground">{installedVersion}</dd>
         </>
       )}
       <dt className="text-muted-foreground">Source</dt>
@@ -135,7 +150,11 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
         </p>
       )}
       {packageState?.entry && (state === 'managed' || state === 'adopted') && (
-        <PackageEntryFields entry={packageState.entry} packageId={packageState.packageId} />
+        <PackageEntryFields
+          entry={packageState.entry}
+          packageId={packageState.packageId}
+          version={packageState.version}
+        />
       )}
       {state === 'drifted' && (
         <div className="space-y-1.5">

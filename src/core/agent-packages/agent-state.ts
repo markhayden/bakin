@@ -36,6 +36,8 @@ export type AgentState = 'absent' | 'unmanaged' | 'adopted' | 'managed'
 export interface AgentStateInfo {
   agentId: string
   state: AgentState
+  /** Installed package version from the lockfile entry, when managed/adopted. */
+  version?: string
   /** Lockfile package id (typically === agentId for kind:'agent' entries). */
   packageId?: string
   /** Lockfile entry — only populated when state is 'managed' or 'adopted'. */
@@ -71,7 +73,13 @@ export async function getAgentState(
     // Lockfile says we own this agent but the runtime doesn't have it. This is
     // drift the doctor sweep should flag — for the state lookup we treat the
     // package side as authoritative because the entry is real, just orphaned.
-    return { agentId, state: owner.entry.state ?? 'managed', packageId: owner.id, entry: owner.entry }
+    return {
+      agentId,
+      state: owner.entry.state ?? 'managed',
+      version: owner.entry.version,
+      packageId: owner.id,
+      entry: owner.entry,
+    }
   }
   if (inRuntime && !owner) {
     return { agentId, state: 'unmanaged' }
@@ -81,6 +89,7 @@ export async function getAgentState(
   return {
     agentId,
     state: entry.state ?? 'managed',
+    version: entry.version,
     packageId: owner!.id,
     entry,
   }
@@ -112,6 +121,7 @@ export async function listAllAgentStates(lockfile?: Lockfile): Promise<AgentStat
     results.push({
       agentId,
       state: entry.state ?? 'managed',
+      version: entry.version,
       packageId,
       entry,
     })

@@ -212,7 +212,9 @@ export interface AgentRuleResultData {
 export interface AgentPackageData {
   agentId?: unknown
   state?: unknown
+  version?: unknown
   packageId?: unknown
+  entry?: unknown
 }
 
 export interface AgentLessonData {
@@ -404,6 +406,7 @@ interface AgentPackageTableRow {
   status: TuiStatus
   agent: string
   state: string
+  version: string
   package: string
 }
 
@@ -1437,10 +1440,12 @@ function packageStateStatus(state: string): TuiStatus {
 function agentPackageTableRows(agents: AgentPackageData[]): AgentPackageTableRow[] {
   return agents.map(agent => {
     const state = valueText(agent.state)
+    const entry = isPlainRecord(agent.entry) ? agent.entry : {}
     return {
       status: packageStateStatus(state),
       agent: valueText(agent.agentId),
       state,
+      version: valueText(agent.version ?? entry.version),
       package: valueText(agent.packageId),
     }
   })
@@ -2553,7 +2558,8 @@ export function AgentPackagesListReport({ agents, color = true }: {
             columns={[
               { key: 'agent', header: 'AGENT', width: 18, render: row => row.agent },
               { key: 'state', header: 'STATE', width: 12, render: row => row.state },
-              { key: 'package', header: 'PACKAGE', width: 34, grow: true, render: row => row.package },
+              { key: 'version', header: 'VERSION', width: 12, render: row => row.version },
+              { key: 'package', header: 'PACKAGE', width: 28, grow: true, render: row => row.package },
             ]}
             color={color}
           />

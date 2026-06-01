@@ -1302,10 +1302,20 @@ class PluginRegistryImpl {
     missingDependencies?: string[]
     routes: number
   }> {
+    let installedUserPluginVersions: Record<string, string | undefined> = {}
+    try {
+      const lock = readPluginLockfile()
+      installedUserPluginVersions = Object.fromEntries(
+        Object.entries(lock.plugins).map(([id, entry]) => [id, entry.version]),
+      )
+    } catch (err) {
+      log.warn('Failed to read plugin lockfile for registry snapshot', err)
+    }
+
     const active = [...this.plugins.entries()].map(([id, state]) => ({
       id,
       name: state.plugin.name,
-      version: state.plugin.version,
+      version: isCorePlugin(id) ? state.plugin.version : installedUserPluginVersions[id] ?? state.plugin.version,
       description: state.description,
       contributes: state.manifest?.contributes,
       // Was a `id.startsWith('user:')` heuristic that always evaluated to
