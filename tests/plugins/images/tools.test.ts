@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
+import { createHash } from 'crypto'
 import { mkdirSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -8,6 +9,7 @@ import { resetContentDir } from '../../../src/core/content-dir'
 let testDir = join(tmpdir(), `bakin-images-tools-${Date.now()}`)
 
 import { editImage, exportImage, generateImage, importImage } from '../../../plugins/images/lib/tools'
+import { createAsset, addVersion } from '../../../plugins/assets/lib/asset-service'
 
 const originalOpenAI = process.env.OPENAI_API_KEY
 const originalGemini = process.env.GEMINI_API_KEY
@@ -34,6 +36,10 @@ function makeContext(overrides: Partial<PluginContext> = {}, sourceRef: { absPat
     ...overrides,
   } as unknown as PluginContext
   return { ctx, created, versioned, exported }
+}
+
+function promptHash(prompt: string): string {
+  return `sha256:${createHash('sha256').update(prompt).digest('hex')}`
 }
 
 describe('images tools', () => {
@@ -121,6 +127,50 @@ describe('images tools', () => {
     expect(generate).toHaveBeenCalledWith(expect.objectContaining({ width: 2048, height: 1024 }))
   })
 
+  it('reuses an already-saved generated asset for an identical retry before calling the provider', async () => {
+    const prompt = 'A charming cartoon piglet in a space suit, ready for launch.'
+    const file = join(testDir, 'already-generated.png')
+    writeFileSync(file, 'img')
+    const existing = await createAsset({
+      sourceFilePath: file,
+      type: 'images',
+      agent: 'pixel',
+      taskId: 'task-retry',
+      slug: 'instagram-feed-portrait-image',
+      op: 'generate',
+      tool: 'bakin_exec_images_generate',
+      prompt,
+      promptHash: promptHash(prompt),
+      description: prompt,
+      tags: ['generated', 'instagram-feed-portrait', 'openai', 'gpt-image-2'],
+      source: { kind: 'generated', path: null },
+      generation: {
+        provider: 'openai',
+        model: 'gpt-image-2',
+        surface: 'instagram-feed-portrait',
+        quality: 'standard',
+        routeSource: 'runtime',
+      },
+    })
+    const generate = mock(async () => { throw new Error('provider should not be called') })
+    const { ctx } = makeContext({ runtime: { images: { providers: mock(async () => []), generate } } as never })
+
+    const result = await generateImage(ctx, {
+      prompt,
+      taskId: 'task-retry',
+      provider: 'openai',
+      model: 'gpt-image-2',
+      surface: 'instagram-feed-portrait',
+      quality: 'standard',
+    }, 'pixel')
+
+    expect(result.ok).toBe(true)
+    expect(result.assetId).toBe(existing.assetId)
+    expect(result.reused).toBe(true)
+    expect(result.idempotency).toBe('asset')
+    expect(generate).not.toHaveBeenCalled()
+  })
+
   it('fails clearly when the active runtime has no image capability', async () => {
     const { ctx } = makeContext()
     const result = await generateImage(ctx, { prompt: 'x', taskId: 'task-none', provider: 'openai', model: 'gpt-image-2', surface: 'blog-hero' }, 'pixel')
@@ -179,6 +229,58 @@ describe('images tools', () => {
     expect(versioned[0]).toMatchObject({ assetId: '20260529-src-a1b2c3d4' })
     expect(versioned[0].input).toMatchObject({ sourceFilePath: editedFile, op: 'edit', tool: 'bakin_exec_images_edit' })
     expect(versioned[0].input.generation).toMatchObject({ routeSource: 'runtime' })
+  })
+
+  it('reuses the current edited version for an identical edit retry', async () => {
+    const sourceAbs = join(testDir, 'source-existing.png')
+    const editedAbs = join(testDir, 'edited-existing.png')
+    writeFileSync(sourceAbs, 'src-bytes')
+    writeFileSync(editedAbs, 'edited-bytes')
+    const prompt = 'add a small rocket backpack'
+    const created = await createAsset({
+      sourceFilePath: sourceAbs,
+      type: 'images',
+      agent: 'pixel',
+      taskId: 'task-edit-retry',
+      slug: 'edit-source',
+      op: 'import',
+    })
+    await addVersion(created.assetId, {
+      sourceFilePath: editedAbs,
+      op: 'edit',
+      tool: 'bakin_exec_images_edit',
+      prompt,
+      promptHash: promptHash(prompt),
+      description: prompt,
+      tags: ['edited', 'instagram-square', 'google', 'gemini-3.1-flash-image-preview'],
+      generation: {
+        provider: 'google',
+        model: 'gemini-3.1-flash-image-preview',
+        surface: 'instagram-square',
+        quality: 'standard',
+        routeSource: 'runtime',
+      },
+    })
+    const edit = mock(async () => { throw new Error('provider should not be called') })
+    const { ctx } = makeContext(
+      { runtime: { images: { providers: mock(async () => []), generate: mock(), edit } } as never },
+      { absPath: editedAbs, mimeType: 'image/png', version: 2 },
+    )
+
+    const result = await editImage(ctx, {
+      prompt,
+      taskId: 'task-edit-retry',
+      assetId: created.assetId,
+      provider: 'google',
+      model: 'gemini-3.1-flash-image-preview',
+      surface: 'instagram-square',
+    }, 'pixel')
+
+    expect(result.ok).toBe(true)
+    expect(result.assetId).toBe(created.assetId)
+    expect(result.version).toBe(2)
+    expect(result.reused).toBe(true)
+    expect(edit).not.toHaveBeenCalled()
   })
 
   it('fails an edit when the source asset is not found', async () => {

@@ -402,10 +402,16 @@ const assetsPlugin: BakinPlugin = definePlugin({
     ctx.registerExecTool({
       name: 'bakin_exec_assets_list',
       label: 'Listed assets',
-      description: 'List managed assets (one entry per asset, current-version view). Optional type filter.',
-      parameters: { type: z.enum(ASSET_TYPES).optional().describe('Filter by asset type') },
+      description: 'List managed assets (one entry per asset, current-version view). Optional type and task filters.',
+      parameters: {
+        type: z.enum(ASSET_TYPES).optional().describe('Filter by asset type'),
+        taskId: z.string().optional().describe('Filter to assets linked to this task id'),
+      },
       handler: async (params: Record<string, unknown>) => {
-        const assets = listVersionedAssets(params.type ? { type: params.type as AssetType } : undefined)
+        const filter: { type?: AssetType; taskId?: string } = {}
+        if (params.type) filter.type = params.type as AssetType
+        if (typeof params.taskId === 'string' && params.taskId.length > 0) filter.taskId = params.taskId
+        const assets = listVersionedAssets(Object.keys(filter).length ? filter : undefined)
         return { ok: true, count: assets.length, assets }
       },
     })

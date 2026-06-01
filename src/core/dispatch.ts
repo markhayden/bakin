@@ -26,6 +26,7 @@ import {
 
 const log = createLogger('dispatch')
 const hooks = () => getHookRegistry()
+const IMAGE_MCPORTER_TIMEOUT_MS = 600000
 
 async function sendDispatchMessage(agentId: string, content: string): Promise<void> {
   await getAppServices().runtime.messaging.send({ agentId, content })
@@ -775,6 +776,7 @@ export function buildDispatchMessage(
 
   const server = `bakin-${agentName}`
   const mc = (tool: string, args: string) => `mcporter call ${server}.${tool} ${args}`
+  const mcImage = (tool: string, args: string) => `mcporter call ${server}.${tool} --timeout ${IMAGE_MCPORTER_TIMEOUT_MS} ${args}`
 
   if (!task.agent) {
     return `Triage this task: "${task.title}".${detailsBlock}${assetsBlock}${lessonSection}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=video/audio, jessica=research) via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
@@ -840,7 +842,7 @@ ${mc('bakin_exec_post_channel', `channel="<name>" content="<message>" taskId=${t
 
 # Recommend and generate an image through the core images plugin
 ${mc('bakin_exec_images_recommend', `surface=instagram-feed-portrait objective="<goal>"`)}
-${mc('bakin_exec_images_generate', `taskId=${task.id} prompt="<text>" surface=instagram-feed-portrait provider=auto`)}
+${mcImage('bakin_exec_images_generate', `taskId=${task.id} prompt="<text>" surface=instagram-feed-portrait provider=auto`)}
 
 # Check workflow gate statuses
 ${mc('bakin_exec_check_gates', `taskId=${task.id}`)}
@@ -1129,6 +1131,7 @@ function buildWorkflowDispatchMessage(
   lines.push('')
   const wfServer = `bakin-${agentName}`
   const wfMc = (tool: string, args: string) => `mcporter call ${wfServer}.${tool} ${args}`
+  const wfMcImage = (tool: string, args: string) => `mcporter call ${wfServer}.${tool} --timeout ${IMAGE_MCPORTER_TIMEOUT_MS} ${args}`
 
   lines.push('You MUST log your progress throughout this workflow step. These updates appear in the live activity feed so humans can monitor your work in real-time.')
   lines.push('')
@@ -1163,7 +1166,7 @@ function buildWorkflowDispatchMessage(
   lines.push('')
   lines.push(`# Recommend and generate an image through the core images plugin`)
   lines.push(`${wfMc('bakin_exec_images_recommend', `surface=instagram-feed-portrait objective="<goal>"`)}`);
-  lines.push(`${wfMc('bakin_exec_images_generate', `taskId=${task.id} prompt="<text>" surface=instagram-feed-portrait provider=auto`)}`);
+  lines.push(`${wfMcImage('bakin_exec_images_generate', `taskId=${task.id} prompt="<text>" surface=instagram-feed-portrait provider=auto`)}`);
   lines.push('')
   lines.push(`# Check workflow gate statuses`)
   lines.push(`${wfMc('bakin_exec_check_gates', `taskId=${task.id}`)}`);

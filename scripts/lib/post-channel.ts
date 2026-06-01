@@ -2,6 +2,7 @@
  * bakin_exec_post_channel
  */
 import { z } from 'zod'
+import { createHash } from 'crypto'
 import { existsSync } from 'fs'
 import { basename, extname } from 'path'
 import { getAppServices } from '@/core/app-services'
@@ -36,6 +37,9 @@ function resolveAssetAbsPath(assetId: string | undefined): string | null {
 // When BAKIN_CHANNEL_TEST_MODE=1 (or "true"), all posts are routed to
 // the testing-ground channel regardless of what the caller requested.
 const TEST_CHANNEL = 'testing-ground'
+const POST_IDEMPOTENCY_TTL_MS = 5 * 60 * 1000
+const postInflight = new Map<string, Promise<ExecToolResult>>()
+const postCompleted = new Map<string, { result: ExecToolResult; expiresAt: number }>()
 
 function isTestMode(): boolean {
   const val = process.env.BAKIN_CHANNEL_TEST_MODE
@@ -69,36 +73,113 @@ export async function postChannel(
     filePayload(videoAssetId, resolveAssetAbsPath(videoAssetId)),
   ].filter((file): file is { name: string; path: string } => Boolean(file))
 
+  const signature = postSignature({ ...params, channel, files })
+  const existing = postInflight.get(signature)
+  if (existing) return existing
+  const cached = postCompleted.get(signature)
+  if (cached) {
+    if (cached.expiresAt > Date.now()) return { ...cached.result, deduped: true }
+    postCompleted.delete(signature)
+  }
+
+  const promise = deliverChannelPost(runtime, {
+    agent: params.agent,
+    channel,
+    content,
+    embed,
+    files,
+    requestedChannel,
+    taskId,
+  })
+  postInflight.set(signature, promise)
+  try {
+    const result = await promise
+    // External sends are non-idempotent. Cache success and failure briefly so
+    // an agent retry caused by a client timeout or ambiguous adapter failure
+    // does not emit a second copy of the same message.
+    postCompleted.set(signature, { result, expiresAt: Date.now() + POST_IDEMPOTENCY_TTL_MS })
+    return result
+  } finally {
+    if (postInflight.get(signature) === promise) postInflight.delete(signature)
+  }
+}
+
+async function deliverChannelPost(
+  runtime: AgentRuntimeAdapter,
+  input: {
+    agent: string
+    channel: string
+    content: string
+    embed?: Record<string, unknown>
+    files: Array<{ name: string; path: string }>
+    requestedChannel: string
+    taskId?: string
+  },
+): Promise<ExecToolResult> {
   try {
     const result = await runtime.channels.deliverContent({
-      channels: [channel],
+      channels: [input.channel],
       content: {
         title: 'Channel post',
-        body: content,
-        files,
+        body: input.content,
+        files: input.files,
         metadata: {
-          agent: params.agent,
-          taskId,
-          embed,
-          requestedChannel,
-          resolvedChannel: channel,
-          ...(isTestMode() && channel !== normalizeChannelTarget(requestedChannel) ? { testMode: true } : {}),
+          agent: input.agent,
+          taskId: input.taskId,
+          embed: input.embed,
+          requestedChannel: input.requestedChannel,
+          resolvedChannel: input.channel,
+          ...(isTestMode() && input.channel !== normalizeChannelTarget(input.requestedChannel) ? { testMode: true } : {}),
         },
       },
     })
 
     return succeed({
       deliveries: result.deliveries,
-      channel: displayChannel(channel),
-      taskId,
-      ...(isTestMode() && channel !== normalizeChannelTarget(requestedChannel) ? {
+      channel: displayChannel(input.channel),
+      taskId: input.taskId,
+      ...(isTestMode() && input.channel !== normalizeChannelTarget(input.requestedChannel) ? {
         testMode: true,
-        requestedChannel: displayChannel(normalizeChannelTarget(requestedChannel)),
+        requestedChannel: displayChannel(normalizeChannelTarget(input.requestedChannel)),
       } : {}),
     })
   } catch (err) {
     return fail(`Runtime channel delivery failed: ${err instanceof Error ? err.message : String(err)}`)
   }
+}
+
+function postSignature(input: PostChannelParams & { channel: string; files: Array<{ name: string; path: string }> }): string {
+  const canonical = stableJson({
+    agent: input.agent,
+    channel: input.channel,
+    content: input.content,
+    embed: input.embed ?? null,
+    files: input.files,
+    imageAssetId: input.imageAssetId ?? null,
+    taskId: input.taskId ?? null,
+    testMode: isTestMode(),
+    videoAssetId: input.videoAssetId ?? null,
+  })
+  return createHash('sha256').update(canonical).digest('hex')
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(sortJsonValue(value))
+}
+
+function sortJsonValue(value: unknown): unknown {
+  if (value == null || typeof value !== 'object') return value
+  if (Array.isArray(value)) return value.map(sortJsonValue)
+  const out: Record<string, unknown> = {}
+  for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+    out[key] = sortJsonValue((value as Record<string, unknown>)[key])
+  }
+  return out
+}
+
+export function resetPostChannelIdempotencyForTests(): void {
+  postInflight.clear()
+  postCompleted.clear()
 }
 
 function normalizeChannelTarget(channel: string): string {

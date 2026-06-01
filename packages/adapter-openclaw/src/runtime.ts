@@ -88,6 +88,7 @@ const OPENCLAW_PLUGIN_APPROVAL_TIMEOUT_MS = 600000
 const OPENCLAW_CRON_TIMEOUT_MS = 30000
 const OPENCLAW_CRON_PROCESS_TIMEOUT_MS = OPENCLAW_CRON_TIMEOUT_MS + 5000
 const OPENCLAW_IMAGE_PROCESS_TIMEOUT_MS = 600000
+const BAKIN_MCPORTER_CALL_TIMEOUT_MS = 600000
 const OPENCLAW_IMAGE_OUTPUT_MAX_BUFFER = 16 * 1024 * 1024
 const OPENCLAW_IMAGE_PROVIDERS_TTL_MS = 5000
 const OPENCLAW_PLUGIN_APPROVAL_REF_PREFIX = 'openclaw-plugin-approval:'
@@ -1239,7 +1240,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
 
   private async exec(args: string[], opts: { maxBuffer?: number; timeout?: number } = {}): Promise<string> {
     try {
-      const { stdout } = await execFileAsync(this.settings.binaryPath, args, { timeout: 15000, ...opts })
+      const { stdout } = await execFileAsync(this.settings.binaryPath, args, { timeout: 15000, ...opts, env: openClawChildEnv() })
       return stdout
     } catch (err) {
       throw new OpenClawCommandError(args, err)
@@ -1343,6 +1344,16 @@ function findOpenClawBinary(): string | null {
 function resolveOpenClawBinary(requested: string): string {
   if (isExecutable(requested)) return requested
   return findOpenClawBinary() ?? requested
+}
+
+function openClawChildEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    // Agents invoke Bakin tools through mcporter. Image generation routinely
+    // exceeds mcporter's 60s default, so keep the transport aligned with the
+    // adapter's image process budget while respecting explicit operator config.
+    MCPORTER_CALL_TIMEOUT: process.env.MCPORTER_CALL_TIMEOUT || String(BAKIN_MCPORTER_CALL_TIMEOUT_MS),
+  }
 }
 
 function writeOpenClawConfig(config: Record<string, unknown>): void {

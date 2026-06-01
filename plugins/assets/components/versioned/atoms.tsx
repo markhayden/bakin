@@ -1,10 +1,11 @@
 'use client'
 
+import { useEffect, useMemo, useState } from 'react'
 import { FileText, Image, Video, Music, Map, Database, Package, Clock } from 'lucide-react'
 import { Badge } from '@makinbakin/sdk/ui'
 import { AgentAvatar } from '@makinbakin/sdk/components'
 import { formatAge } from '@makinbakin/sdk/utils'
-import { assetThumbUrl, assetCurrentUrl } from './asset-urls'
+import { assetThumbUrl, assetCurrentUrl, assetVersionUrl } from './asset-urls'
 
 const TYPE_ICONS: Record<string, typeof FileText> = {
   text: FileText, images: Image, video: Video, audio: Music, plans: Map, data: Database, other: Package,
@@ -30,15 +31,23 @@ export function AssetThumb({ assetId, type, version, hasThumb, className }: {
   hasThumb?: boolean
   className?: string
 }) {
-  const showImage = type === 'images' && hasThumb !== false
-  if (showImage) {
+  const imageSrc = useMemo(() => {
+    if (type !== 'images') return null
+    if (hasThumb !== false) return version != null ? assetThumbUrl(assetId, version) : assetThumbUrl(assetId)
+    return version != null ? assetVersionUrl(assetId, version) : assetCurrentUrl(assetId)
+  }, [assetId, hasThumb, type, version])
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => { setFailed(false) }, [imageSrc])
+
+  if (imageSrc && !failed) {
     return (
       <img
-        src={version != null ? assetThumbUrl(assetId, version) : assetThumbUrl(assetId)}
+        src={imageSrc}
         alt={assetId}
         className={className ?? 'w-full h-full object-cover'}
         loading="lazy"
-        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
+        onError={() => setFailed(true)}
       />
     )
   }

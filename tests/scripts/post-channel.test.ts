@@ -46,7 +46,7 @@ mock.module('../../src/core/workflow-tool-authorization', () => ({
   assertWorkflowToolAllowed: (...args: unknown[]) => mockAssertWorkflowToolAllowed(...args),
 }))
 
-import { postChannel } from '../../scripts/lib/post-channel'
+import { postChannel, resetPostChannelIdempotencyForTests } from '../../scripts/lib/post-channel'
 
 describe('postChannel', () => {
   const originalEnv = { ...process.env }
@@ -67,6 +67,7 @@ describe('postChannel', () => {
     mockNotificationTarget = ''
     mockChannelAliases = { general: 'discord:channel-123', 'testing-ground': 'discord:test-channel' }
     mockContentDir = tmpdir()
+    resetPostChannelIdempotencyForTests()
   })
 
   afterEach(() => {
@@ -162,6 +163,51 @@ describe('postChannel', () => {
 
     expect(result.ok).toBe(false)
     expect(result.error).toContain('channel offline')
+  })
+
+  it('deduplicates identical channel-post retries, including ambiguous failures', async () => {
+    deliverContent.mockRejectedValueOnce(new Error('adapter returned after posting'))
+
+    const params = {
+      channel: 'general',
+      content: 'Pixel made the space pig',
+      agent: 'pixel',
+      taskId: 'task-image',
+      imageAssetId: '20260601-space-pig-a1b2c3d4',
+    }
+
+    const first = await postChannel(params, runtime)
+    const second = await postChannel(params, runtime)
+
+    expect(first.ok).toBe(false)
+    expect(second.ok).toBe(false)
+    expect(second.deduped).toBe(true)
+    expect(deliverContent).toHaveBeenCalledTimes(1)
+  })
+
+  it('shares an in-flight identical channel post instead of sending twice', async () => {
+    deliverContent.mockImplementationOnce(async () => {
+      await new Promise(resolve => setTimeout(resolve, 10))
+      return {
+        deliveries: [{ channelId: 'discord:channel-123', ref: 'message:1', renderedAt: '2026-04-11T10:00:00Z' }],
+      }
+    })
+
+    const params = {
+      channel: 'general',
+      content: 'Pixel made the space pig',
+      agent: 'pixel',
+      taskId: 'task-image',
+      imageAssetId: '20260601-space-pig-a1b2c3d4',
+    }
+    const [first, second] = await Promise.all([
+      postChannel(params, runtime),
+      postChannel(params, runtime),
+    ])
+
+    expect(first.ok).toBe(true)
+    expect(second.ok).toBe(true)
+    expect(deliverContent).toHaveBeenCalledTimes(1)
   })
 
   it('returns a failed exec result when workflow policy denies posting', async () => {

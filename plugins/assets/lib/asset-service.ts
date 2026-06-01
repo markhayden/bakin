@@ -104,7 +104,20 @@ async function imageDimensions(filePath: string): Promise<{ width: number | null
   }
 }
 
-function generateThumbnail(inputPath: string, outputPath: string, widthPx = 400): boolean {
+async function generateThumbnail(inputPath: string, outputPath: string, widthPx = 400): Promise<boolean> {
+  const sharp = await loadSharp()
+  if (sharp) {
+    try {
+      await sharp(inputPath)
+        .resize({ width: widthPx, withoutEnlargement: true })
+        .jpeg({ quality: 82 })
+        .toFile(outputPath)
+      return existsSync(outputPath)
+    } catch (err) {
+      log.warn('sharp thumbnail generation failed; trying ffmpeg fallback', { error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
   try {
     // argv form (no shell) — paths/extensions are derived from client filenames,
     // so a shell string would expand $(...)/backticks in a crafted name.
@@ -149,7 +162,7 @@ export async function createAsset(input: AssetCreateInput): Promise<{ assetId: s
   const dims = isImage ? await imageDimensions(fileAbs) : { width: null, height: null }
   let thumb: string | null = null
   if (isImage) {
-    thumb = generateThumbnail(fileAbs, join(dirAbs, 'v1.thumb.jpg')) ? 'v1.thumb.jpg' : null
+    thumb = await generateThumbnail(fileAbs, join(dirAbs, 'v1.thumb.jpg')) ? 'v1.thumb.jpg' : null
   }
 
   const created = nowIso()
@@ -327,7 +340,7 @@ export async function addVersion(assetId: string, input: AssetVersionInput): Pro
 
     const isImage = manifest.type === 'images'
     const dims = isImage ? await imageDimensions(fileAbs) : { width: null, height: null }
-    const thumb = isImage && generateThumbnail(fileAbs, join(dirAbs, `v${nextVersion}.thumb.jpg`)) ? `v${nextVersion}.thumb.jpg` : null
+    const thumb = isImage && await generateThumbnail(fileAbs, join(dirAbs, `v${nextVersion}.thumb.jpg`)) ? `v${nextVersion}.thumb.jpg` : null
 
     const created = nowIso()
     const version: AssetVersion = {

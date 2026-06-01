@@ -119,9 +119,11 @@ describe('asset-service create + read', () => {
     expect(manifest.versions[0].mimeType).toBe('image/png')
     expect(manifest.versions[0].width).toBe(8)
     expect(manifest.versions[0].height).toBe(6)
+    expect(manifest.versions[0].thumb).toBe('v1.thumb.jpg')
     const ref = resolveFile(assetId)
     expect(ref?.version).toBe(1)
     expect(ref?.absPath.endsWith('v1.png')).toBe(true)
+    expect(existsSync(join(testDir, assetDirRelPath(assetId)!, 'v1.thumb.jpg'))).toBe(true)
     expect(resolveFile(assetId, 99)).toBeNull()
   })
 
