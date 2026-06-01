@@ -80,6 +80,8 @@ import * as assetsRoute from './packages/host/src/api/assets/[...path]'
 import * as pluginCatchAllRoute from './packages/host/src/api/plugins/[pluginId]/[[...path]]'
 import * as pluginsManifestRoute from './packages/host/src/api/plugins/manifest'
 import * as pluginsAssetsRoute from './packages/host/src/api/plugins/assets'
+import * as updateStatusRoute from './packages/host/src/api/update/status'
+import * as updateApplyRoute from './packages/host/src/api/update/apply'
 import { handleDevSse } from './packages/host/src/api/dev/events'
 import * as devNotifyRoute from './packages/host/src/api/dev/notify'
 import { serveHostClient } from './packages/host/src/api/_static'
@@ -293,6 +295,15 @@ const eventBus = new BakinEventBus(broadcast)
     // Version endpoint
     if (url.pathname === '/api/version' && req.method === 'GET') {
       jsonResponse(res, 200, { version: BAKIN_VERSION })
+      return
+    }
+
+    if (url.pathname === '/api/update/status' && req.method === 'GET') {
+      dispatchWebHandler(req, res, updateStatusRoute.get)
+      return
+    }
+    if (url.pathname === '/api/update/apply' && req.method === 'POST') {
+      dispatchWebHandler(req, res, updateApplyRoute.post)
       return
     }
 

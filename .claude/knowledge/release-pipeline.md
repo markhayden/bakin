@@ -9,6 +9,11 @@ Active spec: `.claude/specs/release-pipeline.md`.
 - RC tag: `vMAJOR.MINOR.PATCH-rc.N`, npm dist-tag `next`, GitHub prerelease.
 - Workspace package versions stay non-publishable (`0.0.0-workspace`); root stays `0.0.0-dev`.
 - `packages/core/src/generated-version.ts` is stamped at build time.
+- Browser self-update checks call `/api/update/status`, which looks up the
+  latest GitHub release and compares it to `/api/version`. The route refuses
+  source/dev/Bun runtimes so the UI banner only appears for compiled `bakin`
+  binaries where `POST /api/update/apply` can safely invoke the existing
+  self-update path.
 
 ## Maintainer Commands
 

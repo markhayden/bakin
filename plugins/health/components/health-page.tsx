@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useContentStore } from "@makinbakin/sdk/hooks"
 import { useQueryState } from "@makinbakin/sdk/hooks"
 import { Card, CardHeader, CardTitle, CardContent } from "@makinbakin/sdk/ui"
@@ -8,10 +8,20 @@ import { Badge } from "@makinbakin/sdk/ui"
 import { Button } from "@makinbakin/sdk/ui"
 import { Input } from "@makinbakin/sdk/ui"
 import { Skeleton } from "@makinbakin/sdk/ui"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@makinbakin/sdk/ui"
 import { PluginHeader } from "@makinbakin/sdk/components"
 import { UnderlineTabs } from "@makinbakin/sdk/components"
 import { Search, CircleCheck, Clock, AlertCircle } from 'lucide-react'
 import type { HealthCheckResult } from '@makinbakin/sdk'
+
+const PLUGIN_CHECK_INTERVAL_MS = 60 * 60 * 1000
 
 const USAGE_TABS = [
   { id: 'tools', label: 'Tool Usage' },
@@ -46,10 +56,33 @@ interface PluginInfo {
   description: string
   source: 'built-in' | 'user'
   routes: number
+  installed?: {
+    version?: string
+    commitSha?: string
+    remoteHeadSha?: string
+    lastChecked?: string
+    newPermissions?: string[]
+  } | null
+  upgradeAvailable?: boolean
+  staleHintDays?: number | null
 }
 
 interface RegistryData {
   plugins: PluginInfo[]
+}
+
+interface PluginManifestEntry {
+  id: string
+  name: string
+  version: string
+  source: 'core' | 'github' | 'local'
+  installed: PluginInfo['installed']
+  upgradeAvailable: boolean
+  staleHintDays: number | null
+}
+
+interface PluginManifestData {
+  plugins: PluginManifestEntry[]
 }
 
 interface AgentUsage {
@@ -404,6 +437,13 @@ function AgentUsagePanel({ feed }: { feed: UsageFeedData | null }) {
 export function HealthPage() {
   const [data, setData] = useState<HealthSummary | null>(null)
   const [registry, setRegistry] = useState<RegistryData | null>(null)
+  const [pluginManifest, setPluginManifest] = useState<PluginManifestData | null>(null)
+  const [pluginChecking, setPluginChecking] = useState(false)
+  const [pluginUpgradeTarget, setPluginUpgradeTarget] = useState<PluginInfo | null>(null)
+  const [pluginUpgrading, setPluginUpgrading] = useState(false)
+  const [pluginUpgradeError, setPluginUpgradeError] = useState<string | null>(null)
+  const [pluginUpgradeMessage, setPluginUpgradeMessage] = useState<string | null>(null)
+  const [pluginConsentPermissions, setPluginConsentPermissions] = useState<string[] | null>(null)
   const [usage, setUsage] = useState<AgentUsage[]>([])
   const [loading, setLoading] = useState(true)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
@@ -437,6 +477,26 @@ export function HealthPage() {
   const [usageWindow, setUsageWindow] = useQueryState('usage_window', '1h')
   const kindForTab: UsageKind = usageTab === 'endpoints' ? 'rest' : usageTab === 'agents' ? 'agent' : 'mcp'
   const [usageFeed, setUsageFeed] = useState<UsageFeedData | null>(null)
+  const lastPluginCheckRef = useRef(0)
+
+  const fetchPluginManifest = useCallback(async (force = false) => {
+    const now = Date.now()
+    const shouldCheck = force || lastPluginCheckRef.current === 0 || now - lastPluginCheckRef.current >= PLUGIN_CHECK_INTERVAL_MS
+    const path = `/api/plugins/manifest${shouldCheck ? '?check=1' : ''}`
+    if (shouldCheck) setPluginChecking(true)
+    try {
+      const res = await fetch(path)
+      const json = await res.json()
+      if (json && Array.isArray(json.plugins)) {
+        setPluginManifest(json)
+        if (shouldCheck) lastPluginCheckRef.current = now
+      }
+    } catch {
+      // Manifest status is optional for Health; keep the registry list visible.
+    } finally {
+      if (shouldCheck) setPluginChecking(false)
+    }
+  }, [])
 
   const fetchData = useCallback(async () => {
     try {
@@ -465,13 +525,14 @@ export function HealthPage() {
         const searchJson = await searchRes.json()
         setSearchHealth(searchJson)
       } catch { /* search endpoint optional */ }
+      await fetchPluginManifest(false)
       setLastRefresh(new Date())
     } catch (err) {
       console.error('Failed to fetch health data:', err)
     } finally {
       setLoading(false)
     }
-  }, [kindForTab, usageWindow])
+  }, [fetchPluginManifest, kindForTab, usageWindow])
 
   useEffect(() => {
     fetchData()
@@ -482,12 +543,61 @@ export function HealthPage() {
   // Filtered plugins
   const filteredPlugins = useMemo(() => {
     if (!registry) return []
-    if (!pluginSearch) return registry.plugins
+    const manifestById = new Map((pluginManifest?.plugins ?? []).map((plugin) => [plugin.id, plugin]))
+    const merged = registry.plugins.map((plugin) => {
+      const manifest = manifestById.get(plugin.id)
+      if (!manifest) return plugin
+      return {
+        ...plugin,
+        version: manifest.version ?? plugin.version,
+        source: manifest.source === 'core' ? 'built-in' as const : 'user' as const,
+        installed: manifest.installed,
+        upgradeAvailable: manifest.upgradeAvailable,
+        staleHintDays: manifest.staleHintDays,
+      }
+    })
+    if (!pluginSearch) return merged
     const q = pluginSearch.toLowerCase()
-    return registry.plugins.filter(p =>
+    return merged.filter(p =>
       p.name.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)
     )
-  }, [registry, pluginSearch])
+  }, [pluginManifest, registry, pluginSearch])
+
+  const openPluginUpgrade = useCallback((plugin: PluginInfo) => {
+    setPluginUpgradeTarget(plugin)
+    setPluginUpgradeError(null)
+    setPluginUpgradeMessage(null)
+    setPluginConsentPermissions(null)
+  }, [])
+
+  const runPluginUpgrade = useCallback(async (yes = false) => {
+    if (!pluginUpgradeTarget) return
+    setPluginUpgrading(true)
+    setPluginUpgradeError(null)
+    setPluginUpgradeMessage(null)
+    try {
+      const res = await fetch('/api/plugins/upgrade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pluginId: pluginUpgradeTarget.id, ...(yes ? { yes: true } : {}) }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || body?.ok === false) {
+        throw new Error(typeof body?.error === 'string' ? body.error : 'Plugin upgrade failed.')
+      }
+      if (body?.awaitingConsent) {
+        setPluginConsentPermissions(Array.isArray(body.newPermissions) ? body.newPermissions.map(String) : [])
+        return
+      }
+      setPluginConsentPermissions(null)
+      setPluginUpgradeMessage(`${pluginUpgradeTarget.name} upgraded.`)
+      await fetchPluginManifest(true)
+    } catch (err) {
+      setPluginUpgradeError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setPluginUpgrading(false)
+    }
+  }, [fetchPluginManifest, pluginUpgradeTarget])
 
   if (loading) {
     return (
@@ -805,7 +915,18 @@ export function HealthPage() {
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <span>Active Plugins</span>
-              <Badge variant="secondary" className="font-mono text-xs">{registry.plugins.length}</Badge>
+              <span className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  aria-label="Check plugin updates now"
+                  disabled={pluginChecking}
+                  onClick={() => fetchPluginManifest(true)}
+                >
+                  {pluginChecking ? 'Checking...' : 'Check now'}
+                </Button>
+                <Badge variant="secondary" className="font-mono text-xs">{registry.plugins.length}</Badge>
+              </span>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -819,6 +940,7 @@ export function HealthPage() {
                   <span className="w-16 text-right">Version</span>
                   <span className="w-16 text-right">Source</span>
                   <span className="w-14 text-right">Routes</span>
+                  <span className="w-32 text-right">Status</span>
                 </div>
                 {filteredPlugins.map((p) => (
                   <div key={p.id} className="flex items-center text-sm">
@@ -835,6 +957,27 @@ export function HealthPage() {
                       </Badge>
                     </span>
                     <span className="w-14 text-right font-mono text-xs text-muted-foreground shrink-0">{p.routes}</span>
+                    <span className="w-32 shrink-0 text-right">
+                      {p.source === 'built-in' ? (
+                        <span className="text-[11px] text-muted-foreground">Core</span>
+                      ) : p.upgradeAvailable ? (
+                        <span className="inline-flex items-center justify-end gap-1.5">
+                          <Badge className="text-[10px] px-1.5 bg-warning/10 text-warning border-warning/20">
+                            Update available
+                          </Badge>
+                          <Button
+                            size="xs"
+                            variant="warning"
+                            aria-label={`Upgrade ${p.name}`}
+                            onClick={() => openPluginUpgrade(p)}
+                          >
+                            Upgrade
+                          </Button>
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">Current</span>
+                      )}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -842,6 +985,65 @@ export function HealthPage() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog
+        open={Boolean(pluginUpgradeTarget)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPluginUpgradeTarget(null)
+            setPluginUpgradeError(null)
+            setPluginUpgradeMessage(null)
+            setPluginConsentPermissions(null)
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Upgrade {pluginUpgradeTarget?.name}</DialogTitle>
+            <DialogDescription>
+              Bakin will update this user plugin from its recorded source and reactivate it after the upgrade completes.
+            </DialogDescription>
+          </DialogHeader>
+          {pluginUpgradeTarget?.installed?.commitSha && (
+            <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs font-mono text-muted-foreground">
+              <div>Current commit: {pluginUpgradeTarget.installed.commitSha}</div>
+              {pluginUpgradeTarget.installed.remoteHeadSha && (
+                <div>Available commit: {pluginUpgradeTarget.installed.remoteHeadSha}</div>
+              )}
+            </div>
+          )}
+          {pluginConsentPermissions && (
+            <div className="rounded-md border border-warning/20 bg-warning/10 px-3 py-2 text-sm">
+              <p className="font-medium text-warning">New permissions requested</p>
+              <p className="mt-1 text-xs text-muted-foreground">{pluginConsentPermissions.length ? pluginConsentPermissions.join(', ') : 'Review the updated plugin permissions before continuing.'}</p>
+            </div>
+          )}
+          {pluginUpgradeError && (
+            <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {pluginUpgradeError}
+            </div>
+          )}
+          {pluginUpgradeMessage && (
+            <div className="rounded-md border border-success/20 bg-success/10 px-3 py-2 text-sm text-success">
+              {pluginUpgradeMessage}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPluginUpgradeTarget(null)}>
+              Close
+            </Button>
+            {!pluginUpgradeMessage && (
+              <Button
+                variant={pluginConsentPermissions ? 'warning' : 'default'}
+                disabled={pluginUpgrading}
+                onClick={() => runPluginUpgrade(Boolean(pluginConsentPermissions))}
+              >
+                {pluginUpgrading ? 'Upgrading...' : pluginConsentPermissions ? 'Approve and upgrade' : 'Upgrade plugin'}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Diagnostics */}
       {doctor && (

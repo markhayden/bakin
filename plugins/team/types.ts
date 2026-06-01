@@ -76,8 +76,8 @@ export interface SkillSummary {
  * client doesn't reach across the package boundary for types.
  *
  * The server today returns 4 states (`absent | unmanaged | adopted | managed`).
- * `drifted` and `update-available` are declared on the badge component for
- * forward-compat — wiring handles them but the API doesn't yet emit them.
+ * `drifted` and `update-available` are display states layered on top of the
+ * server row when diagnostics or update checks report additional status.
  */
 export interface PackageStateRow {
   agentId: string
@@ -91,6 +91,15 @@ export interface PackageStateRow {
     installedAt: string
     version?: string
     dependencies?: string[]
+  }
+  updateStatus?: {
+    currentVersion: string
+    latestVersion: string | null
+    currentCommitSha: string
+    latestCommitSha: string | null
+    upgradeAvailable: boolean
+    checkedAt: string
+    error?: string
   }
 }
 

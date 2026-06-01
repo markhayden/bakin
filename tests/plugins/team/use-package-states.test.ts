@@ -2,9 +2,9 @@
  * Store-extension tests for `useAgentStore` package-state plumbing.
  *
  * Covers:
- *   - load() fetches /api/plugins/team/ and /api/agent-packages in parallel
+ *   - load() fetches /api/plugins/team/ and /api/agent-packages?check=1 in parallel
  *   - merge: packageStates becomes a map keyed by agentId
- *   - failed /api/agent-packages → packageStates: {}, agents still load
+ *   - failed /api/agent-packages?check=1 → packageStates: {}, agents still load
  *   - refreshPackageStates() re-fetches only the package endpoint
  *   - usePackageState(id) selector returns the right row (or undefined)
  *
@@ -86,7 +86,7 @@ function makeFetchSpy(opts: {
         json: () => Promise.resolve(opts.rosterBody ?? ROSTER_OK),
       } as Response)
     }
-    if (u === '/api/agent-packages') {
+    if (u === '/api/agent-packages?check=1') {
       if (opts.pkgRejects) return Promise.reject(new Error('network down'))
       return Promise.resolve({
         ok: (opts.pkgStatus ?? 200) < 400,
@@ -115,7 +115,7 @@ describe('useAgentStore — package state plumbing', () => {
       const u = String(url)
       calls.push(u)
       if (u === '/api/plugins/team/') return roster.promise
-      if (u === '/api/agent-packages') return packages.promise
+      if (u === '/api/agent-packages?check=1') return packages.promise
       return Promise.reject(new Error(`unexpected fetch: ${u}`))
     }) as unknown as typeof global.fetch
 
@@ -123,7 +123,7 @@ describe('useAgentStore — package state plumbing', () => {
     await Promise.resolve()
 
     expect(calls.sort()).toEqual(
-      ['/api/agent-packages', '/api/plugins/team/'],
+      ['/api/agent-packages?check=1', '/api/plugins/team/'],
     )
 
     roster.resolve(response(ROSTER_OK))
@@ -149,7 +149,7 @@ describe('useAgentStore — package state plumbing', () => {
     expect(packageStates['nonexistent']).toBeUndefined()
   })
 
-  it('survives a failed /api/agent-packages — agents still load, packageStates empty', async () => {
+  it('survives a failed /api/agent-packages?check=1 — agents still load, packageStates empty', async () => {
     global.fetch = makeFetchSpy({ pkgRejects: true }) as unknown as typeof global.fetch
 
     await useAgentStore.getState().load()
@@ -160,7 +160,7 @@ describe('useAgentStore — package state plumbing', () => {
     expect(state.packageStates).toEqual({})
   })
 
-  it('survives a non-ok /api/agent-packages response (500) — packageStates empty', async () => {
+  it('survives a non-ok /api/agent-packages?check=1 response (500) — packageStates empty', async () => {
     global.fetch = makeFetchSpy({ pkgStatus: 500, pkgBody: { ok: false, error: 'boom' } }) as unknown as typeof global.fetch
 
     await useAgentStore.getState().load()
@@ -169,7 +169,7 @@ describe('useAgentStore — package state plumbing', () => {
     expect(useAgentStore.getState().packageStates).toEqual({})
   })
 
-  it('survives a malformed /api/agent-packages payload — packageStates empty', async () => {
+  it('survives a malformed /api/agent-packages?check=1 payload — packageStates empty', async () => {
     global.fetch = makeFetchSpy({ pkgBody: { ok: true, agents: 'not-an-array' } }) as unknown as typeof global.fetch
 
     await useAgentStore.getState().load()
@@ -186,7 +186,7 @@ describe('useAgentStore — package state plumbing', () => {
 
     await useAgentStore.getState().refreshPackageStates()
 
-    expect(calls).toEqual(['/api/agent-packages'])
+    expect(calls).toEqual(['/api/agent-packages?check=1'])
   })
 
   it('refreshPackageStates() picks up a new state value', async () => {
@@ -196,7 +196,7 @@ describe('useAgentStore — package state plumbing', () => {
       if (u === '/api/plugins/team/') {
         return Promise.resolve({ ok: true, json: () => Promise.resolve(ROSTER_OK) } as Response)
       }
-      if (u === '/api/agent-packages') {
+      if (u === '/api/agent-packages?check=1') {
         return Promise.resolve({ ok: true, json: () => Promise.resolve(pkgVariant) } as Response)
       }
       return Promise.reject(new Error('unexpected'))

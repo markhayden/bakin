@@ -62,6 +62,7 @@ export interface RemoveResult {
   removed: string[] // package ids that were removed (parent + orphaned deps)
   kept: string[]   // dep package ids kept (still have other dependents)
   deletedAgent: boolean
+  deleteAgentError?: string
 }
 
 /**
@@ -166,15 +167,17 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
 
     // 4. Optionally delete the runtime agent for kind:"agent"
     let deletedAgent = false
+    let deleteAgentError: string | undefined
     if (entry.kind === 'agent' && entry.agentId && options.deleteAgent) {
       try {
         await removeRuntimeAgent(entry.agentId)
         await removeRuntimeAllowListReferences(entry.agentId)
         deletedAgent = true
       } catch (err) {
+        deleteAgentError = err instanceof Error ? err.message : String(err)
         log.warn('Failed to delete runtime agent', {
           agentId: entry.agentId,
-          error: err instanceof Error ? err.message : String(err),
+          error: deleteAgentError,
         })
       }
     }
@@ -189,6 +192,7 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
         kind: entry.kind,
         version: entry.version,
         deletedAgent,
+        deleteAgentError,
         keepBlocks: options.keepBlocks ?? false,
         removedOrphanedDeps: removed.slice(1),
       },
@@ -200,6 +204,7 @@ export async function removePackageById(options: RemoveOptions): Promise<RemoveR
       removed,
       kept,
       deletedAgent,
+      ...(deleteAgentError ? { deleteAgentError } : {}),
     }
   } finally {
     releaseInstallLock()

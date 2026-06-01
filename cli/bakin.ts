@@ -1359,6 +1359,14 @@ async function cmdAgentPackagesRemove(agentId: string, flags: AgentsCmdFlags): P
   print(result)
 }
 
+async function cmdAgentPackagesOrphan(agentId: string, flags: AgentsCmdFlags): Promise<void> {
+  await cmdAgentPackagesRemove(agentId, { ...flags, deleteAgent: false })
+}
+
+async function cmdAgentPackagesDelete(agentId: string, flags: AgentsCmdFlags): Promise<void> {
+  await cmdAgentPackagesRemove(agentId, { ...flags, deleteAgent: true })
+}
+
 async function cmdAgentPackagesUpdate(agentId: string | undefined, flags: AgentsCmdFlags): Promise<void> {
   const body: Record<string, unknown> = {}
   if (flags.refreshTemplate) body.refreshTemplate = true
@@ -1553,7 +1561,11 @@ function parseAgentsFlags(args: string[]): AgentsCmdFlags {
         flags.keepBlocks = true
         break
       case '--delete-agent':
+      case '--delete':
         flags.deleteAgent = true
+        break
+      case '--orphan':
+        flags.deleteAgent = false
         break
       case '--refresh-template':
         flags.refreshTemplate = true
@@ -3982,8 +3994,14 @@ export async function main(): Promise<void> {
         } else if (sub === 'install') {
           if (!args[2]) await exitUsage('bakin agents install <path|github:user/repo[@ref][#subpath]> [--adopt] [--install-as <id>] [--replace]')
           await cmdAgentPackagesInstall(args[2], parseAgentsFlags(args.slice(3)))
+        } else if (sub === 'orphan') {
+          if (!args[2]) await exitUsage('bakin agents orphan <agent-id> [--keep-blocks] [--force]')
+          await cmdAgentPackagesOrphan(args[2], parseAgentsFlags(args.slice(3)))
+        } else if (sub === 'delete') {
+          if (!args[2]) await exitUsage('bakin agents delete <agent-id> [--keep-blocks] [--force]')
+          await cmdAgentPackagesDelete(args[2], parseAgentsFlags(args.slice(3)))
         } else if (sub === 'remove') {
-          if (!args[2]) await exitUsage('bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--force]')
+          if (!args[2]) await exitUsage('bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--delete] [--force]')
           await cmdAgentPackagesRemove(args[2], parseAgentsFlags(args.slice(3)))
         } else if (sub === 'update') {
           // `bakin agents update` (no id) updates everything; `bakin agents update <id>` is targeted
@@ -4002,7 +4020,7 @@ export async function main(): Promise<void> {
             await exitUnknownSubcommand('agents lessons', lessonSub, ['list', 'enable', 'disable'])
           }
         } else {
-          await exitUnknownSubcommand('agents', sub, ['list', 'status', 'tasks', 'send', 'install', 'remove', 'update', 'lessons'])
+          await exitUnknownSubcommand('agents', sub, ['list', 'status', 'tasks', 'send', 'install', 'orphan', 'delete', 'remove', 'update', 'lessons'])
         }
         break
 

@@ -225,6 +225,32 @@ describe('GET /api/agent-packages', () => {
     expect(pixelEntry?.version).toBe('0.2.0')
     expect(pixelEntry?.entry?.version).toBe('0.2.0')
   })
+
+  it('enriches package rows with update status when check=1 without mutating installed version', async () => {
+    const src = seedAgentPackage()
+    {
+      const { req, url } = makeRequest('POST', '/api/agent-packages/install', { source: src })
+      await installRoute.post(req, url)
+    }
+
+    const manifestPath = join(src, 'bakin-package.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+    writeFileSync(manifestPath, JSON.stringify({ ...manifest, version: '0.2.0' }))
+
+    const { req, url } = makeRequest('GET', '/api/agent-packages?check=1')
+    const res = await listRoute.get(req, url)
+
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    const pixelEntry = body.agents.find((a: { agentId: string }) => a.agentId === 'pixel')
+    expect(pixelEntry?.version).toBe('0.1.0')
+    expect(pixelEntry?.entry?.version).toBe('0.1.0')
+    expect(pixelEntry?.updateStatus).toMatchObject({
+      currentVersion: '0.1.0',
+      latestVersion: '0.2.0',
+      upgradeAvailable: true,
+    })
+  })
 })
 
 describe('GET /api/packages', () => {

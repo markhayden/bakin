@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -88,5 +88,65 @@ echo "{}"
       identity: { name: 'Pixel' },
     })
     expect(readFileSync(callsFile, 'utf-8')).toContain('agents add pixel')
+  })
+
+  it('removes OpenClaw-owned agent state after agent delete', async () => {
+    const binDir = join(testDir, 'bin')
+    const callsFile = join(testDir, 'calls.txt')
+    const openClawHome = join(testDir, 'openclaw')
+    const workspace = join(openClawHome, 'workspaces', 'pixel')
+    const agentRoot = join(openClawHome, 'agents', 'pixel')
+    mkdirSync(binDir, { recursive: true })
+    mkdirSync(workspace, { recursive: true })
+    mkdirSync(join(agentRoot, 'sessions'), { recursive: true })
+    mkdirSync(join(openClawHome, 'cron', 'runs'), { recursive: true })
+    const shim = join(binDir, 'openclaw')
+    writeFileSync(shim, `#!/bin/sh
+echo "$@" >> "${callsFile}"
+echo "{}"
+`, 'utf-8')
+    chmodSync(shim, 0o755)
+    writeFileSync(join(workspace, 'SOUL.md'), '# Pixel soul\n', 'utf-8')
+    writeFileSync(join(agentRoot, 'sessions', 'sessions.json'), '{}\n', 'utf-8')
+    writeFileSync(join(openClawHome, 'cron', 'runs', 'pixel-daily.jsonl'), '{}\n', 'utf-8')
+    writeFileSync(join(openClawHome, 'openclaw.json'), JSON.stringify({
+      agents: {
+        list: [
+          { id: 'main', subagents: { allowAgents: ['pixel'] } },
+          { id: 'pixel', workspace, agentDir: join(agentRoot, 'agent') },
+        ],
+      },
+    }), 'utf-8')
+    writeFileSync(join(openClawHome, 'cron', 'jobs.json'), JSON.stringify({
+      version: 1,
+      jobs: [
+        { id: 'pixel-daily', agentId: 'pixel' },
+        { id: 'main-daily', agentId: 'main' },
+      ],
+    }), 'utf-8')
+    process.env.OPENCLAW_HOME = openClawHome
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter({
+      settings: { binaryPath: shim },
+    })
+
+    await runtime.initialize({ contentDir: testDir })
+    await runtime.agents.remove('pixel')
+
+    const config = JSON.parse(readFileSync(join(openClawHome, 'openclaw.json'), 'utf-8')) as {
+      agents?: { list?: Array<{ id?: string; subagents?: { allowAgents?: string[] } }> }
+    }
+    const cron = JSON.parse(readFileSync(join(openClawHome, 'cron', 'jobs.json'), 'utf-8')) as {
+      jobs?: Array<{ id?: string; agentId?: string }>
+    }
+    expect(readFileSync(callsFile, 'utf-8')).toContain('agents delete pixel --force --json')
+    expect(config.agents?.list?.some((entry) => entry.id === 'pixel')).toBe(false)
+    expect(config.agents?.list?.find((entry) => entry.id === 'main')?.subagents?.allowAgents ?? []).not.toContain('pixel')
+    expect(existsSync(workspace)).toBe(false)
+    expect(existsSync(agentRoot)).toBe(false)
+    expect(cron.jobs?.some((job) => job.agentId === 'pixel')).toBe(false)
+    expect(cron.jobs?.some((job) => job.agentId === 'main')).toBe(true)
+    expect(existsSync(join(openClawHome, 'cron', 'runs', 'pixel-daily.jsonl'))).toBe(false)
   })
 })

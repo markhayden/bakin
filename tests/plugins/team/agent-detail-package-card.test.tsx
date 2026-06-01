@@ -12,7 +12,7 @@
  * from the Zustand store, which we prime per test.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { rmSync } from 'fs'
@@ -59,6 +59,7 @@ mock.module('@/components/model-select', () => ({ ModelSelect: () => <div /> }))
 
 import { useAgentStore } from '../../../plugins/team/hooks/use-agent-store'
 import { AgentDetail } from '../../../plugins/team/components/agent-detail'
+import { PackageCardBody } from '../../../plugins/team/components/package-card'
 import type { PackageStateRow } from '../../../plugins/team/types'
 
 const PROFILE = {
@@ -216,14 +217,25 @@ describe('PackageCard — read-only display per state', () => {
     expect(screen.queryByRole('button', { name: 'Adopt' })).toBeNull()
   })
 
-  it('renders a CLI hint with the agent id baked in for state=update-available', async () => {
+  it('renders an in-card Upgrade action for state=update-available', async () => {
     primeState({
-      pixel: { agentId: 'pixel', state: 'update-available', packageId: 'examples/pixel@0.1.0' },
+      pixel: {
+        agentId: 'pixel',
+        state: 'update-available',
+        packageId: 'examples/pixel@0.1.0',
+        entry: {
+          version: '0.1.0',
+          source: 'github:examples/pixel',
+          ref: 'main',
+          commitSha: 'abc1234567',
+          installedAt: '2026-04-20T00:00:00Z',
+        },
+      },
     })
     await renderDetail()
     expect(screen.getByText('update available')).toBeDefined()
-    expect(screen.getByText('bakin agents update pixel')).toBeDefined()
-    expect(screen.getByLabelText('Copy command')).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Upgrade agent package' })).toBeDefined()
+    expect(screen.queryByText('bakin agents update pixel')).toBeNull()
   })
 })
 
@@ -276,5 +288,90 @@ describe('PackageCard — main agent special-case', () => {
     expect(screen.getByText('managed')).toBeDefined()
     expect(screen.getByText('0.1.0')).toBeDefined()
     expect(screen.getByText('github:examples/main')).toBeDefined()
+  })
+})
+
+describe('PackageCard — update and remove actions', () => {
+  const UPDATE_ROW: PackageStateRow = {
+    agentId: 'pixel',
+    state: 'managed',
+    version: '0.1.0',
+    packageId: 'pixel',
+    entry: {
+      version: '0.1.0',
+      source: 'github:examples/pixel',
+      ref: 'main',
+      commitSha: 'abc1234567',
+      installedAt: '2026-04-25T00:00:00Z',
+    },
+    updateStatus: {
+      currentVersion: '0.1.0',
+      latestVersion: '0.2.0',
+      currentCommitSha: 'abc1234567',
+      latestCommitSha: 'def7654321',
+      upgradeAvailable: true,
+      checkedAt: '2026-06-01T12:00:00.000Z',
+    },
+  }
+
+  beforeEach(() => {
+    primeState({ pixel: UPDATE_ROW })
+  })
+
+  function setupActionFetch() {
+    const fetchMock = mock((url: RequestInfo | URL, init?: RequestInit) => {
+      const u = String(url)
+      if (u === '/api/agent-packages/pixel/update' && init?.method === 'POST') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, result: { changed: true } }) } as Response)
+      }
+      if (u === '/api/agent-packages/pixel' && init?.method === 'DELETE') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, result: { removed: ['pixel'] } }) } as Response)
+      }
+      if (u === '/api/agent-packages?check=1') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, agents: [UPDATE_ROW] }) } as Response)
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response)
+    })
+    global.fetch = fetchMock as unknown as typeof global.fetch
+    return fetchMock
+  }
+
+  it('opens update modal and sends maintain-changes payload', async () => {
+    const fetchMock = setupActionFetch()
+
+    render(<PackageCardBody agentId="pixel" packageState={UPDATE_ROW} />)
+
+    expect(screen.getByText('update available')).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Upgrade agent package' }))
+    expect(screen.getByRole('heading', { name: 'Upgrade agent package' })).toBeDefined()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Maintain changes' }))
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some((call) => (
+        call[0] === '/api/agent-packages/pixel/update'
+        && (call[1] as RequestInit | undefined)?.method === 'POST'
+        && String((call[1] as RequestInit | undefined)?.body).includes('"refreshTemplate":false')
+      ))).toBe(true)
+    })
+  })
+
+  it('opens remove modal and sends orphan/delete payloads', async () => {
+    const fetchMock = setupActionFetch()
+
+    render(<PackageCardBody agentId="pixel" packageState={UPDATE_ROW} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete or orphan agent package' }))
+    expect(screen.getByRole('heading', { name: 'Delete or orphan agent' })).toBeDefined()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Orphan' }))
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some((call) => (
+        call[0] === '/api/agent-packages/pixel'
+        && (call[1] as RequestInit | undefined)?.method === 'DELETE'
+        && String((call[1] as RequestInit | undefined)?.body).includes('"deleteAgent":false')
+      ))).toBe(true)
+    })
   })
 })
