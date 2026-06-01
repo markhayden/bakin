@@ -9,10 +9,6 @@
 
 // Group 1: Bakin-wide hooks
 
-/** Fetch and filter the asset library with live SSE updates. */
-export { useAssets } from '@/hooks/use-assets'
-/** Fetch trashed assets eligible for restore or permanent delete. */
-export { useTrash } from '@/hooks/use-assets'
 /** Access the global Zustand store for SSE-driven content state. */
 export { useContentStore } from '@/hooks/use-content-store'
 /** Sync a nav item's badge to a derived value; the recommended provider glue. */

@@ -15,83 +15,80 @@ import McpToolCard from '../../../../components/McpToolCard.astro'
 <p class="mcp-section-description">Asset tools let agents list, inspect, save, link, restore, and clean up files managed by Bakin.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="assets-audit" name="bakin_exec_assets_audit" label="Audited assets" description="Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files. Set fix=true to auto-generate missing thumbnails and create stub sidecars." source="plugins/assets/index.ts:835" parameters={[{"name":"type","type":"choice","required":false,"description":"Limit audit to a specific asset type"},{"name":"fix","type":"boolean","required":false,"description":"Auto-fix issues where possible"}]}>
+<McpToolCard id="assets-audit" name="bakin_exec_assets_audit" label="Audited assets" description="Audit versioned-asset health: manifest integrity, current-pointer resolution, and missing version files." source="plugins/assets/index.ts:592">
 ```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_assets_audit --args '{
-  "type": "value",
-  "fix": true
-}'
+mcporter call bakin-<agent>.bakin_exec_assets_audit
 ```
 </McpToolCard>
-<McpToolCard id="assets-delete" name="bakin_exec_assets_delete" label="Deleted an asset" description="Soft-delete an asset (moves to trash, restorable until trash is emptied)." source="plugins/assets/index.ts:750" parameters={[{"name":"filename","type":"string","required":true,"description":"Canonical asset filename (e.g. \"20260401-hero-a1b2c3d4.png\")"}]}>
+<McpToolCard id="assets-delete" name="bakin_exec_assets_delete" label="Deleted an asset" description="Soft-delete a whole asset (all versions) to trash, restorable until trash is emptied." source="plugins/assets/index.ts:475" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_delete --args '{
-  "filename": "value"
+  "assetId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-empty-trash" name="bakin_exec_assets_empty_trash" label="Emptied asset trash" description="Permanently delete all items from trash. This cannot be undone." source="plugins/assets/index.ts:1011">
+<McpToolCard id="assets-empty-trash" name="bakin_exec_assets_empty_trash" label="Emptied asset trash" description="Permanently delete all trashed assets. This cannot be undone." source="plugins/assets/index.ts:565">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_empty_trash
 ```
 </McpToolCard>
-<McpToolCard id="assets-get" name="bakin_exec_assets_get" label="Read asset details" description="Retrieve a single asset's sidecar metadata by canonical filename." source="plugins/assets/index.ts:633" parameters={[{"name":"filename","type":"string","required":true,"description":"Canonical asset filename (e.g. \"20260401-hero-a1b2c3d4.png\")"}]}>
+<McpToolCard id="assets-get" name="bakin_exec_assets_get" label="Read asset details" description="Retrieve an asset manifest (versions, current pointer, exports) by assetId." source="plugins/assets/index.ts:414" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id, e.g. \"20260401-hero-a1b2c3d4\""}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_get --args '{
-  "filename": "value"
+  "assetId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-link" name="bakin_exec_assets_link" label="Linked an asset" description="Link an asset to a different task, or unlink it (set taskId to null). Sidecar-only edit — no file move." source="plugins/assets/index.ts:776" parameters={[{"name":"filename","type":"string","required":true,"description":"Canonical asset filename (e.g. \"20260401-hero-a1b2c3d4.png\")"},{"name":"taskId","type":"string","required":true,"description":"Target task ID, or null to unlink"}]}>
+<McpToolCard id="assets-link" name="bakin_exec_assets_link" label="Linked an asset" description="Link an asset to a different task, or unlink it (set taskId to null)." source="plugins/assets/index.ts:494" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"},{"name":"taskId","type":"string","required":true,"description":"Target task ID, or null to unlink"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_link --args '{
-  "filename": "value",
+  "assetId": "value",
   "taskId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-list" name="bakin_exec_assets_list" label="Listed assets" description="List assets with optional type filter. Returns asset count, canonical filenames, and metadata." source="plugins/assets/index.ts:616" parameters={[{"name":"type","type":"choice","required":false,"description":"Filter by asset type"}]}>
+<McpToolCard id="assets-list" name="bakin_exec_assets_list" label="Listed assets" description="List managed assets (one entry per asset, current-version view). Optional type filter." source="plugins/assets/index.ts:403" parameters={[{"name":"type","type":"choice","required":false,"description":"Filter by asset type"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_list --args '{
   "type": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-list-trash" name="bakin_exec_assets_list_trash" label="Listed trashed assets" description="List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge." source="plugins/assets/index.ts:798">
+<McpToolCard id="assets-list-trash" name="bakin_exec_assets_list_trash" label="Listed trashed assets" description="List trashed assets (whole-asset deletions) with deletion time and version count." source="plugins/assets/index.ts:538">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_list_trash
 ```
 </McpToolCard>
-<McpToolCard id="assets-open" name="bakin_exec_assets_open" label="Opened an asset" description="Open an attached asset by canonical filename. Returns sidecar metadata plus extracted text for text-like assets; non-extractable assets return metadata-only status." source="plugins/assets/index.ts:663" parameters={[{"name":"filename","type":"string","required":true,"description":"Canonical asset filename (e.g. \"20260401-hero-a1b2c3d4.png\")"}]}>
+<McpToolCard id="assets-open" name="bakin_exec_assets_open" label="Opened an asset" description="Open an asset by assetId: returns its manifest plus the current version’s extracted text for text-like assets." source="plugins/assets/index.ts:427" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_open --args '{
-  "filename": "value"
+  "assetId": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-permanent-delete" name="bakin_exec_assets_permanent_delete" label="Permanently deleted an asset" description="Permanently delete a specific trashed asset. This cannot be undone." source="plugins/assets/index.ts:1025" parameters={[{"name":"filename","type":"string","required":true,"description":"The trash filename (includes __deleted- suffix)"}]}>
+<McpToolCard id="assets-permanent-delete" name="bakin_exec_assets_permanent_delete" label="Permanently deleted an asset" description="Permanently delete a specific trashed asset. This cannot be undone." source="plugins/assets/index.ts:578" parameters={[{"name":"trashName","type":"string","required":true,"description":"Trash name (includes __deleted- suffix)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_permanent_delete --args '{
-  "filename": "value"
+  "trashName": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-restore" name="bakin_exec_assets_restore" label="Restored an asset" description="Restore a trashed asset back to its original location. Use bakin_exec_assets_list_trash first to get the filename." source="plugins/assets/index.ts:818" parameters={[{"name":"filename","type":"string","required":true,"description":"The trash filename (includes __deleted- suffix)"}]}>
+<McpToolCard id="assets-restore" name="bakin_exec_assets_restore" label="Restored an asset" description="Restore a trashed asset by its trash name (from bakin_exec_assets_list_trash)." source="plugins/assets/index.ts:549" parameters={[{"name":"trashName","type":"string","required":true,"description":"Trash name (includes __deleted- suffix)"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_restore --args '{
-  "filename": "value"
+  "trashName": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-retype" name="bakin_exec_assets_retype" label="Retyped an asset" description="Change an asset's type classification. Sidecar-only edit — no file move." source="plugins/assets/index.ts:965" parameters={[{"name":"filename","type":"string","required":true,"description":"Canonical asset filename (e.g. \"20260401-hero-a1b2c3d4.png\")"},{"name":"type","type":"choice","required":true}]}>
+<McpToolCard id="assets-retype" name="bakin_exec_assets_retype" label="Retyped an asset" description="Change an asset type classification." source="plugins/assets/index.ts:516" parameters={[{"name":"assetId","type":"string","required":true,"description":"Asset id"},{"name":"type","type":"choice","required":true}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_retype --args '{
-  "filename": "value",
+  "assetId": "value",
   "type": "value"
 }'
 ```
 </McpToolCard>
-<McpToolCard id="assets-save" name="bakin_exec_assets_save" label="Saved an asset" description="Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically." source="plugins/assets/index.ts:724" parameters={[{"name":"filePath","type":"string","required":true,"description":"Absolute path to the source file to save, or an existing managed assets/store/... path to return idempotently"},{"name":"taskId","type":"string","required":true,"description":"Task ID to record in sidecar metadata"},{"name":"type","type":"choice","required":true},{"name":"description","type":"string","required":false,"description":"One-sentence summary visible in the asset grid and search. Be specific — \"Q2 blog hero image\" not \"an image\"."},{"name":"tags","type":"array","required":false,"description":"Lowercase hyphenated tags for filtering. Use domain tags (social, blog), format tags (draft, final), and project tags."},{"name":"tool","type":"string","required":false,"description":"Tool used to generate or import the asset (e.g., \"bakin_exec_images_generate\")"},{"name":"slug","type":"string","required":false,"description":"Custom filename slug. Auto-derived from source filename if omitted."}]}>
+<McpToolCard id="assets-save" name="bakin_exec_assets_save" label="Saved an asset" description="Save an agent-created file as a managed, versioned asset. Re-saving the SAME source file appends a new version to the existing asset (or no-ops if unchanged) instead of creating a duplicate — so an evolving doc stays one asset with a version history. Returns the asset id." source="plugins/assets/index.ts:444" parameters={[{"name":"filePath","type":"string","required":true,"description":"Absolute path to the source file to save. Re-saving the same path versions the existing asset."},{"name":"taskId","type":"string","required":true,"description":"Task ID to link the asset."},{"name":"type","type":"choice","required":true},{"name":"description","type":"string","required":false,"description":"One-sentence summary visible in the asset grid and search. Be specific."},{"name":"tags","type":"array","required":false,"description":"Lowercase hyphenated tags for filtering."},{"name":"tool","type":"string","required":false,"description":"Tool used to generate or import the asset."},{"name":"slug","type":"string","required":false,"description":"Custom slug for the asset id. Auto-derived from source filename if omitted."}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_assets_save --args '{
   "filePath": "value",
@@ -103,14 +100,6 @@ mcporter call bakin-<agent>.bakin_exec_assets_save --args '{
   ],
   "tool": "value",
   "slug": "value"
-}'
-```
-</McpToolCard>
-<McpToolCard id="assets-update-content" name="bakin_exec_assets_update_content" label="Updated asset content" description="Update the text content of an editable asset. Only works for text-based MIME types (markdown, plain text, YAML, JSON, CSV, XML). Rewrites the entire file." source="plugins/assets/index.ts:987" parameters={[{"name":"filename","type":"string","required":true,"description":"Canonical asset filename (e.g. \"20260401-doc-a1b2c3d4.md\")"},{"name":"content","type":"string","required":true,"description":"New file content (replaces entire file)"}]}>
-```sh frame="terminal"
-mcporter call bakin-<agent>.bakin_exec_assets_update_content --args '{
-  "filename": "value",
-  "content": "value"
 }'
 ```
 </McpToolCard>
@@ -211,32 +200,32 @@ mcporter call bakin-<agent>.bakin_exec_heartbeat --args '{
 <p class="mcp-section-description">MCP tools discovered from registered exec tool definitions.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="images-edit" name="bakin_exec_images_edit" label="Edited an image" description="Edit an existing image (managed asset or local file) through the runtime image provider with edit instructions, save the result into Assets, and return the canonical image filename." source="plugins/images/index.ts:215">
+<McpToolCard id="images-edit" name="bakin_exec_images_edit" label="Edited an image" description="Edit a managed image asset (by assetId) through the runtime image provider — edits the current version, appends a new version, and returns the assetId." source="plugins/images/index.ts:212">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_images_edit
 ```
 </McpToolCard>
-<McpToolCard id="images-export" name="bakin_exec_images_export" label="Exported an image" description="Export an existing image asset to a target surface profile by resizing, cropping, and format-converting it." source="plugins/images/index.ts:229">
+<McpToolCard id="images-export" name="bakin_exec_images_export" label="Exported an image" description="Export an existing image asset to a target surface profile by resizing, cropping, and format-converting it." source="plugins/images/index.ts:226">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_images_export
 ```
 </McpToolCard>
-<McpToolCard id="images-generate" name="bakin_exec_images_generate" label="Generated an image" description="Generate an image through a configured runtime image provider or native image provider adapter, save it into Assets, and return the canonical image filename." source="plugins/images/index.ts:208">
+<McpToolCard id="images-generate" name="bakin_exec_images_generate" label="Generated an image" description="Generate an image through a configured runtime image provider, save it as a new managed asset (v1), and return its assetId." source="plugins/images/index.ts:205">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_images_generate
 ```
 </McpToolCard>
-<McpToolCard id="images-import" name="bakin_exec_images_import" label="Imported an image" description="Import an existing local image file into the Assets pipeline and return the canonical image filename." source="plugins/images/index.ts:222">
+<McpToolCard id="images-import" name="bakin_exec_images_import" label="Imported an image" description="Import an existing local image file as a new managed asset (v1) and return its assetId." source="plugins/images/index.ts:219">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_images_import
 ```
 </McpToolCard>
-<McpToolCard id="images-profiles" name="bakin_exec_images_profiles" label="Listed image profiles" description="List image surface profiles and configured provider readiness. Use this before choosing dimensions or provider routes for image generation." source="plugins/images/index.ts:236">
+<McpToolCard id="images-profiles" name="bakin_exec_images_profiles" label="Listed image profiles" description="List image surface profiles and configured provider readiness. Use this before choosing dimensions or provider routes for image generation." source="plugins/images/index.ts:233">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_images_profiles
 ```
 </McpToolCard>
-<McpToolCard id="images-recommend" name="bakin_exec_images_recommend" label="Recommended an image route" description="Recommend a deterministic image provider, model, surface profile, dimensions, and quality tier for an image generation request." source="plugins/images/index.ts:201">
+<McpToolCard id="images-recommend" name="bakin_exec_images_recommend" label="Recommended an image route" description="Recommend a deterministic image provider, model, surface profile, dimensions, and quality tier for an image generation request." source="plugins/images/index.ts:198">
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_images_recommend
 ```
@@ -564,13 +553,13 @@ mcporter call bakin-<agent>.bakin_exec_models_list --args '{
 <p class="mcp-section-description">Publishing tools send completed work to configured channels through Bakin adapters.</p>
 
 <div class="mcp-tool-list">
-<McpToolCard id="post-channel" name="bakin_exec_post_channel" label="Posted to channel" description="Post a message through the active runtime channel adapter. Supports image/video attachments when the adapter supports rich content." source="scripts/lib/post-channel.ts:121" parameters={[{"name":"channel","type":"string","required":true,"description":"Channel name or runtime channel target"},{"name":"content","type":"string","required":true,"description":"Message text / caption"},{"name":"imageFilename","type":"string","required":false,"description":"Asset filename resolved via the assets index."},{"name":"videoFilename","type":"string","required":false,"description":"Asset filename resolved via the assets index."},{"name":"embed","type":"record","required":false,"description":"Optional rich metadata for adapters that support it"},{"name":"taskId","type":"string","required":false,"description":"Task ID for audit trail"}]}>
+<McpToolCard id="post-channel" name="bakin_exec_post_channel" label="Posted to channel" description="Post a message through the active runtime channel adapter. Supports image/video attachments when the adapter supports rich content." source="scripts/lib/post-channel.ts:121" parameters={[{"name":"channel","type":"string","required":true,"description":"Channel name or runtime channel target"},{"name":"content","type":"string","required":true,"description":"Message text / caption"},{"name":"imageAssetId","type":"string","required":false,"description":"Asset id of an image to attach (current version is sent)."},{"name":"videoAssetId","type":"string","required":false,"description":"Asset id of a video to attach (current version is sent)."},{"name":"embed","type":"record","required":false,"description":"Optional rich metadata for adapters that support it"},{"name":"taskId","type":"string","required":false,"description":"Task ID for audit trail"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_post_channel --args '{
   "channel": "value",
   "content": "value",
-  "imageFilename": "value",
-  "videoFilename": "value",
+  "imageAssetId": "value",
+  "videoAssetId": "value",
   "embed": {
     "key": "value"
   },
@@ -617,11 +606,11 @@ mcporter call bakin-<agent>.bakin_exec_projects_ask --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="projects-attach-asset" name="bakin_exec_projects_attach_asset" label="Attached asset to project" description="Attach an existing asset to a project by filename. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in projects_get — use asset tools to read full content when needed." source="bakin-bits-official/plugins/projects/index.ts:842" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"filename","type":"string","required":true,"description":"Asset filename (e.g., \"20260327-hero-a1b2c3d4.png\") — globally unique, stable across retype/relink"},{"name":"label","type":"string","required":false,"description":"Human-readable label or summary of what this asset contains"}]}>
+<McpToolCard id="projects-attach-asset" name="bakin_exec_projects_attach_asset" label="Attached asset to project" description="Attach an existing asset to a project by assetId. Assets provide additional context (specs, designs, docs) that agents can reference. Only summaries are included in projects_get — use asset tools to read full content when needed." source="bakin-bits-official/plugins/projects/index.ts:842" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"assetId","type":"string","required":true,"description":"Asset id (e.g., \"20260327-hero-a1b2c3d4\") — stable across versions"},{"name":"label","type":"string","required":false,"description":"Human-readable label or summary of what this asset contains"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_projects_attach_asset --args '{
   "projectId": "value",
-  "filename": "value",
+  "assetId": "value",
   "label": "value"
 }'
 ```
@@ -645,11 +634,11 @@ mcporter call bakin-<agent>.bakin_exec_projects_delete --args '{
 }'
 ```
 </McpToolCard>
-<McpToolCard id="projects-detach-asset" name="bakin_exec_projects_detach_asset" label="Detached asset from project" description="Remove an asset reference from a project by filename. Does not delete the asset itself." source="bakin-bits-official/plugins/projects/index.ts:862" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"filename","type":"string","required":true,"description":"Asset filename to detach"}]}>
+<McpToolCard id="projects-detach-asset" name="bakin_exec_projects_detach_asset" label="Detached asset from project" description="Remove an asset reference from a project by assetId. Does not delete the asset itself." source="bakin-bits-official/plugins/projects/index.ts:862" parameters={[{"name":"projectId","type":"string","required":true,"description":"Project ID"},{"name":"assetId","type":"string","required":true,"description":"Asset id to detach"}]}>
 ```sh frame="terminal"
 mcporter call bakin-<agent>.bakin_exec_projects_detach_asset --args '{
   "projectId": "value",
-  "filename": "value"
+  "assetId": "value"
 }'
 ```
 </McpToolCard>
@@ -1189,5 +1178,5 @@ mcporter call bakin-<agent>.bakin_exec_workflows_start --args '{
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 29, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 31, 2026 · Bakin 0.0.0-dev</span>
 </aside>

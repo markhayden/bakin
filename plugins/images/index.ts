@@ -49,13 +49,11 @@ const generateShape = {
   width: z.number().int().positive().optional().describe('Optional custom width. Defaults from surface profile.'),
   height: z.number().int().positive().optional().describe('Optional custom height. Defaults from surface profile.'),
   quality: imageQualityEnum.optional().describe('Generation quality tier.'),
-  savePromptPacket: z.boolean().optional().describe('Save the full prompt packet as a linked text asset. Use for approval-gated workflows.'),
 }
 
 const editShape = {
   prompt: z.string().min(1).describe('Edit instruction, e.g. "add a capybara in the foreground".'),
-  filename: z.string().optional().describe('Managed source image asset filename to edit. Provide this or sourcePath.'),
-  sourcePath: z.string().optional().describe('Absolute path to a local source image to edit, if not already a managed asset.'),
+  assetId: z.string().min(1).describe('Managed image assetId to edit. Edits the current version and appends a new one. Import a loose local file first to get an assetId.'),
   taskId: z.string().min(1).describe('Task ID to link the edited image asset.'),
   surface: z.string().optional().describe('Output surface profile id for sizing.'),
   provider: imageProviderRoute.optional().describe('Provider route. Defaults to auto routing.'),
@@ -63,7 +61,6 @@ const editShape = {
   width: z.number().int().positive().optional().describe('Optional custom width.'),
   height: z.number().int().positive().optional().describe('Optional custom height.'),
   quality: imageQualityEnum.optional().describe('Edit quality tier.'),
-  savePromptPacket: z.boolean().optional().describe('Save the edit prompt as a linked text asset.'),
 }
 
 const importShape = {
@@ -74,8 +71,8 @@ const importShape = {
 }
 
 const exportShape = {
-  filename: z.string().min(1).describe('Canonical source image asset filename.'),
-  taskId: z.string().min(1).describe('Task ID to link the exported variant asset.'),
+  assetId: z.string().min(1).describe('Managed image assetId to export. The export attaches to this asset (not a new asset).'),
+  taskId: z.string().min(1).describe('Task ID for audit linkage.'),
   surface: z.string().optional().describe('Target surface profile id. Use custom with width and height for custom exports.'),
   width: z.number().int().positive().optional().describe('Override export width.'),
   height: z.number().int().positive().optional().describe('Override export height.'),
@@ -119,10 +116,10 @@ async function checkImages(ctx: PluginContext): Promise<HealthCheckResult[]> {
 
   rows.push({
     check: 'images.assets',
-    status: typeof ctx.assets.save === 'function' ? 'ok' : 'error',
-    message: typeof ctx.assets.save === 'function'
+    status: typeof ctx.assets.createAsset === 'function' ? 'ok' : 'error',
+    message: typeof ctx.assets.createAsset === 'function'
       ? 'Images plugin can save generated files through the Assets plugin API.'
-      : 'Images plugin cannot save generated files because ctx.assets.save is unavailable.',
+      : 'Images plugin cannot save generated files because ctx.assets.createAsset is unavailable.',
     autoFixable: false,
   })
 
@@ -206,21 +203,21 @@ const imagesPlugin = definePlugin({
     })
     ctx.registerExecTool({
       name: 'bakin_exec_images_generate',
-      description: 'Generate an image through a configured runtime image provider or native image provider adapter, save it into Assets, and return the canonical image filename.',
+      description: 'Generate an image through a configured runtime image provider, save it as a new managed asset (v1), and return its assetId.',
       label: 'Generated an image',
       parameters: generateShape,
       handler: async (params, agent) => generateImage(ctx, params as never, agent),
     })
     ctx.registerExecTool({
       name: 'bakin_exec_images_edit',
-      description: 'Edit an existing image (managed asset or local file) through the runtime image provider with edit instructions, save the result into Assets, and return the canonical image filename.',
+      description: 'Edit a managed image asset (by assetId) through the runtime image provider — edits the current version, appends a new version, and returns the assetId.',
       label: 'Edited an image',
       parameters: editShape,
       handler: async (params, agent) => editImage(ctx, params as never, agent),
     })
     ctx.registerExecTool({
       name: 'bakin_exec_images_import',
-      description: 'Import an existing local image file into the Assets pipeline and return the canonical image filename.',
+      description: 'Import an existing local image file as a new managed asset (v1) and return its assetId.',
       label: 'Imported an image',
       parameters: importShape,
       handler: async (params, agent) => importImage(ctx, params as never, agent),

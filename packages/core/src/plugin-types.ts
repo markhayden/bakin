@@ -539,86 +539,96 @@ export interface PluginTaskService {
 // Public assets service
 // ---------------------------------------------------------------------------
 
-export interface AssetVariantMeta {
-  role: 'thumbnail' | 'optimized' | 'webp'
-  path: string
-  filename: string
-  size: number
-  mimeType: string
-}
+/** The asset type taxonomy (mirrors ASSET_TYPES in the assets plugin). */
+export type AssetTypeName = 'text' | 'images' | 'video' | 'audio' | 'plans' | 'research' | 'pdf' | 'data' | 'other'
 
-/** Structured provenance written by image-generation tools into an asset sidecar. */
-export interface AssetGenerationMeta {
+/** Per-version generation provenance (matches the manifest's `generation` block). */
+export interface AssetGenerationInfo {
   provider: string
   model: string
   surface: string
-  width: number
-  height: number
   quality: string
-  promptHash: string
-  promptAssetFilename?: string
+  routeSource: string
   routeReason?: string
-  routeSource?: 'runtime' | 'shim' | string
-  createdByTool: string
 }
 
-export interface AssetMeta {
-  path: string
-  filename: string
-  type: 'text' | 'images' | 'video' | 'audio' | 'plans' | 'research' | 'pdf' | 'data' | 'other'
-  mimeType: string
-  size: number
-  mtimeMs?: number
-  metadata: {
-    agent: string
-    taskId: string | null
-    created: string
-    tool?: string
-    description?: string
-    tags?: string[]
-    originalFilename?: string
-    generation?: AssetGenerationMeta
-  }
-  variants?: AssetVariantMeta[]
-}
-
-export interface AssetFileRef {
-  kind: 'asset'
-  filename: string
-  mimeType?: string
-}
-
-/** Input for saving an agent-created or plugin-created file through the Assets plugin. */
-export interface AssetSaveInput {
-  filePath: string
-  taskId: string | null
-  type: AssetMeta['type']
+/** Create a new versioned asset (v1) from a source file. */
+export interface AssetCreateInput {
+  sourceFilePath: string
+  type: AssetTypeName
   agent: string
+  taskId: string | null
+  slug?: string
+  op?: 'generate' | 'upload' | 'import'
+  tool?: string | null
+  prompt?: string | null
+  promptHash?: string | null
   description?: string
   tags?: string[]
-  tool?: string
-  slug?: string
-  source?: 'agent' | 'upload' | 'clipboard'
-  originalFilename?: string
-  generation?: AssetGenerationMeta
+  source?: { kind: 'generated' | 'upload' | 'import' | 'clipboard' | 'workspace-file'; path: string | null }
+  generation?: AssetGenerationInfo | null
 }
 
-/** Result returned after the Assets plugin canonicalizes and persists a file. */
-export interface AssetSaveResult {
-  ok: boolean
-  path?: string
-  metadataPath?: string
-  filename?: string
-  error?: string
-  [key: string]: unknown
+/** Append a new version to an existing asset. */
+export interface AssetVersionCreateInput {
+  sourceFilePath: string
+  op?: 'edit' | 'generate' | 'upload' | 'import'
+  tool?: string | null
+  prompt?: string | null
+  promptHash?: string | null
+  description?: string
+  tags?: string[]
+  generation?: AssetGenerationInfo | null
+}
+
+/** Render a derived export of a version (keyed/idempotent by surface). */
+export interface AssetExportRequest {
+  fromVersion?: number
+  surface: string
+  format: 'jpg' | 'png' | 'webp'
+  width: number
+  height: number
+  quality?: number
+}
+
+export interface VersionedAssetRef {
+  assetId: string
+  version: number
+}
+
+export interface AssetVersionFileRef {
+  absPath: string
+  mimeType: string
+  version: number
+}
+
+/** Current-version summary of an asset, addressed by id. */
+export interface AssetSummary {
+  assetId: string
+  type: AssetTypeName
+  agent: string
+  taskId: string | null
+  created: string
+  updated: string
+  currentVersion: number
+  versionCount: number
+  description: string
+  tags: string[]
+  mimeType: string
+  width: number | null
+  height: number | null
+  size: number
+  hasThumb: boolean
 }
 
 export interface AssetsAPI {
-  save(input: AssetSaveInput): Promise<AssetSaveResult>
-  getByFilename(filename: string): Promise<AssetMeta | null>
-  list(filter?: { type?: AssetMeta['type']; taskId?: string | null }): Promise<AssetMeta[]>
-  exists(filename: string): Promise<boolean>
-  fileRef(filename: string): Promise<AssetFileRef>
+  // Versioned (asset-as-directory) surface.
+  createAsset(input: AssetCreateInput): Promise<VersionedAssetRef>
+  /** Read an asset's current-version summary by id (metadata: type/description/tags/etc.), or null. */
+  getAsset(assetId: string): Promise<AssetSummary | null>
+  addVersion(assetId: string, input: AssetVersionCreateInput): Promise<VersionedAssetRef>
+  addExport(assetId: string, input: AssetExportRequest): Promise<{ name: string; file: string }>
+  resolveVersionFile(assetId: string, version?: number): Promise<AssetVersionFileRef | null>
 }
 
 // ---------------------------------------------------------------------------
@@ -753,6 +763,8 @@ export interface SearchResult {
   fields: Record<string, unknown>
   /** Cross-encoder reranker score (present when a reranker was used). */
   rerankScore?: number
+  /** Per-index score breakdown (e.g. { full_text_index_v0, assets_text, assets_visual }). */
+  indexScores?: Record<string, number>
 }
 
 /** Search response from a query */

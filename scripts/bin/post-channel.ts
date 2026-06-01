@@ -5,7 +5,7 @@
  *
  * Usage:
  *   npx tsx scripts/bin/post-channel.ts --channel general --content "Hello world"
- *   npx tsx scripts/bin/post-channel.ts --channel content --content "New post!" --imageFilename 20260401-hero-a1b2c3d4.png
+ *   npx tsx scripts/bin/post-channel.ts --channel content --content "New post!" --imageAssetId 20260401-hero-a1b2c3d4
  */
 import { parseArgs } from 'util'
 import { postChannel } from '../lib/post-channel'
@@ -16,18 +16,18 @@ console.error('')
 
 const { values } = parseArgs({
   options: {
-    channel:       { type: 'string' },
-    content:       { type: 'string' },
-    imageFilename: { type: 'string' },
-    videoFilename: { type: 'string' },
-    taskId:        { type: 'string' },
-    help:          { type: 'boolean', short: 'h' },
+    channel:      { type: 'string' },
+    content:      { type: 'string' },
+    imageAssetId: { type: 'string' },
+    videoAssetId: { type: 'string' },
+    taskId:       { type: 'string' },
+    help:         { type: 'boolean', short: 'h' },
   },
   strict: true,
 })
 
 if (values.help || !values.channel || !values.content) {
-  console.log(`Usage: npx tsx scripts/bin/post-channel.ts --channel <name> --content "..." [--imageFilename <filename>] [--videoFilename <filename>] [--taskId <id>]`)
+  console.log(`Usage: npx tsx scripts/bin/post-channel.ts --channel <name> --content "..." [--imageAssetId <id>] [--videoAssetId <id>] [--taskId <id>]`)
   process.exit(values.help ? 0 : 1)
 }
 
@@ -35,8 +35,8 @@ async function main() {
   const result = await postChannel({
     channel: values.channel!,
     content: values.content!,
-    imageFilename: values.imageFilename,
-    videoFilename: values.videoFilename,
+    imageAssetId: values.imageAssetId,
+    videoAssetId: values.videoAssetId,
     taskId: values.taskId,
     agent: 'cli',
   })

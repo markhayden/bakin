@@ -47,121 +47,6 @@
     }
   ],
   "paths": {
-    "/api/plugins/assets/": {
-      "get": {
-        "operationId": "assets.get.root",
-        "summary": "List assets",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Assets"
-        ],
-        "description": "List assets with optional filter parameters.",
-        "x-bakin-full-path": "/api/plugins/assets/"
-      },
-      "delete": {
-        "operationId": "assets.delete.root",
-        "summary": "Soft-delete an asset",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "ok"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input — params, query, or body did not match the declared schema.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Assets"
-        ],
-        "x-bakin-full-path": "/api/plugins/assets/"
-      }
-    },
     "/api/plugins/assets/upload": {
       "post": {
         "operationId": "assets.post.upload",
@@ -258,53 +143,10 @@
         "x-bakin-full-path": "/api/plugins/assets/upload"
       }
     },
-    "/api/plugins/assets/file": {
+    "/api/plugins/assets/versioned": {
       "get": {
-        "operationId": "assets.get.file",
-        "summary": "Serve asset file",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/octet-stream": {
-                "schema": {
-                  "type": "string",
-                  "format": "binary"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Assets"
-        ],
-        "description": "Streams an asset file by canonical filename for rendering.",
-        "x-bakin-full-path": "/api/plugins/assets/file"
-      }
-    },
-    "/api/plugins/assets/link": {
-      "patch": {
-        "operationId": "assets.patch.link",
-        "summary": "Relink or unlink an asset",
+        "operationId": "assets.get.versioned",
+        "summary": "List versioned assets",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -312,227 +154,8 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "properties": {
-                    "ok": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "ok"
-                  ],
+                  "properties": {},
                   "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Unsupported Media Type — body content type does not match the declared content type.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Assets"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {},
-                "additionalProperties": {}
-              }
-            }
-          }
-        },
-        "x-bakin-full-path": "/api/plugins/assets/link"
-      }
-    },
-    "/api/plugins/assets/retype": {
-      "patch": {
-        "operationId": "assets.patch.retype",
-        "summary": "Change asset type classification",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "ok"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Unsupported Media Type — body content type does not match the declared content type.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Assets"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {},
-                "additionalProperties": {}
-              }
-            }
-          }
-        },
-        "x-bakin-full-path": "/api/plugins/assets/retype"
-      }
-    },
-    "/api/plugins/assets/content": {
-      "put": {
-        "operationId": "assets.put.content",
-        "summary": "Update text content of an editable asset",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "ok"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "415": {
-            "description": "Unsupported Media Type — body content type does not match the declared content type.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": false
                 }
               }
             }
@@ -560,25 +183,13 @@
         "tags": [
           "Assets"
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {},
-                "additionalProperties": {}
-              }
-            }
-          }
-        },
-        "x-bakin-full-path": "/api/plugins/assets/content"
+        "x-bakin-full-path": "/api/plugins/assets/versioned"
       }
     },
-    "/api/plugins/assets/trash": {
+    "/api/plugins/assets/versioned/{assetId}": {
       "get": {
-        "operationId": "assets.get.trash",
-        "summary": "List trashed assets",
+        "operationId": "assets.get.versioned-asset-id",
+        "summary": "Get a versioned asset manifest",
         "responses": {
           "200": {
             "description": "Successful response.",
@@ -587,89 +198,6 @@
                 "schema": {
                   "type": "object",
                   "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Assets"
-        ],
-        "x-bakin-full-path": "/api/plugins/assets/trash"
-      },
-      "delete": {
-        "operationId": "assets.delete.trash",
-        "summary": "Empty entire trash",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "ok"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input — params, query, or body did not match the declared schema.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    },
-                    "issues": {
-                      "type": "array",
-                      "items": {}
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "Assets"
-        ],
-        "x-bakin-full-path": "/api/plugins/assets/trash"
-      }
-    },
-    "/api/plugins/assets/trash/{file}/restore": {
-      "post": {
-        "operationId": "assets.post.trash-file-restore",
-        "summary": "Restore a trashed asset",
-        "responses": {
-          "200": {
-            "description": "Successful response.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "ok"
-                  ],
                   "additionalProperties": {}
                 }
               }
@@ -723,7 +251,7 @@
         ],
         "parameters": [
           {
-            "name": "file",
+            "name": "assetId",
             "in": "path",
             "required": true,
             "schema": {
@@ -732,12 +260,575 @@
             }
           }
         ],
-        "x-bakin-full-path": "/api/plugins/assets/trash/:file/restore"
+        "x-bakin-full-path": "/api/plugins/assets/versioned/:assetId"
+      },
+      "delete": {
+        "operationId": "assets.delete.versioned-asset-id",
+        "summary": "Trash a whole versioned asset",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Assets"
+        ],
+        "parameters": [
+          {
+            "name": "assetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/assets/versioned/:assetId"
       }
     },
-    "/api/plugins/assets/trash/{file}": {
+    "/api/plugins/assets/versioned/{assetId}/promote": {
+      "post": {
+        "operationId": "assets.post.versioned-asset-id-promote",
+        "summary": "Promote a version to current",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Assets"
+        ],
+        "parameters": [
+          {
+            "name": "assetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/assets/versioned/:assetId/promote"
+      }
+    },
+    "/api/plugins/assets/versioned/{assetId}/v/{version}": {
       "delete": {
-        "operationId": "assets.delete.trash-file",
+        "operationId": "assets.delete.versioned-asset-id-v-version",
+        "summary": "Delete a version",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Assets"
+        ],
+        "parameters": [
+          {
+            "name": "assetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/assets/versioned/:assetId/v/:version"
+      }
+    },
+    "/api/plugins/assets/versioned/{assetId}/export": {
+      "post": {
+        "operationId": "assets.post.versioned-asset-id-export",
+        "summary": "Attach a derived export",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Assets"
+        ],
+        "parameters": [
+          {
+            "name": "assetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/assets/versioned/:assetId/export"
+      }
+    },
+    "/api/plugins/assets/versioned/{assetId}/relink": {
+      "post": {
+        "operationId": "assets.post.versioned-asset-id-relink",
+        "summary": "Relink an asset to a task (or null)",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Assets"
+        ],
+        "parameters": [
+          {
+            "name": "assetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/assets/versioned/:assetId/relink"
+      }
+    },
+    "/api/plugins/assets/versioned/{assetId}/version": {
+      "post": {
+        "operationId": "assets.post.versioned-asset-id-version",
+        "summary": "Append a new version from an uploaded file",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type — body content type does not match the declared content type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Assets"
+        ],
+        "parameters": [
+          {
+            "name": "assetId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "x-bakin-full-path": "/api/plugins/assets/versioned/:assetId/version"
+      }
+    },
+    "/api/plugins/assets/trash": {
+      "get": {
+        "operationId": "assets.get.trash",
+        "summary": "List trashed assets",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Assets"
+        ],
+        "x-bakin-full-path": "/api/plugins/assets/trash"
+      },
+      "delete": {
+        "operationId": "assets.delete.trash",
+        "summary": "Empty the asset trash",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input — params, query, or body did not match the declared schema.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "issues": {
+                      "type": "array",
+                      "items": {}
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Assets"
+        ],
+        "x-bakin-full-path": "/api/plugins/assets/trash"
+      }
+    },
+    "/api/plugins/assets/trash/{trashName}/restore": {
+      "post": {
+        "operationId": "assets.post.trash-trash-name-restore",
+        "summary": "Restore a trashed asset",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Assets"
+        ],
+        "parameters": [
+          {
+            "name": "trashName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "x-bakin-full-path": "/api/plugins/assets/trash/:trashName/restore"
+      }
+    },
+    "/api/plugins/assets/trash/{trashName}": {
+      "delete": {
+        "operationId": "assets.delete.trash-trash-name",
         "summary": "Permanently delete a trashed asset",
         "responses": {
           "200": {
@@ -807,7 +898,7 @@
         ],
         "parameters": [
           {
-            "name": "file",
+            "name": "trashName",
             "in": "path",
             "required": true,
             "schema": {
@@ -816,7 +907,7 @@
             }
           }
         ],
-        "x-bakin-full-path": "/api/plugins/assets/trash/:file"
+        "x-bakin-full-path": "/api/plugins/assets/trash/:trashName"
       }
     },
     "/api/plugins/assets/search": {

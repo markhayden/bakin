@@ -480,58 +480,6 @@ curl -sS \
 
 <OpenApiReference tag="Assets" summary />
 
-<OpenApiReference operationId="assets.get.root">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  'http://localhost:3737/api/plugins/assets/'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="assets.delete.root">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  -X DELETE \
-  'http://localhost:3737/api/plugins/assets/'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="assets.put.content">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  -X PUT \
-  'http://localhost:3737/api/plugins/assets/content' \
-  -H 'Content-Type: application/json' \
-  --data '{}'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="assets.get.file">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  'http://localhost:3737/api/plugins/assets/file'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="assets.patch.link">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  -X PATCH \
-  'http://localhost:3737/api/plugins/assets/link' \
-  -H 'Content-Type: application/json' \
-  --data '{}'
-```
-</OpenApiReference>
-
-<OpenApiReference operationId="assets.patch.retype">
-```sh frame="terminal" showLineNumbers
-curl -sS \
-  -X PATCH \
-  'http://localhost:3737/api/plugins/assets/retype' \
-  -H 'Content-Type: application/json' \
-  --data '{}'
-```
-</OpenApiReference>
-
 <OpenApiReference operationId="assets.get.search">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -554,19 +502,19 @@ curl -sS \
 ```
 </OpenApiReference>
 
-<OpenApiReference operationId="assets.delete.trash-file">
+<OpenApiReference operationId="assets.delete.trash-trash-name">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X DELETE \
-  'http://localhost:3737/api/plugins/assets/trash/<file>'
+  'http://localhost:3737/api/plugins/assets/trash/<trashName>'
 ```
 </OpenApiReference>
 
-<OpenApiReference operationId="assets.post.trash-file-restore">
+<OpenApiReference operationId="assets.post.trash-trash-name-restore">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
   -X POST \
-  'http://localhost:3737/api/plugins/assets/trash/<file>/restore'
+  'http://localhost:3737/api/plugins/assets/trash/<trashName>/restore'
 ```
 </OpenApiReference>
 
@@ -575,6 +523,70 @@ curl -sS \
 curl -sS \
   -X POST \
   'http://localhost:3737/api/plugins/assets/upload' \
+  -H 'Content-Type: multipart/form-data' \
+  --data '"value"'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.get.versioned">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/assets/versioned'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.get.versioned-asset-id">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.delete.versioned-asset-id">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.post.versioned-asset-id-export">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/export'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.post.versioned-asset-id-promote">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/promote'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.post.versioned-asset-id-relink">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/relink'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.delete.versioned-asset-id-v-version">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X DELETE \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/v/<version>'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="assets.post.versioned-asset-id-version">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/assets/versioned/<assetId>/version' \
   -H 'Content-Type: multipart/form-data' \
   --data '"value"'
 ```
@@ -1564,5 +1576,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 29, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 31, 2026 · Bakin 0.0.0-dev</span>
 </aside>

@@ -468,13 +468,14 @@ const TYPE_DOMAIN_GROUPS: Record<string, string> = {
   SearchTransformOp: 'Search',
   SearchAPI: 'Search',
   // Assets
-  AssetVariantMeta: 'Assets',
-  AssetGenerationMeta: 'Assets',
-  AssetMeta: 'Assets',
-  TrashedAssetMeta: 'Assets',
-  AssetFileRef: 'Assets',
-  AssetSaveInput: 'Assets',
-  AssetSaveResult: 'Assets',
+  AssetTypeName: 'Assets',
+  AssetSummary: 'Assets',
+  AssetGenerationInfo: 'Assets',
+  AssetCreateInput: 'Assets',
+  AssetVersionCreateInput: 'Assets',
+  AssetExportRequest: 'Assets',
+  VersionedAssetRef: 'Assets',
+  AssetVersionFileRef: 'Assets',
   AssetsAPI: 'Assets',
   // Exec tools / Skills / Workflows / Health
   ExecToolResult: 'Exec Tools & Workflows',
@@ -1528,16 +1529,9 @@ function hookNamespace(name: string): string {
 type HookExamplePayload = Record<string, unknown>
 
 const hookExamplePayloads: Record<string, HookExamplePayload> = {
-  'assets.validateSidecar': { metaPath: '~/.bakin/assets/store/task-123/image.json' },
-  'assets.getSidecarPath': { assetPath: '~/.bakin/assets/store/task-123/image.png' },
-  'assets.createStub': { assetPath: '~/.bakin/assets/store/task-123/image.png' },
-  'assets.detectVariant': { filename: 'task-123.after.png' },
   'assets.getAssetTypes': {},
-  'assets.pathForFilename': { filename: 'task-123.after.png' },
+  'assets.resolveServe': { segments: ['20260401-hero-a1b2c3d4', 'thumb'] },
   'assets.purgeClipboardForTask': { taskId: 'task-123' },
-  'assets.trash.list': { assetsRoot: '~/.bakin/assets' },
-  'assets.restoreAsset': { trashFilename: 'task-123.after.png', assetsRoot: '~/.bakin/assets' },
-  'assets.emptyTrash': { assetsRoot: '~/.bakin/assets' },
   'health.list': {},
   'health.getCheck': { id: 'runtime' },
   'models.configChanged': { agentId: 'patch', oldModel: 'gpt-5.4', newModel: 'gpt-5.5' },
@@ -2096,7 +2090,7 @@ function renderHooks(lines: string[], sp: SdkSubpath | undefined): void {
   lines.push('## `@makinbakin/sdk/hooks`', '')
   lines.push(`Source: \`${sp.source}\`.`, '')
   lines.push('```ts')
-  lines.push("import { useSearch, useAssets, useDebug } from '@makinbakin/sdk/hooks'")
+  lines.push("import { useSearch, useDebug } from '@makinbakin/sdk/hooks'")
   lines.push('```', '')
 
   const groups = new Map<string, SdkSymbol[]>()

@@ -51,15 +51,13 @@ The main entry. Re-exports the plugin contract types (`./types`) plus the high-t
 Source: `packages/sdk/src/hooks/index.ts`.
 
 ```ts
-import { useSearch, useAssets, useDebug } from '@makinbakin/sdk/hooks'
+import { useSearch, useDebug } from '@makinbakin/sdk/hooks'
 ```
 
 ### Data & State
 
 | Hook | Description |
 | --- | --- |
-| `useAssets` | Fetch and filter the asset library with live SSE updates. |
-| `useTrash` | Fetch trashed assets eligible for restore or permanent delete. |
 | `useContentStore` | Access the global Zustand store for SSE-driven content state. |
 | `useScheduleJobs` | List scheduled jobs with live updates. |
 | `useRunHistory` | Fetch run history for a scheduled job. |
@@ -498,14 +496,15 @@ The `bakin.config.ts` shape — root configuration for a Bakin installation.
 
 | Type | Description |
 | --- | --- |
-| `AssetVariantMeta` | Auto-generated variant (thumbnail/optimized/webp) for an asset. |
-| `AssetGenerationMeta` | Structured provenance written by image-generation tools into an asset sidecar. |
-| `AssetMeta` | Full asset record: file info + sidecar metadata + auto-generated variants. |
-| `TrashedAssetMeta` | Asset record while in trash (with deleted/expires timestamps). |
-| `AssetFileRef` | Compact reference to an asset by filename — used in channel deliveries. |
-| `AssetSaveInput` | Input for saving an agent-created or plugin-created file through the Assets plugin. |
-| `AssetSaveResult` | Result returned after the Assets plugin canonicalizes and persists a file. |
-| `AssetsAPI` | Assets API exposed via `ctx.assets` — asset persistence and lookups. |
+| `AssetTypeName` | The asset type taxonomy (mirrors ASSET_TYPES in the assets plugin). |
+| `AssetGenerationInfo` | Per-version generation provenance (matches the manifest's `generation` block). |
+| `AssetCreateInput` | Create a new versioned asset (v1) from a source file. |
+| `AssetVersionCreateInput` | Append a new version to an existing asset. |
+| `AssetExportRequest` | Render a derived export of a version (keyed/idempotent by surface). |
+| `VersionedAssetRef` | Reference to a versioned asset: its stable id and the version just written. |
+| `AssetVersionFileRef` | Resolved on-disk location of a specific asset version, for reads/serving. |
+| `AssetSummary` | Current-version summary of an asset, addressed by id. |
+| `AssetsAPI` | Assets API exposed via `ctx.assets` — versioned asset-as-directory surface. |
 
 ### Exec Tools & Workflows
 
@@ -656,5 +655,5 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `DefinePluginInput` | — |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 29, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated May 31, 2026 · Bakin 0.0.0-dev</span>
 </aside>

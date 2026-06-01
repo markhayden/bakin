@@ -1,6 +1,8 @@
 /**
  * POST /api/plugins/assets/upload — multipart file upload.
- * Accepts one or more files, auto-detects asset type, creates sidecar metadata.
+ * Accepts one or more files, auto-detects asset type, and creates a versioned
+ * asset (v1) per file via the asset service. The manifest write triggers search
+ * reindex + the asset.changed SSE event, so the grid refreshes on its own.
  */
 import { writeFileSync, mkdirSync, unlinkSync, rmSync } from 'fs'
 import { join } from 'path'
@@ -8,11 +10,18 @@ import { tmpdir } from 'os'
 import { randomUUID } from 'crypto'
 import type { PluginContext } from '@bakin/core/plugin-types'
 import { getAssetType } from '../lib/constants'
-import { saveAsset, type SaveAssetResult } from '../lib/save-asset'
-import type { AssetSource } from '../lib/sidecar'
+import { createAsset } from '../lib/asset-service'
+import type { AssetSource } from '../lib/manifest'
 
 interface UploadSettings {
   maxFileSize?: number
+}
+
+interface UploadResult {
+  ok: boolean
+  assetId?: string
+  filename: string
+  error?: string
 }
 
 export async function handleUpload(req: Request, ctx: PluginContext): Promise<Response> {
@@ -37,7 +46,7 @@ export async function handleUpload(req: Request, ctx: PluginContext): Promise<Re
   const tagsRaw = formData.get('tags') as string
   const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : undefined
   const sourceStr = String(formData.get('source') || 'upload')
-  const source: AssetSource = (['agent', 'upload', 'clipboard'].includes(sourceStr) ? sourceStr : 'upload') as AssetSource
+  const sourceKind: AssetSource['kind'] = sourceStr === 'clipboard' ? 'clipboard' : 'upload'
 
   // Collect all file entries
   const files: File[] = []
@@ -70,7 +79,7 @@ export async function handleUpload(req: Request, ctx: PluginContext): Promise<Re
     }
   }
 
-  const results: SaveAssetResult[] = []
+  const results: UploadResult[] = []
   const tmpDir = join(tmpdir(), `bakin-upload-${randomUUID()}`)
   mkdirSync(tmpDir, { recursive: true })
 
@@ -82,40 +91,36 @@ export async function handleUpload(req: Request, ctx: PluginContext): Promise<Re
       const buffer = Buffer.from(await file.arrayBuffer())
       writeFileSync(tmpPath, buffer)
 
-      const assetType = getAssetType(file.name)
-
-      const result = await saveAsset({
-        filePath: tmpPath,
-        taskId,
-        type: assetType,
-        agent: 'user',
-        description,
-        tags,
-        source,
-        originalFilename: file.name,
-      })
-
-      results.push(result)
-
-      // Clean up temp file
-      try { unlinkSync(tmpPath) } catch { /* best-effort */ }
-
-      if (result.ok) {
+      try {
+        const { assetId } = await createAsset({
+          sourceFilePath: tmpPath,
+          type: getAssetType(file.name),
+          agent: 'user',
+          taskId,
+          slug: file.name,
+          op: 'upload',
+          description,
+          tags,
+          source: { kind: sourceKind, path: null },
+        })
+        results.push({ ok: true, assetId, filename: file.name })
         ctx.activity.log('user', `Uploaded "${file.name}"`, taskId ? { taskId } : {})
-        ctx.activity.audit('uploaded', 'user', { path: result.path, source, taskId })
+        ctx.activity.audit('uploaded', 'user', { assetId, source: sourceKind, taskId })
+      } catch (err) {
+        results.push({ ok: false, filename: file.name, error: err instanceof Error ? err.message : String(err) })
+      } finally {
+        try { unlinkSync(tmpPath) } catch { /* best-effort */ }
       }
     }
   } finally {
-    // Clean up temp directory
     try { rmSync(tmpDir, { recursive: true, force: true }) } catch { /* best-effort */ }
   }
 
   const allOk = results.every(r => r.ok)
-  const status = allOk ? 200 : 207 // 207 Multi-Status if partial failure
 
   if (results.length === 1) {
     return Response.json(results[0], { status: results[0].ok ? 200 : 500 })
   }
 
-  return Response.json({ results, ok: allOk }, { status })
+  return Response.json({ results, ok: allOk }, { status: allOk ? 200 : 207 })
 }

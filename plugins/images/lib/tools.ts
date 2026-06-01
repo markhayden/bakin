@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { basename } from 'node:path'
 import sharp from 'sharp'
 import type { ExecToolResult, PluginContext } from '@bakin/core/plugin-types'
 import type { RuntimeImageGenerationResult } from '@bakin/core/adapters/runtime'
@@ -10,7 +9,6 @@ import { effectiveImageSettings, getImageProvider, providerReadiness } from './p
 import { resolveImageRoute } from './routing'
 import { getImageProfile } from './platform-profiles'
 import { runBilledImageCall, type ImageCallKey } from './idempotency'
-import { getContentDir } from '../../../src/core/content-dir'
 
 /** Largest edge we send to a provider / feed into sharp, to bound cost. */
 const MAX_IMAGE_EDGE = 2048
@@ -25,7 +23,6 @@ export interface ImagesGenerateParams {
   width?: number
   height?: number
   quality?: 'draft' | 'standard' | 'premium'
-  savePromptPacket?: boolean
 }
 
 export interface ImagesImportParams {
@@ -36,14 +33,12 @@ export interface ImagesImportParams {
 }
 
 export interface ImagesEditParams extends ImagesGenerateParams {
-  /** Managed asset filename to edit (preferred), resolved to its stored path. */
-  filename?: string
-  /** Or an explicit local source-image path. */
-  sourcePath?: string
+  /** Managed asset id to edit — edits the current version, appends a new one. */
+  assetId: string
 }
 
 export interface ImagesExportParams {
-  filename: string
+  assetId: string
   taskId: string
   surface?: string
   width?: number
@@ -91,40 +86,6 @@ function dimensionsForSurface(surfaceId: string, width?: number, height?: number
   return { surface: profile?.id ?? 'custom', ...clamped }
 }
 
-async function savePromptPacketAsset(
-  ctx: PluginContext,
-  agent: string,
-  taskId: string,
-  prompt: string,
-  promptPacket: Record<string, unknown> | undefined,
-): Promise<string | undefined> {
-  const dir = mkdtempSync(join(tmpdir(), 'bakin-image-prompt-'))
-  const filePath = join(dir, 'prompt-packet.md')
-  const body = [
-    '# Image Prompt Packet',
-    '',
-    '```text',
-    prompt,
-    '```',
-    '',
-    promptPacket ? '```json' : '',
-    promptPacket ? JSON.stringify(promptPacket, null, 2) : '',
-    promptPacket ? '```' : '',
-  ].filter(Boolean).join('\n')
-  writeFileSync(filePath, body, 'utf-8')
-  const saved = await ctx.assets.save({
-    filePath,
-    taskId,
-    type: 'text',
-    agent,
-    tool: 'bakin_exec_images_generate',
-    description: 'Approved image prompt packet',
-    tags: ['image-prompt-packet'],
-    slug: 'image-prompt-packet',
-  })
-  return saved.ok ? saved.filename : undefined
-}
-
 async function imageDimensions(filePath: string): Promise<{ width: number; height: number }> {
   try {
     const metadata = await sharp(filePath).metadata()
@@ -137,26 +98,22 @@ async function imageDimensions(filePath: string): Promise<{ width: number; heigh
 export async function importImage(ctx: PluginContext, params: ImagesImportParams, agent: string): Promise<ExecToolResult> {
   if (!existsSync(params.filePath)) return fail(`File not found: ${params.filePath}`)
   const dims = await imageDimensions(params.filePath)
-  const saved = await ctx.assets.save({
-    filePath: params.filePath,
-    taskId: params.taskId,
-    type: 'images',
-    agent,
-    tool: 'bakin_exec_images_import',
-    description: (params.description || basename(params.filePath)).slice(0, 200),
-    tags: params.tags ?? ['imported'],
-    slug: params.description || basename(params.filePath),
-  })
-  if (!saved.ok) return fail(`Asset save failed: ${saved.error}`)
-  return {
-    ok: true,
-    path: saved.path,
-    metadataPath: saved.metadataPath,
-    filename: saved.filename,
-    image_filename: saved.filename,
-    width: dims.width,
-    height: dims.height,
-    model: 'import',
+  try {
+    const ref = await ctx.assets.createAsset({
+      sourceFilePath: params.filePath,
+      type: 'images',
+      agent,
+      taskId: params.taskId,
+      op: 'import',
+      tool: 'bakin_exec_images_import',
+      description: (params.description || basename(params.filePath)).slice(0, 200),
+      tags: params.tags ?? ['imported'],
+      slug: params.description || basename(params.filePath),
+      source: { kind: 'import', path: params.filePath },
+    })
+    return { ok: true, assetId: ref.assetId, version: ref.version, width: dims.width, height: dims.height, model: 'import' }
+  } catch (err) {
+    return fail(`Asset import failed: ${errorMessage(err)}`)
   }
 }
 
@@ -190,18 +147,18 @@ async function prepareImageRequest(ctx: PluginContext, params: ImagesGeneratePar
 }
 
 /**
- * Persist a runtime image result (from generate or edit) as a managed asset
- * with generation provenance, and build the tool result. Records the ACTUAL
- * produced pixel dimensions (a provider may snap to its own nearest supported
- * size) by probing the file; surface intent stays in `generation.surface`.
+ * Persist a runtime image result as a managed asset — a new asset (generate) or
+ * a new version of an existing one (edit) — and build the tool result.
+ * Probes the ACTUAL produced dimensions (a provider may snap to its nearest
+ * supported size); surface intent stays in `generation.surface`.
  */
-async function persistImageAsset(
+async function persistImageResult(
   ctx: PluginContext,
   params: ImagesGenerateParams,
   agent: string,
-  opts: { req: PreparedImageRequest; result: RuntimeImageGenerationResult; tool: string; tag: 'generated' | 'edited' },
+  opts: { req: PreparedImageRequest; result: RuntimeImageGenerationResult; tool: string } & ({ create: true } | { create: false; assetId: string }),
 ): Promise<ExecToolResult> {
-  const { req, result, tool, tag } = opts
+  const { req, result, tool } = opts
   const image = result.images[0]
   if (!image?.filePath) return fail('Runtime image operation returned no image file')
 
@@ -212,41 +169,33 @@ async function persistImageAsset(
   const probed = await imageDimensions(image.filePath)
   const width = probed.width || image.width || req.dims.width
   const height = probed.height || image.height || req.dims.height
-
-  const promptAssetFilename = params.savePromptPacket
-    ? await savePromptPacketAsset(ctx, agent, params.taskId, req.prompt, params.promptPacket)
-    : undefined
   const promptHash = hashPrompt(req.prompt)
-  const saved = await ctx.assets.save({
-    filePath: image.filePath,
-    taskId: params.taskId,
-    type: 'images',
-    agent,
-    tool,
-    description: req.prompt.slice(0, 200),
-    tags: [tag, req.dims.surface, req.route.provider, req.route.model],
-    slug: `${req.dims.surface}-image`,
-    generation: {
-      provider: req.route.provider,
-      model: req.route.model,
-      surface: req.dims.surface,
-      width,
-      height,
-      quality: req.quality,
-      promptHash,
-      routeSource,
-      ...(promptAssetFilename ? { promptAssetFilename } : {}),
-      createdByTool: tool,
-    },
-  })
-  if (!saved.ok) return fail(`Image ${tag} but asset save failed: ${saved.error}`)
+  const description = req.prompt.slice(0, 200)
+  const generation = {
+    provider: req.route.provider,
+    model: req.route.model,
+    surface: req.dims.surface,
+    quality: req.quality,
+    routeSource,
+  }
+
+  const ref = opts.create
+    ? await ctx.assets.createAsset({
+        sourceFilePath: image.filePath, type: 'images', agent, taskId: params.taskId,
+        slug: `${req.dims.surface}-image`, op: 'generate', tool,
+        prompt: req.prompt, promptHash, description, tags: ['generated', req.dims.surface, req.route.provider, req.route.model],
+        source: { kind: 'generated', path: null }, generation,
+      })
+    : await ctx.assets.addVersion(opts.assetId, {
+        sourceFilePath: image.filePath, op: 'edit', tool,
+        prompt: req.prompt, promptHash, description, tags: ['edited', req.dims.surface, req.route.provider, req.route.model],
+        generation,
+      })
 
   return {
     ok: true,
-    path: saved.path,
-    metadataPath: saved.metadataPath,
-    filename: saved.filename,
-    image_filename: saved.filename,
+    assetId: ref.assetId,
+    version: ref.version,
     width,
     height,
     surface: req.dims.surface,
@@ -257,7 +206,6 @@ async function persistImageAsset(
     ...(credentialSource ? { credentialSource } : {}),
     prompt: req.prompt.slice(0, 500),
     promptHash,
-    ...(promptAssetFilename ? { promptAssetFilename } : {}),
     ...(result.providerText ? { providerText: result.providerText } : {}),
   }
 }
@@ -266,37 +214,25 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
   const req = await prepareImageRequest(ctx, params)
   if ('error' in req) return fail(req.error)
 
-  // The runtime capability owns transport: it serves the route natively when it
-  // can, or composes the shared direct-provider shim when it can't. The plugin
-  // never touches provider HTTP or credentials.
+  // The runtime capability owns transport: native when it can, the shared
+  // direct-provider shim when it can't. The plugin never touches provider HTTP.
   if (!ctx.runtime.images) return fail('The active runtime does not provide an image generation capability')
   const runGenerate = ctx.runtime.images.generate
 
   // Idempotent: a client (mcporter) timeout that retries this identical billed
-  // call must not bill twice — return the in-flight / just-saved result instead.
+  // call must not bill twice.
   const key: ImageCallKey = {
-    taskId: params.taskId,
-    op: 'generate',
-    source: null,
-    promptHash: hashPrompt(req.prompt),
-    provider: req.route.provider,
-    model: req.route.model,
-    width: req.dims.width,
-    height: req.dims.height,
-    quality: req.quality,
+    taskId: params.taskId, op: 'generate', source: null,
+    promptHash: hashPrompt(req.prompt), provider: req.route.provider, model: req.route.model,
+    width: req.dims.width, height: req.dims.height, quality: req.quality,
   }
   return runBilledImageCall(key, async () => {
     try {
       const result = await runGenerate({
-        prompt: req.prompt,
-        provider: req.route.provider,
-        model: req.route.model,
-        width: req.dims.width,
-        height: req.dims.height,
-        outputFormat: 'png',
-        metadata: { quality: req.quality },
+        prompt: req.prompt, provider: req.route.provider, model: req.route.model,
+        width: req.dims.width, height: req.dims.height, outputFormat: 'png', metadata: { quality: req.quality },
       })
-      return await persistImageAsset(ctx, params, agent, { req, result, tool: 'bakin_exec_images_generate', tag: 'generated' })
+      return await persistImageResult(ctx, params, agent, { req, result, tool: 'bakin_exec_images_generate', create: true })
     } catch (err) {
       return fail(`Image generation failed: ${errorMessage(err)}`)
     }
@@ -304,18 +240,10 @@ export async function generateImage(ctx: PluginContext, params: ImagesGeneratePa
 }
 
 export async function editImage(ctx: PluginContext, params: ImagesEditParams, agent: string): Promise<ExecToolResult> {
-  // Resolve the source image: a managed asset filename or an explicit path.
-  let sourcePath: string | undefined
-  if (params.filename) {
-    const asset = await ctx.assets.getByFilename(params.filename)
-    if (!asset) return fail(`Asset not found: ${params.filename}`)
-    sourcePath = join(getContentDir(), asset.path)
-  } else if (params.sourcePath) {
-    sourcePath = params.sourcePath
-  }
-  if (!sourcePath || !existsSync(sourcePath)) {
-    return fail('edit requires an existing source image (pass filename for a managed asset or sourcePath for a local file)')
-  }
+  if (!params.assetId) return fail('edit requires a managed assetId')
+  // Source is the current version of the managed asset.
+  const source = await ctx.assets.resolveVersionFile(params.assetId)
+  if (!source) return fail(`Asset not found: ${params.assetId}`)
 
   const req = await prepareImageRequest(ctx, params)
   if ('error' in req) return fail(req.error)
@@ -324,40 +252,26 @@ export async function editImage(ctx: PluginContext, params: ImagesEditParams, ag
   if (!ctx.runtime.images?.edit) return fail('The active runtime does not provide an image edit capability')
   const runEdit = ctx.runtime.images.edit
 
-  // Idempotent like generate: an identical retried edit must not double-bill.
   const key: ImageCallKey = {
-    taskId: params.taskId,
-    op: 'edit',
-    source: params.filename ?? params.sourcePath ?? null,
-    promptHash: hashPrompt(req.prompt),
-    provider: req.route.provider,
-    model: req.route.model,
-    width: req.dims.width,
-    height: req.dims.height,
-    quality: req.quality,
+    taskId: params.taskId, op: 'edit', source: params.assetId,
+    promptHash: hashPrompt(req.prompt), provider: req.route.provider, model: req.route.model,
+    width: req.dims.width, height: req.dims.height, quality: req.quality,
   }
   return runBilledImageCall(key, async () => {
     try {
       const result = await runEdit({
-        prompt: req.prompt,
-        provider: req.route.provider,
-        model: req.route.model,
-        width: req.dims.width,
-        height: req.dims.height,
-        outputFormat: 'png',
-        files: [sourcePath],
-        metadata: { quality: req.quality },
+        prompt: req.prompt, provider: req.route.provider, model: req.route.model,
+        width: req.dims.width, height: req.dims.height, outputFormat: 'png',
+        files: [source.absPath], metadata: { quality: req.quality },
       })
-      return await persistImageAsset(ctx, params, agent, { req, result, tool: 'bakin_exec_images_edit', tag: 'edited' })
+      return await persistImageResult(ctx, params, agent, { req, result, tool: 'bakin_exec_images_edit', create: false, assetId: params.assetId })
     } catch (err) {
       return fail(`Image edit failed: ${errorMessage(err)}`)
     }
   })
 }
 
-export async function exportImage(ctx: PluginContext, params: ImagesExportParams, agent: string): Promise<ExecToolResult> {
-  const asset = await ctx.assets.getByFilename(params.filename)
-  if (!asset) return fail(`Asset not found: ${params.filename}`)
+export async function exportImage(ctx: PluginContext, params: ImagesExportParams, _agent: string): Promise<ExecToolResult> {
   const surfaceId = params.surface || 'custom'
   const dims = surfaceId === 'custom'
     ? (params.width && params.height ? { surface: 'custom', ...clampDimensions(params.width, params.height) } : null)
@@ -365,36 +279,12 @@ export async function exportImage(ctx: PluginContext, params: ImagesExportParams
   if (!dims) return fail(`Unknown image surface or missing custom dimensions: ${surfaceId}`)
 
   const format = params.format ?? 'jpg'
-  const sourcePath = join(getContentDir(), asset.path)
-  const outDir = mkdtempSync(join(tmpdir(), 'bakin-image-export-'))
-  const outPath = join(outDir, `${params.filename.replace(/\.[^.]+$/, '')}.${format}`)
-  let pipeline = sharp(sourcePath).resize(dims.width, dims.height, { fit: 'cover' })
-  if (format === 'jpg') pipeline = pipeline.jpeg({ quality: params.quality ?? 82 })
-  if (format === 'png') pipeline = pipeline.png()
-  if (format === 'webp') pipeline = pipeline.webp({ quality: params.quality ?? 82 })
-  await pipeline.toFile(outPath)
-
-  const saved = await ctx.assets.save({
-    filePath: outPath,
-    taskId: params.taskId,
-    type: 'images',
-    agent,
-    tool: 'bakin_exec_images_export',
-    description: `Exported ${params.filename} for ${dims.surface}`,
-    tags: ['exported', dims.surface],
-    slug: `${dims.surface}-export`,
-  })
-  if (!saved.ok) return fail(`Export failed while saving asset: ${saved.error}`)
-  return {
-    ok: true,
-    filename: saved.filename,
-    image_filename: saved.filename,
-    path: saved.path,
-    metadataPath: saved.metadataPath,
-    sourceFilename: params.filename,
-    surface: dims.surface,
-    width: dims.width,
-    height: dims.height,
-    format,
+  try {
+    const { name, file } = await ctx.assets.addExport(params.assetId, {
+      surface: dims.surface, format, width: dims.width, height: dims.height, quality: params.quality,
+    })
+    return { ok: true, assetId: params.assetId, exportName: name, file, surface: dims.surface, width: dims.width, height: dims.height, format }
+  } catch (err) {
+    return fail(`Export failed: ${errorMessage(err)}`)
   }
 }

@@ -18,66 +18,12 @@ Invocation style depends on `kind`:
 
 Asset hooks expose file, sidecar, variant, and trash helpers for plugins that need to work with Bakin-managed files.
 
-### assets.createStub
-
-Label: Create sidecar stub.
-Purpose: Creates a starter sidecar for an asset file and returns the written metadata. Use it when adopting a file into Bakin-managed asset state.
-Kind: rpc
-Source: plugins/assets/index.ts:543
-
-Example:
-
-```ts
-const result = await ctx.hooks.invoke(
-  'assets.createStub',
-  {
-    assetPath: '~/.bakin/assets/store/task-123/image.png'
-  },
-)
-```
-
-### assets.detectVariant
-
-Label: Detect asset variant.
-Purpose: Infers the asset variant represented by a filename, such as before, after, or reference. Use it to keep imported assets grouped and labeled consistently.
-Kind: rpc
-Source: plugins/assets/index.ts:544
-
-Example:
-
-```ts
-const result = await ctx.hooks.invoke(
-  'assets.detectVariant',
-  {
-    filename: 'task-123.after.png'
-  },
-)
-```
-
-### assets.emptyTrash
-
-Label: Empty asset trash.
-Purpose: Permanently removes every asset currently in trash for the provided asset root. Use it for explicit cleanup actions where restore is no longer expected.
-Kind: rpc
-Source: plugins/assets/index.ts:579
-
-Example:
-
-```ts
-const result = await ctx.hooks.invoke(
-  'assets.emptyTrash',
-  {
-    assetsRoot: '~/.bakin/assets'
-  },
-)
-```
-
 ### assets.getAssetTypes
 
 Label: List asset types.
 Purpose: Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories.
 Kind: rpc
-Source: plugins/assets/index.ts:545
+Source: plugins/assets/index.ts:344
 
 Example:
 
@@ -88,48 +34,12 @@ const result = await ctx.hooks.invoke(
 )
 ```
 
-### assets.getSidecarPath
-
-Label: Get sidecar path.
-Purpose: Resolves the metadata sidecar path for a managed asset file. Use it when another plugin has an asset path and needs to read or write the matching metadata.
-Kind: rpc
-Source: plugins/assets/index.ts:542
-
-Example:
-
-```ts
-const result = await ctx.hooks.invoke(
-  'assets.getSidecarPath',
-  {
-    assetPath: '~/.bakin/assets/store/task-123/image.png'
-  },
-)
-```
-
-### assets.pathForFilename
-
-Label: Resolve asset path.
-Purpose: Calculates the managed asset path for a filename. Use it when a plugin needs to place or reference a file using Bakin asset storage conventions.
-Kind: rpc
-Source: plugins/assets/index.ts:546
-
-Example:
-
-```ts
-const result = await ctx.hooks.invoke(
-  'assets.pathForFilename',
-  {
-    filename: 'task-123.after.png'
-  },
-)
-```
-
 ### assets.purgeClipboardForTask
 
 Label: Purge task clipboard assets.
 Purpose: Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized.
 Kind: rpc
-Source: plugins/assets/index.ts:549
+Source: plugins/assets/index.ts:348
 
 Example:
 
@@ -142,57 +52,23 @@ const result = await ctx.hooks.invoke(
 )
 ```
 
-### assets.restoreAsset
+### assets.resolveServe
 
-Label: Restore trashed asset.
-Purpose: Restores one soft-deleted asset from the trash back into managed asset storage. Use it when a plugin needs undo behavior for asset deletion.
+Label: Resolve versioned asset serve request.
+Purpose: Resolves an /api/assets/<assetId> path (current, /v/<n>, /thumb, /export/<name>) to a file on disk for serving.
 Kind: rpc
-Source: plugins/assets/index.ts:578
+Source: plugins/assets/index.ts:345
 
 Example:
 
 ```ts
 const result = await ctx.hooks.invoke(
-  'assets.restoreAsset',
+  'assets.resolveServe',
   {
-    trashFilename: 'task-123.after.png',
-    assetsRoot: '~/.bakin/assets'
-  },
-)
-```
-
-### assets.trash.list
-
-Label: List trashed assets.
-Purpose: Returns soft-deleted assets currently available for restore or permanent removal. Use it to power trash views without duplicating filesystem conventions.
-Kind: rpc
-Source: plugins/assets/index.ts:577
-
-Example:
-
-```ts
-const result = await ctx.hooks.invoke(
-  'assets.trash.list',
-  {
-    assetsRoot: '~/.bakin/assets'
-  },
-)
-```
-
-### assets.validateSidecar
-
-Label: Validate sidecar metadata.
-Purpose: Checks an asset sidecar JSON file and returns validation details. Use it before trusting metadata created by imports, repairs, or external tools.
-Kind: rpc
-Source: plugins/assets/index.ts:541
-
-Example:
-
-```ts
-const result = await ctx.hooks.invoke(
-  'assets.validateSidecar',
-  {
-    metaPath: '~/.bakin/assets/store/task-123/image.json'
+    segments: [
+      '20260401-hero-a1b2c3d4',
+      'thumb'
+    ]
   },
 )
 ```

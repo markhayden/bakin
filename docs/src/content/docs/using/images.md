@@ -6,13 +6,24 @@ description: Provider-routed image generation, imports, exports, and platform su
 The Images plugin is Bakin's core image-generation layer. It routes requests to
 the active runtime image adapter first, then falls back to configured direct
 provider adapters when the runtime does not expose that route. Outputs are
-always saved through Assets and returned as canonical asset filenames for
-downstream workflows.
+always saved through [Assets](/docs/using/assets/) as **versioned assets** and
+returned as a stable **`assetId`** for downstream workflows.
+
+Generation and editing land on the versioned asset model: `generate` creates a
+new asset (`v1`); `edit` (by `assetId`) appends a new version to an existing
+asset (`v2`, `v3`, …) — so iterating on an image yields **one asset with a
+version history**, not a pile of near-duplicates. `export` attaches a derived,
+surface-sized deliverable to the asset (it is not a new version).
 
 Use the recommendation tool before generation when the brief does not already
-pin a provider, model, surface, and quality tier. The generator persists
-provider/model/surface metadata in the asset sidecar. Approval-gated workflows
-can also save the full prompt packet as a linked text asset.
+pin a provider, model, surface, and quality tier. Each version records its
+provider/model/surface/route provenance in the manifest.
+
+**Billed calls are idempotent.** If a client times out and retries an identical
+`generate`/`edit` that already succeeded server-side, Bakin returns the
+already-produced result instead of billing the provider twice (in-flight dedup
+plus a short-TTL result cache keyed by the request signature). It is a dedup,
+not a retry — failures still surface to the caller.
 
 With the default OpenClaw runtime adapter, image generation uses
 `openclaw infer image ...` under the hood. That means OpenClaw-owned auth,
@@ -27,8 +38,10 @@ supported as fallback native routes.
 2. Call `bakin_exec_images_recommend` with the target surface and objective.
 3. Get approval for the prompt packet, model route, platform surface, and usage
    constraints when the workflow requires it.
-4. Call `bakin_exec_images_generate`.
-5. Pass the returned `image_filename` to publishing or review tools.
+4. Call `bakin_exec_images_generate` (new asset) or `bakin_exec_images_edit`
+   with an `assetId` (new version of an existing asset).
+5. Pass the returned `assetId` to publishing or review tools. Use
+   `bakin_exec_images_export` to attach a surface-sized deliverable.
 
 ## Providers
 
@@ -49,10 +62,10 @@ only for the built-in OpenAI and Google routes.
 ## Tools
 
 <!-- docs:exec-tools images -->
-- `bakin_exec_images_edit`: Edit an existing image (managed asset or local file) through the runtime image provider with edit instructions, save the result into Assets, and return the canonical image filename.
+- `bakin_exec_images_edit`: Edit a managed image asset (by assetId) through the runtime image provider — edits the current version, appends a new version, and returns the assetId.
 - `bakin_exec_images_export`: Export an existing image asset to a target surface profile by resizing, cropping, and format-converting it.
-- `bakin_exec_images_generate`: Generate an image through a configured runtime image provider or native image provider adapter, save it into Assets, and return the canonical image filename.
-- `bakin_exec_images_import`: Import an existing local image file into the Assets pipeline and return the canonical image filename.
+- `bakin_exec_images_generate`: Generate an image through a configured runtime image provider, save it as a new managed asset (v1), and return its assetId.
+- `bakin_exec_images_import`: Import an existing local image file as a new managed asset (v1) and return its assetId.
 - `bakin_exec_images_profiles`: List image surface profiles and configured provider readiness. Use this before choosing dimensions or provider routes for image generation.
 - `bakin_exec_images_recommend`: Recommend a deterministic image provider, model, surface profile, dimensions, and quality tier for an image generation request.
 <!-- /docs:exec-tools -->

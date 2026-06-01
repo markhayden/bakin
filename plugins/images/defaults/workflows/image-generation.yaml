@@ -3,8 +3,8 @@ name: Image Generation
 description: >
   Build a provider-neutral image prompt packet from a creative brief, recommend
   the best configured image route, get human approval, then generate and save
-  the approved image as an Assets filename. Designed to run standalone or as a
-  nested primitive inside other workflows.
+  the approved image as a managed versioned asset (returning its assetId).
+  Designed to run standalone or as a nested primitive inside other workflows.
 version: 4
 
 steps:
@@ -95,17 +95,16 @@ steps:
     skill: generate-image
     description: >
       Use the approved develop-prompt output. Call bakin_exec_images_generate
-      with taskId, promptPacket, prompt, provider, model, surface, quality, and
-      savePromptPacket: true. Do not manually write files or sidecars; the
-      images and assets plugins handle persistence. Submit the canonical asset
-      filename returned by the tool.
+      with taskId, promptPacket, prompt, provider, model, surface, and quality.
+      Do not manually write files; the images and assets plugins handle
+      persistence. Submit the assetId returned by the tool.
     output_schema:
-      image_filename:
+      assetId:
         type: string
-        description: Canonical generated image asset filename
-      filename:
-        type: string
-        description: Same canonical generated image asset filename
+        description: Managed image asset id (e.g. 20260401-blog-hero-a1b2c3d4); not a filename or path
+      version:
+        type: number
+        description: Asset version produced (1 for a fresh generate)
       provider:
         type: string
         description: Provider used for generation
@@ -124,6 +123,3 @@ steps:
       promptHash:
         type: string
         description: Hash of the approved prompt text
-      promptAssetFilename:
-        type: string
-        description: Prompt packet asset filename saved for the approval trail

@@ -17,7 +17,7 @@ import { useAgent } from "@makinbakin/sdk/hooks"
 import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
 import { toast } from "@makinbakin/sdk/hooks"
 import type { Task, ColumnId } from '../types'
-import { isRenderableAssetImageFilename } from '../lib/output-assets'
+import { isRenderableAssetRef } from '../lib/output-assets'
 import { createShortClientId } from '../lib/client-id'
 
 /** Normalize step output — handles string (possibly JSON), object, or unexpected types. */
@@ -43,12 +43,12 @@ function humanizeKey(key: string): string {
 /** Render a single output value in human-readable form. */
 function OutputValue({ value }: { value: unknown }) {
   if (typeof value === 'string') {
-    if (isRenderableAssetImageFilename(value)) {
-      const filename = value
+    if (isRenderableAssetRef(value)) {
+      const ref = value
       return (
         <div className="mt-0.5">
-          <p className="text-xs text-zinc-400 break-all">{filename}</p>
-          <img src={`/api/assets/${encodeURIComponent(filename)}`} alt={filename} className="mt-1 max-h-48 rounded border border-border object-contain" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+          <p className="text-xs text-zinc-400 break-all">{ref}</p>
+          <img src={`/api/assets/${encodeURIComponent(ref)}`} alt={ref} className="mt-1 max-h-48 rounded border border-border object-contain" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
         </div>
       )
     }
@@ -306,7 +306,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
   }
 
   /** Upload a file to the assets system and return the result. */
-  async function uploadAsset(file: File, taskId: string, source: 'clipboard' | 'upload'): Promise<{ ok: boolean; path?: string; filename?: string; error?: string }> {
+  async function uploadAsset(file: File, taskId: string, source: 'clipboard' | 'upload'): Promise<{ ok: boolean; assetId?: string; filename?: string; error?: string }> {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('taskId', taskId)
@@ -337,8 +337,8 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
         setPasting(true)
         try {
           const result = await uploadAsset(file, currentTaskId, 'clipboard')
-          if (result.ok) {
-            const ref = `![${result.filename || 'pasted image'}](/api/assets/${encodeURIComponent(result.filename!)})`
+          if (result.ok && result.assetId) {
+            const ref = `![${result.filename || 'pasted image'}](/api/assets/${encodeURIComponent(result.assetId)})`
             insertAtCursor(ref)
             window.dispatchEvent(new CustomEvent('bakin:asset-uploaded', { detail: { taskId: currentTaskId } }))
             toast('Image added to task assets', 'success')
@@ -366,8 +366,8 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
           const filename = `pasted-text-${Date.now()}.md`
           const file = new File([blob], filename, { type: 'text/markdown' })
           const result = await uploadAsset(file, currentTaskId, 'clipboard')
-          if (result.ok) {
-            const ref = `[Attached: ${result.filename} (${lineCount} lines)](/api/assets/${encodeURIComponent(result.filename!)})`
+          if (result.ok && result.assetId) {
+            const ref = `[Attached: ${result.filename} (${lineCount} lines)](/api/assets/${encodeURIComponent(result.assetId)})`
             insertAtCursor(ref)
             window.dispatchEvent(new CustomEvent('bakin:asset-uploaded', { detail: { taskId: currentTaskId } }))
             toast(`Text saved as task asset (${lineCount} lines)`, 'success')

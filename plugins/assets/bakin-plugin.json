@@ -21,39 +21,49 @@
   "contributes": {
     "apiRoutes": [
       {
-        "method": "DELETE",
-        "path": "/",
-        "summary": "Soft-delete an asset"
+        "method": "POST",
+        "path": "/upload",
+        "summary": "Upload files as new versioned assets"
       },
       {
         "method": "GET",
-        "path": "/",
-        "summary": "List assets with filters"
-      },
-      {
-        "method": "PUT",
-        "path": "/content",
-        "summary": "Update text content of an editable asset"
+        "path": "/versioned",
+        "summary": "List versioned assets"
       },
       {
         "method": "GET",
-        "path": "/file",
-        "summary": "Serve asset file"
+        "path": "/versioned/:assetId",
+        "summary": "Get a versioned asset manifest"
       },
       {
-        "method": "PATCH",
-        "path": "/link",
-        "summary": "Relink or unlink an asset"
-      },
-      {
-        "method": "PATCH",
-        "path": "/retype",
-        "summary": "Change asset type classification"
+        "method": "POST",
+        "path": "/versioned/:assetId/promote",
+        "summary": "Promote a version to current"
       },
       {
         "method": "DELETE",
-        "path": "/trash",
-        "summary": "Empty entire trash"
+        "path": "/versioned/:assetId/v/:version",
+        "summary": "Delete a version"
+      },
+      {
+        "method": "POST",
+        "path": "/versioned/:assetId/export",
+        "summary": "Attach a derived export"
+      },
+      {
+        "method": "POST",
+        "path": "/versioned/:assetId/relink",
+        "summary": "Relink an asset to a task (or null)"
+      },
+      {
+        "method": "POST",
+        "path": "/versioned/:assetId/version",
+        "summary": "Append a new version from an uploaded file"
+      },
+      {
+        "method": "DELETE",
+        "path": "/versioned/:assetId",
+        "summary": "Trash a whole versioned asset"
       },
       {
         "method": "GET",
@@ -61,86 +71,81 @@
         "summary": "List trashed assets"
       },
       {
-        "method": "DELETE",
-        "path": "/trash/:file",
-        "summary": "Permanently delete a trashed asset"
-      },
-      {
         "method": "POST",
-        "path": "/trash/:file/restore",
+        "path": "/trash/:trashName/restore",
         "summary": "Restore a trashed asset"
       },
       {
-        "method": "POST",
-        "path": "/upload",
-        "summary": "Upload asset files"
+        "method": "DELETE",
+        "path": "/trash/:trashName",
+        "summary": "Permanently delete a trashed asset"
+      },
+      {
+        "method": "DELETE",
+        "path": "/trash",
+        "summary": "Empty the asset trash"
       }
     ],
     "execTools": [
       {
-        "name": "bakin_exec_assets_audit",
-        "summary": "Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files",
-        "description": "Audit asset health: check for missing thumbnails, invalid sidecars, orphaned files. Set fix=true to auto-generate missing thumbnails and create stub sidecars."
-      },
-      {
-        "name": "bakin_exec_assets_delete",
-        "summary": "Soft-delete an asset (moves to trash, restorable until trash is emptied)",
-        "description": "Soft-delete an asset (moves to trash, restorable until trash is emptied)."
-      },
-      {
-        "name": "bakin_exec_assets_empty_trash",
-        "summary": "Permanently delete all items from trash",
-        "description": "Permanently delete all items from trash. This cannot be undone."
+        "name": "bakin_exec_assets_list",
+        "summary": "List managed assets (one entry per asset, current-version view). Optional type filter.",
+        "description": "List managed assets (one entry per asset, current-version view). Optional type filter."
       },
       {
         "name": "bakin_exec_assets_get",
-        "summary": "Retrieve a single asset's sidecar metadata by canonical filename",
-        "description": "Retrieve a single asset's sidecar metadata by canonical filename."
+        "summary": "Retrieve an asset manifest (versions, current pointer, exports) by assetId.",
+        "description": "Retrieve an asset manifest (versions, current pointer, exports) by assetId."
       },
       {
         "name": "bakin_exec_assets_open",
-        "summary": "Open an attached asset by canonical filename",
-        "description": "Open an attached asset by canonical filename. Returns sidecar metadata plus extracted text for text-like assets; non-extractable assets return metadata-only status."
-      },
-      {
-        "name": "bakin_exec_assets_link",
-        "summary": "Link an asset to a different task, or unlink it (set taskId to null)",
-        "description": "Link an asset to a different task, or unlink it (set taskId to null). Sidecar-only edit — no file move."
-      },
-      {
-        "name": "bakin_exec_assets_list",
-        "summary": "List assets with optional type filter",
-        "description": "List assets with optional type filter. Returns asset count, canonical filenames, and metadata."
-      },
-      {
-        "name": "bakin_exec_assets_list_trash",
-        "summary": "List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge",
-        "description": "List trashed assets with name, size, deleted timestamp, and days remaining before auto-purge."
-      },
-      {
-        "name": "bakin_exec_assets_permanent_delete",
-        "summary": "Permanently delete a specific trashed asset",
-        "description": "Permanently delete a specific trashed asset. This cannot be undone."
-      },
-      {
-        "name": "bakin_exec_assets_restore",
-        "summary": "Restore a trashed asset back to its original location",
-        "description": "Restore a trashed asset back to its original location. Use bakin_exec_assets_list_trash first to get the filename."
-      },
-      {
-        "name": "bakin_exec_assets_retype",
-        "summary": "Change an asset's type classification",
-        "description": "Change an asset's type classification. Sidecar-only edit — no file move."
+        "summary": "Open an asset by assetId; returns its manifest plus extracted text for text-like assets.",
+        "description": "Open an asset by assetId: returns its manifest plus the current version’s extracted text for text-like assets."
       },
       {
         "name": "bakin_exec_assets_save",
-        "summary": "Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug",
-        "description": "Save an agent-created file to the assets directory with standardized naming (YYYYMMDD-slug.ext) and sidecar metadata. Handles directory creation, naming conventions, and .meta.json automatically."
+        "summary": "Save an agent-created file as a managed, versioned asset (upserts by source path).",
+        "description": "Save an agent-created file as a managed, versioned asset. Re-saving the SAME source file appends a new version to the existing asset (or no-ops if unchanged) instead of creating a duplicate — so an evolving doc stays one asset with a version history. Returns the asset id."
       },
       {
-        "name": "bakin_exec_assets_update_content",
-        "summary": "Update the text content of an editable asset",
-        "description": "Update the text content of an editable asset. Only works for text-based MIME types (markdown, plain text, YAML, JSON, CSV, XML). Rewrites the entire file."
+        "name": "bakin_exec_assets_delete",
+        "summary": "Soft-delete a whole asset (all versions) to trash.",
+        "description": "Soft-delete a whole asset (all versions) to trash, restorable until trash is emptied."
+      },
+      {
+        "name": "bakin_exec_assets_link",
+        "summary": "Link an asset to a different task, or unlink it (set taskId to null).",
+        "description": "Link an asset to a different task, or unlink it (set taskId to null)."
+      },
+      {
+        "name": "bakin_exec_assets_retype",
+        "summary": "Change an asset type classification.",
+        "description": "Change an asset type classification."
+      },
+      {
+        "name": "bakin_exec_assets_list_trash",
+        "summary": "List trashed assets (whole-asset deletions) with deletion time and version count.",
+        "description": "List trashed assets (whole-asset deletions) with deletion time and version count."
+      },
+      {
+        "name": "bakin_exec_assets_restore",
+        "summary": "Restore a trashed asset by its trash name (from bakin_exec_assets_list_trash).",
+        "description": "Restore a trashed asset by its trash name (from bakin_exec_assets_list_trash)."
+      },
+      {
+        "name": "bakin_exec_assets_empty_trash",
+        "summary": "Permanently delete all trashed assets. This cannot be undone.",
+        "description": "Permanently delete all trashed assets. This cannot be undone."
+      },
+      {
+        "name": "bakin_exec_assets_permanent_delete",
+        "summary": "Permanently delete a specific trashed asset. This cannot be undone.",
+        "description": "Permanently delete a specific trashed asset. This cannot be undone."
+      },
+      {
+        "name": "bakin_exec_assets_audit",
+        "summary": "Audit versioned-asset health: manifest integrity, current-pointer resolution, missing version files.",
+        "description": "Audit versioned-asset health: manifest integrity, current-pointer resolution, and missing version files."
       }
     ],
     "cliCommands": [

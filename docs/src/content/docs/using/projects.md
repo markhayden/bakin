@@ -80,8 +80,8 @@ Projects index into search (table `bakin_projects`) on `title` and `body`, facet
 | `bakin projects remove-item <projectId> <taskItemId>` | Remove a checklist item |
 | `bakin projects link-item <projectId> <taskItemId> <taskId>` | Link a checklist item to a task |
 | `bakin projects promote-item <projectId> <taskItemId>` | Promote a checklist item to a task |
-| `bakin projects attach-asset <projectId> <filename>` | Attach an asset to a project |
-| `bakin projects detach-asset <projectId> <filename>` | Detach an asset from a project |
+| `bakin projects attach-asset <projectId> <assetId>` | Attach an asset to a project |
+| `bakin projects detach-asset <projectId> <assetId>` | Detach an asset from a project |
 | `bakin projects ask <projectId> <message>` | Ask an agent about a project |
 <!-- /docs:cli-commands -->
 

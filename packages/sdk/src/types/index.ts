@@ -60,11 +60,13 @@ export type PluginPermission =
   | 'runtime.cron'
   | 'runtime.skills'
   | 'runtime.models'
+  | 'runtime.images'
   | 'tasks.read'
   | 'tasks.write'
   | 'search.read'
   | 'search.write'
   | 'assets.read'
+  | 'assets.write'
 
 /** Runtime feature a plugin declares it needs (used by doctor/health checks). */
 export type RuntimeCapability =
@@ -552,7 +554,7 @@ export interface AgentRuntimeAdapter {
         title: string
         body?: string
         url?: string
-        files?: AssetFileRef[]
+        files?: Array<{ name: string; path: string; contentType?: string }>
         metadata?: Record<string, unknown>
       }
     }): Promise<{ deliveries: Array<{ channelId: string; ref: string; renderedAt: string }> }>
@@ -767,6 +769,8 @@ export interface SearchResult {
   score: number
   fields: Record<string, unknown>
   rerankScore?: number
+  /** Per-index score breakdown (e.g. full_text / text-embedding / visual). */
+  indexScores?: Record<string, number>
 }
 
 /** Full search response: results, aggregations, and query metadata. */
@@ -815,102 +819,98 @@ export interface SearchAPI {
 // Assets
 // ---------------------------------------------------------------------------
 
-/** Auto-generated variant (thumbnail/optimized/webp) for an asset. */
-export interface AssetVariantMeta {
-  role: 'thumbnail' | 'optimized' | 'webp'
-  path: string
-  filename: string
-  size: number
-  mimeType: string
-}
+/** The asset type taxonomy (mirrors ASSET_TYPES in the assets plugin). */
+export type AssetTypeName = 'text' | 'images' | 'video' | 'audio' | 'plans' | 'research' | 'pdf' | 'data' | 'other'
 
-/** Structured provenance written by image-generation tools into an asset sidecar. */
-export interface AssetGenerationMeta {
+/** Per-version generation provenance (matches the manifest's `generation` block). */
+export interface AssetGenerationInfo {
   provider: string
   model: string
   surface: string
-  width: number
-  height: number
   quality: string
-  promptHash: string
-  promptAssetFilename?: string
+  routeSource: string
   routeReason?: string
-  routeSource?: 'runtime' | 'shim' | string
-  createdByTool: string
 }
 
-/** Full asset record: file info + sidecar metadata + auto-generated variants. */
-export interface AssetMeta {
-  path: string
-  filename: string
-  type: 'text' | 'images' | 'video' | 'audio' | 'plans' | 'research' | 'pdf' | 'data' | 'other'
-  mimeType: string
-  size: number
-  mtimeMs?: number
-  metadata: {
-    agent: string
-    taskId: string | null
-    created: string
-    tool?: string
-    description?: string
-    tags?: string[]
-    originalFilename?: string
-    generation?: AssetGenerationMeta
-  }
-  variants?: AssetVariantMeta[]
-}
-
-/** Asset record while in trash (with deleted/expires timestamps). */
-export interface TrashedAssetMeta {
-  filename: string
-  originalFilename: string
-  type: string
-  mimeType: string
-  size: number
-  deletedAt: string
-  expiresAt: string
-  metadata: AssetMeta['metadata'] | null
-}
-
-/** Compact reference to an asset by filename — used in channel deliveries. */
-export interface AssetFileRef {
-  kind: 'asset'
-  filename: string
-  mimeType?: string
-}
-
-/** Input for saving an agent-created or plugin-created file through the Assets plugin. */
-export interface AssetSaveInput {
-  filePath: string
-  taskId: string | null
-  type: AssetMeta['type']
+/** Create a new versioned asset (v1) from a source file. */
+export interface AssetCreateInput {
+  sourceFilePath: string
+  type: AssetTypeName
   agent: string
+  taskId: string | null
+  slug?: string
+  op?: 'generate' | 'upload' | 'import'
+  tool?: string | null
+  prompt?: string | null
+  promptHash?: string | null
   description?: string
   tags?: string[]
-  tool?: string
-  slug?: string
-  source?: 'agent' | 'upload' | 'clipboard'
-  originalFilename?: string
-  generation?: AssetGenerationMeta
+  source?: { kind: 'generated' | 'upload' | 'import' | 'clipboard' | 'workspace-file'; path: string | null }
+  generation?: AssetGenerationInfo | null
 }
 
-/** Result returned after the Assets plugin canonicalizes and persists a file. */
-export interface AssetSaveResult {
-  ok: boolean
-  path?: string
-  metadataPath?: string
-  filename?: string
-  error?: string
-  [key: string]: unknown
+/** Append a new version to an existing asset. */
+export interface AssetVersionCreateInput {
+  sourceFilePath: string
+  op?: 'edit' | 'generate' | 'upload' | 'import'
+  tool?: string | null
+  prompt?: string | null
+  promptHash?: string | null
+  description?: string
+  tags?: string[]
+  generation?: AssetGenerationInfo | null
 }
 
-/** Assets API exposed via `ctx.assets` — asset persistence and lookups. */
+/** Render a derived export of a version (keyed/idempotent by surface). */
+export interface AssetExportRequest {
+  fromVersion?: number
+  surface: string
+  format: 'jpg' | 'png' | 'webp'
+  width: number
+  height: number
+  quality?: number
+}
+
+/** Reference to a versioned asset: its stable id and the version just written. */
+export interface VersionedAssetRef {
+  assetId: string
+  version: number
+}
+
+/** Resolved on-disk location of a specific asset version, for reads/serving. */
+export interface AssetVersionFileRef {
+  absPath: string
+  mimeType: string
+  version: number
+}
+
+/** Current-version summary of an asset, addressed by id. */
+export interface AssetSummary {
+  assetId: string
+  type: AssetTypeName
+  agent: string
+  taskId: string | null
+  created: string
+  updated: string
+  currentVersion: number
+  versionCount: number
+  description: string
+  tags: string[]
+  mimeType: string
+  width: number | null
+  height: number | null
+  size: number
+  hasThumb: boolean
+}
+
+/** Assets API exposed via `ctx.assets` — versioned asset-as-directory surface. */
 export interface AssetsAPI {
-  save(input: AssetSaveInput): Promise<AssetSaveResult>
-  getByFilename(filename: string): Promise<AssetMeta | null>
-  list(filter?: { type?: AssetMeta['type']; taskId?: string | null }): Promise<AssetMeta[]>
-  exists(filename: string): Promise<boolean>
-  fileRef(filename: string): Promise<AssetFileRef>
+  createAsset(input: AssetCreateInput): Promise<VersionedAssetRef>
+  /** Read an asset's current-version summary by id (type/description/tags/etc.), or null. */
+  getAsset(assetId: string): Promise<AssetSummary | null>
+  addVersion(assetId: string, input: AssetVersionCreateInput): Promise<VersionedAssetRef>
+  addExport(assetId: string, input: AssetExportRequest): Promise<{ name: string; file: string }>
+  resolveVersionFile(assetId: string, version?: number): Promise<AssetVersionFileRef | null>
 }
 
 // ---------------------------------------------------------------------------

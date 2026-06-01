@@ -19,8 +19,8 @@ API keys.
 1. Build a provider-neutral prompt packet with subject, audience/use, surface, composition, lighting, style, color/material cues, required text, exclusions, brand-safety constraints, and accessibility notes.
 2. Call `bakin_exec_images_recommend` to select the provider, model, surface, dimensions, and quality tier. Runtime providers returned by the tool are valid routes.
 3. If human approval is required by the workflow or user, present the prompt packet, route, and usage constraints before generation.
-4. Call `bakin_exec_images_generate` with `taskId`, `promptPacket`, `prompt`, `provider`, `model`, `surface`, `quality`, and `savePromptPacket: true` for approval-gated work.
-5. Return the canonical `image_filename` from the tool. Do not return a local path as the image identity.
+4. Call `bakin_exec_images_generate` with `taskId`, `promptPacket`, `prompt`, `provider`, `model`, `surface`, and `quality`.
+5. Return the `assetId` from the tool. Do not return a local path or filename as the image identity.
 
 ## Prompt Rules
 
