@@ -146,7 +146,9 @@ On failure: rollback every projection in reverse via `unprojectPackage()`; remov
 3. Unproject each projection (skipping `.userEdited`, optionally `keepBlocks` for lesson markers)
 4. Remove the install dir
 5. **Recursive cascade:** for each entry in `entry.dependencies`, decrement that dep's refCount against THIS package as the dependent. If the dep's refCount hits 0, recursively unproject + remove its install dir + recurse into ITS deps with the orphan as the dependent. N-level deep chains cascade correctly because each level decrements its OWN immediate parent.
-6. Optionally `removeAgent` + `removeFromAllowLists` for `kind:"agent"` + `--delete-agent`
+6. Optionally delete the runtime agent for `kind:"agent"` when requested.
+   - `agents orphan <id>` / default `remove` behavior removes Bakin package tracking and managed projections, leaving the OpenClaw agent intact. This is the inverse of `--adopt`: Bakin detaches from an existing runtime agent.
+   - `agents delete <id>` / `remove --delete-agent` asks the runtime adapter to fully remove the agent. The OpenClaw adapter deletes the config entry, removes allowlist references, removes OpenClaw-owned `agents/{id}` + `workspaces/{id}` state under `OPENCLAW_HOME`, and removes cron jobs tied to that agent.
 7. Audit
 
 ## Update flow
@@ -154,7 +156,7 @@ On failure: rollback every projection in reverse via `unprojectPackage()`; remov
 `updatePackageById(options)` in `updater.ts`:
 
 1. Read lockfile entry
-2. Re-fetch source at the SAME `source` + `ref` (compares new commitSha to recorded; identical = no-op)
+2. Re-fetch source at the SAME `source` + `ref` (compares new commitSha/version to recorded; identical = no-op)
 3. Re-project in `mode: 'update'`:
    - Workspace files: skipped unless `--refresh-template` (templateOnly carve-out — agent owns the file post-install)
    - Skills + assets: re-projected (collision check still runs)
@@ -213,6 +215,13 @@ Version reporting rule: managed/adopted agent package state includes a top-level
 back to nested `entry.version` only for compatibility), not infer the version
 from an install path, source ref, package id, or stale runtime state.
 
+Update reporting rule: `GET /api/agent-packages?check=1` re-fetches the
+recorded source and returns `updateStatus` alongside the installed lockfile
+state. This check is read-only; it never mutates the installed version or
+lockfile commit. The Team detail package card uses this status to show
+`update-available` and offer Maintain-changes vs Reseed-package-templates
+upgrade modes.
+
 ## Doctor integration
 
 `plugins/team/lib/health-checks.ts:checkAgentAssets()` surfaces drift in the
@@ -227,7 +236,9 @@ Two-file pattern (`cli/bakin.ts` is HTTP-client; `src/core/cli.ts` is binary dis
 
 - `bakin agents install <source> [--adopt] [--install-as <id>] [--replace]`
 - `bakin agents list [--packages]` — `--packages` switches from runtime view to package state view
-- `bakin agents remove <id> [--keep-blocks] [--delete-agent] [--force]`
+- `bakin agents orphan <id> [--keep-blocks] [--force]`
+- `bakin agents delete <id> [--keep-blocks] [--force]`
+- `bakin agents remove <id> [--keep-blocks] [--delete-agent|--delete|--orphan] [--force]` — compatibility spelling; default is orphan
 - `bakin agents update [<id>] [--refresh-template]` — no id = update all managed/adopted
 - `bakin agents lessons {list,enable,disable} <id> [<lesson-id>]`
 - `bakin packages {list,install,remove,update}` — for non-agent kinds; refuses remove on refCount > 0 unless `--force`
@@ -240,7 +251,7 @@ Function-name collision avoided: package-management functions are prefixed `cmdA
 Top-level (NOT under `/api/agents/*` which is the runtime surface):
 
 ```
-GET    /api/agent-packages
+GET    /api/agent-packages[?check=1]
 POST   /api/agent-packages/install
 DELETE /api/agent-packages/{agentId}
 POST   /api/agent-packages/{agentId}/update

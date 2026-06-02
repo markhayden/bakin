@@ -61,9 +61,35 @@ bakin agents install <path|github:user/repo[@ref][#subpath]> [--adopt] [--instal
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="agents-remove" name="agents remove" summary="Remove an agent package." description="Removes an installed agent package and optionally deletes the runtime agent.">
+<CliCommandCard id="agents-orphan" name="agents orphan" summary="Orphan an agent package." description="Removes Bakin-managed package state while leaving the runtime agent in OpenClaw.">
 ```sh frame="terminal"
-bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--force]
+bakin agents orphan <agent-id> [--keep-blocks] [--force]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;agent-id&gt;</code></td><td>argument</td><td>yes</td><td>Agent id to install, update, remove, or inspect.</td></tr>
+      <tr><td><code>[--keep-blocks]</code></td><td>option</td><td>no</td><td>Leave managed blocks on disk.</td></tr>
+      <tr><td><code>[--force]</code></td><td>option</td><td>no</td><td>Bypass the normal safety guard.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="agents-delete" name="agents delete" summary="Delete an agent package and runtime agent." description="Removes Bakin-managed package state and deletes the runtime agent through OpenClaw.">
+```sh frame="terminal"
+bakin agents delete <agent-id> [--keep-blocks] [--force]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;agent-id&gt;</code></td><td>argument</td><td>yes</td><td>Agent id to install, update, remove, or inspect.</td></tr>
+      <tr><td><code>[--keep-blocks]</code></td><td>option</td><td>no</td><td>Leave managed blocks on disk.</td></tr>
+      <tr><td><code>[--force]</code></td><td>option</td><td>no</td><td>Bypass the normal safety guard.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="agents-remove" name="agents remove" summary="Remove an agent package." description="Compatibility spelling for orphaning an agent package. Use --delete-agent or --delete to also delete the runtime agent.">
+```sh frame="terminal"
+bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--delete] [--force]
 ```
   <table class="cli-command__args">
     <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
@@ -71,6 +97,7 @@ bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--force]
       <tr><td><code>&lt;agent-id&gt;</code></td><td>argument</td><td>yes</td><td>Agent id to install, update, remove, or inspect.</td></tr>
       <tr><td><code>[--keep-blocks]</code></td><td>option</td><td>no</td><td>Leave managed blocks on disk.</td></tr>
       <tr><td><code>[--delete-agent]</code></td><td>option</td><td>no</td><td>Delete the runtime agent too.</td></tr>
+      <tr><td><code>[--delete]</code></td><td>option</td><td>no</td><td>Delete the runtime agent too.</td></tr>
       <tr><td><code>[--force]</code></td><td>option</td><td>no</td><td>Bypass the normal safety guard.</td></tr>
     </tbody>
   </table>
@@ -811,5 +838,5 @@ bakin serve
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 31, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jun 1, 2026 · Bakin 0.0.0-dev</span>
 </aside>

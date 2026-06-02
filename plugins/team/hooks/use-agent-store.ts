@@ -79,7 +79,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     try {
       const [rosterRes, pkgRes] = await Promise.all([
         fetch('/api/plugins/team/'),
-        fetch('/api/agent-packages').catch(() => null),
+        fetch('/api/agent-packages?check=1').catch(() => null),
       ])
       if (!rosterRes.ok) {
         set({ loaded: true })
@@ -120,7 +120,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   },
 
   refreshPackageStates: async () => {
-    const res = await fetch('/api/agent-packages').catch(() => null)
+    const res = await fetch('/api/agent-packages?check=1').catch(() => null)
     const packageStates = await parsePackageStatesResponse(res)
     set({ packageStates })
   },

@@ -64,7 +64,7 @@ const STATE_STYLES: Record<PackageState, { label: string; cls: string; tip: stri
   },
   'update-available': {
     label: 'update available',
-    cls: 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
+    cls: 'bg-info/10 text-info',
     tip: 'Source repo has moved past the recorded commit. Run `bakin agents update` to pull.',
   },
 }

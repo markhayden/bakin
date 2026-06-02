@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react'
 
 const clearReindexProgress = mock()
@@ -21,6 +21,12 @@ mock.module('@makinbakin/sdk/ui', () => ({
   Button: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
   Input: (props: InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
   Skeleton: () => <div data-testid="skeleton" />,
+  Dialog: ({ children, open }: { children: ReactNode; open?: boolean }) => open ? <div role="dialog">{children}</div> : null,
+  DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
+  DialogDescription: ({ children }: { children: ReactNode }) => <p>{children}</p>,
+  DialogFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }))
 
 mock.module('@makinbakin/sdk/components', () => ({
@@ -41,8 +47,13 @@ function jsonResponse(body: unknown): Response {
 function setupHealthFetch(options: {
   usage?: unknown[]
   searchTables?: unknown[]
+  registryPlugins?: unknown[]
+  manifestPlugins?: unknown[]
 } = {}) {
-  const fetchMock = mock((url: string) => {
+  const fetchMock = mock((url: string, init?: RequestInit) => {
+    if (url === '/api/plugins/upgrade' && init?.method === 'POST') {
+      return Promise.resolve(jsonResponse({ ok: true, id: 'projects', noop: false }))
+    }
     if (url === '/api/plugins/health/summary') {
       return Promise.resolve(jsonResponse({
         doctor: null,
@@ -53,7 +64,10 @@ function setupHealthFetch(options: {
       }))
     }
     if (url === '/api/plugins/health/registry') {
-      return Promise.resolve(jsonResponse({ plugins: [] }))
+      return Promise.resolve(jsonResponse({ plugins: options.registryPlugins ?? [] }))
+    }
+    if (url.startsWith('/api/plugins/manifest')) {
+      return Promise.resolve(jsonResponse({ plugins: options.manifestPlugins ?? [] }))
     }
     if (url === '/api/plugins/health/usage') {
       return Promise.resolve(jsonResponse(options.usage ?? []))
@@ -133,5 +147,65 @@ describe('HealthPage runtime cost display', () => {
     expect(await screen.findByText('Runtime Cost Estimate')).toBeDefined()
     expect(screen.getByText('~$0.03 reported')).toBeDefined()
     expect(screen.getByText('unavailable')).toBeDefined()
+  })
+})
+
+describe('HealthPage plugin update controls', () => {
+  const registryPlugins = [{
+    id: 'projects',
+    name: 'Projects',
+    version: '2.0.0',
+    description: 'Project management',
+    source: 'user',
+    routes: 15,
+  }]
+
+  const manifestPlugins = [{
+    id: 'projects',
+    name: 'Projects',
+    version: '2.0.0',
+    source: 'github',
+    installed: {
+      type: 'github',
+      version: '2.0.0',
+      commitSha: 'oldsha',
+      remoteHeadSha: 'newsha',
+      lastChecked: '2026-06-01T12:00:00.000Z',
+    },
+    upgradeAvailable: true,
+    staleHintDays: null,
+  }]
+
+  it('checks plugin updates on load and renders update state with manual check', async () => {
+    const fetchMock = setupHealthFetch({ registryPlugins, manifestPlugins })
+
+    render(<HealthPage />)
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/plugins/manifest?check=1'))
+    expect(await screen.findByText('Update available')).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Upgrade Projects' })).toBeDefined()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Check plugin updates now' }))
+    await waitFor(() => expect(fetchMock.mock.calls.filter((call) => call[0] === '/api/plugins/manifest?check=1').length).toBeGreaterThanOrEqual(2))
+  })
+
+  it('opens the plugin upgrade modal and calls the upgrade endpoint', async () => {
+    const fetchMock = setupHealthFetch({ registryPlugins, manifestPlugins })
+
+    render(<HealthPage />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Upgrade Projects' }))
+    expect(screen.getByRole('dialog')).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'Upgrade Projects' })).toBeDefined()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Upgrade plugin' }))
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some((call) => (
+        call[0] === '/api/plugins/upgrade'
+        && (call[1] as RequestInit | undefined)?.method === 'POST'
+        && String((call[1] as RequestInit | undefined)?.body).includes('"pluginId":"projects"')
+      ))).toBe(true)
+    })
   })
 })

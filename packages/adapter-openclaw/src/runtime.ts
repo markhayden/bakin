@@ -1,6 +1,6 @@
 import { accessSync, closeSync, constants, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
-import { dirname, join } from 'path'
+import { dirname, join, resolve, sep } from 'path'
 import { execFile } from 'child_process'
 import { createHash, randomUUID } from 'crypto'
 import { promisify } from 'util'
@@ -413,9 +413,12 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       }
     },
     remove: async (agentId: string): Promise<void> => {
+      const workspace = getWorkspacePath(agentId)
       await this.exec(['agents', 'delete', agentId, '--force', '--json'])
       resetOpenClawConfigCache()
-      removeAgentFromAllAllowlists(agentId)
+      removeOpenClawAgentConfig(agentId)
+      removeOpenClawAgentArtifacts(agentId, workspace)
+      removeOpenClawAgentCronArtifacts(agentId)
     },
     listWorkspaceFiles: async (agentId: string): Promise<string[]> => {
       const root = getWorkspacePath(agentId)
@@ -1449,6 +1452,60 @@ function removeAgentFromAllAllowlists(agentId: string): void {
     changed = true
   }
   if (changed) writeOpenClawConfig(config as unknown as Record<string, unknown>)
+}
+
+function removeOpenClawAgentConfig(agentId: string): void {
+  const config = readOpenClawConfig()
+  const agents = config?.agents?.list
+  if (!config?.agents || !agents) return
+
+  let changed = false
+  const filtered = agents.filter((agent) => agent.id !== agentId)
+  if (filtered.length !== agents.length) {
+    config.agents.list = filtered
+    changed = true
+  }
+
+  for (const agent of config.agents.list ?? []) {
+    const allowAgents = agent.subagents?.allowAgents
+    if (!allowAgents?.includes(agentId)) continue
+    agent.subagents!.allowAgents = allowAgents.filter((id) => id !== agentId)
+    changed = true
+  }
+
+  if (changed) writeOpenClawConfig(config as unknown as Record<string, unknown>)
+}
+
+function removeOpenClawAgentArtifacts(agentId: string, workspace: string): void {
+  removeOpenClawOwnedPath(workspace)
+  removeOpenClawOwnedPath(getOpenClawPath('agents', agentId))
+}
+
+function removeOpenClawAgentCronArtifacts(agentId: string): void {
+  const store = readCronStore()
+  const jobs = store.jobs ?? []
+  const removedJobIds = new Set<string>()
+  const keptJobs = jobs.filter((job) => {
+    const matches = job.agentId === agentId
+      || job.sessionTarget === agentId
+      || job.sessionTarget === `agent:${agentId}`
+    if (matches && job.id) removedJobIds.add(job.id)
+    return !matches
+  })
+  if (keptJobs.length === jobs.length) return
+
+  writeCronStore({ ...store, jobs: keptJobs })
+  for (const jobId of removedJobIds) {
+    removeOpenClawOwnedPath(getOpenClawPath('cron', 'runs', `${jobId}.jsonl`))
+  }
+}
+
+function removeOpenClawOwnedPath(path: string | undefined): void {
+  if (!path) return
+  const home = resolve(getOpenClawHome())
+  const target = resolve(path)
+  if (target === home || !target.startsWith(`${home}${sep}`)) return
+  rmSync(target, { recursive: true, force: true })
 }
 
 function splitChannelRef(channelId: string, metadata: RuntimeMetadata | undefined): { channel: string; target?: string } {

@@ -37,10 +37,12 @@ const CLI_SOURCE = readFileSync(
 )
 
 describe('cli: agents subcommands', () => {
-  it('exposes install / list / remove / update / lessons subcommands', () => {
+  it('exposes install / list / orphan / remove / delete / update / lessons subcommands', () => {
     expect(CLI_SOURCE).toContain("case 'agents':")
     expect(CLI_SOURCE).toContain("sub === 'install'")
+    expect(CLI_SOURCE).toContain("sub === 'orphan'")
     expect(CLI_SOURCE).toContain("sub === 'remove'")
+    expect(CLI_SOURCE).toContain("sub === 'delete'")
     expect(CLI_SOURCE).toContain("sub === 'update'")
     expect(CLI_SOURCE).toContain("sub === 'lessons'")
   })
@@ -51,6 +53,11 @@ describe('cli: agents subcommands', () => {
 
   it('routes agents remove to cmdAgentPackagesRemove', () => {
     expect(CLI_SOURCE).toContain('cmdAgentPackagesRemove(args[2]')
+  })
+
+  it('routes agents orphan and delete to explicit remove modes', () => {
+    expect(CLI_SOURCE).toContain("cmdAgentPackagesOrphan(args[2]")
+    expect(CLI_SOURCE).toContain("cmdAgentPackagesDelete(args[2]")
   })
 
   it('routes agents update to cmdAgentPackagesUpdate', () => {
@@ -89,6 +96,8 @@ describe('cli: parseAgentsFlags handles all documented flags', () => {
     expect(CLI_SOURCE).toContain("case '--replace':")
     expect(CLI_SOURCE).toContain("case '--keep-blocks':")
     expect(CLI_SOURCE).toContain("case '--delete-agent':")
+    expect(CLI_SOURCE).toContain("case '--delete':")
+    expect(CLI_SOURCE).toContain("case '--orphan':")
     expect(CLI_SOURCE).toContain("case '--refresh-template':")
     expect(CLI_SOURCE).toContain("case '--force':")
     expect(CLI_SOURCE).toContain("case '--json':")

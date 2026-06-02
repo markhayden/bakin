@@ -22,17 +22,18 @@ import { createHash } from 'node:crypto'
 import { Readable } from 'node:stream'
 import { finished } from 'node:stream/promises'
 import type { ReadableStream as WebReadableStream } from 'node:stream/web'
+import { basename } from 'node:path'
 
 const LATEST_RELEASE_API = 'https://api.github.com/repos/markhayden/bakin/releases/latest'
 const RELEASES_API = 'https://api.github.com/repos/markhayden/bakin/releases?per_page=20'
 const GITHUB_HEADERS = { 'User-Agent': 'bakin-self-update', Accept: 'application/vnd.github+json' }
 
-interface GithubAsset {
+export interface GithubAsset {
   name: string
   browser_download_url: string
 }
 
-interface GithubRelease {
+export interface GithubRelease {
   tag_name: string
   draft?: boolean
   prerelease?: boolean
@@ -55,6 +56,24 @@ class ReleaseFetchError extends Error {
   }
 }
 
+export interface SelfUpdateStatus {
+  supported: boolean
+  currentVersion: string
+  latestVersion: string | null
+  latestTag: string | null
+  updateAvailable: boolean
+  checkedAt: string
+  reason?: string
+  error?: string
+}
+
+export interface SelfUpdateStatusOptions {
+  currentVersion: string
+  execPath?: string
+  fetchRelease?: () => Promise<GithubRelease>
+  now?: () => Date
+}
+
 async function fetchGithubJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { headers: GITHUB_HEADERS })
   if (!res.ok) throw new ReleaseFetchError(res.status, url)
@@ -74,6 +93,86 @@ export async function fetchLatestRelease(reporter: Pick<SelfUpdateReporter, 'log
   const release = releases.find(candidate => !candidate.draft)
   if (!release) throw new Error('HTTP 404; no published releases found')
   return release
+}
+
+function normalizeVersion(value: string): string {
+  return value.trim().replace(/^v/i, '')
+}
+
+function parseVersion(value: string): { major: number; minor: number; patch: number; prerelease: string | null } | null {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(value.trim())
+  if (!match) return null
+  return {
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+    prerelease: match[4] ?? null,
+  }
+}
+
+function compareVersions(a: string, b: string): number {
+  const left = parseVersion(a)
+  const right = parseVersion(b)
+  if (!left || !right) return 0
+  for (const key of ['major', 'minor', 'patch'] as const) {
+    if (left[key] > right[key]) return 1
+    if (left[key] < right[key]) return -1
+  }
+  if (left.prerelease === right.prerelease) return 0
+  if (left.prerelease === null) return 1
+  if (right.prerelease === null) return -1
+  return left.prerelease.localeCompare(right.prerelease)
+}
+
+function selfUpdateSupport(currentVersion: string, execPath: string): { supported: true } | { supported: false; reason: string } {
+  const executable = basename(execPath)
+  if (currentVersion.includes('dev') || executable === 'bun' || executable.startsWith('bun-')) {
+    return { supported: false, reason: 'source/dev runtime' }
+  }
+  if (!executable.startsWith('bakin')) {
+    return { supported: false, reason: `unsupported executable: ${executable}` }
+  }
+  return { supported: true }
+}
+
+export async function getSelfUpdateStatus(options: SelfUpdateStatusOptions): Promise<SelfUpdateStatus> {
+  const checkedAt = (options.now ?? (() => new Date()))().toISOString()
+  const execPath = options.execPath ?? process.execPath
+  const support = selfUpdateSupport(options.currentVersion, execPath)
+  if (!support.supported) {
+    return {
+      supported: false,
+      currentVersion: options.currentVersion,
+      latestVersion: null,
+      latestTag: null,
+      updateAvailable: false,
+      checkedAt,
+      reason: support.reason,
+    }
+  }
+
+  try {
+    const release = await (options.fetchRelease ?? (() => fetchLatestRelease({ log: () => {} })))()
+    const latestVersion = normalizeVersion(release.tag_name)
+    return {
+      supported: true,
+      currentVersion: options.currentVersion,
+      latestVersion,
+      latestTag: release.tag_name,
+      updateAvailable: compareVersions(latestVersion, options.currentVersion) > 0,
+      checkedAt,
+    }
+  } catch (err) {
+    return {
+      supported: true,
+      currentVersion: options.currentVersion,
+      latestVersion: null,
+      latestTag: null,
+      updateAvailable: false,
+      checkedAt,
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
 }
 
 function currentTriple(): string | null {

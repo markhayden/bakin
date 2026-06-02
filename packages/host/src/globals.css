@@ -73,8 +73,10 @@
   --color-selection-foreground: var(--selection-foreground);
   --color-success-foreground: var(--success-foreground);
   --color-warning-foreground: var(--warning-foreground);
+  --color-info-foreground: var(--info-foreground);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-info: var(--info);
   --color-status-backlog: var(--status-backlog);
   --color-status-todo: var(--status-todo);
   --color-status-in-progress: var(--status-in-progress);
@@ -123,6 +125,8 @@
   --destructive: #ef4444;
   --warning: #f59e0b;
   --warning-foreground: #451a03;
+  --info: #38bdf8;
+  --info-foreground: #082f49;
 
   /* Outline */
   --border: rgba(74, 71, 71, 0.3);

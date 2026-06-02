@@ -7,9 +7,18 @@
  * agent-detail.tsx already needs OverviewTab.
  */
 import { useState } from 'react'
-import { Copy, Info } from 'lucide-react'
-import { Badge, Button } from '@makinbakin/sdk/ui'
-import { useAgentStore, useMainAgentId } from '@makinbakin/sdk/hooks'
+import { Copy, Info, RefreshCw, Trash2 } from 'lucide-react'
+import {
+  Badge,
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@makinbakin/sdk/ui'
+import { useAgentStore, useMainAgentId, useRouter } from '@makinbakin/sdk/hooks'
 import { PackageStateBadge } from './package-state-badge'
 import { AdoptDialog } from './adopt-dialog'
 import type { PackageStateRow } from '../types'
@@ -108,9 +117,81 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
   // adopted, which is the same thing as state=unmanaged.
   const state = packageState?.state ?? 'unmanaged'
   const mainAgentId = useMainAgentId()
+  const router = useRouter()
   const isMain = agentId === mainAgentId
   const refreshPackageStates = useAgentStore((s) => s.refreshPackageStates)
+  const loadAgents = useAgentStore((s) => s.load)
   const [adoptOpen, setAdoptOpen] = useState(false)
+  const [updateOpen, setUpdateOpen] = useState(false)
+  const [removeOpen, setRemoveOpen] = useState(false)
+  const [actionBusy, setActionBusy] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
+  const hasPackage = Boolean(packageState?.entry && (state === 'managed' || state === 'adopted' || state === 'update-available'))
+  const updateAvailable = Boolean(packageState?.updateStatus?.upgradeAvailable || state === 'update-available')
+  const displayState = updateAvailable ? 'update-available' : state
+
+  async function updatePackage(refreshTemplate: boolean) {
+    setActionBusy(true)
+    setActionError(null)
+    setActionMessage(null)
+    try {
+      const res = await fetch(`/api/agent-packages/${encodeURIComponent(agentId)}/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshTemplate }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || body?.ok === false) {
+        throw new Error(typeof body?.error === 'string' ? body.error : 'Agent package update failed.')
+      }
+      setActionMessage(refreshTemplate ? 'Package templates reseeded.' : 'Package updated while preserving workspace changes.')
+      await refreshPackageStates()
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
+  async function removePackage(deleteAgent: boolean) {
+    setActionBusy(true)
+    setActionError(null)
+    setActionMessage(null)
+    try {
+      const res = await fetch(`/api/agent-packages/${encodeURIComponent(agentId)}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deleteAgent }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || body?.ok === false) {
+        throw new Error(typeof body?.error === 'string' ? body.error : 'Agent package removal failed.')
+      }
+      const result = body?.result && typeof body.result === 'object'
+        ? body.result as { deletedAgent?: boolean; deleteAgentError?: string }
+        : null
+      if (deleteAgent && result?.deletedAgent !== true) {
+        const detail = result?.deleteAgentError ? ` ${result.deleteAgentError}` : ''
+        setActionError(`Agent package was orphaned, but the OpenClaw agent was not deleted.${detail}`)
+        await refreshPackageStates()
+        await loadAgents()
+        return
+      }
+      if (deleteAgent) {
+        await loadAgents()
+        setRemoveOpen(false)
+        router.push('/team')
+      } else {
+        setActionMessage('Agent orphaned.')
+        await refreshPackageStates()
+      }
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setActionBusy(false)
+    }
+  }
 
   // Main agent is the user's persona — adopting/replacing it doesn't make
   // sense. Show a different framing instead of the Adopt button.
@@ -131,30 +212,74 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <PackageStateBadge state={state} packageId={packageState?.packageId} />
-        {state === 'unmanaged' && (
-          <Button
-            size="sm"
-            onClick={() => setAdoptOpen(true)}
-            title={ADOPT_INFO}
-            aria-label={`Adopt this agent into a package — ${ADOPT_INFO}`}
-          >
-            <Info className="size-3 mr-1.5" />
-            Adopt
-          </Button>
-        )}
+        <PackageStateBadge state={displayState} packageId={packageState?.packageId} />
+        <div className="flex items-center gap-1.5">
+          {hasPackage && updateAvailable && (
+            <Button
+              size="sm"
+              variant="info"
+              onClick={() => {
+                setActionError(null)
+                setActionMessage(null)
+                setUpdateOpen(true)
+              }}
+              aria-label="Upgrade agent package"
+            >
+              <RefreshCw className="size-3 mr-1.5" />
+              Upgrade
+            </Button>
+          )}
+          {hasPackage && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setActionError(null)
+                setActionMessage(null)
+                setRemoveOpen(true)
+              }}
+              aria-label="Delete or orphan agent package"
+            >
+              <Trash2 className="size-3 mr-1.5" />
+              Delete
+            </Button>
+          )}
+          {state === 'unmanaged' && (
+            <Button
+              size="sm"
+              onClick={() => setAdoptOpen(true)}
+              title={ADOPT_INFO}
+              aria-label={`Adopt this agent into a package — ${ADOPT_INFO}`}
+            >
+              <Info className="size-3 mr-1.5" />
+              Adopt
+            </Button>
+          )}
+        </div>
       </div>
       {state === 'unmanaged' && (
         <p className="text-xs text-muted-foreground leading-relaxed">
           Adopt to enable lesson toggles, automatic skill projection, and update-from-source tracking. Your workspace files stay as-is.
         </p>
       )}
-      {packageState?.entry && (state === 'managed' || state === 'adopted') && (
-        <PackageEntryFields
-          entry={packageState.entry}
-          packageId={packageState.packageId}
-          version={packageState.version}
-        />
+      {hasPackage && packageState?.entry && (
+        <div className="space-y-2">
+          <PackageEntryFields
+            entry={packageState.entry}
+            packageId={packageState.packageId}
+            version={packageState.version}
+          />
+          {packageState.updateStatus?.upgradeAvailable && (
+            <p className="text-xs text-info">
+              Latest version {packageState.updateStatus.latestVersion ?? 'available'} is available.
+            </p>
+          )}
+          {packageState.updateStatus?.error && (
+            <p className="text-xs text-destructive">
+              Update check failed: {packageState.updateStatus.error}
+            </p>
+          )}
+        </div>
       )}
       {state === 'drifted' && (
         <div className="space-y-1.5">
@@ -164,7 +289,7 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
           <CliHint command="bakin install agent-assets" />
         </div>
       )}
-      {state === 'update-available' && (
+      {state === 'update-available' && !hasPackage && (
         <div className="space-y-1.5">
           <p className="text-xs text-muted-foreground">
             A newer version of the source package is available. Update from the CLI:
@@ -178,6 +303,120 @@ export function PackageCardBody({ agentId, packageState }: { agentId: string; pa
         agentId={agentId}
         onAdopted={() => { refreshPackageStates() }}
       />
+      <Dialog open={updateOpen} onOpenChange={setUpdateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Upgrade {packageState?.packageId ?? agentId}</DialogTitle>
+            <DialogDescription>
+              Bakin will pull the latest package source for {agentId}. Update keeps workspace files and user edits in place. Full rewrite reseeds package template files; files protected by `.userEdited` stay protected.
+            </DialogDescription>
+          </DialogHeader>
+          {packageState?.updateStatus && (
+            <div className="rounded-md border border-border bg-muted/30 px-3 py-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Current version</p>
+                  <p className="mt-1 font-mono text-lg font-semibold text-foreground">
+                    {packageState.updateStatus.currentVersion || packageState.version || packageState.entry?.version || 'unknown'}
+                  </p>
+                  <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                    commit {packageState.updateStatus.currentCommitSha?.slice(0, 7) || packageState.entry?.commitSha?.slice(0, 7) || 'unknown'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Available version</p>
+                  <p className="mt-1 font-mono text-lg font-semibold text-info">
+                    {packageState.updateStatus.latestVersion ?? 'latest'}
+                  </p>
+                  <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                    commit {packageState.updateStatus.latestCommitSha?.slice(0, 7) || 'unknown'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+          {actionError && (
+            <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {actionError}
+            </div>
+          )}
+          {actionMessage && (
+            <div className="rounded-md border border-success/20 bg-success/10 px-3 py-2 text-sm text-success">
+              {actionMessage}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUpdateOpen(false)}>
+              Close
+            </Button>
+            <Button variant="info" disabled={actionBusy || Boolean(actionMessage)} onClick={() => updatePackage(false)}>
+              Update package
+            </Button>
+            <Button variant="warning" disabled={actionBusy || Boolean(actionMessage)} onClick={() => updatePackage(true)}>
+              Full rewrite
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={removeOpen} onOpenChange={setRemoveOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Remove agent package</DialogTitle>
+            <DialogDescription>
+              Choose what happens to {agentId}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            <div className="flex items-start justify-between gap-4 rounded-md border border-border bg-muted/20 px-3 py-3">
+              <div className="min-w-0">
+                <p className="font-medium text-foreground">Orphan package</p>
+                <p className="mt-1 text-muted-foreground">
+                  Keeps the OpenClaw agent and workspace. Removes Bakin package tracking and Bakin-managed projected files.
+                </p>
+              </div>
+              <Button
+                variant="info"
+                disabled={actionBusy || Boolean(actionMessage)}
+                onClick={() => removePackage(false)}
+                className="shrink-0"
+              >
+                Orphan package
+              </Button>
+            </div>
+            <div className="flex items-start justify-between gap-4 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-3">
+              <div className="min-w-0">
+                <p className="font-medium text-destructive">Delete agent</p>
+                <p className="mt-1 text-muted-foreground">
+                  Runs orphan cleanup, then deletes the OpenClaw runtime agent.
+                </p>
+              </div>
+              <Button
+                variant="destructive"
+                disabled={actionBusy || Boolean(actionMessage)}
+                onClick={() => removePackage(true)}
+                className="shrink-0"
+              >
+                Delete agent
+              </Button>
+            </div>
+          </div>
+          {actionError && (
+            <div className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {actionError}
+            </div>
+          )}
+          {actionMessage && (
+            <div className="rounded-md border border-success/20 bg-success/10 px-3 py-2 text-sm text-success">
+              {actionMessage}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemoveOpen(false)}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

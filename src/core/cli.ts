@@ -18,6 +18,7 @@ import { APP_VERSION } from '../../packages/core/src/constants'
 import { getCliUsageGroups, renderCliUsage } from './cli/registry'
 import type { CommandFailureData, RuntimeActionData } from './cli/ui/readonly'
 import { isOnboarded } from './onboarding/state'
+import { restartChildCommandName, waitForRestartParentExit } from './server-restart'
 
 const BAKIN_URL = process.env.BAKIN_URL || 'http://localhost:3737'
 
@@ -266,6 +267,12 @@ async function delegateToSourceCli(argv: string[]): Promise<CliResult> {
  * executed inline and the caller should `process.exit(exitCode)`.
  */
 export async function dispatchCli(argv: string[]): Promise<CliResult> {
+  const restartCommandIndex = argv.indexOf(restartChildCommandName())
+  if (restartCommandIndex !== -1) {
+    await waitForRestartParentExit(argv[restartCommandIndex + 1])
+    return { startServer: true, exitCode: 0 }
+  }
+
   const args = argv.slice(2)
   // No-arg invocation is `start` — the compiled binary's primary job.
   const cmd = args[0] ?? 'start'

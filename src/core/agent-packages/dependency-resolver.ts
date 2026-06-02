@@ -36,7 +36,7 @@ import {
 } from '../../../packages/core/src/agent-packages/manifest'
 import { readFileSync, statSync, readdirSync } from 'fs'
 import { join } from 'path'
-import { fetchSource, fetchSourceAsync, type FetchedSource } from './source-fetcher'
+import { fetchSource, fetchSourceAsync, sourceSpecWithRef, type FetchedSource } from './source-fetcher'
 import { createLogger } from '../logger'
 
 const log = createLogger('agent-pkg:resolve')
@@ -158,10 +158,7 @@ function visitDep(
   if (state.resolved.has(cacheKey)) return
 
   // Fetch source
-  const sourceWithRef = spec.source.startsWith('github:')
-    ? `${spec.source}@${spec.ref}`
-    : spec.source
-  const fetched = fetchSource(sourceWithRef)
+  const fetched = fetchSource(sourceSpecWithRef(spec.source, spec.ref))
 
   // Parse manifest
   const manifestPath = join(fetched.stagingDir, 'bakin-package.json')
@@ -245,10 +242,7 @@ async function visitDepAsync(
   }
   if (state.resolved.has(cacheKey)) return
 
-  const sourceWithRef = spec.source.startsWith('github:')
-    ? `${spec.source}@${spec.ref}`
-    : spec.source
-  const fetched = await fetchSourceAsync(sourceWithRef)
+  const fetched = await fetchSourceAsync(sourceSpecWithRef(spec.source, spec.ref))
 
   const manifestPath = join(fetched.stagingDir, 'bakin-package.json')
   let subManifest: Manifest

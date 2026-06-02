@@ -77,6 +77,8 @@ const pluginsAndMiscRoutes = [
   defineCoreRoute({ path: '/api/plugins/upgrade', method: 'POST', summary: 'Upgrade plugin', body: z.object({ pluginId: z.string() }), responses: { 200: passthrough, 400: errorResponse, 500: errorResponse }, handler: stub }),
 
   defineCoreRoute({ path: '/api/version', method: 'GET', summary: 'Get runtime version', description: 'Returns the running Bakin version.', responses: { 200: z.object({ version: z.string() }) }, handler: stub }),
+  defineCoreRoute({ path: '/api/update/status', method: 'GET', summary: 'Get Bakin update status', description: 'Returns whether a newer Bakin binary release is available and whether this runtime can self-update.', responses: { 200: passthrough }, handler: stub }),
+  defineCoreRoute({ path: '/api/update/apply', method: 'POST', summary: 'Apply Bakin update', description: 'Runs the guarded Bakin binary self-update flow.', body: { contentType: 'none' }, responses: { 200: okResponse, 400: errorResponse, 500: errorResponse }, handler: stub }),
   defineCoreRoute({ path: '/api/paths', method: 'GET', summary: 'Get resolved runtime paths', description: 'Returns important local filesystem paths used by the runtime.', responses: { 200: passthrough }, handler: stub }),
   defineCoreRoute({ path: '/api/state', method: 'GET', summary: 'Get dashboard state snapshot', responses: { 200: passthrough }, handler: stub }),
   defineCoreRoute({ path: '/api/search', method: 'GET', summary: 'Search indexed content', description: 'Searches across indexed content through the search adapter.', query: z.object({ q: z.string(), table: z.string().optional(), limit: z.coerce.number().optional() }), responses: { 200: passthrough, 400: errorResponse }, handler: stub }),

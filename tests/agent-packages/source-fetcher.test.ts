@@ -48,6 +48,7 @@ import {
   fetchGithubWithRunnerAsync,
   fetchSource,
   parseGithubSpec,
+  sourceSpecWithRef,
 } from '../../src/core/agent-packages/source-fetcher'
 import { resetGithubSourceCacheForTests } from '../../src/core/github-source-cache'
 
@@ -147,6 +148,22 @@ describe('parseGithubSpec', () => {
       expect(() => parseGithubSpec(source)).toThrow(/subpath/i)
     })
   }
+})
+
+describe('sourceSpecWithRef', () => {
+  it('inserts refs before github subpaths', () => {
+    expect(sourceSpecWithRef('github:markhayden/bakin-bits-official#agents/patch', 'v0.2.0'))
+      .toBe('github:markhayden/bakin-bits-official@v0.2.0#agents/patch')
+  })
+
+  it('does not duplicate refs already embedded in the source', () => {
+    expect(sourceSpecWithRef('github:markhayden/bakin-bits-official@v0.1.0#agents/patch', 'v0.2.0'))
+      .toBe('github:markhayden/bakin-bits-official@v0.1.0#agents/patch')
+  })
+
+  it('leaves local sources unchanged', () => {
+    expect(sourceSpecWithRef('./pixel', 'main')).toBe('./pixel')
+  })
 })
 
 // ─── fetchSource — input validation ──────────────────────────────────────────

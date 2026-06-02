@@ -363,6 +363,16 @@ fs walk. `--check` runs per-plugin probes in parallel:
 Plain `list` shows a 7-day staleness hint when `lastChecked` is older
 than the threshold.
 
+Health's Active Plugins list merges `/api/plugins/health/registry` with
+`/api/plugins/manifest`. On first load it asks for
+`/api/plugins/manifest?check=1`; automatic refreshes reuse cached manifest
+status for up to one hour, and the manual **Check now** button bypasses that
+cache. Core/built-in plugin versions stay sourced from bundled plugin exports;
+user plugin versions and upgrade availability come from the plugin lockfile
+manifest rows. The in-list Upgrade button calls the same
+`POST /api/plugins/upgrade` endpoint as CLI upgrade and handles
+`awaitingConsent` before mutating disk.
+
 ### Remove flow — `bakin plugins remove <id>` (#119)
 
 Full teardown sweep through `packages/host/src/api/plugins/remove.ts`:

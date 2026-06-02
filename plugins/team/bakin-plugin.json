@@ -239,7 +239,7 @@
     "cliCommands": [
       {
         "name": "agents list",
-        "usage": "bakin agents list [--packages]",
+        "usage": "bakin agents list [--packages] [--json]",
         "summary": "List agents."
       },
       {
@@ -259,12 +259,22 @@
       },
       {
         "name": "agents install",
-        "usage": "bakin agents install <path|github:user/repo[@ref]> [--adopt] [--install-as <id>] [--replace]",
+        "usage": "bakin agents install <path|github:user/repo[@ref][#subpath]> [--adopt] [--install-as <id>] [--replace]",
         "summary": "Install an agent package."
       },
       {
+        "name": "agents orphan",
+        "usage": "bakin agents orphan <agent-id> [--keep-blocks] [--force]",
+        "summary": "Orphan an agent package."
+      },
+      {
+        "name": "agents delete",
+        "usage": "bakin agents delete <agent-id> [--keep-blocks] [--force]",
+        "summary": "Delete an agent package and runtime agent."
+      },
+      {
         "name": "agents remove",
-        "usage": "bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--force]",
+        "usage": "bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--delete] [--force]",
         "summary": "Remove an agent package."
       },
       {

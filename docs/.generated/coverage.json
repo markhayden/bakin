@@ -4,13 +4,13 @@
   "surfaces": {
     "cliCommands": {
       "status": "active",
-      "count": 61,
-      "examples": 68,
+      "count": 63,
+      "examples": 70,
       "source": "src/core/cli/registry.ts"
     },
     "httpRoutes": {
       "status": "active",
-      "count": 56,
+      "count": 58,
       "withInputSchema": 0,
       "withOutputSchema": 0,
       "withExamples": 0,

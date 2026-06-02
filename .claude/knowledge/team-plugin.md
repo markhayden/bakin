@@ -155,9 +155,9 @@ The Teams UI exposes three contextual agent-package surfaces. Cross-agent operat
 
 ### Data Plumbing
 
-`useAgentStore.load()` issues `/api/plugins/team/` and `/api/agent-packages` in parallel and merges the package response into a `packageStates: Record<agentId, PackageStateRow>` map. A failed `/api/agent-packages` is non-fatal — the agent grid keeps working with no badges. The store also exposes `refreshPackageStates()` for post-Adopt invalidation; consumers call it after a write so the UI updates without a page reload.
+`useAgentStore.load()` issues `/api/plugins/team/` and `/api/agent-packages?check=1` in parallel and merges the package response into a `packageStates: Record<agentId, PackageStateRow>` map. A failed `/api/agent-packages` is non-fatal — the agent grid keeps working with no badges. The store also exposes `refreshPackageStates()` for post-Adopt / post-Upgrade / post-Orphan invalidation; consumers call it after a write so the UI updates without a page reload.
 
-`PackageStateRow.state` is typed as the badge component's 6-state union (`absent | unmanaged | adopted | managed | drifted | update-available`) for forward-compat. The server today emits only the 4-state subset; `drifted` and `update-available` code paths are wired but unreachable until the API starts returning them.
+`PackageStateRow.state` is typed as the badge component's 6-state union (`absent | unmanaged | adopted | managed | drifted | update-available`) for forward-compat. The server still emits the base install state; `PackageCard` overlays `update-available` from `row.updateStatus.upgradeAvailable` for display/action state.
 
 ### Surface 1 — Badge on AgentCardNode (`team-grid.tsx`)
 
@@ -171,12 +171,12 @@ A read-only `<PackageCard>` is embedded inside the Overview tab (post-rework) an
 
 | State | Render |
 |---|---|
-| `managed` / `adopted` | Full state badge + dl-style fields: source, ref, commit (sliced to 7 chars), installed-at, dependencies. No CLI hint. |
+| `managed` / `adopted` | Full state badge + dl-style fields: source, ref, commit (sliced to 7 chars), installed-at, dependencies. Shows Upgrade when `updateStatus.upgradeAvailable`; shows Delete/Orphan controls. No CLI hint. |
 | `unmanaged` (default when no row exists) | State badge + Adopt button → opens `<AdoptDialog>`. |
 | `drifted` | State badge + CLI hint: `bakin install agent-assets` with copy button. |
-| `update-available` | State badge + CLI hint: `bakin agents update <id>` with copy button. |
+| `update-available` | Display overlay for managed/adopted packages with an in-card Upgrade button. |
 
-Convention: **CLI hints render only when there is no UI affordance for the action.** Adopt is wired in-UI, so `unmanaged` shows no hint. Update / Reinstall / Remove / Reset workspace are all CLI-only and show hints in their respective state branches.
+Convention: **CLI hints render only when there is no UI affordance for the action.** Adopt, Upgrade, Orphan, and Delete are wired in-UI for the package card. The Upgrade dialog offers Maintain changes (`refreshTemplate:false`) and Reseed package templates (`refreshTemplate:true`, still honoring `.userEdited`). The remove dialog mirrors the package lifecycle: Orphan detaches Bakin package tracking while leaving the OpenClaw agent; Delete also removes the runtime agent through the adapter.
 
 ### Surface 3 — Knowledge Tab (`agent-detail.tsx`)
 

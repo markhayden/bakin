@@ -9,12 +9,22 @@
  * `bakin agents list`. Distinct from `/api/agents` (runtime status).
  */
 import { listAllAgentStates } from '@/core/agent-packages/agent-state'
+import { checkPackageUpdate } from '@/core/agent-packages/checker'
 
-export async function get(_req: Request, _url: URL): Promise<Response> {
+export async function get(_req: Request, url: URL): Promise<Response> {
   void _req
-  void _url
   try {
     const states = await listAllAgentStates()
+    if (url.searchParams.get('check') === '1') {
+      const enriched = await Promise.all(states.map(async (state) => {
+        if (!state.packageId) return state
+        return {
+          ...state,
+          updateStatus: checkPackageUpdate(state.packageId),
+        }
+      }))
+      return Response.json({ ok: true, agents: enriched })
+    }
     return Response.json({ ok: true, agents: states })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
