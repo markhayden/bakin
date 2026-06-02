@@ -18,21 +18,26 @@ export function OutputNode({ data }: NodeProps) {
   const channelText = channels && channels.length > 0 ? channels.join(', ') : undefined
 
   return (
-    <div className={`flex h-full w-full flex-col justify-center rounded-lg border bg-zinc-900 px-4 py-3 shadow-lg ${hasSkillDrift ? 'border-amber-500/70 ring-1 ring-amber-500/25' : 'border-purple-500/50'}`}>
-      <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-purple-400">
-        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-purple-500/10">
-          <Radio className="size-3.5" />
-        </span>
-        Completion
-      </div>
-      <div className="truncate text-sm font-medium text-zinc-100">{label}</div>
-      {agent && <AgentAssignmentLabel agent={agent} className="mt-1" />}
-      {hasSkillDrift && (
-        <div className="mt-1 inline-flex w-fit items-center gap-1 rounded border border-amber-500/35 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-200">
-          <AlertTriangle className="size-3" />
-          Stale skill
+    <div className={`flex h-full w-full flex-col overflow-hidden rounded-lg border bg-zinc-900 px-4 py-3 shadow-lg ${hasSkillDrift ? 'border-amber-500/70 ring-1 ring-amber-500/25' : 'border-purple-500/50'}`}>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2 text-xs font-bold uppercase tracking-wider text-purple-400">
+          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-purple-500/10">
+            <Radio className="size-3.5" />
+          </span>
+          <span className="truncate">Completion</span>
         </div>
-      )}
+        {hasSkillDrift && (
+          <span
+            className="inline-flex shrink-0 items-center gap-1 rounded border border-amber-500/35 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-200"
+            title="This step uses a stale workflow skill"
+          >
+            <AlertTriangle className="size-3" />
+            Stale
+          </span>
+        )}
+      </div>
+      <div className="truncate text-sm font-medium leading-5 text-zinc-100">{label}</div>
+      {agent && <AgentAssignmentLabel agent={agent} className="mt-1" />}
       {channelText ? (
         <div className={`${agent ? 'mt-0.5' : 'mt-1'} truncate text-[11px] text-zinc-400`}>
           Channels: {channelText}
