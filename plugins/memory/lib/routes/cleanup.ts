@@ -7,11 +7,14 @@
  *
  * This file holds the find route (T1); dispatch + verify land in later commits.
  */
+import { existsSync } from 'node:fs'
+
 import { z } from 'zod'
 
 import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
 import type { SearchQueryParams } from '@bakin/core/plugin-types'
+import { installedByPath, markUserEdited } from '@bakin/core/agent-packages/markers'
 
 import { MEMORY_TIERS, type MemoryTier } from '../types'
 import {
@@ -73,13 +76,17 @@ export async function findCleanupHits(
       const content = String(r.fields.content ?? '')
       if (!contentMatches(content, term)) continue
       const tier = String(r.fields.tier ?? '') as MemoryTier
+      const label = tierLabel(tier)
+      const sourcePath = String(r.fields.source_path ?? '')
       hits.push({
         rowId: r.id,
         tier,
         agent: String(r.fields.agent ?? ''),
-        sourcePath: String(r.fields.source_path ?? ''),
-        label: tierLabel(tier),
+        sourcePath,
+        label,
         snippets: matchingSnippets(content, term),
+        // Only editable (actionable) sources can be package projections worth flagging.
+        managed: label === 'actionable' && !!sourcePath && existsSync(installedByPath(sourcePath)),
       })
     }
   }
@@ -147,7 +154,7 @@ export const cleanupDispatchRoute = defineRoute({
     }
 
     const { term, action, replacement, agents, instruction } = parsed.data
-    const dispatched: Array<{ agent: string; taskId: string; hitCount: number }> = []
+    const dispatched: Array<{ agent: string; taskId: string; hitCount: number; managedCount: number }> = []
     const skipped: Array<{ agent: string; reason: string }> = []
 
     for (const agent of agents) {
@@ -159,6 +166,12 @@ export const cleanupDispatchRoute = defineRoute({
         skipped.push({ agent, reason: 'no actionable occurrences' })
         continue
       }
+      // Pin managed (package-projected) files as user-edited so the agent's
+      // cleanup survives a later `agents update --refresh-template`. This writes
+      // a Bakin projection-layer sentinel, not runtime-memory content.
+      const managedPaths = actionable.filter((h) => h.managed && h.sourcePath).map((h) => h.sourcePath)
+      for (const path of managedPaths) markUserEdited(path)
+
       const { title, description } = composeTask({ term, action, replacement, agent, hits: actionable, instruction })
       const task = await ctx.tasks.create({ agent, title, description, createdBy: 'memory' })
       ctx.activity.audit('memory.cleanup_dispatched', agent, {
@@ -166,8 +179,9 @@ export const cleanupDispatchRoute = defineRoute({
         action,
         taskId: task.id,
         hitCount: actionable.length,
+        managedCount: managedPaths.length,
       })
-      dispatched.push({ agent, taskId: task.id, hitCount: actionable.length })
+      dispatched.push({ agent, taskId: task.id, hitCount: actionable.length, managedCount: managedPaths.length })
     }
 
     return Response.json({ term, action, dispatched, skipped })

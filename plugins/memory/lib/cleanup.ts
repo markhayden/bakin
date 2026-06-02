@@ -70,6 +70,9 @@ export interface CleanupHit {
   sourcePath: string
   label: CleanupLabel
   snippets: string[]
+  /** True when the source is an agent-package projection (`<file>.installedBy`
+   * present) — its edit can revert on template refresh unless `.userEdited` is set. */
+  managed?: boolean
 }
 
 export interface AgentCleanupGroup {
