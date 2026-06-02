@@ -535,16 +535,15 @@ function SkillDriftSection({
             </div>
           </div>
           {report.repairable && (
-            <div className="mt-3 flex justify-end">
+            <div className="mt-4 flex justify-stretch sm:justify-end">
               <Button
-                size="sm"
                 variant="outline"
                 onClick={() => onRepair(report)}
                 disabled={repairingSkill === report.skillName}
-                className="border-amber-500/35 text-amber-100 hover:bg-amber-500/15"
+                className="h-10 w-full border-amber-500/35 px-4 text-sm font-semibold text-amber-100 hover:bg-amber-500/15 sm:w-auto"
               >
-                <Wrench className="mr-1.5 size-3.5" />
-                {repairingSkill === report.skillName ? 'Updating...' : 'Use latest version'}
+                <Wrench className="mr-2 size-4" />
+                {repairingSkill === report.skillName ? 'Upgrading...' : 'Upgrade to latest instructions'}
               </Button>
             </div>
           )}
@@ -610,17 +609,17 @@ export function StepDetailDrawer({
     >
       {step && (
         <div className="space-y-6">
+          {step.type === 'agent' && <AgentStepDetail step={step as AgentStep} />}
+          {step.type === 'gate' && <GateStepDetail step={step as GateStep} />}
+          {step.type === 'output' && <OutputStepDetail step={step as OutputStep} />}
+          {step.type === 'parallel' && <ParallelStepDetail step={step as ParallelStep} />}
+          {step.type === 'workflow' && <WorkflowStepDetail step={step as NestedWorkflowStep} />}
           <SkillDriftSection
             reports={driftReports}
             repairingSkill={repairingSkill}
             repairError={repairError}
             onRepair={handleRepair}
           />
-          {step.type === 'agent' && <AgentStepDetail step={step as AgentStep} />}
-          {step.type === 'gate' && <GateStepDetail step={step as GateStep} />}
-          {step.type === 'output' && <OutputStepDetail step={step as OutputStep} />}
-          {step.type === 'parallel' && <ParallelStepDetail step={step as ParallelStep} />}
-          {step.type === 'workflow' && <WorkflowStepDetail step={step as NestedWorkflowStep} />}
         </div>
       )}
     </BakinDrawer>
