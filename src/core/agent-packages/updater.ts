@@ -27,7 +27,7 @@ import {
   type PackageEntry,
 } from '../../../packages/core/src/agent-packages/lockfile'
 import { getPackageSourceDir } from '../../../packages/core/src/agent-packages/package-paths'
-import { fetchSource, type FetchedSource } from './source-fetcher'
+import { fetchSource, sourceSpecWithRef, type FetchedSource } from './source-fetcher'
 import { projectPackage, unprojectPackage } from './projector'
 import {
   acquireInstallLock,
@@ -73,10 +73,7 @@ export async function updatePackageById(options: UpdateOptions): Promise<UpdateR
     }
 
     // Re-fetch using the same source + ref the lockfile recorded.
-    const sourceWithRef = entry.source.startsWith('github:') && entry.ref
-      ? `${entry.source}@${entry.ref}`
-      : entry.source
-    fetched = fetchSource(sourceWithRef)
+    fetched = fetchSource(sourceSpecWithRef(entry.source, entry.ref))
 
     // No-op when the commit SHA hasn't moved. Local sources have empty
     // commitSha — for those we always re-project (the user just ran

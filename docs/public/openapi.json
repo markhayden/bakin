@@ -17166,6 +17166,102 @@
         "x-bakin-full-path": "/api/version"
       }
     },
+    "/api/update/status": {
+      "get": {
+        "operationId": "core.get.api-update-status",
+        "summary": "Get Bakin update status",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Core"
+        ],
+        "description": "Returns whether a newer Bakin binary release is available and whether this runtime can self-update.",
+        "x-bakin-full-path": "/api/update/status"
+      }
+    },
+    "/api/update/apply": {
+      "post": {
+        "operationId": "core.post.api-update-apply",
+        "summary": "Apply Bakin update",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": {}
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Core"
+        ],
+        "description": "Runs the guarded Bakin binary self-update flow.",
+        "x-bakin-full-path": "/api/update/apply"
+      }
+    },
     "/api/paths": {
       "get": {
         "operationId": "core.get.api-paths",

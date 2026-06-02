@@ -100,17 +100,19 @@ mcporter call bakin-<agent>.bakin_exec_assets_link --args '{
 ### bakin_exec_assets_list
 
 Label: Listed assets
-Purpose: List managed assets (one entry per asset, current-version view). Optional type filter.
+Purpose: List managed assets (one entry per asset, current-version view). Optional type and task filters.
 
 | Argument | Type | Required | Description |
 | --- | --- | --- | --- |
 | `type` | choice | no | Filter by asset type |
+| `taskId` | string | no | Filter to assets linked to this task id |
 
 Example:
 
 ```sh
 mcporter call bakin-<agent>.bakin_exec_assets_list --args '{
-  "type": "value"
+  "type": "value",
+  "taskId": "value"
 }'
 ```
 

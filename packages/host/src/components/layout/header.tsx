@@ -204,7 +204,7 @@ export function Header() {
             <Button type="button" variant="outline" onClick={() => setUpdateDialogOpen(false)}>
               Close
             </Button>
-            <Button type="button" onClick={applyUpdate} disabled={updating || Boolean(updateMessage)}>
+            <Button type="button" variant="info" onClick={applyUpdate} disabled={updating || Boolean(updateMessage)}>
               {updating && <Loader2 className="size-3.5 animate-spin" />}
               Update Bakin
             </Button>

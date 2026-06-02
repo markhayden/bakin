@@ -145,6 +145,16 @@ export function parseGithubSpec(source: string): ParsedGithubSpec {
   }
 }
 
+export function sourceSpecWithRef(source: string, ref: string | null | undefined): string {
+  if (!isGithubSource(source) || !ref) return source
+
+  const hashIndex = source.indexOf('#')
+  const sourceHead = hashIndex === -1 ? source : source.slice(0, hashIndex)
+  const sourceTail = hashIndex === -1 ? '' : source.slice(hashIndex)
+  if (sourceHead.includes('@')) return source
+  return `${sourceHead}@${ref}${sourceTail}`
+}
+
 // ─── Path safety ─────────────────────────────────────────────────────────────
 
 /**

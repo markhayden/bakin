@@ -208,7 +208,7 @@ await ctx.hooks.callAll(
 Label: Ensure Bakin schedule
 Purpose: Create or update a Bakin-managed runtime cron job and return the provider job id.
 Kind: rpc
-Source: plugins/schedule/index.ts:1066
+Source: plugins/schedule/index.ts:1243
 
 Example:
 

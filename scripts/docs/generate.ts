@@ -912,6 +912,7 @@ function describeCliPart(token: string, kind: 'argument' | 'option' | 'choice', 
     '--replace': 'Replace an existing install.',
     '--keep-blocks': 'Leave managed blocks on disk.',
     '--delete-agent': 'Delete the runtime agent too.',
+    '--delete': 'Delete the runtime agent too.',
     '--force': 'Bypass the normal safety guard.',
     '--refresh-template': 'Refresh generated package template files.',
     '--check': 'Dry-run; report what would change.',
@@ -1045,7 +1046,7 @@ const cliReferenceGroups: Array<{
   {
     title: 'Agent Packages',
     description: 'Agent package commands install and maintain reusable agent definitions, bundled lessons, prompts, and rules that Bakin manages as local agent state.',
-    matches: (command) => ['agents install', 'agents remove', 'agents update', 'agents lessons'].includes(command.name) || command.name.startsWith('packages '),
+    matches: (command) => ['agents install', 'agents orphan', 'agents delete', 'agents remove', 'agents update', 'agents lessons'].includes(command.name) || command.name.startsWith('packages '),
   },
   {
     title: 'Plugins',

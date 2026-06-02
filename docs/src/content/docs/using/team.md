@@ -94,12 +94,14 @@ Everything else (soul, identity, rules, tools, skills, sessions) lives in the ru
 <!-- docs:cli-commands team -->
 | Command | Purpose |
 | --- | --- |
-| `bakin agents list [--packages]` | List agents. |
+| `bakin agents list [--packages] [--json]` | List agents. |
 | `bakin agents status <id>` | Get agent status. |
 | `bakin agents tasks <id>` | List tasks assigned to an agent. |
 | `bakin agents send <id> <message>` | Send a message to an agent. |
-| `bakin agents install <path\|github:user/repo[@ref]> [--adopt] [--install-as <id>] [--replace]` | Install an agent package. |
-| `bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--force]` | Remove an agent package. |
+| `bakin agents install <path\|github:user/repo[@ref][#subpath]> [--adopt] [--install-as <id>] [--replace]` | Install an agent package. |
+| `bakin agents orphan <agent-id> [--keep-blocks] [--force]` | Orphan an agent package. |
+| `bakin agents delete <agent-id> [--keep-blocks] [--force]` | Delete an agent package and runtime agent. |
+| `bakin agents remove <agent-id> [--keep-blocks] [--delete-agent] [--delete] [--force]` | Remove an agent package. |
 | `bakin agents update [agent-id] [--refresh-template]` | Update agent packages. |
 | `bakin agents lessons <list\|enable\|disable> ...` | Manage agent lessons toggles. |
 <!-- /docs:cli-commands -->

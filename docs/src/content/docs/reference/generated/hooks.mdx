@@ -131,7 +131,7 @@ await ctx.hooks.callAll(
 <p class="hook-section-description">Hooks discovered from source registration audit.</p>
 
 <div class="hook-card-list">
-<HookCard id="schedule-ensurebakinjob" name="schedule.ensureBakinJob" label="Ensure Bakin schedule" summary="Create or update a Bakin-managed runtime cron job and return the provider job id." source="plugins/schedule/index.ts:1066" badges={["rpc"]}>
+<HookCard id="schedule-ensurebakinjob" name="schedule.ensureBakinJob" label="Ensure Bakin schedule" summary="Create or update a Bakin-managed runtime cron job and return the provider job id." source="plugins/schedule/index.ts:1243" badges={["rpc"]}>
 ```ts frame="terminal"
 const result = await ctx.hooks.invoke(
   'schedule.ensureBakinJob',
@@ -458,5 +458,5 @@ const result = await ctx.hooks.invoke(
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated May 31, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jun 1, 2026 · Bakin 0.0.0-dev</span>
 </aside>

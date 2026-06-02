@@ -12,7 +12,7 @@ import {
   readLockfile,
   type PackageEntry,
 } from '../../../packages/core/src/agent-packages/lockfile'
-import { fetchSource, type FetchedSource } from './source-fetcher'
+import { fetchSource, sourceSpecWithRef, type FetchedSource } from './source-fetcher'
 
 export interface PackageUpdateStatus {
   currentVersion: string
@@ -29,9 +29,7 @@ interface CheckPackageUpdateOptions {
 }
 
 function sourceWithRef(entry: PackageEntry): string {
-  return entry.source.startsWith('github:') && entry.ref
-    ? `${entry.source}@${entry.ref}`
-    : entry.source
+  return sourceSpecWithRef(entry.source, entry.ref)
 }
 
 function stripVersionFromKey(key: string): string {
