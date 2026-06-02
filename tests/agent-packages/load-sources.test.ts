@@ -153,7 +153,7 @@ describe('loadAgentPackageSources — empty + missing states', () => {
 
 describe('loadAgentPackageSources — happy path', () => {
   it('registers workflow + workflow-skill from a managed agent package', () => {
-    seedPixelPackage()
+    const { packageDir } = seedPixelPackage()
     writeLockfile({ version: 1, packages: { pixel: pixelEntry() } })
 
     const result = loadAgentPackageSources(testDir)
@@ -174,6 +174,7 @@ describe('loadAgentPackageSources — happy path', () => {
     const skills = getAgentPackageSkills()
     expect(skills.has('generate-image')).toBe(true)
     expect(skills.get('generate-image')!.name).toBe('Generate Image')
+    expect(skills.get('generate-image')!.sourcePath).toBe(join(packageDir, 'workflow-skills', 'generate-image.md'))
   })
 
   it('falls back to slugged-name id when manifest workflow has no id field', () => {

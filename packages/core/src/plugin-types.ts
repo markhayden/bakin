@@ -141,6 +141,8 @@ export interface SkillDefinition {
   instructions: string
   output_schema?: Record<string, unknown>
   source?: string // 'built-in' | 'user' | 'plugin:<id>' — set automatically
+  /** Absolute source markdown file path when the skill was loaded from a managed package/plugin file. */
+  sourcePath?: string
 }
 
 // ---------------------------------------------------------------------------

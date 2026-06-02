@@ -1575,6 +1575,16 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="workflows.post.skills-name-repair">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/workflows/skills/<name>/repair' \
+  -H 'Content-Type: application/json' \
+  --data '{"confirmKnownOld":true}'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="workflows.get.steps-task-id">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -1591,5 +1601,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jun 1, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jun 2, 2026 · Bakin 0.0.0-dev</span>
 </aside>

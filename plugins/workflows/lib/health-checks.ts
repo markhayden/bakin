@@ -17,6 +17,11 @@ import type { HealthCheckResult, HealthRepairHandler } from '../../../packages/c
 
 import { listDefinitions } from './parser'
 import { listInstances } from './runtime'
+import {
+  repairWorkflowSkillDrift,
+  scanWorkflowSkillDrift,
+  type WorkflowSkillDriftReport,
+} from './workflow-skill-drift'
 
 // ─── Result constructors (inlined; eventual migration target) ─────────────
 
@@ -63,11 +68,108 @@ export function checkWorkflowSkills(contentDir: string): HealthCheckResult[] {
     // skills dir exists but can't be read
   }
 
+  for (const report of scanWorkflowSkillDrift(contentDir)) {
+    results.push(warn(
+      'workflow-skills',
+      workflowSkillDriftMessage(report),
+      report.repairable,
+    ))
+  }
+
   if (results.length === 0) {
     results.push(ok('workflow-skills', 'All workflow skills have output_schema'))
   }
 
   return results
+}
+
+export function workflowSkillDriftRepair(contentDir: string): HealthRepairHandler {
+  return {
+    async plan(rows) {
+      if (!rows.some(row => row.check === 'workflow-skills')) return []
+      return scanWorkflowSkillDrift(contentDir)
+        .filter(report => report.repairable)
+        .map(report => ({
+          id: workflowSkillRepairItemId(report.skillName),
+          checkId: 'workflow-skills',
+          title: `Repair workflow skill ${report.skillName}`,
+          reason: workflowSkillDriftMessage(report),
+          safety: 'safe' as const,
+          requiresConfirmation: true,
+          changes: [{
+            kind: 'file' as const,
+            target: report.filePath,
+            action: 'update' as const,
+            description: `Replace ${report.skillName}.md from the current ${report.managedSource.kind} source.`,
+          }],
+        }))
+    },
+    async apply(items) {
+      const results = []
+      for (const item of items) {
+        const skillName = skillNameFromRepairItemId(item.id)
+        if (!skillName) {
+          results.push({
+            id: item.id,
+            checkId: 'workflow-skills',
+            status: 'skipped' as const,
+            message: `Skipped unknown workflow skill repair item "${item.id}".`,
+            changes: [],
+          })
+          continue
+        }
+        const result = repairWorkflowSkillDrift({
+          contentDir,
+          skillName,
+          confirmKnownOld: true,
+        })
+        results.push({
+          id: item.id,
+          checkId: 'workflow-skills',
+          status: result.status === 'applied' ? 'applied' as const : result.status === 'failed' ? 'failed' as const : 'skipped' as const,
+          message: result.message,
+          changes: result.status === 'applied'
+            ? item.changes
+            : [],
+        })
+      }
+      return results
+    },
+  }
+}
+
+function workflowSkillRepairItemId(skillName: string): string {
+  return `workflows.repair-workflow-skill-drift.${skillName}`
+}
+
+function skillNameFromRepairItemId(id: string): string | null {
+  const prefix = 'workflows.repair-workflow-skill-drift.'
+  if (!id.startsWith(prefix)) return null
+  return id.slice(prefix.length) || null
+}
+
+function workflowSkillDriftMessage(report: WorkflowSkillDriftReport): string {
+  const source = report.managedSource.kind === 'plugin'
+    ? `plugin ${report.managedSource.id}`
+    : `agent package ${report.managedSource.id}`
+  const findings = report.findings.map(finding => finding.label).join('; ')
+  const repairNote = report.repairable
+    ? 'Safe repair is available.'
+    : `Advisory only: ${workflowSkillRepairabilityLabel(report.repairability)}.`
+  return `Workflow skill "${report.skillName}" shadows managed ${source} skill and appears stale: ${findings}. ${repairNote}`
+}
+
+function workflowSkillRepairabilityLabel(repairability: WorkflowSkillDriftReport['repairability']): string {
+  switch (repairability) {
+    case 'custom-advisory':
+      return 'local file is unmarked or customized'
+    case 'user-edited':
+      return 'local file is marked user-edited'
+    case 'known-old-confirmable':
+      return 'known old managed file requires confirmation'
+    case 'safe-managed':
+      return 'file is managed and unedited'
+  }
 }
 
 // ─── Workflow definitions: skill reference integrity ──────────────────────

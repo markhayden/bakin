@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from '@makinbakin/sdk/hooks'
-import { ArrowLeft, Workflow, Lock, Pencil, GitBranch } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Workflow, Lock, Pencil, GitBranch } from 'lucide-react'
 import { Button } from "@makinbakin/sdk/ui"
 import { Switch } from "@makinbakin/sdk/ui"
 import { WorkflowCanvas } from './workflow-canvas'
@@ -16,7 +16,7 @@ import {
   type WorkflowDialogFieldErrors,
 } from './workflow-dialog-validation'
 import { WorkflowDeleteAction } from './workflow-delete-action'
-import type { WorkflowDefinition, WorkflowStep, ParallelStep, NestedWorkflowStep, WorkflowShadowedSource } from '../types'
+import type { WorkflowDefinition, WorkflowStep, ParallelStep, NestedWorkflowStep, WorkflowShadowedSource, WorkflowSkillDriftSummary } from '../types'
 
 /** Find a step by ID in the step tree (top-level, parallel children, sub-workflow expansions) */
 function findStepById(
@@ -96,6 +96,7 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
   const [subWorkflows, setSubWorkflows] = useState<Record<string, WorkflowDefinition>>({})
   const [source, setSource] = useState<'plugin' | 'agent-package' | 'user' | undefined>()
   const [shadowedSource, setShadowedSource] = useState<WorkflowShadowedSource | undefined>()
+  const [skillDrift, setSkillDrift] = useState<WorkflowSkillDriftSummary | undefined>()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedStep, setSelectedStep] = useState<WorkflowStep | null>(null)
@@ -114,37 +115,41 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
-  useEffect(() => {
-    async function fetchDefinition() {
-      try {
-        const res = await fetch(`/api/plugins/workflows/definitions/${workflowId}`)
-        if (!res.ok) {
-          setError(res.status === 404 ? 'Workflow not found' : 'Failed to load workflow')
-          return
-        }
-        const data = await res.json()
-        const loadedDefinition = data.definition as WorkflowDefinition
-        const defaultCopyName = loadedDefinition.name ? `${loadedDefinition.name} Copy` : `${workflowId} Copy`
-        setDefinition(loadedDefinition)
-        setSubWorkflows(data.subWorkflows ?? {})
-        setSource(data.source)
-        setShadowedSource(data.shadowedSource)
-        setWorkflowDisabled(data.disabled === true)
-        setAvailabilityError(null)
-        setCopyError(null)
-        setCopyFieldErrors({})
-        setCopyName(defaultCopyName)
-        setCopyId(slugify(defaultCopyName))
-        setCopyIdEdited(false)
-        setDisableOriginal(true)
-      } catch {
-        setError('Failed to load workflow')
-      } finally {
-        setLoading(false)
+  const fetchDefinition = useCallback(async (options: { preserveLoading?: boolean } = {}) => {
+    if (!options.preserveLoading) setLoading(true)
+    try {
+      const res = await fetch(`/api/plugins/workflows/definitions/${workflowId}`)
+      if (!res.ok) {
+        setError(res.status === 404 ? 'Workflow not found' : 'Failed to load workflow')
+        return
       }
+      const data = await res.json()
+      const loadedDefinition = data.definition as WorkflowDefinition
+      const defaultCopyName = loadedDefinition.name ? `${loadedDefinition.name} Copy` : `${workflowId} Copy`
+      setDefinition(loadedDefinition)
+      setSubWorkflows(data.subWorkflows ?? {})
+      setSource(data.source)
+      setShadowedSource(data.shadowedSource)
+      setSkillDrift(data.skillDrift)
+      setWorkflowDisabled(data.disabled === true)
+      setAvailabilityError(null)
+      setCopyError(null)
+      setCopyFieldErrors({})
+      setCopyName(defaultCopyName)
+      setCopyId(slugify(defaultCopyName))
+      setCopyIdEdited(false)
+      setDisableOriginal(true)
+      setError(null)
+    } catch {
+      setError('Failed to load workflow')
+    } finally {
+      setLoading(false)
     }
-    fetchDefinition()
   }, [workflowId])
+
+  useEffect(() => {
+    fetchDefinition()
+  }, [fetchDefinition])
 
   const handleNodeClick = useCallback((nodeId: string) => {
     if (!definition) return
@@ -395,11 +400,21 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
         </div>
       )}
 
+      {skillDrift && (
+        <div className="flex items-center gap-2 border-b border-border bg-amber-500/10 px-6 py-2 text-xs text-amber-200">
+          <AlertTriangle className="size-3.5" />
+          <span>
+            This workflow uses {skillDrift.count === 1 ? 'a stale workflow skill' : `${skillDrift.count} stale workflow skills`}. Open the highlighted step to review the impact and repair options.
+          </span>
+        </div>
+      )}
+
       {/* Canvas */}
       <div className="flex-1 overflow-hidden">
         <WorkflowCanvas
           definition={definition}
           subWorkflows={subWorkflows}
+          skillDrift={skillDrift}
           onNodeClick={handleNodeClick}
         />
       </div>
@@ -410,6 +425,8 @@ export function WorkflowDetail({ workflowId, onBack }: WorkflowDetailProps) {
         allSteps={definition.steps}
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
+        skillDrift={skillDrift}
+        onSkillRepaired={() => fetchDefinition({ preserveLoading: true })}
       />
 
       <ManagedWorkflowCopyDialog

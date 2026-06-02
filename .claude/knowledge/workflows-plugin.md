@@ -18,7 +18,7 @@ The workflows surface uses the word "skill" in two different places. They are un
 | **Where it lives** | In-memory `pluginSkills` map + `~/.bakin/workflows/skills/*.md` | Runtime adapter skill store (+ `scripts/`) |
 | **Who reads it** | Bakin's workflow runtime (injects body into agent prompt) | Runtime agents |
 | **How it ships** | `defaults/workflow-skills/*.md` → auto-registered by plugin loader at activation (`ctx.registerSkill`) | `defaults/runtime-skills/{name}/` → installed to disk by `bakin install plugin-assets` |
-| **Drift detection** | None — rebuilt every server boot | `.installedBy` JSON marker (sha256), `.userEdited` sentinel, `bakin doctor` surface |
+| **Drift detection** | Local-shadow scanner for `~/.bakin/workflows/skills/*.md` using managed `sourcePath`, `<skill>.md.installedBy`, `<skill>.md.userEdited`, Health/Workflows UI surfaces | `.installedBy` JSON marker (sha256), `.userEdited` sentinel, `bakin doctor` surface |
 
 **Rule of thumb:** if it's a workflow `step.skill: write-copy`, it's S-A. If it's something an agent invokes through the runtime skill mechanism, it's S-B.
 
@@ -44,7 +44,30 @@ None of the three are required. A plugin can ship any subset.
 | `defaults/workflow-skills/` | `src/lib/plugin-skill-loader.ts` (invoked by `src/lib/plugin-registry.ts` after every `activate()`) | Server boot, every startup, generic across all plugins |
 | `defaults/runtime-skills/` | `src/core/onboarding/plugin-assets.ts` (`scanPluginAssets` + `installPluginAssets`) | `bakin install plugin-assets` (manual), or surfaced by `bakin doctor` |
 
-The first two paths are in-memory only — every reboot rebuilds them from disk. The third writes to the runtime skill store and needs explicit drift management.
+The workflow definition and managed workflow-skill registries are rebuilt on every boot. User workflow-skill files under `~/.bakin/workflows/skills/*.md` still win over managed sources, so those local shadows need drift visibility when a shipped skill contract changes.
+
+### S-A drift detection and repair
+
+`plugins/workflows/lib/workflow-skill-drift.ts` scans local workflow skill markdown files only when they shadow a managed plugin or agent-package skill with the same name. Managed loaders preserve `SkillDefinition.sourcePath`, letting the scanner compare the local file against the current shipped markdown without materializing every managed skill to disk.
+
+Stale patterns are intentionally narrow and contract-oriented: old generated media path fields (`image_path`, `imagePath`, `video_path`, `videoPath`, `audio_path`, `audioPath`), old image filename/prompt-packet fields (`image_filename`, `promptAssetFilename`, `savePromptPacket`), and legacy execution tool names such as `beacon_exec_` / `bakin_exec_gen_image`.
+
+Workflow skill sidecars live next to the markdown file:
+
+```
+~/.bakin/workflows/skills/generate-image.md
+~/.bakin/workflows/skills/generate-image.md.installedBy
+~/.bakin/workflows/skills/generate-image.md.userEdited
+```
+
+Repair is full-file replacement from the current managed source, never phrase-level patching. It is available only when `.installedBy` proves the local file is still managed and unedited, or when the exact local hash matches a repo-shipped known-old hash from `plugins/workflows/defaults/workflow-skill-legacy-hashes.json`. `.userEdited`, unknown, or customized files are advisory-only.
+
+Surfaces:
+
+- Health check `workflows.skills` reports stale local shadows and contributes a doctor repair plan for safe cases.
+- `GET /api/plugins/workflows/definitions` and `GET /api/plugins/workflows/definitions/:name` include `skillDrift` summaries for affected workflows and steps.
+- `POST /api/plugins/workflows/skills/:name/repair` applies the same safe repair path used by Health.
+- The Workflows UI shows stale-skill badges on workflow cards, a detail banner, highlighted step nodes, and a drawer repair button when the file is safe to replace.
 
 ## Source Registry
 

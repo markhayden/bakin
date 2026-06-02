@@ -49,6 +49,12 @@ Gates pause the workflow until you decide. The task's detail panel shows the gat
 
 Workflows cancel automatically when their task moves to `Done` or `Blocked`, or when the task is deleted. No separate stop button.
 
+### Stale workflow skills
+
+Workflow steps can use markdown skills. If you have a local skill file under `~/.bakin/workflows/skills/` that shadows a managed plugin or agent package skill, Bakin checks whether that file still matches current workflow contracts.
+
+When a stale local skill affects a workflow, the Workflows UI shows a warning on the workflow card, the workflow detail header, and the affected step node. Open the highlighted step to see what changed. If Bakin can prove the file is still managed and unedited, the drawer offers a repair action that replaces the entire local skill from the current managed source. Files marked `.userEdited` or customized without known provenance are shown as advisory warnings and are not overwritten.
+
 ## Concepts
 
 - **Definitions vs instances.** A definition is the recipe. An instance is one run of that recipe tied to a specific task. Many instances of one definition.
@@ -61,7 +67,7 @@ Workflows cancel automatically when their task moves to `Done` or `Blocked`, or 
 ~/.bakin/workflows/
   definitions/*.yaml       # the recipes
   instances/<taskId>.json  # per-task runtime state
-  skills/                  # workflow skill markdown
+  skills/                  # local workflow skill markdown and optional .installedBy/.userEdited sidecars
 ```
 
 Definitions and instances both index into search (table `bakin_workflows`) on name, description, and step content.

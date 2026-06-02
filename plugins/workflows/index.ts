@@ -24,8 +24,14 @@ import {
   checkWorkflowDefinitions,
   checkStaleWorkflowInstances,
   checkWorkflowSkills,
+  workflowSkillDriftRepair,
   staleWorkflowInstancesRepair,
 } from './lib/health-checks'
+import {
+  repairWorkflowSkillDrift,
+  scanWorkflowSkillDrift,
+  type WorkflowSkillDriftReport,
+} from './lib/workflow-skill-drift'
 import {
   isReadOnly,
   getDefinition as getRegistryDefinition,
@@ -69,7 +75,7 @@ import {
 } from './lib/notifications'
 import { approvalRefFromRecord, findPendingApprovalForGate, getApprovalRecord } from './lib/approval-store'
 import { rehydratePendingApprovals } from './lib/approval-rehydration'
-import type { WorkflowTemplate, WorkflowDefinition, WorkflowInstance, NestedWorkflowStep } from './types'
+import type { WorkflowTemplate, WorkflowDefinition, WorkflowInstance, NestedWorkflowStep, WorkflowSkillDriftSummary } from './types'
 
 const log = createLogger('workflows')
 let unsubscribeApprovalResponses: (() => void) | null = null
@@ -80,6 +86,7 @@ let pluginCtx: PluginContext | null = null
 const passthroughWf = z.object({}).passthrough()
 const errorResponseWf = z.object({ error: z.string() }).passthrough()
 const htmlResponseWf = { contentType: 'text/html' as const }
+const repairSkillBodyWf = z.object({ confirmKnownOld: z.boolean().optional() }).optional()
 let gateNotificationSettings: GateNotificationSettings = {
   approvalChannelAlerts: false,
   approvalChannel: 'general',
@@ -110,6 +117,7 @@ function buildTemplateList(options: { includeDisabled?: boolean } = {}): { templ
   const defs = listDefinitions()
   const disabledWorkflowIds = readDisabledWorkflowIds()
   const subWorkflows: Record<string, WorkflowDefinition> = {}
+  const driftBySkill = workflowSkillDriftBySkill()
   const templates: WorkflowTemplate[] = defs.flatMap(d => {
     const disabled = d.source !== 'user' && disabledWorkflowIds.has(d.name)
     const shadowedSource = d.source === 'user' ? getShadowedSource(d.name) : undefined
@@ -126,9 +134,67 @@ function buildTemplateList(options: { includeDisabled?: boolean } = {}): { templ
       packageId: d.packageId,
       disabled,
       shadowedSource,
+      skillDrift: workflowSkillDriftForDefinition(d.definition, driftBySkill, subWorkflows),
     }]
   })
   return { templates, subWorkflows }
+}
+
+function workflowSkillDriftBySkill(): Map<string, WorkflowSkillDriftReport> {
+  return new Map(scanWorkflowSkillDrift(getContentDir()).map(report => [report.skillName, report]))
+}
+
+function workflowSkillDriftForDefinition(
+  definition: WorkflowDefinition,
+  driftBySkill: Map<string, WorkflowSkillDriftReport>,
+  subWorkflows: Record<string, WorkflowDefinition> = {},
+): WorkflowSkillDriftSummary | undefined {
+  const byStep: Record<string, string[]> = {}
+  const reports = new Map<string, WorkflowSkillDriftReport>()
+  for (const ref of collectWorkflowSkillRefs(definition.steps, subWorkflows)) {
+    const report = driftBySkill.get(ref.skill)
+    if (!report) continue
+    reports.set(report.skillName, report)
+    byStep[ref.stepId] = [...(byStep[ref.stepId] ?? []), ref.skill]
+  }
+  const uniqueReports = Array.from(reports.values())
+  if (uniqueReports.length === 0) return undefined
+  return {
+    count: uniqueReports.length,
+    repairableCount: uniqueReports.filter(report => report.repairable).length,
+    skills: uniqueReports.map(report => report.skillName),
+    reports: uniqueReports,
+    byStep,
+  }
+}
+
+function collectWorkflowSkillRefs(
+  steps: WorkflowDefinition['steps'],
+  subWorkflows: Record<string, WorkflowDefinition> = {},
+  idPrefix = '',
+  workflowStack = new Set<string>(),
+): Array<{ stepId: string; skill: string }> {
+  const refs: Array<{ stepId: string; skill: string }> = []
+  for (const step of steps) {
+    const stepId = idPrefix ? `${idPrefix}__${step.id}` : step.id
+    const skill = (step as { skill?: unknown }).skill
+    if (typeof skill === 'string' && skill.length > 0) {
+      refs.push({ stepId, skill })
+    }
+    if (step.type === 'parallel') {
+      refs.push(...collectWorkflowSkillRefs(step.steps, subWorkflows, idPrefix, workflowStack))
+    }
+    if (step.type === 'workflow') {
+      const workflowId = (step as NestedWorkflowStep).workflow_id
+      const nested = workflowId ? subWorkflows[workflowId] : undefined
+      if (nested && !workflowStack.has(workflowId)) {
+        const nextStack = new Set(workflowStack)
+        nextStack.add(workflowId)
+        refs.push(...collectWorkflowSkillRefs(nested.steps, subWorkflows, stepId, nextStack))
+      }
+    }
+  }
+  return refs
 }
 
 function instanceToSearchDoc(inst: WorkflowInstance): Record<string, unknown> {
@@ -427,9 +493,33 @@ function populateWorkflowRoutes(arr: any[]): void {
       pluginId: definition.pluginId,
       disabled: definition.source !== 'user' && isWorkflowDisabled(name),
       shadowedSource: definition.source === 'user' ? getShadowedSource(name) : undefined,
+      skillDrift: workflowSkillDriftForDefinition(definition, workflowSkillDriftBySkill(), subWorkflows),
     })
   }
   arr.push(defineRoute({ path: '/definitions/:name', method: 'GET', description: 'Get a specific workflow definition by name', summary: 'Get a specific workflow definition by name', params: z.object({ name: z.string() }), responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: errorResponseWf, 409: errorResponseWf, 500: errorResponseWf }, handler: getDefinitionHandler }))
+
+  // POST /skills/:name/repair — replace a stale local workflow skill when provenance proves it is safe.
+  const repairSkillHandler = async (_req: Request, _ctx: PluginContextLite, parsed?: { params?: { name?: string }; body?: { confirmKnownOld?: boolean } }) => {
+    const name = parsed?.params?.name
+    if (!name) {
+      return Response.json({ error: 'name param required' }, { status: 400 })
+    }
+
+    const result = repairWorkflowSkillDrift({
+      contentDir: getContentDir(),
+      skillName: name,
+      confirmKnownOld: parsed?.body?.confirmKnownOld === true,
+    })
+    const status = result.status === 'applied'
+      ? 200
+      : result.status === 'not-found'
+        ? 404
+        : result.status === 'failed'
+          ? 500
+          : 409
+    return Response.json(result.status === 'failed' ? { ...result, error: result.message } : result, { status })
+  }
+  arr.push(defineRoute({ path: '/skills/:name/repair', method: 'POST', description: 'Repair a stale local workflow skill from its managed source when safe', summary: 'Repair stale workflow skill', params: z.object({ name: z.string() }), body: repairSkillBodyWf, responses: { 200: passthroughWf, 201: passthroughWf, 400: errorResponseWf, 403: errorResponseWf, 404: passthroughWf, 409: passthroughWf, 500: errorResponseWf }, handler: repairSkillHandler }))
 
   // ─── CRUD Routes (user definitions only) ──────────────────────────
   // User YAML files live at ~/.bakin/workflows/definitions/{id}.yaml.
@@ -1647,6 +1737,7 @@ const workflowsPlugin: BakinPlugin = definePlugin({
       id: 'skills',
       name: 'Workflow skills validation',
       run: async () => checkWorkflowSkills(getContentDir()),
+      repair: workflowSkillDriftRepair(getContentDir()),
     })
 
 

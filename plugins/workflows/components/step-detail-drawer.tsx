@@ -1,7 +1,9 @@
 'use client'
 
+import { useEffect, useMemo, useState } from 'react'
 import { BakinDrawer } from "@makinbakin/sdk/components"
 import { Badge } from "@makinbakin/sdk/ui"
+import { Button } from "@makinbakin/sdk/ui"
 import { Separator } from "@makinbakin/sdk/ui"
 import { AgentAvatar } from "@makinbakin/sdk/components"
 import { useAgent } from "@makinbakin/sdk/hooks"
@@ -17,10 +19,12 @@ import {
   GitBranch,
   Ban,
   ArrowRight,
+  AlertTriangle,
   Clock,
   Zap,
   Package,
   RefreshCw,
+  Wrench,
 } from 'lucide-react'
 import type {
   WorkflowStep,
@@ -29,7 +33,9 @@ import type {
   OutputStep,
   ParallelStep,
   NestedWorkflowStep,
+  WorkflowSkillDriftSummary,
 } from '../types'
+import type { WorkflowSkillDriftReport } from '../lib/workflow-skill-drift'
 
 function StepTypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
@@ -402,9 +408,205 @@ interface StepDetailDrawerProps {
   allSteps?: WorkflowStep[]
   open: boolean
   onOpenChange: (open: boolean) => void
+  skillDrift?: WorkflowSkillDriftSummary
+  onSkillRepaired?: () => Promise<void> | void
 }
 
-export function StepDetailDrawer({ step, open, onOpenChange }: StepDetailDrawerProps) {
+function stepSkillName(step: WorkflowStep | null): string | undefined {
+  const skill = step ? (step as { skill?: unknown }).skill : undefined
+  return typeof skill === 'string' ? skill : undefined
+}
+
+function stepSkillNames(step: WorkflowStep | null): string[] {
+  if (!step) return []
+  const names: string[] = []
+  const skillName = stepSkillName(step)
+  if (skillName) names.push(skillName)
+  if (step.type === 'parallel') {
+    for (const child of step.steps) {
+      names.push(...stepSkillNames(child))
+    }
+  }
+  return Array.from(new Set(names))
+}
+
+function sourceLabel(report: WorkflowSkillDriftReport): string {
+  const sourceName = report.managedSource.id
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, char => char.toUpperCase())
+
+  return report.managedSource.kind === 'plugin'
+    ? `${sourceName} plugin`
+    : `${sourceName} agent package`
+}
+
+function findingDisplayLabel(id: string, fallback: string): string {
+  switch (id) {
+    case 'image-output-asset-id':
+      return 'Old image output fields'
+    case 'media-output-asset-id':
+      return 'Old media output fields'
+    case 'prompt-packet-sidecar':
+      return 'Old prompt packet output'
+    case 'legacy-tool-rename':
+      return 'Old tool name'
+    default:
+      return fallback
+  }
+}
+
+function driftImpactText(report: WorkflowSkillDriftReport): string {
+  const findingIds = new Set(report.findings.map(finding => finding.id))
+  if (findingIds.has('image-output-asset-id') || findingIds.has('prompt-packet-sidecar')) {
+    return 'The current image flow saves generated files as managed assets. This local copy still asks for older filename fields, so generated images can fail or lose their saved-asset link.'
+  }
+  if (findingIds.has('media-output-asset-id')) {
+    return 'The current media flow tracks generated files as managed assets. This local copy still asks for older path fields, so generated media can be left untracked.'
+  }
+  if (findingIds.has('legacy-tool-rename')) {
+    return 'This local copy calls an older Bakin tool name, so the workflow step may fail when it runs.'
+  }
+  return 'This local copy uses older instructions than the managed version, so this workflow step may not behave like the current package expects.'
+}
+
+function repairActionText(report: WorkflowSkillDriftReport): string {
+  if (report.repairable) {
+    return `Bakin can replace only the local ${report.skillName} instruction file with the current version from the ${sourceLabel(report)}. The workflow, task, and agent stay the same.`
+  }
+  return `Bakin will not change this file automatically. Review the local ${report.skillName} instruction file and compare it with the current ${sourceLabel(report)} version.`
+}
+
+function repairabilityText(report: WorkflowSkillDriftReport): string {
+  switch (report.repairability) {
+    case 'safe-managed':
+      return 'This local copy is still tracked as Bakin-managed, so it is safe to replace.'
+    case 'known-old-confirmable':
+      return 'This matches an older Bakin-managed copy, so it is safe to replace.'
+    case 'user-edited':
+      return 'This file is marked as edited by you, so Bakin will only warn and will not overwrite it.'
+    case 'custom-advisory':
+      return 'This local copy is customized or untracked, so Bakin will only warn and will not overwrite it.'
+  }
+}
+
+function SkillDriftSection({
+  reports,
+  repairingSkill,
+  repairError,
+  onRepair,
+}: {
+  reports: WorkflowSkillDriftReport[]
+  repairingSkill: string | null
+  repairError: string | null
+  onRepair: (report: WorkflowSkillDriftReport) => void
+}) {
+  if (reports.length === 0) return null
+
+  return (
+    <div className="space-y-3">
+      {reports.map((report) => (
+        <div key={report.skillName} className="rounded-lg border border-amber-500/35 bg-amber-500/10 p-4">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-amber-500/15 ring-1 ring-amber-500/25">
+              <AlertTriangle className="size-3.5 text-amber-200" />
+            </span>
+            <div className="min-w-0 flex-1 space-y-3">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="text-sm font-medium text-amber-100">This step is using old instructions</div>
+                  <Badge variant="outline" className="border-amber-500/35 text-[10px] font-mono text-amber-100">
+                    {report.skillName}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-amber-100/80">
+                  A local copy is overriding the current {sourceLabel(report)} version.
+                </p>
+              </div>
+
+              <div className="space-y-3 border-t border-amber-500/20 pt-3">
+                <div>
+                  <div className="text-[10px] font-medium uppercase tracking-wider text-amber-100/60">What can break</div>
+                  <p className="mt-1 text-xs leading-relaxed text-amber-100/80">{driftImpactText(report)}</p>
+                </div>
+                <div>
+                  <div className="text-[10px] font-medium uppercase tracking-wider text-amber-100/60">What the fix does</div>
+                  <p className="mt-1 text-xs leading-relaxed text-amber-100/80">{repairActionText(report)}</p>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {report.findings.map((finding) => (
+                    <Badge key={finding.id} variant="outline" className="border-amber-500/35 text-[10px] text-amber-100">
+                      {findingDisplayLabel(finding.id, finding.label)}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <p className="text-xs leading-relaxed text-amber-100/75">{repairabilityText(report)}</p>
+              {repairError && (
+                <p className="text-xs leading-relaxed text-red-300">{repairError}</p>
+              )}
+            </div>
+          </div>
+          {report.repairable && (
+            <div className="mt-4 flex justify-stretch sm:justify-end">
+              <Button
+                variant="outline"
+                onClick={() => onRepair(report)}
+                disabled={repairingSkill === report.skillName}
+                className="h-10 w-full border-amber-500/35 px-4 text-sm font-semibold text-amber-100 hover:bg-amber-500/15 sm:w-auto"
+              >
+                <Wrench className="mr-2 size-4" />
+                {repairingSkill === report.skillName ? 'Upgrading...' : 'Upgrade to latest instructions'}
+              </Button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+export function StepDetailDrawer({
+  step,
+  open,
+  onOpenChange,
+  skillDrift,
+  onSkillRepaired,
+}: StepDetailDrawerProps) {
+  const [repairingSkill, setRepairingSkill] = useState<string | null>(null)
+  const [repairError, setRepairError] = useState<string | null>(null)
+  const driftReports = useMemo(() => {
+    const skillNames = stepSkillNames(step)
+    if (skillNames.length === 0 || !skillDrift) return []
+    return skillDrift.reports.filter(report => skillNames.includes(report.skillName))
+  }, [step, skillDrift])
+
+  useEffect(() => {
+    setRepairError(null)
+  }, [open, step?.id])
+
+  async function handleRepair(report: WorkflowSkillDriftReport) {
+    setRepairingSkill(report.skillName)
+    setRepairError(null)
+    try {
+      const res = await fetch(`/api/plugins/workflows/skills/${encodeURIComponent(report.skillName)}/repair`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmKnownOld: true }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { message?: string; status?: string }
+      if (!res.ok || data.status !== 'applied') {
+        setRepairError(data.message || `Repair failed (${res.status})`)
+        return
+      }
+      await onSkillRepaired?.()
+    } catch (err) {
+      setRepairError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setRepairingSkill(null)
+    }
+  }
+
   return (
     <BakinDrawer
       open={open}
@@ -425,6 +627,12 @@ export function StepDetailDrawer({ step, open, onOpenChange }: StepDetailDrawerP
           {step.type === 'output' && <OutputStepDetail step={step as OutputStep} />}
           {step.type === 'parallel' && <ParallelStepDetail step={step as ParallelStep} />}
           {step.type === 'workflow' && <WorkflowStepDetail step={step as NestedWorkflowStep} />}
+          <SkillDriftSection
+            reports={driftReports}
+            repairingSkill={repairingSkill}
+            repairError={repairError}
+            onRepair={handleRepair}
+          />
         </div>
       )}
     </BakinDrawer>

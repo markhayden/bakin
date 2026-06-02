@@ -7,6 +7,8 @@ import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-workflow-detail-${Date.now()}`)
 const routerPush = mock()
+const workflowCanvasCalls: Array<Record<string, unknown>> = []
+const stepDetailDrawerCalls: Array<Record<string, unknown>> = []
 
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
@@ -57,11 +59,17 @@ mock.module('@makinbakin/sdk/components', () => ({
 }))
 
 mock.module('../../../plugins/workflows/components/workflow-canvas', () => ({
-  WorkflowCanvas: () => <div data-testid="workflow-canvas" />,
+  WorkflowCanvas: (props: Record<string, unknown>) => {
+    workflowCanvasCalls.push(props)
+    return <div data-testid="workflow-canvas" data-has-skill-drift={Boolean(props.skillDrift)} />
+  },
 }))
 
 mock.module('../../../plugins/workflows/components/step-detail-drawer', () => ({
-  StepDetailDrawer: () => null,
+  StepDetailDrawer: (props: Record<string, unknown>) => {
+    stepDetailDrawerCalls.push(props)
+    return null
+  },
 }))
 
 mock.module('../../../plugins/workflows/components/workflow-card', () => ({
@@ -100,7 +108,7 @@ function jsonResponse(body: unknown, status = 200): Response {
   })
 }
 
-function setupPluginDefinitionFetch(options: { disabled?: boolean; availabilityStatus?: number } = {}) {
+function setupPluginDefinitionFetch(options: { disabled?: boolean; availabilityStatus?: number; skillDrift?: unknown } = {}) {
   const fetchMock = mock((url: string, init?: RequestInit) => {
     if (url === '/api/plugins/workflows/definitions/video-script' && !init) {
       return Promise.resolve(jsonResponse({
@@ -109,6 +117,7 @@ function setupPluginDefinitionFetch(options: { disabled?: boolean; availabilityS
         source: 'plugin',
         pluginId: 'workflows',
         disabled: options.disabled === true,
+        skillDrift: options.skillDrift,
       }))
     }
     if (url === '/api/plugins/workflows/definitions' && init?.method === 'POST') {
@@ -151,10 +160,14 @@ afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   routerPush.mockClear()
+  workflowCanvasCalls.length = 0
+  stepDetailDrawerCalls.length = 0
 })
 
 beforeEach(() => {
   routerPush.mockClear()
+  workflowCanvasCalls.length = 0
+  stepDetailDrawerCalls.length = 0
 })
 
 describe('WorkflowDetail', () => {
@@ -230,6 +243,34 @@ describe('WorkflowDetail', () => {
     expect(screen.getByText('Disabled')).toBeDefined()
     expect(screen.getByText(/matching and automatic starts skip this workflow/i)).toBeDefined()
     expect((screen.getByRole('button', { name: /^edit$/i }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('surfaces workflow skill drift in the detail header and child components', async () => {
+    const skillDrift = {
+      count: 1,
+      repairableCount: 1,
+      skills: ['generate-image'],
+      byStep: { write: ['generate-image'] },
+      reports: [{
+        skillName: 'generate-image',
+        filePath: '/tmp/generate-image.md',
+        currentSha256: 'old',
+        managedSource: { kind: 'plugin', id: 'images', skillName: 'generate-image' },
+        findings: [],
+        userEdited: false,
+        installedBy: null,
+        repairability: 'safe-managed',
+        repairable: true,
+      }],
+    }
+    setupPluginDefinitionFetch({ skillDrift })
+
+    render(<WorkflowDetail workflowId="video-script" onBack={() => {}} />)
+
+    expect(await screen.findByText(/uses a stale workflow skill/i)).toBeDefined()
+    await waitFor(() => expect(workflowCanvasCalls.length).toBeGreaterThan(0))
+    expect(workflowCanvasCalls.at(-1)?.skillDrift).toEqual(skillDrift)
+    expect(stepDetailDrawerCalls.at(-1)?.skillDrift).toEqual(skillDrift)
   })
 
   it('can re-enable a disabled managed workflow from the detail header', async () => {

@@ -26,7 +26,7 @@ mock.module('@/core/task-store', () => ({}))
 
 interface ReactFlowStubProps {
   children?: ReactNode
-  nodes?: Array<{ id: string; type?: string }>
+  nodes?: Array<{ id: string; type?: string; data?: Record<string, unknown> }>
   edges?: Array<{ id: string; source: string; target: string }>
   nodeTypes?: Record<string, unknown>
   onNodeClick?: (event: unknown, node: { id: string }) => void
@@ -43,6 +43,7 @@ mock.module('@xyflow/react', () => ({
             type="button"
             data-testid={`node-${node.id}`}
             data-node-type={node.type}
+            data-has-skill-drift={Boolean(node.data?.skillDrift)}
             onClick={(event) => onNodeClick?.(event, node)}
           >
             {node.id}
@@ -90,5 +91,90 @@ describe('WorkflowCanvas', () => {
     render(<WorkflowCanvas definition={definition} />)
 
     expect(screen.getByTestId('node-denoise').getAttribute('data-node-type')).toBe('media.noise-gate')
+  })
+
+  it('passes stale skill drift through node data for highlighted steps', () => {
+    const definition: WorkflowDefinition = {
+      name: 'Image workflow',
+      description: 'Uses a generated image skill',
+      version: 1,
+      steps: [{
+        id: 'generate',
+        type: 'agent',
+        label: 'Generate',
+        agent: 'pixel',
+        skill: 'generate-image',
+      }],
+    }
+
+    render(
+      <WorkflowCanvas
+        definition={definition}
+        skillDrift={{
+          count: 1,
+          repairableCount: 0,
+          skills: ['generate-image'],
+          byStep: { generate: ['generate-image'] },
+          reports: [{
+            skillName: 'generate-image',
+            filePath: '/tmp/generate-image.md',
+            currentSha256: 'old',
+            managedSource: { kind: 'plugin', id: 'images', skillName: 'generate-image' },
+            findings: [],
+            userEdited: false,
+            installedBy: null,
+            repairability: 'custom-advisory',
+            repairable: false,
+          }],
+        }}
+      />,
+    )
+
+    expect(screen.getByTestId('node-generate').getAttribute('data-has-skill-drift')).toBe('true')
+  })
+
+  it('passes child stale skill drift through parallel group node data', () => {
+    const definition: WorkflowDefinition = {
+      name: 'Parallel image workflow',
+      description: 'Uses a generated image skill inside a parallel group',
+      version: 1,
+      steps: [{
+        id: 'parallel-work',
+        type: 'parallel',
+        label: 'Parallel Work',
+        steps: [{
+          id: 'generate',
+          type: 'agent',
+          label: 'Generate',
+          agent: 'pixel',
+          skill: 'generate-image',
+        }],
+      }],
+    }
+
+    render(
+      <WorkflowCanvas
+        definition={definition}
+        skillDrift={{
+          count: 1,
+          repairableCount: 0,
+          skills: ['generate-image'],
+          byStep: { generate: ['generate-image'] },
+          reports: [{
+            skillName: 'generate-image',
+            filePath: '/tmp/generate-image.md',
+            currentSha256: 'old',
+            managedSource: { kind: 'plugin', id: 'images', skillName: 'generate-image' },
+            findings: [],
+            userEdited: false,
+            installedBy: null,
+            repairability: 'custom-advisory',
+            repairable: false,
+          }],
+        }}
+      />,
+    )
+
+    expect(screen.getByTestId('node-parallel-work').getAttribute('data-has-skill-drift')).toBe('true')
   })
 })

@@ -1,6 +1,6 @@
 'use client'
 
-import { Workflow, Lock, PauseCircle, GitBranch } from 'lucide-react'
+import { Workflow, Lock, PauseCircle, GitBranch, AlertTriangle } from 'lucide-react'
 import { Badge } from "@makinbakin/sdk/ui"
 import { AgentAvatar } from "@makinbakin/sdk/components"
 import type { WorkflowTemplate, WorkflowStep, AgentStep } from '../types'
@@ -97,6 +97,16 @@ export function WorkflowCard({
             >
               <GitBranch className="size-2.5" />
               shadows default
+            </Badge>
+          )}
+          {template.skillDrift && (
+            <Badge
+              variant="outline"
+              className="text-[10px] gap-1 border-amber-500/40 text-amber-200"
+              title="This workflow references a stale local workflow skill"
+            >
+              <AlertTriangle className="size-2.5" />
+              {template.skillDrift.count === 1 ? 'stale skill' : `${template.skillDrift.count} stale skills`}
             </Badge>
           )}
           {disabled && (

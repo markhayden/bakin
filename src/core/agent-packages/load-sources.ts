@@ -194,6 +194,7 @@ function loadWorkflowSkillsForPackage(
     const skill: SkillDefinition = {
       name: (frontmatter.name as string) || filenameId,
       instructions: body,
+      sourcePath: abs,
     }
     if (frontmatter.output_schema) {
       skill.output_schema = frontmatter.output_schema as Record<string, unknown>

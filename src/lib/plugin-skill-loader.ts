@@ -55,12 +55,14 @@ export function loadPluginSkills(
   for (const file of files) {
     const filenameId = file.replace(/\.md$/, '')
     try {
-      const raw = readFileSync(join(skillsDir, file), 'utf-8')
+      const sourcePath = join(skillsDir, file)
+      const raw = readFileSync(sourcePath, 'utf-8')
       const { frontmatter, body } = parseSkillFile(raw)
 
       const skill: SkillDefinition = {
         name: (frontmatter.name as string) || filenameId,
         instructions: body,
+        sourcePath,
       }
       if (frontmatter.output_schema) {
         skill.output_schema = frontmatter.output_schema as Record<string, unknown>

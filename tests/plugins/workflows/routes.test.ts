@@ -10,12 +10,14 @@
  * `/search` route.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterAll, mock } from 'bun:test'
-import { mkdirSync, rmSync, existsSync } from 'fs'
+import { mkdirSync, rmSync, existsSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import {
   activatePlugin,
+  callRoute,
   callSearchRoute,
+  findRoute,
   type ActivatedPlugin,
 } from '../test-helpers'
 
@@ -73,16 +75,81 @@ mock.module('@/core/task-store', () => ({
 // ─── Plugin import (after mocks) ───────────────────────────────────────────
 
 import workflowsPlugin from '../../../plugins/workflows'
+import { getPluginSkills } from '../../../src/lib/plugin-registry'
+import {
+  hashWorkflowSkillContent,
+  writeWorkflowSkillInstallMarker,
+} from '../../../plugins/workflows/lib/workflow-skill-drift'
 
 // ─── Setup ─────────────────────────────────────────────────────────────────
 
 let activated: ActivatedPlugin
+const skillsDir = join(testDir, 'workflows', 'skills')
+const managedDir = join(testDir, 'managed-workflow-skills')
+
+const currentGenerateImageSkill = `---
+name: Generate Image
+output_schema:
+  type: object
+  required: [assetId]
+---
+
+Return assetId from the images tool.
+`
+
+const staleGenerateImageSkill = `---
+name: Generate Image
+output_schema:
+  type: object
+  required: [image_filename]
+---
+
+Return image_filename and promptAssetFilename after savePromptPacket.
+`
 
 beforeAll(async () => {
   if (!existsSync(testDir)) {
     mkdirSync(testDir, { recursive: true })
   }
   activated = await activatePlugin(workflowsPlugin, testDir)
+  activated.ctx.registerWorkflow({
+    id: 'drift-route-test',
+    name: 'Drift Route Test',
+    description: 'Route fixture for workflow skill drift.',
+    version: 1,
+    steps: [{
+      id: 'gen',
+      type: 'agent',
+      label: 'Generate',
+      agent: 'pixel',
+      skill: 'generate-image',
+    }],
+  })
+  activated.ctx.registerWorkflow({
+    id: 'drift-nested-child',
+    name: 'Drift Nested Child',
+    description: 'Child workflow with a managed skill.',
+    version: 1,
+    steps: [{
+      id: 'nested-gen',
+      type: 'agent',
+      label: 'Nested Generate',
+      agent: 'pixel',
+      skill: 'generate-image',
+    }],
+  })
+  activated.ctx.registerWorkflow({
+    id: 'drift-nested-parent',
+    name: 'Drift Nested Parent',
+    description: 'Parent workflow that expands a child workflow.',
+    version: 1,
+    steps: [{
+      id: 'child-flow',
+      type: 'workflow',
+      label: 'Run Child',
+      workflow_id: 'drift-nested-child',
+    }],
+  })
 })
 
 afterAll(() => {
@@ -93,7 +160,34 @@ afterAll(() => {
 
 beforeEach(() => {
   activated.seedResults([])
+  getPluginSkills().clear()
+  rmSync(skillsDir, { recursive: true, force: true })
+  rmSync(managedDir, { recursive: true, force: true })
+  mkdirSync(skillsDir, { recursive: true })
+  mkdirSync(managedDir, { recursive: true })
 })
+
+function seedManagedGenerateImageSkill(options: { repairable?: boolean } = {}): void {
+  const sourcePath = join(managedDir, 'generate-image.md')
+  const target = join(skillsDir, 'generate-image.md')
+  writeFileSync(sourcePath, currentGenerateImageSkill, 'utf-8')
+  writeFileSync(target, staleGenerateImageSkill, 'utf-8')
+  getPluginSkills().set('generate-image', {
+    name: 'Generate Image',
+    instructions: 'Return assetId from the images tool.',
+    source: 'plugin:images',
+    sourcePath,
+  })
+  if (options.repairable) {
+    writeWorkflowSkillInstallMarker(target, {
+      sourceKind: 'plugin',
+      sourceId: 'images',
+      sourcePath,
+      sha256: hashWorkflowSkillContent(staleGenerateImageSkill),
+      installedAt: '2026-06-02T00:00:00.000Z',
+    })
+  }
+}
 
 // ─── Search Route ──────────────────────────────────────────────────────────
 
@@ -164,5 +258,91 @@ describe('Workflows Plugin — GET /search', () => {
         facets: ['type', 'status'],
       }),
     )
+  })
+})
+
+describe('Workflows Plugin — workflow skill drift routes', () => {
+  it('includes workflow skill drift summaries in the definitions list', async () => {
+    seedManagedGenerateImageSkill()
+    const route = findRoute(activated.routes, 'GET', '/definitions')!
+
+    const { status, body } = await callRoute(route, activated.ctx)
+
+    expect(status).toBe(200)
+    const templates = body.templates as Array<{ filename: string; skillDrift?: any }>
+    const template = templates.find(item => item.filename === 'drift-route-test')
+    expect(template?.skillDrift?.count).toBe(1)
+    expect(template?.skillDrift?.skills).toEqual(['generate-image'])
+    expect(template?.skillDrift?.byStep.gen).toEqual(['generate-image'])
+  })
+
+  it('includes workflow skill drift summaries in definition detail', async () => {
+    seedManagedGenerateImageSkill()
+    const route = findRoute(activated.routes, 'GET', '/definitions/:name')!
+
+    const { status, body } = await callRoute(route, activated.ctx, {
+      path: '/definitions/drift-route-test',
+      searchParams: { name: 'drift-route-test' },
+    })
+
+    expect(status).toBe(200)
+    expect((body.skillDrift as { count: number }).count).toBe(1)
+    expect((body.skillDrift as { byStep: Record<string, string[]> }).byStep.gen).toEqual(['generate-image'])
+  })
+
+  it('includes nested workflow skill drift summaries in parent definition detail', async () => {
+    seedManagedGenerateImageSkill()
+    const route = findRoute(activated.routes, 'GET', '/definitions/:name')!
+
+    const { status, body } = await callRoute(route, activated.ctx, {
+      path: '/definitions/drift-nested-parent',
+      searchParams: { name: 'drift-nested-parent' },
+    })
+
+    expect(status).toBe(200)
+    expect((body.skillDrift as { count: number }).count).toBe(1)
+    expect((body.skillDrift as { byStep: Record<string, string[]> }).byStep['child-flow__nested-gen']).toEqual(['generate-image'])
+  })
+
+  it('repairs a safe stale workflow skill through the direct repair route', async () => {
+    seedManagedGenerateImageSkill({ repairable: true })
+    const repairRoute = findRoute(activated.routes, 'POST', '/skills/:name/repair')!
+    const detailRoute = findRoute(activated.routes, 'GET', '/definitions/:name')!
+
+    const repaired = await callRoute(repairRoute, activated.ctx, {
+      path: '/skills/generate-image/repair',
+    })
+    const detail = await callRoute(detailRoute, activated.ctx, {
+      path: '/definitions/drift-route-test',
+      searchParams: { name: 'drift-route-test' },
+    })
+
+    expect(repaired.status).toBe(200)
+    expect(repaired.body.status).toBe('applied')
+    expect(detail.status).toBe(200)
+    expect(detail.body.skillDrift).toBeUndefined()
+  })
+
+  it('returns 500 when direct repair cannot write the replacement file', async () => {
+    seedManagedGenerateImageSkill({ repairable: true })
+    const repairRoute = findRoute(activated.routes, 'POST', '/skills/:name/repair')!
+    const originalDateNow = Date.now
+    const fixedNow = 1780431742000
+    const target = join(skillsDir, 'generate-image.md')
+    const collidingTempPath = `${target}.repair-${process.pid}-${fixedNow}.tmp`
+    Date.now = () => fixedNow
+    mkdirSync(collidingTempPath, { recursive: true })
+
+    try {
+      const repaired = await callRoute(repairRoute, activated.ctx, {
+        path: '/skills/generate-image/repair',
+      })
+
+      expect(repaired.status).toBe(500)
+      expect(repaired.body.status).toBe('failed')
+    } finally {
+      Date.now = originalDateNow
+      rmSync(collidingTempPath, { recursive: true, force: true })
+    }
   })
 })
