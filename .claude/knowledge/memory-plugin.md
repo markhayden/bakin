@@ -179,8 +179,12 @@ plugins/memory/
 
 ## Invariants
 
-- **Bakin reads, never writes runtime memory.** Runtime memory comes through
-  `ctx.runtime.memory`; Bakin does not mutate provider memory paths.
+- **Bakin reads runtime memory + dispatches cleanup tasks; it never writes
+  runtime-memory content.** Runtime memory comes through `ctx.runtime.memory`.
+  The cleanup feature (below) makes content changes by dispatching a task to the
+  owning agent — the agent edits its own files. The only Bakin-side write is the
+  agent-package `.userEdited` projection sentinel (Bakin's own projection layer,
+  not runtime-memory content).
 - **One content type, one table.** `bakin_memory`. The contract test (`getTableForPlugin`) enforces this.
 - **The runtime adapter is the only runtime-home reader.** All other modules
   (indexer, parsers, routes) must go through typed runtime memory surfaces.
@@ -190,6 +194,37 @@ plugins/memory/
 - **Tests mock everything.** `getContentDir`, logger, watcher, runtime adapters,
   vault/settings shims as needed, and any adapter-private home resolver touched
   by the test.
+
+## Memory cleanup (find → dispatch → verify)
+
+Stale content (e.g. an old product name) that lives in the **source** memory
+files keeps steering agents because the harness re-reads those files every
+session — and Bakin's index is just a read-only derived copy, so deleting an
+index row changes nothing for the agent. The cleanup feature fixes the source
+without Bakin ever writing runtime-memory content:
+
+1. **Find** (`POST /cleanup/find` `{term, agent?}`) — queries every tier with the
+   match-all/full-text strategy, then **exact-substring-filters `content`** (so
+   semantic ranking can't leak false hits), groups true occurrences by agent, and
+   labels each hit **actionable** (`durable`/`daily_note`/`dream` — agent-editable
+   markdown) or **informational** (`session`/`turn`/`checkpoint`/`audit` —
+   append-only / self-healing, left alone). Actionable durable hits whose source
+   carries an `.installedBy` sidecar are flagged `managed`.
+2. **Dispatch** (`POST /cleanup/dispatch` `{term, action:'replace'|'remove',
+   replacement?, agents[], instruction?}`) — re-finds each agent server-side,
+   composes a task from the actionable hits (`composeTask`), and creates **one task
+   per agent** via `ctx.tasks.create` so the agent edits its own files. Agents with
+   no actionable hits are skipped. For `managed` targets it sets the `.userEdited`
+   sentinel (`@bakin/core/agent-packages/markers`) so the edit survives a later
+   `agents update --refresh-template`. Each dispatch audits `memory.cleanup_dispatched`.
+3. **Verify** (`POST /cleanup/verify` `{term, agents[]}`) — re-runs the find per
+   agent; `clean` keys on actionable-remaining (informational tiers don't count).
+
+Pure core in `lib/cleanup.ts` (`contentMatches`, `matchingSnippets`, `tierLabel`,
+`groupByAgent`, `composeTask`); routes in `lib/routes/cleanup.ts`; UI in
+`components/memory-cleanup.tsx` (reached via the `?mode=cleanup` header toggle).
+**No `bakin_memory` schema change, no new table** — so the single-table decision
+(#104) stands unchanged. No MCP tools in v1 (operator-initiated).
 
 ## Settings
 
