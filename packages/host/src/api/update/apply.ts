@@ -6,12 +6,23 @@
  */
 import { APP_VERSION } from '@bakin/core/constants'
 import { getSelfUpdateStatus, selfUpdate } from '@/core/self-update'
+import { scheduleServerRestart } from '@/core/server-restart'
 
-export async function post(_req: Request, _url: URL): Promise<Response> {
+interface ApplyUpdateDeps {
+  getStatus?: typeof getSelfUpdateStatus
+  runSelfUpdate?: typeof selfUpdate
+  scheduleRestart?: typeof scheduleServerRestart
+}
+
+export async function post(_req: Request, _url: URL, deps: ApplyUpdateDeps = {}): Promise<Response> {
   void _req
   void _url
 
-  const status = await getSelfUpdateStatus({ currentVersion: APP_VERSION })
+  const getStatus = deps.getStatus ?? getSelfUpdateStatus
+  const runSelfUpdate = deps.runSelfUpdate ?? selfUpdate
+  const scheduleRestart = deps.scheduleRestart ?? scheduleServerRestart
+
+  const status = await getStatus({ currentVersion: APP_VERSION })
   if (!status.supported) {
     return Response.json({
       ok: false,
@@ -22,7 +33,7 @@ export async function post(_req: Request, _url: URL): Promise<Response> {
   }
 
   const events: Array<{ level: 'info' | 'error'; message: string }> = []
-  const exitCode = await selfUpdate({
+  const exitCode = await runSelfUpdate({
     log: (message) => events.push({ level: 'info', message }),
     error: (message) => events.push({ level: 'error', message }),
   })
@@ -36,9 +47,15 @@ export async function post(_req: Request, _url: URL): Promise<Response> {
     }, { status: 500 })
   }
 
+  const restart = scheduleRestart()
+  const message = restart.ok
+    ? 'Bakin update completed. Restarting Bakin now...'
+    : 'Bakin update completed, but automatic restart could not be scheduled. Restart Bakin manually to use the new version.'
+
   return Response.json({
     ok: true,
-    message: events.at(-1)?.message ?? 'Bakin update completed. Restart Bakin to use the new version.',
+    message,
+    restart,
     events,
   })
 }

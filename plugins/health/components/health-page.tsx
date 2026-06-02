@@ -53,6 +53,7 @@ interface PluginInfo {
   id: string
   name: string
   version: string
+  latestVersion?: string | null
   description: string
   source: 'built-in' | 'user'
   routes: number
@@ -75,6 +76,7 @@ interface PluginManifestEntry {
   id: string
   name: string
   version: string
+  latestVersion?: string | null
   source: 'core' | 'github' | 'local'
   installed: PluginInfo['installed']
   upgradeAvailable: boolean
@@ -552,6 +554,7 @@ export function HealthPage() {
         version: manifest.version ?? plugin.version,
         source: manifest.source === 'core' ? 'built-in' as const : 'user' as const,
         installed: manifest.installed,
+        latestVersion: manifest.latestVersion,
         upgradeAvailable: manifest.upgradeAvailable,
         staleHintDays: manifest.staleHintDays,
       }
@@ -943,9 +946,19 @@ export function HealthPage() {
                   <span className="w-32 text-right">Status</span>
                 </div>
                 {filteredPlugins.map((p) => (
-                  <div key={p.id} className="flex items-center text-sm">
+                  <div
+                    key={p.id}
+                    className={`flex items-center rounded-md px-2 py-1 text-sm -mx-2 ${p.upgradeAvailable ? 'border border-info/20 bg-info/5' : ''}`}
+                  >
                     <div className="flex-1 min-w-0">
-                      <span className="font-medium">{p.name}</span>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="font-medium">{p.name}</span>
+                        {p.upgradeAvailable && (
+                          <Badge className="shrink-0 text-[10px] px-1.5 bg-info/10 text-info border-info/20">
+                            Update available
+                          </Badge>
+                        )}
+                      </div>
                       {p.description && (
                         <p className="text-[11px] text-muted-foreground truncate">{p.description}</p>
                       )}
@@ -961,19 +974,15 @@ export function HealthPage() {
                       {p.source === 'built-in' ? (
                         <span className="text-[11px] text-muted-foreground">Core</span>
                       ) : p.upgradeAvailable ? (
-                        <span className="inline-flex items-center justify-end gap-1.5">
-                          <Badge className="text-[10px] px-1.5 bg-warning/10 text-warning border-warning/20">
-                            Update available
-                          </Badge>
-                          <Button
-                            size="xs"
-                            variant="warning"
-                            aria-label={`Upgrade ${p.name}`}
-                            onClick={() => openPluginUpgrade(p)}
-                          >
-                            Upgrade
-                          </Button>
-                        </span>
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          className="border-info/30 bg-info/10 text-info hover:bg-info/20"
+                          aria-label={`Upgrade ${p.name}`}
+                          onClick={() => openPluginUpgrade(p)}
+                        >
+                          Upgrade
+                        </Button>
                       ) : (
                         <span className="text-[11px] text-muted-foreground">Current</span>
                       )}
@@ -1004,12 +1013,26 @@ export function HealthPage() {
               Bakin will update this user plugin from its recorded source and reactivate it after the upgrade completes.
             </DialogDescription>
           </DialogHeader>
-          {pluginUpgradeTarget?.installed?.commitSha && (
-            <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs font-mono text-muted-foreground">
-              <div>Current commit: {pluginUpgradeTarget.installed.commitSha}</div>
-              {pluginUpgradeTarget.installed.remoteHeadSha && (
-                <div>Available commit: {pluginUpgradeTarget.installed.remoteHeadSha}</div>
-              )}
+          {pluginUpgradeTarget && (
+            <div className="rounded-md border border-border bg-muted/30 px-3 py-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Current version</p>
+                  <p className="mt-1 font-mono text-lg font-semibold text-foreground">{pluginUpgradeTarget.version}</p>
+                  <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                    commit {pluginUpgradeTarget.installed?.commitSha ?? 'unknown'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Available version</p>
+                  <p className="mt-1 font-mono text-lg font-semibold text-info">
+                    {pluginUpgradeTarget.latestVersion ?? 'latest'}
+                  </p>
+                  <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                    commit {pluginUpgradeTarget.installed?.remoteHeadSha ?? 'unknown'}
+                  </p>
+                </div>
+              </div>
             </div>
           )}
           {pluginConsentPermissions && (

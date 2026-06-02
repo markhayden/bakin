@@ -86,6 +86,15 @@ describe('bakin runtime binary dispatch', () => {
     expect(errorOutput()).toBe('')
   })
 
+  it('starts the server for the hidden restart child argv shape', async () => {
+    const { dispatchCli } = await import('../../src/core/cli')
+
+    const result = await dispatchCli(['bakin', '__bakin-restart-child', '999999999'])
+
+    expect(result).toEqual({ startServer: true, exitCode: 0 })
+    expect(errorOutput()).toBe('')
+  })
+
   it('renders binary update failures with the shared TUI when stdout is a TTY', async () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 500 } as Response)
     const { dispatchCli } = await import('../../src/core/cli')

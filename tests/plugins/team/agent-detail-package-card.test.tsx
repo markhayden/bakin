@@ -18,6 +18,13 @@ import { tmpdir } from 'os'
 import { rmSync } from 'fs'
 
 const testDir = join(tmpdir(), `bakin-test-package-card-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+const navigateMock = mock()
+
+mock.module('@tanstack/react-router', () => ({
+  useNavigate: () => navigateMock,
+  useLocation: () => ({ pathname: '/team/pixel', searchStr: '', search: {} }),
+  useParams: () => ({ agentId: 'pixel' }),
+}))
 
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
@@ -112,6 +119,7 @@ afterEach(() => {
 })
 
 beforeEach(() => {
+  navigateMock.mockClear()
   mockProfileFetch()
 })
 
@@ -325,10 +333,22 @@ describe('PackageCard — update and remove actions', () => {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, result: { changed: true } }) } as Response)
       }
       if (u === '/api/agent-packages/pixel' && init?.method === 'DELETE') {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, result: { removed: ['pixel'] } }) } as Response)
+        const body = typeof init.body === 'string' ? JSON.parse(init.body) as { deleteAgent?: boolean } : {}
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            ok: true,
+            result: body.deleteAgent
+              ? { removed: ['pixel'], deletedAgent: true }
+              : { removed: ['pixel'] },
+          }),
+        } as Response)
       }
       if (u === '/api/agent-packages?check=1') {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, agents: [UPDATE_ROW] }) } as Response)
+      }
+      if (u === '/api/plugins/team/') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ agents: [], displaySettings: {}, teams: [], mainAgentId: 'main' }) } as Response)
       }
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) } as Response)
     })
@@ -336,16 +356,16 @@ describe('PackageCard — update and remove actions', () => {
     return fetchMock
   }
 
-  it('opens update modal and sends maintain-changes payload', async () => {
+  it('opens update modal and sends update-package payload', async () => {
     const fetchMock = setupActionFetch()
 
     render(<PackageCardBody agentId="pixel" packageState={UPDATE_ROW} />)
 
     expect(screen.getByText('update available')).toBeDefined()
     fireEvent.click(screen.getByRole('button', { name: 'Upgrade agent package' }))
-    expect(screen.getByRole('heading', { name: 'Upgrade agent package' })).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'Upgrade pixel' })).toBeDefined()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Maintain changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Update package' }))
 
     await waitFor(() => {
       expect(fetchMock.mock.calls.some((call) => (
@@ -362,9 +382,9 @@ describe('PackageCard — update and remove actions', () => {
     render(<PackageCardBody agentId="pixel" packageState={UPDATE_ROW} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete or orphan agent package' }))
-    expect(screen.getByRole('heading', { name: 'Delete or orphan agent' })).toBeDefined()
+    expect(screen.getByRole('heading', { name: 'Remove agent package' })).toBeDefined()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Orphan' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Orphan package' }))
 
     await waitFor(() => {
       expect(fetchMock.mock.calls.some((call) => (
@@ -372,6 +392,27 @@ describe('PackageCard — update and remove actions', () => {
         && (call[1] as RequestInit | undefined)?.method === 'DELETE'
         && String((call[1] as RequestInit | undefined)?.body).includes('"deleteAgent":false')
       ))).toBe(true)
+    })
+  })
+
+  it('routes back to Team after full delete succeeds', async () => {
+    const fetchMock = setupActionFetch()
+
+    render(<PackageCardBody agentId="pixel" packageState={UPDATE_ROW} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Delete or orphan agent package' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete agent' }))
+
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.some((call) => (
+        call[0] === '/api/agent-packages/pixel'
+        && (call[1] as RequestInit | undefined)?.method === 'DELETE'
+        && String((call[1] as RequestInit | undefined)?.body).includes('"deleteAgent":true')
+      ))).toBe(true)
+      expect(navigateMock.mock.calls.some((call) => {
+        const arg = call[0] as { to?: string } | string
+        return typeof arg === 'string' ? arg === '/team' : arg?.to === '/team'
+      })).toBe(true)
     })
   })
 })

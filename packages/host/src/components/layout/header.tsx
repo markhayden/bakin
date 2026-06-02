@@ -49,6 +49,7 @@ export function Header() {
   const [updateError, setUpdateError] = useState<string | null>(null)
   const [updateMessage, setUpdateMessage] = useState<string | null>(null)
   const { collapsed, toggle } = useSidebarContext()
+  const displayUpdateStatus = updateStatus
   const showUpdateBanner = Boolean(updateStatus?.supported && updateStatus.updateAvailable)
 
   useEffect(() => {
@@ -88,7 +89,26 @@ export function Header() {
       if (!res.ok || body?.ok === false) {
         throw new Error(typeof body?.error === 'string' ? body.error : 'Bakin update failed.')
       }
-      setUpdateMessage(typeof body?.message === 'string' ? body.message : 'Bakin update completed. Restart Bakin to use the new version.')
+      const message = typeof body?.message === 'string' ? body.message : 'Bakin update completed. Restarting Bakin now...'
+      setUpdateMessage(message)
+      if (body?.restart?.ok === false) return
+      setTimeout(() => {
+        let sawRestartGap = false
+        const poll = setInterval(async () => {
+          try {
+            const versionRes = await fetch('/api/version', { cache: 'no-store' })
+            if (!versionRes.ok) {
+              sawRestartGap = true
+              return
+            }
+            if (!sawRestartGap) return
+            clearInterval(poll)
+            window.location.reload()
+          } catch {
+            sawRestartGap = true
+          }
+        }, 1000)
+      }, 2000)
     } catch (err) {
       setUpdateError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -101,16 +121,16 @@ export function Header() {
       {showUpdateBanner && (
         <div
           role="status"
-          className="fixed top-0 left-0 right-0 z-50 flex h-9 items-center gap-3 border-b border-warning/30 bg-warning/10 px-4 text-xs text-foreground"
+          className="fixed top-0 left-0 right-0 z-50 flex h-9 items-center gap-3 border-b border-info/30 bg-info/10 px-4 text-xs text-foreground"
         >
-          <Download className="size-3.5 shrink-0 text-warning" />
+          <Download className="size-3.5 shrink-0 text-info" />
           <span className="min-w-0 truncate">
-            New Bakin version available: v{updateStatus?.currentVersion} to v{updateStatus?.latestVersion ?? updateStatus?.latestTag}
+            New Bakin version available: v{displayUpdateStatus?.currentVersion} to v{displayUpdateStatus?.latestVersion ?? displayUpdateStatus?.latestTag}
           </span>
           <Button
             type="button"
             size="xs"
-            variant="warning"
+            variant="info"
             className="ml-auto"
             onClick={() => setUpdateDialogOpen(true)}
           >
@@ -167,7 +187,7 @@ export function Header() {
           <DialogHeader>
             <DialogTitle>Update Bakin</DialogTitle>
             <DialogDescription>
-              Bakin will replace the installed binary with v{updateStatus?.latestVersion ?? updateStatus?.latestTag}. Restart Bakin after the update to run the new version.
+              Bakin will replace the installed binary with v{displayUpdateStatus?.latestVersion ?? displayUpdateStatus?.latestTag} and restart automatically.
             </DialogDescription>
           </DialogHeader>
           {updateError && (
