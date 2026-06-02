@@ -123,6 +123,11 @@ const eslintConfig = defineConfig([
     "plugins/**/dist/**",
     "dist/**",
     "bun-env.d.ts",
+    // Disposable dockerized-rig homes (gitignored). They hold a full OpenClaw
+    // install + Codex-downloaded third-party plugin sources; linting them is
+    // meaningless and breaks local `bun run lint`. CI never has these dirs.
+    "dev/openclaw-home/**",
+    "dev/bakin-instances/**",
   ]),
   {
     files: [

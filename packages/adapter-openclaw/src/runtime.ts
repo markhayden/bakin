@@ -30,6 +30,7 @@ import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } fro
 import { generateDirectImage, isDirectImageProvider, resolveProviderApiKeySource } from '@bakin/core/media'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
+  agentListFrom,
   findAgentById,
   getAgentList,
   materializeImplicitMainAgent,
@@ -1013,7 +1014,15 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   config = {
-    get: async <T = Record<string, unknown>>() => (readOpenClawConfig() ?? {}) as T,
+    get: async <T = Record<string, unknown>>() => {
+      // Populate agents.list (synthesizing an implicit `main` for minimal
+      // configs) so consumers like the models plugin can rely on it.
+      const config = readOpenClawConfig()
+      if (!config) return {} as T
+      const list = config.agents?.list
+      if (Array.isArray(list) && list.length > 0) return config as T
+      return { ...config, agents: { ...config.agents, list: agentListFrom(config) } } as T
+    },
     update: async (patch: Record<string, unknown>): Promise<void> => {
       const config = readOpenClawConfig() ?? {}
       writeOpenClawConfig(deepMerge(config as Record<string, unknown>, patch))
@@ -1190,6 +1199,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       displayName: 'Bakin',
       clientMode: 'backend',
       scopes: ['operator.read', 'operator.write'],
+      useDeviceAuth: true,
       label: 'OpenClaw chat gateway',
     })
     return this.chatGatewayClient

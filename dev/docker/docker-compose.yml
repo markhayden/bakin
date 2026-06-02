@@ -6,17 +6,32 @@
 # CLI commands via the shim:
 #   ./dev/docker/openclaw-shim.sh cron list --all --json
 
+# All services build the same custom image (openclaw + bun + mcporter) — see Dockerfile.
+x-bakin-build: &bakin-build
+  context: .
+  dockerfile: Dockerfile
+  args:
+    OPENCLAW_IMAGE_TAG: ${OPENCLAW_IMAGE_TAG:-latest}
+
 services:
   openclaw-gateway:
-    image: ghcr.io/openclaw/openclaw:latest
+    build: *bakin-build
     container_name: bakin-openclaw-gateway
+    # KEEP the 127.0.0.1: prefix. The in-container gateway binds `lan` (so the
+    # host can reach it through the forward) with a static dev token — dropping
+    # the loopback prefix would expose operator.write on the LAN/Tailscale iface.
     ports:
       - "127.0.0.1:18789:18789"
     volumes:
       - ../openclaw-home:/home/node/.openclaw
-    env_file: .env
     environment:
-      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-dev-token}
+      # Codex provider reads ChatGPT auth from CODEX_HOME/auth.json. Keep it inside
+      # the mounted home so `codex login` (run separately) and this gateway's
+      # app-server share the same credential, and it persists until `reset`.
+      - CODEX_HOME=/home/node/.openclaw/codex
+    # The `instance` rig configures the gateway entirely through openclaw.json
+    # (auth token, model, mcp). No env_file: a stale OPENCLAW_GATEWAY_TOKEN there
+    # would override gateway.auth.token and break the loopback CLI.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -28,10 +43,36 @@ services:
     restart: unless-stopped
 
   openclaw-cli:
-    image: ghcr.io/openclaw/openclaw:latest
+    build: *bakin-build
     network_mode: "service:openclaw-gateway"
     volumes:
       - ../openclaw-home:/home/node/.openclaw
-    env_file: .env
+    environment:
+      - CODEX_HOME=/home/node/.openclaw/codex
     entrypoint: ["node", "dist/index.js"]
     profiles: ["cli"]
+
+  # Full-sandbox: OpenClaw gateway + Bakin (repo mounted at /bakin) in one
+  # container, Bakin run via `docker exec` (instance shell / run / --preconfigure).
+  sandbox:
+    build: *bakin-build
+    container_name: bakin-openclaw-sandbox
+    # KEEP the 127.0.0.1: prefixes — see the gateway service above (static dev
+    # token + lan-bound gateway must stay loopback-scoped).
+    ports:
+      - "127.0.0.1:3737:3737"    # Bakin UI
+      - "127.0.0.1:18789:18789"  # OpenClaw gateway
+    volumes:
+      - ../openclaw-home:/home/node/.openclaw
+      - ../..:/bakin
+    environment:
+      - CODEX_HOME=/home/node/.openclaw/codex
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:18789/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    profiles: ["sandbox"]

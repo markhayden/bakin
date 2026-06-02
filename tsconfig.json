@@ -55,5 +55,5 @@
     "**/*.tsx",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "packages/host/dist", "plugins/**/dist"]
+  "exclude": ["node_modules", "packages/host/dist", "plugins/**/dist", "dev/openclaw-home", "dev/bakin-instances"]
 }

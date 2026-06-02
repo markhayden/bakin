@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { readOpenClawConfig, resetOpenClawConfigCache } from '../../packages/adapter-openclaw/src/config'
+import { agentListFrom, readOpenClawConfig, resetOpenClawConfigCache } from '../../packages/adapter-openclaw/src/config'
 
 describe('OpenClaw config cache', () => {
   const originalOpenClawHome = process.env.OPENCLAW_HOME
@@ -39,5 +39,30 @@ describe('OpenClaw config cache', () => {
 
     process.env.OPENCLAW_HOME = second
     expect(readOpenClawConfig()?.agents?.list?.[0]?.identity?.name).toBe('Second')
+  })
+})
+
+describe('agentListFrom', () => {
+  const originalOpenClawHome = process.env.OPENCLAW_HOME
+  afterEach(() => {
+    if (originalOpenClawHome === undefined) delete process.env.OPENCLAW_HOME
+    else process.env.OPENCLAW_HOME = originalOpenClawHome
+  })
+
+  it('returns the declared agent list when present', () => {
+    const list = agentListFrom({ agents: { list: [{ id: 'main' }, { id: 'pixel' }] } })
+    expect(list.map((a) => a.id)).toEqual(['main', 'pixel'])
+  })
+
+  it('synthesizes an implicit main agent when only defaults exist (minimal config)', () => {
+    process.env.OPENCLAW_HOME = join(tmpdir(), 'bakin-agentlist-test')
+    const list = agentListFrom({ agents: { defaults: { model: { primary: 'openai/gpt-5.5' }, workspace: '/w' } } })
+    expect(list).toHaveLength(1)
+    expect(list[0].id).toBe('main')
+    expect((list[0].model as { primary?: string } | undefined)?.primary).toBe('openai/gpt-5.5')
+  })
+
+  it('returns an empty list for a null config', () => {
+    expect(agentListFrom(null)).toEqual([])
   })
 })

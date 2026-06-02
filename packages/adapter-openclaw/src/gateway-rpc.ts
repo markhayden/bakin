@@ -1,6 +1,8 @@
 import { randomUUID } from 'crypto'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 
+import { buildDeviceConnectFields, loadDeviceAuth } from './device-auth'
+
 const GATEWAY_MIN_PROTOCOL_VERSION = 1
 const GATEWAY_MAX_PROTOCOL_VERSION = 10
 const DEFAULT_REQUEST_TIMEOUT_MS = 10000
@@ -18,6 +20,8 @@ export interface OpenClawGatewayRpcClientOptions {
   scopes: string[]
   role?: string
   label?: string
+  /** Present the home device identity on connect (required for operator.write / dispatch). */
+  useDeviceAuth?: boolean
 }
 
 export interface OpenClawGatewayEventFrame {
@@ -63,6 +67,7 @@ export class OpenClawGatewayRpcClient {
   private stopped = false
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private connectSent = false
+  private connectNonce: string | null = null
 
   constructor(private readonly opts: OpenClawGatewayRpcClientOptions) {}
 
@@ -160,7 +165,9 @@ export class OpenClawGatewayRpcClient {
     if (this.connectSent) return
     this.connectSent = true
     const token = this.opts.token()
-    this.sendRequest('connect', {
+    const role = this.opts.role ?? 'operator'
+    const auth: Record<string, unknown> = token ? { token } : {}
+    const params: Record<string, unknown> = {
       minProtocol: GATEWAY_MIN_PROTOCOL_VERSION,
       maxProtocol: GATEWAY_MAX_PROTOCOL_VERSION,
       client: {
@@ -170,10 +177,34 @@ export class OpenClawGatewayRpcClient {
         platform: process.platform,
         mode: this.opts.clientMode,
       },
-      role: this.opts.role ?? 'operator',
+      role,
       scopes: this.opts.scopes,
-      ...(token ? { auth: { token } } : {}),
-    }, { timeoutMs: CONNECT_TIMEOUT_MS, expectFinal: false })
+    }
+
+    // Device identity is required for elevated scopes (operator.write / dispatch).
+    // Sign the challenge nonce with the home device key; gateway grants the
+    // device's approved scopes. No-op when device auth isn't enabled/available.
+    if (this.opts.useDeviceAuth && this.connectNonce) {
+      const info = loadDeviceAuth()
+      if (info) {
+        const fields = buildDeviceConnectFields(info, {
+          clientId: this.opts.clientId,
+          clientMode: this.opts.clientMode,
+          role,
+          scopes: this.opts.scopes,
+          nonce: this.connectNonce,
+          platform: process.platform,
+          gatewayToken: token,
+        })
+        params.device = fields.device
+        if (fields.deviceToken) auth.deviceToken = fields.deviceToken
+      } else {
+        this.opts.logger.warn(`${this.label()} useDeviceAuth set but no device identity found`)
+      }
+    }
+    if (Object.keys(auth).length > 0) params.auth = auth
+
+    this.sendRequest('connect', params, { timeoutMs: CONNECT_TIMEOUT_MS, expectFinal: false })
       .then(() => {
         const state = this.connectState
         if (!state) return
@@ -232,6 +263,7 @@ export class OpenClawGatewayRpcClient {
         this.ws?.close()
         return
       }
+      this.connectNonce = nonce
       this.sendConnect()
       return
     }

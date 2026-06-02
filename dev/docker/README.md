@@ -1,128 +1,127 @@
-# Docker Dev Environment
+# Dockerized OpenClaw dev rig
 
-Run OpenClaw in a Docker container so it's never exposed on your host network. Bakin runs natively on your Mac with full hot reload.
+One command spins up a fresh, fully-configured **OpenClaw in Docker** so you can
+develop Bakin on this machine without contaminating your host `~/.openclaw`, and
+exercise onboarding + the full agent-orchestration loop against a clean slate.
 
-This is contributor/dev setup. End-user install and operation live in the
+Contributor/dev setup. End-user install lives in the
 [public docs](https://makinbakin.com/docs/start/install/).
+
+Driven by `bun run instance …` (`scripts/instance.ts`). All state lives under
+the gitignored `dev/openclaw-home/` + `dev/bakin-instances/`.
 
 ## Prerequisites
 
 - Docker Desktop (or OrbStack)
 - Bun >= 1.2.0
+- **1Password CLI (`op`)** + a service-account token. Put it in the gitignored
+  `dev/docker/.env` (the rig auto-loads it):
+  ```
+  OP_SERVICE_ACCOUNT_TOKEN=ops_…
+  ```
+- 1Password items the rig resolves (references live in `dev/docker/secrets.op.env`):
+  - `brave-search` (required) — the one default tool
+  - `discord-bot-token` / `discord-guild-id` / `discord-user-id-…` (optional)
 
-## First-Time Setup
+Codex is **not** a stored secret — each fresh instance mints its own via a
+browser OAuth flow.
 
-```bash
-# 1. Install dependencies
-bun install
-
-# 2. Create your .env and set your LLM provider
-cp dev/docker/.env.example dev/docker/.env
-# Edit dev/docker/.env — set LLM_PROVIDER and the matching API key (see below)
-
-# 3. Run setup (pulls image, starts gateway, configures auth)
-./cmd/setup
-# For Codex: walks you through OAuth in your browser
-# For OpenAI/Anthropic: injects the API key automatically
-
-# 4. Start Bakin
-./cmd/start
-```
-
-Open http://localhost:3737 — that's Bakin.
-Open http://127.0.0.1:18789 — that's the OpenClaw dashboard (use gateway token from `.env` to connect).
-
-## Daily Workflow
+## Quickstart
 
 ```bash
-./cmd/start               # Start OpenClaw container + Bakin
-# Ctrl+C to stop Bakin
-./cmd/stop                # Stop OpenClaw container
+bun run build:plugins && bun run build:host   # first time only
+bun run instance up                            # provision OpenClaw (codex OAuth on first/fresh run)
+bun run instance dev                           # run Bakin → http://localhost:3737
 ```
 
-## LLM Provider Options
+- **Bakin UI** → http://localhost:3737
+- **OpenClaw dashboard** → http://127.0.0.1:18789
 
-Set `LLM_PROVIDER` in `dev/docker/.env`:
+`instance up` brings up a configured OpenClaw container — fresh Codex OAuth,
+brave-search (from 1Password), Discord (if its token is in the template), a
+pre-approved gateway device (for dispatch), and Bakin's MCP tools wired in.
+`instance dev` onboards the home if needed and runs Bakin with hot reload.
 
-| `LLM_PROVIDER` | Key needed | Model | Notes |
-|-----------------|------------|-------|-------|
-| `codex` (default) | *(none — OAuth)* | `openai-codex/gpt-5.4` | Uses ChatGPT Plus/Pro subscription. Setup runs OAuth flow automatically. |
-| `openai` | `OPENAI_API_KEY` | `openai/gpt-5.4` | Direct API access, requires credits on platform.openai.com |
-| `anthropic` | `ANTHROPIC_API_KEY` | `anthropic/claude-sonnet-4-20250514` | Claude models |
+## Modes
 
-Setup validates the right key is present and sets the default model automatically.
+The OpenClaw container is identical across modes; they differ in where Bakin runs.
 
-## All Dev Modes
+| Mode | Bakin runs | Best for |
+|------|-----------|----------|
+| `native` (default) | on your Mac (real `~/.bakin`) | everyday hot-reload dev |
+| `isolated` | on your Mac, throwaway `BAKIN_HOME` under `dev/` | replaying onboarding cleanly |
+| `sandbox` | inside the container (`--source repo`/`installed`) | clean-box onboarding tests |
 
-| Command | OpenClaw | Best for |
-|---------|----------|----------|
-| `bun run dev:docker` | Containerized (real) | Integration testing, agent work |
-| `bun run dev:mock` | Imitation Crab (mock) | UI development, offline, zero API cost |
-| `bun run dev` | Native install | Production-like (requires OpenClaw installed) |
+```bash
+bun run instance up --mode isolated
+bun run instance dev --mode isolated
+```
 
 ## Commands
 
+```
+instance up [--mode …] [--fresh] [--source repo|installed] [--preconfigure]
+instance dev [--mode …]          # run Bakin → :3737 (onboards if needed)
+instance run -- <bakin args>     # Bakin CLI in-context
+instance shell [--mode …]        # subshell with the instance env (sandbox: into the container)
+instance status | env
+instance down                    # stop containers (state preserved)
+instance reset [--mode …]        # stop + wipe state (fresh next up)
+```
+
+OpenClaw CLI: `./dev/docker/openclaw-shim.sh <args>` (e.g. `mcp list`, `models status`).
+
+## Installing agent packages
+
 ```bash
-./cmd/setup               # First-time setup
-./cmd/start               # Start OpenClaw + Bakin
-./cmd/stop                # Stop OpenClaw
-./cmd/restart             # Restart OpenClaw + Bakin
-./cmd/wipe                # Full reset (wipes state, restores auth from backup)
-./cmd/logs                # Tail gateway logs (./cmd/logs 100 for more lines)
+bun run instance run --mode isolated -- agents install ../bakin-bits-official/agents/pixel
 ```
 
-Bun scripts still work too (`bun run docker:setup`, `bun run dev:docker`, etc.).
+The shim translates the host openclaw-home path → the container path, so the
+agent workspace lands correctly inside the container.
 
-## How It Works
+## Cross-agent dispatch (how it works)
 
-```
-Host (your Mac)
-  Bakin (native, port 3737)
-    ├── HTTP → localhost:18789 ──→ Docker container
-    ├── CLI  → openclaw-shim.sh ──→ docker compose run
-    └── FS   → dev/openclaw-home/ ←→ container bind mount
+Bakin (the operator) dispatches to agents through the gateway, which requires
+the `operator.write` scope. The rig wires this automatically:
 
-Docker container (bakin-openclaw-gateway)
-  OpenClaw gateway (:18789, bound to 127.0.0.1 only)
-  /home/node/.openclaw/ (shared volume)
-```
+1. **Device identity** — Bakin's gateway client signs the connect challenge with
+   a device key (`adapter-openclaw/device-auth.ts`). Without it the gateway
+   strips `operator.write`.
+2. **Pre-approval** — `instance up` writes a pre-approved pairing record into the
+   disposable home (`device-approve.ts`), beating the operator-pairing bootstrap.
+3. **`plugins.allow`** — set when installing the Discord plugin, so `agents add`
+   doesn't fall back to writing a host workspace path that breaks in-container.
 
-- **HTTP**: Gateway port published to `127.0.0.1:18789` (not exposed to network)
-- **CLI**: A shim script (`dev/docker/openclaw-shim.sh`) routes `execFile('openclaw', ...)` calls into the container via `docker compose run`
-- **Filesystem**: `dev/openclaw-home/` is bind-mounted into the container. Both Bakin and OpenClaw read/write the same files.
+Net: ask Penelope in Discord to "create a Bakin task for Pixel" and it dispatches
+through the task board to Pixel.
 
-## Discord Bot (optional)
+## Teardown
 
-One-time setup:
-
-1. Create a bot at https://discord.com/developers/applications
-2. Under **Bot** → enable **Message Content Intent**
-3. Under **OAuth2** → check **bot** scope → check permissions: Send Messages, Attach Files, Read Message History, Manage Messages (integer: **108544**)
-4. Copy the invite URL and add the bot to your server
-
-Then in `dev/docker/.env`:
 ```bash
-DISCORD_BOT_TOKEN=your-bot-token-here
-DISCORD_GUILD_ID=your-server-id        # right-click server → Copy Server ID
-DISCORD_USER_ID=your-user-id           # right-click yourself → Copy User ID
+bun run instance down            # stop containers, keep state
+bun run instance reset           # stop + wipe state (next up is fresh + re-auths codex)
+docker compose -f dev/docker/docker-compose.yml --profile sandbox down --rmi local  # remove images too
 ```
 
-Run `./cmd/setup` — the bot comes online automatically.
-
-**Pairing:** DM the bot on Discord. It replies with a code. Add it to `.env` and re-run setup:
-```bash
-DISCORD_PAIRING_CODE=the-code-from-dm
-```
-```bash
-./cmd/setup   # auto-approves the pairing
-```
+> **Credentials at rest:** `up` resolves your Brave key + Discord token from
+> 1Password and writes them in cleartext into `dev/openclaw-home/openclaw.json`
+> (gitignored). `down` preserves that; only `reset` scrubs it. Exclude
+> `dev/openclaw-home/` from Time Machine / backups, and `reset` when you're done.
 
 ## Troubleshooting
 
-**Gateway not healthy**: `docker logs bakin-openclaw-gateway --tail 30`
+- **`403 Service Account Deleted` / op auth errors** — a *stale* `OP_SERVICE_ACCOUNT_TOKEN`
+  exported in your shell overrides `.env`. Run with `env -u OP_SERVICE_ACCOUNT_TOKEN bun run instance up`.
+- **brave-search ref fails** — vault names with spaces: try the vault ID form in
+  `secrets.op.env` (commented there).
+- **Discord "access not configured" + pairing code** — DMs are gated by `commands.ownerAllowFrom` (separate from the guild allowlist). `up` sets it from `DISCORD_USER_ID`, so a fresh instance answers DMs without pairing. If you ever hit the prompt manually, approve it via the shim: `./dev/docker/openclaw-shim.sh pairing list discord` then `… pairing approve discord <code>`.
+- **Codex auth** — `up` runs the Codex CLI **device-code** login: it prints `https://auth.openai.com/codex/device` + a one-time code; open the URL, enter the code (the browser-callback flow can't work behind the container's loopback). Only `reset`/`--fresh` wipes the home and forces re-auth.
+- **`:latest` drift** — pin via `OPENCLAW_IMAGE_TAG=<tag>` in `.env`.
 
-**Agent not responding**: Check LLM auth — `cat dev/openclaw-home/agents/main/agent/auth-profiles.json`
+## Other dev modes
 
-**Quota errors in logs**: Your API key may not have credits. Set `LLM_PROVIDER=codex` in `.env` and re-run setup to use your ChatGPT subscription instead.
-
-**Reset everything (fresh start)**: `./cmd/wipe` — wipes OpenClaw state, restores OAuth from backup, re-runs setup. Prompts for confirmation.
+| Command | OpenClaw | Best for |
+|---------|----------|----------|
+| `bun run instance dev` | Containerized (real) | integration, agent work, dispatch |
+| `bun run dev:mock` | Imitation Crab (mock) | UI dev, offline, zero API cost |
