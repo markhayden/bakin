@@ -417,6 +417,19 @@ function stepSkillName(step: WorkflowStep | null): string | undefined {
   return typeof skill === 'string' ? skill : undefined
 }
 
+function stepSkillNames(step: WorkflowStep | null): string[] {
+  if (!step) return []
+  const names: string[] = []
+  const skillName = stepSkillName(step)
+  if (skillName) names.push(skillName)
+  if (step.type === 'parallel') {
+    for (const child of step.steps) {
+      names.push(...stepSkillNames(child))
+    }
+  }
+  return Array.from(new Set(names))
+}
+
 function sourceLabel(report: WorkflowSkillDriftReport): string {
   const sourceName = report.managedSource.id
     .replace(/[-_]+/g, ' ')
@@ -563,9 +576,9 @@ export function StepDetailDrawer({
   const [repairingSkill, setRepairingSkill] = useState<string | null>(null)
   const [repairError, setRepairError] = useState<string | null>(null)
   const driftReports = useMemo(() => {
-    const skillName = stepSkillName(step)
-    if (!skillName || !skillDrift) return []
-    return skillDrift.reports.filter(report => report.skillName === skillName)
+    const skillNames = stepSkillNames(step)
+    if (skillNames.length === 0 || !skillDrift) return []
+    return skillDrift.reports.filter(report => skillNames.includes(report.skillName))
   }, [step, skillDrift])
 
   useEffect(() => {

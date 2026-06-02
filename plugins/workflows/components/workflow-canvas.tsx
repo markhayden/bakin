@@ -55,11 +55,23 @@ function stepNodeType(step: WorkflowStep): string {
 }
 
 /** Build node data from a step */
+function stepSkillNames(step: WorkflowStep): string[] {
+  const skill = (step as { skill?: unknown }).skill
+  const names = typeof skill === 'string' ? [skill] : []
+  if (step.type === 'parallel') {
+    for (const child of step.steps) {
+      names.push(...stepSkillNames(child))
+    }
+  }
+  return Array.from(new Set(names))
+}
+
 function stepNodeData(step: WorkflowStep, skillDrift?: WorkflowSkillDriftSummary) {
   const skill = (step as { skill?: unknown }).skill
   const skillName = typeof skill === 'string' ? skill : undefined
-  const drift = skillName
-    ? skillDrift?.reports.find(report => report.skillName === skillName)
+  const skillNames = stepSkillNames(step)
+  const drift = skillNames.length > 0
+    ? skillDrift?.reports.find(report => skillNames.includes(report.skillName))
     : undefined
   return {
     label: step.label,

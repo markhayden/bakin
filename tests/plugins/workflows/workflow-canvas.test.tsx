@@ -132,4 +132,49 @@ describe('WorkflowCanvas', () => {
 
     expect(screen.getByTestId('node-generate').getAttribute('data-has-skill-drift')).toBe('true')
   })
+
+  it('passes child stale skill drift through parallel group node data', () => {
+    const definition: WorkflowDefinition = {
+      name: 'Parallel image workflow',
+      description: 'Uses a generated image skill inside a parallel group',
+      version: 1,
+      steps: [{
+        id: 'parallel-work',
+        type: 'parallel',
+        label: 'Parallel Work',
+        steps: [{
+          id: 'generate',
+          type: 'agent',
+          label: 'Generate',
+          agent: 'pixel',
+          skill: 'generate-image',
+        }],
+      }],
+    }
+
+    render(
+      <WorkflowCanvas
+        definition={definition}
+        skillDrift={{
+          count: 1,
+          repairableCount: 0,
+          skills: ['generate-image'],
+          byStep: { generate: ['generate-image'] },
+          reports: [{
+            skillName: 'generate-image',
+            filePath: '/tmp/generate-image.md',
+            currentSha256: 'old',
+            managedSource: { kind: 'plugin', id: 'images', skillName: 'generate-image' },
+            findings: [],
+            userEdited: false,
+            installedBy: null,
+            repairability: 'custom-advisory',
+            repairable: false,
+          }],
+        }}
+      />,
+    )
+
+    expect(screen.getByTestId('node-parallel-work').getAttribute('data-has-skill-drift')).toBe('true')
+  })
 })
