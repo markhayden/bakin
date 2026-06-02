@@ -4,6 +4,7 @@
 
 import type { ApprovalActor } from '@bakin/core/plugin-types'
 import type { ApprovalRenderRef } from '@bakin/core/adapters/runtime'
+import type { WorkflowSkillDriftReport } from './lib/workflow-skill-drift'
 
 export type { ApprovalActor }
 
@@ -168,6 +169,16 @@ export interface WorkflowTemplate {
   disabled?: boolean
   /** Set when a user workflow shadows a managed definition with the same id. */
   shadowedSource?: WorkflowShadowedSource
+  /** Set when this workflow references one or more stale local workflow skills. */
+  skillDrift?: WorkflowSkillDriftSummary
+}
+
+export interface WorkflowSkillDriftSummary {
+  count: number
+  repairableCount: number
+  skills: string[]
+  reports: WorkflowSkillDriftReport[]
+  byStep: Record<string, string[]>
 }
 
 // ─── Skill Types ────────────────────────────────────────────────────────────
@@ -176,6 +187,8 @@ export interface SkillDefinition {
   name: string
   output_schema?: Record<string, unknown>
   instructions: string
+  source?: string
+  sourcePath?: string
 }
 
 // ─── Instance Types ─────────────────────────────────────────────────────────

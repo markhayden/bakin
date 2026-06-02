@@ -1450,20 +1450,6 @@ function updateAgentAllowlist(agentId: string, updater: (current: string[]) => s
   writeOpenClawConfig(config as unknown as Record<string, unknown>)
 }
 
-function removeAgentFromAllAllowlists(agentId: string): void {
-  const config = readOpenClawConfig()
-  const agents = config?.agents?.list
-  if (!agents) return
-  let changed = false
-  for (const agent of agents) {
-    const allowAgents = agent.subagents?.allowAgents
-    if (!allowAgents?.includes(agentId)) continue
-    agent.subagents!.allowAgents = allowAgents.filter((id) => id !== agentId)
-    changed = true
-  }
-  if (changed) writeOpenClawConfig(config as unknown as Record<string, unknown>)
-}
-
 function removeOpenClawAgentConfig(agentId: string): void {
   const config = readOpenClawConfig()
   const agents = config?.agents?.list

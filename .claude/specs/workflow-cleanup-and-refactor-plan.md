@@ -200,13 +200,12 @@ Release note headline:
 
 Scope:
 
-- Add managed provenance for installed workflow skills.
-- Add a workflow-skill materializer/installer because plugin and agent-package workflow skills currently live in memory and otherwise have no sidecar location.
+- Add managed provenance for plugin and agent-package workflow skills.
+- Detect local user workflow skill files that shadow those managed sources. Do not proactively materialize every managed workflow skill to disk.
 - Store workflow skill provenance in sidecars next to the markdown file:
   - `<skill>.md.installedBy`
   - `<skill>.md.userEdited`
-- Materialize managed workflow skills to `~/.bakin/workflows/skills/{name}.md` only when safe:
-  - missing target
+- Replace `~/.bakin/workflows/skills/{name}.md` only through explicit repair when safe:
   - target has matching managed provenance
   - target exactly matches a known old repo-shipped skill hash and user confirms adopt-and-replace
 - Detect stale installed workflow skill patterns:
@@ -220,7 +219,7 @@ Scope:
   - path-based generated image outputs
   - path-based generated media outputs
   - manual-save instructions that conflict with managed asset generation
-- Surface results through doctor/health UI and CLI.
+- Surface results through Health/doctor and contextual Workflows UI.
 - Add repair planning for managed, unedited stale skills.
 - Repair by full-file replacement only when provenance proves the current file is managed and unedited.
 - Offer adopt-and-replace for unmarked files only when the current hash exactly matches a known old repo-shipped workflow skill hash from a repo-shipped manifest.
@@ -233,27 +232,29 @@ Non-scope:
 - No repair without explicit doctor repair flow.
 - No phrase-level patching of customized or unknown workflow skill files.
 - No repo default contract cleanup, already handled in PR 2.
+- No proactive boot-time materialization of all managed workflow skills.
 
 Likely files:
 
 - `plugins/workflows/lib/health-checks.ts`
 - `plugins/workflows/lib/skill-loader.ts`
 - `plugins/workflows/lib/agent-package-skill-registry.ts`
-- `plugins/workflows/lib/workflow-skill-materializer.ts`
+- `plugins/workflows/lib/workflow-skill-drift.ts`
 - `plugins/workflows/defaults/workflow-skill-legacy-hashes.json`
 - `plugins/workflows/index.ts`
-- `src/core/doctor-repair.ts` only if existing repair orchestration needs small extension
 - `tests/plugins/workflows/health-checks.test.ts`
-- `tests/cli/doctor-repair.test.ts` if CLI behavior changes
+- `tests/plugins/workflows/workflow-skill-drift.test.ts`
+- `tests/plugins/workflows/routes.test.ts`
+- `tests/plugins/workflows/workflow-canvas.test.tsx`
+- `tests/plugins/workflows/workflow-detail.test.tsx`
 - `.claude/knowledge/workflows-plugin.md`
-- `.claude/knowledge/doctor-and-health-checks.md`
 
 Acceptance criteria:
 
 - Doctor flags the stale local `generate-image.md` patterns described by #342.
 - Doctor also flags stale path-style media output patterns such as `videoPath`, `video_path`, `audioPath`, and `audio_path`.
-- Plugin and agent-package workflow skills can be materialized to disk with sidecar provenance.
-- Existing unmarked customized local workflow skills are not overwritten by materialization.
+- Plugin and agent-package workflow skill loaders preserve source-file provenance.
+- Existing unmarked customized local workflow skills are not overwritten by repair.
 - The exact-old-hash adoption list is repo-shipped and deterministic, not network-fetched.
 - The legacy-hash manifest is manually maintained in the same PR as any
   workflow-skill change that needs adopt-and-replace repair. Each entry records
@@ -267,7 +268,7 @@ Acceptance criteria:
 - Unmarked files can be adopted and replaced only when they exactly match a known old repo-shipped skill hash and the user confirms.
 - Customized workflow skills are not auto-repaired.
 - Files marked `.userEdited`, files with missing provenance, and files whose current hash differs from the recorded installed hash are advisory-only unless they satisfy the exact old-hash adoption path.
-- UI and CLI can show the drift through health surfaces.
+- UI and CLI can show the drift through Health surfaces, and the Workflows UI can show contextual warnings for affected workflows/steps.
 - Tests cover detection and at least one safe repair path.
 
 Verification:

@@ -140,6 +140,16 @@ describe('loadPluginSkills', () => {
     expect(calls[0].instructions.trim()).toBe('Push the post live.')
   })
 
+  it('records the source file path for managed skill comparison', () => {
+    const sourcePath = join(skillsDir, 'publish.md')
+    writeFileSync(sourcePath, publishSkill)
+
+    const { ctx, calls } = buildCtx()
+    loadPluginSkills(pluginPath, ctx, fakeLog)
+
+    expect(calls[0].sourcePath).toBe(sourcePath)
+  })
+
   it('returns empty result when defaults/workflow-skills/ does not exist', () => {
     rmSync(skillsDir, { recursive: true, force: true })
 

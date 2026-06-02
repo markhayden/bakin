@@ -1,0 +1,9 @@
+[
+  {
+    "skillName": "generate-image",
+    "sourceKind": "plugin",
+    "sourceId": "images",
+    "sha256": "6c32bb64d3ea8e4477a20197e93a517b88c2099ef5f3c3d58e80ef983948caf5",
+    "reason": "Pre-assetId generated-image skill returned image filename and prompt packet sidecars."
+  }
+]

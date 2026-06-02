@@ -27,7 +27,7 @@ const RESET_NODE_STYLES = `
 `
 
 import { getNodeRendererSnapshot, subscribeNodeRenderers } from '../lib/node-renderer-registry'
-import type { WorkflowDefinition, WorkflowStep } from '../types'
+import type { WorkflowDefinition, WorkflowStep, WorkflowSkillDriftSummary } from '../types'
 
 const NODE_WIDTH = 280
 const NODE_HEIGHT = 120
@@ -40,6 +40,7 @@ const SUBFLOW_PADDING_BOTTOM = 32
 interface WorkflowCanvasProps {
   definition: WorkflowDefinition
   subWorkflows?: Record<string, WorkflowDefinition>
+  skillDrift?: WorkflowSkillDriftSummary
   onNodeClick?: (nodeId: string) => void
 }
 
@@ -54,9 +55,16 @@ function stepNodeType(step: WorkflowStep): string {
 }
 
 /** Build node data from a step */
-function stepNodeData(step: WorkflowStep) {
+function stepNodeData(step: WorkflowStep, skillDrift?: WorkflowSkillDriftSummary) {
+  const skill = (step as { skill?: unknown }).skill
+  const skillName = typeof skill === 'string' ? skill : undefined
+  const drift = skillName
+    ? skillDrift?.reports.find(report => report.skillName === skillName)
+    : undefined
   return {
     label: step.label,
+    skill: skillName,
+    skillDrift: drift,
     agent: step.type === 'agent' || step.type === 'output' || step.type === 'createTask'
       ? step.agent
       : undefined,
@@ -92,6 +100,7 @@ function measureSubWorkflowStepCount(def: WorkflowDefinition, subWorkflows: Reco
 function buildGraph(
   definition: WorkflowDefinition,
   subWorkflows: Record<string, WorkflowDefinition> = {},
+  skillDrift?: WorkflowSkillDriftSummary,
 ) {
   const nodes: Node[] = []
   const edges: Edge[] = []
@@ -216,7 +225,7 @@ function buildGraph(
                     id: nestedNodeId,
                     type: stepNodeType(nestedStep),
                     position: { x: SUBFLOW_PADDING_X, y: nestedY },
-                    data: stepNodeData(nestedStep),
+                    data: stepNodeData(nestedStep, skillDrift),
                     style: STANDARD_NODE_STYLE,
                     parentId: subNodeId,
                     extent: 'parent' as const,
@@ -238,7 +247,7 @@ function buildGraph(
               id: subNodeId,
               type: subNodeType,
               position: { x: SUBFLOW_PADDING_X, y: innerY },
-              data: stepNodeData(subStep),
+              data: stepNodeData(subStep, skillDrift),
               style: STANDARD_NODE_STYLE,
               parentId: groupId,
               extent: 'parent' as const,
@@ -270,7 +279,7 @@ function buildGraph(
         id: nodeId,
         type: nodeType,
         position,
-        data: stepNodeData(step),
+        data: stepNodeData(step, skillDrift),
         style: STANDARD_NODE_STYLE,
         ...(parentId ? { parentId, extent: 'parent' as const } : {}),
       })
@@ -296,15 +305,15 @@ function buildGraph(
   return { nodes, edges }
 }
 
-export function WorkflowCanvas({ definition, subWorkflows, onNodeClick }: WorkflowCanvasProps) {
+export function WorkflowCanvas({ definition, subWorkflows, skillDrift, onNodeClick }: WorkflowCanvasProps) {
   // Subscribe to registry mutations so late-arriving kinds (lazy plugin
   // load, hot install) trigger a re-render — ESM hoisting means a
   // module-scope snapshot would be empty, and a one-shot mount-time memo
   // would miss anything registered after the canvas mounts.
   const nodeTypes = useSyncExternalStore(subscribeNodeRenderers, getNodeRendererSnapshot, getNodeRendererSnapshot) as NodeTypes
   const { nodes: initialNodes, edges } = useMemo(
-    () => buildGraph(definition, subWorkflows),
-    [definition, subWorkflows],
+    () => buildGraph(definition, subWorkflows, skillDrift),
+    [definition, subWorkflows, skillDrift],
   )
   const [nodes, setNodes] = useState<Node[]>(initialNodes)
 

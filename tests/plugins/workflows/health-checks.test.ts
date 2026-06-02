@@ -22,6 +22,8 @@ const testDir = (() => {
 process.env.BAKIN_HOME = testDir
 process.env.OPENCLAW_HOME = testDir + '-openclaw'
 
+const mockWorkflowPluginSkills = new Map<string, any>()
+
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
   tryGetMainAgentId: () => 'main',
@@ -57,6 +59,7 @@ mock.module('@/core/task-store', () => ({
 
 // Hook registry remains available for plugin activation paths.
 mock.module('../../../src/lib/plugin-registry', () => ({
+  getPluginSkills: () => mockWorkflowPluginSkills,
   getHookRegistry: () => ({
     invoke: async (_name: string) => {
       return undefined
@@ -71,7 +74,12 @@ import {
   checkWorkflowDefinitions,
   checkStaleWorkflowInstances,
   staleWorkflowInstancesRepair,
+  workflowSkillDriftRepair,
 } from '../../../plugins/workflows/lib/health-checks'
+import {
+  hashWorkflowSkillContent,
+  writeWorkflowSkillInstallMarker,
+} from '../../../plugins/workflows/lib/workflow-skill-drift'
 
 const skillsDir = join(testDir, 'workflows', 'skills')
 const definitionsDir = join(testDir, 'workflows', 'definitions')
@@ -93,6 +101,7 @@ beforeEach(() => {
     rmSync(dir, { recursive: true, force: true })
     mkdirSync(dir, { recursive: true })
   }
+  mockWorkflowPluginSkills.clear()
 })
 
 describe('checkWorkflowSkills', () => {
@@ -125,6 +134,94 @@ describe('checkWorkflowSkills', () => {
     const results = checkWorkflowSkills(testDir)
     expect(results).toHaveLength(1)
     expect(results[0].status).toBe('ok')
+  })
+
+  it('flags stale local skills that shadow managed plugin skills', () => {
+    const sourcePath = join(testDir, 'managed-generate-image.md')
+    writeFileSync(
+      sourcePath,
+      `---
+name: Generate Image
+output_schema:
+  type: object
+  required: [assetId]
+---
+
+Return assetId.
+`,
+    )
+    mockWorkflowPluginSkills.set('generate-image', {
+      name: 'Generate Image',
+      instructions: 'Return assetId.',
+      source: 'plugin:images',
+      sourcePath,
+    })
+    writeFileSync(
+      join(skillsDir, 'generate-image.md'),
+      `---
+name: Generate Image
+output_schema:
+  type: object
+  required: [image_filename]
+---
+
+Return image_filename and promptAssetFilename after savePromptPacket.
+`,
+    )
+
+    const results = checkWorkflowSkills(testDir)
+
+    const stale = results.find(result => result.message.includes('appears stale'))
+    expect(stale?.status).toBe('warn')
+    expect(stale?.autoFixable).toBe(false)
+  })
+
+  it('plans and applies safe repair for managed stale skills', async () => {
+    const sourcePath = join(testDir, 'managed-generate-image.md')
+    const current = `---
+name: Generate Image
+output_schema:
+  type: object
+  required: [assetId]
+---
+
+Return assetId.
+`
+    const stale = `---
+name: Generate Image
+output_schema:
+  type: object
+  required: [image_filename]
+---
+
+Return image_filename and promptAssetFilename after savePromptPacket.
+`
+    writeFileSync(sourcePath, current)
+    mockWorkflowPluginSkills.set('generate-image', {
+      name: 'Generate Image',
+      instructions: 'Return assetId.',
+      source: 'plugin:images',
+      sourcePath,
+    })
+    const target = join(skillsDir, 'generate-image.md')
+    writeFileSync(target, stale)
+    writeWorkflowSkillInstallMarker(target, {
+      sourceKind: 'plugin',
+      sourceId: 'images',
+      sourcePath,
+      sha256: hashWorkflowSkillContent(stale),
+      installedAt: '2026-06-02T00:00:00.000Z',
+    })
+
+    const rows = checkWorkflowSkills(testDir)
+    const repair = workflowSkillDriftRepair(testDir)
+    const plan = await repair.plan(rows)
+    const applied = await repair.apply(plan)
+
+    expect(plan).toHaveLength(1)
+    expect(plan[0].title).toContain('generate-image')
+    expect(applied[0].status).toBe('applied')
+    expect(checkWorkflowSkills(testDir)[0].status).toBe('ok')
   })
 })
 
