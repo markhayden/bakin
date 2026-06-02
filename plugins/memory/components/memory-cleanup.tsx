@@ -37,6 +37,7 @@ interface FindResponse {
 interface DispatchResponse {
   dispatched: Array<{ agent: string; taskId: string; hitCount: number; managedCount: number }>
   skipped: Array<{ agent: string; reason: string }>
+  failed: Array<{ agent: string; reason: string }>
 }
 interface VerifyResponse {
   results: Array<{ agent: string; actionableRemaining: number; informationalRemaining: number; clean: boolean }>
@@ -85,13 +86,14 @@ export function MemoryCleanup() {
   }
 
   const runDispatch = async () => {
+    if (!find) return
     const agents = [...selected]
     if (agents.length === 0) return
     if (action === 'replace' && !replacement.trim()) { setError('Replacement is required for rename'); return }
     setBusy('dispatch'); setError(null); setVerify(null)
     try {
       const data = await postJson<DispatchResponse>('cleanup/dispatch', {
-        term: find!.term, action,
+        term: find.term, action,
         replacement: action === 'replace' ? replacement.trim() : undefined,
         agents,
         instruction: instruction.trim() || undefined,
@@ -105,11 +107,12 @@ export function MemoryCleanup() {
   }
 
   const runVerify = async () => {
+    if (!find) return
     const agents = dispatch?.dispatched.map((d) => d.agent) ?? [...selected]
     if (agents.length === 0) return
     setBusy('verify'); setError(null)
     try {
-      setVerify(await postJson<VerifyResponse>('cleanup/verify', { term: find!.term, agents }))
+      setVerify(await postJson<VerifyResponse>('cleanup/verify', { term: find.term, agents }))
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -241,6 +244,9 @@ export function MemoryCleanup() {
           ))}
           {dispatch.skipped.map((s) => (
             <div key={s.agent} className="text-xs text-muted-foreground">{s.agent} — skipped ({s.reason})</div>
+          ))}
+          {dispatch.failed?.map((f) => (
+            <div key={f.agent} className="text-xs text-destructive">{f.agent} — failed ({f.reason})</div>
           ))}
           <div>
             <Button variant="outline" size="sm" onClick={runVerify} disabled={busy === 'verify'}>

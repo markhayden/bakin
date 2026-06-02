@@ -13,9 +13,20 @@ import {
   contentMatches,
   groupByAgent,
   matchingSnippets,
+  projectionTarget,
   tierLabel,
   type CleanupHit,
 } from '../../../plugins/memory/lib/cleanup'
+
+describe('projectionTarget', () => {
+  it('resolves skill rows to the skill DIRECTORY (markers live inside it)', () => {
+    expect(projectionTarget('/ws/pixel/skills/foo/SKILL.md', 'skill')).toBe('/ws/pixel/skills/foo')
+  })
+  it('leaves other durable files as-is (file-projected)', () => {
+    expect(projectionTarget('/ws/pixel/AGENTS.md', 'soul')).toBe('/ws/pixel/AGENTS.md')
+    expect(projectionTarget('/ws/pixel/AGENTS.md')).toBe('/ws/pixel/AGENTS.md')
+  })
+})
 
 describe('tierLabel', () => {
   it('labels durable / daily_note / dream as actionable (agent-editable sources)', () => {

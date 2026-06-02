@@ -15,6 +15,7 @@ import { defineRoute } from '@bakin/core/routing'
 import type { PluginContextLite } from '@bakin/core/routing'
 import type { SearchQueryParams } from '@bakin/core/plugin-types'
 import { installedByPath, markUserEdited } from '@bakin/core/agent-packages/markers'
+import { createLogger } from '../../../../src/core/logger'
 
 import { MEMORY_TIERS, type MemoryTier } from '../types'
 import {
@@ -22,9 +23,15 @@ import {
   contentMatches,
   groupByAgent,
   matchingSnippets,
+  projectionTarget,
   tierLabel,
   type CleanupHit,
 } from '../cleanup'
+
+const log = createLogger('memory:cleanup')
+
+/** Defensive cap so a pasted agent list can't fan out into thousands of queries. */
+const MAX_AGENTS = 50
 
 const passthrough = z.object({}).passthrough()
 const errorResponse = z.object({ error: z.string() })
@@ -64,7 +71,10 @@ export async function findCleanupHits(
       try {
         const res = await ctx.search.query(params)
         return res.results
-      } catch {
+      } catch (err) {
+        // A failing tier reads as "no occurrences" downstream — for verify that
+        // could mask remaining stale content, so surface it rather than swallow.
+        log.warn('cleanup tier query failed', { tier, err })
         return []
       }
     }),
@@ -78,15 +88,21 @@ export async function findCleanupHits(
       const tier = String(r.fields.tier ?? '') as MemoryTier
       const label = tierLabel(tier)
       const sourcePath = String(r.fields.source_path ?? '')
+      const kind = r.fields.kind ? String(r.fields.kind) : undefined
       hits.push({
         rowId: r.id,
         tier,
         agent: String(r.fields.agent ?? ''),
+        kind,
         sourcePath,
         label,
         snippets: matchingSnippets(content, term),
-        // Only editable (actionable) sources can be package projections worth flagging.
-        managed: label === 'actionable' && !!sourcePath && existsSync(installedByPath(sourcePath)),
+        // Only editable (actionable) sources can be package projections worth
+        // flagging. Skills are dir-projected, so resolve the marker accordingly.
+        managed:
+          label === 'actionable' &&
+          !!sourcePath &&
+          existsSync(installedByPath(projectionTarget(sourcePath, kind))),
       })
     }
   }
@@ -131,7 +147,7 @@ const dispatchBody = z
     term: z.string().min(1, 'term is required'),
     action: z.enum(['replace', 'remove']),
     replacement: z.string().optional(),
-    agents: z.array(z.string().min(1)).min(1, 'at least one agent is required'),
+    agents: z.array(z.string().min(1)).min(1, 'at least one agent is required').max(MAX_AGENTS),
     instruction: z.string().optional(),
   })
   .refine((b) => b.action !== 'replace' || (b.replacement?.length ?? 0) > 0, {
@@ -156,35 +172,53 @@ export const cleanupDispatchRoute = defineRoute({
     const { term, action, replacement, agents, instruction } = parsed.data
     const dispatched: Array<{ agent: string; taskId: string; hitCount: number; managedCount: number }> = []
     const skipped: Array<{ agent: string; reason: string }> = []
+    const failed: Array<{ agent: string; reason: string }> = []
 
+    // Operator-initiated and not deduped: dispatching the same term twice creates
+    // a second task. Intentional for a single-user flow (re-run to re-nudge); the
+    // UI disables the button mid-flight to avoid accidental double-clicks.
     for (const agent of agents) {
-      // Re-find server-side so the task reflects the current truth, not stale
-      // client input. Only actionable hits go in the task — those are the files
-      // the agent can edit; informational tiers self-heal and are left alone.
-      const actionable = (await findCleanupHits(ctx, term, agent)).filter((h) => h.label === 'actionable')
-      if (actionable.length === 0) {
-        skipped.push({ agent, reason: 'no actionable occurrences' })
-        continue
-      }
-      // Pin managed (package-projected) files as user-edited so the agent's
-      // cleanup survives a later `agents update --refresh-template`. This writes
-      // a Bakin projection-layer sentinel, not runtime-memory content.
-      const managedPaths = actionable.filter((h) => h.managed && h.sourcePath).map((h) => h.sourcePath)
-      for (const path of managedPaths) markUserEdited(path)
+      try {
+        // Re-find server-side so the task reflects the current truth, not stale
+        // client input. Only actionable hits go in the task — those are the files
+        // the agent can edit; informational tiers self-heal and are left alone.
+        const actionable = (await findCleanupHits(ctx, term, agent)).filter((h) => h.label === 'actionable')
+        if (actionable.length === 0) {
+          skipped.push({ agent, reason: 'no actionable occurrences' })
+          continue
+        }
+        // Pin managed (package-projected) files as user-edited so the agent's
+        // cleanup survives a later `agents update --refresh-template`. Skills are
+        // dir-projected, so mark the dir; dedupe (chunks share a target). This
+        // writes a Bakin projection-layer sentinel, not runtime-memory content.
+        const managedTargets = [
+          ...new Set(
+            actionable
+              .filter((h) => h.managed && h.sourcePath)
+              .map((h) => projectionTarget(h.sourcePath, h.kind)),
+          ),
+        ]
+        for (const target of managedTargets) markUserEdited(target)
 
-      const { title, description } = composeTask({ term, action, replacement, agent, hits: actionable, instruction })
-      const task = await ctx.tasks.create({ agent, title, description, createdBy: 'memory' })
-      ctx.activity.audit('memory.cleanup_dispatched', agent, {
-        term,
-        action,
-        taskId: task.id,
-        hitCount: actionable.length,
-        managedCount: managedPaths.length,
-      })
-      dispatched.push({ agent, taskId: task.id, hitCount: actionable.length, managedCount: managedPaths.length })
+        const { title, description } = composeTask({ term, action, replacement, agent, hits: actionable, instruction })
+        const task = await ctx.tasks.create({ agent, title, description, createdBy: 'memory' })
+        ctx.activity.audit('memory.cleanup_dispatched', agent, {
+          term,
+          action,
+          taskId: task.id,
+          hitCount: actionable.length,
+          managedCount: managedTargets.length,
+        })
+        dispatched.push({ agent, taskId: task.id, hitCount: actionable.length, managedCount: managedTargets.length })
+      } catch (err) {
+        // Don't let one agent's failure abort the rest — record it so the
+        // response is a complete ledger of what happened.
+        log.error('cleanup dispatch failed for agent', err, { agent, term })
+        failed.push({ agent, reason: err instanceof Error ? err.message : 'dispatch failed' })
+      }
     }
 
-    return Response.json({ term, action, dispatched, skipped })
+    return Response.json({ term, action, dispatched, skipped, failed })
   },
 })
 

@@ -9,6 +9,7 @@
  */
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import { dirname } from 'path'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -92,6 +93,34 @@ describe('cleanup find — managed flag', () => {
     const hits = body.groups[0].hits
     expect(hits.find((h) => h.rowId === 'durable:pixel')!.managed).toBe(true)
     expect(hits.find((h) => h.rowId === 'durable:plain')!.managed).toBe(false)
+  })
+})
+
+describe('cleanup — skills are directory-projected', () => {
+  it('flags a skill row via its DIRECTORY marker and pins the directory on dispatch', async () => {
+    // Skill marker lives inside the skill dir, not beside SKILL.md.
+    const skillDir = join(testDir, 'skills', 'foo')
+    const skillFile = join(skillDir, 'SKILL.md')
+    mkdirSync(skillDir, { recursive: true })
+    writeFileSync(skillFile, 'use the beacon mcp')
+    writeFileSync(join(skillDir, '.installedBy'), '{"package":"x"}')
+
+    const skillRow = (): Row => ({
+      id: 'durable:skill',
+      fields: { tier: 'durable', kind: 'skill', agent: 'pixel', source_path: skillFile, content: 'use the beacon mcp' },
+    })
+    const ctx = makeCtx((agent, tier) => (tier === 'durable' && (agent === undefined || agent === 'pixel') ? [skillRow()] : []))
+
+    // find flags it managed (via the dir marker)…
+    const findRes = await cleanupFindRoute.handler(findReq({ term: 'beacon' }), ctx, {})
+    const findBody = await findRes.json() as { groups: Array<{ hits: Array<{ managed: boolean }> }> }
+    expect(findBody.groups[0].hits[0].managed).toBe(true)
+
+    // …and dispatch sets .userEdited INSIDE the skill dir, not beside SKILL.md.
+    await cleanupDispatchRoute.handler(dispatchReq({ term: 'beacon', action: 'remove', agents: ['pixel'] }), ctx, {})
+    expect(existsSync(join(skillDir, '.userEdited'))).toBe(true)
+    expect(existsSync(`${skillFile}.userEdited`)).toBe(false)
+    expect(dirname(skillFile)).toBe(skillDir)
   })
 })
 

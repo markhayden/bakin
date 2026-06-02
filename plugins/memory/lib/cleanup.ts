@@ -10,6 +10,8 @@
  * extraction, and grouping search hits by agent. Route wiring lives in
  * routes/cleanup.ts.
  */
+import { dirname } from 'node:path'
+
 import type { MemoryTier } from './types'
 
 /**
@@ -67,12 +69,25 @@ export interface CleanupHit {
   rowId: string
   tier: MemoryTier
   agent: string
+  /** Durable sub-kind (soul/rules/skill/…); used to resolve the projection marker. */
+  kind?: string
   sourcePath: string
   label: CleanupLabel
   snippets: string[]
-  /** True when the source is an agent-package projection (`<file>.installedBy`
+  /** True when the source is an agent-package projection (`.installedBy`
    * present) — its edit can revert on template refresh unless `.userEdited` is set. */
   managed?: boolean
+}
+
+/**
+ * Resolve the agent-package projection marker target for a source path.
+ *
+ * Skills are DIRECTORY-projected — the `.installedBy` / `.userEdited` markers
+ * live inside the skill dir, but the row's source path points at its `SKILL.md`.
+ * Every other durable file is file-projected (marker is a sibling). Pure path op.
+ */
+export function projectionTarget(sourcePath: string, kind?: string): string {
+  return kind === 'skill' ? dirname(sourcePath) : sourcePath
 }
 
 export interface AgentCleanupGroup {

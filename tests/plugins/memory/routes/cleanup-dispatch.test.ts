@@ -143,6 +143,44 @@ describe('cleanupDispatchRoute — skips agents with no actionable hits', () => 
   })
 })
 
+describe('cleanupDispatchRoute — partial failure', () => {
+  it('records a failing agent in failed[] without aborting the others', async () => {
+    let seq = 0
+    const ctx = {
+      pluginId: 'memory',
+      search: {
+        query: mock(async (params: SearchQueryParams) => {
+          const agent = typeof params.filters?.agent === 'string' ? params.filters.agent : undefined
+          const tier = typeof params.filters?.tier === 'string' ? params.filters.tier : undefined
+          const rows = tier === 'durable' && agent ? [durableRow(agent)] : []
+          return {
+            results: rows.map((r) => ({ id: r.id, table: 'bakin_memory', score: 1, fields: r.fields })),
+            meta: { query: params.q, total: rows.length, took_ms: 1, source: 'fallback' as const },
+          }
+        }),
+      },
+      tasks: {
+        create: mock(async (input: PluginTaskCreateInput) => {
+          if (input.agent === 'penelope') throw new Error('task store boom')
+          return { id: `task-${++seq}`, title: input.title, checked: false, column: 'todo' }
+        }),
+      },
+      activity: { log: mock(), audit: mock() },
+    } as unknown as PluginContext
+
+    const res = await cleanupDispatchRoute.handler(
+      makeReq({ term: 'beacon', action: 'remove', agents: ['pixel', 'penelope'] }),
+      ctx,
+      {},
+    )
+    expect(res.status).toBe(200)
+    const body = await res.json() as { dispatched: Array<{ agent: string }>; failed: Array<{ agent: string; reason: string }> }
+    expect(body.dispatched.map((d) => d.agent)).toEqual(['pixel'])
+    expect(body.failed.map((f) => f.agent)).toEqual(['penelope'])
+    expect(body.failed[0].reason).toContain('boom')
+  })
+})
+
 describe('cleanupDispatchRoute — validation', () => {
   it('400s when action=replace but no replacement', async () => {
     const { ctx } = makeCtx(() => [])
