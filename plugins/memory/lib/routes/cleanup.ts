@@ -173,3 +173,42 @@ export const cleanupDispatchRoute = defineRoute({
     return Response.json({ term, action, dispatched, skipped })
   },
 })
+
+const verifyBody = z.object({
+  term: z.string().min(1, 'term is required'),
+  agents: z.array(z.string().min(1)).min(1, 'at least one agent is required'),
+})
+
+export const cleanupVerifyRoute = defineRoute({
+  path: '/cleanup/verify',
+  method: 'POST',
+  description: 'Re-check remaining occurrences of a term per agent after a cleanup',
+  summary: 'Verify a memory cleanup',
+  responses: { 200: passthrough, 400: errorResponse },
+  handler: async (req: Request, ctx: PluginContextLite) => {
+    const body = await parseJsonBody(req)
+    if (body === null) return Response.json({ error: 'invalid JSON body' }, { status: 400 })
+    const parsed = verifyBody.safeParse(body)
+    if (!parsed.success) {
+      return Response.json({ error: parsed.error.issues[0]?.message ?? 'invalid body' }, { status: 400 })
+    }
+
+    const { term, agents } = parsed.data
+    const results = await Promise.all(
+      agents.map(async (agent) => {
+        const hits = await findCleanupHits(ctx, term, agent)
+        const actionable = hits.filter((h) => h.label === 'actionable')
+        // `clean` keys on actionable remaining: informational tiers (transcripts)
+        // are intentionally left, so they don't count against a successful cleanup.
+        return {
+          agent,
+          remaining: actionable,
+          actionableRemaining: actionable.length,
+          informationalRemaining: hits.length - actionable.length,
+          clean: actionable.length === 0,
+        }
+      }),
+    )
+    return Response.json({ term, results })
+  },
+})
