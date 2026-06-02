@@ -33,7 +33,7 @@ import { checkpointsListRoute, checkpointDetailRoute } from './lib/routes/checkp
 import { dreamsListRoute, dreamDetailRoute } from './lib/routes/dreams'
 import { statusRoute } from './lib/routes/status'
 import { recentRoute } from './lib/routes/recent'
-import { cleanupFindRoute } from './lib/routes/cleanup'
+import { cleanupFindRoute, cleanupDispatchRoute } from './lib/routes/cleanup'
 import { createMemorySearchTool } from './mcp/search'
 import { createMemoryGetSessionTool } from './mcp/get-session'
 import { createMemoryGetTurnTool } from './mcp/get-turn'
@@ -96,6 +96,7 @@ const routes = [
   statusRoute,
   recentRoute,
   cleanupFindRoute,
+  cleanupDispatchRoute,
 ]
 
 const memoryPlugin: BakinPlugin = definePlugin({

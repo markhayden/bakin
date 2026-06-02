@@ -9,6 +9,7 @@ import { describe, it, expect } from 'bun:test'
 
 import {
   ACTIONABLE_TIERS,
+  composeTask,
   contentMatches,
   groupByAgent,
   matchingSnippets,
@@ -104,5 +105,39 @@ describe('groupByAgent', () => {
 
   it('returns [] for no hits', () => {
     expect(groupByAgent([])).toEqual([])
+  })
+})
+
+describe('composeTask', () => {
+  const hits: CleanupHit[] = [
+    { rowId: 'durable:1', tier: 'durable', agent: 'pixel', sourcePath: '/ws/pixel/AGENTS.md', label: 'actionable', snippets: ['use the beacon mcp'] },
+    { rowId: 'daily_note:1', tier: 'daily_note', agent: 'pixel', sourcePath: '/ws/pixel/memory/2026-01-01.md', label: 'actionable', snippets: ['beacon notes'] },
+  ]
+
+  it('replace: title names the rename and description carries the replacement + findings', () => {
+    const { title, description } = composeTask({ term: 'beacon', action: 'replace', replacement: 'bakin', agent: 'pixel', hits })
+    expect(title).toContain('beacon')
+    expect(title.toLowerCase()).toContain('rename')
+    expect(title).toContain('bakin')
+    expect(description).toContain('bakin')
+    expect(description).toContain('/ws/pixel/AGENTS.md')
+    expect(description).toContain('use the beacon mcp')
+  })
+
+  it('remove: title/description say remove and no replacement is referenced', () => {
+    const { title, description } = composeTask({ term: 'beacon', action: 'remove', agent: 'pixel', hits })
+    expect(title.toLowerCase()).toContain('remove')
+    expect(description.toLowerCase()).toContain('remove')
+  })
+
+  it('a custom instruction overrides the default lead', () => {
+    const { description } = composeTask({ term: 'beacon', action: 'remove', agent: 'pixel', hits, instruction: 'PURGE ALL TRACE' })
+    expect(description).toContain('PURGE ALL TRACE')
+  })
+
+  it('lists every actionable hit source path', () => {
+    const { description } = composeTask({ term: 'beacon', action: 'remove', agent: 'pixel', hits })
+    expect(description).toContain('/ws/pixel/AGENTS.md')
+    expect(description).toContain('/ws/pixel/memory/2026-01-01.md')
   })
 })

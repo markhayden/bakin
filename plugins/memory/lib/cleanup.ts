@@ -78,6 +78,56 @@ export interface AgentCleanupGroup {
   actionableCount: number
 }
 
+export type CleanupAction = 'replace' | 'remove'
+
+export interface ComposeTaskInput {
+  term: string
+  action: CleanupAction
+  replacement?: string
+  agent: string
+  /** Actionable hits for this agent (the files the agent will edit). */
+  hits: CleanupHit[]
+  /** Optional operator override of the default instruction lead. */
+  instruction?: string
+}
+
+/**
+ * Build the title + description for the cleanup task dispatched to one agent.
+ * The agent edits its own source files; this gives it the exact locations +
+ * a clear instruction. Pure.
+ */
+export function composeTask(input: ComposeTaskInput): { title: string; description: string } {
+  const { term, action, replacement, hits, instruction } = input
+  const title =
+    action === 'replace'
+      ? `Memory cleanup: rename "${term}" → "${replacement ?? ''}"`
+      : `Memory cleanup: remove references to "${term}"`
+
+  const lead =
+    instruction ??
+    (action === 'replace'
+      ? `Replace every reference to "${term}" with "${replacement ?? ''}" in the memory files listed below. Keep everything else intact.`
+      : `Remove the references to "${term}" from the memory files listed below — delete the offending text; keep the rest intact.`)
+
+  const findings = hits
+    .map((h) => {
+      const snips = h.snippets.map((s) => `    > ${s}`).join('\n')
+      return `- ${h.sourcePath}${snips ? `\n${snips}` : ''}`
+    })
+    .join('\n')
+
+  const description = [
+    lead,
+    '',
+    'Files to edit:',
+    findings,
+    '',
+    `When done, confirm "${term}" no longer appears in those files.`,
+  ].join('\n')
+
+  return { title, description }
+}
+
 /** Group hits by agent, count actionable ones, sort most-actionable first. */
 export function groupByAgent(hits: CleanupHit[]): AgentCleanupGroup[] {
   const byAgent = new Map<string, CleanupHit[]>()

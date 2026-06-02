@@ -14,7 +14,14 @@ import type { PluginContextLite } from '@bakin/core/routing'
 import type { SearchQueryParams } from '@bakin/core/plugin-types'
 
 import { MEMORY_TIERS, type MemoryTier } from '../types'
-import { contentMatches, groupByAgent, matchingSnippets, tierLabel, type CleanupHit } from '../cleanup'
+import {
+  composeTask,
+  contentMatches,
+  groupByAgent,
+  matchingSnippets,
+  tierLabel,
+  type CleanupHit,
+} from '../cleanup'
 
 const passthrough = z.object({}).passthrough()
 const errorResponse = z.object({ error: z.string() })
@@ -109,5 +116,60 @@ export const cleanupFindRoute = defineRoute({
       totalHits: hits.length,
       actionableHits: hits.filter((h) => h.label === 'actionable').length,
     })
+  },
+})
+
+const dispatchBody = z
+  .object({
+    term: z.string().min(1, 'term is required'),
+    action: z.enum(['replace', 'remove']),
+    replacement: z.string().optional(),
+    agents: z.array(z.string().min(1)).min(1, 'at least one agent is required'),
+    instruction: z.string().optional(),
+  })
+  .refine((b) => b.action !== 'replace' || (b.replacement?.length ?? 0) > 0, {
+    message: 'replacement is required when action is "replace"',
+    path: ['replacement'],
+  })
+
+export const cleanupDispatchRoute = defineRoute({
+  path: '/cleanup/dispatch',
+  method: 'POST',
+  description: 'Dispatch a memory-cleanup task to each affected agent (agent edits its own files)',
+  summary: 'Dispatch memory cleanup to agents',
+  responses: { 200: passthrough, 400: errorResponse },
+  handler: async (req: Request, ctx: PluginContextLite) => {
+    const body = await parseJsonBody(req)
+    if (body === null) return Response.json({ error: 'invalid JSON body' }, { status: 400 })
+    const parsed = dispatchBody.safeParse(body)
+    if (!parsed.success) {
+      return Response.json({ error: parsed.error.issues[0]?.message ?? 'invalid body' }, { status: 400 })
+    }
+
+    const { term, action, replacement, agents, instruction } = parsed.data
+    const dispatched: Array<{ agent: string; taskId: string; hitCount: number }> = []
+    const skipped: Array<{ agent: string; reason: string }> = []
+
+    for (const agent of agents) {
+      // Re-find server-side so the task reflects the current truth, not stale
+      // client input. Only actionable hits go in the task — those are the files
+      // the agent can edit; informational tiers self-heal and are left alone.
+      const actionable = (await findCleanupHits(ctx, term, agent)).filter((h) => h.label === 'actionable')
+      if (actionable.length === 0) {
+        skipped.push({ agent, reason: 'no actionable occurrences' })
+        continue
+      }
+      const { title, description } = composeTask({ term, action, replacement, agent, hits: actionable, instruction })
+      const task = await ctx.tasks.create({ agent, title, description, createdBy: 'memory' })
+      ctx.activity.audit('memory.cleanup_dispatched', agent, {
+        term,
+        action,
+        taskId: task.id,
+        hitCount: actionable.length,
+      })
+      dispatched.push({ agent, taskId: task.id, hitCount: actionable.length })
+    }
+
+    return Response.json({ term, action, dispatched, skipped })
   },
 })
