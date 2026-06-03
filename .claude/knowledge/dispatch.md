@@ -32,6 +32,29 @@ Cooldown chosen by class:
 
 Both classes share the `count` field. `settings.dispatch.maxRetries` (default 5) escalates to **blocked** regardless of classification.
 
+### Provider availability detail
+
+`task.dispatch_failed` audit entries and the matching system task log now carry
+structured dispatch failure detail in addition to the retry/cooldown class:
+
+- `category` — `model_provider_unavailable` or `runtime_unavailable`
+- `reasonCode` — currently `provider_cooldown`,
+  `auth_profile_unavailable`, `dispatch_timeout`, `transport_failure`,
+  `runtime_adapter_failure`, or `runtime_dispatch_failed`
+- `summary` — compact UI text such as
+  `Dispatch failed: model provider unavailable`
+- `specificReason` — drawer/debug detail such as
+  `Provider in cooldown after timeout` or `Auth profile unavailable`
+- `provider`, `model`, `cooldownReason` — optional extracted runtime context
+- `retryable` — whether normal dispatch retry/cooldown can reasonably recover
+- `rawError` — bounded raw runtime error text for technical details
+
+Task logs store this detail under `entry.data.dispatchFailure`. Audit entries
+store the same fields top-level for the activity feed. Compact surfaces should
+show the generic provider-unavailable label; task detail drawers and debug
+activity views may show the specific cause and raw bounded error. Do not make
+raw provider text the primary UI message.
+
 ## Post-send task reconciliation
 
 Dispatch moves a task to `inProgress` before sending the runtime message so a
