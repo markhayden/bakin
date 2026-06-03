@@ -67,7 +67,9 @@ describe('Header update banner', () => {
     expect(screen.getByRole('status').textContent).toContain('v0.1.0')
     expect(screen.getByRole('status').textContent).toContain('v0.2.0')
     expect(screen.getByRole('button', { name: 'Update Bakin' })).toBeDefined()
-    expect(document.documentElement.style.getPropertyValue('--bakin-shell-top')).toBe('5.75rem')
+    await waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue('--bakin-shell-top')).toBe('5.75rem')
+    })
   })
 
   it('does not render the banner when self-update is unsupported', async () => {
