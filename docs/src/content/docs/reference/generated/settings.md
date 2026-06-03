@@ -41,6 +41,24 @@ description: Generated reference for Bakin core settings defaults.
   </tbody>
 </table>
 
+## Diagnostics
+
+<table class="settings-defaults-table">
+  <thead>
+    <tr><th>Key</th><th>Default</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>diagnostics.startup.enabled</code></td>
+      <td><code>false</code></td>
+    </tr>
+    <tr>
+      <td><code>diagnostics.startup.slowMs</code></td>
+      <td><code>250</code></td>
+    </tr>
+  </tbody>
+</table>
+
 ## Dispatch
 
 <table class="settings-defaults-table">
@@ -361,5 +379,5 @@ description: Generated reference for Bakin core settings defaults.
 
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jun 2, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jun 3, 2026 · Bakin 0.0.0-dev</span>
 </aside>

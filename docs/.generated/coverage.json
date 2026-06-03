@@ -4,8 +4,8 @@
   "surfaces": {
     "cliCommands": {
       "status": "active",
-      "count": 63,
-      "examples": 70,
+      "count": 64,
+      "examples": 72,
       "source": "src/core/cli/registry.ts"
     },
     "httpRoutes": {
@@ -44,7 +44,7 @@
     },
     "settings": {
       "status": "active",
-      "count": 58,
+      "count": 60,
       "source": "packages/core/src/settings.ts"
     },
     "sdkSubpaths": {

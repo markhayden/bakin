@@ -60,6 +60,47 @@ bakin logs mcp    # MCP audit log
 
 Log lines go to both stdout and `~/.bakin/logs/server.log` (10 MB rotation, single backup). Tail with the commands above or watch the file directly.
 
+## Diagnose slow startup
+
+Startup diagnostics are off by default. Turn them on when Bakin feels slow to
+start, hangs on **Loading plugins**, or loads slowly from another device:
+
+```sh
+bakin diagnostics startup status
+bakin diagnostics startup on --slow-ms 250
+bakin restart
+```
+
+The command writes `diagnostics.startup` in `~/.bakin/settings.json`, so it also
+works for service-managed or auto-started instances. Changes apply on the next
+server start. Turn it back off when you're done:
+
+```sh
+bakin diagnostics startup off
+bakin restart
+```
+
+For a one-off foreground run, use environment overrides instead:
+
+```sh
+BAKIN_STARTUP_DIAGNOSTICS=1 BAKIN_STARTUP_SLOW_MS=250 BAKIN_CONSOLE_FORMAT=verbose bakin start
+```
+
+Server startup spans are written as structured log data with
+`category: "startup"`. Browser plugin boot is separate from server startup; to
+inspect that path, run this in DevTools on the slow browser and reload:
+
+```js
+localStorage.setItem('bakin:plugin-diagnostics', '1')
+location.reload()
+```
+
+To copy the latest browser resource summary:
+
+```js
+copy(JSON.stringify(window.__bakinStartupSpans?.filter(s => s.span === 'pluginHost.resourceSummary').at(-1), null, 2))
+```
+
 ## Inspect runtime paths
 
 ```sh

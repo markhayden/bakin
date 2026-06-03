@@ -47,3 +47,23 @@ Windows: `'5m' | '1h' | '24h'`.
 - **Agent** — dispatch / heartbeat / lifecycle modules emit `kind: 'agent'` entries.
 
 Manual `recordUsage` calls are only needed for new flows that aren't covered by the three auto-recorders above.
+
+## Startup Diagnostics and Remote Metrics Boundary
+
+Plugin startup diagnostics are not usage recording. They are opt-in local
+structured logs emitted through `src/core/startup-diagnostics.ts` when
+`diagnostics.startup.enabled` is set, `BAKIN_STARTUP_DIAGNOSTICS=1` is present,
+or debug/verbose logging is explicitly requested. Browser diagnostics remain
+explicitly enabled through dev mode, localStorage, or a query flag. Diagnostic
+records should remain timing/status records only: span name, phase, duration,
+status, counts, plugin id/source where needed, and sanitized error messages.
+
+Remote or ecosystem metrics are not implemented. If added later, they must be a
+separate explicit opt-in setting, disabled by default, and fed from sanitized
+aggregate snapshots of this recorder or a dedicated metrics aggregator. Do not
+send task content, prompts, model responses, file paths, plugin settings,
+secrets, raw stack traces, raw plugin errors, agent identities, or arbitrary
+plugin-returned data.
+
+The local recorder in this file remains the single source of truth for Health's
+usage view. Do not introduce a parallel hidden tracking path for remote metrics.
