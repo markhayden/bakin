@@ -6,6 +6,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.10] - 2026-06-02
+
+### Added
+- Add memory cleanup: find a stale term across runtime memory tiers, dispatch one cleanup task per affected agent (the agent edits its own source), and verify remaining occurrences per agent, with a dedicated find → dispatch → verify UI flow. Cleanup edits to package-projected files are protected so managed content is not overwritten.
+- Add update controls and agent cleanup flows to the UI for managing installed plugins and agent packages.
+- Add workflow skill drift detection and repair, surfacing stale skills (including those in parallel workflow groups) with an in-place upgrade action.
+- Add a dockerized OpenClaw rig (`bun run instance up`/`dev`/`run`/`shell`/`reset`/`down`) for one-command UI + CLI development against a real OpenClaw in Docker without touching `~/.openclaw`, including 1Password-driven secrets, Discord channel wiring, MCP tool bridging via mcporter, and Codex device-code login.
+
+### Changed
+- Document the memory cleanup capability and amend the read/dispatch invariant (Bakin never writes runtime-memory content).
+- Refine workflow skill drift repair copy and move the stale-skill upgrade action below the skill details.
+
+### Fixed
+- Route OpenClaw channel/message delivery through the CLI path so agent messages are delivered reliably.
+- Resolve the OpenClaw workspace against the resolved home directory rather than foreign config paths.
+- Report managed plugin and agent-package versions from their lockfiles instead of stale or fabricated values.
+- Harden image generation retries against provider timeouts while preserving billing idempotency.
+- Lazy-load `sharp` in core plugins so release binaries start without eagerly resolving the native module.
+- Keep stale workflow node content readable while drift repair is pending.
+- Scaffold an empty changelog section during release branch prep instead of blocking the branch when the section is missing.
+
 ## [0.0.1-rc.9] - 2026-06-01
 
 ### Added
@@ -120,5 +141,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 [0.0.1-rc.2]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.2
 [0.0.1-rc.1]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.1
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.9...HEAD
 [0.0.1-rc.9]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.9
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.10...HEAD
+[0.0.1-rc.10]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.10
