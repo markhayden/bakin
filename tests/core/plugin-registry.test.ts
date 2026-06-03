@@ -173,11 +173,13 @@ describe('PluginRegistryImpl', () => {
   let mockAddExecTool: any
   let mockRegisterRouteDoc: any
   let previousBakinHome: string | undefined
+  let previousStartupDiagnostics: string | undefined
 
   beforeEach(async () => {
     tempDir = mkdtempSync(join(tmpdir(), 'bakin-plugin-reg-'))
     // Point user plugins to a non-existent dir (no user plugins by default)
     previousBakinHome = process.env.BAKIN_HOME
+    previousStartupDiagnostics = process.env.BAKIN_STARTUP_DIAGNOSTICS
     process.env.BAKIN_HOME = join(tempDir, 'bakin-home')
     // Clear globalThis singletons for fresh instances
     delete (globalThis as any).__bakinPluginRegistry
@@ -230,6 +232,11 @@ describe('PluginRegistryImpl', () => {
       delete process.env.BAKIN_HOME
     } else {
       process.env.BAKIN_HOME = previousBakinHome
+    }
+    if (previousStartupDiagnostics === undefined) {
+      delete process.env.BAKIN_STARTUP_DIAGNOSTICS
+    } else {
+      process.env.BAKIN_STARTUP_DIAGNOSTICS = previousStartupDiagnostics
     }
     mockGetContentDir?.mockImplementation(() => process.env.BAKIN_HOME || '/tmp/test')
     registerCorePlugins?.({})
@@ -866,6 +873,50 @@ describe('PluginRegistryImpl', () => {
         call[3]?.pluginId === 'core-storage'
       )
       expect(activation?.[3]?.permissions).toEqual(['storage.read'])
+    })
+
+    it('emits startup timing diagnostics for plugin activation and onReady', async () => {
+      process.env.BAKIN_STARTUP_DIAGNOSTICS = '1'
+      const path = writeFakePlugin('timed-core', {
+        onReady: `function() { global.__timedReady = true }`,
+      })
+
+      await pluginRegistry.initialize({ plugins: [{ path }] }, mockStorage(), mockEvents())
+      await pluginRegistry.onAllReady()
+
+      const debugCalls = loggerDebug.mock.calls as unknown as Array<[string, Record<string, unknown>?]>
+      expect(debugCalls).toContainEqual([
+        'startup span',
+        expect.objectContaining({
+          category: 'startup',
+          phase: 'plugin',
+          span: 'plugin.activate',
+          status: 'ok',
+          pluginId: 'timed-core',
+          pluginSource: 'core',
+        }),
+      ])
+      expect(debugCalls).toContainEqual([
+        'startup span',
+        expect.objectContaining({
+          category: 'startup',
+          phase: 'plugin',
+          span: 'plugin.onReady',
+          status: 'ok',
+          pluginId: 'timed-core',
+          pluginSource: 'core',
+        }),
+      ])
+      expect(debugCalls).toContainEqual([
+        'startup span',
+        expect.objectContaining({
+          category: 'startup',
+          phase: 'plugins',
+          span: 'pluginRegistry.initialize',
+          status: 'ok',
+          count: 1,
+        }),
+      ])
     })
 
     it('fails user plugins that register undeclared API routes', async () => {

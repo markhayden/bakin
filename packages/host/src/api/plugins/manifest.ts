@@ -21,6 +21,7 @@ import { runChecks } from '@/core/plugins/upgrade'
 import { EMBEDDED_ASSETS } from '../_embedded-assets'
 import { APP_VERSION } from '@bakin/core/constants'
 import type { PluginContributions } from '@makinbakin/sdk/types'
+import { startStartupSpan } from '@/core/startup-diagnostics'
 
 const log = createLogger('plugin-manifest')
 
@@ -110,87 +111,131 @@ async function hasClientCss(pluginId: string): Promise<boolean> {
 }
 
 export async function get(req: Request): Promise<Response> {
+  const span = startStartupSpan(log, 'pluginManifest.get', {
+    phase: 'manifest',
+    thresholdMs: 250,
+  })
   const url = new URL(req.url)
   const wantCheck = url.searchParams.get('check') === '1'
-
-  // If --check requested, batch the per-plugin probes via runChecks — that
-  // helper does parallel reads but ONE atomic lockfile write at the end,
-  // avoiding the read-modify-write race that would silently drop updates.
-  if (wantCheck) {
-    const userIds = pluginRegistry
-      .getRegistrySnapshot()
-      .map(e => e.id)
-      .filter(id => !isCorePlugin(id))
-    if (userIds.length > 0) {
-      const results = await runChecks(userIds)
-      for (const r of results) {
-        if (r.error) log.warn('plugin --check probe failed', { id: r.id, error: r.error })
-      }
-    }
-  }
-
-  // Read the lockfile once per request; tolerate read failures so a corrupt
-  // lockfile doesn't blank the entire UI manifest.
-  let lockedPlugins: Record<string, PluginLockEntry> = {}
   try {
-    lockedPlugins = readPluginLockfile().plugins
-  } catch (err) {
-    log.error('failed to read plugin lockfile for manifest', err as Error)
-  }
-
-  const plugins: ManifestPlugin[] = []
-  for (const entry of pluginRegistry.getRegistrySnapshot()) {
-    const installed = lockedPlugins[entry.id] ?? null
-    const isCore = isCorePlugin(entry.id)
-    const source: ManifestPlugin['source'] = isCore
-      ? 'core'
-      : (installed?.type ?? 'local')
-
-    let staleHintDays: number | null = null
-    if (installed?.lastChecked) {
-      const days = daysSince(installed.lastChecked)
-      if (days > STALE_HINT_DAYS) staleHintDays = days
-    }
-
-    // Compute upgrade availability from persisted markers — same source of
-    // truth whether or not --check ran this request.
-    let upgradeAvailable = false
-    if (installed && !isCore) {
-      if (installed.type === 'github' && installed.remoteHeadSha) {
-        upgradeAvailable = installed.remoteHeadSha !== installed.commitSha
-      } else if (installed.type === 'local' && installed.lastSourceTreeSha && installed.sourceTreeSha) {
-        upgradeAvailable = installed.lastSourceTreeSha !== installed.sourceTreeSha
+    // If --check requested, batch the per-plugin probes via runChecks — that
+    // helper does parallel reads but ONE atomic lockfile write at the end,
+    // avoiding the read-modify-write race that would silently drop updates.
+    if (wantCheck) {
+      const userIds = pluginRegistry
+        .getRegistrySnapshot()
+        .map(e => e.id)
+        .filter(id => !isCorePlugin(id))
+      if (userIds.length > 0) {
+        const checkSpan = startStartupSpan(log, 'pluginManifest.updateChecks', {
+          phase: 'manifest',
+          count: userIds.length,
+          thresholdMs: 1_000,
+        })
+        let results: Awaited<ReturnType<typeof runChecks>>
+        try {
+          results = await runChecks(userIds)
+          checkSpan.end({ status: 'ok', count: results.length })
+        } catch (err) {
+          checkSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+          throw err
+        }
+        for (const r of results) {
+          if (r.error) log.warn('plugin --check probe failed', { id: r.id, error: r.error })
+        }
       }
     }
 
-    const plugin: ManifestPlugin = {
-      id: entry.id,
-      name: entry.name,
-      version: entry.version,
-      source,
-      installed,
-      upgradeAvailable,
-      staleHintDays,
-      status: entry.status,
-      contributes: entry.contributes,
+    // Read the lockfile once per request; tolerate read failures so a corrupt
+    // lockfile doesn't blank the entire UI manifest.
+    let lockedPlugins: Record<string, PluginLockEntry> = {}
+    try {
+      lockedPlugins = readPluginLockfile().plugins
+    } catch (err) {
+      log.error('failed to read plugin lockfile for manifest', err as Error)
     }
-    const clientVersion = entry.status === 'active'
-      ? await pluginAssetVersion(entry.id, 'client.js')
-      : null
-    if (entry.status === 'active' && clientVersion) {
-      plugin.clientEntry = `/api/plugins/${entry.id}/assets/client.js`
-      plugin.clientVersion = clientVersion
-    } else if (entry.status === 'failed') {
-      plugin.errorCode = entry.errorCode
-      plugin.errorMessage = entry.errorMessage
-      plugin.missingDependencies = entry.missingDependencies
-    }
-    if (entry.status === 'active' && (await hasClientCss(entry.id))) {
-      plugin.clientCss = `/api/plugins/${entry.id}/assets/client.css`
-    }
-    plugins.push(plugin)
-  }
 
-  const body: ManifestResponse = { plugins }
-  return Response.json(body)
+    const plugins: ManifestPlugin[] = []
+    for (const entry of pluginRegistry.getRegistrySnapshot()) {
+      const installed = lockedPlugins[entry.id] ?? null
+      const isCore = isCorePlugin(entry.id)
+      const source: ManifestPlugin['source'] = isCore
+        ? 'core'
+        : (installed?.type ?? 'local')
+
+      let staleHintDays: number | null = null
+      if (installed?.lastChecked) {
+        const days = daysSince(installed.lastChecked)
+        if (days > STALE_HINT_DAYS) staleHintDays = days
+      }
+
+      // Compute upgrade availability from persisted markers — same source of
+      // truth whether or not --check ran this request.
+      let upgradeAvailable = false
+      if (installed && !isCore) {
+        if (installed.type === 'github' && installed.remoteHeadSha) {
+          upgradeAvailable = installed.remoteHeadSha !== installed.commitSha
+        } else if (installed.type === 'local' && installed.lastSourceTreeSha && installed.sourceTreeSha) {
+          upgradeAvailable = installed.lastSourceTreeSha !== installed.sourceTreeSha
+        }
+      }
+
+      const plugin: ManifestPlugin = {
+        id: entry.id,
+        name: entry.name,
+        version: entry.version,
+        source,
+        installed,
+        upgradeAvailable,
+        staleHintDays,
+        status: entry.status,
+        contributes: entry.contributes,
+      }
+      const clientAssetSpan = startStartupSpan(log, 'pluginManifest.assetVersion', {
+        phase: 'manifest',
+        pluginId: entry.id,
+        pluginSource: isCore ? 'core' : 'user',
+        debug: false,
+      })
+      const clientVersion = entry.status === 'active'
+        ? await pluginAssetVersion(entry.id, 'client.js')
+        : null
+      clientAssetSpan.end({
+        status: clientVersion ? 'ok' : 'skipped',
+        asset: 'client.js',
+      })
+      if (entry.status === 'active' && clientVersion) {
+        plugin.clientEntry = `/api/plugins/${entry.id}/assets/client.js`
+        plugin.clientVersion = clientVersion
+      } else if (entry.status === 'failed') {
+        plugin.errorCode = entry.errorCode
+        plugin.errorMessage = entry.errorMessage
+        plugin.missingDependencies = entry.missingDependencies
+      }
+      if (entry.status === 'active') {
+        const cssAssetSpan = startStartupSpan(log, 'pluginManifest.assetVersion', {
+          phase: 'manifest',
+          pluginId: entry.id,
+          pluginSource: isCore ? 'core' : 'user',
+          debug: false,
+        })
+        const clientCss = await hasClientCss(entry.id)
+        cssAssetSpan.end({
+          status: clientCss ? 'ok' : 'skipped',
+          asset: 'client.css',
+        })
+        if (clientCss) {
+          plugin.clientCss = `/api/plugins/${entry.id}/assets/client.css`
+        }
+      }
+      plugins.push(plugin)
+    }
+
+    const body: ManifestResponse = { plugins }
+    span.end({ status: 'ok', count: plugins.length, check: wantCheck })
+    return Response.json(body)
+  } catch (err) {
+    span.end({ status: 'error', error: err instanceof Error ? err.message : String(err), check: wantCheck })
+    throw err
+  }
 }

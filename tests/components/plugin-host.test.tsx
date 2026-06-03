@@ -25,12 +25,13 @@
  * level unregisterPlugin tests (tests/sdk/register.test.ts) to cover
  * the rest of the mechanism.
  */
-import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { cleanup, render, screen, waitFor, act } from '@testing-library/react'
 import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
+import { StrictMode } from 'react'
 
 // Per CLAUDE.md — defensive content-dir mocks even for pure React tests.
 mock.module('../../src/core/content-dir', () => {
@@ -77,7 +78,7 @@ function ProbeTree() {
 
 function injectDevScriptTag() {
   const s = document.createElement('script')
-  s.setAttribute('type', 'module')
+  s.setAttribute('type', 'application/json')
   s.setAttribute('src', '/__bakin-dev/client.js')
   document.head.appendChild(s)
 }
@@ -109,8 +110,10 @@ afterEach(() => {
   removeDevScriptTag()
   for (const id of USED_IDS) unregisterPlugin(id)
   delete (window as unknown as { __bakinHotSwapPlugin?: unknown }).__bakinHotSwapPlugin
+  delete (window as unknown as { __bakinStartupSpans?: unknown }).__bakinStartupSpans
   delete (globalThis as Record<string, unknown>).__bakinHotSwapRegister
   delete (globalThis as Record<string, unknown>).__bakinHotSwapImportCount
+  window.localStorage.clear()
   vi.unstubAllGlobals()
   cleanup()
 })
@@ -136,6 +139,146 @@ describe('PluginHost — boot', () => {
     )
     await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
   })
+
+  it('shares in-flight boot work during React StrictMode remounts', async () => {
+    const fetchMock = mock(async (url: string) => {
+      if (url === '/api/plugins/manifest') {
+        return new Response(JSON.stringify(EMPTY_MANIFEST), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      return new Response('not found', { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(
+      <StrictMode>
+        <PluginHost>
+          <ProbeTree />
+        </PluginHost>
+      </StrictMode>,
+    )
+    await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('emits browser plugin boot diagnostics when explicitly enabled', async () => {
+    window.localStorage.setItem('bakin:plugin-diagnostics', '1')
+    const moduleDir = mkdtempSync(join(tmpdir(), 'bakin-plugin-host-boot-diag-'))
+    const modulePath = join(moduleDir, 'client.mjs')
+    writeFileSync(modulePath, 'export default {};\n')
+    const clientEntry = pathToFileURL(modulePath).href
+    vi.stubGlobal('fetch', mock(async (url: string) => {
+      if (url === '/api/plugins/manifest') {
+        return new Response(JSON.stringify({
+          plugins: [{
+            id: 'x',
+            name: 'X',
+            version: '1.0.0',
+            clientEntry,
+            clientVersion: 'diag',
+            status: 'active',
+          }],
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      return new Response('not found', { status: 404 })
+    }))
+    const consoleDebug = spyOn(console, 'debug').mockImplementation(() => {})
+    const originalGetEntriesByType = window.performance.getEntriesByType
+    Object.defineProperty(window.performance, 'getEntriesByType', {
+      configurable: true,
+      value: mock((type: string) => type === 'resource'
+        ? [
+            {
+              name: 'http://localhost/api/plugins/x/assets/client.js?v=diag',
+              initiatorType: 'script',
+              startTime: 0,
+              responseEnd: 100_000,
+              duration: 123.45,
+              transferSize: 2048,
+              encodedBodySize: 1024,
+              decodedBodySize: 4096,
+            },
+            {
+              name: 'http://localhost/node_modules/.vite/deps/react.js',
+              initiatorType: 'script',
+              startTime: 0,
+              responseEnd: 100_000,
+              duration: 20,
+              transferSize: 512,
+              encodedBodySize: 256,
+              decodedBodySize: 1024,
+            },
+          ]
+        : []),
+    })
+
+    try {
+      render(
+        <PluginHost>
+          <ProbeTree />
+        </PluginHost>,
+      )
+      await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
+
+      expect(consoleDebug).toHaveBeenCalledWith('[bakin] startup span', expect.objectContaining({
+        category: 'startup',
+        phase: 'browser-plugin-host',
+        span: 'pluginHost.manifestFetch',
+        status: 'ok',
+        count: 1,
+      }))
+      expect(consoleDebug).toHaveBeenCalledWith('[bakin] startup span', expect.objectContaining({
+        category: 'startup',
+        phase: 'browser-plugin-host',
+        span: 'pluginHost.clientImport',
+        status: 'ok',
+        pluginId: 'x',
+      }))
+      expect(consoleDebug).toHaveBeenCalledWith('[bakin] startup span', expect.objectContaining({
+        category: 'startup',
+        phase: 'browser-plugin-host',
+        span: 'pluginHost.boot',
+        status: 'ok',
+        count: 1,
+      }))
+      expect(consoleDebug).toHaveBeenCalledWith('[bakin] startup span', expect.objectContaining({
+        category: 'startup',
+        phase: 'browser-plugin-host',
+        span: 'pluginHost.resourceSummary',
+        status: 'ok',
+        count: 2,
+        totalTransferBytes: 2560,
+        slowest: expect.arrayContaining([
+          expect.objectContaining({
+            resource: 'plugin:x:client.js',
+            initiatorType: 'script',
+            durationMs: 123.45,
+            transferBytes: 2048,
+          }),
+        ]),
+      }))
+      const spans = (window as unknown as { __bakinStartupSpans?: Array<Record<string, unknown>> })
+        .__bakinStartupSpans ?? []
+      expect(spans).toContainEqual(expect.objectContaining({
+        category: 'startup',
+        phase: 'browser-plugin-host',
+        span: 'pluginHost.resourceSummary',
+      }))
+    } finally {
+      Object.defineProperty(window.performance, 'getEntriesByType', {
+        configurable: true,
+        value: originalGetEntriesByType,
+      })
+      consoleDebug.mockRestore()
+      rmSync(moduleDir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('PluginHost — window.__bakinHotSwapPlugin bridge', () => {
@@ -151,98 +294,112 @@ describe('PluginHost — window.__bakinHotSwapPlugin bridge', () => {
   })
 
   it('exposes the handle when the dev-client script tag is present', async () => {
+    const consoleDebug = spyOn(console, 'debug').mockImplementation(() => {})
     injectDevScriptTag()
-    render(
-      <PluginHost>
-        <ProbeTree />
-      </PluginHost>,
-    )
-    await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
-    await waitFor(() => {
-      expect(typeof (window as unknown as { __bakinHotSwapPlugin?: unknown })
-        .__bakinHotSwapPlugin).toBe('function')
-    })
+    try {
+      render(
+        <PluginHost>
+          <ProbeTree />
+        </PluginHost>,
+      )
+      await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
+      await waitFor(() => {
+        expect(typeof (window as unknown as { __bakinHotSwapPlugin?: unknown })
+          .__bakinHotSwapPlugin).toBe('function')
+      })
+    } finally {
+      consoleDebug.mockRestore()
+    }
   })
 })
 
 describe('PluginHost — hot-swap unregisters synchronously', () => {
   it('drops the plugin\'s slot entry before the import runs', async () => {
+    const consoleDebug = spyOn(console, 'debug').mockImplementation(() => {})
     injectDevScriptTag()
-    render(
-      <PluginHost>
-        <ProbeTree />
-      </PluginHost>,
-    )
-    await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
+    try {
+      render(
+        <PluginHost>
+          <ProbeTree />
+        </PluginHost>,
+      )
+      await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
 
-    act(() => {
-      registerPlugin({
-        id: 'x',
-        slots: { 'page:/probe': SlotPage },
+      act(() => {
+        registerPlugin({
+          id: 'x',
+          slots: { 'page:/probe': SlotPage },
+        })
       })
-    })
-    await waitFor(() => expect(screen.queryByTestId('slot-content')?.textContent)
-      .toBe('rendered-from-x'))
+      await waitFor(() => expect(screen.queryByTestId('slot-content')?.textContent)
+        .toBe('rendered-from-x'))
 
-    const handle = (window as unknown as {
-      __bakinHotSwapPlugin?: (...a: unknown[]) => Promise<void>
-    }).__bakinHotSwapPlugin
-    expect(typeof handle).toBe('function')
+      const handle = (window as unknown as {
+        __bakinHotSwapPlugin?: (...a: unknown[]) => Promise<void>
+      }).__bakinHotSwapPlugin
+      expect(typeof handle).toBe('function')
 
-    // Kick off the swap with a deliberately bad URL. The unregister step
-    // runs synchronously; the import rejects, which we swallow. The
-    // assertion is on the SIDE EFFECT — x's slot entry is gone, so the
-    // Slot renders null.
-    const p = handle!('x', '/bogus/unused.js', 'v2')
-    if (p && typeof p.catch === 'function') p.catch(() => {})
+      // Kick off the swap with a deliberately bad URL. The unregister step
+      // runs synchronously; the import rejects, which we swallow. The
+      // assertion is on the SIDE EFFECT — x's slot entry is gone, so the
+      // Slot renders null.
+      const p = handle!('x', '/bogus/unused.js', 'v2')
+      if (p && typeof p.catch === 'function') p.catch(() => {})
 
-    await waitFor(() => expect(screen.queryByTestId('slot-content')).toBeNull())
+      await waitFor(() => expect(screen.queryByTestId('slot-content')).toBeNull())
+    } finally {
+      consoleDebug.mockRestore()
+    }
   })
 
   it('dedupes repeated hot-swaps for the same evaluated client URL', async () => {
+    const consoleDebug = spyOn(console, 'debug').mockImplementation(() => {})
     injectDevScriptTag()
-    render(
-      <PluginHost>
-        <ProbeTree />
-      </PluginHost>,
-    )
-    await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
-
     const moduleDir = mkdtempSync(join(tmpdir(), 'bakin-plugin-host-hotswap-'))
-    const modulePath = join(moduleDir, 'client.mjs')
-    writeFileSync(modulePath, [
-      'globalThis.__bakinHotSwapImportCount = (globalThis.__bakinHotSwapImportCount ?? 0) + 1',
-      'globalThis.__bakinHotSwapRegister()',
-      '',
-    ].join('\n'))
-    ;(globalThis as Record<string, unknown>).__bakinHotSwapRegister = () => {
-      registerPlugin({
-        id: 'x',
-        slots: { 'page:/probe': SlotPage },
+    try {
+      render(
+        <PluginHost>
+          <ProbeTree />
+        </PluginHost>,
+      )
+      await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
+
+      const modulePath = join(moduleDir, 'client.mjs')
+      writeFileSync(modulePath, [
+        'globalThis.__bakinHotSwapImportCount = (globalThis.__bakinHotSwapImportCount ?? 0) + 1',
+        'globalThis.__bakinHotSwapRegister()',
+        '',
+      ].join('\n'))
+      ;(globalThis as Record<string, unknown>).__bakinHotSwapRegister = () => {
+        registerPlugin({
+          id: 'x',
+          slots: { 'page:/probe': SlotPage },
+        })
+      }
+
+      const handle = (window as unknown as {
+        __bakinHotSwapPlugin?: (...a: unknown[]) => Promise<void>
+      }).__bakinHotSwapPlugin
+      expect(typeof handle).toBe('function')
+
+      const clientEntry = pathToFileURL(modulePath).href
+      await act(async () => {
+        await handle!('x', clientEntry, 'same-version')
       })
+      await waitFor(() => expect(screen.queryByTestId('slot-content')?.textContent)
+        .toBe('rendered-from-x'))
+
+      await act(async () => {
+        await handle!('x', clientEntry, 'same-version')
+      })
+
+      expect((globalThis as Record<string, unknown>).__bakinHotSwapImportCount).toBe(1)
+      await waitFor(() => expect(screen.queryByTestId('slot-content')?.textContent)
+        .toBe('rendered-from-x'))
+    } finally {
+      consoleDebug.mockRestore()
+      rmSync(moduleDir, { recursive: true, force: true })
     }
-
-    const handle = (window as unknown as {
-      __bakinHotSwapPlugin?: (...a: unknown[]) => Promise<void>
-    }).__bakinHotSwapPlugin
-    expect(typeof handle).toBe('function')
-
-    const clientEntry = pathToFileURL(modulePath).href
-    await act(async () => {
-      await handle!('x', clientEntry, 'same-version')
-    })
-    await waitFor(() => expect(screen.queryByTestId('slot-content')?.textContent)
-      .toBe('rendered-from-x'))
-
-    await act(async () => {
-      await handle!('x', clientEntry, 'same-version')
-    })
-
-    expect((globalThis as Record<string, unknown>).__bakinHotSwapImportCount).toBe(1)
-    await waitFor(() => expect(screen.queryByTestId('slot-content')?.textContent)
-      .toBe('rendered-from-x'))
-
-    rmSync(moduleDir, { recursive: true, force: true })
   })
 })
 

@@ -192,6 +192,43 @@ describe('buildUserPlugin', () => {
     await expect(buildUserPlugin(dir)).resolves.toBeUndefined()
     expect(existsSync(join(dir, 'dist', 'index.js'))).toBe(true)
   }, 60_000)
+
+  it('emits local diagnostics for user plugin rebuilds', async () => {
+    const previousStartupDiagnostics = process.env.BAKIN_STARTUP_DIAGNOSTICS
+    process.env.BAKIN_STARTUP_DIAGNOSTICS = '1'
+    const dir = join(testDir, 'plugins', 'diagnostic-build')
+    writeMinimalPlugin(dir, `export default { id: 'minimal', name: 'x', version: '0.1.0', activate() {} }`)
+    const log = {
+      debug: mock(),
+      warn: mock(),
+      info: mock(),
+      error: mock(),
+    }
+
+    try {
+      await expect(buildUserPlugin(dir, { diagnosticsLog: log, pluginId: 'minimal' })).resolves.toBeUndefined()
+
+      expect(log.debug).toHaveBeenCalledWith('startup span', expect.objectContaining({
+        category: 'startup',
+        phase: 'user-plugin-build',
+        span: 'userPlugin.serverBuild',
+        status: 'ok',
+        pluginId: 'minimal',
+        pluginSource: 'user',
+      }))
+      expect(log.debug).toHaveBeenCalledWith('startup span', expect.objectContaining({
+        category: 'startup',
+        phase: 'user-plugin-build',
+        span: 'userPlugin.build',
+        status: 'ok',
+        rebuilt: true,
+        hasClient: false,
+      }))
+    } finally {
+      if (previousStartupDiagnostics === undefined) delete process.env.BAKIN_STARTUP_DIAGNOSTICS
+      else process.env.BAKIN_STARTUP_DIAGNOSTICS = previousStartupDiagnostics
+    }
+  }, 60_000)
 })
 
 describe('buildAllUserPlugins', () => {
