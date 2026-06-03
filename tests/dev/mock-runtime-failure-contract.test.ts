@@ -30,7 +30,7 @@ describe('imitation-crab runtime failure contract', () => {
     }))).rejects.toThrow('OpenClaw chat failed: Mock error mode; code=mock_error')
   })
 
-  it('rejects loudly when the mock tool gateway returns an error', async () => {
+  it('rejects raw tool calls when the mock tool gateway returns an error', async () => {
     harness = await createImitationCrabHarness({ toolMode: 'error' })
     const { runtime } = harness.services
 
@@ -40,6 +40,8 @@ describe('imitation-crab runtime failure contract', () => {
     await expect(runtime.channels.sendMessage({
       channels: ['discord'],
       message: { body: 'This channel message should fail' },
-    })).rejects.toThrow('OpenClaw invokeTool failed (500)')
+    })).resolves.toEqual(expect.objectContaining({
+      deliveries: [expect.objectContaining({ channelId: 'discord' })],
+    }))
   })
 })

@@ -532,7 +532,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         channels: args.channels,
         message: {
           title: args.notification.title,
-          body: `${args.notification.title}\n\n${args.notification.body}`,
+          body: args.notification.body,
           metadata: args.notification.metadata,
         },
       })
@@ -542,22 +542,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       const deliveries = []
       for (const channel of args.channels) {
         const ref = splitChannelRef(channel, args.message.metadata)
-        const payload: Record<string, unknown> = { channel: ref.channel, message: args.message.body }
         const files = metadataFiles(args.message.metadata)
-        if (ref.target) payload.target = ref.target
-        if (args.message.title) payload.title = args.message.title
-        if (args.message.threadId) payload.threadId = args.message.threadId
-        if (files.length > 0) {
-          payload.files = files
-          payload.media = files.map(file => file.path)
-        }
-        try {
-          await this.invokeTool('message_send', payload)
-        } catch (err) {
-          if (!ref.target) throw err
-          const cliArgs = ['message', 'send', '--channel', ref.channel, '--target', ref.target, '--message', args.message.body]
-          await this.exec(cliArgs)
-        }
+        await this.exec(openClawMessageSendArgs(ref, args.message, files))
         deliveries.push({ channelId: channel, ref: `message:${Date.now()}`, renderedAt })
       }
       return { deliveries }
@@ -567,7 +553,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         channels: args.channels,
         message: {
           title: args.content.title,
-          body: [args.content.title, args.content.body, args.content.url].filter(Boolean).join('\n\n'),
+          body: [args.content.body, args.content.url].filter(Boolean).join('\n\n'),
           metadata: {
             ...(args.content.metadata ?? {}),
             ...(args.content.files ? { files: args.content.files } : {}),
@@ -711,7 +697,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       message: {
         title: args.request.title,
         body: [
-          args.request.title,
           args.request.body,
           optionText,
           approvalUrl ? `Open in Bakin: ${approvalUrl}` : undefined,
@@ -1510,6 +1495,20 @@ function splitChannelRef(channelId: string, metadata: RuntimeMetadata | undefine
   const [channel, ...targetParts] = channelId.split(':')
   if (channel && targetParts.length > 0) return { channel, target: targetParts.join(':') }
   return { channel: channelId }
+}
+
+function openClawMessageSendArgs(
+  ref: { channel: string; target?: string },
+  message: { body: string; title?: string; threadId?: string; metadata?: RuntimeMetadata },
+  files: Array<{ name: string; path: string; contentType?: string }>,
+): string[] {
+  const args = ['message', 'send', '--channel', ref.channel]
+  if (ref.target) args.push('--target', ref.target)
+  const body = [message.title, message.body].filter(Boolean).join('\n\n')
+  if (body) args.push('--message', body)
+  if (message.threadId) args.push('--thread-id', message.threadId)
+  for (const file of files) args.push('--media', file.path)
+  return args
 }
 
 function readChannelInfos(): ChannelInfo[] {

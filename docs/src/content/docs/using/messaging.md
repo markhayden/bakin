@@ -46,9 +46,11 @@ or video assets must be present before approval.
 
 </div>
 
-Bare-task Deliverables publish from the sweep after approval. Workflow-backed
-Deliverables publish when their workflow completes after Messaging has approved
-the gate.
+Bare-task Deliverables publish through explicit publish actions after approval.
+Workflow-backed Deliverables publish when their workflow completes after
+Messaging has approved the gate. If workflow completion reaches publishing and
+validation or channel delivery fails, Messaging creates a blocked repair task
+linked to the failed Deliverable so the issue remains visible on the board.
 
 ## Plans
 
@@ -152,6 +154,9 @@ Deliverable per channel, and creates one kickoff task per Deliverable through
 Deliverable `prepStartAt`, `dueAt` from the target publish time, and `source`
 metadata that links the task back to the Messaging Deliverable. Dispatch is the
 single wakeup path: it ignores future tasks until `availableAt` is reached.
+Workflow-backed Deliverables start `planned`; bare-task Deliverables start
+`in_prep` so their assigned agents can save drafts and mark them ready for
+review through the lifecycle tool.
 
 Workflow-backed prep is created through `ctx.tasks.create({ workflowId })`.
 Messaging listens for `workflow.gate_reached` and `workflow.complete`, and
@@ -169,7 +174,7 @@ paths.
     deliverables/<id>.json        # channel-specific work and publish state
     legacy/                       # archived pre-refactor messaging.json files
   plugin-settings/
-    messaging.json                # content types, channels, sweep cron, defaults
+    messaging.json                # content types, channels, defaults
 ```
 
 Sessions index into search as `messaging_brainstorm`. Plans and Deliverables
@@ -250,6 +255,5 @@ Full schemas in the [Exec tools reference](/docs/reference/generated/exec-tools/
 
 - [Team](/docs/using/team/): the agents you brainstorm and plan with
 - [Workflows](/docs/using/workflows/): workflow-backed prep and review gates
-- [Schedule](/docs/using/schedule/): cron-backed plugin sweeps
 - [Tasks](/docs/using/tasks/): content planning and prep work run as Bakin tasks
 - [Assets](/docs/using/assets/): draft images and videos used for publishing
