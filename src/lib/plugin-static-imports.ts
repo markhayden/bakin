@@ -25,17 +25,37 @@ import schedulePlugin from '../../plugins/schedule'
 import healthPlugin from '../../plugins/health'
 import gitPlugin from '../../plugins/git'
 
+import teamManifestJson from '../../plugins/team/bakin-plugin.json'
+import tasksManifestJson from '../../plugins/tasks/bakin-plugin.json'
+import memoryManifestJson from '../../plugins/memory/bakin-plugin.json'
+import modelsManifestJson from '../../plugins/models/bakin-plugin.json'
+import assetsManifestJson from '../../plugins/assets/bakin-plugin.json'
+import imagesManifestJson from '../../plugins/images/bakin-plugin.json'
+import workflowsManifestJson from '../../plugins/workflows/bakin-plugin.json'
+import scheduleManifestJson from '../../plugins/schedule/bakin-plugin.json'
+import healthManifestJson from '../../plugins/health/bakin-plugin.json'
+import gitManifestJson from '../../plugins/git/bakin-plugin.json'
+
+import { readPluginManifestJson } from '../../packages/core/src/plugins/manifest'
+import type { CorePluginRegistration } from './plugin-registry'
 import type { BakinPlugin } from '@bakin/core/plugin-types'
 
-export const CORE_PLUGIN_IMPORTS: Readonly<Record<string, BakinPlugin>> = {
-  'plugins/team': teamPlugin,
-  'plugins/tasks': tasksPlugin,
-  'plugins/memory': memoryPlugin,
-  'plugins/models': modelsPlugin,
-  'plugins/assets': assetsPlugin,
-  'plugins/images': imagesPlugin,
-  'plugins/workflows': workflowsPlugin,
-  'plugins/schedule': schedulePlugin,
-  'plugins/health': healthPlugin,
-  'plugins/git': gitPlugin,
+function corePlugin(plugin: BakinPlugin, manifestJson: unknown): CorePluginRegistration {
+  return {
+    plugin,
+    manifest: readPluginManifestJson(JSON.stringify(manifestJson)),
+  }
+}
+
+export const CORE_PLUGIN_IMPORTS: Readonly<Record<string, CorePluginRegistration>> = {
+  'plugins/team': corePlugin(teamPlugin, teamManifestJson),
+  'plugins/tasks': corePlugin(tasksPlugin, tasksManifestJson),
+  'plugins/memory': corePlugin(memoryPlugin, memoryManifestJson),
+  'plugins/models': corePlugin(modelsPlugin, modelsManifestJson),
+  'plugins/assets': corePlugin(assetsPlugin, assetsManifestJson),
+  'plugins/images': corePlugin(imagesPlugin, imagesManifestJson),
+  'plugins/workflows': corePlugin(workflowsPlugin, workflowsManifestJson),
+  'plugins/schedule': corePlugin(schedulePlugin, scheduleManifestJson),
+  'plugins/health': corePlugin(healthPlugin, healthManifestJson),
+  'plugins/git': corePlugin(gitPlugin, gitManifestJson),
 }

@@ -556,7 +556,11 @@ Allowed values:
 Grant source:
 - User-installed plugins are checked against lockfile-accepted
   permissions (`~/.bakin/plugins/lock.json`).
-- Built-in/core plugins are checked against their manifest permissions.
+- Built-in/core plugins are checked against their manifest permissions. In
+  compiled installs, those manifests are embedded through the static core
+  plugin registration table (`src/lib/plugin-static-imports.ts`) instead of
+  being re-read from `plugins/*/bakin-plugin.json` source paths that may not
+  exist beside the installed binary.
 - If a user plugin has no lockfile entry, Bakin falls back to its
   manifest and logs that fallback.
 
