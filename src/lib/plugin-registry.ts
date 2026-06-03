@@ -74,10 +74,18 @@ import { wrapPluginContextPermissions } from './plugin-permissions'
  * that import the registry don't transitively drag every plugin
  * (and every plugin's side effects) into their module graph.
  *
- * Shape: { 'plugins/team': BakinPluginInstance, ... }
+ * Shape: { 'plugins/team': { plugin: BakinPluginInstance, manifest }, ... }
  */
-let corePluginTable: Readonly<Record<string, BakinPlugin>> = {}
-export function registerCorePlugins(table: Readonly<Record<string, BakinPlugin>>): void {
+export interface CorePluginRegistration {
+  plugin: BakinPlugin
+  manifest: PublicPluginManifest
+}
+
+let corePluginTable: Readonly<Record<string, CorePluginRegistration>> = {}
+export function registerCorePlugins(table: Readonly<Record<string, CorePluginRegistration>>): void {
+  for (const { plugin } of Object.values(corePluginTable)) {
+    if (plugin?.id) corePluginIds.delete(plugin.id)
+  }
   corePluginTable = table
   // Seed corePluginIds synchronously from the static table so the predicate
   // is correct from the moment any code can call into the registry — not
@@ -86,7 +94,7 @@ export function registerCorePlugins(table: Readonly<Record<string, BakinPlugin>>
   // bypass the defense-in-depth guard. The activation-time add in
   // loadPlugin still runs as a backstop for dynamic-import test paths
   // where the table stays empty.
-  for (const plugin of Object.values(table)) {
+  for (const { plugin } of Object.values(table)) {
     if (plugin?.id) corePluginIds.add(plugin.id)
   }
 }
@@ -269,12 +277,15 @@ function logPluginActivation(args: {
   plugin: BakinPlugin
   source: 'core' | 'user'
   manifestPath?: string
+  manifest?: PublicPluginManifest
 }): void {
-  const { plugin, source, manifestPath } = args
+  const { plugin, source, manifestPath, manifest: embeddedManifest } = args
   let permissions: string[] = []
   let resolvedSource: 'core' | 'github' | 'local' = source === 'core' ? 'core' : 'local'
 
-  if (manifestPath && existsSync(manifestPath)) {
+  if (embeddedManifest) {
+    permissions = parseManifestPermissions(embeddedManifest.permissions)
+  } else if (manifestPath && existsSync(manifestPath)) {
     try {
       const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as Record<string, unknown>
       permissions = parseManifestPermissions(manifest.permissions)
@@ -396,8 +407,11 @@ class PluginRegistryImpl {
       const manifestPath = join(entry.path, 'bakin-plugin.json')
       let id = entry.path.split('/').pop() || entry.path
       let deps: string[] = []
-      let manifest: PublicPluginManifest | undefined
-      if (existsSync(manifestPath)) {
+      let manifest: PublicPluginManifest | undefined = corePluginTable[entry.path]?.manifest
+      if (manifest) {
+        id = manifest.id || id
+        deps = manifest.dependencies || []
+      } else if (existsSync(manifestPath)) {
         try {
           manifest = readPluginManifestJson(readFileSync(manifestPath, 'utf-8'))
           id = manifest.id || id
@@ -948,7 +962,8 @@ class PluginRegistryImpl {
       // trace and embed each plugin's module graph. In tests the table
       // stays empty, so we fall back to dynamic import by path (which
       // is how the registry worked before TG1).
-      let plugin: BakinPlugin | undefined = corePluginTable[pluginPath]
+      const staticCore = corePluginTable[pluginPath]
+      let plugin: BakinPlugin | undefined = staticCore?.plugin
       if (!plugin) {
         // Absolute paths (used by tests + user plugins under ~/.bakin/plugins/)
         // resolve directly. Relative paths (used by core plugins in
@@ -975,9 +990,10 @@ class PluginRegistryImpl {
       }
 
       // Read description from manifest if available
-      let description = ''
+      const resolvedManifest = manifest ?? staticCore?.manifest
+      let description = resolvedManifest?.description ?? ''
       const manifestPath = join(pluginPath, 'bakin-plugin.json')
-      if (existsSync(manifestPath)) {
+      if (!description && existsSync(manifestPath)) {
         try {
           const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
           description = manifest.description || ''
@@ -986,7 +1002,7 @@ class PluginRegistryImpl {
 
       const state: PluginState = {
         plugin,
-        manifest,
+        manifest: resolvedManifest,
         source: 'core',
         description,
         navItems: plugin.navItems || [],
@@ -1022,7 +1038,7 @@ class PluginRegistryImpl {
       // #142 layer 1 — log requested permissions on every activation so
       // `cat ~/.bakin/audit.jsonl | jq 'select(.event=="plugin.activate")'`
       // shows the full surface the user authorized.
-      logPluginActivation({ plugin, source: 'core', manifestPath })
+      logPluginActivation({ plugin, source: 'core', manifestPath, manifest: resolvedManifest })
       log.info(`Plugin loaded: ${plugin.name} v${plugin.version}`, {
         source: 'plugin',
         pluginId: plugin.id,
@@ -1407,6 +1423,8 @@ class PluginRegistryImpl {
   _resetForTests(): void {
     this.plugins.clear()
     this.failedPlugins.clear()
+    corePluginTable = {}
+    corePluginIds.clear()
     pluginSkills.clear()
     this.initialized = false
     this.runtime = null

@@ -167,6 +167,7 @@ describe('PluginRegistryImpl', () => {
   let pluginRegistry: any
   let getHookRegistry: any
   let getPluginSkills: any
+  let registerCorePlugins: any
   let mockGetContentDir: any
   let mockAppendAudit: any
   let mockAddExecTool: any
@@ -216,6 +217,7 @@ describe('PluginRegistryImpl', () => {
     pluginRegistry = mod.pluginRegistry
     getHookRegistry = mod.getHookRegistry
     getPluginSkills = mod.getPluginSkills
+    registerCorePlugins = mod.registerCorePlugins
     // bun:test has no vi.resetModules; reset the singleton via its own API
     pluginRegistry._resetForTests()
     // Also clear the hook registry — it's a separate globalThis singleton
@@ -230,6 +232,7 @@ describe('PluginRegistryImpl', () => {
       process.env.BAKIN_HOME = previousBakinHome
     }
     mockGetContentDir?.mockImplementation(() => process.env.BAKIN_HOME || '/tmp/test')
+    registerCorePlugins?.({})
     // Clean up any globalThis test vars
     for (const key of Object.keys(globalThis)) {
       if (key.startsWith('__') && key !== '__bakinPluginRegistry' && key !== '__bakinHookRegistry') {
@@ -818,6 +821,51 @@ describe('PluginRegistryImpl', () => {
         }),
         'system',
       )
+    })
+
+    it('uses embedded static manifests for core plugin permissions when source manifests are absent', async () => {
+      registerCorePlugins({
+        'embedded/core-storage': {
+          plugin: {
+            id: 'core-storage',
+            name: 'Core Storage',
+            version: '1.0.0',
+            activate(ctx: any) {
+              ctx.storage.read('state.txt')
+            },
+          },
+          manifest: {
+            id: 'core-storage',
+            name: 'Core Storage',
+            version: '1.0.0',
+            bakin: '>=1.0.0',
+            description: 'Core plugin loaded from an embedded registration',
+            entry: { server: 'index.js' },
+            permissions: ['storage.read'],
+          },
+        },
+      })
+
+      await pluginRegistry.initialize(
+        { plugins: [{ path: 'embedded/core-storage' }] },
+        mockStorage(),
+        mockEvents(),
+      )
+
+      const active = pluginRegistry.getRegistrySnapshot().find((entry: any) => entry.id === 'core-storage')
+      expect(active).toMatchObject({ status: 'active', source: 'built-in' })
+
+      const permissionMissing = mockAppendAudit.mock.calls.find((call: any[]) =>
+        call[1] === 'plugin.permission_missing' &&
+        call[3]?.pluginId === 'core-storage'
+      )
+      expect(permissionMissing).toBeUndefined()
+
+      const activation = mockAppendAudit.mock.calls.find((call: any[]) =>
+        call[1] === 'plugin.activate' &&
+        call[3]?.pluginId === 'core-storage'
+      )
+      expect(activation?.[3]?.permissions).toEqual(['storage.read'])
     })
 
     it('fails user plugins that register undeclared API routes', async () => {
