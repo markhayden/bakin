@@ -2,6 +2,7 @@ export interface TaskLogEntry {
   timestamp: string
   author: string
   message: string
+  data?: Record<string, unknown>
 }
 
 export interface TaskSource {

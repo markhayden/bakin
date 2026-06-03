@@ -21,6 +21,7 @@ export interface TaskLogEntry {
   timestamp: string
   author: string
   message: string
+  data?: Record<string, unknown>
 }
 
 export interface Task {
@@ -335,10 +336,10 @@ export function deleteTask(identifier: string): Promise<void> {
   }
 }
 
-export function addTaskLog(identifier: string, author: string, message: string): Promise<void> {
+export function addTaskLog(identifier: string, author: string, message: string, data?: Record<string, unknown>): Promise<void> {
   try {
     const task = requireTask(identifier)
-    getSharedBakinTaskStore().appendLogSync(task.id, { timestamp: new Date().toISOString(), author, message })
+    getSharedBakinTaskStore().appendLogSync(task.id, { timestamp: new Date().toISOString(), author, message, ...(data ? { data } : {}) })
     return Promise.resolve()
   } catch (err) {
     return Promise.reject(err)

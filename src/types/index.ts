@@ -2,6 +2,7 @@ export interface TaskLogEntry {
   timestamp: string
   author: string
   message: string
+  data?: Record<string, unknown>
 }
 
 export interface Task {
@@ -85,6 +86,7 @@ export interface ActivityEvent {
   taskTitle?: string
   eventName?: string
   duplicate?: boolean
+  data?: Record<string, unknown>
 }
 
 export interface ContentState {
