@@ -38,7 +38,7 @@ jobs:
       release_id: ${{ steps.release.outputs.release_id }}
     steps:
       - name: Checkout full history
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -118,7 +118,7 @@ jobs:
       NPM_TAG: ${{ needs.gate.outputs.npm_tag }}
     steps:
       - name: Checkout release commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.gate.outputs.commit }}
           fetch-depth: 0
@@ -175,7 +175,7 @@ jobs:
         run: bun run scripts/publish-sdk.ts --dry-run --version "${VERSION}" --package-dir "${RUNNER_TEMP}/sdk-package-dry-run" --tag "${NPM_TAG}"
 
       - name: Upload unsigned binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: release-binaries-unsigned
           if-no-files-found: error
@@ -194,7 +194,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout release commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.gate.outputs.commit }}
 
@@ -204,7 +204,7 @@ jobs:
           bun-version-file: .bun-version
 
       - name: Download unsigned binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: release-binaries-unsigned
           path: dist
@@ -222,7 +222,7 @@ jobs:
           bun run scripts/sign-macos-binary.ts --binary "dist/${DARWIN_BINARY}"
 
       - name: Upload signed macOS binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: signed-macos-binary
           if-no-files-found: error
@@ -244,7 +244,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout release commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.gate.outputs.commit }}
           fetch-depth: 0
@@ -258,7 +258,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Setup Node for trusted publishing
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
@@ -278,13 +278,13 @@ jobs:
           fi
 
       - name: Download unsigned binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: release-binaries-unsigned
           path: dist
 
       - name: Download signed macOS binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: signed-macos-binary
           path: signed-macos
@@ -437,7 +437,7 @@ jobs:
       VERSION: ${{ needs.gate.outputs.version }}
     steps:
       - name: Checkout release commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.gate.outputs.commit }}
 
