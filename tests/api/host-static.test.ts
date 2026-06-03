@@ -7,7 +7,11 @@
  *      the compiled binary serves production index.html byte-identical.
  */
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { readFileSync } from 'fs'
+import { PassThrough } from 'stream'
+import type { IncomingMessage, ServerResponse } from 'http'
+import { gunzipSync } from 'zlib'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
 import { join } from 'path'
 
 // Per CLAUDE.md testing rules — mock content-dir even when the test
@@ -37,7 +41,8 @@ mock.module('../../packages/core/src/content-dir', () => {
   }
 })
 
-import { transformIndexHtmlForDev } from '../../packages/host/src/api/_static'
+import { serveHostClient, transformIndexHtmlForDev } from '../../packages/host/src/api/_static'
+import { setEmbeddedAssets } from '../../packages/host/src/api/_embedded-assets'
 
 const SAMPLE_HTML = `<!doctype html>
 <html lang="en">
@@ -48,6 +53,44 @@ const SAMPLE_HTML = `<!doctype html>
   </body>
 </html>
 `
+
+function mockReq(path: string, headers: Record<string, string> = {}): IncomingMessage {
+  const stream = new PassThrough()
+  stream.end()
+  const req = stream as unknown as IncomingMessage
+  req.method = 'GET'
+  req.url = path
+  req.headers = {
+    host: 'localhost:3737',
+    ...headers,
+  }
+  return req
+}
+
+function mockRes() {
+  const rawChunks: Buffer[] = []
+  const res = {
+    headersSent: false,
+    writeHead: mock(() => {
+      res.headersSent = true
+    }),
+    end: mock((data?: string | Buffer | Uint8Array) => {
+      if (data) rawChunks.push(Buffer.from(data))
+    }),
+    write: mock((data?: string | Buffer | Uint8Array) => {
+      if (data) rawChunks.push(Buffer.from(data))
+      return true
+    }),
+  } as unknown as ServerResponse & {
+    headersSent: boolean
+    writeHead: ReturnType<typeof mock>
+    end: ReturnType<typeof mock>
+    write: ReturnType<typeof mock>
+    _rawBody: Buffer
+  }
+  Object.defineProperty(res, '_rawBody', { get: () => Buffer.concat(rawChunks) })
+  return res
+}
 
 describe('transformIndexHtmlForDev', () => {
   const prev = process.env.BAKIN_DEV
@@ -93,6 +136,31 @@ describe('host index boot fallback', () => {
     expect(html).toContain('class="bakin-boot"')
     expect(html).toContain('Loading app')
     expect(html.indexOf('class="bakin-boot"')).toBeLessThan(html.indexOf('/assets/main.js'))
+  })
+})
+
+describe('serveHostClient compression', () => {
+  it('gzip-compresses large compressible static responses when requested', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bakin-static-compression-'))
+    const assetPath = join(dir, 'compression-test.css')
+    writeFileSync(assetPath, `/* compression fixture */\n${'.fixture{color:#fff;}\n'.repeat(500)}`)
+    setEmbeddedAssets(new Map([['/compression-test.css', assetPath]]))
+    try {
+      const req = mockReq('/compression-test.css', { 'accept-encoding': 'gzip' })
+      const res = mockRes()
+      const handled = await serveHostClient(req, res, new URL('http://localhost/compression-test.css'))
+
+      expect(handled).toBe(true)
+      expect(res.writeHead).toHaveBeenCalledWith(200, expect.objectContaining({
+        'Content-Encoding': 'gzip',
+        Vary: 'Accept-Encoding',
+      }))
+      const decoded = gunzipSync(res._rawBody).toString('utf-8')
+      expect(decoded).toContain('compression fixture')
+    } finally {
+      setEmbeddedAssets(new Map())
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 

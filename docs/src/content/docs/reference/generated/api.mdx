@@ -783,6 +783,30 @@ curl -sS \
 ```
 </OpenApiReference>
 
+<OpenApiReference operationId="memory.post.cleanup-dispatch">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/memory/cleanup/dispatch'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="memory.post.cleanup-find">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/memory/cleanup/find'
+```
+</OpenApiReference>
+
+<OpenApiReference operationId="memory.post.cleanup-verify">
+```sh frame="terminal" showLineNumbers
+curl -sS \
+  -X POST \
+  'http://localhost:3737/api/plugins/memory/cleanup/verify'
+```
+</OpenApiReference>
+
 <OpenApiReference operationId="memory.get.daily-notes">
 ```sh frame="terminal" showLineNumbers
 curl -sS \
@@ -1601,5 +1625,5 @@ curl -sS \
 </OpenApiReference>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jun 2, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jun 3, 2026 · Bakin 0.0.0-dev</span>
 </aside>

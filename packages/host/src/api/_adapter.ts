@@ -17,6 +17,10 @@ import {
   isRequestBodyTooLargeError,
   readRequestBody,
 } from '@/core/request-body'
+import {
+  canCompressResponse,
+  encodeResponseBody,
+} from './compression'
 
 export type WebHandler = (req: Request, url: URL) => Promise<Response> | Response
 
@@ -67,12 +71,20 @@ export async function dispatchWebHandler(
     webRes.headers.forEach((value, key) => {
       nodeHeaders[key] = value
     })
-    res.writeHead(webRes.status, nodeHeaders)
-    res.flushHeaders?.()
-
     if (webRes.body) {
-      await writeWebResponseBody(res, webRes.body)
+      if (canCompressResponse(req, webRes.status, nodeHeaders)) {
+        const plain = Buffer.from(await webRes.arrayBuffer())
+        const encoded = await encodeResponseBody(req, webRes.status, nodeHeaders, plain)
+        res.writeHead(webRes.status, encoded.headers)
+        res.end(encoded.body)
+      } else {
+        res.writeHead(webRes.status, nodeHeaders)
+        res.flushHeaders?.()
+        await writeWebResponseBody(res, webRes.body)
+      }
     } else {
+      res.writeHead(webRes.status, nodeHeaders)
+      res.flushHeaders?.()
       res.end()
     }
   } catch (err) {

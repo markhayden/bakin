@@ -3360,6 +3360,138 @@
         "x-bakin-full-path": "/api/plugins/memory/recent"
       }
     },
+    "/api/plugins/memory/cleanup/find": {
+      "post": {
+        "operationId": "memory.post.cleanup-find",
+        "summary": "Find a term across memory for cleanup",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Memory"
+        ],
+        "description": "Find exact occurrences of a term across memory tiers, grouped by agent",
+        "x-bakin-full-path": "/api/plugins/memory/cleanup/find"
+      }
+    },
+    "/api/plugins/memory/cleanup/dispatch": {
+      "post": {
+        "operationId": "memory.post.cleanup-dispatch",
+        "summary": "Dispatch memory cleanup to agents",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Memory"
+        ],
+        "description": "Dispatch a memory-cleanup task to each affected agent (agent edits its own files)",
+        "x-bakin-full-path": "/api/plugins/memory/cleanup/dispatch"
+      }
+    },
+    "/api/plugins/memory/cleanup/verify": {
+      "post": {
+        "operationId": "memory.post.cleanup-verify",
+        "summary": "Verify a memory cleanup",
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {},
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Memory"
+        ],
+        "description": "Re-check remaining occurrences of a term per agent after a cleanup",
+        "x-bakin-full-path": "/api/plugins/memory/cleanup/verify"
+      }
+    },
     "/api/plugins/models/available": {
       "get": {
         "operationId": "models.get.available",
@@ -8518,23 +8650,10 @@
           "200": {
             "description": "Successful response.",
             "content": {
-              "application/json": {
+              "image/jpeg": {
                 "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "201": {
-            "description": "Created.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {},
-                  "additionalProperties": {}
+                  "type": "string",
+                  "format": "binary"
                 }
               }
             }
@@ -8558,46 +8677,8 @@
               }
             }
           },
-          "403": {
-            "description": "Forbidden.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
           "404": {
             "description": "Not found.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "additionalProperties": {}
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict.",
             "content": {
               "application/json": {
                 "schema": {

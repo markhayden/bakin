@@ -31,6 +31,8 @@ describe('Settings', () => {
     expect(settings.runtime.settings).toEqual({})
     expect(settings.plugins.requireSignatures).toBe(false)
     expect(settings.plugins.trustedSigners).toEqual([])
+    expect(settings.diagnostics.startup.enabled).toBe(false)
+    expect(settings.diagnostics.startup.slowMs).toBe(250)
   })
 
   it('returns doctor defaults including requireOnboard', () => {
@@ -134,6 +136,38 @@ describe('Settings', () => {
     const settings = getSettings()
     expect(settings.plugins.requireSignatures).toBe(false)
     expect(settings.plugins.trustedSigners).toEqual(['sha256:abc123'])
+  })
+
+  it('merges and normalizes startup diagnostics settings', () => {
+    fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
+      diagnostics: {
+        startup: {
+          enabled: true,
+          slowMs: 125.4,
+        },
+      },
+    }))
+
+    const settings = getSettings()
+    expect(settings.diagnostics.startup.enabled).toBe(true)
+    expect(settings.diagnostics.startup.slowMs).toBe(125)
+  })
+
+  it('normalizes malformed startup diagnostics settings to defaults', () => {
+    fs.mkdirSync(TEST_CONTENT_DIR, { recursive: true })
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify({
+      diagnostics: {
+        startup: {
+          enabled: 'true',
+          slowMs: -1,
+        },
+      },
+    }))
+
+    const settings = getSettings()
+    expect(settings.diagnostics.startup.enabled).toBe(false)
+    expect(settings.diagnostics.startup.slowMs).toBe(250)
   })
 
   it('caches settings on subsequent calls', () => {

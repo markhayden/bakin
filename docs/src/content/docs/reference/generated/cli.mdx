@@ -835,8 +835,21 @@ bakin workflows submit <taskId> <stepId> <json>
 bakin serve
 ```
 </CliCommandCard>
+<CliCommandCard id="diagnostics-startup" name="diagnostics startup" summary="Manage startup diagnostics." description="Reads or updates the local startup diagnostics setting in ~/.bakin/settings.json. This does not require the server to be running; changes apply on the next server start. Environment variables still override it for one-off runs.">
+```sh frame="terminal"
+bakin diagnostics startup <status|on|off> [--slow-ms <ms>] [--json]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;value&gt;</code><span class="cli-command__choices"><span>status</span><span>on</span><span>off</span></span></td><td>choice</td><td>yes</td><td>Choose one of these values.</td></tr>
+      <tr><td><code>[--slow-ms &lt;ms&gt;]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jun 2, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jun 3, 2026 · Bakin 0.0.0-dev</span>
 </aside>

@@ -28,12 +28,13 @@ function mimeFor(path: string): string {
 }
 
 /**
- * Dev-mode forces no-store so location.reload() picks up rebuilt plugin
- * bundles that overwrite the same URL path. v2 hot-swap uses ?v=<mtime>
- * cache-bust, so this only matters for the initial load after a reload
- * — but it matters a lot when a shell reload follows a plugin rebuild.
+ * Dev-mode keeps unversioned URLs no-store so direct asset requests pick up
+ * rebuilt plugin bundles that overwrite the same URL path. PluginHost imports
+ * client.js with ?v=<mtime>, so those URLs are content-addressed enough to
+ * cache aggressively even in dev; the next rebuild changes the URL.
  */
-function cacheControl(): string {
+function cacheControl(url: URL): string {
+  if (url.searchParams.has('v')) return 'public, max-age=31536000, immutable'
   return process.env.BAKIN_DEV === '1' ? 'no-store' : 'public, max-age=300'
 }
 
@@ -63,7 +64,7 @@ export async function get(_req: Request, url: URL): Promise<Response> {
       headers: {
         'Content-Type': mimeFor(userPath),
         'Content-Length': statSync(userPath).size.toString(),
-        'Cache-Control': cacheControl(),
+        'Cache-Control': cacheControl(url),
       },
     }))
   }
@@ -80,7 +81,7 @@ export async function get(_req: Request, url: URL): Promise<Response> {
         headers: {
           'Content-Type': mimeFor(relPath),
           'Content-Length': String(bytes.length),
-          'Cache-Control': cacheControl(),
+          'Cache-Control': cacheControl(url),
         },
       }))
     }
@@ -96,7 +97,7 @@ export async function get(_req: Request, url: URL): Promise<Response> {
       headers: {
         'Content-Type': mimeFor(repoPath),
         'Content-Length': statSync(repoPath).size.toString(),
-        'Cache-Control': cacheControl(),
+        'Cache-Control': cacheControl(url),
       },
     }))
   }

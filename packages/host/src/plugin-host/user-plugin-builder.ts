@@ -22,9 +22,10 @@
 import { existsSync, statSync, readdirSync, readFileSync } from 'node:fs'
 import type { Dirent } from 'node:fs'
 import { spawn } from 'node:child_process'
-import { join, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import { builtinModules } from 'node:module'
 import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
+import { startStartupSpan, type StartupDiagnosticLogger } from '@/core/startup-diagnostics'
 
 const CLIENT_EXTERNAL = [
   'react', 'react-dom', 'react-dom/client',
@@ -81,6 +82,13 @@ interface RunResult {
   stderr: string
 }
 
+export interface BuildLogger {
+  debug?: (msg: string, meta?: Record<string, unknown>) => void
+  warn?: (msg: string, errorOrData?: unknown, meta?: Record<string, unknown>) => void
+  info: (msg: string, meta?: Record<string, unknown>) => void
+  error: (msg: string, err?: unknown, meta?: Record<string, unknown>) => void
+}
+
 export interface BuildUserPluginOptions {
   /**
    * GitHub-installed plugins may ship prebuilt dist artifacts. Release
@@ -89,6 +97,16 @@ export interface BuildUserPluginOptions {
    * normal user's machine.
    */
   trustExistingDist?: boolean
+  diagnosticsLog?: BuildLogger
+  pluginId?: string
+}
+
+function diagnosticsLogger(log?: BuildLogger): StartupDiagnosticLogger | null {
+  if (!log?.debug && !log?.warn) return null
+  return {
+    debug: (message, data) => log.debug?.(message, data),
+    warn: (message, data) => log.warn?.(message, data),
+  }
 }
 
 /**
@@ -291,82 +309,150 @@ export async function buildUserPlugin(
   pluginDir: string,
   options: BuildUserPluginOptions = {},
 ): Promise<void> {
+  const pluginId = options.pluginId ?? basename(pluginDir)
+  const diag = diagnosticsLogger(options.diagnosticsLog)
+  const totalSpan = diag ? startStartupSpan(diag, 'userPlugin.build', {
+    phase: 'user-plugin-build',
+    pluginId,
+    pluginSource: 'user',
+    thresholdMs: 1_000,
+  }) : null
   const serverEntry = join(pluginDir, 'index.ts')
-  if (!existsSync(serverEntry)) {
-    throw new Error(`buildUserPlugin: ${serverEntry} not found`)
-  }
-
-  const clientEntry = join(pluginDir, 'client.tsx')
-  const hasClient = existsSync(clientEntry)
-  const pkg = readPackageJson(pluginDir)
-  validatePluginImports(pluginDir, pkg)
-
-  const distDir = join(pluginDir, 'dist')
-  const distServer = join(distDir, 'index.js')
-  const distClient = join(distDir, 'client.js')
-
-  // Freshness: dist is fresh iff every expected dist file exists AND the
-  // oldest dist mtime is strictly newer than the newest source mtime.
-  const expectedDist = [distServer, ...(hasClient ? [distClient] : [])]
-  const allDistPresent = expectedDist.every(p => existsSync(p))
-  if (allDistPresent) {
-    if (options.trustExistingDist) return
-
-    const newestSource = newestMtimeMs(pluginDir, new Set(['dist', 'node_modules']))
-    const oldestDist = oldestMtimeMs(expectedDist)
-    if (oldestDist > 0 && newestSource > 0 && oldestDist >= newestSource) {
-      return
+  let errorStage = 'build failed'
+  try {
+    if (!existsSync(serverEntry)) {
+      errorStage = 'missing server entry'
+      throw new Error(`buildUserPlugin: ${serverEntry} not found`)
     }
-  }
 
-  // Install deps if the plugin has its own package.json + declared deps.
-  if (existsSync(join(pluginDir, 'package.json'))) {
-    const hasDeps =
-      (pkg.dependencies && Object.keys(pkg.dependencies).length > 0) ||
-      (pkg.devDependencies && Object.keys(pkg.devDependencies).length > 0)
-    if (hasDeps) {
-      const installResult = await runSubprocess('bun', ['install'], pluginDir)
-      if (installResult.exitCode !== 0) {
-        throw new Error(`bun install failed in ${pluginDir}:\n${installResult.stderr}`)
+    const clientEntry = join(pluginDir, 'client.tsx')
+    const hasClient = existsSync(clientEntry)
+    errorStage = 'invalid package.json'
+    const pkg = readPackageJson(pluginDir)
+    errorStage = 'import validation failed'
+    validatePluginImports(pluginDir, pkg)
+
+    const distDir = join(pluginDir, 'dist')
+    const distServer = join(distDir, 'index.js')
+    const distClient = join(distDir, 'client.js')
+
+    // Freshness: dist is fresh iff every expected dist file exists AND the
+    // oldest dist mtime is strictly newer than the newest source mtime.
+    const expectedDist = [distServer, ...(hasClient ? [distClient] : [])]
+    const allDistPresent = expectedDist.every(p => existsSync(p))
+    if (allDistPresent) {
+      if (options.trustExistingDist) {
+        totalSpan?.end({ status: 'skipped', reason: 'trusted-dist', hasClient })
+        return
+      }
+
+      errorStage = 'freshness check failed'
+      const newestSource = newestMtimeMs(pluginDir, new Set(['dist', 'node_modules']))
+      const oldestDist = oldestMtimeMs(expectedDist)
+      if (oldestDist > 0 && newestSource > 0 && oldestDist >= newestSource) {
+        totalSpan?.end({ status: 'skipped', reason: 'fresh-dist', hasClient })
+        return
       }
     }
-  }
 
-  const serverBuildConfig = {
-    entrypoints: [serverEntry],
-    outdir: distDir,
-    target: 'bun',
-    format: 'esm',
-    naming: 'index.[ext]',
-    external: SERVER_EXTERNAL,
-    plugins: [{
-      name: 'bakin-sdk-server-resolver',
-      setup(build: any) {
-        build.onResolve({ filter: /^@makinbakin\/sdk(\/.*)?$/ }, (args: { path: string }) => {
-          const path = SDK_ENTRYPOINTS[args.path]
-          if (!path) return
-          return { path }
-        })
-      },
-    }],
-  } as Parameters<typeof Bun.build>[0] & { plugins: Array<unknown> }
-  const serverResult = await Bun.build(serverBuildConfig)
-  if (!serverResult.success) {
-    throw new Error(`Failed to build server entry for ${pluginDir}:\n${serverResult.logs.join('\n')}`)
-  }
-
-  if (hasClient) {
-    const clientResult = await runSubprocess('bun', [
-      'build', clientEntry,
-      '--outdir', distDir,
-      '--target', 'browser',
-      '--format', 'esm',
-      '--entry-naming', 'client.[ext]',
-      ...CLIENT_EXTERNAL.flatMap(e => ['--external', e]),
-    ])
-    if (clientResult.exitCode !== 0) {
-      throw new Error(`Failed to build client entry for ${pluginDir}:\n${clientResult.stderr}`)
+    // Install deps if the plugin has its own package.json + declared deps.
+    if (existsSync(join(pluginDir, 'package.json'))) {
+      const hasDeps =
+        (pkg.dependencies && Object.keys(pkg.dependencies).length > 0) ||
+        (pkg.devDependencies && Object.keys(pkg.devDependencies).length > 0)
+      if (hasDeps) {
+        errorStage = 'dependency install failed'
+        const installSpan = diag ? startStartupSpan(diag, 'userPlugin.dependencies', {
+          phase: 'user-plugin-build',
+          pluginId,
+          pluginSource: 'user',
+          thresholdMs: 1_000,
+        }) : null
+        let installResult: RunResult
+        try {
+          installResult = await runSubprocess('bun', ['install'], pluginDir)
+        } catch (err) {
+          installSpan?.end({ status: 'error', error: 'bun install failed' })
+          throw err
+        }
+        if (installResult.exitCode !== 0) {
+          installSpan?.end({ status: 'error', error: 'bun install failed' })
+          throw new Error(`bun install failed in ${pluginDir}:\n${installResult.stderr}`)
+        }
+        installSpan?.end({ status: 'ok' })
+      }
     }
+
+    const serverBuildConfig = {
+      entrypoints: [serverEntry],
+      outdir: distDir,
+      target: 'bun',
+      format: 'esm',
+      naming: 'index.[ext]',
+      external: SERVER_EXTERNAL,
+      plugins: [{
+        name: 'bakin-sdk-server-resolver',
+        setup(build: any) {
+          build.onResolve({ filter: /^@makinbakin\/sdk(\/.*)?$/ }, (args: { path: string }) => {
+            const path = SDK_ENTRYPOINTS[args.path]
+            if (!path) return
+            return { path }
+          })
+        },
+      }],
+    } as Parameters<typeof Bun.build>[0] & { plugins: Array<unknown> }
+    const serverSpan = diag ? startStartupSpan(diag, 'userPlugin.serverBuild', {
+      phase: 'user-plugin-build',
+      pluginId,
+      pluginSource: 'user',
+      thresholdMs: 1_000,
+    }) : null
+    errorStage = 'server build failed'
+    let serverResult: Awaited<ReturnType<typeof Bun.build>>
+    try {
+      serverResult = await Bun.build(serverBuildConfig)
+    } catch (err) {
+      serverSpan?.end({ status: 'error', error: 'server build failed' })
+      throw err
+    }
+    if (!serverResult.success) {
+      serverSpan?.end({ status: 'error', error: 'server build failed' })
+      throw new Error(`Failed to build server entry for ${pluginDir}:\n${serverResult.logs.join('\n')}`)
+    }
+    serverSpan?.end({ status: 'ok' })
+
+    if (hasClient) {
+      const clientSpan = diag ? startStartupSpan(diag, 'userPlugin.clientBuild', {
+        phase: 'user-plugin-build',
+        pluginId,
+        pluginSource: 'user',
+        thresholdMs: 1_000,
+      }) : null
+      errorStage = 'client build failed'
+      let clientResult: RunResult
+      try {
+        clientResult = await runSubprocess('bun', [
+          'build', clientEntry,
+          '--outdir', distDir,
+          '--target', 'browser',
+          '--format', 'esm',
+          '--entry-naming', 'client.[ext]',
+          ...CLIENT_EXTERNAL.flatMap(e => ['--external', e]),
+        ])
+      } catch (err) {
+        clientSpan?.end({ status: 'error', error: 'client build failed' })
+        throw err
+      }
+      if (clientResult.exitCode !== 0) {
+        clientSpan?.end({ status: 'error', error: 'client build failed' })
+        throw new Error(`Failed to build client entry for ${pluginDir}:\n${clientResult.stderr}`)
+      }
+      clientSpan?.end({ status: 'ok' })
+    }
+    totalSpan?.end({ status: 'ok', rebuilt: true, hasClient })
+  } catch (err) {
+    totalSpan?.end({ status: 'error', error: errorStage })
+    throw err
   }
 }
 
@@ -378,11 +464,6 @@ export async function buildUserPlugin(
  * fails to build is skipped, and the registry will surface a more specific
  * error when it tries to import.
  */
-export interface BuildLogger {
-  info: (msg: string, meta?: Record<string, unknown>) => void
-  error: (msg: string, err?: unknown, meta?: Record<string, unknown>) => void
-}
-
 export async function buildAllUserPlugins(
   userPluginsDir: string,
   log: BuildLogger,
@@ -408,7 +489,7 @@ export async function buildAllUserPlugins(
     if (!existsSync(join(pluginDir, 'bakin-plugin.json'))) continue
     try {
       const trustExistingDist = lockedPlugins[name]?.type === 'github' && lockedPlugins[name]?.linked !== true
-      await buildUserPlugin(pluginDir, trustExistingDist ? { trustExistingDist: true } : undefined)
+      await buildUserPlugin(pluginDir, { trustExistingDist, diagnosticsLog: log, pluginId: name })
       log.info(`Built user plugin "${name}"`)
     } catch (err) {
       log.error(

@@ -77,6 +77,92 @@ PluginHost.useEffect:
   5. setReady(true) → shell re-renders, pulls nav items + slots from registry
 ```
 
+## Startup Diagnostics
+
+Plugin startup timing is local-only observability and is disabled by default for
+normal service/autostart runs. Enable it persistently with:
+
+```sh
+bakin diagnostics startup on --slow-ms 250
+bakin restart
+```
+
+Disable it with:
+
+```sh
+bakin diagnostics startup off
+bakin restart
+```
+
+The command writes `diagnostics.startup` in `~/.bakin/settings.json` and does
+not require the server to be running. One-off environment overrides still work:
+`BAKIN_STARTUP_DIAGNOSTICS=1|0`, `BAKIN_CONSOLE_FORMAT=verbose`, and
+`BAKIN_LOG_LEVEL=debug`.
+
+Server-side spans are emitted through the structured logger with
+`data.category: "startup"` and include `phase`, `span`, `durationMs`, `status`,
+and optional `pluginId`, `pluginSource`, and `count` fields. They are written to
+`~/.bakin/logs/server.log` when diagnostics and file logging are enabled. Use
+`BAKIN_CONSOLE_FORMAT=verbose` or `BAKIN_LOG_LEVEL=debug` to show them in the
+terminal for a foreground run.
+
+Slow startup spans emit a `slow startup span` warning. The default threshold is
+250ms and can be adjusted persistently with `bakin diagnostics startup on
+--slow-ms <milliseconds>` or for one run with
+`BAKIN_STARTUP_SLOW_MS=<milliseconds>`.
+
+Current plugin-related spans cover:
+
+- `pluginRegistry.initialize` and `pluginRegistry.loadUserPlugins`
+- Per-plugin `plugin.load`, `plugin.import`, `plugin.migrations`,
+  `plugin.activate`, and `plugin.skills`
+- `pluginRegistry.onAllReady` and per-plugin `plugin.onReady`
+- User-plugin build stages: dependency install, server build, client build, and
+  total build/skip status
+- `/api/plugins/manifest` total route time and update-check timing. Per-plugin
+  asset version lookups are slow-warning-only to avoid dumping one row per
+  plugin asset on every page load.
+
+Browser-side "Loading plugins" timing is separate from server activation. The
+browser PluginHost reports to `console.debug('[bakin] startup span', ...)` only
+when diagnostics are explicitly enabled by one of these controls:
+
+- The dev-client script tag is present (`/__bakin-dev/client.js`)
+- `window.localStorage.setItem('bakin:plugin-diagnostics', '1')`
+- URL query string `?bakinPluginDiagnostics=1`
+
+Browser spans currently cover manifest fetch, CSS injection, per-plugin client
+import, total PluginHost boot, and a compact startup resource timing summary
+with the slowest local resource requests observed during plugin boot. Do not
+treat the loader text as proof that server plugin activation is slow until both
+server and browser spans have been checked.
+
+Diagnostics are also buffered locally on
+`window.__bakinStartupSpans` while browser plugin diagnostics are enabled. To
+copy the latest resource summary from DevTools:
+
+```js
+copy(JSON.stringify(window.__bakinStartupSpans?.filter(s => s.span === 'pluginHost.resourceSummary').at(-1), null, 2))
+```
+
+In development, React StrictMode mounts `PluginHost` twice to detect effect
+issues. PluginHost shares in-flight boot work across that immediate remount so
+the manifest/import cycle only starts once, but older diagnostics may show
+duplicate boot spans from before this guard existed.
+
+Plugin client JS is imported with `?v=<mtime>`. Plugin asset responses with a
+`v` query are cacheable by URL, even in dev, so ordinary reloads over a remote
+connection do not need to redownload unchanged plugin bundles. Unversioned dev
+asset URLs remain `no-store` so direct requests still pick up rebuilt files.
+
+Large text-like startup responses are compressed when the browser advertises
+`br` or `gzip`: host JS/CSS/HTML/JSON/SVG, plugin client JS/CSS, and Web API
+JSON responses served through `dispatchWebHandler`. Compression skips SSE,
+already-encoded responses, small payloads, non-2xx responses, and responses
+that do not shrink. In DevTools resource timing, a healthy remote reload should
+show `encodedBytes` materially lower than `decodedBytes` for large JS/CSS/JSON
+resources.
+
 ## User Plugin Lifecycle (install / upgrade / remove)
 
 User plugins (under `~/.bakin/plugins/<id>/`) have a full install ledger

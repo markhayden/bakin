@@ -66,6 +66,7 @@ import {
   createPluginTaskService,
 } from './plugin-context-services'
 import { wrapPluginContextPermissions } from './plugin-permissions'
+import { startStartupSpan } from '../core/startup-diagnostics'
 
 /**
  * Optional static core-plugin table. Set from server.ts on startup so
@@ -395,68 +396,90 @@ class PluginRegistryImpl {
   private runtime: { storage: StorageAdapter; events: EventBus; services: AppServices } | null = null
 
   async initialize(config: BakinConfig, storage: StorageAdapter, events: EventBus, services?: AppServices): Promise<void> {
-    if (this.initialized) return
+    if (this.initialized) {
+      startStartupSpan(log, 'pluginRegistry.initialize', {
+        phase: 'plugins',
+        count: config.plugins.length,
+        thresholdMs: 1_000,
+      }).end({ status: 'skipped', reason: 'already-initialized' })
+      return
+    }
+    const span = startStartupSpan(log, 'pluginRegistry.initialize', {
+      phase: 'plugins',
+      count: config.plugins.length,
+      thresholdMs: 1_000,
+    })
     this.initialized = true
-    const appServices = resolveAppServices(services)
-    this.runtime = { storage, events, services: appServices }
+    try {
+      const appServices = resolveAppServices(services)
+      this.runtime = { storage, events, services: appServices }
 
-    // Collect all plugin paths and their manifest dependencies
-    const entries: PluginLoadEntry[] = []
-    for (const entry of config.plugins) {
-      if (entry.enabled === false) continue
-      const manifestPath = join(entry.path, 'bakin-plugin.json')
-      let id = entry.path.split('/').pop() || entry.path
-      let deps: string[] = []
-      let manifest: PublicPluginManifest | undefined = corePluginTable[entry.path]?.manifest
-      if (manifest) {
-        id = manifest.id || id
-        deps = manifest.dependencies || []
-      } else if (existsSync(manifestPath)) {
-        try {
-          manifest = readPluginManifestJson(readFileSync(manifestPath, 'utf-8'))
+      // Collect all plugin paths and their manifest dependencies
+      const entries: PluginLoadEntry[] = []
+      for (const entry of config.plugins) {
+        if (entry.enabled === false) continue
+        const manifestPath = join(entry.path, 'bakin-plugin.json')
+        let id = entry.path.split('/').pop() || entry.path
+        let deps: string[] = []
+        let manifest: PublicPluginManifest | undefined = corePluginTable[entry.path]?.manifest
+        if (manifest) {
           id = manifest.id || id
           deps = manifest.dependencies || []
-        } catch (err) {
+        } else if (existsSync(manifestPath)) {
+          try {
+            manifest = readPluginManifestJson(readFileSync(manifestPath, 'utf-8'))
+            id = manifest.id || id
+            deps = manifest.dependencies || []
+          } catch (err) {
+            this.markPluginFailed({
+              id,
+              name: id,
+              version: '0.0.0',
+              description: '',
+              source: 'built-in',
+              errorCode: 'manifest_invalid',
+              errorMessage: err instanceof Error ? err.message : String(err),
+            })
+            continue
+          }
+        }
+        entries.push({ path: entry.path, id, deps, manifest })
+      }
+
+      // Topological sort (Kahn's algorithm)
+      const sorted = this.topologicalSort(entries)
+      log.info(`Plugin activation order: ${sorted.map(e => e.id).join(' → ')}`)
+
+      // Activate in dependency order
+      for (const entry of sorted) {
+        const failedDeps = entry.deps.filter(dep => this.failedPlugins.has(dep))
+        if (failedDeps.length > 0) {
           this.markPluginFailed({
-            id,
-            name: id,
-            version: '0.0.0',
-            description: '',
+            id: entry.id,
+            name: entry.manifest?.name ?? entry.id,
+            version: entry.manifest?.version ?? '0.0.0',
+            description: entry.manifest?.description ?? '',
             source: 'built-in',
-            errorCode: 'manifest_invalid',
-            errorMessage: err instanceof Error ? err.message : String(err),
+            errorCode: 'dependency_failed',
+            errorMessage: `Dependency failed: ${failedDeps.join(', ')}`,
+            missingDependencies: failedDeps,
           })
           continue
         }
+        await this.loadPlugin(entry.path, storage, events, appServices, entry.manifest)
       }
-      entries.push({ path: entry.path, id, deps, manifest })
+
+      // Load user plugins from ~/.bakin/plugins/ (override by ID)
+      await this.loadUserPlugins(storage, events, appServices)
+      span.end({
+        status: 'ok',
+        count: this.plugins.size,
+        failedCount: this.failedPlugins.size,
+      })
+    } catch (err) {
+      span.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+      throw err
     }
-
-    // Topological sort (Kahn's algorithm)
-    const sorted = this.topologicalSort(entries)
-    log.info(`Plugin activation order: ${sorted.map(e => e.id).join(' → ')}`)
-
-    // Activate in dependency order
-    for (const entry of sorted) {
-      const failedDeps = entry.deps.filter(dep => this.failedPlugins.has(dep))
-      if (failedDeps.length > 0) {
-        this.markPluginFailed({
-          id: entry.id,
-          name: entry.manifest?.name ?? entry.id,
-          version: entry.manifest?.version ?? '0.0.0',
-          description: entry.manifest?.description ?? '',
-          source: 'built-in',
-          errorCode: 'dependency_failed',
-          errorMessage: `Dependency failed: ${failedDeps.join(', ')}`,
-          missingDependencies: failedDeps,
-        })
-        continue
-      }
-      await this.loadPlugin(entry.path, storage, events, appServices, entry.manifest)
-    }
-
-    // Load user plugins from ~/.bakin/plugins/ (override by ID)
-    await this.loadUserPlugins(storage, events, appServices)
   }
 
   private topologicalSort(entries: PluginLoadEntry[]): PluginLoadEntry[] {
@@ -956,6 +979,11 @@ class PluginRegistryImpl {
     manifest?: PublicPluginManifest,
   ): Promise<void> {
     const fallbackId = manifest?.id ?? pluginPath.split('/').pop() ?? pluginPath
+    const loadSpan = startStartupSpan(log, 'plugin.load', {
+      phase: 'plugin',
+      pluginId: fallbackId,
+      pluginSource: 'core',
+    })
     try {
       // Core plugins come from the static table `server.ts` registers
       // via `registerCorePlugins` — this is what lets `bun build --compile`
@@ -968,24 +996,49 @@ class PluginRegistryImpl {
         // Absolute paths (used by tests + user plugins under ~/.bakin/plugins/)
         // resolve directly. Relative paths (used by core plugins in
         // bakin.config.ts) resolve relative to this file.
+        const importSpan = startStartupSpan(log, 'plugin.import', {
+          phase: 'plugin',
+          pluginId: fallbackId,
+          pluginSource: 'core',
+        })
         const importTarget = pluginPath.startsWith('/') ? pluginPath : `../../${pluginPath}`
-        const mod = await import(/* webpackIgnore: true */ importTarget)
-        plugin = mod.default || mod.plugin || mod
+        try {
+          const mod = await import(/* webpackIgnore: true */ importTarget)
+          plugin = mod.default || mod.plugin || mod
+          importSpan.end({ status: 'ok' })
+        } catch (err) {
+          importSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+          throw err
+        }
       }
       if (!plugin) {
         console.warn(`Plugin at ${pluginPath} returned no export — skipping`)
+        loadSpan.end({ status: 'skipped', reason: 'missing-export' })
         return
       }
 
       if (!plugin.id || !plugin.activate) {
         console.warn(`Plugin at ${pluginPath} missing id or activate — skipping`)
+        loadSpan.end({ status: 'skipped', reason: 'missing-id-or-activate' })
         return
       }
 
       // Run pending data migrations before activating
       const migrationsDir = join(pluginPath, 'migrations')
       if (existsSync(migrationsDir)) {
-        const ran = await runMigrations(plugin.id, plugin.version, migrationsDir, getContentDir())
+        const migrationSpan = startStartupSpan(log, 'plugin.migrations', {
+          phase: 'plugin',
+          pluginId: plugin.id,
+          pluginSource: 'core',
+        })
+        let ran: number
+        try {
+          ran = await runMigrations(plugin.id, plugin.version, migrationsDir, getContentDir())
+          migrationSpan.end({ status: 'ok', count: ran })
+        } catch (err) {
+          migrationSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+          throw err
+        }
         if (ran > 0) log.info(`Ran ${ran} migration(s) for ${plugin.id}`)
       }
 
@@ -1022,9 +1075,36 @@ class PluginRegistryImpl {
       // ctx via the dispatcher at request time and never close over
       // activate-internal state.
       this.registerDeclarativeRoutes(plugin, state)
-      await plugin.activate(ctx)
+      const activateSpan = startStartupSpan(log, 'plugin.activate', {
+        phase: 'plugin',
+        pluginId: plugin.id,
+        pluginSource: 'core',
+      })
+      try {
+        await plugin.activate(ctx)
+        activateSpan.end({ status: 'ok' })
+      } catch (err) {
+        activateSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+        throw err
+      }
       state.ctx = ctx
-      const skillResult = loadPluginSkills(pluginPath, ctx, log)
+      const skillSpan = startStartupSpan(log, 'plugin.skills', {
+        phase: 'plugin',
+        pluginId: plugin.id,
+        pluginSource: 'core',
+      })
+      let skillResult: ReturnType<typeof loadPluginSkills>
+      try {
+        skillResult = loadPluginSkills(pluginPath, ctx, log)
+      } catch (err) {
+        skillSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+        throw err
+      }
+      skillSpan.end({
+        status: skillResult.skipped.length > 0 ? 'error' : 'ok',
+        count: skillResult.registered.length,
+        skippedCount: skillResult.skipped.length,
+      })
       if (skillResult.registered.length > 0) {
         log.info(`Auto-registered ${skillResult.registered.length} workflow skill(s) for "${plugin.id}"`, {
           skills: skillResult.registered,
@@ -1045,7 +1125,15 @@ class PluginRegistryImpl {
         version: plugin.version,
         pluginSource: 'core',
       })
+      loadSpan.end({
+        status: 'ok',
+        pluginId: plugin.id,
+        routes: state.routes.length,
+        execTools: undefined,
+        skills: skillResult.registered.length,
+      })
     } catch (err) {
+      loadSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
       log.error(`Failed to load plugin at ${pluginPath}`, err)
       this.markPluginFailed({
         id: fallbackId,
@@ -1069,6 +1157,11 @@ class PluginRegistryImpl {
     const manifest = entry.manifest!
     const pluginId = manifest.id
     const manifestPath = join(entry.path, 'bakin-plugin.json')
+    const loadSpan = startStartupSpan(log, 'plugin.load', {
+      phase: 'plugin',
+      pluginId,
+      pluginSource: 'user',
+    })
 
     // User plugin overrides built-in or replaces a previous user instance.
     // Tear down the currently active registration set before activating
@@ -1084,6 +1177,7 @@ class PluginRegistryImpl {
 
     const distServer = join(entry.path, 'dist', 'index.js')
     if (!existsSync(distServer)) {
+      loadSpan.end({ status: 'error', error: 'plugin dist missing' })
       throw new Error(`User plugin "${pluginId}" is not built. Expected ${distServer}. Reinstall the plugin or rebuild it before starting Bakin.`)
     }
 
@@ -1093,10 +1187,24 @@ class PluginRegistryImpl {
       importTarget = `${importTarget}?v=${Date.now()}-${userPluginImportCounter}`
     }
 
-    const mod = await withCapturedPluginConsole(pluginId, () => import(/* webpackIgnore: true */ importTarget))
+    const importSpan = startStartupSpan(log, 'plugin.import', {
+      phase: 'plugin',
+      pluginId,
+      pluginSource: 'user',
+    })
+    let mod: any
+    try {
+      mod = await withCapturedPluginConsole(pluginId, () => import(/* webpackIgnore: true */ importTarget))
+      importSpan.end({ status: 'ok' })
+    } catch (err) {
+      importSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+      loadSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+      throw err
+    }
     const plugin: BakinPlugin = mod.default || mod.plugin || mod
 
     if (!plugin.id || !plugin.activate) {
+      loadSpan.end({ status: 'error', error: `User plugin "${entry.id}" missing id or activate` })
       throw new Error(`User plugin "${entry.id}" missing id or activate`)
     }
 
@@ -1116,12 +1224,41 @@ class PluginRegistryImpl {
 
     const ctx = this.buildContext(plugin.id, state, storage, events, services)
     this.registerDeclarativeRoutes(plugin, state)
-    await withCapturedPluginConsole(plugin.id, () => plugin.activate(ctx))
+    const activateSpan = startStartupSpan(log, 'plugin.activate', {
+      phase: 'plugin',
+      pluginId: plugin.id,
+      pluginSource: 'user',
+    })
+    try {
+      await withCapturedPluginConsole(plugin.id, () => plugin.activate(ctx))
+      activateSpan.end({ status: 'ok' })
+    } catch (err) {
+      activateSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+      loadSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+      throw err
+    }
     state.ctx = ctx
     // #142 layer 1 — surface user-plugin permissions to the audit log.
     // Source is read from the lockfile (github vs local) by the helper.
     logPluginActivation({ plugin, source: 'user', manifestPath })
-    const skillResult = loadPluginSkills(entry.path, ctx, log)
+    const skillSpan = startStartupSpan(log, 'plugin.skills', {
+      phase: 'plugin',
+      pluginId: plugin.id,
+      pluginSource: 'user',
+    })
+    let skillResult: ReturnType<typeof loadPluginSkills>
+    try {
+      skillResult = loadPluginSkills(entry.path, ctx, log)
+    } catch (err) {
+      skillSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+      loadSpan.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
+      throw err
+    }
+    skillSpan.end({
+      status: skillResult.skipped.length > 0 ? 'error' : 'ok',
+      count: skillResult.registered.length,
+      skippedCount: skillResult.skipped.length,
+    })
     if (skillResult.registered.length > 0) {
       log.info(`Auto-registered ${skillResult.registered.length} workflow skill(s) for user plugin "${plugin.id}"`, {
         skills: skillResult.registered,
@@ -1136,6 +1273,12 @@ class PluginRegistryImpl {
       version: plugin.version,
       pluginSource: 'user',
     })
+    loadSpan.end({
+      status: 'ok',
+      pluginId: plugin.id,
+      routes: state.routes.length,
+      skills: skillResult.registered.length,
+    })
     return { id: plugin.id, version: plugin.version }
   }
 
@@ -1146,7 +1289,16 @@ class PluginRegistryImpl {
   private async loadUserPlugins(storage: StorageAdapter, events: EventBus, services: AppServices): Promise<void> {
     const userPluginsDir = join(getContentDir(), 'plugins')
 
-    if (!existsSync(userPluginsDir)) return
+    const span = startStartupSpan(log, 'pluginRegistry.loadUserPlugins', {
+      phase: 'plugins',
+      pluginSource: 'user',
+      thresholdMs: 1_000,
+    })
+
+    if (!existsSync(userPluginsDir)) {
+      span.end({ status: 'skipped', reason: 'user-plugins-dir-missing', count: 0 })
+      return
+    }
 
     try {
       const dirEntries = readdirSync(userPluginsDir, { withFileTypes: true })
@@ -1235,8 +1387,10 @@ class PluginRegistryImpl {
           })
         }
       }
+      span.end({ status: 'ok', count: entries.length })
     } catch {
       // ~/.bakin/plugins/ not readable, skip silently
+      span.end({ status: 'skipped', reason: 'user-plugins-dir-unreadable' })
     }
   }
 
@@ -1362,18 +1516,31 @@ class PluginRegistryImpl {
 
   /** Call onReady() on all plugins after all plugins have been activated. */
   async onAllReady(): Promise<void> {
+    const allReadySpan = startStartupSpan(log, 'pluginRegistry.onAllReady', {
+      phase: 'plugins',
+      count: this.plugins.size,
+      thresholdMs: 1_000,
+    })
     for (const [id, state] of this.plugins) {
+      const span = startStartupSpan(log, 'plugin.onReady', {
+        phase: 'plugin',
+        pluginId: id,
+        pluginSource: state.source,
+      })
       try {
         if (state.source === 'user') {
           await withCapturedPluginConsole(id, () => state.plugin.onReady?.())
         } else {
           await state.plugin.onReady?.()
         }
+        span.end({ status: 'ok' })
       } catch (err) {
+        span.end({ status: 'error', error: err instanceof Error ? err.message : String(err) })
         log.error(`onReady failed for plugin "${id}"`, err)
       }
     }
     log.info(`All plugins ready (${this.plugins.size} loaded)`)
+    allReadySpan.end({ status: 'ok', count: this.plugins.size })
   }
 
   /** Call onShutdown() on all plugins in reverse activation order. */

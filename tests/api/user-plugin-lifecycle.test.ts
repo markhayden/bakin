@@ -104,12 +104,28 @@ describe('user plugin lifecycle', () => {
 
     // 2. GET /api/plugins/sample/assets/client.js — asset
     //    endpoint serves from <contentDir>/plugins/<id>/dist/<path>.
+    const previousDev = process.env.BAKIN_DEV
+    let assetBody = ''
     const assetUrl = new URL('http://localhost/api/plugins/sample/assets/client.js')
     const assetReq = makeRequest(assetUrl.toString(), { method: 'GET' })
-    const assetRes = await assetsGet(assetReq, assetUrl)
-    expect(assetRes.status).toBe(200)
-    expect(assetRes.headers.get('content-type')).toMatch(/application\/javascript/)
-    const assetBody = await assetRes.text()
+    try {
+      process.env.BAKIN_DEV = '1'
+      const assetRes = await assetsGet(assetReq, assetUrl)
+      expect(assetRes.status).toBe(200)
+      expect(assetRes.headers.get('content-type')).toMatch(/application\/javascript/)
+      expect(assetRes.headers.get('cache-control')).toBe('no-store')
+      const versionedAssetUrl = new URL('http://localhost/api/plugins/sample/assets/client.js?v=test-version')
+      const versionedAssetReq = makeRequest(versionedAssetUrl.toString(), { method: 'GET' })
+      const versionedAssetRes = await assetsGet(versionedAssetReq, versionedAssetUrl)
+      expect(versionedAssetRes.headers.get('cache-control')).toBe('public, max-age=31536000, immutable')
+      assetBody = await assetRes.text()
+    } finally {
+      if (previousDev === undefined) {
+        delete process.env.BAKIN_DEV
+      } else {
+        process.env.BAKIN_DEV = previousDev
+      }
+    }
     // The fixture client.tsx imports registerSlot + react/jsx-runtime; after
     // externalized build, both import specifiers survive verbatim.
     expect(assetBody).toMatch(/@makinbakin\/sdk\/slots/)

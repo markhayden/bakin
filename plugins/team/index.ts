@@ -1340,11 +1340,11 @@ function populateTeamRoutes(arr: any[]): void {
     description: 'Serve agent avatar image',
     summary: 'Serve agent avatar image',
     params: z.object({ agentId: z.string() }),
-    responses: { 200: passthroughTeam, 201: passthroughTeam, 400: errorResponseTeam, 403: errorResponseTeam, 404: errorResponseTeam, 409: errorResponseTeam, 500: errorResponseTeam },
+    responses: { 200: { contentType: 'image/jpeg' }, 400: errorResponseTeam, 404: errorResponseTeam, 500: errorResponseTeam },
     handler: async (req: Request, _ctx: PluginContextLite) => {
       const url = new URL(req.url)
       const agentId = url.searchParams.get('agentId')
-      if (!agentId) return new Response(null, { status: 400 })
+      if (!agentId) return Response.json({ error: 'agentId required' }, { status: 400 })
 
       const { agents } = getBakinPaths()
       const avatarPath = join(agents, agentId, 'avatar.jpg')

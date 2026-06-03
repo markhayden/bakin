@@ -142,6 +142,14 @@ export interface BakinSettings {
      */
     requireOnboard: boolean
   }
+  diagnostics: {
+    startup: {
+      /** Emit structured startup spans for plugin/server boot diagnostics. */
+      enabled: boolean
+      /** Default slow-span warning threshold in milliseconds. */
+      slowMs: number
+    }
+  }
   service: {
     enabled: boolean
   }
@@ -256,6 +264,12 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     intervalMs: 30 * 60 * 1000, // 30 minutes
     requireOnboard: true,
   },
+  diagnostics: {
+    startup: {
+      enabled: false,
+      slowMs: 250,
+    },
+  },
   service: {
     enabled: false,
   },
@@ -310,9 +324,27 @@ function normalizePluginSettings(input: unknown): BakinSettings['plugins'] {
   }
 }
 
+function normalizeDiagnosticsSettings(input: unknown): BakinSettings['diagnostics'] {
+  const raw = isRecord(input) ? input : {}
+  const startup = isRecord(raw.startup) ? raw.startup : {}
+  const slowMs = typeof startup.slowMs === 'number' && Number.isFinite(startup.slowMs) && startup.slowMs >= 0
+    ? Math.round(startup.slowMs)
+    : DEFAULT_SETTINGS.diagnostics.startup.slowMs
+
+  return {
+    startup: {
+      enabled: typeof startup.enabled === 'boolean'
+        ? startup.enabled
+        : DEFAULT_SETTINGS.diagnostics.startup.enabled,
+      slowMs,
+    },
+  }
+}
+
 function normalizeSettings(settings: BakinSettings): BakinSettings {
   return {
     ...settings,
+    diagnostics: normalizeDiagnosticsSettings(settings.diagnostics),
     plugins: normalizePluginSettings(settings.plugins),
   }
 }

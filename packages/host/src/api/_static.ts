@@ -26,6 +26,10 @@ import { createReadStream, existsSync, readFileSync, statSync } from 'fs'
 import { join, extname, resolve } from 'path'
 
 import { EMBEDDED_ASSETS } from './_embedded-assets'
+import {
+  canCompressResponse,
+  writeEncodedResponseBody,
+} from './compression'
 
 // Repo-root-relative. server.ts is always invoked from the repo root so
 // process.cwd() is stable in dev. In the compiled binary, EMBEDDED_ASSETS
@@ -86,34 +90,38 @@ export function cacheControlFor(urlOrPath: string, status: number): string {
   return 'public, max-age=300'
 }
 
-async function sendEmbedded(res: ServerResponse, urlPath: string, status = 200): Promise<boolean> {
+async function sendEmbedded(req: IncomingMessage, res: ServerResponse, urlPath: string, status = 200): Promise<boolean> {
   const embeddedPath = EMBEDDED_ASSETS.get(urlPath)
   if (!embeddedPath) return false
   try {
     const file = Bun.file(embeddedPath)
     if (!(await file.exists())) return false
     const bytes = new Uint8Array(await file.arrayBuffer())
-    res.writeHead(status, {
+    await writeEncodedResponseBody(req, res, status, {
       'Content-Type': mimeFor(urlPath),
       'Content-Length': String(bytes.length),
       'Cache-Control': cacheControlFor(urlPath, status),
-    })
-    res.end(bytes)
+    }, bytes)
     return true
   } catch {
     return false
   }
 }
 
-function sendDiskFile(res: ServerResponse, path: string, status = 200): boolean {
+async function sendDiskFile(req: IncomingMessage, res: ServerResponse, path: string, status = 200): Promise<boolean> {
   if (!existsSync(path)) return false
   const stat = statSync(path)
   if (!stat.isFile()) return false
-  res.writeHead(status, {
+  const headers = {
     'Content-Type': mimeFor(path),
     'Content-Length': stat.size,
     'Cache-Control': cacheControlFor(path, status),
-  })
+  }
+  if (canCompressResponse(req, status, headers, stat.size)) {
+    await writeEncodedResponseBody(req, res, status, headers, readFileSync(path))
+    return true
+  }
+  res.writeHead(status, headers)
   createReadStream(path).pipe(res)
   return true
 }
@@ -144,19 +152,19 @@ export async function serveHostClient(req: IncomingMessage, res: ServerResponse,
       return true
     }
     const rel = pathname.slice('/__bakin-dev/'.length)
-    if (sendDiskFile(res, join(PUBLIC_DIR, '__bakin-dev', rel))) return true
+    if (await sendDiskFile(req, res, join(PUBLIC_DIR, '__bakin-dev', rel))) return true
     res.writeHead(404, { 'Content-Type': 'text/plain' })
     res.end('Not found')
     return true
   }
 
   // Exact-match lookup for anything embedded first (assets, vendor, public).
-  if (await sendEmbedded(res, pathname)) return true
+  if (await sendEmbedded(req, res, pathname)) return true
 
   // Disk fallback for dev — mirrors the old resolution logic.
   if (pathname.startsWith('/assets/')) {
     const rel = pathname.slice('/assets/'.length)
-    if (sendDiskFile(res, join(DIST_DIR, rel))) return true
+    if (await sendDiskFile(req, res, join(DIST_DIR, rel))) return true
     res.writeHead(404, { 'Content-Type': 'text/plain' })
     res.end('Not found')
     return true
@@ -164,14 +172,14 @@ export async function serveHostClient(req: IncomingMessage, res: ServerResponse,
 
   if (pathname.startsWith('/vendor/')) {
     const rel = pathname.slice('/vendor/'.length)
-    if (sendDiskFile(res, join(PUBLIC_DIR, 'vendor', rel))) return true
+    if (await sendDiskFile(req, res, join(PUBLIC_DIR, 'vendor', rel))) return true
     res.writeHead(404, { 'Content-Type': 'text/plain' })
     res.end('Not found')
     return true
   }
 
   if (pathname === '/globals.css' || pathname === '/favicon.ico') {
-    if (sendDiskFile(res, join(PUBLIC_DIR, pathname.slice(1)))) return true
+    if (await sendDiskFile(req, res, join(PUBLIC_DIR, pathname.slice(1)))) return true
     res.writeHead(404, { 'Content-Type': 'text/plain' })
     res.end('Not found')
     return true
@@ -183,12 +191,11 @@ export async function serveHostClient(req: IncomingMessage, res: ServerResponse,
   const indexBytes = await loadIndexHtml()
   if (indexBytes) {
     const body = transformIndexHtmlForDev(indexBytes)
-    res.writeHead(200, {
+    await writeEncodedResponseBody(req, res, 200, {
       'Content-Type': 'text/html; charset=utf-8',
       'Content-Length': String(body.length),
       'Cache-Control': 'no-cache',
-    })
-    res.end(body)
+    }, body)
     return true
   }
 
