@@ -88,6 +88,25 @@ async function buildDispatchLessonBlock(input: {
 }
 
 type DispatchFailureKind = 'transient' | 'structural'
+type DispatchFailureReasonCode =
+  | 'provider_cooldown'
+  | 'auth_profile_unavailable'
+  | 'dispatch_timeout'
+  | 'transport_failure'
+  | 'runtime_adapter_failure'
+  | 'runtime_dispatch_failed'
+
+interface DispatchFailureDetail {
+  category: 'model_provider_unavailable' | 'runtime_unavailable'
+  reasonCode: DispatchFailureReasonCode
+  summary: string
+  specificReason: string
+  retryable: boolean
+  provider?: string
+  model?: string
+  cooldownReason?: string
+  rawError: string
+}
 
 interface FailureRecord {
   lastAttempt: number
@@ -180,8 +199,9 @@ export function isTaskDispatchEligible(
   return { eligible: true }
 }
 
-async function addTaskLog(taskId: string, author: string, message: string): Promise<void> {
-  await appendTaskLog(taskId, author, message)
+async function addTaskLog(taskId: string, author: string, message: string, data?: Record<string, unknown>): Promise<void> {
+  if (data) await appendTaskLog(taskId, author, message, data)
+  else await appendTaskLog(taskId, author, message)
 }
 
 async function moveTaskToInProgress(taskId: string, agent: string): Promise<void> {
@@ -210,6 +230,97 @@ function classifyDispatchError(err: unknown): DispatchFailureKind {
   if (cause?.code && TRANSIENT_CODES.has(cause.code)) return 'transient'
   if (err instanceof Error && err.name === 'AbortError') return 'transient'
   return 'structural'
+}
+
+function rawDispatchError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+function extractProviderFromRuntimeError(raw: string): string | undefined {
+  return raw.match(/No available auth profile for\s+([A-Za-z0-9._/-]+)/i)?.[1]
+    ?? raw.match(/Provider\s+([A-Za-z0-9._/-]+)\s+is in cooldown/i)?.[1]
+}
+
+function extractModelFromRuntimeError(raw: string): string | undefined {
+  return raw.match(/([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+):\s+Provider\s+/i)?.[1]
+}
+
+function classifyDispatchFailureDetail(err: unknown): DispatchFailureDetail {
+  const raw = rawDispatchError(err)
+  const lower = raw.toLowerCase()
+  const rawError = formatDispatchError(err)
+  const provider = extractProviderFromRuntimeError(raw)
+  const model = extractModelFromRuntimeError(raw)
+
+  if (lower.includes('no available auth profile')) {
+    return {
+      category: 'model_provider_unavailable',
+      reasonCode: 'auth_profile_unavailable',
+      summary: 'Dispatch failed: model provider unavailable',
+      specificReason: 'Auth profile unavailable',
+      retryable: true,
+      ...(provider ? { provider } : {}),
+      ...(model ? { model } : {}),
+      rawError,
+    }
+  }
+
+  if (/\bprovider\b.*\bin cooldown\b/i.test(raw) || lower.includes('suspending lanes')) {
+    return {
+      category: 'model_provider_unavailable',
+      reasonCode: 'provider_cooldown',
+      summary: 'Dispatch failed: model provider unavailable',
+      specificReason: 'Provider in cooldown after timeout',
+      retryable: true,
+      ...(provider ? { provider } : {}),
+      ...(model ? { model } : {}),
+      ...(lower.includes('timeout') ? { cooldownReason: 'timeout' } : {}),
+      rawError,
+    }
+  }
+
+  if (lower.includes('request timed out') || lower.includes('gateway request timed out')) {
+    return {
+      category: 'runtime_unavailable',
+      reasonCode: 'dispatch_timeout',
+      summary: 'Dispatch failed: runtime dispatch timed out',
+      specificReason: 'Runtime dispatch timed out',
+      retryable: true,
+      rawError,
+    }
+  }
+
+  if (lower.includes('socket error') || lower.includes('fetch failed') || err instanceof TypeError || err instanceof Error && err.name === 'AbortError') {
+    return {
+      category: 'runtime_unavailable',
+      reasonCode: 'transport_failure',
+      summary: 'Dispatch failed: runtime transport unavailable',
+      specificReason: 'Runtime transport failure',
+      retryable: true,
+      rawError,
+    }
+  }
+
+  const http = raw.match(/\bfailed \((\d{3})\)/)
+  if (http) {
+    return {
+      category: 'runtime_unavailable',
+      reasonCode: 'runtime_adapter_failure',
+      summary: `Dispatch failed: runtime adapter returned HTTP ${http[1]}`,
+      specificReason: `Runtime adapter returned HTTP ${http[1]}`,
+      retryable: Number(http[1]) >= 500,
+      rawError,
+    }
+  }
+
+  return {
+    category: 'runtime_unavailable',
+    reasonCode: 'runtime_dispatch_failed',
+    summary: 'Dispatch failed: runtime dispatch failed before task completion',
+    specificReason: 'Runtime dispatch failed before task completion',
+    retryable: true,
+    rawError,
+  }
 }
 
 let dispatching = false
@@ -274,9 +385,10 @@ function taskAlreadyLeftActiveWork(column: keyof DispatchColumns): boolean {
   return column === 'done' || column === 'blocked' || column === 'review' || column === 'archived'
 }
 
-async function tryAddTaskLog(taskId: string, author: string, message: string): Promise<void> {
+async function tryAddTaskLog(taskId: string, author: string, message: string, data?: Record<string, unknown>): Promise<void> {
   try {
-    await addTaskLog(taskId, author, message)
+    if (data) await addTaskLog(taskId, author, message, data)
+    else await addTaskLog(taskId, author, message)
   } catch (err) {
     log.warn('Failed to append dispatch reconciliation task log', err, { id: taskId })
   }
@@ -358,6 +470,7 @@ async function reconcileRejectedDispatch(input: {
   if (!input.state.failedDispatches) input.state.failedDispatches = {}
   const prev = getFailureRecord(input.state.failedDispatches[input.task.id])
   const kind = classifyDispatchError(input.err)
+  const detail = classifyDispatchFailureDetail(input.err)
   const attempt = (prev?.count || 0) + 1
   input.state.failedDispatches[input.task.id] = { lastAttempt: Date.now(), count: attempt, kind }
 
@@ -372,14 +485,16 @@ async function reconcileRejectedDispatch(input: {
   await tryAddTaskLog(
     input.task.id,
     'system',
-    `${input.logPrefix} (attempt ${attempt}, ${kind}) → ${input.targetAgent}: ${summary}. Returned to Todo for retry when cooldown expires.`,
+    `${input.logPrefix} (attempt ${attempt}, ${kind}) → ${input.targetAgent}: ${detail.summary}. Returned to Todo for retry when cooldown expires.`,
+    { dispatchFailure: detail },
   )
   appendAudit(input.contentDir, 'task.dispatch_failed', input.targetAgent, {
     id: input.task.id,
     title: input.task.title,
-    error: summary,
+    error: detail.summary,
     attempt,
     kind,
+    ...detail,
   })
 }
 

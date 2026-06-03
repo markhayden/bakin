@@ -447,6 +447,78 @@ describe('dispatch', () => {
       expect((dispatchFailed?.[3] as { kind: string }).kind).toBe('transient')
     })
 
+    it('records provider cooldown details in audit and task log data', async () => {
+      const { appendAudit } = require('../../src/core/audit') as typeof import('../../src/core/audit')
+      vi.mocked(appendAudit).mockClear()
+      mockStoreAddTaskLog.mockClear()
+
+      setupTodoTask({ id: 't-provider-cooldown', title: 'Provider cooldown task', agent: 'main' })
+      mockRuntimeSend.mockRejectedValueOnce(
+        new Error('OpenClaw chat failed: FallbackSummaryError: All models failed (1): openai-codex/gpt-5.5: Provider openai-codex is in cooldown (suspending lanes) (timeout); code=UNAVAILABLE'),
+      )
+
+      await dispatchTasks(tempDir, 3737)
+
+      const dispatchFailed = vi.mocked(appendAudit).mock.calls.find((c: any[]) => c[1] === 'task.dispatch_failed')
+      expect(dispatchFailed).toBeDefined()
+      expect(dispatchFailed?.[3]).toMatchObject({
+        reasonCode: 'provider_cooldown',
+        provider: 'openai-codex',
+        model: 'openai-codex/gpt-5.5',
+        retryable: true,
+      })
+      expect((dispatchFailed?.[3] as { rawError?: string }).rawError).toContain('Provider openai-codex is in cooldown')
+
+      expect(mockStoreAddTaskLog).toHaveBeenCalledWith(
+        't-provider-cooldown',
+        'system',
+        expect.stringContaining('model provider unavailable'),
+        expect.objectContaining({
+          dispatchFailure: expect.objectContaining({
+            reasonCode: 'provider_cooldown',
+            provider: 'openai-codex',
+            model: 'openai-codex/gpt-5.5',
+            retryable: true,
+          }),
+        }),
+      )
+    })
+
+    it('records auth profile availability details in audit and task log data', async () => {
+      const { appendAudit } = require('../../src/core/audit') as typeof import('../../src/core/audit')
+      vi.mocked(appendAudit).mockClear()
+      mockStoreAddTaskLog.mockClear()
+
+      setupTodoTask({ id: 't-auth-profile', title: 'Auth profile task', agent: 'main' })
+      mockRuntimeSend.mockRejectedValueOnce(
+        new Error('Failed to dispatch "Auth profile task" to main OpenClaw chat failed: Error: No available auth profile for openai-codex (all in cooldown or unavailable).; code=UNAVAILABLE'),
+      )
+
+      await dispatchTasks(tempDir, 3737)
+
+      const dispatchFailed = vi.mocked(appendAudit).mock.calls.find((c: any[]) => c[1] === 'task.dispatch_failed')
+      expect(dispatchFailed).toBeDefined()
+      expect(dispatchFailed?.[3]).toMatchObject({
+        reasonCode: 'auth_profile_unavailable',
+        provider: 'openai-codex',
+        retryable: true,
+      })
+      expect((dispatchFailed?.[3] as { rawError?: string }).rawError).toContain('No available auth profile for openai-codex')
+
+      expect(mockStoreAddTaskLog).toHaveBeenCalledWith(
+        't-auth-profile',
+        'system',
+        expect.stringContaining('model provider unavailable'),
+        expect.objectContaining({
+          dispatchFailure: expect.objectContaining({
+            reasonCode: 'auth_profile_unavailable',
+            provider: 'openai-codex',
+            retryable: true,
+          }),
+        }),
+      )
+    })
+
     it('classifies AbortError as transient', async () => {
       setupTodoTask({ id: 't-abort', title: 'AbortError task' })
       const abortErr = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })

@@ -100,6 +100,7 @@ export function useSSE() {
               taskTitle: entryData.title as string | undefined,
               eventName: entry.event,
               ...(entryData.duplicate ? { duplicate: true } : {}),
+              data: entryData,
             })
           }
 

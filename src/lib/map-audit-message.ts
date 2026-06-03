@@ -10,6 +10,12 @@ export function mapAuditMessage(event: string, data: Record<string, unknown>): s
     case 'task.moved': return `Moved "${data.title}" → ${data.to}`
     case 'task.assigned': return `Assigned "${data.title}" to ${data.assignee}`
     case 'task.blocked': return `Blocked: ${data.title} — ${data.reason || 'no reason'}`
+    case 'task.dispatch_failed': {
+      if (data.category === 'model_provider_unavailable') return 'Dispatch failed: model provider unavailable'
+      if (typeof data.summary === 'string') return data.summary
+      if (typeof data.error === 'string' && data.error.startsWith('Dispatch failed:')) return data.error
+      return `Dispatch failed: ${data.error || 'unknown error'}`
+    }
     case 'task.updated': return `Updated: ${data.title}`
     case 'system.init': return 'Bakin started'
     case 'system.dispatch_error': return `Dispatch failed: ${data.error || 'unknown error'}`

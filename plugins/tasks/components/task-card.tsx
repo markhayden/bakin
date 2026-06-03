@@ -2,9 +2,10 @@
 
 import type { CSSProperties } from 'react'
 import { useSortable } from '@dnd-kit/react/sortable'
-import { X } from 'lucide-react'
+import { AlertTriangle, X } from 'lucide-react'
 import { AgentAvatar } from "@makinbakin/sdk/components"
 import { STATUS_BADGE_STYLES } from '../constants'
+import { compactDispatchFailureLabel, getLatestDispatchFailure } from '../lib/dispatch-failure'
 import { getTaskAvailableAtMs } from '../lib/scheduled'
 import type { Task, ColumnId } from '../types'
 
@@ -58,6 +59,7 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
   const isComplete = task.checked || columnId === 'done' || columnId === 'archived'
   const availableAtMs = getTaskAvailableAtMs(task)
   const isFutureScheduled = availableAtMs !== null && availableAtMs > Date.now()
+  const dispatchFailure = getLatestDispatchFailure(task.log)
 
   const semKey = 'embeddings'
   const bm25Key = scoreInfo?.indexScores
@@ -138,6 +140,15 @@ export function TaskCardContent({ task, columnId, className, gateLabel, childTas
       {/* Blocked reason */}
       {task.blockedReason && (
         <p className="text-xs text-destructive mt-1.5">{task.blockedReason}</p>
+      )}
+
+      {dispatchFailure && (
+        <div className="flex items-center gap-1.5 mt-1.5 px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 overflow-hidden">
+          <AlertTriangle className="size-3 text-amber-400 shrink-0" />
+          <span className="text-amber-300 text-[11px] font-semibold truncate">
+            {compactDispatchFailureLabel(dispatchFailure)}
+          </span>
+        </div>
       )}
 
       {isFutureScheduled && task.availableAt && (

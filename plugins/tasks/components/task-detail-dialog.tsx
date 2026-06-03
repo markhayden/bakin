@@ -8,7 +8,7 @@ import { Textarea } from "@makinbakin/sdk/ui"
 import { Separator } from "@makinbakin/sdk/ui"
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@makinbakin/sdk/ui"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@makinbakin/sdk/ui"
-import { Send, Check, X, RefreshCw, MoreHorizontal, Copy, Trash2, Pencil, Loader2 } from 'lucide-react'
+import { AlertTriangle, Send, Check, X, RefreshCw, MoreHorizontal, Copy, Trash2, Pencil, Loader2 } from 'lucide-react'
 import { MarkdownContent } from "@makinbakin/sdk/components"
 import { Slot } from '@makinbakin/sdk/slots'
 import { AgentAvatar } from "@makinbakin/sdk/components"
@@ -16,7 +16,8 @@ import { AgentSelect } from "@makinbakin/sdk/components"
 import { useAgent } from "@makinbakin/sdk/hooks"
 import { COLUMN_CONFIG, STATUS_DOT_COLORS } from '../constants'
 import { toast } from "@makinbakin/sdk/hooks"
-import type { Task, ColumnId } from '../types'
+import type { Task, ColumnId, TaskLogEntry } from '../types'
+import { compactDispatchFailureLabel, getDispatchFailureDetail, specificDispatchFailureLabel, type DispatchFailureDetail } from '../lib/dispatch-failure'
 import { isRenderableAssetRef } from '../lib/output-assets'
 import { createShortClientId } from '../lib/client-id'
 
@@ -90,6 +91,49 @@ function StepOutputViewer({ output }: { output: Record<string, unknown> | string
       ))}
     </div>
   )
+}
+
+function DispatchFailureLogPanel({ detail }: { detail: DispatchFailureDetail }) {
+  const rows = [
+    ['Cause', specificDispatchFailureLabel(detail)],
+    ...(detail.provider ? [['Provider', detail.provider]] : []),
+    ...(detail.model ? [['Model', detail.model]] : []),
+    ['Retryable', detail.retryable === false ? 'No' : 'Yes'],
+  ] as Array<[string, string]>
+
+  return (
+    <div className="mt-2 rounded-md border border-amber-500/20 bg-amber-500/10 p-3">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="size-4 text-amber-400 shrink-0 mt-0.5" />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold text-amber-300">{compactDispatchFailureLabel(detail)}</p>
+          <p className="mt-0.5 text-xs text-amber-200/80">{specificDispatchFailureLabel(detail)}</p>
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        {rows.map(([label, value]) => (
+          <div key={label} className="min-w-0">
+            <p className="text-[10px] uppercase tracking-wider text-amber-200/60">{label}</p>
+            <p className="truncate text-xs text-amber-100">{value}</p>
+          </div>
+        ))}
+      </div>
+      {detail.rawError && (
+        <details className="mt-3">
+          <summary className="cursor-pointer text-[11px] font-medium text-amber-200/80">Technical details</summary>
+          <pre className="mt-2 max-h-36 overflow-auto whitespace-pre-wrap break-words rounded bg-background/70 p-2 text-[11px] text-muted-foreground">
+            {detail.rawError}
+          </pre>
+        </details>
+      )}
+    </div>
+  )
+}
+
+function TaskLogMessage({ entry }: { entry: TaskLogEntry }) {
+  const dispatchFailure = getDispatchFailureDetail(entry)
+  if (dispatchFailure) return <DispatchFailureLogPanel detail={dispatchFailure} />
+  return <p className="text-xs text-muted-foreground">{entry.message}</p>
 }
 
 interface Workflow {
@@ -672,7 +716,7 @@ export function TaskDetailDrawer({ task, columnId, open, editing, onClose, onEdi
               <span className="text-xs font-mono text-muted-foreground">{entry.timestamp}</span>
               <span className="text-xs font-medium text-foreground">{entry.author}</span>
             </div>
-            <p className="text-xs text-muted-foreground">{entry.message}</p>
+            <TaskLogMessage entry={entry} />
           </div>
         ))}
         {hasMore && !showAllNotes && (
