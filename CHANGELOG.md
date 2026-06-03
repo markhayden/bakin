@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.11] - 2026-06-03
+
+### Added
+- Add structured dispatch failure details for task handoffs, including provider, model, error code, retryability, suggested next actions, and raw provider response metadata.
+- Surface dispatch failure context in task cards, task detail dialogs, activity feeds, SSE activity events, and audit-message mapping so failed handoffs are readable from both task and timeline views.
+
+### Changed
+- Update GitHub Actions workflows to the Node 24-based v5 action releases.
+- Document provider failure context semantics in dispatch knowledge notes.
+
+### Fixed
+- Embed core plugin manifest permissions in the static plugin imports so packaged plugins retain their declared startup permissions outside a source checkout.
+
 ## [0.0.1-rc.10] - 2026-06-02
 
 ### Added
@@ -143,5 +156,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 [0.0.1-rc.9]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.9
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.10...HEAD
 [0.0.1-rc.10]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.10
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.11...HEAD
+[0.0.1-rc.11]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.11
