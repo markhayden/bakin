@@ -49,6 +49,9 @@ import { useAgentList } from "@makinbakin/sdk/hooks"
 import { TierOverviewCards } from './tier-overview-cards'
 import { MemorySearchResults } from './memory-search-results'
 import { MemoryDetailDrawer } from './memory-detail-drawer'
+import { MemoryCleanup } from './memory-cleanup'
+import { Button } from "@makinbakin/sdk/ui"
+import { Eraser } from 'lucide-react'
 
 // Tiers hidden unless the page-local Debug toggle is on. See spec §Memory
 // Debug View — turns are 12k+ per-message rows, audits are operational
@@ -146,6 +149,8 @@ function MemoryShellInner() {
   const [agent, setAgent] = useQueryState('agent', '')
   const [kinds, setKinds] = useQueryArrayState('kind')
   const [debugParam, setDebugParam] = useQueryState('debug', '')
+  const [mode, setMode] = useQueryState('mode', '')
+  const cleanupMode = mode === 'cleanup'
   const debug = debugParam === '1'
   const [selected, setSelected] = useState<SearchResult | null>(null)
 
@@ -283,21 +288,34 @@ function MemoryShellInner() {
           placeholder: 'Search across every tier…',
         }}
         actions={
-          <label
-            className="flex items-center gap-2 px-2 h-8 rounded-md text-xs cursor-pointer select-none hover:bg-accent/50 transition-colors"
-            title={debug ? 'Hide turns + audit' : 'Include turns + audit'}
-          >
-            <Microscope className="size-3.5 text-muted-foreground" />
-            <span className="text-muted-foreground">System Logs</span>
-            <Switch
-              checked={debug}
-              onCheckedChange={(checked: boolean) => setDebugParam(checked ? '1' : '')}
+          <div className="flex items-center gap-2">
+            <Button
+              variant={cleanupMode ? 'default' : 'outline'}
               size="sm"
-            />
-          </label>
+              onClick={() => setMode(cleanupMode ? '' : 'cleanup')}
+            >
+              <Eraser className="size-3.5" /> Cleanup
+            </Button>
+            <label
+              className="flex items-center gap-2 px-2 h-8 rounded-md text-xs cursor-pointer select-none hover:bg-accent/50 transition-colors"
+              title={debug ? 'Hide turns + audit' : 'Include turns + audit'}
+            >
+              <Microscope className="size-3.5 text-muted-foreground" />
+              <span className="text-muted-foreground">System Logs</span>
+              <Switch
+                checked={debug}
+                onCheckedChange={(checked: boolean) => setDebugParam(checked ? '1' : '')}
+                size="sm"
+              />
+            </label>
+          </div>
         }
       />
 
+      {cleanupMode ? (
+        <MemoryCleanup />
+      ) : (
+      <>
       <TierOverviewCards />
 
       <div className="flex items-center gap-3 flex-wrap">
@@ -341,6 +359,8 @@ function MemoryShellInner() {
         open={selected !== null}
         onOpenChange={(open) => { if (!open) setSelected(null) }}
       />
+      </>
+      )}
     </div>
   )
 }
