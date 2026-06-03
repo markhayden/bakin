@@ -44,6 +44,48 @@ function relativeTime(ts: string): string {
   return `${days}d ago`
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function textField(data: Record<string, unknown>, key: string): string | null {
+  const value = data[key]
+  return typeof value === 'string' && value.trim() ? value : null
+}
+
+function DispatchFailureDebug({ data }: { data?: Record<string, unknown> }) {
+  if (!isRecord(data)) return null
+  const rows = [
+    ['Cause', textField(data, 'specificReason')],
+    ['Provider', textField(data, 'provider')],
+    ['Model', textField(data, 'model')],
+    ['Retryable', typeof data.retryable === 'boolean' ? (data.retryable ? 'Yes' : 'No') : null],
+  ].filter((row): row is [string, string] => !!row[1])
+  const rawError = textField(data, 'rawError')
+  if (rows.length === 0 && !rawError) return null
+
+  return (
+    <div className="mt-2 rounded-md bg-muted/40 px-2 py-1.5 text-[10px] text-muted-foreground">
+      {rows.length > 0 && (
+        <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+          {rows.map(([label, value]) => (
+            <div key={label} className="min-w-0">
+              <span className="text-muted-foreground/60">{label}: </span>
+              <span className="text-foreground/70">{value}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {rawError && (
+        <details className="mt-1">
+          <summary className="cursor-pointer text-muted-foreground/70">Raw error</summary>
+          <p className="mt-1 break-words font-mono text-[10px] leading-snug">{rawError}</p>
+        </details>
+      )}
+    </div>
+  )
+}
+
 export function ActivityFeed() {
   const { open, toggle } = useActivityContext()
   const events = useContentStore((s) => s.activityEvents)
@@ -123,6 +165,9 @@ export function ActivityFeed() {
                 }`}>{evt.message}</p>
                 {evt.eventName && (
                   <p className="text-[10px] text-muted-foreground/60 mt-0.5 truncate font-mono">{evt.eventName}</p>
+                )}
+                {debug && evt.eventName === 'task.dispatch_failed' && (
+                  <DispatchFailureDebug data={evt.data} />
                 )}
               </div>
             </div>

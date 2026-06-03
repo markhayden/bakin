@@ -40,9 +40,9 @@ function Probe() {
   return null
 }
 
-function emitAudit(event: string) {
+function emitAudit(event: string, data: Record<string, unknown> = {}, agent = 'system') {
   lastES?.onmessage?.({
-    data: JSON.stringify({ type: 'audit', entry: { event, ts: new Date().toISOString(), agent: 'system', data: {} } }),
+    data: JSON.stringify({ type: 'audit', entry: { event, ts: new Date().toISOString(), agent, data } }),
   })
 }
 
@@ -78,5 +78,26 @@ describe('useSSE — doctorVersion wiring', () => {
     emitAudit('task.created')
     emitAudit('plan.updated')
     expect(useContentStore.getState().doctorVersion).toBe(0)
+  })
+
+  it('preserves structured audit data on activity events', async () => {
+    render(<Probe />)
+    await waitFor(() => expect(lastES).not.toBeNull())
+
+    emitAudit('task.dispatch_failed', {
+      title: 'Provider failed task',
+      category: 'model_provider_unavailable',
+      reasonCode: 'provider_cooldown',
+      provider: 'openai-codex',
+      retryable: true,
+    }, 'main')
+
+    const [event] = useContentStore.getState().activityEvents
+    expect(event.message).toBe('Dispatch failed: model provider unavailable')
+    expect(event.data).toMatchObject({
+      reasonCode: 'provider_cooldown',
+      provider: 'openai-codex',
+      retryable: true,
+    })
   })
 })

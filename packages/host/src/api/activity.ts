@@ -41,6 +41,7 @@ export async function get(_req: Request): Promise<Response> {
             taskTitle: data.title as string | undefined,
             eventName: entry.event,
             ...(data.duplicate ? { duplicate: true } : {}),
+            data,
           })
         } catch { /* skip malformed lines */ }
       }

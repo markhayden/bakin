@@ -20,6 +20,20 @@ describe('mapAuditMessage', () => {
     expect(mapAuditMessage('system.init', {})).toBe('Bakin started')
   })
 
+  it('maps model provider dispatch failures to a compact readable message', () => {
+    expect(mapAuditMessage('task.dispatch_failed', {
+      category: 'model_provider_unavailable',
+      reasonCode: 'provider_cooldown',
+      summary: 'Dispatch failed: model provider unavailable',
+    })).toBe('Dispatch failed: model provider unavailable')
+  })
+
+  it('maps non-provider dispatch failures from the sanitized summary', () => {
+    expect(mapAuditMessage('task.dispatch_failed', {
+      summary: 'Dispatch failed: runtime transport unavailable',
+    })).toBe('Dispatch failed: runtime transport unavailable')
+  })
+
   // Exec tool events with label in data
   it('uses data.label for exec.*.ok events', () => {
     expect(mapAuditMessage('exec.bakin_exec_tasks_create.ok', { label: 'Created a task' }))
