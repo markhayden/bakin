@@ -9,11 +9,13 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
 import {
+  hasUnreleasedBullets,
   moveReleaseNotesToVersion,
   parseReleaseTag,
   resolveReleaseTarget,
+  scaffoldVersionSection,
+  versionSectionBody,
 } from './release'
-import { extractReleaseNotes } from './extract-release-notes'
 
 const REPO_ROOT = resolve(import.meta.dir, '..')
 const CHANGELOG_PATH = resolve(REPO_ROOT, 'CHANGELOG.md')
@@ -117,22 +119,33 @@ export function targetTagForPrep(opts: PrepOptions, remoteTags: string[]): strin
   return resolveReleaseTarget(remoteTags, { verb: opts.bump, prerelease: opts.prerelease })
 }
 
+function countBullets(body: string): number {
+  return (body.match(/^\s*-\s+\S/gm) ?? []).length
+}
+
 export function prepareChangelog(changelog: string, tag: string, date: string): { changelog: string; changed: boolean; bulletCount: number } {
   const target = parseReleaseTag(tag)
   if (!target) throw new Error(`Malformed release tag: ${tag}`)
 
-  if (changelog.includes(`## [${target.version}]`)) {
-    const notes = extractReleaseNotes(changelog, target.version)
-    const bulletCount = (notes.match(/^\s*-\s+\S/gm) ?? []).length
-    return { changelog, changed: false, bulletCount }
+  // Idempotent: the target section already exists, leave it untouched.
+  const existing = versionSectionBody(changelog, target.version)
+  if (existing !== null) {
+    return { changelog, changed: false, bulletCount: countBullets(existing) }
   }
 
-  const next = moveReleaseNotesToVersion(changelog, target, date, {
-    verb: target.rc === null ? 'patch' : 'minor',
-    tags: [],
-  })
-  const notes = extractReleaseNotes(next, target.version)
-  return { changelog: next, changed: next !== changelog, bulletCount: (notes.match(/^\s*-\s+\S/gm) ?? []).length }
+  // Notes were written under [Unreleased] — promote them into the version section.
+  if (hasUnreleasedBullets(changelog)) {
+    const next = moveReleaseNotesToVersion(changelog, target, date, {
+      verb: target.rc === null ? 'patch' : 'minor',
+      tags: [],
+    })
+    return { changelog: next, changed: next !== changelog, bulletCount: countBullets(versionSectionBody(next, target.version) ?? '') }
+  }
+
+  // No notes yet: scaffold an empty section to fill in on the release branch.
+  // CI's note extraction is the gate that refuses to publish an empty section.
+  const next = scaffoldVersionSection(changelog, target.version, date)
+  return { changelog: next, changed: true, bulletCount: 0 }
 }
 
 function remoteReleaseTags(): string[] {
@@ -166,6 +179,13 @@ async function main(): Promise<void> {
   console.log(`CHANGELOG notes: ${prepared.bulletCount} bullets`)
   console.log(`Branch:          ${branch || '(not creating; pass --create-branch)'}`)
   console.log(`Mode:            ${opts.dryRun ? 'dry-run' : 'write'}`)
+
+  if (prepared.bulletCount === 0) {
+    console.log('')
+    console.log(`⚠  No release notes yet — scaffolded an empty ## [${parseReleaseTag(tag)?.version}] section.`)
+    console.log('   Fill in the bullets on the release branch before you push the tag.')
+    console.log('   CI extracts notes from the committed CHANGELOG and will reject an empty section.')
+  }
 
   if (opts.dryRun) return
   if (opts.createBranch) createReleaseBranch(tag)

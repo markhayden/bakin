@@ -73,6 +73,52 @@ describe('prepareChangelog', () => {
     expect(result.changelog).toContain('[0.2.0]: https://github.com/markhayden/bakin/releases/tag/v0.2.0')
   })
 
+  it('scaffolds an empty placeholder section when Unreleased has no bullets', () => {
+    const changelog = `# Changelog
+
+## [Unreleased]
+
+## [0.0.1-rc.9] - 2026-06-01
+
+### Added
+- Previous thing.
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.9...HEAD
+`
+    const result = prepareChangelog(changelog, 'v0.0.1-rc.10', '2026-06-02')
+
+    expect(result.changed).toBe(true)
+    expect(result.bulletCount).toBe(0)
+    expect(result.changelog).toContain('## [0.0.1-rc.10] - 2026-06-02')
+    expect(result.changelog).toContain('### Added')
+    expect(result.changelog).toContain('### Changed')
+    expect(result.changelog).toContain('### Fixed')
+    // Earlier notes are preserved.
+    expect(result.changelog).toContain('- Previous thing.')
+    // [Unreleased] stays empty.
+    expect(result.changelog).toMatch(/## \[Unreleased\]\s+## \[0\.0\.1-rc\.10\]/)
+  })
+
+  it('reports zero bullets for an existing but empty scaffolded section', () => {
+    const changelog = `# Changelog
+
+## [Unreleased]
+
+## [0.0.1-rc.10] - 2026-06-02
+
+### Added
+
+### Changed
+
+### Fixed
+`
+    const result = prepareChangelog(changelog, 'v0.0.1-rc.10', '2026-06-02')
+
+    expect(result.changed).toBe(false)
+    expect(result.bulletCount).toBe(0)
+    expect(result.changelog).toBe(changelog)
+  })
+
   it('is idempotent when the target version section already exists', () => {
     const changelog = `# Changelog
 

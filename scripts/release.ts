@@ -202,11 +202,19 @@ export function stripEmptyChangelogSections(body: string): string {
   return chunks.join('\n\n').trim()
 }
 
+export function hasUnreleasedBullets(changelog: string): boolean {
+  return hasBullets(unreleasedRange(changelog).body)
+}
+
 export function assertHasUnreleasedBullets(changelog: string): void {
-  const range = unreleasedRange(changelog)
-  if (!hasBullets(range.body)) {
+  if (!hasUnreleasedBullets(changelog)) {
     throw new Error('CHANGELOG.md [Unreleased] has no release-note bullets')
   }
+}
+
+/** Body of an existing `## [version]` section, or null when it is absent. */
+export function versionSectionBody(changelog: string, version: string): string | null {
+  return versionRange(changelog, version)?.body ?? null
 }
 
 function replaceOrAppendLinkRefs(changelog: string, version: string): string {
@@ -291,6 +299,24 @@ export function releaseNotesForTarget(
     throw new Error(`CHANGELOG.md has no release-note bullets for ${target.version} release candidates or [Unreleased]`)
   }
   return { body: notes, bulletCount: bulletCount(notes) }
+}
+
+const PLACEHOLDER_NOTES = '### Added\n\n### Changed\n\n### Fixed'
+
+/**
+ * Insert an empty `## [version]` section with the standard subheadings and no
+ * bullets. Used when preparing a release branch before notes are written — the
+ * skeleton is filled in on the branch, and CI's note extraction is the gate
+ * that refuses to publish a section that is still empty.
+ *
+ * No-ops if the section already exists, so it can never overwrite notes that
+ * have already been written for this version.
+ */
+export function scaffoldVersionSection(changelog: string, version: string, date: string): string {
+  const target = parseReleaseTag(`v${version}`)
+  if (!target) throw new Error(`Malformed release version: ${version}`)
+  if (versionRange(changelog, version)) return changelog
+  return insertVersionNotes(changelog, version, date, PLACEHOLDER_NOTES)
 }
 
 export function moveUnreleasedToVersion(changelog: string, version: string, date: string): string {

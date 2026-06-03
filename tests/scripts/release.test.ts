@@ -8,6 +8,7 @@ import {
   releaseNotesForTarget,
   releaseWorkflowUrlFromRuns,
   resolveReleaseTarget,
+  scaffoldVersionSection,
 } from '../../scripts/release'
 
 describe('parseReleaseTag', () => {
@@ -124,6 +125,29 @@ describe('CHANGELOG helpers', () => {
   it('detects non-empty Unreleased bullets', () => {
     expect(assertHasUnreleasedBullets(changelog)).toBeUndefined()
     expect(() => assertHasUnreleasedBullets('# Changelog\n\n## [Unreleased]\n\n### Added\n')).toThrow('[Unreleased]')
+  })
+
+  it('scaffolds an empty version section when absent', () => {
+    const next = scaffoldVersionSection(changelog, '0.2.0', '2026-05-05')
+    expect(next).toContain('## [0.2.0] - 2026-05-05')
+    expect(next).toContain('### Added')
+    expect(next).toContain('### Changed')
+    expect(next).toContain('### Fixed')
+  })
+
+  it('never overwrites an existing version section', () => {
+    const withSection = `# Changelog
+
+## [Unreleased]
+
+## [0.2.0] - 2026-05-05
+
+### Added
+- Hand-written note that must survive.
+`
+    const next = scaffoldVersionSection(withSection, '0.2.0', '2026-05-05')
+    expect(next).toBe(withSection)
+    expect(next).toContain('- Hand-written note that must survive.')
   })
 
   it('moves Unreleased notes into a concrete version', () => {
