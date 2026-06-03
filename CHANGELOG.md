@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.12] - 2026-06-03
+
+### Added
+- Add plugin startup diagnostics for boot/build/registration failures, including a `bakin diagnostics plugin-startup` CLI command, persisted diagnostics settings, host API metadata, and UI surfacing in plugin cards.
+- Add plugin startup diagnostics documentation and knowledge notes covering the troubleshooting workflow and usage-recording semantics.
+
+### Changed
+- Compress startup and static API responses over remote links to reduce payload size during app boot.
+- Refresh generated CLI, settings, API, SDK, and core plugin reference docs for the startup diagnostics surfaces.
+
+### Fixed
+- Preserve actionable plugin startup errors from manifest loading, user-plugin builds, embedded plugin registration, and runtime startup so plugin boot failures can be diagnosed instead of collapsing into generic load failures.
+
 ## [0.0.1-rc.11] - 2026-06-03
 
 ### Added
@@ -158,5 +171,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 [0.0.1-rc.10]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.10
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.11...HEAD
 [0.0.1-rc.11]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.11
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.12...HEAD
+[0.0.1-rc.12]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.12
