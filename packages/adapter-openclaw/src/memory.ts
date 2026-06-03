@@ -641,12 +641,17 @@ function agentSessionsDir(agentId: string): string {
 
 function workspacePath(agentId: string): string {
   const config = readOpenClawConfig()
+  const isMain = agentId === tryGetMainAgentId()
   const agent = config?.agents?.list?.find((entry) => entry.id === agentId)
-  if (agent?.workspace) return agent.workspace
-  if (agentId === tryGetMainAgentId()) {
-    return config?.agents?.defaults?.workspace ?? join(getOpenClawHome(), 'workspace')
-  }
-  return join(getOpenClawHome(), 'workspaces', agentId)
+  const configured = agent?.workspace ?? (isMain ? config?.agents?.defaults?.workspace : undefined)
+  // The configured workspace may be an absolute path under a DIFFERENT OpenClaw
+  // home than the one this process resolves — e.g. host-side Bakin reading a
+  // container-onboarded config in the dockerized dev rig, where it points at
+  // `/home/node/.openclaw/workspace`. Trust it only if it actually exists here;
+  // otherwise resolve against THIS home, which is always correct for the
+  // canonical layout. (On a normal install the two are identical.)
+  if (configured && existsSync(configured)) return configured
+  return isMain ? join(getOpenClawHome(), 'workspace') : join(getOpenClawHome(), 'workspaces', agentId)
 }
 
 function isSafeFilename(name: string): boolean {
