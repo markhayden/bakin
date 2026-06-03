@@ -23,11 +23,18 @@ The official plugin must use task-backed scheduling for production work:
 - Activating a Plan creates one Deliverable and one scheduled board task per
   channel.
 - The task has `availableAt`, `dueAt`, and `source.pluginId = "messaging"`.
+- Workflow-backed Deliverables start `planned`; bare-task Deliverables start
+  `in_prep` because agents can only mark `in_prep` or `changes_requested`
+  Deliverables ready for review.
 - Messaging must not register cron jobs, sweep hooks, or Schedule-owned jobs
   for content prep/publish polling.
 - Failed Deliverables recover through explicit web/API actions owned by the
   official plugin. Workflow-backed recovery must call Workflow hooks such as
   `workflows.loadInstance` and `workflows.reopenFromStep`; it must not read or
   write Workflow instance files directly.
+- Workflow completion publish failures must stay visible on the task board.
+  The official plugin creates or reuses a blocked task with
+  `source.purpose = "publish-failure"` when publish validation or runtime
+  channel delivery fails after workflow completion.
 
 Do not restore `plugins/messaging/`, `tests/plugins/messaging/`, `src/core/messaging-cron.ts`, `~/.bakin/messaging.json`, or a top-level `~/.bakin/messaging/` data path in this repo.

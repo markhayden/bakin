@@ -1,17 +1,44 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+import { randomUUID } from 'crypto'
+
+function installOpenClawCliRecorder(testDir: string): { binaryPath: string; calls: () => string[][] } {
+  const cliLog = join(testDir, `openclaw-cli-calls-${randomUUID()}.jsonl`)
+  const shimPath = join(testDir, `openclaw-shim-${randomUUID()}.ts`)
+  writeFileSync(shimPath, [
+    '#!/usr/bin/env bun',
+    'import { appendFileSync } from "fs"',
+    'appendFileSync(process.env.OPENCLAW_CLI_LOG!, JSON.stringify(process.argv.slice(2)) + "\\n")',
+    'process.stdout.write(JSON.stringify({ ok: true }))',
+    '',
+  ].join('\n'), 'utf-8')
+  chmodSync(shimPath, 0o755)
+  process.env.OPENCLAW_CLI_LOG = cliLog
+
+  return {
+    binaryPath: shimPath,
+    calls: () => readFileSync(cliLog, 'utf-8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)),
+  }
+}
+
+function messageArg(call: string[]): string {
+  const index = call.indexOf('--message')
+  return index >= 0 ? call[index + 1] ?? '' : ''
+}
 
 describe('OpenClaw runtime channels', () => {
   let testDir: string
   let originalOpenClawHome: string | undefined
+  let originalOpenClawCliLog: string | undefined
   let originalFetch: typeof globalThis.fetch
   let originalWebSocket: typeof globalThis.WebSocket
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), 'bakin-openclaw-channel-test-'))
     originalOpenClawHome = process.env.OPENCLAW_HOME
+    originalOpenClawCliLog = process.env.OPENCLAW_CLI_LOG
     originalFetch = globalThis.fetch
     originalWebSocket = globalThis.WebSocket
     FakeWebSocket.instances.length = 0
@@ -30,6 +57,8 @@ describe('OpenClaw runtime channels', () => {
     globalThis.WebSocket = originalWebSocket
     if (originalOpenClawHome === undefined) delete process.env.OPENCLAW_HOME
     else process.env.OPENCLAW_HOME = originalOpenClawHome
+    if (originalOpenClawCliLog === undefined) delete process.env.OPENCLAW_CLI_LOG
+    else process.env.OPENCLAW_CLI_LOG = originalOpenClawCliLog
     rmSync(testDir, { recursive: true, force: true })
   })
 
@@ -70,15 +99,77 @@ describe('OpenClaw runtime channels', () => {
     })])
   })
 
-  it('renders approval requests with an explicit Bakin UI decision notice', async () => {
+  it('sends channel messages through the OpenClaw message CLI without requiring a Gateway tool', async () => {
     const calls: Array<Record<string, unknown>> = []
     globalThis.fetch = mock(async (_url: string | URL | Request, init?: RequestInit) => {
       calls.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>)
-      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+      return new Response(JSON.stringify({
+        ok: false,
+        error: { type: 'not_found', message: 'Tool not available: message_send' },
+      }), { status: 404 })
     }) as unknown as typeof fetch
 
+    const recorder = installOpenClawCliRecorder(testDir)
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
-    const runtime = createOpenClawRuntimeAdapter()
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: recorder.binaryPath } })
+    await runtime.initialize({ contentDir: testDir })
+
+    const result = await runtime.channels.deliverContent({
+      channels: ['discord'],
+      content: {
+        title: 'Launch post',
+        body: 'Ship it.',
+        files: [{ name: 'hero.png', path: '/tmp/hero.png', contentType: 'image/png' }],
+      },
+    })
+
+    expect(result.deliveries).toEqual([expect.objectContaining({ channelId: 'discord' })])
+    expect(calls).toHaveLength(0)
+    expect(recorder.calls()).toEqual([[
+      'message',
+      'send',
+      '--channel',
+      'discord',
+      '--message',
+      'Launch post\n\nShip it.',
+      '--media',
+      '/tmp/hero.png',
+    ]])
+  })
+
+  it('preserves direct channel message titles when rendering CLI message text', async () => {
+    const recorder = installOpenClawCliRecorder(testDir)
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: recorder.binaryPath } })
+    await runtime.initialize({ contentDir: testDir })
+
+    await runtime.channels.sendMessage({
+      channels: ['discord:launch-room'],
+      message: {
+        title: 'Workflow publish failed',
+        body: 'Channel delivery failed.',
+        threadId: 'thread-123',
+      },
+    })
+
+    expect(recorder.calls()).toEqual([[
+      'message',
+      'send',
+      '--channel',
+      'discord',
+      '--target',
+      'launch-room',
+      '--message',
+      'Workflow publish failed\n\nChannel delivery failed.',
+      '--thread-id',
+      'thread-123',
+    ]])
+  })
+
+  it('renders approval requests with an explicit Bakin UI decision notice', async () => {
+    const recorder = installOpenClawCliRecorder(testDir)
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: recorder.binaryPath } })
     await runtime.initialize({ contentDir: testDir })
 
     await runtime.channels.createApproval({
@@ -91,10 +182,10 @@ describe('OpenClaw runtime channels', () => {
       },
     })
 
+    const calls = recorder.calls()
     expect(calls).toHaveLength(1)
-    const args = calls[0]!.args as Record<string, unknown>
-    expect(args.message).toContain('This channel cannot return approval decisions to Bakin')
-    expect(args.message).toContain('approve/reject this gate in the Bakin UI')
+    expect(messageArg(calls[0]!)).toContain('This channel cannot return approval decisions to Bakin')
+    expect(messageArg(calls[0]!)).toContain('approve/reject this gate in the Bakin UI')
   })
 
   it('creates native OpenClaw plugin approvals for interactive channels', async () => {
@@ -165,15 +256,11 @@ describe('OpenClaw runtime channels', () => {
         },
       },
     }), 'utf-8')
-    const calls: Array<Record<string, unknown>> = []
-    globalThis.fetch = mock(async (_url: string | URL | Request, init?: RequestInit) => {
-      calls.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>)
-      return new Response(JSON.stringify({ ok: true }), { status: 200 })
-    }) as unknown as typeof fetch
+    const recorder = installOpenClawCliRecorder(testDir)
     globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
 
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
-    const runtime = createOpenClawRuntimeAdapter()
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: recorder.binaryPath } })
     await runtime.initialize({ contentDir: testDir })
 
     await runtime.channels.createApproval({
@@ -194,10 +281,10 @@ describe('OpenClaw runtime channels', () => {
     })
 
     expect(FakeWebSocket.instances).toHaveLength(0)
+    const calls = recorder.calls()
     expect(calls).toHaveLength(1)
-    const args = calls[0]!.args as Record<string, unknown>
-    expect(args.message).toContain('This gate requires a reject reason')
-    expect(args.message).toContain('Open in Bakin:')
+    expect(messageArg(calls[0]!)).toContain('This gate requires a reject reason')
+    expect(messageArg(calls[0]!)).toContain('Open in Bakin:')
   })
 
   it('falls back to render-only messages when approval options are not approve/reject', async () => {
@@ -210,15 +297,11 @@ describe('OpenClaw runtime channels', () => {
         },
       },
     }), 'utf-8')
-    const calls: Array<Record<string, unknown>> = []
-    globalThis.fetch = mock(async (_url: string | URL | Request, init?: RequestInit) => {
-      calls.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>)
-      return new Response(JSON.stringify({ ok: true }), { status: 200 })
-    }) as unknown as typeof fetch
+    const recorder = installOpenClawCliRecorder(testDir)
     globalThis.WebSocket = FakeWebSocket as unknown as typeof WebSocket
 
     const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
-    const runtime = createOpenClawRuntimeAdapter()
+    const runtime = createOpenClawRuntimeAdapter({ settings: { binaryPath: recorder.binaryPath } })
     await runtime.initialize({ contentDir: testDir })
 
     await runtime.channels.createApproval({
@@ -238,10 +321,10 @@ describe('OpenClaw runtime channels', () => {
     })
 
     expect(FakeWebSocket.instances).toHaveLength(0)
+    const calls = recorder.calls()
     expect(calls).toHaveLength(1)
-    const args = calls[0]!.args as Record<string, unknown>
-    expect(args.message).toContain('Needs changes')
-    expect(args.message).toContain('Open in Bakin:')
+    expect(messageArg(calls[0]!)).toContain('Needs changes')
+    expect(messageArg(calls[0]!)).toContain('Open in Bakin:')
   })
 
   it('maps OpenClaw plugin approval resolved events into Bakin approval events', async () => {
