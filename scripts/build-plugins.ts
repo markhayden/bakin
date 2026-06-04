@@ -32,7 +32,7 @@ const EXTERNAL = [
 ]
 
 for (const id of CORE_PLUGINS) {
-  const result = await buildOnePlugin(id, { external: EXTERNAL })
+  const result = await buildOnePlugin(id, { external: EXTERNAL, production: true })
   if (!result.ok) {
     console.error(`Failed to build ${result.stderr}`)
     process.exit(1)

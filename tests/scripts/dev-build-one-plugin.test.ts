@@ -9,7 +9,7 @@
  * point at this file and not the shared fixture.
  */
 import { afterAll, beforeAll, describe, expect, it, mock } from 'bun:test'
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
@@ -66,6 +66,8 @@ export default {
 `)
   writeFileSync(join(okDir, 'client.tsx'), `
 import { registerPlugin } from '@makinbakin/sdk'
+const Badge = () => <span>OK</span>
+void Badge
 registerPlugin({ id: 'ok-plugin', navItems: [] })
 `)
 
@@ -110,6 +112,18 @@ describe('buildOnePlugin — happy path', () => {
     expect(result.ok).toBe(true)
     expect(existsSync(join(pluginsDir, 'server-only', 'dist', 'index.js'))).toBe(true)
     expect(existsSync(join(pluginsDir, 'server-only', 'dist', 'client.js'))).toBe(false)
+  }, 60_000)
+
+  it('builds production client entries without JSX dev runtime output', async () => {
+    const result = await buildOnePlugin('ok-plugin', {
+      external: EXTERNAL,
+      pluginsDir,
+      production: true,
+    })
+    expect(result.ok).toBe(true)
+    const client = readFileSync(join(pluginsDir, 'ok-plugin', 'dist', 'client.js'), 'utf-8')
+    expect(client).not.toContain('jsxDEV')
+    expect(client).not.toContain('react/jsx-dev-runtime')
   }, 60_000)
 })
 

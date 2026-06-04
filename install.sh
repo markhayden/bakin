@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Bakin installer — fetches the current release binary for this
+# Bakin installer — fetches the current release archive for this
 # machine's platform + architecture, verifies its sha256 against the
-# release's checksums.txt, and installs it to /usr/local/bin or
+# release's checksums.txt, extracts the `bakin` executable, and installs it to /usr/local/bin or
 # ~/.local/bin as a fallback.
 #
 # Usage:
@@ -26,6 +26,7 @@ need_cmd() {
 }
 
 need_cmd curl
+need_cmd tar
 need_cmd uname
 need_cmd shasum
 
@@ -68,6 +69,7 @@ main() {
   local triple
   triple=$(detect_triple)
   local bin_name="bakin-${triple}"
+  local asset_name="${bin_name}.tar.gz"
   local tag="${BAKIN_VERSION:-}"
   local release_url
   if [ -n "${tag}" ]; then
@@ -81,35 +83,39 @@ main() {
   release_json=$(curl -fsSL -H 'Accept: application/vnd.github+json' "${release_url}")
 
   local bin_url
-  bin_url=$(echo "${release_json}" | grep -o "\"browser_download_url\":\s*\"[^\"]*${bin_name}\"" | head -1 | sed 's/.*"\(https[^"]*\)"/\1/')
+  bin_url=$(echo "${release_json}" | grep -o "\"browser_download_url\":\s*\"[^\"]*${asset_name}\"" | head -1 | sed 's/.*"\(https[^"]*\)"/\1/')
   local sum_url
   sum_url=$(echo "${release_json}" | grep -o '"browser_download_url":\s*"[^"]*checksums\.txt"' | head -1 | sed 's/.*"\(https[^"]*\)"/\1/')
 
-  [ -n "${bin_url}" ] || die "release is missing asset ${bin_name}"
+  [ -n "${bin_url}" ] || die "release is missing asset ${asset_name}"
   [ -n "${sum_url}" ] || die "release is missing checksums.txt"
 
   local tmp
   tmp=$(mktemp -d)
   trap 'rm -rf "${tmp}"' EXIT
 
-  echo "Downloading ${bin_name}..."
-  curl -fsSL -o "${tmp}/${bin_name}" "${bin_url}"
+  echo "Downloading ${asset_name}..."
+  curl -fsSL -o "${tmp}/${asset_name}" "${bin_url}"
   curl -fsSL -o "${tmp}/checksums.txt" "${sum_url}"
 
   local expected actual
-  expected=$(grep -E "[[:space:]]${bin_name}$" "${tmp}/checksums.txt" | awk '{ print $1 }')
-  [ -n "${expected}" ] || die "checksums.txt has no entry for ${bin_name}"
-  actual=$(sha256 "${tmp}/${bin_name}")
+  expected=$(grep -E "[[:space:]]${asset_name}$" "${tmp}/checksums.txt" | awk '{ print $1 }')
+  [ -n "${expected}" ] || die "checksums.txt has no entry for ${asset_name}"
+  actual=$(sha256 "${tmp}/${asset_name}")
 
   if [ "${expected}" != "${actual}" ]; then
     die "checksum mismatch: expected ${expected}, got ${actual}"
   fi
   echo "Checksum OK"
 
+  mkdir -p "${tmp}/extract"
+  tar -xzf "${tmp}/${asset_name}" -C "${tmp}/extract"
+  [ -f "${tmp}/extract/bakin" ] || die "${asset_name} did not contain bakin"
+
   local install_dir
   install_dir=$(pick_install_dir)
-  chmod +x "${tmp}/${bin_name}"
-  mv "${tmp}/${bin_name}" "${install_dir}/bakin"
+  chmod +x "${tmp}/extract/bakin"
+  mv "${tmp}/extract/bakin" "${install_dir}/bakin"
 
   echo ""
   echo "Installed bakin to ${install_dir}/bakin"

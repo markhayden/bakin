@@ -14,13 +14,13 @@ describe('parseChecksums', () => {
   it('parses sha256sum output by filename', () => {
     const checksums = parseChecksums(checksumsText)
 
-    expect(checksums.get('bakin-darwin-arm64')).toBe('a'.repeat(64))
-    expect(checksums.get('bakin-linux-x64')).toBe('b'.repeat(64))
-    expect(checksums.get('bakin-linux-arm64')).toBe('c'.repeat(64))
+    expect(checksums.get('bakin-darwin-arm64.tar.gz')).toBe('a'.repeat(64))
+    expect(checksums.get('bakin-linux-x64.tar.gz')).toBe('b'.repeat(64))
+    expect(checksums.get('bakin-linux-arm64.tar.gz')).toBe('c'.repeat(64))
   })
 
   it('rejects malformed checksum lines', () => {
-    expect(() => parseChecksums('not-a-checksum  bakin-darwin-arm64')).toThrow('Malformed')
+    expect(() => parseChecksums('not-a-checksum  bakin-darwin-arm64.tar.gz')).toThrow('Malformed')
   })
 })
 
@@ -32,9 +32,9 @@ describe('renderHomebrewFormula', () => {
       checksums: parseChecksums(checksumsText),
     })
 
-    expect(formula).toContain('https://github.com/markhayden/bakin/releases/download/v0.1.0/bakin-darwin-arm64')
-    expect(formula).toContain('https://github.com/markhayden/bakin/releases/download/v0.1.0/bakin-linux-x64')
-    expect(formula).toContain('https://github.com/markhayden/bakin/releases/download/v0.1.0/bakin-linux-arm64')
+    expect(formula).toContain('https://github.com/markhayden/bakin/releases/download/v0.1.0/bakin-darwin-arm64.tar.gz')
+    expect(formula).toContain('https://github.com/markhayden/bakin/releases/download/v0.1.0/bakin-linux-x64.tar.gz')
+    expect(formula).toContain('https://github.com/markhayden/bakin/releases/download/v0.1.0/bakin-linux-arm64.tar.gz')
     expect(formula).toContain(`sha256 "${'a'.repeat(64)}"`)
     expect(formula).toContain(`sha256 "${'b'.repeat(64)}"`)
     expect(formula).toContain(`sha256 "${'c'.repeat(64)}"`)
@@ -48,14 +48,14 @@ describe('renderHomebrewFormula', () => {
       checksums: parseChecksums(checksumsText),
     })
 
-    expect(formula).toContain('/download/v0.1.0-rc.1/bakin-darwin-arm64')
+    expect(formula).toContain('/download/v0.1.0-rc.1/bakin-darwin-arm64.tar.gz')
   })
 
   it('fails loudly when a required checksum is missing', () => {
     const checksums = parseChecksums(checksumsText)
-    checksums.delete('bakin-linux-arm64')
+    checksums.delete('bakin-linux-arm64.tar.gz')
 
-    expect(() => renderHomebrewFormula({ template, version: '0.1.0', checksums })).toThrow('missing bakin-linux-arm64')
+    expect(() => renderHomebrewFormula({ template, version: '0.1.0', checksums })).toThrow('missing bakin-linux-arm64.tar.gz')
   })
 })
 

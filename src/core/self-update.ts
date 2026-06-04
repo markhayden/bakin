@@ -4,12 +4,13 @@
  * Flow:
  *   1. GET GitHub's latest stable release, falling back to the releases list
  *      when the repo only has prereleases.
- *   2. Pick the asset whose name ends in `bakin-<platform>-<arch>`.
+ *   2. Pick the asset named `bakin-<platform>-<arch>.tar.gz`.
  *   3. Download it alongside `checksums.txt`.
- *   4. Verify SHA256 against the listed value.
- *   5. Write to `<currentBinaryPath>.new`, then rename over the running
+ *   4. Verify the archive SHA256 against the listed value.
+ *   5. Extract the `bakin` executable from the archive.
+ *   6. Write to `<currentBinaryPath>.new`, then rename over the running
  *      binary atomically.
- *   6. Tell the user to restart.
+ *   7. Tell the user to restart.
  *
  * Never auto-restarts. The running process keeps its file-descriptor-based
  * reference to the old inode, so the rename is safe on both macOS and Linux.
@@ -17,12 +18,14 @@
  *
  * Exit codes: 0 success, 1 on any failure.
  */
-import { createWriteStream, existsSync, renameSync, unlinkSync, chmodSync, readFileSync } from 'node:fs'
+import { createWriteStream, existsSync, renameSync, unlinkSync, chmodSync, readFileSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { Readable } from 'node:stream'
 import { finished } from 'node:stream/promises'
 import type { ReadableStream as WebReadableStream } from 'node:stream/web'
 import { basename } from 'node:path'
+
+import { extractBakinFromTarGz, releaseArchiveNameForTriple } from './release-archive'
 
 const LATEST_RELEASE_API = 'https://api.github.com/repos/markhayden/bakin/releases/latest'
 const RELEASES_API = 'https://api.github.com/repos/markhayden/bakin/releases?per_page=20'
@@ -72,6 +75,14 @@ export interface SelfUpdateStatusOptions {
   execPath?: string
   fetchRelease?: () => Promise<GithubRelease>
   now?: () => Date
+}
+
+export interface SelfUpdateOptions {
+  execPath?: string
+  platform?: string
+  arch?: string
+  fetchRelease?: (reporter: Pick<SelfUpdateReporter, 'log'>) => Promise<GithubRelease>
+  downloadTo?: (url: string, dest: string) => Promise<void>
 }
 
 async function fetchGithubJson<T>(url: string): Promise<T> {
@@ -175,9 +186,8 @@ export async function getSelfUpdateStatus(options: SelfUpdateStatusOptions): Pro
   }
 }
 
-function currentTriple(): string | null {
-  const plat = process.platform
-  const arch = process.arch
+function currentTriple(platform: string = process.platform, arch: string = process.arch): string | null {
+  const plat = platform
   if (plat === 'darwin' && arch === 'arm64') return 'darwin-arm64'
   if (plat === 'linux' && arch === 'x64') return 'linux-x64'
   if (plat === 'linux' && arch === 'arm64') return 'linux-arm64'
@@ -216,26 +226,39 @@ function parseChecksums(text: string): Map<string, string> {
   return map
 }
 
-export async function selfUpdate(reporter: SelfUpdateReporter = consoleReporter): Promise<number> {
-  const triple = currentTriple()
+function cleanupFiles(paths: string[]): void {
+  for (const path of paths) {
+    try {
+      if (existsSync(path)) unlinkSync(path)
+    } catch {
+      // Best-effort cleanup should not hide the original update failure.
+    }
+  }
+}
+
+export async function selfUpdate(
+  reporter: SelfUpdateReporter = consoleReporter,
+  options: SelfUpdateOptions = {},
+): Promise<number> {
+  const triple = currentTriple(options.platform, options.arch)
   if (!triple) {
-    reporter.error(`No prebuilt binary for ${process.platform}/${process.arch}`)
+    reporter.error(`No prebuilt binary for ${options.platform ?? process.platform}/${options.arch ?? process.arch}`)
     return 1
   }
 
   let release: GithubRelease
   try {
-    release = await fetchLatestRelease(reporter)
+    release = await (options.fetchRelease ?? fetchLatestRelease)(reporter)
   } catch (err) {
     reporter.error(`Could not fetch release info: ${err instanceof Error ? err.message : String(err)}`)
     return 1
   }
 
-  const binName = `bakin-${triple}`
-  const binAsset = release.assets.find(a => a.name === binName)
+  const archiveName = releaseArchiveNameForTriple(triple)
+  const archiveAsset = release.assets.find(a => a.name === archiveName)
   const sumAsset = release.assets.find(a => a.name === 'checksums.txt')
-  if (!binAsset) {
-    reporter.error(`Release ${release.tag_name} is missing asset ${binName}`)
+  if (!archiveAsset) {
+    reporter.error(`Release ${release.tag_name} is missing asset ${archiveName}`)
     return 1
   }
   if (!sumAsset) {
@@ -243,16 +266,19 @@ export async function selfUpdate(reporter: SelfUpdateReporter = consoleReporter)
     return 1
   }
 
-  const currentPath = process.execPath
+  const currentPath = options.execPath ?? process.execPath
   const newPath = `${currentPath}.new`
+  const archivePath = `${currentPath}.${archiveName}`
   const sumsPath = `${currentPath}.checksums.txt`
+  const tempPaths = [newPath, archivePath, sumsPath]
+  const download = options.downloadTo ?? downloadTo
 
   try {
-    reporter.log(`Downloading ${binAsset.name} (${release.tag_name})...`)
-    await downloadTo(binAsset.browser_download_url, newPath)
-    await downloadTo(sumAsset.browser_download_url, sumsPath)
+    reporter.log(`Downloading ${archiveAsset.name} (${release.tag_name})...`)
+    await download(archiveAsset.browser_download_url, archivePath)
+    await download(sumAsset.browser_download_url, sumsPath)
   } catch (err) {
-    for (const p of [newPath, sumsPath]) if (existsSync(p)) unlinkSync(p)
+    cleanupFiles(tempPaths)
     reporter.error(`Download failed: ${err instanceof Error ? err.message : String(err)}`)
     return 1
   }
@@ -261,42 +287,49 @@ export async function selfUpdate(reporter: SelfUpdateReporter = consoleReporter)
   try {
     sums = parseChecksums(readFileSync(sumsPath, 'utf-8'))
   } catch (err) {
-    for (const p of [newPath, sumsPath]) if (existsSync(p)) unlinkSync(p)
+    cleanupFiles(tempPaths)
     reporter.error(`Could not parse checksums.txt: ${err instanceof Error ? err.message : String(err)}`)
     return 1
   }
 
-  const expected = sums.get(binName)
+  const expected = sums.get(archiveName)
   if (!expected) {
-    for (const p of [newPath, sumsPath]) if (existsSync(p)) unlinkSync(p)
-    reporter.error(`checksums.txt has no entry for ${binName}`)
+    cleanupFiles(tempPaths)
+    reporter.error(`checksums.txt has no entry for ${archiveName}`)
     return 1
   }
 
   let actual: string
   try {
-    actual = await sha256File(newPath)
+    actual = await sha256File(archivePath)
   } catch (err) {
-    for (const p of [newPath, sumsPath]) if (existsSync(p)) unlinkSync(p)
+    cleanupFiles(tempPaths)
     reporter.error(`Could not hash downloaded file: ${err instanceof Error ? err.message : String(err)}`)
     return 1
   }
 
   if (actual.toLowerCase() !== expected.toLowerCase()) {
-    for (const p of [newPath, sumsPath]) if (existsSync(p)) unlinkSync(p)
-    reporter.error(`Checksum mismatch for ${binName}`)
+    cleanupFiles(tempPaths)
+    reporter.error(`Checksum mismatch for ${archiveName}`)
     reporter.error(`  expected: ${expected}`)
     reporter.error(`  actual:   ${actual}`)
     return 1
   }
 
   try {
+    writeFileSync(newPath, extractBakinFromTarGz(readFileSync(archivePath)))
+  } catch (err) {
+    cleanupFiles(tempPaths)
+    reporter.error(`Could not extract ${archiveName}: ${err instanceof Error ? err.message : String(err)}`)
+    return 1
+  }
+
+  try {
     chmodSync(newPath, 0o755)
     renameSync(newPath, currentPath)
-    if (existsSync(sumsPath)) unlinkSync(sumsPath)
+    cleanupFiles([archivePath, sumsPath])
   } catch (err) {
-    if (existsSync(newPath)) unlinkSync(newPath)
-    if (existsSync(sumsPath)) unlinkSync(sumsPath)
+    cleanupFiles(tempPaths)
     reporter.error(`Could not replace binary: ${err instanceof Error ? err.message : String(err)}`)
     return 1
   }

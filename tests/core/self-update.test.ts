@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { fetchLatestRelease, getSelfUpdateStatus } from '../../src/core/self-update'
+import { createHash } from 'node:crypto'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+
+import { createBakinTarGz } from '../../src/core/release-archive'
+import { fetchLatestRelease, getSelfUpdateStatus, selfUpdate } from '../../src/core/self-update'
+
+function sha256(buffer: Buffer): string {
+  return createHash('sha256').update(buffer).digest('hex')
+}
 
 describe('fetchLatestRelease', () => {
   const originalFetch = globalThis.fetch
@@ -64,6 +74,57 @@ describe('fetchLatestRelease', () => {
 
     await expect(fetchLatestRelease({ log: () => {} })).rejects.toThrow('HTTP 500')
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('selfUpdate', () => {
+  it('downloads, verifies, extracts, and replaces from the release archive', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'bakin-self-update-'))
+    const execPath = join(dir, 'bakin')
+    const newBinary = Buffer.from('#!/usr/bin/env bash\necho 0.2.0\n')
+    const archive = createBakinTarGz(newBinary)
+    const checksums = `${sha256(archive)}  bakin-linux-x64.tar.gz\n`
+    const logs: string[] = []
+    const errors: string[] = []
+
+    writeFileSync(execPath, 'old-binary')
+
+    try {
+      const exitCode = await selfUpdate({
+        log: (message) => logs.push(message),
+        error: (message) => errors.push(message),
+      }, {
+        platform: 'linux',
+        arch: 'x64',
+        execPath,
+        fetchRelease: async () => ({
+          tag_name: 'v0.2.0',
+          draft: false,
+          prerelease: false,
+          assets: [
+            { name: 'bakin-linux-x64.tar.gz', browser_download_url: 'https://example.test/archive' },
+            { name: 'checksums.txt', browser_download_url: 'https://example.test/checksums' },
+          ],
+        }),
+        downloadTo: async (url, dest) => {
+          if (url.endsWith('/archive')) {
+            writeFileSync(dest, archive)
+          } else if (url.endsWith('/checksums')) {
+            writeFileSync(dest, checksums)
+          } else {
+            throw new Error(`unexpected url: ${url}`)
+          }
+        },
+      })
+
+      expect(exitCode).toBe(0)
+      expect(readFileSync(execPath, 'utf-8')).toBe(newBinary.toString('utf-8'))
+      expect(errors).toEqual([])
+      expect(logs).toContain('Downloading bakin-linux-x64.tar.gz (v0.2.0)...')
+      expect(logs).toContain('Updated to v0.2.0. Restart to run the new version.')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 

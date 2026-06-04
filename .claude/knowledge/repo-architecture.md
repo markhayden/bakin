@@ -388,9 +388,11 @@ User plugins are **not** baked in. They live at runtime in
 `~/.bakin/plugins/` and are built in-binary by the user-plugin-builder
 the first time they load.
 
-Binaries ship under 120 MB per target. The release pipeline
+Binaries ship under 120 MB raw per target. The release pipeline
 (`.github/workflows/release.yml`) fires on `v*` tags, builds all three
-targets, computes checksums, and publishes `@bakin/sdk` to npm.
+targets, packages each executable as `bakin-<platform>-<arch>.tar.gz`,
+computes checksums for the archives users download, and publishes
+`@bakin/sdk` to npm.
 
 ## Related docs
 

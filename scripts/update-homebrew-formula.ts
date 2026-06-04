@@ -16,15 +16,15 @@ interface FormulaOptions {
 
 const REQUIRED_ASSETS = [
   {
-    name: 'bakin-darwin-arm64',
+    name: 'bakin-darwin-arm64.tar.gz',
     placeholder: '__SHA256_DARWIN_ARM64__',
   },
   {
-    name: 'bakin-linux-x64',
+    name: 'bakin-linux-x64.tar.gz',
     placeholder: '__SHA256_LINUX_X64__',
   },
   {
-    name: 'bakin-linux-arm64',
+    name: 'bakin-linux-arm64.tar.gz',
     placeholder: '__SHA256_LINUX_ARM64__',
   },
 ] as const

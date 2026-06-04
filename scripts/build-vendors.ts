@@ -30,6 +30,7 @@ import { join } from 'node:path'
 
 const VENDOR_DIR = './packages/host/public/vendor'
 const TMP_DIR = './packages/host/public/vendor/.tmp-entries'
+const PRODUCTION = process.env.BAKIN_DEV !== '1'
 
 rmSync(VENDOR_DIR, { recursive: true, force: true })
 mkdirSync(VENDOR_DIR, { recursive: true })
@@ -178,6 +179,7 @@ for (const t of targets) {
     '--target', 'browser',
     '--format', 'esm',
     '--entry-naming', `${t.name}.[ext]`,
+    ...(PRODUCTION ? ['--production'] : []),
     ...externalArgs,
   ], { stdout: 'pipe', stderr: 'pipe' })
 

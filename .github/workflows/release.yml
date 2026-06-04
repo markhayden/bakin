@@ -158,6 +158,9 @@ jobs:
       - name: Build host shell
         run: bun run build:host-shell
 
+      - name: Assert production browser assets
+        run: bun run build:assert-production-assets
+
       - name: Build binaries
         run: bun run build:binary
 
@@ -294,11 +297,8 @@ jobs:
           cp "signed-macos/${DARWIN_BINARY}" "dist/${DARWIN_BINARY}"
           chmod +x "dist/${DARWIN_BINARY}" "dist/${LINUX_X64_BINARY}" "dist/${LINUX_ARM64_BINARY}"
 
-      - name: Compute checksums after signing
-        working-directory: dist
-        run: |
-          sha256sum "${DARWIN_BINARY}" "${LINUX_X64_BINARY}" "${LINUX_ARM64_BINARY}" > checksums.txt
-          cat checksums.txt
+      - name: Package release archives and checksums after signing
+        run: bun run scripts/package-release-artifacts.ts --dist dist
 
       - name: Extract release notes
         run: bun run scripts/extract-release-notes.ts --version "${VERSION}" --out .release-notes.md
@@ -332,9 +332,9 @@ jobs:
           fi
           echo "release_id=${release_id}" >> "${GITHUB_OUTPUT}"
           gh release upload "${TAG}" \
-            "dist/${DARWIN_BINARY}" \
-            "dist/${LINUX_X64_BINARY}" \
-            "dist/${LINUX_ARM64_BINARY}" \
+            "dist/${DARWIN_BINARY}.tar.gz" \
+            "dist/${LINUX_X64_BINARY}.tar.gz" \
+            "dist/${LINUX_ARM64_BINARY}.tar.gz" \
             "dist/checksums.txt" \
             --clobber
 
@@ -410,13 +410,15 @@ jobs:
       ASSET: ${{ matrix.asset }}
     steps:
       - name: Download release asset
-        run: gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" --pattern "${ASSET}" --dir release-assets --clobber
+        run: gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" --pattern "${ASSET}.tar.gz" --dir release-assets --clobber
 
       - name: Verify and run binary
         shell: bash
         run: |
           set -euo pipefail
-          binary="release-assets/${ASSET}"
+          mkdir -p release-bin
+          tar -xzf "release-assets/${ASSET}.tar.gz" -C release-bin
+          binary="release-bin/bakin"
           chmod +x "${binary}"
           if [[ "${{ matrix.macos }}" == "true" ]]; then
             codesign --verify --verbose=3 --strict "${binary}"
