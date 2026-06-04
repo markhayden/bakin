@@ -1,0 +1,13 @@
+{
+  "id": "whiskin-server-client",
+  "name": "Whiskin Server + Client",
+  "version": "0.1.0",
+  "bakin": ">=0.0.1-rc.1",
+  "description": "Source-only fixture plugin with a server entry and a client bundle.",
+  "entry": {
+    "server": "index.ts",
+    "client": "client.tsx"
+  },
+  "permissions": [],
+  "contributes": {}
+}
