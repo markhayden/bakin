@@ -2114,7 +2114,8 @@ function readPath(source: Record<string, unknown>, key: string): unknown {
   return current
 }
 
-async function* mergeChatStreams(
+// Exported for tests — pure stream-merging helper with no adapter state.
+export async function* mergeChatStreams(
   primary: AsyncIterable<ChatChunk>,
   secondary: AsyncIterable<ChatChunk>,
   stopSecondary: () => void,
@@ -2150,31 +2151,37 @@ async function* mergeChatStreams(
   void pump('primary', primary)
   void pump('secondary', secondary)
 
-  let primaryDone = false
-  let secondaryDone = false
-  while (!primaryDone || !secondaryDone) {
-    if (queue.length === 0) {
-      await new Promise<void>((resolve) => { notify = resolve })
-    }
-    const item = queue.shift()
-    if (!item) continue
-    if ('error' in item) {
-      if (item.source === 'primary') stopSecondary()
-      throw item.error
-    }
-    if ('done' in item) {
-      if (item.source === 'primary') {
-        primaryDone = true
-        stopSecondary()
-      } else {
-        secondaryDone = true
+  // finally-guarded: if the consumer abandons the stream (early break /
+  // generator return), the suspended yield exits through here — without it
+  // the 200ms session-activity poller leaks and spins forever (audit C2).
+  try {
+    let primaryDone = false
+    let secondaryDone = false
+    while (!primaryDone || !secondaryDone) {
+      if (queue.length === 0) {
+        await new Promise<void>((resolve) => { notify = resolve })
       }
-      continue
+      const item = queue.shift()
+      if (!item) continue
+      if ('error' in item) {
+        throw item.error
+      }
+      if ('done' in item) {
+        if (item.source === 'primary') {
+          primaryDone = true
+          stopSecondary()
+        } else {
+          secondaryDone = true
+        }
+        continue
+      }
+      yield item.chunk
     }
-    yield item.chunk
-  }
 
-  yield { type: 'done' }
+    yield { type: 'done' }
+  } finally {
+    stopSecondary()
+  }
 }
 
 async function* watchOpenClawSessionActivity(
