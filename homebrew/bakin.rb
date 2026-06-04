@@ -5,8 +5,8 @@
 # Formula/bakin.rb and updating `url` + `sha256` for each release. See
 # homebrew/README.md for the publish flow.
 #
-# The formula ships the prebuilt binary from the GitHub release rather
-# than building from source — Bakin is distributed as a Bun-compiled
+# The formula ships the prebuilt binary archive from the GitHub release
+# rather than building from source — Bakin is distributed as a Bun-compiled
 # single-file executable, not as a Ruby gem or Go binary compiled at
 # install time.
 class Bakin < Formula
@@ -16,25 +16,24 @@ class Bakin < Formula
 
   on_macos do
     on_arm do
-      url "https://github.com/markhayden/bakin/releases/download/v__VERSION__/bakin-darwin-arm64"
+      url "https://github.com/markhayden/bakin/releases/download/v__VERSION__/bakin-darwin-arm64.tar.gz"
       sha256 "__SHA256_DARWIN_ARM64__"
     end
   end
 
   on_linux do
     on_intel do
-      url "https://github.com/markhayden/bakin/releases/download/v__VERSION__/bakin-linux-x64"
+      url "https://github.com/markhayden/bakin/releases/download/v__VERSION__/bakin-linux-x64.tar.gz"
       sha256 "__SHA256_LINUX_X64__"
     end
     on_arm do
-      url "https://github.com/markhayden/bakin/releases/download/v__VERSION__/bakin-linux-arm64"
+      url "https://github.com/markhayden/bakin/releases/download/v__VERSION__/bakin-linux-arm64.tar.gz"
       sha256 "__SHA256_LINUX_ARM64__"
     end
   end
 
   def install
-    # The release asset is the binary itself — install it verbatim.
-    bin.install Dir["*"].first => "bakin"
+    bin.install "bakin"
   end
 
   test do
