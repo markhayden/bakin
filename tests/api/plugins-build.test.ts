@@ -112,20 +112,58 @@ describe('buildUserPlugin', () => {
     expect(readFileSync(distServer, 'utf-8')).toBe(prebuilt)
   }, 60_000)
 
+  it('repairs stale trusted client dist without rebuilding trusted server dist', async () => {
+    const dir = join(testDir, 'plugins', 'prebuilt-dev-client')
+    writeMinimalPlugin(dir, `throw new Error('server source should not rebuild')`)
+    writeFileSync(join(dir, 'client.tsx'), `import { jsx } from 'react/jsx-runtime'; export const navItems = []; export function Page() { return jsx('div', { children: 'ok' }) }\n`)
+    mkdirSync(join(dir, 'dist'), { recursive: true })
+    const distServer = join(dir, 'dist', 'index.js')
+    const distClient = join(dir, 'dist', 'client.js')
+    const prebuiltServer = `export default { id: 'minimal', activate() { return 'trusted server' } }\n`
+    writeFileSync(distServer, prebuiltServer)
+    writeFileSync(distClient, `import { jsxDEV } from 'react/jsx-dev-runtime'\nexport const stale = jsxDEV\n`)
+
+    await buildUserPlugin(dir, { trustExistingDist: true })
+
+    expect(readFileSync(distServer, 'utf-8')).toBe(prebuiltServer)
+    const client = readFileSync(distClient, 'utf-8')
+    expect(client).not.toContain('jsxDEV')
+    expect(client).not.toContain('react/jsx-dev-runtime')
+  }, 60_000)
+
   it('preserves externals for @makinbakin/sdk/* in client.js', () => {
     const client = readFileSync(join(targetDir, 'dist', 'client.js'), 'utf-8')
     // The `@makinbakin/sdk/slots` import must survive so the runtime loader can
     // resolve it via the browser import map (not get bundled into client.js).
-    expect(client).toMatch(/from\s+["']@makinbakin\/sdk\/slots["']/)
+    expect(client).toMatch(/from\s*["']@makinbakin\/sdk\/slots["']/)
   }, 60_000)
 
   it('preserves externals for react + react/jsx-runtime in client.js', () => {
     const client = readFileSync(join(targetDir, 'dist', 'client.js'), 'utf-8')
     // React hooks must stay external — plugins share the shell's React via
     // the import map. Bundling react would break hooks dispatcher identity.
-    expect(client).toMatch(/from\s+["']react["']/)
+    expect(client).toMatch(/from\s*["']react["']/)
     // The JSX runtime must also stay external.
-    expect(client).toMatch(/from\s+["']react\/jsx-runtime["']/)
+    expect(client).toMatch(/from\s*["']react\/jsx-runtime["']/)
+  }, 60_000)
+
+  it('builds production client output without JSX dev runtime', () => {
+    const client = readFileSync(join(targetDir, 'dist', 'client.js'), 'utf-8')
+    expect(client).not.toContain('jsxDEV')
+    expect(client).not.toContain('react/jsx-dev-runtime')
+  }, 60_000)
+
+  it('rebuilds stale production dist/client.js when it contains JSX dev runtime output', async () => {
+    const clientPath = join(targetDir, 'dist', 'client.js')
+    writeFileSync(clientPath, `import { jsxDEV } from 'react/jsx-dev-runtime'\nexport const stale = jsxDEV\n`)
+    const future = new Date(Date.now() + 60_000)
+    utimesSync(clientPath, future, future)
+
+    await buildUserPlugin(targetDir)
+
+    const client = readFileSync(clientPath, 'utf-8')
+    expect(client).not.toContain('jsxDEV')
+    expect(client).not.toContain('react/jsx-dev-runtime')
   }, 60_000)
 
   it('does not bundle react into dist/client.js', () => {

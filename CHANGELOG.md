@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+### Fixed
+- Build installed plugin client bundles with the production JSX runtime in release binaries, and repair stale installed client bundles that still import `react/jsx-dev-runtime`.
+
 ## [0.0.1-rc.12] - 2026-06-03
 
 ### Added
