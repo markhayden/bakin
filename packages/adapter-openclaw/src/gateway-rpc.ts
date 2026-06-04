@@ -51,6 +51,12 @@ interface PendingRequest {
 export interface OpenClawGatewayRequestOptions {
   expectFinal?: boolean
   timeoutMs?: number
+  /**
+   * Abort a pending request from the caller side (e.g. fail-fast session-
+   * death detection racing a long agent turn). Clears the request timer and
+   * pending entry; rejects with a transport RuntimeError.
+   */
+  signal?: AbortSignal
 }
 
 interface ConnectState {
@@ -79,6 +85,7 @@ export class OpenClawGatewayRpcClient {
     return this.sendRequest(method, params, {
       timeoutMs: normalized.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
       expectFinal: normalized.expectFinal === true,
+      signal: normalized.signal,
     })
   }
 
@@ -225,10 +232,13 @@ export class OpenClawGatewayRpcClient {
       })
   }
 
-  private sendRequest(method: string, params: Record<string, unknown>, opts: { timeoutMs: number; expectFinal: boolean }): Promise<unknown> {
+  private sendRequest(method: string, params: Record<string, unknown>, opts: { timeoutMs: number; expectFinal: boolean; signal?: AbortSignal }): Promise<unknown> {
     const ws = this.ws
     if (!ws || ws.readyState !== WS_OPEN) {
       return Promise.reject(new RuntimeError(`${this.label()} is not connected`, { kind: 'transport' }))
+    }
+    if (opts.signal?.aborted) {
+      return Promise.reject(new RuntimeError(`${this.label()} request aborted: ${method}`, { kind: 'transport' }))
     }
 
     const id = randomUUID()
@@ -236,9 +246,26 @@ export class OpenClawGatewayRpcClient {
     const promise = new Promise<unknown>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(id)
+        cleanupAbort()
         reject(new RuntimeError(`${this.label()} request timed out: ${method}`, { kind: 'timeout' }))
       }, opts.timeoutMs)
-      this.pending.set(id, { resolve, reject, timeout, expectFinal: opts.expectFinal })
+      const onAbort = (): void => {
+        const entry = this.pending.get(id)
+        if (!entry) return
+        this.pending.delete(id)
+        clearTimeout(entry.timeout)
+        reject(new RuntimeError(`${this.label()} request aborted: ${method}`, { kind: 'transport' }))
+      }
+      const cleanupAbort = (): void => {
+        opts.signal?.removeEventListener('abort', onAbort)
+      }
+      opts.signal?.addEventListener('abort', onAbort, { once: true })
+      this.pending.set(id, {
+        resolve: (value) => { cleanupAbort(); resolve(value) },
+        reject: (error) => { cleanupAbort(); reject(error) },
+        timeout,
+        expectFinal: opts.expectFinal,
+      })
     })
     ws.send(JSON.stringify(frame))
     return promise

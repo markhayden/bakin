@@ -15,7 +15,7 @@
 import { closeSync, openSync, readSync, statSync } from 'fs'
 import { join } from 'path'
 
-import type { RuntimeTurnDiagnosis } from '@bakin/core/adapters/runtime'
+import { RuntimeTurnError, type RuntimeTurnDiagnosis } from '@bakin/core/adapters/runtime'
 
 import { getOpenClawHome } from './home'
 
@@ -198,4 +198,69 @@ export function inspectTrajectoryRun(opts: {
   }
 
   return { kind: 'death', diagnosis }
+}
+
+export interface TrajectoryDeathWatch {
+  /** Rejects with RuntimeTurnError the moment the run's session.ended (non-success) lands on disk. Never resolves. */
+  promise: Promise<never>
+  stop: () => void
+}
+
+/**
+ * Fail-fast watcher raced against a pending gateway agent request. Polls the
+ * trajectory file (stat first — only re-inspects when the size changes) and
+ * rejects with a diagnosed RuntimeTurnError as soon as the session dies,
+ * instead of letting the caller wait out the full transport timeout. A
+ * successful run ends the watch silently — the gateway frame delivers the
+ * result through the normal path (or post-mortem recovery if it's lost).
+ */
+export function watchTrajectoryForDeath(opts: {
+  trajectoryFile: string
+  sinceByteOffset: number
+  oversizedOutputBytes?: number
+  pollMs: number
+}): TrajectoryDeathWatch {
+  let stopped = false
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let lastSize = -1
+
+  const stop = (): void => {
+    stopped = true
+    if (timer) {
+      clearTimeout(timer)
+      timer = null
+    }
+  }
+
+  const promise = new Promise<never>((_, reject) => {
+    const tick = (): void => {
+      if (stopped) return
+      const size = safeTrajectoryOffset(opts.trajectoryFile)
+      if (size !== lastSize) {
+        lastSize = size
+        const outcome = inspectTrajectoryRun({
+          trajectoryFile: opts.trajectoryFile,
+          sinceByteOffset: opts.sinceByteOffset,
+          oversizedOutputBytes: opts.oversizedOutputBytes,
+        })
+        if (outcome?.kind === 'death') {
+          stop()
+          reject(new RuntimeTurnError(outcome.diagnosis))
+          return
+        }
+        if (outcome?.kind === 'success') {
+          stop()
+          return
+        }
+      }
+      timer = setTimeout(tick, opts.pollMs)
+      timer.unref?.()
+    }
+    tick()
+  })
+  // The race winner may be the gateway response — pre-attach a no-op catch
+  // so a late death rejection can never surface as an unhandled rejection.
+  promise.catch(() => {})
+
+  return { promise, stop }
 }

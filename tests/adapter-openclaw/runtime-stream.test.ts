@@ -280,6 +280,54 @@ describe('OpenClaw runtime Gateway chat', () => {
     }
   })
 
+  it('fail-fast: a session death during a PENDING turn rejects in <1s without waiting for the transport timer (CP2)', async () => {
+    const { RuntimeTurnError } = await import('../../packages/core/src/adapters/runtime')
+
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method !== 'agent') return
+      // The gateway accepts the turn… and then never sends a final frame.
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: { status: 'accepted' } })
+      const sessionId = frame.params.sessionId as string
+      const dir = join(testDir, 'agents', 'jessica', 'sessions')
+      mkdirSync(dir, { recursive: true })
+      // ~300ms into the turn, OpenClaw records the death on disk.
+      setTimeout(() => {
+        const lines = [
+          { type: 'session.started', data: {} },
+          { type: 'tool.call', data: { name: 'bakin_exec_tasks_log_progress' } },
+          { type: 'model.completed', data: { timedOut: false, assistantTexts: ['X'.repeat(200_000)] } },
+          { type: 'session.ended', data: { status: 'interrupted', timedOut: false } },
+        ].map((e, i) => JSON.stringify({
+          traceSchema: 'openclaw-trajectory', schemaVersion: 1, traceId: sessionId,
+          type: e.type, ts: new Date(0).toISOString(), seq: i + 1, sessionId, runId: 'run-1', data: e.data,
+        }))
+        writeFileSync(join(dir, `${sessionId}.trajectory.jsonl`), lines.join('\n') + '\n')
+      }, 300)
+    }
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const startedAt = Date.now()
+    try {
+      await runtime.messaging.send({
+        agentId: 'jessica',
+        content: 'six deliverables please',
+        threadId: 'task:t-200:d1',
+      })
+      throw new Error('expected send to reject')
+    } catch (err) {
+      const elapsed = Date.now() - startedAt
+      expect(err).toBeInstanceOf(RuntimeTurnError)
+      const diagnosis = (err as InstanceType<typeof RuntimeTurnError>).diagnosis
+      expect(diagnosis.reason).toBe('session_interrupted')
+      expect(diagnosis.oversizedOutput).toBe(true)
+      expect(diagnosis.lastToolCall).toBe('bakin_exec_tasks_log_progress')
+      // Death written at ~300ms; detection budget is 2 poll intervals.
+      expect(elapsed).toBeLessThan(1000)
+    }
+  })
+
   it('post-mortem: recovers the response text when the run succeeded but the frame was lost', async () => {
     FakeWebSocket.onRequest = (frame, ws) => {
       if (frame.method !== 'agent') return

@@ -28,7 +28,7 @@ import type {
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
 import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
-import { inspectTrajectoryRun, safeTrajectoryOffset, trajectoryFilePathFor } from './trajectory-forensics'
+import { inspectTrajectoryRun, safeTrajectoryOffset, trajectoryFilePathFor, watchTrajectoryForDeath } from './trajectory-forensics'
 import { generateDirectImage, isDirectImageProvider, resolveProviderApiKeySource } from '@bakin/core/media'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
@@ -1156,15 +1156,49 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     const trajectoryFile = cliSessionId ? trajectoryFilePathFor(opts.agentId, cliSessionId) : null
     const trajectoryOffset = trajectoryFile ? safeTrajectoryOffset(trajectoryFile) : 0
 
+    // Fail-fast: race the pending request against the on-disk evidence. When
+    // OpenClaw records session.ended (non-success) the gateway will never
+    // deliver a final frame — without this, the caller waits out the full
+    // 630s transport timer to learn what the trajectory knew in 200ms.
+    const requestAbort = new AbortController()
+    const deathWatch = trajectoryFile
+      ? watchTrajectoryForDeath({
+          trajectoryFile,
+          sinceByteOffset: trajectoryOffset,
+          oversizedOutputBytes: opts.oversizedOutputBytes,
+          pollMs: OPENCLAW_SESSION_ACTIVITY_POLL_MS,
+        })
+      : null
+
     try {
-      const payload = await this.openClawChatGateway().request('agent', params, {
+      const request = this.openClawChatGateway().request('agent', params, {
         expectFinal: true,
         timeoutMs: OPENCLAW_AGENT_TRANSPORT_TIMEOUT_MS,
+        signal: requestAbort.signal,
       })
+      // If the death watch wins the race, the losing request settles later
+      // (abort rejection) with no awaiter — pre-attach a no-op catch so it
+      // can never surface as an unhandled rejection.
+      request.catch(() => {})
+      const payload = deathWatch
+        ? await Promise.race([request, deathWatch.promise])
+        : await request
       const content = extractOpenClawAgentText(payload)
       if (content) return content
       throw new RuntimeError('OpenClaw chat failed: agent response did not include assistant text', { kind: 'runtime_failed' })
     } catch (err) {
+      if (err instanceof RuntimeTurnError) {
+        // Fail-fast verdict — the diagnosis is already complete. Cancel the
+        // pending RPC (clears its 630s timer) and surface immediately.
+        requestAbort.abort()
+        this.logger.warn('OpenClaw agent turn died; fail-fast diagnosis', {
+          agentId: opts.agentId,
+          sessionId: err.diagnosis.sessionId,
+          reason: err.diagnosis.reason,
+          completionBytes: err.diagnosis.completionBytes,
+        })
+        throw err
+      }
       // Gateway/provider failures are already typed RuntimeErrors with the
       // original cause attached — rethrow so classification survives the
       // boundary (wrapping in a bare Error previously stripped `cause` and
@@ -1179,6 +1213,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       if (verdict?.kind === 'recovered') return verdict.content
       if (verdict?.kind === 'death') throw verdict.error
       throw typed
+    } finally {
+      deathWatch?.stop()
     }
   }
 
