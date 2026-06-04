@@ -49,7 +49,7 @@ Run `status` for a quick "is it up". Run `doctor` when something feels off or af
 bakin update
 ```
 
-Pulls the latest GitHub release, verifies `checksums.txt`, and swaps your binary in place. It doesn't touch a running server. Run `bakin restart` afterward for the new binary to take effect.
+Pulls the latest GitHub release archive, verifies `checksums.txt`, extracts the binary, and swaps it in place. It doesn't touch a running server. Run `bakin restart` afterward for the new binary to take effect.
 
 ## Tail the logs
 

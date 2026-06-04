@@ -53,15 +53,15 @@ The rest of this page is for custom install locations, pinned versions, manual d
 
 ### Release assets
 
-Each release publishes the platform binaries plus a `checksums.txt` with SHA-256 sums.
+Each release publishes platform archives plus a `checksums.txt` with SHA-256 sums for the archives.
 
 <div class="table-light-fit table-label">
 
 | Platform | Asset |
 | --- | --- |
-| macOS (Apple Silicon) | `bakin-darwin-arm64` |
-| Linux x64 | `bakin-linux-x64` |
-| Linux arm64 | `bakin-linux-arm64` |
+| macOS (Apple Silicon) | `bakin-darwin-arm64.tar.gz` |
+| Linux x64 | `bakin-linux-x64.tar.gz` |
+| Linux arm64 | `bakin-linux-arm64.tar.gz` |
 
 </div>
 
@@ -83,7 +83,7 @@ curl -fsSL https://raw.githubusercontent.com/markhayden/bakin/main/install.sh | 
 
 ### Manual download
 
-Pull the asset for your platform from the [GitHub releases page](https://github.com/markhayden/bakin/releases), check it against `checksums.txt`, drop it on your `PATH` as `bakin`. Same outcome as the installer, just more steps.
+Pull the archive for your platform from the [GitHub releases page](https://github.com/markhayden/bakin/releases), check it against `checksums.txt`, extract the `bakin` executable, and drop it on your `PATH`. Same outcome as the installer, just more steps.
 
 ### Build from source
 

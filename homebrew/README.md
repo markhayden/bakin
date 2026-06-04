@@ -34,8 +34,8 @@ repository — specifically `markhayden/homebrew-tap`, at
 
 Stable releases publish the tap automatically from `.github/workflows/release.yml`:
 
-1. The workflow builds binaries, signs/notarizes the macOS binary, then
-   computes `dist/checksums.txt`.
+1. The workflow builds binaries, signs/notarizes the macOS binary, packages
+   release archives, then computes `dist/checksums.txt` for those archives.
 2. `scripts/update-homebrew-formula.ts` renders this template with the
    release version and final checksums.
 3. Stable releases clone `markhayden/homebrew-tap`, write

@@ -87,9 +87,9 @@ Keep API keys, credentials, and channel tokens out of docs, tasks, project specs
 
 ## Install and Update Integrity
 
-The one-line installer downloads the platform-specific binary and verifies the SHA-256 checksum from the release `checksums.txt` file.
+The one-line installer downloads the platform-specific archive and verifies the SHA-256 checksum from the release `checksums.txt` file before extracting the `bakin` executable.
 
-`bakin update` follows the same principle: download the latest release asset, verify the checksum, replace the installed binary, and leave the old binary intact if the download or checksum fails.
+`bakin update` follows the same principle: download the latest release archive, verify the checksum, extract the executable, replace the installed binary, and leave the old binary intact if the download, extraction, or checksum fails.
 
 ## Backups
 
@@ -110,5 +110,5 @@ For a complete restore, also back up the configured runtime home, such as `~/.op
 - Treat `audit.jsonl` and `logs/` as sensitive operational records.
 - Review agent package `allowedTools` and `allowedSkills` before adopting packages. Missing or empty `allowedTools` means unrestricted MCP tool access.
 - Review third-party plugin permissions and source before install or upgrade.
-- Prefer release binaries over ad hoc local builds for production use.
+- Prefer release archives over ad hoc local builds for production use.
 - Run `bakin doctor` after upgrades, plugin installs, and agent package changes.
