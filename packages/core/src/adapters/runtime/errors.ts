@@ -20,18 +20,35 @@ export type RuntimeErrorKind =
   /** Structured runtime failure (HTTP-status class, CLI exit, protocol). */
   | 'runtime_failed'
 
+/**
+ * Structured provider metadata for `provider_cooldown` failures, extracted by
+ * the adapter from provider-specific error payloads so core never parses
+ * provider strings.
+ */
+export interface RuntimeProviderInfo {
+  provider?: string
+  model?: string
+  /** e.g. 'timeout' when the provider entered cooldown after a timeout. */
+  cooldownReason?: string
+  /** No auth profile was available (vs. an active profile in cooldown). */
+  authProfileUnavailable?: boolean
+}
+
 export interface RuntimeErrorOptions {
   kind: RuntimeErrorKind
   cause?: unknown
+  providerInfo?: RuntimeProviderInfo
 }
 
 export class RuntimeError extends Error {
   readonly kind: RuntimeErrorKind
+  readonly providerInfo?: RuntimeProviderInfo
 
   constructor(message: string, options: RuntimeErrorOptions) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause })
     this.name = 'RuntimeError'
     this.kind = options.kind
+    if (options.providerInfo) this.providerInfo = options.providerInfo
   }
 }
 

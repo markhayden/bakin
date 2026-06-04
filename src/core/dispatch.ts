@@ -9,7 +9,7 @@ import { getSettings } from './settings'
 import { appendAudit } from './audit'
 import { recordUsage } from './usage'
 import { getAppServices } from './app-services'
-import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
+import { getRuntimeMainAgentId, RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
 import { getHookRegistry } from '../lib/plugin-registry'
 import {
   buildTaskLessonQuery,
@@ -94,6 +94,7 @@ type DispatchFailureReasonCode =
   | 'dispatch_timeout'
   | 'transport_failure'
   | 'runtime_adapter_failure'
+  | 'runtime_turn_died'
   | 'runtime_dispatch_failed'
 
 interface DispatchFailureDetail {
@@ -213,102 +214,96 @@ const TRANSIENT_CODES = new Set([
 ])
 
 // Split dispatch failures into:
-//   - transient: fetch/network errors that slipped past sendMessage's in-call
-//     retry — e.g. node-undici's TypeError('fetch failed'), raw socket
-//     errors surfaced via err.cause.code. Use the short cooldown.
-//   - structural: adapter failures with an HTTP-like status. The runtime
-//     answered and said no, so use the long cooldown.
-// Default to 'structural' on unknown errors: treating an unknown failure as
-// a real outage is the safer side — worst case we wait longer than needed,
-// not shorter.
-function classifyDispatchError(err: unknown): DispatchFailureKind {
-  if (err instanceof Error && /\bfailed \(\d{3}\)/.test(err.message)) {
-    return 'structural'
+//   - transient: transport failures (socket drop, disconnect, fetch error)
+//     that should clear within a cycle. Use the short cooldown.
+//   - structural: the runtime answered and said no, or timed out outright.
+//     Use the long cooldown.
+//
+// Adapters throw typed RuntimeErrors — classification is on `kind` only.
+// The structural-signal fallback below (TypeError / AbortError / cause.code)
+// exists for non-RuntimeError errors from mock adapters or unexpected paths;
+// it never inspects error message text. Default to 'structural' on unknown
+// errors: treating an unknown failure as a real outage is the safer side.
+export function classifyDispatchError(err: unknown): DispatchFailureKind {
+  if (err instanceof RuntimeError) {
+    return err.kind === 'transport' ? 'transient' : 'structural'
   }
-  if (err instanceof TypeError && err.message.includes('fetch failed')) return 'transient'
+  if (err instanceof TypeError) return 'transient'
   const cause = (err as { cause?: { code?: string } })?.cause
   if (cause?.code && TRANSIENT_CODES.has(cause.code)) return 'transient'
   if (err instanceof Error && err.name === 'AbortError') return 'transient'
   return 'structural'
 }
 
-function rawDispatchError(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
-}
-
-function extractProviderFromRuntimeError(raw: string): string | undefined {
-  return raw.match(/No available auth profile for\s+([A-Za-z0-9._/-]+)/i)?.[1]
-    ?? raw.match(/Provider\s+([A-Za-z0-9._/-]+)\s+is in cooldown/i)?.[1]
-}
-
-function extractModelFromRuntimeError(raw: string): string | undefined {
-  return raw.match(/([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+):\s+Provider\s+/i)?.[1]
-}
-
-function classifyDispatchFailureDetail(err: unknown): DispatchFailureDetail {
-  const raw = rawDispatchError(err)
-  const lower = raw.toLowerCase()
+export function classifyDispatchFailureDetail(err: unknown): DispatchFailureDetail {
   const rawError = formatDispatchError(err)
-  const provider = extractProviderFromRuntimeError(raw)
-  const model = extractModelFromRuntimeError(raw)
 
-  if (lower.includes('no available auth profile')) {
-    return {
-      category: 'model_provider_unavailable',
-      reasonCode: 'auth_profile_unavailable',
-      summary: 'Dispatch failed: model provider unavailable',
-      specificReason: 'Auth profile unavailable',
-      retryable: true,
-      ...(provider ? { provider } : {}),
-      ...(model ? { model } : {}),
-      rawError,
+  if (err instanceof RuntimeError) {
+    switch (err.kind) {
+      case 'provider_cooldown': {
+        const info = err.providerInfo ?? {}
+        return {
+          category: 'model_provider_unavailable',
+          reasonCode: info.authProfileUnavailable ? 'auth_profile_unavailable' : 'provider_cooldown',
+          summary: 'Dispatch failed: model provider unavailable',
+          specificReason: info.authProfileUnavailable
+            ? 'Auth profile unavailable'
+            : 'Provider in cooldown after timeout',
+          retryable: true,
+          ...(info.provider ? { provider: info.provider } : {}),
+          ...(info.model ? { model: info.model } : {}),
+          ...(info.cooldownReason ? { cooldownReason: info.cooldownReason } : {}),
+          rawError,
+        }
+      }
+      case 'timeout':
+        return {
+          category: 'runtime_unavailable',
+          reasonCode: 'dispatch_timeout',
+          summary: 'Dispatch failed: runtime dispatch timed out',
+          specificReason: 'Runtime dispatch timed out',
+          retryable: true,
+          rawError,
+        }
+      case 'transport':
+        return {
+          category: 'runtime_unavailable',
+          reasonCode: 'transport_failure',
+          summary: 'Dispatch failed: runtime transport unavailable',
+          specificReason: 'Runtime transport failure',
+          retryable: true,
+          rawError,
+        }
+      case 'session_death':
+        return {
+          category: 'runtime_unavailable',
+          reasonCode: 'runtime_turn_died',
+          summary: 'Dispatch failed: runtime session died before completion',
+          specificReason: err instanceof RuntimeTurnError
+            ? (err.diagnosis.detail ?? err.message)
+            : err.message,
+          retryable: false,
+          rawError,
+        }
+      case 'runtime_failed':
+        return {
+          category: 'runtime_unavailable',
+          reasonCode: 'runtime_adapter_failure',
+          summary: 'Dispatch failed: runtime adapter failure',
+          specificReason: 'Runtime adapter failure',
+          retryable: true,
+          rawError,
+        }
     }
   }
 
-  if (/\bprovider\b.*\bin cooldown\b/i.test(raw) || lower.includes('suspending lanes')) {
-    return {
-      category: 'model_provider_unavailable',
-      reasonCode: 'provider_cooldown',
-      summary: 'Dispatch failed: model provider unavailable',
-      specificReason: 'Provider in cooldown after timeout',
-      retryable: true,
-      ...(provider ? { provider } : {}),
-      ...(model ? { model } : {}),
-      ...(lower.includes('timeout') ? { cooldownReason: 'timeout' } : {}),
-      rawError,
-    }
-  }
-
-  if (lower.includes('request timed out') || lower.includes('gateway request timed out')) {
-    return {
-      category: 'runtime_unavailable',
-      reasonCode: 'dispatch_timeout',
-      summary: 'Dispatch failed: runtime dispatch timed out',
-      specificReason: 'Runtime dispatch timed out',
-      retryable: true,
-      rawError,
-    }
-  }
-
-  if (lower.includes('socket error') || lower.includes('fetch failed') || err instanceof TypeError || err instanceof Error && err.name === 'AbortError') {
+  if (err instanceof TypeError || (err instanceof Error && err.name === 'AbortError')) {
     return {
       category: 'runtime_unavailable',
       reasonCode: 'transport_failure',
       summary: 'Dispatch failed: runtime transport unavailable',
       specificReason: 'Runtime transport failure',
       retryable: true,
-      rawError,
-    }
-  }
-
-  const http = raw.match(/\bfailed \((\d{3})\)/)
-  if (http) {
-    return {
-      category: 'runtime_unavailable',
-      reasonCode: 'runtime_adapter_failure',
-      summary: `Dispatch failed: runtime adapter returned HTTP ${http[1]}`,
-      specificReason: `Runtime adapter returned HTTP ${http[1]}`,
-      retryable: Number(http[1]) >= 500,
       rawError,
     }
   }
@@ -394,26 +389,28 @@ async function tryAddTaskLog(taskId: string, author: string, message: string, da
   }
 }
 
-function formatSanitizedRuntimeFailure(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err)
-  const lower = raw.toLowerCase()
-  if (lower.includes('turn_completion_idle_timeout') || lower.includes('idle timed out waiting for turn/completed')) {
-    return 'codex app-server idle timeout waiting for turn completion'
+export function formatSanitizedRuntimeFailure(err: unknown): string {
+  if (err instanceof RuntimeTurnError) {
+    return err.diagnosis.detail ?? err.message
   }
-  if (lower.includes('request timed out')) return 'runtime gateway request timed out'
-  if (lower.includes('socket error')) return 'runtime gateway socket error'
-  if (lower.includes('fetch failed')) return 'runtime transport fetch failed'
+  if (err instanceof RuntimeError) {
+    switch (err.kind) {
+      case 'timeout': return 'runtime gateway request timed out'
+      case 'transport': return 'runtime transport failure'
+      case 'provider_cooldown': return 'model provider unavailable'
+      case 'session_death': return err.message
+      case 'runtime_failed': return 'runtime adapter failure'
+    }
+  }
   if (err instanceof Error && err.name === 'AbortError') return 'runtime transport request aborted'
-  const http = raw.match(/\bfailed \((\d{3})\)/)
-  if (http) return `runtime adapter returned HTTP ${http[1]}`
   return 'runtime dispatch failed before task completion'
 }
 
+// The runtime accepted the run and the turn died/ended before reporting
+// completion — a terminal failure for this attempt, not a retry-into-the-
+// same-wall case. Typed by the adapter; no message inspection.
 function isAcceptedRunTerminalFailure(err: unknown): boolean {
-  const raw = err instanceof Error ? err.message : String(err)
-  const lower = raw.toLowerCase()
-  return lower.includes('turn_completion_idle_timeout')
-    || lower.includes('idle timed out waiting for turn/completed')
+  return err instanceof RuntimeTurnError
 }
 
 function shouldBlockAfterDispatchFailure(

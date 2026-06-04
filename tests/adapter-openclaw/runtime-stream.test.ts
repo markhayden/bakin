@@ -203,7 +203,7 @@ describe('OpenClaw runtime Gateway chat', () => {
       agentId: 'pixel',
       content: 'hello',
       threadId: 'messaging:a50b420e:pixel',
-    })).rejects.toThrow('OpenClaw chat failed: Invalid session ID: messaging:a50b420e:pixel; code=invalid_session')
+    })).rejects.toThrow('Invalid session ID: messaging:a50b420e:pixel; code=invalid_session')
   })
 
   it('includes safe Gateway error details in chat failures', async () => {
@@ -229,7 +229,7 @@ describe('OpenClaw runtime Gateway chat', () => {
       agentId: 'pixel',
       content: 'hello',
       threadId: 'messaging:a50b420e:pixel',
-    })).rejects.toThrow('OpenClaw chat failed: protocol mismatch; code=INVALID_REQUEST; details={"expectedProtocol":4}')
+    })).rejects.toThrow('protocol mismatch; code=INVALID_REQUEST; details={"expectedProtocol":4}')
   })
 
   it('emits OpenClaw transcript tool activity while the Gateway agent request is pending', async () => {

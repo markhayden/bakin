@@ -13,6 +13,7 @@ export { RuntimeError, RuntimeTurnError } from './errors'
 export type {
   RuntimeErrorKind,
   RuntimeErrorOptions,
+  RuntimeProviderInfo,
   RuntimeTurnDiagnosis,
   RuntimeTurnFailureReason,
 } from './errors'

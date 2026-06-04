@@ -27,6 +27,7 @@ import type {
   WorkspaceFile,
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
+import { RuntimeError } from '@bakin/core/adapters/runtime'
 import { generateDirectImage, isDirectImageProvider, resolveProviderApiKeySource } from '@bakin/core/media'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
@@ -121,7 +122,7 @@ interface OpenClawAgentTurnOptions {
   toolsDeny?: string[]
 }
 
-class OpenClawCommandError extends Error {
+class OpenClawCommandError extends RuntimeError {
   readonly args: string[]
   readonly stdout: string
   readonly stderr: string
@@ -135,7 +136,7 @@ class OpenClawCommandError extends Error {
     super([
       `OpenClaw command failed${exitCode === undefined ? '' : ` (${exitCode})`}: openclaw ${args.join(' ')}`,
       details,
-    ].filter(Boolean).join('\n'), { cause })
+    ].filter(Boolean).join('\n'), { kind: 'runtime_failed', cause })
     this.name = 'OpenClawCommandError'
     this.args = args
     this.stdout = stdout
@@ -1149,9 +1150,17 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       })
       const content = extractOpenClawAgentText(payload)
       if (content) return content
-      throw new Error('OpenClaw agent response did not include assistant text')
+      throw new RuntimeError('OpenClaw chat failed: agent response did not include assistant text', { kind: 'runtime_failed' })
     } catch (err) {
-      throw new Error(`OpenClaw chat failed: ${err instanceof Error ? err.message : String(err)}`)
+      // Gateway/provider failures are already typed RuntimeErrors with the
+      // original cause attached — rethrow as-is so classification survives
+      // the boundary (wrapping in a bare Error previously stripped `cause`
+      // and misclassified every transport failure as structural).
+      if (err instanceof RuntimeError) throw err
+      throw new RuntimeError(
+        `OpenClaw chat failed: ${err instanceof Error ? err.message : String(err)}`,
+        { kind: 'runtime_failed', cause: err },
+      )
     }
   }
 
@@ -1177,7 +1186,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       headers: this.headers(),
       body: JSON.stringify({ tool: toolName, action: 'json', args }),
     })
-    if (!res.ok) throw new Error(`OpenClaw invokeTool failed (${res.status}): ${await res.text()}`)
+    if (!res.ok) throw new RuntimeError(`OpenClaw invokeTool failed (${res.status}): ${await res.text()}`, { kind: 'runtime_failed' })
     return res.json()
   }
 

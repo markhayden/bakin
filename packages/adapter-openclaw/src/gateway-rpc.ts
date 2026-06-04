@@ -1,7 +1,9 @@
 import { randomUUID } from 'crypto'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
+import { RuntimeError } from '@bakin/core/adapters/runtime'
 
 import { buildDeviceConnectFields, loadDeviceAuth } from './device-auth'
+import { openClawRuntimeErrorFromMessage } from './errors'
 
 const GATEWAY_MIN_PROTOCOL_VERSION = 1
 const GATEWAY_MAX_PROTOCOL_VERSION = 10
@@ -104,10 +106,10 @@ export class OpenClawGatewayRpcClient {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
     }
-    this.rejectPending(new Error(`${this.label()} closed`))
+    this.rejectPending(new RuntimeError(`${this.label()} closed`, { kind: 'transport' }))
     if (this.connectState) {
       clearTimeout(this.connectState.timeout)
-      this.connectState.reject(new Error(`${this.label()} closed`))
+      this.connectState.reject(new RuntimeError(`${this.label()} closed`, { kind: 'transport' }))
       this.connectState = null
     }
     this.connected = false
@@ -131,13 +133,13 @@ export class OpenClawGatewayRpcClient {
 
     const WebSocketCtor = globalThis.WebSocket
     if (!WebSocketCtor) {
-      return Promise.reject(new Error('WebSocket is not available in this runtime'))
+      return Promise.reject(new RuntimeError('WebSocket is not available in this runtime', { kind: 'runtime_failed' }))
     }
 
     let resolveConnect!: () => void
     let rejectConnect!: (error: Error) => void
     const timeout = setTimeout(() => {
-      const error = new Error(`${this.label()} connect timed out`)
+      const error = new RuntimeError(`${this.label()} connect timed out`, { kind: 'transport' })
       this.failConnect(error)
       this.ws?.close()
     }, CONNECT_TIMEOUT_MS)
@@ -155,7 +157,7 @@ export class OpenClawGatewayRpcClient {
     ws.addEventListener('message', (event) => this.handleMessage(messageDataToString(event.data)))
     ws.addEventListener('close', () => this.handleClose())
     ws.addEventListener('error', () => {
-      if (!this.connected) this.failConnect(new Error(`${this.label()} socket error`))
+      if (!this.connected) this.failConnect(new RuntimeError(`${this.label()} socket error`, { kind: 'transport' }))
     })
 
     return promise
@@ -204,7 +206,11 @@ export class OpenClawGatewayRpcClient {
     }
     if (Object.keys(auth).length > 0) params.auth = auth
 
-    this.sendRequest('connect', params, { timeoutMs: CONNECT_TIMEOUT_MS, expectFinal: false })
+    // connectState's CONNECT_TIMEOUT_MS timer (ensureConnected) is the
+    // authoritative handshake timeout — it spans socket open + challenge +
+    // this RPC. The per-request timer here is a 2x backstop so the pending
+    // entry can't outlive a wedged handshake; it must never fire first.
+    this.sendRequest('connect', params, { timeoutMs: CONNECT_TIMEOUT_MS * 2, expectFinal: false })
       .then(() => {
         const state = this.connectState
         if (!state) return
@@ -222,7 +228,7 @@ export class OpenClawGatewayRpcClient {
   private sendRequest(method: string, params: Record<string, unknown>, opts: { timeoutMs: number; expectFinal: boolean }): Promise<unknown> {
     const ws = this.ws
     if (!ws || ws.readyState !== WS_OPEN) {
-      return Promise.reject(new Error(`${this.label()} is not connected`))
+      return Promise.reject(new RuntimeError(`${this.label()} is not connected`, { kind: 'transport' }))
     }
 
     const id = randomUUID()
@@ -230,7 +236,7 @@ export class OpenClawGatewayRpcClient {
     const promise = new Promise<unknown>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(id)
-        reject(new Error(`${this.label()} request timed out: ${method}`))
+        reject(new RuntimeError(`${this.label()} request timed out: ${method}`, { kind: 'timeout' }))
       }, opts.timeoutMs)
       this.pending.set(id, { resolve, reject, timeout, expectFinal: opts.expectFinal })
     })
@@ -259,7 +265,7 @@ export class OpenClawGatewayRpcClient {
       const payload = isRecord(frame.payload) ? frame.payload : {}
       const nonce = typeof payload.nonce === 'string' ? payload.nonce.trim() : ''
       if (!nonce) {
-        this.failConnect(new Error(`${this.label()} connect challenge missing nonce`))
+        this.failConnect(new RuntimeError(`${this.label()} connect challenge missing nonce`, { kind: 'runtime_failed' }))
         this.ws?.close()
         return
       }
@@ -292,7 +298,9 @@ export class OpenClawGatewayRpcClient {
     }
     const message = frame.error?.message ?? `${this.label()} request failed`
     const details = formatGatewayErrorDetails(frame.error?.details)
-    pending.reject(new Error([
+    // Provider-originated failure: interpret the message ONCE, here in the
+    // adapter, into a typed RuntimeError (cooldown / turn death / failed).
+    pending.reject(openClawRuntimeErrorFromMessage([
       message,
       ...(frame.error?.code ? [`code=${frame.error.code}`] : []),
       ...(details ? [`details=${details}`] : []),
@@ -302,10 +310,10 @@ export class OpenClawGatewayRpcClient {
   private handleClose(): void {
     this.connected = false
     this.connectSent = false
-    this.rejectPending(new Error(`${this.label()} disconnected`))
+    this.rejectPending(new RuntimeError(`${this.label()} disconnected`, { kind: 'transport' }))
     if (this.connectState) {
       clearTimeout(this.connectState.timeout)
-      this.connectState.reject(new Error(`${this.label()} disconnected`))
+      this.connectState.reject(new RuntimeError(`${this.label()} disconnected`, { kind: 'transport' }))
       this.connectState = null
     }
     if (this.stopped || this.eventHandlers.size === 0) return

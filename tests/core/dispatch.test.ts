@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, mock, type Mock } from 'bu
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+// Failure simulations throw what the OpenClaw adapter actually emits: typed
+// RuntimeErrors produced by its single provider-string interpreter.
+import { openClawRuntimeErrorFromMessage } from '../../packages/adapter-openclaw/src/errors'
+import { RuntimeError } from '../../packages/core/src/adapters/runtime'
 
 // Defensive content-dir mock (per CLAUDE.md test isolation rules). The
 // dispatch module takes `contentDir` as a parameter so it never calls
@@ -454,7 +458,7 @@ describe('dispatch', () => {
 
       setupTodoTask({ id: 't-provider-cooldown', title: 'Provider cooldown task', agent: 'main' })
       mockRuntimeSend.mockRejectedValueOnce(
-        new Error('OpenClaw chat failed: FallbackSummaryError: All models failed (1): openai-codex/gpt-5.5: Provider openai-codex is in cooldown (suspending lanes) (timeout); code=UNAVAILABLE'),
+        openClawRuntimeErrorFromMessage('FallbackSummaryError: All models failed (1): openai-codex/gpt-5.5: Provider openai-codex is in cooldown (suspending lanes) (timeout); code=UNAVAILABLE'),
       )
 
       await dispatchTasks(tempDir, 3737)
@@ -491,7 +495,7 @@ describe('dispatch', () => {
 
       setupTodoTask({ id: 't-auth-profile', title: 'Auth profile task', agent: 'main' })
       mockRuntimeSend.mockRejectedValueOnce(
-        new Error('Failed to dispatch "Auth profile task" to main OpenClaw chat failed: Error: No available auth profile for openai-codex (all in cooldown or unavailable).; code=UNAVAILABLE'),
+        openClawRuntimeErrorFromMessage('Error: No available auth profile for openai-codex (all in cooldown or unavailable).; code=UNAVAILABLE'),
       )
 
       await dispatchTasks(tempDir, 3737)
@@ -589,7 +593,7 @@ describe('dispatch', () => {
           done: [],
           archived: [],
         })
-        throw new Error('OpenClaw chat failed: codex app-server turn idle timed out waiting for turn/completed')
+        throw openClawRuntimeErrorFromMessage('codex app-server turn idle timed out waiting for turn/completed')
       })
 
       await dispatchTasks(tempDir, 3737)
@@ -623,7 +627,7 @@ describe('dispatch', () => {
           }],
           archived: [],
         })
-        throw new Error('OpenClaw chat gateway request timed out: agent')
+        throw new RuntimeError('OpenClaw chat gateway request timed out: agent', { kind: 'timeout' })
       })
 
       await dispatchTasks(tempDir, 3737)
