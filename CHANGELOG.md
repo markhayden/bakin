@@ -6,8 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.14] - 2026-06-04
+
 ### Fixed
-- Build installed plugin client bundles with the production JSX runtime in release binaries, and repair stale installed client bundles that still import `react/jsx-dev-runtime`.
+- Build release plugin client bundles with the production JSX runtime so packaged core plugins do not import `react/jsx-dev-runtime`.
+- Rebuild stale installed-plugin `dist/client.js` bundles that still contain JSX dev-runtime output, even when existing GitHub-installed plugin artifacts would otherwise be trusted.
 
 ## [0.0.1-rc.13] - 2026-06-04
 
@@ -192,5 +195,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 [0.0.1-rc.12]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.12
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.13...HEAD
 [0.0.1-rc.13]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.13
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.14...HEAD
+[0.0.1-rc.14]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.14
