@@ -188,7 +188,6 @@ export function createPluginRuntimeFacade(runtime: AgentRuntimeAdapter): AgentRu
       removeWorkspaceFile: async () => { throw new Error('Runtime workspace files are not exposed to plugins') },
       updatePermissions: async () => { throw new Error('Runtime permissions are not exposed to plugins') },
       updateAllowlist: async () => { throw new Error('Runtime allowlists are not exposed to plugins') },
-      heartbeat: runtime.agents.heartbeat.bind(runtime.agents),
     },
     messaging: {
       send: runtime.messaging.send.bind(runtime.messaging),
@@ -196,7 +195,6 @@ export function createPluginRuntimeFacade(runtime: AgentRuntimeAdapter): AgentRu
     },
     tools: {
       invoke: async () => { throw new Error('Runtime tool invocation is not exposed to plugins') },
-      list: async () => [],
     },
     channels: {
       list: runtime.channels.list.bind(runtime.channels),
@@ -208,8 +206,6 @@ export function createPluginRuntimeFacade(runtime: AgentRuntimeAdapter): AgentRu
       cancelApproval: runtime.channels.cancelApproval.bind(runtime.channels),
       resolveApproval: runtime.channels.resolveApproval.bind(runtime.channels),
       subscribeApprovalResponses: runtime.channels.subscribeApprovalResponses.bind(runtime.channels),
-      onMessage: runtime.channels.onMessage.bind(runtime.channels),
-      onInteraction: runtime.channels.onInteraction.bind(runtime.channels),
     },
     skills: {
       list: runtime.skills.list.bind(runtime.skills),
@@ -243,13 +239,6 @@ export function createPluginRuntimeFacade(runtime: AgentRuntimeAdapter): AgentRu
           },
         }
       : {}),
-    tasks: {
-      dispatch: runtime.tasks.dispatch.bind(runtime.tasks),
-      getExecutionStatus: runtime.tasks.getExecutionStatus.bind(runtime.tasks),
-      listExecutions: runtime.tasks.listExecutions.bind(runtime.tasks),
-      cancelExecution: runtime.tasks.cancelExecution.bind(runtime.tasks),
-      subscribeExecutionUpdates: runtime.tasks.subscribeExecutionUpdates.bind(runtime.tasks),
-    },
     cron: {
       list: runtime.cron.list.bind(runtime.cron),
       get: runtime.cron.get.bind(runtime.cron),

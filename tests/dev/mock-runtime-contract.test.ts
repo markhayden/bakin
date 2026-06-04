@@ -36,7 +36,6 @@ describe('imitation-crab runtime contract', () => {
       name: 'Pixel',
       metadata: expect.objectContaining({ subagentAllowAgents: null }),
     }))
-    await expect(runtime.agents.heartbeat('patch')).resolves.toBe(false)
 
     await runtime.agents.writeWorkspaceFile('patch', {
       path: 'CONTRACT.md',
@@ -140,15 +139,5 @@ describe('imitation-crab runtime contract', () => {
     ])
     await runtime.cron.remove(createdCron.id)
     await expect(runtime.cron.get(createdCron.id)).resolves.toBeNull()
-
-    await expect(runtime.tasks.dispatch({
-      bakinTaskId: 'task-contract',
-      agentId: 'patch',
-      title: 'Run contract task',
-    })).resolves.toEqual({ flowId: 'flow-task-contract' })
-    await expect(runtime.tasks.getExecutionStatus('flow-task-contract')).resolves.toEqual({
-      flowId: 'flow-task-contract',
-      state: 'unknown',
-    })
   })
 })

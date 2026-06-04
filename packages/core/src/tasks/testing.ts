@@ -8,7 +8,6 @@ import type {
   TaskListOpts,
 } from './store'
 import { createEmptyBakinTask } from './store'
-import type { TaskExecutionStatus } from '../adapters/runtime'
 
 function cloneTask(task: BakinTask): BakinTask {
   return structuredClone(task)
@@ -105,43 +104,6 @@ export function createMockBakinTaskStore(seed: BakinTask[] = []): BakinTaskStore
 
     markPendingDelete: async (id, pending) => patchTask(id, { pendingDelete: pending }),
 
-    linkExecution: async (id, flowId) => {
-      const task = requireTask(id)
-      const next = {
-        ...task,
-        execution: {
-          ...task.execution,
-          flowId,
-          state: task.execution.state === 'not-dispatched' ? undefined : task.execution.state,
-        },
-        updatedAt: new Date().toISOString(),
-      }
-      tasks.set(id, next)
-      emit({ type: 'updated', taskId: id, task: cloneTask(next) })
-      return cloneTask(next)
-    },
-
-    updateExecutionCache: async (id, status: TaskExecutionStatus) => {
-      const task = requireTask(id)
-      const next = {
-        ...task,
-        execution: {
-          ...task.execution,
-          flowId: status.flowId,
-          state: status.state,
-          currentStep: status.currentStep,
-          blockingReason: status.blockingReason,
-          retryCount: status.retryCount,
-          startedAt: status.startedAt,
-          endedAt: status.endedAt,
-          lastSyncedAt: new Date().toISOString(),
-        },
-        updatedAt: new Date().toISOString(),
-      }
-      tasks.set(id, next)
-      emit({ type: 'updated', taskId: id, task: cloneTask(next) })
-      return cloneTask(next)
-    },
 
     subscribe: (handler) => {
       listeners.add(handler)

@@ -485,14 +485,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         return Array.from(next)
       })
     },
-    heartbeat: async (agentId: string): Promise<boolean> => {
-      const file = join(getWorkspacePath(agentId), 'HEARTBEAT.md')
-      try {
-        return statSync(file).isFile()
-      } catch {
-        return false
-      }
-    },
   }
 
   messaging = {
@@ -522,7 +514,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       const value = await this.invokeTool(name, args as Record<string, unknown>)
       return { ok: true, output: value }
     },
-    list: async () => [],
   }
 
   channels = {
@@ -638,8 +629,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         handler(event)
       })
     },
-    onMessage: () => () => {},
-    onInteraction: () => () => {},
   }
 
   private async tryCreateNativeApproval(
@@ -947,14 +936,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         credentialSource: resolved.source === 'env' ? 'bakin-env' : 'bakin-store',
       },
     }
-  }
-
-  tasks = {
-    dispatch: async (args: { bakinTaskId: string }) => ({ flowId: `flow-${args.bakinTaskId}` }),
-    getExecutionStatus: async (flowId: string) => ({ flowId, state: 'unknown' as const }),
-    listExecutions: async () => [],
-    cancelExecution: async () => {},
-    subscribeExecutionUpdates: () => () => {},
   }
 
   cron = {
