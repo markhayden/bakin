@@ -209,6 +209,26 @@ describe('dispatchRoute — input validation', () => {
     expect(res.status).toBe(415)
   })
 
+  it('does not read an absent body for body: { contentType: "none" }', async () => {
+    const route = defineRoute({
+      path: '/:assetId',
+      method: 'DELETE',
+      summary: 'Delete asset',
+      params: z.object({ assetId: z.string() }),
+      body: { contentType: 'none' },
+      responses: { 200: z.object({ ok: z.literal(true) }) },
+      handler: async () => Response.json({ ok: true as const }),
+    })
+    const req = new Request('http://x/api/plugins/assets/versioned/asset-1', {
+      method: 'DELETE',
+    })
+
+    const res = await dispatchRoute({ req, ctx: stubCtx, route, params: { assetId: 'asset-1' } })
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ ok: true })
+  })
+
   it('accepts an optional JSON body schema when the request has no body', async () => {
     const route = defineRoute({
       path: '/:jobId',

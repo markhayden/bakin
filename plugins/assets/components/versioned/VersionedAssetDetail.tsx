@@ -17,6 +17,8 @@ export function VersionedAssetDetail() {
   const [loading, setLoading] = useState(true)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleteScope, setDeleteScope] = useState<'asset' | 'current'>('asset')
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [addingVersion, setAddingVersion] = useState(false)
   const [versionError, setVersionError] = useState<string | null>(null)
   const [lightbox, setLightbox] = useState(false)
@@ -77,12 +79,43 @@ export function VersionedAssetDetail() {
   }, [assetId, fetchManifest])
 
   const doDelete = async () => {
-    if (deleteScope === 'current' && manifest) {
-      await deleteVersion(manifest.currentVersion)
-      setConfirmDelete(false)
-    } else {
-      await fetch(`${VERSIONED_API}/${encodeURIComponent(assetId)}`, { method: 'DELETE' })
-      navigate({ to: '/assets' })
+    setDeleting(true)
+    setDeleteError(null)
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), 10000)
+    try {
+      if (deleteScope === 'current' && manifest) {
+        const res = await fetch(`${VERSIONED_API}/${encodeURIComponent(assetId)}/v/${manifest.currentVersion}`, {
+          method: 'DELETE',
+          signal: controller.signal,
+        })
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({})) as { error?: string }
+          throw new Error(body.error || `Delete failed (${res.status})`)
+        }
+        fetchManifest()
+        setConfirmDelete(false)
+      } else {
+        const res = await fetch(`${VERSIONED_API}/${encodeURIComponent(assetId)}`, {
+          method: 'DELETE',
+          signal: controller.signal,
+        })
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({})) as { error?: string }
+          throw new Error(body.error || `Delete failed (${res.status})`)
+        }
+        navigate({ to: '/assets' })
+      }
+    } catch (err) {
+      const message = err instanceof DOMException && err.name === 'AbortError'
+        ? 'Delete timed out. Check the server log and try again.'
+        : err instanceof Error
+          ? err.message
+          : 'Delete failed.'
+      setDeleteError(message)
+    } finally {
+      window.clearTimeout(timeout)
+      setDeleting(false)
     }
   }
 
@@ -124,7 +157,7 @@ export function VersionedAssetDetail() {
           {addingVersion ? <Loader2 className="size-4 animate-spin mr-1" /> : <Upload className="size-4 mr-1" />}
           {addingVersion ? 'Uploading…' : 'Add version'}
         </Button>
-        <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300" onClick={() => { setDeleteScope('asset'); setConfirmDelete(true) }} data-testid="delete-asset">
+        <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300" onClick={() => { setDeleteScope('asset'); setDeleteError(null); setConfirmDelete(true) }} data-testid="delete-asset">
           <Trash2 className="size-4" />
         </Button>
       </div>
@@ -222,8 +255,11 @@ export function VersionedAssetDetail() {
               <p className="mb-3 text-sm text-muted-foreground">Delete this asset?</p>
             )}
             <div className="flex justify-end gap-2">
-              <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>Cancel</Button>
-              <Button size="sm" variant="destructive" onClick={doDelete} data-testid="confirm-delete">Delete</Button>
+              {deleteError && <p className="mr-auto max-w-40 text-xs text-destructive">{deleteError}</p>}
+              <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)} disabled={deleting}>Cancel</Button>
+              <Button size="sm" variant="destructive" onClick={doDelete} disabled={deleting} data-testid="confirm-delete">
+                {deleting ? 'Deleting...' : 'Delete'}
+              </Button>
             </div>
           </div>
         </div>

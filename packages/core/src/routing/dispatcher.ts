@@ -205,6 +205,7 @@ async function isEmptyBody(req: Request): Promise<boolean> {
   if (req.method === 'GET' || req.method === 'HEAD') return true
   const cl = req.headers.get('content-length')
   if (cl === '0') return true
+  if (cl === null && !req.headers.has('transfer-encoding') && !req.headers.has('content-type')) return true
   // Read the body; empty buffers count as no body.
   try {
     const buf = await req.clone().arrayBuffer()
