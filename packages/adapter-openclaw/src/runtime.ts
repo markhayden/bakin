@@ -27,7 +27,8 @@ import type {
   WorkspaceFile,
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
-import { RuntimeError } from '@bakin/core/adapters/runtime'
+import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
+import { inspectTrajectoryRun, safeTrajectoryOffset, trajectoryFilePathFor } from './trajectory-forensics'
 import { generateDirectImage, isDirectImageProvider, resolveProviderApiKeySource } from '@bakin/core/media'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
@@ -120,6 +121,8 @@ interface OpenClawAgentTurnOptions {
   toolsMode?: MessageArgs['toolsMode']
   toolsAllow?: string[]
   toolsDeny?: string[]
+  /** Oversized-output threshold for session-death diagnoses (core policy). */
+  oversizedOutputBytes?: number
 }
 
 class OpenClawCommandError extends RuntimeError {
@@ -497,6 +500,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         toolsMode: args.toolsMode,
         toolsAllow: args.toolsAllow,
         toolsDeny: args.toolsDeny,
+        oversizedOutputBytes: oversizedOutputBytesFrom(args.metadata),
       })
       return { id: `msg-${Date.now()}`, content }
     },
@@ -507,6 +511,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       toolsMode: args.toolsMode,
       toolsAllow: args.toolsAllow,
       toolsDeny: args.toolsDeny,
+      oversizedOutputBytes: oversizedOutputBytesFrom(args.metadata),
     }),
   }
 
@@ -1134,6 +1139,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   private async runOpenClawAgentGateway(opts: OpenClawAgentTurnOptions): Promise<string> {
+    const cliSessionId = opts.sessionKey ? openClawCliSessionId(opts.agentId, opts.sessionKey) : null
     const params: Record<string, unknown> = {
       agentId: opts.agentId,
       message: messagesToOpenClawPrompt(opts.messages),
@@ -1142,7 +1148,14 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       idempotencyKey: `bakin-${randomUUID()}`,
     }
     applyRuntimeMessageToolPolicy(params, opts)
-    if (opts.sessionKey) params.sessionId = openClawCliSessionId(opts.agentId, opts.sessionKey)
+    if (cliSessionId) params.sessionId = cliSessionId
+
+    // Capture where the trajectory ends BEFORE the turn starts so any
+    // post-mortem only sees events from this attempt (the file accrues one
+    // run per turn for the life of the session).
+    const trajectoryFile = cliSessionId ? trajectoryFilePathFor(opts.agentId, cliSessionId) : null
+    const trajectoryOffset = trajectoryFile ? safeTrajectoryOffset(trajectoryFile) : 0
+
     try {
       const payload = await this.openClawChatGateway().request('agent', params, {
         expectFinal: true,
@@ -1153,15 +1166,65 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       throw new RuntimeError('OpenClaw chat failed: agent response did not include assistant text', { kind: 'runtime_failed' })
     } catch (err) {
       // Gateway/provider failures are already typed RuntimeErrors with the
-      // original cause attached — rethrow as-is so classification survives
-      // the boundary (wrapping in a bare Error previously stripped `cause`
-      // and misclassified every transport failure as structural).
-      if (err instanceof RuntimeError) throw err
-      throw new RuntimeError(
-        `OpenClaw chat failed: ${err instanceof Error ? err.message : String(err)}`,
-        { kind: 'runtime_failed', cause: err },
-      )
+      // original cause attached — rethrow so classification survives the
+      // boundary (wrapping in a bare Error previously stripped `cause` and
+      // misclassified every transport failure as structural).
+      const typed = err instanceof RuntimeError
+        ? err
+        : new RuntimeError(
+            `OpenClaw chat failed: ${err instanceof Error ? err.message : String(err)}`,
+            { kind: 'runtime_failed', cause: err },
+          )
+      const verdict = this.postMortemAgentTurn(typed, trajectoryFile, trajectoryOffset, opts)
+      if (verdict?.kind === 'recovered') return verdict.content
+      if (verdict?.kind === 'death') throw verdict.error
+      throw typed
     }
+  }
+
+  /**
+   * Post-mortem for a failed agent turn. When the gateway times out or the
+   * socket drops mid-turn, the truth is in the session trajectory on disk:
+   *  - run ended `success` but the final frame was lost → RECOVER the
+   *    response text instead of failing the turn at all;
+   *  - run died (interrupted/oversized/server timeout) → a RuntimeTurnError
+   *    carrying the structured diagnosis replaces the generic error;
+   *  - no evidence → null, the original error stands.
+   */
+  private postMortemAgentTurn(
+    err: RuntimeError,
+    trajectoryFile: string | null,
+    trajectoryOffset: number,
+    opts: OpenClawAgentTurnOptions,
+  ): { kind: 'recovered'; content: string } | { kind: 'death'; error: RuntimeTurnError } | null {
+    if (!trajectoryFile) return null
+    if (err.kind !== 'timeout' && err.kind !== 'transport') return null
+
+    const outcome = inspectTrajectoryRun({
+      trajectoryFile,
+      sinceByteOffset: trajectoryOffset,
+      oversizedOutputBytes: opts.oversizedOutputBytes,
+    })
+    if (!outcome) return null
+
+    if (outcome.kind === 'success') {
+      // The turn completed; only the response frame was lost. Surfacing the
+      // recovered text turns a spurious 10-minute failure into a success.
+      this.logger.warn('OpenClaw agent turn recovered from trajectory after gateway failure', {
+        agentId: opts.agentId,
+        sessionId: outcome.sessionId,
+        error: err.message,
+      })
+      return { kind: 'recovered', content: outcome.content }
+    }
+
+    this.logger.warn('OpenClaw agent turn died; trajectory post-mortem attached', {
+      agentId: opts.agentId,
+      sessionId: outcome.diagnosis.sessionId,
+      reason: outcome.diagnosis.reason,
+      completionBytes: outcome.diagnosis.completionBytes,
+    })
+    return { kind: 'death', error: new RuntimeTurnError(outcome.diagnosis, { cause: err }) }
   }
 
   private openClawChatGateway(): OpenClawGatewayRpcClient {
@@ -1238,6 +1301,11 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   private async execCron(args: string[]): Promise<string> {
     return this.exec(args, { timeout: OPENCLAW_CRON_PROCESS_TIMEOUT_MS })
   }
+}
+
+function oversizedOutputBytesFrom(metadata: RuntimeMetadata | undefined): number | undefined {
+  const value = metadata?.oversizedOutputBytes
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
 }
 
 function messagesToOpenClawPrompt(messages: Array<{ role: string; content: string }>): string {

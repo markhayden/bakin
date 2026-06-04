@@ -232,6 +232,83 @@ describe('OpenClaw runtime Gateway chat', () => {
     })).rejects.toThrow('protocol mismatch; code=INVALID_REQUEST; details={"expectedProtocol":4}')
   })
 
+  it('post-mortem: a mid-turn disconnect with a dead session yields RuntimeTurnError with diagnosis', async () => {
+    const { RuntimeTurnError } = await import('../../packages/core/src/adapters/runtime')
+    const bigText = 'B'.repeat(262_144)
+
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method !== 'agent') return
+      // OpenClaw records the death in the trajectory, then the gateway
+      // connection drops without ever delivering a final frame.
+      const sessionId = frame.params.sessionId as string
+      const dir = join(testDir, 'agents', 'pixel', 'sessions')
+      mkdirSync(dir, { recursive: true })
+      const lines = [
+        { type: 'session.started', data: { toolCount: 15 } },
+        { type: 'tool.call', data: { name: 'bakin_exec_tasks_log_progress' } },
+        { type: 'model.completed', data: { timedOut: false, aborted: false, usage: { input: 42000, output: 12000, total: 54000 }, assistantTexts: [bigText] } },
+        { type: 'session.ended', data: { status: 'interrupted', timedOut: false } },
+      ].map((e, i) => JSON.stringify({
+        traceSchema: 'openclaw-trajectory', schemaVersion: 1, traceId: sessionId,
+        type: e.type, ts: new Date(0).toISOString(), seq: i + 1, sessionId, runId: 'run-1', data: e.data,
+      }))
+      writeFileSync(join(dir, `${sessionId}.trajectory.jsonl`), lines.join('\n') + '\n')
+      ws.close()
+    }
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    try {
+      await runtime.messaging.send({
+        agentId: 'pixel',
+        content: 'produce six deliverables',
+        threadId: 'task:t-100:d1',
+      })
+      throw new Error('expected send to reject')
+    } catch (err) {
+      expect(err).toBeInstanceOf(RuntimeTurnError)
+      const diagnosis = (err as InstanceType<typeof RuntimeTurnError>).diagnosis
+      expect(diagnosis.reason).toBe('session_interrupted')
+      expect(diagnosis.sessionStatus).toBe('interrupted')
+      expect(diagnosis.oversizedOutput).toBe(true)
+      expect(diagnosis.outputTruncated).toBe(true)
+      expect(diagnosis.completionBytes).toBe(262_144)
+      expect(diagnosis.lastToolCall).toBe('bakin_exec_tasks_log_progress')
+      expect(diagnosis.salvagedText?.length).toBe(262_144)
+      expect(diagnosis.detail).toContain('oversized model completion')
+    }
+  })
+
+  it('post-mortem: recovers the response text when the run succeeded but the frame was lost', async () => {
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method !== 'agent') return
+      const sessionId = frame.params.sessionId as string
+      const dir = join(testDir, 'agents', 'pixel', 'sessions')
+      mkdirSync(dir, { recursive: true })
+      const lines = [
+        { type: 'session.started', data: {} },
+        { type: 'model.completed', data: { timedOut: false, assistantTexts: ['done: saved assets a1..a6'] } },
+        { type: 'session.ended', data: { status: 'success', timedOut: false } },
+      ].map((e, i) => JSON.stringify({
+        traceSchema: 'openclaw-trajectory', schemaVersion: 1, traceId: sessionId,
+        type: e.type, ts: new Date(0).toISOString(), seq: i + 1, sessionId, runId: 'run-1', data: e.data,
+      }))
+      writeFileSync(join(dir, `${sessionId}.trajectory.jsonl`), lines.join('\n') + '\n')
+      ws.close()
+    }
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const result = await runtime.messaging.send({
+      agentId: 'pixel',
+      content: 'finish the task',
+      threadId: 'task:t-101:d1',
+    })
+    expect(result.content).toBe('done: saved assets a1..a6')
+  })
+
   it('emits OpenClaw transcript tool activity while the Gateway agent request is pending', async () => {
     const sessionsDir = join(testDir, 'agents', 'main', 'sessions')
     mkdirSync(sessionsDir, { recursive: true })
