@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.13] - 2026-06-04
+
+### Added
+- Add compressed release archive packaging for platform binaries, including tar.gz generation/extraction helpers, archive checksum publishing, and post-publish smoke coverage for archive downloads.
+
+### Changed
+- Ship GitHub release binaries, installer downloads, Homebrew formula output, and self-update downloads as `bakin-<platform>-<arch>.tar.gz` archives instead of raw executable assets.
+- Minify production browser, plugin, and vendor assets during release builds, with an assertion step that fails CI when unminified production assets are emitted.
+- Document compressed release artifacts across install, operations, Homebrew, security, release-pipeline, and architecture notes.
+
+### Fixed
+- Prevent versioned asset delete requests from hanging by treating delete lifecycle routes as writable operations and reflecting deletion progress/error state in the asset detail UI.
+- Type self-update platform overrides correctly so archive-based update tests and platform-specific update paths stay aligned.
+
 ## [0.0.1-rc.12] - 2026-06-03
 
 ### Added
@@ -173,5 +187,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 [0.0.1-rc.11]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.11
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.12...HEAD
 [0.0.1-rc.12]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.12
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.13...HEAD
+[0.0.1-rc.13]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.13
