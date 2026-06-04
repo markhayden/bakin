@@ -9,6 +9,13 @@ export type {
 
 export type { ChannelCapability } from './capabilities'
 export { hasChannelCapability } from './capabilities'
+export { RuntimeError, RuntimeTurnError } from './errors'
+export type {
+  RuntimeErrorKind,
+  RuntimeErrorOptions,
+  RuntimeTurnDiagnosis,
+  RuntimeTurnFailureReason,
+} from './errors'
 export {
   getRuntimeMainAgent,
   getRuntimeMainAgentId,
