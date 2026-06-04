@@ -18,6 +18,8 @@ export interface BuildOnePluginOptions {
   pluginsDir?: string
   /** Specifiers to externalize from the plugin bundles. */
   external: readonly string[]
+  /** Minify browser client assets for release/static builds. */
+  production?: boolean
 }
 
 export type BuildOnePluginResult =
@@ -77,6 +79,7 @@ export async function buildOnePlugin(
       '--target', 'browser',
       '--format', 'esm',
       '--entry-naming', 'client.[ext]',
+      ...(opts.production ? ['--production'] : []),
       ...externalArgs,
     ])
     if (clientRes.exitCode !== 0) {

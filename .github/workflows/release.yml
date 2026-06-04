@@ -158,6 +158,9 @@ jobs:
       - name: Build host shell
         run: bun run build:host-shell
 
+      - name: Assert production browser assets
+        run: bun run build:assert-production-assets
+
       - name: Build binaries
         run: bun run build:binary
 

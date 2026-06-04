@@ -11,6 +11,8 @@
  */
 import { rmSync } from 'node:fs'
 
+const production = process.env.BAKIN_DEV !== '1'
+
 // Always start from a clean dist so stale TC1 outputs don't linger.
 rmSync('./packages/host/dist', { recursive: true, force: true })
 
@@ -19,7 +21,11 @@ await Bun.build({
   outdir: './packages/host/dist',
   target: 'browser',
   format: 'esm',
-  sourcemap: 'external',
+  sourcemap: production ? 'none' : 'external',
+  minify: production,
+  define: {
+    'process.env.NODE_ENV': JSON.stringify(production ? 'production' : 'development'),
+  },
   naming: {
     entry: '[name].[ext]',
     chunk: '[name]-[hash].[ext]',
