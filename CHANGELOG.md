@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.15] - 2026-06-04
+
+### Fixed
+- Add a production JSX dev-runtime compatibility shim so stale installed plugin client bundles that still call `jsxDEV(...)` load instead of crashing after the production asset build change.
+
 ## [0.0.1-rc.14] - 2026-06-04
 
 ### Fixed
@@ -197,5 +202,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 [0.0.1-rc.13]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.13
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.14...HEAD
 [0.0.1-rc.14]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.14
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.15...HEAD
+[0.0.1-rc.15]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.15
