@@ -186,7 +186,7 @@ export async function getSelfUpdateStatus(options: SelfUpdateStatusOptions): Pro
   }
 }
 
-function currentTriple(platform = process.platform, arch = process.arch): string | null {
+function currentTriple(platform: string = process.platform, arch: string = process.arch): string | null {
   const plat = platform
   if (plat === 'darwin' && arch === 'arm64') return 'darwin-arm64'
   if (plat === 'linux' && arch === 'x64') return 'linux-x64'
