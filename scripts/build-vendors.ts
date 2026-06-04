@@ -28,6 +28,8 @@
 import { rmSync, mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
+import { jsxDevRuntimeEntrySource } from './vendor-entrypoints'
+
 const VENDOR_DIR = './packages/host/public/vendor'
 const TMP_DIR = './packages/host/public/vendor/.tmp-entries'
 const PRODUCTION = process.env.BAKIN_DEV !== '1'
@@ -112,12 +114,11 @@ export const { jsx, jsxs, Fragment } = JsxRuntime
 export default JsxRuntime
 `)
 
-const jsxDevRuntimeEntry = writeEntry('jsx-dev-runtime', `
-// GENERATED. Same rationale as jsx-runtime.
-import JsxDevRuntime from '${JSX_DEV_RUNTIME_ABS}'
-export const { jsxDEV, Fragment } = JsxDevRuntime
-export default JsxDevRuntime
-`)
+const jsxDevRuntimeEntry = writeEntry('jsx-dev-runtime', jsxDevRuntimeEntrySource({
+  production: PRODUCTION,
+  jsxRuntimeAbs: JSX_RUNTIME_ABS,
+  jsxDevRuntimeAbs: JSX_DEV_RUNTIME_ABS,
+}))
 
 const tanstackRouterEntry = writeEntry('tanstack-router', `
 // GENERATED. Native ESM package, so \`export *\` preserves every name
