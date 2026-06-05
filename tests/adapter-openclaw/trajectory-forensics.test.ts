@@ -18,11 +18,11 @@ mock.module('../../packages/core/src/content-dir', () => ({
 import {
   inspectTrajectoryRun,
   trajectoryFilePathFor,
-  safeTrajectoryOffset,
   watchTrajectoryForDeath,
   TrajectoryRecoveredTurn,
   OPENCLAW_TRAJECTORY_TEXT_LIMIT,
 } from '../../packages/adapter-openclaw/src/trajectory-forensics'
+import { safeFileSize } from '../../packages/adapter-openclaw/src/file-utils'
 import { RuntimeTurnError } from '../../packages/core/src/adapters/runtime'
 
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
@@ -149,7 +149,7 @@ describe('inspectTrajectoryRun', () => {
   it('only inspects events after the provided byte offset (per-attempt scoping)', () => {
     // Run 1 died before this attempt started — must be invisible.
     writeRun(trajectoryFile, { status: 'interrupted', assistantTexts: ['old dead run'] })
-    const offset = safeTrajectoryOffset(trajectoryFile)
+    const offset = safeFileSize(trajectoryFile)
     writeRun(trajectoryFile, { status: 'success', assistantTexts: ['fresh run output'] })
 
     const outcome = inspectTrajectoryRun({ trajectoryFile, sinceByteOffset: offset })
@@ -253,13 +253,13 @@ describe('watchTrajectoryForDeath', () => {
   })
 })
 
-describe('trajectoryFilePathFor / safeTrajectoryOffset', () => {
+describe('trajectoryFilePathFor / safeFileSize', () => {
   it('derives the deterministic trajectory path under OPENCLAW_HOME', () => {
     const path = trajectoryFilePathFor('jessica', 'abc-123')
     expect(path).toBe(join(testDir, 'openclaw', 'agents', 'jessica', 'sessions', 'abc-123.trajectory.jsonl'))
   })
 
   it('returns 0 for a missing trajectory file', () => {
-    expect(safeTrajectoryOffset(join(testDir, 'missing.jsonl'))).toBe(0)
+    expect(safeFileSize(join(testDir, 'missing.jsonl'))).toBe(0)
   })
 })

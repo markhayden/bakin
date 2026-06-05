@@ -1,4 +1,4 @@
-import { accessSync, closeSync, constants, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
+import { accessSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join, resolve, sep } from 'path'
 import { execFile } from 'child_process'
@@ -28,7 +28,8 @@ import type {
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
 import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
-import { inspectTrajectoryRun, safeTrajectoryOffset, trajectoryFilePathFor, watchTrajectoryForDeath, TrajectoryRecoveredTurn } from './trajectory-forensics'
+import { readFileFrom, safeFileSize } from './file-utils'
+import { inspectTrajectoryRun, trajectoryFilePathFor, watchTrajectoryForDeath, TrajectoryRecoveredTurn } from './trajectory-forensics'
 import { generateDirectImage, isDirectImageProvider, resolveProviderApiKeySource } from '@bakin/core/media'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
@@ -1164,7 +1165,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     // post-mortem only sees events from this attempt (the file accrues one
     // run per turn for the life of the session).
     const trajectoryFile = cliSessionId ? trajectoryFilePathFor(opts.agentId, cliSessionId) : null
-    const trajectoryOffset = trajectoryFile ? safeTrajectoryOffset(trajectoryFile) : 0
+    const trajectoryOffset = trajectoryFile ? safeFileSize(trajectoryFile) : 0
 
     // Fail-fast: race the pending request against the on-disk evidence. When
     // OpenClaw records session.ended (non-success) the gateway will never
@@ -2462,35 +2463,14 @@ function deterministicUuid(value: string): string {
   return `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`
 }
 
-function safeFileSize(path: string): number {
-  try {
-    return statSync(path).size
-  } catch {
-    return 0
-  }
-}
-
+/**
+ * Session-activity tail semantics over the shared readFileFrom:
+ * rewind-to-0 on truncation/rotation; null when there are no new bytes.
+ */
 function readFileTail(path: string, offset: number): { text: string; offset: number } | null {
-  let size: number
-  try {
-    size = statSync(path).size
-  } catch {
-    return null
-  }
-  if (size < offset) offset = 0
-  if (size === offset) return null
-  const length = size - offset
-  const buffer = Buffer.alloc(length)
-  let fd: number | undefined
-  try {
-    fd = openSync(path, 'r')
-    const bytesRead = readSync(fd, buffer, 0, length, offset)
-    return { text: buffer.subarray(0, bytesRead).toString('utf-8'), offset: offset + bytesRead }
-  } catch {
-    return null
-  } finally {
-    if (fd !== undefined) closeSync(fd)
-  }
+  const read = readFileFrom(path, offset, { rewindOnTruncate: true })
+  if (!read || read.text === '') return null
+  return { text: read.text, offset: read.nextOffset }
 }
 
 function activityChunksFromOpenClawTranscriptRecord(record: Record<string, unknown>): ChatChunk[] {

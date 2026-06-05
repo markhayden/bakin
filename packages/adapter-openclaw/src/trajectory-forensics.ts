@@ -12,11 +12,11 @@
  * turn start) and classifies what actually happened, entirely inside the
  * adapter boundary. Read-only: Bakin never writes to ~/.openclaw.
  */
-import { closeSync, openSync, readSync, statSync } from 'fs'
 import { join } from 'path'
 
 import { RuntimeTurnError, type RuntimeTurnDiagnosis } from '@bakin/core/adapters/runtime'
 
+import { readFileFrom, safeFileSize } from './file-utils'
 import { getOpenClawHome } from './home'
 
 /** OpenClaw truncates recorded completion text at this trajectory limit. */
@@ -35,14 +35,6 @@ export type TrajectoryRunOutcome =
 
 export function trajectoryFilePathFor(agentId: string, cliSessionId: string): string {
   return join(getOpenClawHome(), 'agents', agentId, 'sessions', `${cliSessionId}.trajectory.jsonl`)
-}
-
-export function safeTrajectoryOffset(trajectoryFile: string): number {
-  try {
-    return statSync(trajectoryFile).size
-  } catch {
-    return 0
-  }
 }
 
 interface ScanState {
@@ -64,21 +56,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
-function readFrom(trajectoryFile: string, offset: number): string | null {
-  let fd: number | null = null
-  try {
-    const size = statSync(trajectoryFile).size
-    if (size <= offset) return size === offset ? '' : null
-    fd = openSync(trajectoryFile, 'r')
-    const buffer = Buffer.alloc(size - offset)
-    readSync(fd, buffer, 0, buffer.length, offset)
-    return buffer.toString('utf-8')
-  } catch {
-    return null
-  } finally {
-    if (fd !== null) closeSync(fd)
-  }
-}
 
 /**
  * Scan trajectory events appended after `sinceByteOffset` and report the
@@ -94,8 +71,9 @@ export function inspectTrajectoryRun(opts: {
   sinceByteOffset?: number
   oversizedOutputBytes?: number
 }): TrajectoryRunOutcome | null {
-  const raw = readFrom(opts.trajectoryFile, Math.max(0, opts.sinceByteOffset ?? 0))
-  if (raw === null) return null
+  const read = readFileFrom(opts.trajectoryFile, Math.max(0, opts.sinceByteOffset ?? 0))
+  if (read === null) return null
+  const raw = read.text
 
   const state: ScanState = {}
   let sawSupportedSchema = false
@@ -263,7 +241,7 @@ export function watchTrajectoryForDeath(opts: {
   const promise = new Promise<never>((_, reject) => {
     const tick = (): void => {
       if (stopped) return
-      const size = safeTrajectoryOffset(opts.trajectoryFile)
+      const size = safeFileSize(opts.trajectoryFile)
       if (size !== lastSize) {
         lastSize = size
         const outcome = inspectTrajectoryRun({
