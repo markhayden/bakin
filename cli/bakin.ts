@@ -1002,15 +1002,16 @@ async function cmdDiagnosticsStartup(action: string | undefined, args: string[])
 }
 
 /**
- * `bakin plugins publish <builtPluginDir> --out <dir>` — assemble a published
- * artifact from a BUILT plugin directory (Whiskit Phase 4). Purely local: reads
- * the manifest, stamps provenance, tars + checksums the artifact, and writes (or
- * carries forward into) whiskit-artifacts.json. Building the plugin is the
- * producer's step (run before this); `--build` is a future addition.
+ * `bakin plugins publish <pluginDir> --out <dir> [--build]` — assemble a
+ * published artifact from a plugin directory (Whiskit Phase 4). Purely local:
+ * reads the manifest, stamps provenance, tars + checksums the artifact, and
+ * writes (or carries forward into) whiskit-artifacts.json. With `--build`,
+ * the Whiskit build backend compiles the plugin first via the system bun
+ * (Phase 2) — producers no longer need a separate `bun run build` step.
  */
 async function cmdPluginsPublish(
   pluginDir: string,
-  opts: { out: string; baseUrl?: string; platform?: string; json?: boolean },
+  opts: { out: string; baseUrl?: string; platform?: string; json?: boolean; build?: boolean },
 ): Promise<void> {
   const { existsSync } = await import('node:fs')
   const { resolve, join } = await import('node:path')
@@ -1020,7 +1021,7 @@ async function cmdPluginsPublish(
   if (!existsSync(manifestPath)) {
     await exitCommandIssue(`No bakin-plugin.json found in ${abs}`, {
       command: 'bakin plugins publish',
-      usage: 'bakin plugins publish <builtPluginDir> --out <dir> [--base-url <url>] [--platform <p>] [--json]',
+      usage: 'bakin plugins publish <pluginDir> --out <dir> [--build] [--base-url <url>] [--platform <p>] [--json]',
     })
     return
   }
@@ -1039,8 +1040,33 @@ async function cmdPluginsPublish(
     })
     return
   }
+
+  if (opts.build) {
+    const { buildPluginWithSystemBun } = await import('../src/core/whiskit/build')
+    const { WhiskitBuildError } = await import('../src/core/whiskit/types')
+    try {
+      const result = await buildPluginWithSystemBun({
+        pluginDir: abs,
+        pluginId: manifest.id,
+        production: true,
+        installDeps: true,
+      })
+      if (!opts.json) {
+        console.log(`Built ${manifest.id} (server${result.builtClient ? ' + client' : ''}, ${result.durationMs}ms)`)
+      }
+    } catch (err) {
+      const detail = err instanceof WhiskitBuildError
+        ? `[${err.stage}] ${err.message}`
+        : err instanceof Error ? err.message : String(err)
+      await exitCommandIssue(`Build failed: ${detail}`, {
+        command: 'bakin plugins publish',
+      })
+      return
+    }
+  }
+
   if (!existsSync(join(abs, 'dist', 'index.js'))) {
-    await exitCommandIssue(`No dist/index.js in ${abs} — build the plugin before publishing.`, {
+    await exitCommandIssue(`No dist/index.js in ${abs} — build the plugin first or pass --build.`, {
       command: 'bakin plugins publish',
     })
     return
@@ -4284,7 +4310,7 @@ export async function main(): Promise<void> {
             json: parsed.json,
           })
         } else if (sub === 'publish') {
-          const PUBLISH_USAGE = 'bakin plugins publish <builtPluginDir> --out <dir> [--base-url <url>] [--platform <p>] [--json]'
+          const PUBLISH_USAGE = 'bakin plugins publish <pluginDir> --out <dir> [--build] [--base-url <url>] [--platform <p>] [--json]'
           const flags = args.slice(2)
           const dir = flags.find(arg => !arg.startsWith('--'))
           const flagValue = (name: string): string | undefined => {
@@ -4293,7 +4319,7 @@ export async function main(): Promise<void> {
           }
           const out = flagValue('--out')
           if (!dir || !out) {
-            await exitCommandIssue(!dir ? 'Missing <builtPluginDir>.' : 'Missing required --out <dir>.', {
+            await exitCommandIssue(!dir ? 'Missing <pluginDir>.' : 'Missing required --out <dir>.', {
               command: 'bakin plugins publish',
               usage: PUBLISH_USAGE,
             })
@@ -4304,6 +4330,7 @@ export async function main(): Promise<void> {
             baseUrl: flagValue('--base-url'),
             platform: flagValue('--platform'),
             json: flags.includes('--json'),
+            build: flags.includes('--build'),
           })
         } else if (sub === 'export') {
           const flags = args.slice(2)
