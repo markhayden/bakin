@@ -157,7 +157,7 @@ function requireTask(identifier: string): BakinTask {
 }
 
 function getColumnTaskCount(col: ColumnId): number {
-  return getSharedBakinTaskStore().listSync({ column: col }).length
+  return getSharedBakinTaskStore().countByColumnSync(col)
 }
 
 function columnPatch(col: ColumnId): BakinTaskPatch {

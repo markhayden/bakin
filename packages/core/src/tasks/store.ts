@@ -139,6 +139,8 @@ export interface SyncBakinTaskStore extends BakinTaskStore {
   addCommentSync(id: string, comment: TaskComment): void
   setDependenciesSync(id: string, deps: TaskDependencyPatch): BakinTask
   markPendingDeleteSync(id: string, pending: boolean): BakinTask
+  /** Index-backed column count (excludes pendingDelete, matching listSync). Zero file reads. */
+  countByColumnSync(column: string): number
 }
 
 export function createEmptyBakinTask(input: CreateBakinTaskInput, now = new Date().toISOString()): BakinTask {
@@ -169,8 +171,22 @@ export function createEmptyBakinTask(input: CreateBakinTaskInput, now = new Date
   }
 }
 
+interface TaskIndexEntry {
+  path: string
+  column: string
+  pendingDelete: boolean
+}
+
 export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
   const listeners = new Set<(event: BakinTaskStoreEvent) => void>()
+
+  // In-memory index: id → {path, column, pendingDelete} plus column → id buckets.
+  // Holds NO task content — content reads always hit disk, so external content
+  // edits are picked up on read. Self-heals on miss (targeted rescan + repair)
+  // and on externally-deleted files (existence validated before trusting).
+  const idToEntry = new Map<string, TaskIndexEntry>()
+  const columnBuckets = new Map<string, Set<string>>()
+  let indexBuilt = false
 
   function emit(event: BakinTaskStoreEvent): void {
     for (const listener of listeners) listener(event)
@@ -185,6 +201,48 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
     return join(root, shard, `task-${task.id}.json`)
   }
 
+  function indexUpsert(task: BakinTask, path: string): void {
+    const prev = idToEntry.get(task.id)
+    if (prev && prev.column !== task.column) {
+      columnBuckets.get(prev.column)?.delete(task.id)
+    }
+    idToEntry.set(task.id, { path, column: task.column, pendingDelete: task.pendingDelete === true })
+    let bucket = columnBuckets.get(task.column)
+    if (!bucket) {
+      bucket = new Set()
+      columnBuckets.set(task.column, bucket)
+    }
+    bucket.add(task.id)
+  }
+
+  function indexRemove(id: string): void {
+    const entry = idToEntry.get(id)
+    if (entry) columnBuckets.get(entry.column)?.delete(id)
+    idToEntry.delete(id)
+  }
+
+  function buildIndex(): void {
+    idToEntry.clear()
+    columnBuckets.clear()
+    ensureRoot()
+    for (const shard of readdirSync(root, { withFileTypes: true })) {
+      if (!shard.isDirectory()) continue
+      const dir = join(root, shard.name)
+      for (const file of readdirSync(dir, { withFileTypes: true })) {
+        if (!file.isFile() || !file.name.endsWith('.json')) continue
+        const path = join(dir, file.name)
+        const task = readFile(path)
+        if (task?.id) indexUpsert(task, path)
+      }
+    }
+    indexBuilt = true
+  }
+
+  function ensureIndex(): void {
+    if (!indexBuilt) buildIndex()
+  }
+
+  /** Full shard walk — retained as the index self-heal fallback only. */
   function findTaskPath(id: string): string | null {
     ensureRoot()
     for (const shard of readdirSync(root, { withFileTypes: true })) {
@@ -213,6 +271,7 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
     const tmp = `${path}.${process.pid}.${Date.now()}.tmp`
     writeFileSync(tmp, JSON.stringify(task, null, 2), 'utf-8')
     renameSync(tmp, path)
+    indexUpsert(task, path)
   }
 
   function requireTask(id: string): BakinTask {
@@ -228,18 +287,50 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
     return next
   }
 
+  function sortTasks(tasks: BakinTask[]): BakinTask[] {
+    return tasks.sort((a, b) => (
+      a.column.localeCompare(b.column)
+      || a.order - b.order
+      || b.updatedAt.localeCompare(a.updatedAt)
+      || a.id.localeCompare(b.id)
+    ))
+  }
+
   const store: SyncBakinTaskStore = {
     createSync(input) {
+      ensureIndex()
       const task = createEmptyBakinTask(input)
-      if (findTaskPath(task.id)) throw new Error(`Task already exists: ${task.id}`)
+      // Index check plus a targeted stat of the path this create would write —
+      // no shard walk. An externally hand-placed file for the same id in a
+      // DIFFERENT month shard is not detected (store is the single writer).
+      if (idToEntry.has(task.id) || existsSync(taskPath(task))) {
+        throw new Error(`Task already exists: ${task.id}`)
+      }
       writeTask(task)
       emit({ type: 'created', taskId: task.id, task })
       return task
     },
 
     getSync(id) {
+      ensureIndex()
+      const entry = idToEntry.get(id)
+      if (entry) {
+        const task = readFile(entry.path)
+        if (task) {
+          // Refresh column/pendingDelete picked up from external content edits.
+          if (task.column !== entry.column || (task.pendingDelete === true) !== entry.pendingDelete) {
+            indexUpsert(task, entry.path)
+          }
+          return task
+        }
+        indexRemove(id) // file vanished or unreadable — heal and fall through
+      }
+      // Self-heal: targeted full walk for externally-created files.
       const path = findTaskPath(id)
-      return path ? readFile(path) : null
+      if (!path) return null
+      const task = readFile(path)
+      if (task) indexUpsert(task, path)
+      return task
     },
 
     findSync(identifier) {
@@ -249,6 +340,32 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
     },
 
     listSync(opts = {}) {
+      // Column-filtered listing reads only that column's bucket (dispatch hot
+      // path). The unfiltered walk remains the discovery path for externally
+      // created files and opportunistically repairs the index.
+      if (opts.column) {
+        ensureIndex()
+        const tasks: BakinTask[] = []
+        for (const id of columnBuckets.get(opts.column) ?? []) {
+          const entry = idToEntry.get(id)
+          if (!entry) continue
+          const task = readFile(entry.path)
+          if (!task) {
+            indexRemove(id)
+            continue
+          }
+          if (task.column !== opts.column) {
+            indexUpsert(task, entry.path) // external column edit — heal, no longer matches
+            continue
+          }
+          if (!opts.includePendingDelete && task.pendingDelete) continue
+          if (opts.agent && task.agent !== opts.agent) continue
+          if (opts.projectId && task.projectId !== opts.projectId) continue
+          tasks.push(task)
+        }
+        return sortTasks(tasks)
+      }
+
       ensureRoot()
       const tasks: BakinTask[] = []
       for (const shard of readdirSync(root, { withFileTypes: true })) {
@@ -256,21 +373,35 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
         const dir = join(root, shard.name)
         for (const file of readdirSync(dir, { withFileTypes: true })) {
           if (!file.isFile() || !file.name.endsWith('.json')) continue
-          const task = readFile(join(dir, file.name))
+          const path = join(dir, file.name)
+          const task = readFile(path)
           if (!task) continue
+          if (indexBuilt) indexUpsert(task, path)
           if (!opts.includePendingDelete && task.pendingDelete) continue
-          if (opts.column && task.column !== opts.column) continue
           if (opts.agent && task.agent !== opts.agent) continue
           if (opts.projectId && task.projectId !== opts.projectId) continue
           tasks.push(task)
         }
       }
-      return tasks.sort((a, b) => (
-        a.column.localeCompare(b.column)
-        || a.order - b.order
-        || b.updatedAt.localeCompare(a.updatedAt)
-        || a.id.localeCompare(b.id)
-      ))
+      return sortTasks(tasks)
+    },
+
+    countByColumnSync(column) {
+      ensureIndex()
+      let count = 0
+      const ghosts: string[] = []
+      for (const id of columnBuckets.get(column) ?? []) {
+        const entry = idToEntry.get(id)
+        if (!entry || entry.pendingDelete) continue
+        // Cheap stat (no read/parse) — tolerates externally deleted files.
+        if (!existsSync(entry.path)) {
+          ghosts.push(id)
+          continue
+        }
+        count++
+      }
+      for (const id of ghosts) indexRemove(id)
+      return count
     },
 
     updateSync(id, patch) {
@@ -279,9 +410,15 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
     },
 
     removeSync(id) {
-      const path = findTaskPath(id)
-      if (!path) throw new Error(`Task not found: ${id}`)
+      ensureIndex()
+      const entry = idToEntry.get(id)
+      const path = entry && existsSync(entry.path) ? entry.path : findTaskPath(id)
+      if (!path) {
+        indexRemove(id)
+        throw new Error(`Task not found: ${id}`)
+      }
       unlinkSync(path)
+      indexRemove(id)
       emit({ type: 'deleted', taskId: id })
     },
 
