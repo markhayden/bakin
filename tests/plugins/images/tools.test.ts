@@ -92,6 +92,8 @@ describe('images tools', () => {
     expect(created[0]).toMatchObject({ sourceFilePath: runtimeFile, type: 'images', op: 'generate', tool: 'bakin_exec_images_generate' })
     expect(created[0].generation).toMatchObject({ provider: 'google', model: 'gemini-3.1-flash-image-preview', surface: 'instagram-story', routeSource: 'runtime' })
     expect((created[0].source as { kind: string }).kind).toBe('generated')
+    // No machine tags: provenance lives in generation/op, tags are the user's namespace.
+    expect(created[0].tags).toBeUndefined()
   })
 
   it('records the shim serving path and credential source when the adapter gap-fills', async () => {
@@ -229,6 +231,8 @@ describe('images tools', () => {
     expect(versioned[0]).toMatchObject({ assetId: '20260529-src-a1b2c3d4' })
     expect(versioned[0].input).toMatchObject({ sourceFilePath: editedFile, op: 'edit', tool: 'bakin_exec_images_edit' })
     expect(versioned[0].input.generation).toMatchObject({ routeSource: 'runtime' })
+    // Version inputs carry no tags — versioning never touches the asset's tag namespace.
+    expect('tags' in versioned[0].input).toBe(false)
   })
 
   it('reuses the current edited version for an identical edit retry', async () => {
@@ -252,7 +256,6 @@ describe('images tools', () => {
       prompt,
       promptHash: promptHash(prompt),
       description: prompt,
-      tags: ['edited', 'instagram-square', 'google', 'gemini-3.1-flash-image-preview'],
       generation: {
         provider: 'google',
         model: 'gemini-3.1-flash-image-preview',
@@ -300,6 +303,8 @@ describe('images tools', () => {
     expect(result.ok).toBe(true)
     expect(result.assetId).toBe('20260529-img-a1b2c3d4')
     expect(created[0]).toMatchObject({ sourceFilePath: filePath, taskId: 'task-import', type: 'images', op: 'import', tool: 'bakin_exec_images_import' })
+    // No 'imported' machine-tag default — op/source already record provenance.
+    expect(created[0].tags).toBeUndefined()
   })
 
   it('exports an asset to a surface profile (attached export)', async () => {

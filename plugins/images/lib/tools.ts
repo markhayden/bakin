@@ -132,8 +132,10 @@ export async function importImage(ctx: PluginContext, params: ImagesImportParams
       taskId: params.taskId,
       op: 'import',
       tool: 'bakin_exec_images_import',
+      // No machine-tag default: provenance lives in op/source, tags are the
+      // user's organizational namespace.
       description: (params.description || basename(params.filePath)).slice(0, 200),
-      tags: params.tags ?? ['imported'],
+      tags: params.tags,
       slug: params.description || basename(params.filePath),
       source: { kind: 'import', path: params.filePath },
     })
@@ -209,12 +211,14 @@ async function persistImageResult(
     ? await ctx.assets.createAsset({
         sourceFilePath: image.filePath, type: 'images', agent, taskId: params.taskId,
         slug: `${req.dims.surface}-image`, op: 'generate', tool,
-        prompt: req.prompt, promptHash, description, tags: ['generated', req.dims.surface, req.route.provider, req.route.model],
+        // No machine tags: provenance (surface/provider/model) lives in
+        // `generation` + `op`; tags stay the user's organizational namespace.
+        prompt: req.prompt, promptHash, description,
         source: { kind: 'generated', path: null }, generation,
       })
     : await ctx.assets.addVersion(opts.assetId, {
         sourceFilePath: image.filePath, op: 'edit', tool,
-        prompt: req.prompt, promptHash, description, tags: ['edited', req.dims.surface, req.route.provider, req.route.model],
+        prompt: req.prompt, promptHash, description,
         generation,
       })
 

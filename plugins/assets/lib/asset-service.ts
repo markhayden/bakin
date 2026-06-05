@@ -178,7 +178,6 @@ export async function createAsset(input: AssetCreateInput): Promise<{ assetId: s
     height: dims.height,
     created,
     description: (input.description ?? input.prompt ?? '').slice(0, 200),
-    tags: input.tags ?? [],
     op: input.op ?? 'upload',
     parentVersion: null,
     tool: input.tool ?? null,
@@ -196,7 +195,7 @@ export async function createAsset(input: AssetCreateInput): Promise<{ assetId: s
     updated: created,
     currentVersion: 1,
     description: version.description,
-    tags: version.tags,
+    tags: input.tags ?? [],
     versions: [version],
     exports: [],
   }
@@ -299,12 +298,15 @@ function assetDirAbs(assetId: string): string | null {
   return rel ? join(getContentDir(), rel) : null
 }
 
-/** Asset-level display fields mirror the current version's. */
+/**
+ * Asset-level description mirrors the current version's. Tags deliberately do
+ * NOT mirror — they're an asset-level organizational namespace that must
+ * survive addVersion/promote/deleteVersion.
+ */
 function mirrorDisplay(manifest: AssetManifest): void {
   const current = manifest.versions.find((v) => v.version === manifest.currentVersion)
   if (current) {
     manifest.description = current.description
-    manifest.tags = current.tags
   }
 }
 
@@ -323,7 +325,6 @@ export interface AssetVersionInput {
   prompt?: string | null
   promptHash?: string | null
   description?: string
-  tags?: string[]
   generation?: AssetGeneration | null
 }
 
@@ -353,7 +354,6 @@ export async function addVersion(assetId: string, input: AssetVersionInput): Pro
       version: nextVersion, file, thumb, mimeType: getMimeType(input.sourceFilePath), size: statSync(fileAbs).size,
       width: dims.width, height: dims.height, created,
       description: (input.description ?? input.prompt ?? '').slice(0, 200),
-      tags: input.tags ?? [],
       op: input.op ?? 'edit', parentVersion, tool: input.tool ?? null,
       prompt: input.prompt ?? null, promptHash: input.promptHash ?? null,
       generation: input.generation ?? null,
@@ -668,7 +668,6 @@ async function upsertFromSourceInner(sourcePath: string, input: AssetCreateInput
     op: 'upload',
     tool: input.tool ?? null,
     description: input.description,
-    tags: input.tags,
   })
   return { assetId: next.assetId, version: next.version, changed: true }
 }

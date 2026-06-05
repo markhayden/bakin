@@ -890,7 +890,10 @@ export interface AssetCreateInput {
   generation?: AssetGenerationInfo | null
 }
 
-/** Append a new version to an existing asset. */
+/**
+ * Append a new version to an existing asset. Note: no `tags` — tags are an
+ * asset-level organizational namespace that versioning never touches.
+ */
 export interface AssetVersionCreateInput {
   sourceFilePath: string
   op?: 'edit' | 'generate' | 'upload' | 'import'
@@ -898,7 +901,6 @@ export interface AssetVersionCreateInput {
   prompt?: string | null
   promptHash?: string | null
   description?: string
-  tags?: string[]
   generation?: AssetGenerationInfo | null
 }
 
