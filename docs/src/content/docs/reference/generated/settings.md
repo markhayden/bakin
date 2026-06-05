@@ -75,12 +75,24 @@ description: Generated reference for Bakin core settings defaults.
       <td><code>300000</code></td>
     </tr>
     <tr>
+      <td><code>dispatch.maxConcurrentTurns</code></td>
+      <td><code>3</code></td>
+    </tr>
+    <tr>
       <td><code>dispatch.maxDispatched</code></td>
       <td><code>500</code></td>
     </tr>
     <tr>
       <td><code>dispatch.maxRetries</code></td>
       <td><code>5</code></td>
+    </tr>
+    <tr>
+      <td><code>dispatch.maxTurnsPerAgent</code></td>
+      <td><code>1</code></td>
+    </tr>
+    <tr>
+      <td><code>dispatch.oversizedOutputBytes</code></td>
+      <td><code>131072</code></td>
     </tr>
     <tr>
       <td><code>dispatch.transientCooldownMs</code></td>
@@ -379,5 +391,5 @@ description: Generated reference for Bakin core settings defaults.
 
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jun 3, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jun 5, 2026 · Bakin 0.0.0-dev</span>
 </aside>

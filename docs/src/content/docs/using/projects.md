@@ -81,6 +81,7 @@ Projects index into search (table `bakin_projects`) on `title` and `body`, facet
 | `bakin projects link-item <projectId> <taskItemId> <taskId>` | Link a checklist item to a task |
 | `bakin projects promote-item <projectId> <taskItemId>` | Promote a checklist item to a task |
 | `bakin projects attach-asset <projectId> <assetId>` | Attach an asset to a project |
+| `bakin projects relink-asset <projectId> <assetId> <newAssetId>` | Relink a project asset reference |
 | `bakin projects detach-asset <projectId> <assetId>` | Detach an asset from a project |
 | `bakin projects ask <projectId> <message>` | Ask an agent about a project |
 <!-- /docs:cli-commands -->
