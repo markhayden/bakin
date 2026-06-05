@@ -384,7 +384,7 @@ export function VersionedAssetGrid() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5" data-testid="assets-grid">
+        <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]" data-testid="assets-grid">
           {displayed.map(asset => (
             <AssetCard key={asset.assetId} asset={asset} scoreInfo={scoreFor(asset.assetId)} onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })} />
           ))}
