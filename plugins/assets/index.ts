@@ -344,6 +344,35 @@ const assetsPlugin: BakinPlugin = definePlugin({
     ctx.hooks.register('assets.getAssetTypes', () => ASSET_TYPES, { label: 'List asset types.', summary: 'Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories.', hookKind: 'rpc' })
     ctx.hooks.register('assets.resolveServe', (d: Record<string, unknown>) => resolveAssetServe((d.segments as string[]) ?? []), { label: 'Resolve versioned asset serve request.', summary: 'Resolves an /api/assets/<assetId> path (current, /v/<n>, /thumb, /export/<name>) to a file on disk for serving.', hookKind: 'rpc' })
 
+    // Core's sanctioned save path (HookRegistry — core can't call exec
+    // tools). Used by dispatch to persist salvaged session-death output as a
+    // task-linked asset. Upsert-by-source-path keeps repeat salvage
+    // idempotent: unchanged content no-ops, changed content bumps a version.
+    ctx.hooks.register('assets.saveFromSource', async (d: Record<string, unknown>) => {
+      const filePath = typeof d.filePath === 'string' ? d.filePath : ''
+      if (!filePath) throw new Error('assets.saveFromSource requires filePath')
+      const agent = typeof d.agent === 'string' && d.agent ? d.agent : 'system'
+      const r = await upsertFromSource(filePath, {
+        sourceFilePath: filePath,
+        type: (typeof d.type === 'string' ? d.type : 'text') as AssetType,
+        agent,
+        taskId: typeof d.taskId === 'string' ? d.taskId : null,
+        op: 'upload',
+        tool: typeof d.tool === 'string' ? d.tool : null,
+        description: typeof d.description === 'string' ? d.description : undefined,
+        tags: Array.isArray(d.tags) ? d.tags.filter((t): t is string => typeof t === 'string') : undefined,
+        slug: typeof d.slug === 'string' ? d.slug : undefined,
+      })
+      ctx.activity.audit(r.changed ? 'asset.saved' : 'asset.unchanged', agent, {
+        assetId: r.assetId,
+        version: r.version,
+        ...(typeof d.taskId === 'string' ? { taskId: d.taskId } : {}),
+        via: 'assets.saveFromSource',
+      })
+      await indexVersionedAsset(r.assetId)
+      return r
+    }, { label: 'Save a file as a managed asset.', summary: 'Upserts a file into the versioned asset store by source path (new asset, version bump, or no-op when unchanged). The sanctioned cross-plugin/core save path; mirrors bakin_exec_assets_save.', hookKind: 'rpc' })
+
     // Purge clipboard-source assets when a task completes (if enabled).
     ctx.hooks.register('assets.purgeClipboardForTask', async (d: Record<string, unknown>) => {
       const settings = ctx.getSettings<{ purgeClipboardOnComplete?: boolean }>()
