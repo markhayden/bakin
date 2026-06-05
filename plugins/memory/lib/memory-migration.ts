@@ -18,6 +18,11 @@
  *   3 — rename runtime-originated source refs from provider-specific
  *       `openclaw` to `runtime` and daily-note meta from `openclawIndexed`
  *       to `runtimeIndexed`. Existing rows need a provider-neutral rederive.
+ *   4 — antfly v0.2 migration: the search index moved to a fresh private
+ *       data dir (~/.bakin/antfly), so every previously indexed row is
+ *       gone from the store while offsets.json still claims those bytes
+ *       were indexed. Without this bump the offset-based indexers would
+ *       silently skip them forever. Reset table + offsets and backfill.
  *
  * Bump `MEMORY_SCHEMA_VERSION` whenever a write-path change means existing
  * rows should be re-derived from source (new filters, new fields, changed
@@ -32,7 +37,7 @@ import { clearAllOffsets, getOffsetsFilePath } from './offsets'
 
 const log = createLogger('memory:migration')
 
-export const MEMORY_SCHEMA_VERSION = 3
+export const MEMORY_SCHEMA_VERSION = 4
 
 function versionFilePath(): string {
   return join(getContentDir(), 'plugin-settings', 'memory', 'schema-version.json')
