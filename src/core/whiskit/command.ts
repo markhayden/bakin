@@ -52,7 +52,8 @@ const ENV_ALLOWLIST = [
 export function findSystemBun(): string {
   const override = process.env.BAKIN_BUN_PATH
   if (override && override.trim().length > 0) return override
-  const found = Bun.which('bun')
+  // Bun.which exists at runtime; the repo's bun-types snapshot predates it.
+  const found = (Bun as unknown as { which: (bin: string) => string | null }).which('bun')
   if (!found) {
     throw new WhiskitBuildError(
       'resolve-bun',
