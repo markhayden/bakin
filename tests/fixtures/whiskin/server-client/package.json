@@ -1,9 +1,0 @@
-{
-  "name": "whiskin-server-client",
-  "version": "0.1.0",
-  "private": true,
-  "peerDependencies": {
-    "@makinbakin/sdk": "*",
-    "react": "*"
-  }
-}

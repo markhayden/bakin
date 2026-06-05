@@ -11,7 +11,7 @@
  * because both paths live under getContentDir().
  *
  * Lifted from the agent-package installer (the proven reference); Phase 6 wires
- * the plugin install path through the same primitive. Part of the Whiskin
+ * the plugin install path through the same primitive. Part of the Whiskit
  * shared install core (Phase 5).
  */
 import { existsSync, mkdirSync, renameSync, rmSync } from 'fs'

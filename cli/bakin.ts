@@ -5,14 +5,14 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { APP_VERSION } from '../packages/core/src/constants'
-import { assemblePluginArtifact, indexFromEntries } from '../src/core/whiskin/publish'
+import { assemblePluginArtifact, indexFromEntries } from '../src/core/whiskit/publish'
 import {
   INDEX_FILENAME,
   NEUTRAL_PLATFORM,
   mergeArtifactsIndex,
   readArtifactsIndex,
   writeArtifactsIndex,
-} from '../src/core/whiskin/artifacts-index'
+} from '../src/core/whiskit/artifacts-index'
 import {
   cmdScheduleList, cmdScheduleAdd, cmdSchedulePause,
   cmdScheduleResume, cmdScheduleRemove, cmdScheduleRun, cmdScheduleRuns,
@@ -1003,9 +1003,9 @@ async function cmdDiagnosticsStartup(action: string | undefined, args: string[])
 
 /**
  * `bakin plugins publish <builtPluginDir> --out <dir>` — assemble a published
- * artifact from a BUILT plugin directory (Whiskin Phase 4). Purely local: reads
+ * artifact from a BUILT plugin directory (Whiskit Phase 4). Purely local: reads
  * the manifest, stamps provenance, tars + checksums the artifact, and writes (or
- * carries forward into) whiskin-artifacts.json. Building the plugin is the
+ * carries forward into) whiskit-artifacts.json. Building the plugin is the
  * producer's step (run before this); `--build` is a future addition.
  */
 async function cmdPluginsPublish(
@@ -1059,7 +1059,7 @@ async function cmdPluginsPublish(
     bakinVersion: APP_VERSION,
     bakinRange,
     platform,
-    whiskinVersion: '1',
+    whiskitVersion: '1',
     buildBackend: 'system-bun',
     artifactUrl,
     outDir,

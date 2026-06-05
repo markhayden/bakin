@@ -1,0 +1,12 @@
+{
+  "id": "whiskit-pure-server",
+  "name": "Whiskit Pure Server",
+  "version": "0.1.0",
+  "bakin": ">=0.0.1-rc.1",
+  "description": "Source-only server-only fixture plugin (no client bundle).",
+  "entry": {
+    "server": "index.ts"
+  },
+  "permissions": [],
+  "contributes": {}
+}

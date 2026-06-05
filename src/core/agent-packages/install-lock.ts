@@ -3,7 +3,7 @@
  * `bakin agents install` / `bakin packages install` invocations from racing on
  * the lockfile or overlapping projection targets.
  *
- * Thin wrapper over the shared install-core lock primitive (Whiskin P5). The
+ * Thin wrapper over the shared install-core lock primitive (Whiskit P5). The
  * agent lock path and this module's public API (acquire/release/isHeld) are
  * preserved exactly; the mechanics live in `install-core/install-lock`.
  */

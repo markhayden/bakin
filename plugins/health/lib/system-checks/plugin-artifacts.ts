@@ -1,5 +1,5 @@
 /**
- * System check — installed Whiskin plugin artifacts. Surfaces plugins whose
+ * System check — installed Whiskit plugin artifacts. Surfaces plugins whose
  * provenance no longer matches this host (needs-update after a Bakin upgrade)
  * or is invalid, so a plugin that startup skipped isn't silently missing. The
  * repair is to reinstall (fetch a compatible published artifact); never
@@ -8,7 +8,7 @@
 import { existsSync, readdirSync, type Dirent } from 'fs'
 import { join } from 'path'
 import { getContentDir } from '../../../../src/core/content-dir'
-import { verifyInstalledArtifact } from '../../../../src/core/whiskin/verify'
+import { verifyInstalledArtifact } from '../../../../src/core/whiskit/verify'
 import type { HealthCheckResult } from '../../../../packages/core/src/plugin-types'
 
 const CHECK = 'plugin-artifacts'

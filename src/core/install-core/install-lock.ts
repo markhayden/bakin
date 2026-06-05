@@ -9,7 +9,7 @@
  *
  * Extracted from the agent-package install lock — the proven reference — so the
  * plugin install path can take the same concurrency guarantee in Phase 6
- * (plugins currently have no install lock). Part of the Whiskin shared install
+ * (plugins currently have no install lock). Part of the Whiskit shared install
  * core (Phase 5).
  */
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs'
