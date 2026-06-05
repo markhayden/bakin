@@ -224,7 +224,10 @@ describe('PluginHost — boot', () => {
           <ProbeTree />
         </PluginHost>,
       )
-      await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
+      // This is the one boot test that does a real dynamic import() of a file://
+      // module, so boot can cross waitFor's default 1000ms under full-suite load
+      // (the other boot tests use empty manifests). Give it headroom.
+      await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull(), { timeout: 5000 })
 
       expect(consoleDebug).toHaveBeenCalledWith('[bakin] startup span', expect.objectContaining({
         category: 'startup',
