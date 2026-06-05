@@ -11,7 +11,7 @@ function installOpenClawCliRecorder(testDir: string): { binaryPath: string; call
     '#!/usr/bin/env bun',
     'import { appendFileSync } from "fs"',
     'appendFileSync(process.env.OPENCLAW_CLI_LOG!, JSON.stringify(process.argv.slice(2)) + "\\n")',
-    'process.stdout.write(JSON.stringify({ ok: true }))',
+    'process.stdout.write(JSON.stringify({ ok: true, messageId: "discord-message-123" }))',
     '',
   ].join('\n'), 'utf-8')
   chmodSync(shimPath, 0o755)
@@ -123,7 +123,7 @@ describe('OpenClaw runtime channels', () => {
       },
     })
 
-    expect(result.deliveries).toEqual([expect.objectContaining({ channelId: 'discord' })])
+    expect(result.deliveries).toEqual([expect.objectContaining({ channelId: 'discord', ref: 'message:discord-message-123' })])
     expect(calls).toHaveLength(0)
     expect(recorder.calls()).toEqual([[
       'message',
@@ -134,6 +134,7 @@ describe('OpenClaw runtime channels', () => {
       'Launch post\n\nShip it.',
       '--media',
       '/tmp/hero.png',
+      '--json',
     ]])
   })
 
@@ -163,6 +164,7 @@ describe('OpenClaw runtime channels', () => {
       'Workflow publish failed\n\nChannel delivery failed.',
       '--thread-id',
       'thread-123',
+      '--json',
     ]])
   })
 
