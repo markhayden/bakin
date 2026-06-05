@@ -157,7 +157,7 @@ Any future change that rebuilds a vendor bundle keyed on React **must** trigger 
 
 When a core plugin client file changes:
 
-1. `scripts/dev.ts` calls `buildOnePlugin(id)`. On success, captures `mtime` of the new `plugins/<id>/dist/client.js` and broadcasts `{ type: 'dev:hot-swap', scope: 'plugin', id, version: mtime }`.
+1. `scripts/dev.ts` calls `buildOnePlugin(id, { serverEntry: false })` — client assets only; core server bundles aren't built at all (core server code is statically imported from source, #421). On success, captures `mtime` of the new `plugins/<id>/dist/client.js` and broadcasts `{ type: 'dev:hot-swap', scope: 'plugin', id, version: mtime }`.
 2. Dev client debounces events per-plugin (100 ms), picks the latest, calls `window.__bakinHotSwapPlugin(id, '/api/plugins/<id>/assets/client.js', version)`.
 3. `PluginHost` (in the shell bundle) runs:
    a. `unregisterPlugin(id)` from `@bakin/sdk`:

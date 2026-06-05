@@ -8,10 +8,14 @@ Bakin's plugin system is three things working in concert:
    `activate(ctx)` that runs once during server boot, and a client
    module that calls `registerPlugin({ id, navItems, slots })` during
    browser boot.
-2. A **build pipeline** — every plugin builds to `dist/{index.js, client.js}`
-   via `Bun.build()`. Core plugins build at repo-build time
-   (`scripts/build-plugins.ts`); user plugins build in-binary
-   (`packages/host/src/plugin-host/user-plugin-builder.ts`) on install.
+2. A **build pipeline** — via `Bun.build()`. Core plugins build at
+   repo-build time (`scripts/build-plugins.ts`) to `dist/` holding browser
+   assets only (`client.js` + optional `client.css`; `serverEntry: false` —
+   core server code is statically imported from source, #421; client-less
+   plugins like git/images have an empty dist). User plugins build in-binary
+   (`packages/host/src/plugin-host/user-plugin-builder.ts`) on install to
+   `dist/{index.js, client.js}` — they DO need the server bundle for
+   runtime activation.
 3. A **shared runtime identity** — plugins mark `react` and
    `@bakin/sdk/*` as externals. The browser import map
    (`packages/host/public/index.html` + `scripts/build-vendors.ts`)
