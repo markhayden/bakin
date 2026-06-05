@@ -581,7 +581,11 @@ describe('dispatch', () => {
       expect(typeof record.lastAttempt).toBe('number')
     })
 
-    it('blocks an in-progress task when the accepted agent run terminates before completion', async () => {
+    it('routes an idle-timeout turn death into the recovery ladder instead of blocking immediately', async () => {
+      // Pre-P10 behavior blocked on the first idle-timeout death. The ladder
+      // supersedes that: death 1 → corrective re-dispatch (deterministic
+      // failures get a changed approach, not a parked task). Full ladder
+      // coverage lives in dispatch-session-death.test.ts.
       const task = { id: 't-idle-timeout', title: 'Terminal timeout task', agent: 'pixel', log: [] }
       setupTodoTask(task)
       mockRuntimeSend.mockImplementationOnce(async () => {
@@ -601,17 +605,14 @@ describe('dispatch', () => {
 
       await dispatchTasks(tempDir, 3737)
 
-      expect(mockStoreBlockTask).toHaveBeenCalledWith(
-        't-idle-timeout',
-        expect.stringContaining('Agent runtime timed out before reporting completion'),
-      )
-      expect(mockStoreAddTaskLog).toHaveBeenCalledWith(
-        't-idle-timeout',
-        'system',
-        expect.stringContaining('Agent run ended before task completion'),
-      )
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+      // Bounced back to todo for the corrective attempt.
+      expect(mockStoreMoveTask).toHaveBeenCalledWith('t-idle-timeout', 'todo', 'inProgress')
       const state = readState()
-      expect(state.failedDispatches['t-idle-timeout']).toBeUndefined()
+      expect(state.failedDispatches['t-idle-timeout']?.sessionDeath).toMatchObject({
+        stage: 'corrective',
+        deaths: 1,
+      })
       expect(state.dispatched).not.toContain('t-idle-timeout')
     })
 

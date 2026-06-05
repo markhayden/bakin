@@ -139,10 +139,37 @@ interface DispatchFailureDetail {
   rawError: string
 }
 
+/** Diagnosis evidence persisted across ladder rungs (salvagedText stripped). */
+interface SessionDeathDiagnosisLite {
+  reason: string
+  sessionId?: string
+  sessionStatus?: string
+  completionBytes?: number
+  outputTruncated?: boolean
+  oversizedOutput?: boolean
+  lastToolCall?: string
+  detail?: string
+}
+
+/**
+ * Recovery-ladder state for a task whose runtime session died. `stage` is
+ * what the NEXT dispatch of this task must do: 'corrective' injects the
+ * PREVIOUS ATTEMPT FAILED guidance, 'decomposition' replaces the work prompt
+ * with split-into-subtasks instructions. Session deaths are deterministic —
+ * they never enter the generic cooldown/retry loop.
+ */
+interface SessionDeathState {
+  stage: 'corrective' | 'decomposition'
+  deaths: number
+  lastDiagnosis: SessionDeathDiagnosisLite
+  salvagedAssetIds: string[]
+}
+
 interface FailureRecord {
   lastAttempt: number
   count: number
   kind: DispatchFailureKind
+  sessionDeath?: SessionDeathState
 }
 
 interface DispatchState {
@@ -438,24 +465,200 @@ export function formatSanitizedRuntimeFailure(err: unknown): string {
   return 'runtime dispatch failed before task completion'
 }
 
-// The runtime accepted the run and the turn died/ended before reporting
-// completion — a terminal failure for this attempt, not a retry-into-the-
-// same-wall case. Typed by the adapter; no message inspection.
-function isAcceptedRunTerminalFailure(err: unknown): boolean {
-  return err instanceof RuntimeTurnError
-}
-
 function shouldBlockAfterDispatchFailure(
-  err: unknown,
   snapshot: DispatchTaskSnapshot,
   initialLogCount: number,
 ): boolean {
-  if (isAcceptedRunTerminalFailure(err)) return true
   return (snapshot.task.log?.length ?? 0) > initialLogCount
+}
+
+// How long after a session death before the automatic ladder re-dispatch
+// fires. Just enough to let the state lock release; deliberately NOT a
+// cooldown — retrying a deterministic failure later doesn't make it pass,
+// changing the approach (corrective prompt / decomposition) does.
+const SESSION_DEATH_REDISPATCH_DELAY_MS = 50
+
+// Ladder caps: regular tasks get corrective → decomposition → block;
+// workflow steps get corrective → block (step structure is owned by the
+// workflow engine — an agent must not decompose someone else's workflow).
+const MAX_SESSION_DEATHS_REGULAR = 3
+const MAX_SESSION_DEATHS_WORKFLOW = 2
+
+function stripSalvage(diagnosis: RuntimeTurnError['diagnosis']): SessionDeathDiagnosisLite {
+  return {
+    reason: diagnosis.reason,
+    ...(diagnosis.sessionId ? { sessionId: diagnosis.sessionId } : {}),
+    ...(diagnosis.sessionStatus ? { sessionStatus: diagnosis.sessionStatus } : {}),
+    ...(diagnosis.completionBytes !== undefined ? { completionBytes: diagnosis.completionBytes } : {}),
+    ...(diagnosis.outputTruncated !== undefined ? { outputTruncated: diagnosis.outputTruncated } : {}),
+    ...(diagnosis.oversizedOutput !== undefined ? { oversizedOutput: diagnosis.oversizedOutput } : {}),
+    ...(diagnosis.lastToolCall ? { lastToolCall: diagnosis.lastToolCall } : {}),
+    ...(diagnosis.detail ? { detail: diagnosis.detail } : {}),
+  }
+}
+
+/**
+ * Persist the truncated completion text the adapter salvaged from the dead
+ * session as a task-linked asset. The blocked/retried task then carries the
+ * partial deliverable instead of losing it — and the corrective prompt can
+ * point the agent at it so work isn't regenerated from scratch.
+ */
+async function salvageSessionDeathOutput(input: {
+  contentDir: string
+  taskId: string
+  agent: string
+  seq: number
+  salvagedText: string
+}): Promise<string | undefined> {
+  try {
+    const dir = join(input.contentDir, 'tasks', 'salvage')
+    const { mkdirSync } = await import('fs')
+    mkdirSync(dir, { recursive: true })
+    const filePath = join(dir, `${input.taskId}-d${input.seq}.md`)
+    writeFileSync(filePath, input.salvagedText, 'utf-8')
+    const result = await hooks().invoke<{ assetId: string; version: number; changed: boolean }>('assets.saveFromSource', {
+      filePath,
+      taskId: input.taskId,
+      agent: input.agent,
+      type: 'text',
+      description: 'Partial output salvaged from a dead runtime session (truncated by the provider)',
+      tags: ['salvaged-output'],
+      tool: 'session-forensics',
+    })
+    return result?.assetId
+  } catch (err) {
+    log.warn('Failed to salvage session-death output as asset', err, { taskId: input.taskId })
+    return undefined
+  }
+}
+
+/**
+ * The session-death recovery ladder. Diagnosed deaths are deterministic —
+ * blind retries reproduce them (the originating incident proved it twice) —
+ * so each rung changes the approach instead of waiting out a cooldown:
+ *
+ *   death 1 → salvage partial output → IMMEDIATE corrective re-dispatch
+ *             (prompt explains why the attempt died + artifact-first steps)
+ *   death 2 → salvage → decomposition dispatch (do NOT do the work; split
+ *             into chained single-deliverable subtasks)   [regular only]
+ *   death 3 → block with the full diagnosis and actionable next steps
+ *
+ * Workflow steps skip decomposition (corrective → block): step structure is
+ * owned by the workflow engine.
+ */
+async function handleSessionDeath(input: {
+  contentDir: string
+  port: number
+  state: DispatchState
+  task: DispatchTask
+  targetAgent: string
+  err: RuntimeTurnError
+  dispatchKind: 'regular' | 'workflow'
+  snapshotColumn: keyof DispatchColumns | null
+}): Promise<void> {
+  const diagnosis = input.err.diagnosis
+  if (!input.state.failedDispatches) input.state.failedDispatches = {}
+  const prev = input.state.failedDispatches[input.task.id]?.sessionDeath
+  const deaths = (prev?.deaths ?? 0) + 1
+  const seq = input.state.dispatchSeq?.[input.task.id] ?? 0
+
+  const salvagedAssetId = diagnosis.salvagedText
+    ? await salvageSessionDeathOutput({
+        contentDir: input.contentDir,
+        taskId: input.task.id,
+        agent: input.targetAgent,
+        seq,
+        salvagedText: diagnosis.salvagedText,
+      })
+    : undefined
+  const salvagedAssetIds = [...(prev?.salvagedAssetIds ?? []), ...(salvagedAssetId ? [salvagedAssetId] : [])]
+
+  const sizeLabel = diagnosis.completionBytes !== undefined
+    ? `${Math.round(diagnosis.completionBytes / 1024)}KB${diagnosis.outputTruncated ? ' (truncated)' : ''}`
+    : 'unknown size'
+  const auditPayload = {
+    id: input.task.id,
+    title: input.task.title,
+    kind: input.dispatchKind,
+    deaths,
+    ...stripSalvage(diagnosis),
+    ...(salvagedAssetId ? { salvagedAssetId } : {}),
+  }
+  appendAudit(input.contentDir, 'task.runtime_session_died', input.targetAgent, auditPayload)
+
+  const maxDeaths = input.dispatchKind === 'workflow' ? MAX_SESSION_DEATHS_WORKFLOW : MAX_SESSION_DEATHS_REGULAR
+  if (deaths >= maxDeaths) {
+    delete input.state.failedDispatches[input.task.id]
+    const salvageNote = salvagedAssetIds.length > 0
+      ? ` Salvaged partial output: asset(s) ${salvagedAssetIds.join(', ')}.`
+      : ''
+    const reason = [
+      `Runtime session died ${deaths} time(s) before completion.`,
+      diagnosis.detail ?? `Session ${diagnosis.sessionStatus ?? 'ended'} after a ${sizeLabel} completion.`,
+      diagnosis.lastToolCall ? `Last tool call: ${diagnosis.lastToolCall}.` : '',
+      salvageNote,
+      'Next step: split this task into smaller single-deliverable subtasks or reduce its scope, then re-dispatch.',
+    ].filter(Boolean).join(' ')
+    await blockStoredTask(input.task.id, reason)
+    await tryAddTaskLog(input.task.id, 'system', `Session died ${deaths} time(s); recovery ladder exhausted. Task blocked for review.`, { sessionDeath: auditPayload })
+    appendAudit(input.contentDir, 'task.runtime_failed_blocked', input.targetAgent, auditPayload)
+    return
+  }
+
+  const stage: SessionDeathState['stage'] = deaths === 1 ? 'corrective' : 'decomposition'
+  const existing = input.state.failedDispatches[input.task.id]
+  input.state.failedDispatches[input.task.id] = {
+    lastAttempt: Date.now(),
+    count: existing?.count ?? 0, // session deaths don't burn generic retries
+    kind: 'structural',
+    sessionDeath: { stage, deaths, lastDiagnosis: stripSalvage(diagnosis), salvagedAssetIds },
+  }
+
+  await tryAddTaskLog(
+    input.task.id,
+    'system',
+    `Runtime session died (${sizeLabel} completion, ${diagnosis.sessionStatus ?? diagnosis.reason}). ${stage === 'corrective' ? 'Re-dispatching with corrective output-discipline guidance.' : 'Dispatching decomposition: the agent will split this task into single-deliverable subtasks.'}${salvagedAssetId ? ` Partial output salvaged as asset ${salvagedAssetId}.` : ''}`,
+    { sessionDeath: auditPayload },
+  )
+
+  if (input.dispatchKind === 'workflow') {
+    // Step re-dispatch happens through the normal in-progress workflow scan
+    // (markers were already cleared); the corrective prompt is injected from
+    // the persisted sessionDeath state. The task stays inProgress.
+    appendAudit(input.contentDir, 'task.corrective_redispatch', input.targetAgent, auditPayload)
+    return
+  }
+
+  if (input.snapshotColumn === 'inProgress') {
+    try {
+      await moveStoredTask(input.task.id, 'todo', 'inProgress')
+    } catch (err) {
+      log.warn('Failed to return task to todo after session death', err, { id: input.task.id })
+    }
+  }
+
+  appendAudit(
+    input.contentDir,
+    stage === 'corrective' ? 'task.corrective_redispatch' : 'task.decomposition_dispatched',
+    input.targetAgent,
+    auditPayload,
+  )
+
+  // Immediate ladder re-dispatch — fired after the state lock releases
+  // (dispatchSingleTask takes the same lock; calling it inline would
+  // deadlock). We know exactly what went wrong and how the next attempt
+  // differs; parking the task for the next 5-minute cycle buys nothing.
+  const timer = setTimeout(() => {
+    dispatchSingleTask(input.task.id, input.contentDir, input.port, 'recovery').catch((err) => {
+      log.error('Session-death ladder re-dispatch failed', err, { id: input.task.id, stage })
+    })
+  }, SESSION_DEATH_REDISPATCH_DELAY_MS)
+  timer.unref?.()
 }
 
 async function reconcileRejectedDispatch(input: {
   contentDir: string
+  port: number
   state: DispatchState
   dispatchedSet: Set<string> | null
   task: DispatchTask
@@ -479,13 +682,26 @@ async function reconcileRejectedDispatch(input: {
     return
   }
 
+  // Diagnosed session deaths take the recovery ladder — never the generic
+  // block-or-cooldown paths below.
+  if (input.err instanceof RuntimeTurnError) {
+    await handleSessionDeath({
+      contentDir: input.contentDir,
+      port: input.port,
+      state: input.state,
+      task: input.task,
+      targetAgent: input.targetAgent,
+      err: input.err,
+      dispatchKind: input.dispatchKind,
+      snapshotColumn: snapshot?.column ?? null,
+    })
+    return
+  }
+
   const summary = formatSanitizedRuntimeFailure(input.err)
-  if (snapshot?.column === 'inProgress' && shouldBlockAfterDispatchFailure(input.err, snapshot, input.initialLogCount)) {
+  if (snapshot?.column === 'inProgress' && shouldBlockAfterDispatchFailure(snapshot, input.initialLogCount)) {
     delete input.state.failedDispatches?.[input.task.id]
-    const reason = isAcceptedRunTerminalFailure(input.err)
-      ? 'Agent runtime timed out before reporting completion.'
-      : 'Agent run ended before reporting completion.'
-    await blockStoredTask(input.task.id, `${reason} ${summary}.`)
+    await blockStoredTask(input.task.id, `Agent run ended before reporting completion. ${summary}.`)
     await tryAddTaskLog(input.task.id, 'system', `Agent run ended before task completion: ${summary}. Task moved to blocked for review.`)
     appendAudit(input.contentDir, 'task.runtime_failed_blocked', input.targetAgent, {
       id: input.task.id,
@@ -632,9 +848,12 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       })
       if (!eligibility.eligible) continue
 
-      // Check failure history with max retries
+      // Check failure history with max retries. Session-death records are
+      // ladder-managed (corrective/decomposition with their own caps) and
+      // bypass the generic cooldown — waiting doesn't fix a deterministic
+      // failure; the changed approach does.
       const failure = getFailureRecord(state.failedDispatches?.[task.id])
-      if (failure) {
+      if (failure && !failure.sessionDeath) {
         if (failure.count >= settings.dispatch.maxRetries) {
           // Escalate to blocked
           try {
@@ -670,7 +889,10 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         agentId: targetAgent,
         query: buildTaskLessonQuery(task),
       })
-      const message = buildDispatchMessage(task, targetAgent, contentDir, port, mainAgentId, lessonBlock)
+      const recovery = failure?.sessionDeath
+      const message = recovery?.stage === 'decomposition'
+        ? buildDecompositionMessage(task, targetAgent, recovery)
+        : buildDispatchMessage(task, targetAgent, contentDir, port, mainAgentId, lessonBlock, {}, recovery)
       const initialLogCount = task.log?.length ?? 0
 
       try {
@@ -690,6 +912,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         log.error(`Failed to dispatch "${task.title}" to ${targetAgent}`, err)
         await reconcileRejectedDispatch({
           contentDir,
+          port,
           state,
           dispatchedSet,
           task,
@@ -739,7 +962,7 @@ export async function dispatchSingleTask(
   taskId: string,
   contentDir: string,
   port: number,
-  source: 'kick' | 'subtask' | 'continuation' = 'kick',
+  source: 'kick' | 'subtask' | 'continuation' | 'recovery' = 'kick',
   continuation: DispatchContinuationContext = {},
 ): Promise<void> {
   const settings = getSettings()
@@ -776,9 +999,10 @@ export async function dispatchSingleTask(
       return
     }
 
-    // Check failure history
+    // Check failure history (session-death records are ladder-managed and
+    // exempt from the generic cooldown/retry caps — see dispatchTasks).
     const failure = getFailureRecord(state.failedDispatches?.[taskId])
-    if (failure) {
+    if (failure && !failure.sessionDeath) {
       if (failure.count >= settings.dispatch.maxRetries) {
         log.warn('dispatchSingleTask: task exhausted retries', { taskId, count: failure.count })
         return
@@ -835,7 +1059,10 @@ export async function dispatchSingleTask(
       agentId: targetAgent,
       query: buildTaskLessonQuery(task),
     })
-    const message = buildDispatchMessage(task, targetAgent, contentDir, port, mainAgentId, lessonBlock, continuation)
+    const recovery = failure?.sessionDeath
+    const message = recovery?.stage === 'decomposition'
+      ? buildDecompositionMessage(task, targetAgent, recovery)
+      : buildDispatchMessage(task, targetAgent, contentDir, port, mainAgentId, lessonBlock, continuation, recovery)
     const dispatchStart = Date.now()
     const initialLogCount = task.log?.length ?? 0
 
@@ -868,6 +1095,7 @@ export async function dispatchSingleTask(
       log.error(`dispatchSingleTask: failed to dispatch "${task.title}" to ${targetAgent}`, err)
       await reconcileRejectedDispatch({
         contentDir,
+        port,
         state,
         dispatchedSet: null,
         task,
@@ -891,6 +1119,62 @@ export async function dispatchSingleTask(
   })
 }
 
+/**
+ * Corrective guidance injected at the TOP of a re-dispatch prompt after a
+ * session death (position primacy — the agent must read this before the
+ * task). Explains WHY the previous attempt died and how this one differs.
+ */
+function buildCorrectiveSection(taskId: string, recovery: SessionDeathState): string {
+  const d = recovery.lastDiagnosis
+  const sizeLabel = d.completionBytes !== undefined
+    ? `~${Math.round(d.completionBytes / 1024)}KB`
+    : 'too much'
+  const salvageLine = recovery.salvagedAssetIds.length > 0
+    ? `\nA partial copy of that output was salvaged as asset ${recovery.salvagedAssetIds.join(', ')} — open it with bakin_exec_assets_open and REUSE it instead of regenerating from scratch.`
+    : ''
+  return `## PREVIOUS ATTEMPT FAILED — READ FIRST
+Your previous attempt on this task died before completion: ${d.detail ?? `the runtime session ended (${d.sessionStatus ?? d.reason})`}. The session was killed because ${sizeLabel} of output was emitted as chat text instead of being written to files — the runtime cannot deliver responses that large.${salvageLine}
+
+Do this attempt differently:
+- Produce deliverables ONE AT A TIME: write each to a workspace file, then immediately save it: bakin_exec_assets_save taskId=${taskId} type=<type> filePath="<path>" description="<what it is>"
+- Log progress after each save, then move to the next deliverable.
+- Keep every chat/completion message SHORT: status + asset ids only. NEVER put deliverable content in chat output.
+
+`
+}
+
+/**
+ * Decomposition dispatch (recovery-ladder rung 2): the agent must NOT do the
+ * work — only split it into chained single-deliverable subtasks. Emitting a
+ * handful of tool calls is a tiny output, the structural opposite of the
+ * failure being recovered from.
+ */
+function buildDecompositionMessage(
+  task: { id: string; title: string; description?: string },
+  agentName: string,
+  recovery: SessionDeathState,
+): string {
+  const server = `bakin-${agentName}`
+  const mc = (tool: string, args: string) => `mcporter call ${server}.${tool} ${args}`
+  const d = recovery.lastDiagnosis
+  const detailsBlock = task.description ? `\n\nOriginal task details:\n${task.description}` : ''
+  const salvageBlock = recovery.salvagedAssetIds.length > 0
+    ? `\n\nSalvaged partial output from the failed attempts is saved as asset ${recovery.salvagedAssetIds.join(', ')} (open with bakin_exec_assets_open). Use it to determine which deliverables are already partially done and reference it in the subtask descriptions.`
+    : ''
+
+  return `## DECOMPOSITION REQUIRED — DO NOT DO THE WORK
+
+Task "${task.title}" (ID: ${task.id}) has failed ${recovery.deaths} times because the runtime session died mid-attempt${d.oversizedOutput ? ' from oversized chat output' : ''}. Producing everything in one turn does not work. Your ONLY job right now is to split it into subtasks — do NOT produce any deliverable content in this turn.${detailsBlock}${salvageBlock}
+
+Steps:
+1. Identify the distinct deliverables this task requires (a checklist).
+2. Create one subtask per deliverable, in order:
+   \`${mc('bakin_exec_tasks_create', `title="<deliverable>" parentId=${task.id} agent=${agentName} description="Produce <deliverable>. Write it to a file and save it with bakin_exec_assets_save taskId=${task.id} (link assets to the PARENT task so the final review sees them). Keep chat output short."`)}\`
+3. Chain them so they run one at a time: for every subtask after the first, \`${mc('bakin_exec_tasks_set_dependency', 'taskId=<subtask> dependsOn=<previous subtask>')}\`. Then make THIS task wait for the chain: \`${mc('bakin_exec_tasks_set_dependency', `taskId=${task.id} dependsOn=<last subtask>`)}\` — it will re-dispatch automatically for final assembly when the chain completes.
+4. Log what you created: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="Decomposed into N subtasks: <ids>"`)}\`
+5. STOP. Do not start any subtask, do not draft content, do not call tasks_complete.`
+}
+
 /** @internal Exported for testing. */
 export function buildDispatchMessage(
   task: { id: string; title: string; description?: string; agent?: string; projectId?: string },
@@ -900,8 +1184,10 @@ export function buildDispatchMessage(
   mainAgentId = 'main',
   lessonBlock = '',
   continuation: DispatchContinuationContext = {},
+  recovery?: SessionDeathState,
 ): string {
   void _port
+  const correctivePrefix = recovery?.stage === 'corrective' ? buildCorrectiveSection(task.id, recovery) : ''
   const detailsBlock = task.description ? `\n\nDetails:\n${task.description}` : ''
   const lessonSection = lessonBlock ? `\n\n${lessonBlock}` : ''
   // Dependency continuations run in a fresh session — the prompt must carry
@@ -952,14 +1238,14 @@ export function buildDispatchMessage(
   const mcImage = (tool: string, args: string) => `mcporter call ${server}.${tool} --timeout ${IMAGE_MCPORTER_TIMEOUT_MS} ${args}`
 
   if (!task.agent) {
-    return `Triage this task: "${task.title}".${detailsBlock}${continuationBlock}${assetsBlock}${lessonSection}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=video/audio, jessica=research) via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
+    return `${correctivePrefix}Triage this task: "${task.title}".${detailsBlock}${continuationBlock}${assetsBlock}${lessonSection}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=video/audio, jessica=research) via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
   if (task.agent === mainAgentId) {
-    return `Work on this task: "${task.title}".${detailsBlock}${continuationBlock}${assetsBlock}${lessonSection}\n\n${contactsRef} When done: \`${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
+    return `${correctivePrefix}Work on this task: "${task.title}".${detailsBlock}${continuationBlock}${assetsBlock}${lessonSection}\n\n${contactsRef} When done: \`${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
-  return `Work on this task: "${task.title}".${detailsBlock}${continuationBlock}${assetsBlock}${projectBlock}${lessonSection}
+  return `${correctivePrefix}Work on this task: "${task.title}".${detailsBlock}${continuationBlock}${assetsBlock}${projectBlock}${lessonSection}
 
 ## PROGRESS LOGGING — MANDATORY
 
@@ -1129,8 +1415,11 @@ async function dispatchWorkflowTask(
         context: ctx.label,
       }),
     })
-    // Pass contextTaskId so the step/complete API targets the right instance
-    const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, port, lessonBlock)
+    // Pass contextTaskId so the step/complete API targets the right instance.
+    // A pending session-death recovery injects corrective guidance (workflow
+    // steps only get the corrective rung — the engine owns step structure).
+    const wfRecovery = getFailureRecord(state.failedDispatches?.[task.id])?.sessionDeath
+    const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, port, lessonBlock, wfRecovery)
     const initialLogCount = findDispatchTaskSnapshot(task.id)?.task.log?.length ?? 0
 
     try {
@@ -1151,6 +1440,7 @@ async function dispatchWorkflowTask(
       log.error(`Failed to dispatch workflow step "${stepId}" to ${targetAgent}`, err)
       await reconcileRejectedDispatch({
         contentDir,
+        port,
         state,
         dispatchedSet,
         task,
@@ -1188,9 +1478,14 @@ function buildWorkflowDispatchMessage(
   agentName: string,
   _port: number,
   lessonBlock = '',
+  recovery?: SessionDeathState,
 ): string {
   void _port
   const lines: string[] = []
+  if (recovery?.stage === 'corrective') {
+    lines.push(buildCorrectiveSection(task.id, recovery).trimEnd())
+    lines.push('')
+  }
 
   // ─── Identity Frame ─────────────────────────────────────────────────
   lines.push('# WORKFLOW STEP ASSIGNMENT')
