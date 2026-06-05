@@ -26,22 +26,11 @@ import { basename, join, resolve } from 'node:path'
 import { builtinModules } from 'node:module'
 import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { startStartupSpan, type StartupDiagnosticLogger } from '@/core/startup-diagnostics'
+import { PLUGIN_CLIENT_EXTERNALS, PLUGIN_SERVER_EXTERNALS } from '@/core/whiskin/externals'
 
-const CLIENT_EXTERNAL = [
-  'react', 'react-dom', 'react-dom/client',
-  'react/jsx-runtime', 'react/jsx-dev-runtime',
-  '@tanstack/react-router',
-  '@makinbakin/sdk', '@makinbakin/sdk/ui', '@makinbakin/sdk/hooks',
-  '@makinbakin/sdk/components', '@makinbakin/sdk/slots',
-  '@makinbakin/sdk/types', '@makinbakin/sdk/utils',
-  '@makinbakin/sdk/metadata', '@makinbakin/sdk/routing',
-]
-
-const SERVER_EXTERNAL = [
-  'react', 'react-dom', 'react-dom/client',
-  'react/jsx-runtime', 'react/jsx-dev-runtime',
-  '@tanstack/react-router',
-]
+// Single source for the externals contract — see src/core/whiskin/externals.ts.
+const CLIENT_EXTERNAL = PLUGIN_CLIENT_EXTERNALS
+const SERVER_EXTERNAL = PLUGIN_SERVER_EXTERNALS
 
 const REPO_ROOT = resolve(import.meta.dir, '../../../..')
 const SDK_ENTRYPOINTS: Record<string, string> = {

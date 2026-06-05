@@ -14,6 +14,7 @@
  * from the browser's point of view.
  */
 import { buildOnePlugin } from './dev-build-one-plugin'
+import { PLUGIN_CLIENT_EXTERNALS } from '../src/core/whiskin/externals'
 
 const CORE_PLUGINS = [
   'tasks', 'team', 'memory', 'models',
@@ -21,15 +22,8 @@ const CORE_PLUGINS = [
   'health', 'git',
 ]
 
-const EXTERNAL = [
-  'react', 'react-dom', 'react-dom/client',
-  'react/jsx-runtime', 'react/jsx-dev-runtime',
-  '@tanstack/react-router',
-  '@makinbakin/sdk', '@makinbakin/sdk/ui', '@makinbakin/sdk/hooks',
-  '@makinbakin/sdk/components', '@makinbakin/sdk/slots',
-  '@makinbakin/sdk/types', '@makinbakin/sdk/utils',
-  '@makinbakin/sdk/metadata', '@makinbakin/sdk/routing',
-]
+// Single source for the externals contract — see src/core/whiskin/externals.ts.
+const EXTERNAL = PLUGIN_CLIENT_EXTERNALS
 
 for (const id of CORE_PLUGINS) {
   const result = await buildOnePlugin(id, { external: EXTERNAL, production: true })
