@@ -72,8 +72,7 @@ afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 beforeEach(() => __resetManifestCache())
 
 describe('parse counts (cache hits read zero manifests)', () => {
-  // RED: unskip in the commit that lands the cache (#392)
-  it.skip('listAssets parses each manifest once, then zero on unchanged repeat calls', async () => {
+  it('listAssets parses each manifest once, then zero on unchanged repeat calls', async () => {
     const ids = [await makeAsset('a.md', 'a'), await makeAsset('b.md', 'b'), await makeAsset('c.md', 'c')]
     __resetManifestCache()
 
@@ -90,8 +89,7 @@ describe('parse counts (cache hits read zero manifests)', () => {
     spy.mockRestore()
   })
 
-  // RED: unskip in the commit that lands the cache (#392)
-  it.skip('serve resolves with at most one parse cold and zero warm', async () => {
+  it('serve resolves with at most one parse cold and zero warm', async () => {
     const id = await makeAsset('serve.md', 'serve me')
     __resetManifestCache()
 
@@ -108,8 +106,7 @@ describe('parse counts (cache hits read zero manifests)', () => {
     spy.mockRestore()
   })
 
-  // RED: unskip in the commit that lands the cache (#392)
-  it.skip('findBySourcePath parses nothing on a warm cache', async () => {
+  it('findBySourcePath parses nothing on a warm cache', async () => {
     const src = makeSource('find-me.md', 'find')
     const { assetId } = await createAsset({ sourceFilePath: src, type: 'text', agent: 'tester', taskId: null })
     __resetManifestCache()
@@ -212,9 +209,11 @@ describe('eviction + negative reads', () => {
 })
 
 describe('test-mode freeze', () => {
-  // RED: unskip in the commit that lands the cache (#392)
-  it.skip('cached manifests are frozen under NODE_ENV=test — consumer mutation throws', async () => {
-    const id = await makeAsset('frozen.md', 'do not touch')
+  it('cached manifests are frozen under NODE_ENV=test — consumer mutation throws', async () => {
+    const { assetId: id } = await createAsset({
+      sourceFilePath: makeSource('frozen.md', 'content'), type: 'text', agent: 'tester',
+      taskId: null, description: 'do not touch',
+    })
     const manifest = getAsset(id)!
     expect(() => { (manifest as AssetManifest).description = 'mutated' }).toThrow()
     expect(() => { (manifest as AssetManifest).versions[0].tags.push('nope') }).toThrow()

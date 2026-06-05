@@ -19,6 +19,7 @@ import { createLogger } from '../../../src/core/logger'
 import { getMimeType, type AssetType } from './constants'
 import { generateAssetId, assetDirRelPath, yearMonthFromAssetId } from './asset-id'
 import { withAssetLock } from './asset-lock'
+import { getManifestCached } from './manifest-cache'
 import { taskAssetIndexRemove, taskAssetIndexUpsert } from './task-asset-index'
 import {
   readManifest,
@@ -203,22 +204,20 @@ export async function createAsset(input: AssetCreateInput): Promise<{ assetId: s
   return { assetId, version: 1, manifest }
 }
 
-/** Read an asset's manifest, or null if missing/invalid. */
+/** Read an asset's manifest (stat-validated cache), or null if missing/invalid. */
 export function getAsset(assetId: string): AssetManifest | null {
   const rel = assetDirRelPath(assetId)
   if (!rel) return null
-  return readManifest(join(getContentDir(), rel))
+  return getManifestCached(assetId, join(getContentDir(), rel))
 }
 
 export function assetExists(assetId: string): boolean {
   return getAsset(assetId) !== null
 }
 
-/** Resolve an asset version (current by default) to an on-disk file reference. */
-export function resolveFile(assetId: string, version?: number): AssetFileRef | null {
-  const manifest = getAsset(assetId)
-  if (!manifest) return null
-  const rel = assetDirRelPath(assetId)
+/** Resolve a version from an already-loaded manifest (no further manifest reads). */
+export function resolveFileFromManifest(manifest: AssetManifest, version?: number): AssetFileRef | null {
+  const rel = assetDirRelPath(manifest.assetId)
   if (!rel) return null
   const target = version ?? manifest.currentVersion
   const ver = manifest.versions.find((v) => v.version === target)
@@ -229,6 +228,12 @@ export function resolveFile(assetId: string, version?: number): AssetFileRef | n
     size: ver.size,
     version: target,
   }
+}
+
+/** Resolve an asset version (current by default) to an on-disk file reference. */
+export function resolveFile(assetId: string, version?: number): AssetFileRef | null {
+  const manifest = getAsset(assetId)
+  return manifest ? resolveFileFromManifest(manifest, version) : null
 }
 
 function toSummary(manifest: AssetManifest): AssetSummary {
@@ -275,7 +280,7 @@ export function listAssets(filter?: { type?: AssetType; taskId?: string | null }
     }
     for (const assetId of entries) {
       if (!yearMonthFromAssetId(assetId)) continue // skip non-asset dirs/files
-      const manifest = readManifest(join(monthDir, assetId))
+      const manifest = getManifestCached(assetId, join(monthDir, assetId))
       if (!manifest) continue
       if (filter?.type && manifest.type !== filter.type) continue
       if (filter?.taskId !== undefined && manifest.taskId !== filter.taskId) continue
@@ -620,7 +625,7 @@ export function findBySourcePath(sourcePath: string): string | null {
     }
     for (const assetId of entries) {
       if (!yearMonthFromAssetId(assetId)) continue
-      const manifest = readManifest(join(monthDir, assetId))
+      const manifest = getManifestCached(assetId, join(monthDir, assetId))
       if (manifest?.source?.path === sourcePath) return assetId
     }
   }
