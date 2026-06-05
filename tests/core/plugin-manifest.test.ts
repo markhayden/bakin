@@ -1,4 +1,25 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, mock } from 'bun:test'
+
+// Per CLAUDE.md — defensive content-dir mocks even for pure parser tests.
+mock.module('../../src/core/content-dir', () => {
+  const { join } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
+  const base = join(tmpdir(), 'bakin-test-plugin-manifest-noop')
+  return {
+    getContentDir: () => base,
+    getBakinPaths: () => ({ root: base }),
+  }
+})
+mock.module('../../packages/core/src/content-dir', () => {
+  const { join } = require('path') as typeof import('path')
+  const { tmpdir } = require('os') as typeof import('os')
+  const base = join(tmpdir(), 'bakin-test-plugin-manifest-noop')
+  return {
+    getContentDir: () => base,
+    getBakinPaths: () => ({ root: base }),
+  }
+})
+
 import {
   PluginManifestError,
   parsePluginManifest,
@@ -220,5 +241,118 @@ describe('plugin manifest schema', () => {
 
   it('reports invalid JSON through readPluginManifestJson', () => {
     expect(() => readPluginManifestJson('{ nope')).toThrow(/Invalid bakin-plugin\.json/)
+  })
+})
+
+describe('plugin manifest declarative client contributions (lazy loading)', () => {
+  it('parses contributes.nav / routes / slots / eager', () => {
+    const manifest = parsePluginManifest({
+      ...baseManifest,
+      contributes: {
+        nav: [
+          {
+            id: 'messaging',
+            label: 'Messaging',
+            icon: 'MessageSquare',
+            href: '/messaging',
+            order: 25,
+            alwaysExpanded: true,
+            badge: { tone: 'info' },
+            children: [
+              { id: 'messaging-calendar', label: 'Calendar', icon: 'CalendarDays', href: '/messaging/calendar' },
+            ],
+          },
+        ],
+        routes: [
+          { path: '/messaging', summary: 'Messaging index' },
+          { path: '/messaging/plans/[id]' },
+        ],
+        slots: ['nav-badge-providers', 'page:/messaging'],
+        eager: true,
+      },
+    })
+
+    expect(manifest.contributes?.nav).toEqual([
+      {
+        id: 'messaging',
+        label: 'Messaging',
+        icon: 'MessageSquare',
+        href: '/messaging',
+        order: 25,
+        alwaysExpanded: true,
+        badge: { tone: 'info' },
+        children: [
+          { id: 'messaging-calendar', label: 'Calendar', icon: 'CalendarDays', href: '/messaging/calendar' },
+        ],
+      },
+    ])
+    expect(manifest.contributes?.routes).toEqual([
+      { path: '/messaging', summary: 'Messaging index' },
+      { path: '/messaging/plans/[id]', summary: undefined },
+    ])
+    expect(manifest.contributes?.slots).toEqual(['nav-badge-providers', 'page:/messaging'])
+    expect(manifest.contributes?.eager).toBe(true)
+  })
+
+  it('rejects nav items missing id or label', () => {
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      contributes: { nav: [{ label: 'No id', href: '/x' }] },
+    })).toThrow(/missing required field "id"/)
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      contributes: { nav: [{ id: 'x', href: '/x' }] },
+    })).toThrow(/missing required field "label"/)
+  })
+
+  it('rejects nav hrefs that are not app paths', () => {
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      contributes: { nav: [{ id: 'x', label: 'X', href: '/api/plugins/x' }] },
+    })).toThrow(/must be an app path/)
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      contributes: { nav: [{ id: 'x', label: 'X', href: 'relative' }] },
+    })).toThrow(/must be an app path/)
+  })
+
+  it('rejects duplicate nav ids across nesting levels', () => {
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      contributes: {
+        nav: [
+          { id: 'x', label: 'X', children: [{ id: 'x', label: 'X again' }] },
+        ],
+      },
+    })).toThrow(/duplicate nav item id "x"/)
+  })
+
+  it('rejects invalid badge tones in nav items', () => {
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      contributes: { nav: [{ id: 'x', label: 'X', badge: { tone: 'loud' } }] },
+    })).toThrow(/badge\.tone must be one of/)
+  })
+
+  it('rejects route patterns under /api and duplicates', () => {
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      contributes: { routes: [{ path: '/api/messaging' }] },
+    })).toThrow(/must not be an API path/)
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      contributes: { routes: [{ path: '/messaging' }, { path: '/messaging' }] },
+    })).toThrow(/duplicate path "\/messaging"/)
+  })
+
+  it('rejects non-string slot entries and non-boolean eager', () => {
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      contributes: { slots: ['page:/x', 7] },
+    })).toThrow(/only non-empty strings/)
+    expect(() => parsePluginManifest({
+      ...baseManifest,
+      contributes: { eager: 'yes' },
+    })).toThrow(/eager must be a boolean/)
   })
 })
