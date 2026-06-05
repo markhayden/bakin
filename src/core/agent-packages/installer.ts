@@ -27,8 +27,8 @@
  * projector's writeLog, the staging dirs are cleaned up, the lockfile
  * is left at its pre-install state, and the install lock is released.
  */
-import { existsSync, mkdirSync, renameSync, rmSync, statSync } from 'fs'
-import { dirname } from 'path'
+import { existsSync, rmSync, statSync } from 'fs'
+import { commitStaging } from '../install-core/transaction'
 import { createLogger } from '../logger'
 import { getContentDir } from '../content-dir'
 import { appendAudit } from '../audit'
@@ -112,24 +112,6 @@ export interface InstallResult {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Move the contents of `staging` into `finalDir`. The final directory's
- * parent is created if missing; if `finalDir` already exists (from a
- * previous failed install at the same version), it's removed first.
- *
- * Atomic on the same filesystem: a single `renameSync`. Cross-filesystem
- * (rare — typically when staging is on tmpfs and the destination is on a
- * persistent drive) we'd need a copy-then-delete fallback; not in V1
- * because both paths live under getContentDir().
- */
-function commitStagingToInstallDir(staging: string, finalDir: string): void {
-  mkdirSync(dirname(finalDir), { recursive: true })
-  if (existsSync(finalDir)) {
-    rmSync(finalDir, { recursive: true, force: true })
-  }
-  renameSync(staging, finalDir)
-}
 
 interface PreflightCollision {
   target: string
@@ -527,7 +509,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
         dep.resolvedId,
         dep.manifest.version,
       )
-      commitStagingToInstallDir(dep.fetched.stagingDir, finalDir)
+      commitStaging(dep.fetched.stagingDir, finalDir)
       finalInstallDirs.push(finalDir)
     }
     const parentFinalDir = getPackageSourceDir(
@@ -536,7 +518,7 @@ export async function installPackage(options: InstallOptions): Promise<InstallRe
       resolvedTopId,
       manifest.version,
     )
-    commitStagingToInstallDir(topFetched.stagingDir, parentFinalDir)
+    commitStaging(topFetched.stagingDir, parentFinalDir)
     finalInstallDirs.push(parentFinalDir)
 
     // ─── 11. Audit ────────────────────────────────────────────────────────
