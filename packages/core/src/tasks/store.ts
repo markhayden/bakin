@@ -1,5 +1,4 @@
 import type { Unsubscribe } from '../adapters/shared'
-import type { TaskExecutionStatus } from '../adapters/runtime'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 
@@ -26,16 +25,6 @@ export interface BakinTask {
   blocking: string[]
   comments: TaskComment[]
   pendingDelete: boolean
-  execution: {
-    flowId: string | null
-    state?: TaskExecutionStatus['state'] | 'execution-orphaned' | 'not-dispatched'
-    currentStep?: string | null
-    blockingReason?: string | null
-    retryCount?: number
-    startedAt?: string | null
-    endedAt?: string | null
-    lastSyncedAt?: string | null
-  }
   log: TaskLogEntry[]
   createdAt: string
   updatedAt: string
@@ -135,8 +124,6 @@ export interface BakinTaskStore {
   addComment(id: string, comment: TaskComment): Promise<void>
   setDependencies(id: string, deps: TaskDependencyPatch): Promise<BakinTask>
   markPendingDelete(id: string, pending: boolean): Promise<BakinTask>
-  linkExecution(id: string, flowId: string): Promise<BakinTask>
-  updateExecutionCache(id: string, status: TaskExecutionStatus): Promise<BakinTask>
 
   subscribe(handler: (event: BakinTaskStoreEvent) => void): Unsubscribe
 }
@@ -152,8 +139,6 @@ export interface SyncBakinTaskStore extends BakinTaskStore {
   addCommentSync(id: string, comment: TaskComment): void
   setDependenciesSync(id: string, deps: TaskDependencyPatch): BakinTask
   markPendingDeleteSync(id: string, pending: boolean): BakinTask
-  linkExecutionSync(id: string, flowId: string): BakinTask
-  updateExecutionCacheSync(id: string, status: TaskExecutionStatus): BakinTask
 }
 
 export function createEmptyBakinTask(input: CreateBakinTaskInput, now = new Date().toISOString()): BakinTask {
@@ -178,11 +163,6 @@ export function createEmptyBakinTask(input: CreateBakinTaskInput, now = new Date
     blocking: [],
     comments: [],
     pendingDelete: false,
-    execution: {
-      flowId: null,
-      state: 'not-dispatched',
-      lastSyncedAt: null,
-    },
     log: [],
     createdAt: now,
     updatedAt: now,
@@ -328,32 +308,6 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
       return store.updateSync(id, { pendingDelete: pending })
     },
 
-    linkExecutionSync(id, flowId) {
-      const current = requireTask(id)
-      return writeUpdated({
-        ...current,
-        execution: { ...current.execution, flowId },
-      })
-    },
-
-    updateExecutionCacheSync(id, status) {
-      const current = requireTask(id)
-      return writeUpdated({
-        ...current,
-        execution: {
-          ...current.execution,
-          flowId: status.flowId,
-          state: status.state,
-          currentStep: status.currentStep,
-          blockingReason: status.blockingReason,
-          retryCount: status.retryCount,
-          startedAt: status.startedAt,
-          endedAt: status.endedAt,
-          lastSyncedAt: new Date().toISOString(),
-        },
-      })
-    },
-
     create: async (input) => store.createSync(input),
     get: async (id) => store.getSync(id),
     list: async (opts) => store.listSync(opts),
@@ -367,8 +321,6 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
     addComment: async (id, comment) => store.addCommentSync(id, comment),
     setDependencies: async (id, deps) => store.setDependenciesSync(id, deps),
     markPendingDelete: async (id, pending) => store.markPendingDeleteSync(id, pending),
-    linkExecution: async (id, flowId) => store.linkExecutionSync(id, flowId),
-    updateExecutionCache: async (id, status) => store.updateExecutionCacheSync(id, status),
     subscribe(handler) {
       listeners.add(handler)
       return () => {

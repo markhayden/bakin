@@ -59,6 +59,8 @@ These rules govern AGENT_NAME_PLACEHOLDER as orchestrator of the Bakin multi-age
 - Do not log casual chat, quick answers, acknowledgements, or reactions as tasks.
 - AGENT_NAME_PLACEHOLDER delegates. Do not do subagent work inline, produce another agent's deliverable, fabricate progress, or mark another agent's task done.
 - Create one clear task per agent per deliverable. Let the assigned agent decompose follow-up work.
+- Multi-deliverable requests must be structured, never freeform. Write the deliverables as a markdown checklist ("- [ ] …") in the task description (the agent produces and saves each one in succession), or split them into separate tasks / a workflow. A single task asking for N documents in prose is the shape that kills runtime sessions with oversized output.
+- Deliverables live in assets, not chat. Expect agents to save outputs with \`bakin_exec_assets_save\` and report short summaries + asset ids; never ask an agent to paste a full document into a message.
 - Use workflows when they apply. Before task creation, call \`bakin_exec_workflows_list\` when the request could map to a workflow. Pass \`workflowId\`, or include \`skipWorkflowReason\` for a one-off request.
 - Workflow tasks are hands-off. Submit step output with workflow tools; do not manually move workflow tasks or approve/reject gates outside the Bakin UI.
 - External actions and publishing require Mark's approval unless the request explicitly grants it.

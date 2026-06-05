@@ -27,6 +27,8 @@ import type {
   WorkspaceFile,
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
+import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
+import { inspectTrajectoryRun, safeTrajectoryOffset, trajectoryFilePathFor, watchTrajectoryForDeath, TrajectoryRecoveredTurn } from './trajectory-forensics'
 import { generateDirectImage, isDirectImageProvider, resolveProviderApiKeySource } from '@bakin/core/media'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
@@ -119,9 +121,11 @@ interface OpenClawAgentTurnOptions {
   toolsMode?: MessageArgs['toolsMode']
   toolsAllow?: string[]
   toolsDeny?: string[]
+  /** Oversized-output threshold for session-death diagnoses (core policy). */
+  oversizedOutputBytes?: number
 }
 
-class OpenClawCommandError extends Error {
+class OpenClawCommandError extends RuntimeError {
   readonly args: string[]
   readonly stdout: string
   readonly stderr: string
@@ -135,7 +139,7 @@ class OpenClawCommandError extends Error {
     super([
       `OpenClaw command failed${exitCode === undefined ? '' : ` (${exitCode})`}: openclaw ${args.join(' ')}`,
       details,
-    ].filter(Boolean).join('\n'), { cause })
+    ].filter(Boolean).join('\n'), { kind: 'runtime_failed', cause })
     this.name = 'OpenClawCommandError'
     this.args = args
     this.stdout = stdout
@@ -485,14 +489,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         return Array.from(next)
       })
     },
-    heartbeat: async (agentId: string): Promise<boolean> => {
-      const file = join(getWorkspacePath(agentId), 'HEARTBEAT.md')
-      try {
-        return statSync(file).isFile()
-      } catch {
-        return false
-      }
-    },
   }
 
   messaging = {
@@ -504,8 +500,16 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         toolsMode: args.toolsMode,
         toolsAllow: args.toolsAllow,
         toolsDeny: args.toolsDeny,
+        oversizedOutputBytes: oversizedOutputBytesFrom(args.metadata),
       })
-      return { id: `msg-${Date.now()}`, content }
+      // Threaded sends expose the real (deterministic) provider session id
+      // so callers can correlate the turn with forensics, usage, and audit.
+      const sessionId = args.threadId ? openClawCliSessionId(args.agentId, args.threadId) : undefined
+      return {
+        id: `msg-${Date.now()}`,
+        content,
+        ...(sessionId ? { metadata: { sessionId } } : {}),
+      }
     },
     stream: (args: MessageArgs): AsyncIterable<ChatChunk> => this.streamChat({
       agentId: args.agentId,
@@ -514,6 +518,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       toolsMode: args.toolsMode,
       toolsAllow: args.toolsAllow,
       toolsDeny: args.toolsDeny,
+      oversizedOutputBytes: oversizedOutputBytesFrom(args.metadata),
     }),
   }
 
@@ -522,7 +527,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       const value = await this.invokeTool(name, args as Record<string, unknown>)
       return { ok: true, output: value }
     },
-    list: async () => [],
   }
 
   channels = {
@@ -638,8 +642,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         handler(event)
       })
     },
-    onMessage: () => () => {},
-    onInteraction: () => () => {},
   }
 
   private async tryCreateNativeApproval(
@@ -949,14 +951,6 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     }
   }
 
-  tasks = {
-    dispatch: async (args: { bakinTaskId: string }) => ({ flowId: `flow-${args.bakinTaskId}` }),
-    getExecutionStatus: async (flowId: string) => ({ flowId, state: 'unknown' as const }),
-    listExecutions: async () => [],
-    cancelExecution: async () => {},
-    subscribeExecutionUpdates: () => () => {},
-  }
-
   cron = {
     list: async (): Promise<CronJob[]> => this.listCronJobs(),
     get: async (id: string): Promise<CronJob | null> => this.getCronJob(id),
@@ -1152,26 +1146,159 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   }
 
   private async runOpenClawAgentGateway(opts: OpenClawAgentTurnOptions): Promise<string> {
+    const cliSessionId = opts.sessionKey ? openClawCliSessionId(opts.agentId, opts.sessionKey) : null
     const params: Record<string, unknown> = {
       agentId: opts.agentId,
       message: messagesToOpenClawPrompt(opts.messages),
       deliver: false,
       timeout: OPENCLAW_AGENT_TIMEOUT_SECONDS,
-      idempotencyKey: `bakin-${randomUUID()}`,
+      // Stable per-attempt key: a transport retry of the SAME logical turn
+      // (same threadId) is idempotent at the gateway. Unthreaded sends keep
+      // a random key — each is its own logical turn.
+      idempotencyKey: opts.sessionKey ? `bakin:${opts.sessionKey}` : `bakin-${randomUUID()}`,
     }
     applyRuntimeMessageToolPolicy(params, opts)
-    if (opts.sessionKey) params.sessionId = openClawCliSessionId(opts.agentId, opts.sessionKey)
+    if (cliSessionId) params.sessionId = cliSessionId
+
+    // Capture where the trajectory ends BEFORE the turn starts so any
+    // post-mortem only sees events from this attempt (the file accrues one
+    // run per turn for the life of the session).
+    const trajectoryFile = cliSessionId ? trajectoryFilePathFor(opts.agentId, cliSessionId) : null
+    const trajectoryOffset = trajectoryFile ? safeTrajectoryOffset(trajectoryFile) : 0
+
+    // Fail-fast: race the pending request against the on-disk evidence. When
+    // OpenClaw records session.ended (non-success) the gateway will never
+    // deliver a final frame — without this, the caller waits out the full
+    // 630s transport timer to learn what the trajectory knew in 200ms.
+    const requestAbort = new AbortController()
+    const deathWatch = trajectoryFile
+      ? watchTrajectoryForDeath({
+          trajectoryFile,
+          sinceByteOffset: trajectoryOffset,
+          oversizedOutputBytes: opts.oversizedOutputBytes,
+          pollMs: OPENCLAW_SESSION_ACTIVITY_POLL_MS,
+        })
+      : null
+
     try {
-      const payload = await this.openClawChatGateway().request('agent', params, {
+      const request = this.openClawChatGateway().request('agent', params, {
         expectFinal: true,
         timeoutMs: OPENCLAW_AGENT_TRANSPORT_TIMEOUT_MS,
+        signal: requestAbort.signal,
       })
+      // If the death watch wins the race, the losing request settles later
+      // (abort rejection) with no awaiter — pre-attach a no-op catch so it
+      // can never surface as an unhandled rejection.
+      request.catch(() => {})
+      const payload = deathWatch
+        ? await Promise.race([request, deathWatch.promise])
+        : await request
       const content = extractOpenClawAgentText(payload)
       if (content) return content
-      throw new Error('OpenClaw agent response did not include assistant text')
+      // A SUCCESS frame whose payload yields no extractable text (payload
+      // shape drift) is still recoverable when the trajectory recorded the
+      // completion — don't fail a turn whose content exists on disk.
+      if (trajectoryFile) {
+        const outcome = inspectTrajectoryRun({
+          trajectoryFile,
+          sinceByteOffset: trajectoryOffset,
+          oversizedOutputBytes: opts.oversizedOutputBytes,
+        })
+        if (outcome?.kind === 'success' && outcome.content) {
+          this.logger.warn('OpenClaw agent payload had no extractable text; recovered from trajectory', {
+            agentId: opts.agentId,
+            sessionId: outcome.sessionId,
+          })
+          return outcome.content
+        }
+      }
+      throw new RuntimeError('OpenClaw chat failed: agent response did not include assistant text', { kind: 'runtime_failed' })
     } catch (err) {
-      throw new Error(`OpenClaw chat failed: ${err instanceof Error ? err.message : String(err)}`)
+      if (err instanceof TrajectoryRecoveredTurn) {
+        // The run succeeded on disk but the gateway frame never arrived
+        // within the grace window — surface the recovered content as a
+        // normal success and cancel the pending RPC (clears its timer).
+        requestAbort.abort()
+        this.logger.warn('OpenClaw agent turn recovered fail-fast: success on disk, gateway frame not delivered', {
+          agentId: opts.agentId,
+          sessionId: err.sessionId,
+        })
+        return err.content
+      }
+      if (err instanceof RuntimeTurnError) {
+        // Fail-fast verdict — the diagnosis is already complete. Cancel the
+        // pending RPC (clears its 630s timer) and surface immediately.
+        requestAbort.abort()
+        this.logger.warn('OpenClaw agent turn died; fail-fast diagnosis', {
+          agentId: opts.agentId,
+          sessionId: err.diagnosis.sessionId,
+          reason: err.diagnosis.reason,
+          completionBytes: err.diagnosis.completionBytes,
+        })
+        throw err
+      }
+      // Gateway/provider failures are already typed RuntimeErrors with the
+      // original cause attached — rethrow so classification survives the
+      // boundary (wrapping in a bare Error previously stripped `cause` and
+      // misclassified every transport failure as structural).
+      const typed = err instanceof RuntimeError
+        ? err
+        : new RuntimeError(
+            `OpenClaw chat failed: ${err instanceof Error ? err.message : String(err)}`,
+            { kind: 'runtime_failed', cause: err },
+          )
+      const verdict = this.postMortemAgentTurn(typed, trajectoryFile, trajectoryOffset, opts)
+      if (verdict?.kind === 'recovered') return verdict.content
+      if (verdict?.kind === 'death') throw verdict.error
+      throw typed
+    } finally {
+      deathWatch?.stop()
     }
+  }
+
+  /**
+   * Post-mortem for a failed agent turn. When the gateway times out or the
+   * socket drops mid-turn, the truth is in the session trajectory on disk:
+   *  - run ended `success` but the final frame was lost → RECOVER the
+   *    response text instead of failing the turn at all;
+   *  - run died (interrupted/oversized/server timeout) → a RuntimeTurnError
+   *    carrying the structured diagnosis replaces the generic error;
+   *  - no evidence → null, the original error stands.
+   */
+  private postMortemAgentTurn(
+    err: RuntimeError,
+    trajectoryFile: string | null,
+    trajectoryOffset: number,
+    opts: OpenClawAgentTurnOptions,
+  ): { kind: 'recovered'; content: string } | { kind: 'death'; error: RuntimeTurnError } | null {
+    if (!trajectoryFile) return null
+    if (err.kind !== 'timeout' && err.kind !== 'transport') return null
+
+    const outcome = inspectTrajectoryRun({
+      trajectoryFile,
+      sinceByteOffset: trajectoryOffset,
+      oversizedOutputBytes: opts.oversizedOutputBytes,
+    })
+    if (!outcome) return null
+
+    if (outcome.kind === 'success') {
+      // The turn completed; only the response frame was lost. Surfacing the
+      // recovered text turns a spurious 10-minute failure into a success.
+      this.logger.warn('OpenClaw agent turn recovered from trajectory after gateway failure', {
+        agentId: opts.agentId,
+        sessionId: outcome.sessionId,
+        error: err.message,
+      })
+      return { kind: 'recovered', content: outcome.content }
+    }
+
+    this.logger.warn('OpenClaw agent turn died; trajectory post-mortem attached', {
+      agentId: opts.agentId,
+      sessionId: outcome.diagnosis.sessionId,
+      reason: outcome.diagnosis.reason,
+      completionBytes: outcome.diagnosis.completionBytes,
+    })
+    return { kind: 'death', error: new RuntimeTurnError(outcome.diagnosis, { cause: err }) }
   }
 
   private openClawChatGateway(): OpenClawGatewayRpcClient {
@@ -1196,7 +1323,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       headers: this.headers(),
       body: JSON.stringify({ tool: toolName, action: 'json', args }),
     })
-    if (!res.ok) throw new Error(`OpenClaw invokeTool failed (${res.status}): ${await res.text()}`)
+    if (!res.ok) throw new RuntimeError(`OpenClaw invokeTool failed (${res.status}): ${await res.text()}`, { kind: 'runtime_failed' })
     return res.json()
   }
 
@@ -1248,6 +1375,11 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
   private async execCron(args: string[]): Promise<string> {
     return this.exec(args, { timeout: OPENCLAW_CRON_PROCESS_TIMEOUT_MS })
   }
+}
+
+function oversizedOutputBytesFrom(metadata: RuntimeMetadata | undefined): number | undefined {
+  const value = metadata?.oversizedOutputBytes
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
 }
 
 function messagesToOpenClawPrompt(messages: Array<{ role: string; content: string }>): string {
@@ -2124,7 +2256,8 @@ function readPath(source: Record<string, unknown>, key: string): unknown {
   return current
 }
 
-async function* mergeChatStreams(
+// Exported for tests — pure stream-merging helper with no adapter state.
+export async function* mergeChatStreams(
   primary: AsyncIterable<ChatChunk>,
   secondary: AsyncIterable<ChatChunk>,
   stopSecondary: () => void,
@@ -2153,6 +2286,13 @@ async function* mergeChatStreams(
       }
       push({ source, done: true })
     } catch (error) {
+      // The secondary (session-activity poller) is advisory — a poller
+      // hiccup must never abort a live turn and mask the primary result.
+      // Degrade to "secondary done"; primary errors still propagate.
+      if (source === 'secondary') {
+        push({ source, done: true })
+        return
+      }
       push({ source, error })
     }
   }
@@ -2160,31 +2300,37 @@ async function* mergeChatStreams(
   void pump('primary', primary)
   void pump('secondary', secondary)
 
-  let primaryDone = false
-  let secondaryDone = false
-  while (!primaryDone || !secondaryDone) {
-    if (queue.length === 0) {
-      await new Promise<void>((resolve) => { notify = resolve })
-    }
-    const item = queue.shift()
-    if (!item) continue
-    if ('error' in item) {
-      if (item.source === 'primary') stopSecondary()
-      throw item.error
-    }
-    if ('done' in item) {
-      if (item.source === 'primary') {
-        primaryDone = true
-        stopSecondary()
-      } else {
-        secondaryDone = true
+  // finally-guarded: if the consumer abandons the stream (early break /
+  // generator return), the suspended yield exits through here — without it
+  // the 200ms session-activity poller leaks and spins forever (audit C2).
+  try {
+    let primaryDone = false
+    let secondaryDone = false
+    while (!primaryDone || !secondaryDone) {
+      if (queue.length === 0) {
+        await new Promise<void>((resolve) => { notify = resolve })
       }
-      continue
+      const item = queue.shift()
+      if (!item) continue
+      if ('error' in item) {
+        throw item.error
+      }
+      if ('done' in item) {
+        if (item.source === 'primary') {
+          primaryDone = true
+          stopSecondary()
+        } else {
+          secondaryDone = true
+        }
+        continue
+      }
+      yield item.chunk
     }
-    yield item.chunk
-  }
 
-  yield { type: 'done' }
+    yield { type: 'done' }
+  } finally {
+    stopSecondary()
+  }
 }
 
 async function* watchOpenClawSessionActivity(
@@ -2245,9 +2391,29 @@ function readOpenClawSessionActivity(
   return chunks
 }
 
+// sessions.json grows one entry (with a full skillsSnapshot) per session and
+// per-dispatch sessions accumulate steadily — cache the parsed store behind
+// an mtime guard so resolution stays O(1) between writes.
+const sessionStoreCache = new Map<string, { mtimeMs: number; store: Record<string, OpenClawSessionStoreEntry> | null }>()
+
+function readSessionStoreCached(storePath: string): Record<string, OpenClawSessionStoreEntry> | null {
+  let mtimeMs: number
+  try {
+    mtimeMs = statSync(storePath).mtimeMs
+  } catch {
+    sessionStoreCache.delete(storePath)
+    return null
+  }
+  const hit = sessionStoreCache.get(storePath)
+  if (hit && hit.mtimeMs === mtimeMs) return hit.store
+  const store = readJsonFile<Record<string, OpenClawSessionStoreEntry>>(storePath)
+  sessionStoreCache.set(storePath, { mtimeMs, store })
+  return store
+}
+
 function resolveOpenClawSessionFile(agentId: string, sessionKey: string): string | undefined {
   const storePath = join(getOpenClawHome(), 'agents', agentId, 'sessions', 'sessions.json')
-  const store = readJsonFile<Record<string, OpenClawSessionStoreEntry>>(storePath)
+  const store = readSessionStoreCached(storePath)
   const entry = findOpenClawSessionStoreEntry(store, agentId, sessionKey)
   if (!entry) return undefined
   if (typeof entry.sessionFile === 'string' && entry.sessionFile.length > 0) return entry.sessionFile

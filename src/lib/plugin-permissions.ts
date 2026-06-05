@@ -90,7 +90,6 @@ const RUNTIME_DOMAIN_PERMISSIONS: Record<string, Permission> = {
   images: 'runtime.images',
   sessions: 'runtime.read',
   memory: 'runtime.read',
-  tasks: 'runtime.read',
   tools: 'runtime.read',
   config: 'runtime.read',
 }
@@ -100,7 +99,7 @@ for (const method of ['initialize', 'shutdown', 'ping', 'restart', 'getHealthChe
 }
 
 for (const [domain, permission] of Object.entries(RUNTIME_DOMAIN_PERMISSIONS)) {
-  for (const method of ['list', 'get', 'create', 'update', 'remove', 'listWorkspaceFiles', 'readWorkspaceFile', 'writeWorkspaceFile', 'removeWorkspaceFile', 'updatePermissions', 'updateAllowlist', 'heartbeat', 'send', 'stream', 'invoke', 'sendNotification', 'sendMessage', 'deliverContent', 'createApproval', 'editApproval', 'cancelApproval', 'resolveApproval', 'subscribeApprovalResponses', 'onMessage', 'onInteraction', 'write', 'listTiers', 'listEntries', 'getEntry', 'statEntry', 'readEntryRange', 'resolvePath', 'watchPaths', 'search', 'listAvailable', 'providers', 'generate', 'edit', 'dispatch', 'getExecutionStatus', 'listExecutions', 'cancelExecution', 'subscribeExecutionUpdates', 'runNow', 'listRuns', 'getRaw', 'restoreRaw', 'replace', 'raw']) {
+  for (const method of ['list', 'get', 'create', 'update', 'remove', 'listWorkspaceFiles', 'readWorkspaceFile', 'writeWorkspaceFile', 'removeWorkspaceFile', 'updatePermissions', 'updateAllowlist', 'send', 'stream', 'invoke', 'sendNotification', 'sendMessage', 'deliverContent', 'createApproval', 'editApproval', 'cancelApproval', 'resolveApproval', 'subscribeApprovalResponses', 'write', 'listTiers', 'listEntries', 'getEntry', 'statEntry', 'readEntryRange', 'resolvePath', 'watchPaths', 'search', 'listAvailable', 'providers', 'generate', 'edit', 'runNow', 'listRuns', 'getRaw', 'restoreRaw', 'replace', 'raw']) {
     METHOD_PERMISSIONS[`runtime.${domain}.${method}`] = permission
   }
 }

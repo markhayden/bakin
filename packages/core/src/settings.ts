@@ -82,6 +82,19 @@ export interface BakinSettings {
     transientCooldownMs: number
     maxDispatched: number
     maxRetries: number
+    /**
+     * A turn's final assistant output above this byte count is flagged
+     * `oversizedOutput` in session-death diagnoses. Oversized completions
+     * are what kill provider sessions (see session-death-hardening spec).
+     */
+    oversizedOutputBytes: number
+    /** Max dispatch turns in flight across all agents. */
+    maxConcurrentTurns: number
+    /**
+     * Max dispatch turns in flight per agent. Default 1 until the rig
+     * validates provider-gateway per-agent concurrency.
+     */
+    maxTurnsPerAgent: number
   }
   watchdog: {
     intervalMs: number
@@ -227,6 +240,9 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     transientCooldownMs: 60 * 1000,
     maxDispatched: 500,
     maxRetries: 5,
+    oversizedOutputBytes: 128 * 1024,
+    maxConcurrentTurns: 3,
+    maxTurnsPerAgent: 1,
   },
   watchdog: {
     intervalMs: 5 * 60 * 1000,

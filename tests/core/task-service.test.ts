@@ -456,6 +456,10 @@ describe('task-service', () => {
           content: expect.stringContaining('TASK COMPLETE'),
         })
       )
+      // Notification sends are conversational — they stay in the agent's
+      // default session, never a per-dispatch task session.
+      const sendArgs = mockRuntimeSend.mock.calls.at(-1)?.[0] as Record<string, unknown>
+      expect(sendArgs.threadId).toBeUndefined()
     })
   })
 

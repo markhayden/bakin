@@ -96,12 +96,6 @@ export interface ChatChunk {
   data?: RuntimeMetadata | RuntimeToolActivity
 }
 
-export interface ToolDefinition {
-  name: string
-  description?: string
-  inputSchema?: unknown
-}
-
 export interface ToolResult {
   ok: boolean
   output?: unknown
@@ -215,25 +209,6 @@ export interface ApprovalResolveEvent {
   approvalId: string
   response: ApprovalResponse
   channelId: string
-}
-
-export interface ChannelMessageEvent {
-  channelId: string
-  messageId: string
-  actor: { type: 'agent' | 'human'; id: string; displayName?: string }
-  body: string
-  threadId?: string
-  receivedAt: string
-  metadata?: RuntimeMetadata
-}
-
-export interface ChannelInteractionEvent {
-  channelId: string
-  interactionId: string
-  actor: { type: 'agent' | 'human'; id: string; displayName?: string }
-  kind: string
-  payload: RuntimeMetadata
-  receivedAt: string
 }
 
 export interface DurableApprovalRecord {
@@ -422,44 +397,6 @@ export interface RuntimeImagesAccess {
   edit(input: RuntimeImageEditInput): Promise<RuntimeImageGenerationResult>
 }
 
-export interface TaskDispatchArgs {
-  bakinTaskId: string
-  agentId?: string
-  title: string
-  description?: string
-  metadata?: RuntimeMetadata
-}
-
-export interface TaskDispatchResult {
-  flowId: string
-}
-
-export interface TaskExecutionStatus {
-  flowId: string
-  bakinTaskId?: string
-  state: 'queued' | 'running' | 'blocked' | 'succeeded' | 'failed' | 'cancelled' | 'unknown'
-  currentStep?: string | null
-  blockingReason?: string | null
-  retryCount?: number
-  startedAt?: string | null
-  endedAt?: string | null
-  updatedAt?: string | null
-  metadata?: RuntimeMetadata
-}
-
-export interface ListExecutionsOpts {
-  bakinTaskId?: string
-  agentId?: string
-  state?: TaskExecutionStatus['state']
-  limit?: number
-}
-
-export interface TaskExecutionEvent {
-  flowId: string
-  bakinTaskId?: string
-  status: TaskExecutionStatus
-}
-
 export interface CronJob {
   id: string
   name: string
@@ -530,7 +467,6 @@ export interface AgentRuntimeAdapter {
     removeWorkspaceFile(agentId: string, path: string): Promise<void>
     updatePermissions(agentId: string, patch: RuntimePermissionPatch): Promise<void>
     updateAllowlist(agentId: string, patch: RuntimeAllowlistPatch): Promise<void>
-    heartbeat(agentId: string): Promise<boolean>
   }
 
   messaging: {
@@ -540,7 +476,6 @@ export interface AgentRuntimeAdapter {
 
   tools: {
     invoke(agentId: string, name: string, args: unknown): Promise<ToolResult>
-    list(agentId: string): Promise<ToolDefinition[]>
   }
 
   channels: {
@@ -553,8 +488,6 @@ export interface AgentRuntimeAdapter {
     cancelApproval(args: CancelApprovalArgs): Promise<void>
     resolveApproval(args: ResolveApprovalArgs): Promise<void>
     subscribeApprovalResponses(handler: (event: ApprovalResolveEvent) => void): Unsubscribe
-    onMessage(handler: (event: ChannelMessageEvent) => void): Unsubscribe
-    onInteraction(handler: (event: ChannelInteractionEvent) => void): Unsubscribe
   }
 
   skills: {
@@ -589,14 +522,6 @@ export interface AgentRuntimeAdapter {
   }
 
   images?: RuntimeImagesAccess
-
-  tasks: {
-    dispatch(args: TaskDispatchArgs): Promise<TaskDispatchResult>
-    getExecutionStatus(flowId: string): Promise<TaskExecutionStatus>
-    listExecutions(opts?: ListExecutionsOpts): Promise<TaskExecutionStatus[]>
-    cancelExecution(flowId: string): Promise<void>
-    subscribeExecutionUpdates(handler: (event: TaskExecutionEvent) => void): Unsubscribe
-  }
 
   cron: {
     list(): Promise<CronJob[]>

@@ -1,4 +1,4 @@
-import type { AgentRuntimeAdapter, RuntimeAgent, TaskExecutionStatus } from './concepts'
+import type { AgentRuntimeAdapter, RuntimeAgent } from './concepts'
 
 async function* emptyStream(): AsyncIterable<never> {
   const items: never[] = []
@@ -9,7 +9,6 @@ export function createMockRuntimeAdapter(
   overrides: Partial<AgentRuntimeAdapter> = {}
 ): AgentRuntimeAdapter {
   const agents = new Map<string, RuntimeAgent>()
-  const executions = new Map<string, TaskExecutionStatus>()
 
   const adapter: AgentRuntimeAdapter = {
     name: 'mock-runtime',
@@ -51,7 +50,6 @@ export function createMockRuntimeAdapter(
       removeWorkspaceFile: async () => {},
       updatePermissions: async () => {},
       updateAllowlist: async () => {},
-      heartbeat: async () => true,
     },
 
     messaging: {
@@ -61,7 +59,6 @@ export function createMockRuntimeAdapter(
 
     tools: {
       invoke: async () => ({ ok: true }),
-      list: async () => [],
     },
 
     channels: {
@@ -74,8 +71,6 @@ export function createMockRuntimeAdapter(
       cancelApproval: async () => {},
       resolveApproval: async () => {},
       subscribeApprovalResponses: () => () => {},
-      onMessage: () => () => {},
-      onInteraction: () => () => {},
     },
 
     skills: {
@@ -103,27 +98,6 @@ export function createMockRuntimeAdapter(
 
     models: {
       listAvailable: async () => [],
-    },
-
-    tasks: {
-      dispatch: async (args) => {
-        const flowId = `flow-${args.bakinTaskId}`
-        executions.set(flowId, {
-          flowId,
-          bakinTaskId: args.bakinTaskId,
-          state: 'queued',
-          retryCount: 0,
-          updatedAt: new Date().toISOString(),
-        })
-        return { flowId }
-      },
-      getExecutionStatus: async (flowId) => executions.get(flowId) ?? { flowId, state: 'unknown' },
-      listExecutions: async () => Array.from(executions.values()),
-      cancelExecution: async (flowId) => {
-        const existing = executions.get(flowId)
-        if (existing) executions.set(flowId, { ...existing, state: 'cancelled', endedAt: new Date().toISOString() })
-      },
-      subscribeExecutionUpdates: () => () => {},
     },
 
     cron: {

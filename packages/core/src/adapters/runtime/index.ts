@@ -9,6 +9,14 @@ export type {
 
 export type { ChannelCapability } from './capabilities'
 export { hasChannelCapability } from './capabilities'
+export { RuntimeError, RuntimeTurnError } from './errors'
+export type {
+  RuntimeErrorKind,
+  RuntimeErrorOptions,
+  RuntimeProviderInfo,
+  RuntimeTurnDiagnosis,
+  RuntimeTurnFailureReason,
+} from './errors'
 export {
   getRuntimeMainAgent,
   getRuntimeMainAgentId,
@@ -26,9 +34,7 @@ export type {
   ApprovalResponse,
   CancelApprovalArgs,
   ChannelInfo,
-  ChannelInteractionEvent,
   ChannelMessageArgs,
-  ChannelMessageEvent,
   ChatChunk,
   ContentDeliveryArgs,
   CreateApprovalArgs,
@@ -39,7 +45,6 @@ export type {
   DeliveryResult,
   DurableApprovalRecord,
   EditApprovalArgs,
-  ListExecutionsOpts,
   MessageArgs,
   MessageResult,
   NotificationArgs,
@@ -71,11 +76,6 @@ export type {
   RawCronSnapshot,
   RuntimeSession,
   RuntimeSkill,
-  TaskDispatchArgs,
-  TaskDispatchResult,
-  TaskExecutionEvent,
-  TaskExecutionStatus,
-  ToolDefinition,
   ToolResult,
   UpdateCronJobInput,
   UpdateRuntimeAgentInput,

@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, mock, type Mock } from 'bu
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+// Failure simulations throw what the OpenClaw adapter actually emits: typed
+// RuntimeErrors produced by its single provider-string interpreter.
+import { openClawRuntimeErrorFromMessage } from '../../packages/adapter-openclaw/src/errors'
+import { RuntimeError } from '../../packages/core/src/adapters/runtime'
 
 // Defensive content-dir mock (per CLAUDE.md test isolation rules). The
 // dispatch module takes `contentDir` as a parameter so it never calls
@@ -33,6 +37,9 @@ mock.module('../../src/core/settings', () => ({
       failureCooldownMs: 30 * 60 * 1000,  // 30m — structural
       transientCooldownMs: 60 * 1000,     // 60s — transient
       maxDispatched: 500,
+      oversizedOutputBytes: 128 * 1024,
+      maxConcurrentTurns: 3,
+      maxTurnsPerAgent: 1,
     },
     agents: ['main', 'pixel', 'trainer'],
     watchdog: { stuckThresholdMs: 30 * 60 * 1000 },
@@ -131,7 +138,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 import { loadDispatchState, start, stop, getDispatchInfo, isTaskDispatchEligible } from '../../src/core/dispatch'
-import { dispatchTasks } from '../../src/core/dispatch'
+import { dispatchTasks, awaitDispatchIdle } from '../../src/core/dispatch'
 import { getHookRegistry } from '../../src/lib/plugin-registry'
 import type { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
 
@@ -197,6 +204,31 @@ describe('dispatch', () => {
         { id: 'missing-agent', title: 'Missing agent task', agent: 'ghost' },
         { nowMs, runtimeAgentIds, completedTaskIds },
       )).toEqual({ eligible: false, reason: 'agent' })
+    })
+
+    it('treats a dependency on a hard-deleted task as satisfied (stranding guard)', () => {
+      // archiveOldTasks removes old task files entirely — a dependent must
+      // not strand forever waiting on an id that no longer exists anywhere.
+      const knownTaskIds = new Set(['some-live-task'])
+      expect(isTaskDispatchEligible(
+        { id: 'stranded', title: 'Stranded task', dependsOn: 'vanished-task' },
+        { nowMs, runtimeAgentIds, completedTaskIds, knownTaskIds },
+      )).toEqual({ eligible: true, danglingDependency: 'vanished-task' })
+    })
+
+    it('still gates on a dependency that exists but is not complete', () => {
+      const knownTaskIds = new Set(['other-task'])
+      expect(isTaskDispatchEligible(
+        { id: 'gated', title: 'Gated task', dependsOn: 'other-task' },
+        { nowMs, runtimeAgentIds, completedTaskIds, knownTaskIds },
+      )).toEqual({ eligible: false, reason: 'dependency' })
+    })
+
+    it('without knownTaskIds context the legacy gating is unchanged', () => {
+      expect(isTaskDispatchEligible(
+        { id: 'legacy', title: 'Legacy gate', dependsOn: 'other-task' },
+        { nowMs, runtimeAgentIds, completedTaskIds },
+      )).toEqual({ eligible: false, reason: 'dependency' })
     })
   })
 
@@ -362,6 +394,7 @@ describe('dispatch', () => {
       mockRuntimeSend.mockRejectedValueOnce(new TypeError('fetch failed'))
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const state1 = readState()
       expect(state1.failedDispatches['t-transient']).toBeDefined()
@@ -373,6 +406,7 @@ describe('dispatch', () => {
       writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify(state1))
       mockRuntimeSend.mockClear()
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
       expect(mockRuntimeSend).not.toHaveBeenCalled()
 
       // 65s later — cooldown expired → retried
@@ -381,6 +415,7 @@ describe('dispatch', () => {
       writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify(state2))
       mockRuntimeSend.mockResolvedValueOnce({ id: 'runtime-msg' })
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
       expect(mockRuntimeSend).toHaveBeenCalledTimes(1)
     })
 
@@ -391,6 +426,7 @@ describe('dispatch', () => {
       )
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const state1 = readState()
       expect(state1.failedDispatches['t-structural'].kind).toBe('structural')
@@ -400,6 +436,7 @@ describe('dispatch', () => {
       writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify(state1))
       mockRuntimeSend.mockClear()
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
       expect(mockRuntimeSend).not.toHaveBeenCalled()
     })
 
@@ -429,6 +466,7 @@ describe('dispatch', () => {
       }))
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
       expect(mockStoreBlockTask).toHaveBeenCalledTimes(1)
       expect(mockRuntimeSend).not.toHaveBeenCalled()
     })
@@ -441,6 +479,7 @@ describe('dispatch', () => {
       mockRuntimeSend.mockRejectedValueOnce(new TypeError('fetch failed'))
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const dispatchFailed = vi.mocked(appendAudit).mock.calls.find((c: any[]) => c[1] === 'task.dispatch_failed')
       expect(dispatchFailed).toBeDefined()
@@ -454,10 +493,11 @@ describe('dispatch', () => {
 
       setupTodoTask({ id: 't-provider-cooldown', title: 'Provider cooldown task', agent: 'main' })
       mockRuntimeSend.mockRejectedValueOnce(
-        new Error('OpenClaw chat failed: FallbackSummaryError: All models failed (1): openai-codex/gpt-5.5: Provider openai-codex is in cooldown (suspending lanes) (timeout); code=UNAVAILABLE'),
+        openClawRuntimeErrorFromMessage('FallbackSummaryError: All models failed (1): openai-codex/gpt-5.5: Provider openai-codex is in cooldown (suspending lanes) (timeout); code=UNAVAILABLE'),
       )
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const dispatchFailed = vi.mocked(appendAudit).mock.calls.find((c: any[]) => c[1] === 'task.dispatch_failed')
       expect(dispatchFailed).toBeDefined()
@@ -491,10 +531,11 @@ describe('dispatch', () => {
 
       setupTodoTask({ id: 't-auth-profile', title: 'Auth profile task', agent: 'main' })
       mockRuntimeSend.mockRejectedValueOnce(
-        new Error('Failed to dispatch "Auth profile task" to main OpenClaw chat failed: Error: No available auth profile for openai-codex (all in cooldown or unavailable).; code=UNAVAILABLE'),
+        openClawRuntimeErrorFromMessage('Error: No available auth profile for openai-codex (all in cooldown or unavailable).; code=UNAVAILABLE'),
       )
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const dispatchFailed = vi.mocked(appendAudit).mock.calls.find((c: any[]) => c[1] === 'task.dispatch_failed')
       expect(dispatchFailed).toBeDefined()
@@ -525,6 +566,7 @@ describe('dispatch', () => {
       mockRuntimeSend.mockRejectedValueOnce(abortErr)
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const state = readState()
       expect(state.failedDispatches['t-abort'].kind).toBe('transient')
@@ -535,6 +577,7 @@ describe('dispatch', () => {
       mockRuntimeSend.mockRejectedValueOnce(new Error('something entirely unexpected'))
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const state = readState()
       expect(state.failedDispatches['t-unknown'].kind).toBe('structural')
@@ -564,6 +607,7 @@ describe('dispatch', () => {
       mockRuntimeSend.mockRejectedValueOnce(new TypeError('fetch failed'))
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const state = readState()
       const record = state.failedDispatches['wf-fail']
@@ -574,7 +618,11 @@ describe('dispatch', () => {
       expect(typeof record.lastAttempt).toBe('number')
     })
 
-    it('blocks an in-progress task when the accepted agent run terminates before completion', async () => {
+    it('routes an idle-timeout turn death into the recovery ladder instead of blocking immediately', async () => {
+      // Pre-P10 behavior blocked on the first idle-timeout death. The ladder
+      // supersedes that: death 1 → corrective re-dispatch (deterministic
+      // failures get a changed approach, not a parked task). Full ladder
+      // coverage lives in dispatch-session-death.test.ts.
       const task = { id: 't-idle-timeout', title: 'Terminal timeout task', agent: 'pixel', log: [] }
       setupTodoTask(task)
       mockRuntimeSend.mockImplementationOnce(async () => {
@@ -589,22 +637,20 @@ describe('dispatch', () => {
           done: [],
           archived: [],
         })
-        throw new Error('OpenClaw chat failed: codex app-server turn idle timed out waiting for turn/completed')
+        throw openClawRuntimeErrorFromMessage('codex app-server turn idle timed out waiting for turn/completed')
       })
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
-      expect(mockStoreBlockTask).toHaveBeenCalledWith(
-        't-idle-timeout',
-        expect.stringContaining('Agent runtime timed out before reporting completion'),
-      )
-      expect(mockStoreAddTaskLog).toHaveBeenCalledWith(
-        't-idle-timeout',
-        'system',
-        expect.stringContaining('Agent run ended before task completion'),
-      )
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+      // Bounced back to todo for the corrective attempt.
+      expect(mockStoreMoveTask).toHaveBeenCalledWith('t-idle-timeout', 'todo', 'inProgress')
       const state = readState()
-      expect(state.failedDispatches['t-idle-timeout']).toBeUndefined()
+      expect(state.failedDispatches['t-idle-timeout']?.sessionDeath).toMatchObject({
+        stage: 'corrective',
+        deaths: 1,
+      })
       expect(state.dispatched).not.toContain('t-idle-timeout')
     })
 
@@ -623,10 +669,11 @@ describe('dispatch', () => {
           }],
           archived: [],
         })
-        throw new Error('OpenClaw chat gateway request timed out: agent')
+        throw new RuntimeError('OpenClaw chat gateway request timed out: agent', { kind: 'timeout' })
       })
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       expect(mockStoreBlockTask).not.toHaveBeenCalled()
       expect(mockStoreMoveTask).not.toHaveBeenCalled()
@@ -638,6 +685,97 @@ describe('dispatch', () => {
       const state = readState()
       expect(state.failedDispatches['t-completed-before-timeout']).toBeUndefined()
       expect(state.dispatched).not.toContain('t-completed-before-timeout')
+    })
+  })
+
+  describe('per-dispatch sessions (threadId d<seq>)', () => {
+    type ColumnsShape = { todo: Array<{ id: string; title: string; agent?: string }>; inProgress: never[]; done: never[]; archived: never[] }
+
+    function setupTask(task: { id: string; title: string; agent?: string }): void {
+      const columns: ColumnsShape = { todo: [task], inProgress: [], done: [], archived: [] }
+      setDispatchColumns(columns)
+      const invoke = mock(async (hook: string) => {
+        if (hook === 'workflows.getActiveAgents') return []
+        return undefined
+      })
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke,
+        has: mock().mockReturnValue(false),
+        register: mock(),
+      } as unknown as HookRegistry)
+    }
+
+    function readState() {
+      return JSON.parse(readFileSync(join(tempDir, '.dispatch-state.json'), 'utf-8'))
+    }
+
+    afterEach(() => {
+      mockRuntimeSend.mockClear()
+      mockRuntimeSend.mockImplementation((...args: unknown[]) => {
+        void args
+        return Promise.resolve({ id: 'runtime-msg' })
+      })
+    })
+
+    it('passes a per-attempt threadId + oversized threshold and persists the monotonic seq', async () => {
+      setupTask({ id: 't-thread', title: 'Threaded task', agent: 'pixel' })
+
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+      expect(mockRuntimeSend).toHaveBeenCalledTimes(1)
+      const args = mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>
+      expect(args.threadId).toBe('task:t-thread:d1')
+      expect((args.metadata as Record<string, unknown>).oversizedOutputBytes).toBeGreaterThan(0)
+      expect(readState().dispatchSeq['t-thread']).toBe(1)
+    })
+
+    it('seq survives success: a later re-dispatch of the same task gets a FRESH session key', async () => {
+      setupTask({ id: 't-again', title: 'Comes back later', agent: 'pixel' })
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+      expect((mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>).threadId).toBe('task:t-again:d1')
+
+      // Task completed, then returns to todo (e.g. dependency continuation).
+      // Failure count is empty — the OLD attempt-derived scheme would mint
+      // d1 again and resume the stale session.
+      const state = readState()
+      state.dispatched = []
+      writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify(state))
+      setupTask({ id: 't-again', title: 'Comes back later', agent: 'pixel' })
+
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+      const second = mockRuntimeSend.mock.calls[1]?.[0] as Record<string, unknown>
+      expect(second.threadId).toBe('task:t-again:d2')
+    })
+
+    it('workflow step dispatches scope the threadId by stepId', async () => {
+      const columns = {
+        todo: [{ id: 'wf-thread', title: 'Workflow task', workflowId: 'flow-1', agent: 'pixel' }],
+        inProgress: [], done: [], archived: [],
+      }
+      setDispatchColumns(columns)
+      const invoke = mock(async (hook: string) => {
+        if (hook === 'workflows.loadInstance') return { id: 'inst-1' }
+        if (hook === 'workflows.getActiveAgents') return [{ agent: 'pixel', stepId: 'step-generate' }]
+        if (hook === 'workflows.getCurrentStep') {
+          return { stepId: 'step-generate', label: 'Generate', instructions: 'make it', output_schema: {} }
+        }
+        return undefined
+      })
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke,
+        has: mock().mockReturnValue(false),
+        register: mock(),
+      } as unknown as HookRegistry)
+
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+      const args = mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>
+      expect(args.threadId).toBe('task:wf-thread:step:step-generate:d1')
     })
   })
 
@@ -670,6 +808,7 @@ describe('dispatch', () => {
       } as unknown as HookRegistry)
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       expect(mockRuntimeSend).not.toHaveBeenCalled()
 
@@ -695,6 +834,7 @@ describe('dispatch', () => {
       })
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const state = JSON.parse(readFileSync(join(tempDir, '.dispatch-state.json'), 'utf-8'))
       expect(state.dispatched).toEqual(['active-1'])

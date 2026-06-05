@@ -1102,6 +1102,61 @@ describe('bakin_exec_tasks_create', () => {
     expect(result.notice).toContain('No workflow attached')
   })
 
+  it('nudges toward checklist structure when the description enumerates several deliverables', async () => {
+    mockCreateTaskWithEffects.mockResolvedValue({ id: 'multi-1' })
+
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
+    const result = await callTool(tool, {
+      title: 'Competitive research',
+      parentId: 'parent-1',
+      description: 'Produce:\n1. Executive brief\n2. Technical report\n3. Comparison matrix\n4. Recommendation memo',
+    }, 'chef')
+
+    expect(result.ok).toBe(true)
+    expect(result.notice).toContain('markdown checklist')
+    expect(result.notice).toContain('one in succession')
+  })
+
+  it('nudge boundary: 2 enumerated items stay silent, 3 fire — across marker styles', async () => {
+    mockCreateTaskWithEffects.mockResolvedValue({ id: 'bound-1' })
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
+
+    const two = await callTool(tool, {
+      title: 'Two items',
+      parentId: 'parent-1',
+      description: 'Deliver:\n- brief\n- report',
+    }, 'chef')
+    expect(two.notice ?? '').not.toContain('markdown checklist')
+
+    const threeMixed = await callTool(tool, {
+      title: 'Three items, mixed markers',
+      parentId: 'parent-1',
+      description: 'Deliver:\n• brief\n* report\n1) matrix',
+    }, 'chef')
+    expect(threeMixed.notice).toContain('markdown checklist')
+  })
+
+  it('does NOT nudge for checklist-formatted or short descriptions (advisory only, never rejects)', async () => {
+    mockCreateTaskWithEffects.mockResolvedValue({ id: 'ok-1' })
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
+
+    const checklisted = await callTool(tool, {
+      title: 'Research',
+      parentId: 'parent-1',
+      description: '- [ ] brief\n- [ ] report\n- [ ] matrix\n- [ ] memo',
+    }, 'chef')
+    expect(checklisted.ok).toBe(true)
+    expect(checklisted.notice ?? '').not.toContain('markdown checklist')
+
+    const short = await callTool(tool, {
+      title: 'Small task',
+      parentId: 'parent-1',
+      description: 'Just one deliverable:\n- the report',
+    }, 'chef')
+    expect(short.ok).toBe(true)
+    expect(short.notice ?? '').not.toContain('markdown checklist')
+  })
+
   it('triggers dispatch when assignee is provided', async () => {
     mockCreateTaskWithEffects.mockResolvedValue({ id: 'disp-1' })
 

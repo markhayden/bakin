@@ -221,7 +221,15 @@ describe('T2.3 agent usage wiring', () => {
     // Stub settings before importing dispatch.
     mock.module('../../src/core/settings', () => ({
       getSettings: () => ({
-        dispatch: { maxRetries: 3, failureCooldownMs: 1000, transientCooldownMs: 500, maxDispatched: 200 },
+        dispatch: {
+          maxRetries: 3,
+          failureCooldownMs: 1000,
+          transientCooldownMs: 500,
+          maxDispatched: 200,
+          oversizedOutputBytes: 128 * 1024,
+          maxConcurrentTurns: 3,
+          maxTurnsPerAgent: 1,
+        },
       }),
     }))
     // Stub taskboard lib used via dynamic import inside dispatch.
@@ -231,10 +239,12 @@ describe('T2.3 agent usage wiring', () => {
     }))
 
     // State file is written under testDir — provide an empty file ok.
-    const { dispatchSingleTask } = require('../../src/core/dispatch') as typeof import('../../src/core/dispatch')
+    const { dispatchSingleTask, awaitDispatchIdle } = require('../../src/core/dispatch') as typeof import('../../src/core/dispatch')
     taskColumns.todo.push({ id: 'dispatch-task-1', title: 'Dispatch me', agent: 'alice' })
 
     await dispatchSingleTask('dispatch-task-1', testDir, 3737, 'kick')
+    // Usage records at turn settle under concurrent dispatch.
+    await awaitDispatchIdle()
 
     const feed = getUsageFeed({ window: '5m', kind: 'agent' })
     const dispatches = feed.recent.filter(e => e.name === 'dispatch')

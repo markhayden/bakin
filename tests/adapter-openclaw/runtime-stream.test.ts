@@ -102,10 +102,38 @@ describe('OpenClaw runtime Gateway chat', () => {
       deliver: false,
       timeout: 600,
     })
-    expect(agentRequest?.params.idempotencyKey).toMatch(/^bakin-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    // Threaded sends use the stable per-attempt key (same threadId → same
+    // key → gateway-side idempotency for transport retries of one turn).
+    expect(agentRequest?.params.idempotencyKey).toBe('bakin:messaging:a50b420e:pixel')
     expect(agentRequest?.params).not.toHaveProperty('expectFinal')
     expect(agentRequest?.params).not.toHaveProperty('timeoutMs')
     expect(agentRequest?.params.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    expect(result.metadata?.sessionId).toBe(agentRequest?.params.sessionId)
+  })
+
+  it('unthreaded sends keep a random idempotency key and expose no session id', async () => {
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const result = await runtime.messaging.send({ agentId: 'pixel', content: 'notify' })
+
+    const ws = FakeWebSocket.instances[0]!
+    const agentRequest = ws.sentFrames.find(frame => frame.method === 'agent')
+    expect(agentRequest?.params.idempotencyKey).toMatch(/^bakin-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    expect(agentRequest?.params).not.toHaveProperty('sessionId')
+    expect(result.metadata).toBeUndefined()
+  })
+
+  it('two task-attempt threadIds land in distinct provider sessions', async () => {
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const first = await runtime.messaging.send({ agentId: 'pixel', content: 'attempt 1', threadId: 'task:t-1:d1' })
+    const second = await runtime.messaging.send({ agentId: 'pixel', content: 'attempt 2', threadId: 'task:t-1:d2' })
+
+    expect(first.metadata?.sessionId).toBeDefined()
+    expect(second.metadata?.sessionId).toBeDefined()
+    expect(first.metadata?.sessionId).not.toBe(second.metadata?.sessionId)
   })
 
   it('forwards per-turn tool policy on messaging sends', async () => {
@@ -203,7 +231,7 @@ describe('OpenClaw runtime Gateway chat', () => {
       agentId: 'pixel',
       content: 'hello',
       threadId: 'messaging:a50b420e:pixel',
-    })).rejects.toThrow('OpenClaw chat failed: Invalid session ID: messaging:a50b420e:pixel; code=invalid_session')
+    })).rejects.toThrow('Invalid session ID: messaging:a50b420e:pixel; code=invalid_session')
   })
 
   it('includes safe Gateway error details in chat failures', async () => {
@@ -229,7 +257,201 @@ describe('OpenClaw runtime Gateway chat', () => {
       agentId: 'pixel',
       content: 'hello',
       threadId: 'messaging:a50b420e:pixel',
-    })).rejects.toThrow('OpenClaw chat failed: protocol mismatch; code=INVALID_REQUEST; details={"expectedProtocol":4}')
+    })).rejects.toThrow('protocol mismatch; code=INVALID_REQUEST; details={"expectedProtocol":4}')
+  })
+
+  it('post-mortem: a mid-turn disconnect with a dead session yields RuntimeTurnError with diagnosis', async () => {
+    const { RuntimeTurnError } = await import('../../packages/core/src/adapters/runtime')
+    const bigText = 'B'.repeat(262_144)
+
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method !== 'agent') return
+      // OpenClaw records the death in the trajectory, then the gateway
+      // connection drops without ever delivering a final frame.
+      const sessionId = frame.params.sessionId as string
+      const dir = join(testDir, 'agents', 'pixel', 'sessions')
+      mkdirSync(dir, { recursive: true })
+      const lines = [
+        { type: 'session.started', data: { toolCount: 15 } },
+        { type: 'tool.call', data: { name: 'bakin_exec_tasks_log_progress' } },
+        { type: 'model.completed', data: { timedOut: false, aborted: false, usage: { input: 42000, output: 12000, total: 54000 }, assistantTexts: [bigText] } },
+        { type: 'session.ended', data: { status: 'interrupted', timedOut: false } },
+      ].map((e, i) => JSON.stringify({
+        traceSchema: 'openclaw-trajectory', schemaVersion: 1, traceId: sessionId,
+        type: e.type, ts: new Date(0).toISOString(), seq: i + 1, sessionId, runId: 'run-1', data: e.data,
+      }))
+      writeFileSync(join(dir, `${sessionId}.trajectory.jsonl`), lines.join('\n') + '\n')
+      ws.close()
+    }
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    try {
+      await runtime.messaging.send({
+        agentId: 'pixel',
+        content: 'produce six deliverables',
+        threadId: 'task:t-100:d1',
+      })
+      throw new Error('expected send to reject')
+    } catch (err) {
+      expect(err).toBeInstanceOf(RuntimeTurnError)
+      const diagnosis = (err as InstanceType<typeof RuntimeTurnError>).diagnosis
+      expect(diagnosis.reason).toBe('session_interrupted')
+      expect(diagnosis.sessionStatus).toBe('interrupted')
+      expect(diagnosis.oversizedOutput).toBe(true)
+      expect(diagnosis.outputTruncated).toBe(true)
+      expect(diagnosis.completionBytes).toBe(262_144)
+      expect(diagnosis.lastToolCall).toBe('bakin_exec_tasks_log_progress')
+      expect(diagnosis.salvagedText?.length).toBe(262_144)
+      expect(diagnosis.detail).toContain('oversized model completion')
+    }
+  })
+
+  it('fail-fast: a session death during a PENDING turn rejects in <1s without waiting for the transport timer (CP2)', async () => {
+    const { RuntimeTurnError } = await import('../../packages/core/src/adapters/runtime')
+
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method !== 'agent') return
+      // The gateway accepts the turn… and then never sends a final frame.
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: { status: 'accepted' } })
+      const sessionId = frame.params.sessionId as string
+      const dir = join(testDir, 'agents', 'jessica', 'sessions')
+      mkdirSync(dir, { recursive: true })
+      // ~300ms into the turn, OpenClaw records the death on disk.
+      setTimeout(() => {
+        const lines = [
+          { type: 'session.started', data: {} },
+          { type: 'tool.call', data: { name: 'bakin_exec_tasks_log_progress' } },
+          { type: 'model.completed', data: { timedOut: false, assistantTexts: ['X'.repeat(200_000)] } },
+          { type: 'session.ended', data: { status: 'interrupted', timedOut: false } },
+        ].map((e, i) => JSON.stringify({
+          traceSchema: 'openclaw-trajectory', schemaVersion: 1, traceId: sessionId,
+          type: e.type, ts: new Date(0).toISOString(), seq: i + 1, sessionId, runId: 'run-1', data: e.data,
+        }))
+        writeFileSync(join(dir, `${sessionId}.trajectory.jsonl`), lines.join('\n') + '\n')
+      }, 300)
+    }
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const startedAt = Date.now()
+    try {
+      await runtime.messaging.send({
+        agentId: 'jessica',
+        content: 'six deliverables please',
+        threadId: 'task:t-200:d1',
+      })
+      throw new Error('expected send to reject')
+    } catch (err) {
+      const elapsed = Date.now() - startedAt
+      expect(err).toBeInstanceOf(RuntimeTurnError)
+      const diagnosis = (err as InstanceType<typeof RuntimeTurnError>).diagnosis
+      expect(diagnosis.reason).toBe('session_interrupted')
+      expect(diagnosis.oversizedOutput).toBe(true)
+      expect(diagnosis.lastToolCall).toBe('bakin_exec_tasks_log_progress')
+      // Death written at ~300ms; detection budget is 2 poll intervals.
+      expect(elapsed).toBeLessThan(1000)
+    }
+  })
+
+  it('fail-fast success arm: a lost final frame on a SUCCESSFUL run recovers after the grace window, not after 630s', async () => {
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method !== 'agent') return
+      // Accept the turn; record success on disk; never send the final frame.
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: { status: 'accepted' } })
+      const sessionId = frame.params.sessionId as string
+      const dir = join(testDir, 'agents', 'pixel', 'sessions')
+      mkdirSync(dir, { recursive: true })
+      setTimeout(() => {
+        const lines = [
+          { type: 'session.started', data: {} },
+          { type: 'model.completed', data: { timedOut: false, assistantTexts: ['saved everything: a1..a6'] } },
+          { type: 'session.ended', data: { status: 'success', timedOut: false } },
+        ].map((e, i) => JSON.stringify({
+          traceSchema: 'openclaw-trajectory', schemaVersion: 1, traceId: sessionId,
+          type: e.type, ts: new Date(0).toISOString(), seq: i + 1, sessionId, runId: 'run-1', data: e.data,
+        }))
+        writeFileSync(join(dir, `${sessionId}.trajectory.jsonl`), lines.join('\n') + '\n')
+      }, 100)
+    }
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const startedAt = Date.now()
+    const result = await runtime.messaging.send({
+      agentId: 'pixel',
+      content: 'finish up',
+      threadId: 'task:t-graced:d1',
+    })
+    const elapsed = Date.now() - startedAt
+    expect(result.content).toBe('saved everything: a1..a6')
+    // Success at ~100ms + 2s grace — far below the 630s transport timer.
+    expect(elapsed).toBeLessThan(5000)
+  })
+
+  it('a success frame with no extractable text recovers the content from the trajectory', async () => {
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method !== 'agent') return
+      const sessionId = frame.params.sessionId as string
+      const dir = join(testDir, 'agents', 'pixel', 'sessions')
+      mkdirSync(dir, { recursive: true })
+      const lines = [
+        { type: 'session.started', data: {} },
+        { type: 'model.completed', data: { timedOut: false, assistantTexts: ['content lives on disk'] } },
+        { type: 'session.ended', data: { status: 'success', timedOut: false } },
+      ].map((e, i) => JSON.stringify({
+        traceSchema: 'openclaw-trajectory', schemaVersion: 1, traceId: sessionId,
+        type: e.type, ts: new Date(0).toISOString(), seq: i + 1, sessionId, runId: 'run-1', data: e.data,
+      }))
+      writeFileSync(join(dir, `${sessionId}.trajectory.jsonl`), lines.join('\n') + '\n')
+      // SUCCESS frame whose payload yields no text via extractOpenClawAgentText.
+      ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: { status: 'accepted' } })
+      queueMicrotask(() => {
+        ws.emitMessage({ type: 'res', id: frame.id, ok: true, payload: { unexpected: 'shape' } })
+      })
+    }
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const result = await runtime.messaging.send({
+      agentId: 'pixel',
+      content: 'finish up',
+      threadId: 'task:t-notext:d1',
+    })
+    expect(result.content).toBe('content lives on disk')
+  })
+
+  it('post-mortem: recovers the response text when the run succeeded but the frame was lost', async () => {
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method !== 'agent') return
+      const sessionId = frame.params.sessionId as string
+      const dir = join(testDir, 'agents', 'pixel', 'sessions')
+      mkdirSync(dir, { recursive: true })
+      const lines = [
+        { type: 'session.started', data: {} },
+        { type: 'model.completed', data: { timedOut: false, assistantTexts: ['done: saved assets a1..a6'] } },
+        { type: 'session.ended', data: { status: 'success', timedOut: false } },
+      ].map((e, i) => JSON.stringify({
+        traceSchema: 'openclaw-trajectory', schemaVersion: 1, traceId: sessionId,
+        type: e.type, ts: new Date(0).toISOString(), seq: i + 1, sessionId, runId: 'run-1', data: e.data,
+      }))
+      writeFileSync(join(dir, `${sessionId}.trajectory.jsonl`), lines.join('\n') + '\n')
+      ws.close()
+    }
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const result = await runtime.messaging.send({
+      agentId: 'pixel',
+      content: 'finish the task',
+      threadId: 'task:t-101:d1',
+    })
+    expect(result.content).toBe('done: saved assets a1..a6')
   })
 
   it('emits OpenClaw transcript tool activity while the Gateway agent request is pending', async () => {

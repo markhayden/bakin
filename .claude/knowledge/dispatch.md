@@ -1,36 +1,92 @@
-# Dispatch Failure Handling — Deep Reference
+# Dispatch — Deep Reference
 
-Two layers of defense against transient network blips (issue #115).
+Concurrent, session-scoped task dispatch with typed failure classification
+and a session-death recovery ladder. Companion deep dive:
+`.claude/knowledge/session-forensics.md`.
 
-## Layer 1: Runtime adapter send retry
+## Concurrent dispatch model
 
-Agent delivery goes through `getAppServices().runtime` and the active runtime
-adapter. Adapter implementations may retry transport-level failures, but Bakin
-treats retry policy as an adapter concern. The OpenClaw adapter keeps
-provider-specific HTTP details behind `packages/adapter-openclaw`.
+The dispatch cycle **fires sends and returns** — it never awaits an agent
+turn (turns legally run up to 10 minutes; the old serial-await loop stalled
+the whole board behind one slow agent). Mechanics in `src/core/dispatch.ts`:
 
-- `TypeError('fetch failed')`
-- `ECONNRESET`-class socket errors (detected via `err.cause.code`)
-- `AbortError`
+- `fireDispatchTurn()` registers each send in an in-flight turn registry
+  (`marker → { agentId, threadId, startedAt, settled }`) and attaches settle
+  handlers that re-load state under the lock and reconcile (success cleanup,
+  session-death ladder, or generic cooldown). The registry is advisory —
+  caps + bookkeeping, never task state; restart recovery is unchanged.
+- **Caps:** `settings.dispatch.maxConcurrentTurns` (global, default 3) and
+  `maxTurnsPerAgent` (default 1 pending rig validation of gateway per-agent
+  concurrency). A capped task is deferred with no failure recorded.
+- The state lock spans only the scan/fire phase, so manual kicks
+  (`dispatchSingleTask`) interleave with in-flight cycles.
+- `awaitDispatchIdle()` — deterministic "all turns + bookkeeping settled"
+  synchronization for tests and shutdown.
 
-HTTP responses (including 4xx/5xx) are structural adapter failures from
-Bakin's point of view and should propagate immediately.
+## Per-dispatch sessions
 
-## Layer 2: Cooldown classification in the dispatch loop
+Every task send carries a fresh provider session via
+`threadId = task:<taskId>:d<seq>` (workflow steps:
+`task:<taskId>:step:<stepId>:d<seq>`). `seq` is a **monotonic per-task
+counter** persisted immediately in `.dispatch-state.json#dispatchSeq` — never
+the failure count, which resets on success and would resume a stale session.
+Consequences:
 
-When a failure reaches `dispatch.ts`, `classifyDispatchError()` splits it into:
+- No cross-task context accumulation (a major contributor to oversized
+  completions), deterministic forensics per attempt, corrective re-dispatches
+  never replay a dead session's context.
+- The adapter uses the stable idempotency key `bakin:<threadId>` for threaded
+  turns and returns the provider `sessionId` in `MessageResult.metadata`.
+- Notification sends (orchestrator complete-ping, watchdog, doctor, agents
+  API) deliberately stay in the agent's default session — only task work is
+  session-scoped.
 
-- **`transient`** — fetch/network errors that escaped the inner retry
-- **`structural`** — runtime adapter failures that are not transient network errors
+## Failure classification (typed, no string matching)
 
-Cooldown chosen by class:
+Adapters throw typed `RuntimeError`s (`@bakin/core/adapters/runtime`) with a
+structural `kind`; `classifyDispatchError()` maps kinds to cooldown classes.
+**No error-message text is ever inspected in dispatch.ts** — an architecture
+test pins this.
 
-| Class | Setting | Default |
+| RuntimeError kind | Cooldown class | reasonCode |
 |---|---|---|
-| transient | `settings.dispatch.transientCooldownMs` | 60 s |
-| structural | `settings.dispatch.failureCooldownMs` | 30 min |
+| `transport` | transient (60 s) | `transport_failure` |
+| `timeout` | structural (30 min) | `dispatch_timeout` |
+| `provider_cooldown` | structural | `provider_cooldown` / `auth_profile_unavailable` (via `providerInfo`) |
+| `runtime_failed` | structural | `runtime_adapter_failure` |
+| `session_death` | **recovery ladder** (below) | `runtime_turn_died` |
 
-Both classes share the `count` field. `settings.dispatch.maxRetries` (default 5) escalates to **blocked** regardless of classification.
+Non-RuntimeError fallback (mocks/unexpected): `TypeError`, `AbortError`, and
+`err.cause.code` socket codes are transient; everything else structural.
+`settings.dispatch.maxRetries` (default 5) escalates generic failures to
+**blocked**.
+
+## Session-death recovery ladder
+
+A `RuntimeTurnError` (the adapter diagnosed the provider session dying
+mid-turn) is deterministic — retrying reproduces it. The ladder changes the
+approach instead of waiting (`handleSessionDeath()`):
+
+1. **Death 1** — salvage the truncated completion to
+   `~/.bakin/tasks/salvage/<taskId>-d<seq>.md` + persist as a task-linked
+   asset (`assets.saveFromSource` hook, tag `salvaged-output`), then an
+   IMMEDIATE corrective re-dispatch whose prompt opens with
+   `PREVIOUS ATTEMPT FAILED` (why it died, size, salvaged-asset pointer,
+   artifact-first instructions).
+2. **Death 2** — decomposition dispatch: the agent must NOT do the work,
+   only split it into single-deliverable subtasks chained via `dependsOn`
+   (deliverable assets saved against the PARENT taskId); the parent waits on
+   the last link and re-dispatches for final assembly.
+3. **Death 3** — block with an actionable reason: diagnosis detail, last
+   tool call, salvaged asset ids, explicit next steps.
+
+Workflow steps get corrective → block (no decomposition — the engine owns
+step structure) and stay `inProgress` throughout. Ladder state lives on
+`FailureRecord.sessionDeath` and is exempt from generic cooldowns/maxRetries;
+a successful rung clears it. Audit kinds: `task.runtime_session_died`,
+`task.corrective_redispatch`, `task.decomposition_dispatched`,
+`task.runtime_failed_blocked` (with the structured diagnosis). The tasks
+plugin surfaces incidents via the `session-death-incidents` doctor check.
 
 ### Provider availability detail
 
@@ -55,28 +111,33 @@ show the generic provider-unavailable label; task detail drawers and debug
 activity views may show the specific cause and raw bounded error. Do not make
 raw provider text the primary UI message.
 
-## Post-send task reconciliation
+## Settle-time reconciliation
 
-Dispatch moves a task to `inProgress` before sending the runtime message so a
-fast agent cannot complete before Bakin records active work. If
-`runtime.messaging.send` later rejects, `dispatch.ts` must re-read the current
-task state before deciding what to do:
+Dispatch moves a task to `inProgress` before firing the send so a fast agent
+cannot complete before Bakin records active work. When a turn's send later
+rejects, the settle handler re-reads current task state under the lock:
 
-- If the task already left active work (`done`, `blocked`, `review`, or
-  `archived`), Bakin leaves it alone and removes stale dispatch markers. This
-  handles late gateway errors after an agent already called
-  `bakin_exec_tasks_complete` or `bakin_exec_tasks_block`.
-- If the task is still `inProgress` and the error is a known accepted-run
-  terminal failure, such as `codex app-server turn idle timed out waiting for
-  turn/completed`, Bakin moves the task to `blocked` and appends a sanitized
-  system log.
-- If the task is still `inProgress` but there is no evidence the agent accepted
-  the work, Bakin returns it to `todo`, records `failedDispatches`, and lets the
-  existing cooldown/retry policy handle the next attempt.
+- Task already left active work (`done`, `blocked`, `review`, `archived`) →
+  leave it alone, remove stale dispatch markers (late gateway errors after
+  the agent already called `bakin_exec_tasks_complete`/`_block`).
+- `RuntimeTurnError` → the session-death recovery ladder (above).
+- Still `inProgress` with work evidence (task log grew) → block with a
+  sanitized reason.
+- Otherwise → back to `todo`, record `failedDispatches`, cooldown/retry.
 
-Task logs and audit entries use short sanitized summaries such as
-`codex app-server idle timeout waiting for turn completion`; do not write raw
-prompts, local paths, tokens, or full runtime trajectories to task logs.
+Task logs and audit entries use short sanitized summaries derived from
+RuntimeError kinds; do not write raw prompts, local paths, tokens, or full
+runtime trajectories to task logs.
+
+## Continuation
+
+When a dependency completes, `src/core/continuation.ts` routes dependents
+through a FULL re-dispatch (`dispatchSingleTask(source: 'continuation')`):
+fresh `d<seq>` session and a self-contained prompt carrying a
+`## Completed Dependency` block. (The old bare "resume your task" nudge only
+worked because it landed in the shared session that still held the original
+context.) Blocked dependents are moved to `todo` first; in-progress
+dependents are skipped.
 
 ## Task Eligibility
 
@@ -87,10 +148,26 @@ Eligibility checks are centralized in `isTaskDispatchEligible(task, ctx)`:
 - `availableAt` is absent or at/before the current time
 - `dependsOn` is absent or already completed
 - assigned agent exists in the runtime roster
+- concurrency caps have a free slot (checked separately in the loop)
+
+**Stranding guard:** a `dependsOn` pointing at a task id that exists in NO
+column (hard-deleted by `archiveOldTasks`) is treated as satisfied, with a
+warning + task-log note — load-bearing for decomposition chains.
 
 Invalid `availableAt` values are treated as unscheduled so malformed metadata
 does not permanently strand a task. Explicit user kick dispatches can bypass the
 schedule gate, but automatic dispatch and automatic subtasks cannot.
+
+## Prompt construction
+
+`buildDispatchMessage()` / `buildWorkflowDispatchMessage()` share
+`outputDisciplineSection()` (artifact-first rules in EVERY dispatch: >~8KB →
+file + `assets_save`; multi-deliverable = checklist produced one at a time;
+chat stays short) and `sharedExecutionToolDocs()` (single tool catalog —
+intentional differences are parameters, so the builders can't drift). The
+triage roster is derived from `runtime.agents.list()`; core contains no
+hardcoded agent names. Recovery variants: corrective prompts open with
+`PREVIOUS ATTEMPT FAILED`; decomposition replaces the work prompt entirely.
 
 Plugins that need future work should create a real task with `availableAt`
 rather than registering a private heartbeat, health check, cron, or sweep.
@@ -98,9 +175,19 @@ The dispatcher heartbeat is the wakeup surface for task-backed work.
 
 ## Persistence
 
-`FailureRecord` on disk is `{ lastAttempt, count, kind }` at `~/.bakin/.dispatch-state.json#failedDispatches`.
+`~/.bakin/.dispatch-state.json` holds:
 
-Legacy plain-number entries are migrated to `{ kind: 'structural' }` by `getFailureRecord()` on read — no separate migration step needed.
+- `failedDispatches`: `{ lastAttempt, count, kind, sessionDeath? }` —
+  `sessionDeath` is `{ stage, deaths, lastDiagnosis, salvagedAssetIds }`
+  (ladder state; diagnosis stored without salvage text).
+- `dispatchSeq`: monotonic per-task dispatch counter (per-attempt session
+  keys). Persisted at mint time so a crashed cycle can never reuse a seq
+  into a possibly-live session.
+- `dispatched`: in-flight/active markers, trimmed to
+  `settings.dispatch.maxDispatched`.
+
+Legacy plain-number `failedDispatches` entries are migrated to
+`{ kind: 'structural' }` by `getFailureRecord()` on read.
 
 ## Restart recovery
 
@@ -145,8 +232,12 @@ failures with a clear `hook plugin.action.run not registered` error.
 ## Where to look
 
 - `src/core/app-services.ts` — boot-created runtime/search/task service object
-- `packages/adapter-openclaw/src/runtime.ts` — OpenClaw adapter transport
-- `src/core/dispatch.ts` — `classifyDispatchError`, cooldown selection, blocked escalation
+- `packages/adapter-openclaw/src/runtime.ts` — OpenClaw adapter transport, fail-fast watcher, post-mortem
+- `packages/adapter-openclaw/src/trajectory-forensics.ts` — trajectory parsing + diagnosis
+- `packages/adapter-openclaw/src/errors.ts` — the ONE place provider error strings are interpreted
+- `src/core/dispatch.ts` — classification, recovery ladder, concurrency registry, prompt builders
+- `src/core/continuation.ts` — dependency continuation as full re-dispatch
 - `src/core/restart-recovery.ts` — post-boot recovery of orphaned `inProgress` tasks
 - `plugins/schedule/index.ts` — cron bridge, including `bakin:<pluginId>:<action>` hook dispatch
+- `.claude/knowledge/session-forensics.md` — trajectory schema, diagnosis flow, ladder walkthroughs
 - `.claude/knowledge/adapter-architecture.md` — adapter boundaries and task/runtime ownership
