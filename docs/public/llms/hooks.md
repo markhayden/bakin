@@ -23,7 +23,7 @@ Asset hooks expose file, sidecar, variant, and trash helpers for plugins that ne
 Label: List asset types.
 Purpose: Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories.
 Kind: rpc
-Source: plugins/assets/index.ts:344
+Source: plugins/assets/index.ts:359
 
 Example:
 
@@ -34,12 +34,28 @@ const result = await ctx.hooks.invoke(
 )
 ```
 
+### assets.listByTask
+
+Label: List assets linked to a task.
+Purpose: Returns {assetId, description, type} for every versioned asset whose manifest taskId matches. Backed by an in-memory index — the sanctioned way for core (dispatch) to resolve a task’s attached assets without scanning plugin storage.
+Kind: rpc
+Source: plugins/assets/index.ts:351
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'assets.listByTask',
+  {},
+)
+```
+
 ### assets.purgeClipboardForTask
 
 Label: Purge task clipboard assets.
 Purpose: Deletes clipboard-sourced assets associated with a completed task when that cleanup setting is enabled. Use it from task completion flows that want asset cleanup to stay centralized.
 Kind: rpc
-Source: plugins/assets/index.ts:348
+Source: plugins/assets/index.ts:392
 
 Example:
 
@@ -57,7 +73,7 @@ const result = await ctx.hooks.invoke(
 Label: Resolve versioned asset serve request.
 Purpose: Resolves an /api/assets/<assetId> path (current, /v/<n>, /thumb, /export/<name>) to a file on disk for serving.
 Kind: rpc
-Source: plugins/assets/index.ts:345
+Source: plugins/assets/index.ts:360
 
 Example:
 
@@ -73,6 +89,22 @@ const result = await ctx.hooks.invoke(
 )
 ```
 
+### assets.saveFromSource
+
+Label: Save a file as a managed asset.
+Purpose: Upserts a file into the versioned asset store by source path (new asset, version bump, or no-op when unchanged). The sanctioned cross-plugin/core save path; mirrors bakin_exec_assets_save.
+Kind: rpc
+Source: plugins/assets/index.ts:366
+
+Example:
+
+```ts
+const result = await ctx.hooks.invoke(
+  'assets.saveFromSource',
+  {},
+)
+```
+
 ## Health
 
 Health hooks expose registered readiness and diagnostic checks so other surfaces can list or inspect them.
@@ -82,7 +114,7 @@ Health hooks expose registered readiness and diagnostic checks so other surfaces
 Label: Get a health check.
 Purpose: Returns metadata for one registered health check by id, without running the check. Use it when a plugin needs the check name, owner, and autofix capability before deciding what to show or run.
 Kind: rpc
-Source: plugins/health/index.ts:476
+Source: plugins/health/index.ts:477
 
 Example:
 
@@ -100,7 +132,7 @@ const result = await ctx.hooks.invoke(
 Label: List health checks.
 Purpose: Returns the health checks registered by core and plugins without executing them. Use it when another surface needs to show the available diagnostics or autofix support.
 Kind: rpc
-Source: plugins/health/index.ts:475
+Source: plugins/health/index.ts:476
 
 Example:
 
@@ -228,7 +260,7 @@ Task hooks let plugins enrich task details and react to task lifecycle changes.
 Label: Add project task context.
 Purpose: Adds project title, status, progress, and excerpt data to task detail payloads. Use it when a task surface wants project context without depending on project storage.
 Kind: waterfall
-Source: bakin-bits-official/plugins/projects/index.ts:222
+Source: bakin-bits-official/plugins/projects/index.ts:223
 
 Example:
 
@@ -249,7 +281,7 @@ const next = await ctx.hooks.call(
 Label: Sync project task state.
 Purpose: Updates linked project checklist items when a task moves into a completed state. Use it to keep project progress in sync with task lifecycle events.
 Kind: event
-Source: bakin-bits-official/plugins/projects/index.ts:211
+Source: bakin-bits-official/plugins/projects/index.ts:212
 
 Example:
 

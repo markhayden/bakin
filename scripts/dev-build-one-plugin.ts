@@ -20,6 +20,13 @@ export interface BuildOnePluginOptions {
   external: readonly string[]
   /** Minify browser client assets for release/static builds. */
   production?: boolean
+  /**
+   * Build the server bundle (dist/index.js). Defaults to true — user plugins
+   * activate from dist/index.js and must keep it. Core plugin callers pass
+   * false (#421): core server code is statically imported from source, so
+   * their dist holds browser assets only.
+   */
+  serverEntry?: boolean
 }
 
 export type BuildOnePluginResult =
@@ -58,17 +65,19 @@ export async function buildOnePlugin(
 
   const externalArgs = opts.external.flatMap((e) => ['--external', e])
 
-  const serverRes = await run('bun', [
-    'build', join(pluginDir, 'index.ts'),
-    '--outdir', distDir,
-    '--target', 'bun',
-    '--format', 'esm',
-    '--entry-naming', 'index.[ext]',
-    '--packages', 'external',
-    ...externalArgs,
-  ])
-  if (serverRes.exitCode !== 0) {
-    return { ok: false, stderr: `server entry for ${id}:\n${serverRes.stderr}` }
+  if (opts.serverEntry ?? true) {
+    const serverRes = await run('bun', [
+      'build', join(pluginDir, 'index.ts'),
+      '--outdir', distDir,
+      '--target', 'bun',
+      '--format', 'esm',
+      '--entry-naming', 'index.[ext]',
+      '--packages', 'external',
+      ...externalArgs,
+    ])
+    if (serverRes.exitCode !== 0) {
+      return { ok: false, stderr: `server entry for ${id}:\n${serverRes.stderr}` }
+    }
   }
 
   const clientEntry = join(pluginDir, 'client.tsx')

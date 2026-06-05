@@ -272,7 +272,9 @@ Stages 2 and 3 are independent. Stage 4 requires all prior.
 Stage 4 needs every runtime asset (host shell bundle, public/ statics,
 plugin dist/ trees) visible to `bun build --compile`. The approach:
 `scripts/generate-embedded-assets.ts` walks `packages/host/dist/`,
-`packages/host/public/`, and every `plugins/*/dist/`, then writes
+`packages/host/public/`, and every `plugins/*/dist/` (core plugin dists
+allowlisted to `client.js`/`client.css` — server bundles are never
+embedded; skips are logged at build time, #421), then writes
 `packages/host/src/api/_embedded-assets-static.ts` with one
 `import … with { type: 'file' }` per asset. Bun's `--compile` sees
 those imports and embeds the file bytes into the binary. At runtime,

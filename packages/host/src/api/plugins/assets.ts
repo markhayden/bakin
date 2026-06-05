@@ -55,6 +55,17 @@ export async function get(_req: Request, url: URL): Promise<Response> {
 
   const { pluginId, relPath } = parsed
 
+  // Server bundles are never browser assets (#421). Core plugins activate
+  // via static imports, user plugins are imported from disk — nothing
+  // legitimately fetches index.js over HTTP, and serving it would only
+  // disclose server code. Guard sits before every resolution step.
+  if (relPath === 'index.js' || relPath.endsWith('/index.js')) {
+    return Response.json(
+      { error: 'Plugin server bundles are not served as assets' },
+      { status: 404 },
+    )
+  }
+
   // 1) User-installed plugin — always on disk.
   const userPath = join(getContentDir(), 'plugins', pluginId, 'dist', relPath)
   if (existsSync(userPath) && statSync(userPath).isFile()) {

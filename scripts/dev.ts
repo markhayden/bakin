@@ -324,7 +324,9 @@ async function rebuildShell(): Promise<void> {
 
 async function rebuildPlugin(id: string): Promise<void> {
   broadcast({ type: 'dev:building', scope: 'plugin' })
-  const result = await buildOnePlugin(id, { external: EXTERNAL })
+  // serverEntry: false — core plugin server code is statically imported from
+  // source; the dev loop only needs fresh client assets for hot-swap (#421).
+  const result = await buildOnePlugin(id, { external: EXTERNAL, serverEntry: false })
   if (result.ok) {
     // v2: emit dev:hot-swap with the new client.js's mtime as the cache-bust
     // version. v1 clients would fall through to location.reload(); v2 dev

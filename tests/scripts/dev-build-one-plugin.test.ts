@@ -114,6 +114,28 @@ describe('buildOnePlugin — happy path', () => {
     expect(existsSync(join(pluginsDir, 'server-only', 'dist', 'client.js'))).toBe(false)
   }, 60_000)
 
+  it('serverEntry: false skips the server bundle and builds only client assets (#421)', async () => {
+    const result = await buildOnePlugin('ok-plugin', {
+      external: EXTERNAL,
+      pluginsDir,
+      serverEntry: false,
+    })
+    expect(result.ok).toBe(true)
+    expect(existsSync(join(pluginsDir, 'ok-plugin', 'dist', 'index.js'))).toBe(false)
+    expect(existsSync(join(pluginsDir, 'ok-plugin', 'dist', 'client.js'))).toBe(true)
+  }, 60_000)
+
+  it('serverEntry: false on a client-less plugin produces an empty dist (git/images shape)', async () => {
+    const result = await buildOnePlugin('server-only', {
+      external: EXTERNAL,
+      pluginsDir,
+      serverEntry: false,
+    })
+    expect(result.ok).toBe(true)
+    expect(existsSync(join(pluginsDir, 'server-only', 'dist', 'index.js'))).toBe(false)
+    expect(existsSync(join(pluginsDir, 'server-only', 'dist', 'client.js'))).toBe(false)
+  }, 60_000)
+
   it('builds production client entries without JSX dev runtime output', async () => {
     const result = await buildOnePlugin('ok-plugin', {
       external: EXTERNAL,

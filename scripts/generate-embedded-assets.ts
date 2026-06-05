@@ -3,8 +3,8 @@
  *
  * Walks the three directories that hold the host client bundle, vendor
  * bundles, and core plugin dist output, and writes a TypeScript module
- * (packages/host/src/api/_embedded-assets.ts) that `import`s every file
- * with `{ type: 'file' }`. Bun's `--compile` resolves these imports at
+ * (packages/host/src/api/_embedded-assets-static.ts) that `import`s every
+ * file with `{ type: 'file' }`. Bun's `--compile` resolves these imports at
  * build time and embeds the bytes in the binary; at dev time the same
  * imports resolve to absolute on-disk paths, so the same code paths work
  * unchanged in both modes.
@@ -17,24 +17,36 @@
  * NOTE: this must run AFTER build:vendors / build:plugins / build:host-shell
  * and BEFORE `bun build --compile`. The binary-build orchestrator
  * (scripts/build-binary.ts) enforces that order.
+ *
+ * Exported pieces (`collectAssets`, `emitManifest`) are pure with respect to
+ * the passed root so tests can run them against fixture trees; `main()` only
+ * executes when the script is the entrypoint (build-binary.ts spawns it).
  */
 import { readdirSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join, resolve, relative, dirname } from 'node:path'
 
-const REPO_ROOT = resolve(import.meta.dir, '..')
-const OUT_FILE = join(REPO_ROOT, 'packages/host/src/api/_embedded-assets-static.ts')
+const OUT_FILE_REL = 'packages/host/src/api/_embedded-assets-static.ts'
 const REQUIRED_ASSETS: Array<{ path: string; build: string }> = [
   {
-    path: join(REPO_ROOT, 'packages/host/public/globals.css'),
+    path: 'packages/host/public/globals.css',
     build: 'bun run build:css',
   },
   {
-    path: join(REPO_ROOT, 'packages/host/dist/main.js'),
+    path: 'packages/host/dist/main.js',
     build: 'bun run build:host-shell',
   },
 ]
 
-interface AssetSource {
+/**
+ * The only core plugin dist files the browser ever fetches (#421). Server
+ * bundles (index.js) and server-build artifacts (file-typed import emissions)
+ * must not ship as servable browser assets — core plugin server activation
+ * uses the static import table in src/lib/plugin-static-imports.ts, never
+ * dist/index.js. Anything outside this list is skipped with a build-time log.
+ */
+const CORE_PLUGIN_ASSET_ALLOWLIST = new Set(['client.js', 'client.css'])
+
+export interface AssetSource {
   /** Absolute path on disk. */
   absPath: string
   /** URL path the HTTP handlers serve this asset under. */
@@ -43,45 +55,47 @@ interface AssetSource {
   varName: string
 }
 
-const slugCounter = new Map<string, number>()
-function makeVarName(urlPath: string): string {
-  const base = 'asset_' + urlPath
-    .replace(/^\//, '')
-    .replace(/[^a-zA-Z0-9]+/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_|_$/g, '')
-  const n = slugCounter.get(base) ?? 0
-  slugCounter.set(base, n + 1)
-  return n === 0 ? base : `${base}_${n}`
-}
+export function collectAssets(repoRoot: string): AssetSource[] {
+  // Per-call collision counter — module-level state would leak `_N` suffixes
+  // across repeated invocations in one process (tests, future callers).
+  const slugCounter = new Map<string, number>()
+  function makeVarName(urlPath: string): string {
+    const base = 'asset_' + urlPath
+      .replace(/^\//, '')
+      .replace(/[^a-zA-Z0-9]+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+    const n = slugCounter.get(base) ?? 0
+    slugCounter.set(base, n + 1)
+    return n === 0 ? base : `${base}_${n}`
+  }
 
-function walk(dir: string, prefix: string, out: AssetSource[]): void {
-  if (!existsSync(dir)) return
-  const entries = readdirSync(dir, { withFileTypes: true })
-  for (const entry of entries) {
-    const name = String(entry.name)
-    // Skip source maps — we don't need to ship them with the binary and
-    // Vite's define plugin chokes on .map files being treated as modules
-    // during test module graph traversal.
-    if (name.endsWith('.map')) continue
-    const full = join(dir, name)
-    if (entry.isDirectory()) {
-      walk(full, `${prefix}/${name}`, out)
-    } else if (entry.isFile()) {
-      const urlPath = `${prefix}/${name}`
-      out.push({ absPath: full, urlPath, varName: makeVarName(urlPath) })
+  function walk(dir: string, prefix: string, out: AssetSource[]): void {
+    if (!existsSync(dir)) return
+    const entries = readdirSync(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      const name = String(entry.name)
+      // Skip source maps — we don't need to ship them with the binary and
+      // Vite's define plugin chokes on .map files being treated as modules
+      // during test module graph traversal.
+      if (name.endsWith('.map')) continue
+      const full = join(dir, name)
+      if (entry.isDirectory()) {
+        walk(full, `${prefix}/${name}`, out)
+      } else if (entry.isFile()) {
+        const urlPath = `${prefix}/${name}`
+        out.push({ absPath: full, urlPath, varName: makeVarName(urlPath) })
+      }
     }
   }
-}
 
-function collectAssets(): AssetSource[] {
   const assets: AssetSource[] = []
 
   // Host client bundle — served under /assets/*
-  walk(join(REPO_ROOT, 'packages/host/dist'), '/assets', assets)
+  walk(join(repoRoot, 'packages/host/dist'), '/assets', assets)
 
   // Public static files — served at their path under / (minus /vendor, handled below)
-  const publicDir = join(REPO_ROOT, 'packages/host/public')
+  const publicDir = join(repoRoot, 'packages/host/public')
   if (existsSync(publicDir)) {
     for (const entry of readdirSync(publicDir, { withFileTypes: true })) {
       const full = join(publicDir, String(entry.name))
@@ -100,22 +114,33 @@ function collectAssets(): AssetSource[] {
     // dev-client bundle must never land in the compiled binary.
   }
 
-  // Core plugin dist — served under /api/plugins/<id>/assets/*
-  const pluginsDir = join(REPO_ROOT, 'plugins')
+  // Core plugin dist — served under /api/plugins/<id>/assets/*. Browser
+  // assets only (CORE_PLUGIN_ASSET_ALLOWLIST); everything else is logged and
+  // dropped so exclusions stay visible in build output.
+  const pluginsDir = join(repoRoot, 'plugins')
   if (existsSync(pluginsDir)) {
     for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue
       const id = String(entry.name)
       const distDir = join(pluginsDir, id, 'dist')
       if (!existsSync(distDir)) continue
-      walk(distDir, `/api/plugins/${id}/assets`, assets)
+      const distAssets: AssetSource[] = []
+      walk(distDir, `/api/plugins/${id}/assets`, distAssets)
+      for (const asset of distAssets) {
+        const fileName = asset.urlPath.slice(asset.urlPath.lastIndexOf('/') + 1)
+        if (CORE_PLUGIN_ASSET_ALLOWLIST.has(fileName)) {
+          assets.push(asset)
+        } else {
+          console.log(`embedded-assets: skip ${relative(repoRoot, asset.absPath)} (not in core-plugin allowlist)`)
+        }
+      }
     }
   }
 
   // Host static-data files — served at /api/<filename> by per-route
   // handlers (e.g. curated-agents.json → /api/curated). Walk just the
   // top level; subdirectories don't get a default URL mapping.
-  const dataDir = join(REPO_ROOT, 'packages/host/src/data')
+  const dataDir = join(repoRoot, 'packages/host/src/data')
   if (existsSync(dataDir)) {
     for (const entry of readdirSync(dataDir, { withFileTypes: true })) {
       if (!entry.isFile()) continue
@@ -137,19 +162,19 @@ function collectAssets(): AssetSource[] {
   return assets
 }
 
-function assertRequiredAssetsExist(): void {
-  const missing = REQUIRED_ASSETS.filter(asset => !existsSync(asset.path))
+function assertRequiredAssetsExist(repoRoot: string): void {
+  const missing = REQUIRED_ASSETS.filter(asset => !existsSync(join(repoRoot, asset.path)))
   if (missing.length === 0) return
 
   const lines = missing.map(asset => (
-    `  - ${relative(REPO_ROOT, asset.path)} missing; run \`${asset.build}\` first`
+    `  - ${asset.path} missing; run \`${asset.build}\` first`
   ))
   throw new Error(
     `Cannot generate embedded assets because required host assets are missing:\n${lines.join('\n')}`,
   )
 }
 
-function emitManifest(assets: AssetSource[]): string {
+export function emitManifest(assets: AssetSource[], outFile: string): string {
   const header = `// @ts-nocheck — every import below uses \`with { type: 'file' }\`;
 // Bun resolves these at build time (for --compile) or dev time (as on-disk
 // paths). TypeScript's module resolver has no concept of file-typed imports
@@ -170,7 +195,7 @@ function emitManifest(assets: AssetSource[]): string {
 
   const imports = assets
     .map(a => {
-      const rel = relative(dirname(OUT_FILE), a.absPath)
+      const rel = relative(dirname(outFile), a.absPath)
       // Force POSIX separators for the module specifier.
       const specifier = rel.split(/[\\/]/).join('/')
       const spec = specifier.startsWith('.') ? specifier : `./${specifier}`
@@ -196,19 +221,20 @@ export const EMBEDDED_ASSET_COUNT = ${assets.length}
 `
 }
 
-function main(): void {
-  assertRequiredAssetsExist()
-  const assets = collectAssets()
+export function main(repoRoot: string = resolve(import.meta.dir, '..')): void {
+  assertRequiredAssetsExist(repoRoot)
+  const assets = collectAssets(repoRoot)
   if (assets.length === 0) {
     throw new Error(
       'No embeddable assets found. Run build:vendors + build:plugins + build:host-shell first.',
     )
   }
-  mkdirSync(dirname(OUT_FILE), { recursive: true })
-  writeFileSync(OUT_FILE, emitManifest(assets))
-  console.log(`embedded-assets: wrote ${assets.length} entries to ${relative(REPO_ROOT, OUT_FILE)}`)
+  const outFile = join(repoRoot, OUT_FILE_REL)
+  mkdirSync(dirname(outFile), { recursive: true })
+  writeFileSync(outFile, emitManifest(assets, outFile))
+  console.log(`embedded-assets: wrote ${assets.length} entries to ${OUT_FILE_REL}`)
 }
 
-main()
-
-export {}
+if (import.meta.main) {
+  main()
+}

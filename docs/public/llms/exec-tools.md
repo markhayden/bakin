@@ -1413,6 +1413,29 @@ mcporter call bakin-<agent>.bakin_exec_projects_promote_item --args '{
 }'
 ```
 
+### bakin_exec_projects_relink_asset
+
+Label: Relinked project asset
+Purpose: Replace an attached project asset reference with another existing asset. Use this to repair missing or deleted asset references without removing the project context.
+
+| Argument | Type | Required | Description |
+| --- | --- | --- | --- |
+| `projectId` | string | yes | Project ID |
+| `assetId` | string | yes | Current asset id attached to the project |
+| `newAssetId` | string | yes | Replacement asset id to attach in its place |
+| `label` | string | no | Optional replacement label. If omitted, the existing project label is preserved. |
+
+Example:
+
+```sh
+mcporter call bakin-<agent>.bakin_exec_projects_relink_asset --args '{
+  "projectId": "value",
+  "assetId": "value",
+  "newAssetId": "value",
+  "label": "value"
+}'
+```
+
 ### bakin_exec_projects_remove_item
 
 Label: Removed project item

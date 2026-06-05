@@ -50,8 +50,14 @@ Walk the full path in [Build a Plugin](/docs/extending/plugins/build/).
 Plugin code imports from the SDK:
 
 ```ts
-import { definePlugin, registerPlugin } from '@makinbakin/sdk'
+// client.tsx — the browser import map provides the full SDK surface
+import { registerPlugin } from '@makinbakin/sdk'
 import { Button } from '@makinbakin/sdk/ui'
+
+// index.ts (server) — root + /routing /types /utils /metadata are
+// server-safe; /ui /slots /components /hooks retain runtime React
+// and fail the server build
+import { definePlugin, defineRoute } from '@makinbakin/sdk'
 import type { PluginContext } from '@makinbakin/sdk/types'
 ```
 

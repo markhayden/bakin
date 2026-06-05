@@ -35,26 +35,15 @@ import asset_vendor_sdk_hooks_js from '../../public/vendor/sdk-hooks.js' with { 
 import asset_vendor_tanstack_router_js from '../../public/vendor/tanstack-router.js' with { type: 'file' }
 import asset_vendor_jsx_dev_runtime_js from '../../public/vendor/jsx-dev-runtime.js' with { type: 'file' }
 import asset_api_plugins_schedule_assets_client_js from '../../../../plugins/schedule/dist/client.js' with { type: 'file' }
-import asset_api_plugins_schedule_assets_index_js from '../../../../plugins/schedule/dist/index.js' with { type: 'file' }
 import asset_api_plugins_tasks_assets_client_js from '../../../../plugins/tasks/dist/client.js' with { type: 'file' }
-import asset_api_plugins_tasks_assets_index_js from '../../../../plugins/tasks/dist/index.js' with { type: 'file' }
 import asset_api_plugins_memory_assets_client_js from '../../../../plugins/memory/dist/client.js' with { type: 'file' }
-import asset_api_plugins_memory_assets_index_js from '../../../../plugins/memory/dist/index.js' with { type: 'file' }
-import asset_api_plugins_images_assets_index_js from '../../../../plugins/images/dist/index.js' with { type: 'file' }
 import asset_api_plugins_health_assets_client_js from '../../../../plugins/health/dist/client.js' with { type: 'file' }
-import asset_api_plugins_health_assets_index_js from '../../../../plugins/health/dist/index.js' with { type: 'file' }
-import asset_api_plugins_health_assets_SKILL_r49bkmzv_md from '../../../../plugins/health/dist/SKILL-r49bkmzv.md' with { type: 'file' }
 import asset_api_plugins_workflows_assets_client_js from '../../../../plugins/workflows/dist/client.js' with { type: 'file' }
-import asset_api_plugins_workflows_assets_index_js from '../../../../plugins/workflows/dist/index.js' with { type: 'file' }
 import asset_api_plugins_workflows_assets_client_css from '../../../../plugins/workflows/dist/client.css' with { type: 'file' }
 import asset_api_plugins_models_assets_client_js from '../../../../plugins/models/dist/client.js' with { type: 'file' }
-import asset_api_plugins_models_assets_index_js from '../../../../plugins/models/dist/index.js' with { type: 'file' }
 import asset_api_plugins_team_assets_client_js from '../../../../plugins/team/dist/client.js' with { type: 'file' }
-import asset_api_plugins_team_assets_index_js from '../../../../plugins/team/dist/index.js' with { type: 'file' }
 import asset_api_plugins_team_assets_client_css from '../../../../plugins/team/dist/client.css' with { type: 'file' }
 import asset_api_plugins_assets_assets_client_js from '../../../../plugins/assets/dist/client.js' with { type: 'file' }
-import asset_api_plugins_assets_assets_index_js from '../../../../plugins/assets/dist/index.js' with { type: 'file' }
-import asset_api_plugins_git_assets_index_js from '../../../../plugins/git/dist/index.js' with { type: 'file' }
 import asset_data_curated_plugins_json from '../data/curated-plugins.json' with { type: 'file' }
 import asset_data_curated_agents_json from '../data/curated-agents.json' with { type: 'file' }
 
@@ -82,28 +71,17 @@ export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
   ['/vendor/tanstack-router.js', asset_vendor_tanstack_router_js],
   ['/vendor/jsx-dev-runtime.js', asset_vendor_jsx_dev_runtime_js],
   ['/api/plugins/schedule/assets/client.js', asset_api_plugins_schedule_assets_client_js],
-  ['/api/plugins/schedule/assets/index.js', asset_api_plugins_schedule_assets_index_js],
   ['/api/plugins/tasks/assets/client.js', asset_api_plugins_tasks_assets_client_js],
-  ['/api/plugins/tasks/assets/index.js', asset_api_plugins_tasks_assets_index_js],
   ['/api/plugins/memory/assets/client.js', asset_api_plugins_memory_assets_client_js],
-  ['/api/plugins/memory/assets/index.js', asset_api_plugins_memory_assets_index_js],
-  ['/api/plugins/images/assets/index.js', asset_api_plugins_images_assets_index_js],
   ['/api/plugins/health/assets/client.js', asset_api_plugins_health_assets_client_js],
-  ['/api/plugins/health/assets/index.js', asset_api_plugins_health_assets_index_js],
-  ['/api/plugins/health/assets/SKILL-r49bkmzv.md', asset_api_plugins_health_assets_SKILL_r49bkmzv_md],
   ['/api/plugins/workflows/assets/client.js', asset_api_plugins_workflows_assets_client_js],
-  ['/api/plugins/workflows/assets/index.js', asset_api_plugins_workflows_assets_index_js],
   ['/api/plugins/workflows/assets/client.css', asset_api_plugins_workflows_assets_client_css],
   ['/api/plugins/models/assets/client.js', asset_api_plugins_models_assets_client_js],
-  ['/api/plugins/models/assets/index.js', asset_api_plugins_models_assets_index_js],
   ['/api/plugins/team/assets/client.js', asset_api_plugins_team_assets_client_js],
-  ['/api/plugins/team/assets/index.js', asset_api_plugins_team_assets_index_js],
   ['/api/plugins/team/assets/client.css', asset_api_plugins_team_assets_client_css],
   ['/api/plugins/assets/assets/client.js', asset_api_plugins_assets_assets_client_js],
-  ['/api/plugins/assets/assets/index.js', asset_api_plugins_assets_assets_index_js],
-  ['/api/plugins/git/assets/index.js', asset_api_plugins_git_assets_index_js],
   ['/data/curated-plugins.json', asset_data_curated_plugins_json],
   ['/data/curated-agents.json', asset_data_curated_agents_json],
 ])
 
-export const EMBEDDED_ASSET_COUNT = 42
+export const EMBEDDED_ASSET_COUNT = 31

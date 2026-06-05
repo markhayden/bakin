@@ -107,7 +107,7 @@ Full UI details live in [Client UI](/docs/extending/plugins/client-ui/).
 
 ## 6. Build the Server Surface
 
-The server entry exports a plugin. Use declarative routes for HTTP APIs and `activate(ctx)` for registrations such as MCP tools, hooks, search, health checks, skills, and workflows.
+The server entry exports a plugin. Use declarative routes for HTTP APIs and `activate(ctx)` for registrations such as MCP tools, hooks, search, health checks, skills, and workflows. Do not import client-only SDK subpaths here (`/slots`, `/components`, `/ui`, `/hooks`) — they retain runtime React imports and the server build rejects the bundle; the SDK root, `/routing`, `/types`, `/utils`, and `/metadata` are server-safe.
 
 ```ts
 import { definePlugin, defineRoute } from '@makinbakin/sdk'

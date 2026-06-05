@@ -26,7 +26,9 @@ const CORE_PLUGINS = [
 const EXTERNAL = PLUGIN_CLIENT_EXTERNALS
 
 for (const id of CORE_PLUGINS) {
-  const result = await buildOnePlugin(id, { external: EXTERNAL, production: true })
+  // serverEntry: false — core plugin server code is statically imported from
+  // source (src/lib/plugin-static-imports.ts); dist holds browser assets only (#421).
+  const result = await buildOnePlugin(id, { external: EXTERNAL, production: true, serverEntry: false })
   if (!result.ok) {
     console.error(`Failed to build ${result.stderr}`)
     process.exit(1)
