@@ -48,13 +48,29 @@ import { readFileSync } from 'fs'
 const specialistTask = { id: 't-1', title: 'Research report', agent: 'jessica', description: 'Six deliverables' }
 
 describe('OUTPUT DISCIPLINE in dispatch prompts', () => {
-  it('every specialist dispatch carries the artifact-first rules', () => {
+  it('every specialist dispatch carries the short discipline reminder with the templated save command', () => {
     const msg = buildDispatchMessage(specialistTask, 'jessica', testDir)
     expect(msg).toContain('## OUTPUT DISCIPLINE — MANDATORY')
-    expect(msg).toContain('larger than ~8KB MUST be written to a workspace file')
+    expect(msg).toContain('KILLS your runtime session')
     expect(msg).toContain('ONE AT A TIME')
-    expect(msg).toContain('NEVER draft several deliverables in a single response')
-    expect(msg).toContain('split them into subtasks')
+    // The taskId-templated invocation must stay per-dispatch.
+    expect(msg).toContain(`bakin_exec_assets_save taskId=${specialistTask.id}`)
+    // The full rule prose lives in the AGENTS.md managed block now.
+    expect(msg).toContain('Bakin Execution Tools')
+  })
+
+  it('static catalog prose has moved to the managed block — not shipped per dispatch', () => {
+    const msg = buildDispatchMessage(specialistTask, 'jessica', testDir)
+    // Sentinels of the moved static prose:
+    expect(msg).not.toContain('NEVER draft several deliverables in a single response')
+    expect(msg).not.toContain('Required log points')
+    expect(msg).not.toContain('## DEPENDENCY PATTERN')
+    expect(msg).not.toContain('These tools help you accomplish the work')
+    // Templated invocations all survive.
+    expect(msg).toContain(`bakin_exec_tasks_log_progress taskId=${specialistTask.id}`)
+    expect(msg).toContain(`bakin_exec_tasks_complete taskId=${specialistTask.id}`)
+    expect(msg).toContain(`bakin_exec_tasks_block taskId=${specialistTask.id}`)
+    expect(msg).toContain(`bakin_exec_check_gates taskId=${specialistTask.id}`)
   })
 
   it('workflow step prompts carry the discipline with the step-output variant (no subtasks)', () => {

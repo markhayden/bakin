@@ -1436,24 +1436,22 @@ function sharedExecutionToolDocs(agentName: string, taskId: string, opts: { allo
 }
 
 /**
- * The prevention half of session-death hardening: artifact-first output
- * rules injected into EVERY dispatch prompt. Oversized chat completions are
- * what kill runtime sessions — deliverables belong in files/assets, produced
- * one at a time, with chat reserved for short status.
+ * The prevention half of session-death hardening: a short artifact-first
+ * reminder injected into EVERY dispatch prompt, carrying the taskId-templated
+ * save command. The full rule prose lives in the `execution-tools` managed
+ * block in each agent's AGENTS.md (projected by `bakin agent-rules --apply`
+ * / doctor) — this inline reminder keeps the safety-critical presence
+ * per-dispatch without re-shipping the static catalog every turn.
  */
 function outputDisciplineSection(agentName: string, taskId: string, opts: { subtasksAllowed: boolean }): string[] {
   const { mc } = mcporterHelpers(agentName)
   return [
     '## OUTPUT DISCIPLINE — MANDATORY',
     '',
-    'Oversized chat output KILLS your runtime session and fails the task — the runtime cannot deliver large completions. Hard rules:',
-    '',
-    `- Any deliverable or output larger than ~8KB MUST be written to a workspace file and saved BEFORE you continue: \`${mc('bakin_exec_assets_save', `taskId=${taskId} type=<type> filePath="<path>" description="<what it is>"`)}\``,
-    '- Multiple deliverables = a checklist. Produce them ONE AT A TIME: write the file → save it as an asset → log progress → start the next. NEVER draft several deliverables in a single response.',
-    '- Keep every chat/completion message short: status, decisions, and asset ids — never deliverable content.',
+    `Oversized chat output KILLS your runtime session. Deliverables larger than ~8KB go to workspace files, saved as assets ONE AT A TIME: \`${mc('bakin_exec_assets_save', `taskId=${taskId} type=<type> filePath="<path>" description="<what it is>"`)}\``,
     opts.subtasksAllowed
-      ? '- If deliverables are independent and numerous, split them into subtasks (see DEPENDENCY PATTERN below) instead of doing them all in one turn.'
-      : '- If your step output is large, save it as an asset first and reference the asset id in your submitted step output instead of inlining the content.',
+      ? 'Keep chat short — status + asset ids only. Numerous independent deliverables → split into subtasks. Full rules: "Bakin Execution Tools" in your AGENTS.md.'
+      : 'Keep chat short — status + asset ids only. Large step output → save as asset, reference the asset id in your submitted output. Full rules: "Bakin Execution Tools" in your AGENTS.md.',
   ]
 }
 
@@ -1587,23 +1585,11 @@ export function buildDispatchMessage(
 
 ## PROGRESS LOGGING — MANDATORY
 
-You MUST log your progress at EVERY major step — not just start and done. These updates appear in the live activity feed so humans can monitor your work in real-time.
-
-Required log points:
-- Log at task start: what you are about to do and your approach
-- Log after each major step (reading files, planning, each significant code change, after build)
-- Share your reasoning and decisions as you go
-- Log if blocked or anything unexpected happens
-- Log on completion with a full summary
-- If you have not logged in the last 2 minutes, log a status update — even if just "still working on X"
-
-For Patch using Claude Code: log before spawning the agent, and after it completes.
+Log progress at EVERY major step (start, each step, decisions, blockers, completion; at least every 2 minutes). Full logging rules: "Bakin Execution Tools" in your AGENTS.md.
 
 ${outputDisciplineSection(agentName, task.id, { subtasksAllowed: true }).join('\n')}
 
-## BAKIN TOOLS — via mcporter
-
-All Bakin interactions use mcporter. Your server is \`${server}\`.
+## TASK COMMANDS — via mcporter (server \`${server}\`)
 
 \`\`\`bash
 # Log progress (mandatory, every major step)
@@ -1615,39 +1601,22 @@ ${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you accompli
 # Block task (if stuck or cannot proceed)
 ${mc('bakin_exec_tasks_block', `taskId=${task.id} reason="<what went wrong>"`)}
 
-# Create subtask for another agent
+# Create subtask + register dependency (then stop — you'll be re-dispatched)
 ${mc('bakin_exec_tasks_create', `title="<subtask>" assignee="<agent>" description="<brief>" parentId=${task.id}`)}
-
-# Register dependency (then stop — you'll be re-dispatched)
 ${mc('bakin_exec_tasks_set_dependency', `taskId=${task.id} dependsOn="<other-task-id>"`)}
 
 # Check your task details
 ${mc('bakin_exec_tasks_get', `taskId=${task.id}`)}
 
-# Find content directories (assets, team, etc.)
-${mc('bakin_exec_get_paths', '')}
-\`\`\`
+${sharedExecutionToolDocs(agentName, task.id, { allowChannelPost: true }).join('\n')}${task.projectId ? `
 
-## EXECUTION TOOLS — for doing actual work
-
-These tools help you accomplish the work. Use them as your primary way to save files, post content, and generate assets.
-
-\`\`\`bash
-${sharedExecutionToolDocs(agentName, task.id, { allowChannelPost: true }).join('\n')}
-${task.projectId ? `
 # Project tools (this task is part of a project)
 ${mc('bakin_exec_projects_get', `projectId="${task.projectId}"`)}
 ${mc('bakin_exec_projects_mark_item', `projectId="${task.projectId}" taskItemId="<itemId>" checked=true`)}
-${mc('bakin_exec_projects_add_item', `projectId="${task.projectId}" title="<item title>"`)}` : `
-# Projects: bakin_exec_projects_list, bakin_exec_projects_create, bakin_exec_projects_get`}
+${mc('bakin_exec_projects_add_item', `projectId="${task.projectId}" title="<item title>"`)}` : ''}
 \`\`\`
 
-## DEPENDENCY PATTERN
-
-If your task requires output from another agent:
-1. Create their task with bakin_exec_tasks_create (use parentId for immediate dispatch)
-2. Register the dependency with bakin_exec_tasks_set_dependency
-3. Stop — you will be automatically re-dispatched when their task completes`
+Tool reference + dependency pattern: "Bakin Execution Tools" in your AGENTS.md.`
 }
 
 export function start(contentDir: string, port: number): void {

@@ -314,6 +314,26 @@ Prose after.
     expect(rolo).not.toContain('When Creating Pixel or Rolo Tasks')
   })
 
+  it('projects the execution-tools reference into subagents only', async () => {
+    seedAgentsMd('main', '# Main\n')
+    seedAgentsMd('pixel', '# Pixel\n')
+
+    await applyAllManagedBlocks(true)
+
+    const pixel = readFileSync(agentsMdPath('pixel'), 'utf-8')
+    expect(pixel).toContain(sectionMarker('execution-tools'))
+    expect(pixel).toContain('## Bakin Execution Tools')
+    // The static catalog + rule prose that moved OUT of dispatch prompts.
+    expect(pixel).toContain('Required log points')
+    expect(pixel).toContain('NEVER draft several deliverables in a single response')
+    expect(pixel).toContain('bakin_exec_assets_save')
+    // mcporter invocations are agent-templated.
+    expect(pixel).toContain('bakin-pixel')
+
+    const main = readFileSync(agentsMdPath('main'), 'utf-8')
+    expect(main).not.toContain(sectionMarker('execution-tools'))
+  })
+
   it('gives a non-specialist subagent the Pixel/Rolo delegation rules', async () => {
     const files = new Map<string, string>([['chef:AGENTS.md', '# Chef\n']])
     const runtime = createMockRuntimeAdapter()
