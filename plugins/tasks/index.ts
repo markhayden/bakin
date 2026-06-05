@@ -28,15 +28,34 @@ import {
 import { createLogger } from '../../src/core/logger'
 import { getContentDir } from '../../packages/core/src/content-dir'
 import {
+  checkSessionDeathIncidents,
   checkTaskboard,
   checkTaskConsistency,
   checkTaskPositionIntegrity,
   taskConsistencyRepair,
   taskOrderRepair,
 } from './lib/health-checks'
+import { queryAuditEvents } from '../../src/core/audit'
 import type { Task, ColumnId } from './types'
 
 const log = createLogger('tasks')
+
+/**
+ * Advisory nudge (never rejects): a description enumerating several
+ * deliverables without checklist formatting is the shape that killed
+ * task-56d382ae — the agent drafted everything in one mega-response and the
+ * runtime session died. Checklist structure cues produce-save-log
+ * one-at-a-time execution.
+ */
+function buildChecklistNudge(description: string | undefined): string | undefined {
+  if (!description) return undefined
+  if (description.includes('- [ ]')) return undefined // already a checklist
+  const enumeratedLines = description
+    .split('\n')
+    .filter((line) => /^\s*(?:[-*•]|\d+[.)])\s+\S/.test(line))
+  if (enumeratedLines.length < 3) return undefined
+  return `This task enumerates ${enumeratedLines.length} items. Consider formatting deliverables as a markdown checklist ("- [ ] …") — agents then produce and save each one in succession (write file → assets_save → log) instead of drafting everything in one oversized response.`
+}
 
 const COLUMNS = ['backlog', 'todo', 'inProgress', 'review', 'done', 'blocked', 'archived'] as const
 let maintenanceTimers: Array<ReturnType<typeof setInterval>> = []
@@ -686,9 +705,13 @@ const tasksPlugin: BakinPlugin = definePlugin({
           if (parentId || assignee) triggerDispatch()
           indexTask(ctx, result.id).catch(() => {})
 
-          const notice = (!parentId && !result.workflowId && !skipWorkflowReason)
-            ? 'No workflow attached. Consider providing workflowId next time — use bakin_exec_workflows_list to see options.'
-            : undefined
+          const notices: string[] = []
+          if (!parentId && !result.workflowId && !skipWorkflowReason) {
+            notices.push('No workflow attached. Consider providing workflowId next time — use bakin_exec_workflows_list to see options.')
+          }
+          const checklistNudge = buildChecklistNudge(description)
+          if (checklistNudge) notices.push(checklistNudge)
+          const notice = notices.length > 0 ? notices.join(' ') : undefined
 
           return {
             ok: true as const,
@@ -926,6 +949,11 @@ const tasksPlugin: BakinPlugin = definePlugin({
       name: 'Task position / order integrity',
       run: () => Promise.resolve(checkTaskPositionIntegrity()),
       repair: taskOrderRepair(),
+    })
+    ctx.registerHealthCheck({
+      id: 'session-death-incidents',
+      name: 'Runtime session deaths (last 24h)',
+      run: () => Promise.resolve(checkSessionDeathIncidents(getContentDir(), queryAuditEvents)),
     })
   },
 

@@ -265,3 +265,48 @@ export function taskOrderRepair(): HealthRepairHandler {
     },
   }
 }
+
+// ─── Session-death incidents (recovery-ladder observability) ────────────────
+
+/**
+ * Surface recent runtime session deaths in `bakin doctor` / the health
+ * dashboard. A session death means an agent turn was killed before
+ * completion (usually oversized chat output) and the recovery ladder
+ * engaged — recurring incidents signal an agent/package that needs its
+ * output discipline fixed, not just a one-off blip.
+ */
+export function checkSessionDeathIncidents(
+  contentDir: string,
+  queryAuditEvents: (
+    contentDir: string,
+    opts: { kinds?: string[]; sinceMs?: number },
+  ) => Array<{ ts: string; agent: string; data: Record<string, unknown> }>,
+): HealthCheckResult[] {
+  const DAY_MS = 24 * 60 * 60 * 1000
+  let incidents: Array<{ ts: string; agent: string; data: Record<string, unknown> }>
+  try {
+    incidents = queryAuditEvents(contentDir, {
+      kinds: ['task.runtime_session_died'],
+      sinceMs: DAY_MS,
+    })
+  } catch (err) {
+    return [error('session-death-incidents', `Failed to read audit trail: ${err instanceof Error ? err.message : String(err)}`)]
+  }
+
+  if (incidents.length === 0) {
+    return [ok('session-death-incidents', 'No runtime session deaths in the last 24h.')]
+  }
+
+  const lines = incidents.slice(-5).map((incident) => {
+    const taskId = typeof incident.data.id === 'string' ? incident.data.id : 'unknown-task'
+    const bytes = typeof incident.data.completionBytes === 'number'
+      ? `${Math.round(incident.data.completionBytes / 1024)}KB`
+      : 'unknown size'
+    const oversized = incident.data.oversizedOutput === true ? ', oversized' : ''
+    return `${taskId} (${incident.agent}, ${bytes}${oversized})`
+  })
+  return [warn(
+    'session-death-incidents',
+    `${incidents.length} runtime session death(s) in the last 24h: ${lines.join('; ')}. Check the tasks' salvaged assets and consider tightening the agent's output discipline.`,
+  )]
+}
