@@ -437,7 +437,7 @@ bakin setup service [--uninstall]
 <p class="cli-section-description">Plugin commands manage Bakin extensions from the command line, including installing official packages, linking local development plugins, and scaffolding new plugin projects.</p>
 
 <div class="cli-command-list">
-<CliCommandCard id="plugins-list" name="plugins list" summary="List installed plugins." description="Lists installed plugins and versions. Pass --check to probe remote/source for available upgrades, or --json for raw API output.">
+<CliCommandCard id="plugins-list" name="plugins list" summary="List installed plugins." description="Lists installed plugins and versions. Pass --check to probe for available upgrades — Whiskit artifact installs poll the release's whiskit-artifacts.json over HTTPS, source installs probe the git remote or local path. Pass --json for raw API output.">
 ```sh frame="terminal"
 bakin plugins list [--check] [--json]
 ```
@@ -491,7 +491,7 @@ bakin plugins import <file> [--yes] [--force] [--json]
     </tbody>
   </table>
 </CliCommandCard>
-<CliCommandCard id="plugins-upgrade" name="plugins upgrade" summary="Upgrade a user plugin." description="Re-pulls a user plugin from its source and rebuilds. --yes skips the consent prompt. Pass --json for raw API output.">
+<CliCommandCard id="plugins-upgrade" name="plugins upgrade" summary="Upgrade a user plugin." description="Upgrades an installed user plugin. Whiskit artifact installs refetch the latest published, checksum-verified artifact (toolchain-free); source installs re-pull from git or the local path and rebuild. Widened permissions require consent; --yes skips the prompt. Pass --json for raw API output.">
 ```sh frame="terminal"
 bakin plugins upgrade <id> [--yes] [--json]
 ```
@@ -500,6 +500,23 @@ bakin plugins upgrade <id> [--yes] [--json]
     <tbody>
       <tr><td><code>&lt;id&gt;</code></td><td>argument</td><td>yes</td><td>Resource identifier.</td></tr>
       <tr><td><code>[--yes]</code></td><td>option</td><td>no</td><td>Accept all defaults non-interactively.</td></tr>
+      <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
+    </tbody>
+  </table>
+</CliCommandCard>
+<CliCommandCard id="plugins-publish" name="plugins publish" summary="Assemble a published plugin artifact." description="Assembles a checksummed Whiskit artifact (tarball + .sha256 + whiskit-artifacts.json index) from a plugin directory. --build compiles the plugin first via the shared system-bun build backend, so producers do not need a separate build step. Re-publishing into the same --out directory carries forward other plugins' index entries, keeping each release a complete catalog. Pass --json for machine-readable output.">
+```sh frame="terminal"
+bakin plugins publish <pluginDir> --out <dir> [--build] [--base-url <url>] [--platform <p>] [--json]
+```
+  <table class="cli-command__args">
+    <thead><tr><th>Part</th><th>Type</th><th>Required</th><th>Notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>&lt;pluginDir&gt;</code></td><td>argument</td><td>yes</td><td>Required value.</td></tr>
+      <tr><td><code>--out</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>&lt;dir&gt;</code></td><td>argument</td><td>yes</td><td>Required value.</td></tr>
+      <tr><td><code>[--build]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[--base-url &lt;url&gt;]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
+      <tr><td><code>[--platform &lt;p&gt;]</code></td><td>option</td><td>no</td><td>Optional flag.</td></tr>
       <tr><td><code>[--json]</code></td><td>option</td><td>no</td><td>Emit machine-readable output.</td></tr>
     </tbody>
   </table>
@@ -851,5 +868,5 @@ bakin diagnostics startup <status|on|off> [--slow-ms <ms>] [--json]
 </div>
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jun 3, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jun 5, 2026 · Bakin 0.0.0-dev</span>
 </aside>
