@@ -37,6 +37,15 @@ const REQUIRED_ASSETS: Array<{ path: string; build: string }> = [
   },
 ]
 
+/**
+ * The only core plugin dist files the browser ever fetches (#421). Server
+ * bundles (index.js) and server-build artifacts (file-typed import emissions)
+ * must not ship as servable browser assets — core plugin server activation
+ * uses the static import table in src/lib/plugin-static-imports.ts, never
+ * dist/index.js. Anything outside this list is skipped with a build-time log.
+ */
+const CORE_PLUGIN_ASSET_ALLOWLIST = new Set(['client.js', 'client.css'])
+
 export interface AssetSource {
   /** Absolute path on disk. */
   absPath: string
@@ -105,7 +114,9 @@ export function collectAssets(repoRoot: string): AssetSource[] {
     // dev-client bundle must never land in the compiled binary.
   }
 
-  // Core plugin dist — served under /api/plugins/<id>/assets/*
+  // Core plugin dist — served under /api/plugins/<id>/assets/*. Browser
+  // assets only (CORE_PLUGIN_ASSET_ALLOWLIST); everything else is logged and
+  // dropped so exclusions stay visible in build output.
   const pluginsDir = join(repoRoot, 'plugins')
   if (existsSync(pluginsDir)) {
     for (const entry of readdirSync(pluginsDir, { withFileTypes: true })) {
@@ -113,7 +124,16 @@ export function collectAssets(repoRoot: string): AssetSource[] {
       const id = String(entry.name)
       const distDir = join(pluginsDir, id, 'dist')
       if (!existsSync(distDir)) continue
-      walk(distDir, `/api/plugins/${id}/assets`, assets)
+      const distAssets: AssetSource[] = []
+      walk(distDir, `/api/plugins/${id}/assets`, distAssets)
+      for (const asset of distAssets) {
+        const fileName = asset.urlPath.slice(asset.urlPath.lastIndexOf('/') + 1)
+        if (CORE_PLUGIN_ASSET_ALLOWLIST.has(fileName)) {
+          assets.push(asset)
+        } else {
+          console.log(`embedded-assets: skip ${relative(repoRoot, asset.absPath)} (not in core-plugin allowlist)`)
+        }
+      }
     }
   }
 

@@ -61,12 +61,32 @@ describe('collectAssets', () => {
     expect(urls).toContain('/data/curated-agents.json')
   })
 
-  it('embeds core plugin server bundles and stray dist artifacts (current behavior)', () => {
+  it('excludes core plugin server bundles and stray dist artifacts (#421 allowlist)', () => {
     const urls = collectAssets(root).map(a => a.urlPath)
 
-    expect(urls).toContain('/api/plugins/alpha/assets/index.js')
-    expect(urls).toContain('/api/plugins/beta/assets/index.js')
-    expect(urls).toContain('/api/plugins/alpha/assets/SKILL-abc123.md')
+    expect(urls).not.toContain('/api/plugins/alpha/assets/index.js')
+    expect(urls).not.toContain('/api/plugins/beta/assets/index.js')
+    expect(urls).not.toContain('/api/plugins/alpha/assets/SKILL-abc123.md')
+    // The allowlisted browser assets survive.
+    expect(urls).toContain('/api/plugins/alpha/assets/client.js')
+    expect(urls).toContain('/api/plugins/alpha/assets/client.css')
+    // beta is server-only — nothing of it is embedded.
+    expect(urls.some(u => u.startsWith('/api/plugins/beta/'))).toBe(false)
+  })
+
+  it('logs each skipped plugin dist file so exclusions are visible at build time', () => {
+    const lines: string[] = []
+    const original = console.log
+    console.log = (msg: unknown) => { lines.push(String(msg)) }
+    try {
+      collectAssets(root)
+    } finally {
+      console.log = original
+    }
+
+    expect(lines).toContain('embedded-assets: skip plugins/alpha/dist/index.js (not in core-plugin allowlist)')
+    expect(lines).toContain('embedded-assets: skip plugins/alpha/dist/SKILL-abc123.md (not in core-plugin allowlist)')
+    expect(lines).toContain('embedded-assets: skip plugins/beta/dist/index.js (not in core-plugin allowlist)')
   })
 
   it('skips source maps and never walks the dev-client bundle', () => {
