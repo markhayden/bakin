@@ -131,6 +131,18 @@
     ],
     "docs": {
       "slug": "using/memory"
-    }
+    },
+    "nav": [
+      {
+        "id": "memory",
+        "label": "Memory",
+        "icon": "Brain",
+        "href": "/memory",
+        "order": 50
+      }
+    ],
+    "slots": [
+      "page:/memory"
+    ]
   }
 }

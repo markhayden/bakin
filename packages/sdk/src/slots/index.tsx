@@ -22,8 +22,17 @@
  * Test-only helpers are not exported — tests use the public unregister path.
  */
 
-import { useSyncExternalStore, type ComponentType, type JSX } from 'react'
+import { Component, useEffect, useSyncExternalStore, type ComponentType, type JSX, type ReactNode } from 'react'
 import { subscribeRegistry, getRegistryVersion } from '../register'
+import {
+  getLazyPluginsVersion,
+  getPluginLoadError,
+  getPluginLoadState,
+  getSlotOwners,
+  requestSlotPlugins,
+  retryPluginLoad,
+  subscribeLazyPlugins,
+} from '../lazy'
 
 interface SlotEntry {
   component: ComponentType<Record<string, unknown>>
@@ -65,6 +74,19 @@ export function getSlotEntries(name: string): ReadonlyArray<SlotEntry> {
 }
 
 /**
+ * Slot names that currently have at least one entry owned by the given
+ * plugin. Used by the host's drift validation check to compare runtime
+ * slot registrations against the manifest's `contributes.slots`.
+ */
+export function getSlotNamesOwnedBy(pluginId: string): string[] {
+  const names: string[] = []
+  for (const [name, entries] of getRegistry().entries()) {
+    if (entries.some((e) => e.owner === pluginId)) names.push(name)
+  }
+  return names
+}
+
+/**
  * Remove every slot entry owned by the given plugin. Used by
  * `unregisterPlugin` during v2 hot-swap. Entries without an `owner`
  * (test registrations, pre-v2 legacy registrations) survive — callers
@@ -85,9 +107,70 @@ interface SlotProps {
 }
 
 /**
+ * Per-entry error boundary so one plugin's crashing slot component (or a
+ * component from a half-loaded lazy bundle) can't unmount the shell or the
+ * other entries rendered in the same slot.
+ */
+class SlotEntryBoundary extends Component<
+  { owner?: string; slotName: string; children: ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null }
+
+  static getDerivedStateFromError(error: Error): { error: Error } {
+    return { error }
+  }
+
+  componentDidCatch(error: Error): void {
+    console.error(
+      `[bakin] slot "${this.props.slotName}" entry${this.props.owner ? ` from plugin "${this.props.owner}"` : ''} crashed:`,
+      error,
+    )
+  }
+
+  render(): ReactNode {
+    if (this.state.error) {
+      return (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive" role="alert">
+          {this.props.owner ? `Plugin "${this.props.owner}"` : 'A plugin'} failed to render this section.
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
+/** Fallback shown in place of slot content when an owning plugin's client bundle failed to load. */
+function SlotLoadError({ slotName, pluginIds }: { slotName: string; pluginIds: string[] }): JSX.Element {
+  return (
+    <div className="flex flex-col items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive" role="alert">
+      <span>
+        {pluginIds.length === 1 ? `Plugin "${pluginIds[0]}" failed to load` : `Plugins ${pluginIds.map((id) => `"${id}"`).join(', ')} failed to load`}
+        {getPluginLoadError(pluginIds[0]) ? ` — ${getPluginLoadError(pluginIds[0])}` : ''}
+      </span>
+      <button
+        type="button"
+        className="rounded border border-destructive/40 px-2 py-1 text-xs hover:bg-destructive/20"
+        onClick={() => pluginIds.forEach(retryPluginLoad)}
+        aria-label={`Retry loading ${slotName}`}
+      >
+        Retry
+      </button>
+    </div>
+  )
+}
+
+/**
  * Render all components registered for the named slot, in order. Extra props
  * are passed through to every registered component unchanged. Returns `null`
  * if nothing is registered.
+ *
+ * Lazy loading: rendering a slot is a demand signal — if a manifest declares
+ * an owner for this slot whose client bundle hasn't loaded yet, the host's
+ * loader fires and the slot re-renders once `registerPlugin` runs. While an
+ * owner is loading the slot renders nothing (page slots resolve in one
+ * paint on the LAN); if an owner's bundle failed to import, an inline error
+ * with a retry button renders instead of silent emptiness.
  */
 export function Slot({ name, ...props }: SlotProps): JSX.Element | null {
   // Subscribe to registry mutations so hot-swap (v2) re-renders the
@@ -95,13 +178,27 @@ export function Slot({ name, ...props }: SlotProps): JSX.Element | null {
   // useSyncExternalStore re-renders PluginHost itself but consumers
   // below (<Slot>, <AppSidebar>) keep reading the pre-swap registry.
   useSyncExternalStore(subscribeRegistry, getRegistryVersion, getRegistryVersion)
+  // Lazy load-state subscription: re-render when an owning plugin's client
+  // starts/finishes loading so the loading/error fallbacks stay current.
+  useSyncExternalStore(subscribeLazyPlugins, getLazyPluginsVersion, getLazyPluginsVersion)
+  useEffect(() => {
+    requestSlotPlugins(name)
+  }, [name])
   const entries = getSlotEntries(name)
-  if (entries.length === 0) return null
+  if (entries.length === 0) {
+    const failed = getSlotOwners(name).filter((id) => getPluginLoadState(id) === 'error')
+    if (failed.length > 0) return <SlotLoadError slotName={name} pluginIds={[...failed]} />
+    return null
+  }
   return (
     <>
       {entries.map((entry, i) => {
         const C = entry.component
-        return <C key={`${name}-${i}`} {...props} />
+        return (
+          <SlotEntryBoundary key={`${name}-${i}`} owner={entry.owner} slotName={name}>
+            <C {...props} />
+          </SlotEntryBoundary>
+        )
       })}
     </>
   )

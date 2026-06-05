@@ -156,6 +156,18 @@
     ],
     "docs": {
       "slug": "using/schedule"
-    }
+    },
+    "nav": [
+      {
+        "id": "schedule",
+        "label": "Schedule",
+        "icon": "AlarmClock",
+        "href": "/schedule",
+        "order": 22
+      }
+    ],
+    "slots": [
+      "page:/schedule"
+    ]
   }
 }

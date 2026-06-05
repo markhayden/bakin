@@ -52,7 +52,37 @@ export { subscribeNavBadges } from './register'
 export { getPluginRoute } from './register'
 /** Get all registered client routes (across all plugins). */
 export { getPluginRoutes } from './register'
+/** Seed a plugin's declarative nav from its manifest (host-side; survives unregisterPlugin). */
+export { setManifestNav } from './register'
+/** Read the manifest nav currently seeded for a plugin (drift validation). */
+export { getManifestNav } from './register'
 export type { ClientRouteEntry, MatchedPluginRoute, NavItem, PluginRegistration } from './register'
+
+/** Install the manifest-derived slot/route ownership index for lazy loading (host-side). */
+export { configureLazyPlugins } from './lazy'
+/** Install the demand loader that imports a plugin's client bundle (host-side). */
+export { setLazyPluginLoader } from './lazy'
+/** Report a plugin client's load progress: idle → loading → loaded | error (host-side). */
+export { setPluginLoadState } from './lazy'
+/** Current load state for a plugin client. Unknown plugins report 'idle'. */
+export { getPluginLoadState } from './lazy'
+/** Last load error message for a plugin whose state is 'error', if any. */
+export { getPluginLoadError } from './lazy'
+/** Plugins whose manifests declare the given slot in `contributes.slots`. */
+export { getSlotOwners } from './lazy'
+/** Plugins whose manifest `contributes.routes` patterns match a pathname. */
+export { getRouteOwners } from './lazy'
+/** Ask the host to lazy-load every idle plugin that fills the named slot. */
+export { requestSlotPlugins } from './lazy'
+/** Ask the host to lazy-load every idle plugin whose route patterns match the pathname. */
+export { requestRoutePlugins } from './lazy'
+/** Reset a failed plugin to idle and re-request its client bundle. */
+export { retryPluginLoad } from './lazy'
+/** Monotonic lazy-store version for useSyncExternalStore consumers. */
+export { getLazyPluginsVersion } from './lazy'
+/** Subscribe to lazy-plugin store mutations. Returns an unsubscribe fn. */
+export { subscribeLazyPlugins } from './lazy'
+export type { LazyPluginIndex, PluginLoadState } from './lazy'
 
 /** Define a plugin HTTP route with typed input/output schemas. */
 export { defineRoute } from './routing'

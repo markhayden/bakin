@@ -83,6 +83,20 @@
     ],
     "docs": {
       "slug": "using/health"
-    }
+    },
+    "nav": [
+      {
+        "id": "health",
+        "label": "Health",
+        "icon": "Activity",
+        "href": "/health",
+        "order": 85
+      }
+    ],
+    "slots": [
+      "page:/health",
+      "nav-badge-providers"
+    ],
+    "eager": true
   }
 }

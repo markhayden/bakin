@@ -35,9 +35,15 @@ registerPlugin({
 ```
 <!-- /docs:snippet -->
 
+## Lazy Loading
+
+The shell does not import every plugin's client bundle at boot. Declare your client's contributions in `bakin-plugin.json` — `contributes.nav` (sidebar items as JSON), `contributes.routes` (the patterns you pass to `registerPlugin({ routes })`), and `contributes.slots` (the slot names you fill) — and Bakin renders your nav immediately while loading `client.js` only on first navigation into one of your routes or first render of one of your slots.
+
+Keep the manifest declarations and the `registerPlugin()` call in sync: Bakin runs a drift check after every client load and warns on mismatch. Clients that must run at boot (badge providers, conditional nav) set `contributes.eager: true` and may keep registering `navItems` at runtime — runtime nav overrides manifest nav while the plugin is registered. A client with no declarative metadata loads eagerly (legacy behavior).
+
 ## Navigation
 
-Navigation items should be stable and specific to the plugin. Use lucide icon names. Include `order` only when the plugin has a strong placement requirement.
+Navigation items should be stable and specific to the plugin. Use lucide icon names. Include `order` only when the plugin has a strong placement requirement. Prefer declaring nav in `bakin-plugin.json` `contributes.nav` (same NavItem shape, JSON) so it renders before your client loads; pass `navItems` to `registerPlugin()` only when nav must be computed at runtime.
 
 <div class="table-light-full table-label">
 
@@ -116,7 +122,7 @@ registerPlugin({
 })
 ```
 
-Patterns support exact paths and dynamic segments in `:id`, `[id]`, or `$id` form. If a route is visible in navigation, also declare it in `bakin-plugin.json` `contributes.clientRoutes`.
+Patterns support exact paths and dynamic segments in `:id`, `[id]`, or `$id` form. Declare every registered pattern in `bakin-plugin.json` `contributes.routes` so direct navigation lazy-loads your client; if a route is visible in navigation, also declare it in `contributes.clientRoutes` for docs generation.
 
 ## Page Slots
 

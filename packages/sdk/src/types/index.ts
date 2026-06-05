@@ -153,6 +153,19 @@ export interface ClientRouteContribution {
   slot?: string
 }
 
+/**
+ * Manifest declaration of one client route *pattern* the plugin's client
+ * registers via `registerPlugin({ routes })`. Unlike `clientRoutes` (concrete
+ * documentation paths), these patterns must exactly match the keys passed to
+ * `registerPlugin({ routes })` — including dynamic segments (`/projects/[id]`)
+ * — so the host knows which plugin owns a path before its client has loaded.
+ */
+export interface ClientRoutePatternContribution {
+  /** Route pattern, e.g. `/projects/[id]`. Supports `[id]`, `:id`, `$id` segments. */
+  path: string
+  summary?: string
+}
+
 /** Manifest declaration of an MCP exec tool the plugin exposes. */
 export interface ExecToolContribution {
   name: string
@@ -207,6 +220,34 @@ export interface PluginContributions {
   settings?: SettingsContribution[]
   /** Optional docs page slug. */
   docs?: DocsContribution
+  /**
+   * Declarative sidebar nav items. Rendered from manifest JSON before the
+   * plugin's client bundle loads — this is what makes lazy loading possible.
+   * A plugin that also passes `navItems` to `registerPlugin` at runtime
+   * overrides its manifest nav (the conditional-nav escape hatch); the two
+   * are compared by the drift validation check.
+   */
+  nav?: NavItem[]
+  /**
+   * Client route patterns the plugin's client registers via
+   * `registerPlugin({ routes })`. Must exactly match the registered keys —
+   * the host uses these to lazy-load the client on first navigation.
+   */
+  routes?: ClientRoutePatternContribution[]
+  /**
+   * Slot names the plugin's client fills via `registerPlugin({ slots })`
+   * (e.g. `page:/tasks`, `task-assets`). The host lazy-loads the client the
+   * first time one of these slots renders.
+   */
+  slots?: string[]
+  /**
+   * Load the client bundle at boot instead of on first demand. The escape
+   * hatch for plugins with background providers (`nav-badge-providers`),
+   * conditional nav, or other module-load side effects the shell needs
+   * immediately. Plugins with a client but no declarative `nav`/`routes`/
+   * `slots` metadata are treated as eager for backward compatibility.
+   */
+  eager?: boolean
 }
 
 /** Optional Ed25519 signature block proving manifest authenticity. */

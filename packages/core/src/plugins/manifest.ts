@@ -2,8 +2,10 @@ import type {
   ApiRouteContribution,
   CliCommandContribution,
   ClientRouteContribution,
+  ClientRoutePatternContribution,
   ExecToolContribution,
   HttpMethod,
+  NavItem,
   PluginContributions,
   PluginManifest,
   PluginManifestSignature,
@@ -197,6 +199,77 @@ function parseClientRoute(raw: unknown, index: number): ClientRouteContribution 
   }
 }
 
+const NAV_BADGE_TONES = new Set(['error', 'attention', 'info', 'success'])
+
+function parseNavItem(raw: unknown, label: string): NavItem {
+  if (!isRecord(raw)) throw new PluginManifestError(`${label} must be an object`)
+  const item: NavItem = {
+    id: stringField(raw, 'id', { required: true })!,
+    label: stringField(raw, 'label', { required: true })!,
+  }
+  const icon = stringField(raw, 'icon')
+  if (icon !== undefined) item.icon = icon
+  const href = stringField(raw, 'href')
+  if (href !== undefined) {
+    if (!href.startsWith('/') || href.startsWith('/api/') || href.includes('..')) {
+      throw new PluginManifestError(`${label}.href "${href}" must be an app path starting with "/" (not /api/, no "..")`)
+    }
+    item.href = href
+  }
+  if (raw.order !== undefined) {
+    if (typeof raw.order !== 'number' || !Number.isFinite(raw.order)) {
+      throw new PluginManifestError(`${label}.order must be a finite number`)
+    }
+    item.order = raw.order
+  }
+  if (raw.alwaysExpanded !== undefined) {
+    if (typeof raw.alwaysExpanded !== 'boolean') {
+      throw new PluginManifestError(`${label}.alwaysExpanded must be a boolean`)
+    }
+    item.alwaysExpanded = raw.alwaysExpanded
+  }
+  if (raw.badge !== undefined) {
+    if (!isRecord(raw.badge)) throw new PluginManifestError(`${label}.badge must be an object`)
+    const badge: NavItem['badge'] = {}
+    if (raw.badge.count !== undefined) {
+      if (typeof raw.badge.count !== 'number' || !Number.isFinite(raw.badge.count)) {
+        throw new PluginManifestError(`${label}.badge.count must be a finite number`)
+      }
+      badge.count = raw.badge.count
+    }
+    if (raw.badge.tone !== undefined) {
+      if (typeof raw.badge.tone !== 'string' || !NAV_BADGE_TONES.has(raw.badge.tone)) {
+        throw new PluginManifestError(`${label}.badge.tone must be one of: ${[...NAV_BADGE_TONES].join(', ')}`)
+      }
+      badge.tone = raw.badge.tone as NonNullable<NavItem['badge']>['tone']
+    }
+    item.badge = badge
+  }
+  if (raw.children !== undefined) {
+    if (!Array.isArray(raw.children)) throw new PluginManifestError(`${label}.children must be an array`)
+    item.children = raw.children.map((child, childIndex) => parseNavItem(child, `${label}.children[${childIndex}]`))
+  }
+  return item
+}
+
+function parseRoutePattern(raw: unknown, index: number): ClientRoutePatternContribution {
+  if (!isRecord(raw)) throw new PluginManifestError(`contributes.routes[${index}] must be an object`)
+  const path = stringField(raw, 'path', { required: true })!
+  if (!path.startsWith('/')) {
+    throw new PluginManifestError(`contributes.routes[${index}].path "${path}" must start with "/"`)
+  }
+  if (path.startsWith('/api/')) {
+    throw new PluginManifestError(`contributes.routes[${index}].path "${path}" must not be an API path`)
+  }
+  if (path.includes('..')) {
+    throw new PluginManifestError(`contributes.routes[${index}].path "${path}" must not contain ".."`)
+  }
+  return {
+    path,
+    summary: stringField(raw, 'summary'),
+  }
+}
+
 function parseExecTool(raw: unknown, index: number): ExecToolContribution {
   if (!isRecord(raw)) throw new PluginManifestError(`contributes.execTools[${index}] must be an object`)
   return {
@@ -281,6 +354,49 @@ function parseContributions(input: unknown): PluginContributions | undefined {
   if (input.docs !== undefined) {
     if (!isRecord(input.docs)) throw new PluginManifestError('contributes.docs must be an object')
     out.docs = { slug: stringField(input.docs, 'slug', { required: true })! }
+  }
+  if (input.nav !== undefined) {
+    if (!Array.isArray(input.nav)) throw new PluginManifestError('contributes.nav must be an array')
+    const seenNavIds = new Set<string>()
+    out.nav = input.nav.map((item, index) => parseNavItem(item, `contributes.nav[${index}]`))
+    const collectIds = (items: NavItem[]): void => {
+      for (const item of items) {
+        if (seenNavIds.has(item.id)) {
+          throw new PluginManifestError(`contributes.nav declares duplicate nav item id "${item.id}"`)
+        }
+        seenNavIds.add(item.id)
+        if (item.children) collectIds(item.children)
+      }
+    }
+    collectIds(out.nav)
+  }
+  if (input.routes !== undefined) {
+    if (!Array.isArray(input.routes)) throw new PluginManifestError('contributes.routes must be an array')
+    out.routes = input.routes.map(parseRoutePattern)
+    const seenPaths = new Set<string>()
+    for (const route of out.routes) {
+      if (seenPaths.has(route.path)) {
+        throw new PluginManifestError(`contributes.routes declares duplicate path "${route.path}"`)
+      }
+      seenPaths.add(route.path)
+    }
+  }
+  if (input.slots !== undefined) {
+    if (!Array.isArray(input.slots)) throw new PluginManifestError('contributes.slots must be an array of strings')
+    const slots: string[] = []
+    for (const slot of input.slots) {
+      if (typeof slot !== 'string' || slot.length === 0) {
+        throw new PluginManifestError('contributes.slots must contain only non-empty strings')
+      }
+      if (!slots.includes(slot)) slots.push(slot)
+    }
+    out.slots = slots
+  }
+  if (input.eager !== undefined) {
+    if (typeof input.eager !== 'boolean') {
+      throw new PluginManifestError('contributes.eager must be a boolean')
+    }
+    out.eager = input.eager
   }
 
   return out

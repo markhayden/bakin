@@ -189,6 +189,21 @@
     ],
     "docs": {
       "slug": "using/workflows"
-    }
+    },
+    "nav": [
+      {
+        "id": "workflows",
+        "label": "Workflows",
+        "icon": "Workflow",
+        "href": "/workflows",
+        "order": 40
+      }
+    ],
+    "slots": [
+      "page:/workflows",
+      "page:/workflows/[id]",
+      "page:/workflows/new",
+      "page:/workflows/[id]/edit"
+    ]
   }
 }

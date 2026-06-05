@@ -1,7 +1,10 @@
 /**
  * Workflows plugin — client entry point
  *
- * - `registerPlugin` contributes nav items and page slots.
+ * - `registerPlugin` contributes page slots. Nav is declared in
+ *   bakin-plugin.json `contributes.nav`; slots are mirrored in
+ *   `contributes.slots` so the host lazy-loads this client (the heaviest
+ *   core bundle — xyflow) on first render of a workflows page.
  * - `registerNodeRenderer` wires each xyflow node kind to its visual
  *   component. Kinds are globally unique — built-ins use their bare name
  *   (`agent`, `gate`, `parallel`, `output`, `workflow`, `createTask`, `trigger`,
@@ -9,7 +12,6 @@
  *   `{pluginId}.{kind}`.
  */
 import { registerPlugin, registerPluginCleanup } from '@makinbakin/sdk'
-import type { NavItem } from '@makinbakin/sdk'
 
 import { TriggerNode } from './components/nodes/trigger-node'
 import { AgentNode } from './components/nodes/agent-node'
@@ -29,13 +31,8 @@ import {
 } from './lib/node-renderer-registry'
 import { unregisterPluginDefinitions } from './lib/source-registry'
 
-const navItems: NavItem[] = [
-  { id: 'workflows', label: 'Workflows', icon: 'Workflow', href: '/workflows', order: 40 },
-]
-
 registerPlugin({
   id: 'workflows',
-  navItems,
   slots: {
     'page:/workflows': WorkflowsPage,
     'page:/workflows/[id]': WorkflowDetail,

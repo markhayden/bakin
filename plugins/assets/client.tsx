@@ -1,20 +1,17 @@
 /**
  * Assets plugin — client entry point.
- * Registers nav items and client-side slot contributions via registerPlugin.
+ * Registers client-side slot contributions via registerPlugin. Nav is
+ * declared in bakin-plugin.json `contributes.nav`; slots are mirrored in
+ * `contributes.slots` so the host lazy-loads this client on first render
+ * of any of them.
  */
 import { registerPlugin } from '@makinbakin/sdk'
-import type { NavItem } from '@makinbakin/sdk'
 import { TaskAssets } from './components/task-assets'
 import { VersionedAssetGrid } from './components/versioned/VersionedAssetGrid'
 import { VersionedAssetDetail } from './components/versioned/VersionedAssetDetail'
 
-const navItems: NavItem[] = [
-  { id: 'assets', label: 'Assets', icon: 'FolderOpen', href: '/assets', order: 20 },
-]
-
 registerPlugin({
   id: 'assets',
-  navItems,
   slots: {
     // Task-scoped asset gallery — consumed by tasks detail dialog. Shows all
     // assets linked to a task plus an Add button. User plugins can override
