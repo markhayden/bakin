@@ -108,7 +108,12 @@ Runtime knobs:
   `~/.imitationcrab`.
 - `IMITATION_CRAB_PORT` / `OPENCLAW_MOCK_PORT` — mock gateway port. Default:
   `18789`.
-- `OPENCLAW_MOCK_CHAT_MODE` — `canned`, `echo`, or `error`.
+- `OPENCLAW_MOCK_CHAT_MODE` — `canned`, `echo`, `error`, `slow` (reply after
+  `OPENCLAW_MOCK_CHAT_DELAY_MS`, default 2000), `idle-timeout` (codex
+  app-server idle-timeout error → typed turn death), or `session-death`
+  (accepts the turn, writes an oversized-interrupted trajectory into the mock
+  home, never sends a final frame — exercises fail-fast forensics + the
+  recovery ladder end to end; see `.claude/knowledge/session-forensics.md`).
 - `OPENCLAW_MOCK_TOOL_MODE` — `ok` or `error`.
 - `OPENCLAW_MOCK_FORCE=1` — bypasses the safety check that refuses to run when
   a real OpenClaw binary/config/gateway is detected.

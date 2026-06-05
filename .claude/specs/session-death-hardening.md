@@ -1,6 +1,6 @@
 # Session-Death Hardening: Oversized Output Detection, Recovery & Prevention
 
-**Status:** Draft — pending approval
+**Status:** Implemented (2026-06-04, branch feat/session-death-hardening — P1–P16, checkpoints CP1–CP5 green)
 **Date:** 2026-06-04
 **Driver:** Repeated production incident (task-56d382ae): research agent emitted 500–700KB completions in a single turn → OpenClaw session ended `interrupted` → Bakin saw only "OpenClaw chat gateway request timed out: agent" → task blocked with a red-herring reason after burning two full dispatch cycles.
 

@@ -117,9 +117,26 @@ an explicit allowlist entry with owner/reason/tracking. Do not call
 
 `~/.bakin/tasks/` is the source of truth for task metadata. Runtime execution
 ids are delivery/execution references only. Do not dual-write Bakin task fields
-into runtime provider metadata. The runtime may expose execution status through
-`runtime.tasks.*`, but task title, column, priority, blockers, workflow state,
-and logs belong to the Bakin task store.
+into runtime provider metadata. Task title, column, priority, blockers,
+workflow state, and logs belong to the Bakin task store. (The old
+`runtime.tasks.*` adapter surface was deleted — it returned fabricated
+`flowId`s and always-`'unknown'` status with zero real consumers; dispatch
+execution tracking lives in the in-flight turn registry in
+`src/core/dispatch.ts`. Likewise deleted as dead/lying surface:
+`agents.heartbeat()` — the real liveness system is `~/.bakin/heartbeats/` —
+`channels.onMessage`/`onInteraction`, and `tools.list()`.)
+
+## Typed Runtime Errors
+
+Adapters map every failure to a typed `RuntimeError` from
+`@bakin/core/adapters/runtime` (`kind: transport | timeout | session_death |
+provider_cooldown | runtime_failed`, original error preserved on `cause`,
+optional structured `providerInfo`) BEFORE it crosses the boundary.
+`RuntimeTurnError` (kind `session_death`) carries a `RuntimeTurnDiagnosis`
+assembled from provider session forensics inside the adapter. Core classifies
+on `kind` exclusively — provider error strings are interpreted in exactly one
+adapter module (`packages/adapter-openclaw/src/errors.ts`). Deep reference:
+`.claude/knowledge/session-forensics.md`.
 
 ## Permission Layers
 
@@ -142,15 +159,28 @@ one layer as evidence that the others should be loosened:
   as `CronJob.toolsAllow` for scheduling visibility and is separate from live
   messaging policy and MCP routing.
 
-## Runtime Messaging Streams
+## Runtime Messaging Streams & Sessions
 
-Messaging callers pass stable Bakin `threadId` values such as
-`messaging:<sessionId>:<agentId>` through `runtime.messaging.stream()`. The
-OpenClaw adapter maps those to provider session ids and tails the provider
-transcript while the Gateway request is pending so tool calls/results become
-`ChatChunk { type: 'tool' }` events before final assistant text. OpenClaw may
-store the live transcript entry under `agent:<agentId>:explicit:<uuid>` in
-`sessions.json`; the adapter owns that provider-specific lookup. Plugins and UI
+Messaging callers pass stable Bakin `threadId` values through
+`runtime.messaging.send()/stream()`. Two caller classes:
+
+- **Task work** (dispatch, continuation, recovery): per-attempt threadIds
+  (`task:<taskId>:d<seq>`, workflow steps `task:<id>:step:<stepId>:d<seq>`)
+  so each attempt runs in a fresh, deterministic provider session. Threaded
+  sends return the provider `sessionId` in `MessageResult.metadata` and use
+  the stable gateway idempotency key `bakin:<threadId>`.
+- **Notifications/conversation** (orchestrator complete-ping, watchdog,
+  doctor, agents API, UI chat `messaging:<sessionId>:<agentId>`): default or
+  durable conversational sessions — never per-attempt.
+
+The OpenClaw adapter maps threadIds to provider session ids and tails the
+provider transcript while the Gateway request is pending so tool
+calls/results become `ChatChunk { type: 'tool' }` events before final
+assistant text; it also watches the session **trajectory** file to fail fast
+on session deaths and run post-mortems (read-only — see
+`.claude/knowledge/session-forensics.md`). OpenClaw may store the live
+transcript entry under `agent:<agentId>:explicit:<uuid>` in `sessions.json`;
+the adapter owns that provider-specific lookup (mtime-cached). Plugins and UI
 code must continue to consume normalized runtime chunks instead of reading
 OpenClaw session files directly.
 
