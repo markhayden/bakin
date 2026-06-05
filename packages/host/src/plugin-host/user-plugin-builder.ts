@@ -23,10 +23,10 @@ import { existsSync, statSync, readdirSync, readFileSync } from 'node:fs'
 import type { Dirent } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { basename, join, resolve } from 'node:path'
-import { builtinModules } from 'node:module'
 import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { startStartupSpan, type StartupDiagnosticLogger } from '@/core/startup-diagnostics'
 import { PLUGIN_CLIENT_EXTERNALS, PLUGIN_SERVER_EXTERNALS } from '@/core/whiskin/externals'
+import { validatePluginImports, NON_RUNTIME_DIRS, type PluginPackageJson } from '@/core/whiskin/import-scan'
 
 // Single source for the externals contract — see src/core/whiskin/externals.ts.
 const CLIENT_EXTERNAL = PLUGIN_CLIENT_EXTERNALS
@@ -45,27 +45,7 @@ const SDK_ENTRYPOINTS: Record<string, string> = {
   '@makinbakin/sdk/routing': join(REPO_ROOT, 'packages/sdk/src/routing/index.ts'),
 }
 
-const HOST_PROVIDED_IMPORTS = new Set([
-  ...CLIENT_EXTERNAL,
-])
 const JSX_DEV_RUNTIME_RE = /(?:react\/jsx-dev-runtime|\bjsxDEV\b)/
-const BUILTIN_IMPORTS = new Set([
-  ...builtinModules,
-  ...builtinModules.map((name) => `node:${name}`),
-])
-const SOURCE_EXT_RE = /\.(?:ts|tsx|js|jsx|mjs|cjs)$/
-const NON_RUNTIME_DIRS = new Set(['dist', 'node_modules', 'tests', '__tests__', 'coverage'])
-const OLD_SDK_PACKAGE_NAME = '@bakin' + '/sdk'
-type SourceLoader = 'ts' | 'tsx' | 'js' | 'jsx'
-interface BunImportScanEntry {
-  path?: string
-}
-interface BunImportScanner {
-  scanImports(source: string): BunImportScanEntry[]
-}
-const BunTranspiler = (Bun as unknown as {
-  Transpiler: new (options: { loader: SourceLoader }) => BunImportScanner
-}).Transpiler
 
 interface RunResult {
   exitCode: number
@@ -183,45 +163,6 @@ function isFreshClientDist(path: string): boolean {
   }
 }
 
-interface PluginPackageJson {
-  dependencies?: Record<string, string>
-  devDependencies?: Record<string, string>
-  peerDependencies?: Record<string, string>
-}
-
-function packageName(specifier: string): string {
-  if (specifier.startsWith('@')) {
-    const [scope, name] = specifier.split('/')
-    return `${scope}/${name}`
-  }
-  return specifier.split('/')[0]!
-}
-
-function isRelativeOrAbsoluteSpecifier(specifier: string): boolean {
-  return specifier.startsWith('.') || specifier.startsWith('/') || specifier.startsWith('file:')
-}
-
-function collectSourceFiles(dir: string): string[] {
-  const out: string[] = []
-  const walk = (current: string): void => {
-    let entries: Dirent[]
-    try {
-      entries = readdirSync(current, { withFileTypes: true }) as Dirent[]
-    } catch {
-      return
-    }
-    for (const entry of entries) {
-      const name = String(entry.name)
-      if (NON_RUNTIME_DIRS.has(name) || name.startsWith('.')) continue
-      const full = join(current, name)
-      if (entry.isDirectory()) walk(full)
-      else if (entry.isFile() && SOURCE_EXT_RE.test(name)) out.push(full)
-    }
-  }
-  walk(dir)
-  return out
-}
-
 function readPackageJson(pluginDir: string): PluginPackageJson {
   const pkgJsonPath = join(pluginDir, 'package.json')
   if (!existsSync(pkgJsonPath)) return {}
@@ -232,64 +173,6 @@ function readPackageJson(pluginDir: string): PluginPackageJson {
       throw new Error(`Invalid package.json in ${pluginDir}: ${err.message}`)
     }
     throw err
-  }
-}
-
-function sourceLoader(file: string): SourceLoader {
-  if (file.endsWith('.tsx')) return 'tsx'
-  if (file.endsWith('.ts')) return 'ts'
-  if (file.endsWith('.jsx')) return 'jsx'
-  return 'js'
-}
-
-function collectImportSpecifiers(file: string, source: string): string[] {
-  try {
-    const transpiler = new BunTranspiler({ loader: sourceLoader(file) })
-    return transpiler
-      .scanImports(source)
-      .map((entry) => entry.path)
-      .filter((specifier): specifier is string => typeof specifier === 'string' && specifier.length > 0)
-  } catch (err) {
-    throw new Error(`Failed to parse imports in ${file}: ${err instanceof Error ? err.message : String(err)}`)
-  }
-}
-
-function validatePluginImports(pluginDir: string, pkg: PluginPackageJson): void {
-  const declared = new Set([
-    ...Object.keys(pkg.dependencies ?? {}),
-    ...Object.keys(pkg.devDependencies ?? {}),
-    ...Object.keys(pkg.peerDependencies ?? {}),
-  ])
-  const violations: string[] = []
-
-  for (const file of collectSourceFiles(pluginDir)) {
-    const source = readFileSync(file, 'utf-8')
-    for (const specifier of collectImportSpecifiers(file, source)) {
-      if (!specifier || isRelativeOrAbsoluteSpecifier(specifier) || BUILTIN_IMPORTS.has(specifier)) continue
-
-      if (specifier === OLD_SDK_PACKAGE_NAME || specifier.startsWith(`${OLD_SDK_PACKAGE_NAME}/`)) {
-        violations.push(`${file}: ${specifier} is no longer supported; use @makinbakin/sdk`)
-        continue
-      }
-      if (specifier === '@bakin/core' || specifier.startsWith('@bakin/core/') || specifier.startsWith('@bakin/')) {
-        violations.push(`${file}: ${specifier} imports Bakin internals; use @makinbakin/sdk or a declared plugin API`)
-        continue
-      }
-      if (specifier.startsWith('@/')) {
-        violations.push(`${file}: ${specifier} imports app internals; use @makinbakin/sdk or a declared plugin API`)
-        continue
-      }
-      if (HOST_PROVIDED_IMPORTS.has(specifier)) continue
-
-      const pkgName = packageName(specifier)
-      if (!declared.has(pkgName)) {
-        violations.push(`${file}: ${specifier} is not declared in package.json dependencies`)
-      }
-    }
-  }
-
-  if (violations.length > 0) {
-    throw new Error(`Plugin dependency validation failed:\n${violations.join('\n')}`)
   }
 }
 
