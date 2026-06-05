@@ -29,6 +29,7 @@ import { checkRestartRecovery } from './lib/system-checks/restart-recovery'
 import { checkSearchAdapter } from './lib/system-checks/search'
 import { checkAndSyncSkill, syncSkillRepair } from './lib/system-checks/sync-skill'
 import { checkPluginAssets } from './lib/system-checks/plugin-assets'
+import { checkPluginArtifacts } from './lib/system-checks/plugin-artifacts'
 import { applyManagedBlocksForRuntime } from '../../src/core/agent-rules/managed-blocks'
 
 type RegistryAccessor = () => Array<Record<string, unknown>>
@@ -597,6 +598,11 @@ const healthPlugin: BakinPlugin = definePlugin({
       id: 'plugin-assets',
       name: 'Plugin-shipped runtime skills install state',
       run: () => checkPluginAssets(),
+    })
+    ctx.registerHealthCheck({
+      id: 'plugin-artifacts',
+      name: 'Installed plugin artifact compatibility',
+      run: () => Promise.resolve(checkPluginArtifacts()),
     })
     ctx.registerHealthCheck({
       id: 'plugin-registry',
