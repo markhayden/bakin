@@ -30,7 +30,6 @@ export interface SearchAdapterSettings extends Record<string, unknown> {
       enabled: boolean
       provider: string
       model: string
-      threshold?: number
     }
   }
   /**
@@ -201,30 +200,31 @@ export const DEFAULT_SETTINGS: BakinSettings = {
     adapter: 'antfly',
     settings: {
       enabled: true,
-      url: 'http://localhost:8080/api/v1',
+      // Bakin's private antfly instance (3737 + 1). The v0.2 SDK owns the
+      // /db/v1 path prefix, so the base URL carries no path suffix.
+      url: 'http://localhost:3738',
       search: {
         strategy: 'rrf',
         defaultLimit: 20,
         reranker: {
           enabled: true,
-          provider: 'termite',
+          provider: 'antfly',
           model: 'mixedbread-ai/mxbai-rerank-base-v1',
-          threshold: 0.0,
         },
       },
       embedders: {
-        // Default text embedder swapped to BAAI/bge-small-en-v1.5 (Termite)
-        // as of search schema version 2. BGE is a stronger retrieval model
-        // than the search backend's builtin MiniLM, especially for longer documents
+        // Default text embedder is BAAI/bge-small-en-v1.5 (as of search
+        // schema version 2). BGE is a stronger retrieval model than the
+        // search backend's builtin MiniLM, especially for longer documents
         // with diverse vocabulary (which is most of what Bakin indexes —
         // task descriptions, markdown notes, PDF bodies, audit trails).
-        // Runs locally via Termite; no cloud dependency. A boot-time
-        // migration in src/core/search-migration.ts drops stale tables
-        // whenever SCHEMA_VERSION advances beyond the persisted version
-        // in `~/.bakin/.search-state.json`, forcing a clean reindex onto
-        // the new embedder.
-        default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
-        visual: { provider: 'termite', model: 'openai/clip-vit-base-patch32' },
+        // Runs locally via antfly's embedded inference runtime; no cloud
+        // dependency. A boot-time migration in src/core/search-migration.ts
+        // drops stale tables whenever SCHEMA_VERSION advances beyond the
+        // persisted version in `~/.bakin/.search-state.json`, forcing a
+        // clean reindex onto the new embedder.
+        default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' },
+        visual: { provider: 'antfly', model: 'openai/clip-vit-base-patch32' },
       },
       chunking: {
         defaultTargetTokens: 200,

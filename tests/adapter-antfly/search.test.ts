@@ -5,6 +5,13 @@ import type { SearchAdapter } from '@bakin/core/adapters/search'
 
 const testDir = join(tmpdir(), `bakin-test-adapter-antfly-${Date.now()}`)
 
+mock.module('../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+}))
+mock.module('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+}))
+
 type QueryResponse = {
   responses: Array<{ hits: { hits: unknown[]; total: number }; took: number }>
 }
@@ -57,19 +64,18 @@ const logger = {
 
 const baseSettings = {
   enabled: true,
-  url: 'http://localhost:8080/api/v1',
+  url: 'http://localhost:3738',
   search: {
     strategy: 'rrf',
     defaultLimit: 20,
     reranker: {
       enabled: true,
-      provider: 'termite',
+      provider: 'antfly',
       model: 'mixedbread-ai/mxbai-rerank-base-v1',
-      threshold: 0.0,
     },
   },
   embedders: {
-    default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
+    default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' },
     visual: { provider: 'antfly', model: 'clip-vit-base-patch32' },
   },
   chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
@@ -164,10 +170,9 @@ describe('AntflySearchAdapter', () => {
 
     const request = tableQueryRequest() as { reranker?: Record<string, unknown> }
     expect(request.reranker).toEqual({
-      provider: 'termite',
+      provider: 'antfly',
       model: 'mixedbread-ai/mxbai-rerank-base-v1',
       field: 'description',
-      threshold: 0.0,
     })
   })
 
@@ -196,8 +201,10 @@ describe('AntflySearchAdapter', () => {
     expect((tableQueryRequest(1) as { reranker?: unknown }).reranker).toBeUndefined()
   })
 
-  it('omits threshold from reranker config when unset', async () => {
-    const adapter = await createInitializedAdapter({ search: { reranker: { threshold: undefined } } })
+  it('never sends threshold even when legacy settings carry one', async () => {
+    // v0.1-era settings.json files may still contain reranker.threshold;
+    // the v0.2 RerankerConfig has no such field — it must never reach the wire.
+    const adapter = await createInitializedAdapter({ search: { reranker: { threshold: 0.4 } } })
     await adapter.query('bakin_tasks', {
       text: 'build feature',
       adapterOptions: { rerankField: 'description' },
@@ -205,7 +212,7 @@ describe('AntflySearchAdapter', () => {
 
     const request = tableQueryRequest() as { reranker?: Record<string, unknown> }
     expect(request.reranker).toEqual({
-      provider: 'termite',
+      provider: 'antfly',
       model: 'mixedbread-ai/mxbai-rerank-base-v1',
       field: 'description',
     })
@@ -220,10 +227,9 @@ describe('AntflySearchAdapter', () => {
 
     const requests = multiQueryRequests() as Array<{ table: string; reranker?: Record<string, unknown> }>
     expect(requests.find(r => r.table === 'bakin_tasks')?.reranker).toEqual({
-      provider: 'termite',
+      provider: 'antfly',
       model: 'mixedbread-ai/mxbai-rerank-base-v1',
       field: 'description',
-      threshold: 0.0,
     })
     expect(requests.find(r => r.table === 'bakin_assets')?.reranker).toBeUndefined()
   })
@@ -253,6 +259,57 @@ describe('AntflySearchAdapter', () => {
     expect(result.hits).toHaveLength(1)
     expect(result.hits[0].score).toBe(0.82)
     expect(result.hits[0].scoreBreakdown?.rerank).toBe(0.94)
+  })
+
+  it('only sends vector indexes when semantic search is in play', async () => {
+    const adapter = await createInitializedAdapter()
+
+    // rrf (default): both search modes + vector indexes
+    await adapter.query('bakin_tasks', { text: 'build feature' })
+    const hybrid = tableQueryRequest(0) as Record<string, unknown>
+    expect(hybrid.full_text_search).toEqual({ query: 'build feature' })
+    expect(hybrid.semantic_search).toBe('build feature')
+    expect(hybrid.indexes).toEqual(['embeddings'])
+
+    // fts: no semantic_search, no indexes field at all (v0.2: indexes is
+    // "required when using semantic_search", meaningless otherwise)
+    await adapter.query('bakin_tasks', { text: 'build feature', strategy: 'fts' })
+    const fts = tableQueryRequest(1) as Record<string, unknown>
+    expect(fts.full_text_search).toEqual({ query: 'build feature' })
+    expect(fts.semantic_search).toBeUndefined()
+    expect(fts.indexes).toBeUndefined()
+
+    // vector: semantic only, indexes present
+    await adapter.query('bakin_tasks', { text: 'build feature', strategy: 'vector' })
+    const vector = tableQueryRequest(2) as Record<string, unknown>
+    expect(vector.full_text_search).toBeUndefined()
+    expect(vector.semantic_search).toBe('build feature')
+    expect(vector.indexes).toEqual(['embeddings'])
+  })
+
+  it('builds nested v0.2 chunker config for chunked vector indexes', async () => {
+    const adapter = await createInitializedAdapter()
+
+    await adapter.tables.create('bakin_memory', {
+      fields: { body: { type: 'text' } },
+      indexes: [{
+        name: 'embeddings',
+        fields: ['body'],
+        kind: 'vector',
+        chunker: { enabled: true, targetTokens: 300, overlapTokens: 40 },
+      }],
+    })
+
+    const created = (mockTablesCreate.mock.calls as unknown as Array<[string, Record<string, unknown>]>)[0][1]
+    const indexes = created.indexes as Record<string, Record<string, unknown>>
+    expect(indexes.embeddings.chunker).toEqual({
+      provider: 'antfly',
+      model: 'fixed',
+      text: { target_tokens: 300, overlap_tokens: 40 },
+    })
+    // v0.1 flat fields must be gone
+    expect(indexes.embeddings.chunk_size).toBeUndefined()
+    expect(indexes.embeddings.chunk_overlap).toBeUndefined()
   })
 
   it('maps generic media URL indexes to Antfly media templates', async () => {

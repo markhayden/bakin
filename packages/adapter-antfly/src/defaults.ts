@@ -9,7 +9,6 @@ export interface AntflySettings {
       enabled: boolean
       provider: string
       model: string
-      threshold?: number
     }
   }
   embedders: Record<string, { provider: string; model: string }>
@@ -21,20 +20,21 @@ export interface AntflySettings {
 
 export const DEFAULT_SETTINGS: AntflySettings = {
   enabled: true,
-  url: 'http://localhost:8080/api/v1',
+  // Bakin's private antfly instance — 3737 (bakin) + 1. The SDK owns the
+  // /db/v1 path prefix; the base URL must not carry a path suffix.
+  url: 'http://localhost:3738',
   search: {
     strategy: 'rrf',
     defaultLimit: 20,
     reranker: {
       enabled: true,
-      provider: 'termite',
+      provider: 'antfly',
       model: 'mixedbread-ai/mxbai-rerank-base-v1',
-      threshold: 0,
     },
   },
   embedders: {
-    default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
-    visual: { provider: 'termite', model: 'openai/clip-vit-base-patch32' },
+    default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' },
+    visual: { provider: 'antfly', model: 'openai/clip-vit-base-patch32' },
   },
   chunking: {
     defaultTargetTokens: 200,

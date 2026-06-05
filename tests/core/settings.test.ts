@@ -60,11 +60,11 @@ describe('Settings', () => {
     expect(settings.search.settings.search.strategy).toBe('rrf')
     expect(settings.search.settings.search.defaultLimit).toBe(20)
     expect(settings.search.settings.search.reranker.enabled).toBe(true)
-    expect(settings.search.settings.search.reranker.provider).toBe('termite')
+    expect(settings.search.settings.search.reranker.provider).toBe('antfly')
     expect(settings.search.settings.search.reranker.model).toBe('mixedbread-ai/mxbai-rerank-base-v1')
-    expect(settings.search.settings.embedders.default.provider).toBe('termite')
+    expect(settings.search.settings.embedders.default.provider).toBe('antfly')
     expect(settings.search.settings.embedders.default.model).toBe('BAAI/bge-small-en-v1.5')
-    expect(settings.search.settings.embedders.visual.provider).toBe('termite')
+    expect(settings.search.settings.embedders.visual.provider).toBe('antfly')
     expect(settings.search.settings.embedders.visual.model).toBe('openai/clip-vit-base-patch32')
     expect(settings.search.settings.chunking.defaultTargetTokens).toBe(200)
     expect(settings.search.settings.chunking.defaultOverlapTokens).toBe(25)
@@ -80,10 +80,10 @@ describe('Settings', () => {
 
     const settings = getSettings()
     expect(settings.search.settings.enabled).toBe(true)
-    expect(settings.search.settings.url).toBe('http://localhost:8080/api/v1') // default preserved
+    expect(settings.search.settings.url).toBe('http://localhost:3738') // default preserved
     expect(settings.search.settings.search.defaultLimit).toBe(50) // overridden
     expect(settings.search.settings.search.strategy).toBe('rrf') // default preserved
-    expect(settings.search.settings.embedders.default.provider).toBe('termite') // default preserved
+    expect(settings.search.settings.embedders.default.provider).toBe('antfly') // default preserved
     expect(settings.search.settings.auditTtl).toBe('90d') // default preserved
   })
 

@@ -21,14 +21,16 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
     table,
     limit: q.limit ?? settings.search.defaultLimit,
     offset: q.offset,
-    indexes: strategy === 'full_text_only' ? [] : resolveIndexNames(q),
   }
 
   if (q.text && strategy !== 'semantic_only') {
     request.full_text_search = { query: q.text } as QueryRequest['full_text_search']
   }
   if (q.text && strategy !== 'full_text_only') {
+    // v0.2: `indexes` is the list of vector indexes for semantic search and
+    // is only meaningful alongside `semantic_search`.
     request.semantic_search = q.text
+    request.indexes = resolveIndexNames(q)
   }
   const filterQuery = buildFilterQuery(q)
   if (filterQuery) request.filter_query = { query: filterQuery } as QueryRequest['filter_query']
@@ -81,8 +83,16 @@ export function buildTableConfig(table: string, config: TableConfig, settings: A
       embedder: { provider: embedder.provider, model: embedder.model },
     }
     if (idx.chunker?.enabled) {
-      entry.chunk_size = idx.chunker.targetTokens ?? settings.chunking.defaultTargetTokens
-      entry.chunk_overlap = idx.chunker.overlapTokens ?? settings.chunking.defaultOverlapTokens
+      // v0.2 nests chunking under ChunkerConfig; 'fixed' is the built-in
+      // token-count chunker (no ONNX model required).
+      entry.chunker = {
+        provider: 'antfly',
+        model: 'fixed',
+        text: {
+          target_tokens: idx.chunker.targetTokens ?? settings.chunking.defaultTargetTokens,
+          overlap_tokens: idx.chunker.overlapTokens ?? settings.chunking.defaultOverlapTokens,
+        },
+      }
     }
     indexes[idx.name] = entry
   }
@@ -148,11 +158,12 @@ function buildRerankerConfig(q: Query, settings: AntflySettings): Record<string,
   if (!field) return undefined
   const cfg = settings.search.reranker
   if (!cfg?.enabled) return undefined
+  // Constructed explicitly: v0.2 RerankerConfig has no `threshold`, and
+  // legacy settings.json files may still carry one — it must not be sent.
   return {
     provider: cfg.provider,
     model: cfg.model,
     field,
-    ...(typeof cfg.threshold === 'number' ? { threshold: cfg.threshold } : {}),
   }
 }
 
