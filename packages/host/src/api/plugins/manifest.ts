@@ -173,7 +173,11 @@ export async function get(req: Request): Promise<Response> {
       // truth whether or not --check ran this request.
       let upgradeAvailable = false
       if (installed && !isCore) {
-        if (installed.type === 'github' && installed.remoteHeadSha) {
+        if (installed.type === 'github' && installed.remoteArtifactVersion) {
+          // Whiskit artifact installs are version-based — `--check` records
+          // the latest published artifact version instead of a remote sha.
+          upgradeAvailable = installed.remoteArtifactVersion !== installed.version
+        } else if (installed.type === 'github' && installed.remoteHeadSha) {
           upgradeAvailable = installed.remoteHeadSha !== installed.commitSha
         } else if (installed.type === 'local' && installed.lastSourceTreeSha && installed.sourceTreeSha) {
           upgradeAvailable = installed.lastSourceTreeSha !== installed.sourceTreeSha

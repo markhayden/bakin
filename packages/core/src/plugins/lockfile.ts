@@ -126,6 +126,13 @@ const PluginLockEntrySchema = z.object({
     { message: 'remoteHeadSha must be a 40-char lowercase hex sha' },
   ).optional(),
   /**
+   * Latest published artifact version observed by `bakin plugins list
+   * --check` (Whiskit artifact installs only). Compared against `version`
+   * to decide upgrade availability — the artifact lane is version-based,
+   * with no remote git sha to fast-forward against.
+   */
+  remoteArtifactVersion: z.string().optional(),
+  /**
    * Local source-tree sha at install/upgrade time (local only). Symmetric
    * with `commitSha` for github sources — captures what was on disk when
    * the plugin was last installed/rebuilt.
