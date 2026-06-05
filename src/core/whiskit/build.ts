@@ -165,6 +165,11 @@ async function installDeps(req: WhiskitBuildRequest, plugin: ValidatedPlugin): P
     cwd: req.pluginDir,
     timeoutMs: req.timeoutMs ?? DEFAULT_BUILD_TIMEOUT_MS,
   })
+  req.onStage?.({
+    stage: 'install',
+    status: result.exitCode === 0 ? 'ok' : 'error',
+    durationMs: result.durationMs,
+  })
   if (result.exitCode !== 0) {
     throw commandFailure('install', `Dependency install for "${plugin.pluginId}"`, result)
   }
@@ -231,6 +236,11 @@ async function buildServerWithSystemBun(
       cwd: req.pluginDir,
       timeoutMs: req.timeoutMs ?? DEFAULT_BUILD_TIMEOUT_MS,
     })
+    req.onStage?.({
+      stage: 'server-build',
+      status: result.exitCode === 0 ? 'ok' : 'error',
+      durationMs: result.durationMs,
+    })
     if (result.exitCode !== 0) {
       throw commandFailure('server-build', `Server build for "${plugin.pluginId}"`, result)
     }
@@ -253,6 +263,11 @@ async function buildClientWithSystemBun(req: WhiskitBuildRequest, plugin: Valida
     ],
     { cwd: req.pluginDir, timeoutMs: req.timeoutMs ?? DEFAULT_BUILD_TIMEOUT_MS },
   )
+  req.onStage?.({
+    stage: 'client-build',
+    status: result.exitCode === 0 ? 'ok' : 'error',
+    durationMs: result.durationMs,
+  })
   if (result.exitCode !== 0) {
     throw commandFailure('client-build', `Client build for "${plugin.pluginId}"`, result)
   }
@@ -267,12 +282,15 @@ export async function buildPluginWithSystemBun(req: WhiskitBuildRequest): Promis
   const startedAt = Date.now()
   const plugin = validateRequest(req)
   const installedDeps = await installDeps(req, plugin)
-  const sdk = resolveSdkEntrypoints(req.pluginDir)
-  await buildServerWithSystemBun(req, plugin, sdk)
+  const buildServer = req.serverBuild !== false
+  if (buildServer) {
+    const sdk = resolveSdkEntrypoints(req.pluginDir)
+    await buildServerWithSystemBun(req, plugin, sdk)
+  }
   await buildClientWithSystemBun(req, plugin)
   return {
     pluginId: plugin.pluginId,
-    builtServer: true,
+    builtServer: buildServer,
     builtClient: plugin.clientEntry !== null,
     installedDeps,
     backend: 'system-bun',
@@ -298,6 +316,17 @@ export async function buildPluginInProcess(req: WhiskitBuildRequest): Promise<Wh
   const startedAt = Date.now()
   const plugin = validateRequest(req)
   const installedDeps = await installDeps(req, plugin)
+  if (req.serverBuild === false) {
+    await buildClientWithSystemBun(req, plugin)
+    return {
+      pluginId: plugin.pluginId,
+      builtServer: false,
+      builtClient: plugin.clientEntry !== null,
+      installedDeps,
+      backend: 'in-process',
+      durationMs: Date.now() - startedAt,
+    }
+  }
   const sdk = resolveSdkEntrypoints(req.pluginDir)
 
   // The bun-types snapshot predates BuildConfig.plugins — same cast as the
@@ -320,7 +349,19 @@ export async function buildPluginInProcess(req: WhiskitBuildRequest): Promise<Wh
       },
     }],
   } as Parameters<typeof Bun.build>[0] & { plugins: Array<unknown> }
-  const serverResult = await Bun.build(serverBuildConfig)
+  const serverStartedAt = Date.now()
+  let serverResult: Awaited<ReturnType<typeof Bun.build>>
+  try {
+    serverResult = await Bun.build(serverBuildConfig)
+  } catch (err) {
+    req.onStage?.({ stage: 'server-build', status: 'error', durationMs: Date.now() - serverStartedAt })
+    throw err
+  }
+  req.onStage?.({
+    stage: 'server-build',
+    status: serverResult.success ? 'ok' : 'error',
+    durationMs: Date.now() - serverStartedAt,
+  })
   if (!serverResult.success) {
     throw new WhiskitBuildError(
       'server-build',

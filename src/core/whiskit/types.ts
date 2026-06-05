@@ -42,6 +42,13 @@ export class WhiskitBuildError extends Error {
   }
 }
 
+/** Stage progress event for observability (startup spans, dev overlay). */
+export interface WhiskitStageEvent {
+  stage: 'install' | 'server-build' | 'client-build'
+  status: 'ok' | 'error'
+  durationMs: number
+}
+
 /** A request to build one plugin source dir into dist/. */
 export interface WhiskitBuildRequest {
   pluginDir: string
@@ -57,6 +64,13 @@ export interface WhiskitBuildRequest {
   installDeps?: boolean
   /** Per-subprocess timeout. Defaults to DEFAULT_BUILD_TIMEOUT_MS. */
   timeoutMs?: number
+  /**
+   * Set false to skip the server compile (and its SDK resolution) — used
+   * when a trusted prebuilt server dist only needs its client refreshed.
+   */
+  serverBuild?: boolean
+  /** Optional per-stage observer — callers map these to diagnostics spans. */
+  onStage?: (event: WhiskitStageEvent) => void
 }
 
 export interface WhiskitBuildResult {

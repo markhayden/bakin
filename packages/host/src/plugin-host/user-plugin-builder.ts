@@ -1,5 +1,6 @@
 /**
- * In-binary user-plugin builder (#147 TE13).
+ * In-binary user-plugin builder (#147 TE13) — thin adapter over the Whiskit
+ * shared build backend (Phase 2).
  *
  * Installed user plugins live in `~/.bakin/plugins/<id>/` and may ship
  * with their own dependencies declared in their package.json. Before the
@@ -7,51 +8,31 @@
  * surfaced to the runtime client loader (Phase F, for the client half),
  * each entry needs to be bundled to `dist/` with the shared externals.
  *
- * Shape matches `scripts/build-plugins.ts` (the core-plugin pipeline) so
- * the disk layout is identical for core vs user plugins — the runtime
- * loader doesn't care which bucket a plugin came from.
- *
- * Client externals hold React, @tanstack/react-router, and SDK package aliases
- * so the host shell and plugin share the browser singletons wired by the
- * import map. Server builds bundle the SDK so activation of dist/index.js does
- * not depend on a workspace symlink or a locally installed SDK package.
+ * The compile steps live in `src/core/whiskit/build.ts`: the in-process
+ * `Bun.build()` fast path when running from source (dev hot loop — no
+ * subprocess per save), the system-`bun` backend under the compiled binary.
+ * What stays here is the caller-side policy: freshness/rebuild skip,
+ * trusted prebuilt dist handling, provenance verification at startup, and
+ * the startup-diagnostics spans.
  *
  * Rebuild skip: if every dist output is newer than every source entry,
  * the build is a no-op. This keeps server boot fast when nothing changed.
  */
 import { existsSync, statSync, readdirSync, readFileSync } from 'node:fs'
 import type { Dirent } from 'node:fs'
-import { spawn } from 'node:child_process'
-import { basename, join, resolve } from 'node:path'
+import { basename, join } from 'node:path'
 import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { startStartupSpan, type StartupDiagnosticLogger } from '@/core/startup-diagnostics'
-import { PLUGIN_CLIENT_EXTERNALS, PLUGIN_SERVER_EXTERNALS } from '@/core/whiskit/externals'
 import { validatePluginImports, NON_RUNTIME_DIRS, type PluginPackageJson } from '@/core/whiskit/import-scan'
+import {
+  buildPluginInProcess,
+  buildPluginWithSystemBun,
+  canBuildInProcess,
+} from '@/core/whiskit/build'
+import { WhiskitBuildError, type WhiskitStageEvent } from '@/core/whiskit/types'
 import { verifyInstalledArtifact } from '@/core/whiskit/verify'
 
-// Single source for the externals contract — see src/core/whiskit/externals.ts.
-const CLIENT_EXTERNAL = PLUGIN_CLIENT_EXTERNALS
-const SERVER_EXTERNAL = PLUGIN_SERVER_EXTERNALS
-
-const REPO_ROOT = resolve(import.meta.dir, '../../../..')
-const SDK_ENTRYPOINTS: Record<string, string> = {
-  '@makinbakin/sdk': join(REPO_ROOT, 'packages/sdk/src/index.ts'),
-  '@makinbakin/sdk/ui': join(REPO_ROOT, 'packages/sdk/src/ui/index.ts'),
-  '@makinbakin/sdk/hooks': join(REPO_ROOT, 'packages/sdk/src/hooks/index.ts'),
-  '@makinbakin/sdk/components': join(REPO_ROOT, 'packages/sdk/src/components/index.ts'),
-  '@makinbakin/sdk/slots': join(REPO_ROOT, 'packages/sdk/src/slots/index.tsx'),
-  '@makinbakin/sdk/types': join(REPO_ROOT, 'packages/sdk/src/types/index.ts'),
-  '@makinbakin/sdk/utils': join(REPO_ROOT, 'packages/sdk/src/utils/index.ts'),
-  '@makinbakin/sdk/metadata': join(REPO_ROOT, 'packages/sdk/src/metadata/index.ts'),
-  '@makinbakin/sdk/routing': join(REPO_ROOT, 'packages/sdk/src/routing/index.ts'),
-}
-
 const JSX_DEV_RUNTIME_RE = /(?:react\/jsx-dev-runtime|\bjsxDEV\b)/
-
-interface RunResult {
-  exitCode: number
-  stderr: string
-}
 
 export interface BuildLogger {
   debug?: (msg: string, meta?: Record<string, unknown>) => void
@@ -78,29 +59,6 @@ function diagnosticsLogger(log?: BuildLogger): StartupDiagnosticLogger | null {
     debug: (message, data) => log.debug?.(message, data),
     warn: (message, data) => log.warn?.(message, data),
   }
-}
-
-/**
- * Portable subprocess runner. Passing the binary through `spawn` with an
- * argv array avoids shell interpolation and path-traversal tricks.
- */
-function runSubprocess(cmd: string, args: string[], cwd?: string): Promise<RunResult> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, {
-      cwd,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    const stderrChunks: Buffer[] = []
-    proc.stdout?.on('data', () => { /* discard */ })
-    proc.stderr?.on('data', (chunk: Buffer) => { stderrChunks.push(chunk) })
-    proc.once('error', reject)
-    proc.once('close', (code: number | null) => {
-      resolve({
-        exitCode: code ?? 0,
-        stderr: Buffer.concat(stderrChunks).toString('utf-8'),
-      })
-    })
-  })
 }
 
 /**
@@ -177,19 +135,51 @@ function readPackageJson(pluginDir: string): PluginPackageJson {
   }
 }
 
+const STAGE_SPANS: Record<WhiskitStageEvent['stage'], { span: string; errorLabel: string }> = {
+  'install': { span: 'userPlugin.dependencies', errorLabel: 'bun install failed' },
+  'server-build': { span: 'userPlugin.serverBuild', errorLabel: 'server build failed' },
+  'client-build': { span: 'userPlugin.clientBuild', errorLabel: 'client build failed' },
+}
+
+const STAGE_ERROR_LABELS: Record<WhiskitBuildError['stage'], string> = {
+  'resolve-bun': 'system bun not found',
+  'validate': 'import validation failed',
+  'resolve-sdk': 'sdk resolution failed',
+  'install': 'dependency install failed',
+  'server-build': 'server build failed',
+  'client-build': 'client build failed',
+}
+
 /**
- * Build a user plugin's dist/ from its sources.
+ * Replay a backend stage event as a startup span with an accurate duration.
+ * The backend reports after the fact, so the span's clock is replayed via
+ * the `now` override: first read 0, second read the stage's durationMs.
+ */
+function emitStageSpan(
+  diag: StartupDiagnosticLogger,
+  pluginId: string,
+  event: WhiskitStageEvent,
+): void {
+  const { span, errorLabel } = STAGE_SPANS[event.stage]
+  let reads = 0
+  const handle = startStartupSpan(diag, span, {
+    phase: 'user-plugin-build',
+    pluginId,
+    pluginSource: 'user',
+    thresholdMs: 1_000,
+    now: () => (reads++ === 0 ? 0 : event.durationMs),
+  })
+  handle.end(event.status === 'ok' ? { status: 'ok' } : { status: 'error', error: errorLabel })
+}
+
+/**
+ * Build a user plugin's dist/ from its sources via the Whiskit backend.
  *
- * - If `package.json` is present and declares deps, runs `bun install` in
- *   the plugin directory first. Peer deps stay external via the bundler
- *   externals list, so this is mostly for dev deps / rare plugin-owned
- *   npm packages.
+ * - Declared deps install with `bun install --ignore-scripts` (pure-JS
+ *   installs; lifecycle scripts are withheld until the elevated path lands).
  * - When `trustExistingDist` is set and every expected dist output is
  *   present, skips the rebuild. This is used for GitHub-installed plugins
  *   that ship their own build artifacts.
- * - Runs `bun build` on `index.ts` (server) and `client.tsx` (browser, if
- *   present). Both land in `dist/` with `index.js` / `client.js`. The server
- *   bundle is self-contained except for shared runtime singletons.
  * - Skips the build when the dist outputs are newer than every source file.
  */
 export async function buildUserPlugin(
@@ -216,6 +206,8 @@ export async function buildUserPlugin(
     const hasClient = existsSync(clientEntry)
     errorStage = 'invalid package.json'
     const pkg = readPackageJson(pluginDir)
+    // Import contract is enforced every boot — even when dist is fresh and
+    // the compile would be skipped.
     errorStage = 'import validation failed'
     validatePluginImports(pluginDir, pkg)
 
@@ -236,6 +228,9 @@ export async function buildUserPlugin(
         return
       }
       if (trustCompleteDist && hasClient) {
+        // Trusted prebuilt server dist + stale client (jsx-dev artifact):
+        // refresh the client only — server rebuilds on consumer machines
+        // would need SDK sources the machine may not have.
         buildServer = false
       }
 
@@ -248,105 +243,21 @@ export async function buildUserPlugin(
       }
     }
 
-    // Install deps if the plugin has its own package.json + declared deps.
-    if (existsSync(join(pluginDir, 'package.json'))) {
-      const hasDeps =
-        (pkg.dependencies && Object.keys(pkg.dependencies).length > 0) ||
-        (pkg.devDependencies && Object.keys(pkg.devDependencies).length > 0)
-      if (hasDeps) {
-        errorStage = 'dependency install failed'
-        const installSpan = diag ? startStartupSpan(diag, 'userPlugin.dependencies', {
-          phase: 'user-plugin-build',
-          pluginId,
-          pluginSource: 'user',
-          thresholdMs: 1_000,
-        }) : null
-        let installResult: RunResult
-        try {
-          installResult = await runSubprocess('bun', ['install'], pluginDir)
-        } catch (err) {
-          installSpan?.end({ status: 'error', error: 'bun install failed' })
-          throw err
-        }
-        if (installResult.exitCode !== 0) {
-          installSpan?.end({ status: 'error', error: 'bun install failed' })
-          throw new Error(`bun install failed in ${pluginDir}:\n${installResult.stderr}`)
-        }
-        installSpan?.end({ status: 'ok' })
-      }
-    }
-
-    if (buildServer) {
-      const serverBuildConfig = {
-        entrypoints: [serverEntry],
-        outdir: distDir,
-        target: 'bun',
-        format: 'esm',
-        naming: 'index.[ext]',
-        external: SERVER_EXTERNAL,
-        plugins: [{
-          name: 'bakin-sdk-server-resolver',
-          setup(build: any) {
-            build.onResolve({ filter: /^@makinbakin\/sdk(\/.*)?$/ }, (args: { path: string }) => {
-              const path = SDK_ENTRYPOINTS[args.path]
-              if (!path) return
-              return { path }
-            })
-          },
-        }],
-      } as Parameters<typeof Bun.build>[0] & { plugins: Array<unknown> }
-      const serverSpan = diag ? startStartupSpan(diag, 'userPlugin.serverBuild', {
-        phase: 'user-plugin-build',
-        pluginId,
-        pluginSource: 'user',
-        thresholdMs: 1_000,
-      }) : null
-      errorStage = 'server build failed'
-      let serverResult: Awaited<ReturnType<typeof Bun.build>>
-      try {
-        serverResult = await Bun.build(serverBuildConfig)
-      } catch (err) {
-        serverSpan?.end({ status: 'error', error: 'server build failed' })
-        throw err
-      }
-      if (!serverResult.success) {
-        serverSpan?.end({ status: 'error', error: 'server build failed' })
-        throw new Error(`Failed to build server entry for ${pluginDir}:\n${serverResult.logs.join('\n')}`)
-      }
-      serverSpan?.end({ status: 'ok' })
-    }
-
-    if (hasClient) {
-      const clientSpan = diag ? startStartupSpan(diag, 'userPlugin.clientBuild', {
-        phase: 'user-plugin-build',
-        pluginId,
-        pluginSource: 'user',
-        thresholdMs: 1_000,
-      }) : null
-      errorStage = 'client build failed'
-      let clientResult: RunResult
-      try {
-        clientResult = await runSubprocess('bun', [
-          'build', clientEntry,
-          '--outdir', distDir,
-          '--target', 'browser',
-          '--format', 'esm',
-          '--entry-naming', 'client.[ext]',
-          ...(isProductionBuild() ? ['--production'] : []),
-          ...CLIENT_EXTERNAL.flatMap(e => ['--external', e]),
-        ])
-      } catch (err) {
-        clientSpan?.end({ status: 'error', error: 'client build failed' })
-        throw err
-      }
-      if (clientResult.exitCode !== 0) {
-        clientSpan?.end({ status: 'error', error: 'client build failed' })
-        throw new Error(`Failed to build client entry for ${pluginDir}:\n${clientResult.stderr}`)
-      }
-      clientSpan?.end({ status: 'ok' })
-    }
+    errorStage = 'build failed'
+    const build = canBuildInProcess() ? buildPluginInProcess : buildPluginWithSystemBun
+    await build({
+      pluginDir,
+      pluginId,
+      production: isProductionBuild(),
+      installDeps: true,
+      serverBuild: buildServer,
+      onStage: diag ? (event) => emitStageSpan(diag, pluginId, event) : undefined,
+    })
     totalSpan?.end({ status: 'ok', rebuilt: true, hasClient })
   } catch (err) {
+    if (err instanceof WhiskitBuildError) {
+      errorStage = STAGE_ERROR_LABELS[err.stage] ?? errorStage
+    }
     totalSpan?.end({ status: 'error', error: errorStage })
     throw err
   }
