@@ -6,7 +6,7 @@
  * media-generation adapter architecture). Future modalities (video, audio) add
  * sibling transports here and re-export them through this barrel.
  *
- * See .claude/specs/media-generation-adapter-architecture.md.
+ * See .claude/knowledge/media-generation-adapter-architecture.md.
  */
 export * from './direct-image-provider'
 export * from './secret-store'

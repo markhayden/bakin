@@ -117,4 +117,4 @@ confused at call sites.
 
 - `.claude/knowledge/plugin-system.md` — audit + activity API
 - `.claude/knowledge/repo-architecture.md` — workflows plugin
-- `.claude/specs/adapter-layer.md` — durable approval and channel adapter contract
+- `.claude/knowledge/adapter-architecture.md` — durable approval and channel adapter contract

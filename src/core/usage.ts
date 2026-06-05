@@ -3,7 +3,7 @@
  *
  * One store, one schema, one query API for MCP tool calls, REST requests, and
  * agent lifecycle events. Per-session only — nothing persists across restart.
- * See `.claude/specs/health-plugin-overhaul.md` for the design motivation.
+ * See `.claude/knowledge/usage-recording.md` for the design motivation.
  */
 
 // Why: shared state on globalThis so repeat evaluations (server entry vs.

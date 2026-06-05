@@ -2,7 +2,12 @@
 
 ## Status
 
-Draft kickoff spec for the workflow cleanup program.
+In flight (updated 2026-06-05): PRs 1, 2, 3, and 5 shipped (#355 editor
+stabilization; #341 filename contract, closed; #342 skill drift repair,
+closed; availability controls in `plugins/workflows/lib/availability.ts`).
+Remaining: PR 4 (shipped-workflow audit doc) and PRs 6 + 7A–E (dynamic video
+fanout / `map_workflow`) — the open core of #203. Per-PR detail in the
+companion plan's Status block.
 
 Related issues:
 

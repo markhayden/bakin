@@ -14,7 +14,7 @@
  *
  * Plaintext at rest is the accepted trade for a single-user, self-hosted box;
  * the env override + 0600 + dedicated-file mitigations bound the risk. See
- * .claude/specs/media-generation-adapter-architecture.md.
+ * .claude/knowledge/media-generation-adapter-architecture.md.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, renameSync, rmSync } from 'fs'
 import { dirname, join } from 'path'

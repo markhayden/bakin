@@ -2,6 +2,19 @@
 
 Companion spec: `.claude/specs/workflow-cleanup-and-refactor.md`.
 
+## Status (2026-06-05)
+
+- **PR 1 shipped** — editor stabilization (#355).
+- **PR 2 shipped** — image workflow filename contract (#341 closed).
+- **PR 3 shipped** — workflow skill drift detection + repair (#342 closed).
+- **PR 4 not done** — the shipped-workflow audit doc
+  (`.claude/specs/workflow-defaults-audit.md`) was never written.
+- **PR 5 shipped** — default workflow availability controls
+  (`plugins/workflows/lib/availability.ts`, `disabled` flag,
+  `~/.bakin/workflows/disabled-defaults.json`).
+- **PR 6 + PR 7A–E not started** — no `map_workflow` anywhere in the repo;
+  dynamic video fanout remains the open core of #203.
+
 ## Overview
 
 Ship workflow cleanup as a sequence of release-note-friendly PRs. The first PR restores a usable, runtime-honest editor. The next PRs clean known workflow contracts and drift surfaces. Only after the baseline is healthy do we add dynamic fanout for video.

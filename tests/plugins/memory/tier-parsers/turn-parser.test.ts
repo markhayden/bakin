@@ -3,7 +3,7 @@
  *
  * One OpenClaw session JSONL line → at most one MemoryRow with tier='turn'.
  *
- * Event classification rules (see .claude/specs/memory-plugin-rebuild.md §turn):
+ * Event classification rules (see .claude/knowledge/memory-plugin.md):
  *   - session (header)                             → skip (null)
  *   - model_change                                  → skip
  *   - thinking_level_change                         → skip

@@ -1,7 +1,9 @@
 # Spec: Whiskit Plugin Builder
 
-Status: Revised draft — pivot to publish-first / two-lane model
-Date: 2026-06-04
+Status: In flight — P0–P6, P8, P10 shipped; P7 deferred post-v1; P9 mostly
+shipped; P11 partial; P12 not started. Per-phase detail in the companion
+plan's Status block.
+Date: 2026-06-04 (status updated 2026-06-05)
 Related issue: https://github.com/markhayden/bakin/issues/267
 Companion plan: `.claude/specs/whiskit-plugin-builder-plan.md`
 

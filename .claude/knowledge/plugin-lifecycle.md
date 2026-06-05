@@ -1,9 +1,8 @@
-# SPEC — Plugin Lifecycle Hardening
+# Plugin Lifecycle Hardening
 
-**Status:** Draft for review (kickoff phase, pre-plan)
+**Status:** Shipped — kept as the deep reference for the plugin lifecycle CLI (`bakin plugins {list, install, export, import, upgrade, remove}`). Originally the kickoff spec.
 **Owner:** @markhayden
 **Bundles:** [#151](https://github.com/markhayden/bakin/issues/151) (`bakin plugins upgrade`), [#119](https://github.com/markhayden/bakin/issues/119) (per-plugin uninstall teardown), [#142](https://github.com/markhayden/bakin/issues/142) (permissions enforcement layers 1+2)
-**Companion plan:** `.claude/specs/plugin-lifecycle-plan.md` (next phase)
 
 ---
 

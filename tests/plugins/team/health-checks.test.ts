@@ -393,7 +393,8 @@ describe('agent-assets component integration', () => {
 
 // ─── Registration smoke test ──────────────────────────────────────────────
 //
-// Spec deliverable per .claude/specs/doctor-decoupling.md §7. Catches the
+// Spec deliverable from the doctor-decoupling work (shipped; see
+// .claude/knowledge/doctor-and-health-checks.md). Catches the
 // regression "I forgot to wire ctx.registerHealthCheck() in activate()" —
 // the only failure mode the rest of the test suite cannot detect.
 

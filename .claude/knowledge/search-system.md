@@ -559,6 +559,4 @@ All under `settings.search.settings`:
 
 - `.claude/knowledge/multimodal-search.md` — multimodal architecture, PDF/text extraction, CLIP visual path, how to add a new modality
 - `.claude/knowledge/search-api-reference.md` — REST/MCP surface for agent-facing search
-- `.claude/specs/multimodal-search.md` — the spec that drove the multimodal upgrade
-- `.claude/specs/antfly-graph-indexes.md` — deferred graph-index work
 - [Bakin issue #72](https://github.com/markhayden/bakin/issues/72) — Antfly upstream bugs documented during T6 (dead `content_security` config, broken PDF library, no loopback HTTP path)

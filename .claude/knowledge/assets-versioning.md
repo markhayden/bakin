@@ -1,7 +1,7 @@
 # Versioned Assets (asset-as-directory)
 
-Deep reference for Bakin's asset model. Spec: `.claude/specs/versioned-assets.md`.
-Plan/history: `.claude/specs/versioned-assets-plan.md`.
+Deep reference for Bakin's asset model (canonical — the originating spec/plan
+shipped and were retired).
 
 ## Model
 

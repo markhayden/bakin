@@ -1,6 +1,6 @@
 # Dispatch & Task-Store IO Efficiency
 
-**Status:** Backlog — follow-up to `.claude/specs/session-death-hardening.md`
+**Status:** Backlog — follow-up to the session-death hardening work (shipped; see `.claude/knowledge/session-forensics.md`)
 **Date:** 2026-06-04
 **Source:** Adapter/dispatch audit (2026-06-04), three parallel reviewers, all findings code-verified. This spec captures the independent IO-efficiency cluster deliberately excluded from the session-death work to keep that branch focused.
 
