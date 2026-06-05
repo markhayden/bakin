@@ -112,12 +112,12 @@ describe('embedded-assets builder excludes agents/', () => {
 
     // Should NOT contain a walk(agents) call. We check for the literal
     // string with both straight and templated forms.
-    expect(script).not.toContain("walk(join(REPO_ROOT, 'agents')")
+    expect(script).not.toContain("walk(join(repoRoot, 'agents')")
     expect(script).not.toContain('walk(agentsDir')
     expect(script).not.toContain("'/agents'")
 
     // Positively confirm the explicit walks are still there
-    expect(script).toContain("walk(join(REPO_ROOT, 'packages/host/dist'), '/assets'")
+    expect(script).toContain("walk(join(repoRoot, 'packages/host/dist'), '/assets'")
     expect(script).toContain('walk(distDir')
   })
 })
