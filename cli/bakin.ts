@@ -5,6 +5,14 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs'
 import { APP_VERSION } from '../packages/core/src/constants'
+import { assemblePluginArtifact, indexFromEntries } from '../src/core/whiskin/publish'
+import {
+  INDEX_FILENAME,
+  NEUTRAL_PLATFORM,
+  mergeArtifactsIndex,
+  readArtifactsIndex,
+  writeArtifactsIndex,
+} from '../src/core/whiskin/artifacts-index'
 import {
   cmdScheduleList, cmdScheduleAdd, cmdSchedulePause,
   cmdScheduleResume, cmdScheduleRemove, cmdScheduleRun, cmdScheduleRuns,
@@ -991,6 +999,91 @@ async function cmdDiagnosticsStartup(action: string | undefined, args: string[])
   }
 
   await exitUnknownSubcommand('diagnostics startup', action, ['status', 'on', 'off'])
+}
+
+/**
+ * `bakin plugins publish <builtPluginDir> --out <dir>` — assemble a published
+ * artifact from a BUILT plugin directory (Whiskin Phase 4). Purely local: reads
+ * the manifest, stamps provenance, tars + checksums the artifact, and writes (or
+ * carries forward into) whiskin-artifacts.json. Building the plugin is the
+ * producer's step (run before this); `--build` is a future addition.
+ */
+async function cmdPluginsPublish(
+  pluginDir: string,
+  opts: { out: string; baseUrl?: string; platform?: string; json?: boolean },
+): Promise<void> {
+  const { existsSync } = await import('node:fs')
+  const { resolve, join } = await import('node:path')
+
+  const abs = resolve(pluginDir)
+  const manifestPath = join(abs, 'bakin-plugin.json')
+  if (!existsSync(manifestPath)) {
+    await exitCommandIssue(`No bakin-plugin.json found in ${abs}`, {
+      command: 'bakin plugins publish',
+      usage: 'bakin plugins publish <builtPluginDir> --out <dir> [--base-url <url>] [--platform <p>] [--json]',
+    })
+    return
+  }
+  let manifest: { id?: string; version?: string; bakin?: string }
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+  } catch (err) {
+    await exitCommandIssue(`Invalid bakin-plugin.json: ${err instanceof Error ? err.message : String(err)}`, {
+      command: 'bakin plugins publish',
+    })
+    return
+  }
+  if (!manifest.id || !manifest.version) {
+    await exitCommandIssue('bakin-plugin.json must declare "id" and "version"', {
+      command: 'bakin plugins publish',
+    })
+    return
+  }
+  if (!existsSync(join(abs, 'dist', 'index.js'))) {
+    await exitCommandIssue(`No dist/index.js in ${abs} — build the plugin before publishing.`, {
+      command: 'bakin plugins publish',
+    })
+    return
+  }
+
+  const platform = opts.platform || NEUTRAL_PLATFORM
+  const bakinRange = manifest.bakin || `>=${APP_VERSION}`
+  const filename = `${manifest.id}-${manifest.version}-${platform}.tar.gz`
+  const artifactUrl = opts.baseUrl ? `${opts.baseUrl.replace(/\/+$/, '')}/${filename}` : filename
+  const outDir = resolve(opts.out)
+
+  const result = await assemblePluginArtifact({
+    builtDir: abs,
+    pluginId: manifest.id,
+    pluginVersion: manifest.version,
+    bakinVersion: APP_VERSION,
+    bakinRange,
+    platform,
+    whiskinVersion: '1',
+    buildBackend: 'system-bun',
+    artifactUrl,
+    outDir,
+    builtAt: new Date().toISOString(),
+  })
+
+  // Carry forward an existing index in the same out dir (so messaging+projects
+  // publish into one complete release catalog).
+  const indexPath = join(outDir, INDEX_FILENAME)
+  const fresh = indexFromEntries([result.indexEntry])
+  const index = existsSync(indexPath)
+    ? mergeArtifactsIndex(readArtifactsIndex(indexPath), fresh)
+    : fresh
+  writeArtifactsIndex(indexPath, index)
+
+  if (opts.json) {
+    print({ pluginId: manifest.id, version: manifest.version, platform, artifact: result.artifactPath, sha256: result.sha256, index: indexPath })
+    return
+  }
+  console.log(`Published ${manifest.id}@${manifest.version} (${platform})`)
+  console.log(`  artifact: ${result.artifactPath}`)
+  console.log(`  sha256:   ${result.sha256}`)
+  console.log(`  checksum: ${result.artifactPath}.sha256`)
+  console.log(`  index:    ${indexPath}`)
 }
 
 async function cmdPluginsList(opts: { json?: boolean; check?: boolean } = {}): Promise<void> {
@@ -4189,6 +4282,28 @@ export async function main(): Promise<void> {
             force: parsed.force,
             ref: parsed.ref,
             json: parsed.json,
+          })
+        } else if (sub === 'publish') {
+          const PUBLISH_USAGE = 'bakin plugins publish <builtPluginDir> --out <dir> [--base-url <url>] [--platform <p>] [--json]'
+          const flags = args.slice(2)
+          const dir = flags.find(arg => !arg.startsWith('--'))
+          const flagValue = (name: string): string | undefined => {
+            const i = flags.indexOf(name)
+            return i >= 0 && i + 1 < flags.length ? flags[i + 1] : undefined
+          }
+          const out = flagValue('--out')
+          if (!dir || !out) {
+            await exitCommandIssue(!dir ? 'Missing <builtPluginDir>.' : 'Missing required --out <dir>.', {
+              command: 'bakin plugins publish',
+              usage: PUBLISH_USAGE,
+            })
+            return
+          }
+          await cmdPluginsPublish(dir, {
+            out,
+            baseUrl: flagValue('--base-url'),
+            platform: flagValue('--platform'),
+            json: flags.includes('--json'),
           })
         } else if (sub === 'export') {
           const flags = args.slice(2)

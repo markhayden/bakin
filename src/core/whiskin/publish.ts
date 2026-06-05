@@ -61,8 +61,15 @@ export interface AssembledArtifact {
   indexEntry: IndexEntryRef
 }
 
-/** Top-level entries copied into the artifact (must match artifact.ts ALLOWED_TOP_LEVEL). */
-const ARTIFACT_CONTENTS = ['bakin-plugin.json', 'dist', 'node_modules'] as const
+/**
+ * Top-level entries copied into the artifact (a subset of artifact.ts
+ * ALLOWED_TOP_LEVEL). v1 is pure-JS only: the build inlines real deps and the
+ * host provides React/SDK externals, so `node_modules/` is NOT shipped — it
+ * would bloat the artifact and ship duplicate React/SDK copies, breaking the
+ * "one React, one SDK" invariant. Native support (deferred Phase 7) will add
+ * only the specific runtime modules listed in provenance.outputs.runtimeModules.
+ */
+const ARTIFACT_CONTENTS = ['bakin-plugin.json', 'dist'] as const
 
 /**
  * Assemble a published artifact from a built plugin directory. Stages only the
