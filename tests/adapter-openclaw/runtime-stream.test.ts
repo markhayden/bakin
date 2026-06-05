@@ -102,10 +102,38 @@ describe('OpenClaw runtime Gateway chat', () => {
       deliver: false,
       timeout: 600,
     })
-    expect(agentRequest?.params.idempotencyKey).toMatch(/^bakin-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    // Threaded sends use the stable per-attempt key (same threadId → same
+    // key → gateway-side idempotency for transport retries of one turn).
+    expect(agentRequest?.params.idempotencyKey).toBe('bakin:messaging:a50b420e:pixel')
     expect(agentRequest?.params).not.toHaveProperty('expectFinal')
     expect(agentRequest?.params).not.toHaveProperty('timeoutMs')
     expect(agentRequest?.params.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    expect(result.metadata?.sessionId).toBe(agentRequest?.params.sessionId)
+  })
+
+  it('unthreaded sends keep a random idempotency key and expose no session id', async () => {
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const result = await runtime.messaging.send({ agentId: 'pixel', content: 'notify' })
+
+    const ws = FakeWebSocket.instances[0]!
+    const agentRequest = ws.sentFrames.find(frame => frame.method === 'agent')
+    expect(agentRequest?.params.idempotencyKey).toMatch(/^bakin-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    expect(agentRequest?.params).not.toHaveProperty('sessionId')
+    expect(result.metadata).toBeUndefined()
+  })
+
+  it('two task-attempt threadIds land in distinct provider sessions', async () => {
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    const first = await runtime.messaging.send({ agentId: 'pixel', content: 'attempt 1', threadId: 'task:t-1:d1' })
+    const second = await runtime.messaging.send({ agentId: 'pixel', content: 'attempt 2', threadId: 'task:t-1:d2' })
+
+    expect(first.metadata?.sessionId).toBeDefined()
+    expect(second.metadata?.sessionId).toBeDefined()
+    expect(first.metadata?.sessionId).not.toBe(second.metadata?.sessionId)
   })
 
   it('forwards per-turn tool policy on messaging sends', async () => {

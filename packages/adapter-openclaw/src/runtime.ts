@@ -502,7 +502,14 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         toolsDeny: args.toolsDeny,
         oversizedOutputBytes: oversizedOutputBytesFrom(args.metadata),
       })
-      return { id: `msg-${Date.now()}`, content }
+      // Threaded sends expose the real (deterministic) provider session id
+      // so callers can correlate the turn with forensics, usage, and audit.
+      const sessionId = args.threadId ? openClawCliSessionId(args.agentId, args.threadId) : undefined
+      return {
+        id: `msg-${Date.now()}`,
+        content,
+        ...(sessionId ? { metadata: { sessionId } } : {}),
+      }
     },
     stream: (args: MessageArgs): AsyncIterable<ChatChunk> => this.streamChat({
       agentId: args.agentId,
@@ -1145,7 +1152,10 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       message: messagesToOpenClawPrompt(opts.messages),
       deliver: false,
       timeout: OPENCLAW_AGENT_TIMEOUT_SECONDS,
-      idempotencyKey: `bakin-${randomUUID()}`,
+      // Stable per-attempt key: a transport retry of the SAME logical turn
+      // (same threadId) is idempotent at the gateway. Unthreaded sends keep
+      // a random key — each is its own logical turn.
+      idempotencyKey: opts.sessionKey ? `bakin:${opts.sessionKey}` : `bakin-${randomUUID()}`,
     }
     applyRuntimeMessageToolPolicy(params, opts)
     if (cliSessionId) params.sessionId = cliSessionId
@@ -2346,9 +2356,29 @@ function readOpenClawSessionActivity(
   return chunks
 }
 
+// sessions.json grows one entry (with a full skillsSnapshot) per session and
+// per-dispatch sessions accumulate steadily — cache the parsed store behind
+// an mtime guard so resolution stays O(1) between writes.
+const sessionStoreCache = new Map<string, { mtimeMs: number; store: Record<string, OpenClawSessionStoreEntry> | null }>()
+
+function readSessionStoreCached(storePath: string): Record<string, OpenClawSessionStoreEntry> | null {
+  let mtimeMs: number
+  try {
+    mtimeMs = statSync(storePath).mtimeMs
+  } catch {
+    sessionStoreCache.delete(storePath)
+    return null
+  }
+  const hit = sessionStoreCache.get(storePath)
+  if (hit && hit.mtimeMs === mtimeMs) return hit.store
+  const store = readJsonFile<Record<string, OpenClawSessionStoreEntry>>(storePath)
+  sessionStoreCache.set(storePath, { mtimeMs, store })
+  return store
+}
+
 function resolveOpenClawSessionFile(agentId: string, sessionKey: string): string | undefined {
   const storePath = join(getOpenClawHome(), 'agents', agentId, 'sessions', 'sessions.json')
-  const store = readJsonFile<Record<string, OpenClawSessionStoreEntry>>(storePath)
+  const store = readSessionStoreCached(storePath)
   const entry = findOpenClawSessionStoreEntry(store, agentId, sessionKey)
   if (!entry) return undefined
   if (typeof entry.sessionFile === 'string' && entry.sessionFile.length > 0) return entry.sessionFile

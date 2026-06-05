@@ -37,6 +37,9 @@ mock.module('../../src/core/settings', () => ({
       failureCooldownMs: 30 * 60 * 1000,  // 30m — structural
       transientCooldownMs: 60 * 1000,     // 60s — transient
       maxDispatched: 500,
+      oversizedOutputBytes: 128 * 1024,
+      maxConcurrentTurns: 3,
+      maxTurnsPerAgent: 1,
     },
     agents: ['main', 'pixel', 'trainer'],
     watchdog: { stuckThresholdMs: 30 * 60 * 1000 },
@@ -642,6 +645,93 @@ describe('dispatch', () => {
       const state = readState()
       expect(state.failedDispatches['t-completed-before-timeout']).toBeUndefined()
       expect(state.dispatched).not.toContain('t-completed-before-timeout')
+    })
+  })
+
+  describe('per-dispatch sessions (threadId d<seq>)', () => {
+    type ColumnsShape = { todo: Array<{ id: string; title: string; agent?: string }>; inProgress: never[]; done: never[]; archived: never[] }
+
+    function setupTask(task: { id: string; title: string; agent?: string }): void {
+      const columns: ColumnsShape = { todo: [task], inProgress: [], done: [], archived: [] }
+      setDispatchColumns(columns)
+      const invoke = mock(async (hook: string) => {
+        if (hook === 'workflows.getActiveAgents') return []
+        return undefined
+      })
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke,
+        has: mock().mockReturnValue(false),
+        register: mock(),
+      } as unknown as HookRegistry)
+    }
+
+    function readState() {
+      return JSON.parse(readFileSync(join(tempDir, '.dispatch-state.json'), 'utf-8'))
+    }
+
+    afterEach(() => {
+      mockRuntimeSend.mockClear()
+      mockRuntimeSend.mockImplementation((...args: unknown[]) => {
+        void args
+        return Promise.resolve({ id: 'runtime-msg' })
+      })
+    })
+
+    it('passes a per-attempt threadId + oversized threshold and persists the monotonic seq', async () => {
+      setupTask({ id: 't-thread', title: 'Threaded task', agent: 'pixel' })
+
+      await dispatchTasks(tempDir, 3737)
+
+      expect(mockRuntimeSend).toHaveBeenCalledTimes(1)
+      const args = mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>
+      expect(args.threadId).toBe('task:t-thread:d1')
+      expect((args.metadata as Record<string, unknown>).oversizedOutputBytes).toBeGreaterThan(0)
+      expect(readState().dispatchSeq['t-thread']).toBe(1)
+    })
+
+    it('seq survives success: a later re-dispatch of the same task gets a FRESH session key', async () => {
+      setupTask({ id: 't-again', title: 'Comes back later', agent: 'pixel' })
+      await dispatchTasks(tempDir, 3737)
+      expect((mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>).threadId).toBe('task:t-again:d1')
+
+      // Task completed, then returns to todo (e.g. dependency continuation).
+      // Failure count is empty — the OLD attempt-derived scheme would mint
+      // d1 again and resume the stale session.
+      const state = readState()
+      state.dispatched = []
+      writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify(state))
+      setupTask({ id: 't-again', title: 'Comes back later', agent: 'pixel' })
+
+      await dispatchTasks(tempDir, 3737)
+
+      const second = mockRuntimeSend.mock.calls[1]?.[0] as Record<string, unknown>
+      expect(second.threadId).toBe('task:t-again:d2')
+    })
+
+    it('workflow step dispatches scope the threadId by stepId', async () => {
+      const columns = {
+        todo: [{ id: 'wf-thread', title: 'Workflow task', workflowId: 'flow-1', agent: 'pixel' }],
+        inProgress: [], done: [], archived: [],
+      }
+      setDispatchColumns(columns)
+      const invoke = mock(async (hook: string) => {
+        if (hook === 'workflows.loadInstance') return { id: 'inst-1' }
+        if (hook === 'workflows.getActiveAgents') return [{ agent: 'pixel', stepId: 'step-generate' }]
+        if (hook === 'workflows.getCurrentStep') {
+          return { stepId: 'step-generate', label: 'Generate', instructions: 'make it', output_schema: {} }
+        }
+        return undefined
+      })
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke,
+        has: mock().mockReturnValue(false),
+        register: mock(),
+      } as unknown as HookRegistry)
+
+      await dispatchTasks(tempDir, 3737)
+
+      const args = mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>
+      expect(args.threadId).toBe('task:wf-thread:step:step-generate:d1')
     })
   })
 

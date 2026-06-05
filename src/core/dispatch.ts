@@ -28,8 +28,38 @@ const log = createLogger('dispatch')
 const hooks = () => getHookRegistry()
 const IMAGE_MCPORTER_TIMEOUT_MS = 600000
 
-async function sendDispatchMessage(agentId: string, content: string): Promise<void> {
-  await getAppServices().runtime.messaging.send({ agentId, content })
+/**
+ * Task-work sends get a per-dispatch session: a fresh, deterministic
+ * threadId per attempt so context can't accumulate across tasks, forensics
+ * knows exactly which provider session to inspect, and a corrective
+ * re-dispatch never replays a dead session's bloated context. Notification
+ * sends (orchestrator/watchdog/doctor) deliberately stay in the agent's
+ * default session and don't go through here.
+ */
+async function sendDispatchMessage(agentId: string, content: string, threadId: string): Promise<void> {
+  await getAppServices().runtime.messaging.send({
+    agentId,
+    content,
+    threadId,
+    metadata: { oversizedOutputBytes: getSettings().dispatch.oversizedOutputBytes },
+  })
+}
+
+/**
+ * Mint the next per-attempt session key for a task dispatch.
+ *
+ * `seq` is a monotonic per-task counter persisted immediately — it must
+ * never be derived from the failure count (which resets on success and
+ * would silently resume a stale session on a later re-dispatch) and must
+ * survive a crashed cycle (reusing a seq could re-enter a live session).
+ * Workflow steps carry the stepId so parallel step agents can't collide.
+ */
+function nextDispatchThreadId(contentDir: string, state: DispatchState, taskId: string, stepId?: string): string {
+  if (!state.dispatchSeq) state.dispatchSeq = {}
+  const seq = (state.dispatchSeq[taskId] ?? 0) + 1
+  state.dispatchSeq[taskId] = seq
+  saveDispatchState(contentDir, state)
+  return stepId ? `task:${taskId}:step:${stepId}:d${seq}` : `task:${taskId}:d${seq}`
 }
 
 // Upstream runtime error bodies land in task logs and audit JSONL via
@@ -120,6 +150,8 @@ interface DispatchState {
   serverStart: number
   dispatched: string[]
   failedDispatches: Record<string, FailureRecord>
+  /** Monotonic per-task dispatch counter — see nextDispatchThreadId(). */
+  dispatchSeq?: Record<string, number>
 }
 
 type DispatchTask = {
@@ -502,6 +534,7 @@ export function loadDispatchState(contentDir: string): DispatchState {
       const parsed = JSON.parse(readFileSync(stateFile, 'utf-8'))
       if (!Array.isArray(parsed.dispatched)) parsed.dispatched = []
       if (!parsed.failedDispatches || typeof parsed.failedDispatches !== 'object') parsed.failedDispatches = {}
+      if (!parsed.dispatchSeq || typeof parsed.dispatchSeq !== 'object') parsed.dispatchSeq = {}
       return parsed
     }
   } catch (err) {
@@ -646,12 +679,13 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         await moveTaskToInProgress(task.id, targetAgent)
         appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
 
-        await sendDispatchMessage(targetAgent, message)
+        const threadId = nextDispatchThreadId(contentDir, state, task.id)
+        await sendDispatchMessage(targetAgent, message, threadId)
         dispatchedSet.add(task.id)
         delete state.failedDispatches?.[task.id]
 
-        appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title })
-        log.info('Task dispatched', { id: task.id, title: task.title, agent: targetAgent })
+        appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId })
+        log.info('Task dispatched', { id: task.id, title: task.title, agent: targetAgent, threadId })
       } catch (err) {
         log.error(`Failed to dispatch "${task.title}" to ${targetAgent}`, err)
         await reconcileRejectedDispatch({
@@ -792,15 +826,16 @@ export async function dispatchSingleTask(
       await moveTaskToInProgress(task.id, targetAgent)
       appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
 
-      await sendDispatchMessage(targetAgent, message)
+      const threadId = nextDispatchThreadId(contentDir, state, task.id)
+      await sendDispatchMessage(targetAgent, message, threadId)
       delete state.failedDispatches?.[task.id]
 
       state.dispatched.push(task.id)
       saveDispatchState(contentDir, state)
 
-      appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title })
+      appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId })
       appendAudit(contentDir, 'task.kicked', source, { id: task.id, title: task.title })
-      log.info('Single-task dispatch', { id: task.id, title: task.title, agent: targetAgent, source })
+      log.info('Single-task dispatch', { id: task.id, title: task.title, agent: targetAgent, source, threadId })
       recordUsage({
         kind: 'agent',
         name: 'dispatch',
@@ -1073,7 +1108,8 @@ async function dispatchWorkflowTask(
     const initialLogCount = findDispatchTaskSnapshot(task.id)?.task.log?.length ?? 0
 
     try {
-      await sendDispatchMessage(targetAgent, message)
+      const threadId = nextDispatchThreadId(contentDir, state, task.id, stepId)
+      await sendDispatchMessage(targetAgent, message, threadId)
       dispatchedSet.add(`${task.id}:${stepId}`)
       delete state.failedDispatches?.[task.id]
 
@@ -1082,8 +1118,9 @@ async function dispatchWorkflowTask(
         title: task.title,
         workflowId: task.workflowId,
         stepId,
+        threadId,
       })
-      log.info('Workflow step dispatched', { taskId: task.id, stepId, agent: targetAgent })
+      log.info('Workflow step dispatched', { taskId: task.id, stepId, agent: targetAgent, threadId })
     } catch (err) {
       log.error(`Failed to dispatch workflow step "${stepId}" to ${targetAgent}`, err)
       await reconcileRejectedDispatch({
