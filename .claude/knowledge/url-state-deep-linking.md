@@ -17,9 +17,9 @@ State that is transient and not meaningful to bookmark (e.g., open modals, drag 
 Filters, search, view mode, pagination. These are ephemeral and combinable. Use `useQueryState` / `useQueryArrayState`.
 
 ### Path segments — for addressable resources
-Individual items (`/projects/abc123`) and their modes (`/projects/abc123/edit`, `/projects/new`). These are TanStack Router code-based routes under `packages/host/src/routes/` — each route renders `<Slot name="page:/route" />` so the owning plugin can register the page component via `registerPlugin({ slots: { ... } })`. Path-based routing is the target pattern for all plugins — see `.claude/specs/06-routing-refactor.md` for migration status.
+Individual items (`/projects/abc123`) and their modes (`/projects/abc123/edit`, `/projects/new`). These are TanStack Router code-based routes under `packages/host/src/routes/` — each route renders `<Slot name="page:/route" />` so the owning plugin can register the page component via `registerPlugin({ slots: { ... } })`. Path-based routing is the target pattern for all plugins.
 
-**Current state:** Projects and Workflows use path segments. Other plugins still use query params (`?taskId=`, `?jobId=`, etc.) — migration tracked in spec 06.
+**Current state:** Projects and Workflows use path segments. Other plugins still use query params (`?taskId=`, `?jobId=`, etc.).
 
 ## Hook: `useQueryState` / `useQueryArrayState`
 

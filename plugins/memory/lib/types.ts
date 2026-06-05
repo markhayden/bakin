@@ -6,7 +6,7 @@
  * are stored in `meta` (JSON-stringified) and validated at index time
  * against the per-tier meta schemas below.
  *
- * See .claude/specs/memory-plugin-rebuild.md § Data Model.
+ * See .claude/knowledge/memory-plugin.md.
  */
 import { z } from 'zod'
 

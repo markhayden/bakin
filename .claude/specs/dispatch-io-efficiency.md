@@ -1,6 +1,6 @@
 # Dispatch & Task-Store IO Efficiency
 
-**Status:** Approved — implements GitHub issue #434
+**Status:** Approved — implements GitHub issue #434 (follow-up to the session-death hardening work, shipped; see `.claude/knowledge/session-forensics.md`)
 **Date:** 2026-06-05 (supersedes 2026-06-04 draft)
 **Source:** Adapter/dispatch audit (2026-06-04, three parallel reviewers) + final review pass findings from #434. All 11 findings re-verified against `release/v0.0.1-rc.16` on 2026-06-05.
 

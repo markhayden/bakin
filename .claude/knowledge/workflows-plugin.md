@@ -396,4 +396,4 @@ Tracked as separate GitHub issues:
 - **2C — Plugin distribution**: `bakin plugin install <name>` from a registry/git and signature verification.
 - **2D — Skill rebase UX**: replace `.userEdited` warn-and-skip with 3-way merge and a UI for resolving conflicts.
 
-Phases 2A (plugin-registered node types) and 2B (visual canvas editor) shipped together — see the Node-Type Registry and Canvas Editor sections above and `.claude/specs/workflows-phase-2-plugin-nodes-and-canvas.md` for the original spec.
+Phases 2A (plugin-registered node types) and 2B (visual canvas editor) shipped together — see the Node-Type Registry and Canvas Editor sections above.

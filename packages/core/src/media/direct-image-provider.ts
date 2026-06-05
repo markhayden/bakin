@@ -2,7 +2,7 @@
  * Shared, runtime-agnostic direct image provider transport.
  *
  * This is the "shim" in the media-generation adapter architecture
- * (.claude/specs/media-generation-adapter-architecture.md): when a runtime
+ * (.claude/knowledge/media-generation-adapter-architecture.md): when a runtime
  * adapter cannot serve an image request natively, it composes this module to
  * call the provider's HTTP API directly. It is owned by no plugin and no
  * runtime — every adapter (and, later, every media modality) reuses it.

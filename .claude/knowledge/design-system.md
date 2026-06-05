@@ -87,7 +87,7 @@ The Bakin logo (`public/bakin-logo.svg`) is `bakin-hop.svg` — a leaping bison 
 
 ## Agent Avatars
 
-Avatars are **per-installation content** stored in `~/.bakin/agents/{id}/avatar.jpg` (128px thumbnails). Served via `GET /api/agents/avatar?id={agentId}`, NOT as static files. Full-res originals at `avatar-full.png` in the same directory. See `.claude/specs/agent-avatars.md` for the full pipeline spec.
+Avatars are **per-installation content** stored in `~/.bakin/agents/{id}/avatar.jpg` (128px thumbnails). Served via `GET /api/agents/avatar?id={agentId}`, NOT as static files. Full-res originals at `avatar-full.png` in the same directory.
 
 ## Version
 

@@ -1,12 +1,13 @@
 # Media Generation Adapter Architecture
 
-Status: **Phase 1 done; Phase 2 substantially done.** Landed in Phase 2:
+Status: **Shipped (Phases 1–2); kept as the architecture reference.** Landed:
 capability-contract tightening (dropped `outputPath`), shim namespace settled
 (`@bakin/core/media`), the Bakin-owned provider secret store (env → store,
 atomic `0600`, validated provider ids), the `/api/secrets` write API, and the
-image-scoped Provider Keys settings tab. Remaining: the all-domains global
-credential inventory (GitHub #378), and the Hermes adapter when a 2nd runtime
-is built.
+image-scoped Provider Keys settings tab. Open follow-ups are tracked on
+GitHub: #378 (all-domains credential inventory), #379 (path parity), #380
+(shared mime/provider tables), #381 (image model catalog drift). The Hermes
+adapter validates the abstraction when a 2nd runtime is built.
 Scope: image generation today; the template generalizes to video / audio / any
 provider-backed media modality and to runtimes beyond OpenClaw.
 

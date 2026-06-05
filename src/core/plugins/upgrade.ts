@@ -138,8 +138,8 @@ function run(cmd: string, args: string[], cwd: string): string {
 /**
  * Hash a directory's path+content tree (skipping node_modules / dist / .git).
  * Path-and-content only — mtimes intentionally excluded so the hash is
- * stable across copies of the same source. Captured as decision in
- * .claude/specs/plugin-lifecycle-plan.md C4 OPEN QUESTION.
+ * stable across copies of the same source (deliberate design decision;
+ * see .claude/knowledge/plugin-lifecycle.md).
  */
 export function computeSourceTreeSha(rootDir: string): string {
   const SKIP = new Set(['node_modules', 'dist', '.git'])
