@@ -20,6 +20,14 @@ the whole board behind one slow agent). Mechanics in `src/core/dispatch.ts`:
   concurrency). A capped task is deferred with no failure recorded.
 - The state lock spans only the scan/fire phase, so manual kicks
   (`dispatchSingleTask`) interleave with in-flight cycles.
+- **Two-phase cycle (#434):** the regular loop *collects* dispatch intents
+  (move + mint seq in-memory via `deferSave` + build message), then ONE
+  `saveDispatchState` persists every minted seq, then all turns fire —
+  1 state write per cycle instead of N+1, with persist-before-send intact.
+  Collected-but-unfired turns reserve their concurrency slots explicitly
+  (`pendingByAgent` passed into `concurrencyGate`) since the in-flight
+  registry only sees them at fire time. `dispatchSingleTask` and workflow
+  steps keep the inline per-mint save (few per cycle, not the hotspot).
 - `awaitDispatchIdle()` — deterministic "all turns + bookkeeping settled"
   synchronization for tests and shutdown.
 
@@ -28,8 +36,10 @@ the whole board behind one slow agent). Mechanics in `src/core/dispatch.ts`:
 Every task send carries a fresh provider session via
 `threadId = task:<taskId>:d<seq>` (workflow steps:
 `task:<taskId>:step:<stepId>:d<seq>`). `seq` is a **monotonic per-task
-counter** persisted immediately in `.dispatch-state.json#dispatchSeq` — never
-the failure count, which resets on success and would resume a stale session.
+counter** in `.dispatch-state.json#dispatchSeq`, durable **before the turn
+fires** (the regular cycle batches all mints into its single pre-fire save;
+one-off paths save inline at mint) — never the failure count, which resets
+on success and would resume a stale session.
 Consequences:
 
 - No cross-task context accumulation (a major contributor to oversized
@@ -161,13 +171,38 @@ schedule gate, but automatic dispatch and automatic subtasks cannot.
 ## Prompt construction
 
 `buildDispatchMessage()` / `buildWorkflowDispatchMessage()` share
-`outputDisciplineSection()` (artifact-first rules in EVERY dispatch: >~8KB →
-file + `assets_save`; multi-deliverable = checklist produced one at a time;
-chat stays short) and `sharedExecutionToolDocs()` (single tool catalog —
-intentional differences are parameters, so the builders can't drift). The
-triage roster is derived from `runtime.agents.list()`; core contains no
-hardcoded agent names. Recovery variants: corrective prompts open with
-`PREVIOUS ATTEMPT FAILED`; decomposition replaces the work prompt entirely.
+`outputDisciplineSection()` (a SHORT artifact-first reminder in EVERY
+dispatch carrying the taskId-templated `assets_save` command) and
+`sharedExecutionToolDocs()` (taskId-templated invocations — intentional
+differences are parameters, so the builders can't drift). The static half of
+the old ~4KB catalog (logging rules, discipline rationale, dependency
+pattern, tool reference) lives in the `execution-tools` **managed block**
+projected into subagent AGENTS.md (`src/core/agent-rules/managed-blocks.ts`;
+run `bakin agent-rules --apply-all` after deploy — plain `--apply` writes the
+main-agent context only and will NOT project this subagent-target block). The
+triage roster is derived
+from `runtime.agents.list()`; core contains no hardcoded agent names.
+Recovery variants: corrective prompts open with `PREVIOUS ATTEMPT FAILED`;
+decomposition replaces the work prompt entirely.
+
+Per-prompt context blocks are computed async at the call sites and passed
+into the synchronous builders:
+
+- **Assets:** `buildDispatchAssetBlock(taskId)` invokes the assets plugin's
+  `assets.listByTask` hook (in-memory taskId→assetIds index; no search
+  dependency) and renders assetIds — agents open them by assetId via
+  `bakin_exec_assets_open`. Core never walks `assets/store/` directly.
+- **Lessons:** `buildDispatchLessonBlock()` caches the formatted block per
+  `(agentId, query)` (TTL 5 min, cap 200; empty blocks cached too) — a
+  workflow step change alters the query and naturally misses; same-step
+  re-dispatches hit without a `crossTableSearch`. Lessons that can't keep
+  ≥400 chars of body are omitted with a visible `(N lessons omitted)`
+  marker, never silently dropped.
+
+One audit row per dispatch: the internal todo→inProgress move is folded into
+`task.dispatched` (payload carries `from`/`to`); `task.moved` is reserved for
+human/system/workflow moves. Task writes broadcast exactly once — the content
+watcher ignores `tasks/` and the store's own emit is authoritative.
 
 Plugins that need future work should create a real task with `availableAt`
 rather than registering a private heartbeat, health check, cron, or sweep.
@@ -204,7 +239,13 @@ normal dispatch/watchdog loops:
 - `pending_approval`, `complete`, and `cancelled` workflow instances are left
   alone.
 - Partial parallel staleness and workflow states with no active agents are
-  reported for manual attention instead of redispatching live work.
+  reported for manual attention instead of redispatching live work. The
+  manual path writes a structured hold marker
+  (`addTaskLog(..., { restartRecovery: 'manual' })`, message prefixed
+  `Manual recovery hold:` — deliberately NOT `Restart recovery:`, which
+  `countRecoveries()` would count as an attempt). The watchdog skips a task
+  while that marker is its LATEST log entry; any newer activity clears the
+  hold naturally.
 - Recovery loops share `settings.watchdog.maxAutoRecoveries`; exhausted tasks
   move to `blocked`.
 

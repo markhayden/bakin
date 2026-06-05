@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock, type Mock } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach, mock, spyOn, type Mock } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -776,6 +776,77 @@ describe('dispatch', () => {
 
       const args = mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>
       expect(args.threadId).toBe('task:wf-thread:step:step-generate:d1')
+    })
+
+    it('writes dispatch state exactly once per cycle, before any turn fires', async () => {
+      const fs = await import('fs')
+      const events: string[] = []
+      const originalWrite = fs.writeFileSync
+      const writeSpy = spyOn(fs, 'writeFileSync').mockImplementation(((...args: Parameters<typeof fs.writeFileSync>) => {
+        if (String(args[0]).includes('.dispatch-state.json')) events.push('save')
+        return originalWrite.apply(fs, args)
+      }) as typeof fs.writeFileSync)
+      mockRuntimeSend.mockImplementation((...args: unknown[]) => {
+        void args
+        events.push('send')
+        return Promise.resolve({ id: 'runtime-msg' })
+      })
+
+      // Distinct agents (the mock runtime roster has main + pixel) —
+      // maxTurnsPerAgent is 1 and collected-but-unfired turns reserve slots.
+      const columns = {
+        todo: [
+          { id: 't-batch-1', title: 'Batch one', agent: 'pixel' },
+          { id: 't-batch-2', title: 'Batch two', agent: 'main' },
+        ],
+        inProgress: [], done: [], archived: [],
+      }
+      setDispatchColumns(columns)
+      const invoke = mock(async (hook: string) => {
+        if (hook === 'workflows.getActiveAgents') return []
+        return undefined
+      })
+      vi.mocked(getHookRegistry).mockReturnValue({
+        invoke,
+        has: mock().mockReturnValue(false),
+        register: mock(),
+      } as unknown as HookRegistry)
+
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+      writeSpy.mockRestore()
+
+      const saves = events.filter((e) => e === 'save')
+      const sends = events.filter((e) => e === 'send')
+      expect(sends).toHaveLength(2)
+      // One state write for the whole cycle — not one per minted threadId
+      // (the old per-mint behavior would write 3 times here).
+      expect(saves).toHaveLength(1)
+      // Persist-before-send: the save precedes every turn fire.
+      expect(events.indexOf('save')).toBeLessThan(events.indexOf('send'))
+
+      // Both seqs were persisted by that single save.
+      const state = JSON.parse(readFileSync(join(tempDir, '.dispatch-state.json'), 'utf-8'))
+      expect(state.dispatchSeq['t-batch-1']).toBe(1)
+      expect(state.dispatchSeq['t-batch-2']).toBe(1)
+    })
+
+    it('audits exactly one row per dispatch: task.dispatched with from/to, no task.moved', async () => {
+      const { appendAudit } = require('../../src/core/audit') as typeof import('../../src/core/audit')
+      vi.mocked(appendAudit).mockClear()
+      setupTask({ id: 't-audit-one', title: 'Single audit row', agent: 'pixel' })
+
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+      const calls = vi.mocked(appendAudit).mock.calls as unknown as Array<[string, string, string, Record<string, unknown>]>
+      const moved = calls.filter((c) => c[1] === 'task.moved')
+      const dispatched = calls.filter((c) => c[1] === 'task.dispatched')
+      expect(moved).toHaveLength(0)
+      expect(dispatched).toHaveLength(1)
+      // The fold preserves the transition info on the dispatched row.
+      expect(dispatched[0]?.[3]).toMatchObject({ id: 't-audit-one', from: 'todo', to: 'inProgress' })
     })
   })
 

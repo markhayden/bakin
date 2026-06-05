@@ -247,6 +247,21 @@ export async function runRestartRecovery(contentDir: string): Promise<RestartRec
 
   for (const candidate of candidates) {
     if (candidate.action === 'manual') {
+      // Durable + visible hold: the structured marker makes the watchdog
+      // skip this task while it is the latest log entry (any newer activity
+      // clears the hold naturally). Deliberately NOT prefixed with
+      // RESTART_RECOVERY_PREFIX — countRecoveries() matches that prefix and
+      // a manual hold must not count as a recovery attempt.
+      try {
+        await addTaskLog(
+          candidate.id,
+          'system',
+          `Manual recovery hold: ${candidate.reason} (stale: ${candidate.staleAgents.join(', ') || 'unknown'}). Left in progress for manual attention; the watchdog will not auto-recover while this is the latest log entry.`,
+          { restartRecovery: 'manual' },
+        )
+      } catch (err) {
+        log.warn('Failed to write manual recovery hold marker', err, { taskId: candidate.id })
+      }
       result.skipped++
       continue
     }

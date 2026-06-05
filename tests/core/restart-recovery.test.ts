@@ -230,6 +230,16 @@ describe('restart recovery', () => {
     ])
     expect(result.skipped).toBe(1)
     expect(mockMoveTask).not.toHaveBeenCalled()
+
+    // Manual classification is durable + visible: a structured hold marker is
+    // written so the watchdog skips the task instead of auto-recovering it.
+    const holdCall = mockAddTaskLog.mock.calls.find((c) => c[0] === 'task-5')
+    expect(holdCall).toBeDefined()
+    expect(holdCall?.[1]).toBe('system')
+    // NOT the 'Restart recovery:' prefix — countRecoveries() matches that
+    // prefix and a hold must not count as a recovery attempt.
+    expect(String(holdCall?.[2])).not.toMatch(/^Restart recovery:/)
+    expect(holdCall?.[3]).toMatchObject({ restartRecovery: 'manual' })
   })
 
   it('escalates exhausted restart recovery loops to blocked', async () => {

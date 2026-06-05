@@ -533,6 +533,72 @@ All created content (images, video, audio, text, plans, data) MUST go to the ass
    - Do NOT add custom fields (e.g. \`prompt\`, \`resolution\`)
 5. **Version with timestamps:** \`20260323-hero-image.png\` for revisions.`,
   },
+
+  {
+    // The static half of the dispatch tool catalog (#434 finding 6): rule
+    // prose and the tool reference live here; dispatch prompts keep only the
+    // taskId-templated invocations plus a short discipline reminder pointing
+    // at this section.
+    blockId: 'execution-tools',
+    target: 'subagent',
+    contentFn: (agentId: string) => `## Bakin Execution Tools
+
+> Auto-managed by \`bakin doctor\`. Do not edit this block manually.
+
+All Bakin interactions use mcporter; your server is \`bakin-${agentId}\`. Every dispatch message carries the exact taskId-templated commands for that task — this section is the standing reference for HOW to work.
+
+### Progress Logging — mandatory on every task
+
+Log via \`mcporter call bakin-${agentId}.bakin_exec_tasks_log_progress taskId=<taskId> message="..."\` — updates appear in the live activity feed. Required log points:
+- At task start: what you are about to do and your approach
+- After each major step (reading files, planning, each significant change, after build)
+- Your reasoning and decisions as you go
+- When blocked or anything unexpected happens
+- On completion, with a full summary
+- If you have not logged in the last 2 minutes, log a status update — even if just "still working on X"
+
+### Output Discipline — oversized chat output kills your session
+
+The runtime cannot deliver large completions. Hard rules:
+- Any deliverable or output larger than ~8KB MUST be written to a workspace file and saved as an asset BEFORE you continue (\`bakin_exec_assets_save\`)
+- Multiple deliverables = a checklist. Produce them ONE AT A TIME: write the file → save it as an asset → log progress → start the next. NEVER draft several deliverables in a single response.
+- Keep every chat/completion message short: status, decisions, and asset ids — never deliverable content.
+- Numerous independent deliverables → split into subtasks (see the Dependency Pattern section) instead of doing them all in one turn. In a workflow step, save large output as an asset and reference the asset id in your submitted step output.
+
+### Tool Reference
+
+\`\`\`bash
+# Save any file as a managed asset (handles naming + metadata)
+mcporter call bakin-${agentId}.bakin_exec_assets_save taskId=<taskId> type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"
+
+# Open an attached asset by assetId (manifest + extracted text)
+mcporter call bakin-${agentId}.bakin_exec_assets_open assetId=<assetId>
+
+# Recommend and generate an image through the core images plugin
+mcporter call bakin-${agentId}.bakin_exec_images_recommend surface=<surface> objective="<goal>"
+mcporter call bakin-${agentId}.bakin_exec_images_generate taskId=<taskId> prompt="<text>" surface=<surface> provider=auto
+
+# Check workflow gate statuses
+mcporter call bakin-${agentId}.bakin_exec_check_gates taskId=<taskId>
+
+# Post to a runtime channel (with optional attachment) — only when instructed
+mcporter call bakin-${agentId}.bakin_exec_post_channel channel="<name>" content="<message>" taskId=<taskId>
+
+# Task lifecycle
+mcporter call bakin-${agentId}.bakin_exec_tasks_get taskId=<taskId>
+mcporter call bakin-${agentId}.bakin_exec_tasks_complete taskId=<taskId> summary="<what you accomplished>"
+mcporter call bakin-${agentId}.bakin_exec_tasks_block taskId=<taskId> reason="<what went wrong>"
+mcporter call bakin-${agentId}.bakin_exec_tasks_create title="<subtask>" assignee="<agent>" description="<brief>" parentId=<taskId>
+mcporter call bakin-${agentId}.bakin_exec_tasks_set_dependency taskId=<taskId> dependsOn="<other-task-id>"
+
+# Projects (when a task carries a projectId)
+mcporter call bakin-${agentId}.bakin_exec_projects_get projectId="<projectId>"
+mcporter call bakin-${agentId}.bakin_exec_projects_mark_item projectId="<projectId>" taskItemId="<itemId>" checked=true
+
+# Find content directories (assets, team, etc.)
+mcporter call bakin-${agentId}.bakin_exec_get_paths
+\`\`\``,
+  },
 ]
 
 /**

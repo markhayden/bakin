@@ -38,6 +38,17 @@ turn (per-attempt scoping — a session accrues one run per turn):
    `RuntimeTurnError` diagnosis and the pending RPC is aborted (its 630s
    timer cleared). In the incident, the evidence sat on disk ~106s before
    Bakin gave up; now detection is <400ms from the event write.
+   The scan is **incremental** (#434): new bytes feed a carried scanner
+   (`createTrajectoryScanner`) — each line is JSON.parsed exactly once
+   across the watch's lifetime instead of re-parsing the whole tail from
+   the turn-start offset on every size change (which was O(delta²) over
+   tool-heavy turns). The trailing partial line is buffered as raw BYTES
+   (multi-byte chars split across reads decode correctly once complete);
+   `finalize()` probes it against a state clone so an unterminated line is
+   evaluated without being consumed. Shared low-level reads live in
+   `packages/adapter-openclaw/src/file-utils.ts` (`safeFileSize`,
+   `readFileFrom`/`readFileBytesFrom`) — also used by runtime.ts's
+   session-activity tail.
 2. **Post-mortem** (`inspectTrajectoryRun`): if the transport timer fires
    anyway or the socket drops mid-turn, the trajectory tail is inspected.
    Three verdicts: `success` → the run finished but the frame was lost, so

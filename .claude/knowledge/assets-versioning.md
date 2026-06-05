@@ -55,6 +55,15 @@ defined in `packages/core/src/plugin-types.ts` (`AssetsAPI`), implemented in
 mappings in `src/lib/plugin-permissions.ts` (`assets.write` for create/version/
 export, `assets.read` for resolve). The images plugin is the primary consumer.
 
+**Task-linked lookup (`assets.listByTask` hook, #434):** the plugin maintains an
+in-memory `taskId → assetIds` index (`lib/task-asset-index.ts`) — lazy one-time
+store scan, updated synchronously at the `writeManifestAtomic` choke point plus
+the trash/restore paths; the watcher's `onSync`/`onUnlink` are the self-heal
+backstop for externally edited manifests. Dispatch's "Attached Assets" block
+consumes this hook (`buildDispatchAssetBlock` in `src/core/dispatch.ts`) and
+renders assetIds; no search dependency, and core never walks `assets/store/`
+directly.
+
 ## HTTP addressing (path segments)
 
 ```

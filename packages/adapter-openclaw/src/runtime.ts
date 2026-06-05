@@ -1,4 +1,4 @@
-import { accessSync, closeSync, constants, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
+import { accessSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { dirname, join, resolve, sep } from 'path'
 import { execFile } from 'child_process'
@@ -28,7 +28,8 @@ import type {
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
 import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
-import { inspectTrajectoryRun, safeTrajectoryOffset, trajectoryFilePathFor, watchTrajectoryForDeath, TrajectoryRecoveredTurn } from './trajectory-forensics'
+import { readFileFrom, safeFileSize } from './file-utils'
+import { inspectTrajectoryRun, trajectoryFilePathFor, watchTrajectoryForDeath, TrajectoryRecoveredTurn } from './trajectory-forensics'
 import { generateDirectImage, isDirectImageProvider, resolveProviderApiKeySource } from '@bakin/core/media'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
@@ -1164,7 +1165,7 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     // post-mortem only sees events from this attempt (the file accrues one
     // run per turn for the life of the session).
     const trajectoryFile = cliSessionId ? trajectoryFilePathFor(opts.agentId, cliSessionId) : null
-    const trajectoryOffset = trajectoryFile ? safeTrajectoryOffset(trajectoryFile) : 0
+    const trajectoryOffset = trajectoryFile ? safeFileSize(trajectoryFile) : 0
 
     // Fail-fast: race the pending request against the on-disk evidence. When
     // OpenClaw records session.ended (non-success) the gateway will never
@@ -2401,7 +2402,10 @@ function readOpenClawSessionActivity(
 
 // sessions.json grows one entry (with a full skillsSnapshot) per session and
 // per-dispatch sessions accumulate steadily — cache the parsed store behind
-// an mtime guard so resolution stays O(1) between writes.
+// an mtime guard so resolution stays O(1) between writes. LRU-capped: each
+// entry holds a fully-parsed store, and the Map previously grew without
+// bound (one entry per store path, never evicted).
+export const SESSION_STORE_CACHE_MAX = 64
 const sessionStoreCache = new Map<string, { mtimeMs: number; store: Record<string, OpenClawSessionStoreEntry> | null }>()
 
 function readSessionStoreCached(storePath: string): Record<string, OpenClawSessionStoreEntry> | null {
@@ -2413,10 +2417,36 @@ function readSessionStoreCached(storePath: string): Record<string, OpenClawSessi
     return null
   }
   const hit = sessionStoreCache.get(storePath)
-  if (hit && hit.mtimeMs === mtimeMs) return hit.store
+  if (hit && hit.mtimeMs === mtimeMs) {
+    // Map preserves insertion order — delete + re-set marks recency.
+    sessionStoreCache.delete(storePath)
+    sessionStoreCache.set(storePath, hit)
+    return hit.store
+  }
   const store = readJsonFile<Record<string, OpenClawSessionStoreEntry>>(storePath)
+  sessionStoreCache.delete(storePath)
   sessionStoreCache.set(storePath, { mtimeMs, store })
+  while (sessionStoreCache.size > SESSION_STORE_CACHE_MAX) {
+    const oldest = sessionStoreCache.keys().next().value
+    if (oldest === undefined) break
+    sessionStoreCache.delete(oldest)
+  }
   return store
+}
+
+/** @internal Test-only. */
+export function __readSessionStoreCachedForTest(storePath: string): Record<string, OpenClawSessionStoreEntry> | null {
+  return readSessionStoreCached(storePath)
+}
+
+/** @internal Test-only. */
+export function __sessionStoreCacheKeysForTest(): string[] {
+  return [...sessionStoreCache.keys()]
+}
+
+/** @internal Test-only. */
+export function __resetSessionStoreCacheForTest(): void {
+  sessionStoreCache.clear()
 }
 
 function resolveOpenClawSessionFile(agentId: string, sessionKey: string): string | undefined {
@@ -2462,35 +2492,14 @@ function deterministicUuid(value: string): string {
   return `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`
 }
 
-function safeFileSize(path: string): number {
-  try {
-    return statSync(path).size
-  } catch {
-    return 0
-  }
-}
-
+/**
+ * Session-activity tail semantics over the shared readFileFrom:
+ * rewind-to-0 on truncation/rotation; null when there are no new bytes.
+ */
 function readFileTail(path: string, offset: number): { text: string; offset: number } | null {
-  let size: number
-  try {
-    size = statSync(path).size
-  } catch {
-    return null
-  }
-  if (size < offset) offset = 0
-  if (size === offset) return null
-  const length = size - offset
-  const buffer = Buffer.alloc(length)
-  let fd: number | undefined
-  try {
-    fd = openSync(path, 'r')
-    const bytesRead = readSync(fd, buffer, 0, length, offset)
-    return { text: buffer.subarray(0, bytesRead).toString('utf-8'), offset: offset + bytesRead }
-  } catch {
-    return null
-  } finally {
-    if (fd !== undefined) closeSync(fd)
-  }
+  const read = readFileFrom(path, offset, { rewindOnTruncate: true })
+  if (!read || read.text === '') return null
+  return { text: read.text, offset: read.nextOffset }
 }
 
 function activityChunksFromOpenClawTranscriptRecord(record: Record<string, unknown>): ChatChunk[] {

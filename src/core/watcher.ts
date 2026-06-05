@@ -138,6 +138,13 @@ export function shouldIgnoreContentWatcherPath(contentDir: string, path: string)
   // watcher must never traverse or emit events for it.
   if (rel === 'plugins' || rel.startsWith('plugins/')) return true
 
+  // Task JSON is store-managed: the store's own emit is the authoritative
+  // (and only) broadcast for task writes — watching tasks/ produced a second
+  // redundant read+SSE ~300ms after every write. Also covers tasks/salvage/.
+  // External hand-edits to task files need a restart to broadcast (accepted:
+  // the store is the single writer).
+  if (rel === 'tasks' || rel.startsWith('tasks/')) return true
+
   const basename = path.split(/[\\/]/).pop() || ''
   // Allow .trash inside assets (we handle skipping in handleFileEvent)
   if (basename === '.trash' && rel.startsWith('assets/')) return false

@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { mkdirSync, rmSync, statSync, writeFileSync, appendFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -18,11 +18,11 @@ mock.module('../../packages/core/src/content-dir', () => ({
 import {
   inspectTrajectoryRun,
   trajectoryFilePathFor,
-  safeTrajectoryOffset,
   watchTrajectoryForDeath,
   TrajectoryRecoveredTurn,
   OPENCLAW_TRAJECTORY_TEXT_LIMIT,
 } from '../../packages/adapter-openclaw/src/trajectory-forensics'
+import { safeFileSize } from '../../packages/adapter-openclaw/src/file-utils'
 import { RuntimeTurnError } from '../../packages/core/src/adapters/runtime'
 
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
@@ -149,7 +149,7 @@ describe('inspectTrajectoryRun', () => {
   it('only inspects events after the provided byte offset (per-attempt scoping)', () => {
     // Run 1 died before this attempt started — must be invisible.
     writeRun(trajectoryFile, { status: 'interrupted', assistantTexts: ['old dead run'] })
-    const offset = safeTrajectoryOffset(trajectoryFile)
+    const offset = safeFileSize(trajectoryFile)
     writeRun(trajectoryFile, { status: 'success', assistantTexts: ['fresh run output'] })
 
     const outcome = inspectTrajectoryRun({ trajectoryFile, sinceByteOffset: offset })
@@ -240,6 +240,60 @@ describe('watchTrajectoryForDeath', () => {
     watch.stop()
   })
 
+  it('parses each trajectory line exactly once across polls (incremental scan)', async () => {
+    const parseSpy = spyOn(JSON, 'parse')
+    const watch = watchTrajectoryForDeath({ trajectoryFile, sinceByteOffset: 0, pollMs: 15 })
+    let settled: unknown = null
+    watch.promise.catch((err) => { settled = err })
+
+    // Three append bursts with polls between them — a tool-heavy turn.
+    appendFileSync(trajectoryFile, event('session.started', {}, 1) + '\n')
+    await new Promise((r) => setTimeout(r, 60))
+    appendFileSync(trajectoryFile, event('tool.call', { name: 'a' }, 2) + '\n' + event('tool.call', { name: 'b' }, 3) + '\n')
+    await new Promise((r) => setTimeout(r, 60))
+    appendFileSync(trajectoryFile, [
+      event('model.completed', { assistantTexts: ['done'] }, 4),
+      event('session.ended', { status: 'interrupted', timedOut: false }, 5),
+    ].join('\n') + '\n')
+    await new Promise((r) => setTimeout(r, 80))
+
+    expect(settled).toBeInstanceOf(RuntimeTurnError)
+    // 5 trajectory lines written; each JSON.parsed exactly once — the old
+    // implementation re-parsed the whole tail on every size change
+    // (1 + 3 + 5 = 9 parses for this sequence).
+    const trajectoryParses = parseSpy.mock.calls.filter((c) => String(c[0]).includes('traceSchema'))
+    expect(trajectoryParses).toHaveLength(5)
+    parseSpy.mockRestore()
+    watch.stop()
+  })
+
+  it('detects death when appends split lines (and multi-byte chars) across polls', async () => {
+    const watch = watchTrajectoryForDeath({ trajectoryFile, sinceByteOffset: 0, pollMs: 15 })
+    let settled: unknown = null
+    watch.promise.catch((err) => { settled = err })
+
+    // A multi-byte emoji inside the completed text, with the raw bytes of
+    // the line split mid-character across two appends.
+    const completedLine = event('model.completed', { assistantTexts: ['boom 📦 done'] }, 2)
+    const completedBytes = Buffer.from(completedLine + '\n', 'utf-8')
+    const emojiIdx = completedBytes.indexOf(Buffer.from('📦', 'utf-8'))
+    const splitAt = emojiIdx + 2 // mid-emoji (📦 is 4 bytes)
+
+    appendFileSync(trajectoryFile, event('session.started', {}, 1) + '\n')
+    appendFileSync(trajectoryFile, completedBytes.subarray(0, splitAt))
+    await new Promise((r) => setTimeout(r, 60))
+    expect(settled).toBeNull() // half a line — no verdict, no corruption
+
+    appendFileSync(trajectoryFile, completedBytes.subarray(splitAt))
+    appendFileSync(trajectoryFile, event('session.ended', { status: 'interrupted', timedOut: false }, 3) + '\n')
+    await new Promise((r) => setTimeout(r, 80))
+
+    expect(settled).toBeInstanceOf(RuntimeTurnError)
+    // The split line decoded correctly — the salvaged text keeps the emoji.
+    expect((settled as RuntimeTurnError).diagnosis.salvagedText).toContain('boom 📦 done')
+    watch.stop()
+  })
+
   it('stop() during the grace window suppresses the recovered-turn rejection (frame won the race)', async () => {
     const watch = watchTrajectoryForDeath({ trajectoryFile, sinceByteOffset: 0, pollMs: 20, successGraceMs: 100 })
     let settled = false
@@ -253,13 +307,13 @@ describe('watchTrajectoryForDeath', () => {
   })
 })
 
-describe('trajectoryFilePathFor / safeTrajectoryOffset', () => {
+describe('trajectoryFilePathFor / safeFileSize', () => {
   it('derives the deterministic trajectory path under OPENCLAW_HOME', () => {
     const path = trajectoryFilePathFor('jessica', 'abc-123')
     expect(path).toBe(join(testDir, 'openclaw', 'agents', 'jessica', 'sessions', 'abc-123.trajectory.jsonl'))
   })
 
   it('returns 0 for a missing trajectory file', () => {
-    expect(safeTrajectoryOffset(join(testDir, 'missing.jsonl'))).toBe(0)
+    expect(safeFileSize(join(testDir, 'missing.jsonl'))).toBe(0)
   })
 })

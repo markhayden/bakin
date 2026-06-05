@@ -2,7 +2,7 @@
  * Task dispatch system for Bakin.
  * Periodically checks for TODO tasks and dispatches them to agents via the runtime adapter.
  */
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
@@ -54,11 +54,15 @@ async function sendDispatchMessage(agentId: string, content: string, threadId: s
  * survive a crashed cycle (reusing a seq could re-enter a live session).
  * Workflow steps carry the stepId so parallel step agents can't collide.
  */
-function nextDispatchThreadId(contentDir: string, state: DispatchState, taskId: string, stepId?: string): string {
+function nextDispatchThreadId(contentDir: string, state: DispatchState, taskId: string, stepId?: string, opts?: { deferSave?: boolean }): string {
   if (!state.dispatchSeq) state.dispatchSeq = {}
   const seq = (state.dispatchSeq[taskId] ?? 0) + 1
   state.dispatchSeq[taskId] = seq
-  saveDispatchState(contentDir, state)
+  // deferSave callers mint in-memory and MUST persist the state themselves
+  // before any minted turn fires (persist-before-send). The regular dispatch
+  // cycle batches all mints into its single cycle-end save; one-off paths
+  // (dispatchSingleTask, workflow steps) keep the inline save.
+  if (!opts?.deferSave) saveDispatchState(contentDir, state)
   return stepId ? `task:${taskId}:step:${stepId}:d${seq}` : `task:${taskId}:d${seq}`
 }
 
@@ -72,13 +76,32 @@ function formatDispatchError(err: unknown): string {
   return raw.length > MAX_ERR_LEN ? `${raw.slice(0, MAX_ERR_LEN)}… (truncated)` : raw
 }
 
-async function buildDispatchLessonBlock(input: {
+// Formatted lesson blocks cached per (agentId, query). The query embeds
+// title/description/step instructions, so a workflow step change naturally
+// misses while inProgress re-dispatches of the same step hit — no separate
+// stepId bookkeeping needed. Bounded + TTL'd; empty blocks are cached too so
+// lesson-less agents don't re-query every dispatch.
+const LESSON_BLOCK_CACHE_TTL_MS = 5 * 60_000
+const LESSON_BLOCK_CACHE_MAX = 200
+const lessonBlockCache = new Map<string, { block: string; expires: number }>()
+
+/** @internal Test-only. */
+export function __resetLessonBlockCache(): void {
+  lessonBlockCache.clear()
+}
+
+/** @internal Exported for testing. */
+export async function buildDispatchLessonBlock(input: {
   contentDir: string
   taskId: string
   title: string
   agentId: string
   query: string
 }): Promise<string> {
+  const cacheKey = JSON.stringify([input.agentId, input.query])
+  const hit = lessonBlockCache.get(cacheKey)
+  if (hit && hit.expires > Date.now()) return hit.block
+
   try {
     const settings = getSettings().agentPackages?.lessonsRetrieval
     const result = await retrieveAgentPackageLessons({
@@ -92,6 +115,12 @@ async function buildDispatchLessonBlock(input: {
       result.lessons,
       settings?.maxCharacters,
     )
+    lessonBlockCache.set(cacheKey, { block, expires: Date.now() + LESSON_BLOCK_CACHE_TTL_MS })
+    while (lessonBlockCache.size > LESSON_BLOCK_CACHE_MAX) {
+      const oldest = lessonBlockCache.keys().next().value
+      if (oldest === undefined) break
+      lessonBlockCache.delete(oldest)
+    }
     if (result.lessons.length > 0) {
       appendAudit(input.contentDir, 'agent_pkg.lessons_retrieved', input.agentId, {
         taskId: input.taskId,
@@ -809,9 +838,15 @@ export function getInFlightTurnCount(agentId?: string): number {
 export type ConcurrencyGate = 'concurrency_cap' | 'agent_busy' | null
 
 /** Why a dispatch can't fire right now, or null when a slot is free. */
-function concurrencyGate(agentId: string, settings: { dispatch: { maxConcurrentTurns: number; maxTurnsPerAgent: number } }): ConcurrencyGate {
-  if (inFlightTurns.size >= settings.dispatch.maxConcurrentTurns) return 'concurrency_cap'
-  if (getInFlightTurnCount(agentId) >= settings.dispatch.maxTurnsPerAgent) return 'agent_busy'
+function concurrencyGate(
+  agentId: string,
+  settings: { dispatch: { maxConcurrentTurns: number; maxTurnsPerAgent: number } },
+  // Slots reserved by collected-but-not-yet-fired turns in the current
+  // two-phase cycle — invisible to the in-flight registry until phase 2.
+  reserved?: { total: number; forAgent: number },
+): ConcurrencyGate {
+  if (inFlightTurns.size + (reserved?.total ?? 0) >= settings.dispatch.maxConcurrentTurns) return 'concurrency_cap'
+  if (getInFlightTurnCount(agentId) + (reserved?.forAgent ?? 0) >= settings.dispatch.maxTurnsPerAgent) return 'agent_busy'
   return null
 }
 
@@ -1032,6 +1067,16 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       return
     }
 
+    // Two-phase dispatch: phase 1 collects intents (move + mint + message
+    // build, seqs minted in-memory via deferSave), then ONE state save
+    // persists every minted seq, then phase 2 fires the turns. This keeps
+    // persist-before-send (a seq is always durable before its turn is sent)
+    // while collapsing the old N+1 full-file state writes per cycle to 1.
+    // A mid-loop failure loses only unminted work: collected intents have
+    // not fired yet, and unfired seqs re-mint identically next cycle.
+    const pendingTurns: Array<Parameters<typeof fireDispatchTurn>[0]> = []
+    const pendingByAgent = new Map<string, number>()
+
     for (const task of todoTasks) {
       if (dispatchedSet.has(task.id)) continue
 
@@ -1083,52 +1128,69 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
 
       // Bounded concurrency: a capped task is simply ineligible this cycle
       // (no failure recorded) — a later cycle picks it up when a slot frees.
-      const gate = concurrencyGate(targetAgent, settings)
+      // Collected-but-unfired turns reserve their slots via pendingByAgent.
+      const gate = concurrencyGate(targetAgent, settings, {
+        total: pendingTurns.length,
+        forAgent: pendingByAgent.get(targetAgent) ?? 0,
+      })
       if (gate) {
         log.debug('Dispatch deferred by concurrency gate', { id: task.id, agent: targetAgent, gate })
         continue
       }
 
-      const lessonBlock = await buildDispatchLessonBlock({
-        contentDir,
-        taskId: task.id,
-        title: task.title,
-        agentId: targetAgent,
-        query: buildTaskLessonQuery(task),
-      })
-      const recovery = failure?.sessionDeath
-      const message = recovery?.stage === 'decomposition'
-        ? buildDecompositionMessage(task, targetAgent, recovery)
-        : buildDispatchMessage(task, targetAgent, contentDir, mainAgentId, lessonBlock, {}, recovery, runtimeRoster)
-      const initialLogCount = task.log?.length ?? 0
+      // Per-task guard: one bad task (store hiccup, hook failure) must not
+      // abort the cycle — collected intents and other tasks still dispatch.
+      try {
+        const lessonBlock = await buildDispatchLessonBlock({
+          contentDir,
+          taskId: task.id,
+          title: task.title,
+          agentId: targetAgent,
+          query: buildTaskLessonQuery(task),
+        })
+        const assetsBlock = await buildDispatchAssetBlock(task.id)
+        const recovery = failure?.sessionDeath
+        const message = recovery?.stage === 'decomposition'
+          ? buildDecompositionMessage(task, targetAgent, recovery)
+          : buildDispatchMessage(task, targetAgent, contentDir, mainAgentId, lessonBlock, {}, recovery, runtimeRoster, assetsBlock)
+        const initialLogCount = task.log?.length ?? 0
 
-      // Move to inProgress BEFORE sending message to eliminate race condition
-      // where fast agents complete before dispatch moves the task
-      await moveTaskToInProgress(task.id, targetAgent)
-      appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
+        // Move to inProgress BEFORE sending message to eliminate race condition
+        // where fast agents complete before dispatch moves the task
+        await moveTaskToInProgress(task.id, targetAgent)
 
-      const threadId = nextDispatchThreadId(contentDir, state, task.id)
-      dispatchedSet.add(task.id)
-      appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId })
-      log.info('Task dispatched', { id: task.id, title: task.title, agent: targetAgent, threadId })
-      fireDispatchTurn({
-        marker: task.id,
-        task,
-        targetAgent,
-        threadId,
-        message,
-        contentDir,
-        port,
-        initialLogCount,
-        logPrefix: 'Dispatch failed',
-        dispatchKind: 'regular',
-      })
+        const threadId = nextDispatchThreadId(contentDir, state, task.id, undefined, { deferSave: true })
+        dispatchedSet.add(task.id)
+        // The internal todo→inProgress move is folded into task.dispatched —
+        // one audit row per dispatch, carrying the transition.
+        appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId, from: 'todo', to: 'inProgress' })
+        log.info('Task dispatched', { id: task.id, title: task.title, agent: targetAgent, threadId })
+        pendingTurns.push({
+          marker: task.id,
+          task,
+          targetAgent,
+          threadId,
+          message,
+          contentDir,
+          port,
+          initialLogCount,
+          logPrefix: 'Dispatch failed',
+          dispatchKind: 'regular',
+        })
+        pendingByAgent.set(targetAgent, (pendingByAgent.get(targetAgent) ?? 0) + 1)
+      } catch (err) {
+        log.error(`Failed to prepare dispatch for task "${task.title}"`, err, { id: task.id })
+      }
     }
 
     state.lastRun = Date.now()
     state.dispatched = [...dispatchedSet]
     trimDispatched(state, settings.dispatch.maxDispatched)
+    // Persist-before-send: every deferred seq mint above becomes durable in
+    // this single write BEFORE any turn fires below.
     saveDispatchState(contentDir, state)
+
+    for (const turn of pendingTurns) fireDispatchTurn(turn)
     }) // end withStateLock
   } finally {
     dispatching = false
@@ -1284,23 +1346,24 @@ export async function dispatchSingleTask(
       agentId: targetAgent,
       query: buildTaskLessonQuery(task),
     })
+    const assetsBlock = await buildDispatchAssetBlock(task.id)
     const recovery = failure?.sessionDeath
     const message = recovery?.stage === 'decomposition'
       ? buildDecompositionMessage(task, targetAgent, recovery)
-      : buildDispatchMessage(task, targetAgent, contentDir, mainAgentId, lessonBlock, continuation, recovery, runtimeRoster)
+      : buildDispatchMessage(task, targetAgent, contentDir, mainAgentId, lessonBlock, continuation, recovery, runtimeRoster, assetsBlock)
     const dispatchStart = Date.now()
     const initialLogCount = task.log?.length ?? 0
 
     // Move to inProgress BEFORE sending message to eliminate race condition
     await moveTaskToInProgress(task.id, targetAgent)
-    appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
 
     const threadId = nextDispatchThreadId(contentDir, state, task.id)
     state.dispatched.push(task.id)
     trimDispatched(state, settings.dispatch.maxDispatched)
     saveDispatchState(contentDir, state)
 
-    appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId })
+    // Internal move folded into task.dispatched — one audit row per dispatch.
+    appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId, from: 'todo', to: 'inProgress' })
     if (source !== 'continuation') {
       appendAudit(contentDir, 'task.kicked', source, { id: task.id, title: task.title })
     }
@@ -1373,24 +1436,22 @@ function sharedExecutionToolDocs(agentName: string, taskId: string, opts: { allo
 }
 
 /**
- * The prevention half of session-death hardening: artifact-first output
- * rules injected into EVERY dispatch prompt. Oversized chat completions are
- * what kill runtime sessions — deliverables belong in files/assets, produced
- * one at a time, with chat reserved for short status.
+ * The prevention half of session-death hardening: a short artifact-first
+ * reminder injected into EVERY dispatch prompt, carrying the taskId-templated
+ * save command. The full rule prose lives in the `execution-tools` managed
+ * block in each agent's AGENTS.md (projected by `bakin agent-rules --apply-all`
+ * / doctor) — this inline reminder keeps the safety-critical presence
+ * per-dispatch without re-shipping the static catalog every turn.
  */
 function outputDisciplineSection(agentName: string, taskId: string, opts: { subtasksAllowed: boolean }): string[] {
   const { mc } = mcporterHelpers(agentName)
   return [
     '## OUTPUT DISCIPLINE — MANDATORY',
     '',
-    'Oversized chat output KILLS your runtime session and fails the task — the runtime cannot deliver large completions. Hard rules:',
-    '',
-    `- Any deliverable or output larger than ~8KB MUST be written to a workspace file and saved BEFORE you continue: \`${mc('bakin_exec_assets_save', `taskId=${taskId} type=<type> filePath="<path>" description="<what it is>"`)}\``,
-    '- Multiple deliverables = a checklist. Produce them ONE AT A TIME: write the file → save it as an asset → log progress → start the next. NEVER draft several deliverables in a single response.',
-    '- Keep every chat/completion message short: status, decisions, and asset ids — never deliverable content.',
+    `Oversized chat output KILLS your runtime session. Deliverables larger than ~8KB go to workspace files, saved as assets ONE AT A TIME: \`${mc('bakin_exec_assets_save', `taskId=${taskId} type=<type> filePath="<path>" description="<what it is>"`)}\``,
     opts.subtasksAllowed
-      ? '- If deliverables are independent and numerous, split them into subtasks (see DEPENDENCY PATTERN below) instead of doing them all in one turn.'
-      : '- If your step output is large, save it as an asset first and reference the asset id in your submitted step output instead of inlining the content.',
+      ? 'Keep chat short — status + asset ids only. Numerous independent deliverables → split into subtasks. Full rules: "Bakin Execution Tools" in your AGENTS.md.'
+      : 'Keep chat short — status + asset ids only. Large step output → save as asset, reference the asset id in your submitted output. Full rules: "Bakin Execution Tools" in your AGENTS.md.',
   ]
 }
 
@@ -1455,6 +1516,27 @@ export interface DispatchRosterAgent {
   role?: string
 }
 
+/**
+ * Resolve a task's attached assets via the assets.listByTask hook and render
+ * the dispatch block. Async (hook invoke), so call sites compute it before
+ * the synchronous message builders and pass the result in. Returns '' when
+ * the task has no assets or the assets plugin is unavailable.
+ */
+export async function buildDispatchAssetBlock(taskId: string): Promise<string> {
+  try {
+    const assets = await hooks().invoke<Array<{ assetId: string; description?: string; type: string }>>(
+      'assets.listByTask',
+      { taskId },
+    ) ?? []
+    if (assets.length === 0) return ''
+    const lines = assets.map((a) => `- ${a.assetId}${a.description ? ` — ${a.description}` : ''}`)
+    return `\n\n## Attached Assets\nThis task has ${assets.length} linked asset(s). Review them for context before starting:\n${lines.join('\n')}\nOpen with bakin_exec_assets_open using the assetId to read the current content + metadata. AssetIds are stable identity — do not store raw disk paths.`
+  } catch {
+    // Assets plugin not activated (tests, minimal installs) — no block.
+    return ''
+  }
+}
+
 /** @internal Exported for testing. */
 export function buildDispatchMessage(
   task: { id: string; title: string; description?: string; agent?: string; projectId?: string },
@@ -1465,6 +1547,7 @@ export function buildDispatchMessage(
   continuation: DispatchContinuationContext = {},
   recovery?: SessionDeathState,
   roster: DispatchRosterAgent[] = [],
+  assetsBlock = '',
 ): string {
   const correctivePrefix = recovery?.stage === 'corrective' ? buildCorrectiveSection(task.id, recovery) : ''
   const detailsBlock = task.description ? `\n\nDetails:\n${task.description}` : ''
@@ -1474,36 +1557,6 @@ export function buildDispatchMessage(
   const continuationBlock = continuation.completedDependency
     ? `\n\n## Completed Dependency\nYour dependency task "${continuation.completedDependency.title}" (task ${continuation.completedDependency.id}) is now done. Review its outcome before resuming: \`bakin_exec_tasks_get taskId=${continuation.completedDependency.id}\` shows its log and completion summary, and its saved assets are linked to that task. Continue this task from where it left off.`
     : ''
-
-  // List attached assets by filename (stable identity). Agents open them
-  // via bakin_exec_assets_open — disk paths are a view, not identity.
-  // Under filename-as-identity, every asset lives under
-  // assets/store/{YYYY-MM}/; the sidecar's taskId is the link.
-  let assetsBlock = ''
-  try {
-    const storeRoot = join(contentDir, 'assets', 'store')
-    const filenames: string[] = []
-    if (existsSync(storeRoot)) {
-      for (const month of readdirSync(storeRoot)) {
-        if (month.startsWith('.')) continue
-        const monthDir = join(storeRoot, month)
-        let metas: string[]
-        try { metas = readdirSync(monthDir).filter(f => f.endsWith('.meta.json')) } catch { continue }
-        for (const metaFile of metas) {
-          try {
-            const meta = JSON.parse(readFileSync(join(monthDir, metaFile), 'utf-8'))
-            if (meta.taskId !== task.id) continue
-            const assetFilename = metaFile.replace(/\.meta\.json$/, '')
-            if (assetFilename.includes('.thumb.') || assetFilename.includes('.opt.')) continue
-            filenames.push(assetFilename)
-          } catch { /* skip unreadable sidecars */ }
-        }
-      }
-    }
-    if (filenames.length > 0) {
-      assetsBlock = `\n\n## Attached Assets\nThis task has ${filenames.length} linked asset(s). Review them for context before starting:\n${filenames.map(f => `- ${f}`).join('\n')}\nCall bakin_exec_assets_open with the filename to read the current content + sidecar metadata. Filenames are stable identity — do not store raw disk paths.`
-    }
-  } catch { /* assets directory may not exist */ }
 
   // Project context — lightweight mention if task has a projectId
   let projectBlock = ''
@@ -1532,23 +1585,11 @@ export function buildDispatchMessage(
 
 ## PROGRESS LOGGING — MANDATORY
 
-You MUST log your progress at EVERY major step — not just start and done. These updates appear in the live activity feed so humans can monitor your work in real-time.
-
-Required log points:
-- Log at task start: what you are about to do and your approach
-- Log after each major step (reading files, planning, each significant code change, after build)
-- Share your reasoning and decisions as you go
-- Log if blocked or anything unexpected happens
-- Log on completion with a full summary
-- If you have not logged in the last 2 minutes, log a status update — even if just "still working on X"
-
-For Patch using Claude Code: log before spawning the agent, and after it completes.
+Log progress at EVERY major step (start, each step, decisions, blockers, completion; at least every 2 minutes). Full logging rules: "Bakin Execution Tools" in your AGENTS.md.
 
 ${outputDisciplineSection(agentName, task.id, { subtasksAllowed: true }).join('\n')}
 
-## BAKIN TOOLS — via mcporter
-
-All Bakin interactions use mcporter. Your server is \`${server}\`.
+## TASK COMMANDS — via mcporter (server \`${server}\`)
 
 \`\`\`bash
 # Log progress (mandatory, every major step)
@@ -1560,39 +1601,22 @@ ${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you accompli
 # Block task (if stuck or cannot proceed)
 ${mc('bakin_exec_tasks_block', `taskId=${task.id} reason="<what went wrong>"`)}
 
-# Create subtask for another agent
+# Create subtask + register dependency (then stop — you'll be re-dispatched)
 ${mc('bakin_exec_tasks_create', `title="<subtask>" assignee="<agent>" description="<brief>" parentId=${task.id}`)}
-
-# Register dependency (then stop — you'll be re-dispatched)
 ${mc('bakin_exec_tasks_set_dependency', `taskId=${task.id} dependsOn="<other-task-id>"`)}
 
 # Check your task details
 ${mc('bakin_exec_tasks_get', `taskId=${task.id}`)}
 
-# Find content directories (assets, team, etc.)
-${mc('bakin_exec_get_paths', '')}
-\`\`\`
+${sharedExecutionToolDocs(agentName, task.id, { allowChannelPost: true }).join('\n')}${task.projectId ? `
 
-## EXECUTION TOOLS — for doing actual work
-
-These tools help you accomplish the work. Use them as your primary way to save files, post content, and generate assets.
-
-\`\`\`bash
-${sharedExecutionToolDocs(agentName, task.id, { allowChannelPost: true }).join('\n')}
-${task.projectId ? `
 # Project tools (this task is part of a project)
 ${mc('bakin_exec_projects_get', `projectId="${task.projectId}"`)}
 ${mc('bakin_exec_projects_mark_item', `projectId="${task.projectId}" taskItemId="<itemId>" checked=true`)}
-${mc('bakin_exec_projects_add_item', `projectId="${task.projectId}" title="<item title>"`)}` : `
-# Projects: bakin_exec_projects_list, bakin_exec_projects_create, bakin_exec_projects_get`}
+${mc('bakin_exec_projects_add_item', `projectId="${task.projectId}" title="<item title>"`)}` : ''}
 \`\`\`
 
-## DEPENDENCY PATTERN
-
-If your task requires output from another agent:
-1. Create their task with bakin_exec_tasks_create (use parentId for immediate dispatch)
-2. Register the dependency with bakin_exec_tasks_set_dependency
-3. Stop — you will be automatically re-dispatched when their task completes`
+Tool reference + dependency pattern: "Bakin Execution Tools" in your AGENTS.md.`
 }
 
 export function start(contentDir: string, port: number): void {
@@ -1657,7 +1681,8 @@ async function dispatchWorkflowTask(
     if (stillInTodo) {
       const ownerAgent = task.agent || activeAgents[0]?.agent || mainAgentId
       await moveTaskToInProgress(task.id, ownerAgent)
-      appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
+      // No task.moved audit: the internal move is folded into the per-step
+      // task.dispatched rows emitted below.
     }
     dispatchedSet.add(task.id)
   }
@@ -1693,7 +1718,10 @@ async function dispatchWorkflowTask(
     // A pending session-death recovery injects corrective guidance (workflow
     // steps only get the corrective rung — the engine owns step structure).
     const wfRecovery = getFailureRecord(state.failedDispatches?.[task.id])?.sessionDeath
-    const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, lessonBlock, wfRecovery)
+    // Assets are linked to the PARENT task id (decomposition guidance tells
+    // agents to save against the parent), so resolve by task.id, not contextTaskId.
+    const wfAssetsBlock = await buildDispatchAssetBlock(task.id)
+    const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, lessonBlock, wfRecovery, wfAssetsBlock)
     const initialLogCount = findDispatchTaskSnapshot(task.id)?.task.log?.length ?? 0
 
     const gate = concurrencyGate(targetAgent, getSettings())
@@ -1710,6 +1738,8 @@ async function dispatchWorkflowTask(
       workflowId: task.workflowId,
       stepId,
       threadId,
+      from: 'todo',
+      to: 'inProgress',
     })
     log.info('Workflow step dispatched', { taskId: task.id, stepId, agent: targetAgent, threadId })
     fireDispatchTurn({
@@ -1751,6 +1781,7 @@ function buildWorkflowDispatchMessage(
   agentName: string,
   lessonBlock = '',
   recovery?: SessionDeathState,
+  assetsBlock = '',
 ): string {
   const lines: string[] = []
   if (recovery?.stage === 'corrective') {
@@ -1847,6 +1878,11 @@ function buildWorkflowDispatchMessage(
 
   if (lessonBlock) {
     lines.push(lessonBlock)
+    lines.push('')
+  }
+
+  if (assetsBlock) {
+    lines.push(assetsBlock.trim())
     lines.push('')
   }
 

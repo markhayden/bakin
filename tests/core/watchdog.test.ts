@@ -86,7 +86,7 @@ type WatchdogTask = {
   agent?: string
   workflowId?: string
   updatedAt?: number
-  log?: Array<{ message: string; timestamp: string }>
+  log?: Array<{ message: string; timestamp: string; data?: Record<string, unknown> }>
 }
 
 type WatchdogColumns = {
@@ -256,6 +256,70 @@ describe('watchdog', () => {
         'watchdog',
         expect.objectContaining({ id: 'task-2' }),
       )
+    })
+
+    it('skips tasks whose latest log entry is a restart-recovery manual hold', async () => {
+      setWatchdogColumns({
+        inProgress: [
+          {
+            id: 'task-manual',
+            title: 'Held for manual attention',
+            agent: 'pixel',
+            log: [
+              { message: 'Started', timestamp: '2020-01-01T00:00:00Z' },
+              {
+                message: 'Manual recovery hold: workflow-partial-agent-stale; left in progress.',
+                timestamp: '2020-01-01T01:00:00Z',
+                data: { restartRecovery: 'manual' },
+              },
+            ],
+          },
+        ],
+      })
+
+      // Stale heartbeat + ancient timestamps — without the hold marker this
+      // would auto-recover on the first tick.
+      vi.mocked(isStale).mockReturnValue(true)
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(mockStoreMoveTask).not.toHaveBeenCalled()
+      expect(mockStoreBlockTask).not.toHaveBeenCalled()
+      expect(vi.mocked(appendAudit)).not.toHaveBeenCalledWith(
+        tempDir,
+        'task.auto_recovered',
+        'watchdog',
+        expect.anything(),
+      )
+    })
+
+    it('resumes normal handling once a newer log entry follows the manual hold', async () => {
+      setWatchdogColumns({
+        inProgress: [
+          {
+            id: 'task-resumed',
+            title: 'Human acted after hold',
+            agent: 'pixel',
+            log: [
+              {
+                message: 'Manual recovery hold: workflow-partial-agent-stale; left in progress.',
+                timestamp: '2020-01-01T00:00:00Z',
+                data: { restartRecovery: 'manual' },
+              },
+              { message: 'Human kicked the workflow again', timestamp: '2020-01-01T01:00:00Z' },
+            ],
+          },
+        ],
+      })
+
+      vi.mocked(isStale).mockReturnValue(true)
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      // Marker is no longer latest — the task is eligible again.
+      expect(mockStoreMoveTask).toHaveBeenCalledWith('task-resumed', 'todo')
     })
 
     it('escalates to blocked after max auto-recoveries', async () => {

@@ -19,6 +19,7 @@ import { createLogger } from '../../../src/core/logger'
 import { getMimeType, type AssetType } from './constants'
 import { generateAssetId, assetDirRelPath, yearMonthFromAssetId } from './asset-id'
 import { withAssetLock } from './asset-lock'
+import { taskAssetIndexRemove, taskAssetIndexUpsert } from './task-asset-index'
 import {
   readManifest,
   writeManifestAtomic,
@@ -510,6 +511,8 @@ export async function deleteAsset(assetId: string): Promise<{ trashName: string 
     mkdirSync(trashRoot, { recursive: true })
     const trashName = `${assetId}${TRASH_SEPARATOR}${Date.now()}`
     renameSync(dirAbs, join(trashRoot, trashName))
+    // Trash bypasses the manifest-write choke point — evict explicitly.
+    taskAssetIndexRemove(assetId)
     return { trashName }
   })
 }
@@ -587,6 +590,9 @@ export async function restoreAsset(trashName: string): Promise<{ assetId: string
     if (existsSync(destAbs)) throw new Error(`Cannot restore — an asset already exists at ${assetId}`)
     mkdirSync(join(destAbs, '..'), { recursive: true })
     renameSync(trashPath, destAbs)
+    // Restore bypasses the manifest-write choke point — relink explicitly.
+    const restored = readManifest(destAbs)
+    if (restored) taskAssetIndexUpsert(restored.assetId, restored.taskId ?? null)
     return { assetId }
   })
 }

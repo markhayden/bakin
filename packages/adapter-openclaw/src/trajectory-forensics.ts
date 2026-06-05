@@ -12,11 +12,11 @@
  * turn start) and classifies what actually happened, entirely inside the
  * adapter boundary. Read-only: Bakin never writes to ~/.openclaw.
  */
-import { closeSync, openSync, readSync, statSync } from 'fs'
 import { join } from 'path'
 
 import { RuntimeTurnError, type RuntimeTurnDiagnosis } from '@bakin/core/adapters/runtime'
 
+import { readFileBytesFrom, safeFileSize } from './file-utils'
 import { getOpenClawHome } from './home'
 
 /** OpenClaw truncates recorded completion text at this trajectory limit. */
@@ -35,14 +35,6 @@ export type TrajectoryRunOutcome =
 
 export function trajectoryFilePathFor(agentId: string, cliSessionId: string): string {
   return join(getOpenClawHome(), 'agents', agentId, 'sessions', `${cliSessionId}.trajectory.jsonl`)
-}
-
-export function safeTrajectoryOffset(trajectoryFile: string): number {
-  try {
-    return statSync(trajectoryFile).size
-  } catch {
-    return 0
-  }
 }
 
 interface ScanState {
@@ -64,99 +56,64 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
-function readFrom(trajectoryFile: string, offset: number): string | null {
-  let fd: number | null = null
+/** Apply one trajectory line to the scan state. Returns true when the line is a supported-schema event. */
+function applyTrajectoryLine(state: ScanState, trimmed: string): boolean {
+  let record: unknown
   try {
-    const size = statSync(trajectoryFile).size
-    if (size <= offset) return size === offset ? '' : null
-    fd = openSync(trajectoryFile, 'r')
-    const buffer = Buffer.alloc(size - offset)
-    readSync(fd, buffer, 0, buffer.length, offset)
-    return buffer.toString('utf-8')
+    record = JSON.parse(trimmed)
   } catch {
-    return null
-  } finally {
-    if (fd !== null) closeSync(fd)
+    return false // partial/corrupt line — skip, keep scanning
   }
+  if (!isRecord(record) || typeof record.type !== 'string') return false
+  if (record.traceSchema !== SUPPORTED_TRACE_SCHEMA) return false
+  if (record.schemaVersion !== SUPPORTED_SCHEMA_VERSION) return false
+
+  const data = isRecord(record.data) ? record.data : {}
+  if (typeof record.sessionId === 'string') state.sessionId = record.sessionId
+
+  switch (record.type) {
+    case 'session.started':
+      // A new run after the offset resets per-run evidence.
+      state.lastToolCall = undefined
+      state.completed = undefined
+      state.ended = undefined
+      break
+    case 'tool.call':
+      if (typeof data.name === 'string') state.lastToolCall = data.name
+      break
+    case 'model.completed': {
+      const texts = Array.isArray(data.assistantTexts)
+        ? data.assistantTexts.filter((t): t is string => typeof t === 'string')
+        : []
+      const usage = isRecord(data.usage)
+        ? {
+            ...(typeof data.usage.input === 'number' ? { input: data.usage.input } : {}),
+            ...(typeof data.usage.output === 'number' ? { output: data.usage.output } : {}),
+            ...(typeof data.usage.total === 'number' ? { total: data.usage.total } : {}),
+          }
+        : undefined
+      state.completed = {
+        texts,
+        timedOut: data.timedOut === true,
+        aborted: data.aborted === true,
+        ...(usage ? { usage } : {}),
+      }
+      break
+    }
+    case 'session.ended':
+      state.ended = {
+        status: typeof data.status === 'string' ? data.status : 'unknown',
+        timedOut: data.timedOut === true,
+      }
+      break
+    default:
+      break
+  }
+  return true
 }
 
-/**
- * Scan trajectory events appended after `sinceByteOffset` and report the
- * outcome of the most recent run. Returns null when there is no usable
- * evidence (missing/unreadable file, unknown schema, or no `session.ended`
- * yet — the run may still be in flight).
- *
- * Tolerant by design: malformed lines and unknown event types are skipped.
- * A broken trajectory must never make a failure LESS diagnosable.
- */
-export function inspectTrajectoryRun(opts: {
-  trajectoryFile: string
-  sinceByteOffset?: number
-  oversizedOutputBytes?: number
-}): TrajectoryRunOutcome | null {
-  const raw = readFrom(opts.trajectoryFile, Math.max(0, opts.sinceByteOffset ?? 0))
-  if (raw === null) return null
-
-  const state: ScanState = {}
-  let sawSupportedSchema = false
-
-  for (const line of raw.split('\n')) {
-    const trimmed = line.trim()
-    if (!trimmed) continue
-    let record: unknown
-    try {
-      record = JSON.parse(trimmed)
-    } catch {
-      continue // partial/corrupt line — skip, keep scanning
-    }
-    if (!isRecord(record) || typeof record.type !== 'string') continue
-    if (record.traceSchema !== SUPPORTED_TRACE_SCHEMA) continue
-    if (record.schemaVersion !== SUPPORTED_SCHEMA_VERSION) continue
-    sawSupportedSchema = true
-
-    const data = isRecord(record.data) ? record.data : {}
-    if (typeof record.sessionId === 'string') state.sessionId = record.sessionId
-
-    switch (record.type) {
-      case 'session.started':
-        // A new run after the offset resets per-run evidence.
-        state.lastToolCall = undefined
-        state.completed = undefined
-        state.ended = undefined
-        break
-      case 'tool.call':
-        if (typeof data.name === 'string') state.lastToolCall = data.name
-        break
-      case 'model.completed': {
-        const texts = Array.isArray(data.assistantTexts)
-          ? data.assistantTexts.filter((t): t is string => typeof t === 'string')
-          : []
-        const usage = isRecord(data.usage)
-          ? {
-              ...(typeof data.usage.input === 'number' ? { input: data.usage.input } : {}),
-              ...(typeof data.usage.output === 'number' ? { output: data.usage.output } : {}),
-              ...(typeof data.usage.total === 'number' ? { total: data.usage.total } : {}),
-            }
-          : undefined
-        state.completed = {
-          texts,
-          timedOut: data.timedOut === true,
-          aborted: data.aborted === true,
-          ...(usage ? { usage } : {}),
-        }
-        break
-      }
-      case 'session.ended':
-        state.ended = {
-          status: typeof data.status === 'string' ? data.status : 'unknown',
-          timedOut: data.timedOut === true,
-        }
-        break
-      default:
-        break
-    }
-  }
-
+/** Compute the run outcome from the accumulated scan state (the original inspect tail logic). */
+function outcomeFromState(state: ScanState, sawSupportedSchema: boolean, oversizedOutputBytes?: number): TrajectoryRunOutcome | null {
   if (!sawSupportedSchema || !state.ended) return null
 
   const content = (state.completed?.texts ?? []).join('\n')
@@ -171,7 +128,7 @@ export function inspectTrajectoryRun(opts: {
 
   const completionBytes = Buffer.byteLength(content, 'utf-8')
   const outputTruncated = completionBytes >= OPENCLAW_TRAJECTORY_TEXT_LIMIT
-  const threshold = opts.oversizedOutputBytes ?? DEFAULT_OVERSIZED_OUTPUT_BYTES
+  const threshold = oversizedOutputBytes ?? DEFAULT_OVERSIZED_OUTPUT_BYTES
   const oversizedOutput = completionBytes > threshold
   const timedOut = state.ended.timedOut || state.completed?.timedOut === true
   const reason = timedOut ? 'runtime_timeout' : 'session_interrupted'
@@ -198,6 +155,70 @@ export function inspectTrajectoryRun(opts: {
   }
 
   return { kind: 'death', diagnosis }
+}
+
+/**
+ * Incremental trajectory scanner. feed() consumes raw appended bytes —
+ * complete lines are parsed exactly once and folded into the carried scan
+ * state; a trailing partial line is buffered AS BYTES (a multi-byte char
+ * split across reads must not be decoded early). finalize() evaluates the
+ * outcome as-if-EOF: the buffered partial is probed against a CLONE of the
+ * state so future bytes can still complete it.
+ */
+interface TrajectoryScanner {
+  feed(chunk: Buffer): void
+  finalize(oversizedOutputBytes?: number): TrajectoryRunOutcome | null
+}
+
+function createTrajectoryScanner(): TrajectoryScanner {
+  const state: ScanState = {}
+  let sawSupportedSchema = false
+  let carry = Buffer.alloc(0)
+
+  return {
+    feed(chunk: Buffer): void {
+      const buf = carry.length > 0 ? Buffer.concat([carry, chunk]) : chunk
+      let start = 0
+      let idx = buf.indexOf(0x0a, start)
+      while (idx !== -1) {
+        const trimmed = buf.subarray(start, idx).toString('utf-8').trim()
+        if (trimmed) sawSupportedSchema = applyTrajectoryLine(state, trimmed) || sawSupportedSchema
+        start = idx + 1
+        idx = buf.indexOf(0x0a, start)
+      }
+      carry = Buffer.from(buf.subarray(start)) // copy — chunk's memory may be reused
+    },
+    finalize(oversizedOutputBytes?: number): TrajectoryRunOutcome | null {
+      const trimmed = carry.length > 0 ? carry.toString('utf-8').trim() : ''
+      if (!trimmed) return outcomeFromState(state, sawSupportedSchema, oversizedOutputBytes)
+      // Probe the unterminated final line against a clone — applyTrajectoryLine
+      // only ever REPLACES state fields, so a shallow clone is a safe snapshot.
+      const probe: ScanState = { ...state }
+      const probeSaw = applyTrajectoryLine(probe, trimmed) || sawSupportedSchema
+      return outcomeFromState(probe, probeSaw, oversizedOutputBytes)
+    },
+  }
+}
+
+/**
+ * Scan trajectory events appended after `sinceByteOffset` and report the
+ * outcome of the most recent run. Returns null when there is no usable
+ * evidence (missing/unreadable file, unknown schema, or no `session.ended`
+ * yet — the run may still be in flight).
+ *
+ * Tolerant by design: malformed lines and unknown event types are skipped.
+ * A broken trajectory must never make a failure LESS diagnosable.
+ */
+export function inspectTrajectoryRun(opts: {
+  trajectoryFile: string
+  sinceByteOffset?: number
+  oversizedOutputBytes?: number
+}): TrajectoryRunOutcome | null {
+  const read = readFileBytesFrom(opts.trajectoryFile, Math.max(0, opts.sinceByteOffset ?? 0))
+  if (read === null) return null
+  const scanner = createTrajectoryScanner()
+  scanner.feed(read.bytes)
+  return scanner.finalize(opts.oversizedOutputBytes)
 }
 
 /**
@@ -251,6 +272,11 @@ export function watchTrajectoryForDeath(opts: {
   let stopped = false
   let timer: ReturnType<typeof setTimeout> | null = null
   let lastSize = -1
+  // Incremental scan: new bytes are fed into a carried scanner instead of
+  // re-reading + re-parsing the whole tail from the turn-start offset on
+  // every size change (which was O(delta²) over tool-heavy turns).
+  let cursor = Math.max(0, opts.sinceByteOffset)
+  const scanner = createTrajectoryScanner()
 
   const stop = (): void => {
     stopped = true
@@ -263,14 +289,22 @@ export function watchTrajectoryForDeath(opts: {
   const promise = new Promise<never>((_, reject) => {
     const tick = (): void => {
       if (stopped) return
-      const size = safeTrajectoryOffset(opts.trajectoryFile)
+      const size = safeFileSize(opts.trajectoryFile)
       if (size !== lastSize) {
         lastSize = size
-        const outcome = inspectTrajectoryRun({
-          trajectoryFile: opts.trajectoryFile,
-          sinceByteOffset: opts.sinceByteOffset,
-          oversizedOutputBytes: opts.oversizedOutputBytes,
-        })
+        // null read (shrunk/rotated/unreadable) → skip this tick without
+        // corrupting the carried state; the next tick retries. Assumption:
+        // a trajectory is append-only for the turn's lifetime (one run per
+        // turn) — a mid-turn rotation that regrows past the stuck cursor
+        // would be scanned from the cursor, not from 0, same as the old
+        // full-rescan-from-turn-start behavior.
+        const read = readFileBytesFrom(opts.trajectoryFile, cursor)
+        let outcome: TrajectoryRunOutcome | null = null
+        if (read) {
+          cursor = read.nextOffset
+          scanner.feed(read.bytes)
+          outcome = scanner.finalize(opts.oversizedOutputBytes)
+        }
         if (outcome?.kind === 'death') {
           stop()
           reject(new RuntimeTurnError(outcome.diagnosis))
