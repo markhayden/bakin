@@ -30,11 +30,11 @@ import { materializeCachedGithubSource } from '@/core/github-source-cache'
 import { createLogger } from '@/core/logger'
 import { isCorePlugin } from '@/lib/plugin-registry'
 import { buildUserPlugin } from '../../plugin-host/user-plugin-builder'
-import { githubArtifactSource } from '@/core/whiskin/github-resolver'
-import type { WhiskinArtifactLocation } from '@/core/whiskin/resolver'
-import { downloadToFile } from '@/core/whiskin/download'
-import { safeExtractArtifact, verifyChecksum } from '@/core/whiskin/artifact'
-import { readProvenance, PROVENANCE_FILENAME } from '@/core/whiskin/provenance'
+import { githubArtifactSource } from '@/core/whiskit/github-resolver'
+import type { WhiskitArtifactLocation } from '@/core/whiskit/resolver'
+import { downloadToFile } from '@/core/whiskit/download'
+import { safeExtractArtifact, verifyChecksum } from '@/core/whiskit/artifact'
+import { readProvenance, PROVENANCE_FILENAME } from '@/core/whiskit/provenance'
 import {
   addPlugin,
   readPluginLockfile,
@@ -379,7 +379,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       let effectivePluginDir: string = stagingDir
       let requestedRef = ''
       let gitProvenance: { ref: string; commitSha: string } | undefined
-      // True when a published Whiskin artifact was installed (already built —
+      // True when a published Whiskit artifact was installed (already built —
       // skip the source build step).
       let installedFromArtifact = false
 
@@ -416,14 +416,14 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         }
         requestedRef = body.ref ?? parsedUrl.ref
 
-        // Whiskin: for a subpath github source, prefer a published artifact
+        // Whiskit: for a subpath github source, prefer a published artifact
         // (toolchain-free). The plugin is identified by the subpath. Only fall
         // back to git-clone + build when no published artifact exists; a
         // verify/extract failure AFTER a match is a hard error (never silently
         // build a tampered artifact's source).
         if (parsedUrl.subpath) {
           const platform = `${process.platform}-${process.arch}`
-          let location: WhiskinArtifactLocation | null = null
+          let location: WhiskitArtifactLocation | null = null
           try {
             const gh = githubArtifactSource(body.source)
             location = await gh.resolver.resolve(gh.pluginId, 'latest', platform)
@@ -432,13 +432,13 @@ export async function post(req: Request, _url: URL): Promise<Response> {
             location = null
           }
           if (location) {
-            const tarball = join(stagingDir, '.whiskin-artifact.tar.gz')
+            const tarball = join(stagingDir, '.whiskit-artifact.tar.gz')
             await downloadToFile(location.artifactUrl, tarball)
             await verifyChecksum(tarball, location.sha256)
             await safeExtractArtifact(tarball, stagingDir)
             rmSync(tarball, { force: true })
             effectivePluginDir = stagingDir
-            const prov = readProvenance(join(stagingDir, '.whiskin', PROVENANCE_FILENAME))
+            const prov = readProvenance(join(stagingDir, '.whiskit', PROVENANCE_FILENAME))
             gitProvenance = { ref: requestedRef, commitSha: prov.sourceCommitSha }
             installedFromArtifact = true
           }
@@ -711,7 +711,7 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       // install request — shipping an installed-but-unbuilt plugin would
       // crash startup instead of surfacing the error to the user now.
       //
-      // A Whiskin artifact install is already built (dist/ shipped + verified),
+      // A Whiskit artifact install is already built (dist/ shipped + verified),
       // so the build step is skipped entirely.
       if (!installedFromArtifact) {
         try {

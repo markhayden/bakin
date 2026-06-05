@@ -25,11 +25,11 @@ import { spawn } from 'node:child_process'
 import { basename, join, resolve } from 'node:path'
 import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lockfile'
 import { startStartupSpan, type StartupDiagnosticLogger } from '@/core/startup-diagnostics'
-import { PLUGIN_CLIENT_EXTERNALS, PLUGIN_SERVER_EXTERNALS } from '@/core/whiskin/externals'
-import { validatePluginImports, NON_RUNTIME_DIRS, type PluginPackageJson } from '@/core/whiskin/import-scan'
-import { verifyInstalledArtifact } from '@/core/whiskin/verify'
+import { PLUGIN_CLIENT_EXTERNALS, PLUGIN_SERVER_EXTERNALS } from '@/core/whiskit/externals'
+import { validatePluginImports, NON_RUNTIME_DIRS, type PluginPackageJson } from '@/core/whiskit/import-scan'
+import { verifyInstalledArtifact } from '@/core/whiskit/verify'
 
-// Single source for the externals contract — see src/core/whiskin/externals.ts.
+// Single source for the externals contract — see src/core/whiskit/externals.ts.
 const CLIENT_EXTERNAL = PLUGIN_CLIENT_EXTERNALS
 const SERVER_EXTERNAL = PLUGIN_SERVER_EXTERNALS
 
@@ -384,7 +384,7 @@ export async function buildAllUserPlugins(
     const pluginDir = join(userPluginsDir, name)
     if (!existsSync(join(pluginDir, 'bakin-plugin.json'))) continue
 
-    // Whiskin artifact installs carry provenance; verify host compatibility
+    // Whiskit artifact installs carry provenance; verify host compatibility
     // before activating. An incompatible artifact (host moved past the externals
     // contract it was built for) is needs-update, not a silent activation.
     // Plugins without provenance (legacy/local/dev) take the unchanged path.
@@ -397,7 +397,7 @@ export async function buildAllUserPlugins(
     }
     if (verification.status === 'invalid') {
       log.warn?.(
-        `Plugin "${name}" has invalid Whiskin provenance — ${verification.reason}. Skipping activation.`,
+        `Plugin "${name}" has invalid Whiskit provenance — ${verification.reason}. Skipping activation.`,
       )
       continue
     }

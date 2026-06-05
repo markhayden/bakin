@@ -24,6 +24,6 @@
     "plugins/**/dist/**",
     "dev/openclaw-home",
     "dev/bakin-instances",
-    "tests/fixtures/whiskin"
+    "tests/fixtures/whiskit"
   ]
 }

@@ -6,7 +6,7 @@
  * best-effort cleanup-on-throw). This owns those mechanics once so they can't
  * drift; callers still validate their own schema before calling.
  *
- * Part of the Whiskin shared install core (Phase 5).
+ * Part of the Whiskit shared install core (Phase 5).
  */
 import { existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from 'fs'
 import { dirname } from 'path'

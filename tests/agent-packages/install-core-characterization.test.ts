@@ -1,8 +1,8 @@
 /**
- * Shared install-core characterization gate (Whiskin P0).
+ * Shared install-core characterization gate (Whiskit P0).
  *
  * The agent-package installer is the PROVEN REFERENCE for the shared install
- * core that Whiskin extracts in Phase 5 and that agent packages converge onto
+ * core that Whiskit extracts in Phase 5 and that agent packages converge onto
  * in Phase 11. This suite locks — in one place, explicitly labeled — the
  * invariants the shared core MUST preserve, so any drift during the refactor
  * fails here:

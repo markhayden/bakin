@@ -1,5 +1,5 @@
 /**
- * Install via a published Whiskin artifact through the REST handler (Phase 6
+ * Install via a published Whiskit artifact through the REST handler (Phase 6
  * wiring). A `github:` source resolves a published artifact, downloads it,
  * verifies the checksum, safe-extracts it, and installs it — no git clone, no
  * build. Only `github-resolver` is mocked (to point at a hermetic host);
@@ -35,9 +35,9 @@ mock.module('../../../src/core/logger', () => ({
 // Point the github resolver at the hermetic host; derive pluginId from subpath
 // like the real implementation. `currentOrigin` is set once the host is up.
 let currentOrigin = ''
-mock.module('../../../src/core/whiskin/github-resolver', () => ({
+mock.module('../../../src/core/whiskit/github-resolver', () => ({
   githubArtifactSource: (source: string) => {
-    const { httpIndexResolver } = require('../../../src/core/whiskin/resolver')
+    const { httpIndexResolver } = require('../../../src/core/whiskit/resolver')
     const subpath = source.split('#')[1] ?? ''
     const pluginId = subpath.split('/').filter(Boolean).pop()
     return { resolver: httpIndexResolver(currentOrigin, 'github'), pluginId, baseUrl: currentOrigin }
@@ -46,9 +46,9 @@ mock.module('../../../src/core/whiskin/github-resolver', () => ({
 
 import { post as installPOST } from '../../../packages/host/src/api/plugins/install'
 import { readPluginLockfile } from '../../../packages/core/src/plugins/lockfile'
-import { startArtifactServer, type ArtifactServer } from '../../fixtures/whiskin-artifact-server'
-import { assemblePluginArtifact, indexFromEntries } from '../../../src/core/whiskin/publish'
-import { writeArtifactsIndex, NEUTRAL_PLATFORM, INDEX_FILENAME } from '../../../src/core/whiskin/artifacts-index'
+import { startArtifactServer, type ArtifactServer } from '../../fixtures/whiskit-artifact-server'
+import { assemblePluginArtifact, indexFromEntries } from '../../../src/core/whiskit/publish'
+import { writeArtifactsIndex, NEUTRAL_PLATFORM, INDEX_FILENAME } from '../../../src/core/whiskit/artifacts-index'
 
 let host: ArtifactServer | null = null
 const releaseDir = join(testDir, 'release')
@@ -90,7 +90,7 @@ async function publishFoo(): Promise<void> {
     bakinVersion: '0.0.1-rc.15',
     bakinRange: '>=1.0.0',
     platform: NEUTRAL_PLATFORM,
-    whiskinVersion: '1',
+    whiskitVersion: '1',
     buildBackend: 'system-bun',
     artifactUrl: `${currentOrigin}/${ARTIFACT_FILE}`,
     outDir: releaseDir,
@@ -128,9 +128,9 @@ describe('install via published artifact (REST handler)', () => {
 
     // Landed from the artifact: dist shipped + provenance present (not a build).
     expect(existsSync(join(testDir, 'plugins', 'foo', 'dist', 'index.js'))).toBe(true)
-    expect(existsSync(join(testDir, 'plugins', 'foo', '.whiskin', 'build.json'))).toBe(true)
+    expect(existsSync(join(testDir, 'plugins', 'foo', '.whiskit', 'build.json'))).toBe(true)
     // No staging or artifact-tarball leftovers.
-    expect(existsSync(join(testDir, 'plugins', 'foo', '.whiskin-artifact.tar.gz'))).toBe(false)
+    expect(existsSync(join(testDir, 'plugins', 'foo', '.whiskit-artifact.tar.gz'))).toBe(false)
 
     // Recorded in the lockfile as a github install.
     const entry = readPluginLockfile().plugins['foo']

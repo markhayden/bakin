@@ -1,6 +1,6 @@
 /**
  * plugin-artifacts health check (P9 surfacing). Scans installed plugins for
- * needs-update / invalid Whiskin provenance.
+ * needs-update / invalid Whiskit provenance.
  */
 import { tmpdir } from 'os'
 import { join as pathJoin } from 'path'
@@ -31,21 +31,21 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 import { checkPluginArtifacts } from '../../../plugins/health/lib/system-checks/plugin-artifacts'
-import { writeProvenance, WHISKIN_PROVENANCE_VERSION, type WhiskinBuildProvenance } from '../../../src/core/whiskin/provenance'
-import { EXTERNALS_CONTRACT } from '../../../src/core/whiskin/externals'
+import { writeProvenance, WHISKIT_PROVENANCE_VERSION, type WhiskitBuildProvenance } from '../../../src/core/whiskit/provenance'
+import { EXTERNALS_CONTRACT } from '../../../src/core/whiskit/externals'
 
 function installPlugin(id: string, externalsContract: string): void {
   const dir = join(testDir, 'plugins', id)
-  mkdirSync(join(dir, '.whiskin'), { recursive: true })
+  mkdirSync(join(dir, '.whiskit'), { recursive: true })
   mkdirSync(join(dir, 'dist'), { recursive: true })
   writeFileSync(join(dir, 'bakin-plugin.json'), JSON.stringify({ id, version: '1.0.0' }))
-  const prov: WhiskinBuildProvenance = {
-    version: WHISKIN_PROVENANCE_VERSION,
+  const prov: WhiskitBuildProvenance = {
+    version: WHISKIT_PROVENANCE_VERSION,
     pluginId: id,
     pluginVersion: '1.0.0',
     bakinVersion: '0.0.1-rc.15',
     bakinRange: '>=0.0.1-rc.1',
-    whiskinVersion: '1',
+    whiskitVersion: '1',
     buildBackend: 'system-bun',
     platform: 'neutral',
     sourceCommitSha: '',
@@ -56,7 +56,7 @@ function installPlugin(id: string, externalsContract: string): void {
     outputs: { serverEntry: 'dist/index.js' },
     builtAt: '2026-06-04T00:00:00.000Z',
   }
-  writeProvenance(join(dir, '.whiskin', 'build.json'), prov)
+  writeProvenance(join(dir, '.whiskit', 'build.json'), prov)
 }
 
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))

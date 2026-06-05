@@ -9,10 +9,10 @@
  * each parser maps a violation to its own typed error + message, so observable
  * behavior is unchanged while the rules can no longer diverge.
  *
- * First extraction of the Whiskin shared install core (Phase 5). The two
+ * First extraction of the Whiskit shared install core (Phase 5). The two
  * install paths converge here further in later slices (materialization,
  * transaction, lockfile IO, provenance). See
- * `.claude/specs/whiskin-plugin-builder-plan.md` (Phase 5).
+ * `.claude/specs/whiskit-plugin-builder-plan.md` (Phase 5).
  */
 
 /** Characters permitted in a monorepo `#subpath`. */

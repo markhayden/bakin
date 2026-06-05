@@ -14,7 +14,7 @@
  * from the browser's point of view.
  */
 import { buildOnePlugin } from './dev-build-one-plugin'
-import { PLUGIN_CLIENT_EXTERNALS } from '../src/core/whiskin/externals'
+import { PLUGIN_CLIENT_EXTERNALS } from '../src/core/whiskit/externals'
 
 const CORE_PLUGINS = [
   'tasks', 'team', 'memory', 'models',
@@ -22,7 +22,7 @@ const CORE_PLUGINS = [
   'health', 'git',
 ]
 
-// Single source for the externals contract — see src/core/whiskin/externals.ts.
+// Single source for the externals contract — see src/core/whiskit/externals.ts.
 const EXTERNAL = PLUGIN_CLIENT_EXTERNALS
 
 for (const id of CORE_PLUGINS) {

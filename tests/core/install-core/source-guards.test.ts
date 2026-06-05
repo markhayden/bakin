@@ -1,5 +1,5 @@
 /**
- * Shared install-core source guards (Whiskin P5, first slice).
+ * Shared install-core source guards (Whiskit P5, first slice).
  *
  * Locks the `#subpath` rule set that both the plugin parser
  * (parseGithubSource) and the agent-package parser (parseGithubSpec) now share,
