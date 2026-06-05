@@ -77,7 +77,7 @@ describe('buildDispatchMessage — attached assets', () => {
       agent: 'pixel',
       description: 'Create a banner based on the reference images.',
     }
-    const msg = buildDispatchMessage(task, 'pixel', testDir, 3737)
+    const msg = buildDispatchMessage(task, 'pixel', testDir)
     expect(msg).toContain('## Attached Assets')
     expect(msg).toContain('20260404-reference-aaaa1111.png')
     expect(msg).toContain('20260404-brief-bbbb2222.md')
@@ -91,7 +91,7 @@ describe('buildDispatchMessage — attached assets', () => {
 
   it('shows correct asset count', () => {
     const task = { id: 'task-1', title: 'Test', agent: 'pixel' }
-    const msg = buildDispatchMessage(task, 'pixel', testDir, 3737)
+    const msg = buildDispatchMessage(task, 'pixel', testDir)
     expect(msg).toContain('2 linked asset(s)')
   })
 
@@ -102,7 +102,7 @@ describe('buildDispatchMessage — attached assets', () => {
       agent: 'pixel',
       description: 'No assets here.',
     }
-    const msg = buildDispatchMessage(task, 'pixel', testDir, 3737)
+    const msg = buildDispatchMessage(task, 'pixel', testDir)
     expect(msg).not.toContain('## Attached Assets')
   })
 
@@ -112,7 +112,7 @@ describe('buildDispatchMessage — attached assets', () => {
       title: 'Triage with asset',
       description: 'Look at the attached files.',
     }
-    const msg = buildDispatchMessage(task, 'main', testDir, 3737)
+    const msg = buildDispatchMessage(task, 'main', testDir)
     expect(msg).toContain('## Attached Assets')
   })
 
@@ -122,7 +122,7 @@ describe('buildDispatchMessage — attached assets', () => {
       title: 'My task',
       agent: 'main',
     }
-    const msg = buildDispatchMessage(task, 'main', testDir, 3737)
+    const msg = buildDispatchMessage(task, 'main', testDir)
     expect(msg).toContain('## Attached Assets')
   })
 
@@ -136,7 +136,6 @@ describe('buildDispatchMessage — attached assets', () => {
       task,
       'pixel',
       testDir,
-      3737,
       'main',
       '## Relevant Package Lessons\n\nSelected lesson body.',
     )

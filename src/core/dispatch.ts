@@ -918,7 +918,12 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
     await withStateLock(async () => {
     const state = loadDispatchState(contentDir)
     const runtime = getAppServices().runtime
-    const runtimeAgentIds = new Set((await runtime.agents.list()).map((agent) => agent.id))
+    const runtimeAgents = await runtime.agents.list()
+    const runtimeAgentIds = new Set(runtimeAgents.map((agent) => agent.id))
+    const runtimeRoster: DispatchRosterAgent[] = runtimeAgents.map((agent) => ({
+      id: agent.id,
+      ...(agent.role ? { role: agent.role } : {}),
+    }))
     const mainAgentId = await getRuntimeMainAgentId(runtime)
     // Reconcile dispatch state with taskboard reality
     const columns = await readDispatchColumns()
@@ -1046,7 +1051,7 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       const recovery = failure?.sessionDeath
       const message = recovery?.stage === 'decomposition'
         ? buildDecompositionMessage(task, targetAgent, recovery)
-        : buildDispatchMessage(task, targetAgent, contentDir, port, mainAgentId, lessonBlock, {}, recovery)
+        : buildDispatchMessage(task, targetAgent, contentDir, mainAgentId, lessonBlock, {}, recovery, runtimeRoster)
       const initialLogCount = task.log?.length ?? 0
 
       // Move to inProgress BEFORE sending message to eliminate race condition
@@ -1121,7 +1126,12 @@ export async function dispatchSingleTask(
     }
 
     const runtime = getAppServices().runtime
-    const runtimeAgentIds = new Set((await runtime.agents.list()).map((agent) => agent.id))
+    const runtimeAgents = await runtime.agents.list()
+    const runtimeAgentIds = new Set(runtimeAgents.map((agent) => agent.id))
+    const runtimeRoster: DispatchRosterAgent[] = runtimeAgents.map((agent) => ({
+      id: agent.id,
+      ...(agent.role ? { role: agent.role } : {}),
+    }))
     const mainAgentId = await getRuntimeMainAgentId(runtime)
     const completedTaskIds = new Set([
       ...columns.done.map(t => t.id),
@@ -1222,7 +1232,7 @@ export async function dispatchSingleTask(
     const recovery = failure?.sessionDeath
     const message = recovery?.stage === 'decomposition'
       ? buildDecompositionMessage(task, targetAgent, recovery)
-      : buildDispatchMessage(task, targetAgent, contentDir, port, mainAgentId, lessonBlock, continuation, recovery)
+      : buildDispatchMessage(task, targetAgent, contentDir, mainAgentId, lessonBlock, continuation, recovery, runtimeRoster)
     const dispatchStart = Date.now()
     const initialLogCount = task.log?.length ?? 0
 
@@ -1268,6 +1278,65 @@ export async function dispatchSingleTask(
       },
     })
   })
+}
+
+function mcporterHelpers(agentName: string) {
+  const server = `bakin-${agentName}`
+  return {
+    server,
+    mc: (tool: string, args: string) => `mcporter call ${server}.${tool} ${args}`,
+    mcImage: (tool: string, args: string) => `mcporter call ${server}.${tool} --timeout ${IMAGE_MCPORTER_TIMEOUT_MS} ${args}`,
+  }
+}
+
+/**
+ * Shared execution-tool documentation — single source so the regular and
+ * workflow prompt builders cannot drift. Intentional differences (e.g.
+ * channel posting only for output steps) are explicit parameters.
+ */
+function sharedExecutionToolDocs(agentName: string, taskId: string, opts: { allowChannelPost: boolean }): string[] {
+  const { mc, mcImage } = mcporterHelpers(agentName)
+  const lines = [
+    '# Save any file as a managed asset (handles naming + sidecar metadata)',
+    mc('bakin_exec_assets_save', `taskId=${taskId} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"`),
+    '',
+    '# Recommend and generate an image through the core images plugin',
+    mc('bakin_exec_images_recommend', 'surface=instagram-feed-portrait objective="<goal>"'),
+    mcImage('bakin_exec_images_generate', `taskId=${taskId} prompt="<text>" surface=instagram-feed-portrait provider=auto`),
+    '',
+    '# Check workflow gate statuses',
+    mc('bakin_exec_check_gates', `taskId=${taskId}`),
+  ]
+  if (opts.allowChannelPost) {
+    lines.push(
+      '',
+      '# Post to a runtime channel (with optional image/video attachment)',
+      mc('bakin_exec_post_channel', `channel="<name>" content="<message>" taskId=${taskId}`),
+    )
+  }
+  return lines
+}
+
+/**
+ * The prevention half of session-death hardening: artifact-first output
+ * rules injected into EVERY dispatch prompt. Oversized chat completions are
+ * what kill runtime sessions — deliverables belong in files/assets, produced
+ * one at a time, with chat reserved for short status.
+ */
+function outputDisciplineSection(agentName: string, taskId: string, opts: { subtasksAllowed: boolean }): string[] {
+  const { mc } = mcporterHelpers(agentName)
+  return [
+    '## OUTPUT DISCIPLINE — MANDATORY',
+    '',
+    'Oversized chat output KILLS your runtime session and fails the task — the runtime cannot deliver large completions. Hard rules:',
+    '',
+    `- Any deliverable or output larger than ~8KB MUST be written to a workspace file and saved BEFORE you continue: \`${mc('bakin_exec_assets_save', `taskId=${taskId} type=<type> filePath="<path>" description="<what it is>"`)}\``,
+    '- Multiple deliverables = a checklist. Produce them ONE AT A TIME: write the file → save it as an asset → log progress → start the next. NEVER draft several deliverables in a single response.',
+    '- Keep every chat/completion message short: status, decisions, and asset ids — never deliverable content.',
+    opts.subtasksAllowed
+      ? '- If deliverables are independent and numerous, split them into subtasks (see DEPENDENCY PATTERN below) instead of doing them all in one turn.'
+      : '- If your step output is large, save it as an asset first and reference the asset id in your submitted step output instead of inlining the content.',
+  ]
 }
 
 /**
@@ -1326,18 +1395,22 @@ Steps:
 5. STOP. Do not start any subtask, do not draft content, do not call tasks_complete.`
 }
 
+export interface DispatchRosterAgent {
+  id: string
+  role?: string
+}
+
 /** @internal Exported for testing. */
 export function buildDispatchMessage(
   task: { id: string; title: string; description?: string; agent?: string; projectId?: string },
   agentName: string,
   contentDir: string,
-  _port: number,
   mainAgentId = 'main',
   lessonBlock = '',
   continuation: DispatchContinuationContext = {},
   recovery?: SessionDeathState,
+  roster: DispatchRosterAgent[] = [],
 ): string {
-  void _port
   const correctivePrefix = recovery?.stage === 'corrective' ? buildCorrectiveSection(task.id, recovery) : ''
   const detailsBlock = task.description ? `\n\nDetails:\n${task.description}` : ''
   const lessonSection = lessonBlock ? `\n\n${lessonBlock}` : ''
@@ -1384,12 +1457,16 @@ export function buildDispatchMessage(
   }
   const contactsRef = `Reference info is in ${join(contentDir, 'team/CONTACTS.md')}.`
 
-  const server = `bakin-${agentName}`
-  const mc = (tool: string, args: string) => `mcporter call ${server}.${tool} ${args}`
-  const mcImage = (tool: string, args: string) => `mcporter call ${server}.${tool} --timeout ${IMAGE_MCPORTER_TIMEOUT_MS} ${args}`
+  const { server, mc } = mcporterHelpers(agentName)
 
   if (!task.agent) {
-    return `${correctivePrefix}Triage this task: "${task.title}".${detailsBlock}${continuationBlock}${assetsBlock}${lessonSection}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=video/audio, jessica=research) via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
+    // Roster comes from the live runtime — never a hardcoded agent list
+    // (custom-agent installs broke against baked-in names).
+    const rosterAgents = roster.filter((a) => a.id !== mainAgentId)
+    const rosterText = rosterAgents.length > 0
+      ? ` (${rosterAgents.map((a) => (a.role ? `${a.id}=${a.role}` : a.id)).join(', ')})`
+      : ''
+    return `${correctivePrefix}Triage this task: "${task.title}".${detailsBlock}${continuationBlock}${assetsBlock}${lessonSection}\n\nEither handle it yourself or assign it to the right agent${rosterText} via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
   if (task.agent === mainAgentId) {
@@ -1411,6 +1488,8 @@ Required log points:
 - If you have not logged in the last 2 minutes, log a status update — even if just "still working on X"
 
 For Patch using Claude Code: log before spawning the agent, and after it completes.
+
+${outputDisciplineSection(agentName, task.id, { subtasksAllowed: true }).join('\n')}
 
 ## BAKIN TOOLS — via mcporter
 
@@ -1444,18 +1523,7 @@ ${mc('bakin_exec_get_paths', '')}
 These tools help you accomplish the work. Use them as your primary way to save files, post content, and generate assets.
 
 \`\`\`bash
-# Save any file as a managed asset (handles naming + sidecar metadata)
-${mc('bakin_exec_assets_save', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"`)}
-
-# Post to a runtime channel (with optional image/video attachment)
-${mc('bakin_exec_post_channel', `channel="<name>" content="<message>" taskId=${task.id}`)}
-
-# Recommend and generate an image through the core images plugin
-${mc('bakin_exec_images_recommend', `surface=instagram-feed-portrait objective="<goal>"`)}
-${mcImage('bakin_exec_images_generate', `taskId=${task.id} prompt="<text>" surface=instagram-feed-portrait provider=auto`)}
-
-# Check workflow gate statuses
-${mc('bakin_exec_check_gates', `taskId=${task.id}`)}
+${sharedExecutionToolDocs(agentName, task.id, { allowChannelPost: true }).join('\n')}
 ${task.projectId ? `
 # Project tools (this task is part of a project)
 ${mc('bakin_exec_projects_get', `projectId="${task.projectId}"`)}
@@ -1570,7 +1638,7 @@ async function dispatchWorkflowTask(
     // A pending session-death recovery injects corrective guidance (workflow
     // steps only get the corrective rung — the engine owns step structure).
     const wfRecovery = getFailureRecord(state.failedDispatches?.[task.id])?.sessionDeath
-    const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, port, lessonBlock, wfRecovery)
+    const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, lessonBlock, wfRecovery)
     const initialLogCount = findDispatchTaskSnapshot(task.id)?.task.log?.length ?? 0
 
     const gate = concurrencyGate(targetAgent, getSettings())
@@ -1626,11 +1694,9 @@ function buildWorkflowDispatchMessage(
     deny_tools?: string[]
   },
   agentName: string,
-  _port: number,
   lessonBlock = '',
   recovery?: SessionDeathState,
 ): string {
-  void _port
   const lines: string[] = []
   if (recovery?.stage === 'corrective') {
     lines.push(buildCorrectiveSection(task.id, recovery).trimEnd())
@@ -1661,6 +1727,8 @@ function buildWorkflowDispatchMessage(
   if (stepContext.deny_tools?.length) {
     lines.push(`6. **TOOL RESTRICTIONS:** Do NOT use: ${stepContext.deny_tools.join(', ')}. If this step requires those capabilities, BLOCK the task immediately.`)
   }
+  lines.push('')
+  lines.push(...outputDisciplineSection(agentName, task.id, { subtasksAllowed: false }))
   lines.push('')
 
   // ─── Revision Context ───────────────────────────────────────────────
@@ -1749,9 +1817,7 @@ function buildWorkflowDispatchMessage(
   // ─── Progress Logging ──────────────────────────────────────────────
   lines.push('## PROGRESS LOGGING — MANDATORY')
   lines.push('')
-  const wfServer = `bakin-${agentName}`
-  const wfMc = (tool: string, args: string) => `mcporter call ${wfServer}.${tool} ${args}`
-  const wfMcImage = (tool: string, args: string) => `mcporter call ${wfServer}.${tool} --timeout ${IMAGE_MCPORTER_TIMEOUT_MS} ${args}`
+  const { server: wfServer, mc: wfMc } = mcporterHelpers(agentName)
 
   lines.push('You MUST log your progress throughout this workflow step. These updates appear in the live activity feed so humans can monitor your work in real-time.')
   lines.push('')
@@ -1781,21 +1847,8 @@ function buildWorkflowDispatchMessage(
   lines.push('')
   lines.push('# --- Execution tools for doing actual work ---')
   lines.push('')
-  lines.push(`# Save any file as a managed asset`)
-  lines.push(`${wfMc('bakin_exec_assets_save', `taskId=${task.id} type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what>"`)}`);
-  lines.push('')
-  lines.push(`# Recommend and generate an image through the core images plugin`)
-  lines.push(`${wfMc('bakin_exec_images_recommend', `surface=instagram-feed-portrait objective="<goal>"`)}`);
-  lines.push(`${wfMcImage('bakin_exec_images_generate', `taskId=${task.id} prompt="<text>" surface=instagram-feed-portrait provider=auto`)}`);
-  lines.push('')
-  lines.push(`# Check workflow gate statuses`)
-  lines.push(`${wfMc('bakin_exec_check_gates', `taskId=${task.id}`)}`);
-  // Only include channel posting for output/publish steps (non-output steps have "NO SIDE EFFECTS" constraint)
-  if (stepContext.type === 'output') {
-    lines.push('')
-    lines.push(`# Post to a runtime channel (with optional image/video attachment)`)
-    lines.push(`${wfMc('bakin_exec_post_channel', `channel="<name>" content="<message>" taskId=${task.id}`)}`);
-  }
+  // Channel posting only for output/publish steps (others have "NO SIDE EFFECTS")
+  lines.push(...sharedExecutionToolDocs(agentName, task.id, { allowChannelPost: stepContext.type === 'output' }))
   lines.push('```')
   lines.push('')
 
