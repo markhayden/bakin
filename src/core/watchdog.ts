@@ -62,6 +62,28 @@ function getLastLogTimestamp(task: { log?: { timestamp: string }[] }): Date | nu
   return latest
 }
 
+/**
+ * Restart recovery classifies some tasks 'manual' and writes a structured
+ * hold marker ({restartRecovery:'manual'} in the entry data). While that
+ * marker is the LATEST log entry the watchdog must not auto-recover the
+ * task — 'manual' means a human decides. Any newer log entry (human or
+ * agent activity) clears the hold naturally. Structured match only — never
+ * message-text classification. Timestamp ties prefer the later array entry.
+ */
+function latestLogIsManualRecoveryHold(task: { log?: Array<{ timestamp: string; data?: Record<string, unknown> }> }): boolean {
+  if (!task.log || task.log.length === 0) return false
+  let latest: { timestamp: string; data?: Record<string, unknown> } | null = null
+  let latestTs = Number.NEGATIVE_INFINITY
+  for (const entry of task.log) {
+    const ts = Date.parse(entry.timestamp)
+    if (!Number.isNaN(ts) && ts >= latestTs) {
+      latest = entry
+      latestTs = ts
+    }
+  }
+  return latest?.data?.restartRecovery === 'manual'
+}
+
 function isAgentHeartbeatStale(contentDir: string, agent: string | undefined): boolean {
   if (!agent) return true
 
@@ -120,6 +142,13 @@ export function start(contentDir: string): void {
       const now = Date.now()
 
       for (const task of inProgressTasks) {
+        // Restart recovery flagged this task for MANUAL attention — hold off
+        // while the structured marker is the latest log entry.
+        if (latestLogIsManualRecoveryHold(task)) {
+          log.debug('Skipping task under manual recovery hold', { id: task.id })
+          continue
+        }
+
         // Skip workflow tasks waiting on a gate or already complete — they're legitimately idle
         const wfCheck = task as typeof task & { workflowId?: string }
         if (wfCheck.workflowId) {
