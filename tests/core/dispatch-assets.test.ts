@@ -1,15 +1,24 @@
 /**
  * Tests for attached asset context in dispatch messages.
- * Assets are detected by scanning filesystem directories, not description URLs.
+ *
+ * Dispatch resolves a task's assets through the assets.listByTask hook
+ * (versioned-asset layout; assets are opened by assetId). The block is
+ * computed async at the call sites and passed into the synchronous
+ * buildDispatchMessage as a precomputed string.
  */
 import { describe, it, expect, beforeAll, afterAll, mock } from 'bun:test'
-import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { mkdirSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
 const testDir = join(tmpdir(), `bakin-test-dispatch-assets-${Date.now()}`)
 
 mock.module('../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ assets: join(testDir, 'assets') }),
+}))
+
+mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
   getBakinPaths: () => ({ assets: join(testDir, 'assets') }),
 }))
@@ -32,106 +41,87 @@ mock.module('../../src/core/settings', () => ({
 }))
 
 mock.module('../../src/core/audit', () => ({ appendAudit: mock() }))
+
+const hookInvoke = mock(async (..._args: unknown[]): Promise<unknown> => undefined)
 mock.module('../../src/lib/plugin-registry', () => ({
   getHookRegistry: mock().mockReturnValue({
-    invoke: mock().mockResolvedValue(undefined),
-    has: mock().mockReturnValue(false),
+    invoke: hookInvoke,
+    has: mock().mockReturnValue(true),
     register: mock(),
   }),
 }))
 mock.module('../../src/lib/format', () => ({ isStale: mock().mockReturnValue(true) }))
 
-import { buildDispatchMessage } from '../../src/core/dispatch'
+import { buildDispatchMessage, buildDispatchAssetBlock } from '../../src/core/dispatch'
 
 beforeAll(() => {
   mkdirSync(testDir, { recursive: true })
-
-  // Under filename-as-identity, every asset lives under
-  // assets/store/{YYYY-MM}/ and the task link lives only in the sidecar.
-  const shardDir = join(testDir, 'assets', 'store', '2026-04')
-  mkdirSync(shardDir, { recursive: true })
-
-  const img = '20260404-reference-aaaa1111.png'
-  writeFileSync(join(shardDir, img), 'fake-png')
-  writeFileSync(join(shardDir, `${img}.meta.json`), JSON.stringify({ taskId: 'task-1', type: 'images' }))
-
-  // Variant — shares the primary's base stem but has its own sidecar.
-  // dispatch.ts filters these out explicitly.
-  writeFileSync(join(shardDir, '20260404-reference-aaaa1111.thumb.jpg'), 'fake-thumb')
-  writeFileSync(join(shardDir, '20260404-reference-aaaa1111.thumb.jpg.meta.json'), JSON.stringify({ taskId: 'task-1', type: 'images' }))
-
-  const brief = '20260404-brief-bbbb2222.md'
-  writeFileSync(join(shardDir, brief), '# Brief')
-  writeFileSync(join(shardDir, `${brief}.meta.json`), JSON.stringify({ taskId: 'task-1', type: 'text' }))
 })
 
 afterAll(() => {
   rmSync(testDir, { recursive: true, force: true })
 })
 
-describe('buildDispatchMessage — attached assets', () => {
-  it('includes attached assets when task has linked files', () => {
-    const task = {
-      id: 'task-1',
-      title: 'Design banner',
-      agent: 'pixel',
-      description: 'Create a banner based on the reference images.',
-    }
-    const msg = buildDispatchMessage(task, 'pixel', testDir)
+describe('buildDispatchAssetBlock', () => {
+  it('builds an assetId-based block from the assets.listByTask hook', async () => {
+    hookInvoke.mockResolvedValueOnce([
+      { assetId: '2026-04-reference-aaaa1111', description: 'Reference image', type: 'images' },
+      { assetId: '2026-04-brief-bbbb2222', description: 'Creative brief', type: 'text' },
+    ])
+
+    const block = await buildDispatchAssetBlock('task-1')
+    expect(hookInvoke).toHaveBeenCalledWith('assets.listByTask', { taskId: 'task-1' })
+    expect(block).toContain('## Attached Assets')
+    expect(block).toContain('2 linked asset(s)')
+    expect(block).toContain('2026-04-reference-aaaa1111')
+    expect(block).toContain('Reference image')
+    expect(block).toContain('2026-04-brief-bbbb2222')
+    // Versioned layout: assets are opened by assetId.
+    expect(block).toContain('bakin_exec_assets_open')
+    expect(block).toContain('assetId')
+  })
+
+  it('returns an empty string when the task has no assets', async () => {
+    hookInvoke.mockResolvedValueOnce([])
+    expect(await buildDispatchAssetBlock('task-none')).toBe('')
+  })
+
+  it('returns an empty string when the hook is unavailable/throws', async () => {
+    hookInvoke.mockRejectedValueOnce(new Error('assets plugin not activated'))
+    expect(await buildDispatchAssetBlock('task-err')).toBe('')
+  })
+})
+
+describe('buildDispatchMessage — precomputed assets block', () => {
+  const assetsBlock = '\n\n## Attached Assets\nThis task has 1 linked asset(s):\n- 2026-04-reference-aaaa1111 — Reference image\nOpen with bakin_exec_assets_open assetId=...'
+
+  it('includes the block for agent-assigned tasks', () => {
+    const task = { id: 'task-1', title: 'Design banner', agent: 'pixel' }
+    const msg = buildDispatchMessage(task, 'pixel', testDir, 'main', '', {}, undefined, [], assetsBlock)
     expect(msg).toContain('## Attached Assets')
-    expect(msg).toContain('20260404-reference-aaaa1111.png')
-    expect(msg).toContain('20260404-brief-bbbb2222.md')
-    // Agents open attached assets via bakin_exec_assets_open (filename-as-identity).
-    expect(msg).toContain('bakin_exec_assets_open')
-    // Should NOT include variants
-    expect(msg).not.toContain('.thumb.')
-    // Should NOT include .meta.json files
-    expect(msg).not.toContain('.meta.json')
+    expect(msg).toContain('2026-04-reference-aaaa1111')
   })
 
-  it('shows correct asset count', () => {
-    const task = { id: 'task-1', title: 'Test', agent: 'pixel' }
-    const msg = buildDispatchMessage(task, 'pixel', testDir)
-    expect(msg).toContain('2 linked asset(s)')
+  it('includes the block in triage messages (no agent)', () => {
+    const task = { id: 'task-1', title: 'Triage with asset' }
+    const msg = buildDispatchMessage(task, 'main', testDir, 'main', '', {}, undefined, [], assetsBlock)
+    expect(msg).toContain('## Attached Assets')
   })
 
-  it('omits attached assets when task has no asset directories', () => {
-    const task = {
-      id: 'task-no-assets',
-      title: 'Simple task',
-      agent: 'pixel',
-      description: 'No assets here.',
-    }
+  it('includes the block for main-assigned tasks', () => {
+    const task = { id: 'task-1', title: 'My task', agent: 'main' }
+    const msg = buildDispatchMessage(task, 'main', testDir, 'main', '', {}, undefined, [], assetsBlock)
+    expect(msg).toContain('## Attached Assets')
+  })
+
+  it('omits the block when none is provided', () => {
+    const task = { id: 'task-no-assets', title: 'Simple task', agent: 'pixel' }
     const msg = buildDispatchMessage(task, 'pixel', testDir)
     expect(msg).not.toContain('## Attached Assets')
   })
 
-  it('includes attached assets in triage messages (no agent)', () => {
-    const task = {
-      id: 'task-1',
-      title: 'Triage with asset',
-      description: 'Look at the attached files.',
-    }
-    const msg = buildDispatchMessage(task, 'main', testDir)
-    expect(msg).toContain('## Attached Assets')
-  })
-
-  it('includes attached assets for main-assigned tasks', () => {
-    const task = {
-      id: 'task-1',
-      title: 'My task',
-      agent: 'main',
-    }
-    const msg = buildDispatchMessage(task, 'main', testDir)
-    expect(msg).toContain('## Attached Assets')
-  })
-
   it('can include retrieved package lessons in dispatch messages', () => {
-    const task = {
-      id: 'task-lessons',
-      title: 'Use package lessons',
-      agent: 'pixel',
-    }
+    const task = { id: 'task-lessons', title: 'Use package lessons', agent: 'pixel' }
     const msg = buildDispatchMessage(
       task,
       'pixel',

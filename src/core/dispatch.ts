@@ -2,7 +2,7 @@
  * Task dispatch system for Bakin.
  * Periodically checks for TODO tasks and dispatches them to agents via the runtime adapter.
  */
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { createLogger } from './logger'
 import { getSettings } from './settings'
@@ -1096,10 +1096,11 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         agentId: targetAgent,
         query: buildTaskLessonQuery(task),
       })
+      const assetsBlock = await buildDispatchAssetBlock(task.id)
       const recovery = failure?.sessionDeath
       const message = recovery?.stage === 'decomposition'
         ? buildDecompositionMessage(task, targetAgent, recovery)
-        : buildDispatchMessage(task, targetAgent, contentDir, mainAgentId, lessonBlock, {}, recovery, runtimeRoster)
+        : buildDispatchMessage(task, targetAgent, contentDir, mainAgentId, lessonBlock, {}, recovery, runtimeRoster, assetsBlock)
       const initialLogCount = task.log?.length ?? 0
 
       // Move to inProgress BEFORE sending message to eliminate race condition
@@ -1285,10 +1286,11 @@ export async function dispatchSingleTask(
       agentId: targetAgent,
       query: buildTaskLessonQuery(task),
     })
+    const assetsBlock = await buildDispatchAssetBlock(task.id)
     const recovery = failure?.sessionDeath
     const message = recovery?.stage === 'decomposition'
       ? buildDecompositionMessage(task, targetAgent, recovery)
-      : buildDispatchMessage(task, targetAgent, contentDir, mainAgentId, lessonBlock, continuation, recovery, runtimeRoster)
+      : buildDispatchMessage(task, targetAgent, contentDir, mainAgentId, lessonBlock, continuation, recovery, runtimeRoster, assetsBlock)
     const dispatchStart = Date.now()
     const initialLogCount = task.log?.length ?? 0
 
@@ -1456,6 +1458,27 @@ export interface DispatchRosterAgent {
   role?: string
 }
 
+/**
+ * Resolve a task's attached assets via the assets.listByTask hook and render
+ * the dispatch block. Async (hook invoke), so call sites compute it before
+ * the synchronous message builders and pass the result in. Returns '' when
+ * the task has no assets or the assets plugin is unavailable.
+ */
+export async function buildDispatchAssetBlock(taskId: string): Promise<string> {
+  try {
+    const assets = await hooks().invoke<Array<{ assetId: string; description?: string; type: string }>>(
+      'assets.listByTask',
+      { taskId },
+    ) ?? []
+    if (assets.length === 0) return ''
+    const lines = assets.map((a) => `- ${a.assetId}${a.description ? ` — ${a.description}` : ''}`)
+    return `\n\n## Attached Assets\nThis task has ${assets.length} linked asset(s). Review them for context before starting:\n${lines.join('\n')}\nOpen with bakin_exec_assets_open using the assetId to read the current content + metadata. AssetIds are stable identity — do not store raw disk paths.`
+  } catch {
+    // Assets plugin not activated (tests, minimal installs) — no block.
+    return ''
+  }
+}
+
 /** @internal Exported for testing. */
 export function buildDispatchMessage(
   task: { id: string; title: string; description?: string; agent?: string; projectId?: string },
@@ -1466,6 +1489,7 @@ export function buildDispatchMessage(
   continuation: DispatchContinuationContext = {},
   recovery?: SessionDeathState,
   roster: DispatchRosterAgent[] = [],
+  assetsBlock = '',
 ): string {
   const correctivePrefix = recovery?.stage === 'corrective' ? buildCorrectiveSection(task.id, recovery) : ''
   const detailsBlock = task.description ? `\n\nDetails:\n${task.description}` : ''
@@ -1475,36 +1499,6 @@ export function buildDispatchMessage(
   const continuationBlock = continuation.completedDependency
     ? `\n\n## Completed Dependency\nYour dependency task "${continuation.completedDependency.title}" (task ${continuation.completedDependency.id}) is now done. Review its outcome before resuming: \`bakin_exec_tasks_get taskId=${continuation.completedDependency.id}\` shows its log and completion summary, and its saved assets are linked to that task. Continue this task from where it left off.`
     : ''
-
-  // List attached assets by filename (stable identity). Agents open them
-  // via bakin_exec_assets_open — disk paths are a view, not identity.
-  // Under filename-as-identity, every asset lives under
-  // assets/store/{YYYY-MM}/; the sidecar's taskId is the link.
-  let assetsBlock = ''
-  try {
-    const storeRoot = join(contentDir, 'assets', 'store')
-    const filenames: string[] = []
-    if (existsSync(storeRoot)) {
-      for (const month of readdirSync(storeRoot)) {
-        if (month.startsWith('.')) continue
-        const monthDir = join(storeRoot, month)
-        let metas: string[]
-        try { metas = readdirSync(monthDir).filter(f => f.endsWith('.meta.json')) } catch { continue }
-        for (const metaFile of metas) {
-          try {
-            const meta = JSON.parse(readFileSync(join(monthDir, metaFile), 'utf-8'))
-            if (meta.taskId !== task.id) continue
-            const assetFilename = metaFile.replace(/\.meta\.json$/, '')
-            if (assetFilename.includes('.thumb.') || assetFilename.includes('.opt.')) continue
-            filenames.push(assetFilename)
-          } catch { /* skip unreadable sidecars */ }
-        }
-      }
-    }
-    if (filenames.length > 0) {
-      assetsBlock = `\n\n## Attached Assets\nThis task has ${filenames.length} linked asset(s). Review them for context before starting:\n${filenames.map(f => `- ${f}`).join('\n')}\nCall bakin_exec_assets_open with the filename to read the current content + sidecar metadata. Filenames are stable identity — do not store raw disk paths.`
-    }
-  } catch { /* assets directory may not exist */ }
 
   // Project context — lightweight mention if task has a projectId
   let projectBlock = ''
@@ -1695,7 +1689,10 @@ async function dispatchWorkflowTask(
     // A pending session-death recovery injects corrective guidance (workflow
     // steps only get the corrective rung — the engine owns step structure).
     const wfRecovery = getFailureRecord(state.failedDispatches?.[task.id])?.sessionDeath
-    const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, lessonBlock, wfRecovery)
+    // Assets are linked to the PARENT task id (decomposition guidance tells
+    // agents to save against the parent), so resolve by task.id, not contextTaskId.
+    const wfAssetsBlock = await buildDispatchAssetBlock(task.id)
+    const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, lessonBlock, wfRecovery, wfAssetsBlock)
     const initialLogCount = findDispatchTaskSnapshot(task.id)?.task.log?.length ?? 0
 
     const gate = concurrencyGate(targetAgent, getSettings())
@@ -1755,6 +1752,7 @@ function buildWorkflowDispatchMessage(
   agentName: string,
   lessonBlock = '',
   recovery?: SessionDeathState,
+  assetsBlock = '',
 ): string {
   const lines: string[] = []
   if (recovery?.stage === 'corrective') {
@@ -1851,6 +1849,11 @@ function buildWorkflowDispatchMessage(
 
   if (lessonBlock) {
     lines.push(lessonBlock)
+    lines.push('')
+  }
+
+  if (assetsBlock) {
+    lines.push(assetsBlock.trim())
     lines.push('')
   }
 

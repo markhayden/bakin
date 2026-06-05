@@ -13,6 +13,8 @@ import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 
+import { taskAssetIndexUpsert } from './task-asset-index'
+
 export const ASSET_SOURCE_KINDS = ['generated', 'upload', 'import', 'clipboard', 'workspace-file'] as const
 export const ASSET_OPS = ['generate', 'edit', 'upload', 'import'] as const
 
@@ -105,4 +107,8 @@ export function writeManifestAtomic(assetDirAbs: string, manifest: AssetManifest
   const tmp = join(assetDirAbs, `.${MANIFEST_FILENAME}.${randomBytes(6).toString('hex')}.tmp`)
   writeFileSync(tmp, JSON.stringify(validated, null, 2), 'utf-8')
   renameSync(tmp, dest)
+  // Single choke point for every asset mutation — keep the taskId index in
+  // sync synchronously so the very next dispatch sees the link (the content
+  // watcher's onSync is debounced and only acts as the self-heal backstop).
+  taskAssetIndexUpsert(validated.assetId, validated.taskId ?? null)
 }

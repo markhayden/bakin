@@ -22,6 +22,7 @@ import {
   relink as relinkVersioned, retype as retypeVersioned,
   listTrashedAssets, emptyAssetTrash, permanentlyDeleteTrashed, restoreAsset as restoreVersionedAsset,
 } from './lib/asset-service'
+import { listAssetIdsByTask, taskAssetIndexRemove, taskAssetIndexUpsert } from './lib/task-asset-index'
 import { versionedAssetPath, buildVersionedAssetSearchDoc } from './lib/search-doc'
 import { ASSET_TYPES, type AssetType } from './lib/constants'
 import { ingestInboxFile, ingestInboxDir } from './lib/ingest-inbox'
@@ -279,6 +280,11 @@ const assetsPlugin: BakinPlugin = definePlugin({
         if (versioned) {
           if (versioned.isManifest) {
             await indexVersionedAsset(versioned.assetId).catch(() => { /* non-blocking */ })
+            // Self-heal backstop for the taskId index (covers externally
+            // edited manifests; in-process mutations already updated it
+            // synchronously at the manifest-write choke point).
+            const manifest = getAsset(versioned.assetId)
+            if (manifest) taskAssetIndexUpsert(manifest.assetId, manifest.taskId ?? null)
             // Live UI refresh: any mutation rewrites the manifest.
             ctx.events.emit('asset.changed', { assetId: versioned.assetId })
           }
@@ -308,6 +314,7 @@ const assetsPlugin: BakinPlugin = definePlugin({
         const versioned = versionedAssetPath(relativePath)
         if (versioned?.isManifest) {
           await ctx.search.remove(versioned.assetId).catch(() => { /* non-blocking */ })
+          taskAssetIndexRemove(versioned.assetId)
           ctx.events.emit('asset.removed', { assetId: versioned.assetId })
         }
       },
@@ -341,6 +348,14 @@ const assetsPlugin: BakinPlugin = definePlugin({
 
     // ─── Cross-Plugin Hooks ────────────────────────────────────────────
 
+    ctx.hooks.register('assets.listByTask', (d: Record<string, unknown>) => {
+      const taskId = typeof d?.taskId === 'string' ? d.taskId : ''
+      if (!taskId) return []
+      return listAssetIdsByTask(taskId)
+        .map((assetId) => getAsset(assetId))
+        .filter((m): m is NonNullable<typeof m> => m !== null)
+        .map((m) => ({ assetId: m.assetId, description: m.description ?? '', type: m.type }))
+    }, { label: 'List assets linked to a task.', summary: 'Returns {assetId, description, type} for every versioned asset whose manifest taskId matches. Backed by an in-memory index — the sanctioned way for core (dispatch) to resolve a task’s attached assets without scanning plugin storage.', hookKind: 'rpc' })
     ctx.hooks.register('assets.getAssetTypes', () => ASSET_TYPES, { label: 'List asset types.', summary: 'Returns the asset type definitions known to the assets plugin. Use it to build filters, upload forms, or validation messages that match Bakin asset categories.', hookKind: 'rpc' })
     ctx.hooks.register('assets.resolveServe', (d: Record<string, unknown>) => resolveAssetServe((d.segments as string[]) ?? []), { label: 'Resolve versioned asset serve request.', summary: 'Resolves an /api/assets/<assetId> path (current, /v/<n>, /thumb, /export/<name>) to a file on disk for serving.', hookKind: 'rpc' })
 
