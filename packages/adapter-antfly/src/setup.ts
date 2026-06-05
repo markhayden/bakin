@@ -4,6 +4,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import type { SearchAdapterSetup, SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
+import { checkAntflyDependency, installAntflyDependency } from './installer'
 import { findAntflyBinary } from './server'
 
 const noopLogger: AdapterLogger = {
@@ -12,11 +13,6 @@ const noopLogger: AdapterLogger = {
   warn: () => {},
   error: () => {},
 }
-
-const BREW_CANDIDATES = ['/opt/homebrew/bin/brew', '/usr/local/bin/brew']
-const BREW_PACKAGE = 'antflydb/antfly/antfly'
-const BREW_INSTALL_DOCS = 'https://brew.sh/'
-const BREW_MANUAL_INSTALL = `brew install ${BREW_PACKAGE}`
 
 export interface TermiteModel {
   label: string
@@ -29,258 +25,6 @@ export const REQUIRED_MODELS: TermiteModel[] = [
   { label: 'CLIP visual embedder', model: 'openai/clip-vit-base-patch32', kind: 'embedder' },
   { label: 'mxbai reranker', model: 'mixedbread-ai/mxbai-rerank-base-v1', kind: 'reranker' },
 ]
-
-function findBrew(): string | null {
-  for (const candidate of BREW_CANDIDATES) {
-    if (existsSync(candidate)) return candidate
-  }
-  return null
-}
-
-function runSpawn(
-  cmd: string,
-  args: string[],
-  opts: { interactive: boolean }
-): Promise<{ code: number | null; stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const compact = opts.interactive && !process.env.CI && process.stdout.isTTY === true
-    const child = spawn(cmd, args, {
-      // Keep stdin attached so Homebrew can still ask Y/n questions, but
-      // capture stdout/stderr so onboarding stays readable.
-      stdio: opts.interactive ? ['inherit', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        HOMEBREW_NO_AUTO_UPDATE: '1',
-        HOMEBREW_NO_ENV_HINTS: '1',
-      },
-    })
-    let stdout = ''
-    let stderr = ''
-    const status = compact ? createCompactProcessStatus('Installing Antfly via Homebrew') : null
-    const onData = (target: 'stdout' | 'stderr', chunk: unknown) => {
-      const text = chunk?.toString?.() ?? String(chunk ?? '')
-      if (target === 'stdout') stdout += text
-      else stderr += text
-      status?.update(text)
-    }
-    child.stdout?.on('data', (chunk) => onData('stdout', chunk))
-    child.stderr?.on('data', (chunk) => onData('stderr', chunk))
-    child.on('error', (err) => {
-      status?.stop()
-      reject(err)
-    })
-    child.on('close', (code) => {
-      status?.stop()
-      resolve({ code, stdout, stderr })
-    })
-  })
-}
-
-function stripAnsi(text: string): string {
-  return text.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
-}
-
-function compactBrewOutput(stdout: string, stderr: string): string {
-  const cleaned = stripAnsi(`${stdout}\n${stderr}`).replace(/\r/g, '\n')
-  const lines = cleaned
-    .split('\n')
-    .map(line => line.trim())
-    .filter(Boolean)
-  if (lines.length === 0) return ''
-
-  const important = lines.filter(line =>
-    /^error:/i.test(line) ||
-    /^warning:/i.test(line) ||
-    /xcode|command line tools|failed|permission denied|already installed|linkage/i.test(line)
-  )
-  return (important.length > 0 ? important : lines.slice(-8)).slice(-12).join('\n')
-}
-
-function brewFailureMessage(code: number | null, output: string): string {
-  const suffix = code === null ? 'without an exit code' : `with exit code ${code}`
-  if (/xcode|command line tools/i.test(output)) {
-    return `Homebrew could not install Antfly ${suffix}; update Xcode or Command Line Tools, then rerun \`bakin onboard\`.`
-  }
-  return `Homebrew could not install Antfly ${suffix}; run \`${BREW_MANUAL_INSTALL}\` manually, resolve any Homebrew errors, then rerun \`bakin onboard\`.`
-}
-
-function summarizeProcessText(text: string): { status?: string; prompt?: string } {
-  const cleaned = stripAnsi(text).replace(/\r/g, '\n')
-  const parts = cleaned.split('\n').map(line => line.trim()).filter(Boolean)
-  for (let i = parts.length - 1; i >= 0; i--) {
-    const line = parts[i]
-    if (/\[[Yy]\/n\]|\[y\/N\]|\(y\/n\)|\?$/i.test(line)) {
-      return { prompt: line }
-    }
-    if (
-      line.startsWith('==>') ||
-      line.includes('Cask ') ||
-      line.includes('Downloading') ||
-      line.includes('Installing') ||
-      line.includes('Tapping') ||
-      line.includes('Fetching')
-    ) {
-      return { status: line.replace(/^==>\s*/, '') }
-    }
-  }
-  return {}
-}
-
-function createCompactProcessStatus(label: string) {
-  const frames = ['-', '\\', '|', '/']
-  let frame = 0
-  let detail = 'starting'
-  let promptActive = false
-
-  const write = () => {
-    if (promptActive) return
-    process.stdout.write(`\r\x1b[2K${frames[frame++ % frames.length]} ${label}: ${detail}`)
-  }
-
-  const timer = setInterval(write, 120)
-  write()
-
-  return {
-    update(text: string) {
-      const summary = summarizeProcessText(text)
-      if (summary.prompt) {
-        promptActive = true
-        process.stdout.write(`\r\x1b[2K${summary.prompt} `)
-        return
-      }
-      if (summary.status) {
-        detail = summary.status
-        promptActive = false
-        write()
-      }
-    },
-    stop() {
-      clearInterval(timer)
-      process.stdout.write('\r\x1b[2K')
-    },
-  }
-}
-
-async function checkAntflyDependency() {
-  const binary = findAntflyBinary()
-  if (binary) {
-    return {
-      name: 'antfly',
-      status: 'ok' as const,
-      message: `Antfly is installed at ${binary}`,
-      details: { binary },
-    }
-  }
-  return {
-    name: 'antfly',
-    status: 'missing' as const,
-    message: 'Antfly binary not found on any known install path',
-    remediation: `Run \`bakin install search\`, or install manually with \`${BREW_MANUAL_INSTALL}\`, then rerun onboarding.`,
-  }
-}
-
-async function installAntflyDependency(opts: SearchAdapterSetupOptions, logger: AdapterLogger = noopLogger) {
-  const start = Date.now()
-  const existing = findAntflyBinary()
-  if (existing) {
-    return {
-      name: 'antfly',
-      status: 'noop' as const,
-      message: `Antfly is already installed at ${existing}`,
-      durationMs: Date.now() - start,
-    }
-  }
-
-  const brew = findBrew()
-  if (!brew) {
-    return {
-      name: 'antfly',
-      status: 'failed' as const,
-      message: `Homebrew not found at ${BREW_CANDIDATES.join(' or ')}. Install Homebrew first (${BREW_INSTALL_DOCS}) and rerun, or install Antfly manually.`,
-      durationMs: Date.now() - start,
-    }
-  }
-
-  if (opts.interactive && !opts.autoApprove) {
-    const proceed = await opts.askYesNo?.(
-      `Install Antfly via Homebrew? This will download ~25MB and run \`brew install ${BREW_PACKAGE}\`.`,
-      true
-    )
-    if (!proceed) {
-      return {
-        name: 'antfly',
-        status: 'skipped' as const,
-        message: 'User declined Antfly install.',
-        durationMs: Date.now() - start,
-      }
-    }
-  } else if (!opts.autoApprove) {
-    return {
-      name: 'antfly',
-      status: 'skipped' as const,
-      message: 'Non-interactive run without --yes; skipping Antfly install.',
-      durationMs: Date.now() - start,
-    }
-  }
-
-  logger.info('Installing Antfly via brew', { brew, package: BREW_PACKAGE })
-  try {
-    const { code, stdout, stderr } = await runSpawn(
-      brew,
-      ['install', BREW_PACKAGE],
-      { interactive: opts.interactive && !opts.json }
-    )
-    const durationMs = Date.now() - start
-    if (code !== 0) {
-      const output = compactBrewOutput(stdout, stderr)
-      const installedAfterFailure = findAntflyBinary()
-      if (installedAfterFailure) {
-        logger.warn('brew install returned non-zero after Antfly became discoverable', { code, binary: installedAfterFailure })
-        return {
-          name: 'antfly',
-          status: 'installed' as const,
-          message: `Installed Antfly to ${installedAfterFailure}; Homebrew returned code ${code} after installation.`,
-          error: output,
-          durationMs,
-        }
-      }
-      return {
-        name: 'antfly',
-        status: 'failed' as const,
-        message: brewFailureMessage(code, output),
-        error: output,
-        durationMs,
-      }
-    }
-
-    const installed = findAntflyBinary()
-    if (!installed) {
-      return {
-        name: 'antfly',
-        status: 'failed' as const,
-        message: 'brew install reported success but antfly binary is still not discoverable',
-        durationMs,
-      }
-    }
-
-    logger.info('Antfly installed successfully', { binary: installed, durationMs })
-    return {
-      name: 'antfly',
-      status: 'installed' as const,
-      message: `Installed Antfly to ${installed}`,
-      durationMs,
-    }
-  } catch (err) {
-    logger.error('Failed to spawn brew', err)
-    return {
-      name: 'antfly',
-      status: 'failed' as const,
-      message: `Failed to run brew install: ${err instanceof Error ? err.message : String(err)}`,
-      error: err,
-      durationMs: Date.now() - start,
-    }
-  }
-}
 
 export function termiteModelsRoot(): string {
   return join(homedir(), '.termite', 'models')
@@ -496,7 +240,7 @@ export function createAntflySearchSetup(logger: AdapterLogger = noopLogger): Sea
   return {
     dependency: {
       name: 'antfly',
-      check: checkAntflyDependency,
+      check: () => checkAntflyDependency(),
       install: (opts) => installAntflyDependency(opts, logger),
     },
     models: {
@@ -508,10 +252,6 @@ export function createAntflySearchSetup(logger: AdapterLogger = noopLogger): Sea
 }
 
 export const _setupInternals = {
-  findBrew,
-  runSpawn,
-  BREW_PACKAGE,
-  BREW_CANDIDATES,
   missingModels,
   missingModelEntries,
   modelPath,
