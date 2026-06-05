@@ -718,11 +718,29 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
  * Immediately dispatch a single task by ID, bypassing the 5-minute cycle.
  * Used for kick (explicit) and auto-kick (subtask with parentId).
  */
+/**
+ * Remove a task's dispatch markers so an immediate re-dispatch (e.g.
+ * dependency continuation) isn't skipped as "already dispatched" before the
+ * next cycle reconciles markers against the board.
+ */
+export async function clearDispatchMarker(contentDir: string, taskId: string): Promise<void> {
+  await withStateLock(() => {
+    const state = loadDispatchState(contentDir)
+    removeDispatchMarkersForTask(state, null, taskId)
+    saveDispatchState(contentDir, state)
+  })
+}
+
+export interface DispatchContinuationContext {
+  completedDependency?: { id: string; title: string }
+}
+
 export async function dispatchSingleTask(
   taskId: string,
   contentDir: string,
   port: number,
-  source: 'kick' | 'subtask' = 'kick'
+  source: 'kick' | 'subtask' | 'continuation' = 'kick',
+  continuation: DispatchContinuationContext = {},
 ): Promise<void> {
   const settings = getSettings()
 
@@ -817,7 +835,7 @@ export async function dispatchSingleTask(
       agentId: targetAgent,
       query: buildTaskLessonQuery(task),
     })
-    const message = buildDispatchMessage(task, targetAgent, contentDir, port, mainAgentId, lessonBlock)
+    const message = buildDispatchMessage(task, targetAgent, contentDir, port, mainAgentId, lessonBlock, continuation)
     const dispatchStart = Date.now()
     const initialLogCount = task.log?.length ?? 0
 
@@ -834,7 +852,9 @@ export async function dispatchSingleTask(
       saveDispatchState(contentDir, state)
 
       appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId })
-      appendAudit(contentDir, 'task.kicked', source, { id: task.id, title: task.title })
+      if (source !== 'continuation') {
+        appendAudit(contentDir, 'task.kicked', source, { id: task.id, title: task.title })
+      }
       log.info('Single-task dispatch', { id: task.id, title: task.title, agent: targetAgent, source, threadId })
       recordUsage({
         kind: 'agent',
@@ -879,10 +899,16 @@ export function buildDispatchMessage(
   _port: number,
   mainAgentId = 'main',
   lessonBlock = '',
+  continuation: DispatchContinuationContext = {},
 ): string {
   void _port
   const detailsBlock = task.description ? `\n\nDetails:\n${task.description}` : ''
   const lessonSection = lessonBlock ? `\n\n${lessonBlock}` : ''
+  // Dependency continuations run in a fresh session — the prompt must carry
+  // the completion context the old shared-session resume nudge relied on.
+  const continuationBlock = continuation.completedDependency
+    ? `\n\n## Completed Dependency\nYour dependency task "${continuation.completedDependency.title}" (task ${continuation.completedDependency.id}) is now done. Review its outcome before resuming: \`bakin_exec_tasks_get taskId=${continuation.completedDependency.id}\` shows its log and completion summary, and its saved assets are linked to that task. Continue this task from where it left off.`
+    : ''
 
   // List attached assets by filename (stable identity). Agents open them
   // via bakin_exec_assets_open — disk paths are a view, not identity.
@@ -926,14 +952,14 @@ export function buildDispatchMessage(
   const mcImage = (tool: string, args: string) => `mcporter call ${server}.${tool} --timeout ${IMAGE_MCPORTER_TIMEOUT_MS} ${args}`
 
   if (!task.agent) {
-    return `Triage this task: "${task.title}".${detailsBlock}${assetsBlock}${lessonSection}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=video/audio, jessica=research) via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
+    return `Triage this task: "${task.title}".${detailsBlock}${continuationBlock}${assetsBlock}${lessonSection}\n\nEither handle it yourself or assign it to the right agent (patch=execution, pixel=design/media, rolo=video/audio, jessica=research) via \`${mc('bakin_exec_tasks_assign', `taskId=${task.id} agent="<agent>"`)}\`. ${contactsRef}\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
   if (task.agent === mainAgentId) {
-    return `Work on this task: "${task.title}".${detailsBlock}${assetsBlock}${lessonSection}\n\n${contactsRef} When done: \`${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
+    return `Work on this task: "${task.title}".${detailsBlock}${continuationBlock}${assetsBlock}${lessonSection}\n\n${contactsRef} When done: \`${mc('bakin_exec_tasks_complete', `taskId=${task.id} summary="<what you did>"`)}\`\n\nLog progress: \`${mc('bakin_exec_tasks_log_progress', `taskId=${task.id} message="<update>"`)}\``
   }
 
-  return `Work on this task: "${task.title}".${detailsBlock}${assetsBlock}${projectBlock}${lessonSection}
+  return `Work on this task: "${task.title}".${detailsBlock}${continuationBlock}${assetsBlock}${projectBlock}${lessonSection}
 
 ## PROGRESS LOGGING — MANDATORY
 

@@ -138,7 +138,7 @@ export async function moveTaskWithEffects(
   // Side effects when moved to done
   if (to.toLowerCase() === 'done') {
     // Search indexing handled by tasks plugin via ctx.search
-    checkAndContinueDependents(taskId, title, getContentDir()).catch((err) => {
+    checkAndContinueDependents(taskId, title, getContentDir(), { port: getPort() }).catch((err) => {
       log.error('Continuation trigger failed', err)
     })
     // Purge clipboard-source assets if the setting is enabled

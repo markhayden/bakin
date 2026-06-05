@@ -1,4 +1,15 @@
-import { describe, it, expect, beforeEach, mock, type Mock } from 'bun:test'
+import { describe, it, expect, beforeEach, mock } from 'bun:test'
+import { join } from 'path'
+import { tmpdir } from 'os'
+
+const testDir = join(tmpdir(), `bakin-test-continuation-${Date.now()}`)
+
+mock.module('../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+}))
+mock.module('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+}))
 
 mock.module('../../src/core/logger', () => ({
   createLogger: () => ({
@@ -13,38 +24,25 @@ mock.module('../../src/core/audit', () => ({
   appendAudit: mock(),
 }))
 
-const mockRuntimeSend = mock((...args: unknown[]) => {
+// Continuation routes through the real dispatch path — mock it and assert
+// the routing semantics (full re-dispatch, not a resume nudge).
+const mockDispatchSingleTask = mock((...args: unknown[]) => {
   void args
-  return Promise.resolve({ id: 'runtime-msg' })
+  return Promise.resolve()
 })
-const mockRuntimeAgentsList = mock((...args: unknown[]) => {
-  void args
-  return Promise.resolve([
-    { id: 'main', name: 'Main', status: 'active' },
-  ])
-})
+const mockClearDispatchMarker = mock(() => Promise.resolve())
 
-const mockAppServices = {
-  runtime: {
-    agents: {
-      list: (...args: unknown[]) => mockRuntimeAgentsList(...args),
-    },
-    messaging: {
-      send: (...args: unknown[]) => mockRuntimeSend(...args),
-    },
-  },
+const dispatchModuleMock = {
+  dispatchSingleTask: (...args: unknown[]) => mockDispatchSingleTask(...(args as []) ),
+  clearDispatchMarker: (...args: unknown[]) => mockClearDispatchMarker(...(args as [])),
 }
+mock.module('../../src/core/dispatch', () => dispatchModuleMock)
+mock.module('@/core/dispatch', () => dispatchModuleMock)
 
-mock.module('../../src/core/app-services', () => ({
-  getAppServices: () => mockAppServices,
-}))
-mock.module('@/core/app-services', () => ({
-  getAppServices: () => mockAppServices,
-}))
-
-let currentColumns: { todo?: any[]; inProgress?: any[]; blocked?: any[]; done?: any[] } = {}
+let currentColumns: { todo?: unknown[]; inProgress?: unknown[]; blocked?: unknown[]; done?: unknown[] } = {}
 const mockClearDependency = mock().mockResolvedValue(undefined)
 const mockAddTaskLog = mock().mockResolvedValue(undefined)
+const mockMoveTask = mock().mockResolvedValue(undefined)
 
 const taskStoreMock = {
   readTaskboard: mock(() => ({
@@ -57,165 +55,104 @@ const taskStoreMock = {
   })),
   clearDependency: (taskId: string) => mockClearDependency(taskId),
   addTaskLog: (identifier: string, author: string, message: string) => mockAddTaskLog(identifier, author, message),
+  moveTask: (taskId: string, to: string, from?: string) => mockMoveTask(taskId, to, from),
 }
 
 mock.module('../../src/core/task-store', () => taskStoreMock)
 mock.module('@/core/task-store', () => taskStoreMock)
 
-const mockInvoke = mock(async (hook: string, args?: Record<string, unknown>) => {
-  void args
-  return undefined
-})
-
-mock.module('../../src/lib/plugin-registry', () => ({
-  getHookRegistry: mock().mockReturnValue({
-    invoke: mockInvoke,
-    has: mock().mockReturnValue(false),
-    register: mock(),
-  }),
-}))
-
 import { checkAndContinueDependents } from '../../src/core/continuation'
 import { appendAudit } from '../../src/core/audit'
 
-describe('continuation', () => {
+describe('continuation (full re-dispatch semantics)', () => {
   beforeEach(() => {
     mock.clearAllMocks()
+    currentColumns = {}
   })
 
-  function mockColumns(columns: { todo?: any[]; inProgress?: any[]; blocked?: any[]; done?: any[] }) {
+  function mockColumns(columns: typeof currentColumns) {
     currentColumns = columns
   }
 
-  it('does nothing when no tasks depend on completed task', async () => {
-    mockColumns({
-      todo: [{ id: 't1', title: 'Unrelated', agent: 'pixel' }],
-      inProgress: [],
-    })
+  it('does nothing when no tasks depend on the completed task', async () => {
+    mockColumns({ todo: [{ id: 't1', title: 'Unrelated', agent: 'pixel' }] })
 
-    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test')
-    expect(mockRuntimeSend).not.toHaveBeenCalled()
+    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', { port: 3737 })
+
+    expect(mockDispatchSingleTask).not.toHaveBeenCalled()
+    expect(mockClearDependency).not.toHaveBeenCalled()
   })
 
-  it('dispatches continuation to dependent task in todo', async () => {
+  it('re-dispatches a todo dependent through the dispatch path with the completed-dependency context', async () => {
     mockColumns({
       todo: [{ id: 't2', title: 'Waiting Task', agent: 'pixel', dependsOn: 'completed-1' }],
-      inProgress: [],
     })
 
-    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test')
-
-    expect(mockRuntimeSend).toHaveBeenCalledWith(
-      expect.objectContaining({
-        agentId: 'pixel',
-        content: expect.stringContaining('Done Task'),
-      }),
-    )
+    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', { port: 3737 })
 
     expect(mockClearDependency).toHaveBeenCalledWith('t2')
-  })
-
-  it('passes the canonical main agent id through unchanged', async () => {
-    mockColumns({
-      todo: [{ id: 't3', title: 'Main Task', agent: 'main', dependsOn: 'completed-1' }],
-      inProgress: [],
-    })
-
-    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test')
-
-    expect(mockRuntimeSend).toHaveBeenCalledWith(
-      expect.objectContaining({
-        agentId: 'main',
-        content: expect.any(String),
-      }),
+    expect(mockClearDispatchMarker).toHaveBeenCalledWith('/tmp/test', 't2')
+    expect(mockDispatchSingleTask).toHaveBeenCalledWith(
+      't2',
+      '/tmp/test',
+      3737,
+      'continuation',
+      { completedDependency: { id: 'completed-1', title: 'Done Task' } },
     )
   })
 
-  it('defaults to main agent when task has no agent', async () => {
-    mockColumns({
-      todo: [{ id: 't4', title: 'No Agent', dependsOn: 'completed-1' }],
-      inProgress: [],
-    })
-
-    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test')
-
-    expect(mockRuntimeSend).toHaveBeenCalledWith(expect.objectContaining({
-      agentId: 'main',
-      content: expect.any(String),
-    }))
-  })
-
-  it('skips task already in progress (dedup)', async () => {
+  it('skips a dependent already in progress (active work — no double-run)', async () => {
     mockColumns({
       inProgress: [{ id: 't5', title: 'Already Running', agent: 'pixel', dependsOn: 'completed-1' }],
     })
 
-    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test')
+    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', { port: 3737 })
 
-    expect(mockRuntimeSend).not.toHaveBeenCalled()
+    expect(mockDispatchSingleTask).not.toHaveBeenCalled()
     expect(mockClearDependency).toHaveBeenCalledWith('t5')
   })
 
-  it('scans blocked column for dependents', async () => {
+  it('unblocks a blocked dependent (move to todo + log) before re-dispatching', async () => {
     mockColumns({
-      todo: [],
-      inProgress: [],
       blocked: [{ id: 't6', title: 'Blocked Task', agent: 'trainer', dependsOn: 'completed-1' }],
     })
 
-    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test')
+    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', { port: 3737 })
 
-    expect(mockRuntimeSend).toHaveBeenCalledWith(expect.objectContaining({
-      agentId: 'trainer',
-      content: expect.any(String),
-    }))
+    expect(mockMoveTask).toHaveBeenCalledWith('t6', 'todo', 'blocked')
+    expect(mockAddTaskLog).toHaveBeenCalledWith('t6', 'system', expect.stringContaining('unblocked for re-dispatch'))
+    expect(mockDispatchSingleTask).toHaveBeenCalledWith('t6', '/tmp/test', 3737, 'continuation', expect.anything())
   })
 
-  it('writes audit entry after dispatching', async () => {
+  it('audits the continuation with dispatch outcome', async () => {
     mockColumns({
       todo: [{ id: 't7', title: 'Audit Task', agent: 'pixel', dependsOn: 'completed-1' }],
-      inProgress: [],
     })
 
-    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test')
+    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', { port: 3737 })
 
-    expect(vi.mocked(appendAudit)).toHaveBeenCalledWith(
+    expect(appendAudit).toHaveBeenCalledWith(
       '/tmp/test',
       'task.continuation',
       'pixel',
-      expect.objectContaining({ id: 't7', sent: true, completedDep: 'completed-1' }),
+      expect.objectContaining({ id: 't7', completedDep: 'completed-1', dispatched: true }),
     )
   })
 
-  it('retries on sendMessage failure and logs failure after max retries', async () => {
+  it('logs and audits dispatched:false when the re-dispatch throws', async () => {
     mockColumns({
-      todo: [{ id: 't8', title: 'Retry Task', agent: 'pixel', dependsOn: 'completed-1' }],
-      inProgress: [],
+      todo: [{ id: 't8', title: 'Failing Task', agent: 'pixel', dependsOn: 'completed-1' }],
     })
+    mockDispatchSingleTask.mockRejectedValueOnce(new Error('dispatch exploded'))
 
-    mockRuntimeSend.mockRejectedValue(new Error('unreachable'))
-    // Use real timers briefly for retry delays
-    vi.useFakeTimers()
+    await checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test', { port: 3737 })
 
-    const promise = checkAndContinueDependents('completed-1', 'Done Task', '/tmp/test')
-
-    // Advance through retry delays (3 retries × 5000ms)
-    await vi.advanceTimersByTimeAsync(5000)
-    await vi.advanceTimersByTimeAsync(5000)
-    await vi.advanceTimersByTimeAsync(5000)
-    await promise
-
-    // Should have attempted 3 times
-    expect(mockRuntimeSend).toHaveBeenCalledTimes(3)
-
-    // Audit should show sent: false
-    expect(vi.mocked(appendAudit)).toHaveBeenCalledWith(
+    expect(mockAddTaskLog).toHaveBeenCalledWith('t8', 'system', expect.stringContaining('Continuation re-dispatch failed'))
+    expect(appendAudit).toHaveBeenCalledWith(
       '/tmp/test',
       'task.continuation',
       'pixel',
-      expect.objectContaining({ sent: false }),
+      expect.objectContaining({ id: 't8', dispatched: false }),
     )
-
-    vi.useRealTimers()
   })
 })

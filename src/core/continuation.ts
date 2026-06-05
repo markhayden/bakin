@@ -1,28 +1,35 @@
 /**
- * Task dependency continuation — re-dispatches dependent tasks when dependencies complete.
- * Includes retry logic and dedup to prevent double-dispatch.
+ * Task dependency continuation — re-dispatches dependent tasks when their
+ * dependency completes.
+ *
+ * This is a FULL re-dispatch through the normal dispatch path (fresh
+ * per-attempt session, complete self-contained prompt with a Completed
+ * Dependency block, lessons, assets, cooldown/failure machinery). The old
+ * implementation sent a bare "resume your task" nudge that only worked
+ * because it happened to land in the shared session that still held the
+ * original context — a silent dependence on unbounded session history that
+ * per-dispatch sessions make explicit.
  */
 import { createLogger } from './logger'
 import { appendAudit } from './audit'
-import { getAppServices } from './app-services'
-import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
-import { addTaskLog, clearDependency, readTaskboard } from './task-store'
+import { clearDispatchMarker, dispatchSingleTask } from './dispatch'
+import { addTaskLog, clearDependency, moveTask, readTaskboard } from './task-store'
 
 const log = createLogger('continuation')
 
-const MAX_RETRIES = 3
-const RETRY_DELAY_MS = 5000
+type DependentTask = { id: string; title: string; agent?: string; dependsOn?: string }
 
 export async function checkAndContinueDependents(
   completedTaskId: string,
   completedTitle: string,
-  contentDir: string
+  contentDir: string,
+  opts: { port?: number } = {},
 ): Promise<void> {
   const board = readTaskboard() as unknown as {
     columns: {
-      inProgress: Array<{ id: string; title: string; agent?: string; dependsOn?: string }>
-      todo: Array<{ id: string; title: string; agent?: string; dependsOn?: string }>
-      blocked: Array<{ id: string; title: string; agent?: string; dependsOn?: string }>
+      inProgress: DependentTask[]
+      todo: DependentTask[]
+      blocked: DependentTask[]
     }
   }
   const columns = {
@@ -30,61 +37,57 @@ export async function checkAndContinueDependents(
     todo: board?.columns.todo ?? [],
     blocked: board?.columns.blocked ?? [],
   }
-  const runtime = getAppServices().runtime
+  const port = opts.port ?? Number(process.env.PORT || 3737)
 
-  const columnsToScan = [columns.inProgress, columns.todo, columns.blocked]
-  for (const col of columnsToScan) {
-    for (const task of col) {
-      if (task.dependsOn === completedTaskId) {
-        // Dedup: skip if task is already in progress (another path may have re-dispatched it)
-        const isAlreadyInProgress = columns.inProgress.some(t => t.id === task.id)
-        if (isAlreadyInProgress) {
-          log.info('Skipping continuation — task already in progress', { id: task.id, title: task.title })
-          await clearDependency(task.id)
-          continue
-        }
+  const dependents: Array<{ task: DependentTask; column: 'inProgress' | 'todo' | 'blocked' }> = [
+    ...columns.inProgress.map((task) => ({ task, column: 'inProgress' as const })),
+    ...columns.todo.map((task) => ({ task, column: 'todo' as const })),
+    ...columns.blocked.map((task) => ({ task, column: 'blocked' as const })),
+  ].filter(({ task }) => task.dependsOn === completedTaskId)
 
-        await clearDependency(task.id)
+  for (const { task, column } of dependents) {
+    await clearDependency(task.id)
 
-        const agentId = task.agent ?? await getRuntimeMainAgentId(runtime)
-        const mcServer = `bakin-${agentId}`
-        const resumeMsg = `Your dependency task "${completedTitle}" is now Done. Resume your task: "${task.title}". Continue from where you left off.
+    // Active work in flight — the agent will see the completion through its
+    // own task context; re-dispatching would double-run the task.
+    if (column === 'inProgress') {
+      log.info('Skipping continuation — task already in progress', { id: task.id, title: task.title })
+      continue
+    }
 
-Your Bakin MCP server is \`${mcServer}\`. Use mcporter for all interactions:
-\`\`\`bash
-mcporter call ${mcServer}.bakin_exec_tasks_log_progress taskId=${task.id} message="<update>"
-mcporter call ${mcServer}.bakin_exec_tasks_complete taskId=${task.id} summary="<what you did>"
-mcporter call ${mcServer}.bakin_exec_tasks_block taskId=${task.id} reason="<why>"
-mcporter call ${mcServer}.bakin_exec_tasks_get taskId=${task.id}
-\`\`\``
-
-        let sent = false
-        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-          try {
-            await runtime.messaging.send({ agentId, content: resumeMsg })
-            log.info('Continuation dispatched', { id: task.id, title: task.title, completedDep: completedTaskId, attempt })
-            sent = true
-            break
-          } catch (err) {
-            if (attempt === MAX_RETRIES) {
-              log.error(`Continuation failed after ${MAX_RETRIES} attempts for "${task.title}"`, err)
-              try {
-                await addTaskLog(task.id, 'system', `Continuation re-dispatch failed after ${MAX_RETRIES} attempts: agent "${agentId}" unreachable`)
-              } catch { /* best effort */ }
-            } else {
-              log.warn(`Continuation attempt ${attempt} failed for "${task.title}", retrying in ${RETRY_DELAY_MS}ms`, err)
-              await new Promise(r => setTimeout(r, RETRY_DELAY_MS))
-            }
-          }
-        }
-
-        appendAudit(contentDir, 'task.continuation', agentId, {
-          id: task.id,
-          title: task.title,
-          completedDep: completedTaskId,
-          sent,
-        })
+    if (column === 'blocked') {
+      try {
+        await moveTask(task.id, 'todo', 'blocked')
+        await addTaskLog(task.id, 'system', `Dependency "${completedTitle}" completed — unblocked for re-dispatch.`)
+      } catch (err) {
+        log.error('Continuation failed to unblock dependent task', err, { id: task.id })
+        continue
       }
     }
+
+    let dispatched = false
+    try {
+      // The task's previous dispatch marker may still linger until the next
+      // cycle reconciles — clear it so the immediate re-dispatch isn't
+      // skipped as "already dispatched".
+      await clearDispatchMarker(contentDir, task.id)
+      await dispatchSingleTask(task.id, contentDir, port, 'continuation', {
+        completedDependency: { id: completedTaskId, title: completedTitle },
+      })
+      dispatched = true
+      log.info('Continuation re-dispatched', { id: task.id, title: task.title, completedDep: completedTaskId })
+    } catch (err) {
+      log.error(`Continuation re-dispatch failed for "${task.title}"`, err)
+      try {
+        await addTaskLog(task.id, 'system', `Continuation re-dispatch failed: ${err instanceof Error ? err.message : String(err)}`)
+      } catch { /* best effort */ }
+    }
+
+    appendAudit(contentDir, 'task.continuation', task.agent ?? 'system', {
+      id: task.id,
+      title: task.title,
+      completedDep: completedTaskId,
+      dispatched,
+    })
   }
 }
