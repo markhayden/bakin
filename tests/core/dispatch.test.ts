@@ -138,7 +138,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
 }))
 
 import { loadDispatchState, start, stop, getDispatchInfo, isTaskDispatchEligible } from '../../src/core/dispatch'
-import { dispatchTasks } from '../../src/core/dispatch'
+import { dispatchTasks, awaitDispatchIdle } from '../../src/core/dispatch'
 import { getHookRegistry } from '../../src/lib/plugin-registry'
 import type { HookRegistry } from '../../packages/core/src/hooks/hook-registry'
 
@@ -369,6 +369,7 @@ describe('dispatch', () => {
       mockRuntimeSend.mockRejectedValueOnce(new TypeError('fetch failed'))
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const state1 = readState()
       expect(state1.failedDispatches['t-transient']).toBeDefined()
@@ -380,6 +381,7 @@ describe('dispatch', () => {
       writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify(state1))
       mockRuntimeSend.mockClear()
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
       expect(mockRuntimeSend).not.toHaveBeenCalled()
 
       // 65s later — cooldown expired → retried
@@ -388,6 +390,7 @@ describe('dispatch', () => {
       writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify(state2))
       mockRuntimeSend.mockResolvedValueOnce({ id: 'runtime-msg' })
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
       expect(mockRuntimeSend).toHaveBeenCalledTimes(1)
     })
 
@@ -398,6 +401,7 @@ describe('dispatch', () => {
       )
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const state1 = readState()
       expect(state1.failedDispatches['t-structural'].kind).toBe('structural')
@@ -407,6 +411,7 @@ describe('dispatch', () => {
       writeFileSync(join(tempDir, '.dispatch-state.json'), JSON.stringify(state1))
       mockRuntimeSend.mockClear()
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
       expect(mockRuntimeSend).not.toHaveBeenCalled()
     })
 
@@ -436,6 +441,7 @@ describe('dispatch', () => {
       }))
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
       expect(mockStoreBlockTask).toHaveBeenCalledTimes(1)
       expect(mockRuntimeSend).not.toHaveBeenCalled()
     })
@@ -448,6 +454,7 @@ describe('dispatch', () => {
       mockRuntimeSend.mockRejectedValueOnce(new TypeError('fetch failed'))
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const dispatchFailed = vi.mocked(appendAudit).mock.calls.find((c: any[]) => c[1] === 'task.dispatch_failed')
       expect(dispatchFailed).toBeDefined()
@@ -465,6 +472,7 @@ describe('dispatch', () => {
       )
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const dispatchFailed = vi.mocked(appendAudit).mock.calls.find((c: any[]) => c[1] === 'task.dispatch_failed')
       expect(dispatchFailed).toBeDefined()
@@ -502,6 +510,7 @@ describe('dispatch', () => {
       )
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const dispatchFailed = vi.mocked(appendAudit).mock.calls.find((c: any[]) => c[1] === 'task.dispatch_failed')
       expect(dispatchFailed).toBeDefined()
@@ -532,6 +541,7 @@ describe('dispatch', () => {
       mockRuntimeSend.mockRejectedValueOnce(abortErr)
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const state = readState()
       expect(state.failedDispatches['t-abort'].kind).toBe('transient')
@@ -542,6 +552,7 @@ describe('dispatch', () => {
       mockRuntimeSend.mockRejectedValueOnce(new Error('something entirely unexpected'))
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const state = readState()
       expect(state.failedDispatches['t-unknown'].kind).toBe('structural')
@@ -571,6 +582,7 @@ describe('dispatch', () => {
       mockRuntimeSend.mockRejectedValueOnce(new TypeError('fetch failed'))
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const state = readState()
       const record = state.failedDispatches['wf-fail']
@@ -604,6 +616,7 @@ describe('dispatch', () => {
       })
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       expect(mockStoreBlockTask).not.toHaveBeenCalled()
       // Bounced back to todo for the corrective attempt.
@@ -635,6 +648,7 @@ describe('dispatch', () => {
       })
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       expect(mockStoreBlockTask).not.toHaveBeenCalled()
       expect(mockStoreMoveTask).not.toHaveBeenCalled()
@@ -682,6 +696,7 @@ describe('dispatch', () => {
       setupTask({ id: 't-thread', title: 'Threaded task', agent: 'pixel' })
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       expect(mockRuntimeSend).toHaveBeenCalledTimes(1)
       const args = mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>
@@ -693,6 +708,7 @@ describe('dispatch', () => {
     it('seq survives success: a later re-dispatch of the same task gets a FRESH session key', async () => {
       setupTask({ id: 't-again', title: 'Comes back later', agent: 'pixel' })
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
       expect((mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>).threadId).toBe('task:t-again:d1')
 
       // Task completed, then returns to todo (e.g. dependency continuation).
@@ -704,6 +720,7 @@ describe('dispatch', () => {
       setupTask({ id: 't-again', title: 'Comes back later', agent: 'pixel' })
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const second = mockRuntimeSend.mock.calls[1]?.[0] as Record<string, unknown>
       expect(second.threadId).toBe('task:t-again:d2')
@@ -730,6 +747,7 @@ describe('dispatch', () => {
       } as unknown as HookRegistry)
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const args = mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>
       expect(args.threadId).toBe('task:wf-thread:step:step-generate:d1')
@@ -765,6 +783,7 @@ describe('dispatch', () => {
       } as unknown as HookRegistry)
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       expect(mockRuntimeSend).not.toHaveBeenCalled()
 
@@ -790,6 +809,7 @@ describe('dispatch', () => {
       })
 
       await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
       const state = JSON.parse(readFileSync(join(tempDir, '.dispatch-state.json'), 'utf-8'))
       expect(state.dispatched).toEqual(['active-1'])

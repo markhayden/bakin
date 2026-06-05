@@ -743,6 +743,132 @@ async function reconcileRejectedDispatch(input: {
   })
 }
 
+// ─── In-flight turn registry (concurrent dispatch) ─────────────────────────
+//
+// Sends are fired and tracked, never awaited inside the dispatch cycle: one
+// 10-minute turn must not stall dispatching to every other agent (the
+// serial-await loop was why parallel task fan-out made no independent
+// progress). Reconciliation happens in per-turn settle handlers that take
+// the state lock themselves. The registry is advisory — caps + settle
+// bookkeeping — never a source of truth for task state; restart safety is
+// unchanged (in-flight promises die with the process, restart-recovery
+// handles orphaned inProgress tasks via heartbeats).
+
+interface InFlightTurn {
+  agentId: string
+  taskId: string
+  threadId: string
+  startedAt: number
+  /** Full send + settle chain; resolves when reconciliation has finished. */
+  settled: Promise<void>
+}
+
+const inFlightTurns = new Map<string, InFlightTurn>()
+
+export function getInFlightTurnCount(agentId?: string): number {
+  if (!agentId) return inFlightTurns.size
+  let count = 0
+  for (const turn of inFlightTurns.values()) {
+    if (turn.agentId === agentId) count += 1
+  }
+  return count
+}
+
+export type ConcurrencyGate = 'concurrency_cap' | 'agent_busy' | null
+
+/** Why a dispatch can't fire right now, or null when a slot is free. */
+function concurrencyGate(agentId: string, settings: { dispatch: { maxConcurrentTurns: number; maxTurnsPerAgent: number } }): ConcurrencyGate {
+  if (inFlightTurns.size >= settings.dispatch.maxConcurrentTurns) return 'concurrency_cap'
+  if (getInFlightTurnCount(agentId) >= settings.dispatch.maxTurnsPerAgent) return 'agent_busy'
+  return null
+}
+
+/**
+ * Wait until every tracked turn (including its settle-time reconciliation)
+ * has finished. Deterministic synchronization point for tests and shutdown.
+ */
+export async function awaitDispatchIdle(): Promise<void> {
+  while (inFlightTurns.size > 0) {
+    await Promise.allSettled([...inFlightTurns.values()].map((turn) => turn.settled))
+  }
+}
+
+/**
+ * Fire a dispatch send and reconcile on settle. Returns immediately. The
+ * settle handlers re-load state under the lock — the firing cycle's state
+ * object must not be touched after the cycle's own save.
+ */
+function fireDispatchTurn(opts: {
+  marker: string
+  task: DispatchTask
+  targetAgent: string
+  threadId: string
+  message: string
+  contentDir: string
+  port: number
+  initialLogCount: number
+  logPrefix: string
+  dispatchKind: 'regular' | 'workflow'
+  onSettled?: (outcome: 'ok' | 'error', err?: unknown) => void
+}): void {
+  // The registry entry is released only AFTER settle reconciliation
+  // completes — awaitDispatchIdle() must mean "all bookkeeping done", and a
+  // turn's slot shouldn't free until its outcome has been recorded.
+  const settled = sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId)
+    .then(async () => {
+      await withStateLock(() => {
+        const state = loadDispatchState(opts.contentDir)
+        if (state.failedDispatches?.[opts.task.id]) {
+          delete state.failedDispatches[opts.task.id]
+          saveDispatchState(opts.contentDir, state)
+        }
+      })
+      opts.onSettled?.('ok')
+    })
+    .catch(async (err) => {
+      log.error(`${opts.logPrefix}: turn failed for "${opts.task.title}" → ${opts.targetAgent}`, err)
+      try {
+        await withStateLock(async () => {
+          const state = loadDispatchState(opts.contentDir)
+          await reconcileRejectedDispatch({
+            contentDir: opts.contentDir,
+            port: opts.port,
+            state,
+            dispatchedSet: null,
+            task: opts.task,
+            targetAgent: opts.targetAgent,
+            err,
+            initialLogCount: opts.initialLogCount,
+            logPrefix: opts.logPrefix,
+            dispatchKind: opts.dispatchKind,
+          })
+          saveDispatchState(opts.contentDir, state)
+        })
+      } catch (reconcileErr) {
+        log.error('Dispatch settle reconciliation failed', reconcileErr, { id: opts.task.id })
+      }
+      opts.onSettled?.('error', err)
+    })
+    .finally(() => {
+      inFlightTurns.delete(opts.marker)
+    })
+
+  inFlightTurns.set(opts.marker, {
+    agentId: opts.targetAgent,
+    taskId: opts.task.id,
+    threadId: opts.threadId,
+    startedAt: Date.now(),
+    settled,
+  })
+}
+
+/** Shared dispatched[] cap — both dispatch paths must honor the setting. */
+function trimDispatched(state: DispatchState, maxDispatched: number): void {
+  if (state.dispatched.length > maxDispatched) {
+    state.dispatched = state.dispatched.slice(-maxDispatched)
+  }
+}
+
 export function loadDispatchState(contentDir: string): DispatchState {
   const stateFile = getStateFile(contentDir)
   try {
@@ -882,6 +1008,14 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
 
       const targetAgent = task.agent ?? mainAgentId
 
+      // Bounded concurrency: a capped task is simply ineligible this cycle
+      // (no failure recorded) — a later cycle picks it up when a slot frees.
+      const gate = concurrencyGate(targetAgent, settings)
+      if (gate) {
+        log.debug('Dispatch deferred by concurrency gate', { id: task.id, agent: targetAgent, gate })
+        continue
+      }
+
       const lessonBlock = await buildDispatchLessonBlock({
         contentDir,
         taskId: task.id,
@@ -895,41 +1029,32 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         : buildDispatchMessage(task, targetAgent, contentDir, port, mainAgentId, lessonBlock, {}, recovery)
       const initialLogCount = task.log?.length ?? 0
 
-      try {
-        // Move to inProgress BEFORE sending message to eliminate race condition
-        // where fast agents complete before dispatch moves the task
-        await moveTaskToInProgress(task.id, targetAgent)
-        appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
+      // Move to inProgress BEFORE sending message to eliminate race condition
+      // where fast agents complete before dispatch moves the task
+      await moveTaskToInProgress(task.id, targetAgent)
+      appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
 
-        const threadId = nextDispatchThreadId(contentDir, state, task.id)
-        await sendDispatchMessage(targetAgent, message, threadId)
-        dispatchedSet.add(task.id)
-        delete state.failedDispatches?.[task.id]
-
-        appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId })
-        log.info('Task dispatched', { id: task.id, title: task.title, agent: targetAgent, threadId })
-      } catch (err) {
-        log.error(`Failed to dispatch "${task.title}" to ${targetAgent}`, err)
-        await reconcileRejectedDispatch({
-          contentDir,
-          port,
-          state,
-          dispatchedSet,
-          task,
-          targetAgent,
-          err,
-          initialLogCount,
-          logPrefix: 'Dispatch failed',
-          dispatchKind: 'regular',
-        })
-      }
+      const threadId = nextDispatchThreadId(contentDir, state, task.id)
+      dispatchedSet.add(task.id)
+      appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId })
+      log.info('Task dispatched', { id: task.id, title: task.title, agent: targetAgent, threadId })
+      fireDispatchTurn({
+        marker: task.id,
+        task,
+        targetAgent,
+        threadId,
+        message,
+        contentDir,
+        port,
+        initialLogCount,
+        logPrefix: 'Dispatch failed',
+        dispatchKind: 'regular',
+      })
     }
 
     state.lastRun = Date.now()
     state.dispatched = [...dispatchedSet]
-    if (state.dispatched.length > settings.dispatch.maxDispatched) {
-      state.dispatched = state.dispatched.slice(-200)
-    }
+    trimDispatched(state, settings.dispatch.maxDispatched)
     saveDispatchState(contentDir, state)
     }) // end withStateLock
   } finally {
@@ -1052,6 +1177,13 @@ export async function dispatchSingleTask(
 
     // Regular task dispatch
     const targetAgent = task.agent ?? mainAgentId
+
+    const gate = concurrencyGate(targetAgent, settings)
+    if (gate) {
+      log.debug('dispatchSingleTask: deferred by concurrency gate', { taskId, agent: targetAgent, gate })
+      return
+    }
+
     const lessonBlock = await buildDispatchLessonBlock({
       contentDir,
       taskId: task.id,
@@ -1066,56 +1198,47 @@ export async function dispatchSingleTask(
     const dispatchStart = Date.now()
     const initialLogCount = task.log?.length ?? 0
 
-    try {
-      // Move to inProgress BEFORE sending message to eliminate race condition
-      await moveTaskToInProgress(task.id, targetAgent)
-      appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
+    // Move to inProgress BEFORE sending message to eliminate race condition
+    await moveTaskToInProgress(task.id, targetAgent)
+    appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
 
-      const threadId = nextDispatchThreadId(contentDir, state, task.id)
-      await sendDispatchMessage(targetAgent, message, threadId)
-      delete state.failedDispatches?.[task.id]
+    const threadId = nextDispatchThreadId(contentDir, state, task.id)
+    state.dispatched.push(task.id)
+    trimDispatched(state, settings.dispatch.maxDispatched)
+    saveDispatchState(contentDir, state)
 
-      state.dispatched.push(task.id)
-      saveDispatchState(contentDir, state)
-
-      appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId })
-      if (source !== 'continuation') {
-        appendAudit(contentDir, 'task.kicked', source, { id: task.id, title: task.title })
-      }
-      log.info('Single-task dispatch', { id: task.id, title: task.title, agent: targetAgent, source, threadId })
-      recordUsage({
-        kind: 'agent',
-        name: 'dispatch',
-        agent: targetAgent,
-        durationMs: Date.now() - dispatchStart,
-        status: 'ok',
-        meta: { taskId: task.id, title: task.title, source },
-      })
-    } catch (err) {
-      log.error(`dispatchSingleTask: failed to dispatch "${task.title}" to ${targetAgent}`, err)
-      await reconcileRejectedDispatch({
-        contentDir,
-        port,
-        state,
-        dispatchedSet: null,
-        task,
-        targetAgent,
-        err,
-        initialLogCount,
-        logPrefix: 'Immediate dispatch failed',
-        dispatchKind: 'regular',
-      })
-      saveDispatchState(contentDir, state)
-
-      recordUsage({
-        kind: 'agent',
-        name: 'dispatch',
-        agent: targetAgent,
-        durationMs: Date.now() - dispatchStart,
-        status: 'error',
-        meta: { taskId: task.id, title: task.title, source, error: formatDispatchError(err) },
-      })
+    appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId })
+    if (source !== 'continuation') {
+      appendAudit(contentDir, 'task.kicked', source, { id: task.id, title: task.title })
     }
+    log.info('Single-task dispatch', { id: task.id, title: task.title, agent: targetAgent, source, threadId })
+    fireDispatchTurn({
+      marker: task.id,
+      task,
+      targetAgent,
+      threadId,
+      message,
+      contentDir,
+      port,
+      initialLogCount,
+      logPrefix: 'Immediate dispatch failed',
+      dispatchKind: 'regular',
+      onSettled: (outcome, err) => {
+        recordUsage({
+          kind: 'agent',
+          name: 'dispatch',
+          agent: targetAgent,
+          durationMs: Date.now() - dispatchStart,
+          status: outcome,
+          meta: {
+            taskId: task.id,
+            title: task.title,
+            source,
+            ...(err ? { error: formatDispatchError(err) } : {}),
+          },
+        })
+      },
+    })
   })
 }
 
@@ -1422,35 +1545,34 @@ async function dispatchWorkflowTask(
     const message = buildWorkflowDispatchMessage({ ...task, id: contextTaskId }, ctx, agent, port, lessonBlock, wfRecovery)
     const initialLogCount = findDispatchTaskSnapshot(task.id)?.task.log?.length ?? 0
 
-    try {
-      const threadId = nextDispatchThreadId(contentDir, state, task.id, stepId)
-      await sendDispatchMessage(targetAgent, message, threadId)
-      dispatchedSet.add(`${task.id}:${stepId}`)
-      delete state.failedDispatches?.[task.id]
-
-      appendAudit(contentDir, 'task.dispatched', targetAgent, {
-        id: task.id,
-        title: task.title,
-        workflowId: task.workflowId,
-        stepId,
-        threadId,
-      })
-      log.info('Workflow step dispatched', { taskId: task.id, stepId, agent: targetAgent, threadId })
-    } catch (err) {
-      log.error(`Failed to dispatch workflow step "${stepId}" to ${targetAgent}`, err)
-      await reconcileRejectedDispatch({
-        contentDir,
-        port,
-        state,
-        dispatchedSet,
-        task,
-        targetAgent,
-        err,
-        initialLogCount,
-        logPrefix: `Workflow dispatch failed for step "${stepId}"`,
-        dispatchKind: 'workflow',
-      })
+    const gate = concurrencyGate(targetAgent, getSettings())
+    if (gate) {
+      log.debug('Workflow step dispatch deferred by concurrency gate', { taskId: task.id, stepId, agent: targetAgent, gate })
+      continue
     }
+
+    const threadId = nextDispatchThreadId(contentDir, state, task.id, stepId)
+    dispatchedSet.add(`${task.id}:${stepId}`)
+    appendAudit(contentDir, 'task.dispatched', targetAgent, {
+      id: task.id,
+      title: task.title,
+      workflowId: task.workflowId,
+      stepId,
+      threadId,
+    })
+    log.info('Workflow step dispatched', { taskId: task.id, stepId, agent: targetAgent, threadId })
+    fireDispatchTurn({
+      marker: `${task.id}:${stepId}`,
+      task,
+      targetAgent,
+      threadId,
+      message,
+      contentDir,
+      port,
+      initialLogCount,
+      logPrefix: `Workflow dispatch failed for step "${stepId}"`,
+      dispatchKind: 'workflow',
+    })
   }
 }
 

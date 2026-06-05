@@ -107,7 +107,7 @@ mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawPath: (sub: string) => join(sentinelContentDir, sub),
 }))
 
-import { dispatchTasks } from '../../src/core/dispatch'
+import { dispatchTasks, awaitDispatchIdle } from '../../src/core/dispatch'
 import { RuntimeTurnError, RuntimeError } from '../../packages/core/src/adapters/runtime'
 
 let tempDir: string
@@ -167,6 +167,7 @@ describe('recovery ladder — death 1: salvage + immediate corrective re-dispatc
     mockRuntimeSend.mockRejectedValueOnce(deathError())
 
     await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
     // Salvage file written + hook invoked with the parent task linkage.
     const salvageDir = join(tempDir, 'tasks', 'salvage')
@@ -212,6 +213,7 @@ describe('recovery ladder — death 2: decomposition', () => {
     mockRuntimeSend.mockRejectedValueOnce(deathError({ completionBytes: 562593 }))
 
     await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
     await wait(300) // corrective re-dispatch fires + dies + decomposition dispatch fires
 
     expect(auditCalls('task.runtime_session_died').length).toBe(2)
@@ -243,6 +245,7 @@ describe('recovery ladder — death 3: block with full diagnosis', () => {
     mockRuntimeSend.mockRejectedValue(deathError())
 
     await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
     await wait(450) // ladder: corrective → decomposition → block
 
     expect(auditCalls('task.runtime_session_died').length).toBe(3)
@@ -269,6 +272,7 @@ describe('recovery ladder — interplay with generic failures', () => {
     mockRuntimeSend.mockRejectedValueOnce(new RuntimeError('socket dropped', { kind: 'transport' }))
 
     await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
     await wait(150)
 
     expect(auditCalls('task.runtime_session_died').length).toBe(0)
@@ -284,6 +288,7 @@ describe('recovery ladder — interplay with generic failures', () => {
     // corrective attempt succeeds (default mock resolves)
 
     await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
     await wait(250)
 
     expect(mockRuntimeSend.mock.calls.length).toBe(2)
@@ -313,6 +318,7 @@ describe('recovery ladder — workflow variant (corrective → block, no decompo
     mockRuntimeSend.mockRejectedValueOnce(deathError())
 
     await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
     await wait(150)
 
     expect(auditCalls('task.runtime_session_died').length).toBe(1)
@@ -332,9 +338,11 @@ describe('recovery ladder — workflow variant (corrective → block, no decompo
     // First cycle → death 1 (corrective). Second cycle re-dispatches the
     // step (markers were cleared) with the corrective prompt → death 2 → block.
     await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
     const correctiveSend = mockRuntimeSend.mock.calls.length
     setColumns({ inProgress: [{ id: 'wf-200', title: 'WF task', workflowId: 'flow-1', agent: 'jessica' }] })
     await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
 
     expect(mockRuntimeSend.mock.calls.length).toBeGreaterThan(correctiveSend)
     const retry = mockRuntimeSend.mock.calls.at(-1)?.[0] as Record<string, unknown>
