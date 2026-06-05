@@ -1,11 +1,13 @@
-import { spawn } from 'child_process'
-import { existsSync, readFileSync, statSync } from 'fs'
-import { homedir } from 'os'
-import { join } from 'path'
-import type { SearchAdapterSetup, SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
+import type { SearchAdapterSetup } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 import { checkAntflyDependency, installAntflyDependency } from './installer'
-import { findAntflyBinary } from './server'
+import { checkInferenceModels, installInferenceModels } from './models'
+
+/**
+ * Composition layer wiring the antfly setup surface for onboarding:
+ * binary install lives in installer.ts, model prefetch in models.ts,
+ * legacy-state cleanup in legacy-cleanup.ts.
+ */
 
 const noopLogger: AdapterLogger = {
   debug: () => {},
@@ -14,227 +16,7 @@ const noopLogger: AdapterLogger = {
   error: () => {},
 }
 
-export interface TermiteModel {
-  label: string
-  model: string
-  kind: 'embedder' | 'reranker'
-}
-
-export const REQUIRED_MODELS: TermiteModel[] = [
-  { label: 'BGE text embedder', model: 'BAAI/bge-small-en-v1.5', kind: 'embedder' },
-  { label: 'CLIP visual embedder', model: 'openai/clip-vit-base-patch32', kind: 'embedder' },
-  { label: 'mxbai reranker', model: 'mixedbread-ai/mxbai-rerank-base-v1', kind: 'reranker' },
-]
-
-export function termiteModelsRoot(): string {
-  return join(homedir(), '.termite', 'models')
-}
-
-function modelPath(m: TermiteModel): string {
-  const bucket = m.kind === 'embedder' ? 'embedders' : 'rerankers'
-  return join(termiteModelsRoot(), bucket, m.model)
-}
-
-interface ManifestFile {
-  name: string
-  size: number
-}
-
-function modelComplete(m: TermiteModel): { ok: true } | { ok: false; reason: string } {
-  const root = modelPath(m)
-  if (!existsSync(root)) return { ok: false, reason: 'directory missing' }
-
-  const manifestPath = join(root, 'model_manifest.json')
-  if (!existsSync(manifestPath)) {
-    return { ok: false, reason: 'model_manifest.json missing - pull likely incomplete' }
-  }
-
-  let manifest: { files?: ManifestFile[] }
-  try {
-    manifest = JSON.parse(readFileSync(manifestPath, 'utf-8')) as { files?: ManifestFile[] }
-  } catch (err) {
-    return { ok: false, reason: `model_manifest.json unreadable: ${err instanceof Error ? err.message : String(err)}` }
-  }
-
-  const files = Array.isArray(manifest.files) ? manifest.files : []
-  if (files.length === 0) {
-    return { ok: false, reason: 'model_manifest.json lists no files' }
-  }
-
-  for (const f of files) {
-    const fpath = join(root, f.name)
-    if (!existsSync(fpath)) {
-      return { ok: false, reason: `${f.name} missing` }
-    }
-    try {
-      const size = statSync(fpath).size
-      if (typeof f.size === 'number' && size !== f.size) {
-        return { ok: false, reason: `${f.name} size mismatch (expected ${f.size}, got ${size})` }
-      }
-    } catch (err) {
-      return { ok: false, reason: `stat ${f.name} failed: ${err instanceof Error ? err.message : String(err)}` }
-    }
-  }
-
-  return { ok: true }
-}
-
-interface MissingEntry {
-  model: TermiteModel
-  reason: string
-}
-
-function missingModelEntries(): MissingEntry[] {
-  const out: MissingEntry[] = []
-  for (const m of REQUIRED_MODELS) {
-    const result = modelComplete(m)
-    if (!result.ok) out.push({ model: m, reason: result.reason })
-  }
-  return out
-}
-
-function missingModels(): TermiteModel[] {
-  return missingModelEntries().map((e) => e.model)
-}
-
-async function checkTermiteModels() {
-  const missing = missingModelEntries()
-  if (missing.length === 0) {
-    return {
-      name: 'models',
-      status: 'ok' as const,
-      message: `All ${REQUIRED_MODELS.length} Termite models present at ${termiteModelsRoot()}`,
-      details: { root: termiteModelsRoot(), models: REQUIRED_MODELS.map((m) => m.model) },
-    }
-  }
-  return {
-    name: 'models',
-    status: 'missing' as const,
-    message: `${missing.length} of ${REQUIRED_MODELS.length} Termite model${missing.length === 1 ? '' : 's'} missing or incomplete`,
-    remediation: 'Run `bakin install search-models` to (re-)download the missing Termite models.',
-    details: {
-      root: termiteModelsRoot(),
-      missing: missing.map((e) => ({
-        label: e.model.label,
-        model: e.model.model,
-        path: modelPath(e.model),
-        reason: e.reason,
-      })),
-    },
-  }
-}
-
-function runPull(
-  antfly: string,
-  model: string,
-  interactive: boolean
-): Promise<{ code: number | null; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(antfly, ['termite', 'pull', model], {
-      stdio: interactive ? 'inherit' : ['ignore', 'pipe', 'pipe'],
-    })
-    let stderr = ''
-    if (!interactive) {
-      child.stderr?.on('data', (chunk) => {
-        stderr += chunk.toString()
-      })
-    }
-    child.on('error', (err) => reject(err))
-    child.on('close', (code) => resolve({ code, stderr }))
-  })
-}
-
-async function installTermiteModels(opts: SearchAdapterSetupOptions, logger: AdapterLogger = noopLogger) {
-  const start = Date.now()
-
-  const antfly = findAntflyBinary()
-  if (!antfly) {
-    return {
-      name: 'models',
-      status: 'failed' as const,
-      message: 'antfly binary not found - Termite models cannot be pulled until Antfly is installed.',
-      durationMs: Date.now() - start,
-    }
-  }
-
-  const missing = missingModels()
-  if (missing.length === 0) {
-    return {
-      name: 'models',
-      status: 'noop' as const,
-      message: `All ${REQUIRED_MODELS.length} Termite models already present.`,
-      durationMs: Date.now() - start,
-    }
-  }
-
-  if (opts.interactive && !opts.autoApprove) {
-    const proceed = await opts.askYesNo?.(
-      `Download ${missing.length} Termite model${missing.length === 1 ? '' : 's'} (~1.5GB total) to ${termiteModelsRoot()}?`,
-      true
-    )
-    if (!proceed) {
-      return {
-        name: 'models',
-        status: 'skipped' as const,
-        message: 'User declined Termite model download.',
-        durationMs: Date.now() - start,
-      }
-    }
-  } else if (!opts.autoApprove) {
-    return {
-      name: 'models',
-      status: 'skipped' as const,
-      message: 'Non-interactive run without --yes; skipping Termite model download.',
-      durationMs: Date.now() - start,
-    }
-  }
-
-  logger.info('Pulling Termite models', { count: missing.length, antfly })
-  const pulledLabels: string[] = []
-  for (const m of missing) {
-    logger.info('Pulling model', { model: m.model, label: m.label })
-    try {
-      const { code, stderr } = await runPull(antfly, m.model, opts.interactive && !opts.json)
-      if (code !== 0) {
-        return {
-          name: 'models',
-          status: 'failed' as const,
-          message: `antfly termite pull ${m.model} exited with code ${code}${stderr ? `: ${stderr.trim()}` : ''}`,
-          durationMs: Date.now() - start,
-        }
-      }
-
-      const verified = modelComplete(m)
-      if (!verified.ok) {
-        return {
-          name: 'models',
-          status: 'failed' as const,
-          message: `antfly termite pull ${m.model} reported success but ${verified.reason}`,
-          durationMs: Date.now() - start,
-        }
-      }
-      pulledLabels.push(m.label)
-    } catch (err) {
-      logger.error('Failed to spawn antfly termite pull', err)
-      return {
-        name: 'models',
-        status: 'failed' as const,
-        message: `Failed to pull ${m.model}: ${err instanceof Error ? err.message : String(err)}`,
-        error: err,
-        durationMs: Date.now() - start,
-      }
-    }
-  }
-
-  const durationMs = Date.now() - start
-  logger.info('Termite models installed', { pulled: pulledLabels, durationMs })
-  return {
-    name: 'models',
-    status: 'installed' as const,
-    message: `Pulled ${pulledLabels.length} model${pulledLabels.length === 1 ? '' : 's'}: ${pulledLabels.join(', ')}`,
-    durationMs,
-  }
-}
+export { REQUIRED_MODELS, type InferenceModel } from './models'
 
 export function createAntflySearchSetup(logger: AdapterLogger = noopLogger): SearchAdapterSetup {
   return {
@@ -245,16 +27,8 @@ export function createAntflySearchSetup(logger: AdapterLogger = noopLogger): Sea
     },
     models: {
       name: 'models',
-      check: checkTermiteModels,
-      install: (opts) => installTermiteModels(opts, logger),
+      check: checkInferenceModels,
+      install: (opts) => installInferenceModels(opts, logger),
     },
   }
-}
-
-export const _setupInternals = {
-  missingModels,
-  missingModelEntries,
-  modelPath,
-  modelComplete,
-  runPull,
 }

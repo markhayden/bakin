@@ -7,7 +7,7 @@ import {
   isAntflyInstalled,
   isAntflyRunning,
   REQUIRED_MODELS as ANTFLY_REQUIRED_MODELS,
-  termiteModelsRoot as antflyTermiteModelsRoot,
+  inferenceModelsRoot as antflyInferenceModelsRoot,
 } from '@bakin/adapter-antfly'
 import type { SearchAdapterName } from './settings'
 
@@ -68,7 +68,7 @@ export function getSearchAdapterRequiredModels(name: SearchAdapterName): readonl
 export function getSearchAdapterModelsRoot(name: SearchAdapterName): string {
   switch (name) {
     case 'antfly':
-      return antflyTermiteModelsRoot()
+      return antflyInferenceModelsRoot()
     default:
       throw new Error(`Unknown search adapter: ${name}`)
   }
