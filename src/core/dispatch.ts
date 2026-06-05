@@ -72,13 +72,32 @@ function formatDispatchError(err: unknown): string {
   return raw.length > MAX_ERR_LEN ? `${raw.slice(0, MAX_ERR_LEN)}… (truncated)` : raw
 }
 
-async function buildDispatchLessonBlock(input: {
+// Formatted lesson blocks cached per (agentId, query). The query embeds
+// title/description/step instructions, so a workflow step change naturally
+// misses while inProgress re-dispatches of the same step hit — no separate
+// stepId bookkeeping needed. Bounded + TTL'd; empty blocks are cached too so
+// lesson-less agents don't re-query every dispatch.
+const LESSON_BLOCK_CACHE_TTL_MS = 5 * 60_000
+const LESSON_BLOCK_CACHE_MAX = 200
+const lessonBlockCache = new Map<string, { block: string; expires: number }>()
+
+/** @internal Test-only. */
+export function __resetLessonBlockCache(): void {
+  lessonBlockCache.clear()
+}
+
+/** @internal Exported for testing. */
+export async function buildDispatchLessonBlock(input: {
   contentDir: string
   taskId: string
   title: string
   agentId: string
   query: string
 }): Promise<string> {
+  const cacheKey = JSON.stringify([input.agentId, input.query])
+  const hit = lessonBlockCache.get(cacheKey)
+  if (hit && hit.expires > Date.now()) return hit.block
+
   try {
     const settings = getSettings().agentPackages?.lessonsRetrieval
     const result = await retrieveAgentPackageLessons({
@@ -92,6 +111,12 @@ async function buildDispatchLessonBlock(input: {
       result.lessons,
       settings?.maxCharacters,
     )
+    lessonBlockCache.set(cacheKey, { block, expires: Date.now() + LESSON_BLOCK_CACHE_TTL_MS })
+    while (lessonBlockCache.size > LESSON_BLOCK_CACHE_MAX) {
+      const oldest = lessonBlockCache.keys().next().value
+      if (oldest === undefined) break
+      lessonBlockCache.delete(oldest)
+    }
     if (result.lessons.length > 0) {
       appendAudit(input.contentDir, 'agent_pkg.lessons_retrieved', input.agentId, {
         taskId: input.taskId,

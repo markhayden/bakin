@@ -138,6 +138,14 @@ export async function retrieveAgentPackageLessons(options: {
   return { lessons, packageId: owner.id }
 }
 
+/**
+ * Minimum body characters a lesson must keep to be worth shipping. Lessons
+ * that would be truncated below this are omitted whole — and the omission is
+ * announced with a marker instead of silently dropping them (the old
+ * behavior shipped ~120-char stubs and said nothing about the rest).
+ */
+const MIN_LESSON_BODY_CHARS = 400
+
 export function formatLessonsForDispatch(
   lessons: RetrievedLesson[],
   maxCharacters?: number,
@@ -157,6 +165,7 @@ export function formatLessonsForDispatch(
     '',
   ]
   let used = lines.join('\n').length
+  let omitted = 0
 
   for (const lesson of lessons) {
     const header = [
@@ -169,12 +178,23 @@ export function formatLessonsForDispatch(
     ].join('\n')
 
     const remaining = budget - used - header.length - 2
-    if (remaining <= 120) break
-    const body = truncateText(lesson.body, remaining)
+    const fitsWhole = lesson.body.length <= remaining
+    // A lesson is included only if it fits whole, or truncation still leaves
+    // a meaningful body. A later (smaller) lesson may still fit whole, so
+    // keep scanning instead of breaking.
+    if (!fitsWhole && remaining < MIN_LESSON_BODY_CHARS) {
+      omitted++
+      continue
+    }
+    const body = fitsWhole ? lesson.body : truncateText(lesson.body, remaining)
     lines.push(header)
     lines.push(body)
     lines.push('')
     used += header.length + body.length + 2
+  }
+
+  if (omitted > 0) {
+    lines.push(`*(${omitted} lesson${omitted === 1 ? '' : 's'} omitted — character budget reached)*`)
   }
 
   return lines.join('\n').trimEnd()
