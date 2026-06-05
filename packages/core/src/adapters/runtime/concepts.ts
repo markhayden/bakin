@@ -310,7 +310,7 @@ export type RuntimeImageBackground = 'transparent' | 'opaque' | 'auto'
  * provider with a defaultModel); a rich runtime fills more. Consumers MUST
  * treat a sparse capability as normal and never require a field a thin runtime
  * cannot provide — gaps are filled below, in the adapter/shim, not pushed up
- * into plugins. See .claude/specs/media-generation-adapter-architecture.md.
+ * into plugins. See .claude/knowledge/media-generation-adapter-architecture.md.
  */
 export interface RuntimeImageProviderCapabilities {
   generate?: {

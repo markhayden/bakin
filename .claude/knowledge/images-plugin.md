@@ -12,7 +12,7 @@ prompt packaging, and QC. Generated and imported files are persisted through the
 Assets plugin, so downstream workflows should pass canonical asset filenames
 such as `image_filename`, not local filesystem paths.
 
-See `.claude/specs/media-generation-adapter-architecture.md` for the four-layer
+See `.claude/knowledge/media-generation-adapter-architecture.md` for the four-layer
 model (plugin / capability contract / runtime adapter / shared shim) and the
 credential-ownership rules.
 

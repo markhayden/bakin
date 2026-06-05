@@ -352,5 +352,3 @@ They're intentionally separate — a user debugging a search-quality issue wants
 - `?debug=1` — page-local "System Logs" toggle. Distinct from the global `useDebug()` Zustand flag.
 
 All five are omitted when at their default (empty / `'0'`); `MemoryShell` wraps its content in `<Suspense>` per the hook contract. When a debug-only tier is currently selected via URL but the System Logs toggle is off, the tier chip stays visible so the user has a way to remove it — otherwise it would filter silently with no affordance to clear.
-
-See `.claude/specs/memory-plugin-rebuild-PLAN.md` for the full plan.

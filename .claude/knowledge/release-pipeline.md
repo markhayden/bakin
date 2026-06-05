@@ -1,6 +1,6 @@
 # Release Pipeline Runbook
 
-Active spec: `.claude/specs/release-pipeline.md`.
+Canonical reference (the originating spec shipped and was retired).
 
 ## Release Shape
 

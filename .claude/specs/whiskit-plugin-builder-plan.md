@@ -3,6 +3,25 @@
 Spec: `.claude/specs/whiskit-plugin-builder.md`
 Date: 2026-06-04
 
+## Status (2026-06-05)
+
+- **P0–P6, P8 shipped** (P1 bakin#448 + bits#65; P2 #449; P3/P4/P6 via the
+  artifact lane PRs; P8 #450). **P7 deferred post-v1** by design.
+- **P9 mostly shipped** (#443: startup artifact verifier, needs-update
+  surfacing, `plugin-artifacts` health check, legacy installs grandfathered as
+  `non-whiskin`). Remaining: doctor *repair* that auto-refetches a compatible
+  published artifact (today repair guidance = reinstall), and the optional
+  one-shot `bakin plugins migrate` for legacy installs.
+- **P10 shipped** (bits#61 source-only repo + Whiskin publish CI; Distribute
+  docs page in Bakin).
+- **P11 partial** — install lock, transaction commit, and subpath guard are
+  shared via `src/core/install-core/`; full convergence (source parse, fetch,
+  lockfile IO, provenance) is not done; `preflightCollisions()` still returns
+  `[]` (stub) and manifest-integrity hashing parity is open.
+- **P12 not started** — `release.yml` has no Whiskit install smoke yet.
+- Loose end from the P1/P2/P8 handoff: tag `messaging-v0.6.0` /
+  `projects-v0.6.0` in bits after the next Bakin release ships #448.
+
 ## Overview
 
 Whiskit is a multi-PR architecture change built around the **two-lane model**:

@@ -2,10 +2,8 @@
 
 How `bun run dev` works under the hood. Reference for future work on the
 dev experience or on anything that touches the plugin registry,
-`_static.ts`, or the dev SSE channel.
-
-Spec: `.claude/specs/hmr-dev-loop.md`.
-Plan: `.claude/specs/hmr-dev-loop-PLAN.md`.
+`_static.ts`, or the dev SSE channel. Canonical reference (the originating
+spec/plan shipped and were retired).
 
 ## Tiers
 

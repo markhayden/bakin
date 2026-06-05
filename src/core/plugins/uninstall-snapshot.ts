@@ -16,8 +16,8 @@
  * Failure leaves the tmp file for debugging and surfaces the error.
  *
  * Tarball assembled via `Bun.spawn(['tar', '-czf', ...])` — both Linux
- * and macOS ship `tar`; no new npm dep. Resolution captured in
- * .claude/specs/plugin-lifecycle-plan.md C7 OPEN QUESTION.
+ * and macOS ship `tar`; no new npm dep (deliberate design decision;
+ * see .claude/knowledge/plugin-lifecycle.md).
  */
 import { createHash } from 'crypto'
 import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'fs'

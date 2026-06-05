@@ -9,8 +9,6 @@ reproduced the deterministic failure. This system makes that class of failure
 detected in milliseconds, diagnosed precisely, recovered automatically, and
 prevented by prompt discipline.
 
-Spec: `.claude/specs/session-death-hardening.md` · Plan: `.claude/plans/session-death-hardening.md`
-
 ## The trajectory file (read-only forensic source)
 
 OpenClaw writes `~/.openclaw/agents/<id>/sessions/<sessionId>.trajectory.jsonl`
