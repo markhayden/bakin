@@ -16,7 +16,7 @@ import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import { getContentDir } from '../../../src/core/content-dir'
 import { isValidAssetId, assetDirRelPath } from './asset-id'
-import { getAsset, resolveFile } from './asset-service'
+import { getAsset, resolveFileFromManifest } from './asset-service'
 import type { AssetManifest } from './manifest'
 
 export type AssetServeResult =
@@ -51,7 +51,7 @@ export function resolveAssetServe(segments: string[]): AssetServeResult {
 
   // [assetId] → current
   if (rest.length === 0) {
-    const ref = resolveFile(assetId)
+    const ref = resolveFileFromManifest(manifest)
     if (!ref) return notFound()
     return { match: true, found: true, absPath: ref.absPath, mimeType: ref.mimeType, cacheKey: `${assetId}:v${ref.version}` }
   }
@@ -66,7 +66,7 @@ export function resolveAssetServe(segments: string[]): AssetServeResult {
     const n = Number(rest[1])
     if (!Number.isInteger(n) || n < 1) return notFound()
     if (rest.length === 2) {
-      const ref = resolveFile(assetId, n)
+      const ref = resolveFileFromManifest(manifest, n)
       if (!ref) return notFound()
       return { match: true, found: true, absPath: ref.absPath, mimeType: ref.mimeType, cacheKey: `${assetId}:v${n}` }
     }

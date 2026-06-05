@@ -35,8 +35,11 @@ the `assetId`, never a filename.
 
 - `asset-id.ts` — generate/validate assetId, shard derivation.
 - `manifest.ts` — Zod `AssetManifest` schema + **atomic** read/write (temp+rename;
-  tolerant reads). The manifest is read on every serve AND is the search reindex
+  tolerant reads). The manifest backs every serve AND is the search reindex
   trigger, so torn writes must never be observable.
+- `manifest-cache.ts` — stat-validated read cache (see below). Read paths go
+  through `getManifestCached`; mutations and `.trash/` reads call `readManifest`
+  directly.
 - `asset-lock.ts` — per-`assetId` async mutex serializing all manifest mutations
   (guards the version-number race). Different assets stay concurrent.
 - `asset-service.ts` — `createAsset` / `addVersion` / `promoteVersion` /
@@ -46,6 +49,34 @@ the `assetId`, never a filename.
   mutate → atomic write.
 - `serve.ts` — `resolveAssetServe(segments)` for the HTTP serving route.
 - `search-doc.ts` — `versionedAssetPath` + `buildVersionedAssetSearchDoc`.
+
+## Manifest read cache (#392)
+
+`lib/manifest-cache.ts` — in-memory `assetId → manifest`, **validated against
+one `statSync` of `manifest.json` on every read** (token: `ino + size +
+mtimeMs`). Match → cached manifest; mismatch → re-parse + refill; stat failure
+→ evict + null. Because `writeManifestAtomic` is temp-file + rename, the inode
+changes on every write — the token discriminates even same-millisecond writes
+and restored timestamps. Drops list/serve parse cost from O(total assets) to
+O(changed) while reads stay ground-truth: **no invalidation wiring, no watcher
+dependency, no staleness by construction.** Contract details:
+
+- **Fill ordering is stat → read → cache (pre-read token).** A write landing
+  between stat and read costs one redundant re-parse later, never staleness.
+  Don't "optimize" this order.
+- **Mutations bypass the cache** (fresh `readManifest` under the asset lock) so
+  a stale entry can never be persisted back to disk. `.trash/` reads also
+  bypass (watcher-excluded, would never revalidate sensibly).
+- Positive-only (404 probes insert nothing), unbounded (~KB/manifest), lazy
+  fill. Cached manifests are **shared references, deep-frozen under
+  `NODE_ENV=test`** — a consumer mutating one throws in the suite.
+- `resolveFileFromManifest(manifest, version?)` resolves version files from an
+  already-loaded manifest; `serve.ts` uses it so one request = one stat, not
+  two parses. `resolveFile(assetId)` keeps the old signature on top of it.
+- **Caching rule of thumb (repo-wide):** stat-validate when an authoritative
+  file exists to validate against (this cache; adapter `sessionStoreCache`);
+  write-through + watcher backstop only for *derived* indexes with no backing
+  file (`task-asset-index`). Don't write-through what you can stat.
 
 ## Cross-plugin API (`ctx.assets`)
 
@@ -88,7 +119,9 @@ Version/thumb/export files never get their own row.
 
 Every mutation rewrites the manifest → the watcher emits `asset.changed`
 (`asset.removed` on delete) over `/api/events`. The grid + detail route refetch
-on these events.
+on these events. The grid coalesces event bursts through a 300ms trailing
+debounce (`components/versioned/sse-refetch.ts`): N rapid mutations → one list
+fetch per tab, removals fold a trash refetch into the same flush.
 
 ## Image tools (`plugins/images/lib/tools.ts`)
 

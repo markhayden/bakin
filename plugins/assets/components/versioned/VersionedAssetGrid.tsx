@@ -8,6 +8,7 @@ import { PluginHeader, FacetFilter } from '@makinbakin/sdk/components'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
 import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter } from 'lucide-react'
 import { ASSET_TYPES } from '../../lib/constants'
+import { createSseRefetchScheduler } from './sse-refetch'
 import { AssetThumb, AssetMetaSummary, AssetTypeIcon } from './atoms'
 import { VERSIONED_API, UPLOAD_API, TRASH_API } from './asset-urls'
 import type { VersionedAssetSummary, TrashedAssetSummary } from './types'
@@ -166,15 +167,19 @@ export function VersionedAssetGrid() {
 
   useEffect(() => {
     const es = new EventSource('/api/events')
+    // Coalesce event bursts (agent edit loops) into one refetch per window —
+    // direct user actions (upload/restore/trash ops) keep their immediate
+    // fetches elsewhere in this component.
+    const refetch = createSseRefetchScheduler(fetchAssets, fetchTrash)
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data)
         if (data.type !== 'plugin-event') return
-        if (data.event === 'asset.changed') fetchAssets()
-        else if (data.event === 'asset.removed') { fetchAssets(); fetchTrash() }
+        if (data.event === 'asset.changed') refetch.schedule(false)
+        else if (data.event === 'asset.removed') refetch.schedule(true)
       } catch { /* ignore non-JSON */ }
     }
-    return () => es.close()
+    return () => { refetch.cancel(); es.close() }
   }, [fetchAssets, fetchTrash])
 
   // ─── Upload ──────────────────────────────────────────────────────────
