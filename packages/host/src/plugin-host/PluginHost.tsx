@@ -405,11 +405,16 @@ async function performHotSwap(id: string, clientEntry: string, version: string, 
   // Re-apply declarative metadata so manifest edits (nav, slot/route
   // ownership) land with the swap, not just code changes.
   if (manifest) applyManifestMetadata(manifest)
-  // Lazy plugin whose client never loaded: nothing to swap. The refreshed
-  // manifest carries the new clientVersion, so the next demand imports the
-  // new bundle. Record the URL so repeat SSE events for the same build
-  // stay deduped.
-  if (getPluginLoadState(id) === 'idle') {
+  // A declaratively-lazy plugin whose client never loaded has nothing to
+  // swap: the refreshed manifest carries the new clientVersion, so the next
+  // demand imports the new bundle. Record the URL so repeat SSE events for
+  // the same build stay deduped. Legacy/eager plugins (and ids outside the
+  // manifest, as the hot-swap tests use) keep the old always-import path.
+  const isUnloadedLazy = plugin !== undefined
+    && isLoadablePlugin(plugin)
+    && !isEagerPlugin(plugin)
+    && getPluginLoadState(id) === 'idle'
+  if (isUnloadedLazy) {
     appliedHotSwapUrls.set(id, importUrl)
     return
   }

@@ -54,7 +54,15 @@ mock.module('../../packages/core/src/content-dir', () => {
 })
 
 import { PluginHost } from '../../packages/host/src/plugin-host/PluginHost'
-import { registerPlugin, unregisterPlugin } from '@makinbakin/sdk'
+import {
+  configureLazyPlugins,
+  getAllNavItems,
+  getPluginLoadState,
+  registerPlugin,
+  setManifestNav,
+  setPluginLoadState,
+  unregisterPlugin,
+} from '@makinbakin/sdk'
 import { Slot } from '@makinbakin/sdk/slots'
 
 function SlotPage() {
@@ -108,7 +116,12 @@ beforeEach(() => {
 
 afterEach(() => {
   removeDevScriptTag()
-  for (const id of USED_IDS) unregisterPlugin(id)
+  for (const id of USED_IDS) {
+    unregisterPlugin(id)
+    setManifestNav(id, null)
+    setPluginLoadState(id, 'idle')
+  }
+  configureLazyPlugins({ slotOwners: new Map(), routeOwners: [] })
   delete (window as unknown as { __bakinHotSwapPlugin?: unknown }).__bakinHotSwapPlugin
   delete (window as unknown as { __bakinStartupSpans?: unknown }).__bakinStartupSpans
   delete (globalThis as Record<string, unknown>).__bakinHotSwapRegister
@@ -463,6 +476,191 @@ describe('Slot — re-renders on registry change', () => {
       expect(nodes.length).toBe(1)
       expect(nodes[0].textContent).toBe('rendered-from-x-v2')
     })
+  })
+})
+
+describe('PluginHost — lazy boot from declarative manifests', () => {
+  function writeRegisteringModule(dir: string, pluginId: string, slotName: string): string {
+    const modulePath = join(dir, `${pluginId}-client.mjs`)
+    writeFileSync(modulePath, [
+      `globalThis.__bakinHotSwapImportCount = (globalThis.__bakinHotSwapImportCount ?? 0) + 1`,
+      `globalThis.__bakinHotSwapRegister('${pluginId}', '${slotName}')`,
+      '',
+    ].join('\n'))
+    return pathToFileURL(modulePath).href
+  }
+
+  function stubManifestFetch(plugins: unknown[]) {
+    vi.stubGlobal('fetch', mock(async (url: string) => {
+      if (url === '/api/plugins/manifest') {
+        return new Response(JSON.stringify({ plugins }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      return new Response('not found', { status: 404 })
+    }))
+  }
+
+  it('seeds sidebar nav from contributes.nav without importing the client', async () => {
+    const moduleDir = mkdtempSync(join(tmpdir(), 'bakin-plugin-host-lazy-'))
+    try {
+      ;(globalThis as Record<string, unknown>).__bakinHotSwapRegister = (id: string, slotName: string) => {
+        registerPlugin({ id, slots: { [slotName]: SlotPage } })
+      }
+      const clientEntry = writeRegisteringModule(moduleDir, 'x', 'page:/probe')
+      stubManifestFetch([{
+        id: 'x',
+        name: 'X',
+        version: '1.0.0',
+        clientEntry,
+        clientVersion: 'lazy-1',
+        status: 'active',
+        contributes: {
+          nav: [{ id: 'x-nav', label: 'X', href: '/x', order: 7 }],
+          slots: ['page:/probe'],
+        },
+      }])
+
+      render(
+        <PluginHost>
+          <div data-testid="shell" />
+        </PluginHost>,
+      )
+      await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
+
+      // Nav is live from the manifest; the client module never imported.
+      expect(getAllNavItems().map((i) => i.id)).toContain('x-nav')
+      expect((globalThis as Record<string, unknown>).__bakinHotSwapImportCount).toBeUndefined()
+      expect(getPluginLoadState('x')).toBe('idle')
+    } finally {
+      rmSync(moduleDir, { recursive: true, force: true })
+    }
+  })
+
+  it('imports a lazy client on first render of a declared slot', async () => {
+    const moduleDir = mkdtempSync(join(tmpdir(), 'bakin-plugin-host-lazy-'))
+    try {
+      ;(globalThis as Record<string, unknown>).__bakinHotSwapRegister = (id: string, slotName: string) => {
+        registerPlugin({ id, slots: { [slotName]: SlotPage } })
+      }
+      const clientEntry = writeRegisteringModule(moduleDir, 'x', 'page:/probe')
+      stubManifestFetch([{
+        id: 'x',
+        name: 'X',
+        version: '1.0.0',
+        clientEntry,
+        clientVersion: 'lazy-2',
+        status: 'active',
+        contributes: { slots: ['page:/probe'] },
+      }])
+
+      render(
+        <PluginHost>
+          <ProbeTree />
+        </PluginHost>,
+      )
+      // The probe tree renders <Slot name="page:/probe" /> immediately —
+      // that render is the demand that imports the client.
+      await waitFor(() => expect(screen.queryByTestId('slot-content')?.textContent)
+        .toBe('rendered-from-x'), { timeout: 5000 })
+      expect((globalThis as Record<string, unknown>).__bakinHotSwapImportCount).toBe(1)
+      expect(getPluginLoadState('x')).toBe('loaded')
+    } finally {
+      rmSync(moduleDir, { recursive: true, force: true })
+    }
+  })
+
+  it('imports eager-flagged and legacy (no metadata) clients at boot', async () => {
+    const moduleDir = mkdtempSync(join(tmpdir(), 'bakin-plugin-host-eager-'))
+    try {
+      ;(globalThis as Record<string, unknown>).__bakinHotSwapRegister = (id: string, slotName: string) => {
+        registerPlugin({ id, slots: { [slotName]: SlotPage } })
+      }
+      stubManifestFetch([
+        {
+          id: 'x',
+          name: 'X (eager flag)',
+          version: '1.0.0',
+          clientEntry: writeRegisteringModule(moduleDir, 'x', 'page:/x-eager'),
+          clientVersion: 'eager-1',
+          status: 'active',
+          contributes: { slots: ['page:/x-eager'], eager: true },
+        },
+        {
+          id: 'y',
+          name: 'Y (legacy shape)',
+          version: '1.0.0',
+          clientEntry: writeRegisteringModule(moduleDir, 'y', 'page:/y-legacy'),
+          clientVersion: 'legacy-1',
+          status: 'active',
+        },
+      ])
+
+      render(
+        <PluginHost>
+          <div />
+        </PluginHost>,
+      )
+      await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull(), { timeout: 5000 })
+
+      await waitFor(() => {
+        expect(getPluginLoadState('x')).toBe('loaded')
+        expect(getPluginLoadState('y')).toBe('loaded')
+      })
+      expect((globalThis as Record<string, unknown>).__bakinHotSwapImportCount).toBe(2)
+    } finally {
+      rmSync(moduleDir, { recursive: true, force: true })
+    }
+  })
+
+  it('hot-swapping a never-loaded lazy plugin refreshes metadata without importing', async () => {
+    const consoleDebug = spyOn(console, 'debug').mockImplementation(() => {})
+    injectDevScriptTag()
+    const moduleDir = mkdtempSync(join(tmpdir(), 'bakin-plugin-host-lazyswap-'))
+    try {
+      ;(globalThis as Record<string, unknown>).__bakinHotSwapRegister = (id: string, slotName: string) => {
+        registerPlugin({ id, slots: { [slotName]: SlotPage } })
+      }
+      const clientEntry = writeRegisteringModule(moduleDir, 'x', 'page:/probe')
+      stubManifestFetch([{
+        id: 'x',
+        name: 'X',
+        version: '1.0.0',
+        clientEntry,
+        clientVersion: 'swap-2',
+        status: 'active',
+        contributes: {
+          nav: [{ id: 'x-nav', label: 'X v2', href: '/x' }],
+          slots: ['page:/probe'],
+        },
+      }])
+
+      render(
+        <PluginHost>
+          <div />
+        </PluginHost>,
+      )
+      await waitFor(() => expect(screen.queryByText('Loading plugins')).toBeNull())
+
+      const handle = (window as unknown as {
+        __bakinHotSwapPlugin?: (...a: unknown[]) => Promise<void>
+      }).__bakinHotSwapPlugin
+      expect(typeof handle).toBe('function')
+
+      await act(async () => {
+        await handle!('x', clientEntry, 'swap-2')
+      })
+
+      // Metadata refreshed (nav re-seeded from the new manifest) but the
+      // client bundle was never imported — it stays lazy.
+      expect(getAllNavItems().map((i) => i.label)).toContain('X v2')
+      expect((globalThis as Record<string, unknown>).__bakinHotSwapImportCount).toBeUndefined()
+      expect(getPluginLoadState('x')).toBe('idle')
+    } finally {
+      consoleDebug.mockRestore()
+      rmSync(moduleDir, { recursive: true, force: true })
+    }
   })
 })
 

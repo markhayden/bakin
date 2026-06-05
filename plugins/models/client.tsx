@@ -1,17 +1,13 @@
 /**
  * Models plugin — client entry point.
+ * Nav is declared in bakin-plugin.json `contributes.nav`; slots are mirrored
+ * in `contributes.slots` so the host lazy-loads this client on first render.
  */
 import { registerPlugin } from '@makinbakin/sdk'
-import type { NavItem } from '@makinbakin/sdk'
 import { ModelsPage } from './components/models-page'
-
-const navItems: NavItem[] = [
-  { id: 'models', label: 'Models', icon: 'Cpu', href: '/models', order: 70 },
-]
 
 registerPlugin({
   id: 'models',
-  navItems,
   slots: {
     'page:/models': ModelsPage,
   },

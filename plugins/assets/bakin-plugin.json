@@ -157,6 +157,20 @@
     ],
     "docs": {
       "slug": "using/assets"
-    }
+    },
+    "nav": [
+      {
+        "id": "assets",
+        "label": "Assets",
+        "icon": "FolderOpen",
+        "href": "/assets",
+        "order": 20
+      }
+    ],
+    "slots": [
+      "task-assets",
+      "page:/assets",
+      "page:/assets/:assetId"
+    ]
   }
 }

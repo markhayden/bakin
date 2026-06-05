@@ -290,6 +290,19 @@
     ],
     "docs": {
       "slug": "using/team"
-    }
+    },
+    "nav": [
+      {
+        "id": "team",
+        "label": "Team",
+        "icon": "Users",
+        "href": "/team",
+        "order": 60
+      }
+    ],
+    "slots": [
+      "page:/team",
+      "page:/team/[id]"
+    ]
   }
 }

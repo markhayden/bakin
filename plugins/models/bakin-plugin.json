@@ -103,6 +103,18 @@
     ],
     "docs": {
       "slug": "using/models"
-    }
+    },
+    "nav": [
+      {
+        "id": "models",
+        "label": "Models",
+        "icon": "Cpu",
+        "href": "/models",
+        "order": 70
+      }
+    ],
+    "slots": [
+      "page:/models"
+    ]
   }
 }

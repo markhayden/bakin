@@ -207,6 +207,20 @@
     ],
     "docs": {
       "slug": "using/tasks"
-    }
+    },
+    "nav": [
+      {
+        "id": "tasks",
+        "label": "Tasks",
+        "icon": "CheckSquare",
+        "href": "/tasks",
+        "order": 10
+      }
+    ],
+    "slots": [
+      "page:/tasks",
+      "nav-badge-providers"
+    ],
+    "eager": true
   }
 }
