@@ -6,6 +6,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.16] - 2026-06-05
+
+### Added
+- **Whiskit plugin artifacts — toolchain-free plugin installs.** `bakin plugins publish` assembles a plugin into a versioned, prebuilt `.tar.gz` artifact (manifest + `dist/` + build provenance) with a SHA256 checksum and a carry-forward `whiskit-artifacts.json` release catalog. Installing a GitHub plugin now downloads and verifies that prebuilt artifact and extracts it into the content directory — nothing builds on the user's machine.
+- GitHub-release artifact resolver, consumer materialization, and live install into the content directory with a lockfile entry; safe extraction rejects symlinks, zip-slip paths, and oversized archives.
+- Startup verification of installed plugin artifacts against the host externals contract, plus a doctor/health check that flags installed plugin artifacts which are outdated or invalid and need a rebuild.
+- Shared install core unifying the plugin and agent-package install paths: one subpath guard, atomic JSON lockfile writes, an advisory install lock, and a staging→commit transaction.
+- **Session-death recovery ladder.** Diagnosed agent-session deaths now salvage partial output as an asset and escalate through corrective re-dispatch, decomposition into subtasks, and a diagnostic block instead of blind retries — backed by a read-only OpenClaw trajectory forensics parser, fail-fast detection of session deaths during pending turns, a session-death health check, and audit query helpers.
+- **Concurrent dispatch.** An in-flight turn registry with per-agent and global concurrency caps (`maxConcurrentTurns` / `maxTurnsPerAgent`), settle-time reconciliation, and per-dispatch provider sessions with stable idempotency keys.
+- Output-discipline prompt rules (deliverables to files + `bakin_exec_assets_save`, one at a time, terse chat), a runtime-derived agent roster, and shared tool documentation carried on dispatch prompts.
+- A dockerized rig validation campaign with functional end-to-end coverage and benchmarks against a real OpenClaw instance.
+
+### Changed
+- Classify dispatch and runtime failures by a typed `kind` rather than error-message text, and treat task continuation as a full re-dispatch against a fresh per-attempt provider session.
+- Exclude `node_modules` from published plugin artifacts (pure-JS plugins, v1).
+
+### Fixed
+- Add a request timeout to artifact downloads so a stalled release host cannot hang an install.
+- Treat a `dependsOn` pointer to a hard-deleted task as satisfied, preventing dependent tasks from being stranded.
+- Abort the session-activity poller when a chat-stream consumer breaks early.
+- Close three recovery-flow gaps plus idle-determinism and recovery-completeness issues surfaced by the live rig ladder smoke and code review.
+
 ## [0.0.1-rc.15] - 2026-06-04
 
 ### Fixed
@@ -204,5 +226,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 [0.0.1-rc.14]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.14
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.15...HEAD
 [0.0.1-rc.15]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.15
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.16...HEAD
+[0.0.1-rc.16]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.16
