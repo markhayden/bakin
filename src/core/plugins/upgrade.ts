@@ -38,8 +38,34 @@ import {
   type InstallReport,
 } from '@/core/onboarding/plugin-assets'
 import { buildUserPlugin } from '../../../packages/host/src/plugin-host/user-plugin-builder'
+import { githubArtifactSource } from '@/core/whiskit/github-resolver'
+import { downloadText } from '@/core/whiskit/download'
+import { parseArtifactsIndex, INDEX_FILENAME } from '@/core/whiskit/artifacts-index'
+import { materializeArtifact } from '@/core/whiskit/consumer-install'
+import { isExternalsContractCompatible, PROVENANCE_FILENAME } from '@/core/whiskit/provenance'
+import { acquireLock, releaseLock } from '@/core/install-core/install-lock'
+import { commitStaging } from '@/core/install-core/transaction'
 
 const log = createLogger('plugin-upgrade')
+
+/**
+ * True when the installed plugin dir came from a published Whiskit artifact
+ * (carries `.whiskit/build.json` provenance). Such installs check + upgrade
+ * through the artifact lane — refetch a published artifact, never git-clone
+ * + rebuild on the consumer's machine.
+ */
+export function isArtifactInstall(pluginDir: string): boolean {
+  return existsSync(join(pluginDir, '.whiskit', PROVENANCE_FILENAME))
+}
+
+/** Fetch the latest published version for an artifact install's source. */
+async function latestPublishedVersion(source: string): Promise<{ pluginId: string; latest: string | null }> {
+  const gh = githubArtifactSource(source)
+  const index = parseArtifactsIndex(
+    JSON.parse(await downloadText(`${gh.baseUrl}/${INDEX_FILENAME}`)),
+  )
+  return { pluginId: gh.pluginId, latest: index.plugins[gh.pluginId]?.latest ?? null }
+}
 
 export interface UpgradeOptions {
   /** Skip consent prompt even when permissions widen. */
@@ -256,6 +282,8 @@ export interface UpgradeAvailability {
   lastChecked: string
   /** Github only — last seen remote HEAD sha. */
   remoteHeadSha?: string
+  /** Artifact installs only — latest published artifact version. */
+  remoteArtifactVersion?: string
   /** Local only — last seen source tree sha. */
   sourceTreeSha?: string
   /** Set when the check itself failed (e.g. network error, missing source). */
@@ -272,6 +300,23 @@ async function probeOne(entry: PluginLockEntry, id: string): Promise<UpgradeAvai
   const lastChecked = new Date().toISOString()
   try {
     if (entry.type === 'github') {
+      // Artifact installs (Whiskit) record `ref: ''` and have no git remote
+      // to ls-remote — the published index's `latest` is the freshness
+      // signal, polled over HTTPS (a release-asset fetch, not the
+      // rate-limited GitHub API).
+      const pluginDir = join(getContentDir(), 'plugins', id)
+      if (isArtifactInstall(pluginDir)) {
+        const { pluginId, latest } = await latestPublishedVersion(entry.source)
+        if (!latest) {
+          return { id, upgradeAvailable: false, lastChecked, error: `no published artifact for ${pluginId}` }
+        }
+        return {
+          id,
+          upgradeAvailable: latest !== entry.version,
+          lastChecked,
+          remoteArtifactVersion: latest,
+        }
+      }
       if (!entry.source || !entry.ref) {
         return { id, upgradeAvailable: false, lastChecked, error: 'lockfile missing source/ref' }
       }
@@ -373,6 +418,7 @@ export async function runChecks(ids: readonly string[]): Promise<UpgradeAvailabi
     if (!lock.plugins[r.id]) continue
     const patch: Partial<PluginLockEntry> = { lastChecked: r.lastChecked }
     if (r.remoteHeadSha) patch.remoteHeadSha = r.remoteHeadSha
+    if (r.remoteArtifactVersion) patch.remoteArtifactVersion = r.remoteArtifactVersion
     if (r.sourceTreeSha) patch.lastSourceTreeSha = r.sourceTreeSha
     lock = updatePlugin(lock, r.id, patch)
   }
@@ -433,6 +479,12 @@ export async function upgradePlugin(
   assertManifestSignaturePolicy(currentManifest, id)
 
   if (entry.type === 'github') {
+    // Whiskit artifact installs upgrade through the artifact lane:
+    // refetch the latest published artifact (toolchain-free — no git, no
+    // bun, no SDK on the consumer's machine), never clone + rebuild.
+    if (isArtifactInstall(pluginDir)) {
+      return upgradeArtifact(id, entry, pluginDir, opts, before)
+    }
     // Subpath installs (`github:user/repo#plugins/foo`) leave `pluginDir`
     // without a `.git/`, so the in-place fetch+merge flow below cannot
     // run. Branch to a staging-clone variant in that case.
@@ -443,6 +495,122 @@ export async function upgradePlugin(
     return upgradeGithub(id, entry, pluginDir, opts, before)
   }
   return upgradeLocal(id, entry, pluginDir, opts, before)
+}
+
+/**
+ * Upgrade an artifact-installed plugin by refetching the latest published
+ * artifact: resolve the immutable index → compare versions → consent-gate
+ * the new manifest's permissions → checksum-verify + safe-extract → check
+ * externals-contract compatibility → atomically replace the install dir.
+ * Mirrors the live-install path (same lock, same staging, same commit).
+ */
+async function upgradeArtifact(
+  id: string,
+  entry: PluginLockEntry,
+  pluginDir: string,
+  opts: UpgradeOptions,
+  before: { version: string; commitSha: string },
+): Promise<UpgradeResult> {
+  const gh = githubArtifactSource(entry.source)
+  const { latest } = await latestPublishedVersion(entry.source)
+  if (!latest) {
+    throw new UpgradeRefusedError(
+      `${id}: no published artifact found at ${gh.baseUrl}. Remove and reinstall.`,
+    )
+  }
+  if (latest === entry.version) {
+    return {
+      id,
+      before,
+      after: before,
+      noop: true,
+      newPermissions: [],
+      awaitingConsent: false,
+    }
+  }
+
+  const contentDir = getContentDir()
+  const lockPath = join(contentDir, 'plugins', '.install.lock')
+  const stagingRoot = join(contentDir, '.whiskit-staging')
+  const platform = `${process.platform}-${process.arch}`
+
+  acquireLock(lockPath)
+  try {
+    const materialized = await materializeArtifact(gh.resolver, gh.pluginId, latest, platform, stagingRoot)
+    try {
+      const { manifest, manifestSha } = readManifest(materialized.stagingDir)
+      assertManifestIdStable(manifest, id)
+      assertManifestSignaturePolicy(manifest, id)
+      const newVersion = manifestVersion(manifest, latest)
+      const newCommitSha = materialized.provenance.sourceCommitSha || ''
+      const newPerms = manifestPermissions(manifest, id)
+      const widened = diffNewPermissions(entry.permissions, newPerms)
+
+      if (widened.length > 0 && !opts.yes) {
+        // Consent required — exit BEFORE mutating disk or lockfile.
+        return {
+          id,
+          before,
+          after: { version: newVersion, commitSha: newCommitSha },
+          noop: false,
+          newPermissions: widened,
+          awaitingConsent: true,
+        }
+      }
+
+      // The host must still provide the externals the new artifact was
+      // built for; an incompatible artifact means Bakin itself is behind.
+      if (!isExternalsContractCompatible(materialized.provenance)) {
+        auditUpgradeRejected('externals_contract_incompatible', id, {
+          artifactVersion: latest,
+          externalsContract: materialized.provenance.externalsContract,
+        })
+        throw new UpgradeRefusedError(
+          `${id}: published artifact ${latest} targets a different host contract ` +
+          `("${materialized.provenance.externalsContract}"). Update Bakin, then retry.`,
+        )
+      }
+
+      // Atomic replace of ~/.bakin/plugins/<id> (same-filesystem rename).
+      commitStaging(materialized.stagingDir, pluginDir)
+
+      const assets = await installUpgradedPluginAssets(id, pluginDir)
+
+      const updated = updatePlugin(readPluginLockfile(), id, {
+        upgradedAt: new Date().toISOString(),
+        version: newVersion,
+        commitSha: newCommitSha,
+        manifestSha,
+        permissions: newPerms,
+        installedSkills: assets.installedSkills,
+        remoteArtifactVersion: latest,
+      })
+      writePluginLockfile(updated)
+
+      return {
+        id,
+        before,
+        after: { version: newVersion, commitSha: newCommitSha },
+        noop: false,
+        newPermissions: widened,
+        awaitingConsent: false,
+        pluginAssets: assets.pluginAssets,
+      }
+    } finally {
+      // commitStaging renamed the extracted dir out on success; this clears
+      // the leftover work dir (downloaded tarball) only.
+      materialized.cleanup()
+    }
+  } finally {
+    releaseLock(lockPath)
+    if (existsSync(stagingRoot)) {
+      try {
+        rmSync(stagingRoot, { recursive: true, force: true })
+      } catch {
+        // best-effort
+      }
+    }
+  }
 }
 
 async function upgradeGithub(

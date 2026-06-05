@@ -187,7 +187,10 @@ export function resolveWatchTargets(pluginDir: string): string[] {
 async function buildAndReload(pluginId: string, pluginDir: string): Promise<void> {
   const state = getState()
   try {
-    await buildUserPlugin(pluginDir)
+    // diagnosticsLog wires the Whiskit backend's per-stage spans
+    // (userPlugin.build / .dependencies / .serverBuild / .clientBuild)
+    // into dev rebuilds — visible with `bakin diagnostics startup on`.
+    await buildUserPlugin(pluginDir, { diagnosticsLog: log, pluginId })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     log.error('hot-reload: build failed', err as Error, { pluginId })
