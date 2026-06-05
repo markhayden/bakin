@@ -1,17 +1,24 @@
 /**
- * PluginHost — boots plugins at runtime.
+ * PluginHost — boots plugins at runtime, lazily.
  *
  * On mount:
  *   1. Fetches /api/plugins/manifest (TF1) to get each plugin's client
- *      bundle URL.
- *   2. Dynamic-imports every clientEntry in parallel. Each plugin's
- *      client.mjs runs `registerPlugin({...})` / `registerSlot(...)` as a
- *      side effect — no exports are read.
- *   3. Optionally calls `assertReactInstance(pluginId, pluginReact)` on
- *      each loaded module to catch plugins that bundled their own React
- *      (broken hooks).
- *   4. Flips a `ready` flag to re-render the shell with nav items + slots
- *      populated from the registry.
+ *      bundle URL + declarative `contributes.{nav,routes,slots,eager}`.
+ *   2. Seeds the sidebar from manifest nav (`setManifestNav`) and installs
+ *      the lazy ownership index (`configureLazyPlugins`) — all before any
+ *      client bundle loads.
+ *   3. Dynamic-imports ONLY eager plugins: `contributes.eager: true`
+ *      (background providers like nav-badge-providers) and legacy plugins
+ *      with a client but no declarative metadata (backward compat). Each
+ *      plugin's client.mjs runs `registerPlugin({...})` as a side effect —
+ *      no exports are read.
+ *   4. Flips a `ready` flag to render the shell. Every other plugin's
+ *      client loads on first demand: a `<Slot>` it owns rendering, or
+ *      navigation into one of its manifest route patterns (the plugin
+ *      route catch-all calls `requestRoutePlugins`).
+ *   5. After every client import, a drift check compares the runtime
+ *      registrations against the manifest declarations and warns on
+ *      mismatch (the lazy contract is only as good as the manifest).
  *
  * Re-render on registry change: consumers (<Slot>, <AppSidebar>) subscribe
  * to `getRegistryVersion()` via `useSyncExternalStore` themselves — a
@@ -22,13 +29,24 @@
  * Dev hot-swap bridge: when the dev-client script is present in the
  * document, PluginHost exposes `window.__bakinHotSwapPlugin(id, clientEntry,
  * version)` so scripts/dev.ts can trigger a per-plugin remount without a
- * full page reload. Production builds never ship the dev client, so the
- * window handle stays undefined there.
+ * full page reload. Hot-swapping a plugin whose client never loaded is a
+ * metadata-only refresh — the new bundle is picked up by the next demand.
+ * Production builds never ship the dev client, so the window handle stays
+ * undefined there.
  */
 import { useEffect, useState, type ReactNode } from 'react'
-import { unregisterPlugin } from '@makinbakin/sdk'
+import {
+  configureLazyPlugins,
+  getPluginLoadState,
+  setLazyPluginLoader,
+  setManifestNav,
+  setPluginLoadState,
+  unregisterPlugin,
+  type PluginContributions,
+} from '@makinbakin/sdk'
 import { Slot } from '@makinbakin/sdk/slots'
 import { assertReactInstance } from '../lib/react-identity'
+import { checkPluginDrift } from './drift-check'
 import {
   installVersionMismatchDetector,
   VERSION_MISMATCH_EVENT,
@@ -43,6 +61,7 @@ interface ManifestPlugin {
   clientVersion?: string
   clientCss?: string
   status?: 'active' | 'failed'
+  contributes?: PluginContributions
 }
 
 interface Manifest {
@@ -208,6 +227,88 @@ function swapPluginCss(plugin: ManifestPlugin, version: string): void {
   }
 }
 
+/**
+ * True if the manifest declares any of the metadata that makes lazy
+ * loading possible. Plugins with a client but none of it are legacy-shaped
+ * and load eagerly (old behavior) until migrated.
+ */
+function hasDeclarativeClientMetadata(plugin: ManifestPlugin): boolean {
+  const c = plugin.contributes
+  return Boolean(c?.nav?.length || c?.routes?.length || c?.slots?.length)
+}
+
+function isLoadablePlugin(plugin: ManifestPlugin): boolean {
+  return plugin.status !== 'failed' && Boolean(plugin.clientEntry)
+}
+
+/** Eager = explicit `contributes.eager` escape hatch, or legacy shape. */
+function isEagerPlugin(plugin: ManifestPlugin): boolean {
+  if (!isLoadablePlugin(plugin)) return false
+  return plugin.contributes?.eager === true || !hasDeclarativeClientMetadata(plugin)
+}
+
+// Plugin ids whose manifest nav we've seeded — so a plugin removed from the
+// manifest (dev uninstall + hot reload) gets its sidebar entry cleared on
+// the next refresh instead of lingering forever.
+const seededManifestNavIds = new Set<string>()
+
+/**
+ * Apply a fresh manifest's declarative metadata: sidebar nav + the lazy
+ * slot/route ownership index. Runs on boot and after every manifest
+ * refresh (hot-swap, version mismatch) so metadata edits land without the
+ * client bundle reloading.
+ */
+function applyManifestMetadata(manifest: Manifest): void {
+  const slotOwners = new Map<string, string[]>()
+  const routeOwners: Array<{ pattern: string; pluginId: string }> = []
+  const presentIds = new Set<string>()
+
+  for (const plugin of manifest.plugins) {
+    presentIds.add(plugin.id)
+    const loadable = isLoadablePlugin(plugin)
+    setManifestNav(plugin.id, loadable ? plugin.contributes?.nav ?? null : null)
+    if (loadable && plugin.contributes?.nav?.length) seededManifestNavIds.add(plugin.id)
+    if (!loadable) continue
+    for (const slot of plugin.contributes?.slots ?? []) {
+      const owners = slotOwners.get(slot) ?? []
+      owners.push(plugin.id)
+      slotOwners.set(slot, owners)
+    }
+    for (const route of plugin.contributes?.routes ?? []) {
+      routeOwners.push({ pattern: route.path, pluginId: plugin.id })
+    }
+  }
+
+  for (const id of seededManifestNavIds) {
+    if (presentIds.has(id)) continue
+    setManifestNav(id, null)
+    seededManifestNavIds.delete(id)
+  }
+
+  configureLazyPlugins({ slotOwners, routeOwners })
+}
+
+/**
+ * Compare a freshly-loaded client's runtime registrations against its
+ * manifest declarations. Drift means lazy loading misbehaves (routes that
+ * 404 until an unrelated demand, nav that only exists after load), so the
+ * warnings are unconditional — this is an authoring bug, not noise.
+ */
+function runDriftCheck(plugin: ManifestPlugin): void {
+  const warnings = checkPluginDrift(plugin.id, plugin.contributes)
+  for (const warning of warnings) {
+    console.warn(`[bakin] plugin "${plugin.id}" manifest drift: ${warning}`)
+  }
+  if (warnings.length > 0) {
+    debugPluginStartup('pluginHost.driftCheck', {
+      pluginId: plugin.id,
+      status: 'drift',
+      count: warnings.length,
+      warnings,
+    })
+  }
+}
+
 async function loadPluginClient(plugin: ManifestPlugin): Promise<void> {
   if (plugin.status === 'failed' || !plugin.clientEntry) {
     debugPluginStartup('pluginHost.clientImport', {
@@ -218,6 +319,9 @@ async function loadPluginClient(plugin: ManifestPlugin): Promise<void> {
     })
     return
   }
+  // Mark loading synchronously (before the first await) so a second demand
+  // arriving in the same tick can't double-import the bundle.
+  setPluginLoadState(plugin.id, 'loading')
   const cssStartedAt = nowMs()
   injectPluginCss(plugin)
   if (plugin.clientCss) {
@@ -239,14 +343,19 @@ async function loadPluginClient(plugin: ManifestPlugin): Promise<void> {
     if (mod.React) {
       assertReactInstance(plugin.id, mod.React as typeof import('react'))
     }
+    setPluginLoadState(plugin.id, 'loaded')
     debugPluginStartup('pluginHost.clientImport', {
       pluginId: plugin.id,
       status: 'ok',
       durationMs: roundedMs(nowMs() - startedAt),
     })
+    runDriftCheck(plugin)
   } catch (err) {
-    // One bad plugin shouldn't prevent the rest from loading. Log + skip.
+    // One bad plugin shouldn't prevent the rest from loading. Log + skip;
+    // the error state surfaces through <Slot> / catch-all fallbacks, which
+    // offer a retry.
     console.error(`[bakin] Plugin ${plugin.id} failed to load from ${importUrl}:`, err)
+    setPluginLoadState(plugin.id, 'error', err instanceof Error ? err.message : String(err))
     debugPluginStartup('pluginHost.clientImport', {
       pluginId: plugin.id,
       status: 'error',
@@ -293,10 +402,29 @@ async function refreshManifest(): Promise<Manifest | null> {
 async function performHotSwap(id: string, clientEntry: string, version: string, importUrl: string): Promise<void> {
   const manifest = await refreshManifest()
   const plugin = manifest?.plugins.find((p) => p.id === id)
+  // Re-apply declarative metadata so manifest edits (nav, slot/route
+  // ownership) land with the swap, not just code changes.
+  if (manifest) applyManifestMetadata(manifest)
+  // Lazy plugin whose client never loaded: nothing to swap. The refreshed
+  // manifest carries the new clientVersion, so the next demand imports the
+  // new bundle. Record the URL so repeat SSE events for the same build
+  // stay deduped.
+  if (getPluginLoadState(id) === 'idle') {
+    appliedHotSwapUrls.set(id, importUrl)
+    return
+  }
   unregisterPlugin(id)
   if (plugin) swapPluginCss(plugin, version)
-  await import(/* @vite-ignore */ importUrl)
+  setPluginLoadState(id, 'loading')
+  try {
+    await import(/* @vite-ignore */ importUrl)
+  } catch (err) {
+    setPluginLoadState(id, 'error', err instanceof Error ? err.message : String(err))
+    throw err
+  }
+  setPluginLoadState(id, 'loaded')
   appliedHotSwapUrls.set(id, importUrl)
+  if (plugin) runDriftCheck(plugin)
 }
 
 async function hotSwapPlugin(id: string, clientEntry: string, version: string): Promise<void> {
@@ -330,6 +458,7 @@ async function bootPluginClients(): Promise<PluginBootResult> {
   const startedAt = nowMs()
   let status: 'ok' | 'error' = 'ok'
   let count = 0
+  let lazyCount = 0
   try {
     const manifest = await refreshManifest()
     if (!manifest) {
@@ -337,8 +466,13 @@ async function bootPluginClients(): Promise<PluginBootResult> {
       status = 'error'
       return { status, count }
     }
-    count = manifest.plugins.length
-    await Promise.all(manifest.plugins.map(loadPluginClient))
+    // Declarative metadata first: sidebar nav + lazy ownership index exist
+    // before (and regardless of) any client bundle loading.
+    applyManifestMetadata(manifest)
+    const eagerPlugins = manifest.plugins.filter(isEagerPlugin)
+    count = eagerPlugins.length
+    lazyCount = manifest.plugins.filter((p) => isLoadablePlugin(p) && !isEagerPlugin(p)).length
+    await Promise.all(eagerPlugins.map(loadPluginClient))
   } catch (err) {
     status = 'error'
     console.error('[bakin] Plugin host boot failed:', err)
@@ -348,6 +482,7 @@ async function bootPluginClients(): Promise<PluginBootResult> {
       status,
       durationMs: roundedMs(endedAt - startedAt),
       count,
+      lazyCount,
     })
     logStartupResourceSummary(startedAt, endedAt)
   }
@@ -406,6 +541,19 @@ export function PluginHost({ children }: { children: ReactNode }) {
       cancelled = true
       releasePluginBoot()
     }
+  }, [])
+
+  // Install the lazy demand loader: <Slot> and the plugin route catch-all
+  // request a plugin id on first render of something it owns; we resolve it
+  // against the latest manifest and import its client bundle. The lazy
+  // store filters non-idle plugins, so this never double-imports.
+  useEffect(() => {
+    setLazyPluginLoader((pluginId) => {
+      const plugin = latestManifest?.plugins.find((p) => p.id === pluginId)
+      if (!plugin) return
+      void loadPluginClient(plugin)
+    })
+    return () => setLazyPluginLoader(null)
   }, [])
 
   // Expose the hot-swap handle to the dev client. Keyed on the script

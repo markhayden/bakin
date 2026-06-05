@@ -74,6 +74,19 @@ export function getSlotEntries(name: string): ReadonlyArray<SlotEntry> {
 }
 
 /**
+ * Slot names that currently have at least one entry owned by the given
+ * plugin. Used by the host's drift validation check to compare runtime
+ * slot registrations against the manifest's `contributes.slots`.
+ */
+export function getSlotNamesOwnedBy(pluginId: string): string[] {
+  const names: string[] = []
+  for (const [name, entries] of getRegistry().entries()) {
+    if (entries.some((e) => e.owner === pluginId)) names.push(name)
+  }
+  return names
+}
+
+/**
  * Remove every slot entry owned by the given plugin. Used by
  * `unregisterPlugin` during v2 hot-swap. Entries without an `owner`
  * (test registrations, pre-v2 legacy registrations) survive — callers
