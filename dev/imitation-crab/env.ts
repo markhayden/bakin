@@ -1,12 +1,33 @@
 import { homedir } from 'os'
 import { join } from 'path'
 
-export type MockChatMode = 'canned' | 'echo' | 'error'
+/**
+ * Chat modes:
+ * - canned / echo: normal replies
+ * - error: structural gateway error
+ * - slow: reply after OPENCLAW_MOCK_CHAT_DELAY_MS (transport-latency testing)
+ * - idle-timeout: codex app-server idle-timeout error (turn death, runtime_timeout)
+ * - session-death: accept the turn, write an oversized-interrupted trajectory
+ *   to the mock home, and never send a final frame — exercises the adapter's
+ *   fail-fast watcher + forensics end to end
+ */
+export type MockChatMode = 'canned' | 'echo' | 'error' | 'slow' | 'idle-timeout' | 'session-death'
 export type MockToolMode = 'ok' | 'error'
 
 const DEFAULT_PORT = 18789
-const CHAT_MODES = new Set<MockChatMode>(['canned', 'echo', 'error'])
+const DEFAULT_CHAT_DELAY_MS = 2000
+const CHAT_MODES = new Set<MockChatMode>(['canned', 'echo', 'error', 'slow', 'idle-timeout', 'session-death'])
 const TOOL_MODES = new Set<MockToolMode>(['ok', 'error'])
+
+export function getChatDelayMs(): number {
+  const raw = process.env.OPENCLAW_MOCK_CHAT_DELAY_MS
+  if (!raw) return DEFAULT_CHAT_DELAY_MS
+  const delay = Number(raw)
+  if (!Number.isFinite(delay) || delay < 0) {
+    throw new Error(`Invalid OPENCLAW_MOCK_CHAT_DELAY_MS: ${raw}`)
+  }
+  return delay
+}
 
 export function getMockHome(): string {
   return process.env.IMITATION_CRAB_HOME

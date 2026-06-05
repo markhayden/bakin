@@ -7,7 +7,9 @@
  *   RPC  agent
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'http'
-import { getChatMode, getGatewayPort, getToolMode } from './env'
+import { appendFileSync, mkdirSync } from 'fs'
+import { join } from 'path'
+import { getChatDelayMs, getChatMode, getGatewayPort, getMockHome, getToolMode } from './env'
 
 const { WebSocketServer } = require('ws') as { WebSocketServer: new (opts: { noServer: boolean }) => WsServer }
 
@@ -35,6 +37,52 @@ const AGENT_NAMES: Record<string, string> = {
 
 function timestamp(): string {
   return new Date().toISOString().slice(11, 23)
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Simulate OpenClaw recording an oversized-interrupted run: the trajectory
+ * gets a session.started → tool.call → oversized model.completed →
+ * session.ended(interrupted) sequence, exactly the incident shape. Written
+ * shortly after the turn is accepted so the adapter's fail-fast watcher has
+ * something to find while the request is still pending.
+ */
+function writeSessionDeathTrajectory(agentId: string, sessionId: string): void {
+  const dir = join(getMockHome(), 'agents', agentId, 'sessions')
+  mkdirSync(dir, { recursive: true })
+  const file = join(dir, `${sessionId}.trajectory.jsonl`)
+  const oversized = 'X'.repeat(262_144) // OpenClaw's trajectory text limit
+  const base = {
+    traceSchema: 'openclaw-trajectory',
+    schemaVersion: 1,
+    traceId: sessionId,
+    source: 'runtime',
+    sessionId,
+    runId: `mock-run-${sessionId.slice(0, 8)}`,
+    provider: 'imitation-crab',
+    modelId: 'mock-model',
+  }
+  const events = [
+    { ...base, type: 'session.started', seq: 1, data: { toolCount: 5 } },
+    { ...base, type: 'tool.call', seq: 2, data: { name: 'bakin_exec_tasks_log_progress', toolCallId: 'tc-1' } },
+    {
+      ...base,
+      type: 'model.completed',
+      seq: 3,
+      data: {
+        timedOut: false,
+        aborted: false,
+        promptError: null,
+        usage: { input: 42000, output: 90000, total: 132000 },
+        assistantTexts: [oversized],
+      },
+    },
+    { ...base, type: 'session.ended', seq: 4, data: { status: 'interrupted', timedOut: false, promptError: null } },
+  ].map((event, index) => JSON.stringify({ ...event, ts: new Date(Date.now() + index).toISOString() }))
+  appendFileSync(file, events.join('\n') + '\n')
 }
 
 function readBody(req: IncomingMessage): Promise<string> {
@@ -89,6 +137,41 @@ export async function handleGatewayRpcRequest(method: string, params: Record<str
         break
       case 'error':
         return { ok: false, error: { message: 'Mock error mode', code: 'mock_error' } }
+      case 'idle-timeout':
+        // The shape OpenClaw's codex app-server produces when a run ends
+        // before reporting completion — the adapter maps this to a
+        // RuntimeTurnError(runtime_timeout).
+        return {
+          ok: false,
+          error: { message: 'codex app-server turn idle timed out waiting for turn/completed', code: 'turn_completion_idle_timeout' },
+        }
+      case 'session-death': {
+        const sessionId = typeof params.sessionId === 'string' ? params.sessionId : null
+        if (!sessionId) {
+          // Unthreaded sends have no trajectory for forensics — fall back to
+          // the structured idle-timeout shape so the failure is still typed.
+          return {
+            ok: false,
+            error: { message: 'codex app-server turn idle timed out waiting for turn/completed', code: 'turn_completion_idle_timeout' },
+          }
+        }
+        console.log(`  → rpc=agent agent=${agentId} mode=session-death session=${sessionId}`)
+        // Record the death on disk ~150ms into the turn, and never send a
+        // final frame: the accepted-ack below keeps the request pending so
+        // the adapter's fail-fast trajectory watcher must catch it.
+        setTimeout(() => {
+          try {
+            writeSessionDeathTrajectory(agentId, sessionId)
+          } catch (err) {
+            console.error('  → session-death trajectory write failed:', err)
+          }
+        }, 150)
+        return { ok: true, payload: { status: 'accepted' } }
+      }
+      case 'slow':
+        await sleep(getChatDelayMs())
+        reply = `[mock:${agentName}] Acknowledged after a slow turn.`
+        break
       case 'canned':
       default:
         reply = `[mock:${agentName}] Acknowledged. Task understood — working on it.`
