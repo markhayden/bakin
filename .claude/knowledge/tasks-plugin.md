@@ -206,7 +206,7 @@ state. Once `availableAt <= now`, the task naturally renders in the normal group
 2. The SSE server sends this as a `type: 'taskboard'` event to all connected clients
 3. The global `use-sse.ts` hook receives the event and calls `bumpTaskboard()` on the Zustand store
 4. `kanban-board.tsx` subscribes to `taskboardVersion` and re-fetches from `/api/plugins/tasks/` on change
-5. No file watcher needed for taskboard updates — task-store writes trigger SSE broadcasts directly
+5. No file watcher involved — the content watcher explicitly ignores `tasks/` (#434); task-store writes trigger SSE broadcasts directly and are the single broadcast source. The store keeps an in-memory id→path + column-bucket index (self-healing, no content cached) so `getSync`/`appendLogSync`/column counts don't walk the monthly shards.
 
 ### Store Access Pattern
 

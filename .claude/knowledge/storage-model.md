@@ -128,6 +128,12 @@ Key sections: `runtime`, `search`, `dispatch`, `watchdog`, `sse`, `models`, `doc
 
 Plugins can request watch patterns via `ctx.watchFiles(['data/*.md'])`; external plugin patterns are relative to that plugin's scoped storage root.
 
+Ignored paths (`shouldIgnoreContentWatcherPath`): `plugins/`, dotfiles, and
+**`tasks/`** — task JSON is store-managed and the store's own subscription emit
+is the single authoritative broadcast (watching `tasks/` produced a redundant
+second read+SSE ~300ms after every write). External hand-edits to task files
+require a restart to broadcast; the store is the single writer (#434).
+
 ## Antfly Search Integration
 
 Antfly is the search index layer. The filesystem remains the source of truth — Antfly is never the primary store.

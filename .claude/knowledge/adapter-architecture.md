@@ -118,7 +118,15 @@ an explicit allowlist entry with owner/reason/tracking. Do not call
 `~/.bakin/tasks/` is the source of truth for task metadata. Runtime execution
 ids are delivery/execution references only. Do not dual-write Bakin task fields
 into runtime provider metadata. Task title, column, priority, blockers,
-workflow state, and logs belong to the Bakin task store. (The old
+workflow state, and logs belong to the Bakin task store. The store keeps an
+in-memory id→path + column-bucket index (no content cached; self-healing on
+miss) — `tasks/` is ignored by the content watcher and the store's own emit is
+the single broadcast source, so the store is the **single writer** for task
+JSON; external hand-edits need a restart to broadcast.
+
+Cross-boundary asset lookup from core goes through the `assets.listByTask`
+hook (assets plugin owns the index) — core must not walk `assets/store/`
+directly. (The old
 `runtime.tasks.*` adapter surface was deleted — it returned fabricated
 `flowId`s and always-`'unknown'` status with zero real consumers; dispatch
 execution tracking lives in the in-flight turn registry in
