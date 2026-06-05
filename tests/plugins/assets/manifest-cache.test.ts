@@ -50,7 +50,7 @@ import { resolveAssetServe } from '../../../plugins/assets/lib/serve'
 const srcDir = join(testDir, 'src')
 
 /** Count readFileSync calls that target a manifest.json. */
-function manifestReads(spy: ReturnType<typeof spyOn>): number {
+function manifestReads(spy: { mock: { calls: unknown[][] } }): number {
   return spy.mock.calls.filter((c) => String(c[0]).endsWith('manifest.json')).length
 }
 
