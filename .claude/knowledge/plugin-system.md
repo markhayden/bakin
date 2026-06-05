@@ -65,17 +65,30 @@ HTTP server begins accepting traffic
 On shutdown (SIGTERM): pluginRegistry.shutdownAll() →
   calls plugin.onShutdown() in reverse order
 
-Browser boot (packages/host/src/main.tsx)
+Browser boot (packages/host/src/main.tsx) — LAZY since Whiskit P1
     ↓
 ReactDOM renders <PluginHost><Shell/></PluginHost>
     ↓
 PluginHost.useEffect:
-  1. fetch('/api/plugins/manifest')
-  2. Promise.all(manifest.plugins.map(loadPluginClient))
-  3. loadPluginClient = dynamic import of /api/plugins/<id>/assets/client.js
-  4. Each plugin's client.js runs registerPlugin({...}) as a side effect
-  5. setReady(true) → shell re-renders, pulls nav items + slots from registry
+  1. fetch('/api/plugins/manifest') — includes contributes.{nav,routes,slots,eager}
+  2. applyManifestMetadata: setManifestNav per plugin (sidebar renders from
+     manifest JSON) + configureLazyPlugins (slot/route → owning plugin index)
+  3. Import ONLY eager plugins: contributes.eager (tasks, health — nav-badge
+     providers) or legacy clients with no declarative metadata
+  4. setReady(true) → shell renders; sidebar nav is complete already
+  5. Lazy plugins import on first demand: <Slot> render of a declared slot, or
+     the plugin route catch-all matching a declared route pattern. Load states
+     (idle/loading/loaded/error) live in the SDK lazy store; failed imports
+     render inline errors with retry. After every client import a drift check
+     compares runtime registrations vs manifest declarations and console.warns.
+  6. Each plugin's client.js runs registerPlugin({...}) as a side effect.
+     Runtime navItems override manifest nav while registered (conditional-nav
+     escape hatch); unregisterPlugin never clears manifest nav.
 ```
+
+The CI twin of the runtime drift check is `tests/plugins/manifest-drift.test.tsx`
+— it imports every clientful core plugin and fails on declaration drift, and
+pins the eager list (tasks + health only).
 
 ## Startup Diagnostics
 
@@ -791,23 +804,33 @@ On mount:
 
 ```
 1. GET /api/plugins/manifest
-   → { plugins: [{ id, name, version, clientEntry }, ...] }
+   → { plugins: [{ id, name, version, clientEntry, contributes }, ...] }
    → clientEntry = "/api/plugins/<id>/assets/client.js"
-2. Promise.all(plugins.map(p => import(p.clientEntry)))
-3. Each dynamic import evaluates the plugin's client.js, which runs
-   `registerPlugin({...})` as a module side-effect.
-4. `assertReactInstance(pluginId, module.React)` — optional runtime
+2. applyManifestMetadata: setManifestNav(id, contributes.nav) per plugin
+   (sidebar nav exists before any client loads, survives unregisterPlugin)
+   + configureLazyPlugins({ slotOwners, routeOwners }) from
+   contributes.slots / contributes.routes.
+3. Import ONLY eager plugins — contributes.eager: true, or clients with no
+   declarative nav/routes/slots (legacy backward compat).
+4. setReady(true) → the shell renders with the full sidebar.
+5. Lazy demand: <Slot> calls requestSlotPlugins(name) on render; the
+   plugin route catch-all calls requestRoutePlugins(pathname). The host's
+   loader (setLazyPluginLoader) imports the owning plugin's client.js;
+   its registerPlugin({...}) side effect fills the registry and consumers
+   re-render. Load state per plugin: idle → loading → loaded | error
+   (error → inline fallback with retry via retryPluginLoad).
+6. `assertReactInstance(pluginId, module.React)` — optional runtime
    check that catches plugins that accidentally bundled their own
    React (broken hooks). Plugins aren't required to export React;
    the lack of an export is a non-event.
-5. setReady(true) → the shell re-renders. AppSidebar reads
-   `getAllNavItems()`; slot consumers re-evaluate.
+7. After every client import, checkPluginDrift (drift-check.ts) compares
+   runtime registrations against contributes.{nav,routes,slots} and
+   console.warns on mismatch.
 ```
 
 Failures in one plugin are logged and skipped — they never block the
-others. While plugins are loading, the sidebar is briefly empty and
-slots return `null` for uncontributed names. Acceptable for a
-single-user LAN app on cold boot.
+others. Slot entries and lazily-routed pages are wrapped in per-plugin
+error boundaries so a crashing component can't take down the shell.
 
 Binary mode is identical at the loader level: the same
 `/api/plugins/<id>/assets/client.js` URL, just served from embedded
