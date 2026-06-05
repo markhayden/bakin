@@ -282,6 +282,44 @@ describe('recovery ladder — interplay with generic failures', () => {
     expect(mockRuntimeSend.mock.calls.length).toBe(1) // no immediate re-dispatch
   })
 
+  it('an adapter-recovered turn (lost frame, trajectory success) is a plain success — no death record', async () => {
+    // When post-mortem recovery returns the salvaged response text, the send
+    // RESOLVES; dispatch must record nothing ladder- or cooldown-related.
+    setColumns({ todo: [{ id: 't-450', title: 'Recovered turn', agent: 'jessica' }] })
+    mockRuntimeSend.mockResolvedValueOnce({ id: 'msg', content: 'recovered from trajectory', metadata: { sessionId: 's-1' } } as { id: string })
+
+    await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+    expect(auditCalls('task.runtime_session_died').length).toBe(0)
+    expect(readState().failedDispatches['t-450']).toBeUndefined()
+    expect(mockStoreBlockTask).not.toHaveBeenCalled()
+  })
+
+  it('a failing salvage hook does not derail the ladder — corrective fires without the asset pointer', async () => {
+    setColumns({ todo: [{ id: 't-460', title: 'Salvage hook down', agent: 'jessica' }] })
+    mockHookInvoke.mockImplementation(async (hook: string): Promise<unknown> => {
+      if (hook === 'assets.saveFromSource') throw new Error('assets plugin disabled')
+      if (hook === 'workflows.getActiveAgents') return []
+      return undefined
+    })
+    mockRuntimeSend.mockRejectedValueOnce(deathError())
+
+    await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+    await wait(250)
+
+    // Death audited WITHOUT a salvagedAssetId; corrective re-dispatch fires.
+    const death = auditCalls('task.runtime_session_died')[0]?.[3] as Record<string, unknown>
+    expect(death.deaths).toBe(1)
+    expect(death.salvagedAssetId).toBeUndefined()
+    expect(auditCalls('task.corrective_redispatch').length).toBe(1)
+    expect(mockRuntimeSend.mock.calls.length).toBe(2)
+    const second = mockRuntimeSend.mock.calls[1]?.[0] as Record<string, unknown>
+    expect(second.content).toContain('PREVIOUS ATTEMPT FAILED')
+    expect(second.content).not.toContain('salvaged as asset')
+  })
+
   it('a successful corrective attempt clears the ladder state', async () => {
     setColumns({ todo: [{ id: 't-500', title: 'Recovers on retry', agent: 'jessica' }] })
     mockRuntimeSend.mockRejectedValueOnce(deathError())

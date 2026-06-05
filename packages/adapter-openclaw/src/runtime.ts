@@ -2258,6 +2258,13 @@ export async function* mergeChatStreams(
       }
       push({ source, done: true })
     } catch (error) {
+      // The secondary (session-activity poller) is advisory — a poller
+      // hiccup must never abort a live turn and mask the primary result.
+      // Degrade to "secondary done"; primary errors still propagate.
+      if (source === 'secondary') {
+        push({ source, done: true })
+        return
+      }
       push({ source, error })
     }
   }

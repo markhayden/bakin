@@ -1117,6 +1117,25 @@ describe('bakin_exec_tasks_create', () => {
     expect(result.notice).toContain('one in succession')
   })
 
+  it('nudge boundary: 2 enumerated items stay silent, 3 fire — across marker styles', async () => {
+    mockCreateTaskWithEffects.mockResolvedValue({ id: 'bound-1' })
+    const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!
+
+    const two = await callTool(tool, {
+      title: 'Two items',
+      parentId: 'parent-1',
+      description: 'Deliver:\n- brief\n- report',
+    }, 'chef')
+    expect(two.notice ?? '').not.toContain('markdown checklist')
+
+    const threeMixed = await callTool(tool, {
+      title: 'Three items, mixed markers',
+      parentId: 'parent-1',
+      description: 'Deliver:\n• brief\n* report\n1) matrix',
+    }, 'chef')
+    expect(threeMixed.notice).toContain('markdown checklist')
+  })
+
   it('does NOT nudge for checklist-formatted or short descriptions (advisory only, never rejects)', async () => {
     mockCreateTaskWithEffects.mockResolvedValue({ id: 'ok-1' })
     const tool = findTool(activated.execTools, 'bakin_exec_tasks_create')!

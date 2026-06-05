@@ -56,6 +56,50 @@ describe('mergeChatStreams consumer-abandonment', () => {
     expect(state.polls - pollsAtBreak).toBeLessThanOrEqual(1)
   })
 
+  it('a secondary (activity poller) error must NOT kill the turn — the primary result wins', async () => {
+    // The activity stream is advisory; a poller hiccup (unreadable session
+    // file mid-poll) aborting a 10-minute turn would mask a real response.
+    const primary = (async function* () {
+      yield { type: 'text', content: 'the real answer' } as ChatChunk
+      await tick(30)
+      yield { type: 'done' } as ChatChunk
+    })()
+    const secondary = (async function* () {
+      yield { type: 'tool', content: 'poll-1' } as ChatChunk
+      throw new Error('session file unreadable mid-poll')
+    })()
+
+    const chunks: ChatChunk[] = []
+    for await (const chunk of mergeChatStreams(primary, secondary, () => {})) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks.some((c) => c.type === 'text' && c.content === 'the real answer')).toBe(true)
+    expect(chunks.at(-1)?.type).toBe('done')
+  })
+
+  it('a primary error still propagates and stops the secondary', async () => {
+    const state = { polls: 0, aborted: false }
+    const primary = (async function* () {
+      yield { type: 'text', content: 'partial' } as ChatChunk
+      throw new Error('turn exploded')
+    })()
+
+    let thrown: unknown
+    try {
+      for await (const chunk of mergeChatStreams(primary, pollingSecondary(state), () => {
+        state.aborted = true
+      })) {
+        void chunk
+      }
+    } catch (err) {
+      thrown = err
+    }
+
+    expect((thrown as Error).message).toBe('turn exploded')
+    expect(state.aborted).toBe(true)
+  })
+
   it('still aborts the secondary when the primary finishes normally', async () => {
     const state = { polls: 0, aborted: false }
     const primary = (async function* () {

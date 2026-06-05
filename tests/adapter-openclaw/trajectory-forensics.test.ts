@@ -19,8 +19,10 @@ import {
   inspectTrajectoryRun,
   trajectoryFilePathFor,
   safeTrajectoryOffset,
+  watchTrajectoryForDeath,
   OPENCLAW_TRAJECTORY_TEXT_LIMIT,
 } from '../../packages/adapter-openclaw/src/trajectory-forensics'
+import { RuntimeTurnError } from '../../packages/core/src/adapters/runtime'
 
 afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 
@@ -112,6 +114,18 @@ describe('inspectTrajectoryRun', () => {
     expect(outcome).toEqual({ kind: 'success', content: 'All six assets saved: a1..a6', sessionId: SESSION_ID })
   })
 
+  it('flags oversized-but-not-truncated completions (between threshold and trajectory limit)', () => {
+    // ~150KB: above the 128KB oversized threshold, below the 262,144-byte
+    // trajectory truncation limit — the realistic middle band.
+    writeRun(trajectoryFile, { status: 'interrupted', assistantTexts: ['B'.repeat(150_000)] })
+    const outcome = inspectTrajectoryRun({ trajectoryFile, oversizedOutputBytes: 131072 })
+    expect(outcome?.kind).toBe('death')
+    if (outcome?.kind !== 'death') return
+    expect(outcome.diagnosis.oversizedOutput).toBe(true)
+    expect(outcome.diagnosis.outputTruncated).toBe(false)
+    expect(outcome.diagnosis.completionBytes).toBe(150_000)
+  })
+
   it('flags interrupted-but-small completions without the oversized flag', () => {
     writeRun(trajectoryFile, { status: 'interrupted', assistantTexts: ['short reply'] })
     const outcome = inspectTrajectoryRun({ trajectoryFile })
@@ -178,6 +192,45 @@ describe('inspectTrajectoryRun', () => {
     writeRun(file, { status: 'success', assistantTexts: ['recovered'] })
     const outcome = inspectTrajectoryRun({ trajectoryFile: file })
     expect(outcome?.kind).toBe('success')
+  })
+})
+
+describe('watchTrajectoryForDeath', () => {
+  it('rejects with the diagnosis only once session.ended (non-success) lands on disk', async () => {
+    const watch = watchTrajectoryForDeath({
+      trajectoryFile,
+      sinceByteOffset: 0,
+      oversizedOutputBytes: 131072,
+      pollMs: 20,
+    })
+    let settled: unknown = null
+    watch.promise.catch((err) => { settled = err })
+
+    // Mid-run events only — no verdict yet.
+    appendFileSync(trajectoryFile, event('session.started', {}, 1) + '\n' + event('tool.call', { name: 'x' }, 2) + '\n')
+    await new Promise((r) => setTimeout(r, 80))
+    expect(settled).toBeNull()
+
+    // Death lands → reject within a couple polls.
+    appendFileSync(trajectoryFile, [
+      event('model.completed', { assistantTexts: ['boom'] }, 3),
+      event('session.ended', { status: 'interrupted', timedOut: false }, 4),
+    ].join('\n') + '\n')
+    await new Promise((r) => setTimeout(r, 100))
+    expect(settled).toBeInstanceOf(RuntimeTurnError)
+    expect((settled as RuntimeTurnError).diagnosis.reason).toBe('session_interrupted')
+    watch.stop()
+  })
+
+  it('stops silently on a successful run (the gateway frame delivers the result)', async () => {
+    const watch = watchTrajectoryForDeath({ trajectoryFile, sinceByteOffset: 0, pollMs: 20 })
+    let settled = false
+    watch.promise.catch(() => { settled = true })
+
+    writeRun(trajectoryFile, { status: 'success', assistantTexts: ['fine'] })
+    await new Promise((r) => setTimeout(r, 100))
+    expect(settled).toBe(false)
+    watch.stop()
   })
 })
 
