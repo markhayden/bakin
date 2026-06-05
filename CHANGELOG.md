@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 ## [Unreleased]
 
+## [0.0.1-rc.16] - 2026-06-05
+
+### Added
+
+### Changed
+
+### Fixed
+
 ## [0.0.1-rc.15] - 2026-06-04
 
 ### Fixed
@@ -204,5 +212,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), with Ba
 
 [0.0.1-rc.14]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.14
 
-[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.15...HEAD
 [0.0.1-rc.15]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.15
+
+[Unreleased]: https://github.com/markhayden/bakin/compare/v0.0.1-rc.16...HEAD
+[0.0.1-rc.16]: https://github.com/markhayden/bakin/releases/tag/v0.0.1-rc.16
