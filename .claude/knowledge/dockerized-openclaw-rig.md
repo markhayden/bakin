@@ -77,3 +77,19 @@ gitignored `dev/openclaw-home/` until `reset`. Both are documented in
 Cross-agent dispatch is wired + verified, but relies on the rig pre-approving the
 device + `plugins.allow`. The clean re-auth path (`--fresh`) re-triggers interactive
 Codex OAuth. Native vs sandbox differ only in where Bakin runs; both can dispatch.
+
+**Asset-save path gap (native/isolated modes):** the agent runs in the container
+and writes deliverables under `/home/node/.openclaw/workspace/…`, but
+`bakin_exec_assets_save` executes host-side and can't read container paths — the
+agent will (correctly) block the task with a path explanation. Production is
+unaffected (Bakin + OpenClaw share one filesystem on the Mac mini). Observed
+live during the 2026-06-04 ladder smoke; if rig-level asset saving is ever
+needed, mount the workspace or translate paths like the openclaw-shim does.
+
+## Validation campaign
+
+`bun run scripts/instance/validate.ts` (rig up first) runs the session-death
+hardening validation: gateway sanity, real-turn e2e + forensics against live
+trajectories, same/cross-agent concurrency probes, benchmarks, a
+gateway-restart failure drill, and a session-retention probe. See
+`.claude/knowledge/session-forensics.md` for the system it validates.

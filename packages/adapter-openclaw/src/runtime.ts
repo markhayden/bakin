@@ -1272,7 +1272,15 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
     opts: OpenClawAgentTurnOptions,
   ): { kind: 'recovered'; content: string } | { kind: 'death'; error: RuntimeTurnError } | null {
     if (!trajectoryFile) return null
-    if (err.kind !== 'timeout' && err.kind !== 'transport') return null
+    // timeout/transport: the frame never arrived. runtime_failed: an error
+    // FRAME arrived — but a graceful gateway shutdown mid-turn sends one
+    // while ALSO writing session.ended(error) to the trajectory (observed
+    // live on the rig), and the frame can beat the fail-fast watcher. The
+    // on-disk evidence is authoritative either way; per-attempt offset
+    // scoping means a pre-run rejection (e.g. param validation) simply has
+    // no events after the offset → null → the original error stands.
+    // provider_cooldown stays excluded: the turn was never accepted.
+    if (err.kind !== 'timeout' && err.kind !== 'transport' && err.kind !== 'runtime_failed') return null
 
     const outcome = inspectTrajectoryRun({
       trajectoryFile,

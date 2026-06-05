@@ -74,12 +74,38 @@ function setColumns(c: Partial<Columns>): void {
 const mockStoreBlockTask = mock(async (..._args: unknown[]) => undefined)
 const mockStoreAddTaskLog = mock(async (..._args: unknown[]) => undefined)
 const mockStoreMoveTask = mock(async (..._args: unknown[]) => undefined)
+
+// Stateful column mock: dispatch moves tasks between columns (todo →
+// inProgress at fire, back on recovery, todo-park after decomposition) and
+// reads the board back via snapshots — a static mock would lie to the
+// settle-time guards.
+function relocate(taskId: string, to: keyof Columns): void {
+  for (const column of Object.keys(currentColumns) as Array<keyof Columns>) {
+    const list = currentColumns[column] as Array<{ id: string }>
+    const idx = list.findIndex((t) => t.id === taskId)
+    if (idx >= 0) {
+      const [task] = list.splice(idx, 1)
+      ;(currentColumns[to] as Array<{ id: string }>).push(task!)
+      return
+    }
+  }
+}
+
 const taskStoreMock = {
   readTaskboard: mock(() => ({ columns: currentColumns })),
   addTaskLog: (...args: unknown[]) => mockStoreAddTaskLog(...args),
-  updateTask: mock(async () => undefined),
-  moveTask: (...args: unknown[]) => mockStoreMoveTask(...args),
-  blockTask: (...args: unknown[]) => mockStoreBlockTask(...args),
+  updateTask: mock(async (taskId: string, patch: { column?: string }) => {
+    if (patch?.column) relocate(taskId, patch.column as keyof Columns)
+    return undefined
+  }),
+  moveTask: (...args: unknown[]) => {
+    relocate(args[0] as string, args[1] as keyof Columns)
+    return mockStoreMoveTask(...args)
+  },
+  blockTask: (...args: unknown[]) => {
+    relocate(args[0] as string, 'blocked')
+    return mockStoreBlockTask(...args)
+  },
 }
 mock.module('../../src/core/task-store', () => taskStoreMock)
 mock.module('@/core/task-store', () => taskStoreMock)
@@ -319,6 +345,46 @@ describe('recovery ladder — interplay with generic failures', () => {
     const second = mockRuntimeSend.mock.calls[1]?.[0] as Record<string, unknown>
     expect(second.content).toContain('PREVIOUS ATTEMPT FAILED')
     expect(second.content).not.toContain('salvaged as asset')
+  })
+
+  it('a successful DECOMPOSITION turn parks the parent in todo so continuation can re-dispatch it', async () => {
+    // Live-rig finding: the decomposition turn ends with "create subtasks,
+    // then STOP" (no tasks_complete), leaving the parent inProgress — where
+    // continuation skips it when the subtask chain completes, stranding it
+    // until watchdog recovery. The settle-success handler must move a
+    // decomposition parent back to todo (the dependsOn gate holds it there).
+    setColumns({ todo: [{ id: 't-480', title: 'Decomposing task', agent: 'jessica' }] })
+    mockRuntimeSend.mockRejectedValueOnce(deathError())
+    mockRuntimeSend.mockRejectedValueOnce(deathError())
+    // third send = the decomposition turn → succeeds (default resolve)
+
+    await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+    await wait(300)
+
+    expect(auditCalls('task.decomposition_dispatched').length).toBe(1)
+    // The decomposition turn's success must bounce the parent to todo.
+    const moveCalls = mockStoreMoveTask.mock.calls.filter((c) => c[0] === 't-480' && c[1] === 'todo')
+    expect(moveCalls.length).toBeGreaterThanOrEqual(1)
+    expect(readState().failedDispatches['t-480']).toBeUndefined()
+  })
+
+  it('a transport failure between ladder rungs PRESERVES the ladder state (gateway rebooting mid-recovery)', async () => {
+    // Real-rig scenario: death 1 → immediate corrective re-dispatch fires
+    // while the gateway is still restarting → transport failure. The generic
+    // cooldown record must not wipe sessionDeath, or the ladder restarts
+    // from scratch and the corrective prompt is lost.
+    setColumns({ todo: [{ id: 't-470', title: 'Gateway rebooting', agent: 'jessica' }] })
+    mockRuntimeSend.mockRejectedValueOnce(deathError())
+    mockRuntimeSend.mockRejectedValueOnce(new RuntimeError('OpenClaw chat gateway is not connected', { kind: 'transport' }))
+
+    await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+    await wait(150)
+
+    const record = readState().failedDispatches['t-470']
+    expect(record.kind).toBe('transient') // the transport failure is recorded…
+    expect(record.sessionDeath).toMatchObject({ stage: 'corrective', deaths: 1 }) // …but the ladder survives
   })
 
   it('a successful corrective attempt clears the ladder state', async () => {
