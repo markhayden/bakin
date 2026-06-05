@@ -20,6 +20,7 @@ import {
   trajectoryFilePathFor,
   safeTrajectoryOffset,
   watchTrajectoryForDeath,
+  TrajectoryRecoveredTurn,
   OPENCLAW_TRAJECTORY_TEXT_LIMIT,
 } from '../../packages/adapter-openclaw/src/trajectory-forensics'
 import { RuntimeTurnError } from '../../packages/core/src/adapters/runtime'
@@ -222,15 +223,33 @@ describe('watchTrajectoryForDeath', () => {
     watch.stop()
   })
 
-  it('stops silently on a successful run (the gateway frame delivers the result)', async () => {
-    const watch = watchTrajectoryForDeath({ trajectoryFile, sinceByteOffset: 0, pollMs: 20 })
+  it('success on disk: waits the grace window (frame should win), then rejects with the recovered content', async () => {
+    const watch = watchTrajectoryForDeath({ trajectoryFile, sinceByteOffset: 0, pollMs: 20, successGraceMs: 150 })
+    let settled: unknown = null
+    watch.promise.catch((err) => { settled = err })
+
+    writeRun(trajectoryFile, { status: 'success', assistantTexts: ['fine'] })
+    // Within the grace window: silent — the gateway frame is authoritative.
+    await new Promise((r) => setTimeout(r, 80))
+    expect(settled).toBeNull()
+
+    // Grace elapsed without the frame → recovered-turn sentinel.
+    await new Promise((r) => setTimeout(r, 150))
+    expect(settled).toBeInstanceOf(TrajectoryRecoveredTurn)
+    expect((settled as TrajectoryRecoveredTurn).content).toBe('fine')
+    watch.stop()
+  })
+
+  it('stop() during the grace window suppresses the recovered-turn rejection (frame won the race)', async () => {
+    const watch = watchTrajectoryForDeath({ trajectoryFile, sinceByteOffset: 0, pollMs: 20, successGraceMs: 100 })
     let settled = false
     watch.promise.catch(() => { settled = true })
 
     writeRun(trajectoryFile, { status: 'success', assistantTexts: ['fine'] })
-    await new Promise((r) => setTimeout(r, 100))
+    await new Promise((r) => setTimeout(r, 50))
+    watch.stop() // the gateway frame arrived; the race is over
+    await new Promise((r) => setTimeout(r, 150))
     expect(settled).toBe(false)
-    watch.stop()
   })
 })
 

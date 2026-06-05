@@ -200,25 +200,53 @@ export function inspectTrajectoryRun(opts: {
   return { kind: 'death', diagnosis }
 }
 
+/**
+ * Sentinel rejection for the fail-fast race: the run SUCCEEDED on disk but
+ * the gateway never delivered the final frame within the grace window. The
+ * caller treats this as a successful turn with the recovered content —
+ * without it, a lost-final-frame success would hold a concurrency slot for
+ * the full transport timeout before post-mortem recovery.
+ */
+export class TrajectoryRecoveredTurn extends Error {
+  readonly content: string
+  readonly sessionId?: string
+
+  constructor(content: string, sessionId?: string) {
+    super('Turn succeeded on disk; gateway frame not delivered within grace window')
+    this.name = 'TrajectoryRecoveredTurn'
+    this.content = content
+    this.sessionId = sessionId
+  }
+}
+
 export interface TrajectoryDeathWatch {
-  /** Rejects with RuntimeTurnError the moment the run's session.ended (non-success) lands on disk. Never resolves. */
+  /**
+   * Rejects with RuntimeTurnError the moment the run's session.ended
+   * (non-success) lands on disk, or with TrajectoryRecoveredTurn when the
+   * run succeeded on disk but the gateway frame didn't arrive within the
+   * grace window. Never resolves.
+   */
   promise: Promise<never>
   stop: () => void
 }
 
+const DEFAULT_SUCCESS_GRACE_MS = 2_000
+
 /**
  * Fail-fast watcher raced against a pending gateway agent request. Polls the
- * trajectory file (stat first — only re-inspects when the size changes) and
- * rejects with a diagnosed RuntimeTurnError as soon as the session dies,
- * instead of letting the caller wait out the full transport timeout. A
- * successful run ends the watch silently — the gateway frame delivers the
- * result through the normal path (or post-mortem recovery if it's lost).
+ * trajectory file (stat first — only re-inspects when the size changes):
+ * - death on disk → reject immediately with the diagnosed RuntimeTurnError;
+ * - success on disk → give the gateway frame a grace window to win the race
+ *   (its payload is authoritative), then reject with TrajectoryRecoveredTurn
+ *   carrying the recovered content so a lost frame doesn't cost the full
+ *   transport timeout.
  */
 export function watchTrajectoryForDeath(opts: {
   trajectoryFile: string
   sinceByteOffset: number
   oversizedOutputBytes?: number
   pollMs: number
+  successGraceMs?: number
 }): TrajectoryDeathWatch {
   let stopped = false
   let timer: ReturnType<typeof setTimeout> | null = null
@@ -249,7 +277,15 @@ export function watchTrajectoryForDeath(opts: {
           return
         }
         if (outcome?.kind === 'success') {
-          stop()
+          // Stop polling; arm the grace timer. If the gateway frame settles
+          // the race first, stop() clears this timer.
+          if (timer) clearTimeout(timer)
+          timer = setTimeout(() => {
+            if (stopped) return
+            stop()
+            reject(new TrajectoryRecoveredTurn(outcome.content, outcome.sessionId))
+          }, opts.successGraceMs ?? DEFAULT_SUCCESS_GRACE_MS)
+          timer.unref?.()
           return
         }
       }

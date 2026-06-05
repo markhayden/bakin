@@ -19,15 +19,18 @@ describe('imitation-crab runtime failure contract', () => {
     harness = await createImitationCrabHarness({ chatMode: 'error' })
     const { runtime } = harness.services
 
+    // Gateway error frames are now typed RuntimeErrors passed through
+    // unwrapped (the old 'OpenClaw chat failed:' wrap stripped `cause` and
+    // broke classification).
     await expect(runtime.messaging.send({
       agentId: 'pixel',
       content: 'This should fail',
-    })).rejects.toThrow('OpenClaw chat failed: Mock error mode; code=mock_error')
+    })).rejects.toThrow('Mock error mode; code=mock_error')
 
     await expect(drain(runtime.messaging.stream({
       agentId: 'jessica',
       content: 'This stream should fail',
-    }))).rejects.toThrow('OpenClaw chat failed: Mock error mode; code=mock_error')
+    }))).rejects.toThrow('Mock error mode; code=mock_error')
   })
 
   it('rejects raw tool calls when the mock tool gateway returns an error', async () => {

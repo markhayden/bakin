@@ -28,7 +28,7 @@ import type {
 } from '@bakin/core/adapters/runtime'
 import type { AdapterHealthCheckDefinition, AdapterInitOpts, AdapterLogger } from '@bakin/core/adapters/shared'
 import { RuntimeError, RuntimeTurnError } from '@bakin/core/adapters/runtime'
-import { inspectTrajectoryRun, safeTrajectoryOffset, trajectoryFilePathFor, watchTrajectoryForDeath } from './trajectory-forensics'
+import { inspectTrajectoryRun, safeTrajectoryOffset, trajectoryFilePathFor, watchTrajectoryForDeath, TrajectoryRecoveredTurn } from './trajectory-forensics'
 import { generateDirectImage, isDirectImageProvider, resolveProviderApiKeySource } from '@bakin/core/media'
 import { isUserEdited } from '@bakin/core/agent-packages/markers'
 import {
@@ -1195,8 +1195,36 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
         : await request
       const content = extractOpenClawAgentText(payload)
       if (content) return content
+      // A SUCCESS frame whose payload yields no extractable text (payload
+      // shape drift) is still recoverable when the trajectory recorded the
+      // completion — don't fail a turn whose content exists on disk.
+      if (trajectoryFile) {
+        const outcome = inspectTrajectoryRun({
+          trajectoryFile,
+          sinceByteOffset: trajectoryOffset,
+          oversizedOutputBytes: opts.oversizedOutputBytes,
+        })
+        if (outcome?.kind === 'success' && outcome.content) {
+          this.logger.warn('OpenClaw agent payload had no extractable text; recovered from trajectory', {
+            agentId: opts.agentId,
+            sessionId: outcome.sessionId,
+          })
+          return outcome.content
+        }
+      }
       throw new RuntimeError('OpenClaw chat failed: agent response did not include assistant text', { kind: 'runtime_failed' })
     } catch (err) {
+      if (err instanceof TrajectoryRecoveredTurn) {
+        // The run succeeded on disk but the gateway frame never arrived
+        // within the grace window — surface the recovered content as a
+        // normal success and cancel the pending RPC (clears its timer).
+        requestAbort.abort()
+        this.logger.warn('OpenClaw agent turn recovered fail-fast: success on disk, gateway frame not delivered', {
+          agentId: opts.agentId,
+          sessionId: err.sessionId,
+        })
+        return err.content
+      }
       if (err instanceof RuntimeTurnError) {
         // Fail-fast verdict — the diagnosis is already complete. Cancel the
         // pending RPC (clears its 630s timer) and surface immediately.

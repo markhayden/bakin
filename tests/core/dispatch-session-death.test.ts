@@ -189,13 +189,14 @@ describe('recovery ladder — death 1: salvage + immediate corrective re-dispatc
     })
     expect(auditCalls('task.corrective_redispatch').length).toBe(1)
 
-    // Ladder state persisted; NOT a generic cooldown record.
-    const record = readState().failedDispatches['t-100']
-    expect(record.sessionDeath).toMatchObject({ stage: 'corrective', deaths: 1, salvagedAssetIds: ['asset-salvage-1'] })
+    // awaitDispatchIdle now waits THROUGH the scheduled ladder re-dispatch,
+    // whose successful corrective turn clears the ladder record — the
+    // durable evidence is the audit trail + the corrective prompt below.
+    expect(readState().failedDispatches['t-100']).toBeUndefined()
 
-    // Immediate re-dispatch fires (~50ms) with corrective guidance, salvaged
-    // asset reference, and a FRESH session key.
-    await wait(250)
+    // Immediate re-dispatch fired with corrective guidance, salvaged asset
+    // reference, and a FRESH session key.
+    await wait(100)
     expect(mockRuntimeSend.mock.calls.length).toBe(2)
     const second = mockRuntimeSend.mock.calls[1]?.[0] as Record<string, unknown>
     expect(second.threadId).toBe('task:t-100:d2')

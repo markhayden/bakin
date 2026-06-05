@@ -129,7 +129,6 @@ describe('mock seed', () => {
     const tasks = JSON.parse(readFileSync(join(fixturesDir, 'tasks.json'), 'utf-8')) as Array<{
       column: string
       workflowId?: string
-      execution?: { flowId?: string | null }
     }>
     const columns = new Set(tasks.map(task => task.column))
     const workflowIds = new Set(tasks.map(task => task.workflowId).filter(Boolean))
@@ -147,7 +146,9 @@ describe('mock seed', () => {
     expect(workflowIds).toContain('approval-copy')
     expect(workflowIds).toContain('approval-image')
     expect(workflowIds).toContain('approval-bundle')
-    expect(tasks.every(task => task.execution?.flowId === null)).toBe(true)
+    // The legacy BakinTask.execution slice was deleted with the dead
+    // runtime.tasks.* adapter surface — fixtures must not carry it.
+    expect(tasks.some((task) => 'execution' in task)).toBe(false)
   })
 
   it('approval workflow fixtures are pending approval with representative output types', () => {

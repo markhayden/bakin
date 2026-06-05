@@ -11,9 +11,12 @@
     "blocking": [],
     "comments": [],
     "pendingDelete": false,
-    "execution": { "flowId": null, "state": "not-dispatched", "lastSyncedAt": null },
     "log": [
-      { "timestamp": "2026-04-01T10:00:00Z", "author": "main", "message": "Added to backlog for Q2 planning" }
+      {
+        "timestamp": "2026-04-01T10:00:00Z",
+        "author": "main",
+        "message": "Added to backlog for Q2 planning"
+      }
     ],
     "createdAt": "2026-04-01T10:00:00Z",
     "updatedAt": "2026-04-01T10:00:00Z"
@@ -30,7 +33,6 @@
     "blocking": [],
     "comments": [],
     "pendingDelete": false,
-    "execution": { "flowId": null, "state": "not-dispatched", "lastSyncedAt": null },
     "log": [],
     "createdAt": "2026-04-01T11:00:00Z",
     "updatedAt": "2026-04-01T11:00:00Z"
@@ -48,9 +50,12 @@
     "blocking": [],
     "comments": [],
     "pendingDelete": false,
-    "execution": { "flowId": null, "state": "not-dispatched", "lastSyncedAt": null },
     "log": [
-      { "timestamp": "2026-04-03T08:00:00Z", "author": "main", "message": "Moved to todo - ready for Jessica" }
+      {
+        "timestamp": "2026-04-03T08:00:00Z",
+        "author": "main",
+        "message": "Moved to todo - ready for Jessica"
+      }
     ],
     "createdAt": "2026-04-03T08:00:00Z",
     "updatedAt": "2026-04-04T08:00:00Z"
@@ -67,7 +72,6 @@
     "blocking": [],
     "comments": [],
     "pendingDelete": false,
-    "execution": { "flowId": null, "state": "not-dispatched", "lastSyncedAt": null },
     "log": [],
     "createdAt": "2026-04-03T09:00:00Z",
     "updatedAt": "2026-04-03T09:00:00Z"
@@ -84,7 +88,6 @@
     "blocking": [],
     "comments": [],
     "pendingDelete": false,
-    "execution": { "flowId": null, "state": "not-dispatched", "lastSyncedAt": null },
     "log": [],
     "createdAt": "2026-04-03T10:00:00Z",
     "updatedAt": "2026-04-03T10:00:00Z"
@@ -101,11 +104,22 @@
     "blocking": [],
     "comments": [],
     "pendingDelete": false,
-    "execution": { "flowId": null, "state": "not-dispatched", "lastSyncedAt": null },
     "log": [
-      { "timestamp": "2026-04-05T06:00:00Z", "author": "pixel", "message": "Starting batch resize - 8 product images at 600x400" },
-      { "timestamp": "2026-04-05T06:12:00Z", "author": "pixel", "message": "4/8 images resized, applying sharpening filter" },
-      { "timestamp": "2026-04-05T08:45:00Z", "author": "watchdog", "message": "Auto-recovered: no agent heartbeat or task log for 153+ minutes. Moved back to Todo for re-dispatch." }
+      {
+        "timestamp": "2026-04-05T06:00:00Z",
+        "author": "pixel",
+        "message": "Starting batch resize - 8 product images at 600x400"
+      },
+      {
+        "timestamp": "2026-04-05T06:12:00Z",
+        "author": "pixel",
+        "message": "4/8 images resized, applying sharpening filter"
+      },
+      {
+        "timestamp": "2026-04-05T08:45:00Z",
+        "author": "watchdog",
+        "message": "Auto-recovered: no agent heartbeat or task log for 153+ minutes. Moved back to Todo for re-dispatch."
+      }
     ],
     "createdAt": "2026-04-05T06:00:00Z",
     "updatedAt": "2026-04-05T08:45:00Z"
@@ -124,10 +138,17 @@
     "blocking": [],
     "comments": [],
     "pendingDelete": false,
-    "execution": { "flowId": null, "state": "running", "lastSyncedAt": "2026-04-05T09:15:00Z" },
     "log": [
-      { "timestamp": "2026-04-05T09:00:00Z", "author": "pixel", "message": "Starting image generation - 5 slides for trail series" },
-      { "timestamp": "2026-04-05T09:15:00Z", "author": "pixel", "message": "3/5 slides complete, adjusting color palette" }
+      {
+        "timestamp": "2026-04-05T09:00:00Z",
+        "author": "pixel",
+        "message": "Starting image generation - 5 slides for trail series"
+      },
+      {
+        "timestamp": "2026-04-05T09:15:00Z",
+        "author": "pixel",
+        "message": "3/5 slides complete, adjusting color palette"
+      }
     ],
     "createdAt": "2026-04-05T09:00:00Z",
     "updatedAt": "2026-04-05T09:15:00Z"
@@ -145,9 +166,12 @@
     "blocking": [],
     "comments": [],
     "pendingDelete": false,
-    "execution": { "flowId": null, "state": "running", "lastSyncedAt": "2026-04-05T10:00:00Z" },
     "log": [
-      { "timestamp": "2026-04-05T10:00:00Z", "author": "rolo", "message": "Drafting announcement copy" }
+      {
+        "timestamp": "2026-04-05T10:00:00Z",
+        "author": "rolo",
+        "message": "Drafting announcement copy"
+      }
     ],
     "createdAt": "2026-04-05T10:00:00Z",
     "updatedAt": "2026-04-05T10:00:00Z"
@@ -165,12 +189,27 @@
     "blocking": [],
     "comments": [],
     "pendingDelete": false,
-    "execution": { "flowId": null, "state": "running", "lastSyncedAt": "2026-04-06T08:15:00Z" },
     "log": [
-      { "timestamp": "2026-04-05T14:00:00Z", "author": "rolo", "message": "Pulling data from analytics API - 7 day window" },
-      { "timestamp": "2026-04-05T17:22:00Z", "author": "watchdog", "message": "Auto-recovered: no agent heartbeat or task log for 202+ minutes. Moved back to Todo for re-dispatch." },
-      { "timestamp": "2026-04-06T08:00:00Z", "author": "rolo", "message": "Re-dispatched. Resuming data pull - API connection restored" },
-      { "timestamp": "2026-04-06T08:15:00Z", "author": "rolo", "message": "Engagement data aggregated, building charts" }
+      {
+        "timestamp": "2026-04-05T14:00:00Z",
+        "author": "rolo",
+        "message": "Pulling data from analytics API - 7 day window"
+      },
+      {
+        "timestamp": "2026-04-05T17:22:00Z",
+        "author": "watchdog",
+        "message": "Auto-recovered: no agent heartbeat or task log for 202+ minutes. Moved back to Todo for re-dispatch."
+      },
+      {
+        "timestamp": "2026-04-06T08:00:00Z",
+        "author": "rolo",
+        "message": "Re-dispatched. Resuming data pull - API connection restored"
+      },
+      {
+        "timestamp": "2026-04-06T08:15:00Z",
+        "author": "rolo",
+        "message": "Engagement data aggregated, building charts"
+      }
     ],
     "createdAt": "2026-04-05T14:00:00Z",
     "updatedAt": "2026-04-06T08:15:00Z"
@@ -188,9 +227,12 @@
     "blocking": [],
     "comments": [],
     "pendingDelete": false,
-    "execution": { "flowId": null, "state": "blocked", "blockingReason": "gate_approval", "lastSyncedAt": "2026-04-04T14:00:00Z" },
     "log": [
-      { "timestamp": "2026-04-04T14:00:00Z", "author": "rolo", "message": "Report compiled - 12 metrics analyzed, 3 anomalies flagged" }
+      {
+        "timestamp": "2026-04-04T14:00:00Z",
+        "author": "rolo",
+        "message": "Report compiled - 12 metrics analyzed, 3 anomalies flagged"
+      }
     ],
     "createdAt": "2026-04-04T14:00:00Z",
     "updatedAt": "2026-04-05T14:00:00Z"
@@ -210,9 +252,12 @@
     "blocking": [],
     "comments": [],
     "pendingDelete": false,
-    "execution": { "flowId": null, "state": "blocked", "blockingReason": "gate_approval", "lastSyncedAt": "2026-04-06T15:18:00Z" },
     "log": [
-      { "timestamp": "2026-04-06T15:19:00Z", "author": "workflow", "message": "Gate reached - waiting on owner approval for the draft copy" }
+      {
+        "timestamp": "2026-04-06T15:19:00Z",
+        "author": "workflow",
+        "message": "Gate reached - waiting on owner approval for the draft copy"
+      }
     ],
     "createdAt": "2026-04-06T15:00:00Z",
     "updatedAt": "2026-04-06T15:18:00Z"
@@ -232,9 +277,12 @@
     "blocking": [],
     "comments": [],
     "pendingDelete": false,
-    "execution": { "flowId": null, "state": "blocked", "blockingReason": "gate_approval", "lastSyncedAt": "2026-04-06T16:29:00Z" },
     "log": [
-      { "timestamp": "2026-04-06T16:30:00Z", "author": "workflow", "message": "Gate reached - image concept recommendation is ready for review" }
+      {
+        "timestamp": "2026-04-06T16:30:00Z",
+        "author": "workflow",
+        "message": "Gate reached - image concept recommendation is ready for review"
+      }
     ],
     "createdAt": "2026-04-06T16:05:00Z",
     "updatedAt": "2026-04-06T16:29:00Z"
@@ -254,9 +302,12 @@
     "blocking": [],
     "comments": [],
     "pendingDelete": false,
-    "execution": { "flowId": null, "state": "blocked", "blockingReason": "gate_approval", "lastSyncedAt": "2026-04-07T09:41:00Z" },
     "log": [
-      { "timestamp": "2026-04-07T09:42:00Z", "author": "workflow", "message": "Gate reached - launch recommendation bundle is waiting for approval" }
+      {
+        "timestamp": "2026-04-07T09:42:00Z",
+        "author": "workflow",
+        "message": "Gate reached - launch recommendation bundle is waiting for approval"
+      }
     ],
     "createdAt": "2026-04-07T09:30:00Z",
     "updatedAt": "2026-04-07T09:41:00Z"
@@ -271,11 +322,12 @@
     "blockedReason": "Waiting for blog post draft (task-td-001)",
     "order": 0,
     "tags": [],
-    "blockedBy": ["task-td-001"],
+    "blockedBy": [
+      "task-td-001"
+    ],
     "blocking": [],
     "comments": [],
     "pendingDelete": false,
-    "execution": { "flowId": null, "state": "blocked", "blockingReason": "Waiting for blog post draft (task-td-001)", "lastSyncedAt": "2026-04-04T10:00:00Z" },
     "log": [],
     "createdAt": "2026-04-03T09:00:00Z",
     "updatedAt": "2026-04-04T10:00:00Z"
@@ -293,10 +345,17 @@
     "blocking": [],
     "comments": [],
     "pendingDelete": false,
-    "execution": { "flowId": null, "state": "succeeded", "endedAt": "2026-04-03T11:30:00Z", "lastSyncedAt": "2026-04-03T11:30:00Z" },
     "log": [
-      { "timestamp": "2026-04-03T11:00:00Z", "author": "pixel", "message": "Thumbnail generated at 1280x720" },
-      { "timestamp": "2026-04-03T11:30:00Z", "author": "main", "message": "Approved - looks great" }
+      {
+        "timestamp": "2026-04-03T11:00:00Z",
+        "author": "pixel",
+        "message": "Thumbnail generated at 1280x720"
+      },
+      {
+        "timestamp": "2026-04-03T11:30:00Z",
+        "author": "main",
+        "message": "Approved - looks great"
+      }
     ],
     "createdAt": "2026-04-03T11:00:00Z",
     "updatedAt": "2026-04-05T14:00:00Z"
@@ -314,7 +373,6 @@
     "blocking": [],
     "comments": [],
     "pendingDelete": false,
-    "execution": { "flowId": null, "state": "succeeded", "endedAt": "2026-04-02T09:00:00Z", "lastSyncedAt": "2026-04-02T09:00:00Z" },
     "log": [],
     "createdAt": "2026-04-02T09:00:00Z",
     "updatedAt": "2026-04-03T09:00:00Z"
@@ -333,7 +391,6 @@
     "blocking": [],
     "comments": [],
     "pendingDelete": false,
-    "execution": { "flowId": null, "state": "succeeded", "endedAt": "2026-04-04T09:00:00Z", "lastSyncedAt": "2026-04-04T09:00:00Z" },
     "log": [],
     "createdAt": "2026-04-04T09:00:00Z",
     "updatedAt": "2026-04-05T09:00:00Z"
@@ -351,10 +408,17 @@
     "blocking": [],
     "comments": [],
     "pendingDelete": false,
-    "execution": { "flowId": null, "state": "succeeded", "endedAt": "2026-03-29T09:00:00Z", "lastSyncedAt": "2026-03-29T09:00:00Z" },
     "log": [
-      { "timestamp": "2026-03-28T16:00:00Z", "author": "rolo", "message": "Dashboard live at /analytics" },
-      { "timestamp": "2026-03-29T09:00:00Z", "author": "main", "message": "Confirmed - data looks accurate" }
+      {
+        "timestamp": "2026-03-28T16:00:00Z",
+        "author": "rolo",
+        "message": "Dashboard live at /analytics"
+      },
+      {
+        "timestamp": "2026-03-29T09:00:00Z",
+        "author": "main",
+        "message": "Confirmed - data looks accurate"
+      }
     ],
     "createdAt": "2026-03-28T16:00:00Z",
     "updatedAt": "2026-03-29T09:00:00Z"

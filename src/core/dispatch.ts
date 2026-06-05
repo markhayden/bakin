@@ -295,6 +295,9 @@ const TRANSIENT_CODES = new Set([
 // exists for non-RuntimeError errors from mock adapters or unexpected paths;
 // it never inspects error message text. Default to 'structural' on unknown
 // errors: treating an unknown failure as a real outage is the safer side.
+// Note: ANY TypeError classifies transient (broader than fetch failures) —
+// a code-bug TypeError retries on the short cooldown but is bounded by
+// maxRetries, which actually blocks it for review faster than structural.
 export function classifyDispatchError(err: unknown): DispatchFailureKind {
   if (err instanceof RuntimeError) {
     return err.kind === 'transport' ? 'transient' : 'structural'
@@ -660,10 +663,17 @@ async function handleSessionDeath(input: {
   // (dispatchSingleTask takes the same lock; calling it inline would
   // deadlock). We know exactly what went wrong and how the next attempt
   // differs; parking the task for the next 5-minute cycle buys nothing.
+  // If the timer is lost (process restart) or the dispatch is gate-deferred,
+  // the next cycle picks the task up from its persisted sessionDeath state.
+  pendingLadderRedispatches += 1
   const timer = setTimeout(() => {
-    dispatchSingleTask(input.task.id, input.contentDir, input.port, 'recovery').catch((err) => {
-      log.error('Session-death ladder re-dispatch failed', err, { id: input.task.id, stage })
-    })
+    dispatchSingleTask(input.task.id, input.contentDir, input.port, 'recovery')
+      .catch((err) => {
+        log.error('Session-death ladder re-dispatch failed', err, { id: input.task.id, stage })
+      })
+      .finally(() => {
+        pendingLadderRedispatches -= 1
+      })
   }, SESSION_DEATH_REDISPATCH_DELAY_MS)
   timer.unref?.()
 }
@@ -795,13 +805,23 @@ function concurrencyGate(agentId: string, settings: { dispatch: { maxConcurrentT
   return null
 }
 
+// Ladder re-dispatches scheduled via the post-lock timer but not yet fired —
+// without counting these, awaitDispatchIdle() would report idle during the
+// 50ms window between a dying turn settling and its recovery turn firing.
+let pendingLadderRedispatches = 0
+
 /**
  * Wait until every tracked turn (including its settle-time reconciliation)
- * has finished. Deterministic synchronization point for tests and shutdown.
+ * and every scheduled ladder re-dispatch has finished. Deterministic
+ * synchronization point for tests and shutdown.
  */
 export async function awaitDispatchIdle(): Promise<void> {
-  while (inFlightTurns.size > 0) {
-    await Promise.allSettled([...inFlightTurns.values()].map((turn) => turn.settled))
+  while (inFlightTurns.size > 0 || pendingLadderRedispatches > 0) {
+    if (inFlightTurns.size > 0) {
+      await Promise.allSettled([...inFlightTurns.values()].map((turn) => turn.settled))
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
   }
 }
 
@@ -1218,7 +1238,14 @@ export async function dispatchSingleTask(
 
     const gate = concurrencyGate(targetAgent, settings)
     if (gate) {
-      log.debug('dispatchSingleTask: deferred by concurrency gate', { taskId, agent: targetAgent, gate })
+      if (source === 'recovery') {
+        // The "immediate" ladder re-dispatch degrades to next-cycle pickup —
+        // make that observable instead of a silent debug line.
+        log.warn('Ladder recovery dispatch deferred by concurrency gate; next cycle will retry', { taskId, agent: targetAgent, gate })
+        await tryAddTaskLog(taskId, 'system', `Recovery re-dispatch deferred (${gate}); the next dispatch cycle will retry.`)
+      } else {
+        log.debug('dispatchSingleTask: deferred by concurrency gate', { taskId, agent: targetAgent, gate })
+      }
       return
     }
 
