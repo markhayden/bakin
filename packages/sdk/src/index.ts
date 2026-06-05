@@ -52,7 +52,28 @@ export { subscribeNavBadges } from './register'
 export { getPluginRoute } from './register'
 /** Get all registered client routes (across all plugins). */
 export { getPluginRoutes } from './register'
+/** Seed a plugin's declarative nav from its manifest (host-side; survives unregisterPlugin). */
+export { setManifestNav } from './register'
+/** Read the manifest nav currently seeded for a plugin (drift validation). */
+export { getManifestNav } from './register'
 export type { ClientRouteEntry, MatchedPluginRoute, NavItem, PluginRegistration } from './register'
+
+/** Lazy plugin-client loading: ownership index + load-state store (host-side wiring). */
+export {
+  configureLazyPlugins,
+  setLazyPluginLoader,
+  setPluginLoadState,
+  getPluginLoadState,
+  getPluginLoadError,
+  getSlotOwners,
+  getRouteOwners,
+  requestSlotPlugins,
+  requestRoutePlugins,
+  retryPluginLoad,
+  getLazyPluginsVersion,
+  subscribeLazyPlugins,
+} from './lazy'
+export type { LazyPluginIndex, PluginLoadState } from './lazy'
 
 /** Define a plugin HTTP route with typed input/output schemas. */
 export { defineRoute } from './routing'

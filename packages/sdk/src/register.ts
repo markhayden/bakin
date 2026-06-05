@@ -50,6 +50,14 @@ interface ClientRouteEntry {
 
 interface ClientRegistry {
   navByPlugin: Map<string, NavItem[]>
+  // Declarative nav from each plugin's bakin-plugin.json `contributes.nav`,
+  // seeded by the host from the manifest BEFORE any client bundle loads.
+  // Kept on a separate map so `unregisterPlugin` (hot-swap teardown) never
+  // drops manifest nav — a lazily-loaded plugin keeps its sidebar entry
+  // whether or not its client has executed. Runtime nav (`navByPlugin`)
+  // overrides a plugin's manifest nav when both exist — the conditional-nav
+  // escape hatch.
+  manifestNavByPlugin: Map<string, NavItem[]>
   routesByPlugin: Map<string, ClientRouteEntry[]>
   cleanupByPlugin: Map<string, Array<() => void>>
   navItemsSnapshot: NavItem[]
@@ -65,6 +73,10 @@ interface ClientRegistry {
 
 function buildNavItemsSnapshot(registry: ClientRegistry): NavItem[] {
   const items: NavItem[] = []
+  for (const [pluginId, navItems] of registry.manifestNavByPlugin.entries()) {
+    if (registry.navByPlugin.has(pluginId)) continue // runtime nav overrides
+    items.push(...navItems)
+  }
   for (const navItems of registry.navByPlugin.values()) {
     items.push(...navItems)
   }
@@ -76,6 +88,7 @@ function getRegistry(): ClientRegistry {
   if (!g.__bakinClientRegistry) {
     g.__bakinClientRegistry = {
       navByPlugin: new Map<string, NavItem[]>(),
+      manifestNavByPlugin: new Map<string, NavItem[]>(),
       routesByPlugin: new Map<string, ClientRouteEntry[]>(),
       cleanupByPlugin: new Map<string, Array<() => void>>(),
       navItemsSnapshot: [],
@@ -87,6 +100,9 @@ function getRegistry(): ClientRegistry {
     } as ClientRegistry
   }
   const registry = g.__bakinClientRegistry as ClientRegistry
+  // Hydrate manifest-nav if the registry pre-dates this addition (HMR retains
+  // the singleton across reloads, so older shapes can show up).
+  if (!registry.manifestNavByPlugin) registry.manifestNavByPlugin = new Map()
   if (!Array.isArray(registry.navItemsSnapshot)) {
     registry.navItemsSnapshot = buildNavItemsSnapshot(registry)
   }
@@ -200,6 +216,40 @@ export function registerPluginCleanup(id: string, fn: () => void): void {
 }
 
 /**
+ * Seed (or replace) a plugin's declarative nav from its manifest
+ * `contributes.nav`. Called by the host's PluginHost after every manifest
+ * fetch — including hot-swap refreshes — so the sidebar renders before any
+ * client bundle loads. Pass `null` (or an empty array) to clear.
+ *
+ * Manifest nav lives on its own map: `unregisterPlugin` never touches it,
+ * and a plugin that registers `navItems` at runtime overrides its manifest
+ * nav while registered (the conditional-nav escape hatch).
+ */
+export function setManifestNav(pluginId: string, navItems: NavItem[] | null): void {
+  const registry = getRegistry()
+  if (!navItems || navItems.length === 0) {
+    if (!registry.manifestNavByPlugin.delete(pluginId)) return
+    bumpVersion()
+    return
+  }
+  // Manifest refreshes re-seed every plugin on every fetch; skip the version
+  // bump (and the nav re-render it forces) when nothing actually changed.
+  const prev = registry.manifestNavByPlugin.get(pluginId)
+  if (prev && JSON.stringify(prev) === JSON.stringify(navItems)) return
+  registry.manifestNavByPlugin.set(pluginId, navItems)
+  bumpVersion()
+}
+
+/**
+ * The declarative manifest nav currently seeded for a plugin (empty if none).
+ * Used by the drift validation check to compare manifest nav against what a
+ * loaded client registered at runtime.
+ */
+export function getManifestNav(pluginId: string): ReadonlyArray<NavItem> {
+  return getRegistry().manifestNavByPlugin.get(pluginId) ?? []
+}
+
+/**
  * Monotonic counter bumped on every register / unregister. Used with
  * React's `useSyncExternalStore` (via `subscribeRegistry`) so the shell
  * re-renders nav + slots when plugins come or go at runtime.
@@ -304,7 +354,11 @@ function normalizePattern(pattern: string): string[] {
   return pattern.split('/').filter(Boolean)
 }
 
-function matchRoutePattern(pattern: string, pathname: string): { params: Record<string, string>; score: number } | null {
+/**
+ * Match a route pattern (`/projects/[id]`, `/x/:id`, `/y/$id`) against a
+ * concrete pathname. Internal SDK helper shared with the lazy-loading index.
+ */
+export function matchRoutePattern(pattern: string, pathname: string): { params: Record<string, string>; score: number } | null {
   const patternSegments = normalizePattern(pattern)
   const pathSegments = normalizePattern(pathname)
   if (patternSegments.length !== pathSegments.length) return null
