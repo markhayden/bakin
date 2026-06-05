@@ -293,7 +293,11 @@ export function watchTrajectoryForDeath(opts: {
       if (size !== lastSize) {
         lastSize = size
         // null read (shrunk/rotated/unreadable) → skip this tick without
-        // corrupting the carried state; the next tick retries.
+        // corrupting the carried state; the next tick retries. Assumption:
+        // a trajectory is append-only for the turn's lifetime (one run per
+        // turn) — a mid-turn rotation that regrows past the stuck cursor
+        // would be scanned from the cursor, not from 0, same as the old
+        // full-rescan-from-turn-start behavior.
         const read = readFileBytesFrom(opts.trajectoryFile, cursor)
         let outcome: TrajectoryRunOutcome | null = null
         if (read) {

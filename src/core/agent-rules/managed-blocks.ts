@@ -571,6 +571,9 @@ The runtime cannot deliver large completions. Hard rules:
 # Save any file as a managed asset (handles naming + metadata)
 mcporter call bakin-${agentId}.bakin_exec_assets_save taskId=<taskId> type=<images|text|video|audio|plans|data|other> filePath="<path>" description="<what it is>"
 
+# Open an attached asset by assetId (manifest + extracted text)
+mcporter call bakin-${agentId}.bakin_exec_assets_open assetId=<assetId>
+
 # Recommend and generate an image through the core images plugin
 mcporter call bakin-${agentId}.bakin_exec_images_recommend surface=<surface> objective="<goal>"
 mcporter call bakin-${agentId}.bakin_exec_images_generate taskId=<taskId> prompt="<text>" surface=<surface> provider=auto

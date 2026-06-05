@@ -394,6 +394,10 @@ export function createFileBakinTaskStore(root: string): SyncBakinTaskStore {
         const entry = idToEntry.get(id)
         if (!entry || entry.pendingDelete) continue
         // Cheap stat (no read/parse) — tolerates externally deleted files.
+        // Intentional divergence from listSync({column}): an external hand-
+        // edit that re-columns a task is only noticed by reads that parse
+        // content (getSync/listSync heal it); a count never re-reads files.
+        // Acceptable: the store is the single writer (spec decision, #434).
         if (!existsSync(entry.path)) {
           ghosts.push(id)
           continue

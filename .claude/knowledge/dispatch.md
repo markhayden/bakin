@@ -178,7 +178,9 @@ differences are parameters, so the builders can't drift). The static half of
 the old ~4KB catalog (logging rules, discipline rationale, dependency
 pattern, tool reference) lives in the `execution-tools` **managed block**
 projected into subagent AGENTS.md (`src/core/agent-rules/managed-blocks.ts`;
-run `bakin agent-rules --apply` after deploy). The triage roster is derived
+run `bakin agent-rules --apply-all` after deploy — plain `--apply` writes the
+main-agent context only and will NOT project this subagent-target block). The
+triage roster is derived
 from `runtime.agents.list()`; core contains no hardcoded agent names.
 Recovery variants: corrective prompts open with `PREVIOUS ATTEMPT FAILED`;
 decomposition replaces the work prompt entirely.

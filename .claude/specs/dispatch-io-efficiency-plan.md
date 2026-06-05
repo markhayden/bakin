@@ -83,9 +83,9 @@ Issue #434 collects 11 code-verified IO-efficiency findings deliberately split o
 
 ### 11. `refactor(core): execution-tools managed block; slim static tool catalog out of dispatch prompts`
 **Files:** `src/core/agent-rules/managed-blocks.ts`, `src/core/dispatch.ts`, `tests/core/agent-rules-managed-blocks.test.ts`, `tests/core/dispatch-prompts.test.ts`
-- New `MANAGED_BLOCKS` entry `{blockId: 'execution-tools', target: 'subagent', contentFn}` carrying the ~1.5KB static catalog + discipline rationale. Projected via existing doctor/`bakin agent-rules --apply` path.
+- New `MANAGED_BLOCKS` entry `{blockId: 'execution-tools', target: 'subagent', contentFn}` carrying the ~1.5KB static catalog + discipline rationale. Projected via existing doctor/`bakin agent-rules --apply-all` path.
 - Dispatch keeps: taskId-templated invocations + 2-3 line OUTPUT DISCIPLINE reminder (with the templated `assets_save` line) pointing at the AGENTS.md section. Same slimming in `buildWorkflowDispatchMessage`. Corrective/decomposition messages untouched.
-- **Operational note for PR:** run `bakin agent-rules --apply` after deploy so agents have the block before prompts rely on it.
+- **Operational note for PR:** run `bakin agent-rules --apply-all` after deploy so agents have the block before prompts rely on it (plain --apply is orchestrator-scope only and skips subagent-target blocks).
 - **Tests:** block registered/projected/repaired; prompt lacks static prose, retains templated invocations + reminder; length-reduction assertion. Existing prompt tests asserting moved text get updated.
 
 ## Docs pass (with or after commit 11)
@@ -100,4 +100,4 @@ Issue #434 collects 11 code-verified IO-efficiency findings deliberately split o
 
 1. Per-commit: targeted suites listed above; repo test rules (mock both content-dir resolvers + OpenClaw home, temp dirs, cleanup) on every new test file.
 2. Checkpoints after commits 1, 5, 9: full `bun run test` + smoke (`bun run dev:mock`, dispatch a few tasks, watch SSE/audit feeds: one broadcast per write, one audit row per dispatch, asset block present, lessons cached on re-dispatch).
-3. Final: full suite, `bun run build`, live smoke on the real instance, `bakin agent-rules --apply`, PR with `Closes #434`.
+3. Final: full suite, `bun run build`, live smoke on the real instance, `bakin agent-rules --apply-all`, PR with `Closes #434`.
