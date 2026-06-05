@@ -46,7 +46,7 @@ mock.module('../../src/core/workflow-tool-authorization', () => ({
   assertWorkflowToolAllowed: (...args: unknown[]) => mockAssertWorkflowToolAllowed(...args),
 }))
 
-import { postChannel, resetPostChannelIdempotencyForTests } from '../../scripts/lib/post-channel'
+import { CHANNEL_POST_CHUNK_LIMIT, chunkChannelPostContent, postChannel, resetPostChannelIdempotencyForTests } from '../../scripts/lib/post-channel'
 
 describe('postChannel', () => {
   const originalEnv = { ...process.env }
@@ -91,18 +91,84 @@ describe('postChannel', () => {
     expect(call).toEqual({
       channels: ['discord:channel-123'],
       content: {
-        title: 'Channel post',
+        title: '',
         body: 'test message',
         files: [],
         metadata: {
           agent: 'chef',
           taskId: 'task-123',
           embed: undefined,
+          chunkCount: 1,
+          chunkIndex: 1,
           requestedChannel: '#general',
           resolvedChannel: 'discord:channel-123',
         },
       },
     })
+  })
+
+  it('keeps near-threshold payloads as one unwrapped delivery', async () => {
+    const content = `Runtime Roundup\n\n${'A'.repeat(1500)}\n\nLinks\n${'B'.repeat(250)}`
+
+    const result = await postChannel({
+      channel: '#general',
+      content,
+      agent: 'chef',
+      taskId: 'task-123',
+    }, runtime)
+
+    expect(result.ok).toBe(true)
+    expect(result.chunkCount).toBe(1)
+    expect(deliverContent).toHaveBeenCalledTimes(1)
+    const [call] = deliverContent.mock.calls[0] as unknown as [Record<string, unknown> & { content: { body: string; title: string } }]
+    expect(call.content.title).toBe('')
+    expect(call.content.body).toBe(content)
+    expect(call.content.body.startsWith('Channel post')).toBe(false)
+    expect(call.content.body.length).toBeLessThanOrEqual(CHANNEL_POST_CHUNK_LIMIT)
+  })
+
+  it('splits long payloads deterministically with ordered chunk prefixes', async () => {
+    const content = [
+      '**Runtime Roundup**',
+      `OpenClaw ${'alpha '.repeat(180)}`,
+      `Hermes ${'beta '.repeat(180)}`,
+      `DeerFlow ${'gamma '.repeat(180)}`,
+      `Links ${'delta '.repeat(180)}`,
+    ].join('\n\n')
+
+    const result = await postChannel({
+      channel: '#general',
+      content,
+      agent: 'chef',
+      taskId: 'task-123',
+    }, runtime)
+
+    expect(result.ok).toBe(true)
+    expect(result.chunkCount).toBe(3)
+    expect(deliverContent).toHaveBeenCalledTimes(3)
+    const bodies = deliverContent.mock.calls.map(call => {
+      const [arg] = call as unknown as [Record<string, unknown> & { content: { body: string; title: string; files: unknown[]; metadata: Record<string, unknown> } }]
+      expect(arg.content.title).toBe('')
+      expect(arg.content.body.length).toBeLessThanOrEqual(CHANNEL_POST_CHUNK_LIMIT)
+      return arg.content.body
+    })
+    expect(bodies[0]?.startsWith('[1/3] ')).toBe(true)
+    expect(bodies[1]?.startsWith('[2/3] ')).toBe(true)
+    expect(bodies[2]?.startsWith('[3/3] ')).toBe(true)
+    expect(bodies.join('\n')).toContain('OpenClaw')
+    expect(bodies.join('\n')).toContain('DeerFlow')
+    expect(bodies.join('\n')).not.toContain('Channel post')
+  })
+
+  it('exposes deterministic chunks for harness-style regression checks', () => {
+    const oneChunk = chunkChannelPostContent('x'.repeat(1800))
+    const twoChunks = chunkChannelPostContent(`${'one '.repeat(450)}\n\n${'two '.repeat(450)}`)
+
+    expect(oneChunk).toHaveLength(1)
+    expect(oneChunk[0]?.startsWith('[1/1]')).toBe(false)
+    expect(twoChunks.length).toBeGreaterThan(1)
+    expect(twoChunks.every(chunk => chunk.length <= CHANNEL_POST_CHUNK_LIMIT)).toBe(true)
+    expect(twoChunks[0]?.startsWith('[1/')).toBe(true)
   })
 
   it('fails before runtime delivery when a bare channel has no alias or runtime channel match', async () => {

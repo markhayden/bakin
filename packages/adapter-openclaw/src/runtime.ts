@@ -548,8 +548,8 @@ export class OpenClawRuntimeAdapter implements AgentRuntimeAdapter {
       for (const channel of args.channels) {
         const ref = splitChannelRef(channel, args.message.metadata)
         const files = metadataFiles(args.message.metadata)
-        await this.exec(openClawMessageSendArgs(ref, args.message, files))
-        deliveries.push({ channelId: channel, ref: `message:${Date.now()}`, renderedAt })
+        const stdout = await this.exec(openClawMessageSendArgs(ref, args.message, files))
+        deliveries.push({ channelId: channel, ref: deliveryRefFromOpenClawOutput(stdout) ?? `message:${Date.now()}`, renderedAt })
       }
       return { deliveries }
     },
@@ -1649,7 +1649,51 @@ function openClawMessageSendArgs(
   if (body) args.push('--message', body)
   if (message.threadId) args.push('--thread-id', message.threadId)
   for (const file of files) args.push('--media', file.path)
+  args.push('--json')
   return args
+}
+
+function deliveryRefFromOpenClawOutput(stdout: string): string | null {
+  const value = parseOpenClawDeliveryOutput(stdout)
+  const id = firstStringAtPaths(value, [
+    ['messageId'],
+    ['message_id'],
+    ['id'],
+    ['message', 'id'],
+    ['result', 'messageId'],
+    ['result', 'message_id'],
+    ['result', 'id'],
+    ['result', 'message', 'id'],
+    ['delivery', 'messageId'],
+    ['delivery', 'message_id'],
+    ['delivery', 'id'],
+    ['delivery', 'message', 'id'],
+  ])
+  return id ? `message:${id}` : null
+}
+
+function parseOpenClawDeliveryOutput(stdout: string): Record<string, unknown> | null {
+  const text = stdout.trim()
+  if (!text) return null
+  return parseJsonObject(text)
+    ?? parseJsonObject(text.split('\n').reverse().find(part => part.trim().startsWith('{') && part.trim().endsWith('}')) ?? '')
+}
+
+function firstStringAtPaths(value: unknown, paths: string[][]): string | null {
+  for (const path of paths) {
+    const found = stringAtPath(value, path)
+    if (found) return found
+  }
+  return null
+}
+
+function stringAtPath(value: unknown, path: string[]): string | null {
+  let current = value
+  for (const key of path) {
+    if (!current || typeof current !== 'object' || Array.isArray(current)) return null
+    current = (current as Record<string, unknown>)[key]
+  }
+  return typeof current === 'string' && current.trim() ? current.trim() : null
 }
 
 function readChannelInfos(): ChannelInfo[] {
