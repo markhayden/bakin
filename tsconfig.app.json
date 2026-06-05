@@ -23,6 +23,7 @@
     "packages/**/dist/**",
     "plugins/**/dist/**",
     "dev/openclaw-home",
-    "dev/bakin-instances"
+    "dev/bakin-instances",
+    "tests/fixtures/whiskin"
   ]
 }

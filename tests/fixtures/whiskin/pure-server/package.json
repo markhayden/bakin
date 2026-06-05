@@ -1,0 +1,8 @@
+{
+  "name": "whiskin-pure-server",
+  "version": "0.1.0",
+  "private": true,
+  "peerDependencies": {
+    "@makinbakin/sdk": "*"
+  }
+}

@@ -46,6 +46,7 @@ import {
   type AsyncGitRunner,
 } from '../github-source-cache'
 import { getStagingDir, getPackagesRoot } from '../../../packages/core/src/agent-packages/package-paths'
+import { checkSubpath } from '../../../packages/core/src/install-core/source-guards'
 
 const log = createLogger('agent-pkg:fetch')
 
@@ -91,23 +92,23 @@ function isLocalPath(source: string): boolean {
 }
 
 function assertSubpathValid(source: string, subpath: string): void {
-  if (subpath.length === 0) {
-    throw new Error(`Malformed github source: "${source}" — subpath after # must not be empty`)
-  }
-  if (!/^[A-Za-z0-9._/-]+$/.test(subpath)) {
-    throw new Error(
-      `Malformed github source: "${source}" — subpath must match /^[A-Za-z0-9._/-]+$/`,
-    )
-  }
-  if (subpath.startsWith('/') || subpath.endsWith('/')) {
-    throw new Error(
-      `Malformed github source: "${source}" — subpath must not start or end with "/"`,
-    )
-  }
-  if (subpath.split('/').some((segment) => segment === '..' || segment === '.')) {
-    throw new Error(
-      `Malformed github source: "${source}" — subpath must not contain . or .. segments`,
-    )
+  // Rules live in the shared install-core guard; this function owns only the
+  // agent-package-side message wording (preserved exactly).
+  switch (checkSubpath(subpath)) {
+    case 'empty':
+      throw new Error(`Malformed github source: "${source}" — subpath after # must not be empty`)
+    case 'invalid-chars':
+      throw new Error(
+        `Malformed github source: "${source}" — subpath must match /^[A-Za-z0-9._/-]+$/`,
+      )
+    case 'leading-or-trailing-slash':
+      throw new Error(
+        `Malformed github source: "${source}" — subpath must not start or end with "/"`,
+      )
+    case 'dot-segment':
+      throw new Error(
+        `Malformed github source: "${source}" — subpath must not contain . or .. segments`,
+      )
   }
 }
 

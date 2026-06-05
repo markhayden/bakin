@@ -20,6 +20,8 @@
  * input (CLI/REST) and re-validates defensively.
  */
 
+import { checkSubpath } from '../install-core/source-guards'
+
 export interface ParsedGithubSource {
   /** Positional URL for `git clone` / `git ls-remote`. */
   cloneUrl: string
@@ -50,19 +52,19 @@ const MAX_CLONE_URL_BYTES = 2048
  * the caller can map it to a useful HTTP/CLI message.
  */
 function assertSubpathValid(subpath: string): void {
-  if (subpath.length === 0) {
-    throw new InvalidGithubSourceError('subpath after `#` must not be empty')
-  }
-  if (!/^[A-Za-z0-9._/-]+$/.test(subpath)) {
-    throw new InvalidGithubSourceError(
-      `subpath must match /^[A-Za-z0-9._/-]+$/ — got "${subpath}"`,
-    )
-  }
-  if (subpath.startsWith('/') || subpath.endsWith('/')) {
-    throw new InvalidGithubSourceError('subpath must not start or end with "/"')
-  }
-  if (subpath.split('/').some(seg => seg === '..' || seg === '.')) {
-    throw new InvalidGithubSourceError('subpath must not contain `..` or `.` segments')
+  // Rules live in the shared install-core guard; this function owns only the
+  // plugin-side error type + message wording (preserved exactly).
+  switch (checkSubpath(subpath)) {
+    case 'empty':
+      throw new InvalidGithubSourceError('subpath after `#` must not be empty')
+    case 'invalid-chars':
+      throw new InvalidGithubSourceError(
+        `subpath must match /^[A-Za-z0-9._/-]+$/ — got "${subpath}"`,
+      )
+    case 'leading-or-trailing-slash':
+      throw new InvalidGithubSourceError('subpath must not start or end with "/"')
+    case 'dot-segment':
+      throw new InvalidGithubSourceError('subpath must not contain `..` or `.` segments')
   }
 }
 
