@@ -11,8 +11,9 @@
  * never touch the filesystem. `readLockfile` and `writeLockfile` are the only
  * IO entry points.
  */
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs'
-import { dirname, join } from 'path'
+import { existsSync, readFileSync } from 'fs'
+import { join } from 'path'
+import { atomicWriteJson } from '../install-core/atomic-write'
 import { z } from 'zod'
 import { getContentDir } from '../content-dir'
 
@@ -120,23 +121,9 @@ export function readLockfile(path: string = getLockfilePath()): Lockfile {
  * output of pure mutators directly without separate validation.
  */
 export function writeLockfile(lock: Lockfile, path: string = getLockfilePath()): void {
-  // Validate up-front so a malformed in-memory value never lands on disk.
-  const validated = LockfileSchema.parse(lock)
-  mkdirSync(dirname(path), { recursive: true })
-  const tmpPath = `${path}.tmp-${process.pid}-${Date.now()}`
-  try {
-    writeFileSync(tmpPath, JSON.stringify(validated, null, 2) + '\n', 'utf-8')
-    renameSync(tmpPath, path)
-  } catch (err) {
-    if (existsSync(tmpPath)) {
-      try {
-        unlinkSync(tmpPath)
-      } catch {
-        // best-effort cleanup; surface the original error
-      }
-    }
-    throw err
-  }
+  // Validate up-front so a malformed in-memory value never lands on disk, then
+  // hand off to the shared atomic writer.
+  atomicWriteJson(path, LockfileSchema.parse(lock))
 }
 
 // ─── Pure mutators (no fs) ───────────────────────────────────────────────────
