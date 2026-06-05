@@ -32,9 +32,25 @@ The main entry. Re-exports the plugin contract types (`./types`) plus the high-t
 | `subscribeNavBadges` | Subscribe to nav-badge mutations (separate channel from `subscribeRegistry`). |
 | `getPluginRoute` | Look up a specific client route by plugin id + path. |
 | `getPluginRoutes` | Get all registered client routes (across all plugins). |
+| `setManifestNav` | Seed a plugin's declarative nav from its manifest (host-side; survives unregisterPlugin). |
+| `getManifestNav` | Read the manifest nav currently seeded for a plugin (drift validation). |
 | `ClientRouteEntry` | — |
 | `MatchedPluginRoute` | — |
 | `PluginRegistration` | — |
+| `configureLazyPlugins` | Install the manifest-derived slot/route ownership index for lazy loading (host-side). |
+| `setLazyPluginLoader` | Install the demand loader that imports a plugin's client bundle (host-side). |
+| `setPluginLoadState` | Report a plugin client's load progress: idle → loading → loaded \| error (host-side). |
+| `getPluginLoadState` | Current load state for a plugin client. Unknown plugins report 'idle'. |
+| `getPluginLoadError` | Last load error message for a plugin whose state is 'error', if any. |
+| `getSlotOwners` | Plugins whose manifests declare the given slot in `contributes.slots`. |
+| `getRouteOwners` | Plugins whose manifest `contributes.routes` patterns match a pathname. |
+| `requestSlotPlugins` | Ask the host to lazy-load every idle plugin that fills the named slot. |
+| `requestRoutePlugins` | Ask the host to lazy-load every idle plugin whose route patterns match the pathname. |
+| `retryPluginLoad` | Reset a failed plugin to idle and re-request its client bundle. |
+| `getLazyPluginsVersion` | Monotonic lazy-store version for useSyncExternalStore consumers. |
+| `subscribeLazyPlugins` | Subscribe to lazy-plugin store mutations. Returns an unsubscribe fn. |
+| `LazyPluginIndex` | — |
+| `PluginLoadState` | — |
 | `defineRoute` | Define a plugin HTTP route with typed input/output schemas. |
 | `defineCoreRoute` | Define a core (non-plugin) HTTP route. |
 | `definePlugin` | Compose a plugin's routes into a single definition for the server. |
@@ -201,6 +217,7 @@ Source: `packages/sdk/src/slots/index.tsx`.
 | --- | --- |
 | `registerSlot` | Register a component for a named slot. Lower `order` renders first; entries |
 | `getSlotEntries` | Read the registered entries for a slot. Exported for tooling / tests. |
+| `getSlotNamesOwnedBy` | Slot names that currently have at least one entry owned by the given |
 | `clearSlotsOwnedBy` | Remove every slot entry owned by the given plugin. Used by |
 | `Slot` | Render all components registered for the named slot, in order. Extra props |
 
@@ -295,6 +312,10 @@ The full contributions block in `bakin-plugin.json` — everything a plugin adds
 | `cliCommands?` | `CliCommandContribution[]` | CLI commands the plugin contributes to the `bakin` binary. |
 | `settings?` | `SettingsContribution[]` | Settings keys this plugin owns in the settings UI. |
 | `docs?` | `DocsContribution` | Optional docs page slug. |
+| `nav?` | `NavItem[]` | Declarative sidebar nav items. Rendered from manifest JSON before the |
+| `routes?` | `ClientRoutePatternContribution[]` | Client route patterns the plugin's client registers via |
+| `slots?` | `string[]` | Slot names the plugin's client fills via `registerPlugin({ slots })` |
+| `eager?` | `boolean` | Load the client bundle at boot instead of on first demand. The escape |
 
 #### `ExecToolDefinition`
 
@@ -575,6 +596,12 @@ The `bakin.config.ts` shape — root configuration for a Bakin installation.
 | --- | --- |
 | `PluginEntry` | A plugin entry in `bakin.config.ts`. |
 
+### Other
+
+| Type | Description |
+| --- | --- |
+| `ClientRoutePatternContribution` | Manifest declaration of one client route *pattern* the plugin's client |
+
 ## `@makinbakin/sdk/utils`
 
 Source: `packages/sdk/src/utils/index.ts`.
@@ -655,5 +682,5 @@ Source: `packages/sdk/src/routing/index.ts`.
 | `DefinePluginInput` | — |
 
 <aside class="generated-page-note" aria-label="Generated page metadata">
-  <span>Generated Jun 3, 2026 · Bakin 0.0.0-dev</span>
+  <span>Generated Jun 5, 2026 · Bakin 0.0.0-dev</span>
 </aside>
