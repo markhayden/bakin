@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import { mkdirSync, rmSync, statSync, writeFileSync, appendFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -237,6 +237,60 @@ describe('watchTrajectoryForDeath', () => {
     await new Promise((r) => setTimeout(r, 150))
     expect(settled).toBeInstanceOf(TrajectoryRecoveredTurn)
     expect((settled as TrajectoryRecoveredTurn).content).toBe('fine')
+    watch.stop()
+  })
+
+  it('parses each trajectory line exactly once across polls (incremental scan)', async () => {
+    const parseSpy = spyOn(JSON, 'parse')
+    const watch = watchTrajectoryForDeath({ trajectoryFile, sinceByteOffset: 0, pollMs: 15 })
+    let settled: unknown = null
+    watch.promise.catch((err) => { settled = err })
+
+    // Three append bursts with polls between them — a tool-heavy turn.
+    appendFileSync(trajectoryFile, event('session.started', {}, 1) + '\n')
+    await new Promise((r) => setTimeout(r, 60))
+    appendFileSync(trajectoryFile, event('tool.call', { name: 'a' }, 2) + '\n' + event('tool.call', { name: 'b' }, 3) + '\n')
+    await new Promise((r) => setTimeout(r, 60))
+    appendFileSync(trajectoryFile, [
+      event('model.completed', { assistantTexts: ['done'] }, 4),
+      event('session.ended', { status: 'interrupted', timedOut: false }, 5),
+    ].join('\n') + '\n')
+    await new Promise((r) => setTimeout(r, 80))
+
+    expect(settled).toBeInstanceOf(RuntimeTurnError)
+    // 5 trajectory lines written; each JSON.parsed exactly once — the old
+    // implementation re-parsed the whole tail on every size change
+    // (1 + 3 + 5 = 9 parses for this sequence).
+    const trajectoryParses = parseSpy.mock.calls.filter((c) => String(c[0]).includes('traceSchema'))
+    expect(trajectoryParses).toHaveLength(5)
+    parseSpy.mockRestore()
+    watch.stop()
+  })
+
+  it('detects death when appends split lines (and multi-byte chars) across polls', async () => {
+    const watch = watchTrajectoryForDeath({ trajectoryFile, sinceByteOffset: 0, pollMs: 15 })
+    let settled: unknown = null
+    watch.promise.catch((err) => { settled = err })
+
+    // A multi-byte emoji inside the completed text, with the raw bytes of
+    // the line split mid-character across two appends.
+    const completedLine = event('model.completed', { assistantTexts: ['boom 📦 done'] }, 2)
+    const completedBytes = Buffer.from(completedLine + '\n', 'utf-8')
+    const emojiIdx = completedBytes.indexOf(Buffer.from('📦', 'utf-8'))
+    const splitAt = emojiIdx + 2 // mid-emoji (📦 is 4 bytes)
+
+    appendFileSync(trajectoryFile, event('session.started', {}, 1) + '\n')
+    appendFileSync(trajectoryFile, completedBytes.subarray(0, splitAt))
+    await new Promise((r) => setTimeout(r, 60))
+    expect(settled).toBeNull() // half a line — no verdict, no corruption
+
+    appendFileSync(trajectoryFile, completedBytes.subarray(splitAt))
+    appendFileSync(trajectoryFile, event('session.ended', { status: 'interrupted', timedOut: false }, 3) + '\n')
+    await new Promise((r) => setTimeout(r, 80))
+
+    expect(settled).toBeInstanceOf(RuntimeTurnError)
+    // The split line decoded correctly — the salvaged text keeps the emoji.
+    expect((settled as RuntimeTurnError).diagnosis.salvagedText).toContain('boom 📦 done')
     watch.stop()
   })
 

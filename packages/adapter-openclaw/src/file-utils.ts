@@ -24,6 +24,13 @@ export function safeFileSize(path: string): number {
   }
 }
 
+export interface FileBytesReadFrom {
+  bytes: Buffer
+  nextOffset: number
+  /** True when the file shrank below the offset and the read restarted at 0. */
+  rewound: boolean
+}
+
 export interface FileReadFrom {
   text: string
   nextOffset: number
@@ -31,11 +38,16 @@ export interface FileReadFrom {
   rewound: boolean
 }
 
-export function readFileFrom(
+/**
+ * Raw-bytes variant for callers that split lines themselves — decoding at a
+ * read boundary can corrupt a multi-byte character; buffer-level consumers
+ * carry the partial bytes instead.
+ */
+export function readFileBytesFrom(
   path: string,
   offset: number,
   opts?: { rewindOnTruncate?: boolean },
-): FileReadFrom | null {
+): FileBytesReadFrom | null {
   let size: number
   try {
     size = statSync(path).size
@@ -49,7 +61,7 @@ export function readFileFrom(
     offset = 0
     rewound = true
   }
-  if (size === offset) return { text: '', nextOffset: offset, rewound }
+  if (size === offset) return { bytes: Buffer.alloc(0), nextOffset: offset, rewound }
 
   const length = size - offset
   const buffer = Buffer.alloc(length)
@@ -58,7 +70,7 @@ export function readFileFrom(
     fd = openSync(path, 'r')
     const bytesRead = readSync(fd, buffer, 0, length, offset)
     return {
-      text: buffer.subarray(0, bytesRead).toString('utf-8'),
+      bytes: buffer.subarray(0, bytesRead),
       nextOffset: offset + bytesRead,
       rewound,
     }
@@ -67,4 +79,14 @@ export function readFileFrom(
   } finally {
     if (fd !== null) closeSync(fd)
   }
+}
+
+export function readFileFrom(
+  path: string,
+  offset: number,
+  opts?: { rewindOnTruncate?: boolean },
+): FileReadFrom | null {
+  const read = readFileBytesFrom(path, offset, opts)
+  if (!read) return null
+  return { text: read.bytes.toString('utf-8'), nextOffset: read.nextOffset, rewound: read.rewound }
 }
