@@ -42,7 +42,7 @@ function freshDir(prefix: string): string {
   return d
 }
 
-/** A fake built plugin dir: manifest + dist + a stray SOURCE file. */
+/** A fake built plugin dir: manifest + dist + a stray SOURCE file + node_modules. */
 function seedBuilt(): string {
   const dir = freshDir('built')
   writeFileSync(join(dir, 'bakin-plugin.json'), JSON.stringify({ id: 'messaging', version: '0.1.0' }))
@@ -50,6 +50,9 @@ function seedBuilt(): string {
   mkdirSync(join(dir, 'dist'), { recursive: true })
   writeFileSync(join(dir, 'dist', 'index.js'), 'module.exports = {}\n')
   writeFileSync(join(dir, 'dist', 'client.js'), 'console.log(1)\n')
+  // node_modules (incl. host-provided externals) must NOT end up in the artifact.
+  mkdirSync(join(dir, 'node_modules', 'react'), { recursive: true })
+  writeFileSync(join(dir, 'node_modules', 'react', 'index.js'), 'module.exports = {}\n')
   return dir
 }
 
@@ -94,6 +97,8 @@ describe('assemblePluginArtifact', () => {
     expect(existsSync(join(dest, '.whiskin', 'build.json'))).toBe(true)
     // The stray index.ts source must not be present.
     expect(existsSync(join(dest, 'index.ts'))).toBe(false)
+    // node_modules (host-provided externals) must not be shipped in v1.
+    expect(existsSync(join(dest, 'node_modules'))).toBe(false)
     // Provenance inside the artifact is readable + valid.
     expect(readProvenance(join(dest, '.whiskin', 'build.json')).pluginId).toBe('messaging')
   })

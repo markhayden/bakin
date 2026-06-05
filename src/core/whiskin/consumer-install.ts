@@ -8,7 +8,7 @@
  * ~/.bakin/plugins/<id> via the shared install-core commitStaging (next slice +
  * the live install.ts rewrite).
  */
-import { mkdtempSync, rmSync } from 'fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { downloadToFile } from './download'
@@ -46,6 +46,12 @@ export async function materializeArtifact(
   pluginId: string,
   version: string,
   platform: string,
+  /**
+   * Root for the materialization work dir. Defaults to the OS temp dir; the
+   * live-install layer passes a dir UNDER the content dir so the subsequent
+   * commit is a same-filesystem rename (a cross-device rename would EXDEV-fail).
+   */
+  workRoot: string = tmpdir(),
 ): Promise<MaterializedArtifact> {
   const location = await resolver.resolve(pluginId, version, platform)
   if (!location) {
@@ -55,7 +61,8 @@ export async function materializeArtifact(
     )
   }
 
-  const workDir = mkdtempSync(join(tmpdir(), `whiskin-install-${pluginId}-`))
+  mkdirSync(workRoot, { recursive: true })
+  const workDir = mkdtempSync(join(workRoot, `whiskin-install-${pluginId}-`))
   const cleanup = () => rmSync(workDir, { recursive: true, force: true })
   try {
     const tarball = join(workDir, 'artifact.tar.gz')
