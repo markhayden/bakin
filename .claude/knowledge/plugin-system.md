@@ -16,11 +16,13 @@ Bakin's plugin system is three things working in concert:
    (`packages/host/src/plugin-host/user-plugin-builder.ts`) on install to
    `dist/{index.js, client.js}` — they DO need the server bundle for
    runtime activation. The server build fails if the emitted bundle
-   retains any host-provided browser external (react & friends) — server
-   entries may import only server-safe SDK subpaths
-   (`routing`/`types`/`utils`/`metadata`); the SDK root barrel retains
-   runtime react when inlined (#267 residual, guarded in
-   `src/core/whiskit/build.ts` `assertServerBundleExternalsClean`).
+   retains any host-provided browser external (react & friends) — client-only
+   SDK subpaths (`slots`/`components`/`ui`/`hooks`) are rejected in server
+   entries; the root barrel + `routing`/`types`/`utils`/`metadata` are
+   server-safe (the slots registry core is split into
+   `packages/sdk/src/slots/registry.ts` precisely so the barrel stays
+   react-free — guard: `assertServerBundleExternalsClean` in
+   `src/core/whiskit/build.ts`, #267 residual).
 3. A **shared runtime identity** — plugins mark `react` and
    `@bakin/sdk/*` as externals. The browser import map
    (`packages/host/public/index.html` + `scripts/build-vendors.ts`)

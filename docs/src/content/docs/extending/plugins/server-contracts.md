@@ -7,13 +7,13 @@ The server entry exports a plugin object. Bakin loads it, registers any declarat
 
 The tested minimal server entry lives at `docs/snippets/plugin-basic/index.ts`.
 
-**Server entries must import server-safe SDK subpaths only** — `@makinbakin/sdk/routing`, `/types`, `/utils`, `/metadata`. The SDK root barrel and the react-touching subpaths (`/slots`, `/components`, `/ui`, `/hooks`) retain runtime React imports when inlined into the server bundle; React is host-provided to the **browser** only, so a binary install fails at activation. The build rejects such bundles with the offending specifier named.
+**Server entries must not import client-only SDK subpaths** — `/slots`, `/components`, `/ui`, `/hooks` retain runtime React imports when inlined into the server bundle; React is host-provided to the **browser** only, so a binary install fails at activation. The build rejects such bundles with the offending specifier named. The SDK root, `/routing`, `/types`, `/utils`, and `/metadata` are server-safe.
 
 <!-- docs:snippet plugin-basic-server -->
 Source: `docs/snippets/plugin-basic/index.ts`
 
 ```ts
-import { definePlugin, defineRoute } from '@makinbakin/sdk/routing'
+import { definePlugin, defineRoute } from '@makinbakin/sdk'
 
 const plugin = definePlugin({
   id: 'docs-basic',

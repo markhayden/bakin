@@ -58,8 +58,9 @@ function seedPlugin(opts: { withClient?: boolean } = {}): string {
   writeFileSync(join(dir, 'index.ts'), [
     `import type { NavItem } from '@makinbakin/sdk/types'`,
     // A runtime SDK import so inlining is observable in the output bundle.
-    // Server-safe subpath only — the SDK ROOT retains runtime react imports
-    // when inlined (register/lazy graph) and trips the externals guard.
+    // /metadata is lean (no third-party deps) — the root barrel drags
+    // @bakin/core/docs → zod, which the in-process build can't read under
+    // the test harness. Barrel server-safety has its own system-bun pin test.
     `import { defineHookContract } from '@makinbakin/sdk/metadata'`,
     `export default {`,
     `  id: 'demo', name: 'Demo', version: '0.1.0',`,
@@ -152,6 +153,25 @@ describe('buildPluginWithSystemBun', () => {
     // The poisoned artifact must not be left behind for activation to trip on.
     await buildPluginWithSystemBun({ pluginDir: dir }).catch(() => {})
     expect(existsSync(join(dir, 'dist', 'index.js'))).toBe(false)
+  }, 30_000)
+
+  it('the SDK root barrel stays server-safe — inlines react-free (slots/registry split)', async () => {
+    // Regression pin for the barrel: root → register → slots/registry must
+    // never re-drag the <Slot> rendering layer (runtime react) into server
+    // bundles. Runs via the system-bun subprocess path — in-process builds
+    // can't read the barrel's zod dependency under the test harness.
+    const dir = seedPlugin({ withClient: false })
+    writeFileSync(join(dir, 'index.ts'), [
+      `import { getRegistryVersion } from '@makinbakin/sdk'`,
+      `export default { id: 'demo', name: 'Demo', version: '0.1.0', activate() { return getRegistryVersion() } }`,
+      '',
+    ].join('\n'))
+
+    const result = await buildPluginWithSystemBun({ pluginDir: dir })
+    expect(result.builtServer).toBe(true)
+    const server = readFileSync(join(dir, 'dist', 'index.js'), 'utf-8')
+    expect(server).toContain('getRegistryVersion')
+    expect(server).not.toMatch(/from\s+["']react/)
   }, 30_000)
 
   it('type-only react imports in the SDK root stay erased and build fine (control)', async () => {

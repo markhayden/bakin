@@ -20,7 +20,10 @@
  */
 
 import type { ComponentType } from 'react'
-import { registerSlot, clearSlotsOwnedBy } from './slots'
+// From the react-free registry core — importing './slots' (index.tsx) would
+// drag the <Slot> rendering layer (runtime react) into the root barrel's
+// graph and poison every server bundle that inlines the SDK root.
+import { registerSlot, clearSlotsOwnedBy } from './slots/registry'
 import type { NavBadge, NavItem } from './types'
 
 interface PluginRegistration {

@@ -54,9 +54,10 @@ Plugin code imports from the SDK:
 import { registerPlugin } from '@makinbakin/sdk'
 import { Button } from '@makinbakin/sdk/ui'
 
-// index.ts (server) — server-safe subpaths only; the root barrel and
-// /ui /slots /components /hooks retain runtime React and fail the build
-import { definePlugin, defineRoute } from '@makinbakin/sdk/routing'
+// index.ts (server) — root + /routing /types /utils /metadata are
+// server-safe; /ui /slots /components /hooks retain runtime React
+// and fail the server build
+import { definePlugin, defineRoute } from '@makinbakin/sdk'
 import type { PluginContext } from '@makinbakin/sdk/types'
 ```
 

@@ -274,8 +274,8 @@ function assertServerBundleExternalsClean(plugin: ValidatedPlugin): void {
     `server bundle for "${plugin.pluginId}" retains host-provided browser externals: ` +
     retained.map((spec) => `"${spec}"`).join(', ') +
     `. These resolve only in the browser via the host import map — a binary install fails at activation. ` +
-    `Server entries must not import React-touching SDK subpaths (slots/components/ui/hooks are client-only; ` +
-    `types/utils/metadata/routing are server-safe).`,
+    `Server entries must not import client-only SDK subpaths (slots/components/ui/hooks); ` +
+    `the SDK root, routing, types, utils, and metadata are server-safe.`,
   )
 }
 

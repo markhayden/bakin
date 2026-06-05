@@ -215,10 +215,10 @@ Source: `packages/sdk/src/slots/index.tsx`.
 
 | Slot system | Description |
 | --- | --- |
-| `registerSlot` | Register a component for a named slot. Lower `order` renders first; entries |
+| `registerSlot` | Register a component for a named slot. Lower `order` renders first; default `order` is 100. |
 | `getSlotEntries` | Read the registered entries for a slot. Exported for tooling / tests. |
-| `getSlotNamesOwnedBy` | Slot names that currently have at least one entry owned by the given |
-| `clearSlotsOwnedBy` | Remove every slot entry owned by the given plugin. Used by |
+| `getSlotNamesOwnedBy` | Slot names with at least one entry owned by the given plugin (manifest drift checks). |
+| `clearSlotsOwnedBy` | Remove every slot entry owned by the given plugin (hot-swap teardown). |
 | `Slot` | Render all components registered for the named slot, in order. Extra props |
 
 ## `@makinbakin/sdk/types`
