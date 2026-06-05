@@ -202,12 +202,19 @@ type DispatchEligibilityContext = {
   nowMs: number
   runtimeAgentIds: Set<string>
   completedTaskIds: Set<string>
+  /**
+   * Every task id present on the board, any column. When provided, a
+   * dependsOn pointing at an id that exists nowhere (hard-deleted by
+   * archiveOldTasks) is treated as satisfied instead of stranding the
+   * dependent forever — surfaced via `danglingDependency` so callers log it.
+   */
+  knownTaskIds?: Set<string>
 }
 
 export type DispatchIneligibleReason = 'scheduled' | 'dependency' | 'agent'
 
 export type DispatchEligibility =
-  | { eligible: true }
+  | { eligible: true; danglingDependency?: string }
   | { eligible: false; reason: DispatchIneligibleReason }
 
 type DispatchColumns = {
@@ -248,15 +255,20 @@ export function isTaskDispatchEligible(
     }
   }
 
+  let danglingDependency: string | undefined
   if (task.dependsOn && !context.completedTaskIds.has(task.dependsOn)) {
-    return { eligible: false, reason: 'dependency' }
+    const targetExists = context.knownTaskIds ? context.knownTaskIds.has(task.dependsOn) : true
+    if (targetExists) {
+      return { eligible: false, reason: 'dependency' }
+    }
+    danglingDependency = task.dependsOn
   }
 
   if (task.agent && !context.runtimeAgentIds.has(task.agent)) {
     return { eligible: false, reason: 'agent' }
   }
 
-  return { eligible: true }
+  return { eligible: true, ...(danglingDependency ? { danglingDependency } : {}) }
 }
 
 async function addTaskLog(taskId: string, author: string, message: string, data?: Record<string, unknown>): Promise<void> {
@@ -916,6 +928,9 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       ...columns.done.map(t => t.id),
       ...columns.archived.map(t => t.id),
     ])
+    const knownTaskIds = new Set(
+      Object.values(columns).flatMap((column) => column.map((t) => t.id)),
+    )
     for (const task of [
       ...columns.done,
       ...columns.archived,
@@ -971,8 +986,13 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
         nowMs: Date.now(),
         runtimeAgentIds,
         completedTaskIds,
+        knownTaskIds,
       })
       if (!eligibility.eligible) continue
+      if (eligibility.danglingDependency) {
+        log.warn('Task dependency target no longer exists; treating as satisfied', { id: task.id, dependsOn: eligibility.danglingDependency })
+        await tryAddTaskLog(task.id, 'system', `Dependency task ${eligibility.danglingDependency} no longer exists (likely archived/removed). Treating the dependency as satisfied and dispatching.`)
+      }
 
       // Check failure history with max retries. Session-death records are
       // ladder-managed (corrective/decomposition with their own caps) and
@@ -1107,15 +1127,23 @@ export async function dispatchSingleTask(
       ...columns.done.map(t => t.id),
       ...columns.archived.map(t => t.id),
     ])
+    const knownTaskIds = new Set(
+      Object.values(columns).flatMap((column) => column.map((t) => t.id)),
+    )
     const eligibilityTask = source === 'kick' ? { ...task, availableAt: undefined } : task
     const eligibility = isTaskDispatchEligible(eligibilityTask, {
       nowMs: Date.now(),
       runtimeAgentIds,
       completedTaskIds,
+      knownTaskIds,
     })
     if (!eligibility.eligible) {
       log.debug('dispatchSingleTask: task not dispatch eligible', { taskId, reason: eligibility.reason })
       return
+    }
+    if (eligibility.danglingDependency) {
+      log.warn('Task dependency target no longer exists; treating as satisfied', { id: taskId, dependsOn: eligibility.danglingDependency })
+      await tryAddTaskLog(taskId, 'system', `Dependency task ${eligibility.danglingDependency} no longer exists (likely archived/removed). Treating the dependency as satisfied and dispatching.`)
     }
 
     const state = loadDispatchState(contentDir)

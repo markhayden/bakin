@@ -205,6 +205,31 @@ describe('dispatch', () => {
         { nowMs, runtimeAgentIds, completedTaskIds },
       )).toEqual({ eligible: false, reason: 'agent' })
     })
+
+    it('treats a dependency on a hard-deleted task as satisfied (stranding guard)', () => {
+      // archiveOldTasks removes old task files entirely — a dependent must
+      // not strand forever waiting on an id that no longer exists anywhere.
+      const knownTaskIds = new Set(['some-live-task'])
+      expect(isTaskDispatchEligible(
+        { id: 'stranded', title: 'Stranded task', dependsOn: 'vanished-task' },
+        { nowMs, runtimeAgentIds, completedTaskIds, knownTaskIds },
+      )).toEqual({ eligible: true, danglingDependency: 'vanished-task' })
+    })
+
+    it('still gates on a dependency that exists but is not complete', () => {
+      const knownTaskIds = new Set(['other-task'])
+      expect(isTaskDispatchEligible(
+        { id: 'gated', title: 'Gated task', dependsOn: 'other-task' },
+        { nowMs, runtimeAgentIds, completedTaskIds, knownTaskIds },
+      )).toEqual({ eligible: false, reason: 'dependency' })
+    })
+
+    it('without knownTaskIds context the legacy gating is unchanged', () => {
+      expect(isTaskDispatchEligible(
+        { id: 'legacy', title: 'Legacy gate', dependsOn: 'other-task' },
+        { nowMs, runtimeAgentIds, completedTaskIds },
+      )).toEqual({ eligible: false, reason: 'dependency' })
+    })
   })
 
   // -------------------------------------------------------------------------
