@@ -1,20 +1,14 @@
 import { spawn, type ChildProcess } from 'child_process'
 import { existsSync, mkdirSync } from 'fs'
-import { homedir } from 'os'
-import { join } from 'path'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
+import { getBakinPaths } from '@bakin/core/content-dir'
+import { DEFAULT_SETTINGS } from './defaults'
+import { antflyBinaryPath, inferenceModelsRoot } from './paths'
+import { createAntflyLogBuffer } from './server-logs'
 
 export interface AntflyServerSettings {
   enabled: boolean
   url: string
-}
-
-type AntflyLogLevel = 'debug' | 'info' | 'warn' | 'error'
-
-export interface ParsedAntflyLogLine {
-  level: AntflyLogLevel
-  message: string
-  data: Record<string, unknown>
 }
 
 const noopLogger: AdapterLogger = {
@@ -29,6 +23,7 @@ let isRunning = false
 let recheckTimer: NodeJS.Timeout | null = null
 
 const DEFAULT_EXTERNAL_RECHECK_DELAY_MS = 3000
+const DEFAULT_PORT = 3738
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -41,186 +36,10 @@ function readExternalRecheckDelayMs(): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_EXTERNAL_RECHECK_DELAY_MS
 }
 
-function unquoteAntflyValue(value: string): string {
-  if (value.startsWith('"') && value.endsWith('"')) {
-    return value.slice(1, -1).replace(/\\"/g, '"')
-  }
-  return value
-}
-
-function parseAntflyFields(line: string): Record<string, string> {
-  const fields: Record<string, string> = {}
-  const pattern = /([A-Za-z0-9_.-]+)=("(?:\\.|[^"])*"|[^\s]+)/g
-  let match: RegExpExecArray | null
-  while ((match = pattern.exec(line)) !== null) {
-    fields[match[1]] = unquoteAntflyValue(match[2])
-  }
-  return fields
-}
-
-const SHARD_INITIALIZING_ERROR = 'shard is still initializing'
-const SHARD_NOT_FOUND_ERROR_RE = /^shard ([A-Za-z0-9]+) not found$/
-const STALE_SHARD_SCAN_MESSAGE = 'Failed to scan shard'
-const TRANSIENT_RECONCILER_MESSAGES = new Set([
-  'Failed to add index',
-  'Failed to update schema',
-])
-const OPTIONAL_TERMITE_MODEL_DIRECTORY_MESSAGES = new Set([
-  'Chunker models directory does not exist',
-  'Generator models directory does not exist',
-  'NER models directory does not exist',
-  'Seq2Seq models directory does not exist',
-  'Classifier models directory does not exist',
-  'Reader models directory does not exist',
-  'Transcriber models directory does not exist',
-])
-const ANTFLY_WARNING_DETAIL_KEYS = [
-  'tableName',
-  'table',
-  'indexName',
-  'name',
-  'shardID',
-  'error',
-] as const
-
-function compactAntflyValue(value: string): string {
-  return value.replace(/\s+/g, ' ').trim()
-}
-
-function summarizeAntflyFields(fields: Record<string, string>, keys: readonly string[]): string {
-  const parts: string[] = []
-  for (const key of keys) {
-    const value = fields[key]
-    if (!value) continue
-    parts.push(`${key}=${compactAntflyValue(value)}`)
-  }
-  return parts.length > 0 ? ` (${parts.join(', ')})` : ''
-}
-
-function isTransientReconcilerWarning(message: string, fields: Record<string, string>): boolean {
-  return TRANSIENT_RECONCILER_MESSAGES.has(message) && fields.error === SHARD_INITIALIZING_ERROR
-}
-
-function isStaleShardScan(message: string, fields: Record<string, string>): boolean {
-  if (message !== STALE_SHARD_SCAN_MESSAGE) return false
-  const shardID = fields.shardID
-  const match = fields.error?.match(SHARD_NOT_FOUND_ERROR_RE)
-  return typeof shardID === 'string' && match?.[1] === shardID
-}
-
-function isOptionalTermiteModelDirectoryWarning(message: string, fields: Record<string, string>): boolean {
-  return OPTIONAL_TERMITE_MODEL_DIRECTORY_MESSAGES.has(message)
-    && fields.caller?.startsWith('termite/') === true
-    && typeof fields.dir === 'string'
-}
-
-function isExpectedStartupDebug(message: string, fields: Record<string, string>): boolean {
-  return isTransientReconcilerWarning(message, fields)
-    || isStaleShardScan(message, fields)
-    || isOptionalTermiteModelDirectoryWarning(message, fields)
-}
-
-function transientReconcilerMessage(message: string, fields: Record<string, string>): string {
-  if (message === 'Failed to add index') {
-    return `Antfly reconciler deferred index update until shard initialization completes${
-      summarizeAntflyFields(fields, ['indexName', 'shardID'])
-    }`
-  }
-  return `Antfly reconciler deferred schema update until shard initialization completes${
-    summarizeAntflyFields(fields, ['shardID'])
-  }`
-}
-
-function optionalTermiteModelDirectoryMessage(message: string, fields: Record<string, string>): string {
-  const registry = message.replace(' models directory does not exist', '').toLowerCase()
-  return `Antfly skipped optional Termite ${registry} registry with no local models${
-    summarizeAntflyFields(fields, ['dir'])
-  }`
-}
-
-function staleShardScanMessage(fields: Record<string, string>): string {
-  return `Antfly skipped stale shard scan while metadata catches up${
-    summarizeAntflyFields(fields, ['shardID'])
-  }`
-}
-
-function formatAntflyLogMessage(
-  message: string,
-  level: AntflyLogLevel,
-  fields: Record<string, string>,
-): string {
-  if (isTransientReconcilerWarning(message, fields)) {
-    return transientReconcilerMessage(message, fields)
-  }
-  if (isStaleShardScan(message, fields)) {
-    return staleShardScanMessage(fields)
-  }
-  if (isOptionalTermiteModelDirectoryWarning(message, fields)) {
-    return optionalTermiteModelDirectoryMessage(message, fields)
-  }
-  if (level !== 'warn' && level !== 'error') return message
-  return `${message}${summarizeAntflyFields(fields, ANTFLY_WARNING_DETAIL_KEYS)}`
-}
-
-export function parseAntflyLogLine(line: string, streamLevel: AntflyLogLevel): ParsedAntflyLogLine {
-  const fields = parseAntflyFields(line)
-  const parsedLevel = fields.lvl
-  const rawLevel: AntflyLogLevel = parsedLevel === 'debug'
-    || parsedLevel === 'info'
-    || parsedLevel === 'warn'
-    || parsedLevel === 'error'
-    ? parsedLevel
-    : streamLevel
-  const rawMessage = fields.msg || line
-  const level = isExpectedStartupDebug(rawMessage, fields) ? 'debug' : rawLevel
-
-  const data: Record<string, unknown> = { source: 'antfly', raw: line }
-  for (const [key, value] of Object.entries(fields)) {
-    if (key === 'ts' || key === 'lvl' || key === 'msg') continue
-    data[key] = value
-  }
-
-  return {
-    level,
-    message: formatAntflyLogMessage(rawMessage, rawLevel, fields),
-    data,
-  }
-}
-
-function writeParsedAntflyLog(logger: AdapterLogger, parsed: ParsedAntflyLogLine): void {
-  if (parsed.level === 'debug') logger.debug(parsed.message, parsed.data)
-  else if (parsed.level === 'info') logger.info(parsed.message, parsed.data)
-  else if (parsed.level === 'warn') logger.warn(parsed.message, parsed.data)
-  else logger.error(parsed.message, parsed.data)
-}
-
-function createAntflyLogBuffer(logger: AdapterLogger, streamLevel: AntflyLogLevel) {
-  let pending = ''
-  const flushLine = (line: string) => {
-    const trimmed = line.trim()
-    if (!trimmed) return
-    writeParsedAntflyLog(logger, parseAntflyLogLine(trimmed, streamLevel))
-  }
-  return {
-    push(data: Buffer) {
-      pending += data.toString()
-      const lines = pending.split(/\r?\n/)
-      pending = lines.pop() ?? ''
-      for (const line of lines) flushLine(line)
-    },
-    flush() {
-      flushLine(pending)
-      pending = ''
-    },
-  }
-}
-
 export function findAntflyBinary(): string | null {
   const candidates = [
     process.env.ANTFLY_PATH,
-    '/opt/homebrew/bin/antfly',
-    '/usr/local/bin/antfly',
-    join(homedir(), '.antfly', 'bin', 'antfly'),
+    antflyBinaryPath(),
   ]
 
   for (const candidate of candidates) {
@@ -236,6 +55,33 @@ export function isAntflyInstalled(): boolean {
 
 export function isAntflyRunning(): boolean {
   return isRunning
+}
+
+/**
+ * Whether settings point at Bakin's own private instance (which Bakin spawns
+ * and supervises) vs an externally managed server (guest mode: connect only —
+ * never spawn, never touch its disk).
+ */
+export function isLocalDefaultUrl(url: string): boolean {
+  return url === DEFAULT_SETTINGS.url
+}
+
+function serverOrigin(url: string): string {
+  try {
+    return new URL(url).origin
+  } catch {
+    return url.replace(/\/+$/, '')
+  }
+}
+
+function serverPort(url: string): number {
+  try {
+    const parsed = new URL(url)
+    if (parsed.port) return Number(parsed.port)
+    return parsed.protocol === 'https:' ? 443 : 80
+  } catch {
+    return DEFAULT_PORT
+  }
 }
 
 export type ExternalAntflyStability = 'ready' | 'unstable' | 'disappeared'
@@ -254,6 +100,20 @@ export async function checkExternalAntflyStability(
   const recheckDelayMs = opts.recheckDelayMs ?? readExternalRecheckDelayMs()
   if (recheckDelayMs > 0) await sleep(recheckDelayMs)
   return await isAlreadyRunning(url) ? 'ready' : 'disappeared'
+}
+
+export interface ServerHealthDetail {
+  reachable: boolean
+  /**
+   * True when the configured endpoint answers the pre-0.2 status path but not
+   * /antfly/readyz — i.e. an old antfly version is running at that URL.
+   */
+  legacyServer: boolean
+}
+
+export async function getServerHealthDetail(url: string): Promise<ServerHealthDetail> {
+  if (await isAlreadyRunning(url)) return { reachable: true, legacyServer: false }
+  return { reachable: false, legacyServer: await isLegacyServer(url) }
 }
 
 export async function startAntflyServer(
@@ -277,33 +137,55 @@ export async function startAntflyServer(
     }
 
     if (stability === 'unstable') {
-      logger.warn('Antfly status endpoint is responding but not stable yet', { url })
+      logger.warn('Antfly readiness endpoint is responding but not stable yet', { url })
       return false
     }
 
-    logger.warn('Antfly disappeared during startup check, attempting takeover restart', { url })
+    if (isLocalDefaultUrl(url)) {
+      logger.warn('Antfly disappeared during startup check, attempting takeover restart', { url })
+    }
+  }
+
+  // Guest mode: a non-default URL is an externally managed server. Bakin
+  // connects but never spawns a process for it and never touches its disk.
+  if (!isLocalDefaultUrl(url)) {
+    if (await isLegacyServer(url)) {
+      logger.warn(
+        'Server at configured antfly URL answers the pre-0.2 status endpoint but not /antfly/readyz - it looks like an old antfly version. Upgrade it to v0.2+, or remove the custom url to use Bakin\'s own instance.',
+        { url },
+      )
+    } else {
+      logger.warn('External antfly server is not reachable - running in file-only mode', { url })
+    }
+    return false
   }
 
   const binary = findAntflyBinary()
   if (!binary) {
-    logger.warn('Antfly binary not found - install with: brew install antflydb/antfly/antfly')
+    logger.warn('Antfly binary not found - run `bakin install search` to install it')
     return false
   }
 
-  const dataDir = join(homedir(), '.antfly', 'data')
+  const dataDir = getBakinPaths().antfly
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true })
 
-  logger.info('Starting Antfly server...', { binary, url })
+  const port = serverPort(url)
+  const healthPort = port + 1
+
+  logger.info('Starting Antfly server...', { binary, url, dataDir })
 
   try {
-    const baseUrl = url.replace(/\/api\/v1\/?$/, '').replace('localhost', '0.0.0.0')
-    antflyProcess = spawn(binary, ['swarm', '--metadata-api', baseUrl], {
+    antflyProcess = spawn(binary, [
+      'swarm',
+      '--host', '127.0.0.1',
+      '--port', String(port),
+      '--health-port', String(healthPort),
+      '--data-dir', dataDir,
+      '--models-dir', inferenceModelsRoot(),
+    ], {
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
-      env: {
-        ...process.env,
-        ANTFLY_DATA_DIR: dataDir,
-      },
+      env: { ...process.env },
     })
 
     const stdoutLogs = createAntflyLogBuffer(logger, 'info')
@@ -341,7 +223,7 @@ export async function startAntflyServer(
       return true
     }
 
-    logger.error('Antfly started but failed health check within timeout')
+    logger.error('Antfly started but failed readiness check within timeout')
     stopAntflyServer(logger)
     return false
   } catch (err) {
@@ -386,8 +268,16 @@ export function stopAntflyServer(logger: AdapterLogger = noopLogger): void {
 
 async function isAlreadyRunning(url: string): Promise<boolean> {
   try {
-    const base = url.replace(/\/api\/v1\/?$/, '')
-    const res = await fetch(`${base}/api/v1/status`, { signal: AbortSignal.timeout(2000) })
+    const res = await fetch(`${serverOrigin(url)}/antfly/readyz`, { signal: AbortSignal.timeout(2000) })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+async function isLegacyServer(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${serverOrigin(url)}/api/v1/status`, { signal: AbortSignal.timeout(2000) })
     return res.ok
   } catch {
     return false
@@ -430,6 +320,13 @@ function scheduleExternalRecheck(settings: AntflyServerSettings, logger: Adapter
 
     const stillRunning = await isAlreadyRunning(settings.url)
     if (stillRunning) return
+
+    // Takeover restarts only apply to Bakin's own instance; an external
+    // server going away is its owner's business.
+    if (!isLocalDefaultUrl(settings.url)) {
+      logger.warn('External antfly server disappeared - search degraded to file-only mode', { url: settings.url })
+      return
+    }
 
     logger.warn('Antfly disappeared after startup check, attempting takeover restart', { url: settings.url })
     await startAntflyServer(settings, logger)

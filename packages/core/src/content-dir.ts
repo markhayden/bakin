@@ -111,6 +111,8 @@ export interface BakinPaths {
   workflows: string
   settings: string
   logs: string
+  /** Data dir for Bakin's private antfly instance (created on demand by the adapter). */
+  antfly: string
 }
 
 export function getBakinPaths(): BakinPaths {
@@ -133,6 +135,7 @@ export function getBakinPaths(): BakinPaths {
     workflows: join(home, 'workflows'),
     settings: join(home, 'settings.json'),
     logs: join(home, 'logs'),
+    antfly: join(home, 'antfly'),
   }
 }
 

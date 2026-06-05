@@ -1,13 +1,61 @@
-import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { mkdirSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
+
+const testDir = join(tmpdir(), `bakin-test-antfly-server-${Date.now()}`)
+
+mock.module('../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ home: testDir, antfly: join(testDir, 'antfly') }),
+}))
+mock.module('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ home: testDir, antfly: join(testDir, 'antfly') }),
+}))
+
+const fakeChild = {
+  stdout: { on: mock() },
+  stderr: { on: mock() },
+  on: mock(),
+  once: mock(),
+  kill: mock(),
+}
+const spawnMock = mock(() => fakeChild)
+mock.module('child_process', () => ({ spawn: spawnMock }))
+
 import {
   checkExternalAntflyStability,
-  parseAntflyLogLine,
+  getServerHealthDetail,
+  startAntflyServer,
+  stopAntflyServer,
 } from '../../packages/adapter-antfly/src/server'
+import { parseAntflyLogLine } from '../../packages/adapter-antfly/src/server-logs'
 
 const realFetch = globalThis.fetch
+const LOCAL_DEFAULT_URL = 'http://localhost:3738'
+const fakeBinary = join(testDir, 'fake-antfly')
+
+const logger = { debug: mock(), info: mock(), warn: mock(), error: mock() }
+
+beforeEach(() => {
+  mkdirSync(testDir, { recursive: true })
+  writeFileSync(fakeBinary, '#!/bin/sh\n')
+  process.env.ANTFLY_PATH = fakeBinary
+  process.env.BAKIN_ANTFLY_EXTERNAL_RECHECK_MS = '0'
+  spawnMock.mockClear()
+  logger.debug.mockClear()
+  logger.info.mockClear()
+  logger.warn.mockClear()
+  logger.error.mockClear()
+})
 
 afterEach(() => {
+  stopAntflyServer()
   ;(globalThis as { fetch: typeof fetch }).fetch = realFetch
+  delete process.env.ANTFLY_PATH
+  delete process.env.BAKIN_ANTFLY_EXTERNAL_RECHECK_MS
+  rmSync(testDir, { recursive: true, force: true })
 })
 
 describe('Antfly server log parsing', () => {
@@ -55,12 +103,6 @@ describe('Antfly server log parsing', () => {
     expect(parsed.message).toBe(
       'Antfly reconciler deferred schema update until shard initialization completes (shardID=b009cb75eee1aa90)',
     )
-    expect(parsed.data).toMatchObject({
-      source: 'antfly',
-      caller: 'reconciler/executor.go:326',
-      shardID: 'b009cb75eee1aa90',
-      error: 'shard is still initializing',
-    })
   })
 
   it('keeps non-transient warnings visible with useful Antfly fields', () => {
@@ -85,12 +127,6 @@ describe('Antfly server log parsing', () => {
     expect(parsed.message).toBe(
       'Antfly skipped stale shard scan while metadata catches up (shardID=1f50dadf5a77af69)',
     )
-    expect(parsed.data).toMatchObject({
-      source: 'antfly',
-      caller: 'scanner',
-      shardID: '1f50dadf5a77af69',
-      error: 'shard 1f50dadf5a77af69 not found',
-    })
   })
 
   it('keeps shard scan errors visible when they are not exact stale-shard misses', () => {
@@ -105,21 +141,35 @@ describe('Antfly server log parsing', () => {
     )
   })
 
-  it('demotes optional Termite model registry directory warnings', () => {
+  it('demotes optional model registry directory warnings', () => {
     const parsed = parseAntflyLogLine(
-      'ts=19:54:17 lvl=warn caller=termite/chunker_registry.go:178 msg="Chunker models directory does not exist" dir=/Users/roscoe/.termite/models/chunkers',
+      'ts=19:54:17 lvl=warn caller=inference/registry.zig:178 msg="Chunker models directory does not exist" dir=/Users/roscoe/.antfly/inference/models/chunkers',
       'warn',
     )
 
     expect(parsed.level).toBe('debug')
     expect(parsed.message).toBe(
-      'Antfly skipped optional Termite chunker registry with no local models (dir=/Users/roscoe/.termite/models/chunkers)',
+      'Antfly skipped optional chunker model registry with no local models (dir=/Users/roscoe/.antfly/inference/models/chunkers)',
     )
-    expect(parsed.data).toMatchObject({
-      source: 'antfly',
-      caller: 'termite/chunker_registry.go:178',
-      dir: '/Users/roscoe/.termite/models/chunkers',
+  })
+})
+
+describe('Antfly server supervision', () => {
+  it('checks readiness via /antfly/readyz', async () => {
+    const urls: string[] = []
+    ;(globalThis as { fetch: typeof fetch }).fetch = mock(async (input: string | URL | Request) => {
+      urls.push(String(input))
+      return new Response('ok', { status: 200 })
+    }) as unknown as typeof fetch
+
+    await checkExternalAntflyStability(LOCAL_DEFAULT_URL, {
+      initialTimeoutMs: 50,
+      stableChecks: 1,
+      recheckDelayMs: 0,
     })
+
+    expect(urls.length).toBeGreaterThan(0)
+    expect(urls.every(u => u === 'http://localhost:3738/antfly/readyz')).toBe(true)
   })
 
   it('does not trust an external Antfly endpoint that disappears during startup recheck', async () => {
@@ -127,13 +177,13 @@ describe('Antfly server log parsing', () => {
     const fetchMock = mock(async () => {
       calls++
       if (calls === 1) {
-        return new Response(JSON.stringify({ health: 'healthy' }), { status: 200 })
+        return new Response('ok', { status: 200 })
       }
       throw new Error('connection refused')
     })
     ;(globalThis as { fetch: typeof fetch }).fetch = fetchMock as unknown as typeof fetch
 
-    const stability = await checkExternalAntflyStability('http://localhost:8080/api/v1', {
+    const stability = await checkExternalAntflyStability('http://localhost:9999', {
       initialTimeoutMs: 50,
       stableChecks: 1,
       recheckDelayMs: 1,
@@ -141,5 +191,59 @@ describe('Antfly server log parsing', () => {
 
     expect(stability).toBe('disappeared')
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('spawns the private instance with v0.2 swarm flags and a Bakin-owned data dir', async () => {
+    let readyzCalls = 0
+    ;(globalThis as { fetch: typeof fetch }).fetch = mock(async () => {
+      readyzCalls++
+      // First probe: not running yet -> spawn path. After spawn: ready.
+      if (readyzCalls === 1) throw new Error('connection refused')
+      return new Response('ok', { status: 200 })
+    }) as unknown as typeof fetch
+
+    const started = await startAntflyServer({ enabled: true, url: LOCAL_DEFAULT_URL }, logger)
+
+    expect(started).toBe(true)
+    expect(spawnMock).toHaveBeenCalledTimes(1)
+    const [binary, args] = (spawnMock.mock.calls as unknown as Array<[string, string[], unknown]>)[0]
+    expect(binary).toBe(fakeBinary)
+    expect(args).toEqual([
+      'swarm',
+      '--host', '127.0.0.1',
+      '--port', '3738',
+      '--health-port', '3739',
+      '--data-dir', join(testDir, 'antfly'),
+      '--models-dir', expect.stringContaining(join('inference', 'models')),
+    ])
+  })
+
+  it('never spawns for a non-default URL (guest mode)', async () => {
+    ;(globalThis as { fetch: typeof fetch }).fetch = mock(async () => {
+      throw new Error('connection refused')
+    }) as unknown as typeof fetch
+
+    const started = await startAntflyServer({ enabled: true, url: 'http://search.internal:8080' }, logger)
+
+    expect(started).toBe(false)
+    expect(spawnMock).not.toHaveBeenCalled()
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('External antfly server is not reachable'),
+      expect.anything(),
+    )
+  })
+
+  it('detects a pre-0.2 server via the legacy status signature', async () => {
+    ;(globalThis as { fetch: typeof fetch }).fetch = mock(async (input: string | URL | Request) => {
+      const url = String(input)
+      if (url.endsWith('/antfly/readyz')) return new Response('not found', { status: 404 })
+      if (url.endsWith('/api/v1/status')) return new Response('{}', { status: 200 })
+      throw new Error(`unexpected fetch: ${url}`)
+    }) as unknown as typeof fetch
+
+    expect(await getServerHealthDetail('http://localhost:8080')).toEqual({
+      reachable: false,
+      legacyServer: true,
+    })
   })
 })

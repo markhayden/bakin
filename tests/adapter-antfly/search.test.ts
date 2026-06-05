@@ -7,9 +7,11 @@ const testDir = join(tmpdir(), `bakin-test-adapter-antfly-${Date.now()}`)
 
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => testDir,
+  getBakinPaths: () => ({ home: testDir, antfly: join(testDir, 'antfly') }),
 }))
 mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => testDir,
+  getBakinPaths: () => ({ home: testDir, antfly: join(testDir, 'antfly') }),
 }))
 
 type QueryResponse = {

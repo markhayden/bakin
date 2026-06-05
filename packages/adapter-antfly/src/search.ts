@@ -30,7 +30,7 @@ import {
   readNumber,
   readString,
 } from './query-translation'
-import { startAntflyServer, stopAntflyServer } from './server'
+import { getServerHealthDetail, isLocalDefaultUrl, startAntflyServer, stopAntflyServer } from './server'
 
 interface AntflyIndexHealthEntry {
   name: string
@@ -152,13 +152,41 @@ export class AntflySearchAdapter implements SearchAdapter {
     return [{
       id: 'availability',
       name: 'Antfly availability',
-      run: async () => [{
-        check: 'antfly.availability',
-        status: await this.available() ? 'ok' : 'warn',
-        message: await this.available() ? 'Antfly adapter is available' : 'Antfly adapter is unavailable',
-        autoFixable: false,
-      }],
+      run: async () => {
+        const mode = isLocalDefaultUrl(this.settings.url) ? 'private instance' : 'external server'
+        if (await this.available()) {
+          return [{
+            check: 'antfly.availability',
+            status: 'ok' as const,
+            message: `Antfly adapter is available (${mode} at ${this.settings.url})`,
+            autoFixable: false,
+          }]
+        }
+
+        const detail = !this.settings.enabled
+          ? 'search is disabled in settings'
+          : await this.describeUnavailability(mode)
+        return [{
+          check: 'antfly.availability',
+          status: 'warn' as const,
+          message: `Antfly adapter is unavailable - ${detail}`,
+          autoFixable: false,
+        }]
+      },
     }]
+  }
+
+  private async describeUnavailability(mode: string): Promise<string> {
+    const health = await getServerHealthDetail(this.settings.url)
+    if (health.reachable) {
+      return `server is reachable (${mode} at ${this.settings.url}) but the client never became operational - check server logs`
+    }
+    if (health.legacyServer) {
+      return `server at ${this.settings.url} looks like a pre-0.2 antfly (no /antfly/readyz) - upgrade it or remove the custom url to use Bakin's own instance`
+    }
+    return mode === 'private instance'
+      ? `server is not running (run \`bakin check search\` / \`bakin install search\`)`
+      : `external server at ${this.settings.url} is unreachable`
   }
 
   tables = {
