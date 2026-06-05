@@ -54,11 +54,15 @@ async function sendDispatchMessage(agentId: string, content: string, threadId: s
  * survive a crashed cycle (reusing a seq could re-enter a live session).
  * Workflow steps carry the stepId so parallel step agents can't collide.
  */
-function nextDispatchThreadId(contentDir: string, state: DispatchState, taskId: string, stepId?: string): string {
+function nextDispatchThreadId(contentDir: string, state: DispatchState, taskId: string, stepId?: string, opts?: { deferSave?: boolean }): string {
   if (!state.dispatchSeq) state.dispatchSeq = {}
   const seq = (state.dispatchSeq[taskId] ?? 0) + 1
   state.dispatchSeq[taskId] = seq
-  saveDispatchState(contentDir, state)
+  // deferSave callers mint in-memory and MUST persist the state themselves
+  // before any minted turn fires (persist-before-send). The regular dispatch
+  // cycle batches all mints into its single cycle-end save; one-off paths
+  // (dispatchSingleTask, workflow steps) keep the inline save.
+  if (!opts?.deferSave) saveDispatchState(contentDir, state)
   return stepId ? `task:${taskId}:step:${stepId}:d${seq}` : `task:${taskId}:d${seq}`
 }
 
@@ -834,9 +838,15 @@ export function getInFlightTurnCount(agentId?: string): number {
 export type ConcurrencyGate = 'concurrency_cap' | 'agent_busy' | null
 
 /** Why a dispatch can't fire right now, or null when a slot is free. */
-function concurrencyGate(agentId: string, settings: { dispatch: { maxConcurrentTurns: number; maxTurnsPerAgent: number } }): ConcurrencyGate {
-  if (inFlightTurns.size >= settings.dispatch.maxConcurrentTurns) return 'concurrency_cap'
-  if (getInFlightTurnCount(agentId) >= settings.dispatch.maxTurnsPerAgent) return 'agent_busy'
+function concurrencyGate(
+  agentId: string,
+  settings: { dispatch: { maxConcurrentTurns: number; maxTurnsPerAgent: number } },
+  // Slots reserved by collected-but-not-yet-fired turns in the current
+  // two-phase cycle — invisible to the in-flight registry until phase 2.
+  reserved?: { total: number; forAgent: number },
+): ConcurrencyGate {
+  if (inFlightTurns.size + (reserved?.total ?? 0) >= settings.dispatch.maxConcurrentTurns) return 'concurrency_cap'
+  if (getInFlightTurnCount(agentId) + (reserved?.forAgent ?? 0) >= settings.dispatch.maxTurnsPerAgent) return 'agent_busy'
   return null
 }
 
@@ -1057,6 +1067,16 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       return
     }
 
+    // Two-phase dispatch: phase 1 collects intents (move + mint + message
+    // build, seqs minted in-memory via deferSave), then ONE state save
+    // persists every minted seq, then phase 2 fires the turns. This keeps
+    // persist-before-send (a seq is always durable before its turn is sent)
+    // while collapsing the old N+1 full-file state writes per cycle to 1.
+    // A mid-loop failure loses only unminted work: collected intents have
+    // not fired yet, and unfired seqs re-mint identically next cycle.
+    const pendingTurns: Array<Parameters<typeof fireDispatchTurn>[0]> = []
+    const pendingByAgent = new Map<string, number>()
+
     for (const task of todoTasks) {
       if (dispatchedSet.has(task.id)) continue
 
@@ -1108,54 +1128,69 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
 
       // Bounded concurrency: a capped task is simply ineligible this cycle
       // (no failure recorded) — a later cycle picks it up when a slot frees.
-      const gate = concurrencyGate(targetAgent, settings)
+      // Collected-but-unfired turns reserve their slots via pendingByAgent.
+      const gate = concurrencyGate(targetAgent, settings, {
+        total: pendingTurns.length,
+        forAgent: pendingByAgent.get(targetAgent) ?? 0,
+      })
       if (gate) {
         log.debug('Dispatch deferred by concurrency gate', { id: task.id, agent: targetAgent, gate })
         continue
       }
 
-      const lessonBlock = await buildDispatchLessonBlock({
-        contentDir,
-        taskId: task.id,
-        title: task.title,
-        agentId: targetAgent,
-        query: buildTaskLessonQuery(task),
-      })
-      const assetsBlock = await buildDispatchAssetBlock(task.id)
-      const recovery = failure?.sessionDeath
-      const message = recovery?.stage === 'decomposition'
-        ? buildDecompositionMessage(task, targetAgent, recovery)
-        : buildDispatchMessage(task, targetAgent, contentDir, mainAgentId, lessonBlock, {}, recovery, runtimeRoster, assetsBlock)
-      const initialLogCount = task.log?.length ?? 0
+      // Per-task guard: one bad task (store hiccup, hook failure) must not
+      // abort the cycle — collected intents and other tasks still dispatch.
+      try {
+        const lessonBlock = await buildDispatchLessonBlock({
+          contentDir,
+          taskId: task.id,
+          title: task.title,
+          agentId: targetAgent,
+          query: buildTaskLessonQuery(task),
+        })
+        const assetsBlock = await buildDispatchAssetBlock(task.id)
+        const recovery = failure?.sessionDeath
+        const message = recovery?.stage === 'decomposition'
+          ? buildDecompositionMessage(task, targetAgent, recovery)
+          : buildDispatchMessage(task, targetAgent, contentDir, mainAgentId, lessonBlock, {}, recovery, runtimeRoster, assetsBlock)
+        const initialLogCount = task.log?.length ?? 0
 
-      // Move to inProgress BEFORE sending message to eliminate race condition
-      // where fast agents complete before dispatch moves the task
-      await moveTaskToInProgress(task.id, targetAgent)
+        // Move to inProgress BEFORE sending message to eliminate race condition
+        // where fast agents complete before dispatch moves the task
+        await moveTaskToInProgress(task.id, targetAgent)
 
-      const threadId = nextDispatchThreadId(contentDir, state, task.id)
-      dispatchedSet.add(task.id)
-      // The internal todo→inProgress move is folded into task.dispatched —
-      // one audit row per dispatch, carrying the transition.
-      appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId, from: 'todo', to: 'inProgress' })
-      log.info('Task dispatched', { id: task.id, title: task.title, agent: targetAgent, threadId })
-      fireDispatchTurn({
-        marker: task.id,
-        task,
-        targetAgent,
-        threadId,
-        message,
-        contentDir,
-        port,
-        initialLogCount,
-        logPrefix: 'Dispatch failed',
-        dispatchKind: 'regular',
-      })
+        const threadId = nextDispatchThreadId(contentDir, state, task.id, undefined, { deferSave: true })
+        dispatchedSet.add(task.id)
+        // The internal todo→inProgress move is folded into task.dispatched —
+        // one audit row per dispatch, carrying the transition.
+        appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId, from: 'todo', to: 'inProgress' })
+        log.info('Task dispatched', { id: task.id, title: task.title, agent: targetAgent, threadId })
+        pendingTurns.push({
+          marker: task.id,
+          task,
+          targetAgent,
+          threadId,
+          message,
+          contentDir,
+          port,
+          initialLogCount,
+          logPrefix: 'Dispatch failed',
+          dispatchKind: 'regular',
+        })
+        pendingByAgent.set(targetAgent, (pendingByAgent.get(targetAgent) ?? 0) + 1)
+      } catch (err) {
+        log.error(`Failed to prepare dispatch for task "${task.title}"`, err, { id: task.id })
+      }
     }
 
     state.lastRun = Date.now()
     state.dispatched = [...dispatchedSet]
     trimDispatched(state, settings.dispatch.maxDispatched)
+    // Persist-before-send: every deferred seq mint above becomes durable in
+    // this single write BEFORE any turn fires below.
     saveDispatchState(contentDir, state)
+
+    for (const turn of pendingTurns) fireDispatchTurn(turn)
     }) // end withStateLock
   } finally {
     dispatching = false
