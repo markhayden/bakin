@@ -30,6 +30,11 @@ import { materializeCachedGithubSource } from '@/core/github-source-cache'
 import { createLogger } from '@/core/logger'
 import { isCorePlugin } from '@/lib/plugin-registry'
 import { buildUserPlugin } from '../../plugin-host/user-plugin-builder'
+import { githubArtifactSource } from '@/core/whiskin/github-resolver'
+import type { WhiskinArtifactLocation } from '@/core/whiskin/resolver'
+import { downloadToFile } from '@/core/whiskin/download'
+import { safeExtractArtifact, verifyChecksum } from '@/core/whiskin/artifact'
+import { readProvenance, PROVENANCE_FILENAME } from '@/core/whiskin/provenance'
 import {
   addPlugin,
   readPluginLockfile,
@@ -374,6 +379,9 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       let effectivePluginDir: string = stagingDir
       let requestedRef = ''
       let gitProvenance: { ref: string; commitSha: string } | undefined
+      // True when a published Whiskin artifact was installed (already built —
+      // skip the source build step).
+      let installedFromArtifact = false
 
       if (body.type === 'local') {
         if (body.source.includes('#')) {
@@ -408,46 +416,76 @@ export async function post(req: Request, _url: URL): Promise<Response> {
         }
         requestedRef = body.ref ?? parsedUrl.ref
 
-        try {
-          await materializeCachedGithubSource({
-            cloneUrl: parsedUrl.url,
-            ref: requestedRef || undefined,
-            stagingDir,
-          })
-          gitProvenance = resolveGitProvenance(stagingDir, body.type, requestedRef)
-        } catch (err) {
-          rmSync(stagingDir, { recursive: true, force: true })
-          const message = err instanceof Error ? err.message : String(err)
-          auditInstallRejected('git_clone_failed', body.source, { ref: requestedRef, error: message })
-          return Response.json({ ok: false, error: message }, { status: 400 })
+        // Whiskin: for a subpath github source, prefer a published artifact
+        // (toolchain-free). The plugin is identified by the subpath. Only fall
+        // back to git-clone + build when no published artifact exists; a
+        // verify/extract failure AFTER a match is a hard error (never silently
+        // build a tampered artifact's source).
+        if (parsedUrl.subpath) {
+          const platform = `${process.platform}-${process.arch}`
+          let location: WhiskinArtifactLocation | null = null
+          try {
+            const gh = githubArtifactSource(body.source)
+            location = await gh.resolver.resolve(gh.pluginId, 'latest', platform)
+          } catch {
+            // No published index/release (or unresolvable) — fall back to source.
+            location = null
+          }
+          if (location) {
+            const tarball = join(stagingDir, '.whiskin-artifact.tar.gz')
+            await downloadToFile(location.artifactUrl, tarball)
+            await verifyChecksum(tarball, location.sha256)
+            await safeExtractArtifact(tarball, stagingDir)
+            rmSync(tarball, { force: true })
+            effectivePluginDir = stagingDir
+            const prov = readProvenance(join(stagingDir, '.whiskin', PROVENANCE_FILENAME))
+            gitProvenance = { ref: requestedRef, commitSha: prov.sourceCommitSha }
+            installedFromArtifact = true
+          }
         }
 
-        if (parsedUrl.subpath) {
-          // `parseGithubSource` already rejects `..` segments and leading
-          // slashes, so this `join` cannot escape `stagingDir`. Belt + suspenders:
-          // re-confirm containment before reading files from it.
-          const candidate = join(stagingDir, parsedUrl.subpath)
-          const stagingReal = realpathSync(stagingDir)
-          let candidateReal: string
+        if (!installedFromArtifact) {
           try {
-            candidateReal = realpathSync(candidate)
-          } catch {
+            await materializeCachedGithubSource({
+              cloneUrl: parsedUrl.url,
+              ref: requestedRef || undefined,
+              stagingDir,
+            })
+            gitProvenance = resolveGitProvenance(stagingDir, body.type, requestedRef)
+          } catch (err) {
             rmSync(stagingDir, { recursive: true, force: true })
-            auditInstallRejected('subpath_missing', body.source, { subpath: parsedUrl.subpath })
-            return Response.json({
-              ok: false,
-              error: `subpath "${parsedUrl.subpath}" not found in repository`,
-            }, { status: 400 })
+            const message = err instanceof Error ? err.message : String(err)
+            auditInstallRejected('git_clone_failed', body.source, { ref: requestedRef, error: message })
+            return Response.json({ ok: false, error: message }, { status: 400 })
           }
-          if (!candidateReal.startsWith(stagingReal + sep) && candidateReal !== stagingReal) {
-            rmSync(stagingDir, { recursive: true, force: true })
-            auditInstallRejected('subpath_traversal', body.source, { subpath: parsedUrl.subpath })
-            return Response.json({
-              ok: false,
-              error: `subpath "${parsedUrl.subpath}" escapes the cloned repository`,
-            }, { status: 400 })
+
+          if (parsedUrl.subpath) {
+            // `parseGithubSource` already rejects `..` segments and leading
+            // slashes, so this `join` cannot escape `stagingDir`. Belt + suspenders:
+            // re-confirm containment before reading files from it.
+            const candidate = join(stagingDir, parsedUrl.subpath)
+            const stagingReal = realpathSync(stagingDir)
+            let candidateReal: string
+            try {
+              candidateReal = realpathSync(candidate)
+            } catch {
+              rmSync(stagingDir, { recursive: true, force: true })
+              auditInstallRejected('subpath_missing', body.source, { subpath: parsedUrl.subpath })
+              return Response.json({
+                ok: false,
+                error: `subpath "${parsedUrl.subpath}" not found in repository`,
+              }, { status: 400 })
+            }
+            if (!candidateReal.startsWith(stagingReal + sep) && candidateReal !== stagingReal) {
+              rmSync(stagingDir, { recursive: true, force: true })
+              auditInstallRejected('subpath_traversal', body.source, { subpath: parsedUrl.subpath })
+              return Response.json({
+                ok: false,
+                error: `subpath "${parsedUrl.subpath}" escapes the cloned repository`,
+              }, { status: 400 })
+            }
+            effectivePluginDir = candidateReal
           }
-          effectivePluginDir = candidateReal
         }
       }
 
@@ -672,18 +710,23 @@ export async function post(req: Request, _url: URL): Promise<Response> {
       // artifacts ready on next boot. Failures here are fatal for the
       // install request — shipping an installed-but-unbuilt plugin would
       // crash startup instead of surfacing the error to the user now.
-      try {
-        await buildUserPlugin(targetDir, { trustExistingDist: body.type === 'github' })
-      } catch (buildErr) {
-        // Build failed — clean up the installed files so the install
-        // appears atomic from the user's perspective.
-        rmSync(targetDir, { recursive: true, force: true })
-        const message = buildErr instanceof Error ? buildErr.message : String(buildErr)
-        log.error('Plugin install build step failed', buildErr as Error, { id })
-        return Response.json({
-          ok: false,
-          error: `Installed "${id}" but failed to build it: ${message}`,
-        }, { status: 500 })
+      //
+      // A Whiskin artifact install is already built (dist/ shipped + verified),
+      // so the build step is skipped entirely.
+      if (!installedFromArtifact) {
+        try {
+          await buildUserPlugin(targetDir, { trustExistingDist: body.type === 'github' })
+        } catch (buildErr) {
+          // Build failed — clean up the installed files so the install
+          // appears atomic from the user's perspective.
+          rmSync(targetDir, { recursive: true, force: true })
+          const message = buildErr instanceof Error ? buildErr.message : String(buildErr)
+          log.error('Plugin install build step failed', buildErr as Error, { id })
+          return Response.json({
+            ok: false,
+            error: `Installed "${id}" but failed to build it: ${message}`,
+          }, { status: 500 })
+        }
       }
 
       // For local installs, record the resolved absolute source path so the
