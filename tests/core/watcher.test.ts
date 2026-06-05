@@ -4,6 +4,16 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import type { FSWatcher } from 'chokidar'
 
+const mockHome = join(tmpdir(), `bakin-watcher-test-home-${Date.now()}`)
+mock.module('../../src/core/content-dir', () => ({
+  getContentDir: () => mockHome,
+  getBakinPaths: () => ({ tasks: join(mockHome, 'tasks') }),
+}))
+mock.module('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => mockHome,
+  getBakinPaths: () => ({ tasks: join(mockHome, 'tasks') }),
+}))
+
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
   tryGetMainAgentId: () => 'main',
@@ -81,6 +91,17 @@ describe('watcher', () => {
       expect(opts.ignored(join(tempDir, 'plugins'))).toBe(true)
       expect(opts.ignored(join(tempDir, 'plugins', 'projects', 'lib', 'project-service.ts'))).toBe(true)
       expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'assets', '.trash'))).toBe(false)
+    })
+
+    it('ignores task files — the store broadcast is authoritative', () => {
+      // Store-managed task JSON: the store's own emit is the single broadcast
+      // source; the watcher must not produce a second one ~300ms later.
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'tasks'))).toBe(true)
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'tasks', '2026-06', 'task-abc.json'))).toBe(true)
+      // Salvage output written directly by dispatch — also no broadcast needed.
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'tasks', 'salvage', 'task-x-d1.md'))).toBe(true)
+      // Sibling dirs that merely start with "tasks" are NOT ignored.
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'tasks-other', 'file.json'))).toBe(false)
     })
 
     it('stop is idempotent', async () => {

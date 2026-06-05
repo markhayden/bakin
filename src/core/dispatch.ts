@@ -1105,11 +1105,12 @@ export async function dispatchTasks(contentDir: string, port: number): Promise<v
       // Move to inProgress BEFORE sending message to eliminate race condition
       // where fast agents complete before dispatch moves the task
       await moveTaskToInProgress(task.id, targetAgent)
-      appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
 
       const threadId = nextDispatchThreadId(contentDir, state, task.id)
       dispatchedSet.add(task.id)
-      appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId })
+      // The internal todo→inProgress move is folded into task.dispatched —
+      // one audit row per dispatch, carrying the transition.
+      appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId, from: 'todo', to: 'inProgress' })
       log.info('Task dispatched', { id: task.id, title: task.title, agent: targetAgent, threadId })
       fireDispatchTurn({
         marker: task.id,
@@ -1293,14 +1294,14 @@ export async function dispatchSingleTask(
 
     // Move to inProgress BEFORE sending message to eliminate race condition
     await moveTaskToInProgress(task.id, targetAgent)
-    appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
 
     const threadId = nextDispatchThreadId(contentDir, state, task.id)
     state.dispatched.push(task.id)
     trimDispatched(state, settings.dispatch.maxDispatched)
     saveDispatchState(contentDir, state)
 
-    appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId })
+    // Internal move folded into task.dispatched — one audit row per dispatch.
+    appendAudit(contentDir, 'task.dispatched', targetAgent, { id: task.id, title: task.title, threadId, from: 'todo', to: 'inProgress' })
     if (source !== 'continuation') {
       appendAudit(contentDir, 'task.kicked', source, { id: task.id, title: task.title })
     }
@@ -1657,7 +1658,8 @@ async function dispatchWorkflowTask(
     if (stillInTodo) {
       const ownerAgent = task.agent || activeAgents[0]?.agent || mainAgentId
       await moveTaskToInProgress(task.id, ownerAgent)
-      appendAudit(contentDir, 'task.moved', 'dispatch', { id: task.id, title: task.title, from: 'todo', to: 'inProgress' })
+      // No task.moved audit: the internal move is folded into the per-step
+      // task.dispatched rows emitted below.
     }
     dispatchedSet.add(task.id)
   }
@@ -1710,6 +1712,8 @@ async function dispatchWorkflowTask(
       workflowId: task.workflowId,
       stepId,
       threadId,
+      from: 'todo',
+      to: 'inProgress',
     })
     log.info('Workflow step dispatched', { taskId: task.id, stepId, agent: targetAgent, threadId })
     fireDispatchTurn({

@@ -777,6 +777,23 @@ describe('dispatch', () => {
       const args = mockRuntimeSend.mock.calls[0]?.[0] as Record<string, unknown>
       expect(args.threadId).toBe('task:wf-thread:step:step-generate:d1')
     })
+
+    it('audits exactly one row per dispatch: task.dispatched with from/to, no task.moved', async () => {
+      const { appendAudit } = require('../../src/core/audit') as typeof import('../../src/core/audit')
+      vi.mocked(appendAudit).mockClear()
+      setupTask({ id: 't-audit-one', title: 'Single audit row', agent: 'pixel' })
+
+      await dispatchTasks(tempDir, 3737)
+      await awaitDispatchIdle()
+
+      const calls = vi.mocked(appendAudit).mock.calls as unknown as Array<[string, string, string, Record<string, unknown>]>
+      const moved = calls.filter((c) => c[1] === 'task.moved')
+      const dispatched = calls.filter((c) => c[1] === 'task.dispatched')
+      expect(moved).toHaveLength(0)
+      expect(dispatched).toHaveLength(1)
+      // The fold preserves the transition info on the dispatched row.
+      expect(dispatched[0]?.[3]).toMatchObject({ id: 't-audit-one', from: 'todo', to: 'inProgress' })
+    })
   })
 
   describe('workflow re-dispatch guard', () => {
