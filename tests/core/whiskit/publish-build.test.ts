@@ -49,8 +49,8 @@ function seedUnbuiltPlugin(): string {
     description: 'publish --build fixture', entry: { server: 'index.ts', client: 'client.tsx' },
   }))
   writeFileSync(join(dir, 'index.ts'), [
-    `import { getRegistryVersion } from '@makinbakin/sdk'`,
-    `export default { id: 'pubdemo', name: 'Pub Demo', version: '0.2.0', activate() { return getRegistryVersion() } }`,
+    `import { defineHookContract } from '@makinbakin/sdk/metadata'`,
+    `export default { id: 'pubdemo', name: 'Pub Demo', version: '0.2.0', activate() { return defineHookContract } }`,
     '',
   ].join('\n'))
   writeFileSync(join(dir, 'client.tsx'), [

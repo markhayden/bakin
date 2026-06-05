@@ -1,4 +1,4 @@
-import { definePlugin, defineRoute } from '@makinbakin/sdk'
+import { definePlugin, defineRoute } from '@makinbakin/sdk/routing'
 
 const plugin = definePlugin({
   id: 'docs-basic',

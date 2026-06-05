@@ -244,9 +244,39 @@ async function buildServerWithSystemBun(
     if (result.exitCode !== 0) {
       throw commandFailure('server-build', `Server build for "${plugin.pluginId}"`, result)
     }
+    assertServerBundleExternalsClean(plugin)
   } finally {
     rmSync(scratch, { recursive: true, force: true })
   }
+}
+
+/**
+ * Server bundles externalize React/router for the host to provide — but the
+ * host only provides them to the BROWSER (import map). A server bundle that
+ * retains a runtime import of one of these resolves only inside a repo
+ * checkout; on a binary install, activation dies with "Cannot find package
+ * 'react'" (#267 residual). Type-only imports are erased by the build and
+ * never trip this. Fail at build time, name the specifier, and remove the
+ * poisoned artifact so activation can't trip on it later.
+ */
+function assertServerBundleExternalsClean(plugin: ValidatedPlugin): void {
+  const bundlePath = join(plugin.distDir, 'index.js')
+  if (!existsSync(bundlePath)) return
+  const bundle = readFileSync(bundlePath, 'utf-8')
+  const retained = PLUGIN_SERVER_EXTERNALS.filter((spec) => {
+    const escaped = spec.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')
+    return new RegExp(`(?:\\bfrom\\s*|\\bimport\\s*\\(\\s*|\\brequire\\s*\\(\\s*)["']${escaped}["']`).test(bundle)
+  })
+  if (retained.length === 0) return
+  rmSync(bundlePath, { force: true })
+  throw new WhiskitBuildError(
+    'server-build',
+    `server bundle for "${plugin.pluginId}" retains host-provided browser externals: ` +
+    retained.map((spec) => `"${spec}"`).join(', ') +
+    `. These resolve only in the browser via the host import map — a binary install fails at activation. ` +
+    `Server entries must not import React-touching SDK subpaths (slots/components/ui/hooks are client-only; ` +
+    `types/utils/metadata/routing are server-safe).`,
+  )
 }
 
 async function buildClientWithSystemBun(req: WhiskitBuildRequest, plugin: ValidatedPlugin): Promise<void> {
@@ -368,6 +398,7 @@ export async function buildPluginInProcess(req: WhiskitBuildRequest): Promise<Wh
       `Server build for "${plugin.pluginId}" failed:\n${serverResult.logs.join('\n')}`,
     )
   }
+  assertServerBundleExternalsClean(plugin)
 
   await buildClientWithSystemBun(req, plugin)
   return {

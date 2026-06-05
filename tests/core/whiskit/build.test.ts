@@ -58,11 +58,13 @@ function seedPlugin(opts: { withClient?: boolean } = {}): string {
   writeFileSync(join(dir, 'index.ts'), [
     `import type { NavItem } from '@makinbakin/sdk/types'`,
     // A runtime SDK import so inlining is observable in the output bundle.
-    `import { getRegistryVersion } from '@makinbakin/sdk'`,
+    // Server-safe subpath only — the SDK ROOT retains runtime react imports
+    // when inlined (register/lazy graph) and trips the externals guard.
+    `import { defineHookContract } from '@makinbakin/sdk/metadata'`,
     `export default {`,
     `  id: 'demo', name: 'Demo', version: '0.1.0',`,
     `  nav: [] as NavItem[],`,
-    `  activate() { return getRegistryVersion() },`,
+    `  activate() { return defineHookContract },`,
     `}`,
     '',
   ].join('\n'))
@@ -114,8 +116,8 @@ describe('buildPluginWithSystemBun', () => {
     expect(result.builtClient).toBe(true)
 
     const server = readFileSync(join(dir, 'dist', 'index.js'), 'utf-8')
-    expect(server).not.toContain('from "@makinbakin/sdk"') // inlined
-    expect(server).toContain('getRegistryVersion')          // SDK code present
+    expect(server).not.toContain('from "@makinbakin/sdk') // inlined
+    expect(server).toContain('defineHookContract')          // SDK code present
 
     const client = readFileSync(join(dir, 'dist', 'client.js'), 'utf-8')
     expect(client).toContain('@makinbakin/sdk')              // stays external
@@ -127,6 +129,39 @@ describe('buildPluginWithSystemBun', () => {
     expect(result.builtClient).toBe(false)
     expect(existsSync(join(dir, 'dist', 'index.js'))).toBe(true)
     expect(existsSync(join(dir, 'dist', 'client.js'))).toBe(false)
+  }, 30_000)
+
+  it('rejects server bundles that retain a runtime React import (#267 residual)', async () => {
+    // /slots has RUNTIME react imports (Component, hooks). Inlining it into a
+    // server bundle leaves `react` as a dangling external that only resolves
+    // inside a repo checkout — binary installs die at activation. Fail the
+    // build instead, with the offending specifier named.
+    const dir = seedPlugin()
+    writeFileSync(join(dir, 'index.ts'), [
+      `import { registerSlot } from '@makinbakin/sdk/slots'`,
+      `export default {`,
+      `  id: 'demo', name: 'Demo', version: '0.1.0',`,
+      `  activate() { void registerSlot },`,
+      `}`,
+      '',
+    ].join('\n'))
+
+    expect(buildPluginWithSystemBun({ pluginDir: dir })).rejects.toThrow(
+      /retains host-provided browser externals: "react"/,
+    )
+    // The poisoned artifact must not be left behind for activation to trip on.
+    await buildPluginWithSystemBun({ pluginDir: dir }).catch(() => {})
+    expect(existsSync(join(dir, 'dist', 'index.js'))).toBe(false)
+  }, 30_000)
+
+  it('type-only react imports in the SDK root stay erased and build fine (control)', async () => {
+    // seedPlugin's server entry imports the SDK root, whose only react
+    // dependency is `import type { ComponentType }` — erased at build.
+    const dir = seedPlugin()
+    const result = await buildPluginWithSystemBun({ pluginDir: dir })
+    expect(result.builtServer).toBe(true)
+    const server = readFileSync(join(dir, 'dist', 'index.js'), 'utf-8')
+    expect(server).not.toMatch(/from\s+["']react["']/)
   }, 30_000)
 
   it('installs declared deps with --ignore-scripts and bundles them into the server', async () => {
@@ -182,6 +217,20 @@ describe('buildPluginWithSystemBun', () => {
 })
 
 describe('buildPluginInProcess (dev fast path)', () => {
+  it('rejects server bundles that retain a runtime React import (#267 residual)', async () => {
+    const dir = seedPlugin()
+    writeFileSync(join(dir, 'index.ts'), [
+      `import { registerSlot } from '@makinbakin/sdk/slots'`,
+      `export default { id: 'demo', name: 'Demo', version: '0.1.0', activate() { void registerSlot } }`,
+      '',
+    ].join('\n'))
+
+    expect(buildPluginInProcess({ pluginDir: dir })).rejects.toThrow(
+      /retains host-provided browser externals: "react"/,
+    )
+  }, 30_000)
+
+
   it('is available from a source run', () => {
     expect(canBuildInProcess()).toBe(true)
   })
@@ -192,8 +241,8 @@ describe('buildPluginInProcess (dev fast path)', () => {
     expect(result.backend).toBe('in-process')
 
     const server = readFileSync(join(dir, 'dist', 'index.js'), 'utf-8')
-    expect(server).not.toContain('from "@makinbakin/sdk"')
-    expect(server).toContain('getRegistryVersion')
+    expect(server).not.toContain('from "@makinbakin/sdk')
+    expect(server).toContain('defineHookContract')
     const client = readFileSync(join(dir, 'dist', 'client.js'), 'utf-8')
     expect(client).toContain('@makinbakin/sdk')
   }, 30_000)

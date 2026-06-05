@@ -15,7 +15,12 @@ Bakin's plugin system is three things working in concert:
    plugins like git/images have an empty dist). User plugins build in-binary
    (`packages/host/src/plugin-host/user-plugin-builder.ts`) on install to
    `dist/{index.js, client.js}` — they DO need the server bundle for
-   runtime activation.
+   runtime activation. The server build fails if the emitted bundle
+   retains any host-provided browser external (react & friends) — server
+   entries may import only server-safe SDK subpaths
+   (`routing`/`types`/`utils`/`metadata`); the SDK root barrel retains
+   runtime react when inlined (#267 residual, guarded in
+   `src/core/whiskit/build.ts` `assertServerBundleExternalsClean`).
 3. A **shared runtime identity** — plugins mark `react` and
    `@bakin/sdk/*` as externals. The browser import map
    (`packages/host/public/index.html` + `scripts/build-vendors.ts`)
