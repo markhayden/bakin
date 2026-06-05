@@ -27,6 +27,7 @@ import { readPluginLockfile, type PluginLockEntry } from '@bakin/core/plugins/lo
 import { startStartupSpan, type StartupDiagnosticLogger } from '@/core/startup-diagnostics'
 import { PLUGIN_CLIENT_EXTERNALS, PLUGIN_SERVER_EXTERNALS } from '@/core/whiskin/externals'
 import { validatePluginImports, NON_RUNTIME_DIRS, type PluginPackageJson } from '@/core/whiskin/import-scan'
+import { verifyInstalledArtifact } from '@/core/whiskin/verify'
 
 // Single source for the externals contract — see src/core/whiskin/externals.ts.
 const CLIENT_EXTERNAL = PLUGIN_CLIENT_EXTERNALS
@@ -382,6 +383,25 @@ export async function buildAllUserPlugins(
     if (name.startsWith('.')) continue
     const pluginDir = join(userPluginsDir, name)
     if (!existsSync(join(pluginDir, 'bakin-plugin.json'))) continue
+
+    // Whiskin artifact installs carry provenance; verify host compatibility
+    // before activating. An incompatible artifact (host moved past the externals
+    // contract it was built for) is needs-update, not a silent activation.
+    // Plugins without provenance (legacy/local/dev) take the unchanged path.
+    const verification = verifyInstalledArtifact(pluginDir)
+    if (verification.status === 'needs-update') {
+      log.warn?.(
+        `Plugin "${name}" needs update — ${verification.reason}. Skipping activation; reinstall to fetch a compatible artifact.`,
+      )
+      continue
+    }
+    if (verification.status === 'invalid') {
+      log.warn?.(
+        `Plugin "${name}" has invalid Whiskin provenance — ${verification.reason}. Skipping activation.`,
+      )
+      continue
+    }
+
     try {
       const trustExistingDist = lockedPlugins[name]?.type === 'github' && lockedPlugins[name]?.linked !== true
       await buildUserPlugin(pluginDir, { trustExistingDist, diagnosticsLog: log, pluginId: name })
