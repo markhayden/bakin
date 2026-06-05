@@ -120,10 +120,20 @@ The signature covers canonical JSON for `bakin-plugin.json` with the top-level `
 | `cliCommands[]` | `name`, `usage`, `summary`, `dispatch` |
 | `settings[]` | `key`, `summary` |
 | `docs` | `slug` |
+| `nav[]` | NavItem JSON: `id`, `label` (plus `icon`, `href`, `order`, `children`, ...) |
+| `routes[]` | route `path` pattern matching a `registerPlugin({ routes })` key |
+| `slots[]` | slot names the client fills via `registerPlugin({ slots })` |
+| `eager` | boolean — load the client at boot instead of on first demand |
 
 </div>
 
 API route paths are plugin-relative. A route declared as `/hello` is exposed under `/api/plugins/{pluginId}/hello`. Do not declare `/api/...` paths in a plugin manifest.
+
+### Declarative client metadata (lazy loading)
+
+`nav`, `routes`, and `slots` describe the client bundle's contributions so the shell can render the sidebar and route the first navigation **before** the bundle loads. A plugin that declares any of them is lazy by default: its `client.js` imports on the first render of a declared slot or navigation into a declared route pattern. Declarations must exactly match what `client.tsx` registers at runtime — Bakin warns on drift after every client load.
+
+Set `"eager": true` for clients that must run at boot — background components in the `nav-badge-providers` slot, conditional nav, or other module-load side effects. A client entry with none of `nav`/`routes`/`slots` is treated as eager for backward compatibility.
 
 Exec tool names must use the plugin-owned MCP namespace: `bakin_exec_{pluginId}_{action}`. The manifest declaration and runtime `ctx.registerExecTool()` call must agree. Bakin rejects undeclared tools, duplicate tool names, and user plugin tools that register outside their own plugin prefix.
 
