@@ -2402,7 +2402,10 @@ function readOpenClawSessionActivity(
 
 // sessions.json grows one entry (with a full skillsSnapshot) per session and
 // per-dispatch sessions accumulate steadily — cache the parsed store behind
-// an mtime guard so resolution stays O(1) between writes.
+// an mtime guard so resolution stays O(1) between writes. LRU-capped: each
+// entry holds a fully-parsed store, and the Map previously grew without
+// bound (one entry per store path, never evicted).
+export const SESSION_STORE_CACHE_MAX = 64
 const sessionStoreCache = new Map<string, { mtimeMs: number; store: Record<string, OpenClawSessionStoreEntry> | null }>()
 
 function readSessionStoreCached(storePath: string): Record<string, OpenClawSessionStoreEntry> | null {
@@ -2414,10 +2417,36 @@ function readSessionStoreCached(storePath: string): Record<string, OpenClawSessi
     return null
   }
   const hit = sessionStoreCache.get(storePath)
-  if (hit && hit.mtimeMs === mtimeMs) return hit.store
+  if (hit && hit.mtimeMs === mtimeMs) {
+    // Map preserves insertion order — delete + re-set marks recency.
+    sessionStoreCache.delete(storePath)
+    sessionStoreCache.set(storePath, hit)
+    return hit.store
+  }
   const store = readJsonFile<Record<string, OpenClawSessionStoreEntry>>(storePath)
+  sessionStoreCache.delete(storePath)
   sessionStoreCache.set(storePath, { mtimeMs, store })
+  while (sessionStoreCache.size > SESSION_STORE_CACHE_MAX) {
+    const oldest = sessionStoreCache.keys().next().value
+    if (oldest === undefined) break
+    sessionStoreCache.delete(oldest)
+  }
   return store
+}
+
+/** @internal Test-only. */
+export function __readSessionStoreCachedForTest(storePath: string): Record<string, OpenClawSessionStoreEntry> | null {
+  return readSessionStoreCached(storePath)
+}
+
+/** @internal Test-only. */
+export function __sessionStoreCacheKeysForTest(): string[] {
+  return [...sessionStoreCache.keys()]
+}
+
+/** @internal Test-only. */
+export function __resetSessionStoreCacheForTest(): void {
+  sessionStoreCache.clear()
 }
 
 function resolveOpenClawSessionFile(agentId: string, sessionKey: string): string | undefined {
