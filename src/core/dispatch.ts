@@ -739,7 +739,17 @@ async function reconcileRejectedDispatch(input: {
   const kind = classifyDispatchError(input.err)
   const detail = classifyDispatchFailureDetail(input.err)
   const attempt = (prev?.count || 0) + 1
-  input.state.failedDispatches[input.task.id] = { lastAttempt: Date.now(), count: attempt, kind }
+  // Preserve any in-flight recovery-ladder state: a transport failure
+  // between ladder rungs (e.g. the corrective re-dispatch fired while the
+  // gateway was still rebooting after the death) must not wipe the stage —
+  // otherwise the ladder restarts from scratch and the corrective prompt
+  // is lost. Found live during the rig ladder smoke.
+  input.state.failedDispatches[input.task.id] = {
+    lastAttempt: Date.now(),
+    count: attempt,
+    kind,
+    ...(prev?.sessionDeath ? { sessionDeath: prev.sessionDeath } : {}),
+  }
 
   if (snapshot?.column === 'inProgress') {
     try {
@@ -848,13 +858,31 @@ function fireDispatchTurn(opts: {
   // turn's slot shouldn't free until its outcome has been recorded.
   const settled = sendDispatchMessage(opts.targetAgent, opts.message, opts.threadId)
     .then(async () => {
+      let completedDecomposition = false
       await withStateLock(() => {
         const state = loadDispatchState(opts.contentDir)
-        if (state.failedDispatches?.[opts.task.id]) {
-          delete state.failedDispatches[opts.task.id]
+        const record = state.failedDispatches?.[opts.task.id]
+        if (record) {
+          completedDecomposition = record.sessionDeath?.stage === 'decomposition'
+          delete state.failedDispatches![opts.task.id]
           saveDispatchState(opts.contentDir, state)
         }
       })
+      // A successful DECOMPOSITION turn ends with the agent creating the
+      // subtask chain and STOPPING (no tasks_complete, by design) — which
+      // leaves the parent inProgress, where continuation skips it when the
+      // chain finishes (found live on the rig: the parent idled until
+      // watchdog recovery). Park it in todo; the dependsOn gate the agent
+      // set holds it there until the chain completes, then continuation
+      // re-dispatches it for final assembly.
+      if (completedDecomposition && findDispatchTaskSnapshot(opts.task.id)?.column === 'inProgress') {
+        try {
+          await moveStoredTask(opts.task.id, 'todo', 'inProgress')
+          await tryAddTaskLog(opts.task.id, 'system', 'Decomposition complete — parked in Todo until the subtask chain finishes (dependency gate), then re-dispatched for final assembly.')
+        } catch (err) {
+          log.warn('Failed to park decomposed parent in todo', err, { id: opts.task.id })
+        }
+      }
       opts.onSettled?.('ok')
     })
     .catch(async (err) => {

@@ -356,6 +356,46 @@ describe('OpenClaw runtime Gateway chat', () => {
     }
   })
 
+  it('post-mortem covers runtime_failed: a gateway error FRAME with a dead session on disk yields the diagnosis', async () => {
+    // Live-rig finding: a graceful gateway shutdown mid-turn sends an error
+    // frame (kind runtime_failed) AND writes session.ended(error) to the
+    // trajectory. The frame races the fail-fast watcher; when the frame
+    // wins, post-mortem must still convert it into the diagnosed death.
+    const { RuntimeTurnError } = await import('../../packages/core/src/adapters/runtime')
+
+    FakeWebSocket.onRequest = (frame, ws) => {
+      if (frame.method !== 'agent') return
+      const sessionId = frame.params.sessionId as string
+      const dir = join(testDir, 'agents', 'pixel', 'sessions')
+      mkdirSync(dir, { recursive: true })
+      const lines = [
+        { type: 'session.started', data: {} },
+        { type: 'turn.client_closed', data: {} }, // new event type seen live — must be tolerated
+        { type: 'model.completed', data: { timedOut: false, assistantTexts: ['partial work'] } },
+        { type: 'session.ended', data: { status: 'error', timedOut: false } },
+      ].map((e, i) => JSON.stringify({
+        traceSchema: 'openclaw-trajectory', schemaVersion: 1, traceId: sessionId,
+        type: e.type, ts: new Date(0).toISOString(), seq: i + 1, sessionId, runId: 'run-1', data: e.data,
+      }))
+      writeFileSync(join(dir, `${sessionId}.trajectory.jsonl`), lines.join('\n') + '\n')
+      // Error frame arrives immediately — beats the 200ms watcher poll.
+      ws.emitMessage({ type: 'res', id: frame.id, ok: false, error: { message: 'gateway shutting down', code: 'unavailable' } })
+    }
+
+    const { createOpenClawRuntimeAdapter } = await import('@bakin/adapter-openclaw')
+    const runtime = createOpenClawRuntimeAdapter()
+
+    try {
+      await runtime.messaging.send({ agentId: 'pixel', content: 'do work', threadId: 'task:t-frame:d1' })
+      throw new Error('expected send to reject')
+    } catch (err) {
+      expect(err).toBeInstanceOf(RuntimeTurnError)
+      const diagnosis = (err as InstanceType<typeof RuntimeTurnError>).diagnosis
+      expect(diagnosis.sessionStatus).toBe('error')
+      expect(diagnosis.salvagedText).toBe('partial work')
+    }
+  })
+
   it('fail-fast success arm: a lost final frame on a SUCCESSFUL run recovers after the grace window, not after 630s', async () => {
     FakeWebSocket.onRequest = (frame, ws) => {
       if (frame.method !== 'agent') return
