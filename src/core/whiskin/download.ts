@@ -14,6 +14,8 @@ import { get as httpGet, type IncomingMessage } from 'http'
 import { get as httpsGet } from 'https'
 
 const MAX_REDIRECTS = 5
+/** Per-request inactivity timeout — a slow/unreachable host must not hang an install. */
+const REQUEST_TIMEOUT_MS = 30_000
 
 /**
  * Issue a GET and follow redirects (301/302/303/307/308) up to MAX_REDIRECTS,
@@ -50,6 +52,9 @@ function fetchFinal(url: string, redirectsLeft = MAX_REDIRECTS): Promise<Incomin
       resolve(res)
     })
     req.on('error', reject)
+    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      req.destroy(new Error(`timed out after ${REQUEST_TIMEOUT_MS}ms fetching ${url}`))
+    })
   })
 }
 
