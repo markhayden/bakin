@@ -6,7 +6,7 @@ import { useQueryState, useQueryArrayState, useSearch, useDebug } from '@makinba
 import { Button } from '@makinbakin/sdk/ui'
 import { PluginHeader, FacetFilter } from '@makinbakin/sdk/components'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
-import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter } from 'lucide-react'
+import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen } from 'lucide-react'
 import { ASSET_TYPES } from '../../lib/constants'
 import { createSseRefetchScheduler } from './sse-refetch'
 import { AssetThumb, AssetMetaSummary, AssetTypeIcon } from './atoms'
@@ -28,6 +28,15 @@ const TYPE_OPTIONS = ASSET_TYPES.map((value) => ({
   label: value === 'pdf' ? 'PDF' : value.charAt(0).toUpperCase() + value.slice(1),
   icon: <AssetTypeIcon type={value} className="size-3.5" />,
 }))
+
+/** Sentinel tag-filter value matching assets with no tags at all. */
+export const UNTAGGED = '__untagged__'
+
+/** Does an asset match the active tag filter (any-of; UNTAGGED = tagless)? */
+export function matchesTagFilter(tags: string[], filter: string[]): boolean {
+  if (filter.length === 0) return true
+  return filter.some((f) => (f === UNTAGGED ? tags.length === 0 : tags.includes(f)))
+}
 
 /** Per-result Antfly relevance breakdown. */
 export interface AssetScoreInfo { score: number; indexScores?: Record<string, number> }
@@ -116,6 +125,7 @@ export function VersionedAssetGrid() {
   const [q, setQ] = useQueryState('q', '')
   const [view, setView] = useQueryState('view', 'grid')
   const [typeFilter, setTypeFilter] = useQueryArrayState('type')
+  const [tagFilter, setTagFilter] = useQueryArrayState('tags')
 
   const [assets, setAssets] = useState<VersionedAssetSummary[]>([])
   const [trash, setTrash] = useState<TrashedAssetSummary[]>([])
@@ -229,6 +239,24 @@ export function VersionedAssetGrid() {
     return c
   }, [assets])
 
+  // Tag facet options derive from the loaded summaries (no extra endpoint);
+  // the pinned Untagged sentinel keeps tagless assets reachable.
+  const tagCounts = useMemo(() => {
+    const c: Record<string, number> = {}
+    for (const a of assets) {
+      if ((a.tags ?? []).length === 0) c[UNTAGGED] = (c[UNTAGGED] ?? 0) + 1
+      for (const t of a.tags ?? []) c[t] = (c[t] ?? 0) + 1
+    }
+    return c
+  }, [assets])
+
+  const tagOptions = useMemo(() => {
+    const tags = Object.keys(tagCounts).filter(t => t !== UNTAGGED)
+      .sort((a, b) => (tagCounts[b] ?? 0) - (tagCounts[a] ?? 0) || a.localeCompare(b))
+      .map(value => ({ value, label: value }))
+    return (tagCounts[UNTAGGED] ?? 0) > 0 ? [{ value: UNTAGGED, label: 'Untagged' }, ...tags] : tags
+  }, [tagCounts])
+
   const scoreMap = useMemo(
     () => new Map<string, AssetScoreInfo>(search.results.map(r => [r.id, { score: r.score, indexScores: r.indexScores }])),
     [search.results],
@@ -242,7 +270,10 @@ export function VersionedAssetGrid() {
   const pending = searching && (search.loading || (search.meta?.query ?? '') !== q.trim())
 
   const filtered = useMemo(() => {
-    let list = assets.filter(a => typeFilter.length === 0 || typeFilter.includes(a.type))
+    let list = assets.filter(a =>
+      (typeFilter.length === 0 || typeFilter.includes(a.type)) &&
+      matchesTagFilter(a.tags ?? [], tagFilter),
+    )
     if (q.trim()) {
       // Restrict to search matches, ordered by relevance (reuse scoreMap).
       list = list
@@ -250,7 +281,7 @@ export function VersionedAssetGrid() {
         .sort((a, b) => (scoreMap.get(b.assetId)?.score ?? 0) - (scoreMap.get(a.assetId)?.score ?? 0))
     }
     return list
-  }, [assets, typeFilter, q, scoreMap])
+  }, [assets, typeFilter, tagFilter, q, scoreMap])
 
   // Keep the last settled list on screen while a search is pending — the
   // results only change once the request completes (no flicker / takeover).
@@ -338,6 +369,32 @@ export function VersionedAssetGrid() {
         <div className="mb-3 mt-3 flex items-center gap-2" data-testid="asset-filters">
           <ListFilter className="size-3.5 shrink-0 text-muted-foreground" />
           <FacetFilter label="Type" options={TYPE_OPTIONS} selected={typeFilter} onChange={setTypeFilter} counts={typeCounts} />
+          <FacetFilter label="Tags" options={tagOptions} selected={tagFilter} onChange={setTagFilter} counts={tagCounts} />
+        </div>
+      )}
+
+      {/* Breadcrumb back to the folders view while a tag filter is active. */}
+      {view !== 'trash' && tagFilter.length > 0 && (
+        <div className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="tag-breadcrumb">
+          <button
+            onClick={() => { setTagFilter([]); setView('tags') }}
+            className="flex items-center gap-1 rounded px-1 py-0.5 transition-colors hover:text-foreground"
+            data-testid="breadcrumb-folders"
+          >
+            <FolderOpen className="size-3.5" /> Folders
+          </button>
+          <span>/</span>
+          <span className="font-medium text-foreground">
+            {tagFilter.map(t => (t === UNTAGGED ? 'Untagged' : t)).join(', ')}
+          </span>
+          <button
+            onClick={() => setTagFilter([])}
+            className="ml-0.5 rounded p-0.5 transition-colors hover:text-foreground"
+            aria-label="Clear tag filter"
+            data-testid="clear-tag-filter"
+          >
+            <X className="size-3.5" />
+          </button>
         </div>
       )}
 
