@@ -1,4 +1,4 @@
-import { AntflyClient, matchAll } from '@antfly/sdk'
+import { AntflyClient, InferenceClient, matchAll } from '@antfly/sdk'
 import type { QueryRequest } from '@antfly/sdk'
 import type {
   AdapterHealthCheckDefinition,
@@ -62,6 +62,52 @@ const TRANSIENT_BATCH_ERROR_PATTERNS = [
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
+ * Hard ceiling on a single table query. The cross-table /api/search path
+ * (search-registry → multiQuery) is sequential by design (bakin#456), so one
+ * wedged or pathologically slow query would otherwise stall every remaining
+ * table and hang the UI's search request indefinitely. Same no-infinite-
+ * patience rule as the operational waits elsewhere on this adapter.
+ */
+const QUERY_TIMEOUT_DEFAULT_MS = 15_000
+
+function queryTimeoutMs(): number {
+  const raw = process.env.BAKIN_ANTFLY_QUERY_TIMEOUT_MS
+  if (raw !== undefined) {
+    const parsed = Number(raw)
+    if (Number.isFinite(parsed) && parsed > 0) return parsed
+  }
+  return QUERY_TIMEOUT_DEFAULT_MS
+}
+
+class QueryTimeoutError extends Error {
+  constructor(ms: number) {
+    super(`query timed out after ${ms}ms`)
+    this.name = 'QueryTimeoutError'
+  }
+}
+
+async function raceQueryTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new QueryTimeoutError(ms)), ms)
+      }),
+    ])
+  } catch (err) {
+    if (err instanceof QueryTimeoutError) {
+      // The losing query promise is still in flight; swallow its eventual
+      // rejection so it can't surface as an unhandled rejection later.
+      promise.catch(() => {})
+    }
+    throw err
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
 }
 
 export class AntflySearchAdapter implements SearchAdapter {
@@ -132,9 +178,47 @@ export class AntflySearchAdapter implements SearchAdapter {
       this.client = client
       this.embedderHashAtInit = this.embedderHash()
       this.logger.info('Antfly connected', { url: this.settings.url, health: status?.health })
+      this.warmEmbedders()
     } catch (err) {
       this.client = null
       this.logger.error('Failed to connect to Antfly - falling back to file-only mode', err)
+    }
+  }
+
+  /**
+   * Fire-and-forget cold-start warmup: one throwaway embed per configured
+   * local embedder model, so ONNX model load cost is paid here at boot
+   * instead of inside a user's first semantic query. Failures are expected
+   * for models the current pin can't text-embed (bakin#456) — debug-logged,
+   * never fatal.
+   */
+  private warmEmbedders(): void {
+    let inference: InferenceClient
+    try {
+      const headers: Record<string, string> = {}
+      if (this.settings.auth) {
+        const credentials = `${this.settings.auth.username}:${this.settings.auth.password}`
+        headers.Authorization = `Basic ${Buffer.from(credentials).toString('base64')}`
+      }
+      inference = new InferenceClient({ baseUrl: this.settings.url, headers })
+    } catch (err) {
+      this.logger.debug('Embedder warmup skipped - inference client unavailable', { error: err })
+      return
+    }
+
+    // Only local antfly-provider models load in-process; remote providers
+    // (openai, ollama, ...) have no cold-start to pay and aren't served by
+    // this instance's /ai/v1 surface.
+    const models = new Set(
+      Object.values(this.settings.embedders)
+        .filter((cfg) => cfg.provider === 'antfly')
+        .map((cfg) => cfg.model),
+    )
+    for (const model of models) {
+      inference.embed(model, 'bakin boot warmup').then(
+        () => this.logger.debug('Embedder warmed', { model }),
+        (err: unknown) => this.logger.debug('Embedder warmup failed', { model, error: stringifyError(err) }),
+      )
     }
   }
 
@@ -389,14 +473,23 @@ export class AntflySearchAdapter implements SearchAdapter {
     // backend with a command-encoder assertion (SIGABRT, server gone).
     // Sequential single queries are the shape that works; per-query failure
     // isolation comes free.
+    const timeoutMs = queryTimeoutMs()
     const results: QueryResult[] = []
     for (const { table, query } of queries) {
       const request = buildQueryRequest(table, query, this.settings)
       try {
-        const response = await client.query(request)
+        const response = await raceQueryTimeout(client.query(request), timeoutMs)
         results.push(response ? mapResponse(response, table) : emptyQueryResult(query))
       } catch (err) {
-        this.logger.error('Antfly query failed', { error: err, table })
+        if (err instanceof QueryTimeoutError) {
+          // A timed-out table must not stall the remaining tables — return
+          // empty for it and keep going. (The abandoned query may still be
+          // running server-side; mild overlap with the next query is the
+          // lesser evil vs. an indefinitely hung cross-table search.)
+          this.logger.warn('Antfly query timed out - returning empty result', { table, timeoutMs })
+        } else {
+          this.logger.error('Antfly query failed', { error: err, table })
+        }
         results.push(emptyQueryResult(query))
       }
     }

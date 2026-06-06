@@ -58,8 +58,12 @@ const mockClientInstance = {
   },
 }
 
+// Boot-time embedder warmup goes through the SDK's InferenceClient.
+const mockInferenceEmbed = mock(async (): Promise<{ embeddings: number[][] }> => ({ embeddings: [[0.1]] }))
+
 mock.module('@antfly/sdk', () => ({
   AntflyClient: mock().mockImplementation(() => mockClientInstance),
+  InferenceClient: mock().mockImplementation(() => ({ embed: mockInferenceEmbed })),
   matchAll: mock(() => ({ match_all: {} })),
 }))
 
@@ -116,6 +120,11 @@ async function createInitializedAdapter(settings: Record<string, unknown> = {}):
   return adapter
 }
 
+/** Let fire-and-forget warmup promises settle. */
+function sleepTick(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 10))
+}
+
 function tableQueryRequest(index = 0): Record<string, unknown> {
   return (mockTablesQuery.mock.calls as unknown as Array<[string, Record<string, unknown>]>)[index][1]
 }
@@ -148,6 +157,8 @@ describe('AntflySearchAdapter', () => {
     mockIndexesDrop.mockClear()
     mockGlobalQuery.mockClear()
     mockGlobalQuery.mockImplementation(async () => ({ hits: { hits: [], total: 0 }, took: 0 }))
+    mockInferenceEmbed.mockClear()
+    mockInferenceEmbed.mockImplementation(async () => ({ embeddings: [[0.1]] }))
     logger.debug.mockClear()
     logger.info.mockClear()
     logger.warn.mockClear()
@@ -241,6 +252,35 @@ describe('AntflySearchAdapter', () => {
       field: 'description',
     })
     expect(requests.find(r => r.table === 'bakin_assets')?.reranker).toBeUndefined()
+  })
+
+  it('multiQuery times out a hung table and still returns the rest', async () => {
+    // A wedged backend on one table must not stall the sequential fan-out:
+    // the timed-out table gets an empty result + warn, later tables proceed.
+    const previousTimeout = process.env.BAKIN_ANTFLY_QUERY_TIMEOUT_MS
+    process.env.BAKIN_ANTFLY_QUERY_TIMEOUT_MS = '30'
+    try {
+      mockGlobalQuery
+        .mockImplementationOnce(() => new Promise(() => {})) // hangs forever
+        .mockResolvedValueOnce({ hits: { hits: [{ _id: 'a1', _score: 1, _source: {} }], total: 1 }, took: 2 })
+
+      const adapter = await createInitializedAdapter()
+      const results = await adapter.multiQuery([
+        { table: 'bakin_assets', query: { text: 'x' } },
+        { table: 'bakin_tasks', query: { text: 'x' } },
+      ])
+
+      expect(results[0].total).toBe(0) // hung table -> empty result
+      expect(results[1].total).toBe(1) // later table still answered
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Antfly query timed out - returning empty result',
+        expect.objectContaining({ table: 'bakin_assets', timeoutMs: 30 }),
+      )
+      expect(logger.error).not.toHaveBeenCalled()
+    } finally {
+      if (previousTimeout === undefined) delete process.env.BAKIN_ANTFLY_QUERY_TIMEOUT_MS
+      else process.env.BAKIN_ANTFLY_QUERY_TIMEOUT_MS = previousTimeout
+    }
   })
 
   it('multiQuery isolates per-table failures', async () => {
@@ -448,6 +488,48 @@ describe('AntflySearchAdapter', () => {
 
     mockIndexesList.mockRejectedValueOnce(new Error('network timeout'))
     expect(await adapter.tables.getHealth('bakin_tasks')).toBeNull()
+  })
+
+  it('warms each configured local embedder model once at boot', async () => {
+    // Cold ONNX model loads are paid at startup, not in a user's first
+    // semantic query. One throwaway embed per unique antfly-provider model;
+    // duplicate refs to the same model and remote providers are skipped.
+    await createInitializedAdapter({
+      embedders: {
+        default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5', dimension: 384 },
+        visual: { provider: 'antfly', model: 'Xenova/clip-vit-base-patch32', dimension: 512 },
+        alias: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5', dimension: 384 },
+        remote: { provider: 'openai', model: 'text-embedding-3-small', dimension: 1536 },
+      },
+    })
+    await sleepTick()
+
+    const warmed = (mockInferenceEmbed.mock.calls as unknown as Array<[string, string]>).map((c) => c[0])
+    expect(warmed.sort()).toEqual(['BAAI/bge-small-en-v1.5', 'Xenova/clip-vit-base-patch32'])
+  })
+
+  it('logs warmup failures at debug, never error', async () => {
+    // CLIP text-embed fails at the current pin (bakin#456 — InputArityMismatch);
+    // warmup must absorb that quietly.
+    mockInferenceEmbed.mockRejectedValue(new Error('INFERENCE_FAILED: InputArityMismatch'))
+
+    await createInitializedAdapter()
+    await sleepTick()
+
+    expect(mockInferenceEmbed).toHaveBeenCalled()
+    expect(logger.debug).toHaveBeenCalledWith(
+      'Embedder warmup failed',
+      expect.objectContaining({ error: expect.stringContaining('InputArityMismatch') }),
+    )
+    expect(logger.error).not.toHaveBeenCalled()
+    expect(logger.warn).not.toHaveBeenCalled()
+  })
+
+  it('skips warmup entirely when the adapter never connects', async () => {
+    const adapter = await createInitializedAdapter({ enabled: false })
+    await sleepTick()
+    expect(await adapter.available()).toBe(false)
+    expect(mockInferenceEmbed).not.toHaveBeenCalled()
   })
 
   it('retries transient batch errors before succeeding', async () => {
