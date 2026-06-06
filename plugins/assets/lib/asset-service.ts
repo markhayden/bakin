@@ -18,6 +18,7 @@ import { getContentDir } from '../../../src/core/content-dir'
 import { createLogger } from '../../../src/core/logger'
 import { getMimeType, type AssetType } from './constants'
 import { generateAssetId, assetDirRelPath, yearMonthFromAssetId } from './asset-id'
+import { normalizeTags } from './tags'
 import { withAssetLock } from './asset-lock'
 import { getManifestCached } from './manifest-cache'
 import { taskAssetIndexRemove, taskAssetIndexUpsert } from './task-asset-index'
@@ -195,7 +196,7 @@ export async function createAsset(input: AssetCreateInput): Promise<{ assetId: s
     updated: created,
     currentVersion: 1,
     description: version.description,
-    tags: input.tags ?? [],
+    tags: normalizeTags(input.tags ?? []),
     versions: [version],
     exports: [],
   }
@@ -364,6 +365,38 @@ export async function addVersion(assetId: string, input: AssetVersionInput): Pro
     mirrorDisplay(manifest)
     writeManifestAtomic(dirAbs, manifest)
     return { assetId, version: nextVersion, manifest }
+  })
+}
+
+export interface AssetMetadataInput {
+  description?: string
+  tags?: string[]
+}
+
+/**
+ * Update user-editable metadata. Description writes through to the asset level
+ * AND the current version (200-char cap — same as version writes) so the
+ * mirror invariant holds; tags replace the asset-level namespace (normalized)
+ * and never touch versions.
+ */
+export async function updateMetadata(assetId: string, input: AssetMetadataInput): Promise<AssetManifest> {
+  return withAssetLock(assetId, async () => {
+    const dirAbs = assetDirAbs(assetId)
+    if (!dirAbs) throw new Error(`Invalid assetId: ${assetId}`)
+    const manifest = readManifest(dirAbs)
+    if (!manifest) throw new Error(`Asset not found: ${assetId}`)
+    if (input.description !== undefined) {
+      const description = input.description.slice(0, 200)
+      manifest.description = description
+      const current = manifest.versions.find((v) => v.version === manifest.currentVersion)
+      if (current) current.description = description
+    }
+    if (input.tags !== undefined) {
+      manifest.tags = normalizeTags(input.tags)
+    }
+    manifest.updated = nowIso()
+    writeManifestAtomic(dirAbs, manifest)
+    return manifest
   })
 }
 
@@ -669,5 +702,11 @@ async function upsertFromSourceInner(sourcePath: string, input: AssetCreateInput
     tool: input.tool ?? null,
     description: input.description,
   })
+  // Union caller-provided tags into the asset-level namespace — agents add
+  // organization, never wipe the user's. (Separate locked write; the watcher
+  // coalesces and only the final manifest is indexed.)
+  if (input.tags && input.tags.length > 0) {
+    await updateMetadata(existingId, { tags: [...(next.manifest.tags ?? []), ...input.tags] })
+  }
   return { assetId: next.assetId, version: next.version, changed: true }
 }

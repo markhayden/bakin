@@ -12,7 +12,7 @@ import { resolveAssetServe } from './lib/serve'
 import {
   handleVersionedList, handleVersionedGet, handleVersionedPromote,
   handleVersionedDeleteVersion, handleVersionedDeleteAsset, handleVersionedExport,
-  handleVersionedRelink, handleVersionedAddVersion,
+  handleVersionedRelink, handleVersionedAddVersion, handleVersionedUpdateMetadata,
   handleTrashList, handleTrashRestore, handleTrashPermanentDelete, handleTrashEmpty,
 } from './routes/versioned'
 import { isValidAssetId } from './lib/asset-id'
@@ -111,6 +111,18 @@ const routes = [
     params: z.object({ assetId: z.string().min(1) }),
     responses: { 200: okPassthrough, 400: errorResponse },
     handler: async (req) => handleVersionedExport(req),
+  }),
+  defineRoute({
+    path: '/versioned/:assetId/metadata',
+    method: 'PATCH',
+    summary: 'Edit asset description and/or tags',
+    params: z.object({ assetId: z.string().min(1) }),
+    responses: { 200: okPassthrough, 400: errorResponse, 404: errorResponse },
+    handler: async (req, ctx) => {
+      const res = await handleVersionedUpdateMetadata(req)
+      if (res.ok) ctx.activity.audit('asset.metadata_updated', 'user')
+      return res
+    },
   }),
   defineRoute({
     path: '/versioned/:assetId/relink',
