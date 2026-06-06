@@ -25,6 +25,7 @@ const spawnMock = mock(() => fakeChild)
 mock.module('child_process', () => ({ spawn: spawnMock }))
 
 import {
+  _resetExitHookForTests,
   checkExternalAntflyStability,
   getServerHealthDetail,
   startAntflyServer,
@@ -250,6 +251,32 @@ describe('Antfly server supervision', () => {
       '--data-dir', join(testDir, 'antfly'),
       '--models-dir', expect.stringContaining(join('inference', 'models')),
     ])
+  })
+
+  it('registers a sync exit hook that kills the spawned child (orphan net)', async () => {
+    // process.exit paths that bypass the async lifecycle shutdown (dev.ts
+    // signal handlers, uncaught EADDRINUSE at listen time) must still take
+    // the antfly child down — orphans keep 3738 bound across generations.
+    _resetExitHookForTests()
+    const before = process.listeners('exit')
+
+    let readyzCalls = 0
+    ;(globalThis as { fetch: typeof fetch }).fetch = mock(async () => {
+      readyzCalls++
+      if (readyzCalls === 1) throw new Error('connection refused')
+      return new Response('ok', { status: 200 })
+    }) as unknown as typeof fetch
+
+    const started = await startAntflyServer({ enabled: true, url: LOCAL_DEFAULT_URL }, logger)
+    expect(started).toBe(true)
+
+    const added = process.listeners('exit').filter((l) => !before.includes(l))
+    expect(added).toHaveLength(1)
+
+    fakeChild.kill.mockClear()
+    ;(added[0] as () => void)()
+    expect(fakeChild.kill).toHaveBeenCalledWith('SIGTERM')
+    _resetExitHookForTests()
   })
 
   it('refuses to adopt a listener that 200s readyz but serves garbage on the status endpoint', async () => {

@@ -21,6 +21,31 @@ const noopLogger: AdapterLogger = {
 let antflyProcess: ChildProcess | null = null
 let isRunning = false
 let recheckTimer: NodeJS.Timeout | null = null
+let exitHookRegistered = false
+
+/**
+ * Belt-and-braces orphan net: any JS-level exit that bypasses the async
+ * lifecycle shutdown — dev.ts's own signal handlers calling process.exit(0),
+ * an uncaught EADDRINUSE thrown at listen time, a plain process.exit anywhere —
+ * must still take the spawned antfly child down. Orphaned children keep 3738
+ * bound and poison the next server generation. 'exit' handlers must be
+ * synchronous; ChildProcess.kill() is.
+ */
+function killChildOnExit(): void {
+  if (antflyProcess && !antflyProcess.killed) antflyProcess.kill('SIGTERM')
+}
+
+function registerExitHook(): void {
+  if (exitHookRegistered) return
+  exitHookRegistered = true
+  process.on('exit', killChildOnExit)
+}
+
+/** Tests use this between cases — the exit hook is once-per-process. */
+export function _resetExitHookForTests(): void {
+  process.removeListener('exit', killChildOnExit)
+  exitHookRegistered = false
+}
 
 const DEFAULT_EXTERNAL_RECHECK_DELAY_MS = 3000
 const DEFAULT_PORT = 3738
@@ -213,6 +238,7 @@ export async function startAntflyServer(
         TERMITE_PREFERRED_BACKEND: process.env.TERMITE_PREFERRED_BACKEND ?? 'onnx',
       },
     })
+    registerExitHook()
 
     const stdoutLogs = createAntflyLogBuffer(logger, 'info')
     const stderrLogs = createAntflyLogBuffer(logger, 'warn')
