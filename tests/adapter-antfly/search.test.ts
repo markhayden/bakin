@@ -47,6 +47,8 @@ const mockClientInstance = {
     query: mockTablesQuery,
     batch: mockTablesBatch,
     scan: mockTablesScan,
+    // v0.2-SDK marker: the adapter's stale-dependency guard requires it.
+    scanAll: mock(async () => []),
   },
   indexes: {
     list: mockIndexesList,
@@ -280,6 +282,23 @@ describe('AntflySearchAdapter', () => {
     expect(result.hits).toHaveLength(1)
     expect(result.hits[0].score).toBe(0.82)
     expect(result.hits[0].scoreBreakdown?.rerank).toBe(0.94)
+  })
+
+  it('refuses to run on a pre-0.2 @antfly/sdk (stale node_modules guard)', async () => {
+    // Field-verified failure mode: a checkout that skipped `bun install`
+    // still loads the old npm SDK, whose calls 404 into "Failed to parse
+    // JSON" against a healthy server. The guard names the actual fix.
+    const scanAll = (mockClientInstance.tables as Record<string, unknown>).scanAll
+    delete (mockClientInstance.tables as Record<string, unknown>).scanAll
+    try {
+      const adapter = await createInitializedAdapter()
+      expect(await adapter.available()).toBe(false)
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Run `bun install`'),
+      )
+    } finally {
+      ;(mockClientInstance.tables as Record<string, unknown>).scanAll = scanAll
+    }
   })
 
   it('only sends vector indexes when semantic search is in play', async () => {

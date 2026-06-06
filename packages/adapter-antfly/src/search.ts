@@ -88,6 +88,24 @@ export class AntflySearchAdapter implements SearchAdapter {
       return
     }
 
+    // Stale-dependency guard, BEFORE spawning anything: the v0.2-protocol
+    // SDK is a vendored file: dep, so a checkout that skipped `bun install`
+    // still carries the old npm 0.0.14 — whose relative paths against the
+    // suffix-less base URL produce a maximally misleading "Failed to parse
+    // JSON" against a perfectly healthy server. `tables.scanAll` only
+    // exists on the v0.2 SDK; field-verified failure mode (bakin#456 era).
+    const probe = new AntflyClient({ baseUrl: this.settings.url }) as unknown as {
+      tables?: { scanAll?: unknown }
+    }
+    if (typeof probe.tables?.scanAll !== 'function') {
+      this.client = null
+      this.embedderHashAtInit = this.embedderHash()
+      this.logger.error(
+        'Loaded @antfly/sdk speaks the pre-0.2 protocol - node_modules is stale. Run `bun install` and restart. Falling back to file-only mode.',
+      )
+      return
+    }
+
     const serverAvailable = await startAntflyServer(this.settings, this.logger)
     if (!serverAvailable) {
       this.client = null
