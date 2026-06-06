@@ -1,5 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, mock, spyOn } from 'bun:test'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import type { Server } from 'http'
+
+const testDir = join(tmpdir(), `bakin-test-lifecycle-${Date.now()}`)
+mock.module('../../src/core/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ home: testDir }),
+}))
+mock.module('../../packages/core/src/content-dir', () => ({
+  getContentDir: () => testDir,
+  getBakinPaths: () => ({ home: testDir }),
+}))
 
 mock.module('@bakin/core/main-agent', () => ({
   getMainAgentId: () => 'main',
@@ -148,5 +160,31 @@ describe('lifecycle', () => {
     await processListeners['SIGTERM']()
     await processListeners['SIGTERM']()
     expect(mockShutdownAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('marks shutdown ownership so dev.ts defers instead of preempting (#459)', async () => {
+    // scripts/dev.ts's earlier-registered signal handlers consult this flag;
+    // when set they must NOT call process.exit, or the async shutdown above
+    // never runs and the antfly child is orphaned.
+    const mod = await import('../../src/core/lifecycle')
+    expect(mod.lifecycleOwnsShutdown()).toBe(false)
+    registerShutdownHandlers(mockServer(), '/tmp/test')
+    expect(mod.lifecycleOwnsShutdown()).toBe(true)
+    expect((globalThis as Record<string, unknown>).__bakinLifecycleOwnsShutdown).toBe(true)
+  })
+
+  it('honors a pre-set failure exitCode instead of stamping success (#459)', async () => {
+    // EADDRINUSE handling sets process.exitCode = 1 before routing through
+    // the graceful shutdown — the final exit must carry it.
+    const previousExitCode = process.exitCode
+    process.exitCode = 1
+    try {
+      registerShutdownHandlers(mockServer(), '/tmp/test')
+      await processListeners['SIGTERM']()
+      vi.advanceTimersByTime(1100)
+      expect(process.exit).toHaveBeenCalledWith(1)
+    } finally {
+      process.exitCode = previousExitCode
+    }
   })
 })
