@@ -83,17 +83,14 @@ export function AssetEditDrawer({ assetId, initialDescription, initialTags, sugg
       title="Edit asset"
       description={assetId}
       storageKey="asset-edit"
-      defaultWidth={420}
+      defaultWidth={480}
       dirty={dirty && !saving}
-      actions={
-        <Button size="sm" onClick={save} disabled={saving || !dirty} data-testid="asset-edit-save">
-          {saving ? <Loader2 className="size-4 animate-spin" /> : null}
-          {saving ? 'Saving…' : 'Save'}
-        </Button>
-      }
     >
-      <div className="flex flex-col gap-4 p-4" data-testid="asset-edit-drawer">
-        <div className="flex flex-col gap-1.5">
+      {/* Matches the AgentForm drawer conventions: BakinDrawer owns the
+          padding (px-7 py-6); fields are space-y-1.5 Label+control+help;
+          footer buttons live in the body, right-aligned. */}
+      <div className="flex flex-col gap-5" data-testid="asset-edit-drawer">
+        <div className="space-y-1.5">
           <Label htmlFor="asset-edit-description">Description</Label>
           <Textarea
             id="asset-edit-description"
@@ -104,14 +101,28 @@ export function AssetEditDrawer({ assetId, initialDescription, initialTags, sugg
             placeholder="What is this asset?"
             data-testid="asset-edit-description"
           />
-          <span className="text-right text-[11px] text-muted-foreground">{description.length}/200</span>
+          <p className="text-xs text-muted-foreground text-right">{description.length}/200</p>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label>Tags</Label>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="asset-edit-tags">Tags</Label>
           <TagInput value={tags} onChange={setTags} suggestions={suggestions ?? fetchedSuggestions ?? []} />
-          <span className="text-[11px] text-muted-foreground">Tags group assets into folders. Enter adds; type to reuse existing tags.</span>
+          <p className="text-xs text-muted-foreground">
+            Tags group assets into folders. Enter adds; type to reuse existing tags.
+          </p>
         </div>
+
         {error && <p className="text-xs text-destructive" data-testid="asset-edit-error">{error}</p>}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={saving || !dirty} data-testid="asset-edit-save">
+            {saving && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
+            {saving ? 'Saving…' : 'Save'}
+          </Button>
+        </div>
       </div>
     </BakinDrawer>
   )

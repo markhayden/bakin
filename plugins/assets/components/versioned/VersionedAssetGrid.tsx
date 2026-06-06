@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useQueryState, useQueryArrayState, useSearch, useDebug } from '@makinbakin/sdk/hooks'
+import { useQueryState, useQueryArrayState, useSearch, useDebug, useRouter, usePathname, useSearchParams } from '@makinbakin/sdk/hooks'
 import { Button } from '@makinbakin/sdk/ui'
 import { PluginHeader, FacetFilter } from '@makinbakin/sdk/components'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
@@ -149,6 +149,26 @@ export function VersionedAssetGrid() {
   const [view, setView] = useQueryState('view', 'grid')
   const [typeFilter, setTypeFilter] = useQueryArrayState('type')
   const [tagFilter, setTagFilter] = useQueryArrayState('tags')
+
+  // Folder navigation updates view AND tags in ONE history entry. Two
+  // sequential useQueryState setters would clobber each other (both snapshot
+  // the pre-update params), and their replace() leaves no entry for browser
+  // back. push() makes folder → filtered-grid → back work like real folders.
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const pushParams = useCallback((updates: Record<string, string | null>) => {
+    const params = new URLSearchParams(searchParams.toString())
+    for (const [key, val] of Object.entries(updates)) {
+      if (val === null || val === '') params.delete(key)
+      else params.set(key, val)
+    }
+    const qs = params.toString()
+    router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [router, pathname, searchParams])
+  // view=grid is the URL default — omit the param entirely when navigating to it.
+  const openFolder = useCallback((tag: string) => pushParams({ view: null, tags: tag }), [pushParams])
+  const goToFolders = useCallback(() => pushParams({ view: 'tags', tags: null }), [pushParams])
 
   const [assets, setAssets] = useState<VersionedAssetSummary[]>([])
   const [trash, setTrash] = useState<TrashedAssetSummary[]>([])
@@ -449,7 +469,7 @@ export function VersionedAssetGrid() {
       {view !== 'trash' && view !== 'tags' && tagFilter.length > 0 && (
         <div className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="tag-breadcrumb">
           <button
-            onClick={() => { setTagFilter([]); setView('tags') }}
+            onClick={goToFolders}
             className="flex items-center gap-1 rounded px-1 py-0.5 transition-colors hover:text-foreground"
             data-testid="breadcrumb-folders"
           >
@@ -507,7 +527,7 @@ export function VersionedAssetGrid() {
       ) : view === 'tags' ? (
         <TagFolderGrid
           assets={assets}
-          onOpenFolder={(tag) => { setTagFilter([tag]); setView('grid') }}
+          onOpenFolder={openFolder}
           onChanged={fetchAssets}
         />
       ) : displayed.length === 0 ? (
