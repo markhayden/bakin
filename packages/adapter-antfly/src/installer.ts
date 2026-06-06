@@ -1,6 +1,6 @@
 import { spawn } from 'child_process'
 import { createHash } from 'crypto'
-import { chmodSync, existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'fs'
+import { chmodSync, existsSync, mkdirSync, renameSync, rmdirSync, rmSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import type { SearchAdapterSetupOptions } from '@bakin/core/adapters/search'
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
@@ -228,6 +228,20 @@ export async function installAntflyDependency(
       }
     }
 
+    // Verify-then-commit: run --version against the extracted binary in the
+    // temp dir BEFORE anything is moved into place, so a verification failure
+    // leaves the existing install (binary + share/) untouched.
+    chmodSync(extractedBinary, 0o755)
+    const installedVersion = await antflyBinaryVersion(extractedBinary)
+    if (installedVersion !== pin.version) {
+      return {
+        name: 'antfly',
+        status: 'failed' as const,
+        message: `Downloaded binary reports v${installedVersion ?? 'unknown'} instead of the pinned v${pin.version}. Nothing was installed.`,
+        durationMs: Date.now() - start,
+      }
+    }
+
     const extractedShare = join(tmpDir, 'share')
     if (existsSync(extractedShare)) {
       const shareTarget = join(antflyHome(), 'share')
@@ -236,19 +250,8 @@ export async function installAntflyDependency(
       renameSync(extractedShare, shareTarget)
     }
 
-    chmodSync(extractedBinary, 0o755)
     mkdirSync(dirname(targetPath), { recursive: true })
     renameSync(extractedBinary, targetPath)
-
-    const installedVersion = await antflyBinaryVersion(targetPath)
-    if (installedVersion !== pin.version) {
-      return {
-        name: 'antfly',
-        status: 'failed' as const,
-        message: `Installed binary reports v${installedVersion ?? 'unknown'} instead of the pinned v${pin.version}.`,
-        durationMs: Date.now() - start,
-      }
-    }
 
     const cleanup = await runLegacyCleanup(opts, logger)
     const durationMs = Date.now() - start
@@ -273,5 +276,11 @@ export async function installAntflyDependency(
     }
   } finally {
     rmSync(tmpDir, { recursive: true, force: true })
+    // Drop the tmp/ parent too when this was its only occupant.
+    try {
+      rmdirSync(dirname(tmpDir))
+    } catch {
+      // Non-empty (a concurrent install) or already gone — both fine.
+    }
   }
 }

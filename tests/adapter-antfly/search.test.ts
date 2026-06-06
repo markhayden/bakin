@@ -308,6 +308,24 @@ describe('AntflySearchAdapter', () => {
     expect(vector.indexes).toEqual(['embeddings'])
   })
 
+  it('keeps the default dimension when an embedder override omits it', async () => {
+    // A legacy settings.json may override embedders with only provider+model.
+    // Dropping `dimension` would 400 every table create (v0.2 requires
+    // declared dims), so per-embedder entries deep-merge over defaults.
+    const adapter = await createInitializedAdapter({
+      embedders: { default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' } },
+    })
+
+    await adapter.tables.create('bakin_memory', {
+      fields: { body: { type: 'text' } },
+      indexes: [{ name: 'embeddings', fields: ['body'], kind: 'vector' }],
+    })
+
+    const created = (mockTablesCreate.mock.calls as unknown as Array<[string, Record<string, unknown>]>)[0][1]
+    const indexes = created.indexes as Record<string, Record<string, unknown>>
+    expect(indexes.embeddings.dimension).toBe(384)
+  })
+
   it('builds nested v0.2 chunker config for chunked vector indexes', async () => {
     const adapter = await createInitializedAdapter()
 

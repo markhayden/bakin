@@ -52,6 +52,16 @@ export const DEFAULT_SETTINGS: AntflySettings = {
 
 export function mergeSettings(raw: Record<string, unknown> | undefined): AntflySettings {
   const input = (raw ?? {}) as Partial<AntflySettings>
+
+  // Per-embedder entries deep-merge over their defaults so a partial
+  // override (e.g. a legacy settings.json carrying only provider+model)
+  // keeps the default `dimension` — dropping it would make every table
+  // create fail, since the v0.2 server requires declared dims.
+  const embedders: AntflySettings['embedders'] = { ...DEFAULT_SETTINGS.embedders }
+  for (const [name, cfg] of Object.entries(input.embedders ?? {})) {
+    embedders[name] = { ...DEFAULT_SETTINGS.embedders[name], ...cfg }
+  }
+
   return {
     ...DEFAULT_SETTINGS,
     ...input,
@@ -63,10 +73,7 @@ export function mergeSettings(raw: Record<string, unknown> | undefined): AntflyS
         ...(input.search?.reranker ?? {}),
       },
     },
-    embedders: {
-      ...DEFAULT_SETTINGS.embedders,
-      ...(input.embedders ?? {}),
-    },
+    embedders,
     chunking: {
       ...DEFAULT_SETTINGS.chunking,
       ...(input.chunking ?? {}),
