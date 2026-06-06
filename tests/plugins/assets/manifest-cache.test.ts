@@ -190,7 +190,7 @@ describe('eviction + negative reads', () => {
       assetId: ghostId, type: 'text', source: { kind: 'upload', path: null },
       agent: 'tester', taskId: null, created: 'c', updated: 'c', currentVersion: 1,
       description: 'now real', tags: [],
-      versions: [{ version: 1, file: 'v1.md', thumb: null, mimeType: 'text/markdown', size: 1, width: null, height: null, created: 'c', description: 'now real', tags: [], op: 'upload', parentVersion: null, tool: null, prompt: null, promptHash: null, generation: null }],
+      versions: [{ version: 1, file: 'v1.md', thumb: null, mimeType: 'text/markdown', size: 1, width: null, height: null, created: 'c', description: 'now real', op: 'upload', parentVersion: null, tool: null, prompt: null, promptHash: null, generation: null }],
       exports: [],
     }
     writeFileSync(join(dirAbs, 'v1.md'), 'x', 'utf-8')
@@ -216,7 +216,7 @@ describe('test-mode freeze', () => {
     })
     const manifest = getAsset(id)!
     expect(() => { (manifest as AssetManifest).description = 'mutated' }).toThrow()
-    expect(() => { (manifest as AssetManifest).versions[0].tags.push('nope') }).toThrow()
+    expect(() => { (manifest as AssetManifest).versions[0].description = 'nope' }).toThrow()
     expect(getAsset(id)?.description).toBe('do not touch')
   })
 })

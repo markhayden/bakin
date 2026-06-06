@@ -36,10 +36,12 @@ export const AssetVersionSchema = z.object({
   width: z.number().int().nullable(),
   height: z.number().int().nullable(),
   created: z.string(),
-  // Per-version display fields. Asset-level description/tags mirror the current
-  // version's, so promote/delete losslessly restore the right display.
+  // Per-version display field. Asset-level description mirrors the current
+  // version's, so promote/delete losslessly restore the right display. Tags are
+  // deliberately NOT versioned — they're an asset-level organizational
+  // namespace that must survive addVersion/promote (old manifests' version
+  // tags are stripped by parse).
   description: z.string(),
-  tags: z.array(z.string()),
   op: z.enum(ASSET_OPS),
   parentVersion: z.number().int().positive().nullable(),
   tool: z.string().nullable(),

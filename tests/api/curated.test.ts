@@ -117,7 +117,7 @@ describe('embedded-assets builder excludes agents/', () => {
     expect(script).not.toContain("'/agents'")
 
     // Positively confirm the explicit walks are still there
-    expect(script).toContain("walk(join(repoRoot, 'packages/host/dist'), '/assets'")
+    expect(script).toContain("walk(join(repoRoot, 'packages/host/dist'), '/_app'")
     expect(script).toContain('walk(distDir')
   })
 })

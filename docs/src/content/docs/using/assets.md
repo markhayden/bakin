@@ -11,7 +11,19 @@ Your agents are hoarders, in the good way. Every image they ship, every plan the
   <img src="/docs/media/screenshots/using-assets--library.webp" alt="The assets library: one card per asset, with a version-count badge on assets that have history." loading="lazy">
 </figure>
 
-The library shows **one card per asset**. An asset that has been revised shows a `v3 · 3 versions` badge in the corner; the card always renders the *current* version. Click any card to open its [detail page](#the-detail-page) — preview, full version history, and exports.
+The library shows **one card per asset**. An asset that has been revised shows a `v3 · 3 versions` badge in the corner; the card always renders the *current* version. Click any card to open its [detail page](#the-detail-page) — preview, full version history, and exports. Hover a card (or list row) for a pencil that opens the [edit drawer](#editing-metadata-and-tags).
+
+Four views, all URL-backed: **Grid** (tiles, never narrower than 250px), **List**, **Folders**, and **Trash**. Filter by **Type** or **Tags** (an *Untagged* option keeps tagless assets reachable); filters deep-link via `?type=` / `?tags=`.
+
+### Folders (tags as organization)
+
+Tags double as folders. The **Folders** view groups the library by tag — each folder card shows a collage of its most recent assets and a count; an asset with three tags appears in all three folders. Clicking a folder lands you in the grid filtered to that tag, with a `Folders / <tag>` breadcrumb back. From a folder's `⋮` menu you can **Rename** the tag across every asset that carries it (merging if the target name exists) or **Delete** it everywhere (the assets themselves are untouched). Folders sort by their most recently updated asset; *Untagged* is pinned first.
+
+### Editing metadata and tags
+
+The edit drawer (hover pencil on any card or row, or **Edit** on the detail page) edits an asset's **description** and **tags**. Tags normalize on save (`Hello World` → `hello-world`) and the input suggests existing tags so near-duplicate folders don't accumulate. To tag many assets at once, hit **Select** in grid or list view, click assets to select them, and use the floating bar to apply tags to the whole selection.
+
+Tags are **asset-level organization** — they survive agent edits, new versions, and promotes. Descriptions ride with versions: editing one updates the current version, and promoting an older version restores *its* description.
 
 Search is semantic and reaches text and pixels at the same time. Type "italian food" and you'll get recipes for carbonara, photos of pasta the visual index spotted on sight, research notes on regional cooking, video clips of pizza-making. None of those need to literally say "italian" to surface. One query, the whole library. Search indexes the **current version** of each asset.
 
@@ -59,7 +71,7 @@ Agents call `bakin_exec_assets_save` with a source file. The key behavior: **re-
 
 Clicking a card opens `/assets/<assetId>` — the home for everything version-related:
 
-- **Current preview** of the asset, plus its description, agent, task, and tags (these mirror the current version).
+- **Current preview** of the asset, plus its description, agent, task, and tags. The description mirrors the current version (promote restores that version's description); tags are asset-level and never change with versions. **Edit** opens the metadata drawer.
 - **Exports**: derived, surface-sized deliverables (e.g. an `open-graph.jpg` cropped from a chosen version). Exports are *not* versions — they're published artifacts that download directly.
 - **Version history**: every version newest-first, each showing its op (generate/edit/upload), prompt, and provenance (provider · model · route · surface). Two actions per version:
   - **Make current** — promote any older version back to current. No files change; the card, search, and default export source all follow the pointer.
@@ -85,7 +97,7 @@ Editing a text asset's content saves a **new version** — the history captures 
   .trash/                                      # soft-deleted assets (whole directories)
 ```
 
-The `manifest.json` is the single source of truth — there are no per-file sidecars. It holds asset-level metadata (`type`, `agent`, `taskId`, `currentVersion`, mirrored `description`/`tags`) plus the full `versions[]` and `exports[]`. Writes are atomic; mutations are serialized per asset.
+The `manifest.json` is the single source of truth — there are no per-file sidecars. It holds asset-level metadata (`type`, `agent`, `taskId`, `currentVersion`, the mirrored `description`, and the asset-level `tags`) plus the full `versions[]` and `exports[]`. Writes are atomic; mutations are serialized per asset.
 
 ## Addressing
 
@@ -104,10 +116,10 @@ ETags are keyed on `assetId:currentVersion`, so promoting or editing busts the b
 
 Assets register with the search system as a file-backed content type, table `bakin_assets` — **one row per asset, keyed by `assetId`**, built from the current version. The `manifest.json` is both the indexed unit and the reindex trigger: any mutation rewrites it and re-indexes that one row. Indexed across two Antfly indexes:
 
-- **Text**: description, tags, and extracted content (PDF text, markdown, plain text, JSON, CSV, YAML).
+- **Text**: description, tags, generation surface (so "instagram" finds `instagram-feed-portrait` images), and extracted content (PDF text, markdown, plain text, JSON, CSV, YAML).
 - **Visual** (raster images only): a CLIP embedding of the current version's image.
 
-Facets for filtering: `asset_type`, `agent`, `tool`. Cross-table search reaches assets, tasks, projects, memory, and everything else in one query. If anything looks stale, reindex from the [Health](/docs/using/health/) page.
+Facets for filtering: `asset_type`, `agent`, `tool`, `tags_facet`, `provider`, `model` — so "everything made with gpt-image-2" is one facet away. Cross-table search reaches assets, tasks, projects, memory, and everything else in one query. If anything looks stale, reindex from the [Health](/docs/using/health/) page.
 
 ## Trash and recovery
 

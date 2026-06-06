@@ -39,23 +39,30 @@ afterAll(() => rmSync(testDir, { recursive: true, force: true }))
 describe('addVersion + promote', () => {
   it('appends a version derived from current and advances the pointer', async () => {
     const { assetId } = await freshImageAsset()
-    const r = await addVersion(assetId, { sourceFilePath: join(srcDir, 'b.png'), op: 'edit', description: 'second', tags: ['two'] })
+    const r = await addVersion(assetId, { sourceFilePath: join(srcDir, 'b.png'), op: 'edit', description: 'second' })
     expect(r.version).toBe(2)
     const m = getAsset(assetId)!
     expect(m.currentVersion).toBe(2)
     expect(m.versions.map((v) => v.version)).toEqual([1, 2])
     expect(m.versions[1].parentVersion).toBe(1)
     expect(m.description).toBe('second') // mirrors current
-    expect(m.tags).toEqual(['two'])
+    expect(m.tags).toEqual(['one']) // tags are asset-level — versioning never touches them
   })
 
-  it('promote moves the pointer and restores that version display (mirror)', async () => {
+  it('promote moves the pointer and restores that version description, never tags', async () => {
     const { assetId } = await freshImageAsset()
-    await addVersion(assetId, { sourceFilePath: join(srcDir, 'b.png'), description: 'second', tags: ['two'] })
+    await addVersion(assetId, { sourceFilePath: join(srcDir, 'b.png'), description: 'second' })
     const m = await promoteVersion(assetId, 1)
     expect(m.currentVersion).toBe(1)
     expect(m.description).toBe('first')
     expect(m.tags).toEqual(['one'])
+  })
+
+  it('version objects carry no tags field (asset-level namespace only)', async () => {
+    const { assetId } = await freshImageAsset()
+    await addVersion(assetId, { sourceFilePath: join(srcDir, 'b.png'), description: 'second' })
+    const m = getAsset(assetId)!
+    for (const v of m.versions) expect('tags' in v).toBe(false)
   })
 })
 

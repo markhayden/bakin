@@ -2,22 +2,27 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useQueryState, useQueryArrayState, useSearch, useDebug } from '@makinbakin/sdk/hooks'
+import { useQueryState, useQueryArrayState, useSearch, useDebug, useRouter, usePathname, useSearchParams } from '@makinbakin/sdk/hooks'
 import { Button } from '@makinbakin/sdk/ui'
 import { PluginHeader, FacetFilter } from '@makinbakin/sdk/components'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
-import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter } from 'lucide-react'
+import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil, Check, SquareMousePointer, Tags, ArrowLeft } from 'lucide-react'
 import { ASSET_TYPES } from '../../lib/constants'
 import { createSseRefetchScheduler } from './sse-refetch'
+import { AssetEditDrawer } from './AssetEditDrawer'
+import { TagFolderGrid } from './TagFolderGrid'
+import { TagInput } from './TagInput'
+import { UNTAGGED, matchesTagFilter } from './tag-filter'
 import { AssetThumb, AssetMetaSummary, AssetTypeIcon } from './atoms'
-import { VERSIONED_API, UPLOAD_API, TRASH_API } from './asset-urls'
+import { VERSIONED_API, UPLOAD_API, TRASH_API, TAGS_API } from './asset-urls'
 import type { VersionedAssetSummary, TrashedAssetSummary } from './types'
 
-type View = 'grid' | 'list' | 'trash'
+type View = 'grid' | 'list' | 'tags' | 'trash'
 
 const VIEW_OPTIONS: Array<{ key: View; label: string; Icon: typeof LayoutGrid }> = [
   { key: 'grid', label: 'Grid', Icon: LayoutGrid },
   { key: 'list', label: 'List', Icon: List },
+  { key: 'tags', label: 'Folders', Icon: FolderOpen },
   { key: 'trash', label: 'Trash', Icon: Trash2 },
 ]
 
@@ -28,6 +33,7 @@ const TYPE_OPTIONS = ASSET_TYPES.map((value) => ({
   label: value === 'pdf' ? 'PDF' : value.charAt(0).toUpperCase() + value.slice(1),
   icon: <AssetTypeIcon type={value} className="size-3.5" />,
 }))
+
 
 /** Per-result Antfly relevance breakdown. */
 export interface AssetScoreInfo { score: number; indexScores?: Record<string, number> }
@@ -54,16 +60,29 @@ function ScoreOverlay({ info, className = '' }: { info: AssetScoreInfo; classNam
   )
 }
 
-function AssetCard({ asset, onOpen, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; scoreInfo?: AssetScoreInfo }) {
+function AssetCard({ asset, onOpen, onEdit, selected, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; onEdit: () => void; selected?: boolean; scoreInfo?: AssetScoreInfo }) {
   return (
     <div
       onClick={onOpen}
-      className="flex cursor-pointer flex-col overflow-hidden rounded-lg border border-border bg-card transition-all duration-150 hover:-translate-y-0.5 hover:border-[rgba(255,255,255,0.15)]"
+      className={`group flex cursor-pointer flex-col overflow-hidden rounded-lg border bg-card transition-all duration-150 hover:-translate-y-0.5 ${selected ? 'border-emerald-500/70 ring-1 ring-emerald-500/50' : 'border-border hover:border-[rgba(255,255,255,0.15)]'}`}
       data-testid={`asset-card-${asset.assetId}`}
     >
       <div className="relative aspect-square overflow-hidden bg-zinc-900/50">
         <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
-        {scoreInfo && <ScoreOverlay info={scoreInfo} className="absolute right-1.5 top-1.5 z-10" />}
+        {selected !== undefined && (
+          <span className={`absolute left-1.5 top-1.5 z-10 flex size-5 items-center justify-center rounded border ${selected ? 'border-emerald-500 bg-emerald-500 text-black' : 'border-zinc-500 bg-black/60'}`} data-testid={`asset-selected-${asset.assetId}`}>
+            {selected && <Check className="size-3.5" />}
+          </span>
+        )}
+        <button
+          onClick={(e) => { e.stopPropagation(); onEdit() }}
+          className="absolute right-1.5 top-1.5 z-10 rounded bg-black/60 p-1.5 text-zinc-300 opacity-0 transition-opacity hover:text-white group-hover:opacity-100"
+          aria-label={`Edit ${asset.description || asset.assetId}`}
+          data-testid={`asset-edit-${asset.assetId}`}
+        >
+          <Pencil className="size-3.5" />
+        </button>
+        {scoreInfo && <ScoreOverlay info={scoreInfo} className="absolute left-1.5 top-1.5 z-10" />}
         {asset.versionCount > 1 && (
           <span className="absolute bottom-1.5 left-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300" data-testid="version-badge">
             {asset.versionCount} versions
@@ -83,13 +102,18 @@ function AssetCard({ asset, onOpen, scoreInfo }: { asset: VersionedAssetSummary;
   )
 }
 
-function AssetListRow({ asset, onOpen, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; scoreInfo?: AssetScoreInfo }) {
+function AssetListRow({ asset, onOpen, onEdit, selected, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; onEdit: () => void; selected?: boolean; scoreInfo?: AssetScoreInfo }) {
   return (
-    <button
+    <div
       onClick={onOpen}
-      className="flex w-full items-center gap-3 rounded-md border border-border bg-card px-3 py-2 text-left transition-colors hover:border-[rgba(255,255,255,0.15)]"
+      className={`group flex w-full cursor-pointer items-center gap-3 rounded-md border bg-card px-3 py-2 text-left transition-colors ${selected ? 'border-emerald-500/70 ring-1 ring-emerald-500/50' : 'border-border hover:border-[rgba(255,255,255,0.15)]'}`}
       data-testid={`asset-row-${asset.assetId}`}
     >
+      {selected !== undefined && (
+        <span className={`flex size-4.5 shrink-0 items-center justify-center rounded border ${selected ? 'border-emerald-500 bg-emerald-500 text-black' : 'border-zinc-500'}`} data-testid={`asset-selected-${asset.assetId}`}>
+          {selected && <Check className="size-3" />}
+        </span>
+      )}
       <div className="size-10 shrink-0 overflow-hidden rounded">
         <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
       </div>
@@ -103,9 +127,17 @@ function AssetListRow({ asset, onOpen, scoreInfo }: { asset: VersionedAssetSumma
         </div>
       </div>
       {scoreInfo && <ScoreOverlay info={scoreInfo} className="shrink-0" />}
+      <button
+        onClick={(e) => { e.stopPropagation(); onEdit() }}
+        className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+        aria-label={`Edit ${asset.description || asset.assetId}`}
+        data-testid={`asset-edit-${asset.assetId}`}
+      >
+        <Pencil className="size-3.5" />
+      </button>
       <span className="shrink-0 text-[11px] text-muted-foreground">{formatSize(asset.size)}</span>
       <span className="shrink-0 text-[11px] text-muted-foreground">{formatAge(asset.created)}</span>
-    </button>
+    </div>
   )
 }
 
@@ -116,9 +148,51 @@ export function VersionedAssetGrid() {
   const [q, setQ] = useQueryState('q', '')
   const [view, setView] = useQueryState('view', 'grid')
   const [typeFilter, setTypeFilter] = useQueryArrayState('type')
+  const [tagFilter, setTagFilter] = useQueryArrayState('tags')
+
+  // Folder navigation updates view AND tags in ONE history entry. Two
+  // sequential useQueryState setters would clobber each other (both snapshot
+  // the pre-update params), and their replace() leaves no entry for browser
+  // back. push() makes folder → filtered-grid → back work like real folders.
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const pushParams = useCallback((updates: Record<string, string | null>) => {
+    const params = new URLSearchParams(searchParams.toString())
+    for (const [key, val] of Object.entries(updates)) {
+      if (val === null || val === '') params.delete(key)
+      else params.set(key, val)
+    }
+    const qs = params.toString()
+    router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [router, pathname, searchParams])
+  // view=grid is the URL default — omit the param entirely when navigating to it.
+  const openFolder = useCallback((tag: string) => pushParams({ view: null, tags: tag }), [pushParams])
+  const goToFolders = useCallback(() => pushParams({ view: 'tags', tags: null }), [pushParams])
 
   const [assets, setAssets] = useState<VersionedAssetSummary[]>([])
   const [trash, setTrash] = useState<TrashedAssetSummary[]>([])
+  const [editing, setEditing] = useState<VersionedAssetSummary | null>(null)
+
+  // Bulk selection — ephemeral (not URL-backed), exits on view change.
+  const [selectMode, setSelectMode] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkTags, setBulkTags] = useState<string[]>([])
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkError, setBulkError] = useState<string | null>(null)
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false)
+    setSelected(new Set())
+    setBulkTags([])
+    setBulkError(null)
+  }, [])
+  useEffect(() => { exitSelectMode() }, [view, exitSelectMode])
+  const toggleSelected = (assetId: string) => setSelected(prev => {
+    const next = new Set(prev)
+    if (next.has(assetId)) next.delete(assetId)
+    else next.add(assetId)
+    return next
+  })
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -162,8 +236,9 @@ export function VersionedAssetGrid() {
   // explicit restore/empty/permanent-delete actions, which refetch directly).
   useEffect(() => { if (view === 'trash') fetchTrash() }, [view, fetchTrash])
 
-  // Drive the search hook from the URL query.
-  useEffect(() => { search.search(q) }, [q]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Drive the search hook from the URL query. The folders view repurposes the
+  // same box as a client-side folder-name filter — no Antfly round-trip.
+  useEffect(() => { if (view !== 'tags') search.search(q) }, [q, view]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const es = new EventSource('/api/events')
@@ -229,6 +304,31 @@ export function VersionedAssetGrid() {
     return c
   }, [assets])
 
+  // Tag facet options derive from the loaded summaries (no extra endpoint);
+  // the pinned Untagged sentinel keeps tagless assets reachable.
+  const tagCounts = useMemo(() => {
+    const c: Record<string, number> = {}
+    for (const a of assets) {
+      if ((a.tags ?? []).length === 0) c[UNTAGGED] = (c[UNTAGGED] ?? 0) + 1
+      for (const t of a.tags ?? []) c[t] = (c[t] ?? 0) + 1
+    }
+    return c
+  }, [assets])
+
+  const tagOptions = useMemo(() => {
+    const tags = Object.keys(tagCounts).filter(t => t !== UNTAGGED)
+      .sort((a, b) => (tagCounts[b] ?? 0) - (tagCounts[a] ?? 0) || a.localeCompare(b))
+      .map(value => ({ value, label: value }))
+    return (tagCounts[UNTAGGED] ?? 0) > 0 ? [{ value: UNTAGGED, label: 'Untagged' }, ...tags] : tags
+  }, [tagCounts])
+
+  // Folder-name filter for the folders view (header search box, client-side).
+  const folderFilter = view === 'tags' ? q.trim().toLowerCase() : ''
+  const folderCount = useMemo(
+    () => tagOptions.filter(o => !folderFilter || o.label.toLowerCase().includes(folderFilter)).length,
+    [tagOptions, folderFilter],
+  )
+
   const scoreMap = useMemo(
     () => new Map<string, AssetScoreInfo>(search.results.map(r => [r.id, { score: r.score, indexScores: r.indexScores }])),
     [search.results],
@@ -238,11 +338,16 @@ export function VersionedAssetGrid() {
   // A search is "pending" while the request is in flight OR the last completed
   // search query doesn't yet match the current input (covers the debounce gap).
   // Used to show a spinner and suppress the "no match" flash before results land.
-  const searching = q.trim().length > 0
+  // Folders view never searches (folder-name filter is client-side) — without
+  // the view guard the stale meta.query would pin the spinner on forever.
+  const searching = q.trim().length > 0 && view !== 'tags'
   const pending = searching && (search.loading || (search.meta?.query ?? '') !== q.trim())
 
   const filtered = useMemo(() => {
-    let list = assets.filter(a => typeFilter.length === 0 || typeFilter.includes(a.type))
+    let list = assets.filter(a =>
+      (typeFilter.length === 0 || typeFilter.includes(a.type)) &&
+      matchesTagFilter(a.tags ?? [], tagFilter),
+    )
     if (q.trim()) {
       // Restrict to search matches, ordered by relevance (reuse scoreMap).
       list = list
@@ -250,7 +355,7 @@ export function VersionedAssetGrid() {
         .sort((a, b) => (scoreMap.get(b.assetId)?.score ?? 0) - (scoreMap.get(a.assetId)?.score ?? 0))
     }
     return list
-  }, [assets, typeFilter, q, scoreMap])
+  }, [assets, typeFilter, tagFilter, q, scoreMap])
 
   // Keep the last settled list on screen while a search is pending — the
   // results only change once the request completes (no flicker / takeover).
@@ -288,6 +393,11 @@ export function VersionedAssetGrid() {
   const actions = (
     <div className="flex items-center gap-2">
       {pending && <Loader2 className="size-4 animate-spin text-muted-foreground" data-testid="search-spinner" />}
+      {(view === 'grid' || view === 'list') && (
+        <Button size="sm" variant={selectMode ? 'secondary' : 'outline'} onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))} data-testid="toggle-select-mode">
+          <SquareMousePointer className="size-4" /> {selectMode ? 'Done' : 'Select'}
+        </Button>
+      )}
       <Button size="sm" onClick={openPicker} disabled={uploading} data-testid="add-asset">
         {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
         {uploading ? 'Uploading…' : 'Add asset'}
@@ -295,6 +405,29 @@ export function VersionedAssetGrid() {
       {viewToggle}
     </div>
   )
+
+  const applyBulkTags = async () => {
+    if (bulkTags.length === 0 || selected.size === 0) return
+    setBulkBusy(true)
+    setBulkError(null)
+    try {
+      const res = await fetch(`${TAGS_API}/apply`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assetIds: [...selected], add: bulkTags }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(body.error || `Tagging failed (${res.status})`)
+      }
+      exitSelectMode()
+      setSelectMode(true) // stay in select mode for the next batch
+      fetchAssets()
+    } catch (err) {
+      setBulkError(err instanceof Error ? err.message : 'Tagging failed')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
 
   if (loading) return <div className="p-8 text-sm text-muted-foreground">Loading assets…</div>
 
@@ -326,18 +459,40 @@ export function VersionedAssetGrid() {
       {fileInput}
       <PluginHeader
         title="Assets"
-        count={view === 'trash' ? trash.length : displayed.length}
+        count={view === 'trash' ? trash.length : view === 'tags' ? folderCount : displayed.length}
         actions={actions}
-        search={view === 'trash' ? undefined : { value: q, onChange: setQ, placeholder: 'Search assets…' }}
+        search={view === 'trash' ? undefined : view === 'tags'
+          ? { value: q, onChange: setQ, placeholder: 'Filter folders…' }
+          : { value: q, onChange: setQ, placeholder: 'Search assets…' }}
       />
 
       {uploadError && <p className="mb-2 text-xs text-destructive">{uploadError}</p>}
       {linkTo && view !== 'trash' && <p className="mb-2 text-xs text-muted-foreground">New uploads will be linked to this task.</p>}
 
-      {view !== 'trash' && (
+      {view !== 'trash' && view !== 'tags' && (
         <div className="mb-3 mt-3 flex items-center gap-2" data-testid="asset-filters">
           <ListFilter className="size-3.5 shrink-0 text-muted-foreground" />
           <FacetFilter label="Type" options={TYPE_OPTIONS} selected={typeFilter} onChange={setTypeFilter} counts={typeCounts} />
+          <FacetFilter label="Tags" options={tagOptions} selected={tagFilter} onChange={setTagFilter} counts={tagCounts} />
+        </div>
+      )}
+
+      {/* Breadcrumb back to the folders view while a tag filter is active.
+          Clearing the filter happens via the Tags facet; the breadcrumb is
+          purely a "go back" affordance. */}
+      {view !== 'trash' && view !== 'tags' && tagFilter.length > 0 && (
+        <div className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="tag-breadcrumb">
+          <button
+            onClick={goToFolders}
+            className="flex items-center gap-1 rounded px-1 py-0.5 transition-colors hover:text-foreground"
+            data-testid="breadcrumb-folders"
+          >
+            <ArrowLeft className="size-3.5" /> Folders
+          </button>
+          <span>/</span>
+          <span className="font-medium text-foreground">
+            {tagFilter.map(t => (t === UNTAGGED ? 'Untagged' : t)).join(', ')}
+          </span>
         </div>
       )}
 
@@ -375,20 +530,69 @@ export function VersionedAssetGrid() {
             ))}
           </div>
         )
+      ) : view === 'tags' ? (
+        <TagFolderGrid
+          assets={assets}
+          filter={folderFilter}
+          onOpenFolder={openFolder}
+          onChanged={fetchAssets}
+        />
       ) : displayed.length === 0 ? (
         <div className="p-8 text-sm text-muted-foreground" data-testid="assets-no-match">No assets match your filters.</div>
       ) : view === 'list' ? (
         <div className="flex flex-col gap-1.5" data-testid="assets-list">
           {displayed.map(asset => (
-            <AssetListRow key={asset.assetId} asset={asset} scoreInfo={scoreFor(asset.assetId)} onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })} />
+            <AssetListRow
+              key={asset.assetId}
+              asset={asset}
+              scoreInfo={scoreFor(asset.assetId)}
+              selected={selectMode ? selected.has(asset.assetId) : undefined}
+              onOpen={() => (selectMode ? toggleSelected(asset.assetId) : navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } }))}
+              onEdit={() => setEditing(asset)}
+            />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5" data-testid="assets-grid">
+        <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]" data-testid="assets-grid">
           {displayed.map(asset => (
-            <AssetCard key={asset.assetId} asset={asset} scoreInfo={scoreFor(asset.assetId)} onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })} />
+            <AssetCard
+              key={asset.assetId}
+              asset={asset}
+              scoreInfo={scoreFor(asset.assetId)}
+              selected={selectMode ? selected.has(asset.assetId) : undefined}
+              onOpen={() => (selectMode ? toggleSelected(asset.assetId) : navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } }))}
+              onEdit={() => setEditing(asset)}
+            />
           ))}
         </div>
+      )}
+
+      {/* Floating bulk-tag bar while assets are selected. */}
+      {selectMode && selected.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 z-40 flex w-[min(560px,calc(100vw-2rem))] -translate-x-1/2 items-center gap-2 rounded-lg border border-border bg-background/95 px-3 py-2 shadow-lg backdrop-blur" data-testid="bulk-tag-bar">
+          <Tags className="size-4 shrink-0 text-muted-foreground" />
+          <span className="shrink-0 text-xs text-muted-foreground" data-testid="bulk-selected-count">{selected.size} selected</span>
+          <div className="min-w-0 flex-1">
+            <TagInput value={bulkTags} onChange={setBulkTags} suggestions={tagOptions.filter(o => o.value !== UNTAGGED).map(o => o.value)} placeholder="Add tags…" />
+          </div>
+          <Button size="sm" onClick={applyBulkTags} disabled={bulkBusy || bulkTags.length === 0} data-testid="bulk-apply-tags">
+            {bulkBusy ? <Loader2 className="size-4 animate-spin" /> : null} Tag {selected.size}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} data-testid="bulk-clear-selection">Clear</Button>
+          {bulkError && <p className="text-xs text-destructive">{bulkError}</p>}
+        </div>
+      )}
+
+      {editing && (
+        <AssetEditDrawer
+          assetId={editing.assetId}
+          initialDescription={editing.description}
+          initialTags={editing.tags ?? []}
+          suggestions={tagOptions.filter(o => o.value !== UNTAGGED).map(o => o.value)}
+          open={editing !== null}
+          onOpenChange={(open) => { if (!open) setEditing(null) }}
+          onSaved={fetchAssets}
+        />
       )}
     </div>
   )

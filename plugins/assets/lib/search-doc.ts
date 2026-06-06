@@ -49,11 +49,20 @@ export async function buildVersionedAssetSearchDoc(manifest: AssetManifest, asse
   return {
     description: manifest.description || '',
     tags: (manifest.tags || []).join(', '),
+    // Keyword array for per-tag facet buckets (the comma-joined `tags` text
+    // field can't facet — a terms agg would bucket the whole string).
+    tags_facet: manifest.tags || [],
     agent: manifest.agent || '',
     task_id: manifest.taskId || '',
     asset_type: manifest.type,
     file_name: assetId,
     tool: current.tool || '',
+    // Generation provenance: surface is searchable/embedded ("instagram"
+    // matches instagram-feed-portrait); provider/model are facet-only —
+    // embedding them would flatten similarity across generated assets.
+    surface: current.generation?.surface ?? '',
+    provider: current.generation?.provider ?? '',
+    model: current.generation?.model ?? '',
     updated_at: manifest.updated || new Date().toISOString(),
     content,
     image_url: isRaster ? buildAssetFileUrl(relFromAssetsRoot) : '',

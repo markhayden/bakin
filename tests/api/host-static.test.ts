@@ -49,7 +49,7 @@ const SAMPLE_HTML = `<!doctype html>
   <head><title>Bakin</title></head>
   <body class="bg-background">
     <div id="root"></div>
-    <script type="module" src="/assets/main.js"></script>
+    <script type="module" src="/_app/main.js"></script>
   </body>
 </html>
 `
@@ -118,8 +118,8 @@ describe('transformIndexHtmlForDev', () => {
     expect(out).toContain('<script type="module" src="/__bakin-dev/client.js"></script>')
     // Script lands before </body>, not after.
     expect(out.indexOf('__bakin-dev')).toBeLessThan(out.indexOf('</body>'))
-    // The original <script src="/assets/main.js"> is still present.
-    expect(out).toContain('/assets/main.js')
+    // The original <script src="/_app/main.js"> is still present.
+    expect(out).toContain('/_app/main.js')
   })
 
   it('no-ops (logs a warning) when </body> is missing', () => {
@@ -135,7 +135,7 @@ describe('host index boot fallback', () => {
     const html = readFileSync(join(process.cwd(), 'packages/host/public/index.html'), 'utf-8')
     expect(html).toContain('class="bakin-boot"')
     expect(html).toContain('Loading app')
-    expect(html.indexOf('class="bakin-boot"')).toBeLessThan(html.indexOf('/assets/main.js'))
+    expect(html.indexOf('class="bakin-boot"')).toBeLessThan(html.indexOf('/_app/main.js'))
   })
 })
 
@@ -180,7 +180,7 @@ describe('cacheControlFor', () => {
 
   it('returns no-store for any 200 response when BAKIN_DEV=1', () => {
     process.env.BAKIN_DEV = '1'
-    expect(cacheControlFor('/assets/main.js', 200)).toBe('no-store')
+    expect(cacheControlFor('/_app/main.js', 200)).toBe('no-store')
     expect(cacheControlFor('/vendor/react.js', 200)).toBe('no-store')
     expect(cacheControlFor('/globals.css', 200)).toBe('no-store')
     expect(cacheControlFor('/index.html', 200)).toBe('no-store')
@@ -189,7 +189,7 @@ describe('cacheControlFor', () => {
   it('returns no-cache for HTML and public, max-age=300 for other 200s when BAKIN_DEV is unset', () => {
     delete process.env.BAKIN_DEV
     expect(cacheControlFor('/index.html', 200)).toBe('no-cache')
-    expect(cacheControlFor('/assets/main.js', 200)).toBe('public, max-age=300')
+    expect(cacheControlFor('/_app/main.js', 200)).toBe('public, max-age=300')
     expect(cacheControlFor('/vendor/react.js', 200)).toBe('public, max-age=300')
   })
 

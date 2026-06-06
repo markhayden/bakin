@@ -141,7 +141,7 @@ function startupResourceLabel(name: string): string {
     const path = url.pathname
     const pluginAsset = path.match(/^\/api\/plugins\/([^/]+)\/assets\/([^/]+)$/)
     if (pluginAsset) return `plugin:${pluginAsset[1]}:${pluginAsset[2]}`
-    if (path.startsWith('/assets/')) return `app:${path.split('/').pop() ?? 'asset'}`
+    if (path.startsWith('/_app/')) return `app:${path.split('/').pop() ?? 'asset'}`
     if (path.startsWith('/node_modules/')) return 'node_modules'
     if (path.startsWith('/src/')) return 'src'
     if (path.startsWith('/packages/')) return 'packages'

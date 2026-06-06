@@ -30,3 +30,6 @@ export const UPLOAD_API = '/api/plugins/assets/upload'
 
 /** Trash endpoint — list / restore / permanent-delete / empty. */
 export const TRASH_API = '/api/plugins/assets/trash'
+
+/** Global tag operations — rename / remove / bulk apply. */
+export const TAGS_API = '/api/plugins/assets/tags'

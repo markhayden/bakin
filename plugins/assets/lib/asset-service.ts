@@ -18,6 +18,7 @@ import { getContentDir } from '../../../src/core/content-dir'
 import { createLogger } from '../../../src/core/logger'
 import { getMimeType, type AssetType } from './constants'
 import { generateAssetId, assetDirRelPath, yearMonthFromAssetId } from './asset-id'
+import { normalizeTags } from './tags'
 import { withAssetLock } from './asset-lock'
 import { getManifestCached } from './manifest-cache'
 import { taskAssetIndexRemove, taskAssetIndexUpsert } from './task-asset-index'
@@ -178,7 +179,6 @@ export async function createAsset(input: AssetCreateInput): Promise<{ assetId: s
     height: dims.height,
     created,
     description: (input.description ?? input.prompt ?? '').slice(0, 200),
-    tags: input.tags ?? [],
     op: input.op ?? 'upload',
     parentVersion: null,
     tool: input.tool ?? null,
@@ -196,7 +196,7 @@ export async function createAsset(input: AssetCreateInput): Promise<{ assetId: s
     updated: created,
     currentVersion: 1,
     description: version.description,
-    tags: version.tags,
+    tags: normalizeTags(input.tags ?? []),
     versions: [version],
     exports: [],
   }
@@ -299,12 +299,15 @@ function assetDirAbs(assetId: string): string | null {
   return rel ? join(getContentDir(), rel) : null
 }
 
-/** Asset-level display fields mirror the current version's. */
+/**
+ * Asset-level description mirrors the current version's. Tags deliberately do
+ * NOT mirror — they're an asset-level organizational namespace that must
+ * survive addVersion/promote/deleteVersion.
+ */
 function mirrorDisplay(manifest: AssetManifest): void {
   const current = manifest.versions.find((v) => v.version === manifest.currentVersion)
   if (current) {
     manifest.description = current.description
-    manifest.tags = current.tags
   }
 }
 
@@ -323,7 +326,6 @@ export interface AssetVersionInput {
   prompt?: string | null
   promptHash?: string | null
   description?: string
-  tags?: string[]
   generation?: AssetGeneration | null
 }
 
@@ -353,7 +355,6 @@ export async function addVersion(assetId: string, input: AssetVersionInput): Pro
       version: nextVersion, file, thumb, mimeType: getMimeType(input.sourceFilePath), size: statSync(fileAbs).size,
       width: dims.width, height: dims.height, created,
       description: (input.description ?? input.prompt ?? '').slice(0, 200),
-      tags: input.tags ?? [],
       op: input.op ?? 'edit', parentVersion, tool: input.tool ?? null,
       prompt: input.prompt ?? null, promptHash: input.promptHash ?? null,
       generation: input.generation ?? null,
@@ -365,6 +366,95 @@ export async function addVersion(assetId: string, input: AssetVersionInput): Pro
     writeManifestAtomic(dirAbs, manifest)
     return { assetId, version: nextVersion, manifest }
   })
+}
+
+export interface AssetMetadataInput {
+  description?: string
+  tags?: string[]
+}
+
+/**
+ * Update user-editable metadata. Description writes through to the asset level
+ * AND the current version (200-char cap — same as version writes) so the
+ * mirror invariant holds; tags replace the asset-level namespace (normalized)
+ * and never touch versions.
+ */
+export async function updateMetadata(assetId: string, input: AssetMetadataInput): Promise<AssetManifest> {
+  return withAssetLock(assetId, async () => {
+    const dirAbs = assetDirAbs(assetId)
+    if (!dirAbs) throw new Error(`Invalid assetId: ${assetId}`)
+    const manifest = readManifest(dirAbs)
+    if (!manifest) throw new Error(`Asset not found: ${assetId}`)
+    if (input.description !== undefined) {
+      const description = input.description.slice(0, 200)
+      manifest.description = description
+      const current = manifest.versions.find((v) => v.version === manifest.currentVersion)
+      if (current) current.description = description
+    }
+    if (input.tags !== undefined) {
+      manifest.tags = normalizeTags(input.tags)
+    }
+    manifest.updated = nowIso()
+    writeManifestAtomic(dirAbs, manifest)
+    return manifest
+  })
+}
+
+/**
+ * Rename a tag across every asset carrying it (merge-dedupe when the target
+ * already exists). Sweeps the live store only — trash is deliberately skipped
+ * (a restored asset may resurrect a stale tag; fix is one metadata edit).
+ */
+export async function renameTagGlobal(from: string, to: string): Promise<{ updated: number }> {
+  const target = normalizeTags([to])[0]
+  // `from` is deliberately matched verbatim (not normalized): it must equal
+  // what's stored, including legacy pre-normalization tags — rename is the
+  // tool that cleans those up.
+  if (!from || !target) throw new Error('Both from and to tags are required')
+  let updated = 0
+  for (const summary of listAssets()) {
+    if (!summary.tags.includes(from)) continue
+    await updateMetadata(summary.assetId, { tags: summary.tags.map((t) => (t === from ? target : t)) })
+    updated++
+  }
+  return { updated }
+}
+
+/** Remove a tag from every asset carrying it (assets themselves untouched). Skips trash. */
+export async function removeTagGlobal(tag: string): Promise<{ updated: number }> {
+  if (!tag) throw new Error('tag is required')
+  let updated = 0
+  for (const summary of listAssets()) {
+    if (!summary.tags.includes(tag)) continue
+    await updateMetadata(summary.assetId, { tags: summary.tags.filter((t) => t !== tag) })
+    updated++
+  }
+  return { updated }
+}
+
+/** Bulk add/remove tags on a set of assets. Unknown ids are reported, not fatal. */
+export async function applyTags(
+  assetIds: string[],
+  input: { add?: string[]; remove?: string[] },
+): Promise<{ updated: number; failed: string[] }> {
+  const add = normalizeTags(input.add ?? [])
+  const remove = new Set(normalizeTags(input.remove ?? []))
+  // Nothing to do → don't rewrite N manifests (each write triggers a
+  // reindex + asset.changed broadcast).
+  if (add.length === 0 && remove.size === 0) return { updated: 0, failed: [] }
+  let updated = 0
+  const failed: string[] = []
+  for (const assetId of assetIds) {
+    const manifest = getAsset(assetId)
+    if (!manifest) {
+      failed.push(assetId)
+      continue
+    }
+    const tags = [...manifest.tags.filter((t) => !remove.has(t)), ...add]
+    await updateMetadata(assetId, { tags })
+    updated++
+  }
+  return { updated, failed }
 }
 
 /** Move the current pointer to an existing version (no file changes). */
@@ -668,7 +758,12 @@ async function upsertFromSourceInner(sourcePath: string, input: AssetCreateInput
     op: 'upload',
     tool: input.tool ?? null,
     description: input.description,
-    tags: input.tags,
   })
+  // Union caller-provided tags into the asset-level namespace — agents add
+  // organization, never wipe the user's. (Separate locked write; the watcher
+  // coalesces and only the final manifest is indexed.)
+  if (input.tags && input.tags.length > 0) {
+    await updateMetadata(existingId, { tags: [...(next.manifest.tags ?? []), ...input.tags] })
+  }
   return { assetId: next.assetId, version: next.version, changed: true }
 }

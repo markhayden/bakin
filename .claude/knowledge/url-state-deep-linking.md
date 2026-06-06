@@ -85,6 +85,26 @@ registerPlugin({
 - Empty array is default for multi-select — omit from URL when empty
 - Param names should be consistent across plugins (e.g., `q` for search everywhere, `view` for view mode)
 
+## Multi-param updates: never call two setters in one tick
+
+Each `useQueryState`/`useQueryArrayState` setter snapshots the **pre-update**
+search params and calls `router.replace` — two setters in the same handler
+clobber each other (the second nav drops the first's param). And `replace`
+creates no history entry, so browser back can't undo the navigation.
+
+For any interaction that updates multiple params (e.g. the assets folder
+click: `view` + `tags`), build ONE URL and `router.push` it — one atomic
+update, one history entry. Pattern (`VersionedAssetGrid.tsx` `pushParams`):
+
+```tsx
+const params = new URLSearchParams(searchParams.toString())
+// set/delete every param, honoring defaults-omitted
+router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+```
+
+Rule of thumb: `replace` for filter tweaks within a view; `push` for
+navigation-like transitions the user expects back to undo.
+
 ## FacetFilter Component
 
 Located at `src/components/facet-filter.tsx`. Shared multi-select filter component using Popover + Command.
