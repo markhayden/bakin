@@ -44,35 +44,20 @@ export function buildQueryRequest(table: string, q: Query, settings: AntflySetti
   return request
 }
 
+/**
+ * NOTE: no `schema` is sent at table create. At antfly v0.2.0-rc.2 a
+ * create-time schema permanently breaks query parsing on the table
+ * (markhayden/bakin#456 item 1); semantic search, filters, and facets all
+ * work schemaless. When the upstream fix lands, schema (and with it
+ * x-antfly-include-in-all field control) can return — likely via
+ * PUT /schema, which does not trigger the bug.
+ */
 export function buildTableConfig(table: string, config: TableConfig, settings: AntflySettings): {
-  schema: Record<string, unknown>
   indexes: Record<string, unknown>
 } {
-  const defaultType = readString(config.adapterOptions?.defaultType) ?? table
-  const properties: Record<string, unknown> = {}
-  for (const [fieldName, fieldDef] of Object.entries(config.fields)) {
-    properties[fieldName] = {
-      type: 'string',
-      'x-antfly-types': schemaFieldToAntflyType(fieldDef.type),
-    }
-  }
-
-  const schema = {
-    default_type: defaultType,
-    document_schemas: {
-      [defaultType]: {
-        schema: {
-          type: 'object',
-          properties,
-          'x-antfly-include-in-all': readStringArray(config.adapterOptions?.searchableFields),
-        },
-      },
-    },
-  }
-
-  const indexes: Record<string, unknown> = {
-    search: { name: 'search', type: 'full_text' },
-  }
+  // No full_text entry either: the v0.2 server ignores caller-supplied
+  // full-text indexes and always creates its own (full_text_index_v0).
+  const indexes: Record<string, unknown> = {}
   for (const idx of config.indexes ?? []) {
     if (idx.kind === 'text') continue
     const embedder = resolveEmbedder(idx.embedderRef ?? 'default', settings)
@@ -80,6 +65,8 @@ export function buildTableConfig(table: string, config: TableConfig, settings: A
       name: idx.name,
       type: 'embeddings',
       template: indexTemplate(idx),
+      // Declared dims are required for dense indexes at this server version.
+      dimension: embedder.dimension,
       embedder: { provider: embedder.provider, model: embedder.model },
     }
     if (idx.chunker?.enabled) {
@@ -97,7 +84,7 @@ export function buildTableConfig(table: string, config: TableConfig, settings: A
     indexes[idx.name] = entry
   }
 
-  return { schema, indexes }
+  return { indexes }
 }
 
 function indexTemplate(idx: SearchIndexConfig): string {
@@ -106,19 +93,7 @@ function indexTemplate(idx: SearchIndexConfig): string {
   return idx.template ?? idx.fields.map((field) => `{{${field}}}`).join(' ')
 }
 
-function schemaFieldToAntflyType(type: string): string[] {
-  switch (type) {
-    case 'text': return ['text']
-    case 'keyword': return ['keyword']
-    case 'number': return ['keyword']
-    case 'boolean': return ['keyword']
-    case 'datetime': return ['keyword']
-    case 'array': return ['keyword']
-    default: return ['keyword']
-  }
-}
-
-function resolveEmbedder(ref: string, settings: AntflySettings): { provider: string; model: string } {
+function resolveEmbedder(ref: string, settings: AntflySettings): { provider: string; model: string; dimension: number } {
   const match = settings.embedders[ref]
   if (!match) {
     const available = Object.keys(settings.embedders).join(', ')

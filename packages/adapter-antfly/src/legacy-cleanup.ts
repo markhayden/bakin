@@ -25,9 +25,11 @@ export interface LegacyStateOverrides {
 }
 
 export interface LegacyFinding {
-  kind: 'termite-dir' | 'old-data-dir' | 'brew-binary'
+  kind: 'termite-dir' | 'old-server-state' | 'brew-binary'
   path: string
   sizeHint: string
+  /** Concrete paths a consented cleanup deletes (empty for suggestion-only findings). */
+  removePaths: string[]
 }
 
 function defaultTermiteDir(): string {
@@ -39,25 +41,56 @@ const DEFAULT_BREW_BINARY_CANDIDATES = [
   '/usr/local/bin/antfly',
 ]
 
-function duSizeHint(dir: string): Promise<string> {
+function duKb(path: string): Promise<number | null> {
   return new Promise((resolve) => {
     try {
-      const child = spawn('du', ['-sk', dir], { stdio: ['ignore', 'pipe', 'ignore'] })
+      const child = spawn('du', ['-sk', path], { stdio: ['ignore', 'pipe', 'ignore'] })
       let stdout = ''
       child.stdout?.on('data', (chunk) => { stdout += chunk.toString() })
-      child.on('error', () => resolve('unknown size'))
+      child.on('error', () => resolve(null))
       child.on('close', (code) => {
-        if (code !== 0) return resolve('unknown size')
+        if (code !== 0) return resolve(null)
         const kb = Number(stdout.trim().split(/\s+/)[0])
-        if (!Number.isFinite(kb)) return resolve('unknown size')
-        if (kb >= 1024 * 1024) return resolve(`~${(kb / 1024 / 1024).toFixed(1)} GB`)
-        if (kb >= 1024) return resolve(`~${Math.round(kb / 1024)} MB`)
-        return resolve(`~${kb} KB`)
+        resolve(Number.isFinite(kb) ? kb : null)
       })
     } catch {
-      resolve('unknown size')
+      resolve(null)
     }
   })
+}
+
+function formatKb(kb: number | null): string {
+  if (kb === null) return 'unknown size'
+  if (kb >= 1024 * 1024) return `~${(kb / 1024 / 1024).toFixed(1)} GB`
+  if (kb >= 1024) return `~${Math.round(kb / 1024)} MB`
+  return `~${kb} KB`
+}
+
+async function sumSizeHint(paths: string[]): Promise<string> {
+  let total = 0
+  for (const p of paths) {
+    const kb = await duKb(p)
+    if (kb === null) return 'unknown size'
+    total += kb
+  }
+  return formatKb(total)
+}
+
+/**
+ * Pre-0.2 server artifacts the old Bakin-spawned antfly left in the shared
+ * antfly home. `bakin-managed.yaml` is the config the old adapter wrote —
+ * its presence proves the home was Bakin-managed, so the full artifact set
+ * is offered for reclaim. Without the marker we stay conservative and only
+ * offer the old data dir. bin/ (the new binary) and inference/ (the new
+ * model root) are never candidates.
+ */
+const OLD_SERVER_ARTIFACTS = ['data', 'store', 'metadata', 'bakin-managed.yaml']
+
+function oldServerStatePaths(): string[] {
+  const home = antflyHome()
+  const marker = join(home, 'bakin-managed.yaml')
+  const candidates = existsSync(marker) ? OLD_SERVER_ARTIFACTS : ['data']
+  return candidates.map((name) => join(home, name)).filter((p) => existsSync(p))
 }
 
 export async function detectLegacyState(overrides: LegacyStateOverrides = {}): Promise<LegacyFinding[]> {
@@ -65,21 +98,32 @@ export async function detectLegacyState(overrides: LegacyStateOverrides = {}): P
 
   const termiteDir = overrides.termiteDir ?? defaultTermiteDir()
   if (existsSync(termiteDir)) {
-    findings.push({ kind: 'termite-dir', path: termiteDir, sizeHint: await duSizeHint(termiteDir) })
+    findings.push({
+      kind: 'termite-dir',
+      path: termiteDir,
+      sizeHint: await sumSizeHint([termiteDir]),
+      removePaths: [termiteDir],
+    })
   }
 
-  // Bakin's v0.2 instance lives under ~/.bakin/antfly; anything in the old
-  // shared ~/.antfly/data predates the migration (or belongs to a separate
-  // antfly install — which is exactly why deletion needs explicit consent).
-  const oldDataDir = join(antflyHome(), 'data')
-  if (existsSync(oldDataDir)) {
-    findings.push({ kind: 'old-data-dir', path: oldDataDir, sizeHint: await duSizeHint(oldDataDir) })
+  // Bakin's v0.2 instance lives under ~/.bakin/antfly; pre-0.2 server state
+  // in the shared antfly home predates the migration (or belongs to a
+  // separate antfly install — which is exactly why deletion needs explicit
+  // consent).
+  const serverPaths = oldServerStatePaths()
+  if (serverPaths.length > 0) {
+    findings.push({
+      kind: 'old-server-state',
+      path: antflyHome(),
+      sizeHint: await sumSizeHint(serverPaths),
+      removePaths: serverPaths,
+    })
   }
 
   const brewCandidates = overrides.brewBinaryCandidates ?? DEFAULT_BREW_BINARY_CANDIDATES
   for (const candidate of brewCandidates) {
     if (existsSync(candidate)) {
-      findings.push({ kind: 'brew-binary', path: candidate, sizeHint: '' })
+      findings.push({ kind: 'brew-binary', path: candidate, sizeHint: '', removePaths: [] })
       break
     }
   }
@@ -116,9 +160,10 @@ export async function runLegacyCleanup(
       continue
     }
 
+    const artifactList = finding.removePaths.map((p) => p.replace(`${finding.path}/`, '')).join(', ')
     const description = finding.kind === 'termite-dir'
       ? `legacy model dir ${finding.path} (${finding.sizeHint})`
-      : `pre-0.2 antfly data dir ${finding.path} (${finding.sizeHint})`
+      : `pre-0.2 antfly server state under ${finding.path} (${artifactList} - ${finding.sizeHint})`
 
     if (!canPrompt) {
       notes.push(`Found ${description} - no longer used by Bakin. Re-run \`bakin install search\` interactively to reclaim the disk space.`)
@@ -136,10 +181,12 @@ export async function runLegacyCleanup(
     }
 
     try {
-      rmSync(finding.path, { recursive: true, force: true })
-      removed.push(finding.path)
-      notes.push(`Removed ${finding.path} (${finding.sizeHint}).`)
-      logger.info('Removed legacy antfly state', { path: finding.path })
+      for (const target of finding.removePaths) {
+        rmSync(target, { recursive: true, force: true })
+        removed.push(target)
+      }
+      notes.push(`Removed ${finding.removePaths.length === 1 ? finding.removePaths[0] : `${finding.removePaths.length} paths under ${finding.path}`} (${finding.sizeHint}).`)
+      logger.info('Removed legacy antfly state', { paths: finding.removePaths })
     } catch (err) {
       notes.push(`Failed to remove ${finding.path}: ${err instanceof Error ? err.message : String(err)}`)
       logger.warn('Legacy cleanup failed', { path: finding.path, err })

@@ -30,12 +30,16 @@ const mockTablesScan = mock(async function* () {})
 const mockIndexesList = mock(async () => ({}))
 const mockIndexesCreate = mock(async () => {})
 const mockIndexesDrop = mock(async () => {})
-const mockMultiquery = mock(async (requests: unknown[]): Promise<QueryResponse> => ({
-  responses: requests.map(() => ({ hits: { hits: [], total: 0 }, took: 0 })),
+// multiQuery fans out as single global queries (client.query) — the NDJSON
+// multiquery endpoint is broken at v0.2.0-rc.2 (bakin#456).
+const mockGlobalQuery = mock(async (): Promise<{ hits: { hits: unknown[]; total: number }; took: number }> => ({
+  hits: { hits: [], total: 0 },
+  took: 0,
 }))
 
 const mockClientInstance = {
   getStatus: mockGetStatus,
+  query: mockGlobalQuery,
   tables: {
     list: mockTablesList,
     create: mockTablesCreate,
@@ -49,7 +53,6 @@ const mockClientInstance = {
     create: mockIndexesCreate,
     drop: mockIndexesDrop,
   },
-  multiquery: mockMultiquery,
 }
 
 mock.module('@antfly/sdk', () => ({
@@ -77,8 +80,8 @@ const baseSettings = {
     },
   },
   embedders: {
-    default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' },
-    visual: { provider: 'antfly', model: 'clip-vit-base-patch32' },
+    default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5', dimension: 384 },
+    visual: { provider: 'antfly', model: 'clip-vit-base-patch32', dimension: 512 },
   },
   chunking: { defaultTargetTokens: 200, defaultOverlapTokens: 25 },
 }
@@ -114,8 +117,8 @@ function tableQueryRequest(index = 0): Record<string, unknown> {
   return (mockTablesQuery.mock.calls as unknown as Array<[string, Record<string, unknown>]>)[index][1]
 }
 
-function multiQueryRequests(index = 0): Array<Record<string, unknown>> {
-  return (mockMultiquery.mock.calls as unknown as Array<[Array<Record<string, unknown>>]>)[index][0]
+function globalQueryRequests(): Array<Record<string, unknown>> {
+  return (mockGlobalQuery.mock.calls as unknown as Array<[Record<string, unknown>]>).map((c) => c[0])
 }
 
 describe('AntflySearchAdapter', () => {
@@ -140,10 +143,8 @@ describe('AntflySearchAdapter', () => {
     mockIndexesList.mockImplementation(async () => ({}))
     mockIndexesCreate.mockClear()
     mockIndexesDrop.mockClear()
-    mockMultiquery.mockClear()
-    mockMultiquery.mockImplementation(async (requests: unknown[]) => ({
-      responses: requests.map(() => ({ hits: { hits: [], total: 0 }, took: 0 })),
-    }))
+    mockGlobalQuery.mockClear()
+    mockGlobalQuery.mockImplementation(async () => ({ hits: { hits: [], total: 0 }, took: 0 }))
     logger.debug.mockClear()
     logger.info.mockClear()
     logger.warn.mockClear()
@@ -220,20 +221,38 @@ describe('AntflySearchAdapter', () => {
     })
   })
 
-  it('multiQuery attaches reranker per query from adapterOptions', async () => {
+  it('multiQuery fans out as single global queries with per-query reranker', async () => {
     const adapter = await createInitializedAdapter()
     await adapter.multiQuery([
       { table: 'bakin_tasks', query: { text: 'build', adapterOptions: { rerankField: 'description' } } },
       { table: 'bakin_assets', query: { text: 'build' } },
     ])
 
-    const requests = multiQueryRequests() as Array<{ table: string; reranker?: Record<string, unknown> }>
+    // One client.query call per table — NOT the NDJSON multiquery endpoint,
+    // which rejects its own framing at v0.2.0-rc.2 (bakin#456).
+    const requests = globalQueryRequests() as Array<{ table: string; reranker?: Record<string, unknown> }>
+    expect(requests).toHaveLength(2)
     expect(requests.find(r => r.table === 'bakin_tasks')?.reranker).toEqual({
       provider: 'antfly',
       model: 'mixedbread-ai/mxbai-rerank-base-v1',
       field: 'description',
     })
     expect(requests.find(r => r.table === 'bakin_assets')?.reranker).toBeUndefined()
+  })
+
+  it('multiQuery isolates per-table failures', async () => {
+    mockGlobalQuery
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce({ hits: { hits: [{ _id: 'a1', _score: 1, _source: {} }], total: 1 }, took: 2 })
+
+    const adapter = await createInitializedAdapter()
+    const results = await adapter.multiQuery([
+      { table: 'bakin_tasks', query: { text: 'x' } },
+      { table: 'bakin_assets', query: { text: 'x' } },
+    ])
+
+    expect(results[0].total).toBe(0) // failed table -> empty result
+    expect(results[1].total).toBe(1) // healthy table unaffected
   })
 
   it('maps rerank score into query result scoreBreakdown', async () => {
@@ -312,6 +331,13 @@ describe('AntflySearchAdapter', () => {
     // v0.1 flat fields must be gone
     expect(indexes.embeddings.chunk_size).toBeUndefined()
     expect(indexes.embeddings.chunk_overlap).toBeUndefined()
+    // Dense indexes must declare dims (live server rejects them otherwise),
+    // and the server creates its own full-text index — we must not send one.
+    expect(indexes.embeddings.dimension).toBe(384)
+    expect(indexes.search).toBeUndefined()
+    // A create-time schema permanently breaks queries on the table at
+    // v0.2.0-rc.2 (bakin#456) — it must never be sent.
+    expect(created.schema).toBeUndefined()
   })
 
   it('maps generic media URL indexes to Antfly media templates', async () => {

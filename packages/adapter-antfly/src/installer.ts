@@ -61,7 +61,7 @@ export async function antflyBinaryVersion(binary: string): Promise<string | null
 async function isLocalServerResponding(): Promise<boolean> {
   try {
     const origin = new URL(DEFAULT_SETTINGS.url).origin
-    const res = await fetch(`${origin}/antfly/readyz`, { signal: AbortSignal.timeout(1500) })
+    const res = await fetch(`${origin}/readyz`, { signal: AbortSignal.timeout(1500) })
     return res.ok
   } catch {
     return false
@@ -215,14 +215,25 @@ export async function installAntflyDependency(
       }
     }
 
-    const extractedBinary = join(tmpDir, 'antfly', 'antfly')
+    // Release layout: the binary sits at the archive root alongside share/
+    // (the antfarm dashboard assets, which the server resolves relative to
+    // the binary as ../share). Install binary -> bin/, share -> home.
+    const extractedBinary = join(tmpDir, 'antfly')
     if (!existsSync(extractedBinary)) {
       return {
         name: 'antfly',
         status: 'failed' as const,
-        message: 'Antfly archive did not contain the expected antfly/antfly binary - the release layout may have changed.',
+        message: 'Antfly archive did not contain the expected antfly binary at its root - the release layout may have changed.',
         durationMs: Date.now() - start,
       }
+    }
+
+    const extractedShare = join(tmpDir, 'share')
+    if (existsSync(extractedShare)) {
+      const shareTarget = join(antflyHome(), 'share')
+      rmSync(shareTarget, { recursive: true, force: true })
+      mkdirSync(dirname(shareTarget), { recursive: true })
+      renameSync(extractedShare, shareTarget)
     }
 
     chmodSync(extractedBinary, 0o755)

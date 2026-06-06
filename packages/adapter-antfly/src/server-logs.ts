@@ -1,10 +1,13 @@
 import type { AdapterLogger } from '@bakin/core/adapters/shared'
 
 /**
- * Antfly child-process log handling: parse the server's key=value log lines,
- * demote expected startup noise to debug, and surface real warnings with
- * their useful fields. Filter rules are baselined against observed server
- * output and re-checked whenever the pinned antfly version changes.
+ * Antfly child-process log handling: parse the server's log lines, demote
+ * expected noise to debug, and surface real warnings with their useful
+ * fields. The v0.2 zig server emits JSON lines
+ * (`{"ts":"…","level":"err","scope":"default","msg":"…"}`) plus occasional
+ * plain-text lines; the older key=value format is kept as a fallback.
+ * Filter rules are baselined against observed server output and re-checked
+ * whenever the pinned antfly version changes.
  */
 
 type AntflyLogLevel = 'debug' | 'info' | 'warn' | 'error'
@@ -135,7 +138,56 @@ function formatAntflyLogMessage(
   return `${message}${summarizeAntflyFields(fields, ANTFLY_WARNING_DETAIL_KEYS)}`
 }
 
+/**
+ * Expected operational noise from the zig server, demoted to debug.
+ * Observed live: empty tables emit failed text-merge attempts every ~30s
+ * until they hold documents.
+ */
+const EXPECTED_JSON_NOISE_PATTERNS = [
+  /text merge worker failed: EmptySegment$/,
+  /text merge file-backed build failed .*: EmptySegment$/,
+]
+
+function mapJsonLevel(level: unknown, streamLevel: AntflyLogLevel): AntflyLogLevel {
+  switch (level) {
+    case 'err':
+    case 'error': return 'error'
+    case 'warn': return 'warn'
+    case 'info': return 'info'
+    case 'debug': return 'debug'
+    default: return streamLevel
+  }
+}
+
+function parseJsonLogLine(line: string, streamLevel: AntflyLogLevel): ParsedAntflyLogLine | null {
+  if (!line.startsWith('{')) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(line)
+  } catch {
+    return null
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null
+  const obj = parsed as Record<string, unknown>
+  const message = typeof obj.msg === 'string' ? obj.msg : line
+
+  const data: Record<string, unknown> = { source: 'antfly', raw: line }
+  for (const [key, value] of Object.entries(obj)) {
+    if (key === 'ts' || key === 'level' || key === 'msg') continue
+    data[key] = value
+  }
+
+  const level = EXPECTED_JSON_NOISE_PATTERNS.some((re) => re.test(message))
+    ? 'debug'
+    : mapJsonLevel(obj.level, streamLevel)
+
+  return { level, message, data }
+}
+
 export function parseAntflyLogLine(line: string, streamLevel: AntflyLogLevel): ParsedAntflyLogLine {
+  const jsonParsed = parseJsonLogLine(line, streamLevel)
+  if (jsonParsed) return jsonParsed
+
   const fields = parseAntflyFields(line)
   const parsedLevel = fields.lvl
   const rawLevel: AntflyLogLevel = parsedLevel === 'debug'

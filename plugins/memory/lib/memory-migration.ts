@@ -101,11 +101,16 @@ export async function migrateIfNeeded(search: SearchAPI): Promise<MigrationResul
 
   const maintenance = search.maintenance
   if (!maintenance || !await maintenance.available()) {
-    log.info('Search adapter unavailable — skipping memory migration but still bumping marker', {
+    // Do NOT bump the marker here: bumping while the index is unreachable
+    // would record the migration as done without ever resetting the table
+    // or clearing offsets — the offset-based indexers would then silently
+    // skip already-read bytes forever once search comes back. Leaving the
+    // marker alone retries the migration on every boot until it can run
+    // for real (a no-op retry in permanent file-only setups).
+    log.info('Search adapter unavailable — deferring memory migration until search is back', {
       stored,
       target: MEMORY_SCHEMA_VERSION,
     })
-    writeStoredVersion(MEMORY_SCHEMA_VERSION)
     return { migrated: false, from: stored, to: MEMORY_SCHEMA_VERSION }
   }
 

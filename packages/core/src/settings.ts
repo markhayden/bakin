@@ -39,9 +39,9 @@ export interface SearchAdapterSettings extends Record<string, unknown> {
    * Plugins reference an entry by name via SearchIndexDefinition.embedderRef.
    */
   embedders: {
-    default: { provider: string; model: string }
-    visual: { provider: string; model: string }
-    [key: string]: { provider: string; model: string }
+    default: { provider: string; model: string; dimension: number }
+    visual: { provider: string; model: string; dimension: number }
+    [key: string]: { provider: string; model: string; dimension: number }
   }
   chunking: {
     defaultTargetTokens: number
@@ -207,7 +207,10 @@ export const DEFAULT_SETTINGS: BakinSettings = {
         strategy: 'rrf',
         defaultLimit: 20,
         reranker: {
-          enabled: true,
+          // Disabled at v0.2.0-rc.2: invoking the mxbai reranker SIGABRTs
+          // the antfly server on both Metal and onnx backends (bakin#456).
+          // Plumbing stays wired — flip to true when upstream stabilizes.
+          enabled: false,
           provider: 'antfly',
           model: 'mixedbread-ai/mxbai-rerank-base-v1',
         },
@@ -223,8 +226,12 @@ export const DEFAULT_SETTINGS: BakinSettings = {
         // drops stale tables whenever SCHEMA_VERSION advances beyond the
         // persisted version in `~/.bakin/.search-state.json`, forcing a
         // clean reindex onto the new embedder.
-        default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5' },
-        visual: { provider: 'antfly', model: 'openai/clip-vit-base-patch32' },
+        // `dimension` is required: the v0.2 server demands declared dims for
+        // dense embeddings indexes (BGE-small = 384, CLIP ViT-B/32 = 512).
+        // Visual uses the Xenova ONNX mirror — the openai/ HF repo has no
+        // ONNX exports and cannot be pulled (bakin#456).
+        default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5', dimension: 384 },
+        visual: { provider: 'antfly', model: 'Xenova/clip-vit-base-patch32', dimension: 512 },
       },
       chunking: {
         defaultTargetTokens: 200,

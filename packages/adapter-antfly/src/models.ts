@@ -10,10 +10,12 @@ import { findAntflyBinary } from './server'
  * Search-model acquisition on antfly's v0.2 inference runtime.
  *
  * Models live at ~/.antfly/inference/models/{owner}/{name}/ and are pulled
- * from HuggingFace via `antfly inference pull`. Prefetching is OPTIONAL:
- * the inference runtime lazy-downloads a missing model on first use, so a
- * missing model means "degraded first search", never "search broken" —
- * check() wording reflects that.
+ * from HuggingFace via `antfly inference pull`. Prefetching is strongly
+ * recommended: at v0.2.0-rc.2 index-time embedding does NOT lazy-download a
+ * missing model — the embeddings backfill fails and does not self-heal when
+ * the model later appears (bakin#456). Search stays functional (full-text
+ * path, filters, facets), but semantic indexing for affected tables needs
+ * `bakin install search-models` followed by `bakin reindex --rebuild`.
  */
 
 const noopLogger: AdapterLogger = {
@@ -31,7 +33,9 @@ export interface InferenceModel {
 
 export const REQUIRED_MODELS: InferenceModel[] = [
   { label: 'BGE text embedder', model: 'BAAI/bge-small-en-v1.5', kind: 'embedder' },
-  { label: 'CLIP visual embedder', model: 'openai/clip-vit-base-patch32', kind: 'embedder' },
+  // Xenova mirror, not openai/: the upstream openai HF repo ships no ONNX
+  // exports and `inference pull` fails with NoModelFilesFound (bakin#456).
+  { label: 'CLIP visual embedder', model: 'Xenova/clip-vit-base-patch32', kind: 'embedder' },
   { label: 'mxbai reranker', model: 'mixedbread-ai/mxbai-rerank-base-v1', kind: 'reranker' },
 ]
 
@@ -111,8 +115,8 @@ export async function checkInferenceModels() {
   return {
     name: 'models',
     status: 'missing' as const,
-    message: `${missing.length} of ${REQUIRED_MODELS.length} search model${missing.length === 1 ? '' : 's'} not prefetched - search still works; missing models lazy-download from HuggingFace on first use (slower first search)`,
-    remediation: 'Run `bakin install search-models` to prefetch them now.',
+    message: `${missing.length} of ${REQUIRED_MODELS.length} search model${missing.length === 1 ? '' : 's'} not downloaded - semantic indexing is degraded until they are (search itself keeps working)`,
+    remediation: 'Run `bakin install search-models`, then `bakin reindex --rebuild` if content was indexed in the meantime.',
     details: {
       root: inferenceModelsRoot(),
       missing: missing.map((e) => ({
@@ -170,14 +174,14 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
 
   if (opts.interactive && !opts.autoApprove) {
     const proceed = await opts.askYesNo?.(
-      `Download ${missing.length} search model${missing.length === 1 ? '' : 's'} (~1.5GB total) from HuggingFace to ${inferenceModelsRoot()}? (Optional - skipped models lazy-download on first search.)`,
+      `Download ${missing.length} search model${missing.length === 1 ? '' : 's'} (~1GB total) from HuggingFace to ${inferenceModelsRoot()}? (Recommended - semantic indexing is degraded without them.)`,
       true
     )
     if (!proceed) {
       return {
         name: 'models',
         status: 'skipped' as const,
-        message: 'User declined model prefetch; models will lazy-download on first search.',
+        message: 'User declined model download; semantic indexing is degraded until `bakin install search-models` runs (follow with `bakin reindex --rebuild`).',
         durationMs: Date.now() - start,
       }
     }
@@ -185,7 +189,7 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
     return {
       name: 'models',
       status: 'skipped' as const,
-      message: 'Non-interactive run without --yes; skipping model prefetch (models lazy-download on first search).',
+      message: 'Non-interactive run without --yes; skipping model download. Semantic indexing is degraded until `bakin install search-models` runs (follow with `bakin reindex --rebuild`).',
       durationMs: Date.now() - start,
     }
   }

@@ -81,8 +81,12 @@ describe('search component legacy URL correction', () => {
 
     expect(result.status).toBe('installed')
     expect(result.message).toContain('Updated settings.json search URL')
-    const written = readSettingsFile() as { search: { settings: { url: string } } }
+    const written = readSettingsFile() as { search: { settings: Record<string, unknown> } }
     expect(written.search.settings.url).toBe('http://localhost:3738')
+    // ONLY the url may be written. Persisting merged settings here once froze
+    // every then-current default (reranker, embedder models) into the file as
+    // explicit overrides — a silent pin to stale defaults.
+    expect(Object.keys(written.search.settings)).toEqual(['url'])
   })
 
   it('never rewrites a deliberate non-default URL', async () => {

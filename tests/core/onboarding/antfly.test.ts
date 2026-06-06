@@ -91,12 +91,15 @@ const optsAutoYes = {
 }
 
 beforeAll(() => {
-  // Build a realistic release tarball: antfly/antfly executable script.
+  // Build the real release layout: binary + share/ at the archive root
+  // (verified against the live v0.2.0-rc.2 artifact).
   const srcDir = join(testDir, 'tarball-src')
-  mkdirSync(join(srcDir, 'antfly'), { recursive: true })
-  writeFileSync(join(srcDir, 'antfly', 'antfly'), versionScript(PIN_VERSION), { mode: 0o755 })
+  mkdirSync(join(srcDir, 'share', 'antfly', 'antfarm'), { recursive: true })
+  writeFileSync(join(srcDir, 'antfly'), versionScript(PIN_VERSION), { mode: 0o755 })
+  writeFileSync(join(srcDir, 'share', 'antfly', 'antfarm', 'index.html'), '<html></html>')
+  writeFileSync(join(srcDir, 'LICENSE'), 'ELv2')
   const tarballPath = join(testDir, 'antfly-release.tar.gz')
-  execSync(`tar -czf ${JSON.stringify(tarballPath)} -C ${JSON.stringify(srcDir)} antfly`)
+  execSync(`tar -czf ${JSON.stringify(tarballPath)} -C ${JSON.stringify(srcDir)} .`)
   tarballBytes = new Uint8Array(readFileSync(tarballPath))
   tarballChecksum = createHash('sha256').update(tarballBytes).digest('hex')
 })
@@ -176,13 +179,13 @@ describe('installAntflyDependency', () => {
     const check = await checkAntflyDependency(makePin())
     expect(check.status).toBe('ok')
     // The guard probed readyz before downloading.
-    expect(fetchCalls.some(u => u.endsWith('/antfly/readyz'))).toBe(true)
+    expect(fetchCalls.some(u => u.endsWith('/readyz'))).toBe(true)
   })
 
   it('refuses to swap the binary while the local server is running', async () => {
     writeBinary(managedBinary, '0.1.1')
     mockDownloadFetch(async (url) => {
-      if (url.endsWith('/antfly/readyz')) return new Response('ok', { status: 200 })
+      if (url.endsWith('/readyz')) return new Response('ok', { status: 200 })
       return new Response(tarballBytes.slice().buffer as ArrayBuffer, { status: 200 })
     })
 

@@ -38,8 +38,15 @@ const logger = { debug: mock(), info: mock(), warn: mock(), error: mock() }
 const overrides = { termiteDir, brewBinaryCandidates: [brewBinary] }
 
 function seedLegacyWorld(): void {
+  // The full pre-0.2 Bakin-managed footprint: data/, store/, metadata/, and
+  // the bakin-managed.yaml marker the old adapter wrote.
   mkdirSync(oldDataDir, { recursive: true })
   writeFileSync(join(oldDataDir, 'catalog.txt'), '[]')
+  mkdirSync(join(antflyHomeDir, 'store'), { recursive: true })
+  writeFileSync(join(antflyHomeDir, 'store', 'shard.dat'), 'data')
+  mkdirSync(join(antflyHomeDir, 'metadata'), { recursive: true })
+  writeFileSync(join(antflyHomeDir, 'metadata', 'catalog.json'), '{}')
+  writeFileSync(join(antflyHomeDir, 'bakin-managed.yaml'), 'termite:\n  api_url: http://0.0.0.0:11433\n')
   mkdirSync(join(termiteDir, 'models'), { recursive: true })
   writeFileSync(join(termiteDir, 'models', 'stub.onnx'), 'weights')
   writeFileSync(brewBinary, '#!/bin/sh\n', { mode: 0o755 })
@@ -80,11 +87,30 @@ describe('detectLegacyState', () => {
     expect(await detectLegacyState(overrides)).toEqual([])
   })
 
-  it('finds the termite dir, old data dir, and brew binary', async () => {
+  it('finds the termite dir, old server state, and brew binary', async () => {
     seedLegacyWorld()
     const findings = await detectLegacyState(overrides)
-    expect(findings.map(f => f.kind).sort()).toEqual(['brew-binary', 'old-data-dir', 'termite-dir'])
-    expect(findings.find(f => f.kind === 'old-data-dir')?.path).toBe(oldDataDir)
+    expect(findings.map(f => f.kind).sort()).toEqual(['brew-binary', 'old-server-state', 'termite-dir'])
+    const serverState = findings.find(f => f.kind === 'old-server-state')
+    // With the bakin-managed.yaml marker, the FULL old footprint is offered.
+    expect(serverState?.removePaths.sort()).toEqual([
+      join(antflyHomeDir, 'bakin-managed.yaml'),
+      join(antflyHomeDir, 'data'),
+      join(antflyHomeDir, 'metadata'),
+      join(antflyHomeDir, 'store'),
+    ])
+  })
+
+  it('only offers the old data dir when the bakin-managed marker is absent', async () => {
+    // store/ + metadata/ without the marker could belong to someone else's
+    // antfly (v0.2 uses ~/.antfly/metadata too) — stay conservative.
+    mkdirSync(oldDataDir, { recursive: true })
+    mkdirSync(join(antflyHomeDir, 'store'), { recursive: true })
+    mkdirSync(join(antflyHomeDir, 'metadata'), { recursive: true })
+
+    const findings = await detectLegacyState(overrides)
+    const serverState = findings.find(f => f.kind === 'old-server-state')
+    expect(serverState?.removePaths).toEqual([oldDataDir])
   })
 })
 
@@ -95,9 +121,17 @@ describe('runLegacyCleanup', () => {
 
     const result = await runLegacyCleanup(opts, logger, overrides)
 
-    expect(result.removed.sort()).toEqual([oldDataDir, termiteDir].sort())
+    expect(result.removed.sort()).toEqual([
+      termiteDir,
+      join(antflyHomeDir, 'bakin-managed.yaml'),
+      join(antflyHomeDir, 'data'),
+      join(antflyHomeDir, 'metadata'),
+      join(antflyHomeDir, 'store'),
+    ].sort())
     expect(existsSync(termiteDir)).toBe(false)
     expect(existsSync(oldDataDir)).toBe(false)
+    expect(existsSync(join(antflyHomeDir, 'store'))).toBe(false)
+    expect(existsSync(join(antflyHomeDir, 'bakin-managed.yaml'))).toBe(false)
     // Brew binary is never deleted and never prompted for — suggestion only.
     expect(existsSync(brewBinary)).toBe(true)
     expect(prompts).toHaveLength(2)

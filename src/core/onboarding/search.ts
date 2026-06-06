@@ -26,12 +26,11 @@ function correctLegacySettingsUrl(): string | null {
     const url = settings.search?.settings?.url
     if (typeof url !== 'string' || !LEGACY_DEFAULT_URLS.has(url)) return null
 
-    updateSettings({
-      search: {
-        ...settings.search,
-        settings: { ...settings.search.settings, url: CURRENT_DEFAULT_URL },
-      },
-    })
+    // Minimal partial ONLY: updateSettings deep-merges into the on-disk
+    // overrides. Passing merged settings here would freeze every current
+    // default (reranker config, embedder models, …) into settings.json as
+    // explicit overrides, silently pinning users to stale defaults.
+    updateSettings({ search: { settings: { url: CURRENT_DEFAULT_URL } } })
     log.info('Corrected legacy antfly URL in settings.json', { from: url, to: CURRENT_DEFAULT_URL })
     return `Updated settings.json search URL from ${url} (pre-0.2 default) to ${CURRENT_DEFAULT_URL}.`
   } catch (err) {

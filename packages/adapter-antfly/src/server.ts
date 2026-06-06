@@ -106,7 +106,7 @@ export interface ServerHealthDetail {
   reachable: boolean
   /**
    * True when the configured endpoint answers the pre-0.2 status path but not
-   * /antfly/readyz — i.e. an old antfly version is running at that URL.
+   * /readyz — i.e. an old antfly version is running at that URL.
    */
   legacyServer: boolean
 }
@@ -151,7 +151,7 @@ export async function startAntflyServer(
   if (!isLocalDefaultUrl(url)) {
     if (await isLegacyServer(url)) {
       logger.warn(
-        'Server at configured antfly URL answers the pre-0.2 status endpoint but not /antfly/readyz - it looks like an old antfly version. Upgrade it to v0.2+, or remove the custom url to use Bakin\'s own instance.',
+        'Server at configured antfly URL answers the pre-0.2 status endpoint but not /readyz - it looks like an old antfly version. Upgrade it to v0.2+, or remove the custom url to use Bakin\'s own instance.',
         { url },
       )
     } else {
@@ -185,7 +185,16 @@ export async function startAntflyServer(
     ], {
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false,
-      env: { ...process.env },
+      env: {
+        ...process.env,
+        // The Metal inference backend is unstable at v0.2.0-rc.2
+        // (bakin#456): concurrent reranked queries hit a command-encoder
+        // assertion (SIGABRT) and even single embeds can die with
+        // MTLCommandBufferError Invalid Resource. Pin the embedded
+        // inference to the ONNX/CPU backend — plenty fast for Bakin's
+        // model sizes — until upstream stabilizes. Env override wins.
+        TERMITE_PREFERRED_BACKEND: process.env.TERMITE_PREFERRED_BACKEND ?? 'onnx',
+      },
     })
 
     const stdoutLogs = createAntflyLogBuffer(logger, 'info')
@@ -268,7 +277,7 @@ export function stopAntflyServer(logger: AdapterLogger = noopLogger): void {
 
 async function isAlreadyRunning(url: string): Promise<boolean> {
   try {
-    const res = await fetch(`${serverOrigin(url)}/antfly/readyz`, { signal: AbortSignal.timeout(2000) })
+    const res = await fetch(`${serverOrigin(url)}/readyz`, { signal: AbortSignal.timeout(2000) })
     return res.ok
   } catch {
     return false

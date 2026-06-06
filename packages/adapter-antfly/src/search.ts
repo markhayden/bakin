@@ -182,7 +182,7 @@ export class AntflySearchAdapter implements SearchAdapter {
       return `server is reachable (${mode} at ${this.settings.url}) but the client never became operational - check server logs`
     }
     if (health.legacyServer) {
-      return `server at ${this.settings.url} looks like a pre-0.2 antfly (no /antfly/readyz) - upgrade it or remove the custom url to use Bakin's own instance`
+      return `server at ${this.settings.url} looks like a pre-0.2 antfly (no /readyz) - upgrade it or remove the custom url to use Bakin's own instance`
     }
     return mode === 'private instance'
       ? `server is not running (run \`bakin check search\` / \`bakin install search\`)`
@@ -207,10 +207,10 @@ export class AntflySearchAdapter implements SearchAdapter {
       if (tables.some((table) => table.name === name)) return
 
       const antflyConfig = buildTableConfig(name, config, this.settings)
+      // No `schema` here — see buildTableConfig / markhayden/bakin#456.
       await client.tables.create(name, {
         num_shards: readNumber(config.adapterOptions?.numShards, 1),
         description: readString(config.adapterOptions?.description),
-        schema: antflyConfig.schema,
         indexes: antflyConfig.indexes,
       } as Record<string, unknown>)
       this.logger.info(`Table created: ${name}`)
@@ -351,19 +351,24 @@ export class AntflySearchAdapter implements SearchAdapter {
     if (!client || !this.settings.enabled) return queries.map(({ query }) => emptyQueryResult(query))
     if (queries.length === 0) return []
 
-    const requests: QueryRequest[] = queries.map(({ table, query }) =>
-      buildQueryRequest(table, query, this.settings))
-
-    try {
-      const result = await client.multiquery(requests)
-      return queries.map(({ table, query }, index) => {
-        const response = result?.responses?.[index]
-        return response ? mapResponse(response, table) : emptyQueryResult(query)
-      })
-    } catch (err) {
-      this.logger.error('Antfly multiquery failed', err)
-      return queries.map(({ query }) => emptyQueryResult(query))
+    // Fan out as SEQUENTIAL single queries. Two v0.2.0-rc.2 constraints
+    // (bakin#456): the NDJSON multiquery endpoint rejects its own framing,
+    // and concurrent reranked queries crash the embedded Metal inference
+    // backend with a command-encoder assertion (SIGABRT, server gone).
+    // Sequential single queries are the shape that works; per-query failure
+    // isolation comes free.
+    const results: QueryResult[] = []
+    for (const { table, query } of queries) {
+      const request = buildQueryRequest(table, query, this.settings)
+      try {
+        const response = await client.query(request)
+        results.push(response ? mapResponse(response, table) : emptyQueryResult(query))
+      } catch (err) {
+        this.logger.error('Antfly query failed', { error: err, table })
+        results.push(emptyQueryResult(query))
+      }
     }
+    return results
   }
 
   async *scan(table: string): AsyncIterable<ScannedDocument> {
@@ -442,7 +447,7 @@ export class AntflySearchAdapter implements SearchAdapter {
   private embedderHash(): string {
     return Object.entries(this.settings.embedders)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([name, cfg]) => `${name}:${cfg.provider}:${cfg.model}`)
+      .map(([name, cfg]) => `${name}:${cfg.provider}:${cfg.model}:${cfg.dimension}`)
       .join('|')
   }
 }

@@ -99,12 +99,15 @@ afterAll(() => {
 })
 
 describe('checkInferenceModels', () => {
-  it('treats missing models as degraded (lazy-download), not broken', async () => {
+  it('treats missing models as degraded-not-broken, with the rebuild remediation', async () => {
+    // v0.2.0-rc.2 does NOT lazy-download at index time (bakin#456): missing
+    // models degrade semantic indexing until prefetch + rebuild.
     const result = await checkInferenceModels()
     expect(result.status).toBe('missing')
-    expect(result.message).toContain('search still works')
-    expect(result.message).toContain('lazy-download')
+    expect(result.message).toContain('semantic indexing is degraded')
+    expect(result.message).toContain('search itself keeps working')
     expect(result.remediation).toContain('bakin install search-models')
+    expect(result.remediation).toContain('reindex --rebuild')
   })
 
   it('reports ok when all models are present in the v0.2 owner/name layout', async () => {
@@ -180,7 +183,7 @@ describe('installInferenceModels', () => {
     expect(result.message).toContain('reported success but')
   })
 
-  it('skips on decline, noting the lazy-download fallback', async () => {
+  it('skips on decline, noting the degraded-semantic consequence', async () => {
     installFakeBinary(PULL_OK)
     const opts = {
       ...optsAutoYes,
@@ -190,14 +193,15 @@ describe('installInferenceModels', () => {
     }
     const result = await installInferenceModels(opts)
     expect(result.status).toBe('skipped')
-    expect(result.message).toContain('lazy-download')
+    expect(result.message).toContain('semantic indexing is degraded')
+    expect(result.message).toContain('reindex --rebuild')
   })
 
-  it('skips non-interactive without --yes, noting the lazy-download fallback', async () => {
+  it('skips non-interactive without --yes, noting the degraded-semantic consequence', async () => {
     installFakeBinary(PULL_OK)
     const opts = { ...optsAutoYes, autoApprove: false }
     const result = await installInferenceModels(opts)
     expect(result.status).toBe('skipped')
-    expect(result.message).toContain('lazy-download')
+    expect(result.message).toContain('Semantic indexing is degraded')
   })
 })

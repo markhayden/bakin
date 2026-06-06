@@ -141,6 +141,38 @@ describe('Antfly server log parsing', () => {
     )
   })
 
+  it('parses v0.2 zig JSON log lines with level mapping', () => {
+    const parsed = parseAntflyLogLine(
+      '{"ts":"+2026-06-05T23:21:37Z","level":"err","scope":"default","msg":"public table query parse failed table=bakin_tasks err=error.UnexpectedToken"}',
+      'warn',
+    )
+
+    expect(parsed.level).toBe('error')
+    expect(parsed.message).toBe('public table query parse failed table=bakin_tasks err=error.UnexpectedToken')
+    expect(parsed.data).toMatchObject({ source: 'antfly', scope: 'default' })
+  })
+
+  it('demotes expected empty-table text-merge noise from JSON logs', () => {
+    const worker = parseAntflyLogLine(
+      '{"ts":"+2026-06-05T23:21:37Z","level":"err","scope":"default","msg":"text merge worker failed: EmptySegment"}',
+      'warn',
+    )
+    expect(worker.level).toBe('debug')
+
+    const scheduled = parseAntflyLogLine(
+      '{"ts":"+2026-06-05T23:22:07Z","level":"err","scope":"default","msg":"scheduled text merge file-backed build failed index=full_text_index_v0: EmptySegment"}',
+      'warn',
+    )
+    expect(scheduled.level).toBe('debug')
+
+    // Non-EmptySegment merge failures stay visible.
+    const real = parseAntflyLogLine(
+      '{"ts":"+2026-06-05T23:22:07Z","level":"err","scope":"default","msg":"text merge worker failed: DiskFull"}',
+      'warn',
+    )
+    expect(real.level).toBe('error')
+  })
+
   it('demotes optional model registry directory warnings', () => {
     const parsed = parseAntflyLogLine(
       'ts=19:54:17 lvl=warn caller=inference/registry.zig:178 msg="Chunker models directory does not exist" dir=/Users/roscoe/.antfly/inference/models/chunkers',
@@ -155,7 +187,7 @@ describe('Antfly server log parsing', () => {
 })
 
 describe('Antfly server supervision', () => {
-  it('checks readiness via /antfly/readyz', async () => {
+  it('checks readiness via /readyz', async () => {
     const urls: string[] = []
     ;(globalThis as { fetch: typeof fetch }).fetch = mock(async (input: string | URL | Request) => {
       urls.push(String(input))
@@ -169,7 +201,7 @@ describe('Antfly server supervision', () => {
     })
 
     expect(urls.length).toBeGreaterThan(0)
-    expect(urls.every(u => u === 'http://localhost:3738/antfly/readyz')).toBe(true)
+    expect(urls.every(u => u === 'http://localhost:3738/readyz')).toBe(true)
   })
 
   it('does not trust an external Antfly endpoint that disappears during startup recheck', async () => {
@@ -206,8 +238,10 @@ describe('Antfly server supervision', () => {
 
     expect(started).toBe(true)
     expect(spawnMock).toHaveBeenCalledTimes(1)
-    const [binary, args] = (spawnMock.mock.calls as unknown as Array<[string, string[], unknown]>)[0]
+    const [binary, args, opts] = (spawnMock.mock.calls as unknown as Array<[string, string[], { env?: Record<string, string> }]>)[0]
     expect(binary).toBe(fakeBinary)
+    // CPU inference pin — the Metal backend crashes at this RC (bakin#456).
+    expect(opts.env?.TERMITE_PREFERRED_BACKEND).toBe('onnx')
     expect(args).toEqual([
       'swarm',
       '--host', '127.0.0.1',
@@ -236,7 +270,7 @@ describe('Antfly server supervision', () => {
   it('detects a pre-0.2 server via the legacy status signature', async () => {
     ;(globalThis as { fetch: typeof fetch }).fetch = mock(async (input: string | URL | Request) => {
       const url = String(input)
-      if (url.endsWith('/antfly/readyz')) return new Response('not found', { status: 404 })
+      if (url.endsWith('/readyz')) return new Response('not found', { status: 404 })
       if (url.endsWith('/api/v1/status')) return new Response('{}', { status: 200 })
       throw new Error(`unexpected fetch: ${url}`)
     }) as unknown as typeof fetch

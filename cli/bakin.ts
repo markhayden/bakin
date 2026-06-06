@@ -1839,7 +1839,7 @@ async function cmdSearch(query: string, options: { table?: string; limit?: numbe
   if (options.limit) url += `&limit=${options.limit}`
   if (options.facets) url += `&facets=${encodeURIComponent(options.facets)}`
   const result = await apiGet(url) as {
-    results?: Array<{ key: string; score?: number; _table?: string; document?: Record<string, unknown> }>
+    results?: Array<{ id?: string; key?: string; score?: number; table?: string; _table?: string; fields?: Record<string, unknown>; document?: Record<string, unknown> }>
     aggregations?: Record<string, Array<{ value: string; count: number }>>
     meta?: { query: string; total: number; took_ms: number; source: string }
   }
@@ -1855,9 +1855,11 @@ async function cmdSearch(query: string, options: { table?: string; limit?: numbe
 
   if (result.results?.length) {
     for (const r of result.results) {
-      const table = r._table ? ` [${r._table.replace('bakin_', '')}]` : ''
-      const title = r.document?.title || r.document?.name || r.key
-      console.log(`  ${title}${table} (score: ${r.score?.toFixed(3) ?? '?'})`)
+      const tableName = r.table ?? r._table
+      const table = tableName ? ` [${tableName.replace('bakin_', '')}]` : ''
+      const doc = r.fields ?? r.document
+      const title = doc?.title || doc?.name || r.id || r.key
+      console.log(`  ${String(title).slice(0, 100)}${table} (score: ${r.score?.toFixed(3) ?? '?'})`)
     }
   } else {
     console.log('  No results found.')
