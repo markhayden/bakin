@@ -157,7 +157,17 @@ describe('installAntflyDependency', () => {
     expect(result.message).toContain(`v${PIN_VERSION}`)
     expect(result.message).toContain('checksum verified')
     expect(existsSync(managedBinary)).toBe(true)
-    expect(fetchCalls.some(u => u.includes(`v${PIN_VERSION}`) && u.endsWith('.tar.gz'))).toBe(true)
+
+    // Exact artifact URL — guards against silent drift in the upstream
+    // uname-style naming (antfly_<ver>_<OS>_<Arch>.tar.gz under v<ver>/).
+    const archToken = { 'darwin-arm64': 'Darwin_arm64', 'linux-x64': 'Linux_x86_64', 'linux-arm64': 'Linux_arm64' }[platformKey]
+    expect(fetchCalls).toContain(
+      `https://releases.antfly.io/antfly/v${PIN_VERSION}/antfly_${PIN_VERSION}_${archToken}.tar.gz`,
+    )
+
+    // share/ (antfarm dashboard assets) installs alongside bin/ — the server
+    // resolves it relative to the binary.
+    expect(existsSync(join(antflyHomeDir, 'share', 'antfly', 'antfarm', 'index.html'))).toBe(true)
 
     // Verification runs the real installed artifact.
     const check = await checkAntflyDependency(makePin())
