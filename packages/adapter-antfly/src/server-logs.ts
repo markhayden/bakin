@@ -148,6 +148,27 @@ const EXPECTED_JSON_NOISE_PATTERNS = [
   /text merge file-backed build failed .*: EmptySegment$/,
 ]
 
+/**
+ * Known upstream defects at the pinned antfly version: real failures we can
+ * do nothing about Bakin-side, repeating on every boot reconcile / asset
+ * write. Kept visible as warn (the health page carries the red index state)
+ * but annotated so the log line answers "why" instead of sending the
+ * operator off debugging an embedder config that is fine.
+ */
+const KNOWN_UPSTREAM_DEFECT_NOTES: Array<{ pattern: RegExp; note: string }> = [
+  {
+    // Misleading upstream error name: fires when the enrichment worker hits
+    // IMAGE content (remoteMedia template), with any embedder — provider
+    // config is irrelevant. Lab-bisected 2026-06-06.
+    pattern: /enrichment worker failed: UnsupportedEmbeddingProvider$/,
+    note: 'known upstream defect at this antfly pin - image enrichment rejects every embedder, so assets semantic indexing stays dead until a fixed pin (bakin#456 finding 8); the embedder provider config is NOT the problem',
+  },
+  {
+    pattern: /enrichment worker failed: InputArityMismatch$/,
+    note: 'known upstream defect at this antfly pin - CLIP text embedding is broken (bakin#456 finding 9)',
+  },
+]
+
 function mapJsonLevel(level: unknown, streamLevel: AntflyLogLevel): AntflyLogLevel {
   switch (level) {
     case 'err':
@@ -175,6 +196,11 @@ function parseJsonLogLine(line: string, streamLevel: AntflyLogLevel): ParsedAntf
   for (const [key, value] of Object.entries(obj)) {
     if (key === 'ts' || key === 'level' || key === 'msg') continue
     data[key] = value
+  }
+
+  const defect = KNOWN_UPSTREAM_DEFECT_NOTES.find(({ pattern }) => pattern.test(message))
+  if (defect) {
+    return { level: 'warn', message: `${message} [${defect.note}]`, data }
   }
 
   const level = EXPECTED_JSON_NOISE_PATTERNS.some((re) => re.test(message))

@@ -153,6 +153,28 @@ describe('Antfly server log parsing', () => {
     expect(parsed.data).toMatchObject({ source: 'antfly', scope: 'default' })
   })
 
+  it('annotates known upstream enrichment defects instead of raw errors', () => {
+    // The raw "UnsupportedEmbeddingProvider" line sent an operator debugging
+    // a provider config that was fine — the real cause is upstream image
+    // enrichment (bakin#456 findings 8/9). The line must explain itself and
+    // drop to warn; the health page carries the red index state.
+    const provider = parseAntflyLogLine(
+      '{"ts":"+2026-06-06T14:47:44Z","level":"err","scope":"default","msg":"enrichment worker failed: UnsupportedEmbeddingProvider"}',
+      'warn',
+    )
+    expect(provider.level).toBe('warn')
+    expect(provider.message).toContain('UnsupportedEmbeddingProvider')
+    expect(provider.message).toContain('bakin#456 finding 8')
+    expect(provider.message).toContain('NOT the problem')
+
+    const arity = parseAntflyLogLine(
+      '{"ts":"+2026-06-06T14:47:44Z","level":"err","scope":"default","msg":"enrichment worker failed: InputArityMismatch"}',
+      'warn',
+    )
+    expect(arity.level).toBe('warn')
+    expect(arity.message).toContain('bakin#456 finding 9')
+  })
+
   it('demotes expected empty-table text-merge noise from JSON logs', () => {
     const worker = parseAntflyLogLine(
       '{"ts":"+2026-06-05T23:21:37Z","level":"err","scope":"default","msg":"text merge worker failed: EmptySegment"}',
