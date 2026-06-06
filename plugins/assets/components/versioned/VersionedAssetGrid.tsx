@@ -6,14 +6,15 @@ import { useQueryState, useQueryArrayState, useSearch, useDebug } from '@makinba
 import { Button } from '@makinbakin/sdk/ui'
 import { PluginHeader, FacetFilter } from '@makinbakin/sdk/components'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
-import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil } from 'lucide-react'
+import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil, Check, SquareMousePointer, Tags } from 'lucide-react'
 import { ASSET_TYPES } from '../../lib/constants'
 import { createSseRefetchScheduler } from './sse-refetch'
 import { AssetEditDrawer } from './AssetEditDrawer'
 import { TagFolderGrid } from './TagFolderGrid'
+import { TagInput } from './TagInput'
 import { UNTAGGED, matchesTagFilter } from './tag-filter'
 import { AssetThumb, AssetMetaSummary, AssetTypeIcon } from './atoms'
-import { VERSIONED_API, UPLOAD_API, TRASH_API } from './asset-urls'
+import { VERSIONED_API, UPLOAD_API, TRASH_API, TAGS_API } from './asset-urls'
 import type { VersionedAssetSummary, TrashedAssetSummary } from './types'
 
 type View = 'grid' | 'list' | 'tags' | 'trash'
@@ -59,15 +60,20 @@ function ScoreOverlay({ info, className = '' }: { info: AssetScoreInfo; classNam
   )
 }
 
-function AssetCard({ asset, onOpen, onEdit, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; onEdit: () => void; scoreInfo?: AssetScoreInfo }) {
+function AssetCard({ asset, onOpen, onEdit, selected, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; onEdit: () => void; selected?: boolean; scoreInfo?: AssetScoreInfo }) {
   return (
     <div
       onClick={onOpen}
-      className="group flex cursor-pointer flex-col overflow-hidden rounded-lg border border-border bg-card transition-all duration-150 hover:-translate-y-0.5 hover:border-[rgba(255,255,255,0.15)]"
+      className={`group flex cursor-pointer flex-col overflow-hidden rounded-lg border bg-card transition-all duration-150 hover:-translate-y-0.5 ${selected ? 'border-emerald-500/70 ring-1 ring-emerald-500/50' : 'border-border hover:border-[rgba(255,255,255,0.15)]'}`}
       data-testid={`asset-card-${asset.assetId}`}
     >
       <div className="relative aspect-square overflow-hidden bg-zinc-900/50">
         <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
+        {selected !== undefined && (
+          <span className={`absolute left-1.5 top-1.5 z-10 flex size-5 items-center justify-center rounded border ${selected ? 'border-emerald-500 bg-emerald-500 text-black' : 'border-zinc-500 bg-black/60'}`} data-testid={`asset-selected-${asset.assetId}`}>
+            {selected && <Check className="size-3.5" />}
+          </span>
+        )}
         <button
           onClick={(e) => { e.stopPropagation(); onEdit() }}
           className="absolute right-1.5 top-1.5 z-10 rounded bg-black/60 p-1.5 text-zinc-300 opacity-0 transition-opacity hover:text-white group-hover:opacity-100"
@@ -96,13 +102,18 @@ function AssetCard({ asset, onOpen, onEdit, scoreInfo }: { asset: VersionedAsset
   )
 }
 
-function AssetListRow({ asset, onOpen, onEdit, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; onEdit: () => void; scoreInfo?: AssetScoreInfo }) {
+function AssetListRow({ asset, onOpen, onEdit, selected, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; onEdit: () => void; selected?: boolean; scoreInfo?: AssetScoreInfo }) {
   return (
     <div
       onClick={onOpen}
-      className="group flex w-full cursor-pointer items-center gap-3 rounded-md border border-border bg-card px-3 py-2 text-left transition-colors hover:border-[rgba(255,255,255,0.15)]"
+      className={`group flex w-full cursor-pointer items-center gap-3 rounded-md border bg-card px-3 py-2 text-left transition-colors ${selected ? 'border-emerald-500/70 ring-1 ring-emerald-500/50' : 'border-border hover:border-[rgba(255,255,255,0.15)]'}`}
       data-testid={`asset-row-${asset.assetId}`}
     >
+      {selected !== undefined && (
+        <span className={`flex size-4.5 shrink-0 items-center justify-center rounded border ${selected ? 'border-emerald-500 bg-emerald-500 text-black' : 'border-zinc-500'}`} data-testid={`asset-selected-${asset.assetId}`}>
+          {selected && <Check className="size-3" />}
+        </span>
+      )}
       <div className="size-10 shrink-0 overflow-hidden rounded">
         <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
       </div>
@@ -142,6 +153,26 @@ export function VersionedAssetGrid() {
   const [assets, setAssets] = useState<VersionedAssetSummary[]>([])
   const [trash, setTrash] = useState<TrashedAssetSummary[]>([])
   const [editing, setEditing] = useState<VersionedAssetSummary | null>(null)
+
+  // Bulk selection — ephemeral (not URL-backed), exits on view change.
+  const [selectMode, setSelectMode] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkTags, setBulkTags] = useState<string[]>([])
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkError, setBulkError] = useState<string | null>(null)
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false)
+    setSelected(new Set())
+    setBulkTags([])
+    setBulkError(null)
+  }, [])
+  useEffect(() => { exitSelectMode() }, [view, exitSelectMode])
+  const toggleSelected = (assetId: string) => setSelected(prev => {
+    const next = new Set(prev)
+    if (next.has(assetId)) next.delete(assetId)
+    else next.add(assetId)
+    return next
+  })
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -332,6 +363,11 @@ export function VersionedAssetGrid() {
   const actions = (
     <div className="flex items-center gap-2">
       {pending && <Loader2 className="size-4 animate-spin text-muted-foreground" data-testid="search-spinner" />}
+      {(view === 'grid' || view === 'list') && (
+        <Button size="sm" variant={selectMode ? 'secondary' : 'outline'} onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))} data-testid="toggle-select-mode">
+          <SquareMousePointer className="size-4" /> {selectMode ? 'Done' : 'Select'}
+        </Button>
+      )}
       <Button size="sm" onClick={openPicker} disabled={uploading} data-testid="add-asset">
         {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
         {uploading ? 'Uploading…' : 'Add asset'}
@@ -339,6 +375,29 @@ export function VersionedAssetGrid() {
       {viewToggle}
     </div>
   )
+
+  const applyBulkTags = async () => {
+    if (bulkTags.length === 0 || selected.size === 0) return
+    setBulkBusy(true)
+    setBulkError(null)
+    try {
+      const res = await fetch(`${TAGS_API}/apply`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assetIds: [...selected], add: bulkTags }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(body.error || `Tagging failed (${res.status})`)
+      }
+      exitSelectMode()
+      setSelectMode(true) // stay in select mode for the next batch
+      fetchAssets()
+    } catch (err) {
+      setBulkError(err instanceof Error ? err.message : 'Tagging failed')
+    } finally {
+      setBulkBusy(false)
+    }
+  }
 
   if (loading) return <div className="p-8 text-sm text-muted-foreground">Loading assets…</div>
 
@@ -456,14 +515,44 @@ export function VersionedAssetGrid() {
       ) : view === 'list' ? (
         <div className="flex flex-col gap-1.5" data-testid="assets-list">
           {displayed.map(asset => (
-            <AssetListRow key={asset.assetId} asset={asset} scoreInfo={scoreFor(asset.assetId)} onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })} onEdit={() => setEditing(asset)} />
+            <AssetListRow
+              key={asset.assetId}
+              asset={asset}
+              scoreInfo={scoreFor(asset.assetId)}
+              selected={selectMode ? selected.has(asset.assetId) : undefined}
+              onOpen={() => (selectMode ? toggleSelected(asset.assetId) : navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } }))}
+              onEdit={() => setEditing(asset)}
+            />
           ))}
         </div>
       ) : (
         <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]" data-testid="assets-grid">
           {displayed.map(asset => (
-            <AssetCard key={asset.assetId} asset={asset} scoreInfo={scoreFor(asset.assetId)} onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })} onEdit={() => setEditing(asset)} />
+            <AssetCard
+              key={asset.assetId}
+              asset={asset}
+              scoreInfo={scoreFor(asset.assetId)}
+              selected={selectMode ? selected.has(asset.assetId) : undefined}
+              onOpen={() => (selectMode ? toggleSelected(asset.assetId) : navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } }))}
+              onEdit={() => setEditing(asset)}
+            />
           ))}
+        </div>
+      )}
+
+      {/* Floating bulk-tag bar while assets are selected. */}
+      {selectMode && selected.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 z-40 flex w-[min(560px,calc(100vw-2rem))] -translate-x-1/2 items-center gap-2 rounded-lg border border-border bg-background/95 px-3 py-2 shadow-lg backdrop-blur" data-testid="bulk-tag-bar">
+          <Tags className="size-4 shrink-0 text-muted-foreground" />
+          <span className="shrink-0 text-xs text-muted-foreground" data-testid="bulk-selected-count">{selected.size} selected</span>
+          <div className="min-w-0 flex-1">
+            <TagInput value={bulkTags} onChange={setBulkTags} suggestions={tagOptions.filter(o => o.value !== UNTAGGED).map(o => o.value)} placeholder="Add tags…" />
+          </div>
+          <Button size="sm" onClick={applyBulkTags} disabled={bulkBusy || bulkTags.length === 0} data-testid="bulk-apply-tags">
+            {bulkBusy ? <Loader2 className="size-4 animate-spin" /> : null} Tag {selected.size}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())} data-testid="bulk-clear-selection">Clear</Button>
+          {bulkError && <p className="text-xs text-destructive">{bulkError}</p>}
         </div>
       )}
 
