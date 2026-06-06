@@ -16,9 +16,20 @@ const log = createLogger('lifecycle')
 
 let shutdownInProgress = false
 
+/**
+ * True once the lifecycle owns SIGINT/SIGTERM. scripts/dev.ts registers its
+ * own (earlier) signal handlers for the pre-server boot window; they consult
+ * this to know they must NOT call process.exit and preempt the async
+ * shutdown below — doing so orphaned the antfly child every time (#459).
+ */
+export function lifecycleOwnsShutdown(): boolean {
+  return (globalThis as Record<string, unknown>).__bakinLifecycleOwnsShutdown === true
+}
+
 /** Tests use this between cases — bun:test has no vi.resetModules equivalent. */
 export function _resetShutdownStateForTests(): void {
   shutdownInProgress = false
+  delete (globalThis as Record<string, unknown>).__bakinLifecycleOwnsShutdown
 }
 
 export function registerShutdownHandlers(server: Server, contentDir: string): void {
@@ -56,12 +67,15 @@ export function registerShutdownHandlers(server: Server, contentDir: string): vo
     // Give time for final writes
     setTimeout(() => {
       log.info('Shutdown complete')
-      process.exit(0)
+      // Honor a pre-set failure code (e.g. EADDRINUSE at listen time, #459)
+      // instead of stamping success over it.
+      process.exit(typeof process.exitCode === 'number' ? process.exitCode : 0)
     }, 1000)
   }
 
   process.on('SIGTERM', () => shutdown('SIGTERM'))
   process.on('SIGINT', () => shutdown('SIGINT'))
+  ;(globalThis as Record<string, unknown>).__bakinLifecycleOwnsShutdown = true
 
   log.info('Shutdown handlers registered')
 }

@@ -491,8 +491,22 @@ function registerShutdown(): void {
   const cleanup = () => {
     if (tailwindChild && !tailwindChild.killed) tailwindChild.kill('SIGTERM')
   }
-  process.on('SIGINT', () => { cleanup(); process.exit(0) })
-  process.on('SIGTERM', () => { cleanup(); process.exit(0) })
+  // These handlers are registered BEFORE server.ts loads, so they run first
+  // on a signal. Once the server's lifecycle owns shutdown
+  // (src/core/lifecycle.ts sets the global below), calling process.exit here
+  // would preempt its async cleanup and orphan the antfly child on 3738
+  // (#459) — kill tailwind only and let the lifecycle handler (registered
+  // later on the same signal) finish the job and exit. Checked via
+  // globalThis, not an import: pulling in lifecycle.ts from here would load
+  // the whole server module graph on an early Ctrl-C during the build phase.
+  const lifecycleOwnsShutdown = () =>
+    (globalThis as Record<string, unknown>).__bakinLifecycleOwnsShutdown === true
+  const onSignal = () => {
+    cleanup()
+    if (!lifecycleOwnsShutdown()) process.exit(0)
+  }
+  process.on('SIGINT', onSignal)
+  process.on('SIGTERM', onSignal)
   process.on('exit', cleanup)
 }
 

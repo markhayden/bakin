@@ -730,6 +730,26 @@ const eventBus = new BakinEventBus(broadcast)
   const dispatchState = dispatch.loadDispatchState(CONTENT_DIR)
   dispatchState.serverStart = Date.now()
 
+  // Without this, an EADDRINUSE 'error' event throws as an uncaught
+  // exception — by now antfly is already spawned and the watcher is running,
+  // and the crash bypasses the lifecycle shutdown, orphaning the child
+  // (#459). Fail loudly with remediation and take the graceful path instead.
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      log.error(
+        `Port ${port} is already in use - another Bakin (or a half-dead dev generation) is holding it. ` +
+        `Find it with: lsof -nP -iTCP:${port} -sTCP:LISTEN`,
+        err,
+      )
+    } else {
+      log.error('HTTP server error', err)
+    }
+    // Route through the lifecycle shutdown (registered above) so children
+    // and watchers come down cleanly; exitCode survives into its exit call.
+    process.exitCode = 1
+    process.kill(process.pid, 'SIGTERM')
+  })
+
   server.listen(port, '0.0.0.0', () => {
     log.info(`Bakin ready on http://localhost:${port}`)
     log.info(`Listening on 0.0.0.0:${port} (Tailscale: http://100.91.112.69:${port})`)
