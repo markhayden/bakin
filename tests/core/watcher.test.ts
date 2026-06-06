@@ -104,6 +104,17 @@ describe('watcher', () => {
       expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'tasks-other', 'file.json'))).toBe(false)
     })
 
+    it('ignores the private antfly data dir — its churn deadlocks the process', () => {
+      // ~/.bakin/antfly is the private antfly instance's --data-dir. The
+      // server churns WAL/segment files there constantly; watching it floods
+      // chokidar (and has deadlocked Bun's file-watcher thread against the
+      // main thread, wedging the whole HTTP server).
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'antfly'))).toBe(true)
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'antfly', 'data', 'replicas', 'group-1', 'table-db', 'indexes', 'full_text_index_v0', 'segments', '377.seg'))).toBe(true)
+      // Sibling dirs that merely start with "antfly" are NOT ignored.
+      expect(shouldIgnoreContentWatcherPath(tempDir, join(tempDir, 'antfly-notes', 'file.md'))).toBe(false)
+    })
+
     it('stop is idempotent', async () => {
       await stop()
       // second call should not throw; bun:test's toThrow matcher doesn't

@@ -145,6 +145,14 @@ export function shouldIgnoreContentWatcherPath(contentDir: string, path: string)
   // the store is the single writer).
   if (rel === 'tasks' || rel.startsWith('tasks/')) return true
 
+  // ~/.bakin/antfly is the private antfly instance's --data-dir (zig
+  // migration, spec decision 10) — server-internal WAL/segment files churned
+  // constantly by antfly itself, never Bakin content. Watching it floods
+  // chokidar with thousands of events per compaction and has deadlocked
+  // Bun's file-watcher thread against the main thread (every thread parked
+  // on os_unfair_lock), wedging the entire HTTP server seconds after boot.
+  if (rel === 'antfly' || rel.startsWith('antfly/')) return true
+
   const basename = path.split(/[\\/]/).pop() || ''
   // Allow .trash inside assets (we handle skipping in handleFileEvent)
   if (basename === '.trash' && rel.startsWith('assets/')) return false
