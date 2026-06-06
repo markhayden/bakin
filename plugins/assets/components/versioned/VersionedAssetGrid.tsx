@@ -10,15 +10,18 @@ import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, Lis
 import { ASSET_TYPES } from '../../lib/constants'
 import { createSseRefetchScheduler } from './sse-refetch'
 import { AssetEditDrawer } from './AssetEditDrawer'
+import { TagFolderGrid } from './TagFolderGrid'
+import { UNTAGGED, matchesTagFilter } from './tag-filter'
 import { AssetThumb, AssetMetaSummary, AssetTypeIcon } from './atoms'
 import { VERSIONED_API, UPLOAD_API, TRASH_API } from './asset-urls'
 import type { VersionedAssetSummary, TrashedAssetSummary } from './types'
 
-type View = 'grid' | 'list' | 'trash'
+type View = 'grid' | 'list' | 'tags' | 'trash'
 
 const VIEW_OPTIONS: Array<{ key: View; label: string; Icon: typeof LayoutGrid }> = [
   { key: 'grid', label: 'Grid', Icon: LayoutGrid },
   { key: 'list', label: 'List', Icon: List },
+  { key: 'tags', label: 'Folders', Icon: FolderOpen },
   { key: 'trash', label: 'Trash', Icon: Trash2 },
 ]
 
@@ -30,14 +33,6 @@ const TYPE_OPTIONS = ASSET_TYPES.map((value) => ({
   icon: <AssetTypeIcon type={value} className="size-3.5" />,
 }))
 
-/** Sentinel tag-filter value matching assets with no tags at all. */
-export const UNTAGGED = '__untagged__'
-
-/** Does an asset match the active tag filter (any-of; UNTAGGED = tagless)? */
-export function matchesTagFilter(tags: string[], filter: string[]): boolean {
-  if (filter.length === 0) return true
-  return filter.some((f) => (f === UNTAGGED ? tags.length === 0 : tags.includes(f)))
-}
 
 /** Per-result Antfly relevance breakdown. */
 export interface AssetScoreInfo { score: number; indexScores?: Record<string, number> }
@@ -375,15 +370,15 @@ export function VersionedAssetGrid() {
       {fileInput}
       <PluginHeader
         title="Assets"
-        count={view === 'trash' ? trash.length : displayed.length}
+        count={view === 'trash' ? trash.length : view === 'tags' ? tagOptions.length : displayed.length}
         actions={actions}
-        search={view === 'trash' ? undefined : { value: q, onChange: setQ, placeholder: 'Search assets…' }}
+        search={view === 'trash' || view === 'tags' ? undefined : { value: q, onChange: setQ, placeholder: 'Search assets…' }}
       />
 
       {uploadError && <p className="mb-2 text-xs text-destructive">{uploadError}</p>}
       {linkTo && view !== 'trash' && <p className="mb-2 text-xs text-muted-foreground">New uploads will be linked to this task.</p>}
 
-      {view !== 'trash' && (
+      {view !== 'trash' && view !== 'tags' && (
         <div className="mb-3 mt-3 flex items-center gap-2" data-testid="asset-filters">
           <ListFilter className="size-3.5 shrink-0 text-muted-foreground" />
           <FacetFilter label="Type" options={TYPE_OPTIONS} selected={typeFilter} onChange={setTypeFilter} counts={typeCounts} />
@@ -392,7 +387,7 @@ export function VersionedAssetGrid() {
       )}
 
       {/* Breadcrumb back to the folders view while a tag filter is active. */}
-      {view !== 'trash' && tagFilter.length > 0 && (
+      {view !== 'trash' && view !== 'tags' && tagFilter.length > 0 && (
         <div className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="tag-breadcrumb">
           <button
             onClick={() => { setTagFilter([]); setView('tags') }}
@@ -450,6 +445,12 @@ export function VersionedAssetGrid() {
             ))}
           </div>
         )
+      ) : view === 'tags' ? (
+        <TagFolderGrid
+          assets={assets}
+          onOpenFolder={(tag) => { setTagFilter([tag]); setView('grid') }}
+          onChanged={fetchAssets}
+        />
       ) : displayed.length === 0 ? (
         <div className="p-8 text-sm text-muted-foreground" data-testid="assets-no-match">No assets match your filters.</div>
       ) : view === 'list' ? (
