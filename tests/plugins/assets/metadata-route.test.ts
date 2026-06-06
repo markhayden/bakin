@@ -52,6 +52,13 @@ describe('normalizeTags', () => {
     expect(normalizeTags(['a\tb', 'c\nd', 'already-normal'])).toEqual(['a-b', 'c-d', 'already-normal'])
     expect(normalizeTags(['hello-world'])).toEqual(['hello-world'])
   })
+  it('strips characters outside [a-z0-9-] — tags stay safe as URL/facet tokens', () => {
+    expect(normalizeTags(['a:b', 'foo)(', 'c.d/e'])).toEqual(['ab', 'foo', 'cde'])
+    expect(normalizeTags(['!!!'])).toEqual([]) // fully-stripped tags drop
+  })
+  it('makes the __untagged__ filter sentinel uncreatable (underscores stripped)', () => {
+    expect(normalizeTags(['__untagged__'])).toEqual(['untagged'])
+  })
 })
 
 describe('updateMetadata', () => {

@@ -100,12 +100,17 @@ function FolderCard({ folder, onOpen, onRename, onDelete }: {
  * most-recently-updated asset. Rename/Delete fan out via the global tag
  * routes; the SSE refetch reconciles the grid.
  */
-export function TagFolderGrid({ assets, onOpenFolder, onChanged }: {
+export function TagFolderGrid({ assets, filter = '', onOpenFolder, onChanged }: {
   assets: VersionedAssetSummary[]
+  /** Lowercased folder-name filter from the header search box. */
+  filter?: string
   onOpenFolder: (tag: string) => void
   onChanged: () => void
 }) {
-  const folders = useMemo(() => buildFolders(assets), [assets])
+  const folders = useMemo(() => {
+    const all = buildFolders(assets)
+    return filter ? all.filter(f => f.label.toLowerCase().includes(filter)) : all
+  }, [assets, filter])
   const [renaming, setRenaming] = useState<string | null>(null)
   const [renameTo, setRenameTo] = useState('')
   const [deleting, setDeleting] = useState<string | null>(null)
@@ -133,12 +138,18 @@ export function TagFolderGrid({ assets, onOpenFolder, onChanged }: {
   }
 
   if (folders.length === 0) {
-    return <div className="p-8 text-sm text-muted-foreground" data-testid="folders-empty">No assets yet — tags you add will appear here as folders.</div>
+    return (
+      <div className="p-8 text-sm text-muted-foreground" data-testid="folders-empty">
+        {filter ? 'No folders match your filter.' : 'No assets yet — tags you add will appear here as folders.'}
+      </div>
+    )
   }
 
   return (
     <>
-      <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]" data-testid="tag-folders">
+      {/* mt-4: the grid/list views get header spacing from the filters row,
+          which the folders view doesn't render. */}
+      <div className="mt-4 grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]" data-testid="tag-folders">
         {folders.map(folder => (
           <FolderCard
             key={folder.tag}

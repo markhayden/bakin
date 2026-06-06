@@ -407,6 +407,9 @@ export async function updateMetadata(assetId: string, input: AssetMetadataInput)
  */
 export async function renameTagGlobal(from: string, to: string): Promise<{ updated: number }> {
   const target = normalizeTags([to])[0]
+  // `from` is deliberately matched verbatim (not normalized): it must equal
+  // what's stored, including legacy pre-normalization tags — rename is the
+  // tool that cleans those up.
   if (!from || !target) throw new Error('Both from and to tags are required')
   let updated = 0
   for (const summary of listAssets()) {
@@ -436,6 +439,9 @@ export async function applyTags(
 ): Promise<{ updated: number; failed: string[] }> {
   const add = normalizeTags(input.add ?? [])
   const remove = new Set(normalizeTags(input.remove ?? []))
+  // Nothing to do → don't rewrite N manifests (each write triggers a
+  // reindex + asset.changed broadcast).
+  if (add.length === 0 && remove.size === 0) return { updated: 0, failed: [] }
   let updated = 0
   const failed: string[] = []
   for (const assetId of assetIds) {

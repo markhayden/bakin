@@ -79,6 +79,15 @@ describe('removeTagGlobal', () => {
 })
 
 describe('applyTags', () => {
+  it('no-ops without rewriting manifests when add and remove are empty', async () => {
+    const a = await makeAsset('noop', ['keep'])
+    const manifestPath = join(testDir, assetDirRelPath(a)!, 'manifest.json')
+    const before = readFileSync(manifestPath, 'utf-8')
+    const res = await applyTags([a], {})
+    expect(res).toEqual({ updated: 0, failed: [] })
+    expect(readFileSync(manifestPath, 'utf-8')).toBe(before)
+  })
+
   it('adds and removes across a set, normalized, with per-asset results', async () => {
     const a = await makeAsset('ba', ['x'])
     const b = await makeAsset('bb', [])

@@ -6,7 +6,7 @@ import { useQueryState, useQueryArrayState, useSearch, useDebug, useRouter, useP
 import { Button } from '@makinbakin/sdk/ui'
 import { PluginHeader, FacetFilter } from '@makinbakin/sdk/components'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
-import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil, Check, SquareMousePointer, Tags } from 'lucide-react'
+import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil, Check, SquareMousePointer, Tags, ArrowLeft } from 'lucide-react'
 import { ASSET_TYPES } from '../../lib/constants'
 import { createSseRefetchScheduler } from './sse-refetch'
 import { AssetEditDrawer } from './AssetEditDrawer'
@@ -236,8 +236,9 @@ export function VersionedAssetGrid() {
   // explicit restore/empty/permanent-delete actions, which refetch directly).
   useEffect(() => { if (view === 'trash') fetchTrash() }, [view, fetchTrash])
 
-  // Drive the search hook from the URL query.
-  useEffect(() => { search.search(q) }, [q]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Drive the search hook from the URL query. The folders view repurposes the
+  // same box as a client-side folder-name filter — no Antfly round-trip.
+  useEffect(() => { if (view !== 'tags') search.search(q) }, [q, view]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const es = new EventSource('/api/events')
@@ -321,6 +322,13 @@ export function VersionedAssetGrid() {
     return (tagCounts[UNTAGGED] ?? 0) > 0 ? [{ value: UNTAGGED, label: 'Untagged' }, ...tags] : tags
   }, [tagCounts])
 
+  // Folder-name filter for the folders view (header search box, client-side).
+  const folderFilter = view === 'tags' ? q.trim().toLowerCase() : ''
+  const folderCount = useMemo(
+    () => tagOptions.filter(o => !folderFilter || o.label.toLowerCase().includes(folderFilter)).length,
+    [tagOptions, folderFilter],
+  )
+
   const scoreMap = useMemo(
     () => new Map<string, AssetScoreInfo>(search.results.map(r => [r.id, { score: r.score, indexScores: r.indexScores }])),
     [search.results],
@@ -330,7 +338,9 @@ export function VersionedAssetGrid() {
   // A search is "pending" while the request is in flight OR the last completed
   // search query doesn't yet match the current input (covers the debounce gap).
   // Used to show a spinner and suppress the "no match" flash before results land.
-  const searching = q.trim().length > 0
+  // Folders view never searches (folder-name filter is client-side) — without
+  // the view guard the stale meta.query would pin the spinner on forever.
+  const searching = q.trim().length > 0 && view !== 'tags'
   const pending = searching && (search.loading || (search.meta?.query ?? '') !== q.trim())
 
   const filtered = useMemo(() => {
@@ -449,9 +459,11 @@ export function VersionedAssetGrid() {
       {fileInput}
       <PluginHeader
         title="Assets"
-        count={view === 'trash' ? trash.length : view === 'tags' ? tagOptions.length : displayed.length}
+        count={view === 'trash' ? trash.length : view === 'tags' ? folderCount : displayed.length}
         actions={actions}
-        search={view === 'trash' || view === 'tags' ? undefined : { value: q, onChange: setQ, placeholder: 'Search assets…' }}
+        search={view === 'trash' ? undefined : view === 'tags'
+          ? { value: q, onChange: setQ, placeholder: 'Filter folders…' }
+          : { value: q, onChange: setQ, placeholder: 'Search assets…' }}
       />
 
       {uploadError && <p className="mb-2 text-xs text-destructive">{uploadError}</p>}
@@ -465,7 +477,9 @@ export function VersionedAssetGrid() {
         </div>
       )}
 
-      {/* Breadcrumb back to the folders view while a tag filter is active. */}
+      {/* Breadcrumb back to the folders view while a tag filter is active.
+          Clearing the filter happens via the Tags facet; the breadcrumb is
+          purely a "go back" affordance. */}
       {view !== 'trash' && view !== 'tags' && tagFilter.length > 0 && (
         <div className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="tag-breadcrumb">
           <button
@@ -473,20 +487,12 @@ export function VersionedAssetGrid() {
             className="flex items-center gap-1 rounded px-1 py-0.5 transition-colors hover:text-foreground"
             data-testid="breadcrumb-folders"
           >
-            <FolderOpen className="size-3.5" /> Folders
+            <ArrowLeft className="size-3.5" /> Folders
           </button>
           <span>/</span>
           <span className="font-medium text-foreground">
             {tagFilter.map(t => (t === UNTAGGED ? 'Untagged' : t)).join(', ')}
           </span>
-          <button
-            onClick={() => setTagFilter([])}
-            className="ml-0.5 rounded p-0.5 transition-colors hover:text-foreground"
-            aria-label="Clear tag filter"
-            data-testid="clear-tag-filter"
-          >
-            <X className="size-3.5" />
-          </button>
         </div>
       )}
 
@@ -527,6 +533,7 @@ export function VersionedAssetGrid() {
       ) : view === 'tags' ? (
         <TagFolderGrid
           assets={assets}
+          filter={folderFilter}
           onOpenFolder={openFolder}
           onChanged={fetchAssets}
         />
