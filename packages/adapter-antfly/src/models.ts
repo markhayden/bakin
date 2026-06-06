@@ -12,10 +12,10 @@ import { findAntflyBinary } from './server'
  * Models live at ~/.antfly/inference/models/{owner}/{name}/ and are pulled
  * from HuggingFace via `antfly inference pull`. Prefetching is strongly
  * recommended: at v0.2.0-rc.2 index-time embedding does NOT lazy-download a
- * missing model — the embeddings backfill fails and does not self-heal when
- * the model later appears (bakin#456). Search stays functional (full-text
- * path, filters, facets), but semantic indexing for affected tables needs
- * `bakin install search-models` followed by `bakin reindex --rebuild`.
+ * missing model — the embeddings backfill fails (bakin#456). Recovery is
+ * cheap though: once the model is on disk, ANY write to the table heals the
+ * index (previously-failed docs get embedded too), so `bakin install
+ * search-models` + `bakin reindex` fully repairs the affected tables.
  */
 
 const noopLogger: AdapterLogger = {
@@ -35,6 +35,8 @@ export const REQUIRED_MODELS: InferenceModel[] = [
   { label: 'BGE text embedder', model: 'BAAI/bge-small-en-v1.5', kind: 'embedder' },
   // Xenova mirror, not openai/: the upstream openai HF repo ships no ONNX
   // exports and `inference pull` fails with NoModelFilesFound (bakin#456).
+  // Note: antfly's own e2e blesses antflydb/clipclap for multimodal —
+  // confirm upstream's committed ref before pinning this for stable.
   { label: 'CLIP visual embedder', model: 'Xenova/clip-vit-base-patch32', kind: 'embedder' },
   { label: 'mxbai reranker', model: 'mixedbread-ai/mxbai-rerank-base-v1', kind: 'reranker' },
 ]
@@ -116,7 +118,7 @@ export async function checkInferenceModels() {
     name: 'models',
     status: 'missing' as const,
     message: `${missing.length} of ${REQUIRED_MODELS.length} search model${missing.length === 1 ? '' : 's'} not downloaded - semantic indexing is degraded until they are (search itself keeps working)`,
-    remediation: 'Run `bakin install search-models`, then `bakin reindex --rebuild` if content was indexed in the meantime.',
+    remediation: 'Run `bakin install search-models`, then `bakin reindex` if content was indexed in the meantime.',
     details: {
       root: inferenceModelsRoot(),
       missing: missing.map((e) => ({
@@ -181,7 +183,7 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
       return {
         name: 'models',
         status: 'skipped' as const,
-        message: 'User declined model download; semantic indexing is degraded until `bakin install search-models` runs (follow with `bakin reindex --rebuild`).',
+        message: 'User declined model download; semantic indexing is degraded until `bakin install search-models` runs (follow with `bakin reindex` to repair anything indexed meanwhile).',
         durationMs: Date.now() - start,
       }
     }
@@ -189,7 +191,7 @@ export async function installInferenceModels(opts: SearchAdapterSetupOptions, lo
     return {
       name: 'models',
       status: 'skipped' as const,
-      message: 'Non-interactive run without --yes; skipping model download. Semantic indexing is degraded until `bakin install search-models` runs (follow with `bakin reindex --rebuild`).',
+      message: 'Non-interactive run without --yes; skipping model download. Semantic indexing is degraded until `bakin install search-models` runs (follow with `bakin reindex` to repair anything indexed meanwhile).',
       durationMs: Date.now() - start,
     }
   }

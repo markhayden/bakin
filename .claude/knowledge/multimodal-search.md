@@ -149,13 +149,13 @@ Add the new embedder ref to `settings.search.settings.embedders`:
 
 ```typescript
 embedders: {
-  default: { provider: 'termite', model: 'BAAI/bge-small-en-v1.5' },
-  visual:  { provider: 'termite', model: 'openai/clip-vit-base-patch32' },
-  audio:   { provider: 'termite', model: 'openai/whisper-base' },  // ← new
+  default: { provider: 'antfly', model: 'BAAI/bge-small-en-v1.5', dimension: 384 },
+  visual:  { provider: 'antfly', model: 'Xenova/clip-vit-base-patch32', dimension: 512 },
+  audio:   { provider: 'antfly', model: 'openai/whisper-base', dimension: 512 },  // ← new (verify dims + an ONNX-bearing HF repo)
 }
 ```
 
-Add a `audio_url` keyword field to the schema. Compute it in `computeMediaUrls()` (rename to something more generic if it's getting crowded). Bump `SCHEMA_VERSION` — this is a breaking schema change, and the migration mechanism will drop and recreate `bakin_assets` on next boot. Update tests, run `antfly termite pull --variants i8 openai/whisper-base`, restart.
+Add a `audio_url` keyword field to the content-type definition. Compute it in `computeMediaUrls()` (rename to something more generic if it's getting crowded). Bump `SCHEMA_VERSION` — this is a breaking index-config change, and the migration mechanism will drop and recreate `bakin_assets` on next boot. Update tests, run `antfly inference pull openai/whisper-base`, restart. (Pick a model repo that ships ONNX exports — the v0.2 downloader requires them, see [#456](https://github.com/markhayden/bakin/issues/456).)
 
 ### 4. Document the choice
 
@@ -226,7 +226,9 @@ The **`indexScores`** field on each result is the proof of life. A hit with `ble
 
 ## Known upstream issues
 
-All tracked in [Bakin issue #72](https://github.com/markhayden/bakin/issues/72):
+**v0.2.0-rc.2 (zig, current pin):** tracked in [Bakin issue #456](https://github.com/markhayden/bakin/issues/456) — schema-at-create breaks queries, `_all` field unpopulated (bare-term FTS dead), no index-time lazy model download, NDJSON multiquery broken, inference backend crashes (reranking disabled by default).
+
+**v0.1-era (Go, historical — these described the pre-0.2 world):** tracked in [Bakin issue #72](https://github.com/markhayden/bakin/issues/72):
 
 1. **`content_security.block_private_ips` is dead code** — documented Antfly config key that does nothing because `SetDefaultSecurityConfig()` is never called from app startup.
 2. **`ajroetker/pdf` is too weak for real PDFs** — fails silently on complex font encoding. Would be fixed upstream by swapping to `pdfcpu` or shelling out to `pdftotext`.

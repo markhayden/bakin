@@ -18,7 +18,7 @@ Runs on a Mac mini, accessed via Tailscale. No SaaS dependencies.
 - **Storage:** Markdown files, JSON sidecars, and JSONL logs in `~/.bakin/`. Tasks live in the Bakin task-store under `~/.bakin/tasks/`.
 - **Real-time:** Server-Sent Events (SSE) push updates to all connected browsers.
 - **Agents:** Managed through `AppServices.runtime` / `ctx.runtime`. OpenClaw is the current runtime implementation, isolated in `packages/adapter-openclaw/`.
-- **Search:** `AppServices.search` / `ctx.search` for full-text + semantic search. Antfly is the current search implementation, isolated in `packages/adapter-antfly/`; plugin and feature code never import `@antfly/sdk`.
+- **Search:** `AppServices.search` / `ctx.search` for full-text + semantic search. Antfly (v0.2, zig) is the current search implementation, isolated in `packages/adapter-antfly/`; plugin and feature code never import `@antfly/sdk`. Bakin direct-downloads the pinned binary (no brew/npm/python) and runs a private instance on `127.0.0.1:3738` with data under `~/.bakin/antfly/`. Known upstream limitations at the current pin: issue #456.
 - **Adapter Boundary:** Runtime/search provider details stay behind adapter packages and the factories in `src/core/*-adapter-factory.ts`. Bakin owns UI data, task metadata, audit, assets, workflows, plugin settings/data, and heartbeats. Runtime providers own agent identity, soul, rules, tools, models, workspace data, channels, cron jobs, and memory. Deep reference: `.claude/knowledge/adapter-architecture.md`. Audit skill: `.claude/skills/check-adapter-boundary.md`.
 - **Agent Packages:** A second primitive distinct from plugins. Plugins ship code (routes, UI, MCP tools); agent packages ship **content** — identity (SOUL/IDENTITY/AGENTS/TOOLS), runtime skills, workflows, and lesson files — that personifies an agent in the active runtime and gives it domain perspective. Manifested as `bakin-package.json` with `kind: "agent" | "skill-pack" | "workflow-pack" | "lesson-pack"`. Three states per agent: `unmanaged`, `adopted`, `managed`. Deep reference: `.claude/knowledge/agent-packages.md`.
 
@@ -43,6 +43,7 @@ Created by `bakin onboard` / `initBakinHome()`. Per-installation state, NOT in t
   agents/                  — Per-agent UI data ({id}/avatar.jpg, avatar-full.png + .installedBy)
   packages/                — Agent-package install state (lock.json + per-kind dirs)
   assets/                  — Versioned assets: store/<YYYY-MM>/<assetId>/ (manifest.json + vN files + exports/); see .claude/knowledge/assets-versioning.md
+  antfly/                  — Data dir for Bakin's private antfly instance (127.0.0.1:3738; binary + models live under ~/.antfly)
   heartbeats/              — Agent status heartbeats (JSON)
   tasks/                   — Bakin-owned task metadata JSON, sharded by created month
   schedule/                — Cron job state

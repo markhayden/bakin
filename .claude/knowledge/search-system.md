@@ -9,7 +9,9 @@ and agent queries. It is **optional**: Bakin runs fully without it. When
 search silently degrades — indexing calls are no-ops, queries return empty
 results.
 
-Bakin's search pipeline supports multimodal content: text embeddings via BGE, image embeddings via CLIP (running through Antfly's Termite ML subsystem), hybrid BM25 + semantic fusion via RRF, and optional cross-encoder reranking on single-modality tables. File content for PDFs and text formats is extracted **server-side in Bakin** (via pdf-parse and `fs.readFileSync`) and passed to Antfly as a pre-resolved `content` field rather than dereferenced via Antfly's `{{remotePDF}}` / `{{remoteText}}` template helpers. See **Multimodal Architecture** below and `.claude/knowledge/multimodal-search.md` for the full rationale.
+**Install & runtime (antfly v0.2, zig):** `bakin install search` direct-downloads the pinned release tarball from releases.antfly.io (SHA256-verified against `packages/adapter-antfly/src/pin.ts` — no brew/npm/python/sudo) into `~/.antfly/bin/antfly`. Bakin runs a **private instance**: `antfly swarm` bound to `127.0.0.1:3738` (health `3739`) with `--data-dir ~/.bakin/antfly` — never the shared `~/.antfly/data`. Readiness via `GET /readyz`. Embedded inference is pinned to the CPU/ONNX backend (`TERMITE_PREFERRED_BACKEND=onnx`) because the Metal backend crashes at v0.2.0-rc.2. A non-default `settings.url` means an externally managed server (guest mode: connect only, never spawn, never touch its disk). Known upstream limitations at this pin are tracked in [#456](https://github.com/markhayden/bakin/issues/456).
+
+Bakin's search pipeline supports multimodal content: text embeddings via BGE, image embeddings via CLIP (running through antfly's embedded inference runtime), hybrid BM25 + semantic fusion via RRF, and optional cross-encoder reranking on single-modality tables. File content for PDFs and text formats is extracted **server-side in Bakin** (via pdf-parse and `fs.readFileSync`) and passed to Antfly as a pre-resolved `content` field rather than dereferenced via Antfly's `{{remotePDF}}` / `{{remoteText}}` template helpers. See **Multimodal Architecture** below and `.claude/knowledge/multimodal-search.md` for the full rationale.
 
 ## Architecture
 
@@ -223,6 +225,10 @@ Queries combine full-text (BM25) and semantic (vector) results via Reciprocal Ra
 
 Global default: `settings.search.settings.search.strategy`.
 
+> **Upstream limitation (v0.2.0-rc.2):** the `_all` field — the default target for bare-term full-text queries — is never populated in swarm mode ([#456](https://github.com/markhayden/bakin/issues/456); root cause is `_all` population, not term extraction: **field-qualified** queries like `title:foo` work fine, and `term_count: 0` is a separate cosmetic stats gap). Bare-term FTS returns nothing, so `rrf` rides the semantic leg and `full_text_only` is effectively empty. Bakin keeps sending the bare `full_text_search` leg; when upstream fixes `_all` population a reindex will likely be needed to backfill it. Potential interim follow-up: field-qualify the FTS leg across each content type's `searchableFields` to restore exact-token matching today.
+
+**v0.2 protocol notes:** there is no strategy field on the wire — Bakin's strategy setting maps to which fields are populated (`semantic_search`, `full_text_search`, or both; RRF is implied when both are present). The vector `indexes` array is only sent alongside `semantic_search`. Tables are created **without a `schema`** (a create-time schema permanently breaks query parsing at this RC) and without a full-text index entry (the server always creates its own `full_text_index_v0`). Dense embeddings indexes carry an explicit `dimension`. `multiQuery` fans out as sequential single global queries — the NDJSON multiquery endpoint rejects its own framing, and request concurrency aggravates inference crashes.
+
 **Per-table index routing:** when a table has multiple embedding indexes declared via `def.indexes`, the registry's `getIndexNames(tableName)` resolves the effective index list (e.g. `['assets_text', 'assets_visual']`) and passes it to `antfly.queryTable()`. The client sends the array in `QueryRequest.indexes`, and Antfly runs semantic search across all of them — results from each index are merged into the final RRF ranking with a per-index score breakdown in `_index_scores`.
 
 **Implementation detail:** In Antfly query requests, `full_text_search` implicitly uses the full-text index. The `indexes` array should only list embedding indexes. Including the full-text index name alongside `full_text_search` causes errors.
@@ -231,11 +237,13 @@ The BM25 index key in `_index_scores` is a full filesystem path (e.g. `/path/to/
 
 ### Reranker
 
-Optional cross-encoder reranking after initial retrieval. Configured globally via `settings.search.settings.search.reranker` (provider, model, threshold, enabled flag), and **opted into per content type** via `SearchContentTypeDefinition.rerankField`.
+> **Disabled by default at v0.2.0-rc.2:** invoking the mxbai reranker SIGABRTs the antfly server on both the Metal and ONNX inference backends ([#456](https://github.com/markhayden/bakin/issues/456)). All plumbing below stays wired — re-enable with one settings flip (`search.reranker.enabled: true`) once upstream stabilizes.
+
+Optional cross-encoder reranking after initial retrieval. Configured globally via `settings.search.settings.search.reranker` (provider, model, enabled flag — the v0.2 RerankerConfig has no `threshold`), and **opted into per content type** via `SearchContentTypeDefinition.rerankField`.
 
 **How rerank attachment works:**
 - The registry looks up `rerankField` for the queried table via `getRerankField(tableName)`
-- `buildRerankerConfig()` in `packages/adapter-antfly/src/search.ts` only attaches a reranker to the `QueryRequest` when **all three** are true: global `enabled: true`, per-query `rerank !== false`, and `rerankField` is set on the content type
+- `buildRerankerConfig()` in `packages/adapter-antfly/src/query-translation.ts` only attaches a reranker to the `QueryRequest` when **all three** are true: global `enabled: true`, per-query `rerank !== false`, and `rerankField` is set on the content type
 - Tables that don't set `rerankField` get pure RRF hybrid fusion (Bleve full-text + semantic embeddings), no cross-encoder pass
 - Antfly rejects reranker configs that don't include `field` or `template` with a 400, so a missing `rerankField` MUST translate to "no reranker" — not "reranker without field"
 
@@ -265,18 +273,24 @@ The underlying issue is the single-field limitation of Antfly's reranker API. A 
 
 ## Embedders
 
-Bakin's text and visual embeddings use different models. Both run locally via Antfly's Termite ML subsystem — no cloud dependency by default.
+Bakin's text and visual embeddings use different models. Both run locally via antfly's embedded inference runtime — no cloud dependency by default.
 
 ### Current models
 
-| Purpose | ref name | Provider | Model | Stored path |
-|---|---|---|---|---|
-| Default text | `default` | termite | `BAAI/bge-small-en-v1.5` | `~/.termite/models/embedders/BAAI/bge-small-en-v1.5` |
-| Visual / multimodal | `visual` | termite | `openai/clip-vit-base-patch32` | `~/.termite/models/embedders/openai/clip-vit-base-patch32` |
+| Purpose | ref name | Provider | Model | Dims | Stored path |
+|---|---|---|---|---|---|
+| Default text | `default` | antfly | `BAAI/bge-small-en-v1.5` | 384 | `~/.antfly/inference/models/BAAI/bge-small-en-v1.5` |
+| Visual / multimodal | `visual` | antfly | `Xenova/clip-vit-base-patch32` | 512 | `~/.antfly/inference/models/Xenova/clip-vit-base-patch32` |
+
+Plus `mixedbread-ai/mxbai-rerank-base-v1` for the (currently disabled) reranker. Models are pulled from HuggingFace via `antfly inference pull <owner/name>` (`bakin install search-models`). The CLIP ref is the **Xenova ONNX mirror** — the upstream `openai/` HF repo ships no ONNX exports and cannot be pulled ([#456](https://github.com/markhayden/bakin/issues/456)).
+
+**Prefetch matters:** at v0.2.0-rc.2 index-time embedding does NOT lazy-download a missing model — the embeddings backfill fails with `ModelNotFound`. Recovery is cheap: once the model is on disk, **any write to the table heals the index** (previously-failed docs get embedded too). If models were missing while content was indexed: `bakin install search-models` then `bakin reindex`.
+
+**`dimension` is required** on every embedder entry: the v0.2 server demands declared dims for dense embeddings indexes at table-create time (no auto-probe at this RC). Dims feed the embedder rebuild hash, so changing them triggers an index rebuild.
 
 **BGE over MiniLM:** The default text embedder was upgraded from Antfly's builtin `all-MiniLM-L6-v2` to BGE in T7. BGE is measurably stronger on retrieval tasks, especially for longer documents with diverse vocabulary — task descriptions, markdown notes, PDF bodies, audit trails. Runs locally, no cost beyond disk (~130MB).
 
-**Model names MUST be the qualified HuggingFace-style names** (e.g. `BAAI/bge-small-en-v1.5`, not just `bge-small-en-v1.5`). Termite's `antfly termite pull` command accepts unqualified names via a resolver, but the embedder config API at query time requires the exact path Termite stored the model under.
+**Model names MUST be the qualified HuggingFace-style names** (e.g. `BAAI/bge-small-en-v1.5`, not just `bge-small-en-v1.5`) — they map directly to the `{owner}/{name}` directory layout under the inference models root.
 
 ### Per-index embedder selection
 
@@ -347,9 +361,9 @@ indexes: [
 
 The text index embeds `description + tags + filename + content` — sidecar metadata concatenated with the extracted body. The visual index only runs when `image_url` is populated (raster formats that CLIP can decode). SVG and ICO are excluded — Antfly's image processor uses Go's stdlib image library which can't handle vector or indexed-palette formats.
 
-## Visual Indexing (CLIP via Termite)
+## Visual Indexing (CLIP via the inference runtime)
 
-For raster images, the `assets_visual` index uses CLIP via Termite. The path is Antfly's `{{remoteMedia url=image_url}}` helper pointing at a `file://` URL.
+For raster images, the `assets_visual` index uses CLIP via antfly's embedded inference runtime. The path is Antfly's `{{remoteMedia url=image_url}}` helper pointing at a `file://` URL.
 
 **Why `file://` and not `http://`:** Antfly's `DownloadContent` dispatches on URL scheme. For `http://`, it runs `validateURLSecurity` which hardcodes a private-IP block (see #72). For `file://`, it calls `validatePathSecurity` which is a no-op unless `AllowedPaths` is configured. So `file://` bypasses the broken SSRF defense entirely. Since Antfly runs as the same user as Bakin on the same host, local filesystem access is already permitted — the security layer is the OS user boundary, not the URL scheme.
 
@@ -359,7 +373,7 @@ For raster images, the `assets_visual` index uses CLIP via Termite. The path is 
 
 ## Schema Migration
 
-`src/core/search-migration.ts` owns a `SCHEMA_VERSION` constant (currently `2`) and a state file at `~/.bakin/.search-state.json` with `{ version: N }`. On every boot, after `antfly.initialize()` connects:
+`src/core/search-migration.ts` owns a `SCHEMA_VERSION` constant (currently `4`) and a state file at `~/.bakin/.search-state.json` with `{ version: N }`. On every boot, after `antfly.initialize()` connects:
 
 1. Read the stored version (or `0` if the file doesn't exist — fresh install)
 2. If stored < `SCHEMA_VERSION`, drop every `bakin_*` table via `antfly.dropTable()` and write the new version
@@ -381,7 +395,9 @@ Pure data additions (no schema change, no embedder change) do **not** need a bum
 ### Version history
 
 - **1** — initial schema. Single `embeddings` index per table. Global `all-MiniLM-L6-v2` embedder via Antfly's builtin provider.
-- **2** — multi-index support. `bakin_assets` gains `assets_text` + `assets_visual`. `content` field populated server-side. Default embedder swapped to `BAAI/bge-small-en-v1.5` via Termite.
+- **2** — multi-index support. `bakin_assets` gains `assets_text` + `assets_visual`. `content` field populated server-side. Default embedder swapped to `BAAI/bge-small-en-v1.5`.
+- **3** — antfly v0.2 migration: embeddings indexes carry explicit `dimension`; provider naming `termite` → `antfly`.
+- **4** — drop create-time `schema` (breaks all queries on the table at v0.2.0-rc.2, [#456](https://github.com/markhayden/bakin/issues/456)); visual embedder moved to the Xenova ONNX mirror.
 
 ## Retry on Transient Shard Errors
 
@@ -536,18 +552,19 @@ All under `settings.search.settings`:
 | Key | Type | Purpose |
 |---|---|---|
 | `enabled` | `boolean` | Enable/disable Antfly integration |
-| `url` | `string` | Antfly server URL (must include `/api/v1` suffix) |
+| `url` | `string` | Antfly base URL, **no path suffix** (default `http://localhost:3738` — Bakin's private instance; the SDK owns the `/db/v1` prefix). A non-default URL = externally managed server (guest mode). |
 | `auth` | `object?` | Optional basic auth `{ username, password }` |
 | `search.strategy` | `string` | Default search strategy (`rrf` \| `semantic_only` \| `full_text_only`) |
 | `search.defaultLimit` | `number` | Default result count |
-| `search.reranker.enabled` | `boolean` | Master switch for cross-encoder reranking |
-| `search.reranker.provider` | `string` | Reranker provider (e.g. `termite`) |
+| `search.reranker.enabled` | `boolean` | Master switch for cross-encoder reranking. **Default `false`** — reranking crashes the server at v0.2.0-rc.2 ([#456](https://github.com/markhayden/bakin/issues/456)) |
+| `search.reranker.provider` | `string` | Reranker provider (`antfly`) |
 | `search.reranker.model` | `string` | Qualified model name (e.g. `mixedbread-ai/mxbai-rerank-base-v1`) |
-| `search.reranker.threshold` | `number?` | Optional score threshold |
-| `embedders.default.provider` | `string` | Text embedder provider (`termite`) |
+| `embedders.default.provider` | `string` | Text embedder provider (`antfly`) |
 | `embedders.default.model` | `string` | Text embedder model (`BAAI/bge-small-en-v1.5`) |
-| `embedders.visual.provider` | `string` | Visual embedder provider (`termite`) |
-| `embedders.visual.model` | `string` | Visual embedder model (`openai/clip-vit-base-patch32`) |
+| `embedders.default.dimension` | `number` | Embedding dims (`384`) — required by the v0.2 server for dense indexes |
+| `embedders.visual.provider` | `string` | Visual embedder provider (`antfly`) |
+| `embedders.visual.model` | `string` | Visual embedder model (`Xenova/clip-vit-base-patch32`) |
+| `embedders.visual.dimension` | `number` | Embedding dims (`512`) |
 | `embedders.<custom>` | `object?` | Additional named embedders referenced by `embedderRef` |
 | `embedder` | `object?` | **Deprecated.** Legacy single-embedder shape. Migrated to `embedders.default` on load. |
 | `chunking.defaultTargetTokens` | `number` | Default chunk target size |
@@ -555,8 +572,11 @@ All under `settings.search.settings`:
 | `auditTtl` | `string` | TTL for audit entries (Go duration: `'90d'`) |
 | `cleanupInterval` | `string` | Orphan backstop scan interval (Go duration: `'7d'`) |
 
+**Override hygiene:** code that persists settings must write **minimal partials** via `updateSettings()` — never the merged settings object. Persisting merged settings freezes every then-current default into `settings.json` as explicit overrides, silently pinning the install to stale defaults (this bit us during the v0.2 migration).
+
 ## Related docs
 
 - `.claude/knowledge/multimodal-search.md` — multimodal architecture, PDF/text extraction, CLIP visual path, how to add a new modality
 - `.claude/knowledge/search-api-reference.md` — REST/MCP surface for agent-facing search
-- [Bakin issue #72](https://github.com/markhayden/bakin/issues/72) — Antfly upstream bugs documented during T6 (dead `content_security` config, broken PDF library, no loopback HTTP path)
+- [Bakin issue #456](https://github.com/markhayden/bakin/issues/456) — antfly v0.2.0-rc.2 upstream bugs (schema-at-create breaks queries, FTS dead in swarm, no index-time lazy model download, NDJSON multiquery broken, inference crashes) with workarounds + revisit checklist
+- [Bakin issue #72](https://github.com/markhayden/bakin/issues/72) — Antfly v0.1-era upstream bugs documented during T6 (dead `content_security` config, broken PDF library, no loopback HTTP path)

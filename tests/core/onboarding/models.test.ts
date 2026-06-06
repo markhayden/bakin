@@ -99,15 +99,16 @@ afterAll(() => {
 })
 
 describe('checkInferenceModels', () => {
-  it('treats missing models as degraded-not-broken, with the rebuild remediation', async () => {
+  it('treats missing models as degraded-not-broken, with the reindex remediation', async () => {
     // v0.2.0-rc.2 does NOT lazy-download at index time (bakin#456): missing
-    // models degrade semantic indexing until prefetch + rebuild.
+    // models degrade semantic indexing until prefetch. Any write after the
+    // model lands heals the index, so a plain reindex is the remediation.
     const result = await checkInferenceModels()
     expect(result.status).toBe('missing')
     expect(result.message).toContain('semantic indexing is degraded')
     expect(result.message).toContain('search itself keeps working')
     expect(result.remediation).toContain('bakin install search-models')
-    expect(result.remediation).toContain('reindex --rebuild')
+    expect(result.remediation).toContain('bakin reindex')
   })
 
   it('reports ok when all models are present in the v0.2 owner/name layout', async () => {
@@ -194,7 +195,7 @@ describe('installInferenceModels', () => {
     const result = await installInferenceModels(opts)
     expect(result.status).toBe('skipped')
     expect(result.message).toContain('semantic indexing is degraded')
-    expect(result.message).toContain('reindex --rebuild')
+    expect(result.message).toContain('bakin reindex')
   })
 
   it('skips non-interactive without --yes, noting the degraded-semantic consequence', async () => {
