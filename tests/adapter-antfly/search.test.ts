@@ -468,6 +468,67 @@ describe('AntflySearchAdapter', () => {
     expect(indexes.assets_visual.template).toBe('{{#if image_url}}{{remoteMedia url=image_url}}{{/if}}')
   })
 
+  it('query (single-table) times out instead of hanging', async () => {
+    // The per-plugin /search routes use query() directly; a table with an
+    // active embeddings backfill hangs queries indefinitely at this pin
+    // (bakin#456 finding 10) — the ceiling applies here too.
+    const previousTimeout = process.env.BAKIN_ANTFLY_QUERY_TIMEOUT_MS
+    process.env.BAKIN_ANTFLY_QUERY_TIMEOUT_MS = '30'
+    try {
+      mockTablesQuery.mockImplementationOnce(() => new Promise(() => {})) // hangs forever
+      const adapter = await createInitializedAdapter()
+      const result = await adapter.query('bakin_memory', { text: 'x' })
+      expect(result.total).toBe(0)
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Antfly query timed out - returning empty result',
+        expect.objectContaining({ table: 'bakin_memory', timeoutMs: 30 }),
+      )
+    } finally {
+      if (previousTimeout === undefined) delete process.env.BAKIN_ANTFLY_QUERY_TIMEOUT_MS
+      else process.env.BAKIN_ANTFLY_QUERY_TIMEOUT_MS = previousTimeout
+    }
+  })
+
+  it('stats counts documents from index status, never via a query', async () => {
+    // Queries against a backfilling table hang indefinitely (bakin#456
+    // finding 10); doc counts must come from the indexes GET, which doesn't.
+    mockIndexesList.mockResolvedValueOnce([
+      { config: { name: 'full_text_index_v0', type: 'full_text' }, status: { doc_count: 7893, total_indexed: 7893 } },
+      { config: { name: 'embeddings', type: 'embeddings' }, status: { doc_count: 679, total_indexed: 679 } },
+    ])
+
+    const adapter = await createInitializedAdapter()
+    const stats = await adapter.tables.stats('bakin_memory')
+
+    expect(stats).toEqual({ table: 'bakin_memory', documents: 7893 })
+    expect(mockTablesQuery).not.toHaveBeenCalled()
+  })
+
+  it('resolves real index names from the v0.2 array shape', async () => {
+    // v0.2's indexes.list returns an ARRAY — Object.entries over it produced
+    // names "0"/"1" in health payloads and made rebuildIndexes drop
+    // nonexistent indexes. Names come from config.name.
+    mockIndexesList.mockResolvedValue([
+      { config: { name: 'full_text_index_v0', type: 'full_text' }, status: { doc_count: 25 } },
+      { config: { name: 'assets_visual', type: 'embeddings' }, status: { total_indexed: 0, wal_backlog: 2, backfill_state: 'failed' } },
+    ])
+
+    const adapter = await createInitializedAdapter()
+    const health = await adapter.tables.getHealth('bakin_assets')
+    const names = (health?.details as { indexes: Array<{ name: string }> }).indexes.map((i) => i.name)
+    expect(names).toEqual(['full_text_index_v0', 'assets_visual'])
+    // backfill_state 'failed' must surface as unhealthy + named error, not green
+    const detail = health?.details as { indexes: Array<{ error?: string }>; healthy: boolean }
+    expect(health?.status).toBe('warn')
+    expect(detail.indexes[1].error).toContain('backfill failed')
+
+    await adapter.tables.rebuildIndexes('bakin_assets')
+    const dropped = (mockIndexesDrop.mock.calls as unknown as Array<[string, string]>).map((c) => c[1])
+    expect(dropped).toEqual(['full_text_index_v0', 'assets_visual'])
+    mockIndexesList.mockClear()
+    mockIndexesList.mockImplementation(async () => ({}))
+  })
+
   it('maps index health and returns null when health lookup fails', async () => {
     mockIndexesList.mockResolvedValueOnce({
       embeddings: {

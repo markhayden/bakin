@@ -1,5 +1,4 @@
-import { AntflyClient, InferenceClient, matchAll } from '@antfly/sdk'
-import type { QueryRequest } from '@antfly/sdk'
+import { AntflyClient, InferenceClient } from '@antfly/sdk'
 import type {
   AdapterHealthCheckDefinition,
   AdapterInitOpts,
@@ -346,9 +345,16 @@ export class AntflySearchAdapter implements SearchAdapter {
       const client = this.client
       if (!client) return null
       try {
-        const queryResult = await client.tables.query(name, { full_text_search: matchAll(), limit: 0 } as unknown as QueryRequest)
-        const documents = (queryResult as unknown as { responses: Array<{ hits: { total: number } }> })
-          .responses?.[0]?.hits?.total ?? 0
+        // Doc count comes from index status (a plain GET) — never a query:
+        // queries against a table with an active embeddings backfill hang
+        // indefinitely at this pin (bakin#456 finding 10), which froze the
+        // health page for the whole post-reindex backfill window. The
+        // server-created full-text index indexes every doc, so its
+        // doc_count is the table's document count.
+        const indexes = normalizeIndexStatuses(await client.indexes.list(name))
+        const fullText = indexes.find((entry) => readIndexType(entry.config) === 'full_text') ?? indexes[0]
+        const status = (fullText?.status ?? {}) as Record<string, unknown>
+        const documents = typeof status.doc_count === 'number' ? status.doc_count : 0
         return { table: name, documents }
       } catch {
         return null
@@ -368,16 +374,16 @@ export class AntflySearchAdapter implements SearchAdapter {
     rebuildIndexes: async (name: string): Promise<void> => {
       const client = this.client
       if (!client) return
-      const indexStatuses = await client.indexes.list(name)
-      for (const [indexName, indexInfo] of Object.entries(indexStatuses)) {
-        const config = 'config' in indexInfo ? indexInfo.config : null
+      const indexes = normalizeIndexStatuses(await client.indexes.list(name))
+      for (const entry of indexes) {
+        const config = entry.config
         if (!config || typeof config !== 'object') continue
         try {
-          await client.indexes.drop(name, indexName)
+          await client.indexes.drop(name, entry.name)
           await client.indexes.create(name, config as Parameters<typeof client.indexes.create>[1])
-          this.logger.info(`Rebuilt index ${indexName} on ${name}`)
+          this.logger.info(`Rebuilt index ${entry.name} on ${name}`)
         } catch (err) {
-          this.logger.warn(`Failed to rebuild index ${indexName} on ${name}`, err)
+          this.logger.warn(`Failed to rebuild index ${entry.name} on ${name}`, err)
         }
       }
     },
@@ -452,12 +458,20 @@ export class AntflySearchAdapter implements SearchAdapter {
     const request = buildQueryRequest(table, q, this.settings)
 
     try {
-      const result = await client.tables.query(table, request)
+      // Same no-infinite-patience ceiling as multiQuery: a query against a
+      // table with an active embeddings backfill hangs indefinitely at this
+      // pin (bakin#456 finding 10), and this path serves the per-plugin
+      // /search routes directly.
+      const result = await raceQueryTimeout(client.tables.query(table, request), queryTimeoutMs())
       const response = result?.responses?.[0]
       if (!response) return emptyQueryResult(q)
       return mapResponse(response, table)
     } catch (err) {
-      this.logger.error('Antfly query failed', { error: err, table })
+      if (err instanceof QueryTimeoutError) {
+        this.logger.warn('Antfly query timed out - returning empty result', { table, timeoutMs: queryTimeoutMs() })
+      } else {
+        this.logger.error('Antfly query failed', { error: err, table })
+      }
       return emptyQueryResult(q)
     }
   }
@@ -525,22 +539,28 @@ export class AntflySearchAdapter implements SearchAdapter {
     const client = this.client
     if (!client) return null
     try {
-      const indexStatuses = await client.indexes.list(table)
+      const indexStatuses = normalizeIndexStatuses(await client.indexes.list(table))
       const indexes: AntflyIndexHealthEntry[] = []
       let healthy = true
-      for (const [indexName, indexInfo] of Object.entries(indexStatuses)) {
-        const config = 'config' in indexInfo ? indexInfo.config : null
-        const status = 'status' in indexInfo ? indexInfo.status : null
+      for (const { name: indexName, config, status } of indexStatuses) {
         const s = (status ?? {}) as Record<string, unknown>
         const entry: AntflyIndexHealthEntry = {
           name: indexName,
-          type: (config as Record<string, unknown>)?.type as string ?? 'unknown',
+          type: readIndexType(config) ?? 'unknown',
           totalIndexed: (s.total_indexed as number) ?? 0,
           walBacklog: (s.wal_backlog as number) ?? 0,
           rebuilding: (s.rebuilding as boolean) ?? false,
         }
         if (s.error) {
           entry.error = String(s.error)
+          healthy = false
+        }
+        // backfill_state 'failed' is a dead index that the server never
+        // surfaces via `error` — without naming it here, a table whose
+        // enrichment died (e.g. bakin#456 findings 8/9) shows green on the
+        // health page while every semantic query against it returns nothing.
+        if (s.backfill_state === 'failed' && !entry.error) {
+          entry.error = 'embeddings backfill failed - semantic search dead for this index until a rebuild succeeds'
           healthy = false
         }
         if (entry.walBacklog > 0) healthy = false
@@ -575,6 +595,37 @@ export class AntflySearchAdapter implements SearchAdapter {
       .map(([name, cfg]) => `${name}:${cfg.provider}:${cfg.model}:${cfg.dimension}`)
       .join('|')
   }
+}
+
+interface IndexStatusEntry {
+  name: string
+  config: unknown
+  status: unknown
+}
+
+/**
+ * The v0.2 SDK's indexes.list returns an ARRAY of { config, status } —
+ * Object.entries over it yields "0"/"1" as index names, which broke the
+ * health page labels and made rebuildIndexes drop nonexistent indexes.
+ * Normalize both the array shape and the pre-0.2 name-keyed object shape;
+ * the authoritative name is config.name.
+ */
+function normalizeIndexStatuses(indexStatuses: unknown): IndexStatusEntry[] {
+  const entries: Array<[string, unknown]> = Array.isArray(indexStatuses)
+    ? indexStatuses.map((entry, i) => [String(i), entry] as [string, unknown])
+    : Object.entries((indexStatuses ?? {}) as Record<string, unknown>)
+  return entries.map(([key, info]) => {
+    const record = (info && typeof info === 'object' ? info : {}) as Record<string, unknown>
+    const config = record.config ?? null
+    const status = record.status ?? null
+    const configName = (config as Record<string, unknown> | null)?.name
+    return { name: typeof configName === 'string' ? configName : key, config, status }
+  })
+}
+
+function readIndexType(config: unknown): string | undefined {
+  const type = (config as Record<string, unknown> | null)?.type
+  return typeof type === 'string' ? type : undefined
 }
 
 function isTransientBatchError(err: unknown): boolean {
