@@ -23,9 +23,17 @@ the `assetId`, never a filename.
 - **Versions are linear, append-only, stable-numbered with gaps allowed.**
   `currentVersion` is a free pointer (can point at any version). `parentVersion`
   records lineage. Never renumber.
-- **Display fields** (`description`, `tags`) **mirror the current version**, so
-  promote/delete losslessly restore the right card/search content. Per-version
-  `description`/`tags` are stored on each version for this.
+- **`description` mirrors the current version** (stored per-version), so
+  promote/delete losslessly restore the right card/search content. **`tags` are
+  asset-level ONLY** — a pure organizational namespace ("folders" in the UI)
+  that `addVersion`/`promoteVersion`/`deleteVersion` never touch. Versions
+  carry no tags field (old manifests' version tags are stripped on parse; no
+  migration). Machine provenance never goes into tags — it lives structurally
+  in `op`/`source`/`generation`.
+- **Tag normalization** (`lib/tags.ts` — trim, lowercase, whitespace→hyphen,
+  dedupe) is applied by **every** tag-writing path: `updateMetadata`, global
+  ops, bulk apply, `createAsset`, upload, `assets_save`. One source of truth;
+  routes never bypass it.
 - **Exports are derived artifacts, not versions** — idempotent per surface (one
   export per surface; re-export overwrites).
 - Markdown/text assets ride the same spine; "markdown out of v1" only meant no
@@ -35,17 +43,54 @@ the `assetId`, never a filename.
 
 - `asset-id.ts` — generate/validate assetId, shard derivation.
 - `manifest.ts` — Zod `AssetManifest` schema + **atomic** read/write (temp+rename;
-  tolerant reads). The manifest is read on every serve AND is the search reindex
+  tolerant reads). The manifest backs every serve AND is the search reindex
   trigger, so torn writes must never be observable.
+- `manifest-cache.ts` — stat-validated read cache (see below). Read paths go
+  through `getManifestCached`; mutations and `.trash/` reads call `readManifest`
+  directly.
 - `asset-lock.ts` — per-`assetId` async mutex serializing all manifest mutations
   (guards the version-number race). Different assets stay concurrent.
 - `asset-service.ts` — `createAsset` / `addVersion` / `promoteVersion` /
   `deleteVersion` (auto-fallback, can't-delete-last) / `addExport` / `relink` /
-  `retype` / `deleteAsset` + `restoreAsset` / `getAsset` / `resolveFile` /
-  `listAssets` / `findBySourcePath` / `upsertFromSource`. All mutations: lock →
-  mutate → atomic write.
+  `retype` / `updateMetadata` (description write-through + tags replace) /
+  `renameTagGlobal` + `removeTagGlobal` (store-wide sweeps; **trash skipped** —
+  a restore may resurrect a stale tag, fixable with one edit) / `applyTags`
+  (bulk; unknown ids reported, not fatal) / `deleteAsset` + `restoreAsset` /
+  `getAsset` / `resolveFile` / `listAssets` / `findBySourcePath` /
+  `upsertFromSource` (caller tags **union** into asset tags on version-upsert).
+  All mutations: lock → mutate → atomic write.
+- `tags.ts` — `normalizeTag` / `normalizeTags`, shared by server mutations AND
+  the client TagInput (pure module, no node imports).
 - `serve.ts` — `resolveAssetServe(segments)` for the HTTP serving route.
 - `search-doc.ts` — `versionedAssetPath` + `buildVersionedAssetSearchDoc`.
+
+## Manifest read cache (#392)
+
+`lib/manifest-cache.ts` — in-memory `assetId → manifest`, **validated against
+one `statSync` of `manifest.json` on every read** (token: `ino + size +
+mtimeMs`). Match → cached manifest; mismatch → re-parse + refill; stat failure
+→ evict + null. Because `writeManifestAtomic` is temp-file + rename, the inode
+changes on every write — the token discriminates even same-millisecond writes
+and restored timestamps. Drops list/serve parse cost from O(total assets) to
+O(changed) while reads stay ground-truth: **no invalidation wiring, no watcher
+dependency, no staleness by construction.** Contract details:
+
+- **Fill ordering is stat → read → cache (pre-read token).** A write landing
+  between stat and read costs one redundant re-parse later, never staleness.
+  Don't "optimize" this order.
+- **Mutations bypass the cache** (fresh `readManifest` under the asset lock) so
+  a stale entry can never be persisted back to disk. `.trash/` reads also
+  bypass (watcher-excluded, would never revalidate sensibly).
+- Positive-only (404 probes insert nothing), unbounded (~KB/manifest), lazy
+  fill. Cached manifests are **shared references, deep-frozen under
+  `NODE_ENV=test`** — a consumer mutating one throws in the suite.
+- `resolveFileFromManifest(manifest, version?)` resolves version files from an
+  already-loaded manifest; `serve.ts` uses it so one request = one stat, not
+  two parses. `resolveFile(assetId)` keeps the old signature on top of it.
+- **Caching rule of thumb (repo-wide):** stat-validate when an authoritative
+  file exists to validate against (this cache; adapter `sessionStoreCache`);
+  write-through + watcher backstop only for *derived* indexes with no backing
+  file (`task-asset-index`). Don't write-through what you can stat.
 
 ## Cross-plugin API (`ctx.assets`)
 
@@ -75,7 +120,11 @@ GET    /api/assets/<assetId>/export/<name>  # export bytes
 Host route `packages/host/src/api/assets/[...path].ts` resolves via the
 `assets.resolveServe` hook; ETag keyed on `assetId:currentVersion` (busts on
 promote/edit). Plugin mutation routes under `/api/plugins/assets/versioned/*`
-(`plugins/assets/routes/versioned.ts`).
+(`plugins/assets/routes/versioned.ts`), including
+`PATCH /versioned/:assetId/metadata` (description and/or tags). Global tag ops
+under `/api/plugins/assets/tags/*` (`routes/tags.ts`):
+`POST /tags/rename {from,to}`, `POST /tags/remove {tag}`,
+`POST /tags/apply {assetIds, add?, remove?}`.
 
 ## Search
 
@@ -84,17 +133,33 @@ version. `manifest.json` is the indexed unit + reindex trigger: the watcher's
 `onSync` reindexes on manifest write, `onUnlink` removes on manifest delete.
 Version/thumb/export files never get their own row.
 
+Doc fields beyond the basics: `tags` (comma-joined text, searchable + embedded)
+plus `tags_facet` (keyword **array** — text fields can't produce per-tag terms
+buckets); generation provenance as `surface` (searchable + in the embedding
+templates — "instagram" matches `instagram-feed-portrait`) and
+`provider`/`model` (**facet-only**, deliberately kept out of embeddings so they
+don't flatten similarity across generated assets). Facets:
+`asset_type, agent, tool, tags_facet, provider, model`. Any future schema/index
+change here needs a `SCHEMA_VERSION` bump in `src/core/search-migration.ts`
+(existing tables are never altered in place — boot does drop → recreate →
+reindex; v3 added these fields).
+
 ## Live updates
 
 Every mutation rewrites the manifest → the watcher emits `asset.changed`
 (`asset.removed` on delete) over `/api/events`. The grid + detail route refetch
-on these events.
+on these events. The grid coalesces event bursts through a 300ms trailing
+debounce (`components/versioned/sse-refetch.ts`): N rapid mutations → one list
+fetch per tab, removals fold a trash refetch into the same flush.
 
 ## Image tools (`plugins/images/lib/tools.ts`)
 
 `generate` → `createAsset` (v1); `edit(assetId)` → `addVersion` on the current
 version; `export(assetId)` → `addExport`; `import`/upload → `createAsset`. Tools
-return `assetId`. **Billed calls are idempotent** via `idempotency.ts` (in-flight
+return `assetId`. **None of them write tags** — the old machine stamps
+(`generated`/`edited`/`imported`/surface/provider/model) duplicated `op`/
+`source`/`generation` and polluted the folder namespace; `import` passes the
+caller's tags through untouched. **Billed calls are idempotent** via `idempotency.ts` (in-flight
 dedup + ~5min TTL result cache, keyed by `{taskId, op, source, promptHash,
 provider, model, w, h, quality}`) — prevents the client-timeout double-bill
 without adding a retry. No `sourcePath` on edit (import loose files first); no
@@ -116,3 +181,14 @@ badge, navigate, live refresh) and the detail route (`VersionedAssetDetail`,
 host route `assets.$assetId.tsx` → `page:/assets/:assetId` slot): current
 preview + exports + version timeline (promote / delete-version) + delete-scope
 dialog. Client types in `components/versioned/types.ts` (no server imports).
+
+Index views (`?view=` URL-backed): `grid` (auto-fill tiles, 250px min) /
+`list` / `tags` (**Folders** — `TagFolderGrid`: assets grouped per tag,
+multi-tag assets in every matching folder, pinned Untagged bucket, recency
+sort, kebab rename/delete wired to the global tag routes) / `trash`. Tag
+filtering: `Tags` FacetFilter (`?tags=a,b`; `__untagged__` sentinel from
+`tag-filter.ts`) with a `Folders / <tag> ✕` breadcrumb back to `?view=tags`.
+Metadata editing: `AssetEditDrawer` (BakinDrawer; description + `TagInput`
+chips with suggestions) opens from card hover pencil, list-row action, and the
+detail Edit button → PATCH metadata. Bulk tagging: Select mode in grid/list +
+floating bar → `POST /tags/apply`.

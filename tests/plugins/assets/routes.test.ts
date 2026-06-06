@@ -68,8 +68,8 @@ afterAll(() => {
 // ===========================================================================
 
 describe('route registration', () => {
-  it('registers all 14 routes', () => {
-    expect(plugin.routes.length).toBe(14)
+  it('registers all 18 routes', () => {
+    expect(plugin.routes.length).toBe(18)
   })
 
   it.each([
@@ -79,9 +79,13 @@ describe('route registration', () => {
     ['POST', '/versioned/:assetId/promote'],
     ['DELETE', '/versioned/:assetId/v/:version'],
     ['POST', '/versioned/:assetId/export'],
+    ['PATCH', '/versioned/:assetId/metadata'],
     ['POST', '/versioned/:assetId/relink'],
     ['POST', '/versioned/:assetId/version'],
     ['DELETE', '/versioned/:assetId'],
+    ['POST', '/tags/rename'],
+    ['POST', '/tags/remove'],
+    ['POST', '/tags/apply'],
     ['GET', '/trash'],
     ['POST', '/trash/:trashName/restore'],
     ['DELETE', '/trash/:trashName'],
@@ -166,6 +170,27 @@ describe('exec tool: bakin_exec_assets_save', () => {
     expect((result.assetId as string)).toMatch(/^\d{8}-saved-hero-[0-9a-f]{8}$/)
     expect(result.version).toBe(1)
     expect(result.changed).toBe(true)
+
+    // Tags land on the asset (asset-level namespace), normalized.
+    const getTool = findTool(plugin.execTools, 'bakin_exec_assets_get')!
+    const fetched = await callTool(getTool, { assetId: result.assetId }, 'pixel')
+    expect((fetched.asset as { tags: string[] }).tags).toEqual(['test', 'save'])
+  })
+
+  it('normalizes caller tags on save', async () => {
+    const sourceFile = join(testDir, 'source-tagged.png')
+    writeFileSync(sourceFile, 'tagged-bytes')
+
+    const tool = findTool(plugin.execTools, 'bakin_exec_assets_save')!
+    const result = await callTool(tool, {
+      filePath: sourceFile, taskId: 'task-save-002', type: 'images',
+      tags: ['Hello World', 'MIXED case', 'hello-world'],
+    }, 'pixel')
+    expect(result.ok).toBe(true)
+
+    const getTool = findTool(plugin.execTools, 'bakin_exec_assets_get')!
+    const fetched = await callTool(getTool, { assetId: result.assetId }, 'pixel')
+    expect((fetched.asset as { tags: string[] }).tags).toEqual(['hello-world', 'mixed-case'])
   })
 
   it('returns error for nonexistent source file', async () => {

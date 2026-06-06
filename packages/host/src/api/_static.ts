@@ -2,7 +2,10 @@
  * Static asset + SPA fallback server for the Bakin host bundle.
  *
  * Serves:
- *   /assets/<name>    → packages/host/dist/<name>  (main.js, main.css, *.map)
+ *   /_app/<name>      → packages/host/dist/<name>  (main.js, main.css, *.map)
+ *                       (NOT /assets/* — that's the assets plugin's page
+ *                       namespace; client routes like /assets/<assetId> must
+ *                       reach the SPA fallback on hard refresh)
  *   /vendor/<name>    → packages/host/public/vendor/<name>  (react, sdk, etc.)
  *   /globals.css      → packages/host/public/globals.css
  *   /favicon.ico      → packages/host/public/favicon.ico (404 ok if absent)
@@ -162,8 +165,8 @@ export async function serveHostClient(req: IncomingMessage, res: ServerResponse,
   if (await sendEmbedded(req, res, pathname)) return true
 
   // Disk fallback for dev — mirrors the old resolution logic.
-  if (pathname.startsWith('/assets/')) {
-    const rel = pathname.slice('/assets/'.length)
+  if (pathname.startsWith('/_app/')) {
+    const rel = pathname.slice('/_app/'.length)
     if (await sendDiskFile(req, res, join(DIST_DIR, rel))) return true
     res.writeHead(404, { 'Content-Type': 'text/plain' })
     res.end('Not found')

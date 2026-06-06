@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import {
   listAssets, getAsset, promoteVersion, deleteVersion, deleteAsset, addExport, relink,
-  addVersion, listTrashedAssets, restoreAsset, permanentlyDeleteTrashed, emptyAssetTrash,
+  addVersion, updateMetadata, listTrashedAssets, restoreAsset, permanentlyDeleteTrashed, emptyAssetTrash,
 } from '../lib/asset-service'
 import type { AssetType } from '../lib/constants'
 
@@ -114,6 +114,24 @@ export async function handleVersionedAddVersion(req: Request): Promise<Response>
   } finally {
     try { unlinkSync(tmpPath) } catch { /* best-effort */ }
     try { rmSync(tmpDir, { recursive: true, force: true }) } catch { /* best-effort */ }
+  }
+}
+
+/** PATCH /versioned/:assetId/metadata — edit description (write-through) and/or tags. */
+export async function handleVersionedUpdateMetadata(req: Request): Promise<Response> {
+  const assetId = segmentsAfterVersioned(new URL(req.url))[0] || ''
+  if (!getAsset(assetId)) return Response.json({ error: 'Asset not found' }, { status: 404 })
+  const body = await req.json().catch(() => null) as { description?: unknown; tags?: unknown } | null
+  const description = typeof body?.description === 'string' ? body.description : undefined
+  const tags = Array.isArray(body?.tags) && body.tags.every((t) => typeof t === 'string') ? body.tags as string[] : undefined
+  const malformed = (body?.description !== undefined && description === undefined) || (body?.tags !== undefined && tags === undefined)
+  if (malformed || (description === undefined && tags === undefined)) {
+    return Response.json({ error: 'description (string) and/or tags (string[]) required' }, { status: 400 })
+  }
+  try {
+    return Response.json({ ok: true, asset: await updateMetadata(assetId, { description, tags }) })
+  } catch (err) {
+    return Response.json({ error: errMsg(err) }, { status: 400 })
   }
 }
 

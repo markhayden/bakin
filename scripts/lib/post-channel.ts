@@ -38,6 +38,7 @@ function resolveAssetAbsPath(assetId: string | undefined): string | null {
 // the testing-ground channel regardless of what the caller requested.
 const TEST_CHANNEL = 'testing-ground'
 const POST_IDEMPOTENCY_TTL_MS = 5 * 60 * 1000
+export const CHANNEL_POST_CHUNK_LIMIT = 1900
 const postInflight = new Map<string, Promise<ExecToolResult>>()
 const postCompleted = new Map<string, { result: ExecToolResult; expiresAt: number }>()
 
@@ -117,26 +118,34 @@ async function deliverChannelPost(
   },
 ): Promise<ExecToolResult> {
   try {
-    const result = await runtime.channels.deliverContent({
-      channels: [input.channel],
-      content: {
-        title: 'Channel post',
-        body: input.content,
-        files: input.files,
-        metadata: {
-          agent: input.agent,
-          taskId: input.taskId,
-          embed: input.embed,
-          requestedChannel: input.requestedChannel,
-          resolvedChannel: input.channel,
-          ...(isTestMode() && input.channel !== normalizeChannelTarget(input.requestedChannel) ? { testMode: true } : {}),
+    const chunks = chunkChannelPostContent(input.content)
+    const deliveries = []
+    for (let i = 0; i < chunks.length; i += 1) {
+      const result = await runtime.channels.deliverContent({
+        channels: [input.channel],
+        content: {
+          title: '',
+          body: chunks[i],
+          files: i === 0 ? input.files : [],
+          metadata: {
+            agent: input.agent,
+            taskId: input.taskId,
+            embed: input.embed,
+            requestedChannel: input.requestedChannel,
+            resolvedChannel: input.channel,
+            chunkIndex: i + 1,
+            chunkCount: chunks.length,
+            ...(isTestMode() && input.channel !== normalizeChannelTarget(input.requestedChannel) ? { testMode: true } : {}),
+          },
         },
-      },
-    })
+      })
+      deliveries.push(...result.deliveries)
+    }
 
     return succeed({
-      deliveries: result.deliveries,
+      deliveries,
       channel: displayChannel(input.channel),
+      chunkCount: chunks.length,
       taskId: input.taskId,
       ...(isTestMode() && input.channel !== normalizeChannelTarget(input.requestedChannel) ? {
         testMode: true,
@@ -161,6 +170,47 @@ function postSignature(input: PostChannelParams & { channel: string; files: Arra
     videoAssetId: input.videoAssetId ?? null,
   })
   return createHash('sha256').update(canonical).digest('hex')
+}
+
+export function chunkChannelPostContent(content: string, limit = CHANNEL_POST_CHUNK_LIMIT): string[] {
+  const normalized = content || ''
+  if (normalized.length <= limit) return [normalized]
+
+  const rawChunks = splitTextIntoChunks(normalized, limit - chunkPrefix(99, 99).length)
+  const count = rawChunks.length
+  const prefixWidth = String(count).length
+  const bodyLimit = limit - chunkPrefix(count, count, prefixWidth).length
+  const chunks = rawChunks.some(chunk => chunk.length > bodyLimit)
+    ? splitTextIntoChunks(normalized, bodyLimit)
+    : rawChunks
+
+  return chunks.map((chunk, index) => `${chunkPrefix(index + 1, chunks.length, String(chunks.length).length)}${chunk}`)
+}
+
+function chunkPrefix(index: number, count: number, width = String(count).length): string {
+  return `[${String(index).padStart(width, '0')}/${count}] `
+}
+
+function splitTextIntoChunks(text: string, limit: number): string[] {
+  if (limit < 32) throw new Error('Channel post chunk limit is too small')
+  const chunks: string[] = []
+  let remaining = text
+  while (remaining.length > limit) {
+    const index = findChunkBreak(remaining, limit)
+    chunks.push(remaining.slice(0, index).trimEnd())
+    remaining = remaining.slice(index).trimStart()
+  }
+  chunks.push(remaining)
+  return chunks
+}
+
+function findChunkBreak(text: string, limit: number): number {
+  const search = text.slice(0, limit + 1)
+  for (const marker of ['\n\n', '\n', '. ', '; ', ', ', ' ']) {
+    const index = search.lastIndexOf(marker)
+    if (index >= Math.floor(limit * 0.55)) return index + marker.length
+  }
+  return limit
 }
 
 function stableJson(value: unknown): string {

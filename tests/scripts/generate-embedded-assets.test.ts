@@ -52,7 +52,7 @@ describe('collectAssets', () => {
   it('collects host, public, vendor, plugin dist, and data assets with serving URL paths', () => {
     const urls = collectAssets(root).map(a => a.urlPath)
 
-    expect(urls).toContain('/assets/main.js')
+    expect(urls).toContain('/_app/main.js')
     expect(urls).toContain('/globals.css')
     expect(urls).toContain('/index.html')
     expect(urls).toContain('/vendor/react.js')
@@ -109,7 +109,7 @@ describe('collectAssets', () => {
     const urls = collectAssets(root).map(a => a.urlPath)
 
     const order = [
-      urls.indexOf('/assets/main.js'),
+      urls.indexOf('/_app/main.js'),
       urls.indexOf('/globals.css'),
       urls.indexOf('/vendor/react.js'),
       urls.indexOf('/api/plugins/alpha/assets/client.js'),
@@ -126,9 +126,9 @@ describe('emitManifest', () => {
     const assets = collectAssets(root)
     const manifest = emitManifest(assets, outFile)
 
-    expect(manifest).toContain("import asset_assets_main_js from '../../dist/main.js' with { type: 'file' }")
+    expect(manifest).toContain("import asset_app_main_js from '../../dist/main.js' with { type: 'file' }")
     expect(manifest).toContain("import asset_api_plugins_alpha_assets_client_js from '../../../../plugins/alpha/dist/client.js' with { type: 'file' }")
-    expect(manifest).toContain("  ['/assets/main.js', asset_assets_main_js],")
+    expect(manifest).toContain("  ['/_app/main.js', asset_app_main_js],")
     expect(manifest).toContain(`export const EMBEDDED_ASSET_COUNT = ${assets.length}`)
     expect(manifest).toContain('export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string>')
   })

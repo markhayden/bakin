@@ -24,8 +24,8 @@ const manifest: AssetManifest = {
   agent: 'pixel', taskId: 't1', created: 'c', updated: 'c', currentVersion: 2,
   description: 'cake', tags: ['x'],
   versions: [
-    { version: 1, file: 'v1.png', thumb: null, mimeType: 'image/png', size: 3, width: 4, height: 4, created: 'c', description: 'p1', tags: [], op: 'generate', parentVersion: null, tool: 't', prompt: 'p1', promptHash: 'h1', generation: null },
-    { version: 2, file: 'v2.png', thumb: 'v2.thumb.jpg', mimeType: 'image/png', size: 3, width: 4, height: 4, created: 'c', description: 'p2', tags: [], op: 'edit', parentVersion: 1, tool: 't', prompt: 'p2', promptHash: 'h2', generation: null },
+    { version: 1, file: 'v1.png', thumb: null, mimeType: 'image/png', size: 3, width: 4, height: 4, created: 'c', description: 'p1', op: 'generate', parentVersion: null, tool: 't', prompt: 'p1', promptHash: 'h1', generation: null },
+    { version: 2, file: 'v2.png', thumb: 'v2.thumb.jpg', mimeType: 'image/png', size: 3, width: 4, height: 4, created: 'c', description: 'p2', op: 'edit', parentVersion: 1, tool: 't', prompt: 'p2', promptHash: 'h2', generation: null },
   ],
   exports: [
     { name: 'open-graph', surface: 'open-graph', format: 'jpg', file: 'exports/open-graph.jpg', width: 1200, height: 630, fromVersion: 2, created: 'c' },

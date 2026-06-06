@@ -12,9 +12,10 @@ import { resolveAssetServe } from './lib/serve'
 import {
   handleVersionedList, handleVersionedGet, handleVersionedPromote,
   handleVersionedDeleteVersion, handleVersionedDeleteAsset, handleVersionedExport,
-  handleVersionedRelink, handleVersionedAddVersion,
+  handleVersionedRelink, handleVersionedAddVersion, handleVersionedUpdateMetadata,
   handleTrashList, handleTrashRestore, handleTrashPermanentDelete, handleTrashEmpty,
 } from './routes/versioned'
+import { handleTagsRename, handleTagsRemove, handleTagsApply } from './routes/tags'
 import { isValidAssetId } from './lib/asset-id'
 import {
   getAsset, upsertFromSource, resolveFile as resolveVersionedFile,
@@ -113,6 +114,18 @@ const routes = [
     handler: async (req) => handleVersionedExport(req),
   }),
   defineRoute({
+    path: '/versioned/:assetId/metadata',
+    method: 'PATCH',
+    summary: 'Edit asset description and/or tags',
+    params: z.object({ assetId: z.string().min(1) }),
+    responses: { 200: okPassthrough, 400: errorResponse, 404: errorResponse },
+    handler: async (req, ctx) => {
+      const res = await handleVersionedUpdateMetadata(req)
+      if (res.ok) ctx.activity.audit('asset.metadata_updated', 'user')
+      return res
+    },
+  }),
+  defineRoute({
     path: '/versioned/:assetId/relink',
     method: 'POST',
     summary: 'Relink an asset to a task (or null)',
@@ -137,6 +150,41 @@ const routes = [
     body: { contentType: 'none' },
     responses: { 200: okPassthrough, 400: errorResponse },
     handler: async (req) => handleVersionedDeleteAsset(req),
+  }),
+
+  // Global tag operations — power the folders view + bulk-select tagging.
+  defineRoute({
+    path: '/tags/rename',
+    method: 'POST',
+    summary: 'Rename a tag across all assets',
+    responses: { 200: okPassthrough, 400: errorResponse },
+    handler: async (req, ctx) => {
+      const res = await handleTagsRename(req)
+      if (res.ok) ctx.activity.audit('assets.tag.renamed', 'user')
+      return res
+    },
+  }),
+  defineRoute({
+    path: '/tags/remove',
+    method: 'POST',
+    summary: 'Remove a tag from all assets',
+    responses: { 200: okPassthrough, 400: errorResponse },
+    handler: async (req, ctx) => {
+      const res = await handleTagsRemove(req)
+      if (res.ok) ctx.activity.audit('assets.tag.removed', 'user')
+      return res
+    },
+  }),
+  defineRoute({
+    path: '/tags/apply',
+    method: 'POST',
+    summary: 'Bulk add/remove tags on a set of assets',
+    responses: { 200: okPassthrough, 400: errorResponse },
+    handler: async (req, ctx) => {
+      const res = await handleTagsApply(req)
+      if (res.ok) ctx.activity.audit('assets.tags.applied', 'user')
+      return res
+    },
   }),
 
   // Trash (versioned whole-asset deletions) — restore/permanent-delete/empty.
@@ -212,11 +260,19 @@ const assetsPlugin: BakinPlugin = definePlugin({
       schema: {
         description: { type: 'text' },
         tags: { type: 'text' },
+        // Keyword array mirror of `tags` for per-tag facet buckets (text
+        // fields can't facet; arrays index per-element).
+        tags_facet: { type: 'array' },
         agent: { type: 'keyword' },
         task_id: { type: 'keyword' },
         asset_type: { type: 'keyword' },
         file_name: { type: 'text' },
         tool: { type: 'keyword' },
+        // Generation provenance (from the current version's `generation`).
+        // surface is searchable text; provider/model are facet-only.
+        surface: { type: 'text' },
+        provider: { type: 'keyword' },
+        model: { type: 'keyword' },
         updated_at: { type: 'datetime' },
         // `content` is populated server-side by extractAssetContent:
         // plain text for .md/.txt/.json/.csv/.yaml, pdf-parse output for
@@ -229,7 +285,7 @@ const assetsPlugin: BakinPlugin = definePlugin({
         // The search adapter owns provider-specific media dereferencing.
         image_url: { type: 'keyword' },
       },
-      searchableFields: ['description', 'tags', 'file_name', 'content'],
+      searchableFields: ['description', 'tags', 'file_name', 'surface', 'content'],
       // Intentionally no `rerankField`. bakin_assets is a multimodal table
       // (PDF body text in `content`, image pixels in the visual index,
       // metadata in description/tags/file_name) and the cross-encoder
@@ -240,12 +296,12 @@ const assetsPlugin: BakinPlugin = definePlugin({
       // the full rationale and the queries that surfaced the problem.
       // Unused when `indexes` is set, but the type requires it. Kept as the
       // equivalent template for the default-index synthesis path.
-      embeddingTemplate: '{{description}} {{tags}} {{file_name}} {{content}}',
+      embeddingTemplate: '{{description}} {{tags}} {{file_name}} {{surface}} {{content}}',
       indexes: [
         {
           name: 'assets_text',
           embedderRef: 'default',
-          embeddingTemplate: '{{description}} {{tags}} {{file_name}} {{content}}',
+          embeddingTemplate: '{{description}} {{tags}} {{file_name}} {{surface}} {{content}}',
           chunker: { enabled: true, targetTokens: 200, overlapTokens: 25 },
         },
         {
@@ -254,7 +310,7 @@ const assetsPlugin: BakinPlugin = definePlugin({
           mediaUrlField: 'image_url',
         },
       ],
-      facets: ['asset_type', 'agent', 'tool'],
+      facets: ['asset_type', 'agent', 'tool', 'tags_facet', 'provider', 'model'],
       // An asset is a directory under assets/store/<ym>/<assetId>/ whose
       // manifest.json is the single indexed unit (keyed by assetId). Version,
       // thumbnail, and export files never get their own search doc. onSync /

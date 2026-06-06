@@ -10,7 +10,7 @@
  * unchanged in both modes.
  *
  * The generated map is keyed by the serving URL path the handlers use
- * (e.g. "/assets/main.js", "/globals.css", "/vendor/react.js",
+ * (e.g. "/_app/main.js", "/globals.css", "/vendor/react.js",
  * "/api/plugins/tasks/assets/client.js") so the handlers only need a
  * single lookup.
  *
@@ -91,8 +91,10 @@ export function collectAssets(repoRoot: string): AssetSource[] {
 
   const assets: AssetSource[] = []
 
-  // Host client bundle — served under /assets/*
-  walk(join(repoRoot, 'packages/host/dist'), '/assets', assets)
+  // Host client bundle — served under /_app/* (NOT /assets/* — that's the
+  // assets plugin's page namespace; the old shared prefix made hard refreshes
+  // of /assets/<assetId> 404 instead of reaching the SPA fallback).
+  walk(join(repoRoot, 'packages/host/dist'), '/_app', assets)
 
   // Public static files — served at their path under / (minus /vendor, handled below)
   const publicDir = join(repoRoot, 'packages/host/public')

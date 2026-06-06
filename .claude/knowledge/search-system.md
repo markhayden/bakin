@@ -373,7 +373,7 @@ For raster images, the `assets_visual` index uses CLIP via antfly's embedded inf
 
 ## Schema Migration
 
-`src/core/search-migration.ts` owns a `SCHEMA_VERSION` constant (currently `4`) and a state file at `~/.bakin/.search-state.json` with `{ version: N }`. On every boot, after `antfly.initialize()` connects:
+`src/core/search-migration.ts` owns a `SCHEMA_VERSION` constant (currently `5`) and a state file at `~/.bakin/.search-state.json` with `{ version: N }`. On every boot, after `antfly.initialize()` connects:
 
 1. Read the stored version (or `0` if the file doesn't exist — fresh install)
 2. If stored < `SCHEMA_VERSION`, drop every `bakin_*` table via `antfly.dropTable()` and write the new version
@@ -396,8 +396,9 @@ Pure data additions (no schema change, no embedder change) do **not** need a bum
 
 - **1** — initial schema. Single `embeddings` index per table. Global `all-MiniLM-L6-v2` embedder via Antfly's builtin provider.
 - **2** — multi-index support. `bakin_assets` gains `assets_text` + `assets_visual`. `content` field populated server-side. Default embedder swapped to `BAAI/bge-small-en-v1.5`.
-- **3** — antfly v0.2 migration: embeddings indexes carry explicit `dimension`; provider naming `termite` → `antfly`.
-- **4** — drop create-time `schema` (breaks all queries on the table at v0.2.0-rc.2, [#456](https://github.com/markhayden/bakin/issues/456)); visual embedder moved to the Xenova ONNX mirror.
+- **3** — `bakin_assets` gains `tags_facet` + generation provenance fields; assets embedding template adds `{{surface}}`.
+- **4** — antfly v0.2 migration: embeddings indexes carry explicit `dimension`; provider naming `termite` → `antfly`.
+- **5** — drop create-time `schema` (breaks all queries on the table at v0.2.0-rc.2, [#456](https://github.com/markhayden/bakin/issues/456)); visual embedder moved to the Xenova ONNX mirror.
 
 ## Retry on Transient Shard Errors
 

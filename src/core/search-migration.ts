@@ -17,6 +17,13 @@
  *   2 — multi-index support (assets_text + assets_visual on bakin_assets),
  *       content field populated server-side, default embedder swapped to
  *       BAAI/bge-small-en-v1.5 via Termite.
+ *   3 — bakin_assets gains tags_facet (keyword array for per-tag facet
+ *       buckets) + generation provenance fields (surface searchable/embedded,
+ *       provider/model facet-only); assets embedding template adds {{surface}}.
+ *   4 — antfly v0.2: explicit `dimension` on embeddings indexes, provider
+ *       naming termite -> antfly.
+ *   5 — schemaless table creation (create-time schema breaks queries at
+ *       v0.2.0-rc.2, bakin#456); visual embedder -> Xenova ONNX mirror.
  *
  * Bump SCHEMA_VERSION whenever a change requires an existing table to
  * be dropped and recreated with new schema, indexes, or embedder config.
@@ -32,16 +39,16 @@ import { createLogger } from './logger'
 const log = createLogger('search-migration')
 
 /** Current in-code schema version. Bump when search tables need a drop+recreate. */
-// 3 — antfly v0.2 migration: embeddings indexes now carry an explicit
+// 4 — antfly v0.2 migration: embeddings indexes now carry an explicit
 //     `dimension` (the zig server requires declared dims for dense indexes)
 //     and provider naming moved termite -> antfly. Tables created during the
 //     migration window may exist with embeddings indexes the server rejected
 //     — drop + recreate everything against the v0.2 config.
-// 4 — drop create-time `schema` (breaks all queries on the table at
+// 5 — drop create-time `schema` (breaks all queries on the table at
 //     v0.2.0-rc.2, bakin#456) and swap the visual embedder to the Xenova
 //     ONNX mirror. Tables created with a schema are unqueryable and must be
 //     dropped + recreated schemaless.
-export const SCHEMA_VERSION = 4
+export const SCHEMA_VERSION = 5
 
 const STATE_FILE_NAME = '.search-state.json'
 const TABLE_PREFIX = 'bakin_'

@@ -3,8 +3,9 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from '@tanstack/react-router'
 import { Badge, Button } from '@makinbakin/sdk/ui'
-import { ArrowLeft, Download, Trash2, Upload, Loader2, X } from 'lucide-react'
+import { ArrowLeft, Download, Pencil, Trash2, Upload, Loader2, X } from 'lucide-react'
 import { AssetMetaSummary } from './atoms'
+import { AssetEditDrawer } from './AssetEditDrawer'
 import { AssetPreview } from './AssetPreview'
 import { VersionRow } from './VersionRow'
 import { assetVersionUrl, assetExportUrl, VERSIONED_API } from './asset-urls'
@@ -22,6 +23,7 @@ export function VersionedAssetDetail() {
   const [addingVersion, setAddingVersion] = useState(false)
   const [versionError, setVersionError] = useState<string | null>(null)
   const [lightbox, setLightbox] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null)
   const versionInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -153,6 +155,9 @@ export function VersionedAssetDetail() {
         <Button size="sm" variant="ghost" onClick={() => navigate({ to: '/assets' })}><ArrowLeft className="size-4 mr-1" /> Assets</Button>
         <h1 className="truncate text-base font-semibold" title={manifest.assetId}>{manifest.description || manifest.assetId}</h1>
         <Badge variant="secondary" className="ml-auto" data-testid="version-count">{manifest.versions.length} version{manifest.versions.length === 1 ? '' : 's'}</Badge>
+        <Button size="sm" variant="outline" onClick={() => setEditOpen(true)} data-testid="edit-asset">
+          <Pencil className="size-4 mr-1" /> Edit
+        </Button>
         <Button size="sm" variant="outline" onClick={() => versionInputRef.current?.click()} disabled={addingVersion} data-testid="add-version">
           {addingVersion ? <Loader2 className="size-4 animate-spin mr-1" /> : <Upload className="size-4 mr-1" />}
           {addingVersion ? 'Uploading…' : 'Add version'}
@@ -176,7 +181,16 @@ export function VersionedAssetDetail() {
         />
       </div>
 
-      <div className="mb-4"><AssetMetaSummary agent={manifest.agent} created={manifest.created} taskId={manifest.taskId} tags={manifest.tags} /></div>
+      <div className="mb-4"><AssetMetaSummary agent={manifest.agent} created={manifest.created} taskId={manifest.taskId} tags={manifest.tags} maxTags={Infinity} /></div>
+
+      <AssetEditDrawer
+        assetId={manifest.assetId}
+        initialDescription={manifest.description}
+        initialTags={manifest.tags ?? []}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSaved={fetchManifest}
+      />
 
       {/* Exports */}
       {manifest.exports.length > 0 && (
