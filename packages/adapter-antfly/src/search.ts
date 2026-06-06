@@ -22,6 +22,7 @@ import type {
 import type { AntflySettings } from './defaults'
 import { mergeSettings } from './defaults'
 import type { AntflySearchAdapterOptions } from './index'
+import { checkInferenceModels } from './models'
 import {
   buildQueryRequest,
   buildTableConfig,
@@ -173,6 +174,19 @@ export class AntflySearchAdapter implements SearchAdapter {
       run: async () => {
         const mode = isLocalDefaultUrl(this.settings.url) ? 'private instance' : 'external server'
         if (await this.available()) {
+          // "Connected" is not "healthy": with models missing, indexing and
+          // reindexing succeed while every semantic query dies at query-time
+          // embedding — a state users hit by skipping the models step
+          // mid-recovery. Keep this check amber until it's actually fixed.
+          const models = await checkInferenceModels()
+          if (models.status !== 'ok') {
+            return [{
+              check: 'antfly.availability',
+              status: 'warn' as const,
+              message: `Antfly adapter is connected (${mode} at ${this.settings.url}) but search models are missing - semantic search is dead until \`bakin install search-models\` runs (then \`bakin reindex\`)`,
+              autoFixable: false,
+            }]
+          }
           return [{
             check: 'antfly.availability',
             status: 'ok' as const,

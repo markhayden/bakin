@@ -3123,6 +3123,19 @@ async function cmdReboot(): Promise<void> {
 }
 
 async function cmdReindex(options: { table?: string; rebuild?: boolean } = {}): Promise<void> {
+  // Pre-flight: reindexing with models missing "works" (documents land in
+  // the tables) while every semantic query stays dead — a silently confusing
+  // state. Name it before doing the work, at the moment it matters.
+  try {
+    const { getSearchAdapterSetup } = await import('../src/core/search-adapter-factory')
+    const modelsCheck = await getSearchAdapterSetup('antfly').models?.check()
+    if (modelsCheck && modelsCheck.status !== 'ok') {
+      console.log('WARNING: search models are missing — this reindex will populate tables, but semantic search stays dead until `bakin install search-models` runs (then reindex again).')
+    }
+  } catch {
+    // Pre-flight is advisory only — never block a reindex on it.
+  }
+
   let url = '/api/reindex'
   const params: string[] = []
   if (options.table) params.push(`table=${encodeURIComponent(options.table)}`)

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { SearchAdapter } from '@bakin/core/adapters/search'
@@ -282,6 +283,35 @@ describe('AntflySearchAdapter', () => {
     expect(result.hits).toHaveLength(1)
     expect(result.hits[0].score).toBe(0.82)
     expect(result.hits[0].scoreBreakdown?.rerank).toBe(0.94)
+  })
+
+  it('availability health stays amber while search models are missing', async () => {
+    // Connected-but-modelless: indexing works while every semantic query
+    // dies at query-time embedding. The check must say so, not report ok.
+    const previousAntflyHome = process.env.ANTFLY_HOME
+    const antflyHome = join(testDir, `health-models-${Date.now()}`)
+    process.env.ANTFLY_HOME = antflyHome
+    try {
+      const adapter = await createInitializedAdapter()
+      const [missing] = await adapter.getHealthChecks()[0].run()
+      expect(missing.status).toBe('warn')
+      expect(missing.message).toContain('search models are missing')
+      expect(missing.message).toContain('bakin install search-models')
+
+      // Seed all required models -> ok.
+      const { REQUIRED_MODELS } = await import('../../packages/adapter-antfly/src/models')
+      for (const m of REQUIRED_MODELS) {
+        const dir = join(antflyHome, 'inference', 'models', m.model)
+        mkdirSync(dir, { recursive: true })
+        writeFileSync(join(dir, 'model_manifest.json'), '{"type":"embedder"}')
+        writeFileSync(join(dir, 'model.onnx'), 'weights')
+      }
+      const [ok] = await adapter.getHealthChecks()[0].run()
+      expect(ok.status).toBe('ok')
+    } finally {
+      if (previousAntflyHome === undefined) delete process.env.ANTFLY_HOME
+      else process.env.ANTFLY_HOME = previousAntflyHome
+    }
   })
 
   it('refuses to run on a pre-0.2 @antfly/sdk (stale node_modules guard)', async () => {
