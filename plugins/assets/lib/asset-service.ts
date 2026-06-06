@@ -400,6 +400,57 @@ export async function updateMetadata(assetId: string, input: AssetMetadataInput)
   })
 }
 
+/**
+ * Rename a tag across every asset carrying it (merge-dedupe when the target
+ * already exists). Sweeps the live store only — trash is deliberately skipped
+ * (a restored asset may resurrect a stale tag; fix is one metadata edit).
+ */
+export async function renameTagGlobal(from: string, to: string): Promise<{ updated: number }> {
+  const target = normalizeTags([to])[0]
+  if (!from || !target) throw new Error('Both from and to tags are required')
+  let updated = 0
+  for (const summary of listAssets()) {
+    if (!summary.tags.includes(from)) continue
+    await updateMetadata(summary.assetId, { tags: summary.tags.map((t) => (t === from ? target : t)) })
+    updated++
+  }
+  return { updated }
+}
+
+/** Remove a tag from every asset carrying it (assets themselves untouched). Skips trash. */
+export async function removeTagGlobal(tag: string): Promise<{ updated: number }> {
+  if (!tag) throw new Error('tag is required')
+  let updated = 0
+  for (const summary of listAssets()) {
+    if (!summary.tags.includes(tag)) continue
+    await updateMetadata(summary.assetId, { tags: summary.tags.filter((t) => t !== tag) })
+    updated++
+  }
+  return { updated }
+}
+
+/** Bulk add/remove tags on a set of assets. Unknown ids are reported, not fatal. */
+export async function applyTags(
+  assetIds: string[],
+  input: { add?: string[]; remove?: string[] },
+): Promise<{ updated: number; failed: string[] }> {
+  const add = normalizeTags(input.add ?? [])
+  const remove = new Set(normalizeTags(input.remove ?? []))
+  let updated = 0
+  const failed: string[] = []
+  for (const assetId of assetIds) {
+    const manifest = getAsset(assetId)
+    if (!manifest) {
+      failed.push(assetId)
+      continue
+    }
+    const tags = [...manifest.tags.filter((t) => !remove.has(t)), ...add]
+    await updateMetadata(assetId, { tags })
+    updated++
+  }
+  return { updated, failed }
+}
+
 /** Move the current pointer to an existing version (no file changes). */
 export async function promoteVersion(assetId: string, version: number): Promise<AssetManifest> {
   return withAssetLock(assetId, async () => {

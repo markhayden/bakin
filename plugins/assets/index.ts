@@ -15,6 +15,7 @@ import {
   handleVersionedRelink, handleVersionedAddVersion, handleVersionedUpdateMetadata,
   handleTrashList, handleTrashRestore, handleTrashPermanentDelete, handleTrashEmpty,
 } from './routes/versioned'
+import { handleTagsRename, handleTagsRemove, handleTagsApply } from './routes/tags'
 import { isValidAssetId } from './lib/asset-id'
 import {
   getAsset, upsertFromSource, resolveFile as resolveVersionedFile,
@@ -149,6 +150,41 @@ const routes = [
     body: { contentType: 'none' },
     responses: { 200: okPassthrough, 400: errorResponse },
     handler: async (req) => handleVersionedDeleteAsset(req),
+  }),
+
+  // Global tag operations — power the folders view + bulk-select tagging.
+  defineRoute({
+    path: '/tags/rename',
+    method: 'POST',
+    summary: 'Rename a tag across all assets',
+    responses: { 200: okPassthrough, 400: errorResponse },
+    handler: async (req, ctx) => {
+      const res = await handleTagsRename(req)
+      if (res.ok) ctx.activity.audit('assets.tag.renamed', 'user')
+      return res
+    },
+  }),
+  defineRoute({
+    path: '/tags/remove',
+    method: 'POST',
+    summary: 'Remove a tag from all assets',
+    responses: { 200: okPassthrough, 400: errorResponse },
+    handler: async (req, ctx) => {
+      const res = await handleTagsRemove(req)
+      if (res.ok) ctx.activity.audit('assets.tag.removed', 'user')
+      return res
+    },
+  }),
+  defineRoute({
+    path: '/tags/apply',
+    method: 'POST',
+    summary: 'Bulk add/remove tags on a set of assets',
+    responses: { 200: okPassthrough, 400: errorResponse },
+    handler: async (req, ctx) => {
+      const res = await handleTagsApply(req)
+      if (res.ok) ctx.activity.audit('assets.tags.applied', 'user')
+      return res
+    },
   }),
 
   // Trash (versioned whole-asset deletions) — restore/permanent-delete/empty.
