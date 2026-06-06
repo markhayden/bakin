@@ -48,6 +48,10 @@ describe('normalizeTags', () => {
   it('preserves first-seen order', () => {
     expect(normalizeTags(['beta', 'Alpha', 'BETA'])).toEqual(['beta', 'alpha'])
   })
+  it('collapses tabs/newlines and passes already-normalized tags through', () => {
+    expect(normalizeTags(['a\tb', 'c\nd', 'already-normal'])).toEqual(['a-b', 'c-d', 'already-normal'])
+    expect(normalizeTags(['hello-world'])).toEqual(['hello-world'])
+  })
 })
 
 describe('updateMetadata', () => {
