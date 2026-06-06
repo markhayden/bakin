@@ -6,9 +6,10 @@ import { useQueryState, useQueryArrayState, useSearch, useDebug } from '@makinba
 import { Button } from '@makinbakin/sdk/ui'
 import { PluginHeader, FacetFilter } from '@makinbakin/sdk/components'
 import { formatSize, formatAge } from '@makinbakin/sdk/utils'
-import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen } from 'lucide-react'
+import { ImagePlus, Upload, Loader2, LayoutGrid, List, Trash2, RotateCcw, X, ListFilter, FolderOpen, Pencil } from 'lucide-react'
 import { ASSET_TYPES } from '../../lib/constants'
 import { createSseRefetchScheduler } from './sse-refetch'
+import { AssetEditDrawer } from './AssetEditDrawer'
 import { AssetThumb, AssetMetaSummary, AssetTypeIcon } from './atoms'
 import { VERSIONED_API, UPLOAD_API, TRASH_API } from './asset-urls'
 import type { VersionedAssetSummary, TrashedAssetSummary } from './types'
@@ -63,16 +64,24 @@ function ScoreOverlay({ info, className = '' }: { info: AssetScoreInfo; classNam
   )
 }
 
-function AssetCard({ asset, onOpen, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; scoreInfo?: AssetScoreInfo }) {
+function AssetCard({ asset, onOpen, onEdit, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; onEdit: () => void; scoreInfo?: AssetScoreInfo }) {
   return (
     <div
       onClick={onOpen}
-      className="flex cursor-pointer flex-col overflow-hidden rounded-lg border border-border bg-card transition-all duration-150 hover:-translate-y-0.5 hover:border-[rgba(255,255,255,0.15)]"
+      className="group flex cursor-pointer flex-col overflow-hidden rounded-lg border border-border bg-card transition-all duration-150 hover:-translate-y-0.5 hover:border-[rgba(255,255,255,0.15)]"
       data-testid={`asset-card-${asset.assetId}`}
     >
       <div className="relative aspect-square overflow-hidden bg-zinc-900/50">
         <AssetThumb assetId={asset.assetId} type={asset.type} version={asset.currentVersion} hasThumb={asset.hasThumb} />
-        {scoreInfo && <ScoreOverlay info={scoreInfo} className="absolute right-1.5 top-1.5 z-10" />}
+        <button
+          onClick={(e) => { e.stopPropagation(); onEdit() }}
+          className="absolute right-1.5 top-1.5 z-10 rounded bg-black/60 p-1.5 text-zinc-300 opacity-0 transition-opacity hover:text-white group-hover:opacity-100"
+          aria-label={`Edit ${asset.description || asset.assetId}`}
+          data-testid={`asset-edit-${asset.assetId}`}
+        >
+          <Pencil className="size-3.5" />
+        </button>
+        {scoreInfo && <ScoreOverlay info={scoreInfo} className="absolute left-1.5 top-1.5 z-10" />}
         {asset.versionCount > 1 && (
           <span className="absolute bottom-1.5 left-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-emerald-300" data-testid="version-badge">
             {asset.versionCount} versions
@@ -92,11 +101,11 @@ function AssetCard({ asset, onOpen, scoreInfo }: { asset: VersionedAssetSummary;
   )
 }
 
-function AssetListRow({ asset, onOpen, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; scoreInfo?: AssetScoreInfo }) {
+function AssetListRow({ asset, onOpen, onEdit, scoreInfo }: { asset: VersionedAssetSummary; onOpen: () => void; onEdit: () => void; scoreInfo?: AssetScoreInfo }) {
   return (
-    <button
+    <div
       onClick={onOpen}
-      className="flex w-full items-center gap-3 rounded-md border border-border bg-card px-3 py-2 text-left transition-colors hover:border-[rgba(255,255,255,0.15)]"
+      className="group flex w-full cursor-pointer items-center gap-3 rounded-md border border-border bg-card px-3 py-2 text-left transition-colors hover:border-[rgba(255,255,255,0.15)]"
       data-testid={`asset-row-${asset.assetId}`}
     >
       <div className="size-10 shrink-0 overflow-hidden rounded">
@@ -112,9 +121,17 @@ function AssetListRow({ asset, onOpen, scoreInfo }: { asset: VersionedAssetSumma
         </div>
       </div>
       {scoreInfo && <ScoreOverlay info={scoreInfo} className="shrink-0" />}
+      <button
+        onClick={(e) => { e.stopPropagation(); onEdit() }}
+        className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+        aria-label={`Edit ${asset.description || asset.assetId}`}
+        data-testid={`asset-edit-${asset.assetId}`}
+      >
+        <Pencil className="size-3.5" />
+      </button>
       <span className="shrink-0 text-[11px] text-muted-foreground">{formatSize(asset.size)}</span>
       <span className="shrink-0 text-[11px] text-muted-foreground">{formatAge(asset.created)}</span>
-    </button>
+    </div>
   )
 }
 
@@ -129,6 +146,7 @@ export function VersionedAssetGrid() {
 
   const [assets, setAssets] = useState<VersionedAssetSummary[]>([])
   const [trash, setTrash] = useState<TrashedAssetSummary[]>([])
+  const [editing, setEditing] = useState<VersionedAssetSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -437,15 +455,27 @@ export function VersionedAssetGrid() {
       ) : view === 'list' ? (
         <div className="flex flex-col gap-1.5" data-testid="assets-list">
           {displayed.map(asset => (
-            <AssetListRow key={asset.assetId} asset={asset} scoreInfo={scoreFor(asset.assetId)} onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })} />
+            <AssetListRow key={asset.assetId} asset={asset} scoreInfo={scoreFor(asset.assetId)} onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })} onEdit={() => setEditing(asset)} />
           ))}
         </div>
       ) : (
         <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(250px,1fr))]" data-testid="assets-grid">
           {displayed.map(asset => (
-            <AssetCard key={asset.assetId} asset={asset} scoreInfo={scoreFor(asset.assetId)} onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })} />
+            <AssetCard key={asset.assetId} asset={asset} scoreInfo={scoreFor(asset.assetId)} onOpen={() => navigate({ to: '/assets/$assetId', params: { assetId: asset.assetId } })} onEdit={() => setEditing(asset)} />
           ))}
         </div>
+      )}
+
+      {editing && (
+        <AssetEditDrawer
+          assetId={editing.assetId}
+          initialDescription={editing.description}
+          initialTags={editing.tags ?? []}
+          suggestions={tagOptions.filter(o => o.value !== UNTAGGED).map(o => o.value)}
+          open={editing !== null}
+          onOpenChange={(open) => { if (!open) setEditing(null) }}
+          onSaved={fetchAssets}
+        />
       )}
     </div>
   )
