@@ -181,7 +181,7 @@ export function VersionedAssetDetail() {
         />
       </div>
 
-      <div className="mb-4"><AssetMetaSummary agent={manifest.agent} created={manifest.created} taskId={manifest.taskId} tags={manifest.tags} /></div>
+      <div className="mb-4"><AssetMetaSummary agent={manifest.agent} created={manifest.created} taskId={manifest.taskId} tags={manifest.tags} maxTags={Infinity} /></div>
 
       <AssetEditDrawer
         assetId={manifest.assetId}

@@ -58,12 +58,18 @@ export function AssetThumb({ assetId, type, version, hasThumb, className }: {
   )
 }
 
-/** Agent · age · taskId · tags row. Shared by card, modal, detail header. */
-export function AssetMetaSummary({ agent, created, taskId, tags }: {
+/**
+ * Agent · age · taskId · tags row. Shared by card, modal, detail header.
+ * `maxTags` caps the badges (cards stay compact, "+N" shows the rest);
+ * the detail view passes Infinity — truncating there hid freshly added
+ * tags behind the overflow counter.
+ */
+export function AssetMetaSummary({ agent, created, taskId, tags, maxTags = 4 }: {
   agent: string
   created: string
   taskId: string | null
   tags: string[]
+  maxTags?: number
 }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -86,10 +92,12 @@ export function AssetMetaSummary({ agent, created, taskId, tags }: {
       </div>
       {tags.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {tags.slice(0, 4).map(tag => (
+          {/* Most-recent tags win the cap — tags append chronologically, so a
+              freshly added tag must be visible, not hidden behind "+N". */}
+          {tags.slice(-maxTags).map(tag => (
             <Badge key={tag} variant="secondary" className="text-[9px] h-4 px-1.5">{tag}</Badge>
           ))}
-          {tags.length > 4 && <span className="text-[9px] text-muted-foreground">+{tags.length - 4}</span>}
+          {tags.length > maxTags && <span className="text-[9px] text-muted-foreground">+{tags.length - maxTags}</span>}
         </div>
       )}
     </div>

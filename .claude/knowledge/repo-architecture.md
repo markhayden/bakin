@@ -293,7 +293,8 @@ Browser →  HTTP request → Bakin (server.ts)
     /mcp               → handleMcpRequest            (SSE + Streamable HTTP)
     /api/plugins/<id>/<path> → plugin catch-all router
     /vendor/*          → static handler (from public/vendor or embedded)
-    /assets/*          → plugin asset router
+    /_app/*            → host shell bundle (packages/host/dist; NOT /assets —
+                         that's the assets plugin's page namespace)
     (anything else)    → serveHostClient = SPA fallback (index.html)
   ↓
   index.html loads vendor/*.js + main.js

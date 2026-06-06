@@ -15,7 +15,7 @@
  * to route handlers.
  */
 
-import asset_assets_main_js from '../../dist/main.js' with { type: 'file' }
+import asset_app_main_js from '../../dist/main.js' with { type: 'file' }
 import asset_index_html from '../../public/index.html' with { type: 'file' }
 import asset_bakin_logo_svg from '../../public/bakin-logo.svg' with { type: 'file' }
 import asset_bakin_hop_svg from '../../public/bakin-hop.svg' with { type: 'file' }
@@ -51,7 +51,7 @@ import asset_data_curated_agents_json from '../data/curated-agents.json' with { 
  *  handlers request (including leading slash). Both core static assets
  *  and core plugin dist outputs live in this single map. */
 export const EMBEDDED_ASSETS_STATIC: ReadonlyMap<string, string> = new Map([
-  ['/assets/main.js', asset_assets_main_js],
+  ['/_app/main.js', asset_app_main_js],
   ['/index.html', asset_index_html],
   ['/bakin-logo.svg', asset_bakin_logo_svg],
   ['/bakin-hop.svg', asset_bakin_hop_svg],

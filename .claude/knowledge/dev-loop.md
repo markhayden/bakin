@@ -69,7 +69,7 @@ Browser:
     packages/host/public/index.html  (_static.ts injects dev-client script
                                        before </body> when BAKIN_DEV=1)
         │
-        ├── /assets/main.js   (shell bundle)
+        ├── /_app/main.js     (shell bundle)
         ├── /vendor/*.js       (react, tanstack-router, @bakin/sdk/*)
         ├── /__bakin-dev/client.js   (dev client — dev-only, disk-only)
         └── /api/plugins/<id>/assets/client.js   (each plugin's bundle)
