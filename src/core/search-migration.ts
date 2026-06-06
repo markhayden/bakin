@@ -17,6 +17,9 @@
  *   2 — multi-index support (assets_text + assets_visual on bakin_assets),
  *       content field populated server-side, default embedder swapped to
  *       BAAI/bge-small-en-v1.5 via Termite.
+ *   3 — bakin_assets gains tags_facet (keyword array for per-tag facet
+ *       buckets) + generation provenance fields (surface searchable/embedded,
+ *       provider/model facet-only); assets embedding template adds {{surface}}.
  *
  * Bump SCHEMA_VERSION whenever a change requires an existing table to
  * be dropped and recreated with new schema, indexes, or embedder config.
@@ -32,7 +35,7 @@ import { createLogger } from './logger'
 const log = createLogger('search-migration')
 
 /** Current in-code schema version. Bump when search tables need a drop+recreate. */
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 const STATE_FILE_NAME = '.search-state.json'
 const TABLE_PREFIX = 'bakin_'

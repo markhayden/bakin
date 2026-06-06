@@ -50,6 +50,7 @@ describe('buildVersionedAssetSearchDoc', () => {
     expect(doc.asset_type).toBe('images')
     expect(doc.description).toBe('a pic')
     expect(doc.tags).toBe('hero')
+    expect(doc.tags_facet).toEqual(['hero']) // keyword array for faceting
     expect(doc.agent).toBe('pixel')
     expect(doc.task_id).toBe('t1')
     expect(String(doc.image_url)).toContain('store/') // file:// url to current version
@@ -62,5 +63,26 @@ describe('buildVersionedAssetSearchDoc', () => {
     expect(doc.asset_type).toBe('text')
     expect(doc.image_url).toBe('')
     expect(String(doc.content)).toContain('searchable body text')
+  })
+
+  it('carries generation provenance — surface searchable, provider/model facetable', async () => {
+    const { assetId } = await createAsset({
+      sourceFilePath: join(srcDir, 'p.png'), type: 'images', agent: 'pixel', taskId: null, slug: 'gen', op: 'generate',
+      description: 'generated pic', source: { kind: 'generated', path: null },
+      generation: { provider: 'openai', model: 'gpt-image-2', surface: 'instagram-feed-portrait', quality: 'standard', routeSource: 'runtime' },
+    })
+    const doc = await buildVersionedAssetSearchDoc(getAsset(assetId)!, assetId)
+    expect(doc.surface).toBe('instagram-feed-portrait')
+    expect(doc.provider).toBe('openai')
+    expect(doc.model).toBe('gpt-image-2')
+  })
+
+  it('yields empty provenance fields when the current version has no generation (uploads)', async () => {
+    const { assetId } = await createAsset({ sourceFilePath: join(srcDir, 'doc.md'), type: 'text', agent: 'margo', taskId: null, slug: 'plain', op: 'upload' })
+    const doc = await buildVersionedAssetSearchDoc(getAsset(assetId)!, assetId)
+    expect(doc.surface).toBe('')
+    expect(doc.provider).toBe('')
+    expect(doc.model).toBe('')
+    expect(doc.tags_facet).toEqual([])
   })
 })
