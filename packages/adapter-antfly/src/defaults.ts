@@ -26,7 +26,11 @@ export const DEFAULT_SETTINGS: AntflySettings = {
   enabled: true,
   // Bakin's private antfly instance — 3737 (bakin) + 1. The SDK owns the
   // /db/v1 path prefix; the base URL must not carry a path suffix.
-  url: 'http://localhost:3738',
+  // 127.0.0.1, NOT localhost: the server binds IPv4-only, and `localhost`
+  // can resolve to ::1 or be intercepted by proxy env vars — anything
+  // answering there with non-JSON makes the client fail while the server
+  // is perfectly healthy. Dial exactly what we bind.
+  url: 'http://127.0.0.1:3738',
   search: {
     strategy: 'rrf',
     defaultLimit: 20,
@@ -52,6 +56,14 @@ export const DEFAULT_SETTINGS: AntflySettings = {
 
 export function mergeSettings(raw: Record<string, unknown> | undefined): AntflySettings {
   const input = (raw ?? {}) as Partial<AntflySettings>
+
+  // Normalize the localhost spelling of the private-instance URL to the
+  // canonical 127.0.0.1 form so every consumer (client baseUrl, readiness
+  // probes) dials exactly what the server binds. Settings written before
+  // the dial-what-we-bind fix carry the localhost form.
+  if (input.url === 'http://localhost:3738') {
+    input.url = DEFAULT_SETTINGS.url
+  }
 
   // Per-embedder entries deep-merge over their defaults so a partial
   // override (e.g. a legacy settings.json carrying only provider+model)

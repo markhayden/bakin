@@ -553,7 +553,7 @@ All under `settings.search.settings`:
 | Key | Type | Purpose |
 |---|---|---|
 | `enabled` | `boolean` | Enable/disable Antfly integration |
-| `url` | `string` | Antfly base URL, **no path suffix** (default `http://localhost:3738` — Bakin's private instance; the SDK owns the `/db/v1` prefix). A non-default URL = externally managed server (guest mode). |
+| `url` | `string` | Antfly base URL, **no path suffix** (default `http://127.0.0.1:3738` — Bakin's private instance; the SDK owns the `/db/v1` prefix). A non-default URL = externally managed server (guest mode). |
 | `auth` | `object?` | Optional basic auth `{ username, password }` |
 | `search.strategy` | `string` | Default search strategy (`rrf` \| `semantic_only` \| `full_text_only`) |
 | `search.defaultLimit` | `number` | Default result count |

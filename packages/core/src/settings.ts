@@ -202,7 +202,9 @@ export const DEFAULT_SETTINGS: BakinSettings = {
       enabled: true,
       // Bakin's private antfly instance (3737 + 1). The v0.2 SDK owns the
       // /db/v1 path prefix, so the base URL carries no path suffix.
-      url: 'http://localhost:3738',
+      // 127.0.0.1, NOT localhost — dial exactly what the server binds
+      // (localhost can resolve to ::1 or be proxy-intercepted).
+      url: 'http://127.0.0.1:3738',
       search: {
         strategy: 'rrf',
         defaultLimit: 20,

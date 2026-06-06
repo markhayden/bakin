@@ -82,11 +82,25 @@ describe('search component legacy URL correction', () => {
     expect(result.status).toBe('installed')
     expect(result.message).toContain('Updated settings.json search URL')
     const written = readSettingsFile() as { search: { settings: Record<string, unknown> } }
-    expect(written.search.settings.url).toBe('http://localhost:3738')
+    expect(written.search.settings.url).toBe('http://127.0.0.1:3738')
     // ONLY the url may be written. Persisting merged settings here once froze
     // every then-current default (reranker, embedder models) into the file as
     // explicit overrides — a silent pin to stale defaults.
     expect(Object.keys(written.search.settings)).toEqual(['url'])
+  })
+
+  it('rewrites the briefly-current localhost:3738 default to 127.0.0.1', async () => {
+    // Written by installs between the v0.2 migration and the
+    // dial-what-we-bind fix; the server binds IPv4-only.
+    writeSettings({
+      search: { settings: { url: 'http://localhost:3738' } },
+    })
+
+    const result = await searchComponent.install(optsAutoYes)
+
+    expect(result.status).toBe('installed')
+    const written = readSettingsFile() as { search: { settings: { url: string } } }
+    expect(written.search.settings.url).toBe('http://127.0.0.1:3738')
   })
 
   it('never rewrites a deliberate non-default URL', async () => {

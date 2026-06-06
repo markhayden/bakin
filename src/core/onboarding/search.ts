@@ -16,9 +16,12 @@ const LEGACY_DEFAULT_URLS = new Set([
   'http://localhost:8080/api/v1',
   'http://0.0.0.0:8080/api/v1',
   'http://127.0.0.1:8080/api/v1',
+  // Briefly-current default before the dial-what-we-bind fix (the server
+  // binds 127.0.0.1 only; localhost resolution is machine-dependent).
+  'http://localhost:3738',
 ])
 
-const CURRENT_DEFAULT_URL = 'http://localhost:3738'
+const CURRENT_DEFAULT_URL = 'http://127.0.0.1:3738'
 
 function correctLegacySettingsUrl(): string | null {
   try {

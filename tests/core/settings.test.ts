@@ -83,7 +83,7 @@ describe('Settings', () => {
 
     const settings = getSettings()
     expect(settings.search.settings.enabled).toBe(true)
-    expect(settings.search.settings.url).toBe('http://localhost:3738') // default preserved
+    expect(settings.search.settings.url).toBe('http://127.0.0.1:3738') // default preserved
     expect(settings.search.settings.search.defaultLimit).toBe(50) // overridden
     expect(settings.search.settings.search.strategy).toBe('rrf') // default preserved
     expect(settings.search.settings.embedders.default.provider).toBe('antfly') // default preserved

@@ -63,7 +63,10 @@ export function isAntflyRunning(): boolean {
  * never spawn, never touch its disk).
  */
 export function isLocalDefaultUrl(url: string): boolean {
-  return url === DEFAULT_SETTINGS.url
+  // localhost spelling counts too: settings.json files written before the
+  // dial-what-we-bind fix carry it, and it means the same private instance.
+  // (The client itself always dials DEFAULT_SETTINGS.url's 127.0.0.1.)
+  return url === DEFAULT_SETTINGS.url || url === 'http://localhost:3738'
 }
 
 function serverOrigin(url: string): string {
@@ -128,6 +131,20 @@ export async function startAntflyServer(
   const url = settings.url
 
   if (await isAlreadyRunning(url)) {
+    // Before adopting a pre-existing listener as OUR server, demand a valid
+    // antfly status response — a bare readyz 200 is not enough. An orphaned
+    // or wedged process squatting on the port (parent died mid-boot, crashed
+    // inference, anything else bound there) can answer readyz while serving
+    // garbage on /db/v1/*; adopting it hands the client a broken server and
+    // our own spawn would silently fail to bind behind it.
+    if (!await servesValidAntflyStatus(url)) {
+      logger.error(
+        `A process answers on ${url} but does not serve the antfly API correctly - likely an orphaned or wedged antfly holding the port. Find it with \`lsof -nP -iTCP:${serverPort(url)} -sTCP:LISTEN\`, kill it, and restart Bakin.`,
+        { url },
+      )
+      return false
+    }
+
     const stability = await checkExternalAntflyStability(url)
     if (stability === 'ready') {
       logger.info('Antfly already running', { url })
@@ -288,6 +305,22 @@ async function isLegacyServer(url: string): Promise<boolean> {
   try {
     const res = await fetch(`${serverOrigin(url)}/api/v1/status`, { signal: AbortSignal.timeout(2000) })
     return res.ok
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Strict adoption probe: the listener must return parseable JSON with a
+ * `health` field from the v0.2 status endpoint. Distinguishes a real antfly
+ * from an orphaned/wedged process (or anything else) that merely 200s.
+ */
+async function servesValidAntflyStatus(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${serverOrigin(url)}/db/v1/status`, { signal: AbortSignal.timeout(2000) })
+    if (!res.ok) return false
+    const body = await res.json() as { health?: unknown }
+    return typeof body === 'object' && body !== null && 'health' in body
   } catch {
     return false
   }

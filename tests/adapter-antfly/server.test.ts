@@ -252,6 +252,39 @@ describe('Antfly server supervision', () => {
     ])
   })
 
+  it('refuses to adopt a listener that 200s readyz but serves garbage on the status endpoint', async () => {
+    // The orphaned-server case: a wedged process holding our port answers
+    // readyz with 200 but serves non-JSON on /db/v1/* — adopting it hands
+    // the client a broken server while our own spawn can't bind behind it.
+    ;(globalThis as { fetch: typeof fetch }).fetch = mock(async (input: string | URL | Request) => {
+      const url = String(input)
+      if (url.endsWith('/readyz')) return new Response('ok', { status: 200 })
+      if (url.endsWith('/db/v1/status')) return new Response('<html>wedged</html>', { status: 200 })
+      throw new Error(`unexpected fetch: ${url}`)
+    }) as unknown as typeof fetch
+
+    const started = await startAntflyServer({ enabled: true, url: LOCAL_DEFAULT_URL }, logger)
+
+    expect(started).toBe(false)
+    expect(spawnMock).not.toHaveBeenCalled()
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('orphaned or wedged antfly'),
+      expect.anything(),
+    )
+  })
+
+  it('normalizes the localhost spelling of the private-instance URL to 127.0.0.1', async () => {
+    const { mergeSettings } = await import('../../packages/adapter-antfly/src/defaults')
+    const { isLocalDefaultUrl } = await import('../../packages/adapter-antfly/src/server')
+
+    // Settings written before the dial-what-we-bind fix carry localhost;
+    // every consumer must dial what the server binds (IPv4 127.0.0.1).
+    expect(mergeSettings({ url: 'http://localhost:3738' }).url).toBe('http://127.0.0.1:3738')
+    expect(isLocalDefaultUrl('http://localhost:3738')).toBe(true)
+    expect(isLocalDefaultUrl('http://127.0.0.1:3738')).toBe(true)
+    expect(isLocalDefaultUrl('http://search.internal:8080')).toBe(false)
+  })
+
   it('never spawns for a non-default URL (guest mode)', async () => {
     ;(globalThis as { fetch: typeof fetch }).fetch = mock(async () => {
       throw new Error('connection refused')

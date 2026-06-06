@@ -268,7 +268,7 @@ description: Generated reference for Bakin core settings defaults.
     </tr>
     <tr>
       <td><code>search.settings.url</code></td>
-      <td><code>&quot;http://localhost:3738&quot;</code></td>
+      <td><code>&quot;http://127.0.0.1:3738&quot;</code></td>
     </tr>
   </tbody>
 </table>
