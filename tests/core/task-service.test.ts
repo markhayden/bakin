@@ -24,6 +24,7 @@ mock.module('@/core/continuation', () => ({
 
 // In-memory completion-gate fake — these unit tests exercise task-service
 // orchestration, not ledger semantics (covered by completion-gate.test.ts).
+const mockBumpHeartbeatByTask = mock((_taskId: string) => {})
 const completionsFake = new Map<string, { taskId: string; runId: string | null; agent: string; channel: string | null; completedAt: number }>()
 const ledgerMock = () => ({
   recordCompletion: (taskId: string, input: { runId?: string; agent: string; channel?: string }) => {
@@ -35,7 +36,7 @@ const ledgerMock = () => ({
   hasCompletion: (taskId: string) => completionsFake.has(taskId),
   deleteCompletion: (taskId: string) => completionsFake.delete(taskId),
   getLiveRun: () => null,
-  bumpHeartbeatByTask: () => {},
+  bumpHeartbeatByTask: (taskId: string) => mockBumpHeartbeatByTask(taskId),
 })
 mock.module('@/core/execution-ledger', ledgerMock)
 mock.module('../../src/core/execution-ledger', ledgerMock)
@@ -189,6 +190,19 @@ describe('task-service', () => {
     it('should broadcast even if no SSE handler registered', async () => {
       delete (globalThis as any).__bakinBroadcast
       await service.logProgress('task-1', 'pixel', 'test')
+      expect(mockAddTaskLog).toHaveBeenCalledTimes(1)
+    })
+
+    it('bumps the run heartbeat — the watchdog liveness signal', async () => {
+      await service.logProgress('task-1', 'pixel', 'still working')
+      expect(mockBumpHeartbeatByTask).toHaveBeenCalledWith('task-1')
+    })
+
+    it('a heartbeat failure never breaks progress logging (advisory)', async () => {
+      mockBumpHeartbeatByTask.mockImplementationOnce(() => {
+        throw new Error('ledger hiccup')
+      })
+      await service.logProgress('task-1', 'pixel', 'still working')
       expect(mockAddTaskLog).toHaveBeenCalledTimes(1)
     })
 

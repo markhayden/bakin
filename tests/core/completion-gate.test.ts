@@ -69,7 +69,15 @@ let moveDelayMs = 0
 let boardColumns: Record<string, Array<{ id: string; title: string; workflowId?: string }>> = {
   todo: [], inProgress: [], review: [], done: [], blocked: [], archived: [],
 }
-const mockMoveTask = mock(async (..._args: unknown[]) => {
+const mockMoveTask = mock(async (taskId: unknown, to: unknown) => {
+  // Mirror the real store's transition validation — a done task cannot be
+  // "moved" to done again (this is exactly what broke the retry path in
+  // the live smoke test).
+  for (const [column, tasks] of Object.entries(boardColumns)) {
+    if (tasks.some((t) => t.id === taskId) && column === 'done' && String(to).toLowerCase() === 'done') {
+      throw new Error('Invalid transition: done -> done. Allowed: archived, todo, inProgress')
+    }
+  }
   if (moveDelayMs > 0) await new Promise((r) => setTimeout(r, moveDelayMs))
 })
 const mockAddTaskLog = mock((..._args: unknown[]) => Promise.resolve())

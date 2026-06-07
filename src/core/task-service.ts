@@ -139,7 +139,16 @@ export async function moveTaskWithEffects(
     appendAudit(getContentDir(), 'task.reopened', agent, { id: taskId, to }, opts?.channel)
   }
 
-  await moveStoredTask(taskId, to, opts?.from, opts?.channel)
+  // A done task "moved" to done again is a completion RETRY, not a move —
+  // the store rejects done→done as an invalid transition, and a retry must
+  // never error. Skip the redundant move; the completion gate below decides
+  // whether this caller won (legacy done task without a row) or is
+  // suppressed. Every other case still moves (including the crash-window
+  // heal where a completion row exists but the column never reached done).
+  const alreadyDone = (before?.column ?? '').toLowerCase() === 'done'
+  if (!(movingToDone && alreadyDone)) {
+    await moveStoredTask(taskId, to, opts?.from, opts?.channel)
+  }
 
   // Completion gate — first write wins. The INSERT after the (idempotent)
   // column move means a completions row always implies the board reached
