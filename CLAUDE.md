@@ -37,6 +37,8 @@ Created by `bakin onboard` / `initBakinHome()`. Per-installation state, NOT in t
 ```
 ~/.bakin/
   settings.json            — Runtime config (dispatch/watchdog/antfly/bridge settings)
+  bakin.db                 — Execution ledger (SQLite, WAL): run claims, cron fires, completions, idempotency
+  server.lock              — Server singleton lock ({pid, port, startedAt, bootId})
   plugin-settings/         — Per-plugin configuration (id.json)
   plugins/<id>/            — Installed addon plugins (source + generated dist/)
   plugin-data/<id>/        — Installed plugin runtime data
@@ -115,6 +117,8 @@ Conventional commits with scope:
 
 Because `src/core/content-dir.ts` is an app-facing facade over `packages/core/src/content-dir.ts`, **mock both**. Any consumer may import from either path (or the `@/core/content-dir` alias), and missing one leaves a leak surface. Same applies to OpenClaw home.
 
+The execution ledger (`~/.bakin/bakin.db`) resolves its path via `getBakinPaths().db` — mocks of `getBakinPaths` **must include the `db` key** or ledger-touching code throws/leaks. Tests exercising the real ledger must call `closeDb()` (from `packages/core/src/storage/db`) before `rmSync`-ing their temp dir: a cached handle over a deleted inode keeps stale rows alive across tests (`SQLITE_IOERR_VNODE` is the symptom). Unit tests that only need the completion gate can mock `src/core/execution-ledger` with an in-memory fake (see `tests/core/task-service.test.ts`).
+
 Required mocks for any test that touches the filesystem:
 ```typescript
 const testDir = join(tmpdir(), `bakin-test-${Date.now()}`)
@@ -161,7 +165,8 @@ If a test does not mock the content-dir resolvers, it **will** eventually write 
 
 - **SSE Broadcasting** — `broadcast()` from `src/core/sse.ts`. Uses `globalThis.__bakinBroadcast` to survive Bun's HMR / module re-evaluation. Two channels: activity (progress) and audit (structured events).
 - **Agent Activity** — Agents report progress via `bakin_log_progress` MCP tool → `logProgress()` in task-service → SSE broadcast. Structured audit via `appendAudit()` → `audit.jsonl` + SSE + Antfly.
-- **Dispatch** — Concurrent fire-and-settle dispatch (in-flight turn registry, `settings.dispatch.maxConcurrentTurns`/`maxTurnsPerAgent` caps) with per-attempt provider sessions (`threadId: task:<id>:d<seq>`). Failures are typed `RuntimeError`s classified by `kind` — **never by error-message text** (architecture-test enforced). Deep reference: `.claude/knowledge/dispatch.md`.
+- **Execution Ledger** — Exactly-once task firing/completion via SQLite coordination facts at `~/.bakin/bakin.db` (`packages/core/src/storage/db.ts` is the SOLE `bun:sqlite` importer — architecture-test enforced; domain verbs only in `packages/core/src/execution/ledger.ts`, app facade `src/core/execution-ledger.ts`). UNIQUE constraints ARE the locks: cron fires claim before task creation, completions are first-write-wins (retries get `alreadyComplete: true`, never an error), every dispatch path claims its run before sending, the watchdog supersedes-first, billed image results are durable idempotency rows (no TTL). Duplicates are suppressed + audited (`*_suppressed` events) and surfaced by the doctor `execution-safety` check; ledger-unavailable **fails closed**. Coordination facts only — never content, never search rows. The server takes a singleton lock (`~/.bakin/server.lock`) before any side effect. Deep reference: `.claude/knowledge/execution-ledger.md`.
+- **Dispatch** — Concurrent fire-and-settle dispatch (in-flight turn registry, `settings.dispatch.maxConcurrentTurns`/`maxTurnsPerAgent` caps) with per-attempt provider sessions (`threadId: task:<id>:d<seq>` == the ledger run id; seq is ledger-owned). Failures are typed `RuntimeError`s classified by `kind` — **never by error-message text** (architecture-test enforced). Deep reference: `.claude/knowledge/dispatch.md`.
 - **Session Forensics & Recovery Ladder** — The adapter watches OpenClaw trajectory files (read-only) to fail-fast on session deaths and post-mortem timeouts into `RuntimeTurnError` diagnoses; lost-frame successes are recovered. Diagnosed deaths take a ladder (salvage output as asset → corrective re-dispatch → decomposition into subtasks → diagnostic block), never blind retries. Every dispatch prompt carries OUTPUT DISCIPLINE rules (deliverables → files + `bakin_exec_assets_save`, one at a time; chat stays short). Deep reference: `.claude/knowledge/session-forensics.md`.
 - **Usage Recording** — Single in-memory recorder at `src/core/usage.ts`. `recordUsage({ kind: 'mcp'|'rest'|'agent', ... })`; reads via `getUsageFeed`/`getStatsByMs`/`getErrorCount`. **Never add a parallel stat-tracking system** — fragmentation previously broke the health dashboard. Deep reference: `.claude/knowledge/usage-recording.md`.
 - **Models Cache + Catalog** — Persistent disk cache at `~/.bakin/plugin-settings/models/available.json` plus a curated catalog (`plugins/models/data/known-models.ts`) merged in server-side. **Never fabricate model metadata.** Deep reference: `.claude/knowledge/models-plugin.md`.
