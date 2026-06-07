@@ -50,6 +50,24 @@ mock.module('../../../src/lib/content-files', () => ({
   writeContentFile: mock(),
 }))
 
+// In-memory completion-gate fake — route tests exercise handler wiring, not
+// ledger semantics (covered by tests/core/completion-gate.test.ts).
+const completionsFake = new Map<string, { taskId: string; runId: string | null; agent: string; channel: string | null; completedAt: number }>()
+const ledgerMock = () => ({
+  recordCompletion: (taskId: string, input: { runId?: string; agent: string; channel?: string }) => {
+    const existing = completionsFake.get(taskId)
+    if (existing) return { recorded: false as const, existing }
+    completionsFake.set(taskId, { taskId, runId: input.runId ?? null, agent: input.agent, channel: input.channel ?? null, completedAt: Date.now() })
+    return { recorded: true as const }
+  },
+  hasCompletion: (taskId: string) => completionsFake.has(taskId),
+  deleteCompletion: (taskId: string) => completionsFake.delete(taskId),
+  getLiveRun: () => null,
+  bumpHeartbeatByTask: () => {},
+})
+mock.module('@/core/execution-ledger', ledgerMock)
+mock.module('../../../src/core/execution-ledger', ledgerMock)
+
 mock.module('../../../plugins/workflows/lib/runtime', () => ({
   cancelInstance: mock(),
 }))
@@ -136,6 +154,10 @@ beforeEach(() => {
     mockReportComplete, mockSetDependencyWithEffects, mockGetTaskDetails,
     mockLogProgress, mockTriggerDispatch,
   ]) m.mockReset()
+  completionsFake.clear()
+  // Handlers destructure the completion-gate result from these two.
+  mockMoveTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
+  mockReportComplete.mockResolvedValue({ alreadyComplete: false })
 })
 
 // ─── Routing — :taskId requirement (replaces 6 legacy skipped cases) ───────
@@ -491,7 +513,7 @@ describe('DELETE /:taskId — Delete Task', () => {
 
 describe('POST /:taskId/move — Move Task', () => {
   it('moves a task to a new column', async () => {
-    mockMoveTaskWithEffects.mockResolvedValue(undefined)
+    mockMoveTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
 
     const route = findRoute(activated.routes, 'POST', '/:taskId/move')!
     const { status, body } = await callRoute(route, activated.ctx, {
@@ -555,7 +577,7 @@ describe('POST /:taskId/move — Move Task', () => {
   })
 
   it('passes human channel through to moveTaskWithEffects', async () => {
-    mockMoveTaskWithEffects.mockResolvedValue(undefined)
+    mockMoveTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
 
     const route = findRoute(activated.routes, 'POST', '/:taskId/move')!
     const { status } = await callRoute(route, activated.ctx, {
@@ -595,7 +617,7 @@ describe('POST /:taskId/move — Move Task', () => {
   })
 
   it('defaults channel to rest when not provided', async () => {
-    mockMoveTaskWithEffects.mockResolvedValue(undefined)
+    mockMoveTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
 
     const route = findRoute(activated.routes, 'POST', '/:taskId/move')!
     await callRoute(route, activated.ctx, {
@@ -609,7 +631,7 @@ describe('POST /:taskId/move — Move Task', () => {
   })
 
   it('rejects channel=human when agent is not human (prevents agent impersonation)', async () => {
-    mockMoveTaskWithEffects.mockResolvedValue(undefined)
+    mockMoveTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
 
     const route = findRoute(activated.routes, 'POST', '/:taskId/move')!
     await callRoute(route, activated.ctx, {
@@ -1212,7 +1234,7 @@ describe('bakin_exec_tasks_create', () => {
 
 describe('bakin_exec_tasks_move', () => {
   it('moves a task to a new column', async () => {
-    mockMoveTaskWithEffects.mockResolvedValue(undefined)
+    mockMoveTaskWithEffects.mockResolvedValue({ alreadyComplete: false })
 
     const tool = findTool(activated.execTools, 'bakin_exec_tasks_move')!
     const result = await callTool(tool, { taskId: 'task-m', to: 'review' }, 'pixel')
@@ -1268,7 +1290,7 @@ describe('bakin_exec_tasks_block', () => {
 
 describe('bakin_exec_tasks_complete', () => {
   it('completes a task', async () => {
-    mockReportComplete.mockResolvedValue(undefined)
+    mockReportComplete.mockResolvedValue({ alreadyComplete: false })
 
     const tool = findTool(activated.execTools, 'bakin_exec_tasks_complete')!
     const result = await callTool(tool, { taskId: 'task-c', summary: 'All done' }, 'pixel')

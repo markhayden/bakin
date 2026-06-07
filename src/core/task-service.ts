@@ -18,6 +18,7 @@ import { getRuntimeMainAgentId } from '@bakin/core/adapters/runtime'
 import type { TaskSource } from '@bakin/core/tasks/store'
 import { getHookRegistry } from '../lib/plugin-registry'
 import { assertWorkflowToolAllowed } from './workflow-tool-authorization'
+import { bumpHeartbeatByTask, deleteCompletion, getLiveRun, hasCompletion, recordCompletion } from './execution-ledger'
 import {
   addTaskLog as appendTaskLog,
   blockTask as blockStoredTask,
@@ -80,22 +81,40 @@ export async function logProgress(
   await assertWorkflowToolAllowed({ taskId, agent, action: 'progress-log' })
   // Broadcast to live activity feed first (never block on persistence)
   broadcast({ type: 'activity', agent, message, ts: new Date().toISOString(), taskId, ...(channel ? { channel } : {}) })
+  // Progress is the watchdog's liveness signal — bump the run heartbeat so a
+  // quiet-but-alive agent is never superseded. Advisory only: a ledger
+  // hiccup must not break progress logging.
+  try {
+    bumpHeartbeatByTask(taskId)
+  } catch (err) {
+    log.debug('Run heartbeat bump failed', { taskId, err: err instanceof Error ? err.message : String(err) })
+  }
   await appendTaskLog(taskId, agent, message)
 }
 
 /**
  * Move a task between columns with all side effects.
- * Includes: audit, workflow done-guard, continuation trigger, search indexing.
+ * Includes: audit, workflow done-guard, completion gate, continuation
+ * trigger, search indexing.
+ *
+ * Moves to Done pass through the completion gate: the first writer wins the
+ * completions row and fires the done side effects exactly once; every later
+ * attempt (agent MCP retry, double-click, late zombie turn) is suppressed,
+ * audited as task.completion_suppressed, and reported via
+ * `alreadyComplete: true` — never an error.
  */
 export async function moveTaskWithEffects(
   taskId: string,
   to: string,
   agent: string,
   opts?: { from?: string; skipDoneGuard?: boolean; channel?: Channel },
-): Promise<void> {
+): Promise<{ alreadyComplete: boolean }> {
+  const toLowerCased = to.toLowerCase()
+  const movingToDone = toLowerCased === 'done'
+
   // Workflow done-guard: workflow tasks can only reach Done via the workflow engine
   // Human channel bypasses this guard — the operator can force any state
-  if (to.toLowerCase() === 'done' && !opts?.skipDoneGuard && opts?.channel !== 'human') {
+  if (movingToDone && !opts?.skipDoneGuard && opts?.channel !== 'human') {
     const board = readTaskboard()
     for (const col of Object.values(board.columns) as StoredTask[][]) {
       const task = col.find(t => t.id === taskId)
@@ -109,11 +128,53 @@ export async function moveTaskWithEffects(
     }
   }
 
-  const taskBeforeMove = getTaskWithColumn(taskId)?.task
-  await moveStoredTask(taskId, to, opts?.from, opts?.channel)
+  const before = getTaskWithColumn(taskId)
+  const taskBeforeMove = before?.task
+
+  // Reopen: moving a completed task anywhere active deletes its completion
+  // row (the ONLY unfreeze path) so the next completion is a fresh
+  // first-write. Archiving a done task is lifecycle, not reopen.
+  if (!movingToDone && toLowerCased !== 'archived' && hasCompletion(taskId)) {
+    deleteCompletion(taskId)
+    appendAudit(getContentDir(), 'task.reopened', agent, { id: taskId, to }, opts?.channel)
+  }
+
+  // A done task "moved" to done again is a completion RETRY, not a move —
+  // the store rejects done→done as an invalid transition, and a retry must
+  // never error. Skip the redundant move; the completion gate below decides
+  // whether this caller won (legacy done task without a row) or is
+  // suppressed. Every other case still moves (including the crash-window
+  // heal where a completion row exists but the column never reached done).
+  const alreadyDone = (before?.column ?? '').toLowerCase() === 'done'
+  if (!(movingToDone && alreadyDone)) {
+    await moveStoredTask(taskId, to, opts?.from, opts?.channel)
+  }
+
+  // Completion gate — first write wins. The INSERT after the (idempotent)
+  // column move means a completions row always implies the board reached
+  // done; the suppressed branch above still converged the column.
+  if (movingToDone) {
+    const completion = recordCompletion(taskId, {
+      runId: getLiveRun(taskId)?.runId,
+      agent,
+      channel: opts?.channel,
+    })
+    if (!completion.recorded) {
+      appendAudit(getContentDir(), 'task.completion_suppressed', agent, {
+        id: taskId,
+        firstCompletedAt: completion.existing.completedAt,
+        firstAgent: completion.existing.agent,
+        firstChannel: completion.existing.channel,
+      }, opts?.channel)
+      return { alreadyComplete: true }
+    }
+  }
 
   const title = await resolveTitle(taskId)
   appendAudit(getContentDir(), 'task.moved', agent, { id: taskId, title, from: opts?.from, to }, opts?.channel)
+  if (movingToDone) {
+    appendAudit(getContentDir(), 'task.completed', agent, { id: taskId, title, runId: getLiveRun(taskId)?.runId ?? null }, opts?.channel)
+  }
   recordUsage({
     kind: 'agent',
     name: `task.${to.toLowerCase()}`,
@@ -135,8 +196,9 @@ export async function moveTaskWithEffects(
     log.debug('Task status extension hook failed', { taskId, err: err instanceof Error ? err.message : String(err) })
   })
 
-  // Side effects when moved to done
-  if (to.toLowerCase() === 'done') {
+  // Side effects when moved to done — only the completion-gate winner
+  // reaches this branch, so continuation fires exactly once per completion.
+  if (movingToDone) {
     // Search indexing handled by tasks plugin via ctx.search
     checkAndContinueDependents(taskId, title, getContentDir(), { port: getPort() }).catch((err) => {
       log.error('Continuation trigger failed', err)
@@ -146,7 +208,7 @@ export async function moveTaskWithEffects(
   }
 
   // Auto-unblock parent when a child workflow task moves out of blocked
-  const toLower = to.toLowerCase()
+  const toLower = toLowerCased
   if (toLower !== 'blocked') {
     const dashIdx = taskId.indexOf('--')
     if (dashIdx > 0) {
@@ -172,6 +234,8 @@ export async function moveTaskWithEffects(
       }
     }
   }
+
+  return { alreadyComplete: false }
 }
 
 /**
@@ -337,14 +401,16 @@ export async function createTaskWithEffects(opts: {
 /**
  * Report a task as complete.
  * Rejects workflow tasks (they must use bakin_exec_submit_step).
- * Moves to done, logs summary, notifies orchestrator.
+ * Moves to done through the completion gate; only the first completion logs
+ * the summary and notifies the orchestrator. Retries (agent timeout replay,
+ * double-click) get `alreadyComplete: true` — never an error.
  */
 export async function reportComplete(
   taskId: string,
   agent: string,
   summary: string,
   channel?: Channel,
-): Promise<void> {
+): Promise<{ alreadyComplete: boolean }> {
   await assertWorkflowToolAllowed({ taskId, agent, action: 'task-complete' })
   // Reject workflow tasks
   const board = readTaskboard()
@@ -359,8 +425,12 @@ export async function reportComplete(
     }
   }
 
+  const { alreadyComplete } = await moveTaskWithEffects(taskId, 'done', agent, { skipDoneGuard: true, channel })
+  if (alreadyComplete) {
+    return { alreadyComplete: true }
+  }
+
   await appendTaskLog(taskId, agent, `Task complete: ${summary}`)
-  await moveTaskWithEffects(taskId, 'done', agent, { skipDoneGuard: true, channel })
 
   // Notify orchestrator
   const title = await resolveTitle(taskId)
@@ -374,6 +444,8 @@ export async function reportComplete(
   } catch (err) {
     log.warn('Failed to notify orchestrator of task completion', err)
   }
+
+  return { alreadyComplete: false }
 }
 
 /**

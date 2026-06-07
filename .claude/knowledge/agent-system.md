@@ -221,7 +221,7 @@ Reconnecting clients get missed events via `Last-Event-ID` header.
 Monitors agent and MCP server health:
 - Checks heartbeat freshness on interval
 - Detects stuck agents (working but no progress > threshold)
-- Auto-recovery: restart agent or move task back to todo. Suppressed when the task's `updatedAt` is within a 60 s guard window to avoid racing dispatch's move (`AUTO_RECOVERY_GUARD_MS` in `watchdog.ts`, issue #114)
+- Auto-recovery: supersede-first via the execution ledger. Recovery requires transactionally superseding the task's live run (`supersedeStaleRun`, heartbeat staleness vs `settings.watchdog.stuckThresholdMs`); a fresh run heartbeat means the agent is genuinely working and recovery is skipped (replaces the old 60 s `updatedAt` guard / `AUTO_RECOVERY_GUARD_MS`, issue #114). Zero live runs = stranded task, recovered as before; ledger errors skip recovery (fail closed). Emits `task.run_superseded`. See `.claude/knowledge/execution-ledger.md`.
 - Detects MCP 5xx outages via a rolling error-rate check on `/mcp` (configurable window/threshold/min-samples/cooldown in `settings.watchdog.mcp*`) — fires SSE alert, audit entry, and optional runtime channel notification
 - Alert delivery via `settings.notifications.channel` (runtime channel ID; blank means in-app only) — configurable in the **System & Alerts** settings tab
 - Re-reads settings every cycle, so channel/threshold changes apply without a restart

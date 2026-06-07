@@ -26,6 +26,7 @@ import {
   triggerDispatch,
 } from '../../src/core/task-service'
 import { createLogger } from '../../src/core/logger'
+import { hasCompletion } from '../../src/core/execution-ledger'
 import { getContentDir } from '../../packages/core/src/content-dir'
 import {
   checkSessionDeathIncidents,
@@ -158,6 +159,8 @@ const updateTaskBody = z.object({
   availableAt: z.string().nullable().optional(),
   dueAt: z.string().nullable().optional(),
   source: taskSourceSchema.nullable().optional(),
+  /** Optimistic concurrency: refuse with 409 when stale. */
+  expectedVersion: z.number().optional(),
 })
 
 const deleteTaskBody = z.object({
@@ -211,6 +214,47 @@ const completeTaskBody = z.object({
   agent: z.string().optional(),
   summary: z.string().optional(),
 })
+
+// ─── Edit-safety guard (optimistic versioning + freeze-on-complete) ───────
+//
+// Content mutations (update/assign/dependency/block) pass through here.
+// - A completed task (completions row in the execution ledger) refuses
+//   mutation until explicitly reopened (moved out of Done). Move/complete
+//   routes are exempt — they ARE the reopen/complete paths.
+// - A stale expectedVersion gets a 409 + edit_conflict audit so contention
+//   is measurable; omitting expectedVersion stays last-write-wins.
+function taskEditGuard(
+  ctx: { activity: { audit: (event: string, agent: string, data?: Record<string, unknown>) => void } },
+  identifier: string,
+  opts: { agent?: string; expectedVersion?: number } = {},
+): { status: number; error: string; currentVersion?: number } | null {
+  const task = getTask(identifier)
+  if (!task) return null // unknown ids fall through to the handler's own error path
+  if (hasCompletion(task.id)) {
+    return { status: 409, error: `Task ${task.id} is completed — reopen it (move it out of Done) before editing.` }
+  }
+  const currentVersion = task.version ?? 0
+  if (opts.expectedVersion !== undefined && currentVersion !== opts.expectedVersion) {
+    ctx.activity.audit('edit_conflict', opts.agent ?? 'system', {
+      taskId: task.id,
+      expectedVersion: opts.expectedVersion,
+      currentVersion,
+    })
+    return {
+      status: 409,
+      error: `Version conflict on ${task.id}: expected version ${opts.expectedVersion}, current is ${currentVersion}. Refetch and retry.`,
+      currentVersion,
+    }
+  }
+  return null
+}
+
+function guardResponse(guard: { status: number; error: string; currentVersion?: number }): Response {
+  return Response.json(
+    { error: guard.error, ...(guard.currentVersion !== undefined ? { currentVersion: guard.currentVersion } : {}) },
+    { status: guard.status },
+  )
+}
 
 // ─── Routes (declarative) ────────────────────────────────────────────────
 
@@ -305,12 +349,14 @@ const routes = [
     summary: 'Update a task',
     params: taskIdParams,
     body: updateTaskBody,
-    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    responses: { 200: okResponse, 400: errorResponse, 409: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { params, body }) => {
       const identifier = params.taskId || body.id || body.originalTitle
       if (!identifier) {
         return Response.json({ error: 'taskId required' }, { status: 400 })
       }
+      const guard = taskEditGuard(ctx, identifier, { agent: body.agent, expectedVersion: body.expectedVersion })
+      if (guard) return guardResponse(guard)
       try {
         await updateTask(identifier, {
           title: body.title,
@@ -387,10 +433,12 @@ const routes = [
       }
       try {
         const effectiveChannel = (body.channel === 'human' && agent === 'human') ? 'human' as const : 'rest' as const
-        await moveTaskWithEffects(identifier, to, agent, { from, channel: effectiveChannel })
-        ctx.activity.log(agent, `Moved task to "${to}"`, { taskId: identifier })
-        indexTask(ctx, identifier).catch(() => {})
-        return Response.json({ ok: true as const })
+        const { alreadyComplete } = await moveTaskWithEffects(identifier, to, agent, { from, channel: effectiveChannel })
+        if (!alreadyComplete) {
+          ctx.activity.log(agent, `Moved task to "${to}"`, { taskId: identifier })
+          indexTask(ctx, identifier).catch(() => {})
+        }
+        return Response.json({ ok: true as const, ...(alreadyComplete ? { alreadyComplete: true as const } : {}) })
       } catch (err) {
         const msg = (err as Error).message
         if (msg.includes('Workflow tasks cannot be moved')) {
@@ -407,12 +455,14 @@ const routes = [
     summary: 'Assign a task to an agent',
     params: taskIdParams,
     body: assignTaskBody,
-    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    responses: { 200: okResponse, 400: errorResponse, 409: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { params, body }) => {
       const identifier = params.taskId || body.id || body.title
       if (!identifier) {
         return Response.json({ error: 'taskId required' }, { status: 400 })
       }
+      const guard = taskEditGuard(ctx, identifier, { agent: body.agent })
+      if (guard) return guardResponse(guard)
       try {
         await assignTask(identifier, body.agent || '')
         ctx.activity.audit('assigned', 'system', { taskId: identifier, agent: body.agent || '' })
@@ -453,12 +503,14 @@ const routes = [
     summary: 'Mark a task as blocked',
     params: taskIdParams,
     body: blockTaskBody,
-    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    responses: { 200: okResponse, 400: errorResponse, 409: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { params, body }) => {
       const identifier = params.taskId || body.id || body.title
       if (!identifier) {
         return Response.json({ error: 'taskId required' }, { status: 400 })
       }
+      const guard = taskEditGuard(ctx, identifier, { agent: body.agent })
+      if (guard) return guardResponse(guard)
       try {
         await blockTaskWithEffects(identifier, body.reason, body.agent || 'system', 'rest')
         ctx.activity.log(body.agent || 'system', `Blocked task: ${body.reason}`, { taskId: identifier })
@@ -476,12 +528,14 @@ const routes = [
     summary: 'Set a dependency between tasks',
     params: taskIdParams,
     body: dependencyBody,
-    responses: { 200: okResponse, 400: errorResponse, 500: errorResponse },
+    responses: { 200: okResponse, 400: errorResponse, 409: errorResponse, 500: errorResponse },
     handler: async (_req, ctx, { params, body }) => {
       const taskId = params.taskId || body.id
       if (!taskId) {
         return Response.json({ error: 'taskId required' }, { status: 400 })
       }
+      const guard = taskEditGuard(ctx, taskId)
+      if (guard) return guardResponse(guard)
       try {
         await setDependencyWithEffects(taskId, body.dependsOn, 'rest')
         ctx.activity.log('system', `Set dependency on ${body.dependsOn}`, { taskId })
@@ -525,10 +579,12 @@ const routes = [
       const agent = body.agent || 'system'
       const summary = body.summary || ''
       try {
-        await reportComplete(taskId, agent, summary, 'rest')
-        ctx.activity.log(agent, `Completed task: ${summary}`, { taskId })
-        indexTask(ctx, taskId).catch(() => {})
-        return Response.json({ ok: true as const })
+        const { alreadyComplete } = await reportComplete(taskId, agent, summary, 'rest')
+        if (!alreadyComplete) {
+          ctx.activity.log(agent, `Completed task: ${summary}`, { taskId })
+          indexTask(ctx, taskId).catch(() => {})
+        }
+        return Response.json({ ok: true as const, ...(alreadyComplete ? { alreadyComplete: true as const } : {}) })
       } catch (err) {
         return Response.json({ error: err instanceof Error ? err.message : String(err) }, { status: 500 })
       }
@@ -742,7 +798,10 @@ const tasksPlugin: BakinPlugin = definePlugin({
           return { ok: false, error: 'reason is required when moving to blocked' }
         }
         try {
-          await moveTaskWithEffects(taskId, to, agent, { channel: 'mcp' })
+          const { alreadyComplete } = await moveTaskWithEffects(taskId, to, agent, { channel: 'mcp' })
+          if (alreadyComplete) {
+            return { ok: true, alreadyComplete: true, note: 'Task was already completed — no duplicate side effects fired.' }
+          }
           indexTask(ctx, taskId).catch(() => {})
           return { ok: true }
         } catch (err) {
@@ -782,7 +841,12 @@ const tasksPlugin: BakinPlugin = definePlugin({
       },
       handler: async (params: Record<string, unknown>, agent: string) => {
         try {
-          await reportComplete(params.taskId as string, agent, params.summary as string, 'mcp')
+          const { alreadyComplete } = await reportComplete(params.taskId as string, agent, params.summary as string, 'mcp')
+          if (alreadyComplete) {
+            // An agent retrying a timed-out completion must see success, not
+            // an error — the work happened exactly once.
+            return { ok: true, alreadyComplete: true, note: 'Task was already completed — no duplicate side effects fired.' }
+          }
           indexTask(ctx, params.taskId as string).catch(() => {})
           return { ok: true }
         } catch (err) {
@@ -851,6 +915,8 @@ const tasksPlugin: BakinPlugin = definePlugin({
           availableAt?: string | null
           dueAt?: string | null
         }
+        const guard = taskEditGuard(ctx, taskId, { agent })
+        if (guard) return { ok: false, error: guard.error }
         try {
           const updates: Record<string, unknown> = {}
           if (title !== undefined) updates.title = title

@@ -15,12 +15,24 @@ mock.module('@bakin/core/main-agent', () => ({
   getMainAgentName: () => 'Main',
 }))
 
-mock.module('../../../src/core/content-dir', () => ({
+// CLAUDE.md testing rule: mock BOTH the app facade and the packages module —
+// the execution ledger's storage core resolves its db path via the packages
+// content-dir, and missing that mock leaves a leak surface.
+const contentDirMock = () => ({
   getContentDir: () => testDir,
   isUsingBakinHome: () => true,
   resetContentDir: () => {},
   initBakinHome: () => {},
-}))
+  getBakinPaths: () => ({
+    home: testDir,
+    audit: join(testDir, 'audit.jsonl'),
+    tasks: join(testDir, 'tasks'),
+    logs: join(testDir, 'logs'),
+    db: join(testDir, 'bakin.db'),
+  }),
+})
+mock.module('../../../src/core/content-dir', contentDirMock)
+mock.module('../../../packages/core/src/content-dir', contentDirMock)
 
 mock.module('@bakin/adapter-openclaw/home', () => ({
   getOpenClawHome: () => openclawDir,
@@ -96,6 +108,7 @@ mock.module('../../../src/lib/plugin-registry', () => ({
 
 import { readSidecar, upsertJob, getJob } from '@bakin/schedule/lib/sidecar'
 import { createMockRuntimeAdapter } from '@bakin/core/adapters/runtime/testing'
+import { closeDb } from '../../../packages/core/src/storage/db'
 
 function makeMeta(overrides: Partial<BakinJobMeta> = {}): BakinJobMeta {
   return {
@@ -259,6 +272,9 @@ describe('schedule/bridge', () => {
   })
 
   afterEach(() => {
+    // Close the ledger handle BEFORE deleting its directory — a cached
+    // handle over a deleted inode keeps stale claims alive across tests.
+    closeDb()
     rmSync(testDir, { recursive: true, force: true })
     delete (globalThis as Record<string, unknown>).__bakinBroadcast
   })

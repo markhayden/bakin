@@ -5,14 +5,20 @@
  * (mcporter) that times out and retries an identical call would bill twice —
  * Bakin finished server-side, but the client gave up and re-issued. This guards
  * against that WITHOUT adding a retry: an identical call that is still in flight
- * awaits the same promise, and an identical call within a short TTL after
- * completion returns the cached result (the already-saved asset). Failures are
- * never cached, so a genuine retry of a failed call proceeds.
+ * awaits the same promise, and an identical completed call returns the cached
+ * result (the already-saved asset). Failures are never cached, so a genuine
+ * retry of a failed call proceeds.
  *
- * Process-local and in-memory by design (single user, single process).
+ * Completed results persist in the execution ledger (durable, NO TTL): a
+ * watchdog-superseded run replayed minutes later, or a retry across a server
+ * restart, returns the first run's asset instead of re-billing. The signature
+ * is taskId-scoped, so DELIBERATELY creating the same image on a new task
+ * bills again — intent is respected. In-flight dedup stays process-local
+ * (concurrent identical calls share one promise).
  */
 import { createHash } from 'node:crypto'
 import type { ExecToolResult } from '@bakin/core/plugin-types'
+import { getIdempotent, putIdempotent } from '../../../src/core/execution-ledger'
 
 /** Stable identity of a billed image call. Same parts ⇒ same provider work. */
 export interface ImageCallKey {
@@ -51,8 +57,20 @@ export interface IdempotencyOptions {
   now?: () => number
 }
 
+export interface IdempotencyRunOptions<T> {
+  cacheable?: (result: T) => boolean
+  /**
+   * Durable completed-result store (the execution ledger in production).
+   * When provided, it REPLACES the in-memory TTL cache: results live
+   * forever and survive restarts. Absent (unit tests), the registry falls
+   * back to its process-local TTL map.
+   */
+  load?: () => T | null
+  save?: (result: T) => void
+}
+
 export interface IdempotencyRegistry<T> {
-  run(signature: string, fn: () => Promise<T>, opts?: { cacheable?: (result: T) => boolean }): Promise<T>
+  run(signature: string, fn: () => Promise<T>, opts?: IdempotencyRunOptions<T>): Promise<T>
 }
 
 const DEFAULT_TTL_MS = 5 * 60 * 1000
@@ -72,16 +90,25 @@ export function createIdempotencyRegistry<T>(opts: IdempotencyOptions = {}): Ide
       const pending = inflight.get(signature)
       if (pending) return pending
 
-      const cached = completed.get(signature)
-      if (cached) {
-        if (cached.expiresAt > now()) return Promise.resolve(cached.result)
-        completed.delete(signature)
+      if (runOpts?.load) {
+        // Durable store path — no TTL; the billed result is permanent.
+        const stored = runOpts.load()
+        if (stored !== null) return Promise.resolve(stored)
+      } else {
+        const cached = completed.get(signature)
+        if (cached) {
+          if (cached.expiresAt > now()) return Promise.resolve(cached.result)
+          completed.delete(signature)
+        }
       }
 
       const promise = (async () => {
         const result = await fn()
         const cacheable = runOpts?.cacheable ? runOpts.cacheable(result) : true
-        if (cacheable) completed.set(signature, { result, expiresAt: now() + ttlMs })
+        if (cacheable) {
+          if (runOpts?.save) runOpts.save(result)
+          else completed.set(signature, { result, expiresAt: now() + ttlMs })
+        }
         return result
       })()
 
@@ -99,12 +126,21 @@ export function createIdempotencyRegistry<T>(opts: IdempotencyOptions = {}): Ide
 const imageCallRegistry = createIdempotencyRegistry<ExecToolResult>()
 
 /**
- * Run a billed image operation idempotently. The result is cached only when it
- * succeeded (`ok === true`); failures re-issue on the next identical call.
+ * Run a billed image operation idempotently. The result is cached only when
+ * it succeeded (`ok === true`); failures re-issue on the next identical
+ * call. Completed results persist in the execution ledger — durable, no
+ * TTL, first write wins — so a replay across a watchdog supersede or server
+ * restart returns the first asset for $0. A ledger failure propagates (fail
+ * closed): without the dedup record a retry could double-bill.
  */
 export function runBilledImageCall(
   key: ImageCallKey,
   fn: () => Promise<ExecToolResult>,
 ): Promise<ExecToolResult> {
-  return imageCallRegistry.run(imageCallSignature(key), fn, { cacheable: (r) => r.ok === true })
+  const signature = imageCallSignature(key)
+  return imageCallRegistry.run(signature, fn, {
+    cacheable: (r) => r.ok === true,
+    load: () => (getIdempotent(signature)?.result as ExecToolResult | null) ?? null,
+    save: (result) => putIdempotent(signature, `image.${key.op}`, result),
+  })
 }

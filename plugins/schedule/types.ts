@@ -37,8 +37,8 @@ export interface BakinJobMeta {
   createdAt: string
   updatedAt: string
   lastTaskId?: string
-  processedRunIds?: string[]
-  lastProcessedRunAt?: string
+  // Run-level dedup lives in the execution ledger (cron_fires) — the legacy
+  // processedRunIds/lastProcessedRunAt fields are seeded there once on boot.
   originalRuntimeCron?: {
     provider: string
     capturedAt: string
@@ -160,7 +160,12 @@ export interface ParseResult {
 
 export interface BridgePayload {
   jobId: string
-  runId: string
+  /**
+   * Runtime cron run id. Optional on the wire (the bridge zod schema agrees):
+   * ad-hoc payloads without one mint a unique `manual-<uuid>` so intentional
+   * fires are never blocked by the cron-fire claim's (job_id, run_id) key.
+   */
+  runId?: string
   timestamp: string
   [key: string]: unknown
 }

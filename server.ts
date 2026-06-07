@@ -37,7 +37,10 @@ import * as watcher from './src/core/watcher'
 import * as dispatch from './src/core/dispatch'
 import * as watchdog from './src/core/watchdog'
 import { runRestartRecovery } from './src/core/restart-recovery'
-import { registerShutdownHandlers } from './src/core/lifecycle'
+import { markPriorBootRunsLost } from './src/core/execution-ledger'
+import { getBootId } from './src/core/boot-id'
+import { acquireServerLock, formatBindFailureHelp } from './src/core/server-lock'
+import { registerShutdownHandlers, triggerShutdown } from './src/core/lifecycle'
 import { checkAndContinueDependents } from './src/core/continuation'
 import { getAllRoutes, generateDocs } from './src/core/api-docs'
 import { getCachedOrBuild } from './packages/host/src/api/docs-runtime'
@@ -115,6 +118,20 @@ const BAKIN_VERSION = APP_VERSION
 const port = Number(process.env.PORT || 3737)
 const CONTENT_DIR = getContentDir()
 const SEARCH_STARTUP_RETRY_MS = 5000
+
+// Singleton lock BEFORE any side effect (dirs, plugins, watcher, antfly,
+// dispatch). Two server processes against one content dir each ran their
+// own dispatch loop — half-dead overlapping generations doubled work (#459).
+{
+  const lock = acquireServerLock(port, getBootId())
+  if (!lock.acquired) {
+    log.error(
+      `Another Bakin server is already running (pid ${lock.holder.pid}, port ${lock.holder.port}). `
+      + `Refusing to start a second instance. Stop it with: bakin stop — or if it is wedged: kill ${lock.holder.pid}`,
+    )
+    process.exit(1)
+  }
+}
 
 /**
  * Build the source list the OpenAPI runtime builder consumes from the
@@ -730,6 +747,19 @@ const eventBus = new BakinEventBus(broadcast)
   const dispatchState = dispatch.loadDispatchState(CONTENT_DIR)
   dispatchState.serverStart = Date.now()
 
+  // A bind failure (another generation or process squatting the port) used
+  // to throw uncaught AFTER the watcher/antfly side effects started,
+  // orphaning children (#459). Route it through the graceful-shutdown chain
+  // and exit non-zero.
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      log.error(`Cannot bind port ${port} — ${formatBindFailureHelp(port)}`, err)
+      triggerShutdown('EADDRINUSE', 1)
+      return
+    }
+    log.error('HTTP server error', err)
+  })
+
   server.listen(port, '0.0.0.0', () => {
     log.info(`Bakin ready on http://localhost:${port}`)
     log.info(`Listening on 0.0.0.0:${port} (Tailscale: http://100.91.112.69:${port})`)
@@ -739,6 +769,16 @@ const eventBus = new BakinEventBus(broadcast)
     }
 
     void (async () => {
+      // Startup sweep BEFORE restart recovery: runs left 'running' by a
+      // crashed/previous process are marked lost, or their stale claims
+      // would suppress every legitimate re-dispatch below.
+      try {
+        const swept = markPriorBootRunsLost(getBootId())
+        if (swept > 0) log.info('Startup sweep: marked prior-boot runs lost', { swept })
+      } catch (err) {
+        log.error('Startup run sweep failed — stale claims may suppress dispatch until resolved', err)
+      }
+
       let recovered = 0
       try {
         const result = await runRestartRecovery(CONTENT_DIR)

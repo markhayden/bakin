@@ -111,6 +111,7 @@ export interface BakinPaths {
   workflows: string
   settings: string
   logs: string
+  db: string
 }
 
 export function getBakinPaths(): BakinPaths {
@@ -133,6 +134,7 @@ export function getBakinPaths(): BakinPaths {
     workflows: join(home, 'workflows'),
     settings: join(home, 'settings.json'),
     logs: join(home, 'logs'),
+    db: join(home, 'bakin.db'),
   }
 }
 

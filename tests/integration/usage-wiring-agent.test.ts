@@ -34,6 +34,29 @@ mock.module('../../src/core/audit', () => ({
   appendAudit: mock(),
 }))
 
+// In-memory execution-ledger fake — usage wiring, not ledger semantics.
+// Includes the dispatch-facing verbs (claimNextRun etc.) since dispatch.ts
+// imports them at module load.
+let fakeSeq = 0
+const ledgerMock = () => ({
+  recordCompletion: (_taskId: string, _input: { runId?: string; agent: string; channel?: string }) => ({
+    recorded: true as const,
+  }),
+  hasCompletion: () => false,
+  deleteCompletion: () => false,
+  getLiveRun: () => null,
+  bumpHeartbeatByTask: () => {},
+  claimNextRun: (input: { runIdFor: (seq: number) => string }) => {
+    fakeSeq += 1
+    return { claimed: true as const, runId: input.runIdFor(fakeSeq), seq: fakeSeq }
+  },
+  settleRun: () => true,
+  loseRun: () => true,
+  currentSeq: () => fakeSeq,
+})
+mock.module('@/core/execution-ledger', ledgerMock)
+mock.module('../../src/core/execution-ledger', ledgerMock)
+
 // Watcher would otherwise try to chokidar the temp dir.
 mock.module('../../src/core/watcher', () => ({
   watchContentDir: mock(),

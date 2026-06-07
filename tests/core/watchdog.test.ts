@@ -10,11 +10,11 @@ const contentDirMockPath = join(tmpdir(), `bakin-watchdog-test-${Date.now()}`)
 
 mock.module('../../src/core/content-dir', () => ({
   getContentDir: () => contentDirMockPath,
-  getBakinPaths: () => ({ root: contentDirMockPath }),
+  getBakinPaths: () => ({ root: contentDirMockPath, home: contentDirMockPath, db: join(contentDirMockPath, 'bakin.db') }),
 }))
 mock.module('../../packages/core/src/content-dir', () => ({
   getContentDir: () => contentDirMockPath,
-  getBakinPaths: () => ({ root: contentDirMockPath }),
+  getBakinPaths: () => ({ root: contentDirMockPath, home: contentDirMockPath, db: join(contentDirMockPath, 'bakin.db') }),
 }))
 
 mock.module('../../src/core/logger', () => ({
@@ -141,6 +141,8 @@ import { start, stop } from '../../src/core/watchdog'
 import { appendAudit } from '../../src/core/audit'
 import { broadcast } from '../../src/core/sse'
 import { isStale } from '../../src/lib/format'
+import { claimRun, getLiveRun, recordCompletion, supersedeStaleRun } from '../../src/core/execution-ledger'
+import { closeDb } from '../../packages/core/src/storage/db'
 
 describe('watchdog', () => {
   let tempDir: string
@@ -157,6 +159,8 @@ describe('watchdog', () => {
   afterEach(() => {
     stop()
     vi.useRealTimers()
+    closeDb()
+    rmSync(contentDirMockPath, { recursive: true, force: true })
     rmSync(tempDir, { recursive: true, force: true })
     mock.restore()
   })
@@ -352,53 +356,72 @@ describe('watchdog', () => {
       )
     })
 
-    // Regression guard for issue #114 — dispatch moves a task
-    // todo → inProgress and the watchdog, running in the same tick off a
-    // stale pre-move snapshot, declares the task "30 min stuck" and moves
-    // it back to todo. The task's log timestamps are ancient (the task was
-    // queued long ago) but `updatedAt` was just bumped by dispatch's move,
-    // so we key the guard off that.
-    it('does not auto-recover when task.updatedAt is within the guard window', async () => {
-      setWatchdogColumns({
-        inProgress: [
-          {
-            id: 'race-task',
-            title: 'Just-dispatched task',
-            agent: 'pixel',
-            // Log is ancient — the "stuck" check would normally fire.
-            log: [{ message: 'Queued', timestamp: '2020-01-01T00:00:00Z' }],
-            // But updatedAt was bumped by dispatch's moveTask 1s ago.
-            updatedAt: Date.now() - 1000,
-          },
-        ],
-      })
+  })
 
-      // Heartbeat stale — so absent the guard this would auto-recover.
-      vi.mocked(isStale).mockReturnValue(true)
+  // -------------------------------------------------------------------------
+  // Supersede-first recovery (SPEC §8 #4 + #5 completion leg). Replaces the
+  // old issue-#114 updatedAt guard test: a just-dispatched task now has a
+  // LIVE LEDGER CLAIM with a fresh heartbeat — the real signal the file
+  // mtime was a proxy for.
+  // -------------------------------------------------------------------------
+
+  describe('supersede-first recovery (execution ledger)', () => {
+    const staleTask = (id: string) => ({
+      id,
+      title: 'Ledger-arbitrated task',
+      agent: 'pixel',
+      // Log is ancient — the "stuck" check fires; the ledger arbitrates.
+      log: [{ message: 'Queued', timestamp: '2020-01-01T00:00:00Z' }],
+    })
+
+    it('skips recovery while the live run heartbeat is fresh (replaces the updatedAt guard)', async () => {
+      setWatchdogColumns({ inProgress: [staleTask('hb-fresh')] })
+      vi.mocked(isStale).mockReturnValue(true) // agent heartbeat file stale
+
+      // Live run claimed with a CURRENT heartbeat — agent is genuinely working.
+      claimRun({ runId: 'task:hb-fresh:d1', taskId: 'hb-fresh', seq: 1, agent: 'pixel', bootId: 'boot-wd', now: Date.now() })
 
       start(tempDir)
       await vi.advanceTimersByTimeAsync(1500)
 
-      // Guard must block both branches of the recovery decision.
       expect(mockStoreMoveTask).not.toHaveBeenCalled()
       expect(mockStoreBlockTask).not.toHaveBeenCalled()
-      expect(mockStoreAddTaskLog).not.toHaveBeenCalledWith(
-        expect.anything(),
-        expect.anything(),
-        expect.stringContaining('Auto-recovered'),
-      )
-      expect(vi.mocked(appendAudit)).not.toHaveBeenCalledWith(
+      expect(getLiveRun('hb-fresh')?.status).toBe('running')
+    })
+
+    it('supersedes a stale run exactly once, audits it, then recovers', async () => {
+      setWatchdogColumns({ inProgress: [staleTask('hb-stale')] })
+      vi.mocked(isStale).mockReturnValue(true)
+
+      // Heartbeat far older than stuckThresholdMs (30min in the settings mock).
+      claimRun({ runId: 'task:hb-stale:d1', taskId: 'hb-stale', seq: 1, agent: 'pixel', bootId: 'boot-wd', now: Date.now() - 60 * 60 * 1000 })
+
+      start(tempDir)
+      await vi.advanceTimersByTimeAsync(1500)
+
+      expect(vi.mocked(appendAudit)).toHaveBeenCalledWith(
         tempDir,
-        'task.auto_recovered',
-        expect.anything(),
-        expect.anything(),
+        'task.run_superseded',
+        'watchdog',
+        expect.objectContaining({ id: 'hb-stale', runIds: ['task:hb-stale:d1'] }),
       )
-      expect(vi.mocked(appendAudit)).not.toHaveBeenCalledWith(
-        tempDir,
-        'task.auto_recovery_exhausted',
-        expect.anything(),
-        expect.anything(),
-      )
+      expect(mockStoreMoveTask).toHaveBeenCalledWith('hb-stale', 'todo')
+      expect(getLiveRun('hb-stale')).toBeNull()
+
+      // The slot is freed exactly once — a racing second supersede loses.
+      expect(supersedeStaleRun('hb-stale', Date.now())).toEqual({ superseded: false })
+    })
+
+    it('late zombie: the superseded run completes first and wins; the re-dispatch is suppressed', async () => {
+      // The superseded run d1 turns out alive and records its completion…
+      const first = recordCompletion('zombie-task', { runId: 'task:zombie-task:d1', agent: 'pixel', channel: 'mcp' })
+      expect(first.recorded).toBe(true)
+
+      // …so the re-dispatched run d2's completion is suppressed — first
+      // completion wins regardless of which run produced it.
+      const second = recordCompletion('zombie-task', { runId: 'task:zombie-task:d2', agent: 'pixel', channel: 'mcp' })
+      expect(second.recorded).toBe(false)
+      if (!second.recorded) expect(second.existing.runId).toBe('task:zombie-task:d1')
     })
   })
 
